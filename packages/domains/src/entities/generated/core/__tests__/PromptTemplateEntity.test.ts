@@ -85,6 +85,18 @@ describe('PromptTemplateEntity', () => {
     expect(entity.hasChanges).toBe(false);
   });
 
+  it('approvedVersionNumber defaults to null and is change-tracked via its setter', () => {
+    const entity = createEntity();
+    // Never approved under the version-pin scheme.
+    expect(entity.approvedVersionNumber).toBeNull();
+    // approveTemplate pins the approved snapshot; the OCC write persists only
+    // tracked changes, so the setter MUST mark the entity dirty.
+    entity.approvedVersionNumber = 4;
+    expect(entity.approvedVersionNumber).toBe(4);
+    expect(entity.hasChanges).toBe(true);
+    expect(entity.changes.approvedVersionNumber).toBe(4);
+  });
+
   it('should accept null values for all optional fields', () => {
     const entity = createEntity({
       name: null,

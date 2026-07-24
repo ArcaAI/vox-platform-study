@@ -589,7 +589,17 @@ export class SttV2WebSocketClient {
           error: error as Error,
           attributes: { attempt: this.reconnectAttempts },
         });
-        // The onclose handler will trigger the next attempt
+        // A reconnect attempt that fails to OPEN (connection refused, DNS, TLS,
+        // or the connect timeout) closes with `this.ws` still null — `onopen`
+        // never ran — so `connect`'s `onclose` takes the `!settled` REJECT
+        // branch and does NOT re-arm (the `wasConnected` re-arm only fires for a
+        // socket that opened and later dropped). Without re-arming here the
+        // retry chain died silently before `maxAttempts` and `onReconnectFailed`
+        // never fired (F-07). Schedule the next attempt from the failure path;
+        // `attemptReconnect` fires `onReconnectFailed` once the budget is spent.
+        if (this.reconnectOptions.enabled && !this.intentionalDisconnect) {
+          this.attemptReconnect();
+        }
       });
     }, delay);
   }
@@ -884,6 +894,19 @@ export class SttV2WebSocketClient {
             code: 'RESUME_FAILED',
             message: `Server rejected resume handshake: ${failed.reason}`,
           });
+          // Distinguish RECOVERABLE from TERMINAL resume failures so the two
+          // ends agree (F-06). `buffer_overflow` means the session is ALIVE —
+          // only the bounded replay buffer rolled — so the live stream keeps
+          // flowing and the client just reconciles against the durable
+          // transcript. Any OTHER reason (`unknown_session`, incl. the gateway's
+          // "freshly created after grace/cross-instance" rejection) means the
+          // session is GONE: the mic is now capturing into a dead session.
+          // Surface the terminal reconnect-failed callback so the higher layer
+          // tears this session down and establishes a fresh one instead of
+          // believing it resumed.
+          if (failed.reason !== 'buffer_overflow') {
+            this.onReconnectFailedCb?.();
+          }
           break;
         }
         case 'status':

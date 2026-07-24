@@ -250,6 +250,7 @@ const mockAudioRecordingRepository = {
 // segment writer (optional trailing dep on the service).
 const mockTranscriptSegmentRepository = {
     create: vi.fn(),
+    createMany: vi.fn(),
     findByContextItem: vi.fn(),
 };
 
@@ -269,6 +270,7 @@ describe('SttInternalService', () => {
         });
 
         mockTranscriptSegmentRepository.create.mockImplementation(async (entity: any) => entity);
+        mockTranscriptSegmentRepository.createMany.mockImplementation(async (entities: any[]) => ({ count: entities.length }));
 
         service = new SttInternalService(
             mockJobRepository as any,
@@ -374,8 +376,12 @@ describe('SttInternalService', () => {
                 ],
             } as any);
 
-            expect(mockTranscriptSegmentRepository.create).toHaveBeenCalledTimes(2);
-            const first = mockTranscriptSegmentRepository.create.mock.calls[0][0];
+            // Batched into ONE createMany call (F-14), not one create() per segment.
+            expect(mockTranscriptSegmentRepository.createMany).toHaveBeenCalledTimes(1);
+            expect(mockTranscriptSegmentRepository.create).not.toHaveBeenCalled();
+            const batch = mockTranscriptSegmentRepository.createMany.mock.calls[0][0];
+            expect(batch).toHaveLength(2);
+            const [first, second] = batch;
             expect(first.contextItemId).toBe('ctx-seg');
             expect(first.idx).toBe(0);
             expect(first.charStart).toBe(0);
@@ -384,7 +390,6 @@ describe('SttInternalService', () => {
             // The PHI text is NOT persisted on the segment row.
             expect((first as any).text).toBeUndefined();
 
-            const second = mockTranscriptSegmentRepository.create.mock.calls[1][0];
             expect(second.idx).toBe(1);
             expect(second.charStart).toBe(28);
         });
@@ -402,7 +407,8 @@ describe('SttInternalService', () => {
                 metadata: { segments: [{ text: 'alpha' }, { text: 'beta' }] },
             } as any);
 
-            expect(mockTranscriptSegmentRepository.create).toHaveBeenCalledTimes(2);
+            expect(mockTranscriptSegmentRepository.createMany).toHaveBeenCalledTimes(1);
+            expect(mockTranscriptSegmentRepository.createMany.mock.calls[0][0]).toHaveLength(2);
         });
 
         it('persists no segments when none are supplied (regression)', async () => {
@@ -414,7 +420,7 @@ describe('SttInternalService', () => {
 
             await service.createTranscript({ jobId: 'job-none', transcriptText: 'no segments here' });
 
-            expect(mockTranscriptSegmentRepository.create).not.toHaveBeenCalled();
+            expect(mockTranscriptSegmentRepository.createMany).not.toHaveBeenCalled();
         });
 
         it('does not fail the ingest when segment persistence throws (best-effort)', async () => {
@@ -423,7 +429,7 @@ describe('SttInternalService', () => {
             mockJobRepository.findById.mockResolvedValue(job);
             mockContextItemRepository.create.mockResolvedValue(contextItem);
             mockJobRepository.update.mockImplementation(async (_id: any, e: any) => e);
-            mockTranscriptSegmentRepository.create.mockRejectedValueOnce(new Error('db down'));
+            mockTranscriptSegmentRepository.createMany.mockRejectedValueOnce(new Error('db down'));
 
             const result = await service.createTranscript({
                 jobId: 'job-err',
@@ -447,7 +453,8 @@ describe('SttInternalService', () => {
                 segments: [{ text: 'hello' }, { text: 'world' }],
             } as any);
 
-            expect(mockTranscriptSegmentRepository.create).toHaveBeenCalledTimes(2);
+            expect(mockTranscriptSegmentRepository.createMany).toHaveBeenCalledTimes(1);
+            expect(mockTranscriptSegmentRepository.createMany.mock.calls[0][0]).toHaveLength(2);
         });
     });
 
@@ -1246,6 +1253,116 @@ describe('SttInternalService', () => {
                 (c: any[]) => c[0] === 'consultation.transcription.created',
             );
             expect(pipelineCalls).toHaveLength(0);
+        });
+    });
+
+    // F-09: streaming-transcript create TOCTOU. Two duplicate calls for the
+    // same session — via the caller-supplied `Idempotency-Key` or (absent that)
+    // the derived `tenantId:consultationId:sessionId` key — must produce
+    // exactly one TRANSCRIPT ContextItem, with the second call replaying the
+    // first response instead of creating a duplicate.
+    describe('createTranscript idempotency (F-09)', () => {
+        const buildRedisCacheMock = () => {
+            const store = new Map<string, string>();
+            return {
+                get: vi.fn(async (key: string) => store.get(key) ?? null),
+                setex: vi.fn(async (key: string, _ttl: number, value: string) => {
+                    store.set(key, value);
+                }),
+                eval: vi.fn(async (_script: string, _numKeys: number, key: string, value: string) => {
+                    if (store.has(key)) return null;
+                    store.set(key, value);
+                    return 'OK';
+                }),
+                __store: store,
+            };
+        };
+
+        const buildServiceWithRedis = (redisCache: ReturnType<typeof buildRedisCacheMock>) =>
+            new SttInternalService(
+                mockJobRepository as any,
+                mockContextItemRepository as any,
+                mockMediaRepository as any,
+                mockAudioRecordingRepository as any,
+                mockEventEmitter as any,
+                mockClsService as any,
+                undefined, // secretsService (optional)
+                mockTranscriptSegmentRepository as any,
+                redisCache as any,
+            );
+
+        it('dedups two duplicate calls sharing an Idempotency-Key — one ContextItem, second replays the first response', async () => {
+            const redisCache = buildRedisCacheMock();
+            const svc = buildServiceWithRedis(redisCache);
+
+            const contextItem = createMockContextItemEntity({ id: 'idem-ctx-1' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+            mockContextItemRepository.create.mockResolvedValueOnce(contextItem);
+
+            const dto = {
+                consultationId: 'consultation-idem-1',
+                tenantId: 'tenant-idem-1',
+                transcriptText: 'idempotent finalize',
+                transcriptionSource: 'streaming' as const,
+            };
+
+            const first = await svc.createTranscript(dto, 'consultation-idem-1:session-1');
+            expect(first.contextItemId).toBe('idem-ctx-1');
+            expect(mockContextItemRepository.create).toHaveBeenCalledTimes(1);
+
+            const second = await svc.createTranscript(dto, 'consultation-idem-1:session-1');
+            expect(second.contextItemId).toBe('idem-ctx-1');
+            // No second create — the idempotency cache hit replayed the first
+            // response without re-running createStreamingTranscriptInner at all.
+            expect(mockContextItemRepository.create).toHaveBeenCalledTimes(1);
+
+            const pipelineCalls = mockEventEmitter.emit.mock.calls.filter(
+                (c: any[]) => c[0] === 'consultation.transcription.created',
+            );
+            expect(pipelineCalls).toHaveLength(1);
+        });
+
+        it('falls back to a derived tenantId:consultationId:sessionId key when no Idempotency-Key header is supplied', async () => {
+            const redisCache = buildRedisCacheMock();
+            const svc = buildServiceWithRedis(redisCache);
+
+            const contextItem = createMockContextItemEntity({ id: 'idem-ctx-2' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([]);
+            mockContextItemRepository.create.mockResolvedValueOnce(contextItem);
+
+            const dto = {
+                consultationId: 'consultation-idem-2',
+                tenantId: 'tenant-idem-2',
+                transcriptText: 'no header finalize',
+                transcriptionSource: 'streaming' as const,
+                metadata: { sessionId: 'session-2' },
+            };
+
+            const first = await svc.createTranscript(dto as any);
+            expect(first.contextItemId).toBe('idem-ctx-2');
+
+            const second = await svc.createTranscript(dto as any);
+            expect(second.contextItemId).toBe('idem-ctx-2');
+            expect(mockContextItemRepository.create).toHaveBeenCalledTimes(1);
+        });
+
+        it('falls through to work() when Redis is unwired (pre-existing findTranscripts guard only)', async () => {
+            // No redisCache injected — matches the pre-existing constructor arity.
+            const existing = createMockContextItemEntity({ id: 'no-redis-existing' });
+            mockContextItemRepository.findTranscripts.mockResolvedValue([existing]);
+
+            const result = await service.createTranscript(
+                {
+                    consultationId: 'consultation-no-redis',
+                    tenantId: 'tenant-no-redis',
+                    transcriptText: 'no redis wired',
+                    transcriptionSource: 'streaming',
+                },
+                'some-idempotency-key',
+            );
+
+            expect(result.contextItemId).toBe('no-redis-existing');
+            expect(mockContextItemRepository.create).not.toHaveBeenCalled();
         });
     });
 });

@@ -19,6 +19,7 @@ import { describe, it, expect } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { UpdatePromptTemplateRequest } from '../dto/update-prompt-template.request';
+import { CreatePromptTemplateRequest } from '../dto/create-prompt-template.request';
 import { UpdateDnaReportRequest } from '../../dna-writing-style/dto/update-dna-report.request';
 
 async function validateDto<T extends object>(
@@ -73,6 +74,38 @@ describe('UpdatePromptTemplateRequest', () => {
             const dna = await validateDto(UpdateDnaReportRequest, { expectedVersion: 0 });
             expect(prompt.isValid).toBe(false);
             expect(dna.isValid).toBe(false);
+        });
+    });
+
+    // The prompt body is folded verbatim into the clinical LLM prompt, so an
+    // unbounded field is a cost + prompt-injection surface (F-03). Both the
+    // create and update DTOs cap content at 50,000 chars.
+    describe('content length cap (F-03)', () => {
+        it('accepts content at the 50,000-char cap', async () => {
+            const atCap = await validateDto(UpdatePromptTemplateRequest, { content: 'x'.repeat(50000) });
+            expect(atCap.isValid).toBe(true);
+        });
+
+        it('rejects content over the 50,000-char cap', async () => {
+            const overCap = await validateDto(UpdatePromptTemplateRequest, { content: 'x'.repeat(50001) });
+            expect(overCap.isValid).toBe(false);
+            expect(overCap.errors.join(' ')).toMatch(/content/i);
+        });
+
+        it('CreatePromptTemplateRequest enforces the same content cap', async () => {
+            const over = await validateDto(CreatePromptTemplateRequest, {
+                name: 'n',
+                content: 'x'.repeat(50001),
+                category: 'SUMMARY',
+            });
+            expect(over.isValid).toBe(false);
+
+            const ok = await validateDto(CreatePromptTemplateRequest, {
+                name: 'n',
+                content: 'x'.repeat(50000),
+                category: 'SUMMARY',
+            });
+            expect(ok.isValid).toBe(true);
         });
     });
 });

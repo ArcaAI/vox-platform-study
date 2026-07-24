@@ -73,6 +73,9 @@ dependencies = [
     "opentelemetry-instrumentation-logging>=0.60b1",
     # --- Core processing (imported top-level in batch_service & preprocessing) ---
     "numpy>=2.0.0",
+    # --- Resampling (streaming preprocessor's core resample path — always
+    # active whenever input sample rate != target rate) ---
+    "scipy>=1.17.0",
     # --- Azure Speech SDK (cloud ASR engine, imported top-level in batch_service) ---
     "azure-cognitiveservices-speech>=1.47.0",
     # --- Cadence punctuation runtime compatibility (Gemma3 bidirectional mask path) ---

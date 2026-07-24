@@ -218,6 +218,7 @@ test-admin-console:
   variables:
     <<: *test-env-vars
   script:
+    - pnpm turbo build --filter=@arcaai/ui
     - pnpm --filter @arcaai/admin-console test
   rules:
     - if: $SKIP_TESTS == "true"

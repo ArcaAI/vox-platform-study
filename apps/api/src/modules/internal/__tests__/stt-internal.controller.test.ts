@@ -47,7 +47,21 @@ describe('SttInternalController.ensureInternalApiKey', () => {
     const result = await controller.createTranscript(request, { contextItemId: 'c-1' } as any);
 
     expect(result).toEqual({ id: 'tx-1' });
-    expect(sttInternalService.createTranscript).toHaveBeenCalledWith({ contextItemId: 'c-1' });
+    expect(sttInternalService.createTranscript).toHaveBeenCalledWith({ contextItemId: 'c-1' }, undefined);
+  });
+
+  // F-09: the forward-compatible `Idempotency-Key` header STT-v2 already
+  // sends is now read through (`@Headers('idempotency-key')`) and passed to
+  // the service so the streaming-transcript create path can dedup a
+  // concurrent/retried finalize instead of silently duplicating.
+  it('reads the Idempotency-Key header and passes it through to the service', async () => {
+    const request = { apiKey: { id: 'key-1' } } as any;
+    sttInternalService.createTranscript.mockResolvedValue({ id: 'tx-2' });
+
+    const result = await controller.createTranscript(request, { consultationId: 'c-2' } as any, 'consultation-2:session-9');
+
+    expect(result).toEqual({ id: 'tx-2' });
+    expect(sttInternalService.createTranscript).toHaveBeenCalledWith({ consultationId: 'c-2' }, 'consultation-2:session-9');
   });
 
   it('does NOT accept a typo field (e.g., `aip_key`) as a substitute for `apiKey`', async () => {

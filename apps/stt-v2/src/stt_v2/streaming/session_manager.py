@@ -29,7 +29,11 @@ import numpy as np
 import structlog
 
 from stt_v2.core.config.settings import get_settings
-from stt_v2.core.metrics import streaming_session_ended, streaming_session_started
+from stt_v2.core.metrics import (
+    streaming_inference_queue_dropped,
+    streaming_session_ended,
+    streaming_session_started,
+)
 from stt_v2.models.whisper_kwargs import build_whisper_generate_kwargs
 from stt_v2.pipeline.dto import DualCaptureConfig, EndpointConfig
 from stt_v2.storage.blob_service import BlobService
@@ -59,6 +63,15 @@ from stt_v2.streaming.semantic_endpointer import SemanticEndpointer
 from stt_v2.streaming.session import StreamSession
 
 logger = structlog.get_logger(__name__)
+
+# F-08 — steady-state per-frame enqueue bound (``_make_frame_handler``'s
+# ``_on_frame``). Deliberately small: this runs on the single ingestion
+# consumer's dispatch path, so a long wait here backs up XACK'ing of the
+# Redis ``stt:audio`` stream, which is the actual failure this bound exists to
+# prevent. Mirrors the existing ``timeout=1.0`` used for the stop-path sentinel
+# enqueue (``_stop_inference_loop``) — short enough that a full queue degrades
+# captions (drop + log + metric) rather than stalling raw-audio ingestion.
+_STEADY_STATE_ENQUEUE_TIMEOUT_S = 1.0
 
 StreamingAsrCallable = Callable[[np.ndarray, int], Awaitable[dict[str, Any]]]
 
@@ -194,9 +207,7 @@ class SessionManager:
             self._audio_idle_timeout_s = _settings.streaming_audio_idle_timeout_s
             self._heartbeat_interval_s = _settings.streaming_worker_heartbeat_s
             self._heartbeat_ttl_s = _settings.streaming_worker_heartbeat_ttl_s
-            self._inference_queue_maxsize = int(
-                getattr(_settings, "streaming_inference_queue_maxsize", 64)
-            )
+            self._inference_queue_maxsize = int(_settings.streaming_inference_queue_maxsize)
             self._inference_drain_timeout_s = float(
                 _settings.streaming_inference_drain_timeout_s
             )
@@ -2177,7 +2188,26 @@ class SessionManager:
                         if gate is not None:
                             gate.clear()
                         if inference_queue is not None:
-                            await inference_queue.put(utt)
+                            # F-08: bounded wait, not a blocking put. This runs on the
+                            # single ingestion dispatch loop — a full queue must never
+                            # block it (that would stop XACK'ing stt:audio and let its
+                            # MAXLEN trim unread raw audio). On timeout the utterance is
+                            # DROPPED (captions degrade); the durable audio pipeline is
+                            # untouched and keeps draining independently.
+                            try:
+                                await asyncio.wait_for(
+                                    inference_queue.put(utt),
+                                    timeout=_STEADY_STATE_ENQUEUE_TIMEOUT_S,
+                                )
+                            except TimeoutError:
+                                streaming_inference_queue_dropped()
+                                logger.warning(
+                                    "Dropping utterance: inference queue full past "
+                                    "steady-state enqueue timeout",
+                                    session_id=session.session_id,
+                                    timeout_s=_STEADY_STATE_ENQUEUE_TIMEOUT_S,
+                                    queue_maxsize=self._inference_queue_maxsize,
+                                )
                     else:
                         self._fire_partial(
                             session.session_id, utt, inference_worker, publisher,

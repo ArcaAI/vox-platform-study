@@ -34,6 +34,7 @@ from harness.temporal.models import (
     AssembleInput,
     EscalateInput,
     ExtractEntitiesInput,
+    FetchPolicyInput,
     FinalizeAssuranceInput,
     GenerateInput,
     PersistDraftInput,
@@ -375,6 +376,69 @@ class TestGeneratePostSendFailure:
         # Propagates unchanged (NOT wrapped non-retryable) → Temporal retries per policy.
         with pytest.raises(SmrServiceError):
             await env.run(activities.generate, GenerateInput(prompt="P"))
+
+
+class _FakePolicyApi:
+    """apps/api ``/policy`` client stub — succeeds or raises a canned error."""
+
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self._error = error
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def get_policy(self, tenant_id: str, consultation_id: str | None = None) -> dict:
+        self.calls.append((tenant_id, consultation_id))
+        if self._error is not None:
+            raise self._error
+        return {"version": 1}
+
+
+class TestFetchPolicy:
+    """F-23: 401/403 from the gateway must be distinguishable from a transient outage."""
+
+    @pytest.mark.asyncio
+    async def test_401_raises_non_retryable_policy_auth_error(self, env, monkeypatch):
+        fake = _FakePolicyApi(
+            error=ApiServiceError(
+                "apps/api /policy failed: Client error '401 Unauthorized' for url "
+                "'http://x/policy'"
+            )
+        )
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        with pytest.raises(ApplicationError) as exc_info:
+            await env.run(activities.fetch_policy, FetchPolicyInput(tenant_id="t-1"))
+        assert exc_info.value.type == "PolicyAuthError"
+        assert exc_info.value.non_retryable is True
+
+    @pytest.mark.asyncio
+    async def test_403_raises_non_retryable_policy_auth_error(self, env, monkeypatch):
+        fake = _FakePolicyApi(
+            error=ApiServiceError(
+                "apps/api /policy failed: Client error '403 Forbidden' for url "
+                "'http://x/policy'"
+            )
+        )
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        with pytest.raises(ApplicationError) as exc_info:
+            await env.run(activities.fetch_policy, FetchPolicyInput(tenant_id="t-1"))
+        assert exc_info.value.type == "PolicyAuthError"
+        assert exc_info.value.non_retryable is True
+
+    @pytest.mark.asyncio
+    async def test_transient_outage_stays_a_plain_api_service_error(self, env, monkeypatch):
+        fake = _FakePolicyApi(
+            error=ApiServiceError("apps/api /policy failed: connection refused")
+        )
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        with pytest.raises(ApiServiceError):
+            await env.run(activities.fetch_policy, FetchPolicyInput(tenant_id="t-1"))
+
+    @pytest.mark.asyncio
+    async def test_success_returns_policy_unaffected(self, env, monkeypatch):
+        fake = _FakePolicyApi()
+        monkeypatch.setattr(activities, "_api_client", lambda s: fake)
+        result = await env.run(activities.fetch_policy, FetchPolicyInput(tenant_id="t-1"))
+        assert result.version == 1
+        assert fake.calls == [("t-1", None)]
 
 
 class TestApiActivities:

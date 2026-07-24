@@ -1,8 +1,9 @@
-import { Inject, Injectable, Logger, Optional, BadRequestException } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import {
   ConsultationRepository,
+  ConsultationEntity,
   ContextItemRepository,
   ContextItemFactory,
   ContextItemVersionRepository,
@@ -19,6 +20,7 @@ import {
   TranscriptSegmentRepository,
   McpServerRepository,
   SYSTEM_TENANT_ID,
+  ResourceStatusType,
 } from '@arcaai/domains';
 import { attachSegmentEvidence, extractAndStripSegmentCitationMarkers, type SegmentOffsetRef } from '../lib/transcript-segments';
 import { HarnessAuditService } from '../../harness-audit';
@@ -78,6 +80,16 @@ export class HarnessInternalService {
   // unique); the Redis key additionally namespaces by operation + tenantId.
   private readonly IDEMPOTENCY_KEY_PREFIX = 'idempotency:harness:';
   private readonly IDEMPOTENCY_TTL = 86400; // 24 hours
+
+  // F-03: attachment text (metaData.extractedText or, absent that, the raw
+  // content label) is folded verbatim into the prompt with only a
+  // `[highlight]`-style label prefix — no other transformation. This caps the
+  // per-attachment contribution so one oversized upload can't dominate the
+  // context window / injection surface (SOTA §5.1/§5.2); the explicit suffix
+  // marker keeps the truncation visible in the assembled prompt rather than
+  // silently cutting the text.
+  private static readonly ATTACHMENT_TEXT_MAX_LENGTH = 20_000;
+  private static readonly ATTACHMENT_TRUNCATION_MARKER = '…[attachment truncated for context]';
 
   constructor(
     private readonly contextItemRepository: ContextItemRepository,
@@ -237,6 +249,21 @@ export class HarnessInternalService {
   }
 
   /**
+   * Assert the consultation is still live (`resourceStatus === ENABLED`) before
+   * a harness write-back path persists against it. `findById` + `assertEqualTenants`
+   * only guard tenant ownership — a soft-deleted/disabled consultation still
+   * passes both, so an in-flight durable workflow could otherwise keep writing
+   * drafts/entities/audit rows to a note the tenant has already removed.
+   * 404-over-403 posture preserved: a non-ENABLED consultation is indistinguishable
+   * from a missing one to the caller.
+   */
+  private assertConsultationWritable(consultation: Pick<ConsultationEntity, 'resourceStatus'> | null | undefined): void {
+    if (!consultation || consultation.resourceStatus !== ResourceStatusType.ENABLED) {
+      throw new NotFoundException('Resource not found');
+    }
+  }
+
+  /**
    * Persist NamedEntity rows (text/type/char-offsets from NLP) for a consultation.
    */
   async persistEntities(
@@ -259,10 +286,15 @@ export class HarnessInternalService {
         // assemble/persistDraft/finalizeAssurance/recordEscalation.
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
+        this.assertConsultationWritable(consultation);
 
-        const entityIds: string[] = [];
-        for (const entity of dto.entities ?? []) {
-          const namedEntity = NamedEntityFactory.CreateNamedEntity({
+        // Build every entity first, then encrypt each one, THEN issue a
+        // single batched `createMany` (F-14) instead of one INSERT + one
+        // per-row Transit-encryption call interleaved per entity. Ids are
+        // pre-generated UUIDv7s from the factory, so `createMany` (which never
+        // returns rows) loses nothing callers here need.
+        const namedEntities = (dto.entities ?? []).map((entity) =>
+          NamedEntityFactory.CreateNamedEntity({
             tenantId,
             contextItemId: dto.contextItemId,
             text: entity.text,
@@ -282,11 +314,16 @@ export class HarnessInternalService {
             transcriptContextItemId: entity.transcriptContextItemId,
             transcriptStartOffset: entity.transcriptStartOffset,
             transcriptEndOffset: entity.transcriptEndOffset,
-          });
+          }),
+        );
+
+        for (const namedEntity of namedEntities) {
           await this.encryptBestEffort('NamedEntity', () => this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!));
-          const saved = await this.namedEntityRepository.create(namedEntity);
-          entityIds.push(saved?.id ?? namedEntity.id);
         }
+        if (namedEntities.length > 0) {
+          await this.namedEntityRepository.createMany(namedEntities);
+        }
+        const entityIds = namedEntities.map((e) => e.id);
 
         this.logger.log({ message: 'Harness entities persisted', consultationId, savedCount: entityIds.length });
         return { savedCount: entityIds.length, entityIds };
@@ -379,7 +416,7 @@ export class HarnessInternalService {
           // the stored "Lab/exam result: <name>" filename label when none exists.
           const meta = a.metaData as Record<string, unknown> | undefined;
           const extracted = typeof meta?.extractedText === 'string' ? meta.extractedText.trim() : '';
-          return extracted || a.content?.trim() || '';
+          return HarnessInternalService.truncateAttachmentText(extracted || a.content?.trim() || '');
         })
         .filter((c): c is string => !!c);
 
@@ -433,8 +470,12 @@ export class HarnessInternalService {
       });
 
       const promptTemplateId = assembled.promptId ?? null;
-      let promptVersion: string | null = null;
-      if (promptTemplateId) {
+      // Provenance must name the version whose content the LLM actually saw
+      // (agent pin / approvedVersionNumber snapshot), not the mutable row's
+      // currentVersionNumber; fall back to the row only for legacy templates
+      // that have no version rows.
+      let promptVersion: string | null = assembled.resolvedVersionNumber != null ? String(assembled.resolvedVersionNumber) : null;
+      if (promptVersion === null && promptTemplateId) {
         const template = await this.promptTemplateRepository.findById(promptTemplateId);
         promptVersion = template?.currentVersionNumber != null ? String(template.currentVersionNumber) : null;
       }
@@ -490,6 +531,7 @@ export class HarnessInternalService {
         const isEarly = dto.phase === HARNESS_DRAFT_PHASE.EARLY;
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
+        this.assertConsultationWritable(consultation);
 
         // 0. Strip `[[seg:<id>]]` StrictCitations markers out of the generated note
         // BEFORE it ever becomes the persisted/delivered ContextItem content — the
@@ -694,6 +736,7 @@ export class HarnessInternalService {
         const userId = dto.userId ?? 'system';
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
+        this.assertConsultationWritable(consultation);
 
         // (Q2b) — did the clinician early-sign (Q2a) before this
         // verdict landed? If so the note is already immutable and STANDS; a late
@@ -869,6 +912,7 @@ export class HarnessInternalService {
         // (mirrors recordEscalation / persistDraft) — a cross-tenant id must not write.
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
+        this.assertConsultationWritable(consultation);
 
         await this.harnessAuditService.append({
           tenantId,
@@ -921,6 +965,7 @@ export class HarnessInternalService {
         // ownership before recording (a cross-tenant id must not write a WORM row).
         const consultation = await this.consultationRepository.findById(consultationId);
         assertEqualTenants(consultation, { tenantId });
+        this.assertConsultationWritable(consultation);
 
         const action = dto.reason === 'gate_sla_abandoned' ? HarnessAuditAction.GATE_ABANDONED : HarnessAuditAction.GATE_ESCALATED;
 
@@ -1223,6 +1268,18 @@ export class HarnessInternalService {
   private static readSegmentCitedIds(citationsMap: Record<string, unknown> | null | undefined): string[] {
     const ids = citationsMap?.segmentCitedIds;
     return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+  }
+
+  /**
+   * Fold-cap for a single attachment's text (F-03) — bounds the
+   * per-attachment contribution to the prompt at
+   * `ATTACHMENT_TEXT_MAX_LENGTH` chars, appending an explicit truncation
+   * marker so the cut is visible in the assembled prompt rather than silent.
+   * A no-op for text already at or under the cap.
+   */
+  private static truncateAttachmentText(text: string): string {
+    if (text.length <= HarnessInternalService.ATTACHMENT_TEXT_MAX_LENGTH) return text;
+    return text.slice(0, HarnessInternalService.ATTACHMENT_TEXT_MAX_LENGTH) + HarnessInternalService.ATTACHMENT_TRUNCATION_MARKER;
   }
 
   /**

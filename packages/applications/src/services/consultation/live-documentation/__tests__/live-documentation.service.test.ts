@@ -11,12 +11,58 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
-import { Subject } from 'rxjs';
+import { Subject, finalize } from 'rxjs';
 import { LiveDocumentationService } from '../live-documentation.service';
 
 const CID = 'consultation-001';
 const TENANT = 'tenant-abc';
 const CHANNEL = `consultation:live-summary:${CID}`;
+
+/**
+ * A faithful fake of `RedisSubscriberService`'s refcounted, per-channel-Subject
+ * contract (mirrors the real `subscribeToChannel`/`decrementAndCleanup`):
+ *   - callers SHARE one Subject per channel,
+ *   - each subscription increments a refcount and `finalize`s a decrement,
+ *   - the underlying channel is torn down (Subject completed) ONLY when the
+ *     last observer leaves.
+ * This is exactly the behaviour F-04 depends on — a plain `vi.fn()` returning a
+ * bare Subject cannot exercise the shared-teardown race.
+ */
+function makeRefcountedSubscriber() {
+  const subjects = new Map<string, Subject<string>>();
+  const refCounts = new Map<string, number>();
+  const unsubscribeFromChannel = vi.fn((channel: string) => {
+    const subject = subjects.get(channel);
+    if (subject) {
+      subject.complete();
+      subjects.delete(channel);
+      refCounts.delete(channel);
+    }
+  });
+  const subscribeToChannel = vi.fn(async (channel: string) => {
+    if (!subjects.has(channel)) {
+      subjects.set(channel, new Subject<string>());
+      refCounts.set(channel, 0);
+    }
+    refCounts.set(channel, (refCounts.get(channel) ?? 0) + 1);
+    const subject = subjects.get(channel)!;
+    return subject.asObservable().pipe(
+      finalize(() => {
+        const next = Math.max(0, (refCounts.get(channel) ?? 0) - 1);
+        if (next === 0) unsubscribeFromChannel(channel);
+        else refCounts.set(channel, next);
+      }),
+    );
+  });
+  return {
+    subscribeToChannel,
+    unsubscribeFromChannel,
+    /** Publish onto a channel's shared Subject (what `safePublish` does at runtime). */
+    publish: (channel: string, msg: string) => subjects.get(channel)?.next(msg),
+    /** True while the channel still has a live shared Subject. */
+    isChannelLive: (channel: string) => subjects.has(channel),
+  };
+}
 
 /** A promise whose resolution is deferred to the test body (overlap simulation). */
 function makeDeferred<T = void>() {
@@ -481,25 +527,115 @@ describe('LiveDocumentationService', () => {
   });
 
   describe('SSE relay (subscribeToLiveSummary)', () => {
+    const tick = (ms = 10) => new Promise((r) => setTimeout(r, ms));
+
     it('emits the stored snapshot first then relays channel messages', async () => {
-      const { service, cacheService, redisSubscriber } = buildDeps();
+      const redisSubscriber = makeRefcountedSubscriber();
+      const { service, cacheService } = buildDeps(buildHttpMock(), { redisSubscriber });
       const snapshot = JSON.stringify({ consultationId: CID, runningSummary: 'snap', sections: [], entities: [], updatedAt: 'now' });
       cacheService.get.mockResolvedValue(snapshot);
-      const channel$ = new Subject<string>();
-      redisSubscriber.subscribeToChannel.mockResolvedValue(channel$.asObservable());
 
       const events: Array<{ data: string }> = [];
       const sub = service.subscribeToLiveSummary(CID).subscribe((e: any) => events.push(e));
 
-      await new Promise((r) => setTimeout(r, 10));
+      await tick();
       expect(events[0].data).toBe(snapshot);
 
-      channel$.next(JSON.stringify({ consultationId: CID, runningSummary: 'updated' }));
-      await new Promise((r) => setTimeout(r, 10));
+      // No `updatedAt` on this event → never de-duped against the snapshot.
+      redisSubscriber.publish(CHANNEL, JSON.stringify({ consultationId: CID, runningSummary: 'updated' }));
+      await tick();
       expect(events[1].data).toContain('updated');
 
+      // F-04: teardown must NOT call the direct (shared-Subject-completing)
+      // `unsubscribeFromChannel` — it must flow through the refcount, which only
+      // tears the channel down because this is the last (only) viewer.
       sub.unsubscribe();
-      expect(redisSubscriber.unsubscribeFromChannel).toHaveBeenCalledWith(CHANNEL);
+      await tick();
+      expect(redisSubscriber.isChannelLive(CHANNEL)).toBe(false);
+    });
+
+    it('F-04: one viewer disconnecting does NOT complete a co-viewer’s stream', async () => {
+      const redisSubscriber = makeRefcountedSubscriber();
+      const { service, cacheService } = buildDeps(buildHttpMock(), { redisSubscriber });
+      cacheService.get.mockResolvedValue(null);
+
+      const aEvents: Array<{ data: string }> = [];
+      let aCompleted = false;
+      const bEvents: Array<{ data: string }> = [];
+      let bCompleted = false;
+
+      const subA = service.subscribeToLiveSummary(CID).subscribe({ next: (e: any) => aEvents.push(e), complete: () => (aCompleted = true) });
+      const subB = service.subscribeToLiveSummary(CID).subscribe({ next: (e: any) => bEvents.push(e), complete: () => (bCompleted = true) });
+      await tick();
+
+      // First viewer leaves.
+      subA.unsubscribe();
+      await tick();
+
+      // The shared channel must still be live (viewer B holds a ref) and B must
+      // still receive events — the old direct-unsubscribe force-completed it.
+      expect(aCompleted).toBe(false); // A's own teardown, not a completion
+      expect(bCompleted).toBe(false);
+      expect(redisSubscriber.isChannelLive(CHANNEL)).toBe(true);
+
+      redisSubscriber.publish(CHANNEL, JSON.stringify({ consultationId: CID, runningSummary: 'still-flowing', updatedAt: '2026-07-24T00:00:01Z' }));
+      await tick();
+      expect(bEvents.some((e) => e.data.includes('still-flowing'))).toBe(true);
+
+      subB.unsubscribe();
+      await tick();
+      expect(redisSubscriber.isChannelLive(CHANNEL)).toBe(false);
+    });
+
+    it('F-05: an event published between subscribe and snapshot-read still reaches the viewer', async () => {
+      const redisSubscriber = makeRefcountedSubscriber();
+      const { service, cacheService } = buildDeps(buildHttpMock(), { redisSubscriber });
+
+      // Delay the snapshot read so we can publish DURING the read window. With
+      // the old snapshot-before-subscribe order this event would be lost.
+      let releaseSnapshot!: () => void;
+      cacheService.get.mockReturnValue(
+        new Promise((resolve) => {
+          releaseSnapshot = () => resolve(null);
+        }),
+      );
+
+      const events: Array<{ data: string }> = [];
+      const sub = service.subscribeToLiveSummary(CID).subscribe((e: any) => events.push(e));
+
+      // Let the subscribe-first path attach to the channel (snapshot still pending).
+      await tick();
+      expect(redisSubscriber.subscribeToChannel).toHaveBeenCalledWith(CHANNEL);
+
+      // Publish while the snapshot read is still in flight — buffered by ReplaySubject.
+      redisSubscriber.publish(CHANNEL, JSON.stringify({ consultationId: CID, runningSummary: 'raced-in', updatedAt: '2026-07-24T00:00:02Z' }));
+
+      // Now let the snapshot read resolve (null → nothing to emit).
+      releaseSnapshot();
+      await tick();
+
+      expect(events.some((e) => e.data.includes('raced-in'))).toBe(true);
+
+      sub.unsubscribe();
+    });
+
+    it('F-05: a terminal `closed` published during the snapshot window still completes the stream', async () => {
+      const redisSubscriber = makeRefcountedSubscriber();
+      const { service, cacheService } = buildDeps(buildHttpMock(), { redisSubscriber });
+
+      let releaseSnapshot!: () => void;
+      cacheService.get.mockReturnValue(new Promise((resolve) => (releaseSnapshot = () => resolve(null))));
+
+      let completed = false;
+      const sub = service.subscribeToLiveSummary(CID).subscribe({ next: () => {}, complete: () => (completed = true) });
+      await tick();
+
+      redisSubscriber.publish(CHANNEL, JSON.stringify({ consultationId: CID, closed: true, updatedAt: '2026-07-24T00:00:03Z' }));
+      releaseSnapshot();
+      await tick();
+
+      expect(completed).toBe(true);
+      sub.unsubscribe();
     });
   });
 

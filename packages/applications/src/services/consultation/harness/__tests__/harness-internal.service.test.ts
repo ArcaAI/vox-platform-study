@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConsultationStatus, HarnessAuditAction, SummaryMetaFactory } from '@arcaai/domains';
+import { ConsultationStatus, HarnessAuditAction, ResourceStatusType, SummaryMetaFactory } from '@arcaai/domains';
 import { HarnessInternalService } from '../harness-internal.service';
 import { HARNESS_DRAFT_PHASE } from '../dto';
 
@@ -22,8 +22,13 @@ vi.mock('@arcaai/domains', async () => {
     const actual = await vi.importActual('@arcaai/domains');
     return {
         ...actual,
+        // `createMany` returns only a row count (Prisma never echoes created
+        // rows), so `entityIds` now reads `namedEntity.id` directly off the
+        // factory-produced object rather than a per-entity `.create()` return
+        // value — the mock id is derived from `text` so it stays
+        // per-entity-distinguishable for assertions.
         NamedEntityFactory: {
-            CreateNamedEntity: vi.fn((data) => ({ id: 'ne-temp', ...data })),
+            CreateNamedEntity: vi.fn((data) => ({ id: `ne-${data.text}`, ...data })),
         },
         ContextItemFactory: {
             CreateRawSummary: vi.fn((tenantId, consultationId, content, dnaWritingStyleId, createdBy) => ({
@@ -111,12 +116,20 @@ const createMockConsultationRepository = () => ({
         parentConsultationId: null,
         status: ConsultationStatus.RECORDING,
         updatedBy: null,
+        // F-10: write-back paths reject a non-ENABLED consultation. Default
+        // fixture is ENABLED (live) so every pre-existing test is unaffected;
+        // the F-10 tests override this per-call via mockResolvedValueOnce.
+        resourceStatus: ResourceStatusType.ENABLED,
     }),
     update: vi.fn().mockResolvedValue({ id: 'consultation-1' }),
 });
 
 const createMockNamedEntityRepository = () => ({
     create: vi.fn().mockImplementation((e) => Promise.resolve({ id: `ne-${e.text}` })),
+    // F-14: persistEntities batches every row into ONE createMany call.
+    // Prisma's createMany never echoes rows, so the mock mirrors that shape
+    // (a row count only) — callers read ids off the pre-generated entities.
+    createMany: vi.fn().mockImplementation((entities: unknown[]) => Promise.resolve({ count: entities.length })),
     // Encrypt-on-write helper (declaration-merged sibling).
     encryptFieldsIntoEntity: vi.fn().mockResolvedValue(undefined),
     findByConsultation: vi.fn().mockResolvedValue([
@@ -331,9 +344,12 @@ describe('HarnessInternalService', () => {
             expect(cls.set).toHaveBeenCalledWith('tenantId', 'tenant-1');
             expect(cls.set).toHaveBeenCalledWith('user', expect.objectContaining({ tenantId: 'tenant-1' }));
 
-            expect(namedEntityRepository.create).toHaveBeenCalledTimes(2);
-            const firstArg = namedEntityRepository.create.mock.calls[0][0];
-            expect(firstArg).toEqual(
+            // Batched into ONE createMany call (F-14), not one create() per entity.
+            expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
+            expect(namedEntityRepository.create).not.toHaveBeenCalled();
+            const batch = namedEntityRepository.createMany.mock.calls[0][0];
+            expect(batch).toHaveLength(2);
+            expect(batch[0]).toEqual(
                 expect.objectContaining({
                     tenantId: 'tenant-1',
                     contextItemId: 'tx-1',
@@ -370,7 +386,7 @@ describe('HarnessInternalService', () => {
                 ],
             } as any);
 
-            const firstArg = namedEntityRepository.create.mock.calls[0][0];
+            const firstArg = namedEntityRepository.createMany.mock.calls[0][0][0];
             expect(firstArg).toEqual(
                 expect.objectContaining({
                     text: 'metformin',
@@ -385,7 +401,7 @@ describe('HarnessInternalService', () => {
             await expect(
                 service.persistEntities('consultation-1', { tenantId: '', contextItemId: 'tx-1', entities: [] } as any),
             ).rejects.toThrow(BadRequestException);
-            expect(namedEntityRepository.create).not.toHaveBeenCalled();
+            expect(namedEntityRepository.createMany).not.toHaveBeenCalled();
         });
 
         it('cross-tenant tenantId mismatch → NotFoundException (404-over-403), persists nothing', async () => {
@@ -400,7 +416,7 @@ describe('HarnessInternalService', () => {
                     entities: [{ text: 'Metformin', type: 'MEDICATION', startOffset: 5, endOffset: 14, confidence: 0.9 }],
                 } as any),
             ).rejects.toThrow(NotFoundException);
-            expect(namedEntityRepository.create).not.toHaveBeenCalled();
+            expect(namedEntityRepository.createMany).not.toHaveBeenCalled();
         });
     });
 
@@ -550,6 +566,35 @@ describe('HarnessInternalService', () => {
             expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
                 expect.objectContaining({ clinicianNotes: [], attachments: [] }),
             );
+        });
+
+        // F-03: an oversized attachment must not dominate the context window /
+        // injection surface — cap the per-attachment fold at 20000 chars with
+        // an explicit truncation marker (never silent).
+        it('caps an oversized attachment fold at 20000 chars with a truncation marker', async () => {
+            const oversized = 'x'.repeat(25_000);
+            contextItemRepository.findAttachments.mockResolvedValue([
+                { id: 'at-big', metaData: { extractedText: oversized } },
+            ]);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.attachments).toHaveLength(1);
+            const folded = call.attachments[0] as string;
+            expect(folded.length).toBe(20_000 + '…[attachment truncated for context]'.length);
+            expect(folded.startsWith('x'.repeat(20_000))).toBe(true);
+            expect(folded.endsWith('…[attachment truncated for context]')).toBe(true);
+        });
+
+        it('does not truncate an attachment at or under the 20000-char cap', async () => {
+            const exact = 'y'.repeat(20_000);
+            contextItemRepository.findAttachments.mockResolvedValue([{ id: 'at-exact', content: exact }]);
+
+            await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+            const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+            expect(call.attachments[0]).toBe(exact);
         });
 
         it('folds the doctor\'s manual highlights into the assembled prompt (Workstream B)', async () => {
@@ -1323,6 +1368,7 @@ describe('HarnessInternalService', () => {
                 tenantId: 'tenant-1',
                 status: ConsultationStatus.DRAFT_PENDING_SENSORS,
                 updatedBy: null,
+                resourceStatus: ResourceStatusType.ENABLED,
             });
         });
 
@@ -1400,6 +1446,7 @@ describe('HarnessInternalService', () => {
                 tenantId: 'tenant-1',
                 status: ConsultationStatus.PENDING_REVIEW,
                 updatedBy: null,
+                resourceStatus: ResourceStatusType.ENABLED,
             });
             await service.finalizeAssurance('consultation-1', finalizeBody());
             expect(consultationRepository.update).not.toHaveBeenCalled();
@@ -1439,6 +1486,7 @@ describe('HarnessInternalService', () => {
                 tenantId: 'tenant-1',
                 status: ConsultationStatus.SIGNED,
                 updatedBy: null,
+                resourceStatus: ResourceStatusType.ENABLED,
             });
 
             await service.finalizeAssurance('consultation-1', {
@@ -1461,6 +1509,7 @@ describe('HarnessInternalService', () => {
                 tenantId: 'tenant-1',
                 status: ConsultationStatus.SIGNED,
                 updatedBy: null,
+                resourceStatus: ResourceStatusType.ENABLED,
             });
 
             await service.finalizeAssurance('consultation-1', { ...finalizeBody(), gateDecision: 'REGEN' });
@@ -1475,6 +1524,7 @@ describe('HarnessInternalService', () => {
                 tenantId: 'tenant-1',
                 status: ConsultationStatus.SIGNED,
                 updatedBy: null,
+                resourceStatus: ResourceStatusType.ENABLED,
             });
 
             await service.finalizeAssurance('consultation-1', { ...finalizeBody(), gateDecision: 'PASS' });
@@ -1548,6 +1598,7 @@ describe('HarnessInternalService', () => {
                 tenantId: 'tenant-1',
                 status: ConsultationStatus.SIGNED,
                 updatedBy: null,
+                resourceStatus: ResourceStatusType.ENABLED,
             });
 
             await service.finalizeAssurance('consultation-1', {
@@ -1776,7 +1827,7 @@ describe('HarnessInternalService', () => {
         it('persistEntities: SAME key twice → ONE NamedEntity create batch', async () => {
             await service.persistEntities('consultation-1', entitiesBody() as any, 'run-1:persist_entities');
             await service.persistEntities('consultation-1', entitiesBody() as any, 'run-1:persist_entities');
-            expect(namedEntityRepository.create).toHaveBeenCalledTimes(1);
+            expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
         });
 
         it('finalizeAssurance: SAME key twice → ONE SummaryMeta update + identical replay', async () => {
@@ -1862,7 +1913,7 @@ describe('HarnessInternalService', () => {
         });
 
         // ── NamedEntity (persistEntities) ──
-        it('persistEntities encrypts each NamedEntity via encryptFieldsIntoEntity BEFORE create', async () => {
+        it('persistEntities encrypts each NamedEntity via encryptFieldsIntoEntity BEFORE the batched createMany', async () => {
             await service.persistEntities('consultation-1', {
                 tenantId: 'tenant-1',
                 userId: 'doctor-1',
@@ -1878,8 +1929,12 @@ describe('HarnessInternalService', () => {
                 expect.objectContaining({ text: 'Metformin', className: 'MEDICATION' }),
                 secretsService,
             );
-            const encOrder = namedEntityRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
-            const createOrder = namedEntityRepository.create.mock.invocationCallOrder[0];
+            // Both rows are encrypted BEFORE the single batched createMany call
+            // (F-14 — encrypt all rows first, then one batch).
+            expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
+            expect(namedEntityRepository.createMany.mock.calls[0][0]).toHaveLength(2);
+            const encOrder = namedEntityRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[1];
+            const createOrder = namedEntityRepository.createMany.mock.invocationCallOrder[0];
             expect(encOrder).toBeLessThan(createOrder);
         });
 
@@ -1894,7 +1949,7 @@ describe('HarnessInternalService', () => {
             } as any);
 
             expect(result.savedCount).toBe(1);
-            expect(namedEntityRepository.create).toHaveBeenCalledTimes(1);
+            expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
         });
 
         it('persistEntities does NOT encrypt when no SecretsService is wired (no-op)', async () => {
@@ -1908,7 +1963,7 @@ describe('HarnessInternalService', () => {
             } as any);
 
             expect(namedEntityRepository.encryptFieldsIntoEntity).not.toHaveBeenCalled();
-            expect(namedEntityRepository.create).toHaveBeenCalledTimes(1);
+            expect(namedEntityRepository.createMany).toHaveBeenCalledTimes(1);
         });
 
         // ── SummaryMeta (persistDraft create) ──
@@ -1957,6 +2012,7 @@ describe('HarnessInternalService', () => {
                 tenantId: 'tenant-1',
                 status: ConsultationStatus.DRAFT_PENDING_SENSORS,
                 updatedBy: null,
+                resourceStatus: ResourceStatusType.ENABLED,
             });
 
             await service.finalizeAssurance('consultation-1', finalizeBody() as any);
@@ -1978,6 +2034,7 @@ describe('HarnessInternalService', () => {
                 tenantId: 'tenant-1',
                 status: ConsultationStatus.DRAFT_PENDING_SENSORS,
                 updatedBy: null,
+                resourceStatus: ResourceStatusType.ENABLED,
             });
             summaryMetaRepository.encryptFieldsIntoEntity.mockRejectedValueOnce(new Error('vault down'));
 
@@ -2007,11 +2064,91 @@ describe('HarnessInternalService', () => {
                 ).rejects.toThrow('transit/encrypt 503');
 
                 // fail-closed: the PHI row must NOT be persisted plaintext-only.
-                expect(namedEntityRepository.create).not.toHaveBeenCalled();
+                expect(namedEntityRepository.createMany).not.toHaveBeenCalled();
             } finally {
                 if (prevProvider === undefined) delete process.env.SECRETS_PROVIDER;
                 else process.env.SECRETS_PROVIDER = prevProvider;
             }
         });
+    });
+
+    // =========================================================================
+    // F-10: harness write-back paths must reject a non-ENABLED consultation
+    // (soft-deleted/disabled/suspended/archived). `findById` + `assertEqualTenants`
+    // only guard tenant ownership — an in-flight durable workflow could otherwise
+    // keep writing drafts/entities/audit rows to a note the tenant already
+    // removed. 404-over-403 preserved: NotFoundException, never a 403.
+    // =========================================================================
+    describe('F-10: write-back rejects a non-ENABLED consultation', () => {
+        const deadConsultation = () => ({
+            id: 'consultation-1',
+            tenantId: 'tenant-1',
+            departmentId: 'dept-1',
+            doctorId: 'doctor-1',
+            parentConsultationId: null,
+            status: ConsultationStatus.PENDING_REVIEW,
+            updatedBy: null,
+            resourceStatus: ResourceStatusType.DELETED,
+        });
+
+        it('persistEntities → 404, no NamedEntity written', async () => {
+            consultationRepository.findById.mockResolvedValueOnce(deadConsultation());
+
+            await expect(
+                service.persistEntities('consultation-1', {
+                    tenantId: 'tenant-1',
+                    contextItemId: 'tx-1',
+                    entities: [{ text: 'Metformin', type: 'MEDICATION' }],
+                } as any),
+            ).rejects.toThrow(NotFoundException);
+            expect(namedEntityRepository.createMany).not.toHaveBeenCalled();
+        });
+
+        it('persistDraft → 404, no ContextItem/SummaryMeta written', async () => {
+            consultationRepository.findById.mockResolvedValueOnce(deadConsultation());
+
+            await expect(
+                service.persistDraft('consultation-1', {
+                    tenantId: 'tenant-1',
+                    content: 'S: chest pain O: BP 120/80 A: stable P: review',
+                } as any),
+            ).rejects.toThrow(NotFoundException);
+            expect(contextItemRepository.create).not.toHaveBeenCalled();
+            expect(summaryMetaRepository.create).not.toHaveBeenCalled();
+        });
+
+        it('finalizeAssurance → 404, no SummaryMeta update', async () => {
+            consultationRepository.findById.mockResolvedValueOnce(deadConsultation());
+
+            await expect(
+                service.finalizeAssurance('consultation-1', {
+                    tenantId: 'tenant-1',
+                    contextItemId: 'ctx-draft-1',
+                    gateDecision: 'PASS',
+                } as any),
+            ).rejects.toThrow(NotFoundException);
+            expect(summaryMetaRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('recordGateDecision → 404, no WORM append', async () => {
+            consultationRepository.findById.mockResolvedValueOnce(deadConsultation());
+
+            await expect(
+                service.recordGateDecision('consultation-1', { tenantId: 'tenant-1', gateDecision: 'PASS' } as any),
+            ).rejects.toThrow(NotFoundException);
+            expect(harnessAuditService.append).not.toHaveBeenCalled();
+        });
+
+        it('recordEscalation → 404, no WORM append', async () => {
+            consultationRepository.findById.mockResolvedValueOnce(deadConsultation());
+
+            await expect(
+                service.recordEscalation('consultation-1', { tenantId: 'tenant-1', reason: 'gate_sla_abandoned' } as any),
+            ).rejects.toThrow(NotFoundException);
+            expect(harnessAuditService.append).not.toHaveBeenCalled();
+        });
+
+        // getEntities/assemble are READ paths, deliberately out of scope for F-10
+        // (only the write-back paths listed above guard resourceStatus).
     });
 });

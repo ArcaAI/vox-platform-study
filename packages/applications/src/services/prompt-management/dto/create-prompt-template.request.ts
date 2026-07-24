@@ -13,8 +13,13 @@ export class CreatePromptTemplateRequest {
   @MaxLength(1000)
   description?: string;
 
-  @ApiProperty({ description: 'Prompt content text' })
+  // Upper bound on tenant/admin-authored prompt bodies (F-03). The prompt body
+  // is folded verbatim into the clinical LLM prompt, so an unbounded field is
+  // both a cost and a prompt-injection surface. 50k chars comfortably fits any
+  // legitimate SOAP/summary template while capping abuse.
+  @ApiProperty({ description: 'Prompt content text', maxLength: 50000 })
   @IsString()
+  @MaxLength(50000)
   content: string;
 
   @ApiProperty({ description: 'Template category', enum: ['SYSTEM', 'SUMMARY', 'DNA_ANALYSIS', 'CUSTOM'] })

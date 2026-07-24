@@ -58,15 +58,17 @@ export interface ResolvedPromptConfig {
   resolutionTrace: PromptResolutionTrace;
 
   /**
-   * The immutable prompt CONTENT snapshot, present ONLY when a department
-   * default `DepartmentAgent` resolved (tier-1a; TASK-546). Read from
-   * `PromptVersion.content` at `pinnedVersionNumber ?? latest APPROVED`, never
-   * the mutable template row — this is what makes version PINNING meaningful.
-   * Absent on every legacy path (so no-agent resolution is byte-identical).
+   * The governed prompt CONTENT snapshot for whatever tier resolved. Read from
+   * `PromptVersion.content` at the agent pin / `approvedVersionNumber`, never the
+   * mutable `PromptTemplate.content` row — this is what makes version pinning and
+   * eval-gated approval actually reach the LLM (F-01/F-02). The sole consumer,
+   * `PromptAssemblyService.assemble()`, uses this for the prompt body. Absent
+   * only when no snapshot could be resolved (legacy data with no version rows and
+   * no content column), leaving the assembler's transcript fallback to apply.
    */
   content?: string | null;
 
-  /** The resolved PromptVersion number when an agent resolved (tier-1a). */
+  /** The resolved PromptVersion number backing `content`. */
   resolvedVersionNumber?: number | null;
 
   /** The default DepartmentAgent id when tier-1a resolved. */
@@ -247,6 +249,20 @@ export class PromptResolutionService {
       promptId = preferredPromptId;
     }
 
+    // Governed CONTENT resolution for the NON-agent tiers (preferred / legacy
+    // department / system default). The agent tier already resolved its
+    // pinned/approved snapshot above; every OTHER resolvable template serves its
+    // APPROVED snapshot here so the mutable `PromptTemplate.content` row is never
+    // the prompt body (F-01 pinning-inert / F-02 eval-gate bypass). The single
+    // consumer, PromptAssemblyService.assemble(), reads `resolved.content`.
+    if (!resolvedAgentId && promptId) {
+      const governed = await this.resolveGovernedContent(promptId);
+      if (governed) {
+        resolvedContent = governed.content;
+        resolvedVersionNumber = governed.versionNumber;
+      }
+    }
+
     // --- contextVariables ---
     const contextVariables = this.extractContextVariables(department);
     if (!department?.promptConfig) {
@@ -279,11 +295,16 @@ export class PromptResolutionService {
       resolutionTrace: trace,
     };
 
-    // Attach the immutable snapshot ONLY when tier-1a resolved, so every legacy
-    // path returns a byte-identical object (regression-locked).
-    if (resolvedAgentId) {
-      result.content = resolvedContent ?? null;
+    // Attach the immutable/governed snapshot whenever one resolved (agent OR any
+    // non-agent tier). The assembler consumes `resolved.content` for the prompt
+    // body. When no snapshot could be resolved (genuinely legacy data with no
+    // version rows and no content column), `content` is left absent so the
+    // assembler's transcript fallback applies.
+    if (resolvedContent !== undefined && resolvedContent !== null) {
+      result.content = resolvedContent;
       result.resolvedVersionNumber = resolvedVersionNumber ?? null;
+    }
+    if (resolvedAgentId) {
       result.resolvedAgentId = resolvedAgentId;
     }
 
@@ -291,12 +312,66 @@ export class PromptResolutionService {
   }
 
   /**
+   * Governed CONTENT for a NON-agent tier's resolved template. Serves the
+   * PromptVersion snapshot pinned at approval (`approvedVersionNumber`) so a
+   * post-approval content edit is never served until the next (eval-gated)
+   * re-approval — the same integrity guarantee the agent tier gets (F-02).
+   *
+   * Fallback order:
+   *  1. `PromptVersion` at `template.approvedVersionNumber` when set and present;
+   *  2. the mutable `template.content` column ONLY for genuinely legacy templates
+   *     that never carried an approval pin (or whose pinned snapshot is missing).
+   *     For an APPROVED legacy template the content column IS the approved
+   *     content — approval never mutated it — so this stays safe (it never serves
+   *     an unapproved *latest* edit).
+   *
+   * Missing template / lookup error → null (the caller keeps whatever it had,
+   * so behaviour degrades to the pre-change transcript/template fallback rather
+   * than throwing on the generation hot path).
+   */
+  private async resolveGovernedContent(promptId: string): Promise<{ content: string; versionNumber: number | null } | null> {
+    try {
+      const template = await this.promptTemplateRepository.findById(promptId);
+      if (!template) return null;
+
+      const approved = template.approvedVersionNumber;
+      if (approved !== null && approved !== undefined) {
+        const version = await this.promptVersionRepository.findByVersionNumber(promptId, approved);
+        if (version?.content !== null && version?.content !== undefined) {
+          return { content: version.content, versionNumber: version.versionNumber };
+        }
+      }
+
+      // Legacy fallback: no approval pin (or its snapshot vanished). The plain
+      // content column is the operative content for pre-scheme templates.
+      if (template.content !== null && template.content !== undefined) {
+        return { content: template.content, versionNumber: template.currentVersionNumber ?? null };
+      }
+      return null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to resolve governed prompt content — falling back to template row / transcript',
+        promptId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Tier-1a resolution (TASK-546): the department's default DepartmentAgent →
-   * the immutable PromptVersion snapshot content at `pinnedVersionNumber ??
-   * latest APPROVED`. Returns null (fall through to the legacy chain) when there
-   * is no default agent, the bound template is not APPROVED, or the resolved
-   * version has no snapshot. Reads `PromptVersion.content`, never the mutable
-   * template row.
+   * the immutable PromptVersion snapshot content at
+   * `pinnedVersionNumber ?? template.approvedVersionNumber ?? latest`. Returns
+   * null (fall through to the legacy chain) when there is no default agent, the
+   * bound template is not APPROVED, or the resolved version has no snapshot.
+   * Reads `PromptVersion.content`, never the mutable template row.
+   *
+   * The `approvedVersionNumber` step is the eval-gate integrity fix (F-02): an
+   * UNPINNED default agent serves the version snapshot pinned at the last
+   * approval, NOT whatever content the template was last edited to. So a plain
+   * content edit on an APPROVED template accumulates un-served versions until the
+   * next (eval-gated) re-approval. The bare `latest` tail only fires for
+   * genuinely legacy templates that carry no approval pin.
    */
   private async resolveDepartmentAgent(
     tenantId: string,
@@ -310,9 +385,10 @@ export class PromptResolutionService {
       // Agent template unapproved ⇒ legacy fallback.
       if (!template || template.status !== 'APPROVED') return null;
 
+      const targetVersionNumber = agent.pinnedVersionNumber ?? template.approvedVersionNumber ?? null;
       const version =
-        agent.pinnedVersionNumber !== null && agent.pinnedVersionNumber !== undefined
-          ? await this.promptVersionRepository.findByVersionNumber(template.id, agent.pinnedVersionNumber)
+        targetVersionNumber !== null && targetVersionNumber !== undefined
+          ? await this.promptVersionRepository.findByVersionNumber(template.id, targetVersionNumber)
           : await this.promptVersionRepository.findLatestVersion(template.id);
 
       if (!version || version.content === null || version.content === undefined) return null;

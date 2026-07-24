@@ -556,6 +556,20 @@ class Settings(BaseSettings):
             "rather than dropped, so the last utterance is never lost."
         ),
     )
+    streaming_inference_queue_maxsize: int = Field(
+        default=64,
+        description=(
+            "Bound on the per-session in-process inference queue "
+            "(SessionManager._register_inference_runtime). F-08: the steady-state "
+            "enqueue is a bounded wait_for (not a blocking put) — once the queue "
+            "is full for longer than the bounded wait, the utterance is DROPPED "
+            "(with a structured warning + counter) rather than blocking the "
+            "single ingestion dispatch loop, which would otherwise stop XACK'ing "
+            "Redis audio frames and let stt:audio's MAXLEN trim unread raw audio. "
+            "The finalize-path drain uses the separate "
+            "streaming_inference_drain_timeout_s bound and is unaffected."
+        ),
+    )
     streaming_worker_heartbeat_s: int = Field(
         default=10,
         description="Interval (seconds) between worker heartbeat extensions in Redis.",

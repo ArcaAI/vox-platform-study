@@ -919,6 +919,103 @@ describe('SttV2WebSocketClient', () => {
       vi.useRealTimers();
     });
 
+    // F-07: a reconnect attempt that fails to OPEN (refused/DNS/TLS/timeout)
+    // closes with `this.ws` still null, so `connect`'s onclose takes the reject
+    // branch and does NOT re-arm — the old code let the retry chain die silently
+    // before maxAttempts and never fired onReconnectFailed. The failure path
+    // must now schedule the next attempt (and ultimately fire the failed
+    // callback when the budget is spent).
+    it('F-07: a reconnect attempt that fails to OPEN schedules the next attempt (chain does not die)', async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const onReconnect = vi.fn();
+      reconnectClient.onReconnect(onReconnect);
+
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      // Server drops → attempt 1 scheduled (100ms).
+      lastMockWs!.close(1006, 'Lost');
+      await vi.advanceTimersByTimeAsync(101);
+      expect(onReconnect).toHaveBeenLastCalledWith(1);
+      const attempt1Ws = lastMockWs!;
+
+      // Attempt 1's socket is REFUSED — it closes before ever opening.
+      attempt1Ws.close(1006, 'refused');
+      // Flush the connect() rejection handler so the failure path re-arms.
+      await vi.advanceTimersByTimeAsync(1);
+
+      // The chain continued: a SECOND attempt was scheduled (backoff 200ms).
+      await vi.advanceTimersByTimeAsync(300);
+      expect(onReconnect).toHaveBeenLastCalledWith(2);
+      expect(lastMockWs).not.toBe(attempt1Ws);
+
+      mathRandomSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('F-07: when every reconnect attempt fails to OPEN, onReconnectFailed fires exactly once', async () => {
+      vi.useFakeTimers();
+      const mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+      const onReconnectFailed = vi.fn();
+      reconnectClient.onReconnectFailed(onReconnectFailed); // maxAttempts = 3
+
+      const p = reconnectClient.connect('wss://example.com/ws?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      // Server drops → attempt 1 scheduled.
+      lastMockWs!.close(1006, 'Lost');
+
+      // Refuse all three attempts in turn; each refusal must re-arm the next.
+      for (let i = 0; i < 3; i++) {
+        await vi.advanceTimersByTimeAsync(2000); // fire the scheduled connect()
+        lastMockWs!.close(1006, 'refused'); // attempt fails to open
+        await vi.advanceTimersByTimeAsync(1); // flush the rejection → re-arm/give-up
+      }
+
+      expect(onReconnectFailed).toHaveBeenCalledTimes(1);
+
+      mathRandomSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    // F-06 client coordination: the gateway now answers a false resume (a
+    // freshly-created session after grace/cross-instance) with
+    // `resume_failed { reason: 'unknown_session' }`. That is TERMINAL — the
+    // session is gone — so the client must surface the reconnect-failed callback
+    // so the higher layer rebuilds. A `buffer_overflow` resume_failed is
+    // RECOVERABLE (the session is alive; only the replay buffer rolled) and must
+    // NOT trip the terminal callback.
+    it('F-06: a terminal resume_failed (unknown_session) surfaces onReconnectFailed', async () => {
+      const onReconnectFailed = vi.fn();
+      reconnectClient.onReconnectFailed(onReconnectFailed);
+
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=s1&tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'resume_failed', sessionId: 's1', reason: 'unknown_session' }));
+
+      expect(onReconnectFailed).toHaveBeenCalledTimes(1);
+    });
+
+    it('F-06: a recoverable resume_failed (buffer_overflow) does NOT surface onReconnectFailed', async () => {
+      const onReconnectFailed = vi.fn();
+      reconnectClient.onReconnectFailed(onReconnectFailed);
+
+      const p = reconnectClient.connect('wss://example.com/ws?sessionId=s1&tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'resume_failed', sessionId: 's1', reason: 'buffer_overflow', minAvailableSeq: 5 }));
+
+      expect(onReconnectFailed).not.toHaveBeenCalled();
+    });
+
     it('should compute delay capped by maxDelayMs using exponential backoff formula', () => {
       // Verify the backoff formula: delay = min(baseDelayMs * 2^(attempt-1), maxDelayMs) + jitter
       // This tests the configuration is stored correctly and the computed delays

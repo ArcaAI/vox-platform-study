@@ -70,5 +70,9 @@ model DepartmentAgent {
   @@index([tenantId], name: "DepartmentAgent_tenantId_idx")
   @@index([departmentId], name: "DepartmentAgent_departmentId_idx")
   @@index([promptTemplateId], name: "DepartmentAgent_promptTemplateId_idx")
+  // Covers the hottest read: findDefaultForDepartment (one per prompt
+  // resolution / policy overlay / harness start) filters
+  // (tenantId, departmentId, isDefault).
+  @@index([tenantId, departmentId, isDefault], name: "DepartmentAgent_tenantId_departmentId_isDefault_idx")
   @@schema("core")
 }

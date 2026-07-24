@@ -218,3 +218,52 @@ class TestFirePartialCommitPolicy:
 
         assert policy.committed_text == ""
         assert policy.tentative_text == ""
+
+
+class TestSteadyStateEnqueueDrop:
+    """F-08: a full inference queue must DROP the utterance (bounded wait) rather
+    than block the ingestion dispatch loop forever."""
+
+    @pytest.mark.asyncio
+    async def test_full_queue_drops_utterance_and_increments_metric(
+        self, session_manager, monkeypatch
+    ):
+        from stt_v2.streaming import session_manager as session_manager_module
+        from stt_v2.streaming.schemas import AudioEncoding, AudioFrame, SessionStatus
+
+        # Keep the test fast: shrink the bounded wait instead of actually
+        # waiting out the production 1.0s timeout.
+        monkeypatch.setattr(
+            session_manager_module, "_STEADY_STATE_ENQUEUE_TIMEOUT_S", 0.01
+        )
+        dropped = MagicMock()
+        monkeypatch.setattr(
+            session_manager_module, "streaming_inference_queue_dropped", dropped
+        )
+
+        session = MagicMock()
+        session.session_id = "sess-full"
+        session.status = SessionStatus.ACTIVE
+        session.persist_if_needed = AsyncMock(return_value=False)
+        session.record_frame = MagicMock()
+
+        preprocessor = AsyncMock()
+        preprocessor.feed = AsyncMock(return_value=[_make_utterance(is_final=True)])
+        preprocessor.drain_processed_samples = MagicMock(return_value=b"")
+
+        # maxsize=1, pre-filled -> put() cannot succeed within the bounded wait.
+        queue: asyncio.Queue = asyncio.Queue(maxsize=1)
+        queue.put_nowait(None)
+        session_manager._inference_queues["sess-full"] = queue
+
+        handler = session_manager._make_frame_handler(session, preprocessor)
+        frame = AudioFrame(
+            seq=1, sr=16000, enc=AudioEncoding.PCM_S16LE, ch=1,
+            data=b"\x00" * 320, final=False, ts=0.0,
+        )
+        await handler(frame)
+
+        # The utterance was dropped, not queued: the pre-filled sentinel is
+        # still the only item in the queue.
+        assert queue.qsize() == 1
+        dropped.assert_called_once()

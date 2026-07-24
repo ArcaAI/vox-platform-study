@@ -120,6 +120,13 @@ scan-gitleaks:
     name: zricethezav/gitleaks:v8.21.2
     entrypoint: [""]
   needs: []
+  variables:
+    # Full clone (not the default shallow depth-20). A shallow clone grafts the
+    # boundary commit and re-attributes its whole file tree to that commit's
+    # SHA, so the historic-rotation `commits` allowlist in .gitleaks.toml (keyed
+    # by the ORIGINAL introducing SHA) stops matching and already-remediated
+    # secrets get re-reported. A full clone keeps original SHAs intact.
+    GIT_DEPTH: 0
   script:
     - |
       echo "Scanning entire repo for known-secret patterns…"

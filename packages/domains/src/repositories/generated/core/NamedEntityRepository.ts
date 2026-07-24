@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@arcaai/database';
 
 import { Repository } from '../../../common';
+import { removeNullValues } from '../../../common/removeNullValues';
 import { NamedEntityEntityMapper } from '../../../mappers';
 import { NamedEntityEntity } from '../../../entities';
 import { NamedEntity } from '../../../models';
@@ -181,5 +183,28 @@ export class NamedEntityRepository extends Repository<NamedEntityEntity, NamedEn
       where: { contextItemId },
     });
     return result.count;
+  }
+
+  /**
+   * Batch-insert NamedEntity rows in ONE `createMany` round trip (F-14 — the
+   * harness NER persist path was previously one INSERT + one per-row Transit
+   * encryption call per entity, every regen iteration). Entity ids are
+   * pre-generated UUIDv7s from `NamedEntityFactory`, so `createMany` (which
+   * never returns rows) loses nothing the caller needs — callers must still
+   * encrypt each entity (`encryptFieldsIntoEntity`) BEFORE calling this, since
+   * encryption happens per-entity and `createMany` only performs the final
+   * batched SQL insert. `skipDuplicates: true` matches the base
+   * `Repository.createMany` default. Accepts an optional transaction client,
+   * mirroring the `tx?` contract on `Repository.create`/`updateWithVersion`.
+   */
+  async createMany(entities: NamedEntityEntity[], tx?: Prisma.TransactionClient | any): Promise<{ count: number }> {
+    if (entities.length === 0) {
+      return { count: 0 };
+    }
+    const mapper = (this as any)._mapper;
+    const data = entities.map((entity) => removeNullValues(mapper.toPersistence(entity)));
+    const delegate = tx ? (tx as Record<string, any>)[this._modelName] : (this as any).db;
+    const result = await delegate.createMany({ data, skipDuplicates: true });
+    return { count: result.count };
   }
 }

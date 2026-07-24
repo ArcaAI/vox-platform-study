@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
 import { of, firstValueFrom } from 'rxjs';
+import { ContextInterceptor } from '../context.interceptor';
 
 describe('ContextInterceptor', () => {
     let interceptor: any;
@@ -38,14 +39,13 @@ describe('ContextInterceptor', () => {
     }
 
     describe('when CLS context is available', () => {
-        beforeEach(async () => {
+        beforeEach(() => {
             vi.clearAllMocks();
             mockClsService = {
                 get: vi.fn().mockReturnValue(undefined),
                 set: vi.fn(),
                 getId: vi.fn().mockReturnValue('test-request-id'),
             };
-            const { ContextInterceptor } = await import('../context.interceptor');
             interceptor = new ContextInterceptor(mockClsService);
         });
 

@@ -412,6 +412,17 @@ class Settings(BaseSettings):
     activity_max_attempts: int = 3
     generate_max_attempts: int = 2
 
+    # F-29 — Worker-level admission cap (``Worker(max_concurrent_activities=...)``,
+    # ``worker.py``). Left unset, Temporal admits activities unbounded, which lets
+    # many concurrent inferential activities queue behind the single
+    # ``HARNESS_LLM_MAX_CONCURRENCY`` semaphore (``core/llm_concurrency.py``) — a
+    # cheap non-LLM activity (fetch_policy, persist_entities, ...) can then starve
+    # behind that queue. Kept deliberately conservative (well above
+    # ``HARNESS_LLM_MAX_CONCURRENCY``'s default of 1, since most admitted activities
+    # never touch the LLM governor at all); raise together with
+    # ``HARNESS_LLM_MAX_CONCURRENCY`` if the semaphore is ever raised.
+    max_concurrent_activities: int = 8
+
     # Per-call LLM wall-clock timeout. Bounds EACH individual judge /
     # citation-verify / Granite Guardian request inside the inferential pass so a single
     # hung LM Studio call can no longer burn the whole 900s start_to_close before Temporal

@@ -13,6 +13,7 @@ import {
   MediaRepository,
   NamedEntityFactory,
   NamedEntityRepository,
+  ResourceStatusType,
   ResourceType,
   SummaryMetaFactory,
   SummaryMetaRepository,
@@ -298,8 +299,11 @@ export class ContextService extends BaseService implements IContextService {
     // Never surface the ciphertext columns in the audit
     // payload (defense-in-depth; also avoids serialising a raw Buffer into the
     // SysEvent). The plaintext `content` change is unchanged from prior behavior.
-    const { encryptedContent: _encryptedContent, contentKeyVersion: _contentKeyVersion, ...auditableChanges } =
-      contextItem.changes as Record<string, unknown>;
+    const {
+      encryptedContent: _encryptedContent,
+      contentKeyVersion: _contentKeyVersion,
+      ...auditableChanges
+    } = contextItem.changes as Record<string, unknown>;
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
       responsibleEntityId: this.requestUserId ?? undefined,
@@ -504,9 +508,7 @@ export class ContextService extends BaseService implements IContextService {
       summaryMeta.qualityScore = request.qualityScore;
     }
 
-    await this.encryptBestEffort('SummaryMeta', () =>
-      this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
-    );
+    await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
     await this.summaryMetaRepository.create(summaryMeta);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -569,9 +571,7 @@ export class ContextService extends BaseService implements IContextService {
         entityItem.metadata as any,
       );
 
-      await this.encryptBestEffort('NamedEntity', () =>
-        this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
-      );
+      await this.encryptBestEffort('NamedEntity', () => this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!));
       const saved = await this.namedEntityRepository.create(namedEntity);
       results.push(ContextDtoMapper.toNamedEntityResponse(saved));
     }
@@ -966,25 +966,44 @@ export class ContextService extends BaseService implements IContextService {
   /**
    * Get context items for consultation with pagination.
    *
-   * When page/limit are provided in filters, returns a paginated response
-   * with total count. Fetches all matching items then slices in-memory;
-   * for very large consultation contexts a repository-level skip/take
-   * would be more efficient but the current data volumes don't warrant it.
+   * F-15: pushes skip/take into the repository query (via the generic
+   * `findAll`'s `page`/`limit` → `formatFindAllProps` skip/take translation)
+   * instead of fetching EVERY matching row and slicing in memory — a
+   * consultation with hundreds of context items previously paid for the
+   * whole set on every page. The total `count` is a separate, filter-matched
+   * `count()` round trip (same `where` shape, no skip/take) — the house
+   * pattern mirrored from `withFormattedPaginatedProps`/`withFormattedCountProps`
+   * elsewhere in this package, adapted here since `ContextFiltersDto` is a
+   * small typed shape rather than the generic CSV `PaginatedQuery` those
+   * helpers deserialize.
    */
   async getContextItemsPaginated(consultationId: string, filters?: ContextFiltersDto): Promise<PaginatedContextItemResponse> {
-    const allItems = await this.contextItemRepository.findByConsultation(
-      consultationId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      filters ? ({ type: filters.type, source: filters.source } as any) : undefined,
-    );
-
     const page = filters?.page ?? 1;
     const limit = filters?.limit ?? 50;
-    const skip = (page - 1) * limit;
-    const pageItems = allItems.slice(skip, skip + limit);
+
+    // Mirrors `ContextItemRepository.findByConsultation`'s where shape
+    // exactly (consultationId + resourceStatus ENABLED + optional type/source)
+    // so behavior is unchanged apart from the pagination push-down.
+    const whereFilters = {
+      consultationId,
+      resourceStatus: ResourceStatusType.ENABLED,
+      ...(filters?.type ? { type: filters.type } : {}),
+      ...(filters?.source ? { source: filters.source } : {}),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const [pageItems, count] = await Promise.all([
+      this.contextItemRepository.findAll({
+        filters: whereFilters,
+        sort: [{ createdAt: 'asc' }],
+        page,
+        limit,
+      }),
+      this.contextItemRepository.count({ filters: whereFilters }),
+    ]);
 
     this.broadcastSysEvent(SysEventType.ResourceViewed, {
-      data: { consultationId, page, limit, count: allItems.length },
+      data: { consultationId, page, limit, count },
     });
 
     // Same storage-resolved media enrichment as
@@ -996,7 +1015,7 @@ export class ContextService extends BaseService implements IContextService {
 
     return {
       data: responses,
-      count: allItems.length,
+      count,
       page,
       limit,
     };
@@ -1247,17 +1266,14 @@ export class ContextService extends BaseService implements IContextService {
   /**
    * Fetch multiple consultations with Doctor and Department relations.
    *
-   * Used by getAggregateNamedEntities to populate source metadata.
+   * Used by getAggregateNamedEntities to populate source metadata. F-15:
+   * fetched in parallel (`Promise.all`) rather than a sequential per-id
+   * for-loop — chain lengths here are small (revisit/same-day linkage), so
+   * this is a bounded fan-out, not an unbounded one.
    */
   private async fetchConsultationsWithRelations(ids: string[]): Promise<ConsultationEntity[]> {
-    const results: ConsultationEntity[] = [];
-    for (const id of ids) {
-      const consultation = await this.consultationRepository.findWithRelations(id);
-      if (consultation) {
-        results.push(consultation);
-      }
-    }
-    return results;
+    const consultations = await Promise.all(ids.map((id) => this.consultationRepository.findWithRelations(id)));
+    return consultations.filter((consultation): consultation is ConsultationEntity => !!consultation);
   }
 
   /**
@@ -1282,14 +1298,24 @@ export class ContextService extends BaseService implements IContextService {
    * `addRawSummary` (`caseNoteIds`, `preSummaryIds`, `previousSummaryIds`)
    * which would otherwise persist cross-tenant pointers into SummaryMeta.
    *
-   * Skips when the list is empty / undefined. Uses a sequential `for...of`
-   * so we fail fast on the first cross-tenant id without spawning
-   * unnecessary parallel reads on the hot summary-create path.
+   * Skips when the list is empty / undefined. F-15: ONE batched
+   * `findAll({ id: { in: ids } })` round trip instead of a sequential
+   * per-id `assertParentInScope` chain (N round trips). 404 semantics are
+   * preserved exactly: any requested id that is missing OR resolves to a
+   * different tenant throws `NotFoundException` (never leaks which case it
+   * was, mirroring `assertEqualTenants`'s "Resource not found" message).
    */
   private async assertContextItemsInTenant(tenantId: string, ids?: string[] | null): Promise<void> {
     if (!ids || ids.length === 0) return;
-    for (const id of ids) {
-      await assertParentInScope(this.contextItemRepository, id, tenantId);
+    const uniqueIds = [...new Set(ids)];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const found = await this.contextItemRepository.findAll({ filters: { id: { in: uniqueIds } } as any });
+    const byId = new Map(found.map((item) => [item.id, item]));
+    for (const id of uniqueIds) {
+      const item = byId.get(id);
+      if (!item || item.tenantId !== tenantId) {
+        throw new NotFoundException('Resource not found');
+      }
     }
   }
 

@@ -544,20 +544,36 @@ class HarnessDocWorkflow:
         # recorded activity result: False for every history predating priors-reuse) ⇒ replay-safe,
         # no ``workflow.patched()``; mirrors the existing ``if transcript_entities:``
         # data-driven guard right beside it.
+        #
+        # The activity call itself (and its retry policy) is unchanged on the success
+        # path, so the scheduled-command sequence is byte-identical to before this
+        # try/except was added — no ``workflow.patched()`` era needed here. On retry
+        # exhaustion this is a *priors* write, not the note itself: degrade-to-safe
+        # (log + continue without persisted NER priors) rather than failing the whole
+        # workflow, consistent with every other best-effort activity in this loop.
         if transcript_entities and not priors_reused:
-            await workflow.execute_activity(
-                persist_entities,
-                PersistEntitiesInput(
-                    consultation_id=inp.consultation_id,
-                    tenant_id=inp.tenant_id,
-                    context_item_id=inp.context_item_id,
-                    entities=transcript_entities,
-                    user_id=inp.user_id,
-                    trajectory=self._traj(inp),
-                ),
-                start_to_close_timeout=_ACTIVITY_TIMEOUT,
-                retry_policy=_API_RETRY,
-            )
+            try:
+                await workflow.execute_activity(
+                    persist_entities,
+                    PersistEntitiesInput(
+                        consultation_id=inp.consultation_id,
+                        tenant_id=inp.tenant_id,
+                        context_item_id=inp.context_item_id,
+                        entities=transcript_entities,
+                        user_id=inp.user_id,
+                        trajectory=self._traj(inp),
+                    ),
+                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                    retry_policy=_API_RETRY,
+                )
+            except ActivityError:
+                workflow.logger.warning(
+                    "harness.persist_entities_exhausted",
+                    extra={
+                        "consultation_id": inp.consultation_id,
+                        "tenant_id": inp.tenant_id,
+                    },
+                )
 
         # 1a) MCP terminology validation.
         # OPT-IN per loop: gated on the effective ``mcpToolsEnabled`` policy knob AND a

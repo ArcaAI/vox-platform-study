@@ -63,6 +63,12 @@ model PromptTemplate {
 
   // Version tracking
   currentVersionNumber Int @default(1)
+  // Version snapshot pinned at last approval; null = never approved under this
+  // scheme. Resolution serves THIS PromptVersion (not the mutable `content`
+  // column / latest edit) for unpinned agents and the preferred/legacy/default
+  // tiers, so a post-approval content edit accumulates un-served versions until
+  // the next (eval-gated) re-approval. See PromptResolutionService.
+  approvedVersionNumber Int?
 
   // Department assignment (optional)
   departmentId String?

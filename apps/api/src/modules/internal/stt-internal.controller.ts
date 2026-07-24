@@ -8,7 +8,7 @@ import {
   InternalUpdateProgressRequest,
   SttInternalService,
 } from '@arcaai/applications';
-import { Body, Controller, Get, Param, Patch, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiParam, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { Authorize } from '../../decorators';
 import type { RequestWithAuth } from '../../types/request-with-auth';
@@ -33,9 +33,17 @@ export class SttInternalController {
 
   @Post('transcripts')
   @ApiOperation({ summary: 'Create transcript context item from STT worker output' })
-  async createTranscript(@Req() request: RequestWithAuth, @Body() dto: CreateTranscriptRequest) {
+  async createTranscript(
+    @Req() request: RequestWithAuth,
+    @Body() dto: CreateTranscriptRequest,
+    // STT-v2 sends a forward-compatible `Idempotency-Key` header
+    // (`{consultationId}:{sessionId}`) on this call (`gateway.py`); read it
+    // through so the streaming-transcript create path can dedup a concurrent
+    // finalize race instead of silently creating a duplicate ContextItem (F-09).
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
     this.ensureInternalApiKey(request);
-    return this.sttInternalService.createTranscript(dto);
+    return this.sttInternalService.createTranscript(dto, idempotencyKey);
   }
 
   @Patch('jobs/:id/start')

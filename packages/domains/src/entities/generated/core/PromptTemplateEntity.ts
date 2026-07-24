@@ -20,6 +20,9 @@ export interface IPromptTemplateEntity extends IBaseTaggedEntity {
   status?: 'DRAFT' | 'PUBLISHED' | 'APPROVED' | null;
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
+  // Version snapshot pinned at last approval; null = never approved under this
+  // scheme. Set by prompt-management approveTemplate; read by resolution.
+  approvedVersionNumber?: number | null;
   departmentId?: string | null;
   scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL' | null;
   ownerUserId?: string | null;
@@ -44,6 +47,7 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
   private _status?: IPromptTemplateEntity['status'];
   private _variables?: IPromptTemplateEntity['variables'];
   private _currentVersionNumber?: IPromptTemplateEntity['currentVersionNumber'];
+  private _approvedVersionNumber?: IPromptTemplateEntity['approvedVersionNumber'];
   private _departmentId?: IPromptTemplateEntity['departmentId'];
   private _scope?: IPromptTemplateEntity['scope'];
   private _ownerUserId?: IPromptTemplateEntity['ownerUserId'];
@@ -65,6 +69,7 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     this._status = init.status ?? 'DRAFT';
     this._variables = init.variables;
     this._currentVersionNumber = init.currentVersionNumber;
+    this._approvedVersionNumber = init.approvedVersionNumber ?? null;
     this._departmentId = init.departmentId;
     this._scope = init.scope ?? 'TENANT_DEFAULT';
     this._ownerUserId = init.ownerUserId ?? null;
@@ -132,6 +137,14 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
 
   set currentVersionNumber(value: IPromptTemplateEntity['currentVersionNumber']) {
     this.setProperty('currentVersionNumber', value);
+  }
+
+  get approvedVersionNumber(): IPromptTemplateEntity['approvedVersionNumber'] {
+    return this._approvedVersionNumber ?? null;
+  }
+
+  set approvedVersionNumber(value: IPromptTemplateEntity['approvedVersionNumber']) {
+    this.setProperty('approvedVersionNumber', value);
   }
 
   get departmentId(): IPromptTemplateEntity['departmentId'] {

@@ -31,10 +31,9 @@ export const AGENTIC_CONTEXT_DEFAULTS = {
   'liveFlush.segmentThreshold': 3,
   // Idle debounce (ms) before a flush when the segment threshold is not met.
   'liveFlush.idleMs': 5000,
-  // Payloads at/above this size (bytes) are stored/passed by reference
-  // (claim-check) rather than inlined. Resolved by the live lane;
-  // the harness-side claim-check threshold is its own HARNESS_CLAIM_CHECK_MIN_BYTES.
-  'claimCheck.minBytes': 65536,
+  // NOTE: `claimCheck.minBytes` was removed (TASK-553 F-21) — the live lane never
+  // consumed it; the real claim-check threshold is the harness-side
+  // HARNESS_CLAIM_CHECK_MIN_BYTES env setting.
   // Transcript assembly mode. `windowed` still defaults to `whole`,
   // and its flip is measurement-gated.
   'transcript.mode': 'whole' as AgenticTranscriptMode,
@@ -59,11 +58,6 @@ const META: Record<AgenticContextKnobKey, { dataType: SettingDescriptor['dataTyp
     dataType: 'number',
     label: 'Live flush idle debounce (ms)',
     description: 'Idle time before a flush when the segment threshold is not yet met.',
-  },
-  'claimCheck.minBytes': {
-    dataType: 'number',
-    label: 'Claim-check min bytes',
-    description: 'Payloads at/above this size are passed by reference (claim-check) rather than inlined.',
   },
   'transcript.mode': {
     dataType: 'enum',

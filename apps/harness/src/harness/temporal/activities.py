@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import itertools
 import json
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -552,6 +553,22 @@ async def _resolve_knowledge_chunks(
 # ---------------------------------------------------------------------------
 
 
+# F-23 — ``ApiServiceError`` (api_client.py) wraps every transport/HTTP failure into
+# a single string (``f"apps/api {path} failed: {exc}"``); it does not carry a
+# structured status code. httpx's own ``HTTPStatusError`` message embeds the status
+# as ``'<code> <reason>'`` (e.g. "Client error '401 Unauthorized' for url ..."), so a
+# 401/403 is recognizable by pattern even without a dedicated attribute. Kept
+# deliberately narrow (401/403 only) so genuine transport/5xx outages are never
+# misclassified as an auth problem.
+_POLICY_AUTH_STATUS_RE = re.compile(r"'\s*(401|403)\b")
+
+
+def _is_policy_auth_failure(exc: Exception) -> bool:
+    """True when ``exc`` (an ``ApiServiceError`` from ``fetch_policy``) wraps an
+    HTTP 401/403 — i.e. an auth/misconfiguration failure, not a transient outage."""
+    return bool(_POLICY_AUTH_STATUS_RE.search(str(exc)))
+
+
 @activity.defn
 async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
     """Read the effective harness policy for the tenant (live policy injection).
@@ -559,6 +576,14 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
     I/O lives here, never the workflow body. Raises :class:`ApiServiceError` on an
     unreachable endpoint; the workflow catches the resulting ``ActivityError`` and
     degrades to the code defaults (fail-safe — never crash the loop).
+
+    A 401/403 from the gateway (``HarnessServiceTokenGuard`` rejecting a missing/
+    wrong ``X-Service-Token`` — almost always ``HARNESS_SERVICE_TOKEN``
+    misconfiguration) is reclassified here as a distinct, non-retryable
+    ``PolicyAuthError`` with a loud structured log — the workflow's catch is
+    UNCHANGED (it still degrades to ``reduced_assurance`` either way); only the
+    activity-side error type/log differentiates "misconfigured, should be loud"
+    from "transient outage, expected, quiet."
     """
     settings = get_settings()
     started = _now()
@@ -566,10 +591,32 @@ async def fetch_policy(payload: FetchPolicyInput) -> HarnessPolicy:
     # the department default agent's tenant-tier harnessOverrides. Omitting the
     # kwarg when absent keeps the request byte-identical for non-agent runs.
     client = _api_client(settings)
-    if payload.consultation_id:
-        data = await client.get_policy(payload.tenant_id, consultation_id=payload.consultation_id)
-    else:
-        data = await client.get_policy(payload.tenant_id)
+    try:
+        if payload.consultation_id:
+            data = await client.get_policy(
+                payload.tenant_id, consultation_id=payload.consultation_id
+            )
+        else:
+            data = await client.get_policy(payload.tenant_id)
+    except ApiServiceError as exc:
+        if _is_policy_auth_failure(exc):
+            logger.error(
+                "harness.policy_auth_failed",
+                tenant_id=payload.tenant_id,
+                consultation_id=payload.consultation_id,
+                error=str(exc),
+                hint=(
+                    "gateway rejected the policy fetch with 401/403 — "
+                    "HARNESS_SERVICE_TOKEN is likely missing or misconfigured "
+                    "(HarnessServiceTokenGuard is fail-closed)"
+                ),
+            )
+            raise ApplicationError(
+                f"policy fetch auth failure: {exc}",
+                type="PolicyAuthError",
+                non_retryable=True,
+            ) from exc
+        raise
     policy = HarnessPolicy.from_api(data)
     # Observability — surface the per-agent override provenance on the fetch_policy
     # trajectory step so a flagged draft can be traced to the agent whose thresholds
