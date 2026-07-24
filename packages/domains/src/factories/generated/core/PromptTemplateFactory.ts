@@ -13,6 +13,7 @@ export interface CreatePromptTemplateProps extends BaseEntityFactoryCreateProps 
   status?: 'DRAFT' | 'PUBLISHED' | 'APPROVED' | null;
   variables?: Record<string, unknown> | null;
   currentVersionNumber?: number | null;
+  approvedVersionNumber?: number | null;
   departmentId?: string | null;
   scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL' | null;
   ownerUserId?: string | null;
@@ -45,6 +46,7 @@ export class PromptTemplateFactory {
       status: props.status ?? 'DRAFT',
       variables: props.variables ?? null,
       currentVersionNumber: props.currentVersionNumber ?? 1,
+      approvedVersionNumber: props.approvedVersionNumber ?? null,
       departmentId: props.departmentId ?? null,
       scope: props.scope ?? 'TENANT_DEFAULT',
       ownerUserId: props.ownerUserId ?? null,
