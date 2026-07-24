@@ -14,7 +14,6 @@ import pytest
 
 from nlp.core.effective_config import EffectiveConfigSnapshot
 
-
 # ── the effective-config subset ─────────────────────────────────────────────
 
 
