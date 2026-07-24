@@ -174,6 +174,7 @@ function buildController(opts: {
         userDepartmentService as never,
         eventEmitter as never,
         {} as never,
+        { lookup: vi.fn().mockResolvedValue(null) } as never,
     );
     return {
         controller,

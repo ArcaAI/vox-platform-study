@@ -39,7 +39,11 @@ function effectiveWithModel(taskKey: string, sourceUri: string, provider = 'buil
 }
 
 function build(profileResolver?: { resolveProfile: ReturnType<typeof vi.fn> }) {
-  const client = { classifyTokens: vi.fn(async () => ({ entities: [] })), suggestDiagnosis: vi.fn(), analyzeGuardrail: vi.fn() };
+  const client = {
+    classifyTokens: vi.fn(async (_body: Record<string, unknown>) => ({ entities: [] })),
+    suggestDiagnosis: vi.fn(),
+    analyzeGuardrail: vi.fn(),
+  };
   const aiTaskDefaults = { getEffective: vi.fn(async (k: string) => effectiveWithModel(k, 'hf/medical-ner')) };
   const controller = new AiInferenceController(
     client as any,

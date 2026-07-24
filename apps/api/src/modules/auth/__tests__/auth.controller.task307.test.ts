@@ -187,6 +187,7 @@ function buildController(overrides: any = {}) {
         { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
         { emit: vi.fn() } as any,
         {} as any,
+        { lookup: vi.fn().mockResolvedValue(null) } as any,
     );
 }
 

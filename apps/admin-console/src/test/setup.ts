@@ -4,7 +4,13 @@ import * as axeMatchers from 'vitest-axe/matchers';
 // Shared Vitest setup. Server modules derive the session key from
 // ADMIN_SESSION_SECRET at call time; give tests a deterministic value.
 process.env.ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET ?? 'vitest-admin-session-secret-0123456789abcdef';
-process.env.API_URL = process.env.API_URL ?? 'http://gateway.test:8868';
+// Force (not fallback): API_URL is a generic name shared by the CI
+// `.test-env-vars` anchor (`.gitlab/ci/test.yml`) used by many jobs — CI loads
+// no env files (host env only, rule 00), so that anchor's
+// `API_URL: "http://localhost:8868"` reaches this process too. Tests assert
+// against the literal `http://gateway.test:8868` gateway URL, so the value
+// must always be this fixture host regardless of ambient env.
+process.env.API_URL = 'http://gateway.test:8868';
 
 // Virtualization shims (client/happy-dom project only). happy-dom has no layout
 // engine, so getBoundingClientRect() reports 0×0 and @tanstack/react-virtual

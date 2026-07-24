@@ -50,7 +50,7 @@ describe('NotificationController — authorization metadata', () => {
   });
 
   it('exposes no create route (notifications are system-emitted)', () => {
-    expect((NotificationController.prototype as Record<string, unknown>).create).toBeUndefined();
+    expect((NotificationController.prototype as unknown as Record<string, unknown>).create).toBeUndefined();
   });
 });
 

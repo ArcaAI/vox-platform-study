@@ -241,6 +241,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             const response = await controller.impersonate(
@@ -280,6 +281,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -321,6 +323,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -364,6 +367,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             const result = await controller.impersonate(
@@ -410,6 +414,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -452,6 +457,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -501,6 +507,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await controller.impersonate(
@@ -538,6 +545,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             expect(typeof (controller as any).revokeImpersonation).toBe('function');
@@ -572,6 +580,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             const result = await controller.revokeImpersonation(createMockRequest());
@@ -605,6 +614,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await controller.revokeImpersonation(createMockRequest());
@@ -639,6 +649,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -671,6 +682,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -705,6 +717,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -745,6 +758,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -789,6 +803,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             const result = await controller.refresh({ refreshToken: 'opaque-old-token' });
@@ -825,6 +840,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -850,6 +866,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -877,6 +894,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -914,6 +932,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             const result = await controller.login(
@@ -961,6 +980,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await controller.login(
@@ -1003,6 +1023,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(
@@ -1037,6 +1058,7 @@ describe('AuthController — Security Tests', () => {
                 { findActiveDepartmentForUserInTenant: vi.fn(async () => ({ id: 'ud-1' })) } as any,
                 { emit: vi.fn() } as any,
                 {} as any,
+                { lookup: vi.fn().mockResolvedValue(null) } as any,
             );
 
             await expect(

@@ -160,7 +160,8 @@ describe('TtsWsGateway', () => {
     });
 
     const lastUpstreamTextFrame = () => {
-      const call = (upstream.send as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+      const calls = (upstream.send as ReturnType<typeof vi.fn>).mock.calls;
+      const call = calls[calls.length - 1];
       return JSON.parse(String(call?.[0]));
     };
 

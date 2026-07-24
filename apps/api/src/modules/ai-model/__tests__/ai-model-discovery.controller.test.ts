@@ -33,8 +33,8 @@ function makeService(opts: {
   const aiModelService = {
     getAllForAdmin: vi.fn().mockResolvedValue(opts.dbRows ?? []),
     create,
-  } as never;
-  const service = new AiModelDiscoveryService(httpService, configService, aiModelService, undefined);
+  };
+  const service = new AiModelDiscoveryService(httpService, configService, aiModelService as never, undefined);
   return { service, get, create, aiModelService };
 }
 

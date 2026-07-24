@@ -241,6 +241,8 @@ test-ui-ct:
   image: mcr.microsoft.com/playwright:v1.61.1-noble
   tags: [test]
   allow_failure: true
+  variables:
+    NODE_OPTIONS: "--max-old-space-size=4096"
   cache:
     - key:
         files:
@@ -309,6 +311,7 @@ test-stt-v2:
         - pip-$CI_DEFAULT_BRANCH
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
+    - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/stt-v2
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt-v2.xml || true
@@ -353,6 +356,7 @@ test-smr:
         - pip-$CI_DEFAULT_BRANCH
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
+    - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/smr
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - PYTHONPATH=src python -m pytest src/smr_v2/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
@@ -388,6 +392,7 @@ test-tts:
       fallback_keys:
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/tts-v2
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - PYTHONPATH=src python -m pytest src/tts_v2/tests/ -v --tb=short --junitxml=../../junit-tts.xml -x
@@ -427,6 +432,7 @@ test-guardrail:
         - pip-$CI_DEFAULT_BRANCH
   script:
     - echo "── Test infra → Redis=${CI_REDIS_URL:+set} GLiNER=disabled Ollama=disabled ──"
+    - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/guardrail
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
     - PYTHONPATH=src python -m pytest src/guardrail/tests/ -v --tb=short --junitxml=../../junit-guardrail.xml -x
@@ -473,6 +479,7 @@ test-harness:
       fallback_keys:
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/harness
     - pip install --quiet --retries 5 --timeout 120 ".[test,eval,rag,guardrails]"
     - PYTHONPATH=src python -m pytest src/harness/tests/ -v --tb=short --junitxml=../../junit-harness.xml -x
@@ -533,6 +540,7 @@ harness-eval-gate:
         - pip-harness
         - pip-$CI_DEFAULT_BRANCH
   script:
+    - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/harness
     - pip install --quiet --retries 5 --timeout 120 ".[test,eval]"
     - echo "── 1/2 — harness.eval.ci PDSQI-9/faithfulness/ICC gate (curated_v1, needs a live judge backend) ──"
@@ -789,6 +797,7 @@ test-nlp:
         - pip-$CI_DEFAULT_BRANCH
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
+    - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/nlp
     - pip install --quiet --retries 5 --timeout 120 --index-url https://download.pytorch.org/whl/cpu "torch>=2.1.0"
     - pip install --quiet --retries 5 --timeout 120 ".[test]"

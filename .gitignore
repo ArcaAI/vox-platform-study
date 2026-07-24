@@ -92,6 +92,11 @@ yarn-error.log*
 # keep below
 !packages/applications/src/common/env
 
+# Local MCP-server config — holds per-developer secrets (e.g. GitLab OAuth
+# client secret / API token). Commit the *.example templates only.
+.mcp.json
+.cursor/mcp.json
+
 # Vercel
 .vercel
 

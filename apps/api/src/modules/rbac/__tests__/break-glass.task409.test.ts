@@ -52,7 +52,10 @@ function makeRolesController() {
     assignPolicy: vi.fn(),
     removePolicy: vi.fn().mockResolvedValue(undefined),
   };
-  return { controller: new RolesController(service as never), service };
+  const userRoleAssignmentService = {
+    fetchAllByRoleId: vi.fn(),
+  };
+  return { controller: new RolesController(service as never, userRoleAssignmentService as never), service };
 }
 
 describe('PoliciesController break-glass wiring', () => {

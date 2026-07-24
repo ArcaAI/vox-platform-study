@@ -165,6 +165,7 @@ describe('HarnessInternalController', () => {
                 cls as any,
                 undefined as any,
                 undefined as any,
+                undefined as any,
             );
 
         it('threads consultationId through to getEffectivePolicy(tenantId, { consultationId })', async () => {
@@ -222,6 +223,7 @@ describe('HarnessInternalController', () => {
                 undefined as any, // cls (unused by progress route)
                 mockProgressService as any,
                 undefined as any,
+                undefined as any,
             );
 
         it('delegates to HarnessProgressService.reportProgress(consultationId, dto)', async () => {
@@ -261,6 +263,7 @@ describe('HarnessInternalController', () => {
                 undefined as any, // cls (unused by these routes)
                 undefined as any, // harnessProgressService (unused by these routes)
                 mockAssuranceService as any,
+                undefined as any,
             );
 
         it('POST assurance -> harnessInternalService.finalizeAssurance(consultationId, dto, idempotencyKey)', async () => {

@@ -699,7 +699,7 @@ describe('SmrProxyController', () => {
   // `provider`) is the single UI catalog. The live-SMR probe survives ONLY as
   // the /providers transition fallback when the registry has zero rows.
 
-  const createMockAiModelService = () => ({ getByTaskTypeSharedRead: vi.fn(async () => []) });
+  const createMockAiModelService = () => ({ getByTaskTypeSharedRead: vi.fn(async (_taskType: string) => []) });
   const createMockAiTaskDefaultService = () => ({ getEffective: vi.fn() });
 
   const buildProvidersController = (opts: {
