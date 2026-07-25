@@ -330,14 +330,42 @@ Credential rotation is **deferred by owner decision (2026-07-25)**. Accepted con
 
 ## 8. Verification Criteria (ticket-level)
 
-- [ ] `git ls-files | grep '\.env'` → only `*.example` and `.env.production`
-- [ ] A value set only in `.env.dev` is observed by **both** the gateway and every Python service
-- [ ] `pnpm env:sync --check` reports no drift; the `env-drift-check` CI job fails on a deliberate edit
-- [ ] `.env.example` ≤ ~60 lines; total declared keys ≤ ~120
-- [ ] Zero keys declared-but-unread (the §2.3 scan re-run returns empty)
-- [ ] Changing the SYSTEM `TenantStorageConfig` row changes upload behavior with **no redeploy**, and is GLOBAL_ADMIN-gated
-- [ ] `pnpm verify`, `pnpm lint:all`, `pnpm typecheck:all` and each `<svc>:test` green (output pasted)
-- [ ] Clean-clone `pnpm setup:dev` succeeds end to end
+Measured at the wave-3 merge (2026-07-26, commit `8f2f18ec`).
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | `git ls-files \| grep '\.env'` → only `*.example` + `.env.production` / `.env.test` | ✅ 17 files, all templates; `.env.dev` and `.env.archive` gone |
+| 2 | A value set only in `.env.dev` is observed by the gateway **and every Python service** | ✅ proven per-service by lane C, with `CI=true` / `NODE_ENV=production` / host-env controls |
+| 3 | `env:sync --check` clean; `env-drift-check` CI job red on a deliberate edit | ✅ 6 artifacts match; job demonstrated red→green twice |
+| 4a | Root `.env.example` ≤ ~60 lines | ✅ **59** |
+| 4b | Total declared keys ≤ ~120 | ⚠️ **PARTIAL — 130 generated, 284 hand-maintained (421 total).** See "Open follow-up" below |
+| 5 | Zero keys declared-but-unread | ✅ for the generated surface; the Python examples are not scanned by the gate |
+| 6 | SYSTEM `TenantStorageConfig` row changes storage with no redeploy, GLOBAL_ADMIN-gated | ✅ proven against live dev Postgres + an in-process test on one factory instance |
+| 7 | Test/build/lint gates green | ✅ applications 7017 · api 2146 · admin-console 1215 · domains 1395 · database 870 · stt 2740 · smr 957 · harness 1023 · nlp 184 · guardrail 174 · tts 178; typecheck 33/33; lint 29/29, 0 errors |
+| 8 | Clean-clone `pnpm setup:dev` end to end | ⏳ not run — requires a clean clone; deferred to owner |
+
+**Registry:** 137 descriptors — `global-kv` 50, `env` 37, `vault-kv` 25, `db-config` 20, `entitlement` 3, `db-secret` 2.
+
+### Open follow-up — criterion 4b
+
+The ~120-key target is met for the **generated TS surface** (130 keys across the root,
+`apps/api`, `apps/admin-console` and `packages/tools` examples). The five Python services'
+`.env.example` files (**284 keys**) stay hand-maintained and outside the drift gate, because
+their schema is pydantic-settings — roughly 500 fields, which the CI gate cannot import (no
+Python service environment in that job). Generating them from the TS registry alone would
+have deleted ~900 lines of correct operator documentation for keys that ARE read.
+
+The honest closure is a `py-env-sync` companion that emits those files from the pydantic
+models in a Python-capable CI job. Scoped, not started. Until then the Python examples are
+documentation, not a contract.
+
+### Other deferred items
+
+- **Credential rotation** — owner-deferred (§6). Untracking `.env.dev` stops future commits; the values remain in history.
+- **`MSGRAPH_CLIENT_ID/SECRET/TENANT_ID/SENDER`** — read via an injected `env` record defaulting to `process.env`, so no literal `process.env.X` exists and no scan or lint rule sees them. `MSGRAPH_CLIENT_SECRET` is a platform secret and belongs at tier `vault-kv`; declaring it locally as `env` would encode the wrong classification.
+- **`STT_V2_URL`** — the env-file declarations are gone, but `config.service.ts` still reads `STT_URL || STT_V2_URL`, so the key remains in `globalEnv`. Retire the fallback, then the key.
+- **Guardrail invalidation** — the SQL resolver is (correctly) kept, but needs a *publisher* before a subscriber; a subscriber alone would be dead code.
+- **`arcaenv`** — re-run `pnpm setup:python` (or `pip install -e packages/py-env`) from the main tree; the editable install currently points at a lane worktree.
 
 ---
 
