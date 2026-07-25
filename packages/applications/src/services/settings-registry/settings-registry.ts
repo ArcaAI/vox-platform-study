@@ -11,10 +11,26 @@ import { SCOPE_DEPTH, SettingDescriptor, SettingScope } from './registry.types';
 export class SettingsRegistry {
   private readonly byKey = new Map<string, SettingDescriptor>();
 
-  /** Register one descriptor. Throws on a duplicate key so assembly fails loudly. */
+  /**
+   * Register one descriptor. Throws on a duplicate key so assembly fails loudly,
+   * and enforces the fail-closed invariant for secrets (plan §9.3 M5).
+   *
+   * The secret check runs HERE — at true assembly time — rather than in a
+   * lister like `killSwitches()`, because it is a per-descriptor invariant with
+   * no cross-descriptor view: asserting it on `register` makes a violating
+   * registry impossible to construct at all, instead of merely detectable by
+   * whoever remembers to call the lister.
+   */
   register(descriptor: SettingDescriptor): this {
     if (this.byKey.has(descriptor.key)) {
       throw new Error(`SettingsRegistry: duplicate setting key '${descriptor.key}'`);
+    }
+    if (descriptor.sensitivity === 'secret' && descriptor.failMode !== 'closed') {
+      throw new Error(
+        `SettingsRegistry: secret setting '${descriptor.key}' must declare failMode 'closed' ` +
+          `(got '${descriptor.failMode}'). A secret that falls back to a default silently substitutes ` +
+          'a value the caller never authenticated against.',
+      );
     }
     this.byKey.set(descriptor.key, descriptor);
     return this;
@@ -67,6 +83,15 @@ export class SettingsRegistry {
       throw new Error(`SettingsRegistry: kill-switch(es) must default OFF but default ON: ${defaultOn.map((d) => d.key).join(', ')}`);
     }
     return switches;
+  }
+
+  /**
+   * Every secret-sensitivity descriptor. All are `failMode: 'closed'` by the
+   * `register()` invariant above; this is the catalog view (masking, write-only
+   * UI treatment, and the Vault seeding script's key list).
+   */
+  secrets(): SettingDescriptor[] {
+    return this.list().filter((d) => d.sensitivity === 'secret');
   }
 
   /**

@@ -35,6 +35,9 @@ export const AGENTIC_EVAL_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    // Mode knob — an unset gate degrades to the code default (`block`), which is
+    // the SAFE end of this knob, so open-to-default does not weaken the gate.
+    failMode: 'open-to-default',
     category: 'Agentic Eval',
     label: 'Eval promotion gate',
     description: 'Governs the eval gate on template approval / agent pin re-point: block (fail → 409), warn (record only), or off.',

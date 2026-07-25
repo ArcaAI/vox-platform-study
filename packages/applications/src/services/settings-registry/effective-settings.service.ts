@@ -12,6 +12,7 @@ import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService'
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { ConfigResolutionContext, ConfigResolver, PipelineToggleKey } from '../config-resolver/config-resolver.service';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
+import type { SettingDescriptor } from './registry.types';
 
 export interface EffectiveSettingResult {
   key: string;
@@ -19,6 +20,28 @@ export interface EffectiveSettingResult {
   value: unknown;
   /** Which cascade tier supplied the value (audit/debug trace). */
   sourceScope: string;
+}
+
+/**
+ * The single place the declared failure mode is applied — called wherever a
+ * cascade bottoms out with NO value (plan §4 B3, §9.3 M5).
+ *
+ * `closed`          → raise. The caller gets an explicit "unresolved", never a
+ *                     substituted value it did not ask for.
+ * `open-to-default` → the descriptor default, reported as `code-default`.
+ *
+ * Reached ONLY when every tier came back empty. A backend error propagates
+ * before this point, so a fail-open knob can never disguise an unreachable
+ * control plane as "the default".
+ */
+export function applyFailMode(descriptor: SettingDescriptor): EffectiveSettingResult {
+  if (descriptor.failMode === 'closed') {
+    throw new ArgumentInvalidException(
+      `Setting '${descriptor.key}' could not be resolved and is declared fail-closed; ` +
+        'no default is substituted (provider/model selection and secrets never fall back).',
+    );
+  }
+  return { key: descriptor.key, tier: descriptor.tier, value: descriptor.default, sourceScope: 'code-default' };
 }
 
 @Injectable()
@@ -57,9 +80,17 @@ export class EffectiveSettingsService {
 
     // Models.<taskKey> delegates to AiTaskDefaultService (tenant →
     // SYSTEM cascade); never re-implements data access here.
+    //
+    // An UNSELECTED task (`modelSlug` null) is an unresolved value, so it goes
+    // through the declared failure mode. Every `models.*` descriptor is
+    // fail-closed, so this raises rather than reporting a null that a caller
+    // cannot distinguish from a deliberately-null selection.
     if (key.startsWith('models.') && this.aiTaskDefaultService) {
       const taskKey = key.slice('models.'.length);
       const effective = await this.aiTaskDefaultService.getEffective(taskKey, ctx.tenantId);
+      if (effective.modelSlug === null || effective.modelSlug === undefined) {
+        return applyFailMode(descriptor);
+      }
       return { key, tier: descriptor.tier, value: effective.modelSlug, sourceScope: effective.source ?? 'none' };
     }
 
@@ -77,9 +108,7 @@ export class EffectiveSettingsService {
     // this only makes the read honest.
     if (descriptor.tier === 'global-kv') {
       const stored = this.appSettings?.getValueWithDefault<unknown>(key, null) ?? null;
-      return stored !== null
-        ? { key, tier: descriptor.tier, value: stored, sourceScope: 'global-kv' }
-        : { key, tier: descriptor.tier, value: descriptor.default, sourceScope: 'code-default' };
+      return stored !== null ? { key, tier: descriptor.tier, value: stored, sourceScope: 'global-kv' } : applyFailMode(descriptor);
     }
 
     throw new ArgumentInvalidException(`No effective resolver is registered for setting '${key}'.`);

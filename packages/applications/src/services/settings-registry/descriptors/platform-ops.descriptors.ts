@@ -15,6 +15,12 @@
 //   - audit-retention.*   `audit-retention/audit-retention.service.ts`
 //   - agentic.trajectory.* `agent-trajectory-retention/agent-trajectory-retention.service.ts`
 
+// Every descriptor here is `failMode: 'open-to-default'` (plan §4 B3): these are
+// schedules, retention windows and enable-flags, so a control-plane miss must
+// resolve to the SAME code default the consuming service already falls back to.
+// Fail-closed would turn an unwritten row into a broken sweep or a lifted
+// throttle — strictly worse than the status quo these descriptors transcribe.
+
 import { SettingDescriptor } from '../registry.types';
 
 export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
@@ -27,6 +33,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Rate limiting enabled',
     description:
@@ -48,6 +55,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     killSwitch: true,
     label: 'Audit retention sweep enabled',
@@ -62,6 +70,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Audit retention schedule',
     description: 'Cron expression for the audit-log retention sweep.',
@@ -75,6 +84,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Audit retention window (days)',
     description: 'Audit-log rows older than this are purged by the sweep.',
@@ -88,6 +98,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Audit retention batch size',
     description: 'Rows deleted per batch by the retention sweep.',
@@ -101,6 +112,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Audit retention max batches per run',
     description: 'Upper bound on batches processed in a single sweep, bounding its runtime.',
@@ -116,6 +128,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     killSwitch: true,
     label: 'Agent trajectory retention enabled',
@@ -130,6 +143,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Agent trajectory retention schedule',
     description: 'Cron expression for the agent-trajectory retention sweep.',
@@ -144,6 +158,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     killSwitch: true,
     label: 'Pipeline template resync enabled',
@@ -159,6 +174,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Pipeline template resync schedule',
     description: 'Cron expression for the nightly SYSTEM-template resync sweep.',
@@ -173,6 +189,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     killSwitch: true,
     label: 'Agent template resync enabled',
@@ -188,6 +205,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Agent template resync schedule',
     description: 'Cron expression for the nightly SYSTEM agent-library resync sweep.',
@@ -201,6 +219,7 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    failMode: 'open-to-default',
     category: 'Platform Operations',
     label: 'Agent trajectory retention window (days)',
     description: 'Agent-trajectory rows older than this are purged by the sweep.',
