@@ -23,7 +23,7 @@ Production blueprint for a 3-node, highly-available, auto-unsealing HashiCorp Va
 
 | Scenario | Use |
 |---|---|
-| Local development secrets | Dev-mode Vault in Docker Compose — see [infrastructure/docker/README.md](../docker/README.md) (`--profile vault`, `pnpm infra:up`). |
+| Local development secrets | Dev-mode Vault in Docker Compose — see [infrastructure/docker/README.md](../docker/README.md) (`--profile vault`, `pnpm infra:dev:up`). |
 | Production / staging Vault on the k3s cluster | This directory (`vault/`). |
 | Day-2 Vault operations (rotation, failover, recovery, monitoring) | [docs/operations/vault/](../../docs/operations/vault/README.md). |
 | Resilience drills against a running HA cluster | `scripts/chaos/vault-drill.sh` (see [scripts/README.md](../../scripts/README.md)). |

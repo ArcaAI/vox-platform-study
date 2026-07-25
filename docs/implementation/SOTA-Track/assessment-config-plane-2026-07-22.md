@@ -126,7 +126,7 @@ Wire capture (HTTP sink standing in on the SMR port; gateway forwarded body, ver
 ```
 → Gateway-side decryption + injection **proven** (exact stored plaintext at the SMR boundary); minimal-exposure invariant held (only the resolved provider's entry; the DELETED azure row was not resolved).
 
-Real SMR (`pnpm dev:smr`, healthy-degraded, same request through the gateway):
+Real SMR (`pnpm smr:dev`, healthy-degraded, same request through the gateway):
 ```
 SMR log: POST /api/v1/generate → generation.retry ×3 → generation.failed
          {"provider":"bedrock","error":"Unable to locate credentials"}          ← boto3 NO-credential error

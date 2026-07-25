@@ -6,11 +6,12 @@
 # monorepo root to ensure the .env.test file is properly loaded.
 #
 # Usage:
-#   ./scripts/start-test-infra.sh              # Start test services
-#   ./scripts/start-test-infra.sh --stop       # Stop all test services (removes volumes)
-#   ./scripts/start-test-infra.sh --logs       # Show logs
-#   ./scripts/start-test-infra.sh --status     # Show status
-#   ./scripts/start-test-infra.sh --validate   # Verify all services are healthy
+#   pnpm infra:test:up         ./scripts/start-test-infra.sh
+#   pnpm infra:test:down       ./scripts/start-test-infra.sh --stop      (removes volumes)
+#   pnpm infra:test:restart    ./scripts/start-test-infra.sh --restart   (clean slate)
+#   pnpm infra:test:logs       ./scripts/start-test-infra.sh --logs
+#   pnpm infra:test:status     ./scripts/start-test-infra.sh --status
+#   pnpm infra:test:validate   ./scripts/start-test-infra.sh --validate
 #   ./scripts/start-test-infra.sh --help       # Show help
 #
 # Port Mapping (Test vs Dev):
@@ -94,7 +95,7 @@ validate_services() {
         echo -e "${GREEN}All test infrastructure services are healthy.${NC}"
         return 0
     else
-        echo -e "${RED}Some services are not ready. Check logs with: pnpm docker:test:logs${NC}"
+        echo -e "${RED}Some services are not ready. Check logs with: pnpm infra:test:logs${NC}"
         return 1
     fi
 }
@@ -119,6 +120,21 @@ case "${1:-}" in
         print_header
         validate_services
         ;;
+    --restart)
+        print_header
+        echo ""
+        # `down -v` REMOVES volumes: a restart of the test infra is meant to be
+        # a clean slate, so the schema must be pushed again afterwards.
+        echo -e "${YELLOW}Restarting test infrastructure (volumes are removed)...${NC}"
+        $DOCKER_COMPOSE down -v
+        $DOCKER_COMPOSE up -d --wait || true
+        echo ""
+        $DOCKER_COMPOSE ps -a
+        sleep 3
+        validate_services
+        echo ""
+        echo -e "${YELLOW}Volumes were removed — run 'pnpm test:db:reset' before any suite.${NC}"
+        ;;
     --help|-h)
         print_header
         echo ""
@@ -127,6 +143,7 @@ case "${1:-}" in
         echo "Options:"
         echo "  (none)       Start test infrastructure services"
         echo "  --stop       Stop all test services and remove volumes"
+        echo "  --restart    Stop (removing volumes) and start again — clean slate"
         echo "  --logs       Follow logs from all test services"
         echo "  --status     Show status of test services"
         echo "  --validate   Verify all services are healthy and initialized"

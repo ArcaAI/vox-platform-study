@@ -8,13 +8,15 @@
 #   postgres, redis, minio, qdrant, vault (+init), temporal (+ui), hope-reranker
 #
 # USAGE:
-#   pnpm infra:up                    # base tier (vault+temporal+rag)
-#   pnpm infra:up -- -o              # base + Prometheus/Grafana
-#   pnpm infra:up -- -e              # base + inference (vLLM, llama.cpp, TEI embed)
-#   pnpm infra:up -- -o -e           # combine flags
-#   pnpm infra:down                  # tear down ALL known profiles (nothing lingers)
-#   pnpm infra:status                # compose ps (all profiles)
-#   pnpm infra:logs                  # compose logs -f
+#   pnpm infra:dev:up                # base tier (vault+temporal+rag)
+#   pnpm infra:dev:up -- -o          # base + Prometheus/Grafana
+#   pnpm infra:dev:up -- -e          # base + inference (vLLM, llama.cpp, TEI embed)
+#   pnpm infra:dev:up -- -o -e       # combine flags
+#   pnpm infra:dev:down              # tear down ALL known profiles (nothing lingers)
+#   pnpm infra:dev:restart           # down then up, keeping volumes
+#   pnpm infra:dev:status            # compose ps (all profiles)
+#   pnpm infra:dev:logs              # compose logs -f
+#   pnpm infra:dev:validate          # container + health probe
 #   ./scripts/dev-infra.sh up --print
 #
 # Flags:
@@ -23,7 +25,11 @@
 #   --rag                  no-op (rag is default since TASK-555; kept for compat)
 #   --print                print the compose command only
 #
-# The pre-existing docker:dev:* scripts are untouched and keep working.
+# TASK-557: this script is now the ONLY dev-infra entrypoint. The former
+# start-infra.sh (pnpm docker:dev:*) started core services only — no Temporal,
+# Vault or rag — which silently produced a half-working stack. It was removed;
+# `down` still tears down its legacy `hope-infra` compose project so containers
+# created before the removal do not linger.
 # ============================================================================
 
 set -euo pipefail
@@ -36,7 +42,7 @@ COMPOSE_CORE="infrastructure/docker/docker-compose.yml"
 COMPOSE_DEV="infrastructure/docker/docker-compose.dev.yml"
 ENV_FILE="$REPO_ROOT/.env"
 
-# Same convention as scripts/start-infra.sh: docker compose loads the root .env.
+# docker compose loads the root .env file.
 if [ ! -f "$ENV_FILE" ]; then
     if [ -f "$REPO_ROOT/.env.example" ]; then
         echo "No .env found — creating from .env.example (update values as needed)."
@@ -70,7 +76,7 @@ WANT_OBS=0
 WANT_INF=0
 PRINT=0
 for arg in "$@"; do
-    # pnpm may forward a literal `--` separator (pnpm infra:up -- -o)
+    # pnpm may forward a literal `--` separator (pnpm infra:dev:up -- -o)
     [ "$arg" = "--" ] && continue
     case "$arg" in
         --rag) ;; # no-op: rag is default (TASK-555)
@@ -156,8 +162,8 @@ case "$ACTION" in
     down)
         # Tear down EVERY declared local-dev service.
         # Two compose project names exist:
-        #   hope-infra-dev — combined core+dev files (pnpm infra:up / dev:setup / dev:stack)
-        #   hope-infra     — core file alone (pnpm docker:dev:up / start-infra.sh without --all)
+        #   hope-infra-dev — combined core+dev files (this script; setup:dev, stack:dev)
+        #   hope-infra     — core file alone, created by the removed start-infra.sh
         # Both must be stopped or containers linger under the other project.
         if [ "$PRINT" = "1" ]; then
             echo "docker compose --env-file $ENV_FILE ${ALL_PROFILES[*]} -f $COMPOSE_CORE -f $COMPOSE_DEV down --remove-orphans"
@@ -195,8 +201,71 @@ case "$ACTION" in
         fi
         docker compose --env-file "$ENV_FILE" "${ALL_PROFILES[@]}" -f "$COMPOSE_CORE" -f "$COMPOSE_DEV" logs -f
         ;;
+    restart)
+        # down then up, preserving the requested tier flags. Volumes are kept
+        # (down never passes -v), so data survives a restart.
+        if [ "$PRINT" = "1" ]; then
+            echo "$0 down --print && $0 up --print"
+            exit 0
+        fi
+        echo "Restarting dev infrastructure..."
+        "$0" down
+        RESTART_FLAGS=()
+        [ "$WANT_OBS" = "1" ] && RESTART_FLAGS+=(--observability)
+        [ "$WANT_INF" = "1" ] && RESTART_FLAGS+=(--inference)
+        exec "$0" up "${RESTART_FLAGS[@]+"${RESTART_FLAGS[@]}"}"
+        ;;
+    validate)
+        # Focused health probe of the DEV infra containers only. For the full
+        # picture including app services and LLM engines, use `pnpm stack:dev:doctor`.
+        ok=true
+        printf '%s\n' "Validating dev infrastructure..."
+
+        check_container() {
+            local req="$1" name="$2" state
+            state="$(docker inspect -f '{{.State.Status}}' "$name" 2>/dev/null)" || state="absent"
+            if [ "$state" = "running" ]; then
+                printf '  \033[0;32m✓\033[0m %-22s running\n' "$name"
+            elif [ "$req" = "required" ]; then
+                printf '  \033[0;31m✗\033[0m %-22s %s\n' "$name" "$state"
+                ok=false
+            else
+                printf '  \033[1;33m!\033[0m %-22s %s (optional)\n' "$name" "$state"
+            fi
+        }
+
+        check_container required hope-postgres
+        check_container required hope-redis
+        check_container required hope-minio
+        check_container optional hope-qdrant
+        check_container optional hope-vault
+        check_container optional hope-temporal
+        check_container optional hope-reranker
+
+        if docker exec hope-postgres pg_isready -U "${POSTGRES_USER:-hope}" >/dev/null 2>&1; then
+            printf '  \033[0;32m✓\033[0m %-22s accepting connections\n' "postgres:${POSTGRES_PORT:-5432}"
+        else
+            printf '  \033[0;31m✗\033[0m %-22s not accepting connections\n' "postgres:${POSTGRES_PORT:-5432}"
+            ok=false
+        fi
+
+        if docker exec hope-redis redis-cli ping 2>/dev/null | grep -q PONG; then
+            printf '  \033[0;32m✓\033[0m %-22s PONG\n' "redis:${REDIS_PORT:-6379}"
+        else
+            printf '  \033[0;31m✗\033[0m %-22s no PONG\n' "redis:${REDIS_PORT:-6379}"
+            ok=false
+        fi
+
+        echo ""
+        if $ok; then
+            echo "Dev infrastructure is healthy."
+        else
+            echo "Dev infrastructure has problems. Start it with: pnpm infra:dev:up" >&2
+            exit 1
+        fi
+        ;;
     *)
-        echo "Usage: $0 <up|down|status|logs> [-o|--observability] [-e|--inference] [--rag] [--print]" >&2
+        echo "Usage: $0 <up|down|restart|status|logs|validate> [-o|--observability] [-e|--inference] [--rag] [--print]" >&2
         exit 2
         ;;
 esac

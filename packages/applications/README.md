@@ -121,7 +121,7 @@ Cross-aggregate isolation checks that the database tenant-scope extension cannot
 
 | Command | package.json script | From repo root |
 |---|---|---|
-| Build | `rimraf dist tsconfig.tsbuildinfo && tsc` | `pnpm --filter @arcaai/applications build` (or `pnpm build:modules`) |
+| Build | `rimraf dist tsconfig.tsbuildinfo && tsc` | `pnpm --filter @arcaai/applications build` (or `pnpm build:core`) |
 | Watch | `tsc --watch` | `pnpm --filter @arcaai/applications dev` |
 | Test | `vitest run --passWithNoTests` | `pnpm --filter @arcaai/applications test` |
 | Typecheck | `tsc --noEmit` | `pnpm --filter @arcaai/applications typecheck` |

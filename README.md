@@ -55,11 +55,11 @@ docs/               Architecture, development guide, ticket documentation
 # LM Studio on :1234 for local LLM inference
 
 pnpm install       # 1. Install dependencies (+ gitleaks pre-commit hook)
-pnpm py:setup      # 2. Create the shared conda env `arcaenv` (Python services)
-pnpm dev:setup     # 3. Infra up + DB schema/seed + Vault bootstrap (idempotent)
+pnpm setup:python      # 2. Create the shared conda env `arcaenv` (Python services)
+pnpm setup:dev     # 3. Infra up + DB schema/seed + Vault bootstrap (idempotent)
 pnpm build         # 4. Build everything
-pnpm dev:stack     # 5. Start the full clinical-workspace stack
-pnpm dev:doctor    # 6. Verify all services are green
+pnpm stack:dev     # 5. Start the full clinical-workspace stack
+pnpm stack:dev:doctor    # 6. Verify all services are green
 ```
 
 For the full setup guide, daily workflows, testing, and troubleshooting, see **[docs/development-guide.md](docs/development-guide.md)**.
@@ -68,25 +68,25 @@ For the full setup guide, daily workflows, testing, and troubleshooting, see **[
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev:stack` | Start the default stack (API, STT, SMR, guardrail, NLP, harness + worker, admin console) |
-| `pnpm dev:stack -- smr worker` | Start a subset of the stack (any of: api, stt, smr, guardrail, nlp, harness, worker, ui, tts) |
-| `pnpm dev:stack down` | Stop services previously spawned by `dev:stack` (pidfile-based; no-op if none) |
-| `DRY_RUN=1 pnpm dev:stack` | Print the launch plan without starting anything |
-| `pnpm dev:doctor` | Health-check all services, docker infra, LLM engines, and the STT key |
-| `pnpm infra:up` | Start docker infra incl. Vault + Temporal profiles |
-| `pnpm infra:down` / `infra:status` / `infra:logs` | Stop / inspect / follow docker infra |
-| `pnpm dev:api` | Start API Gateway (development) |
-| `pnpm dev:stt` | Start STT service (no reload; `:watch` for scoped reload) |
-| `pnpm dev:smr` | Start SMR service with the LM Studio provider registered |
-| `pnpm dev:nlp` / `dev:guardrail` / `dev:harness` | Start NLP / Guardrail / harness API service |
-| `pnpm dev:harness:worker` | Start the harness Temporal worker |
-| `pnpm dev:tts` | Start TTS service (`:watch` for scoped reload) |
-| `pnpm dev:admin` | Start the admin console (Next.js dev, port 5176) |
+| `pnpm stack:dev` | Start the default stack (API, STT, SMR, guardrail, NLP, harness + worker, admin console) |
+| `pnpm stack:dev -- smr worker` | Start a subset of the stack (any of: api, stt, smr, guardrail, nlp, harness, worker, ui, tts) |
+| `pnpm stack:dev down` | Stop services previously spawned by `dev:stack` (pidfile-based; no-op if none) |
+| `DRY_RUN=1 pnpm stack:dev` | Print the launch plan without starting anything |
+| `pnpm stack:dev:doctor` | Health-check all services, docker infra, LLM engines, and the STT key |
+| `pnpm infra:dev:up` | Start docker infra incl. Vault + Temporal profiles |
+| `pnpm infra:dev:down` / `infra:status` / `infra:logs` | Stop / inspect / follow docker infra |
+| `pnpm api:dev` | Start API Gateway (development) |
+| `pnpm stt:dev` | Start STT service (no reload; `:watch` for scoped reload) |
+| `pnpm smr:dev` | Start SMR service with the LM Studio provider registered |
+| `pnpm nlp:dev` / `dev:guardrail` / `dev:harness` | Start NLP / Guardrail / harness API service |
+| `pnpm worker:dev` | Start the harness Temporal worker |
+| `pnpm tts:dev` | Start TTS service (`:watch` for scoped reload) |
+| `pnpm admin:dev` | Start the admin console (Next.js dev, port 5176) |
 | `pnpm dev:<service>:watch` | Scoped-reload variant (stt, smr, guardrail, nlp, harness, tts) |
 | `pnpm build` | Build all packages and apps |
 | `pnpm test:unit` / `test:integration` / `test:e2e` | Run the TypeScript test suites (`.env.test`, isolated infra) |
 | `pnpm py:<svc>:test` | Run a Python service's pytest suite (stt, smr, nlp, guardrail, harness, tts) |
-| `pnpm ok` | Full reset: push DB (destructive), seed, build everything |
+| `pnpm db:all && pnpm build` | Full reset: push DB (destructive), seed, build everything |
 | `pnpm db:studio` | Open Prisma Studio |
 | `pnpm gen:token` | Generate a dev JWT token |
 

@@ -14,7 +14,7 @@
  *     `db_main/…`, or a `./`-relative doc link; anything with a glob/placeholder
  *     char (`<> * { } …`) or spaces is skipped.
  *   - for `pnpm …` only the first script token is validated (later words may be
- *     script args like `pnpm dev:stack down`); builtins and placeholders are skipped.
+ *     script args like `pnpm stack:dev down`); builtins and placeholders are skipped.
  *
  * Exit 0 when every checkable claim resolves, exit 1 with a listed failure set.
  *

@@ -62,7 +62,7 @@ Resolution order becomes: code defaults → SYSTEM `HarnessPolicy` → tenant `H
 
 ## Verification Criteria / Gates
 
-- `pnpm --filter @arcaai/applications build test`, `pnpm build:api`, `pnpm test:unit` green; `pnpm py:harness:test` (hermetic) + replay subset green; `py:harness:lint`/`typecheck` clean.
+- `pnpm --filter @arcaai/applications build test`, `pnpm api:build`, `pnpm test:unit` green; `pnpm harness:test` (hermetic) + replay subset green; `py:harness:lint`/`typecheck` clean.
 - Runtime proof on the live dev stack: run one harness consultation where the department agent pins a distinctive threshold (e.g. `coverageThreshold` 0.95) and paste (a) the served policy JSON showing the overlay + provenance, (b) trajectory evidence the run used it.
 
 ## Constraints & Hazards
@@ -94,10 +94,10 @@ Implemented the per-department-agent harness-override overlay end-to-end (applic
 ### Gate Evidence (actual output)
 
 - `pnpm --filter @arcaai/applications test` → `Test Files 336 passed | 1 skipped (337)`, `Tests 6789 passed | 4 skipped (6793)` (incl. new `harness-policy.agent-overrides.test.ts`).
-- `pnpm --filter @arcaai/applications build` → `tsc` clean. `pnpm build:api` → `Tasks: 8 successful, 8 total`.
+- `pnpm --filter @arcaai/applications build` → `tsc` clean. `pnpm api:build` → `Tasks: 8 successful, 8 total`.
 - `pnpm --filter @arcaai/api test` (harness-internal.controller) → `Test Files 151 passed | 2 skipped`, `Tests 2409 passed`.
 - `pnpm test:unit` (full monorepo) → `Test Files 982 passed | 2 skipped (984)`, `Tests 17146 passed | 4 skipped | 9 todo (17159)`.
-- `pnpm py:harness:test` → `966 passed, 2 warnings`. Replay subset (`pytest -k replay`) → **`17 passed, 949 deselected`** (hard gate green — no patched era added).
+- `pnpm harness:test` → `966 passed, 2 warnings`. Replay subset (`pytest -k replay`) → **`17 passed, 949 deselected`** (hard gate green — no patched era added).
 - `ruff check` (touched files) → `All checks passed!`. `mypy apps/harness/src/` → `Success: no issues found in 91 source files`.
 - Lint: `@arcaai/api` → `0 errors` (my files clean); `@arcaai/applications` → `0 errors` (only pre-existing warnings in unrelated files; my touched files produce none).
 
@@ -117,7 +117,7 @@ Live dev API (:8868), ARCAAI consultation `90000000-…0001` → dept `70000000-
 - **fetch_policy trajectory step — BLOCKED (environmental, not a defect):** started `HarnessDocWorkflow` directly (harness `document:start`); the workflow task failed `"Failed decoding arguments"` before scheduling any activity. Root cause: the **shared** harness Temporal worker (pid started 10:50) predates the staged `temporal/models.py`(11:07)+`workflows.py`(11:10) edits → it runs a stale workflow-input schema; the current FastAPI serializer payload won't decode. The concurrently-owned worker cannot be restarted (project HARD RULE 4). My stuck workflow was terminated. TASK-550 logic itself is proven by the served-overlay half.
 
 ### 2026-07-23 — Runtime proof 3b (RUNTIME-FINISH agent) — **PASS** (the previously-blocked item, now unblocked)
-The blocking orphan worker (started 10:50, stale schema) belonged to an ENDED session. Per RUNTIME-FINISH contract it was killed and the harness FastAPI :8866 + Temporal worker were restarted from CURRENT staged code (worker log `harness.worker.started`, `task_queue=harness-task-queue`). Gateway :8868 was also rebuilt fresh (`pnpm build:api` → 8/8) and restarted as a single non-watch instance (PID 80030). Correct auth wired: the worker was given the Vault-resolved `HARNESS_SERVICE_TOKEN` (read via AppRole login) so its outbound `fetch_policy` call authenticates to the gateway's fail-closed `HarnessServiceTokenGuard`.
+The blocking orphan worker (started 10:50, stale schema) belonged to an ENDED session. Per RUNTIME-FINISH contract it was killed and the harness FastAPI :8866 + Temporal worker were restarted from CURRENT staged code (worker log `harness.worker.started`, `task_queue=harness-task-queue`). Gateway :8868 was also rebuilt fresh (`pnpm api:build` → 8/8) and restarted as a single non-watch instance (PID 80030). Correct auth wired: the worker was given the Vault-resolved `HARNESS_SERVICE_TOKEN` (read via AppRole login) so its outbound `fetch_policy` call authenticates to the gateway's fail-closed `HarnessServiceTokenGuard`.
 
 Live run — consultation `90000000-0000-0000-0000-000000000001` → dept `70000000-0000-0000-0000-000000000001` → default agent `gen-default` (`78000000-0000-0000-0000-000000000001`), tenant `50000000-0000-0000-0000-000000000000`.
 

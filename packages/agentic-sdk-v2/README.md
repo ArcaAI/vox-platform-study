@@ -202,7 +202,7 @@ From this directory:
 | `pnpm test:e2e` | Builds, then Playwright (`e2e/playwright.config.ts`); `:ui`, `:headed`, `:chromium` variants exist |
 | `pnpm lint` | ESLint on `src` |
 | `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm nuke` | Remove build output (nuke also removes `node_modules`) |
+| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
 
 From the repo root: `pnpm --filter @arcaai/vox build` (same pattern for `test`, `lint`, etc.).
 

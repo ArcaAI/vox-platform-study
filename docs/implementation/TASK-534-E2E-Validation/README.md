@@ -15,7 +15,7 @@ This ticket is the program's final validation wave (owner's "e2e at last" discip
 
 Four workstreams:
 
-1. **(a) Execute the existing agentic gateway e2e specs live** — the four renamed agentic suites + the cross-tenant contract suites + the `ai-task-defaults-cross-tenant` governance suite, via `pnpm test:api:up` (terminal 1) → `pnpm test:e2e` (terminal 2), against the isolated test stack.
+1. **(a) Execute the existing agentic gateway e2e specs live** — the four renamed agentic suites + the cross-tenant contract suites + the `ai-task-defaults-cross-tenant` governance suite, via `pnpm test:up:api` (terminal 1) → `pnpm test:e2e` (terminal 2), against the isolated test stack.
 2. **(b) Author + execute net-new specs** for every program surface not owned by another ticket (spec matrix §4.1): TASK-524 provider connections / runtime-profile cascade / settings write-lane, TASK-526 BYO azure override reaching SMR (env-gated), TASK-528 discovery merge + register, TASK-529 retention round-trip, TASK-532 governance locks. TASK-531 and TASK-533 author their own specs (plan §4 P4/P6); this ticket owns their *execution*. Every new admin/by-id surface gets a `*-cross-tenant.spec.ts` (house rule, `05-nestjs-api.md` §Testing).
 3. **(c) Env-gated live-engine suites** (vLLM / llama.cpp / LM Studio / Ollama real servers; GPU tiers) — owner-run; this ticket documents the gating env vars and the runbook pointer (`docs/operations/inference/README.md`).
 4. **(d) Full gate sweep re-run** (the findings §5 command list) + the evidence-capture protocol: each child README's Implementation Summary carries pasted actual output; the program closes with the roll-up section here (§9).
@@ -59,16 +59,16 @@ Cross-tenant unit fixture: `tests/cross-tenant/fixtures.ts` — pure synthetic (
 
 | Command | Line | Effect |
 |---|---|---|
-| `pnpm docker:test:up` | `package.json:50` | `./scripts/start-test-infra.sh` — isolated compose stack up |
-| `pnpm test:setup` | `:55` | `./scripts/test-setup.sh` — infra + DB push + seed, one shot |
-| `pnpm test:api:up` | `:56` | `./scripts/start-test-api.sh` — API on :8868 against test infra (terminal 1) |
+| `pnpm infra:test:up` | `package.json:50` | `./scripts/start-test-infra.sh` — isolated compose stack up |
+| `pnpm setup:test` | `:55` | `./scripts/test-setup.sh` — infra + DB push + seed, one shot |
+| `pnpm test:up:api` | `:56` | `./scripts/start-test-app.sh api` — API on :8868 against test infra (terminal 1) |
 | `pnpm test:unit` | `:84` | Vitest, excludes `**/integration/**` and `**/e2e/**` |
 | `pnpm test:integration` | `:87` | Vitest sequential vs live test DB |
 | `pnpm test:e2e` | `:88` | `dotenv -e .env.test -- playwright test` (root `playwright.config.ts`) |
 | `pnpm test:db:seed` | `:96` | test-DB seed (+ media) |
 | `pnpm test:db:reset` | `:98` | `test:db:push` + `test:db:seed` |
 
-All three scripts exist (`scripts/start-test-api.sh`, `scripts/start-test-infra.sh`, `scripts/test-setup.sh` — verified on disk).
+All three scripts exist (`scripts/start-test-app.sh`, `scripts/start-test-infra.sh`, `scripts/test-setup.sh` — verified on disk; TASK-557 replaced the per-service `start-test-*.sh` launchers with the single `start-test-app.sh <target>`).
 
 **Isolated test stack ports** (verified `tests/docker-compose.test.yml`): Postgres **5433**→5432 (`:38-39`), Redis **6380**→6379 (`:75-76`), MinIO **9002**→9000 (`:109-110`), Qdrant **6335**→6333 (`:165-166`) — dev-stack ports untouched; header comment (`:5-11`) states the isolation contract.
 
@@ -83,7 +83,7 @@ All three scripts exist (`scripts/start-test-api.sh`, `scripts/start-test-infra.
 
 House e2e conventions (binding for every net-new spec):
 
-1. **Real HTTP, no mocks** — Playwright `request` against `http://localhost:8868/api/v1` (rule 05 §Testing); API started separately via `pnpm test:api:up`. Specs never import app code; contracts are asserted purely over the wire.
+1. **Real HTTP, no mocks** — Playwright `request` against `http://localhost:8868/api/v1` (rule 05 §Testing); API started separately via `pnpm test:up:api`. Specs never import app code; contracts are asserted purely over the wire.
 2. **File placement/naming** — `apps/api/tests/e2e/<surface>.spec.ts`, cross-tenant contracts as `<surface>-cross-tenant.spec.ts` (this program drops task-number prefixes, matching the renamed agentic suites).
 3. **Header-comment contract** — every spec opens with the locked contracts it probes, the exact controller/route, and the live-stack requirement line (see `agentic-policy.spec.ts:1-38` as the template).
 4. **Genuine-probe discipline** — before asserting a cross-tenant 404, prove the foreign row exists via its owner's scope (`storage-cross-tenant.spec.ts:61-78`); otherwise the test silently degrades to a missing-row 404.
@@ -160,8 +160,8 @@ This ticket IS the verification phase — "RED first" here means new specs are e
 ### 5.1 Run protocol (per run, full or partial)
 
 ```
-1. pnpm test:setup            # or: pnpm docker:test:up && pnpm test:db:reset
-2. pnpm test:api:up           # terminal 1 — API :8868 vs isolated stack (PG 5433/Redis 6380/MinIO 9002/Qdrant 6335)
+1. pnpm setup:test            # or: pnpm infra:test:up && pnpm test:db:reset
+2. pnpm test:up:api           # terminal 1 — API :8868 vs isolated stack (PG 5433/Redis 6380/MinIO 9002/Qdrant 6335)
 3. pnpm test:e2e              # terminal 2 — full; or: pnpm test:e2e -- <spec-file> for partial
 4. Capture: suite counts, skip counts (env-gated suites report skips, not silent green), duration, failures verbatim
 5. Paste into the owning child README's Implementation Summary; roll up here (§9)
@@ -172,15 +172,15 @@ Seed/reset between destructive investigations: `pnpm test:db:reset` (push + seed
 ### 5.2 Full gate sweep (findings §5 command list, re-run at program close)
 
 ```
-pnpm build:api                                    # 8/8 tasks green
+pnpm api:build                                    # 8/8 tasks green
 pnpm --filter @arcaai/admin-console build         # after @arcaai/ui build
 pnpm turbo lint                                   # incl. api hard-errors + packages only-warn-as-error
 pnpm --filter @arcaai/vox typecheck && pnpm --filter @arcaai/vox lint
-pnpm py:stt:lint  py:smr:lint  py:guardrail:lint  py:nlp:lint  py:harness:lint  py:tts:lint
-pnpm py:stt:typecheck  py:smr:typecheck  py:guardrail:typecheck  py:nlp:typecheck  py:harness:typecheck
+pnpm stt:lint  py:smr:lint  py:guardrail:lint  py:nlp:lint  py:harness:lint  py:tts:lint
+pnpm stt:typecheck  py:smr:typecheck  py:guardrail:typecheck  py:nlp:typecheck  py:harness:typecheck
 pnpm test:unit && pnpm test:integration
-pnpm py:stt:test  py:smr:test  py:guardrail:test  py:nlp:test  py:harness:test  py:tts:test
-pnpm test:api:up  →  pnpm test:e2e
+pnpm stt:test  py:smr:test  py:guardrail:test  py:nlp:test  py:harness:test  py:tts:test
+pnpm test:up:api  →  pnpm test:e2e
 ```
 
 ### 5.3 Env-gated suite gating (documented for owner handoff)
@@ -224,7 +224,7 @@ Exact var names are proposals frozen at spec-authoring time; they are test-only 
 
 | Risk | Mitigation |
 |---|---|
-| **Port 8868 collision with the dev stack** — precedent: the TASK-504 session's e2e/browser runs were blocked by a concurrently-running dev API on 8868 (prior-session note in the program records) | Pre-flight check in the run protocol: `lsof -i :8868` before `test:api:up`; stop `pnpm dev:stack` first. The test API must be the only 8868 listener |
+| **Port 8868 collision with the dev stack** — precedent: the TASK-504 session's e2e/browser runs were blocked by a concurrently-running dev API on 8868 (prior-session note in the program records) | Pre-flight check in the run protocol: `lsof -i :8868` before `test:api:up`; stop `pnpm stack:dev` first. The test API must be the only 8868 listener |
 | **Test-data pollution / destructive ops against dev DB** | E2e runs ONLY on the isolated stack (PG 5433/Redis 6380/MinIO 9002/Qdrant 6335, §2.3); specs create throwaway rows + `afterAll` soft-delete; `pnpm test:db:reset` resets the isolated DB only — dev DB is never reset (repo memory: it is `db push`-managed and behind migration history) |
 | **Timing flake** (async persistence, sys-event fan-out, SSE) | §4.4 investigate-first, zero retries; bounded polling helpers, never fixed sleeps |
 | **Seed drift breaks genuine-probes** (the cross-tenant-suite lesson) | Existence pre-assertions stay mandatory; seed-count test updates land with any seed change (plan §5.7) |
@@ -267,7 +267,7 @@ Exact var names are proposals frozen at spec-authoring time; they are test-only 
 - **Triage** (all 22 root-caused with live repros): **15 product defects in 7 groups / 7 test bugs in 2 groups** — G1 harness-policy first-edit ignored `If-Match`; G2 `If-Match: "0"` create lane impossible (decorator vs TASK-506/526 contract — also broke the shipped console's first-edit path); G3 provider PUT encrypted before OCC → 500; G4 `ArgumentInvalidException` → 500 platform-wide; G5 `findFirst`-throws killed the settings-registry read lane; G6 discovery routes shadowed by `:id` (surface dead); G9 role clone demanded `manage:Role`; G7 non-hermetic specs under `fullyParallel`; G8 specs frozen at pre-TASK-532 governance.
 - **Fixes applied** (TDD where a unit seam exists; ~9 new/updated unit tests): controller-order fix (`ai-model.module.ts`), null-safe `findBackingRow`, `ArgumentInvalidException`→400 interceptor branch, OCC-before-encryption + Transit-failure→503, create-branch OCC enforcement in harness-policy, clone gate → `@CanCreate('Role')` (owner-reversible, comment at route), 404-on-null in `fetchById/fetchBySlug` (audio-pipeline + ai-model admin), serial-mode/fixture hermeticity for 528/531 specs, 506 spec refreshed to the 9-key registry + all-prefixes-global-admin governance.
 - **Owner decision (G2/F-023):** accept `If-Match: "0"` as create-intent — decorator relaxed with RED→GREEN evidence (28 decorator tests), stale-`"0"`-vs-existing-row → 412 covered, both former known-reds restored and green.
-- **End state on the 7 affected suites: 107 passed / 0 failed / 1 pre-existing conditional skip.** Units: applications 6,677 · api 2,396+ green; `pnpm build:api` green; full-suite confirmation run recorded in Change History.
+- **End state on the 7 affected suites: 107 passed / 0 failed / 1 pre-existing conditional skip.** Units: applications 6,677 · api 2,396+ green; `pnpm api:build` green; full-suite confirmation run recorded in Change History.
 
 ---
 

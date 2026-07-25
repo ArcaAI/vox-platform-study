@@ -164,7 +164,7 @@ Comment deltas (binding, program §2.3): `06-stt.ts:845-859` policy block gains 
 
 **E2E (authored only, executed TASK-534)**: template PATCH/DELETE → 403 + message; toggle/set-default → 200; clone flow end-to-end (provenance + version row); resync adds a 10th template after a new SYSTEM template is created; cross-tenant clone/resync → 404 (naming per house precedent `task-XXX-*-cross-tenant.spec.ts`).
 
-**Gates**: `pnpm db:generate` + migration SQL review · `pnpm --filter @arcaai/domains build test` · `pnpm --filter @arcaai/applications build test` · `pnpm build:api` + `pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test` · `pnpm lint` (treat `packages/*` only-warn warnings as errors).
+**Gates**: `pnpm db:generate` + migration SQL review · `pnpm --filter @arcaai/domains build test` · `pnpm --filter @arcaai/applications build test` · `pnpm api:build` + `pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test` · `pnpm lint` (treat `packages/*` only-warn warnings as errors).
 
 ## 6. Acceptance & DoD
 
@@ -255,7 +255,7 @@ NOTICE:  TASK-531 backfill complete: 18 rows given provenance, 18 locked as pris
 | `pnpm --filter @arcaai/database test` | `Test Files 25 passed (25)` · `Tests 832 passed (832)` |
 | `pnpm --filter @arcaai/domains build test` | build clean · `Test Files 116 passed \| 2 skipped (118)` · `Tests 1368 passed (1379)` |
 | `pnpm --filter @arcaai/applications build test` | build clean · `Test Files 319 passed \| 1 skipped (320)` · `Tests 6557 passed (6561)` |
-| `pnpm build:api` | `Tasks: 8 successful, 8 total` |
+| `pnpm api:build` | `Tasks: 8 successful, 8 total` |
 | `pnpm --filter @arcaai/admin-console build lint test` | build clean · lint clean (`--max-warnings 0`) · `Test Files 137 passed (137)` · `Tests 1031 passed (1031)` |
 | `pnpm test:unit` (whole monorepo) | `Test Files 953 passed \| 2 skipped (955)` · `Tests 16760 passed \| 4 skipped \| 9 todo (16773)` |
 | `pnpm test:integration` (live test DB, port 5433) | `Test Files 6 passed (6)` · `Tests 102 passed (102)` — test DB carries both lineage columns |

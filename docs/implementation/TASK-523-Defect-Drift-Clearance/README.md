@@ -35,7 +35,7 @@ Every claim below was **re-verified against the working tree on 2026-07-20** by 
 
 ### 2.4 D-04 — stt mypy (row 0.4)
 
-▶ `pnpm py:stt:typecheck` re-run: **exactly 1 error** — `preprocessing.py:288: error: Returning Any … [no-any-return]`. Site: `return librosa.resample(samples, orig_sr=original_sr, target_sr=target_sr)` inside `_resample` (`apps/stt/src/stt/transcription/preprocessing.py:283-294`). The same function's fallback branch already shows the house fix: `cast(np.ndarray, np.interp(...))` at `:294`.
+▶ `pnpm stt:typecheck` re-run: **exactly 1 error** — `preprocessing.py:288: error: Returning Any … [no-any-return]`. Site: `return librosa.resample(samples, orig_sr=original_sr, target_sr=target_sr)` inside `_resample` (`apps/stt/src/stt/transcription/preprocessing.py:283-294`). The same function's fallback branch already shows the house fix: `cast(np.ndarray, np.interp(...))` at `:294`.
 
 ### 2.5 D-05 — guardrail + harness mypy (row 0.5)
 
@@ -104,11 +104,11 @@ Verified in `packages/applications/src/services/stt/pipeline/pipeline.service.ts
 
 | Gate | Findings state | Re-verified 2026-07-20 by this ticket |
 |---|---|---|
-| `pnpm build:api` 8/8 green · admin-console build green · ruff ×6 clean · smr+nlp mypy clean | green | not re-run — re-check at execution |
+| `pnpm api:build` 8/8 green · admin-console build green · ruff ×6 clean · smr+nlp mypy clean | green | not re-run — re-check at execution |
 | `pnpm --filter @arcaai/vox typecheck` | 3 errors | ▶ **confirmed, 3 errors** (§2.1) |
 | `pnpm --filter @arcaai/vox lint` | 71 prettier warnings | ▶ **confirmed, 71/0** (§2.3) |
 | `pnpm turbo lint` → `@arcaai/api#lint` | 1 failure (D-02) | import verified unused by inspection; lint not re-run |
-| `pnpm py:stt:typecheck` | 1 error | ▶ **confirmed** (§2.4) |
+| `pnpm stt:typecheck` | 1 error | ▶ **confirmed** (§2.4) |
 | `py:guardrail:typecheck` / `py:harness:typecheck` | 1 / 15 errors | ▶ **confirmed, exact inventory** (§2.5) |
 | `@arcaai/ui` build warning | D-06 | ▶ **reproduced; diagnosis corrected** (§2.6) |
 
@@ -173,11 +173,11 @@ RED evidence is pasted into §9 at execution (a test that never failed verifies 
 | 0.7 | NEW test in `apps/api/src/modules/streaming/__tests__/smr-proxy.controller.test.ts` (existing file) | RED: `Reflect.getMetadata(STREAM_SCOPE_METADATA, SmrProxyController.prototype.streamTaskEvents)` is `undefined`. GREEN: equals `{ namespace: 'smr_task', param: 'taskId' }` |
 | 0.7 | UPDATE `apps/admin-console/src/features/playground-llm/api/__tests__/playground-llm-api.test.ts:105` + `shared/streams` consumption asserted in the existing use-task-stream tests | GREEN: helper returns gateway path + `smr_task:<id>` scope; no `/api/hope/` BFF URL remains |
 | 0.10 | NEW cases in `packages/applications/src/services/stt/pipeline/__tests__/pipeline.service.test.ts` | RED first: "update of another tenant's pipeline throws `NotFoundException`" and "delete of another tenant's pipeline throws `NotFoundException`" (mock `findById` returning a foreign-`tenantId` entity; today the calls fall through to `updateWithVersion`/`softDelete`). GREEN after guards. One-line assertions: `await expect(service.update(id, dto)).rejects.toThrow(NotFoundException)` · `await expect(service.delete(id)).rejects.toThrow(NotFoundException)` |
-| 0.5 | No new tests — behavior-preservation gate: `pnpm py:guardrail:test` + `pnpm py:harness:test` stay green (the fail-closed `verify_calibration` suites cover the `_internals` replacement) | — |
+| 0.5 | No new tests — behavior-preservation gate: `pnpm guardrail:test` + `pnpm harness:test` stay green (the fail-closed `verify_calibration` suites cover the `_internals` replacement) | — |
 | 0.8 | Existing guards: `env-port-standardization.test.ts` + `stt-v1-config-removal.test.ts` must stay green (they fail if the inverted "add retired vars" fix were applied) | — |
 | 0.2/0.3/0.4/0.6/0.9 | Gate-verified (no test surface): lint/typecheck/build runs below; 0.9f deletes a test with its dead export | — |
 
-**Gate commands** (paste output into §9): `pnpm --filter @arcaai/vox typecheck` · `pnpm --filter @arcaai/vox lint` · `pnpm --filter @arcaai/api lint` (or `pnpm turbo lint`) · `pnpm --filter @arcaai/ui build` (warning absent) · `pnpm py:stt:typecheck` · `pnpm py:guardrail:typecheck` · `pnpm py:harness:typecheck` · `pnpm py:guardrail:test` · `pnpm py:harness:test` · `pnpm --filter @arcaai/applications build test` · `pnpm build:api` + `pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test`.
+**Gate commands** (paste output into §9): `pnpm --filter @arcaai/vox typecheck` · `pnpm --filter @arcaai/vox lint` · `pnpm --filter @arcaai/api lint` (or `pnpm turbo lint`) · `pnpm --filter @arcaai/ui build` (warning absent) · `pnpm stt:typecheck` · `pnpm guardrail:typecheck` · `pnpm harness:typecheck` · `pnpm guardrail:test` · `pnpm harness:test` · `pnpm --filter @arcaai/applications build test` · `pnpm api:build` + `pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test`.
 
 ## 6 Acceptance Criteria & DoD
 
@@ -217,7 +217,7 @@ Executed 2026-07-20 on `fix/2605-review` (OD-7 satisfied — the ~330-file tree 
 | Row | RED (captured before the fix) | GREEN |
 |---|---|---|
 | 0.1 | `pnpm --filter @arcaai/vox typecheck` → 3 errors: TS2339 `stt.types.test.ts(58,18)`, TS2353 `(68,9)`, TS2339 `(75,18)` — "Property 'codeSwitching' does not exist on type 'CreateStreamingSessionRequest'" | `tsc --noEmit` exits 0 |
-| 0.4 | `pnpm py:stt:typecheck` → `preprocessing.py:288: error: Returning Any … [no-any-return]`; `Found 1 error in 1 file (checked 119 source files)` | `Success: no issues found in 119 source files` |
+| 0.4 | `pnpm stt:typecheck` → `preprocessing.py:288: error: Returning Any … [no-any-return]`; `Found 1 error in 1 file (checked 119 source files)` | `Success: no issues found in 119 source files` |
 | 0.5 | `py:guardrail:typecheck` → 1 error (`llama_cpp._internals`); `py:harness:typecheck` → `Found 15 errors in 7 files (checked 88 source files)` — exactly the §2.5 inventory incl. `fastembed` and the harness `llama_cpp` gap | guardrail `Success: no issues found in 29 source files`; harness `Success: no issues found in 88 source files` |
 | 0.7 | NEW `smr-proxy.controller.test.ts` — `Reflect.getMetadata(STREAM_SCOPE_METADATA, …streamTaskEvents)` → `AssertionError: expected undefined to deeply equal { namespace: 'smr_task', …(1) }` | `Test Files 1 passed · Tests 80 passed (80)` |
 | 0.10 | NEW cross-tenant cases in `pipeline.service.test.ts` → `Tests 2 failed | 38 passed (40)`; both `× should throw NotFoundException when the pipeline belongs to another tenant (404-over-403)` (update + delete) | `Tests 40 passed (40)` |
@@ -230,11 +230,11 @@ Executed 2026-07-20 on `fix/2605-review` (OD-7 satisfied — the ~330-file tree 
 | `pnpm --filter @arcaai/vox lint` | 0 problems (was 71 prettier warnings) |
 | `pnpm --filter @arcaai/api lint` | clean |
 | `pnpm --filter @arcaai/ui build` | the `useMediaSelector … never used` media-store warning is **gone** (only pre-existing unrelated `import.meta` / `"use client"` directive warnings remain) |
-| `pnpm py:stt:typecheck` · `py:guardrail:typecheck` · `py:harness:typecheck` | all `Success` |
+| `pnpm stt:typecheck` · `py:guardrail:typecheck` · `py:harness:typecheck` | all `Success` |
 | ruff ×5 (`stt, smr, guardrail, nlp, harness`) | `All checks passed!` ×5 |
-| `pnpm py:guardrail:test` | `129 passed` |
+| `pnpm guardrail:test` | `129 passed` |
 | `pnpm --filter @arcaai/applications build` | green |
-| `pnpm build:api` | `Tasks: 8 successful, 8 total` |
+| `pnpm api:build` | `Tasks: 8 successful, 8 total` |
 | `pnpm --filter @arcaai/admin-console lint` / `test` / `build` | lint clean · `Test Files 134 passed · Tests 992 passed (992)` · build green |
 | `pnpm test:unit` | `Tests 16507 passed | 2 failed` — **both failures pre-existing** (see §9.3) |
 
@@ -244,8 +244,8 @@ Re-run against the stashed (clean) tree reproduces each identically:
 
 - `packages/domains/src/__tests__/tenant-bucket.test.ts` — "should create the three default system buckets for a tenant"
 - `packages/applications/src/authorization/__tests__/policy.engine.test.ts` — "should build ability from array-valued CASL action and subject fields"
-- `pnpm py:stt:test` — 5 failures (3 × `test_health_endpoints_comprehensive` readiness, `test_model_cache::test_ttl_expiration`, `test_session_manager_model_wiring::test_slug_asr_ref_resolves_db_config_for_streaming`); `2579 passed`
-- `pnpm py:harness:test` — 6 collection errors, all `ModuleNotFoundError: No module named 'qdrant_client'` (the `rag` extra is not installed in `arcaenv`); the §5 behavior-preservation gate could therefore not be evidenced on this host
+- `pnpm stt:test` — 5 failures (3 × `test_health_endpoints_comprehensive` readiness, `test_model_cache::test_ttl_expiration`, `test_session_manager_model_wiring::test_slug_asr_ref_resolves_db_config_for_streaming`); `2579 passed`
+- `pnpm harness:test` — 6 collection errors, all `ModuleNotFoundError: No module named 'qdrant_client'` (the `rag` extra is not installed in `arcaenv`); the §5 behavior-preservation gate could therefore not be evidenced on this host
 
 ### 9.4 Plan corrections forced by evidence (decision rows, per §2.5 doctrine)
 
@@ -272,7 +272,7 @@ Everything flagged in the first pass was taken to root cause. **The whole repo i
 
 | # | Finding (from the first pass) | Resolution |
 |---|---|---|
-| F-1 | 6 harness pytest **collection errors** (`ModuleNotFoundError: qdrant_client`) | ROOT CAUSE: `scripts/setup-python-env.sh:437` installed harness as `[dev,test]` while the `test-harness` CI job installs `[test,eval,rag]` — a local/CI drift that left `pnpm py:harness:test` unable to collect at all. Setup script corrected to `[dev,test,eval,rag,guardrails]`. |
+| F-1 | 6 harness pytest **collection errors** (`ModuleNotFoundError: qdrant_client`) | ROOT CAUSE: `scripts/setup-python-env.sh:437` installed harness as `[dev,test]` while the `test-harness` CI job installs `[test,eval,rag]` — a local/CI drift that left `pnpm harness:test` unable to collect at all. Setup script corrected to `[dev,test,eval,rag,guardrails]`. |
 | F-2 | (surfaced by F-1) 4 `test_phi_redactor.py` failures | Once collection succeeded, the PHI tests failed on `ModuleNotFoundError: presidio_analyzer` — the `guardrails` extra is missing from **CI too**, and `test-harness` runs with `-x`, so this job fails there as well. Added `guardrails` to `.gitlab/ci/test.yml` (comment documents why; no spaCy model download, so the suite stays hermetic). Harness now **862 passed, 0 failed**. |
 | F-3 | 5 stt pytest failures | 3 readiness failures were a **real product defect**: TASK-505 P1 added `checks["processors"] = asr_processor_health()`, whose payload has no `status`/`duration_ms`, breaking the homogeneous `checks` component contract every other entry honors (error path was worse: `{"error": str(exc)}`). Extracted `_check_processors()` mirroring the existing `_check_streaming()` precedent. `test_ttl_expiration` was stale (TTL is clamped to `[60s, 3600s]`, so `ttl_seconds=1` silently became 60 and the test stopped exercising expiry). `test_slug_asr_ref_...` used `MagicMock()` where the file's own convention and the real `async def pin_many` require `AsyncMock()`. **2584 passed, 0 failed.** No external consumer of `checks.processors` exists (verified repo-wide), so the reshape is safe. |
 | F-4 | 2 TS unit failures | Both traced to commit `ad8c21da`, which edited **tests only** and left them red. `tenant-bucket`: the commit flipped `toHaveLength(2)` → `3` and added a `misc` block **without touching `CreateDefaultSystemBuckets`** — `misc` is deliberately not a default (TASK-426); the test was corrected and strengthened to assert the real contract positively. `policy.engine`: the test was **born failing** — named "array-valued action **and subject**" but its fixture granted `subject: 'ApiKey'` as a plain string, so `can('update','Secret')` could never pass. Fixture corrected to `['ApiKey','Secret']`; no assertion weakened. |
@@ -286,15 +286,15 @@ Everything flagged in the first pass was taken to root cause. **The whole repo i
 | Gate | Result |
 |---|---|
 | `pnpm test:unit` | **`Tests 16509 passed \| 0 failed` (933 files)** — first fully-green run |
-| `pnpm py:stt:test` | `2584 passed, 73 skipped, 3 xfailed` |
-| `pnpm py:harness:test` | `862 passed` |
-| `pnpm py:guardrail:test` · `py:smr:test` · `py:nlp:test` | `129 passed` · `874 passed, 32 deselected` · `120 passed` |
+| `pnpm stt:test` | `2584 passed, 73 skipped, 3 xfailed` |
+| `pnpm harness:test` | `862 passed` |
+| `pnpm guardrail:test` · `py:smr:test` · `py:nlp:test` | `129 passed` · `874 passed, 32 deselected` · `120 passed` |
 | mypy ×3 (stt / guardrail / harness) | `Success` ×3 |
 | ruff ×5 | `All checks passed!` ×5 |
 | `pnpm --filter @arcaai/vox typecheck` / `lint` | 0 errors / 0 problems |
 | `pnpm --filter @arcaai/api lint` | 0 problems |
 | `pnpm --filter @arcaai/ui build` | media-store warning absent |
-| `pnpm build:api` | `8 successful, 8 total` |
+| `pnpm api:build` | `8 successful, 8 total` |
 | `@arcaai/applications` / `@arcaai/domains` builds | OK |
 | `@arcaai/admin-console` lint / test / build | clean · `992 passed` · OK |
 

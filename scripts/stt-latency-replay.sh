@@ -7,8 +7,8 @@
 # final lag (speech-end -> final publish) against the 800 ms/chunk SLA.
 #
 # PREREQUISITES
-#   - Redis + Postgres up (pnpm infra:up) and stt running on :8861
-#     (pnpm dev:stack -- stt, or the GPU host deployment).
+#   - Redis + Postgres up (pnpm infra:dev:up) and stt running on :8861
+#     (pnpm stack:dev -- stt, or the GPU host deployment).
 #   - conda env `arcaenv` with the stt dev deps installed.
 #
 # USAGE

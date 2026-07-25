@@ -296,7 +296,7 @@ The gateway injects the token from `SecretsService` in `BaseProxyController` sub
 
 ### 2.7 Temporal (harness)
 
-`apps/harness` runs the bounded "guides → generate → sensors → gate" loop as a Temporal durable workflow. Layout: `apps/harness/src/harness/temporal/` with `workflows.py` (`@workflow.defn` classes), `activities.py` (`@activity.defn` functions), `client.py` (`get_temporal_client(settings)`), `worker.py` (separate process, started via `pnpm dev:harness:worker`), `models.py` (dataclass payloads). Temporal config via `TemporalConfig(BaseSettings)` with `env_prefix="TEMPORAL_"` (address/namespace/task-queue). The FastAPI app connects best-effort in `lifespan` and must come up even when Temporal is down (`apps/harness/src/harness/main.py`); only the worker hard-requires Temporal.
+`apps/harness` runs the bounded "guides → generate → sensors → gate" loop as a Temporal durable workflow. Layout: `apps/harness/src/harness/temporal/` with `workflows.py` (`@workflow.defn` classes), `activities.py` (`@activity.defn` functions), `client.py` (`get_temporal_client(settings)`), `worker.py` (separate process, started via `pnpm worker:dev`), `models.py` (dataclass payloads). Temporal config via `TemporalConfig(BaseSettings)` with `env_prefix="TEMPORAL_"` (address/namespace/task-queue). The FastAPI app connects best-effort in `lifespan` and must come up even when Temporal is down (`apps/harness/src/harness/main.py`); only the worker hard-requires Temporal.
 
 ### 2.8 tts — stateless service, gateway-resolved per-tenant config
 
@@ -395,7 +395,7 @@ Shared layout/interaction infrastructure consumed by the redesigned screens (TAS
 
 ### 4.2 Integration tests
 
-`vitest.integration.config.ts`: only `**/integration/**/*.test.ts`, sequential (`pool: 'forks'`, `fileParallelism: false`, `isolate: false`), 60 s timeouts, setup `tests/setup/integration.setup.ts`, `@arcaai/database`/`@arcaai/domains` aliased to source. Real infra (Postgres 5433, Redis 6380, MinIO 9002) comes from `pnpm docker:test:up` / `tests/docker-compose.test.yml`. Example: `packages/domains/src/integration/repository-soft-delete.integration.test.ts`.
+`vitest.integration.config.ts`: only `**/integration/**/*.test.ts`, sequential (`pool: 'forks'`, `fileParallelism: false`, `isolate: false`), 60 s timeouts, setup `tests/setup/integration.setup.ts`, `@arcaai/database`/`@arcaai/domains` aliased to source. Real infra (Postgres 5433, Redis 6380, MinIO 9002) comes from `pnpm infra:test:up` / `tests/docker-compose.test.yml`. Example: `packages/domains/src/integration/repository-soft-delete.integration.test.ts`.
 
 ### 4.3 Playwright E2E
 
@@ -409,7 +409,7 @@ Root `playwright.config.ts`: `testDir: './apps/api/tests/e2e'`, pattern `**/*.sp
 
 ### 4.5 Python tests
 
-See 2.4. Run per service: `pnpm py:stt:test[:unit|:integration|:cov]`, `pnpm py:smr:test`, `pnpm py:nlp:test`, `pnpm py:guardrail:test`, `pnpm py:harness:test` — all via conda `arcaenv`.
+See 2.4. Run per service: `pnpm stt:test[:unit|:integration|:cov]`, `pnpm smr:test`, `pnpm nlp:test`, `pnpm guardrail:test`, `pnpm harness:test` — all via conda `arcaenv`.
 
 ### 4.6 TDD expectation
 

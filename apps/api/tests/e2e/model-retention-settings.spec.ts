@@ -54,8 +54,7 @@ const REGISTRY_KEY = 'smr.modelCache.ttlSeconds';
 const REGISTRY_ROUTE = `/api/v1/admin/settings/registry/${REGISTRY_KEY}`;
 const INTERNAL_EFFECTIVE_CONFIG = '/api/v1/internal/effective-config?service=smr';
 
-const SMR_SERVICE_TOKEN =
-  process.env.E2E_SMR_SERVICE_TOKEN ?? process.env.E2E_SMR_V2_SERVICE_TOKEN ?? '';
+const SMR_SERVICE_TOKEN = process.env.E2E_SMR_SERVICE_TOKEN ?? process.env.E2E_SMR_V2_SERVICE_TOKEN ?? '';
 
 interface RegistrySettingBody {
   key: string;

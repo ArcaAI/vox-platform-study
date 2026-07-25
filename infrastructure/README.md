@@ -48,13 +48,16 @@ Isolated TEST infrastructure (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335
 
 | Command | Runs | Effect |
 |---|---|---|
-| `pnpm infra:up` / `infra:down` / `infra:status` / `infra:logs` | `scripts/dev-infra.sh` | Both compose files with `vault` + `temporal` profiles — the full dev infra in one command. `pnpm infra:up -- --rag` adds the reranker. |
-| `pnpm infra:observability:up` / `infra:observability:down` | docker compose directly | Prometheus + Grafana only (`prometheus` profile). |
-| `pnpm docker:dev:up` | `scripts/start-infra.sh` | Core only (Postgres, Redis, MinIO). |
-| `pnpm docker:dev:up:all` | `scripts/start-infra.sh --all` | Core + `vault` profile (Vault, Qdrant). No Temporal — prefer `pnpm infra:up`. |
-| `pnpm docker:dev:down` / `docker:dev:logs` / `docker:dev:status` | `scripts/start-infra.sh` | Stop / logs / status for the above. |
-| `pnpm docker:test:up` / `docker:test:down` / `docker:test:logs` / `docker:test:status` / `docker:test:validate` | `scripts/start-test-infra.sh` | Isolated test infra (see [tests/README.md](../tests/README.md)). |
-| `pnpm dev:setup` | `scripts/dev-setup.sh` | Full dev bootstrap: infra up, migrate + seed, Vault AppRole + DB-engine bootstrap. |
+| `pnpm infra:dev:up` / `infra:dev:down` / `infra:dev:restart` / `infra:dev:status` / `infra:dev:logs` / `infra:dev:validate` | `scripts/dev-infra.sh` | Both compose files with the `vault` + `temporal` + `rag` profiles — the full dev infra in one command. |
+| `pnpm infra:dev:up:observability` | `scripts/dev-infra.sh up --observability` | Base tier plus Prometheus + Grafana. |
+| `pnpm infra:dev:up:inference` | `scripts/dev-infra.sh up --inference` | Base tier plus vLLM / llama.cpp / TEI embed. |
+| `pnpm infra:test:up` / `infra:test:down` / `infra:test:restart` / `infra:test:status` / `infra:test:logs` / `infra:test:validate` | `scripts/start-test-infra.sh` | Isolated test infra (see [tests/README.md](../tests/README.md)). |
+| `pnpm setup:dev` | `scripts/dev-setup.sh` | Full dev bootstrap: infra up, migrate + seed, Vault AppRole + DB-engine bootstrap. |
+
+> TASK-557 removed the former `scripts/start-infra.sh` (`pnpm docker:dev:*`). It started core
+> services only — no Temporal, Vault or rag — which silently produced a half-working stack.
+> `scripts/dev-infra.sh` is now the single dev-infra entrypoint, and its `down` still tears
+> down the legacy `hope-infra` compose project so pre-existing containers do not linger.
 
 See [scripts/README.md](../scripts/README.md) for the full script reference.
 

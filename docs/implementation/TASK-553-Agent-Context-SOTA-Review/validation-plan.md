@@ -38,7 +38,7 @@ CI already re-runs all of these via the existing jobs (`test-api`, `test-package
    (Playwright, real HTTP): create template → approve → bind agent → pin v1 → edit content
    → assert `assemble`-served version unchanged → re-approve → assert new version served →
    failing golden set blocks approve with 409 `EVAL_GATE_FAILED`. This is the one place
-   unit tests can't see a wiring regression across modules. (Needs `pnpm test:api:up`.)
+   unit tests can't see a wiring regression across modules. (Needs `pnpm test:up:api`.)
 3. **PDQI-9-style scoring rubric on the golden sets** (sota-research §4.3): adopt the
    modified 11-item PDQI-9 + binary hallucination + template-conformance +
    provenance-coverage as the eval metrics, so promotion gating measures clinically
@@ -59,7 +59,7 @@ CI already re-runs all of these via the existing jobs (`test-api`, `test-package
 
 ## 3. Owner manual validation checklist (live stack)
 
-Bring up the dev stack (`pnpm dev:stack`), then:
+Bring up the dev stack (`pnpm stack:dev`), then:
 
 1. **Pinned-version proof (F-01/F-02)**: pin a department agent to an older template
    version, edit the template content (stay APPROVED), run a consultation → the harness

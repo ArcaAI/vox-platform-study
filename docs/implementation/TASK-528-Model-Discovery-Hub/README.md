@@ -131,9 +131,9 @@ The register DTO validates `provider` with `@IsIn(AI_MODEL_PROVIDERS)`; the DTO 
 
 ### 4.0 Stage sequence (goal-driven, each with its verify)
 
-1. **SMR probe hardening** (files 1–6) → verify: §5.1 tests GREEN; `pnpm py:smr:test|lint|typecheck` clean; manual `curl :8862/api/v1/providers` with one engine stopped returns 200 with `probe_status` populated.
+1. **SMR probe hardening** (files 1–6) → verify: §5.1 tests GREEN; `pnpm smr:test|lint|typecheck` clean; manual `curl :8862/api/v1/providers` with one engine stopped returns 200 with `probe_status` populated.
 2. **DTO alignment + register DTO** (files 7–9, 15) → verify: applications build+test green; contracts test GREEN (RED first proves the §2.5 drift).
-3. **Gateway discovery routes** (files 10–14) → verify: §5.2 tests GREEN; `pnpm build:api && pnpm test:unit`; Swagger shows both routes under `admin-ai-models`; boot-time route audit passes (both routes decorated).
+3. **Gateway discovery routes** (files 10–14) → verify: §5.2 tests GREEN; `pnpm api:build && pnpm test:unit`; Swagger shows both routes under `admin-ai-models`; boot-time route audit passes (both routes decorated).
 4. **Console hub** (files 16–24) → verify: §5.4 tests GREEN incl. axe/themes; `pnpm --filter @arcaai/admin-console build lint test`; runtime pass via `next-dev-loop` (open drawer against live local Ollama, register a model, watch it appear in the grid without reload).
 5. **Docs/env tail** (file 25 + §4.2 comment deltas) → verify: grep sweep for the updated comments; `.env.example` SMR section carries the new var with a "probe listing only" note.
 
@@ -219,7 +219,7 @@ DTO `AI_MODEL_PROVIDERS` (applications) === seed `AI_MODEL_PROVIDERS` (`shared.t
 
 ### 5.5 Gate commands (per stage)
 
-`pnpm py:smr:test && pnpm py:smr:lint && pnpm py:smr:typecheck` · `pnpm --filter @arcaai/applications build test` · `pnpm build:api && pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test` · e2e spec (`apps/api/tests/e2e/ai-model-discovery.spec.ts` incl. cross-tenant 404 case) **authored here, executed in Phase 7 (TASK-534)** per plan §2.2.
+`pnpm smr:test && pnpm smr:lint && pnpm smr:typecheck` · `pnpm --filter @arcaai/applications build test` · `pnpm api:build && pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test` · e2e spec (`apps/api/tests/e2e/ai-model-discovery.spec.ts` incl. cross-tenant 404 case) **authored here, executed in Phase 7 (TASK-534)** per plan §2.2.
 
 ## 6. Acceptance & DoD
 
@@ -402,7 +402,7 @@ FAIL …                                               TypeError: aiModelKeys.di
 | `mypy --config-file apps/smr/pyproject.toml apps/smr/src/` | **PASS** — `Success: no issues found in 51 source files` |
 | `turbo build --filter=@arcaai/applications` | **PASS** — `Tasks: 7 successful, 7 total` |
 | `vitest run packages/applications` | **PASS** — `Test Files 315 passed \| 1 skipped (316) / Tests 6492 passed` |
-| `pnpm build:api` | **PASS** — `Tasks: 8 successful, 8 total` |
+| `pnpm api:build` | **PASS** — `Tasks: 8 successful, 8 total` |
 | `eslint "{src,tests}/**/*.ts"` (apps/api, hard errors) | **PASS** — clean |
 | `vitest run apps/api tests/contracts packages/applications packages/domains` | **2 PRE-EXISTING FAILURES**, both in `apps/api/src/__tests__/env-port-standardization.test.ts` (`.env.dev must define TTS_PORT and TTS_URL`). The committed `.env.dev` on `fix/2605-review` has no `TTS_PORT`/`TTS_URL`; the main checkout carries them as an UNCOMMITTED edit. Unrelated to this ticket — nothing here touches `.env.dev`. Everything else: `580 passed \| 2 skipped (583) / 10236 passed`. |
 | `pnpm --filter @arcaai/admin-console build` | **PASS** (via `turbo build --filter=@arcaai/admin-console`, which builds the SDK deps the worktree lacked) |

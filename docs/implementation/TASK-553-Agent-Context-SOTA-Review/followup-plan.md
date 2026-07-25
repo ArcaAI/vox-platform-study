@@ -141,7 +141,7 @@ finalize triggers → exactly one tail flush; normal single-trigger behavior unc
   trajectory rollups; check the stats passthrough path and widen only if it filters keys.
 - TDD: stats fields present on the trajectory step; warn fires above threshold, silent below.
 
-**Gates**: `pnpm py:harness:test` (replay suite incl. the NEW era fixture) + lint; STT unit
+**Gates**: `pnpm harness:test` (replay suite incl. the NEW era fixture) + lint; STT unit
 tests + lint. All workflow edits outside F-1 must remain command-sequence-neutral.
 
 ---

@@ -175,11 +175,11 @@ From this directory:
 | Command | Action |
 |---|---|
 | `pnpm build` / `pnpm dev` | tsup build (main bundle + worker bundle) / watch mode |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:coverage` | Vitest unit tests |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests |
 | `pnpm test:e2e` | Playwright browser tests; `:ui`, `:debug`, `:headed` variants exist |
 | `pnpm lint` | ESLint (`--max-warnings 0`) |
 | `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm nuke` | Remove build output (nuke also removes `node_modules`) |
+| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
 
 From the repo root: `pnpm --filter @arcaai/stt build` (same pattern for `test`, `lint`, etc.).
 

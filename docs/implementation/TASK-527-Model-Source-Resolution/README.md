@@ -233,8 +233,8 @@ S3 double = a **stubbed client object injected at the lazy-import seam** — mat
 | Layer | Commands |
 |---|---|
 | Database | `pnpm db:generate` · migration SQL reviewed · `pnpm --filter @arcaai/database build test` · psql apply recorded for dev/test DBs |
-| Domains/Applications/API | `pnpm --filter @arcaai/domains build test` · `pnpm --filter @arcaai/applications build test` · `pnpm build:api` · `pnpm test:unit` (gateway controller tests) |
-| Python lanes | `pnpm py:stt:test` + `py:stt:lint` + `py:stt:typecheck` · same triple for `py:guardrail`, `py:nlp`, `py:harness` |
+| Domains/Applications/API | `pnpm --filter @arcaai/domains build test` · `pnpm --filter @arcaai/applications build test` · `pnpm api:build` · `pnpm test:unit` (gateway controller tests) |
+| Python lanes | `pnpm stt:test` + `py:stt:lint` + `py:stt:typecheck` · same triple for `py:guardrail`, `py:nlp`, `py:harness` |
 | Workspace | root `uv lock` diff committed in the same MR as the guardrail/nlp `pyproject.toml` edits · `pnpm lint` (only-warn warnings in `packages/*` treated as errors) |
 | E2E | specs (admin PATCHes `localPath` on `minicheck-flan-t5-large` → guardrail/nlp inference reflects it; `s3://` row → downloaded + served) **authored here** under `apps/api/tests/e2e/`, **executed in TASK-534** per the program's e2e-last discipline |
 
@@ -317,7 +317,7 @@ The dev DB is `db push`-managed and behind migration history, so `migrate diff` 
 | DB | Result |
 |---|---|
 | dev — `postgres://postgres@localhost:5432/hope` | ✅ APPLIED. `ALTER TYPE` → verify: `HUGGINGFACE,GITHUB,MLFLOW,LOCAL,S3` |
-| test — `postgresql://test@localhost:5433/hope_test` | ⚠️ NOT APPLIED — server not running (`Connection refused`, test infra down this session). Harmless: the test stack is `db push`-managed and throwaway, so `pnpm docker:test:up` + `pnpm test:db:reset` creates the type with `S3` already present. Re-run the same `ALTER TYPE … IF NOT EXISTS` against a long-lived test DB. |
+| test — `postgresql://test@localhost:5433/hope_test` | ⚠️ NOT APPLIED — server not running (`Connection refused`, test infra down this session). Harmless: the test stack is `db push`-managed and throwaway, so `pnpm infra:test:up` + `pnpm test:db:reset` creates the type with `S3` already present. Re-run the same `ALTER TYPE … IF NOT EXISTS` against a long-lived test DB. |
 
 Gates: `pnpm db:generate` clean · `@arcaai/database` build + **819 tests passed** · `@arcaai/domains` build + **1368 passed / 2 skipped / 9 todo**. No generated-trio drift (an enum value flows through the client only).
 
@@ -405,7 +405,7 @@ Gates: `py:harness:test` **886 passed** · lint **All checks passed** · typeche
 | `@arcaai/database` build + test | ✅ 819 passed |
 | `@arcaai/domains` build + test | ✅ 1368 passed / 2 skipped / 9 todo |
 | `@arcaai/applications` build + test | ✅ 6516 passed / 4 skipped |
-| `pnpm build:api` | ✅ 8 tasks successful |
+| `pnpm api:build` | ✅ 8 tasks successful |
 | `pnpm test:unit` | ✅ **16666 passed / 4 skipped / 9 todo (947 files)** |
 | `pnpm lint` | ✅ 29 tasks successful, **0 errors**; my files produce zero warnings (prettier-formatted) |
 | root `uv lock` | ✅ minimal 4-line diff — `minio` for guardrail + nlp only |
@@ -442,7 +442,7 @@ nlp        173 passed
 harness    901 passed
 pnpm test:unit         953 files | 16760 passed, 4 skipped, 9 todo, 0 failed
 admin-console          build ok · eslint --max-warnings 0 clean · 1031 passed
-pnpm build:api         8/8 tasks successful
+pnpm api:build         8/8 tasks successful
 pnpm lint              29/29 tasks successful
 ```
 

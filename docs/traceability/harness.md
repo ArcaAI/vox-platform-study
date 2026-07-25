@@ -14,7 +14,7 @@ Route paths are relative to the global prefix `/api/v1`. Test shorthand is defin
 
 Architecture: `apps/harness` runs a FastAPI app (best-effort Temporal connect in `lifespan`;
 it must boot even when Temporal is down) plus a **separate** Temporal worker process
-(`pnpm dev:harness:worker`, task queue `harness-task-queue`). Workflows are deterministic;
+(`pnpm worker:dev`, task queue `harness-task-queue`). Workflows are deterministic;
 all side effects live in idempotent activities. The gateway drives the harness over internal
 service-token routes and streams progress/assurance to the browser over SSE.
 

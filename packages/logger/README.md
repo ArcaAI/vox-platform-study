@@ -6,7 +6,7 @@ Last updated: 2026-07-04
 
 ## Position in the stack
 
-`@arcaai/logger` is a leaf utility package with no HOPE-internal dependencies. It is declared as a dependency of `@arcaai/applications` and `apps/api` and is built by the `build:packages` pipeline (`pnpm build:packages` at the repo root).
+`@arcaai/logger` is a leaf utility package with no HOPE-internal dependencies. It is declared as a dependency of `@arcaai/applications` and `apps/api` and is built by the `build:packages` pipeline (`pnpm build:core` at the repo root).
 
 Note: the API gateway's runtime request logging is currently implemented by the `LoggingService` inside `@arcaai/applications` (`src/services/baseServices/logging/`), not by this package. `@arcaai/logger` has no direct imports in workspace source today; it remains available as a self-contained Winston wrapper for scripts and services that need one.
 

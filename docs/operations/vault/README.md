@@ -136,7 +136,7 @@ recovers on its next tick — see `apps/api/src/vault-prisma.module.ts`'s
 
 **Dev** — set by TWO scripts that MUST stay in sync (`vault write
 database/roles/hope-app-role ... default_ttl=1h max_ttl=168h ...`):
-`scripts/setup-dev-vault-db.sh` (manual re-apply / `pnpm dev:setup`) and
+`scripts/setup-dev-vault-db.sh` (manual re-apply / `pnpm setup:dev`) and
 `infrastructure/docker/configs/vault/dev-init.sh` (the `vault-init` sidecar,
 runs automatically on `./scripts/start-infra.sh --all`). `.env.dev` sets
 `PG_VAULT_MAX_TTL_SEC=604800` (7d in seconds) to match.

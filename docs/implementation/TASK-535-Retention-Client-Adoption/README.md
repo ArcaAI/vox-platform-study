@@ -153,7 +153,7 @@ Plus:
 
 ### 5.1 Gates (state the `PYTHONPATH` pin used with each)
 
-`pnpm py:guardrail:test|lint|typecheck` · `pnpm py:harness:test|lint|typecheck` · `pnpm py:tts:test|lint|typecheck` · `pnpm py:stt:test` (expect **0 failures** after R4) · `pytest packages/py-runtime-models/tests/` (unchanged, 74) · `uv lock --check`.
+`pnpm guardrail:test|lint|typecheck` · `pnpm harness:test|lint|typecheck` · `pnpm tts:test|lint|typecheck` · `pnpm stt:test` (expect **0 failures** after R4) · `pytest packages/py-runtime-models/tests/` (unchanged, 74) · `uv lock --check`.
 
 > **Worktree hazard (verified 2026-07-20).** `arcaenv`'s editable installs are `.pth` files hardcoding the MAIN checkout, so a bare `pnpm py:<svc>:test` in a worktree collects your test files but imports **main-tree source** — green while proving nothing. Export `PYTHONPATH=<worktree>/apps/<svc>/src:<worktree>/packages/py-runtime-models/src` before every gate and verify it resolves inside the worktree. A gate reported without its pin is not evidence.
 
@@ -169,7 +169,7 @@ House constraints: fake clocks, no `sleep`; NVML stubbed; seed randomness **insi
 - [x] Clamp `[60, 3600]` enforced client-side in all three (`test_clamp_applied_client_side[7200-3600]` / `[30-60]` ×3)
 - [x] harness refresh proven to run in the **worker** process; replay fixtures untouched and green; suite still hermetic — `test_retention_refresh_runs_in_worker_process`; 908 passed with `test_replay_compat.py` unmodified
 - [x] tts `service=tts` ⇄ key-prefix `tts` pinned by test (`test_service_param_and_key_namespace`)
-- [ ] `pnpm py:stt:test` reports **0 failures** (R4), and the assertion tolerates future additive keys — **half done**: R4 itself is fixed and additive-tolerant (2 failures → 1), but the suite is not at 0 because of pre-existing, out-of-manifest `test_vad_smart_uses_silero_service_when_available` (§9.4 P-1)
+- [ ] `pnpm stt:test` reports **0 failures** (R4), and the assertion tolerates future additive keys — **half done**: R4 itself is fixed and additive-tolerant (2 failures → 1), but the suite is not at 0 because of pre-existing, out-of-manifest `test_vad_smart_uses_silero_service_when_available` (§9.4 P-1)
 - [x] R5 flake named with a root cause, or explicitly reported as not-reproduced after a stated number of runs — **not reproduced in 8 runs** (§9.5)
 - [x] Zero files touched from the §4.2 forbidden list — proven by `git status --porcelain` (§9.6)
 - [x] Runbook matrix updated; TASK-530 §9.6 residue closed **and its guardrail claim corrected** as an errata row

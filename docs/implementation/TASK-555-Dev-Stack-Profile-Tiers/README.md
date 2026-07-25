@@ -13,9 +13,9 @@ Local entry points must bring up a complete Docker tier without hidden opt-ins:
 
 | Command | Docker profiles | Starts apps? |
 |---|---|---|
-| `pnpm dev:setup` / `pnpm dev:stack` | core + `vault` + `temporal` + `rag` | setup=no / stack=yes |
-| `pnpm dev:setup-o` / `pnpm dev:stack-o` | base + `prometheus` (Prometheus + Grafana) | setup=no / stack=yes |
-| `pnpm dev:setup-e` / `pnpm dev:stack-e` | base + `inference` (vLLM, llama.cpp, TEI embed) | setup=no / stack=yes |
+| `pnpm setup:dev` / `pnpm stack:dev` | core + `vault` + `temporal` + `rag` | setup=no / stack=yes |
+| `pnpm setup:dev:observability` / `pnpm stack:dev:observability` | base + `prometheus` (Prometheus + Grafana) | setup=no / stack=yes |
+| `pnpm setup:dev:inference` / `pnpm stack:dev:inference` | base + `inference` (vLLM, llama.cpp, TEI embed) | setup=no / stack=yes |
 
 `dev:stack*` must ensure Docker infra is up (idempotent) before spawning app processes.
 
@@ -76,13 +76,13 @@ $ ./scripts/dev-infra.sh up -e --print
 $ ./scripts/dev-infra.sh down --print
 ... --profile vault --profile temporal --profile rag --profile prometheus --profile inference ... down
 
-$ pnpm infra:up
+$ pnpm infra:dev:up
 # hope-reranker created (cpu-arm64-latest on arm64 host)
 
 $ curl -s -o /dev/null -w '%{http_code}' http://localhost:8870/health
 200
 
-$ pnpm infra:up -- -o
+$ pnpm infra:dev:up -- -o
 # hope-prometheus healthy, hope-grafana up
 $ curl … :9090/-/healthy → 200 ; :3001/api/health → 200
 

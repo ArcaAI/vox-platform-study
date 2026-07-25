@@ -92,12 +92,12 @@ Azure credential falls back to the shared `AZURE_SPEECH_KEY` /
 ## Develop
 
 ```bash
-pnpm dev:tts            # uvicorn on :8865 (conda arcaenv)
-pnpm dev:tts:watch      # + reload
-pnpm py:tts:test        # pytest (src/tts/tests/)
-pnpm py:tts:test:unit   # unit only
-pnpm py:tts:test:cov    # with coverage
-pnpm py:tts:lint        # ruff
-pnpm py:tts:format      # black
-pnpm py:tts:typecheck   # mypy
+pnpm tts:dev            # uvicorn on :8865 (conda arcaenv)
+pnpm tts:dev:watch      # + reload
+pnpm tts:test        # pytest (src/tts/tests/)
+pnpm tts:test:unit   # unit only
+pnpm tts:test:cov    # with coverage
+pnpm tts:lint        # ruff
+pnpm tts:format      # black
+pnpm tts:typecheck   # mypy
 ```

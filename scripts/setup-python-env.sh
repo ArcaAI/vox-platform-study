@@ -11,12 +11,23 @@
 #   - tts     (Realtime multi-provider Text-to-Speech)
 #
 # Usage:
-#   ./scripts/setup-python-env.sh              # Full setup (check + create + install)
-#   ./scripts/setup-python-env.sh --check      # Only check prerequisites
-#   ./scripts/setup-python-env.sh --install     # Skip checks, install deps only
-#   ./scripts/setup-python-env.sh --apple       # Include Apple Silicon ML extras (MPS)
-#   ./scripts/setup-python-env.sh --gpu         # Include NVIDIA GPU ML extras (CUDA)
-#   ./scripts/setup-python-env.sh --help        # Show help
+#   ./scripts/setup-python-env.sh                      # Full setup (check + create + install all)
+#   ./scripts/setup-python-env.sh --check              # Only check prerequisites
+#   ./scripts/setup-python-env.sh --install            # Skip checks, install deps only
+#   ./scripts/setup-python-env.sh --cpu                # CPU-only extras (explicit default)
+#   ./scripts/setup-python-env.sh --apple              # Apple Silicon ML extras (MPS)
+#   ./scripts/setup-python-env.sh --gpu                # NVIDIA GPU ML extras (CUDA)
+#   ./scripts/setup-python-env.sh --rebuild            # Recreate the conda env from scratch
+#   ./scripts/setup-python-env.sh --service stt        # Install ONE service (repeatable)
+#   ./scripts/setup-python-env.sh --service stt --gpu  # ...with a hardware platform
+#   ./scripts/setup-python-env.sh --help               # Show help
+#
+# HARDWARE PLATFORM (--cpu | --apple | --gpu) selects which optional extras a
+# service installs. It is per-service: stt picks [ml]/[ml-gpu], tts picks
+# [local], and services with no hardware-specific extras ignore it.
+#
+# --service narrows the install phase to the named service(s); the conda env,
+# native conda packages and the libomp dedup still run (they are shared).
 # =============================================================================
 
 set -euo pipefail
@@ -43,27 +54,69 @@ NC='\033[0m' # No Color
 ML_PLATFORM="none"
 CHECK_ONLY=false
 INSTALL_ONLY=false
+REBUILD=false
+
+# Every Python service this script knows how to install, in dependency-safe
+# order (hope-runtime-models is installed separately, before all of them).
+ALL_SERVICES=(stt smr nlp harness guardrail tts)
+# Selected subset (empty => all). Populated by --service.
+SERVICES=()
 
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
+expect_service=false
 for arg in "$@"; do
+    if $expect_service; then
+        expect_service=false
+        found=false
+        for known in "${ALL_SERVICES[@]}"; do
+            [[ "$arg" == "$known" ]] && found=true
+        done
+        if ! $found; then
+            echo "${RED}Unknown service: $arg${NC}"
+            echo "Known services: ${ALL_SERVICES[*]}"
+            exit 1
+        fi
+        SERVICES+=("$arg")
+        continue
+    fi
     case "$arg" in
         --check)    CHECK_ONLY=true ;;
         --install)  INSTALL_ONLY=true ;;
+        --rebuild)  REBUILD=true ;;
+        --cpu)      ML_PLATFORM="none" ;;
         --apple)    ML_PLATFORM="apple" ;;
         --gpu)      ML_PLATFORM="gpu" ;;
+        --service|-s) expect_service=true ;;
+        --service=*)
+            svc="${arg#--service=}"
+            found=false
+            for known in "${ALL_SERVICES[@]}"; do
+                [[ "$svc" == "$known" ]] && found=true
+            done
+            if ! $found; then
+                echo "${RED}Unknown service: $svc${NC}"
+                echo "Known services: ${ALL_SERVICES[*]}"
+                exit 1
+            fi
+            SERVICES+=("$svc")
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --check     Only check prerequisites (no installation)"
-            echo "  --install   Skip checks, install dependencies into existing env"
-            echo "  --apple     Include Apple Silicon ML extras (MPS + FFmpeg)"
-            echo "  --gpu       Include NVIDIA GPU ML extras (CUDA)"
-            echo "  --help      Show this help message"
+            echo "  --check            Only check prerequisites (no installation)"
+            echo "  --install          Skip checks, install dependencies into existing env"
+            echo "  --rebuild          Recreate the conda environment from scratch (no prompt)"
+            echo "  --cpu              CPU-only extras (explicit default)"
+            echo "  --apple            Include Apple Silicon ML extras (MPS + FFmpeg)"
+            echo "  --gpu              Include NVIDIA GPU ML extras (CUDA)"
+            echo "  --service <name>   Install only this service (repeatable)"
+            echo "                     One of: ${ALL_SERVICES[*]}"
+            echo "  --help             Show this help message"
             echo ""
-            echo "Without flags: runs full setup (check + create env + install)"
+            echo "Without flags: runs full setup (check + create env + install all services)"
             exit 0
             ;;
         *)
@@ -73,6 +126,26 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+if $expect_service; then
+    echo "${RED}--service requires a service name.${NC}"
+    echo "Known services: ${ALL_SERVICES[*]}"
+    exit 1
+fi
+
+# No explicit --service => install everything.
+if [[ ${#SERVICES[@]} -eq 0 ]]; then
+    SERVICES=("${ALL_SERVICES[@]}")
+fi
+
+# Is <name> in the selected set?
+service_selected() {
+    local want="$1" s
+    for s in "${SERVICES[@]}"; do
+        [[ "$s" == "$want" ]] && return 0
+    done
+    return 1
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -298,10 +371,22 @@ setup_conda_environment() {
 
     if conda env list 2>/dev/null | grep -q "^${CONDA_ENV_NAME} \|^${CONDA_ENV_NAME}$"; then
         print_ok "Environment '$CONDA_ENV_NAME' already exists"
-        echo ""
-        echo -n "  Recreate from scratch? This will remove the existing environment. (y/N) "
-        read -r response
-        if [[ "$response" =~ ^[Yy]$ ]]; then
+        local recreate=false
+        if $REBUILD; then
+            print_warn "--rebuild given: recreating '$CONDA_ENV_NAME' from scratch."
+            recreate=true
+        elif [[ ! -t 0 ]]; then
+            # Non-interactive (CI, nohup, IDE task runner): `read` returns empty
+            # immediately, which would silently mean "keep". Say so explicitly.
+            print_info "Non-interactive shell — keeping the existing environment."
+            print_info "Pass --rebuild to recreate it without a prompt."
+        else
+            echo ""
+            echo -n "  Recreate from scratch? This will remove the existing environment. (y/N) "
+            read -r response
+            [[ "$response" =~ ^[Yy]$ ]] && recreate=true
+        fi
+        if $recreate; then
             print_step "Removing existing environment..."
             conda env remove -n "$CONDA_ENV_NAME" -y
             print_step "Creating fresh environment with Python $PYTHON_VERSION..."
@@ -376,6 +461,7 @@ DEACTIVATE_EOF
 # ---------------------------------------------------------------------------
 install_dependencies() {
     print_header "Phase 4: Installing Python Dependencies"
+    print_info "Services: ${SERVICES[*]}    Hardware platform: $ML_PLATFORM"
 
     local -a CR=(conda run -n "$CONDA_ENV_NAME" --no-capture-output)
 
@@ -394,6 +480,7 @@ install_dependencies() {
     fi
 
     # --- stt ---
+    if service_selected stt; then
     print_header "  4a: stt (Speech-to-Text)"
     local stt_dir="$PROJECT_ROOT/apps/stt"
     if [[ -f "$stt_dir/pyproject.toml" ]]; then
@@ -416,8 +503,10 @@ install_dependencies() {
     else
         print_warn "stt pyproject.toml not found at $stt_dir — skipping"
     fi
+    fi
 
     # --- smr ---
+    if service_selected smr; then
     print_header "  4b: smr (Summary Agent)"
     local smr_dir="$PROJECT_ROOT/apps/smr"
     if [[ -f "$smr_dir/pyproject.toml" ]]; then
@@ -427,8 +516,10 @@ install_dependencies() {
     else
         print_warn "smr pyproject.toml not found at $smr_dir — skipping"
     fi
+    fi
 
     # --- nlp ---
+    if service_selected nlp; then
     print_header "  4c: nlp (Medical NLP)"
     local nlp_dir="$PROJECT_ROOT/apps/nlp"
     if [[ -f "$nlp_dir/pyproject.toml" ]]; then
@@ -438,8 +529,10 @@ install_dependencies() {
     else
         print_warn "nlp pyproject.toml not found at $nlp_dir — skipping"
     fi
+    fi
 
     # --- harness ---
+    if service_selected harness; then
     print_header "  4d: harness (Clinical Documentation Harness)"
     local harness_dir="$PROJECT_ROOT/apps/harness"
     if [[ -f "$harness_dir/pyproject.toml" ]]; then
@@ -455,8 +548,10 @@ install_dependencies() {
     else
         print_warn "harness pyproject.toml not found at $harness_dir — skipping"
     fi
+    fi
 
     # --- guardrail ---
+    if service_selected guardrail; then
     print_header "  4e: guardrail (Content Safety / Medical Validation)"
     local guardrail_dir="$PROJECT_ROOT/apps/guardrail"
     if [[ -f "$guardrail_dir/pyproject.toml" ]]; then
@@ -466,8 +561,10 @@ install_dependencies() {
     else
         print_warn "guardrail pyproject.toml not found at $guardrail_dir — skipping"
     fi
+    fi
 
     # --- tts ---
+    if service_selected tts; then
     print_header "  4f: tts (Text-to-Speech)"
     local tts_dir="$PROJECT_ROOT/apps/tts"
     if [[ -f "$tts_dir/pyproject.toml" ]]; then
@@ -485,6 +582,7 @@ install_dependencies() {
         print_ok "tts installed"
     else
         print_warn "tts pyproject.toml not found at $tts_dir — skipping"
+    fi
     fi
 
     # -----------------------------------------------------------------------
@@ -623,40 +721,35 @@ print_summary() {
     echo "  ${BOLD}Environment:${NC}  $CONDA_ENV_NAME"
     echo "  ${BOLD}Python:${NC}       $PYTHON_VERSION"
     echo "  ${BOLD}ML Platform:${NC}  $ML_PLATFORM"
+    echo "  ${BOLD}Services:${NC}     ${SERVICES[*]}"
     echo ""
     echo "  ${BOLD}Activate the environment:${NC}"
     echo "    ${CYAN}conda activate $CONDA_ENV_NAME${NC}"
     echo ""
-    echo "  ${BOLD}Run services from monorepo root:${NC}"
-    echo "    ${CYAN}pnpm dev:stt${NC}         — STT on port 8861"
-    echo "    ${CYAN}pnpm dev:smr${NC}         — SMR on port 8862"
-    echo "    ${CYAN}pnpm dev:guardrail${NC}   — Guardrail on port 8863"
-    echo "    ${CYAN}pnpm dev:nlp${NC}         — NLP on port 8864"
-    echo "    ${CYAN}pnpm dev:tts${NC}         — TTS on port 8865"
-    echo "    ${CYAN}pnpm dev:harness${NC}     — Harness on port 8866"
-    echo ""
-    echo "  ${BOLD}Run services directly:${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn stt.main:app --reload --app-dir apps/stt/src${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn smr.main:app --reload --app-dir apps/smr/src${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn guardrail.main:app --reload --app-dir apps/guardrail/src${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn nlp.main:app --reload --app-dir apps/nlp/src${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn tts.main:app --reload --app-dir apps/tts/src${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn harness.main:app --reload --app-dir apps/harness/src${NC}"
+    echo "  ${BOLD}Run a service (dev):${NC}"
+    echo "    ${CYAN}pnpm stt:dev${NC}         — STT on port 8861"
+    echo "    ${CYAN}pnpm smr:dev${NC}         — SMR on port 8862"
+    echo "    ${CYAN}pnpm guardrail:dev${NC}   — Guardrail on port 8863"
+    echo "    ${CYAN}pnpm nlp:dev${NC}         — NLP on port 8864"
+    echo "    ${CYAN}pnpm tts:dev${NC}         — TTS on port 8865"
+    echo "    ${CYAN}pnpm harness:dev${NC}     — Harness on port 8866"
+    echo "    ${CYAN}pnpm worker:dev${NC}      — Harness Temporal worker"
+    echo "    ${CYAN}pnpm stack:dev${NC}       — the whole app stack + infra"
     echo ""
     echo "  ${BOLD}Run tests:${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/stt/tests/ -v${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/smr/src/smr/tests/ -v${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/guardrail/src/guardrail/tests/ -v${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/nlp/tests/ -v${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/tts/src/tts/tests/ -v${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/harness/src/harness/tests/ -v${NC}"
+    echo "    ${CYAN}pnpm stt:test${NC}   ${CYAN}pnpm smr:test${NC}   ${CYAN}pnpm nlp:test${NC}"
+    echo "    ${CYAN}pnpm guardrail:test${NC}   ${CYAN}pnpm harness:test${NC}   ${CYAN}pnpm tts:test${NC}"
+    echo "    ${CYAN}pnpm test:py${NC}         — every Python suite"
+    echo ""
+    echo "  ${BOLD}Quality:${NC}"
+    echo "    ${CYAN}pnpm lint:py${NC}   ${CYAN}pnpm format:py${NC}   ${CYAN}pnpm typecheck:py${NC}"
     echo ""
 
     if [[ "$ML_PLATFORM" == "none" ]]; then
         echo "  ${YELLOW}Note: ML dependencies were not installed.${NC}"
         echo "  ${YELLOW}To add ML support, re-run with --apple or --gpu:${NC}"
-        echo "    ${CYAN}./scripts/setup-python-env.sh --install --apple${NC}"
-        echo "    ${CYAN}./scripts/setup-python-env.sh --install --gpu${NC}"
+        echo "    ${CYAN}pnpm setup:python:apple${NC}   (or: pnpm stt:setup:apple)"
+        echo "    ${CYAN}pnpm setup:python:gpu${NC}     (or: pnpm stt:setup:gpu)"
         echo ""
     fi
 }
@@ -680,6 +773,9 @@ main() {
     fi
 
     if $INSTALL_ONLY; then
+        # --rebuild still recreates the env even in install-only mode; otherwise
+        # the flag would be silently ignored.
+        $REBUILD && setup_conda_environment
         install_dependencies
         print_summary
         exit 0

@@ -33,23 +33,23 @@
     "yargs": "^18.0.0"
   },
   "scripts": {
-    "prisma-commander": "ts-node src/prisma-commander/index.ts",
-    "generate-prisma-index": "ts-node src/generate-prisma-index.ts",
-    "generate-data-model": "ts-node src/generate-data-model/index.ts --overwrite true",
-    "generate-data-model:all": "ts-node src/generate-data-model/index.ts --yes --overwrite true",
-    "generate-data-model:check": "ts-node src/generate-data-model/index.ts --check",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "gen-api-key": "ts-node src/gen-api-key/index.ts create",
+    "gen-dev-token": "ts-node src/gen-dev-token/index.ts",
+    "generate-controller": "ts-node src/generate-controller/index.ts",
     "generate-data-entity": "ts-node src/generate-data-entity/index.ts",
     "generate-data-entity:all": "ts-node src/generate-data-entity/index.ts --yes",
     "generate-data-entity:check": "ts-node src/generate-data-entity/index.ts --check",
-    "generate-mapper": "ts-node src/generate-mapper/index.ts",
-    "generate-repository": "ts-node src/generate-repository/index.ts --overwrite true",
+    "generate-data-model": "ts-node src/generate-data-model/index.ts --overwrite true",
+    "generate-data-model:all": "ts-node src/generate-data-model/index.ts --yes --overwrite true",
+    "generate-data-model:check": "ts-node src/generate-data-model/index.ts --check",
     "generate-factory": "ts-node src/generate-factory/index.ts",
     "generate-factory:all": "ts-node src/generate-factory/index.ts --yes",
     "generate-factory:check": "ts-node src/generate-factory/index.ts --check",
+    "generate-mapper": "ts-node src/generate-mapper/index.ts",
+    "generate-prisma-index": "ts-node src/generate-prisma-index.ts",
+    "generate-repository": "ts-node src/generate-repository/index.ts --overwrite true",
     "generate-service-module": "ts-node src/generate-service-module/index.ts",
-    "generate-controller": "ts-node src/generate-controller/index.ts",
-    "gen-dev-token": "ts-node src/gen-dev-token/index.ts",
-    "gen-api-key": "ts-node src/gen-api-key/index.ts create"
+    "prisma-commander": "ts-node src/prisma-commander/index.ts"
   }
 }

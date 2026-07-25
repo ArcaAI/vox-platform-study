@@ -33,13 +33,13 @@ production, so local dev exercises the real code path.
 # From the monorepo root. Brings a fresh (or freshly-reset) checkout to a
 # bootable state: infra up → wait for Postgres+Vault → migrations+seed →
 # refresh AppRole creds in .env.dev → bootstrap Vault's DB engine + smoke test.
-pnpm dev:setup
+pnpm setup:dev
 
 # Then start the API (now boots against Vault with dynamic PG creds):
-pnpm dev:api
+pnpm api:dev
 ```
 
-`pnpm dev:setup` (→ `scripts/dev-setup.sh`) is the source of truth and is
+`pnpm setup:dev` (→ `scripts/dev-setup.sh`) is the source of truth and is
 idempotent — safe to re-run. It orchestrates three helper scripts you can also
 run individually:
 
@@ -100,12 +100,12 @@ To run without Vault, set `SECRETS_PROVIDER=env` and `PG_DYNAMIC_CREDS=false`
 in `.env.dev`; the app then reads secrets directly from `.env.dev` and connects
 with the static `DATABASE_URL`. The Vault containers can stay down in this mode.
 
-### Troubleshooting a failed `pnpm dev:api` boot
+### Troubleshooting a failed `pnpm api:dev` boot
 
 The errors below are the common first-boot failures on a fresh checkout (or
 after `docker compose down -v`, which wipes the in-memory dev Vault). They
 surface in boot order — fixing one reveals the next — so the fastest path is
-just `pnpm dev:setup`, which performs every step idempotently. To debug a
+just `pnpm setup:dev`, which performs every step idempotently. To debug a
 single stage:
 
 | Symptom in the boot log | Root cause | Fix |
@@ -164,8 +164,8 @@ dev runs with **zero** observability tools by default.
 ### Opt-in pull stack (Prometheus + Grafana)
 
 ```bash
-pnpm infra:observability:up     # Prometheus :9090 · Grafana :3001
-pnpm infra:observability:down
+pnpm infra:dev:up:observability     # Prometheus :9090 · Grafana :3001
+pnpm infra:dev:down
 ```
 
 Alias for the TASK-397 canonical command

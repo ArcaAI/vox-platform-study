@@ -8,7 +8,7 @@ This directory holds the monorepo-level test assets: shared helpers, fixtures, g
 
 - `.env.test` at the repo root (all test commands load it via `dotenv -e .env.test`)
 - Docker running, for anything beyond pure unit tests
-- Test infrastructure up: `pnpm test:setup` (one command) or `pnpm docker:test:up` + `pnpm test:db:push` + `pnpm test:db:seed`
+- Test infrastructure up: `pnpm setup:test` (one command) or `pnpm infra:test:up` + `pnpm test:db:push` + `pnpm test:db:seed`
 
 ## Directory map
 
@@ -36,10 +36,10 @@ Compose project `hope-test` provides throwaway containers, isolated from dev by 
 Managed by `scripts/start-test-infra.sh`:
 
 ```bash
-pnpm docker:test:up        # start + wait + validate
-pnpm docker:test:validate  # re-run health validation
-pnpm docker:test:logs      # follow logs
-pnpm docker:test:down      # stop and REMOVE volumes
+pnpm infra:test:up        # start + wait + validate
+pnpm infra:test:validate  # re-run health validation
+pnpm infra:test:logs      # follow logs
+pnpm infra:test:down      # stop and REMOVE volumes
 ```
 
 The init containers (`minio-createbuckets`, `qdrant-init-test`) exit 0 after doing their work — compose may report them as "exited", which is expected.
@@ -52,21 +52,21 @@ All root aliases load `.env.test` via dotenv-cli. Verified against root `package
 |---|---|---|---|
 | Unit | `pnpm test:unit` (watch: `test:unit:watch`, UI: `test:unit:ui`, coverage: `test:coverage`) | `vitest.config.ts` | All `**/*.test.ts` / `**/*.spec.ts` across packages and apps, excluding `integration/`, `e2e/`, `apps/ui-playground/`, the PgBouncer rig, and `*.postgres.test.ts`. Browser-focused packages run under jsdom. No infra needed. Setup: `tests/setup/vitest.setup.ts`. |
 | Integration | `pnpm test:integration` | `vitest.integration.config.ts` | `**/integration/**/*.test.ts`, sequential (single fork), against the live test DB. Requires test infra up. Setup: `tests/setup/integration.setup.ts` (resets DB before each test). |
-| API E2E | `pnpm test:e2e` (UI: `test:e2e:ui`, debug: `test:e2e:debug`) | `playwright.config.ts` | `apps/api/tests/e2e/**/*.spec.ts` against a RUNNING test API (`API_URL`, default `http://localhost:8868/api/v1`). Start it first: `pnpm test:api:up`. Global setup/teardown from `tests/setup/`. `pnpm test:e2e:all` runs the turbo `test:e2e` task across packages instead. |
+| API E2E | `pnpm test:e2e` (UI: `test:e2e:ui`, debug: `test:e2e:debug`) | `playwright.config.ts` | `apps/api/tests/e2e/**/*.spec.ts` against a RUNNING test API (`API_URL`, default `http://localhost:8868/api/v1`). Start it first: `pnpm test:up:api`. Global setup/teardown from `tests/setup/`. `pnpm test:e2e:all` runs the turbo `test:e2e` task across packages instead. |
 | Contract | part of `pnpm test:unit` | `vitest.config.ts` | `tests/contracts/*.contract.test.ts` — pure schema validation, no services needed. |
 | Cross-tenant | part of `pnpm test:unit` | `vitest.config.ts` | `tests/cross-tenant/example.test.ts` pins the fixture shape; downstream tenant-isolation tests import `tests/cross-tenant/fixtures.ts` from their own packages. |
 | SDK E2E | `npx playwright test -c tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/*.e2e.spec.ts` against a running API (`API_URL`, default `http://localhost:8868`). No root pnpm alias. |
-| All | `pnpm test:all` / `pnpm test:ci` | — | unit, then integration, then E2E. |
+| All | `pnpm test:all` / `pnpm test:all` | — | unit, then integration, then E2E. |
 
 Database helpers for the test DB: `pnpm test:db:push` (force-push schema), `pnpm test:db:seed` (seed + media seed), `pnpm test:db:reset` (both).
 
 Typical full sequence from a fresh checkout:
 
 ```bash
-pnpm test:setup      # infra + schema + seed
+pnpm setup:test      # infra + schema + seed
 pnpm test:unit
 pnpm test:integration
-pnpm test:api:up     # terminal 1 — test API on 8868
+pnpm test:up:api     # terminal 1 — test API on 8868
 pnpm test:e2e        # terminal 2
 ```
 

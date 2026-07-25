@@ -161,7 +161,7 @@ Every existing clause re-parameterized over `[ModelCache, SyncModelCache]`, plus
 
 ### 5.5 Gates
 
-`pnpm py:harness:test|lint|typecheck` · `pnpm py:stt:test|lint|typecheck` · `pnpm py:tts:test|lint|typecheck` · `pytest packages/py-runtime-models/tests/` · `uv lock --check` clean.
+`pnpm harness:test|lint|typecheck` · `pnpm stt:test|lint|typecheck` · `pnpm tts:test|lint|typecheck` · `pytest packages/py-runtime-models/tests/` · `uv lock --check` clean.
 
 > **Worktree hazard (verified 2026-07-20 — read before running any Python gate).** `arcaenv`'s editable installs are `.pth` files hardcoding the **main** checkout (e.g. `__editable__.stt-2.0.0.pth` → `<main>/apps/stt/src`). A bare `pnpm py:<svc>:test` inside a worktree collects the worktree's test *files* but imports **main-tree source** — a green run proves nothing. Export `PYTHONPATH=<worktree>/apps/<svc>/src` before every pytest gate, and state in §9 that you did.
 

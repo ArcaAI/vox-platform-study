@@ -6,10 +6,12 @@
     "types": "./dist/index.d.ts",
     "scripts": {
         "build": "tsc",
+        "dev": "tsc -w",
         "clean": "rimraf dist tsconfig.tsbuildinfo",
         "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
-        "dev": "tsc -w",
-        "lint": "eslint \"src/**/*.ts*\" --max-warnings 0"
+        "lint": "eslint \"src/**/*.ts*\" --max-warnings 0",
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run --passWithNoTests"
     },
     "devDependencies": {
         "@arcaai/config-eslint": "workspace:*",
