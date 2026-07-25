@@ -10,13 +10,13 @@
  * @param name
  */
 export function simpleNames(name: string) {
-    return {
-        name,
-        className: toClassName(name),
-        propertyName: toPropertyName(name),
-        constantName: toConstantName(name),
-        fileName: toFileName(name),
-    };
+  return {
+    name,
+    className: toClassName(name),
+    propertyName: toPropertyName(name),
+    constantName: toConstantName(name),
+    fileName: toFileName(name),
+  };
 }
 
 /**
@@ -95,38 +95,38 @@ export default names;
  * Hyphenated to UpperCamelCase
  */
 export function toClassName(str: string) {
-    return toCapitalCase(toPropertyName(str));
+  return toCapitalCase(toPropertyName(str));
 }
 /**
  * Hyphenated to lowerCamelCase
  */
 export function toPropertyName(s: string) {
-    return s
-        .replace(/([^a-zA-Z0-9])+(.)?/g, (_, __, chr) => chr ? chr.toUpperCase() : '')
-        .replace(/[^a-zA-Z\d]/g, '')
-        .replace(/^([A-Z])/, (m) => m.toLowerCase());
+  return s
+    .replace(/([^a-zA-Z0-9])+(.)?/g, (_, __, chr) => (chr ? chr.toUpperCase() : ''))
+    .replace(/[^a-zA-Z\d]/g, '')
+    .replace(/^([A-Z])/, (m) => m.toLowerCase());
 }
 /**
  * Hyphenated to CONSTANT_CASE
  */
 export function toConstantName(s: string) {
-    const normalizedS = s.toUpperCase() === s ? s.toLowerCase() : s;
-    return toFileName(toPropertyName(normalizedS))
-        .replace(/([^a-zA-Z0-9])/g, '_')
-        .toUpperCase();
+  const normalizedS = s.toUpperCase() === s ? s.toLowerCase() : s;
+  return toFileName(toPropertyName(normalizedS))
+    .replace(/([^a-zA-Z0-9])/g, '_')
+    .toUpperCase();
 }
 /**
  * Upper camelCase to lowercase, hyphenated
  */
 export function toFileName(s: string) {
-    return s
-        .replace(/([a-z\d])([A-Z])/g, '$1_$2')
-        .toLowerCase()
-        .replace(/(?!^[_])[ _]/g, '-');
+  return s
+    .replace(/([a-z\d])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/(?!^[_])[ _]/g, '-');
 }
 /**
  * Capitalizes the first letter of a string
  */
 export function toCapitalCase(s: string) {
-    return s.charAt(0).toUpperCase() + s.slice(1);
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -121,9 +121,7 @@ export async function isTransformersModelCached(modelId: string): Promise<boolea
 
     // Transformers.js uses cache name pattern: 'transformers-cache'
     const cacheNames = await caches.keys();
-    const transformersCaches = cacheNames.filter(name =>
-      name.includes('transformers') || name.includes('huggingface')
-    );
+    const transformersCaches = cacheNames.filter((name) => name.includes('transformers') || name.includes('huggingface'));
 
     for (const cacheName of transformersCaches) {
       const cache = await caches.open(cacheName);
@@ -154,9 +152,7 @@ export async function getTransformersCacheInfo(modelId: string): Promise<Transfo
     }
 
     const cacheNames = await caches.keys();
-    const transformersCaches = cacheNames.filter(name =>
-      name.includes('transformers') || name.includes('huggingface')
-    );
+    const transformersCaches = cacheNames.filter((name) => name.includes('transformers') || name.includes('huggingface'));
 
     let totalSize = 0;
     const files: string[] = [];
@@ -211,9 +207,7 @@ export async function clearTransformersModelCache(modelId: string): Promise<bool
     }
 
     const cacheNames = await caches.keys();
-    const transformersCaches = cacheNames.filter(name =>
-      name.includes('transformers') || name.includes('huggingface')
-    );
+    const transformersCaches = cacheNames.filter((name) => name.includes('transformers') || name.includes('huggingface'));
 
     let deletedAny = false;
 
@@ -246,9 +240,7 @@ export async function getAllCachedTransformersModels(): Promise<string[]> {
     }
 
     const cacheNames = await caches.keys();
-    const transformersCaches = cacheNames.filter(name =>
-      name.includes('transformers') || name.includes('huggingface')
-    );
+    const transformersCaches = cacheNames.filter((name) => name.includes('transformers') || name.includes('huggingface'));
 
     const modelIds = new Set<string>();
 
@@ -283,9 +275,7 @@ export async function getTotalTransformersCacheSize(): Promise<number> {
     }
 
     const cacheNames = await caches.keys();
-    const transformersCaches = cacheNames.filter(name =>
-      name.includes('transformers') || name.includes('huggingface')
-    );
+    const transformersCaches = cacheNames.filter((name) => name.includes('transformers') || name.includes('huggingface'));
 
     let totalSize = 0;
 
@@ -319,9 +309,7 @@ export async function clearAllTransformersCache(): Promise<boolean> {
     }
 
     const cacheNames = await caches.keys();
-    const transformersCaches = cacheNames.filter(name =>
-      name.includes('transformers') || name.includes('huggingface')
-    );
+    const transformersCaches = cacheNames.filter((name) => name.includes('transformers') || name.includes('huggingface'));
 
     for (const cacheName of transformersCaches) {
       await caches.delete(cacheName);
@@ -333,4 +321,3 @@ export async function clearAllTransformersCache(): Promise<boolean> {
     return false;
   }
 }
-

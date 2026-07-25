@@ -124,11 +124,7 @@ export class ModelSourceManager {
    * 2. Custom source (if set)
    * 3. Default remote URL
    */
-  async getBestSource(
-    modelId: string,
-    localPath: string | undefined,
-    defaultRemoteUrl: string
-  ): Promise<string> {
+  async getBestSource(modelId: string, localPath: string | undefined, defaultRemoteUrl: string): Promise<string> {
     // 1. Try local first if preferred
     if (this.config.preferLocal && localPath) {
       const isLocal = await this.isLocallyAvailable(localPath);
@@ -168,7 +164,7 @@ export class ModelSourceManager {
    */
   async downloadFromHuggingFace(
     repo: HuggingFaceRepo,
-    onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void
+    onProgress?: (progress: { loaded: number; total: number; percentage: number }) => void,
   ): Promise<ArrayBuffer> {
     const url = this.buildHuggingFaceUrl(repo);
 
@@ -243,4 +239,3 @@ export function getModelSourceManager(): ModelSourceManager {
   }
   return modelSourceManager;
 }
-

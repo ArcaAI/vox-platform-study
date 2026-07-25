@@ -15,9 +15,7 @@ export function toCamelCase(str: string): string {
     .split(/[\s_-]+/)
     .map((word, index) => {
       if (!word) return '';
-      return index === 0
-        ? word.toLowerCase()
-        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      return index === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join('');
 }

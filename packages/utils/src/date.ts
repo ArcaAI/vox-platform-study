@@ -91,11 +91,7 @@ export function getRelativeTime(timestamp: DateInput, locale = 'en-US'): string 
 export function isToday(timestamp: DateInput): boolean {
   const date = new Date(timestamp);
   const today = new Date();
-  return (
-    date.getFullYear() === today.getFullYear() &&
-    date.getMonth() === today.getMonth() &&
-    date.getDate() === today.getDate()
-  );
+  return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
 }
 
 /**
@@ -104,4 +100,3 @@ export function isToday(timestamp: DateInput): boolean {
 export function now(): Timestamp {
   return new Date().toISOString();
 }
-

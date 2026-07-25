@@ -275,6 +275,11 @@
         "PG_DYNAMIC_CREDS",
         "PG_VAULT_ROLE",
         "ENABLE_PRISMA_STUDIO",
-        "METRICS_COLLECT_INTERVAL"
+        "METRICS_COLLECT_INTERVAL",
+        "API_KEY_PEPPER",
+        "OUTPUT_PATH",
+        "MINIO_ENDPOINT",
+        "MINIO_ACCESS_KEY",
+        "MINIO_SECRET_KEY"
     ]
 }

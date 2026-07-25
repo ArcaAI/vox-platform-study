@@ -14,14 +14,10 @@ export enum LogLevel {
  * @returns Method decorator
  */
 export function LogMethod(level: LogLevel = LogLevel.INFO) {
-  return function (
-    target: any,
-    propertyKey: string,
-    descriptor: PropertyDescriptor
-  ) {
+  return function (_target: object, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
-    descriptor.value = function (...args: any[]) {
+    descriptor.value = function (...args: unknown[]) {
       const start = performance.now();
       const logger = new Logger(`Method:${propertyKey}`);
 
@@ -73,38 +69,38 @@ export function LogMethod(level: LogLevel = LogLevel.INFO) {
  * ANSI color codes for terminal output
  */
 const Colors = {
-  reset: "\x1b[0m",
-  bright: "\x1b[1m",
-  dim: "\x1b[2m",
-  underscore: "\x1b[4m",
-  blink: "\x1b[5m",
-  reverse: "\x1b[7m",
-  hidden: "\x1b[8m",
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  dim: '\x1b[2m',
+  underscore: '\x1b[4m',
+  blink: '\x1b[5m',
+  reverse: '\x1b[7m',
+  hidden: '\x1b[8m',
 
   // Foreground colors
   fg: {
-    black: "\x1b[30m",
-    red: "\x1b[31m",
-    green: "\x1b[32m",
-    yellow: "\x1b[33m",
-    blue: "\x1b[34m",
-    magenta: "\x1b[35m",
-    cyan: "\x1b[36m",
-    white: "\x1b[37m",
-    gray: "\x1b[90m",
+    black: '\x1b[30m',
+    red: '\x1b[31m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    blue: '\x1b[34m',
+    magenta: '\x1b[35m',
+    cyan: '\x1b[36m',
+    white: '\x1b[37m',
+    gray: '\x1b[90m',
   },
 
   // Background colors
   bg: {
-    black: "\x1b[40m",
-    red: "\x1b[41m",
-    green: "\x1b[42m",
-    yellow: "\x1b[43m",
-    blue: "\x1b[44m",
-    magenta: "\x1b[45m",
-    cyan: "\x1b[46m",
-    white: "\x1b[47m",
-  }
+    black: '\x1b[40m',
+    red: '\x1b[41m',
+    green: '\x1b[42m',
+    yellow: '\x1b[43m',
+    blue: '\x1b[44m',
+    magenta: '\x1b[45m',
+    cyan: '\x1b[46m',
+    white: '\x1b[47m',
+  },
 };
 
 /**
@@ -152,52 +148,40 @@ export class Logger {
   /**
    * Log an error message
    */
-  error(message: string, ...optionalParams: any[]): void {
+  error(message: string, ...optionalParams: unknown[]): void {
     if (this.enabled) {
       const levelTag = `${Colors.fg.red}${Colors.bright}[${LogLevel.ERROR}]${Colors.reset}`;
-      console.error(
-        `${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`,
-        ...optionalParams
-      );
+      console.error(`${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`, ...optionalParams);
     }
   }
 
   /**
    * Log a warning message
    */
-  warn(message: string, ...optionalParams: any[]): void {
+  warn(message: string, ...optionalParams: unknown[]): void {
     if (this.enabled) {
       const levelTag = `${Colors.fg.yellow}${Colors.bright}[${LogLevel.WARN}]${Colors.reset}`;
-      console.warn(
-        `${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`,
-        ...optionalParams
-      );
+      console.warn(`${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`, ...optionalParams);
     }
   }
 
   /**
    * Log an info message
    */
-  info(message: string, ...optionalParams: any[]): void {
+  info(message: string, ...optionalParams: unknown[]): void {
     if (this.enabled) {
       const levelTag = `${Colors.fg.green}[${LogLevel.INFO}]${Colors.reset}`;
-      console.info(
-        `${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`,
-        ...optionalParams
-      );
+      console.info(`${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`, ...optionalParams);
     }
   }
 
   /**
    * Log a debug message
    */
-  debug(message: string, ...optionalParams: any[]): void {
+  debug(message: string, ...optionalParams: unknown[]): void {
     if (this.enabled) {
       const levelTag = `${Colors.fg.blue}[${LogLevel.DEBUG}]${Colors.reset}`;
-      console.debug(
-        `${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`,
-        ...optionalParams
-      );
+      console.debug(`${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`, ...optionalParams);
     }
   }
 }

@@ -24,18 +24,13 @@ function parseEntityFile(filePath: string): EntityMetadata {
   const fileContent = fs.readFileSync(filePath, 'utf8');
 
   // Create a TS source file
-  const sourceFile = ts.createSourceFile(
-    path.basename(filePath),
-    fileContent,
-    ts.ScriptTarget.Latest,
-    true
-  );
+  const sourceFile = ts.createSourceFile(path.basename(filePath), fileContent, ts.ScriptTarget.Latest, true);
 
   const result: EntityMetadata = {
     entityName: '',
     baseClassName: '',
     properties: [],
-    interfaceName: ''
+    interfaceName: '',
   };
 
   let interfaceName: string | null = null;
@@ -44,19 +39,10 @@ function parseEntityFile(filePath: string): EntityMetadata {
   const omittedProperties: Set<string> = new Set();
 
   // Helper function to find the interface property type
-  function findPropertyTypeInInterface(
-    interfaceDeclaration: ts.InterfaceDeclaration,
-    propertyName: string
-  ): string | null {
+  function findPropertyTypeInInterface(interfaceDeclaration: ts.InterfaceDeclaration, propertyName: string): string | null {
     // Check direct properties in this interface
     for (const member of interfaceDeclaration.members) {
-      if (
-        ts.isPropertySignature(member) &&
-        member.name &&
-        ts.isIdentifier(member.name) &&
-        member.name.text === propertyName &&
-        member.type
-      ) {
+      if (ts.isPropertySignature(member) && member.name && ts.isIdentifier(member.name) && member.name.text === propertyName && member.type) {
         return member.type.getText(sourceFile);
       }
     }
@@ -96,7 +82,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
     // Handle both single properties and union types (| separated)
     const propMatches = propertiesStr.match(/'([^']+)'|"([^"]+)"/g);
     if (propMatches) {
-      propMatches.forEach(match => {
+      propMatches.forEach((match) => {
         // Remove quotes
         const prop = match.replace(/['"]/g, '');
         properties.push(prop);
@@ -153,11 +139,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
 
   ts.forEachChild(sourceFile, (node) => {
     if (ts.isInterfaceDeclaration(node)) {
-      if (
-        node.heritageClauses &&
-        node.heritageClauses.length > 0 &&
-        node.heritageClauses[0].token === ts.SyntaxKind.ExtendsKeyword
-      ) {
+      if (node.heritageClauses && node.heritageClauses.length > 0 && node.heritageClauses[0].token === ts.SyntaxKind.ExtendsKeyword) {
         // Potential entity interface - should be named like XxxEntityProps
         if (node.name.text.endsWith('Props') || node.name.text.endsWith('EntityProps')) {
           interfaceName = node.name.text;
@@ -169,7 +151,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
             if (typeText.includes('Omit<')) {
               // Extract omitted property names
               const omittedProps = extractOmittedProperties(typeText);
-              omittedProps.forEach(prop => omittedProperties.add(prop));
+              omittedProps.forEach((prop) => omittedProperties.add(prop));
             }
           }
         }
@@ -182,11 +164,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
   // If we didn't find an interface ending with Props, take the first one that extends something
   if (!interfaceName) {
     for (const [name, iface] of interfaceMap) {
-      if (
-        iface.heritageClauses &&
-        iface.heritageClauses.length > 0 &&
-        iface.heritageClauses[0].token === ts.SyntaxKind.ExtendsKeyword
-      ) {
+      if (iface.heritageClauses && iface.heritageClauses.length > 0 && iface.heritageClauses[0].token === ts.SyntaxKind.ExtendsKeyword) {
         interfaceName = name;
         result.interfaceName = interfaceName;
 
@@ -196,7 +174,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
           if (typeText.includes('Omit<')) {
             // Extract omitted property names
             const omittedProps = extractOmittedProperties(typeText);
-            omittedProps.forEach(prop => omittedProperties.add(prop));
+            omittedProps.forEach((prop) => omittedProperties.add(prop));
           }
         }
 
@@ -226,11 +204,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
       if (entityInterface) {
         // Process class properties (looking for ones with '_' prefix)
         classDecl.members.forEach((member) => {
-          if (ts.isPropertyDeclaration(member) &&
-            member.name &&
-            ts.isIdentifier(member.name) &&
-            member.name.text.startsWith('_')) {
-
+          if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name) && member.name.text.startsWith('_')) {
             const prefixedName = member.name.text;
             const propertyName = getPropertyNameWithoutPrefix(prefixedName);
             let propertyType = 'unknown';
@@ -289,7 +263,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
               type: propertyType,
               isRelationship: false,
               isOptional: false,
-              isArray: false
+              isArray: false,
             });
           }
         });
@@ -313,7 +287,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
         type: 'Entity.Tenant',
         isRelationship: true,
         isOptional: false,
-        isArray: false
+        isArray: false,
       });
     }
 
@@ -324,7 +298,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
         type: 'Entity.Tag[]',
         isRelationship: true,
         isOptional: false,
-        isArray: true
+        isArray: true,
       });
     }
   }
@@ -337,16 +311,16 @@ function parseEntityFile(filePath: string): EntityMetadata {
         type: 'Entity.Tenant',
         isRelationship: true,
         isOptional: false,
-        isArray: false
+        isArray: false,
       });
     }
   }
 
   // Filter out properties that were omitted in the interface extension
-  result.properties = result.properties.filter(prop => !Array.from(omittedProperties).some(x => x.includes(prop.name.toLocaleLowerCase())));
+  result.properties = result.properties.filter((prop) => !Array.from(omittedProperties).some((x) => x.includes(prop.name.toLocaleLowerCase())));
 
   // Process property types to determine if they are optional or arrays
-  result.properties = result.properties.map(prop => {
+  result.properties = result.properties.map((prop) => {
     const isOptional = prop.type.includes('null') || prop.type.includes('[]') || prop.type.includes('Array');
     const isArray = prop.type.includes('[]') || prop.type.includes('Array');
     const isRelationship = prop.type.includes('Entity');
@@ -355,12 +329,18 @@ function parseEntityFile(filePath: string): EntityMetadata {
 
     // Remove null and clean up type
     if (isOptional) {
-      cleanType = cleanType.replace(/\s*\|\s*null/g, '').replace(/null\s*\|\s*/g, '').trim();
+      cleanType = cleanType
+        .replace(/\s*\|\s*null/g, '')
+        .replace(/null\s*\|\s*/g, '')
+        .trim();
     }
 
     // Remove array brackets
     if (isArray) {
-      cleanType = cleanType.replace(/\[\]/g, '').replace(/Array<(.*)>/g, '$1').trim();
+      cleanType = cleanType
+        .replace(/\[\]/g, '')
+        .replace(/Array<(.*)>/g, '$1')
+        .trim();
     }
 
     return {
@@ -368,7 +348,7 @@ function parseEntityFile(filePath: string): EntityMetadata {
       type: cleanType,
       isOptional,
       isArray,
-      isRelationship
+      isRelationship,
     };
   });
 
@@ -381,7 +361,7 @@ function printEntityMetadata(metadata: EntityMetadata): void {
   console.log(`Interface Name: ${metadata.interfaceName}`);
 
   console.log('\nProperties:');
-  metadata.properties.forEach(prop => {
+  metadata.properties.forEach((prop) => {
     console.log(`- ${prop.name}: ${prop.type}`);
   });
 }
