@@ -22,8 +22,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
-  render: () => (
-    <TreeProvider defaultExpandedIds={['src']} className="w-64">
+  args: { defaultExpandedIds: ['src'], className: 'w-64', children: null },
+  render: (args) => (
+    <TreeProvider {...args}>
       <TreeView>
         <TreeNode nodeId="src">
           <TreeNodeTrigger>

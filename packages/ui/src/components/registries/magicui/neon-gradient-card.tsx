@@ -9,7 +9,7 @@ interface NeonColorsProps {
   secondColor: string;
 }
 
-interface NeonGradientCardProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface NeonGradientCardProps extends React.HTMLAttributes<HTMLDivElement> {
   /**
    * @default <div />
    * @type ReactElement

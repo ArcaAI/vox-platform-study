@@ -14,17 +14,20 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
-  render: () => (
-    <AvatarStack>
-      <Avatar>
+  // Passed as an array rather than a fragment: AvatarStack uses `Children.map`
+  // to wrap each avatar, and a fragment would collapse to a single child.
+  args: {
+    children: [
+      <Avatar key="a">
         <AvatarFallback>A</AvatarFallback>
-      </Avatar>
-      <Avatar>
+      </Avatar>,
+      <Avatar key="b">
         <AvatarFallback>B</AvatarFallback>
-      </Avatar>
-      <Avatar>
+      </Avatar>,
+      <Avatar key="c">
         <AvatarFallback>C</AvatarFallback>
-      </Avatar>
-    </AvatarStack>
-  ),
+      </Avatar>,
+    ],
+  },
+  render: (args) => <AvatarStack {...args} />,
 };

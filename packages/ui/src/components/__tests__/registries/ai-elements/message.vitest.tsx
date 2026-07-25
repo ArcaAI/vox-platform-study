@@ -32,7 +32,7 @@ describe('Message', () => {
         <MessageContent>Test</MessageContent>
       </Message>
     )
-    expect(container.firstChild?.className).toContain('is-user')
+    expect(container.firstElementChild?.className).toContain('is-user')
   })
 
   it('renders message actions', () => {

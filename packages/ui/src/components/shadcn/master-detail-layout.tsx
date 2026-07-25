@@ -37,9 +37,22 @@ interface MasterDetailColumnState<TItem = unknown> {
   enabled?: boolean;
 }
 
+/**
+ * Item type used where a heterogeneous list of columns is accepted.
+ *
+ * `TItem` is invariant on the definition/state (it appears in both parameter and
+ * return positions), so `MasterDetailColumnDefinition<FruitItem>` is *not*
+ * assignable to `MasterDetailColumnDefinition<unknown>`. Each column in a layout
+ * may also describe a different item type, so there is no single `TItem` the
+ * array could be parameterised with. `any` is the boundary escape hatch — the
+ * layout never inspects items itself, it only hands each one back to the
+ * `renderItem`/`keyExtractor` that declared it.
+ */
+type MasterDetailAnyItem = any;
+
 interface MasterDetailLayoutProps {
-  columns: MasterDetailColumnDefinition[];
-  states: MasterDetailColumnState[];
+  columns: MasterDetailColumnDefinition<MasterDetailAnyItem>[];
+  states: MasterDetailColumnState<MasterDetailAnyItem>[];
   height?: string;
   className?: string;
 }
@@ -250,8 +263,8 @@ interface MasterDetailDetailState {
 }
 
 interface MasterDetailComposedProps {
-  listColumns: MasterDetailColumnDefinition[];
-  listStates: MasterDetailColumnState[];
+  listColumns: MasterDetailColumnDefinition<MasterDetailAnyItem>[];
+  listStates: MasterDetailColumnState<MasterDetailAnyItem>[];
   detailColumn?: MasterDetailDetailColumnDefinition;
   detailState?: MasterDetailDetailState;
   height?: string;

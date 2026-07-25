@@ -89,7 +89,7 @@ ConfettiComponent.displayName = 'Confetti';
 // Export as Confetti
 export const Confetti = ConfettiComponent;
 
-interface ConfettiButtonProps extends React.ComponentProps<'button'> {
+export interface ConfettiButtonProps extends React.ComponentProps<'button'> {
   options?: ConfettiOptions & ConfettiGlobalOptions & { canvas?: HTMLCanvasElement };
 }
 

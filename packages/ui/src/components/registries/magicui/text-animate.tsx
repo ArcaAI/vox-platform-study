@@ -16,7 +16,7 @@ type AnimationVariant =
   | 'scaleUp'
   | 'scaleDown';
 
-interface TextAnimateProps extends MotionProps {
+export interface TextAnimateProps extends MotionProps {
   /**
    * The text content to animate
    */

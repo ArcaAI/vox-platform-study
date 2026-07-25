@@ -39,7 +39,7 @@ const Sparkle: React.FC<Sparkle> = ({ id, x, y, color, delay, scale }) => {
   );
 };
 
-interface SparklesTextProps {
+export interface SparklesTextProps {
   /**
    * @default <div />
    * @type ReactElement
