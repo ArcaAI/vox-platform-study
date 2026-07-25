@@ -19,7 +19,18 @@ Root `package.json` uses one taxonomy, with no legacy aliases:
 Targets: `api`, `admin`, `ui`, `sdk`, `stt`, `smr`, `nlp`, `guardrail`, `harness`, `tts`, `worker`.
 Every target supports the same verbs where they apply: `setup` (+`:cpu`/`:apple`/`:gpu` for Python), `dev`, `dev:watch`, `build`, `test` (+`:unit`/`:integration`/`:e2e`/`:cov`/`:managed`), `lint`, `lint:fix`, `typecheck`, `format`, `format:check`, `clean`.
 
-**DEV and TEST application ports are the same** (api 8868, stt 8861, …); only the infra ports differ (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335). A dev stack and a test stack therefore cannot run at the same time — every launcher refuses a bound port rather than letting a suite silently hit the dev database.
+### Ports — DEV and TEST are fully independent
+
+TEST application ports are **DEV + 100**, so both stacks can run at the same time:
+
+| | api | stt | smr | guardrail | nlp | tts | harness | admin | inspector |
+|---|---|---|---|---|---|---|---|---|---|
+| **dev** | 8868 | 8861 | 8862 | 8863 | 8864 | 8865 | 8866 | 5176 | 9229 |
+| **test** | 8968 | 8961 | 8962 | 8963 | 8964 | 8965 | 8966 | 5276 | 9329 |
+
+Infra ports already differed: Postgres 5432/5433, Redis 6379/6380, MinIO 9000/9002, Qdrant 6333/6335.
+
+Every script reads these from `.env.test` rather than hardcoding them, and `pnpm stack:test:doctor` fails if any test port has drifted back onto its dev counterpart — that drift is what would let a suite silently hit the DEV database.
 
 ## Prerequisites
 

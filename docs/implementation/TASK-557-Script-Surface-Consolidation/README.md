@@ -102,7 +102,8 @@ or `@arcaai/tools`. Those three packages have no `eslint.config.mjs` at all and 
 never been linted; wiring `@arcaai/database` to the shared preset produced 8374
 warnings (0 errors, 8333 auto-fixable) — almost entirely prettier formatting on
 never-formatted code. That diff does not belong in a scripts ticket, and with
-`--max-warnings 0` it would turn `pnpm lint` red. Spawned as a follow-up.
+`--max-warnings 0` it would turn `pnpm lint` red. **Owner decision (review round 2):
+these three packages do not need lint at all — this is now permanent, not deferred.**
 
 ### Behavioral fix found during the work
 
@@ -144,7 +145,7 @@ prettier violation that the auto-fix had been masking is now fixed;
    tree and some archived ticket dirs are referenced but absent). Unrelated to
    scripts; pre-existing.
 5. **`database`, `utils`, `tools` have no ESLint config** and have never been
-   linted (see "Deliberately not done" above). Spawned as a follow-up.
+   linted. Owner decision: they do not need one — closed, not deferred.
 
 ### CI impact
 
@@ -152,8 +153,86 @@ None expected. CI never invoked the renamed root scripts — `.gitlab/ci/*` uses
 `pnpm turbo <task>`, `pnpm --filter`, and `pgbv:*` (untouched). The added turbo
 tasks are additive.
 
+## Owner review round 2 (2026-07-25)
+
+Three follow-ups requested before closing:
+
+### 1. Split `lint` into check + fix everywhere
+
+`lint:fix` added to the 12 remaining packages that had `lint` but no fixing
+counterpart, mirroring the api/ui-playground split. `lint` never carries
+`--fix` — a validation gate must not mutate source. Root per-target scripts
+`api:lint:fix`, `admin:lint:fix`, `ui:lint:fix`, `sdk:lint:fix` all route
+through the turbo `lint:fix` task.
+
+### 2. Skip lint for `database`, `utils`, `tools`
+
+Owner decision: these three packages do not need linting. They carry **no
+`lint`/`lint:fix` script and no ESLint config**.
+
+A concurrent session had meanwhile onboarded them to ESLint and committed it
+(`eb157f86`..`25f721c3`), which also swept the then-uncommitted TASK-557 work
+into those commits. Resolved by **forward fix** (owner's choice — no history
+rewrite): `eslint.config.mjs` and the `lint` scripts were removed from all
+three. The ~10k lines of `eslint --fix` formatting churn those commits applied
+were deliberately left in place — already committed, cosmetic, and reverting
+them would be a far larger diff than the decision warrants.
+
+Result: 15 packages have `lint`, all 15 have `lint:fix`, `pnpm lint` green
+across 29 tasks.
+
+### 3. TEST gets its own application ports
+
+Previously `.env.test` reused the DEV application ports, so the two stacks were
+mutually exclusive and a suite started next to a running dev stack could talk to
+the DEV database. TEST application ports are now **DEV + 100**:
+
+| | api | stt | smr | guardrail | nlp | tts | harness | admin | inspector |
+|---|---|---|---|---|---|---|---|---|---|
+| dev | 8868 | 8861 | 8862 | 8863 | 8864 | 8865 | 8866 | 5176 | 9229 |
+| test | 8968 | 8961 | 8962 | 8963 | 8964 | 8965 | 8966 | 5276 | 9329 |
+
+- `.env.test` gains `ADMIN_PORT`, `API_INSPECT_HOSTPORT`, and the previously
+  missing `GUARDRAIL_PORT` / `HARNESS_PORT` / `TTS_PORT` (+ matching `*_URL`).
+- `apps/api` `dev` / `start:debug` take the inspector host:port from
+  `${API_INSPECT_HOSTPORT:-127.0.0.1:9229}`, so a test API no longer collides
+  with a dev API on 9229.
+- Every launcher/doctor reads ports from `.env.test`; `test-run.sh` no longer
+  hardcodes the dev values.
+- `stack:test:doctor` replaces its old "dev infra is up, ports are ambiguous"
+  warning with a **drift guard**: it fails if any test port equals its dev
+  counterpart.
+- Test-side fallbacks updated (`playwright.config.ts`, `tests/helpers/*`,
+  `tests/setup/playwright.global-setup.ts`, SDK e2e config).
+- New vars registered in `turbo.json#globalEnv` and `.env.example`.
+
+`vitest.config.ts` keeps `http://gateway.test:8868` — an intentionally
+unroutable host asserted as a literal by the admin-console auth route tests. It
+is a fixture, not a port binding.
+
+**Verification:** booted the test API while the dev infra ran — it bound
+**8968** + inspector **9329** and connected to Postgres **5433** / Redis
+**6380** (dev 5432/6379 untouched), health 200. `pnpm test:e2e` then ran
+**671 passed / 6 failed** against it. The 6 failures are seed-fixture
+dependent (media attachments, seeded recording, MCP//policy rows) and were run
+with `RESET_DB=false`, because a full reseed is blocked by the pre-existing
+`tsx` defect below and a clean reset needs destructive-action consent.
+
+### Pre-existing defect found (NOT fixed here)
+
+`pnpm test:db:seed` → `test:db:seed:media` runs `tsx` from the repo root, but
+`tsx` is declared **only** in `packages/database`, so pnpm never links it into
+the root `node_modules/.bin`: the step dies with `spawn tsx ENOENT`. That in
+turn fails Playwright's `globalSetup` (`test:db:reset`), so `pnpm test:e2e`
+cannot self-seed. The script text is byte-identical to `HEAD`, so this predates
+TASK-557. Fix is to declare `tsx` as a root devDependency — deliberately not
+done here because it rewrites `pnpm-lock.yaml` while other sessions are active
+in this worktree.
+
 ## Change History
 
 | Date | Change |
 |---|---|
 | 2026-07-25 | Initial implementation — taxonomy, 7 new scripts, 5 removed, 20 package.json normalized, docs + rules updated |
+| 2026-07-25 | Owner review round 2 — lint/lint:fix split completed; lint skipped for database/utils/tools; TEST env moved to its own application ports (dev + 100) |
+| 2026-07-25 | Forward fix after a concurrent session committed ESLint onboarding for database/utils/tools — configs + lint scripts removed, its formatting churn left in place |
