@@ -92,6 +92,30 @@ description = "Raw Vault token (hvs.<...>) anywhere in source"
 regex = '''hvs\.[A-Za-z0-9_-]{20,}'''
 tags = ["vault", "token"]
 
+# TASK-558 Phase 0 (lane A) — back-stop for the .gitignore `.dev.*` typo that let
+# .env.dev get committed with real credentials (see §2.4 of the ticket). Any
+# tracked file matching `.env.<suffix>` is flagged UNLESS it is one of the
+# three sanctioned committed templates (`*.example`, `.env.production`,
+# `.env.test`) — those carry placeholders only and are covered by the other
+# rules/allowlist entries above. This rule fires on the mere presence of such a
+# tracked file (any non-empty line), independent of its content, so a future
+# `git add -f .env.staging` (or a re-introduced .gitignore typo) is caught even
+# if the file happens to contain no secret-shaped values.
+[[rules]]
+id = "hope-committed-env-file"
+description = "Tracked .env.<suffix> file other than the sanctioned *.example / .env.production / .env.test templates"
+path = '''(^|/)\.env\.[A-Za-z0-9_-]+$'''
+regex = '''.+'''
+tags = ["env", "hygiene"]
+
+  [rules.allowlist]
+  description = "Sanctioned committed env templates carry placeholders only"
+  paths = [
+    '''\.example$''',
+    '''(^|/)\.env\.production$''',
+    '''(^|/)\.env\.test$''',
+  ]
+
 # ─── Allowlist ────────────────────────────────────────────────────────────────
 #
 # The allowlist below excludes paths and regex patterns that the Phase 0

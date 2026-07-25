@@ -84,12 +84,17 @@ yarn-error.log*
 
 # Local env files
 .env
-.dev.dev
-.dev.development
-.dev.test
-.dev.staging
-.dev.prod
-.dev.production
+.env.dev
+.env.development
+.env.test
+.env.staging
+.env.prod
+.env.production
+!.env.example
+!**/.env.example
+!.env.production
+!apps/*/.env.production
+!.env.test
 # keep below
 !packages/applications/src/common/env
 
