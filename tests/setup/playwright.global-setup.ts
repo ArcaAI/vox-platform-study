@@ -76,21 +76,21 @@ function getServiceConfigs(): ServiceConfig[] {
   return [
     {
       name: 'STT',
-      url: process.env.STT_URL || 'http://localhost:8861',
+      url: process.env.STT_URL || 'http://localhost:8961',
       healthPath: '/api/v1/health',
       envVar: 'STT_URL',
       required: false,
     },
     {
       name: 'SMR',
-      url: process.env.SMR_URL || 'http://localhost:8862',
+      url: process.env.SMR_URL || 'http://localhost:8962',
       healthPath: '/api/v1/health',
       envVar: 'SMR_URL',
       required: false,
     },
     {
       name: 'NLP',
-      url: process.env.NLP_URL || 'http://localhost:8864',
+      url: process.env.NLP_URL || 'http://localhost:8964',
       healthPath: '/api/v1/health',
       envVar: 'NLP_URL',
       required: false,

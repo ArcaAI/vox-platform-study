@@ -35,8 +35,7 @@
     "db:push:force": "prisma db push --force-reset --accept-data-loss",
     "db:studio": "prisma studio",
     "decrypt:row": "tsx scripts/decrypt-row.ts",
-    "seed": "tsx src/index.ts",
-    "lint": "eslint \"src/**/*.ts\" --max-warnings 0"
+    "seed": "tsx src/index.ts"
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",
