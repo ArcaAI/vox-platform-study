@@ -19,6 +19,7 @@
     "ts-morph": "^21.0.1"
   },
   "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
     "@types/figlet": "^1.7.0",
     "@types/inquirer": "^8.2.12",
     "@types/jsonwebtoken": "^9.0.10",

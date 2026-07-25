@@ -1422,6 +1422,9 @@ importers:
         specifier: ^21.0.1
         version: 21.0.1
     devDependencies:
+      '@arcaai/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
       '@types/figlet':
         specifier: ^1.7.0
         version: 1.7.0
@@ -1927,6 +1930,9 @@ importers:
         specifier: workspace:*
         version: link:../types
     devDependencies:
+      '@arcaai/config-eslint':
+        specifier: workspace:*
+        version: link:../config-eslint
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.15.21)(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
