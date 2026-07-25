@@ -231,6 +231,8 @@
         "gen:factory:all": "pnpm --filter @arcaai/tools generate-factory:all",
         "gen:factory:check": "pnpm --filter @arcaai/tools generate-factory:check",
         "gen:check": "pnpm gen:model:check && pnpm gen:entity:check && pnpm gen:factory:check",
+        "env:sync": "tsx --tsconfig scripts/tsconfig.env-sync.json scripts/env-sync.mts",
+        "env:sync:check": "pnpm env:sync --check",
         "gen:service": "pnpm --filter @arcaai/tools generate-service-module",
         "gen:controller": "pnpm --filter @arcaai/tools generate-controller",
         "gen:token": "pnpm --filter @arcaai/tools gen-dev-token",

@@ -116,11 +116,9 @@ variables:
   #   Variable                 | Value                                                      | Flags
   #   ─────────────────────────┼────────────────────────────────────────────────────────────┼──────────────────
   #   CI_DATABASE_URL          | postgresql://ci_user:****@10.10.1.250:5000/vox_staging     | masked, protected
-  #   CI_DATABASE_URL_DIRECT   | postgresql://ci_user:****@10.10.1.250:5000/vox_staging     | masked, protected
   #   CI_REDIS_URL             | redis://:****@10.10.1.120:6379/8                           | masked, protected
   #   CI_REDIS_PASS            | ****                                                      | masked, protected
   #   CI_JWT_SECRET            | <random 64-char string>                                   | masked, protected
-  #   CI_JWT_REFRESH_SECRET    | <random 64-char string>                                   | masked, protected
   #   CI_API_KEY_PEPPER        | <random 32-char string>                                   | masked, protected
   #
   # Non-secret test defaults (safe to commit):
@@ -135,9 +133,6 @@ variables:
   API_KEY_ALLOW_QUERY_PARAM: "true"
   API_KEY_MAX_LIFETIME_DAYS: "90"
   JWT_EXPIRES_IN: "1h"
-  JWT_REFRESH_EXPIRES_IN: "7d"
-  DEBUG_PRISMA: "false"
-  SKIP_SEED: "false"
   DEFAULT_TENANT_ID: "50000000-0000-0000-0000-000000000000"
   SYSTEM_USER_ID: "60000000-0000-0000-0000-000000000000"
 
