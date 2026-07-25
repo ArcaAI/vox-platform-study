@@ -374,18 +374,13 @@ export const SPEAKER_RECOGNITION_MODELS: ModelRegistryEntry[] = [
       features: ['WebAssembly', 'WebWorkers'],
       performanceNotes: 'Works with raw audio, 512D embeddings, proven for speaker verification',
     },
-  }
+  },
 ];
 
 /**
  * All models registry
  */
-export const ALL_MODELS: ModelRegistryEntry[] = [
-  ...VAD_MODELS,
-  ...TRANSCRIPTION_MODELS,
-  ...DIARIZATION_MODELS,
-  ...SPEAKER_RECOGNITION_MODELS,
-];
+export const ALL_MODELS: ModelRegistryEntry[] = [...VAD_MODELS, ...TRANSCRIPTION_MODELS, ...DIARIZATION_MODELS, ...SPEAKER_RECOGNITION_MODELS];
 
 /**
  * Get model by ID
@@ -439,4 +434,3 @@ export async function isModelAvailableLocally(model: ModelRegistryEntry): Promis
     return false;
   }
 }
-

@@ -29,7 +29,7 @@ export const {
   PrismaClientUnknownRequestError,
   PrismaClientRustPanicError,
   PrismaClientInitializationError,
-  PrismaClientValidationError
+  PrismaClientValidationError,
 } = Prisma;
 
 // Re-export error types for TypeScript
@@ -58,9 +58,7 @@ function createPrismaClient() {
   // Create Prisma Client with the adapter
   const prisma = new PrismaClient({
     adapter,
-    log: process.env.NODE_ENV === 'development'
-      ? ['query', 'error', 'warn']
-      : ['error'],
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
 
   return prisma;

@@ -56,54 +56,54 @@ import { seedUser } from './91-user';
  *  12. Audit Log
  */
 export const seed = async () => {
-    const client = getPrismaClient();
+  const client = getPrismaClient();
 
-    try {
-        console.log('Starting database seeding...\n');
+  try {
+    console.log('Starting database seeding...\n');
 
-        // Phase 1: Independent entities
-        await seedPolicy(client);
-        console.log('');
-        await seedTenant(client);
-        console.log('');
-        await seedTenantBucket(client);
-        console.log('');
+    // Phase 1: Independent entities
+    await seedPolicy(client);
+    console.log('');
+    await seedTenant(client);
+    console.log('');
+    await seedTenantBucket(client);
+    console.log('');
 
-        // Phase 2: Depends on Phase 1
-        await seedRole(client);
-        console.log('');
-        await seedDepartment(client);
-        console.log('');
-        await seedStt(client);
-        console.log('');
+    // Phase 2: Depends on Phase 1
+    await seedRole(client);
+    console.log('');
+    await seedDepartment(client);
+    console.log('');
+    await seedStt(client);
+    console.log('');
 
-        // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)
-        await seedPromptTemplate(client);
-        console.log('');
+    // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)
+    await seedPromptTemplate(client);
+    console.log('');
 
-        // Phase 4: Depends on Phase 3
-        await seedUser(client);
-        console.log('');
-        await seedApiKey(client);
-        console.log('');
-        await seedGlobalSetting(client);
-        console.log('');
+    // Phase 4: Depends on Phase 3
+    await seedUser(client);
+    console.log('');
+    await seedApiKey(client);
+    console.log('');
+    await seedGlobalSetting(client);
+    console.log('');
 
-        // Phase 5: Depends on Phase 4
-        await seedDnaWritingStyle(client);
-        console.log('');
-        await seedConsultation(client);
-        console.log('');
+    // Phase 5: Depends on Phase 4
+    await seedDnaWritingStyle(client);
+    console.log('');
+    await seedConsultation(client);
+    console.log('');
 
-        // Phase 6: Depends on everything
-        await seedAuditLog(client);
-        console.log('');
+    // Phase 6: Depends on everything
+    await seedAuditLog(client);
+    console.log('');
 
-        console.log('Database seeding completed successfully!');
-    } catch (error) {
-        console.error('Error during database seeding:', error);
-        throw error;
-    } finally {
-        await client.$disconnect();
-    }
+    console.log('Database seeding completed successfully!');
+  } catch (error) {
+    console.error('Error during database seeding:', error);
+    throw error;
+  } finally {
+    await client.$disconnect();
+  }
 };

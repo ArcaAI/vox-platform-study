@@ -10,9 +10,7 @@ import path from 'path';
 export function checkDirectory(dirPath: string, workspacePath?: string): boolean {
   try {
     // If path is relative and workspace is provided, resolve it against workspace
-    const resolvedPath = path.isAbsolute(dirPath)
-      ? dirPath
-      : (workspacePath ? path.resolve(workspacePath, dirPath) : path.resolve(dirPath));
+    const resolvedPath = path.isAbsolute(dirPath) ? dirPath : workspacePath ? path.resolve(workspacePath, dirPath) : path.resolve(dirPath);
 
     // Check if path exists and is a directory
     return fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory();

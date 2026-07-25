@@ -61,10 +61,7 @@ export class ModelDownloader {
    * @param onProgress - Progress callback
    * @returns ArrayBuffer of model data
    */
-  async downloadModel(
-    config: ModelConfig,
-    onProgress?: (progress: DownloadProgress) => void
-  ): Promise<ArrayBuffer> {
+  async downloadModel(config: ModelConfig, onProgress?: (progress: DownloadProgress) => void): Promise<ArrayBuffer> {
     // Check if model exists in cache
     const cached = await this.getCachedModel(config.name, config.version);
     if (cached) {
@@ -132,12 +129,16 @@ export class ModelDownloader {
       const firstByte = view[0];
 
       if (firstByte !== 0x08) {
-        console.error('[ModelDownloader] Invalid model data. First 16 bytes:',
-          Array.from(view.slice(0, Math.min(16, view.length))).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+        console.error(
+          '[ModelDownloader] Invalid model data. First 16 bytes:',
+          Array.from(view.slice(0, Math.min(16, view.length)))
+            .map((b) => '0x' + b.toString(16).padStart(2, '0'))
+            .join(' '),
+        );
         throw new Error(
           `Downloaded file is not a valid ONNX model. ` +
-          `Expected first byte 0x08, got 0x${firstByte.toString(16).padStart(2, '0')}. ` +
-          `The download may have failed or returned an error page.`
+            `Expected first byte 0x08, got 0x${firstByte.toString(16).padStart(2, '0')}. ` +
+            `The download may have failed or returned an error page.`,
         );
       }
 
@@ -301,4 +302,3 @@ export class ModelDownloader {
     return models.reduce((total, model) => total + model.size, 0);
   }
 }
-

@@ -13,7 +13,7 @@ export function toPascalCase(str: string): string {
   // Split by whitespace, capitalize each word, and join them together
   return cleanStr
     .split(/[\s_-]+/)
-    .map(word => {
+    .map((word) => {
       if (!word) return '';
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })

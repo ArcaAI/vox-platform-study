@@ -96,9 +96,9 @@ export function getModelConfig(name: string): ModelConfig {
  * Higher priority models are downloaded first
  */
 export const MODEL_PRIORITIES = {
-  'silero-vad-v5': 1,              // Essential for VAD
-  'speaker-embedding': 2,        // Essential for voice enrollment
-  'diarization-embedding': 3,    // Essential for diarization
+  'silero-vad-v5': 1, // Essential for VAD
+  'speaker-embedding': 2, // Essential for voice enrollment
+  'diarization-embedding': 3, // Essential for diarization
 };
 
 /**
@@ -106,10 +106,7 @@ export const MODEL_PRIORITIES = {
  * These models should be downloaded on app initialization
  */
 export function getEssentialModels(): ModelConfig[] {
-  return [
-    SILERO_VAD_MODEL,
-    SPEAKER_EMBEDDING_MODEL,
-  ];
+  return [SILERO_VAD_MODEL, SPEAKER_EMBEDDING_MODEL];
 }
 
 /**
@@ -117,9 +114,5 @@ export function getEssentialModels(): ModelConfig[] {
  * These can be downloaded on-demand
  */
 export function getOptionalModels(): ModelConfig[] {
-  return [
-    SPEAKER_EMBEDDING_MODEL_LITE,
-    DIARIZATION_EMBEDDING_MODEL,
-  ];
+  return [SPEAKER_EMBEDDING_MODEL_LITE, DIARIZATION_EMBEDDING_MODEL];
 }
-
