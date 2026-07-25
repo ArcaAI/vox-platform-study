@@ -27,11 +27,18 @@
 // operator step performed by `scripts/vault-seed-secrets.sh`.
 //
 // DELIBERATELY NOT REGISTERED (verified 2026-07-25):
-//   - `QDRANT_API_KEY`      — NO reader anywhere. The harness retrieval config
-//                             (`HARNESS_RETRIEVAL_` prefix) has only `qdrant_url`
-//                             and `qdrant_timeout_s`; no service authenticates to
-//                             Qdrant at all. Registering it would catalog a
-//                             credential that protects nothing. Dead key.
+//   - `QDRANT_API_KEY`      — NOT a runtime credential, but NOT dead either. No
+//                             application service authenticates to Qdrant (the
+//                             harness retrieval config, `HARNESS_RETRIEVAL_` prefix,
+//                             has only `qdrant_url` and `qdrant_timeout_s`). Its one
+//                             reader is the provisioning script
+//                             `infrastructure/docker/scripts/init-qdrant-collections.py:23`,
+//                             which runs outside the application env surface and is
+//                             documented in `infrastructure/docker/env.stt-dev.example`.
+//                             Left unregistered because the registry catalogs the
+//                             APPLICATION surface, not one-shot infra provisioning.
+//                             (An earlier revision of this comment claimed "no reader
+//                             anywhere" — that was wrong; corrected at the wave-3 merge.)
 //   - `AZURE_OPENAI_API_KEY`— read ONLY by `apps/smr/src/smr/tests/e2e/conftest.py`
 //                             (a test fixture parsing a dotenv file directly). No
 //                             runtime reader; SMR's real Azure credential is
