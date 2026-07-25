@@ -111,9 +111,9 @@ The API gateway also runs in-process BullMQ workers (queues from the `JobQueue` 
 | MinIO | 9000 (API), 9001 (console) | Media/recordings object storage. Buckets: `recordings`, `generated-audio`, `documents`, `backups`, `mlflow` (legacy) | base compose (`hope-minio` + `minio-setup`) |
 | Qdrant | 6333 | Speaker embeddings (`stt_speaker_embeddings`), institutional-RAG knowledge chunks, prompt/DNA collections | dev compose (`qdrant`, opt-in) |
 | Vault | 8200 | Secrets (KV v2 `secret/hope/*`), Transit encryption (`hope-globalsetting`, PHI key), dynamic PG credentials | dev compose (`vault` + `vault-init`, opt-in `vault` profile) |
-| Temporal | 7233 (gRPC), 8233 (UI) | Harness durable workflows | dev compose (opt-in `temporal` profile) |
-| Reranker (HF text-embeddings-inference, BAAI/bge-reranker-v2-m3) | 8870 | Harness hybrid-RAG reranking | dev compose (opt-in `rag` profile) |
-| Prometheus / Grafana | 9090 / 3001 (host; container 3000) | Platform metrics (TASK-386) + dashboards | dev compose (opt-in `prometheus`/`observability` profile) |
+| Temporal | 7233 (gRPC), 8233 (UI) | Harness durable workflows | dev compose (`temporal` profile; base tier via `infra:up`) |
+| Reranker (HF text-embeddings-inference, BAAI/bge-reranker-v2-m3) | 8870 | Harness hybrid-RAG reranking | dev compose (`rag` profile; base tier via `infra:up`) |
+| Prometheus / Grafana | 9090 / 3001 (host; container 3000) | Platform metrics (TASK-386) + dashboards | dev compose (`prometheus` profile; `-o` tier) |
 | LM Studio (OpenAI-compatible) / Ollama | 1234 / 11434 (typical) | Default local LLM engines for SMR, Guardrail, Harness judges | host-run (dev); k3s deployments (cluster) |
 
 ### Container diagram
@@ -392,8 +392,8 @@ Runtime services stay stateless with respect to this plane: the config plane deg
 Infrastructure in containers; application services run on the host (Node via pnpm/turbo, Python via conda env `arcaenv` + uv).
 
 - Base: `infrastructure/docker/docker-compose.yml` — `hope-postgres` (TimescaleDB pg18 image), `hope-minio` (+ bucket setup), `hope-redis`.
-- Dev overlay: `infrastructure/docker/docker-compose.dev.yml` — opt-in profiles: `vault` (+`vault-init` AppRole bootstrap), `qdrant` (+collection init), `temporal` (+`temporal-ui`; shares hope-postgres via dedicated `temporal`/`temporal_visibility` DBs), `rag` (`hope-reranker` TEI), `prometheus`/`observability` (Prometheus + Grafana).
-- Entry points: `pnpm dev:setup` (full bootstrap), `pnpm infra:up`, `pnpm dev:stack` (spawns api, stt, smr, guardrail, nlp, harness, worker, ui subsets), `pnpm dev:doctor` (health checks). The admin console runs as its own Next.js dev server (`apps/admin-console`, `next dev -p 5176`); tts-v2 runs via `pnpm dev:tts-v2`.
+- Dev overlay: `infrastructure/docker/docker-compose.dev.yml` — profile tiers (TASK-555): base `vault` (+`vault-init`) + `temporal` (+`temporal-ui`) + `rag` (`hope-reranker` TEI); `-o` adds `prometheus`/`observability` (Prometheus + Grafana); `-e` adds `inference` (vLLM / llama.cpp / TEI embed). Qdrant (+collection init) starts unprofiled with core.
+- Entry points: `pnpm dev:setup` / `dev:setup-o` / `dev:setup-e` (bootstrap tiers), `pnpm infra:up` (`-- -o` / `-- -e`), `pnpm dev:stack` / `dev:stack-o` / `dev:stack-e` (ensure infra then spawn api/stt/smr/guardrail/nlp/harness/worker/admin), `pnpm dev:doctor` (health checks). The admin console runs as its own Next.js dev server (`apps/admin-console`, `next dev -p 5176`); tts-v2 runs via `pnpm dev:tts-v2`.
 - Env files: `.env.dev` (dev), `.env.test` (isolated test infra: PG 5433, Redis 6380, MinIO 9002), `.env.example` (canonical template). Host env always wins; production loads host env only.
 
 ### 7.2 Cluster (k3s + ArgoCD) — primary deployment target

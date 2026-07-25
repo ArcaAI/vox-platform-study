@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # ============================================================================
-# TASK-312 A.5 — One-command local development bootstrap
+# TASK-312 A.5 / TASK-555 — One-command local development bootstrap
 # ============================================================================
 # Brings a freshly-cloned (or freshly-reset) checkout to a state where
 # `pnpm dev:api` boots cleanly against Vault with dynamic Postgres creds.
 #
 # Sequence:
-#   1. Start infrastructure (Postgres, Redis, MinIO, Vault, Qdrant, Temporal)
+#   1. Start infrastructure (core + vault + temporal + rag; optional -o/-e)
 #   2. Wait for Postgres + Vault (and the vault-init AppRole bootstrap)
 #   3. Apply Prisma migrations + seed         (pnpm db:all)
 #   4. Refresh Vault AppRole creds in .env.dev (so the app can authenticate)
 #   5. Bootstrap Vault dynamic DB credentials  (vault_admin + DB engine)
 #
 # USAGE:
-#   pnpm dev:setup        (preferred)
-#   ./scripts/dev-setup.sh
+#   pnpm dev:setup          # base: core + vault + temporal + rag
+#   pnpm dev:setup-o        # base + Prometheus/Grafana
+#   pnpm dev:setup-e        # base + inference engines
+#   ./scripts/dev-setup.sh [-o|--observability] [-e|--inference]
 # ============================================================================
 set -euo pipefail
 
@@ -38,15 +40,36 @@ read_env() {
   if [ -z "${line:-}" ]; then printf '%s' "$def"; else printf '%s' "${line#*=}" | tr -d '\r'; fi
 }
 
+# Profile flags for dev-infra.sh (TASK-555).
+INFRA_FLAGS=()
+for arg in "$@"; do
+  [ "$arg" = "--" ] && continue
+  case "$arg" in
+    -o|--observability) INFRA_FLAGS+=(--observability) ;;
+    -e|--inference) INFRA_FLAGS+=(--inference) ;;
+    *)
+      red "Unknown flag: $arg (known: -o/--observability, -e/--inference)"
+      exit 2
+      ;;
+  esac
+done
+
+TIER_LABEL="core + vault + temporal + rag"
+for f in "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"; do
+  case "$f" in
+    --observability) TIER_LABEL="$TIER_LABEL + observability" ;;
+    --inference) TIER_LABEL="$TIER_LABEL + inference" ;;
+  esac
+done
+
 ROOT_TOKEN="$(read_env VAULT_DEV_ROOT_TOKEN root)"
 PG_SUPERUSER="$(read_env POSTGRES_USER postgres)"
 
-bold "── Step 1/5: starting infrastructure (core + vault + temporal) ──────"
-# Use the full dev-infra wrapper so the Temporal stack (required by the
-# clinical-workspace harness) comes up alongside core + vault. Plain
-# `start-infra.sh --all` only activates the `vault` profile and would leave
-# Temporal down.
-"$SCRIPT_DIR/dev-infra.sh" up
+bold "── Step 1/5: starting infrastructure ($TIER_LABEL) ──────"
+# Use the full dev-infra wrapper so Temporal + rag (and optional -o/-e) come up
+# alongside core + vault. Plain `start-infra.sh --all` only activates the
+# `vault` profile and would leave Temporal/rag down.
+"$SCRIPT_DIR/dev-infra.sh" up "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"
 
 bold "── Step 2/5: waiting for Postgres + Vault to be ready ───────────────"
 ready=0
@@ -77,4 +100,4 @@ bold "── Step 5/5: bootstrapping Vault dynamic DB credentials ────�
 
 green ""
 green "✔ Local dev environment is ready."
-yellow "Start the API:  pnpm dev:api"
+yellow "Start the stack:  pnpm dev:stack   (or pnpm dev:api for API only)"
