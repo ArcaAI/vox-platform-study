@@ -66,6 +66,12 @@ export const MODEL_DEFAULT_SETTINGS: SettingDescriptor[] = AI_TASK_KEYS.map<Sett
     maxScope: 'tenant',
     editableBy: globalAdminOnly ? 'all' : 'AiTaskDefault',
     ...(globalAdminOnly ? { globalOnly: true } : {}),
+    // Provider/model SELECTION — the canonical fail-closed class (plan §9.3 M5).
+    // An unselected task must surface as unresolved, never as a null the caller
+    // cannot tell apart from a deliberate value, and never as a neighbouring
+    // tenant's or a global model. This mirrors guardrail's own posture
+    // (`tenant_config.py`: "Selection is DB-only … fail-closed").
+    failMode: 'closed',
     category: 'Models',
     label: META[taskKey].label,
     description: META[taskKey].description,

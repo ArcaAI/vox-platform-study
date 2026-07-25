@@ -62,9 +62,7 @@ describe('EffectiveSettingsService', () => {
   // describe block below).
   it('throws for a non-secret key whose tier has no registered resolver', async () => {
     const svc = serviceWith(resolved());
-    await expect(svc.resolveEffective('entitlements.featureDnaReports', CTX)).rejects.toThrow(
-      /no effective resolver/i,
-    );
+    await expect(svc.resolveEffective('entitlements.featureDnaReports', CTX)).rejects.toThrow(/no effective resolver/i);
   });
 
   // The global-kv override lane. Before this,
@@ -144,7 +142,13 @@ describe('EffectiveSettingsService', () => {
       expect(getEffective).toHaveBeenCalledWith('nlp.ner', 'tnt-1');
     });
 
-    it('maps an unconfigured default (source null) to sourceScope none with a null value', async () => {
+    // TASK-558 lane F (plan §9.3 M5): an UNRESOLVED model selection now FAILS
+    // CLOSED. This test previously asserted `{ value: null, sourceScope: 'none' }`
+    // — i.e. it locked in exactly the silent fail-open M5 forbids: a caller
+    // reading "the effective model" got a null that is indistinguishable from a
+    // deliberately-null value. `models.*` descriptors declare `failMode: 'closed'`,
+    // so the facade raises instead of inventing an answer.
+    it('FAILS CLOSED when the selection is unconfigured (source null)', async () => {
       const getEffective = vi.fn(async () => ({
         tenantId: 'tnt-1',
         taskKey: 'guardrail.validate',
@@ -155,15 +159,48 @@ describe('EffectiveSettingsService', () => {
       }));
       const svc = serviceWith(resolved(), { getEffective });
 
-      await expect(svc.resolveEffective('models.guardrail.validate', CTX)).resolves.toMatchObject({
-        value: null,
-        sourceScope: 'none',
-      });
+      await expect(svc.resolveEffective('models.guardrail.validate', CTX)).rejects.toBeInstanceOf(ArgumentInvalidException);
+      await expect(svc.resolveEffective('models.guardrail.validate', CTX)).rejects.toThrow(/fail(s|ing)? closed|could not be resolved/i);
     });
 
     it('throws when no AiTaskDefaultService is wired', async () => {
       const svc = serviceWith(resolved());
       await expect(svc.resolveEffective('models.nlp.ner', CTX)).rejects.toThrow(/no effective resolver/i);
+    });
+  });
+
+  // TASK-558 lane F — the declared failure mode, honoured by the read facade.
+  describe('failMode', () => {
+    it('open-to-default: an unset global-kv tuning knob resolves to the descriptor default', async () => {
+      const appSettings = { getValueWithDefault: vi.fn(() => null) };
+      const svc = serviceWith(resolved(), undefined, appSettings);
+
+      // `rate-limit.enabled` is a tuning/protection flag → open-to-default.
+      await expect(svc.resolveEffective('rate-limit.enabled', CTX)).resolves.toMatchObject({
+        value: true,
+        sourceScope: 'code-default',
+      });
+    });
+
+    it('closed: an unresolved value raises instead of substituting a default', async () => {
+      const getEffective = vi.fn(async () => ({
+        tenantId: 'tnt-1',
+        taskKey: 'smr.live',
+        modelSlug: null,
+        source: null,
+        configJson: null,
+        model: null,
+      }));
+      const svc = serviceWith(resolved(), { getEffective });
+      await expect(svc.resolveEffective('models.smr.live', CTX)).rejects.toBeInstanceOf(ArgumentInvalidException);
+    });
+
+    it('closed does NOT swallow a backend error — transport failures still propagate', async () => {
+      const getEffective = vi.fn(async () => {
+        throw new Error('db unreachable');
+      });
+      const svc = serviceWith(resolved(), { getEffective });
+      await expect(svc.resolveEffective('models.smr.live', CTX)).rejects.toThrow(/db unreachable/);
     });
   });
 });

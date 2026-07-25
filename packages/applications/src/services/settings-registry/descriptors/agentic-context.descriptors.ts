@@ -84,6 +84,9 @@ export const AGENTIC_CONTEXT_SETTINGS: SettingDescriptor[] = (
   maxScope: 'system',
   editableBy: 'all',
   globalOnly: true,
+  // Tuning knobs — an unset knob degrades to the code default the live loop
+  // used before the registry lane existed (plan §9.3 M5).
+  failMode: 'open-to-default',
   category: 'Agentic Context',
   label: META[knob].label,
   description: META[knob].description,

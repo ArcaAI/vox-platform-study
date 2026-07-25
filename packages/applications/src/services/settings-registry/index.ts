@@ -14,4 +14,11 @@ export * from './descriptors/agentic-eval.descriptors';
 export * from './descriptors/agentic-revisit.descriptors';
 export * from './descriptors/agentic-fewshot.descriptors';
 export * from './descriptors/platform-ops.descriptors';
+// `service-runtime.descriptors` is exported from the package root via a
+// dedicated path (its `SERVICE_RUNTIME_DEFAULTS` is shared with the
+// effective-config service) and is intentionally not re-exported here.
+export * from './descriptors/platform-secrets.descriptors';
+export * from './descriptors/bootstrap-env.descriptors';
+export * from './descriptors/platform-knobs.descriptors';
+export * from './descriptors/feature-flags.descriptors';
 export * from './settings-registry-write.service';

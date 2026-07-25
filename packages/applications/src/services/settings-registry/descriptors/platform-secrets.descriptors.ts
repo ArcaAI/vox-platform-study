@@ -1,0 +1,203 @@
+// Platform secrets — the `vault-kv` tier (TASK-558 lane F, plan §3.2).
+//
+// Data class 1: a SHARED platform credential, operator-set, living in Vault
+// kv-v2 at `<VAULT_KV_MOUNT>/data/<VAULT_KV_PREFIX>/<NAME>` (defaults
+// `secret/data/hope/<NAME>`) and read through `SecretsService.getSecret(NAME)`.
+// `NAME` is exactly `toEnvVarName(descriptor.key)` — the mechanical 1:1 of plan
+// §3.3 — which is why the seeding script (`scripts/vault-seed-secrets.sh`) needs
+// no key table of its own.
+//
+// CLASSIFICATION RULES APPLIED HERE
+//   - tier `vault-kv`     ⇒ the secret ALREADY resolves through SecretsService
+//                           today (a Vault-backed `SECRETS_PROVIDER=vault`
+//                           deployment reads it from Vault; `env` provider reads
+//                           the same NAME from the process environment — that is
+//                           a PROVIDER choice, not a different tier).
+//   - `targetTier` absent ⇒ this classification is final; nothing migrates.
+//   - sensitivity `secret`⇒ `failMode: 'closed'` is MANDATORY and enforced by
+//                           `SettingsRegistry.register`. A credential that fell
+//                           back to a default would authenticate as someone else.
+//   - maxScope `system`   ⇒ platform-wide. PER-TENANT credentials are a different
+//                           data class (`db-secret`, Vault-Transit ciphertext in
+//                           a DB column — see `tts.descriptors.ts`), never here.
+//   - `globalOnly: true`  ⇒ operator/GLOBAL_ADMIN surface only.
+//
+// NOTHING IS MIGRATED BY THIS FILE. A descriptor is metadata: it states where the
+// value lives, who may set it, and how it fails. Moving values into Vault is the
+// operator step performed by `scripts/vault-seed-secrets.sh`.
+//
+// DELIBERATELY NOT REGISTERED (verified 2026-07-25):
+//   - `QDRANT_API_KEY`      — NO reader anywhere. The harness retrieval config
+//                             (`HARNESS_RETRIEVAL_` prefix) has only `qdrant_url`
+//                             and `qdrant_timeout_s`; no service authenticates to
+//                             Qdrant at all. Registering it would catalog a
+//                             credential that protects nothing. Dead key.
+//   - `AZURE_OPENAI_API_KEY`— read ONLY by `apps/smr/src/smr/tests/e2e/conftest.py`
+//                             (a test fixture parsing a dotenv file directly). No
+//                             runtime reader; SMR's real Azure credential is
+//                             `SMR_AZURE_API_KEY`, registered below.
+//   - `STT_SERVICE_TOKEN`   — does not exist. STT authenticates to the gateway
+//                             with `X-Internal-Service-Key` + `API_GATEWAY_KEY`
+//                             (`InternalServiceTokenGuard.SERVICE_SECRETS.stt`),
+//                             so `API_GATEWAY_KEY` is registered in its place.
+//   - `VAULT_DB_ADMIN_PASS` — cannot live in Vault: it is the credential VAULT
+//                             ITSELF uses to reach PostgreSQL, consumed at Vault
+//                             provisioning time by `dev-init.sh` /
+//                             `setup-dev-vault-db.sh` / compose. Bootstrap floor
+//                             ⇒ `env` tier (see `bootstrap-env.descriptors.ts`).
+
+import { SettingDescriptor } from '../registry.types';
+
+/** Shared shape for every platform secret; only key/label/description vary. */
+function platformSecret(key: string, label: string, description: string, category = 'Credentials'): SettingDescriptor {
+  return {
+    key,
+    tier: 'vault-kv',
+    dataType: 'secret',
+    sensitivity: 'secret',
+    maxScope: 'system',
+    // `all` is the CASL manage-everything subject used by every other
+    // platform-owned descriptor in this registry (see model-defaults / platform-ops).
+    editableBy: 'all',
+    globalOnly: true,
+    failMode: 'closed',
+    category,
+    label,
+    description,
+  };
+}
+
+export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
+  // ── Core auth material (all in COMMON_SERVICE_WARMUP_KEYS) ────────────────
+  platformSecret(
+    'jwt.secretKey',
+    'JWT signing secret',
+    'HS256 signing secret for gateway-issued access tokens. Warmed at boot; `apps/api/src/main.ts` refuses to start when it is still a placeholder. Rotating it invalidates every outstanding access token immediately (they are short-lived, so the blast radius is one token TTL).',
+    'Authentication',
+  ),
+  platformSecret(
+    'session.secretKey',
+    'Session signing secret',
+    'Signing/encryption secret for server-side session material. Rotating it invalidates existing sessions; users re-authenticate.',
+    'Authentication',
+  ),
+  {
+    ...platformSecret('api.keyPepper', 'API key pepper', '', 'Authentication'),
+    // The one secret whose rotation is a CLIFF rather than a blip (plan §9.2 L6).
+    description:
+      'Server-side pepper mixed into every API-key hash. CHANGING IT INVALIDATES EVERY ISSUED API KEY AT THE INSTANT IT CHANGES — a stored hash computed under pepper vN can never be verified under vN+1. ' +
+      'ROTATION IS THEREFORE STAGED, NEVER SWAPPED, and is keyVersion-aware in exactly the way `GlobalSetting` already models secret material (`encryptedValue` + `keyVersion`): ' +
+      '(1) write the NEW pepper as a new Vault kv-v2 version — kv-v2 keeps prior versions, so vN stays readable; ' +
+      '(2) verification reads the keyVersion recorded on the ApiKey row and verifies under THAT pepper, so vN and vN+1 keys are both valid during the overlap; ' +
+      '(3) newly issued and re-hashed keys are stamped with the new keyVersion; ' +
+      '(4) once no row still references vN — or the announced overlap window closes — retire vN. ' +
+      'Skipping the overlap is an outage for every integration at once. Vault kv-v2 versioning is the mechanism; the keyVersion column is what makes it staged rather than a coin flip.',
+  },
+  platformSecret(
+    'oidc.clientSecret',
+    'OIDC client secret',
+    'Client secret for the platform OIDC relying-party registration. Absent ⇒ OIDC authentication is disabled (a logged WARN, not a crash) — see `auth.service.module.ts`.',
+    'Authentication',
+  ),
+
+  // ── Service-to-service tokens ─────────────────────────────────────────────
+  // The gateway fronts every Python service; these are the shared secrets on the
+  // `X-Service-Token` hop in BOTH directions (gateway → service, and service →
+  // gateway `/api/v1/internal/effective-config` via `InternalServiceTokenGuard`).
+  platformSecret(
+    'smr.serviceToken',
+    'SMR service token',
+    "Shared secret on the gateway↔SMR hop. SMR reads it as `settings.service_token` under its `SMR_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check.",
+    'Service Tokens',
+  ),
+  platformSecret('nlp.serviceToken', 'NLP service token', 'Shared secret on the gateway↔NLP hop (`X-Service-Token`).', 'Service Tokens'),
+  platformSecret(
+    'guardrail.serviceToken',
+    'Guardrail service token',
+    'Shared secret on the gateway↔guardrail hop (`X-Service-Token`).',
+    'Service Tokens',
+  ),
+  platformSecret(
+    'harness.serviceToken',
+    'Harness service token',
+    'Shared secret on the gateway↔harness hop. Fetched on demand (not a warmup key) by `HarnessOpsClient` / `HarnessGatewayService` / `HarnessServiceTokenGuard`. It MUST equal the harness process’s own `HARNESS_SERVICE_TOKEN`, or every `/api/v1/internal/harness/*` call 401s.',
+    'Service Tokens',
+  ),
+  platformSecret('tts.serviceToken', 'TTS service token', 'Shared secret on the gateway↔TTS hop (`X-Service-Token`).', 'Service Tokens'),
+  platformSecret(
+    'api.gatewayKey',
+    'STT gateway key',
+    'The credential STT presents to the gateway. STT is the one service that authenticates with `X-Internal-Service-Key` rather than `X-Service-Token`, reusing this key instead of minting a second STT credential (`InternalServiceTokenGuard.SERVICE_SECRETS.stt`). There is no `STT_SERVICE_TOKEN`.',
+    'Service Tokens',
+  ),
+
+  // ── Data-plane credentials ────────────────────────────────────────────────
+  platformSecret(
+    'redis.pass',
+    'Redis password',
+    'Redis AUTH password. Resolved through SecretsService and layered over the env value by `ConfigService.applySecretOverrides`.',
+    'Data Plane',
+  ),
+  platformSecret('mqtt.pass', 'MQTT password', 'MQTT broker password, consumed by `MqttService` via `ConfigService`.', 'Data Plane'),
+  platformSecret(
+    'minio.accessKey',
+    'MinIO access key',
+    'MinIO/S3 access key for platform object storage. NOTE: the per-tenant / platform-default STORAGE CONFIG (endpoint, region, path style, prefix) is a separate concern owned by `TenantStorageConfig`; only the credential lives here, referenced by `credentialsRef`.',
+    'Data Plane',
+  ),
+  platformSecret('minio.secretKey', 'MinIO secret key', 'MinIO/S3 secret key for platform object storage.', 'Data Plane'),
+  platformSecret(
+    's3.accessKey',
+    'S3 access key',
+    'S3-protocol access key read by `S3Service`. In local dev this aliases the MinIO credential (HOPE speaks S3 to MinIO); in a deployed environment it may name a distinct S3 principal.',
+    'Data Plane',
+  ),
+  platformSecret('s3.secretKey', 'S3 secret key', 'S3-protocol secret key read by `S3Service`.', 'Data Plane'),
+
+  // ── AI provider credentials (platform-owned; BYO tenant keys are db-secret) ─
+  platformSecret(
+    'azure.speechKey',
+    'Azure Speech key',
+    'Azure Cognitive Services Speech credential. Shared by STT (`azure_speech_loader`) and TTS, which accepts it as the fallback alias for `TTS_AZURE_API_KEY`.',
+    'AI Providers',
+  ),
+  platformSecret('azure.foundryApiKey', 'Azure AI Foundry key', 'Azure AI Foundry credential used by the STT Foundry model loader.', 'AI Providers'),
+  platformSecret(
+    'smrAzure.apiKey',
+    'SMR Azure OpenAI key',
+    "SMR's Azure OpenAI credential (`SMR_AZURE_` pydantic prefix, typed `SecretStr`).",
+    'AI Providers',
+  ),
+  platformSecret(
+    'ttsSarvam.apiKey',
+    'Sarvam TTS key (platform)',
+    'PLATFORM-level Sarvam credential (`TTS_SARVAM_` prefix). A TENANT-supplied Sarvam key is a different data class entirely — `tts.credential.sarvam`, tier `db-secret` — and must never be stored here.',
+    'AI Providers',
+  ),
+  platformSecret(
+    'guardrailVllm.apiKey',
+    'Guardrail vLLM key',
+    "Bearer credential for guardrail's vLLM OpenAI-compatible endpoint (`GUARDRAIL_VLLM_` prefix). Self-hosted endpoints commonly accept a placeholder, but it is still a credential and is classified as one.",
+    'AI Providers',
+  ),
+  platformSecret(
+    'harnessJudgeOpenaiCompat.apiKey',
+    'Harness judge endpoint key',
+    'Bearer credential for the harness LLM-as-judge OpenAI-compatible endpoint (`HARNESS_JUDGE_OPENAI_COMPAT_` prefix). Connection config only — WHICH judge model runs is `models.harness.judge`, a fail-closed db-config selection.',
+    'AI Providers',
+  ),
+
+  // ── Harness claim-check object store (PHI blobs) ──────────────────────────
+  platformSecret(
+    'harness.claimCheck.accessKey',
+    'Claim-check store access key',
+    'S3/MinIO access key for the harness claim-check blob store. The offloaded payloads are clinical content, so the store is SELF-HOSTED by contract — this credential must never address a cloud bucket.',
+    'Data Plane',
+  ),
+  platformSecret(
+    'harness.claimCheck.secretKey',
+    'Claim-check store secret key',
+    'S3/MinIO secret key for the harness claim-check blob store (self-hosted only; PHI must not egress).',
+    'Data Plane',
+  ),
+];

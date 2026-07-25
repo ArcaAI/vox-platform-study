@@ -59,6 +59,8 @@ export const AGENTIC_REVISIT_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    // Feature flag — unset degrades to the code default (OFF), the safe end.
+    failMode: 'open-to-default',
     category: 'Agentic Revisit',
     label: 'Re-visit carry-forward',
     description:
