@@ -73,7 +73,7 @@ health. `smr` degrades only on real dependency failures (Redis / provider ping).
      resident-model lists; report `text_corrector` as a lazy singleton (`loaded = is_initialized`);
      `overall` stays `healthy` (no hard dependencies fail in this endpoint); decouple `/health/ready`
      from lazy model loading (ready once the process is up).
-3. **REFACTOR / verify** — `pnpm py:nlp:test`, `py:nlp:lint`, `py:nlp:typecheck`.
+3. **REFACTOR / verify** — `pnpm nlp:test`, `py:nlp:lint`, `py:nlp:typecheck`.
 
 ## Verification Criteria
 

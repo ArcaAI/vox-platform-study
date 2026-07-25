@@ -76,7 +76,7 @@ In `PromptManagementService.approvePromptTemplate`:
 
 ## Verification Criteria / Gates
 
-- `pnpm --filter @arcaai/applications build test`, `pnpm build:api`, `pnpm test:unit`, e2e green; `pnpm py:harness:test` green AND STILL HERMETIC; `pnpm py:harness:lint` + `py:harness:typecheck` clean.
+- `pnpm --filter @arcaai/applications build test`, `pnpm api:build`, `pnpm test:unit`, e2e green; `pnpm harness:test` green AND STILL HERMETIC; `pnpm harness:lint` + `py:harness:typecheck` clean.
 - `pnpm --filter @arcaai/admin-console build lint test` green; `next-dev-loop` runtime pass; axe 0 on new screens; both themes.
 - Runtime proof on the live dev stack: create golden set → attach to agent → approve template → paste the blocking 409 (failing set) and the success path evidence, plus psql rows for `EvalRun`/`EvalScore`.
 
@@ -122,7 +122,7 @@ Full prompt-management suite + builds + lint:
 ```
 $ npx vitest run src/services/prompt-management/      → Test Files  3 passed (3) · Tests 163 passed (163)
 $ pnpm --filter @arcaai/applications build            → tsc clean
-$ pnpm build:api                                      → Tasks: 8 successful, 8 total (clean; one transient ENOTEMPTY rimraf race on first run, clean on retry)
+$ pnpm api:build                                      → Tasks: 8 successful, 8 total (clean; one transient ENOTEMPTY rimraf race on first run, clean on retry)
 $ npx vitest run apps/api .../prompt-management/__tests__  → Test Files 2 passed · Tests 66 passed
 $ eslint prompt-management.service.ts                 → 0 errors (5 pre-existing prettier warnings in untouched code; my edited regions clean)
 $ eslint prompt-management.controller.ts (apps/api)   → 0 errors (3 pre-existing require-description warnings, none mine)
@@ -194,7 +194,7 @@ pnpm --filter @arcaai/applications test  → Test Files 339 passed | 1 skipped; 
 eslint (new files) → 0 errors, 0 warnings (my regions prettier-clean; pre-existing harness-gateway signal* prettier warnings untouched)
 
 # API
-pnpm build:api          → Tasks: 8 successful, 8 total
+pnpm api:build          → Tasks: 8 successful, 8 total
 pnpm test:unit (workspace) → Test Files 987 passed | 2 skipped; Tests 17206 passed | 4 skipped | 9 todo
 eslint harness-admin.controller.ts → 0 errors
 
@@ -255,9 +255,9 @@ Scope: three small, independent completions left over from the backend/console s
 
 **2. `GoldenSet.departmentId` on the create lane.** `CreateGoldenSetInput`/`GoldenSetResponse` already carried `departmentId` (prior session), but the actual HTTP request DTO never exposed it and NOTHING validated the department belonged to the tenant. Added `departmentId?: string` (`@IsOptional() @IsString()`) to `CreateGoldenSetRequest` (`apps/api/.../dto/golden-set.request.ts`); `HarnessAdminController.createGoldenSet` now forwards it to `EvalService.addGoldenSet`. `EvalService` gained an `@Optional() @Inject(DepartmentRepository)` constructor param (APPENDED after the existing optional `secretsService`, never inserted — the two direct-construction unit test files keep their 4-arg calls untouched) and a private `assertDepartmentInTenant` (mirrors `DepartmentAgentService.assertDepartmentInTenant`): a missing OR cross-tenant department → `DataNotFoundException` (404-over-403 — never a 403), enforced only when `departmentId` is actually supplied (a tenant-wide set never touches the department repository). 4 new RED→GREEN tests in `eval.service.test.ts` (valid department, missing department, cross-tenant department, omitted departmentId skips validation) + 1 new controller test asserting the field threads through.
 
-**3. Dangling-barrel/export check (eval service folder + module exports).** Audited `packages/applications/src/services/eval/{index.ts,dto/index.ts}`, `eval.service.module.ts`, and the `harness-observability` dto barrel: all five artifacts (`EvalService`, `EvalRunService`, `EvalPromotionGateService`, `EvalServiceModule`, every DTO incl. `EvalRunTriggerResponse`/`GoldenSetResponse`/`EvalRunResponse`) are correctly exported and reach `apps/api` through `@arcaai/applications`'s barrel chain (`services/index.ts` → root `index.ts`) — confirmed by `harness-admin.controller.ts` already importing all of them without a workaround. No dangling exports or missing DI registrations were found; the two real gaps were the DTO field omissions (item 1) and the request-DTO/validation wiring (item 2) above, both now fixed. `pnpm build:api` (which drift-checks the whole workspace including this barrel chain) stayed green throughout.
+**3. Dangling-barrel/export check (eval service folder + module exports).** Audited `packages/applications/src/services/eval/{index.ts,dto/index.ts}`, `eval.service.module.ts`, and the `harness-observability` dto barrel: all five artifacts (`EvalService`, `EvalRunService`, `EvalPromotionGateService`, `EvalServiceModule`, every DTO incl. `EvalRunTriggerResponse`/`GoldenSetResponse`/`EvalRunResponse`) are correctly exported and reach `apps/api` through `@arcaai/applications`'s barrel chain (`services/index.ts` → root `index.ts`) — confirmed by `harness-admin.controller.ts` already importing all of them without a workaround. No dangling exports or missing DI registrations were found; the two real gaps were the DTO field omissions (item 1) and the request-DTO/validation wiring (item 2) above, both now fixed. `pnpm api:build` (which drift-checks the whole workspace including this barrel chain) stayed green throughout.
 
-**Deliberately out of scope (documented, not silently skipped):** e2e coverage for the new `departmentId` create-lane validation — `apps/api/tests/e2e/admin-golden-sets-webhooks.spec.ts` already has a golden-set create→read round-trip but no department-scoping case; adding one needs the live API (`pnpm test:api:up`), which was not started this session (not part of the requested gate list, and per the hard rule on verifying port ownership before touching 8868). A natural follow-up, not a hidden gap.
+**Deliberately out of scope (documented, not silently skipped):** e2e coverage for the new `departmentId` create-lane validation — `apps/api/tests/e2e/admin-golden-sets-webhooks.spec.ts` already has a golden-set create→read round-trip but no department-scoping case; adding one needs the live API (`pnpm test:up:api`), which was not started this session (not part of the requested gate list, and per the hard rule on verifying port ownership before touching 8868). A natural follow-up, not a hidden gap.
 
 #### Gate evidence (actual output, this session)
 
@@ -284,7 +284,7 @@ $ npx vitest run src/features/harness-ops/ (admin-console)                     �
 $ pnpm --filter @arcaai/applications build   → tsc clean
 $ pnpm --filter @arcaai/applications test    → Test Files 340 passed | 1 skipped (341) · Tests 6862 passed | 4 skipped
 $ pnpm --filter @arcaai/applications lint    → 0 errors, 339 pre-existing warnings (none in my touched regions — verified line-by-line)
-$ pnpm build:api                             → Tasks: 8 successful, 8 total
+$ pnpm api:build                             → Tasks: 8 successful, 8 total
 $ pnpm test:unit (workspace)                 → Test Files 988 passed | 2 skipped (990) · Tests 17243 passed | 4 skipped | 9 todo
 $ pnpm --filter @arcaai/admin-console test    → Test Files 157 passed · Tests 1218 passed
 $ pnpm --filter @arcaai/admin-console lint    → eslint src --max-warnings 0 (clean)

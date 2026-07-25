@@ -144,11 +144,11 @@ From this directory:
 | Command | Action |
 |---|---|
 | `pnpm build` | tsup build (main + worker + e2e bundles) |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:coverage` | Vitest unit tests |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests |
 | `pnpm test:e2e` | Playwright browser tests (`pnpm e2e:serve` serves fixtures); `:ui`, `:headed`, `:chromium` variants exist |
 | `pnpm lint` | ESLint (`--max-warnings 0`) |
-| `pnpm type-check` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm nuke` | Remove build output (nuke also removes `node_modules`) |
+| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
 
 From the repo root: `pnpm --filter @arcaai/med-ner build` (same pattern for `test`, `lint`, etc.).
 

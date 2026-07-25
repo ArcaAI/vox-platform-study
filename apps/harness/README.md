@@ -370,11 +370,11 @@ docker compose -f infrastructure/docker/docker-compose.yml \
 #   Temporal Web UI: http://localhost:8233   gRPC frontend: localhost:7233
 
 # 3. Run the FastAPI app (from the monorepo root)
-pnpm dev:harness
+pnpm harness:dev
 #   → http://localhost:8866/api/v1/health   ·   docs: /api/v1/docs
 
 # 4. In a second terminal, run the Temporal worker (required to actually process runs)
-pnpm dev:harness:worker
+pnpm worker:dev
 ```
 
 The FastAPI app starts even when Temporal is down — it degrades `/health/ready` to 503 rather
@@ -390,12 +390,12 @@ configured engine. All of these are individually degrade-safe — the loop still
 ## Testing
 
 ```bash
-pnpm py:harness:test            # all tests (unit + integration), verbose
-pnpm py:harness:test:unit       # unit/ only
-pnpm py:harness:test:cov        # with coverage
-pnpm py:harness:lint            # ruff
-pnpm py:harness:format          # black
-pnpm py:harness:typecheck       # mypy
+pnpm harness:test            # all tests (unit + integration), verbose
+pnpm harness:test:unit       # unit/ only
+pnpm harness:test:cov        # with coverage
+pnpm harness:lint            # ruff
+pnpm harness:format          # black
+pnpm harness:typecheck       # mypy
 ```
 
 Or directly: `conda run -n arcaenv pytest apps/harness/src/harness/tests/ -v --tb=short`.

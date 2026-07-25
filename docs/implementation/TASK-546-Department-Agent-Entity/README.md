@@ -108,7 +108,7 @@ New folder `src/services/departmentAgent/` per the `department/` exemplar (IDepa
 
 - `pnpm db:migrate` + `pnpm db:generate`; migration SQL reviewed; `pnpm --filter @arcaai/database test` green.
 - `pnpm gen:model` / `gen:entity:check` / `gen:factory:check` — no drift AND "schema coverage OK".
-- `pnpm --filter @arcaai/domains build test`, `pnpm --filter @arcaai/applications build test`, `pnpm build:api`, `pnpm test:unit` green; e2e via `pnpm test:api:up` + `pnpm test:e2e`.
+- `pnpm --filter @arcaai/domains build test`, `pnpm --filter @arcaai/applications build test`, `pnpm api:build`, `pnpm test:unit` green; e2e via `pnpm test:up:api` + `pnpm test:e2e`.
 - `resourceType.enum-parity.test.ts` green.
 - Zero new lint warnings (only-warn in packages/* = errors by policy).
 
@@ -174,7 +174,7 @@ pnpm --filter @arcaai/applications build → tsc (clean)
 pnpm --filter @arcaai/applications test  → Test Files 334 passed | 1 skipped;  Tests 6752 passed
     - departmentAgent.service.test.ts + prompt-resolution.service.test.ts → 43 passed (isolated run)
 
-pnpm build:api → 8 tasks successful
+pnpm api:build → 8 tasks successful
 pnpm --filter @arcaai/api test → Test Files 151 passed | 2 skipped;  Tests 2404 passed (deny-by-default boot audit green)
     - department-agent.controller.test.ts → 6 passed
 

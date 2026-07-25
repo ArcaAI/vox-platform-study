@@ -16,9 +16,11 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "clean": "rm -rf dist *.tsbuildinfo",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch",
-    "test:coverage": "vitest run --coverage"
+    "test:cov": "vitest run --coverage"
   },
   "keywords": [
     "arcaai",

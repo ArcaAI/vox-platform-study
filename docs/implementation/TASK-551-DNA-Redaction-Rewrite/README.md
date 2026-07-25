@@ -69,8 +69,8 @@ The owner's department-agent definition includes **redaction** "if dna-writing-s
 
 ## Verification Criteria / Gates
 
-- `pnpm py:harness:test` (hermetic!) + replay subset green, `py:harness:lint`/`typecheck` clean.
-- `pnpm --filter @arcaai/applications build test`, `pnpm build:api`, database tests green.
+- `pnpm harness:test` (hermetic!) + replay subset green, `py:harness:lint`/`typecheck` clean.
+- `pnpm --filter @arcaai/applications build test`, `pnpm api:build`, database tests green.
 - Console gates if touched (`build lint test` + next-dev-loop + axe).
 - Runtime proof: live dev-stack consultation with a rule like `remove: "patient's employer"` — paste the delivered note (span absent), the trajectory manifest step, and psql evidence of the encrypted manifest.
 
@@ -219,7 +219,7 @@ pnpm --filter @arcaai/domains build                                  → tsc OK
 pnpm --filter @arcaai/domains test                                   → 1390 passed
 pnpm --filter @arcaai/applications build                             → tsc OK
 pnpm --filter @arcaai/applications test                              → 6851 passed
-pnpm build:api                                                       → 8 tasks OK
+pnpm api:build                                                       → 8 tasks OK
 pnpm test:unit (whole workspace)                                     → 17229 passed | 4 skipped
 ```
 
@@ -288,7 +288,7 @@ pnpm --filter @arcaai/applications lint                             → my files
 
 # api (TS)
 pnpm --filter @arcaai/api exec vitest run dna-writing-style.controller.test.ts → 31 passed (2 new)
-pnpm build:api                                                       → 8 tasks OK
+pnpm api:build                                                       → 8 tasks OK
 pnpm --filter @arcaai/api test                                      → 2414 passed | 4 skipped
 pnpm --filter @arcaai/api lint                                      → 0 errors (my controller clean)
 
@@ -437,7 +437,7 @@ pnpm db:generate && pnpm gen:model && gen:entity && gen:factory       → covera
 pnpm --filter @arcaai/database build                                 → tsc OK
 pnpm --filter @arcaai/domains build && test                          → 1393 passed (+3)
 pnpm --filter @arcaai/applications build && test                     → 6864 passed (+2)
-pnpm build:api                                                       → 8 tasks OK
+pnpm api:build                                                       → 8 tasks OK
 pnpm --filter @arcaai/api test                                       → 2415 passed
 ```
 
@@ -514,7 +514,7 @@ audit trail is now WIRED (not discarded), the proof pieces the prior agent could
 - **Residual cleanup.** The two idle proof workflows waiting at the 24h clinician gate
   (`harness-doc-90000000-0000-0000-0000-000000000001` and `…-0001-000000000001`) were **terminated**
   via the Temporal client (both now terminal). Disclosed residuals I created/left running: the booted
-  gateway (`pnpm dev:api`) + the restarted harness worker are still up (dev services, safe to stop),
+  gateway (`pnpm api:dev`) + the restarted harness worker are still up (dev services, safe to stop),
   and one proof `SummaryMeta`/RAW_SUMMARY row on OPEN dev consultation
   `90000000-0000-0000-0001-000000000002` (harmless dev data; not hard-deleted — it IS the proof).
 

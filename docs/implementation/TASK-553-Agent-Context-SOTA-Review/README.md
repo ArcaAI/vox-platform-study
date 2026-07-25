@@ -82,8 +82,8 @@ follow-up recommendations in `findings.md`.
 
 **Verification gates** (per lane + final cross-cutting pass): affected package unit tests
 (`pnpm --filter @arcaai/applications test`, `@arcaai/domains`, `@arcaai/vox`), targeted
-`pnpm test:unit` for apps/api suites, `pnpm py:harness:test` (incl. `test_replay_compat`),
-`pnpm py:stt:test:unit`, builds of touched packages, migration SQL applied to dev (5432)
+`pnpm test:unit` for apps/api suites, `pnpm harness:test` (incl. `test_replay_compat`),
+`pnpm stt:test:unit`, builds of touched packages, migration SQL applied to dev (5432)
 and test (5433) DBs via psql (db-push-managed — additive SQL only, never reset).
 
 ## Implementation Summary
@@ -174,10 +174,10 @@ deferred with written recommendations in `findings.md`.
 - `@arcaai/applications` build clean; **full suite after all lanes + wire-ups: 342 files,
   6904 passed | 4 skipped, 0 failed** (76s).
 - apps/api streaming suites **224 passed**; stt-internal controller **6/6**;
-  `pnpm build:api` 8/8 tasks.
+  `pnpm api:build` 8/8 tasks.
 - `@arcaai/vox` core suites **1385 passed**; admin-console streams/client tests **26 passed**.
-- `pnpm py:harness:test` **1011 passed** (incl. `test_replay_compat` 12 passed, all 10
-  eras); `py:harness:lint` clean. `pnpm py:stt:test:unit` **2456 passed** / 1 skipped
+- `pnpm harness:test` **1011 passed** (incl. `test_replay_compat` 12 passed, all 10
+  eras); `py:harness:lint` clean. `pnpm stt:test:unit` **2456 passed** / 1 skipped
   (pre-existing pyannote skip); `py:stt:lint` clean.
 - Migration applied to dev + test DBs (psql: ALTER/UPDATE 71 & 89/CREATE INDEX; column,
   index, and backfill verified by query).

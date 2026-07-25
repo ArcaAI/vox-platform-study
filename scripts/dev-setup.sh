@@ -3,7 +3,7 @@
 # TASK-312 A.5 / TASK-555 — One-command local development bootstrap
 # ============================================================================
 # Brings a freshly-cloned (or freshly-reset) checkout to a state where
-# `pnpm dev:api` boots cleanly against Vault with dynamic Postgres creds.
+# `pnpm api:dev` boots cleanly against Vault with dynamic Postgres creds.
 #
 # Sequence:
 #   1. Start infrastructure (core + vault + temporal + rag; optional -o/-e)
@@ -13,9 +13,9 @@
 #   5. Bootstrap Vault dynamic DB credentials  (vault_admin + DB engine)
 #
 # USAGE:
-#   pnpm dev:setup          # base: core + vault + temporal + rag
-#   pnpm dev:setup-o        # base + Prometheus/Grafana
-#   pnpm dev:setup-e        # base + inference engines
+#   pnpm setup:dev          # base: core + vault + temporal + rag
+#   pnpm setup:dev:observability        # base + Prometheus/Grafana
+#   pnpm setup:dev:inference        # base + inference engines
 #   ./scripts/dev-setup.sh [-o|--observability] [-e|--inference]
 # ============================================================================
 set -euo pipefail
@@ -67,8 +67,7 @@ PG_SUPERUSER="$(read_env POSTGRES_USER postgres)"
 
 bold "── Step 1/5: starting infrastructure ($TIER_LABEL) ──────"
 # Use the full dev-infra wrapper so Temporal + rag (and optional -o/-e) come up
-# alongside core + vault. Plain `start-infra.sh --all` only activates the
-# `vault` profile and would leave Temporal/rag down.
+# alongside core + vault.
 "$SCRIPT_DIR/dev-infra.sh" up "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"
 
 bold "── Step 2/5: waiting for Postgres + Vault to be ready ───────────────"
@@ -100,4 +99,4 @@ bold "── Step 5/5: bootstrapping Vault dynamic DB credentials ────�
 
 green ""
 green "✔ Local dev environment is ready."
-yellow "Start the stack:  pnpm dev:stack   (or pnpm dev:api for API only)"
+yellow "Start the stack:  pnpm stack:dev   (or pnpm api:dev for API only)"

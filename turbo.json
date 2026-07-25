@@ -16,6 +16,14 @@
         "lint": {
             "dependsOn": ["^build"]
         },
+        "lint:fix": {
+            "cache": false,
+            "dependsOn": ["^build"]
+        },
+        "typecheck": {
+            "dependsOn": ["^build", "^db:generate"],
+            "outputs": []
+        },
         "dev": {
             "cache": false,
             "persistent": true,
@@ -41,6 +49,14 @@
         "test:watch": {
             "cache": false,
             "persistent": true
+        },
+        "test:unit": {
+            "dependsOn": ["build"],
+            "outputs": []
+        },
+        "test:cov": {
+            "dependsOn": ["build"],
+            "outputs": ["coverage/**"]
         },
         "db:generate": {
             "cache": false,

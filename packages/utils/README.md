@@ -98,7 +98,7 @@ await clearTenantCustomTransformersCache('t1');
 | Watch | `tsup --watch` | `pnpm --filter @arcaai/utils dev` |
 | Test | `vitest run` | `pnpm --filter @arcaai/utils test` |
 | Test (watch) | `vitest --watch` | `pnpm --filter @arcaai/utils test:watch` |
-| Coverage | `vitest run --coverage` | `pnpm --filter @arcaai/utils test:coverage` |
+| Coverage | `vitest run --coverage` | `pnpm --filter @arcaai/utils test:cov` |
 | Clean | `rm -rf dist *.tsbuildinfo` | `pnpm --filter @arcaai/utils clean` |
 
 ## Dependencies

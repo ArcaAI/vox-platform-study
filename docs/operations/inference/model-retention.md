@@ -195,7 +195,7 @@ differs between them.
 
 **Where the harness entailer actually lives.** It is loaded by a Temporal
 *activity*, so its weights are resident in the **worker** process
-(`pnpm dev:harness:worker`), not in the harness FastAPI app. The worker runs its
+(`pnpm worker:dev`), not in the harness FastAPI app. The worker runs its
 own periodic sweep (every 60 s) so an idle entailer is released even when no
 further verification arrives. Restarting only the FastAPI app will NOT free it —
 restart the worker.
@@ -251,7 +251,7 @@ set `OLLAMA_MAX_LOADED_MODELS` — HOPE's budgets do not bound the Ollama server
 **"The harness is holding a GGUF and I restarted the service."**
 The MiniCheck entailer lives in the **Temporal worker** process, not the harness
 FastAPI app (§6a). Check `model_cache_resident_models{cache="harness_minicheck"}`
-and restart `pnpm dev:harness:worker` — or just wait: the worker sweeps every
+and restart `pnpm worker:dev` — or just wait: the worker sweeps every
 60 s and releases it once idle past `harness.modelCache.ttlSeconds`.
 
 **"I changed `ttlSeconds` in the console and nothing happened."**

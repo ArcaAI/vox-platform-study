@@ -253,7 +253,7 @@ downstream consumers see non-deterministic config.
 To bypass during a local rebase (dev only):
 
 ```bash
-APP_SETTINGS_BOOT_INVARIANT=skip pnpm dev:api
+APP_SETTINGS_BOOT_INVARIANT=skip pnpm api:dev
 ```
 
 Setting `APP_SETTINGS_BOOT_INVARIANT=skip` outside `development` has no
@@ -511,7 +511,7 @@ pnpm start
 pnpm clean
 
 # Remove all dependencies and build artifacts
-pnpm nuke
+pnpm clean:all
 
 # Linting
 pnpm lint

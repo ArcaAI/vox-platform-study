@@ -93,7 +93,7 @@ TDD test list (Vitest, colocated `__tests__`):
 Gate: `pnpm --filter @arcaai/admin-console build lint test` green; axe 0 violations; both themes; runtime verified via `next-dev-loop`.
 
 ### Phase B — SDK extension: audio uplink bitrate (`@arcaai/vox`)
-Byte counter + rolling-window rate in `SttWebSocketClient.sendAudioFrame()` → `agenticStore` (mirror `droppedFrameCount`) → `useArcaAudio().uplinkBitrate`. Wire the Bandwidth stat card. Tests in the SDK suite. (Isolated; `pnpm build:sdk` green.)
+Byte counter + rolling-window rate in `SttWebSocketClient.sendAudioFrame()` → `agenticStore` (mirror `droppedFrameCount`) → `useArcaAudio().uplinkBitrate`. Wire the Bandwidth stat card. Tests in the SDK suite. (Isolated; `pnpm sdk:build` green.)
 
 ### Phase C — ICD-10 plumb-through (curated subset)
 `callNlp()` (`live-documentation.service.ts`) keeps `icd_code` → `LiveSummaryEntityDto` → console `LiveSummaryEntity` → ICD chips on the note. Applications unit tests + a console render test. Vocabulary widening (real UMLS/MedCAT) is explicitly out of scope / future.
@@ -152,7 +152,7 @@ Deterministic, cue-gated, range-guarded vitals parser — a mis-parse fails SAFE
 - `apps/admin-console` — `LiveSummaryVitals` type + the Objective vitals grid in `case-note-column.tsx`. Test added.
 
 ### SDK now ships type declarations (pre-existing bug fixed)
-`@arcaai/vox` had `tsup dts:false` while `exports.types` pointed at `dist/*.d.ts` that were never emitted — so consumers had no real SDK types (the admin console coped with a local `VoxProviderConfig` shim). The `build` script now chains `tsc --emitDeclarationOnly` (`build:dts`), so `pnpm build:sdk` emits correct declarations for every entry point. The app config now type-checks against the real `AgenticConfig`.
+`@arcaai/vox` had `tsup dts:false` while `exports.types` pointed at `dist/*.d.ts` that were never emitted — so consumers had no real SDK types (the admin console coped with a local `VoxProviderConfig` shim). The `build` script now chains `tsc --emitDeclarationOnly` (`build:dts`), so `pnpm sdk:build` emits correct declarations for every entry point. The app config now type-checks against the real `AgenticConfig`.
 
 ## Change History
 - 2026-07-22 — Plan authored (research: current screen + SDK map; personalized-SOAP-vs-harness; metrics/entity availability). Scope approved: A–D + `useArcaLiveSummary`.

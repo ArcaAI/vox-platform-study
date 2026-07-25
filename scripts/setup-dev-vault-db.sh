@@ -22,11 +22,11 @@
 #
 # PREREQUISITES (the script checks all of these and fails loudly):
 #   - Docker running with hope-postgres + hope-vault containers up
-#       ./scripts/start-infra.sh --all
+#       ./scripts/dev-infra.sh up
 #   - Schema migrated (the `core` schema must exist)
 #       pnpm db:all
 #
-# Normally invoked for you by `pnpm dev:setup`.
+# Normally invoked for you by `pnpm setup:dev`.
 # ============================================================================
 set -euo pipefail
 
@@ -69,7 +69,7 @@ VAULT_ROLE="$(read_env PG_VAULT_ROLE hope-app-role)"
 for c in "$PG_CONTAINER" "$VAULT_CONTAINER"; do
   if ! docker ps --format '{{.Names}}' | grep -qx "$c"; then
     red "ERROR: container '$c' is not running."
-    echo "Start the dev infra first:  ./scripts/start-infra.sh --all"
+    echo "Start the dev infra first:  ./scripts/dev-infra.sh up"
     exit 1
   fi
 done
@@ -159,6 +159,6 @@ echo   "    database         = ${DB_NAME}"
 echo   "    vault role       = ${VAULT_ROLE}"
 echo   "    issued test user = ${SMOKE_USER}  (auto-expires in 1h)"
 echo   ""
-yellow "Next step:  pnpm dev:api"
+yellow "Next step:  pnpm api:dev"
 yellow "  • The API now mints a short-lived PG user from Vault on boot."
 yellow "  • Re-run this script after a Docker volume reset (down -v)."

@@ -65,7 +65,7 @@ Called from `TenantService.create()` after pipeline provisioning; contract mirro
 ## Verification Criteria / Gates
 
 - `pnpm db:seed` green on a scratch DB; `pnpm --filter @arcaai/database test` green (incl. new inventory locks).
-- `pnpm --filter @arcaai/applications build test`, `pnpm build:api`, `pnpm test:unit` green; e2e for the clone/resync endpoints (cross-tenant spec included).
+- `pnpm --filter @arcaai/applications build test`, `pnpm api:build`, `pnpm test:unit` green; e2e for the clone/resync endpoints (cross-tenant spec included).
 - Runtime proof: create a tenant against the live dev stack; paste psql evidence of cloned departments/agents/templates with lineage columns populated.
 
 ## Constraints & Hazards
@@ -137,7 +137,7 @@ $ pnpm --filter @arcaai/applications build   # tsc — clean
 $ pnpm --filter @arcaai/api build            # rimraf + nest build + tsc-alias — clean
 ```
 
-> **`pnpm build:api` (turbo) note:** the turbo-orchestrated variant intermittently fails with
+> **`pnpm api:build` (turbo) note:** the turbo-orchestrated variant intermittently fails with
 > `ENOTEMPTY: rmdir '.../apps/api/dist/modules/...'` — a `rimraf` race caused by a **concurrent
 > session's `dev:api:watch`** writing into `apps/api/dist` (the exact hazard in this tree's operator
 > notes). The direct `pnpm --filter @arcaai/api build` is clean, proving the code compiles; the turbo

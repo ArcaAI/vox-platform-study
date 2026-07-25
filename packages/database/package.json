@@ -19,21 +19,23 @@
     }
   },
   "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist tsconfig.tsbuildinfo src/generated",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo src/generated",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage",
     "db:generate": "prisma generate && pnpm --filter @arcaai/tools generate-prisma-index",
     "db:migrate": "prisma migrate dev --skip-generate",
     "db:migrate:create": "prisma migrate dev --create-only",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:migrate:status": "prisma migrate status",
     "db:migrate:reset": "prisma migrate reset",
+    "db:migrate:status": "prisma migrate status",
     "db:push": "prisma db push",
     "db:push:force": "prisma db push --force-reset --accept-data-loss",
     "db:studio": "prisma studio",
-    "seed": "tsx src/index.ts",
     "decrypt:row": "tsx scripts/decrypt-row.ts",
-    "build": "tsc",
-    "test": "vitest run",
-    "clean": "rimraf dist tsconfig.tsbuildinfo src/generated",
-    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo src/generated"
+    "seed": "tsx src/index.ts"
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",

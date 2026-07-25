@@ -8,7 +8,7 @@
 # (placeholder detection — never prints the key).
 #
 # USAGE:
-#   pnpm dev:doctor
+#   pnpm stack:dev:doctor
 #
 # EXIT CODE: 1 if any REQUIRED check fails (required = clinical-workspace
 # services + postgres/redis/temporal/LM Studio), 0 otherwise. Optional
@@ -102,11 +102,11 @@ http_check required "lm-studio" "http://localhost:1234/v1/models"
 http_check optional "ollama" "http://localhost:11434/"
 
 echo -e "${CYAN}── HOPE services ────────────────────────────────────────────────${NC}"
-http_check required "api (8868)" "http://localhost:${API_PORT:-8868}/api/v1/health" "pnpm dev:api"
-http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/health" "pnpm dev:stt"
-http_check required "smr (8862)" "http://localhost:${SMR_PORT:-8862}/api/v1/health" "pnpm dev:smr"
-http_check required "nlp (8864)" "http://localhost:${NLP_PORT:-8864}/api/v1/health" "pnpm dev:nlp"
-http_check required "harness (8866)" "http://localhost:${HARNESS_PORT:-8866}/api/v1/health" "pnpm dev:harness"
+http_check required "api (8868)" "http://localhost:${API_PORT:-8868}/api/v1/health" "pnpm api:dev"
+http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/health" "pnpm stt:dev"
+http_check required "smr (8862)" "http://localhost:${SMR_PORT:-8862}/api/v1/health" "pnpm smr:dev"
+http_check required "nlp (8864)" "http://localhost:${NLP_PORT:-8864}/api/v1/health" "pnpm nlp:dev"
+http_check required "harness (8866)" "http://localhost:${HARNESS_PORT:-8866}/api/v1/health" "pnpm harness:dev"
 # guardrail mounts its routers under /api (no version segment), unlike the rest
 http_check optional "guardrail (8863)" "http://localhost:${GUARDRAIL_PORT:-8863}/api/health"
 
@@ -117,7 +117,7 @@ if printf '%s' "$providers" | grep -q '"name"'; then
     # top-level provider entries are the ones carrying a display_name
     pass "smr providers registered" "$(printf '%s' "$providers" | grep -oE '"name":"[^"]*","display_name"' | cut -d'"' -f4 | sort -u | tr '\n' ' ')"
 else
-    fail "smr providers registered" "none — start SMR via 'pnpm dev:smr' (registers the LM Studio provider)"
+    fail "smr providers registered" "none — start SMR via 'pnpm smr:dev' (registers the LM Studio provider)"
 fi
 
 # Harness Temporal worker — no port; it is a worker process polling the task
@@ -126,7 +126,7 @@ worker_count="$(pgrep -f 'harness\.temporal\.worker' 2>/dev/null | wc -l | tr -d
 if [ "${worker_count:-0}" -gt 0 ]; then
     pass "harness worker process" "$worker_count matching process(es)"
 else
-    fail "harness worker process" "not running — start with 'pnpm dev:harness:worker'"
+    fail "harness worker process" "not running — start with 'pnpm worker:dev'"
 fi
 
 echo -e "${CYAN}── Preflight ────────────────────────────────────────────────────${NC}"

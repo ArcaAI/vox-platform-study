@@ -5,7 +5,7 @@
 | **Program** | TASK-539 Continuous Quality Re-Assessment, cycle 1 §4 |
 | **Finding under test** | F-009 — "Admin-console screens built under design waivers with no headed-browser pass (TASK-526 explicitly; 528 hub never driven authenticated)" |
 | **Assessor** | Fable 5 (xhigh), runtime assessor per the program doctrine ("Review = statically green, runtime-unproven") |
-| **Stack driven** | Real BFF login → gateway → seeded dev DB: `pnpm dev:api` (:8868) + `pnpm dev:admin` (:5176) + `pnpm dev:guardrail` (:8863) + `pnpm dev:nlp` (:8864), all started and torn down by this assessment; dev containers (postgres/redis/vault/temporal/minio/qdrant) already up and untouched |
+| **Stack driven** | Real BFF login → gateway → seeded dev DB: `pnpm api:dev` (:8868) + `pnpm admin:dev` (:5176) + `pnpm guardrail:dev` (:8863) + `pnpm nlp:dev` (:8864), all started and torn down by this assessment; dev containers (postgres/redis/vault/temporal/minio/qdrant) already up and untouched |
 | **Method** | Playwright 1.61 real chromium (headless), driven through the app's OWN e2e harness (`apps/admin-console/playwright.config.ts`, `auth.setup.ts` one-shot BFF form login → storage-state, `helpers/auth.ts` working-tenant selection) via a purpose-written sweep spec (15 tests). Axe (`@axe-core/playwright`) on the live DOM per screen with WCAG 2.2 AA tags; full-viewport screenshots per screen. Driver + all JSON results + 15 screenshots archived in the session scratchpad (`sweep/`); driver removed from the tree after the run |
 
 ## Verdict on F-009

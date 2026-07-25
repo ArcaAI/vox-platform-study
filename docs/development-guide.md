@@ -20,8 +20,8 @@ Technically, it is a Turborepo + pnpm monorepo: a NestJS 11 API gateway (`apps/a
 | pnpm | 10.31.x | root `package.json` `packageManager` (`pnpm@10.31.0`) |
 | Docker + Docker Compose | recent | required by all `infra:*` / `docker:*` scripts |
 | conda | any recent (Miniconda/Miniforge) | `scripts/setup-python-env.sh` creates the shared env `arcaenv` (Python 3.11) |
-| uv | latest | Python dependency resolution — single `uv.lock` at the repo root (`pyproject.toml` uv workspace); checked by `pnpm py:setup:check` |
-| LM Studio (or Ollama) | serving OpenAI-compatible API on :1234 (:11434) | default local LLM engine for SMR/Guardrail/Harness; `pnpm dev:doctor` treats LM Studio as a required check |
+| uv | latest | Python dependency resolution — single `uv.lock` at the repo root (`pyproject.toml` uv workspace); checked by `pnpm setup:python:check` |
+| LM Studio (or Ollama) | serving OpenAI-compatible API on :1234 (:11434) | default local LLM engine for SMR/Guardrail/Harness; `pnpm stack:dev:doctor` treats LM Studio as a required check |
 
 There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, and Playwright are installed by `pnpm install`.
 
@@ -47,8 +47,8 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 3. **Python environment.** Creates/updates the shared conda env `arcaenv` (Python 3.11) with dependencies for all six services:
 
    ```bash
-   pnpm py:setup            # add --apple (MPS) or --gpu (CUDA) via py:setup:apple / py:setup:gpu
-   pnpm py:setup:check      # verify prerequisites only
+   pnpm setup:python            # add --apple (MPS) or --gpu (CUDA) via py:setup:apple / py:setup:gpu
+   pnpm setup:python:check      # verify prerequisites only
    ```
 
    Expected: `conda env list` shows `arcaenv`; the script also checks node, pnpm, conda, uv, docker, and make.
@@ -56,10 +56,10 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 4. **Start infrastructure.**
 
    ```bash
-   pnpm infra:up
+   pnpm infra:dev:up
    ```
 
-   This runs both compose files (`infrastructure/docker/docker-compose.yml` + `docker-compose.dev.yml`) with the base tier — `vault` + `temporal` + `rag` — Postgres 5432, Redis 6379, MinIO 9000/9001, Qdrant 6333, Vault 8200, Temporal 7233 (UI 8233), TEI reranker 8870. Tier flags: `pnpm infra:up -- -o` (or `pnpm infra:observability:up` / `pnpm dev:setup-o`) adds Prometheus (9090) + Grafana (3001); `pnpm infra:up -- -e` (or `pnpm dev:setup-e`) adds the inference profile (vLLM, llama.cpp, TEI embed). Local Grafana keeps dev-convenience auth (`admin`/`admin`, anonymous Viewer); production observability lives in cluster/ops, not this Compose file. The older `pnpm docker:dev:up` starts core only (no Vault/Temporal/rag) — prefer `infra:up`. Expected: `pnpm infra:status` shows all containers healthy (init containers like `minio-setup` exit 0 by design).
+   This runs both compose files (`infrastructure/docker/docker-compose.yml` + `docker-compose.dev.yml`) with the base tier — `vault` + `temporal` + `rag` — Postgres 5432, Redis 6379, MinIO 9000/9001, Qdrant 6333, Vault 8200, Temporal 7233 (UI 8233), TEI reranker 8870. Tier flags: `pnpm infra:dev:up -- -o` (or `pnpm infra:dev:up:observability` / `pnpm setup:dev:observability`) adds Prometheus (9090) + Grafana (3001); `pnpm infra:dev:up -- -e` (or `pnpm setup:dev:inference`) adds the inference profile (vLLM, llama.cpp, TEI embed). Local Grafana keeps dev-convenience auth (`admin`/`admin`, anonymous Viewer); production observability lives in cluster/ops, not this Compose file. The older `pnpm infra:dev:up` starts core only (no Vault/Temporal/rag) — prefer `infra:up`. Expected: `pnpm infra:dev:status` shows all containers healthy (init containers like `minio-setup` exit 0 by design).
 
 5. **Database schema, client, and seed.**
 
@@ -74,7 +74,7 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 6. **Vault bootstrap.** `.env.dev` ships `SECRETS_PROVIDER=vault` + `PG_DYNAMIC_CREDS=true`, so the API will not boot until Vault AppRole credentials exist. The one-command, idempotent bootstrap (it also covers steps 4-5, so you can run it instead of them):
 
    ```bash
-   pnpm dev:setup
+   pnpm setup:dev
    ```
 
    Expected: infra up, DB migrated + seeded, fresh `VAULT_ROLE_ID`/`VAULT_SECRET_ID` written into `.env.dev`, Vault's database engine wired for dynamic PG credentials. To opt out of Vault entirely, set `SECRETS_PROVIDER=env` and `PG_DYNAMIC_CREDS=false` in `.env.dev`.
@@ -90,49 +90,49 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 8. **Smoke check.** Start the stack, then verify:
 
    ```bash
-   pnpm dev:stack           # terminal 1 — full clinical-workspace stack
-   pnpm dev:doctor          # terminal 2
+   pnpm stack:dev           # terminal 1 — full clinical-workspace stack
+   pnpm stack:dev:doctor          # terminal 2
    ```
 
    Expected: `All required checks passed`. The doctor probes Docker containers, infra endpoints, LM Studio, every service health URL, SMR provider registration, the harness Temporal worker process, and the STT API-key preflight — any FAIL line tells you exactly what to start or fix (see section 12).
 
 ## 4. Daily development
 
-The aggregate supervisor is `pnpm dev:stack` (`scripts/dev-stack.sh`): it first ensures Docker infra is up (base: core + vault + temporal + rag), then starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops app processes on Ctrl-C (Docker infra stays up — use `pnpm infra:down` to tear it down). tts (8865) and the deprecated ui-playground are not in the default set — start them explicitly. It refuses to start over busy ports or a second Temporal worker.
+The aggregate supervisor is `pnpm stack:dev` (`scripts/dev-stack.sh`): it first ensures Docker infra is up (base: core + vault + temporal + rag), then starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops app processes on Ctrl-C (Docker infra stays up — use `pnpm infra:dev:down` to tear it down). tts (8865) and the deprecated ui-playground are not in the default set — start them explicitly. It refuses to start over busy ports or a second Temporal worker.
 
 ```bash
-pnpm dev:stack                      # ensure base Docker infra, then full app stack
-pnpm dev:stack-o                    # base + Prometheus/Grafana, then apps
-pnpm dev:stack-e                    # base + inference engines, then apps
-pnpm dev:stack -- smr worker        # subset (any of: api, stt, smr, guardrail, nlp, harness, worker, ui, tts)
-pnpm dev:stack -- -o smr            # observability tier + subset
-pnpm dev:stack down                 # stop orphans left by a killed supervisor (pidfile-based; no-op if none)
-DRY_RUN=1 pnpm dev:stack            # print the launch plan, start nothing
+pnpm stack:dev                      # ensure base Docker infra, then full app stack
+pnpm stack:dev:observability                    # base + Prometheus/Grafana, then apps
+pnpm stack:dev:inference                    # base + inference engines, then apps
+pnpm stack:dev -- smr worker        # subset (any of: api, stt, smr, guardrail, nlp, harness, worker, ui, tts)
+pnpm stack:dev -- -o smr            # observability tier + subset
+pnpm stack:dev down                 # stop orphans left by a killed supervisor (pidfile-based; no-op if none)
+DRY_RUN=1 pnpm stack:dev            # print the launch plan, start nothing
 ```
 
 Per-service dev commands (Python services run inside conda `arcaenv` via `scripts/dev-service.sh`, bind `127.0.0.1` by default — export `HOST=0.0.0.0` to expose one deliberately):
 
 | Command | Starts | Notes |
 |---|---|---|
-| `pnpm dev:api` | API gateway :8868 | `NODE_ENV=development`, turbo `dev` task |
-| `pnpm dev:api:watch` | API + applications in watch mode | rebuild on change across both packages |
-| `pnpm dev:stt` | STT :8861 | no reload by default (protects the ~4 GB model warm-up) |
-| `pnpm dev:smr` | SMR :8862 | registers the LM Studio provider (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`) |
-| `pnpm dev:nlp` | NLP :8864 | |
-| `pnpm dev:guardrail` | Guardrail :8863 | |
-| `pnpm dev:harness` | Harness API :8866 | boots even when Temporal is down |
-| `pnpm dev:harness:worker` | Harness Temporal worker | no HTTP port; hard-requires Temporal (`pnpm infra:up`) |
-| `pnpm dev:tts` | TTS :8865 | multi-provider text-to-speech (Azure + local Kokoro/Indic Parler) |
-| `pnpm dev:admin` | Admin console :5176 | Next.js 16 App Router (`next dev`); BFF-proxies the gateway |
+| `pnpm api:dev` | API gateway :8868 | `NODE_ENV=development`, turbo `dev` task |
+| `pnpm api:dev:watch` | API + applications in watch mode | rebuild on change across both packages |
+| `pnpm stt:dev` | STT :8861 | no reload by default (protects the ~4 GB model warm-up) |
+| `pnpm smr:dev` | SMR :8862 | registers the LM Studio provider (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`) |
+| `pnpm nlp:dev` | NLP :8864 | |
+| `pnpm guardrail:dev` | Guardrail :8863 | |
+| `pnpm harness:dev` | Harness API :8866 | boots even when Temporal is down |
+| `pnpm worker:dev` | Harness Temporal worker | no HTTP port; hard-requires Temporal (`pnpm infra:dev:up`) |
+| `pnpm tts:dev` | TTS :8865 | multi-provider text-to-speech (Azure + local Kokoro/Indic Parler) |
+| `pnpm admin:dev` | Admin console :5176 | Next.js 16 App Router (`next dev`); BFF-proxies the gateway |
 | `pnpm dev:<service>:watch` | scoped-reload variant | for stt, smr, guardrail, nlp, harness, tts (not worker) |
 
 Support commands:
 
-- `pnpm dev:doctor` — read-only health probe of the whole local stack; exit 1 if any required check fails.
-- `pnpm infra:logs` — follow Docker infra logs; `pnpm dev:stack` tails service logs directly, and writes one file per service under `~/.local/state/hope-dev/logs` (override with `HOPE_DEV_LOG_DIR`).
+- `pnpm stack:dev:doctor` — read-only health probe of the whole local stack; exit 1 if any required check fails.
+- `pnpm infra:dev:logs` — follow Docker infra logs; `pnpm stack:dev` tails service logs directly, and writes one file per service under `~/.local/state/hope-dev/logs` (override with `HOPE_DEV_LOG_DIR`).
 - `pnpm gen:token` — generate a dev JWT for API calls; `pnpm gen:api-key` — generate an API key.
-- `pnpm ok` — full reset: `db:all` (destructive push + seed) then build everything.
-- `pnpm clean` — remove build outputs; `pnpm nuke` — drop the lockfile + all node_modules and reinstall (last resort).
+- `pnpm db:all && pnpm build` — full reset: `db:all` (destructive push + seed) then build everything.
+- `pnpm clean` — remove build outputs; `pnpm clean:all` — drop the lockfile + all node_modules and reinstall (last resort).
 - `./scripts/dev-service.sh <svc> --print` — show the exact resolved env + command a Python dev server would run, without starting it.
 
 ## 5. Ports and services reference
@@ -206,37 +206,37 @@ Full model reference, PHI encryption, and audit mechanics: [architecture/data-an
 
 ## 8. Testing
 
-All TypeScript suites load `.env.test` via dotenv-cli — the test stack is fully isolated from dev (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335, static credentials, no Vault). Bootstrap it with `pnpm test:setup` (infra + schema push + seed in one command), or stepwise `pnpm docker:test:up && pnpm test:db:push && pnpm test:db:seed`. `pnpm docker:test:down` stops the containers and removes volumes.
+All TypeScript suites load `.env.test` via dotenv-cli — the test stack is fully isolated from dev (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335, static credentials, no Vault). Bootstrap it with `pnpm setup:test` (infra + schema push + seed in one command), or stepwise `pnpm infra:test:up && pnpm test:db:push && pnpm test:db:seed`. `pnpm infra:test:down` stops the containers and removes volumes.
 
 | Suite | Command | Config | Needs |
 |---|---|---|---|
 | TS unit | `pnpm test:unit` (watch `test:unit:watch`, UI `test:unit:ui`, coverage `test:coverage`) | `vitest.config.ts` | nothing — all `*.test.ts`/`*.spec.ts` excluding integration/e2e/ui-playground/PgBouncer rig |
 | TS integration | `pnpm test:integration` | `vitest.integration.config.ts` | test infra up; runs `**/integration/**/*.test.ts` sequentially against the live test DB |
-| API E2E | `pnpm test:e2e` (UI `test:e2e:ui`, debug `test:e2e:debug`) | `playwright.config.ts` | a running test API: `pnpm test:api:up` first (8868, `.env.test`); specs in `apps/api/tests/e2e/**/*.spec.ts` |
+| API E2E | `pnpm test:e2e` (UI `test:e2e:ui`, debug `test:e2e:debug`) | `playwright.config.ts` | a running test API: `pnpm test:up:api` first (8868, `.env.test`); specs in `apps/api/tests/e2e/**/*.spec.ts` |
 | Turbo E2E fan-out | `pnpm test:e2e:all` | per-package | runs the turbo `test:e2e` task across packages |
 | SDK E2E | `npx playwright test -c tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/playwright.config.ts` | running API; no root pnpm alias |
 | Contracts | included in `pnpm test:unit` | `vitest.config.ts` | nothing — zod schema validation in `tests/contracts/` (STT and SMR contracts) |
 | Cross-tenant | included in `pnpm test:unit` + `task-307-*` e2e specs | — | fixture in `tests/cross-tenant/fixtures.ts` |
-| Python: STT | `pnpm py:stt:test` (`:unit`, `:integration`, `:cov`) | `apps/stt/pyproject.toml` | conda `arcaenv` |
-| Python: SMR | `pnpm py:smr:test` (`:unit`, `:cov`) | `apps/smr/pyproject.toml` | conda `arcaenv` |
-| Python: NLP | `pnpm py:nlp:test` | `apps/nlp/pyproject.toml` | conda `arcaenv` |
-| Python: Guardrail | `pnpm py:guardrail:test` (`:cov`) | `apps/guardrail/pyproject.toml` | conda `arcaenv` |
-| Python: Harness | `pnpm py:harness:test` (`:unit`, `:cov`) | `apps/harness/pyproject.toml` | conda `arcaenv`; runs in CI as `test-harness` (hermetic — no DB/Redis) |
-| Python: TTS | `pnpm py:tts:test` (`:unit`, `:cov`) | `apps/tts/pyproject.toml` | conda `arcaenv` |
+| Python: STT | `pnpm stt:test` (`:unit`, `:integration`, `:cov`) | `apps/stt/pyproject.toml` | conda `arcaenv` |
+| Python: SMR | `pnpm smr:test` (`:unit`, `:cov`) | `apps/smr/pyproject.toml` | conda `arcaenv` |
+| Python: NLP | `pnpm nlp:test` | `apps/nlp/pyproject.toml` | conda `arcaenv` |
+| Python: Guardrail | `pnpm guardrail:test` (`:cov`) | `apps/guardrail/pyproject.toml` | conda `arcaenv` |
+| Python: Harness | `pnpm harness:test` (`:unit`, `:cov`) | `apps/harness/pyproject.toml` | conda `arcaenv`; runs in CI as `test-harness` (hermetic — no DB/Redis) |
+| Python: TTS | `pnpm tts:test` (`:unit`, `:cov`) | `apps/tts/pyproject.toml` | conda `arcaenv` |
 | Admin console | `pnpm --filter @arcaai/admin-console test` (E2E `test:e2e`) | `apps/admin-console` Vitest / Playwright | Vitest unit specs colocated in `__tests__/`; Playwright E2E |
-| Everything | `pnpm test:all` / `pnpm test:ci` | — | unit → integration → e2e in sequence |
+| Everything | `pnpm test:all` / `pnpm test:all` | — | unit → integration → e2e in sequence |
 
 Test DB helpers: `pnpm test:db:push` (force-push schema), `pnpm test:db:seed` (seed + media seed), `pnpm test:db:reset` (both).
 
 Typical full sequence from a fresh checkout:
 
 ```bash
-pnpm test:setup      # test infra + schema + seed
+pnpm setup:test      # test infra + schema + seed
 pnpm test:unit
 pnpm test:integration
-pnpm test:api:up     # terminal 1 — test API on 8868
+pnpm test:up:api     # terminal 1 — test API on 8868
 pnpm test:e2e        # terminal 2
-pnpm docker:test:down
+pnpm infra:test:down
 ```
 
 **TDD expectation.** Test-first is the house workflow: write a failing test, confirm it fails for the right reason, write minimal code to pass, refactor. Unit tests live next to the code (`src/**/__tests__/` or sibling `*.test.ts`); e2e uses `.spec.ts`. Behavior over implementation; evidence (actual test output) before claiming done.
@@ -245,7 +245,7 @@ pnpm docker:test:down
 
 - `pnpm lint` — turbo runs each package's ESLint (ESLint 9 flat config: per-package `eslint.config.mjs` spreading the `packages/config-eslint/flat/` presets; do not reintroduce eslintrc-format configs).
 - `pnpm format` — Prettier over `**/*.{ts,tsx,md}` (`singleQuote`, `printWidth: 150`).
-- `pnpm build` / `pnpm build:api` / `build:packages` / `build:modules` / `build:sdk` — scoped turbo builds.
+- `pnpm build` / `pnpm api:build` / `build:packages` / `build:modules` / `build:sdk` — scoped turbo builds.
 - Python per service: `pnpm py:<svc>:lint` (ruff), `py:<svc>:format` (black, line length 100), `py:<svc>:typecheck` (mypy), where `<svc>` is `stt`, `smr`, `nlp`, `guardrail`, `harness`, `tts`. Admin console: `pnpm --filter @arcaai/admin-console lint` (ESLint 10 flat, `--max-warnings 0`) and `check-types` (`tsc --noEmit`).
 
 Architecture lint rules you will actually hit (defined in `packages/config-eslint/flat/core.js` + `packages/eslint-plugin-arcaai-internal/`):
@@ -267,7 +267,7 @@ Caveat: inside `packages/*` these rules are downgraded to warnings (`eslint-plug
 
 ## 11. Deployment overview
 
-Local development runs infrastructure in Docker Compose and application services on the host: `infrastructure/docker/docker-compose.yml` (Postgres, Redis, MinIO) plus `docker-compose.dev.yml` with profile tiers — base `vault`+`temporal`+`rag` via `pnpm infra:up` / `dev:setup` / `dev:stack`; `-o` adds `prometheus`; `-e` adds `inference` — driven by `scripts/dev-infra.sh`. Node services run via pnpm/turbo, Python services via conda `arcaenv` — nothing application-level is containerized locally.
+Local development runs infrastructure in Docker Compose and application services on the host: `infrastructure/docker/docker-compose.yml` (Postgres, Redis, MinIO) plus `docker-compose.dev.yml` with profile tiers — base `vault`+`temporal`+`rag` via `pnpm infra:dev:up` / `dev:setup` / `dev:stack`; `-o` adds `prometheus`; `-e` adds `inference` — driven by `scripts/dev-infra.sh`. Node services run via pnpm/turbo, Python services via conda `arcaenv` — nothing application-level is containerized locally.
 
 The primary deployment target is the self-hosted k3s cluster with ArgoCD GitOps: Kustomize base + overlays under `deployment/k3s/`, ArgoCD ApplicationSet bootstrap templates under `deployment/argocd/`, namespaces `hope-v2-dev` (auto-sync from `main`) and `hope-v2-prod` (manual sync from `prod`). GitLab CI builds per-service images on change; a `db-migrate` Job runs Prisma migrations as an ArgoCD PreSync hook. PostgreSQL and MinIO are provisioned outside the cluster (external HA Postgres with Patroni/HAProxy/PgBouncer); harness + Temporal are not yet in the k3s base.
 
@@ -275,22 +275,22 @@ The "single-server" tree (`infrastructure/single-deployment/`) currently contain
 
 ## 12. Troubleshooting
 
-Run `pnpm dev:doctor` first — it pinpoints most of these. Issues below are grounded in the scripts (`dev-doctor.sh`, `dev-stack.sh`, `dev-service.sh`) and `infrastructure/docker/README.md`.
+Run `pnpm stack:dev:doctor` first — it pinpoints most of these. Issues below are grounded in the scripts (`dev-doctor.sh`, `dev-stack.sh`, `dev-service.sh`) and `infrastructure/docker/README.md`.
 
 | Symptom | Cause and fix |
 |---|---|
-| `dev:stack` refuses to start: "port already bound", or API boot fails to bind 8868/9229 | A stale `nest start --watch` (or another stack) is holding the port. `pnpm dev:stack down` stops recorded orphans; otherwise `lsof -nP -iTCP:8868 -sTCP:LISTEN` and kill the pid. |
-| `Error: conda environment 'arcaenv' not found` when starting a Python service | The shared env was never created — `pnpm py:setup` (add `--apple`/`--gpu` for ML extras). |
-| Doctor FAILs `docker:hope-temporal`; harness worker exits on start | Infra was started with `pnpm docker:dev:up` (core only, no Temporal/Vault profiles). Use `pnpm infra:up`, which enables both. |
-| API boot: `VAULT_ROLE_ID (or VAULT_ROLE_ID_FILE) is required when SECRETS_PROVIDER=vault` | Fresh clone, or the dev Vault container was recreated (dev Vault state is in-memory — `docker compose down -v` wipes it). Run `./scripts/refresh-vault-creds.sh`, or just `pnpm dev:setup`. |
+| `dev:stack` refuses to start: "port already bound", or API boot fails to bind 8868/9229 | A stale `nest start --watch` (or another stack) is holding the port. `pnpm stack:dev down` stops recorded orphans; otherwise `lsof -nP -iTCP:8868 -sTCP:LISTEN` and kill the pid. |
+| `Error: conda environment 'arcaenv' not found` when starting a Python service | The shared env was never created — `pnpm setup:python` (add `--apple`/`--gpu` for ML extras). |
+| Doctor FAILs `docker:hope-temporal`; harness worker exits on start | Infra was started with `pnpm infra:dev:up` (core only, no Temporal/Vault profiles). Use `pnpm infra:dev:up`, which enables both. |
+| API boot: `VAULT_ROLE_ID (or VAULT_ROLE_ID_FILE) is required when SECRETS_PROVIDER=vault` | Fresh clone, or the dev Vault container was recreated (dev Vault state is in-memory — `docker compose down -v` wipes it). Run `./scripts/refresh-vault-creds.sh`, or just `pnpm setup:dev`. |
 | API boot: `failed to find entry for connection with name: "hope-main"` | Vault's database engine is not wired to the dev DB — `./scripts/setup-dev-vault-db.sh` (requires migrations applied first). |
 | API boot: `wrapping token is not valid` on the second start (first watch reload) | `VAULT_WRAPPED_SECRET_ID` (single-use, prod shape) is set in dev. Blank it and use the raw reusable `VAULT_SECRET_ID` — re-run `./scripts/refresh-vault-creds.sh`. |
 | TypeScript cannot resolve the Prisma client / types drift after pulling schema changes | The generated client is stale — `pnpm db:generate`, then rebuild. |
-| SMR is up but every generate 404s; live summary never appears | SMR has zero LLM providers registered (the doctor's "smr providers registered" check). Start it via `pnpm dev:smr` (registers the LM Studio provider) and ensure LM Studio is serving on :1234 with a model loaded (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`). |
+| SMR is up but every generate 404s; live summary never appears | SMR has zero LLM providers registered (the doctor's "smr providers registered" check). Start it via `pnpm smr:dev` (registers the LM Studio provider) and ensure LM Studio is serving on :1234 with a model loaded (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`). |
 | STT internal calls all return 401 | `API_GATEWAY_KEY` is missing or a placeholder. Diagnose with `./scripts/dev-service.sh --check-stt-key`; set a real key in `apps/stt/.env` (the dev-seed service-account key is in `packages/database/src/prisma/db_main/seed/00-constants.ts`) or generate one with `pnpm gen:api-key`. |
-| STT first start takes forever / restarts keep interrupting it | Model downloads + ~4 GB warm-up on first boot (HuggingFace; set `HUGGINGFACE_TOKEN` if rate-limited). This is why `pnpm dev:stt` runs without reload — use `dev:stt:watch` only when you need it (reload is scoped to the service's own src dir). |
+| STT first start takes forever / restarts keep interrupting it | Model downloads + ~4 GB warm-up on first boot (HuggingFace; set `HUGGINGFACE_TOKEN` if rate-limited). This is why `pnpm stt:dev` runs without reload — use `dev:stt:watch` only when you need it (reload is scoped to the service's own src dir). |
 | Ran `pnpm db:all` and lost local data | Expected — it force-resets the schema. Non-destructive path: `pnpm gen:prisma push --all && pnpm db:seed` (or `pnpm db:push` + `pnpm db:seed`). |
-| `pnpm test:e2e` sporadically fails auth / returns 429 on login, worse on back-to-back runs | `/auth/login` is throttled to **5/min per source IP** (`@Throttle`, `apps/api/src/modules/auth/auth.controller.ts:138`; `/refresh` is 60/min, `/me` rides the 100/min app default). Every Playwright worker hits the one test API from the same IP and shares that counter, and the e2e test API runs the throttler with the **in-memory store** (no test Redis URL, so `throttle.module.ts` falls back), which persists across rapid successive runs against the same process. Restart the API (`pnpm test:api:up`) between fast re-runs so the window resets; run the throttle-contract spec (`apps/api/tests/e2e/auth-throttle-per-endpoint.spec.ts`) against a freshly-started API in isolation. |
+| `pnpm test:e2e` sporadically fails auth / returns 429 on login, worse on back-to-back runs | `/auth/login` is throttled to **5/min per source IP** (`@Throttle`, `apps/api/src/modules/auth/auth.controller.ts:138`; `/refresh` is 60/min, `/me` rides the 100/min app default). Every Playwright worker hits the one test API from the same IP and shares that counter, and the e2e test API runs the throttler with the **in-memory store** (no test Redis URL, so `throttle.module.ts` falls back), which persists across rapid successive runs against the same process. Restart the API (`pnpm test:up:api`) between fast re-runs so the window resets; run the throttle-contract spec (`apps/api/tests/e2e/auth-throttle-per-endpoint.spec.ts`) against a freshly-started API in isolation. |
 
 ## 13. Documentation map
 

@@ -10,11 +10,11 @@ Follows `.claude/rules/13-nextjs-apps.md`: BFF-mandatory auth (tokens never clie
 
 | Command | Effect |
 |---|---|
-| `pnpm dev` (root: `pnpm dev:admin`) | Dev server on port 5176 |
+| `pnpm dev` (root: `pnpm admin:dev`) | Dev server on port 5176 |
 | `pnpm build` / `pnpm start` | Production build (standalone) / serve on port 3000 |
 | `pnpm test` / `pnpm test:watch` | Vitest (node project for `*.test.ts`, happy-dom for `*.test.tsx`) |
 | `pnpm test:e2e` | Playwright smoke + axe a11y (`tests/e2e/`); requires the dev server (`pnpm dev`) and API :8868 running — specs skip with instructions otherwise. `ADMIN_CONSOLE_URL`/`E2E_ADMIN_USERNAME`/`E2E_ADMIN_PASSWORD` override the defaults (seeded `super_admin`) |
-| `pnpm lint` / `pnpm check-types` | ESLint (0 warnings) / `tsc --noEmit` |
+| `pnpm lint` / `pnpm typecheck` | ESLint (0 warnings) / `tsc --noEmit` |
 
 ## Environment
 
@@ -41,7 +41,7 @@ Development loads the monorepo-root `.env.dev` (host env wins); CI/production us
 - `src/features/<domain>/api/` — typed endpoint clients + TanStack Query v5 hooks + query-key factories per capability domain, ~40 domains across all tiers: `platform`, `monitoring`, `tenants`, `entitlements`, `storage` (admin plane), `ai-models`, `ai-services`, `ai-operations-runs`, `ai-operations-metrics`, `ai-task-defaults`, `agentic-policy`, `tools-mcp`, `rate-limits`, `queues`, `schedulers`, `audit-logs`, `db-studio`, `users`, `rbac`, `api-keys`, `settings`, `account`, `tenant-profile` (tiers 10–29) + `departments`, `storage-browser` (tenant data plane `/storage/*`), `agents` (prompt templates + governance), `dna-writing-styles`, `audio-pipelines`, `transcription-jobs`, `harness-policy`, `harness-ops`, `pipeline-policy`, `identity-providers`, `tenant-tts-config`, `consultations`, `consultation-review` (tier 30–49) + the `playground-*` domains (tier 50–59). Convention per domain: `types.ts` (wire DTOs), `client.ts` (endpoint functions), `keys.ts` (key factory rooted at `[domain]`), `hooks.ts` (`'use client'` queries/mutations; mutations invalidate the domain root), tests in `__tests__/`. Envelope deviations are encoded where the gateway deviates (ai-models `{data,total,totalPages}`, queue jobs + harness surfaces `{items,total}`, RBAC `{data,total,page,pageSize}`, consultations/DNA/prompts `{data,count,page,limit}`). Impersonation calls the BFF's own `/api/auth/impersonate` (never the proxy) so the act-as token lands in the session.
 - `src/shared/streams/` — `useEventStream`, the SSE hook for gateway streams: mints a single-use ticket through the BFF (`POST /api/auth/stream-ticket`, scope `<namespace>:<resourceId>`), opens an `EventSource` directly against `NEXT_PUBLIC_API_HOST` (`?ticket=` — JWTs never in URLs per rule 13), forwards named events, and reconnects with a fresh ticket + exponential backoff. Consumers: DNA generate progress, transcription-job stream panel. Both gateway routes declare `@StreamScope` (TASK-419), so SSE is the primary transport; the consuming screens keep a status poll strictly as the documented error fallback once a stream exhausts its retry budget.
 - `src/config/` — zod-validated env.
-- `tests/e2e/` — Playwright specs: one per screen plus `auth-smoke`/`login-a11y` (36 spec files total), each with axe scans (`@axe-core/playwright`, 0 WCAG 2.2 AA violations, light + dark). Helpers: `helpers/stack.ts` probes app/API availability so specs skip cleanly when the stack is down; `helpers/auth.ts` (`loginAsAdmin`, `selectWorkingTenant`); `helpers/a11y.ts` (shared axe gate; freezes CSS transitions before scanning). The harness screens additionally expect the harness service on :8866 (`pnpm dev:harness`) for live data — they settle on error states without it.
+- `tests/e2e/` — Playwright specs: one per screen plus `auth-smoke`/`login-a11y` (36 spec files total), each with axe scans (`@axe-core/playwright`, 0 WCAG 2.2 AA violations, light + dark). Helpers: `helpers/stack.ts` probes app/API availability so specs skip cleanly when the stack is down; `helpers/auth.ts` (`loginAsAdmin`, `selectWorkingTenant`); `helpers/a11y.ts` (shared axe gate; freezes CSS transitions before scanning). The harness screens additionally expect the harness service on :8866 (`pnpm harness:dev`) for live data — they settle on error states without it.
 
 Streams (SSE/WS) do NOT traverse the BFF: mint a ticket via `POST /api/auth/stream-ticket`, then connect the browser directly to `NEXT_PUBLIC_API_HOST`.
 

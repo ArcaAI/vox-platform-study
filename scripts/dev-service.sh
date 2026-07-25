@@ -97,7 +97,7 @@ check_conda_env() {
         exit 1
     fi
     if ! conda env list 2>/dev/null | awk 'NF && $1 !~ /^#/ {print $1}' | grep -qx "$CONDA_ENV"; then
-        echo -e "${RED}Error: conda environment '$CONDA_ENV' not found.${NC} Set it up with: pnpm py:setup" >&2
+        echo -e "${RED}Error: conda environment '$CONDA_ENV' not found.${NC} Set it up with: pnpm setup:python" >&2
         exit 1
     fi
 }

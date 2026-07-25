@@ -125,7 +125,7 @@ Harness gets **no Vault client**. Token resolution follows the platform's existi
 
 ### 3.6 Replay-safety playbook (binding for every 533 change)
 
-The workflow file already carries **8 `workflow.patched` eras** (findings §3-E1; count accurate as of this ticket — TASK-551 later added `task-551-redaction` + `task-551-redaction-audit`, making it **10**; see TASK-553 review). This ticket adds **zero** new eras by design: D-23/D-25/D-26 are TS-only; D-24 changes activity *internals* + policy payload fields (additive, `models.py` parsers already tolerate absence); token budget uses additive optional activity-result fields (§3.2); windowing is TS-side (§3.3); D-28 is config/boot. Rule: any change that would alter the command sequence is out of scope for this ticket and must be re-planned with `workflow.patched` + a captured replay fixture. Gate: `test_replay_compat` fixtures stay green in every 533 MR (`pnpm py:harness:test`). Harness CI stays hermetic (stubbed gateway/LLM, in-memory Qdrant, no live Temporal/DB/Redis).
+The workflow file already carries **8 `workflow.patched` eras** (findings §3-E1; count accurate as of this ticket — TASK-551 later added `task-551-redaction` + `task-551-redaction-audit`, making it **10**; see TASK-553 review). This ticket adds **zero** new eras by design: D-23/D-25/D-26 are TS-only; D-24 changes activity *internals* + policy payload fields (additive, `models.py` parsers already tolerate absence); token budget uses additive optional activity-result fields (§3.2); windowing is TS-side (§3.3); D-28 is config/boot. Rule: any change that would alter the command sequence is out of scope for this ticket and must be re-planned with `workflow.patched` + a captured replay fixture. Gate: `test_replay_compat` fixtures stay green in every 533 MR (`pnpm harness:test`). Harness CI stays hermetic (stubbed gateway/LLM, in-memory Qdrant, no live Temporal/DB/Redis).
 
 ## 4. Implementation Plan
 
@@ -210,7 +210,7 @@ Ordered within each sub-scope; layer order database → domains → applications
 
 ### 5.3 Gates
 
-Per touched lane: `pnpm --filter @arcaai/applications build test` · `pnpm build:api` + `pnpm test:unit` · `pnpm py:stt:test|lint|typecheck` · `pnpm py:harness:test|lint|typecheck` · `pnpm --filter @arcaai/admin-console build lint test` · migration SQL reviewed (B6) · e2e specs authored here, executed in TASK-534.
+Per touched lane: `pnpm --filter @arcaai/applications build test` · `pnpm api:build` + `pnpm test:unit` · `pnpm stt:test|lint|typecheck` · `pnpm harness:test|lint|typecheck` · `pnpm --filter @arcaai/admin-console build lint test` · migration SQL reviewed (B6) · e2e specs authored here, executed in TASK-534.
 
 ## 6. Acceptance & DoD
 
@@ -279,11 +279,11 @@ All eight items implemented TDD (RED evidence captured per item, §9.3). Zero ne
 |---|---|
 | `pnpm --filter @arcaai/applications build` | ✅ clean `tsc` |
 | `pnpm --filter @arcaai/applications test` | ✅ **6611 passed**, 4 skipped (324 files) — up from 6575 pre-ticket |
-| `pnpm build:api` | ✅ 8/8 tasks successful |
+| `pnpm api:build` | ✅ 8/8 tasks successful |
 | `npx vitest run tests/contracts/` | ✅ **71 passed** (5 files, incl. the new `stt-transcript-segments` lock) |
 | harness `pytest src/harness/tests/` | ✅ **935 passed** (incl. `test_replay_compat` — all era fixtures green) |
 | stt `pytest tests/unit` | ✅ **2455 passed**, 1 skipped (pyannote absent) |
-| `pnpm py:harness:typecheck` (mypy) | ✅ no issues in 91 source files |
+| `pnpm harness:typecheck` (mypy) | ✅ no issues in 91 source files |
 | harness / stt `ruff check` | ✅ All checks passed (both) |
 | `pnpm --filter @arcaai/admin-console test` | ✅ **1081 passed** (140 files) |
 | `pnpm --filter @arcaai/admin-console build lint` | ✅ build OK; eslint `--max-warnings 0` clean |
@@ -307,7 +307,7 @@ twice. Evidence for the three:
 | **B3** | `live-documentation.service.ts:680` `transcriptMode === 'windowed'`, window walk `:687-720`, elision notice `:734-735`; 8 tests incl. the §3.3 byte-identical equivalence assertion (`__tests__/live-documentation.windowed.test.ts:90,99`) |
 | **B5** | new console feature `apps/admin-console/src/features/consultation-review/` + route `(console)/(tenant)/consultation-review/page.tsx`; `lib/transcript-highlights.ts` consumes `citationsMap`/`segmentId`; 8 + 11 tests. `apps/ui-playground` untouched (`git status` clean) |
 
-**Gates after B1+B4**: `@arcaai/applications` build clean, **6636 passed** (326 files) · `pnpm build:api` 8/8 · harness **955 passed** incl. all replay fixtures · mypy clean (91 files) · ruff clean · applications lint **153 warnings, BELOW the 156 pre-ticket baseline** (zero introduced).
+**Gates after B1+B4**: `@arcaai/applications` build clean, **6636 passed** (326 files) · `pnpm api:build` 8/8 · harness **955 passed** incl. all replay fixtures · mypy clean (91 files) · ruff clean · applications lint **153 warnings, BELOW the 156 pre-ticket baseline** (zero introduced).
 
 **Open decision rows for the remaining 533-B items:**
 
@@ -375,7 +375,7 @@ Recommend restoring `@@unique([tenantId, consultationId])` to the schema so it
 matches the deployed database.
 
 **Gates (this pass):** `@arcaai/domains` build clean · **1373 passed** ·
-`@arcaai/applications` build clean · **6669 passed** (331 files) · `pnpm build:api`
+`@arcaai/applications` build clean · **6669 passed** (331 files) · `pnpm api:build`
 8/8 · `pnpm test:unit` **16947 passed** (969 files) · harness **957 passed** incl.
 every `test_replay_compat` era fixture · ruff clean · mypy clean (91 files) ·
 turbo lint 0 errors, and 0 warnings attributable to this ticket's files (the

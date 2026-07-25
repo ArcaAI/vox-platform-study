@@ -190,7 +190,7 @@ Two independently reviewable work-streams. Order within each stream is binding; 
 | T-11 | `features/harness-ops/components/__tests__/{golden-sets-panel,edit-burden-card}.test.tsx` | list/detail/create states; PHI-safe fields only; edit-burden 404 → EmptyState; axe + themes |
 | T-12 | `features/pipeline-policy/components/__tests__/…` | locked toggles disabled for non-elevated with hint; still editable for elevated |
 
-**Gates (all must pass, output pasted in §9)**: `pnpm --filter @arcaai/applications build test` · `pnpm --filter @arcaai/database test` · `pnpm build:api` + `pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test` · `pnpm lint` (only-warn warnings in `packages/*` treated as errors) · runtime verification of the changed screens via the `next-dev-loop` skill (compiling ≠ working) · e2e: update `apps/api/tests/e2e/mcp-admin.spec.ts` + `trajectory-admin` spec expectations for the new subjects, author `harness-policy-lock.spec.ts` (tenant PATCH `safetyEnabled` → 403) — **executed in TASK-534**.
+**Gates (all must pass, output pasted in §9)**: `pnpm --filter @arcaai/applications build test` · `pnpm --filter @arcaai/database test` · `pnpm api:build` + `pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test` · `pnpm lint` (only-warn warnings in `packages/*` treated as errors) · runtime verification of the changed screens via the `next-dev-loop` skill (compiling ≠ working) · e2e: update `apps/api/tests/e2e/mcp-admin.spec.ts` + `trajectory-admin` spec expectations for the new subjects, author `harness-policy-lock.spec.ts` (tenant PATCH `safetyEnabled` → 403) — **executed in TASK-534**.
 
 ---
 
@@ -264,7 +264,7 @@ Two independently reviewable work-streams. Order within each stream is binding; 
 |---|---|
 | `pnpm --filter @arcaai/applications build test` | build OK · **6576 passed**, 1 skipped file |
 | `pnpm --filter @arcaai/database test` | **844 passed** (25 files) |
-| `pnpm build:api` | 8/8 tasks OK |
+| `pnpm api:build` | 8/8 tasks OK |
 | `pnpm test:unit` (full monorepo) | **16801 passed**, 4 skipped, 9 todo (953 files) |
 | `pnpm --filter @arcaai/admin-console build lint test` | build OK (all routes present incl. `/ai-services`, `/db-studio`, both redirects) · lint clean · **1081 passed** (140 files) |
 | `pnpm lint` (monorepo) | 29/29 tasks green (only-warn warnings treated as errors) |
@@ -314,7 +314,7 @@ _A speculative `networkMode: 'always'` fix was written for this and then **rever
   - **Part 1 — 0 rows.** No tenant's effective safety/PHI posture changes on deploy.
   - **Part 2 — 2 rows**, both platform tenants (SYSTEM `00000000-…`, Global `50000000-…`); no customer tenant loses an editable pin.
   - **Part 3 — 3 rows, all `seeded = t`** and all already carrying the new `McpServer` + `AgentTrajectory` grants; **0 custom policies need operator action.**
-  - **Caveat on interpreting this run**: the dev DB had already been re-seeded with the updated `01-policy.ts` (policy rows are `_version: 1`, created 16:27 UTC; `pnpm dev:api` does not seed — `turbo` `dev` only depends on `^db:generate`), so Part 3 here reflects post-change state. **This run validates the SQL, not production blast radius** — Parts 1 and 3 must be re-run against production before merge.
+  - **Caveat on interpreting this run**: the dev DB had already been re-seeded with the updated `01-policy.ts` (policy rows are `_version: 1`, created 16:27 UTC; `pnpm api:dev` does not seed — `turbo` `dev` only depends on `^db:generate`), so Part 3 here reflects post-change state. **This run validates the SQL, not production blast radius** — Parts 1 and 3 must be re-run against production before merge.
 - **Design gate waived** for B-1/B-2/B-4 (recorded in the header). Quality bars were still enforced; design QA against a frame remains open if one is ever authored.
 
 ## 10. Change History

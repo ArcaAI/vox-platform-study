@@ -163,7 +163,7 @@ Execution order with per-step verification (rule 01 layer gates — complete eac
 | Phase | Steps (from the manifest below) | Verify |
 |---|---|---|
 | A. Applications | 1–3 (tenant-lane service methods + resolver, DTOs, RED→GREEN unit tests) | `pnpm --filter @arcaai/applications build test` |
-| B. API | 4–6 (controller tenant routes, smr-proxy fold-in, controller/proxy tests) | `pnpm build:api && pnpm test:unit` |
+| B. API | 4–6 (controller tenant routes, smr-proxy fold-in, controller/proxy tests) | `pnpm api:build && pnpm test:unit` |
 | C. Console | 7–14 (types 3→9, providers client/hooks, screen rebuild, route rename + redirect, nav, tests) | `pnpm --filter @arcaai/admin-console build lint test` + runtime pass (`next-dev-loop` skill) |
 | D. Evidence | 15–16 (e2e spec authored for P7, README closure) | spec compiles; §5 gate outputs pasted |
 
@@ -219,7 +219,7 @@ Console — `tenant-ai-configuration-screen.test.tsx` (+ axe):
 Gates (all pasted as evidence):
 ```
 pnpm --filter @arcaai/applications build test
-pnpm build:api && pnpm test:unit
+pnpm api:build && pnpm test:unit
 pnpm --filter @arcaai/admin-console build lint test
 pnpm lint          # only-warn in packages/* treated as errors
 ```
@@ -351,7 +351,7 @@ $ pnpm --filter @arcaai/applications test
  Test Files  315 passed | 1 skipped (316)
       Tests  6516 passed | 4 skipped (6520)
 
-$ pnpm build:api
+$ pnpm api:build
  Tasks:    8 successful, 8 total
   Time:    17.772s
 $ pnpm test:unit
@@ -378,7 +378,7 @@ $ pnpm lint
 
 - **`pnpm lint` reports 145 pre-existing prettier warnings in `packages/applications` (0 errors).** They are treated as errors by rule 01, but **none are in TASK-526-owned files** — `npx eslint src/services/ai-provider-connection` exits 0 with no output. They live in untouched files (live-documentation, user*, tenant-idp-config, …) and pre-date this ticket; fixing them repo-wide is out of this ticket's ownership manifest.
 - **Transient cross-agent noise**: one intermediate `pnpm --filter @arcaai/applications test` run showed 2 failures in `src/services/stt/model/__tests__/aiModel.service.test.ts` — files owned by the concurrently-running TASK-527 agent (confirmed `M` in `git status`). They were green on re-run and in the final `pnpm test:unit` (16659 passed). Not touched by this ticket.
-- **e2e not executed** — `task-526-*.spec.ts` is authored and typechecks, but needs a live gateway (`pnpm test:api:up`) + seeded DB; per §4 it runs in P7.
+- **e2e not executed** — `task-526-*.spec.ts` is authored and typechecks, but needs a live gateway (`pnpm test:up:api`) + seeded DB; per §4 it runs in P7.
 - **Runtime browser verification not performed.** The `next-dev-loop` skill's floor needs a running `next dev` + `agent-browser`; this session verified the screen through the production build, lint, and 13 jsdom tests (incl. axe in both themes) only. A headed pass remains for the P7 design-QA step.
 - **Not fixed (out of scope, flagged)**: `ai-task-defaults-platform-screen.tsx` still hardcodes only **3** of the 9 task keys, so six platform defaults have no global-admin editor. This is a real gap surfaced by the 3→9 widening, but the platform screen belongs to TASK-532's file-rename/hub wave — recorded here rather than silently expanded into.
 - SMR Python consumption of `provider_overrides` is TASK-525; the injected field is inert until then (SMR ignores unknown body fields), exactly as TASK-496 phased TTS.
@@ -390,7 +390,7 @@ Every gate was **re-run from scratch** against the reset dev/test stacks rather 
 ```
 pnpm test:unit         953 files | 16760 passed, 4 skipped, 9 todo, 0 failed
 admin-console          build ok · eslint --max-warnings 0 clean · 1031 passed
-pnpm build:api         8/8 tasks successful
+pnpm api:build         8/8 tasks successful
 pnpm lint              29/29 tasks successful
 ```
 

@@ -418,8 +418,8 @@ conda run -n arcaenv pytest tests/ --cov=stt --cov-report=html -v
 #### From monorepo root (pnpm scripts)
 
 ```bash
-pnpm py:stt:test:unit       # Unit tests
-pnpm py:stt:test:cov        # With coverage
+pnpm stt:test:unit       # Unit tests
+pnpm stt:test:cov        # With coverage
 ```
 
 > **Note**: Tests marked with `@requires_torch` will be skipped if PyTorch is not installed.
@@ -458,10 +458,10 @@ Integration and E2E tests use the monorepo's centralized test infrastructure:
 
 ```bash
 # Start test services (from monorepo root)
-pnpm docker:test:up
+pnpm infra:test:up
 
 # Stop test services
-pnpm docker:test:down
+pnpm infra:test:down
 ```
 
 Test service ports (isolated from development):

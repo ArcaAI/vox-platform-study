@@ -165,11 +165,11 @@ Step order and per-step gates (RED test list in §5; every step = its own review
 
 | Step | Scope | Blocking on | Gate before next step |
 |---|---|---|---|
-| 4.1 | Gateway route + guard + read service (the frozen contract) | TASK-524 merged (facade + `AiRuntimeProfile` repo) | `pnpm --filter @arcaai/applications build test` · `pnpm build:api` · `pnpm test:unit` |
-| 4.2 | SMR client + `ResizableSemaphore` + wiring | 4.1 | `pnpm py:smr:test|lint|typecheck` |
-| 4.3 | NLP client + inference semaphore | 4.1 (parallel to 4.2 — disjoint files) | `pnpm py:nlp:test` + lint/typecheck |
-| 4.4 | stt client + `GlobalSettingRead` deletion + cache/worker consumption | 4.1 (parallel) | `pnpm py:stt:test|lint|typecheck` |
-| 4.5 | Guardrail SQL-read profile extension | TASK-524 tables migrated (no gateway dependency) | `pnpm py:guardrail:test|lint|typecheck` |
+| 4.1 | Gateway route + guard + read service (the frozen contract) | TASK-524 merged (facade + `AiRuntimeProfile` repo) | `pnpm --filter @arcaai/applications build test` · `pnpm api:build` · `pnpm test:unit` |
+| 4.2 | SMR client + `ResizableSemaphore` + wiring | 4.1 | `pnpm smr:test|lint|typecheck` |
+| 4.3 | NLP client + inference semaphore | 4.1 (parallel to 4.2 — disjoint files) | `pnpm nlp:test` + lint/typecheck |
+| 4.4 | stt client + `GlobalSettingRead` deletion + cache/worker consumption | 4.1 (parallel) | `pnpm stt:test|lint|typecheck` |
+| 4.5 | Guardrail SQL-read profile extension | TASK-524 tables migrated (no gateway dependency) | `pnpm guardrail:test|lint|typecheck` |
 | 4.6 | Docstring/comment + env-file deltas | 4.2–4.5 + TASK-523's `.env.example` pass | `pnpm lint`; grep review |
 
 ### 4.1 Gateway route first — the contract (lane B)
@@ -248,7 +248,7 @@ Hermetic throughout: the gateway is stubbed with a local fixture HTTP server (pe
 | 8 | **"stt consumes model_cache keys via client; GlobalSettingRead gone"**: cache picks up served `ttl_seconds`/`max_models` (clamp still enforced: served 30 → 60); `from stt.core.database import GlobalSettingRead` raises `ImportError`; grep-style assert zero references | `apps/stt/tests/unit/test_effective_config_client.py`, `apps/stt/tests/unit/test_database_exports.py` |
 | 9 | Guardrail: profile fields ride the existing cache entry; DB error still → env fallback (existing tests extended, not weakened) | guardrail in-package tests (`apps/guardrail/src/guardrail/tests/`) |
 
-**Gates** (all pasted as evidence): `pnpm --filter @arcaai/applications build test` · `pnpm build:api` + `pnpm test:unit` · `pnpm py:smr:test|lint|typecheck` · `pnpm py:nlp:test` + `py:nlp:lint|typecheck` · `pnpm py:stt:test|lint|typecheck` · `pnpm py:guardrail:test|lint|typecheck` · `pnpm lint`. E2E (route reachable with real tokens) authored here, executed in Phase 7 (TASK-534).
+**Gates** (all pasted as evidence): `pnpm --filter @arcaai/applications build test` · `pnpm api:build` + `pnpm test:unit` · `pnpm smr:test|lint|typecheck` · `pnpm nlp:test` + `py:nlp:lint|typecheck` · `pnpm stt:test|lint|typecheck` · `pnpm guardrail:test|lint|typecheck` · `pnpm lint`. E2E (route reachable with real tokens) authored here, executed in Phase 7 (TASK-534).
 
 ## 6. Acceptance & Definition of Done
 
@@ -307,7 +307,7 @@ Tests (RED observed before each implementation): `effective-config.service.test.
 pnpm --filter @arcaai/applications build   → tsc, no output (success)
 pnpm --filter @arcaai/applications test    → Test Files 314 passed | 1 skipped (315)
                                              Tests 6506 passed | 4 skipped (6510)     [baseline 6493 → +13]
-pnpm build:api                             → Tasks: 8 successful, 8 total (15.6s)
+pnpm api:build                             → Tasks: 8 successful, 8 total (15.6s)
 pnpm test:unit                             → Test Files 942 passed | 2 skipped (944)
                                              Tests 16643 passed | 4 skipped | 9 todo (16656)
 pnpm --filter @arcaai/api lint             → clean (0 errors)
@@ -393,7 +393,7 @@ Field-level "bootstrap fallback — runtime value comes from the control plane" 
 ```
 # TypeScript
 pnpm --filter @arcaai/applications build   → tsc, clean
-pnpm build:api                             → Tasks: 8 successful, 8 total (14.9s)
+pnpm api:build                             → Tasks: 8 successful, 8 total (14.9s)
 pnpm test:unit                             → Test Files 942 passed | 2 skipped (944)
                                              Tests 16643 passed | 4 skipped | 9 todo (16656)
 pnpm --filter @arcaai/api lint             → clean (0 errors)

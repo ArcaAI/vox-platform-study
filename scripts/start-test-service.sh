@@ -9,7 +9,7 @@
 #   source scripts/start-test-service.sh
 #
 # REQUIREMENTS:
-#   - Docker test containers running (pnpm docker:test:up)
+#   - Docker test containers running (pnpm infra:test:up)
 #   - Database schema pushed (pnpm test:db:push)
 #   - For Python services: conda environment 'arcaenv' set up
 #
@@ -45,14 +45,14 @@ check_env_file() {
 check_docker_containers() {
     if ! docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" ps --status running 2>/dev/null | grep -q "hope-postgres-test"; then
         echo -e "${YELLOW}Warning: Test database container doesn't appear to be running.${NC}"
-        echo "Start it with: pnpm docker:test:up"
+        echo "Start it with: pnpm infra:test:up"
         echo ""
         # In non-interactive contexts (CI, nohup, IDE task runners without TTY) `read`
         # returns immediately with empty input; falling through silently leads to a
         # confusing DB-connection failure later. Fail fast with a clear directive.
         if [ ! -t 0 ]; then
             echo -e "${RED}Error: stdin is not a TTY; cannot prompt to start containers.${NC}"
-            echo "Run 'pnpm docker:test:up' first, then retry."
+            echo "Run 'pnpm infra:test:up' first, then retry."
             exit 1
         fi
         read -p "Would you like to start the test containers now? (y/n) " -n 1 -r
@@ -66,7 +66,7 @@ check_docker_containers() {
             # failures of the long-running services.
             docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" up -d --wait || true
             if ! docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" ps --status running 2>/dev/null | grep -q "hope-postgres-test"; then
-                echo -e "${RED}Error: postgres-test failed to start. Inspect with 'pnpm docker:test:logs'.${NC}"
+                echo -e "${RED}Error: postgres-test failed to start. Inspect with 'pnpm infra:test:logs'.${NC}"
                 exit 1
             fi
         else
@@ -81,7 +81,7 @@ check_conda_env() {
     # similarly-prefixed envs like "arcaenv-dev" don't satisfy a request for "arcaenv".
     if ! conda env list 2>/dev/null | awk 'NF && $1 !~ /^#/ {print $1}' | grep -qx "$env_name"; then
         echo -e "${RED}Error: conda environment '$env_name' not found.${NC}"
-        echo "Set it up with: pnpm py:setup"
+        echo "Set it up with: pnpm setup:python"
         exit 1
     fi
 }
@@ -92,8 +92,8 @@ handle_build_flag() {
             echo -e "${GREEN}Building packages first...${NC}"
             cd "$PROJECT_ROOT"
             pnpm db:generate
-            pnpm build:packages
-            pnpm build:modules
+            pnpm build:core
+            pnpm build:core
             echo -e "${GREEN}Build complete.${NC}"
             return
         fi
@@ -119,7 +119,7 @@ check_port_available() {
     pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
     if [ -n "$pids" ]; then
         echo -e "${RED}Error: port $port is already in use (PID(s): $(echo "$pids" | tr '\n' ' ')).${NC}"
-        echo "The test API shares port $port with 'pnpm dev:api'. Stop the conflicting"
+        echo "The test API shares port $port with 'pnpm api:dev'. Stop the conflicting"
         echo "process first, e.g.:  kill $(echo "$pids" | tr '\n' ' ')"
         exit 1
     fi

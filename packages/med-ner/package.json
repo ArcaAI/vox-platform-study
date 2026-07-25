@@ -30,15 +30,15 @@
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
     "lint": "eslint \"src/**/*.ts*\" --max-warnings 0",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest --watch",
-    "test:coverage": "vitest run --coverage",
-    "e2e:serve": "node e2e/serve.mjs",
+    "test:cov": "vitest run --coverage",
     "test:e2e": "pnpm build && playwright test --config=e2e/playwright.config.ts",
     "test:e2e:ui": "pnpm build && playwright test --config=e2e/playwright.config.ts --ui",
     "test:e2e:headed": "pnpm build && playwright test --config=e2e/playwright.config.ts --headed",
     "test:e2e:chromium": "pnpm build && playwright test --config=e2e/playwright.config.ts --project=chromium",
-    "type-check": "tsc --noEmit"
+    "e2e:serve": "node e2e/serve.mjs"
   },
   "keywords": [
     "medical",

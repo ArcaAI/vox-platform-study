@@ -217,7 +217,7 @@ Ordered by severity within category. "Size" = S ≤ ½ d, M ≤ 2 d.
 
 ## 5. Gates evidence (2026-07-20 run)
 
-- `pnpm build:api` (db:generate → database → domains → applications → api): **8/8 tasks green** (~15 s).
+- `pnpm api:build` (db:generate → database → domains → applications → api): **8/8 tasks green** (~15 s).
 - `pnpm --filter @arcaai/admin-console build` (Next 16.3 Turbopack): **green** — 30+ routes emitted. (First attempt failed on `ColumnDef` import only because `@arcaai/ui` dist was stale; turbo dependency order prevents this in CI. Not a source defect.)
 - `pnpm turbo lint` (admin-console, api, applications, domains, database, vox, +ui build): **1 failure** — `@arcaai/api#lint` (D-02); admin-console lint green at `--max-warnings 0`; vox 71 prettier warnings (D-03).
 - `pnpm --filter @arcaai/vox typecheck`: **3 errors** (D-01).

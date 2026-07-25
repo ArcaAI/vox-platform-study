@@ -2,8 +2,8 @@
 # ============================================================================
 # One-command local TEST environment bootstrap
 # ============================================================================
-# Test counterpart to `pnpm dev:setup` (scripts/dev-setup.sh). Brings a fresh
-# checkout to a state where `pnpm test:api:up` (and the vitest/playwright suites
+# Test counterpart to `pnpm setup:dev` (scripts/dev-setup.sh). Brings a fresh
+# checkout to a state where `pnpm test:up:api` (and the vitest/playwright suites
 # that read .env.test) boot cleanly against the isolated test infrastructure.
 #
 # Unlike dev, the test environment uses STATIC Postgres credentials from
@@ -18,7 +18,7 @@
 #   4. Seed baseline data                  (test:db:seed)
 #
 # USAGE:
-#   pnpm test:setup        (preferred)
+#   pnpm setup:test        (preferred)
 #   ./scripts/test-setup.sh
 # ============================================================================
 set -euo pipefail
@@ -53,5 +53,5 @@ pnpm test:db:seed
 
 green ""
 green "✔ Local test environment is ready."
-yellow "Start the test API:   pnpm test:api:up"
+yellow "Start the test API:   pnpm test:up:api"
 yellow "Run the test suites:  pnpm test:unit   |   pnpm test:integration   |   pnpm test:e2e"

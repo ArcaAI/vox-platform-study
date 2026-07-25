@@ -6,14 +6,15 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "rimraf dist tsconfig.tsbuildinfo && tsc",
-    "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
     "dev": "tsc --watch",
     "dev:watch": "tsc --watch",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "pnpm test:unit",
-    "test:unit": "vitest run --passWithNoTests"
+    "test:unit": "vitest run --passWithNoTests",
+    "test:cov": "vitest run --coverage"
   },
   "peerDependencies": {
     "@arcaai/domains": "workspace:*",

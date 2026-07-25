@@ -49,7 +49,7 @@
 
 ## Verification Criteria / Gates
 
-- Lanes A+B: `pnpm --filter @arcaai/applications build test`, `pnpm build:api`, `pnpm test:unit` green. Runtime proof for A: re-point `nlp.ner` on the dev stack, paste NLP request log showing the injected `model_name` on a clinical path. Runtime proof for B: live session where the live-summary stats name the `smr.live` selection.
+- Lanes A+B: `pnpm --filter @arcaai/applications build test`, `pnpm api:build`, `pnpm test:unit` green. Runtime proof for A: re-point `nlp.ner` on the dev stack, paste NLP request log showing the injected `model_name` on a clinical path. Runtime proof for B: live session where the live-summary stats name the `smr.live` selection.
 - Lane C: `pnpm --filter @arcaai/admin-console build lint test` green + next-dev-loop + axe 0 + both themes.
 
 ## Constraints & Hazards
@@ -122,7 +122,7 @@ pnpm --filter @arcaai/applications lint
   (also 339/338 across the session): ZERO new warnings; every warning on a
   touched file maps 1:1 to a pre-existing one at a shifted line number.
 
-pnpm build:api
+pnpm api:build
   BLOCKED by environmental ENOTEMPTY races on apps/api/dist (a concurrent,
   not-self-started nest process is writing the same dist tree — matches the
   documented "concurrent nest --watch" hazard; different subfolder each retry

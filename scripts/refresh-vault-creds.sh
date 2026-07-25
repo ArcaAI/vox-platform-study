@@ -18,7 +18,7 @@
 #   see the provider docstring: wrapped = prod, raw = dev.
 #
 # WHEN TO RUN THIS:
-#   - First time setup, after `./scripts/start-infra.sh --all`
+#   - First time setup, after `./scripts/dev-infra.sh up`
 #   - After `docker compose down -v` (volumes wiped -> fresh role_id)
 #   - After recreating the Vault container (dev-mode state is in-memory)
 #   - Once the 30-day secret_id_ttl lapses (rare)
@@ -29,7 +29,7 @@
 #
 # REQUIRES:
 #   - Docker running with the hope-vault container up
-#       ./scripts/start-infra.sh --all
+#       ./scripts/dev-infra.sh up
 #   - Vault dev-mode root token (read from VAULT_DEV_ROOT_TOKEN or defaults
 #     to "root" - the dev-init.sh default).
 # ============================================================================
@@ -55,7 +55,7 @@ fi
 if ! docker ps --format '{{.Names}}' | grep -qx "${CONTAINER}"; then
   red "ERROR: container '${CONTAINER}' is not running."
   echo "Start the dev infra first:"
-  echo "  ./scripts/start-infra.sh --all"
+  echo "  ./scripts/dev-infra.sh up"
   exit 1
 fi
 
@@ -114,7 +114,7 @@ echo   "    VAULT_ROLE_ID            = ${ROLE_ID}"
 echo   "    VAULT_SECRET_ID          = ${SECRET_ID:0:8}...  (raw, reusable ~30 days)"
 echo   "    VAULT_WRAPPED_SECRET_ID  = (blanked; raw path active)"
 echo   ""
-yellow "Next step:  pnpm dev:api"
+yellow "Next step:  pnpm api:dev"
 yellow "  - The raw secret_id is reusable across UNLIMITED restarts (incl. watch reloads)."
 yellow "  - Re-run this script only when you reset Docker volumes or recreate Vault,"
 yellow "    or once the 30-day secret_id_ttl lapses."

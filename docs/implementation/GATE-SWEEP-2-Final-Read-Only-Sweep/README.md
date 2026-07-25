@@ -7,14 +7,14 @@
 Run a read-only verification pass over the entire staged tree on `fix/2605-review`
 (TASK-543..552 work from prior sessions) and report condensed, real gate output for:
 
-1. `pnpm build:api`
+1. `pnpm api:build`
 2. `pnpm --filter @arcaai/database test`
 3. `pnpm --filter @arcaai/domains build`, then `test`
 4. `pnpm --filter @arcaai/applications build`, then `test`
 5. `pnpm test:unit`
 6. `pnpm --filter @arcaai/vox build`, `test`, `lint`, `typecheck`
 7. `pnpm --filter @arcaai/admin-console build`, `lint`, `test`
-8. `pnpm py:harness:test` AND the replay subset
+8. `pnpm harness:test` AND the replay subset
 9. `pnpm lint` (NEW errors only)
 
 Plus `git status --short` to list anything unstaged the owner still needs to stage.
@@ -43,7 +43,7 @@ rule out flake, and classify every lint warning as pre-existing (verified via
 
 All 9 gates green. Condensed real output below.
 
-### 1. `pnpm build:api`
+### 1. `pnpm api:build`
 ```
 Tasks:    8 successful, 8 total
 Cached:    0 cached, 8 total
@@ -111,7 +111,7 @@ Test Files  156 passed (156)
 ```
 PASS.
 
-### 8. `pnpm py:harness:test` AND the replay subset
+### 8. `pnpm harness:test` AND the replay subset
 Full suite:
 ```
 998 passed, 2 warnings in 29.84s

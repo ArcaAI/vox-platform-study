@@ -6,12 +6,13 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "dev": "tsc --watch",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
-    "dev": "tsc --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage"
   },
   "dependencies": {
     "@arcaai/database": "workspace:*",
