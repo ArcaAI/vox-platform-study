@@ -108,6 +108,30 @@ generate-factory-check:
   rules:
     - !reference [.rules-data-model, rules]
 
+# ── Environment declaration drift gate ───────────────────────────────────────
+# TASK-558 lane D — the same shape as the three `generate-*-check` gates above,
+# for the environment surface instead of the domain layer.
+#
+# `pnpm env:sync` regenerates every managed artifact from ONE declared surface:
+# the settings-registry descriptors plus each TypeScript deployable's own config
+# module. `--check` regenerates in memory and fails, printing the first differing
+# hunk, when the committed `.env.example` files, `turbo.json#globalEnv` or the
+# generated docs table disagree. Reconcile with `pnpm env:sync` and commit.
+#
+# No database and no Prisma client are needed: the generator only reads
+# declarations and `git ls-files`.
+
+env-drift-check:
+  stage: validate
+  extends: .node-base
+  needs:
+    - job: install-node
+      optional: true
+  script:
+    - pnpm env:sync --check
+  rules:
+    - !reference [.rules-env-declarations, rules]
+
 # ── Python linting (ruff) ───────────────────────────────────────────────────
 
 lint-python:

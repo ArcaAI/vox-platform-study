@@ -10,6 +10,7 @@ import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholde
 // branches can be unit-tested without booting the Nest application.
 // `isOriginAllowed` is re-exported so external consumers (docs reference)
 // still have a working import.
+import { apiEnv } from './config';
 import { getCorsOrigins, isOriginAllowed } from './cors.config';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
@@ -37,6 +38,15 @@ async function bootstrap() {
   // fails fast at boot with the full list of problems (plan §9.2 L2).
   loadEnv();
 
+  // Validate the declared env surface (built from the settings-registry
+  // descriptors) and read the pre-bootstrap values from the TYPED result rather
+  // than from `process.env` — the four reads below (`LOG_LEVEL`, `PORT`,
+  // `SHUTDOWN_*_MS`, `CORS_ALLOWED_ORIGINS`) all happen before the Nest module
+  // graph exists, so they are exactly the ones plan §4 B5 requires to move
+  // behind the schema. Throws ONE error listing every problem; the process
+  // exits before any port is bound.
+  const env = apiEnv();
+
   // Disable colors in NestJS built-in logger
   // eslint-disable-next-line turbo/no-undeclared-env-vars -- this WRITES the standard NO_COLOR convention var to steer a third-party logger; it is not an external config input, so it does not belong in turbo.json#globalEnv
   process.env.NO_COLOR = '1';
@@ -56,7 +66,7 @@ async function bootstrap() {
   // In development, forceCloseConnections helps with hot reloading
   // In production, we want graceful shutdown to complete ongoing requests
   const app = await NestFactory.create(AppModule, {
-    logger: getLogLevels(process.env.LOG_LEVEL || 'info'),
+    logger: getLogLevels(String(env.LOG_LEVEL)),
     bufferLogs: true,
     rawBody: true,
     forceCloseConnections: isDevelopment,
@@ -74,7 +84,7 @@ async function bootstrap() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   app.useWebSocketAdapter(new WsAdapter(app) as any);
 
-  const port = process.env.PORT || 8868;
+  const port = env.PORT as number;
   const globalPrefix = 'api/v1';
 
   app.setGlobalPrefix(globalPrefix, {
@@ -148,8 +158,8 @@ async function bootstrap() {
   loggingService.info(
     'Graceful shutdown enabled',
     {
-      shutdownTimeoutMs: parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '30000', 10),
-      drainDelayMs: parseInt(process.env.SHUTDOWN_DRAIN_DELAY_MS || '5000', 10),
+      shutdownTimeoutMs: env.SHUTDOWN_TIMEOUT_MS,
+      drainDelayMs: env.SHUTDOWN_DRAIN_DELAY_MS,
     },
     'Bootstrap',
   );
@@ -206,7 +216,7 @@ async function bootstrap() {
   });
 
   // Log CORS configuration
-  const customOrigins = process.env.CORS_ALLOWED_ORIGINS;
+  const customOrigins = env.CORS_ALLOWED_ORIGINS as string | undefined;
   loggingService.info(
     'CORS configuration',
     {

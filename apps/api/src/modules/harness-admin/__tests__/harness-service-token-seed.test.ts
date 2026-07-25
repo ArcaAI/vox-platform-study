@@ -9,9 +9,15 @@
  * `undefined` (no Vault fallback to env) and sent an empty `X-Service-Token`,
  * which apps/harness's `require_service_token` rejects with 401.
  *
- * These assertions fail closed if the dev seed ever drops the harness token or
- * lets its value drift from the api-side `.env.example` (the documented shared
- * dev value that apps/harness/.env must also carry).
+ * These assertions fail closed if the dev seed ever drops the harness token, or
+ * if `apps/api/.env.example` stops DECLARING the variable.
+ *
+ * TASK-558 lane D — the second assertion used to compare the seeded value with a
+ * literal token committed in `apps/api/.env.example`. That file is now generated
+ * and carries placeholders only (plan §9.1 D3: "committed files contain no
+ * secrets"), so the contract moved: `dev-init.sh` is the single source of the dev
+ * token value, and the example file's job is to declare the KEY. Pinning a real
+ * shared service token in a committed file is the posture lane A removed.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -36,11 +42,16 @@ describe('HARNESS_SERVICE_TOKEN dev provisioning', () => {
     expect(seeded?.[1]).toBeTruthy();
   });
 
-  it('the seeded value matches apps/api/.env.example (the shared dev token contract)', () => {
+  it('apps/api/.env.example declares HARNESS_SERVICE_TOKEN as a placeholder, never a real token', () => {
+    const documented = readEnvExampleValue(API_ENV_EXAMPLE, 'HARNESS_SERVICE_TOKEN');
+    expect(documented, 'apps/api/.env.example must document HARNESS_SERVICE_TOKEN — run `pnpm env:sync`').toBeTruthy();
+    expect(documented, 'a committed example file must never carry a real service token').toBe('<CHANGE_ME>');
+  });
+
+  it('dev-init.sh, not a committed example file, owns the dev token value', () => {
     const sh = readFileSync(DEV_INIT_SH, 'utf8');
     const seeded = sh.match(/vault kv put\s+secret\/hope\/HARNESS_SERVICE_TOKEN\s+value="([^"]+)"/)?.[1];
-    const documented = readEnvExampleValue(API_ENV_EXAMPLE, 'HARNESS_SERVICE_TOKEN');
-    expect(documented, 'apps/api/.env.example must document HARNESS_SERVICE_TOKEN').toBeTruthy();
-    expect(seeded).toBe(documented);
+    expect(seeded).toBeTruthy();
+    expect(seeded).not.toBe('<CHANGE_ME>');
   });
 });

@@ -237,6 +237,40 @@
         - packages/tools/src/generate-factory/**/*
         - packages/tools/src/utils/**/*
 
+# ── Environment declaration drift ───────────────────────────────────────────
+# TASK-558 lane D. Fires when anything that FEEDS `pnpm env:sync` changes (the
+# setting descriptors, either TypeScript deployable's config module, the
+# generator itself) or when one of its GENERATED outputs changes (the example
+# files, turbo.json, the docs table) — the two halves of a drift.
+#
+# The `process.env` scan that builds `turbo.json#globalEnv` reads every TS
+# source, so `packages/**` and `apps/**` are in scope wholesale: adding a
+# `process.env.NEW_THING` anywhere is exactly the change this gate must catch.
+
+.rules-env-declarations:
+  rules:
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - .env.example
+          - apps/**/*
+          - packages/**/*
+          - scripts/env-sync.mts
+          - scripts/tsconfig.env-sync.json
+          - turbo.json
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+      changes:
+        - .env.example
+        - apps/**/*
+        - packages/**/*
+        - scripts/env-sync.mts
+        - scripts/tsconfig.env-sync.json
+        - turbo.json
+
 # ── Any TypeScript change ───────────────────────────────────────────────────
 
 .rules-any-ts:

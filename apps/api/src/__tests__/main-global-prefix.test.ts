@@ -157,13 +157,33 @@ describe('main.ts configuration regression guards', () => {
         });
     });
 
-    describe('default port', () => {
-        it('should default to port 8868 when PORT env is not set', () => {
-            expect(mainTsSource).toMatch(/const port\s*=\s*process\.env\.PORT\s*\|\|\s*8868/);
+    // TASK-558 lane D moved the four pre-bootstrap `process.env` reads (PORT,
+    // LOG_LEVEL, SHUTDOWN_*_MS, CORS_ALLOWED_ORIGINS) behind the validated env
+    // schema (plan §4 B5), so the source no longer carries an inline `|| 8868`
+    // fallback. The DEFAULT itself did not change — it is now declared on the
+    // `port` descriptor and asserted behaviourally in
+    // `src/config/__tests__/env.schema.test.ts` ("applies the descriptor default
+    // when the var is absent" → 8868), which is a stronger guard than a regex
+    // over the source. What main.ts must still guarantee is that it reads the
+    // port from the VALIDATED object rather than raw `process.env`.
+    describe('port resolution', () => {
+        it('should take the port from the validated env schema, not raw process.env', () => {
+            expect(mainTsSource).toMatch(/const port\s*=\s*env\.PORT/);
+            expect(mainTsSource).not.toMatch(/const port\s*=\s*process\.env\.PORT/);
         });
 
-        it('should not use old default port 3000', () => {
-            expect(mainTsSource).not.toMatch(/const port\s*=\s*process\.env\.PORT\s*\|\|\s*3000/);
+        it('should validate the environment before NestFactory.create()', () => {
+            // Match the STATEMENTS, not the words: both names also appear in the
+            // seam comment above them.
+            const validateAt = mainTsSource.indexOf('const env = apiEnv();');
+            const createAt = mainTsSource.indexOf('await NestFactory.create(');
+            expect(validateAt, 'main.ts must call apiEnv() at the schema seam').toBeGreaterThan(-1);
+            expect(createAt).toBeGreaterThan(-1);
+            expect(validateAt).toBeLessThan(createAt);
+        });
+
+        it('should not reintroduce the old default port 3000', () => {
+            expect(mainTsSource).not.toMatch(/const port\s*=\s*[^;]*3000/);
         });
     });
 

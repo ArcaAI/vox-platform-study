@@ -12,7 +12,6 @@
 # ── Required CI/CD Variables ────────────────────────────────────────────────
 #
 #   CI_DATABASE_URL        — postgresql://ci_user:<pass>@10.10.1.250:5000/vox_staging
-#   CI_DATABASE_URL_DIRECT — same (for Prisma migrate)
 
 prepare-test-db:
   stage: prepare
@@ -22,7 +21,6 @@ prepare-test-db:
       optional: true
   variables:
     DATABASE_URL: $CI_DATABASE_URL
-    DATABASE_URL_DIRECT: $CI_DATABASE_URL_DIRECT
   script:
     - echo "══ prepare-test-db ══"
     - |
