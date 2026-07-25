@@ -427,7 +427,7 @@ Service unit tests mock repositories + `EventEmitter2` + `ClsService` and assert
 
 ### 5.2 pnpm workspace
 
-`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `packages/agentic-sdk-v2/examples/*`; `onlyBuiltDependencies` for Prisma packages. No catalog: feature is not used. Internal deps use `workspace:*`. Root `package.json` `pnpm.overrides` pin `class-validator` and React 19 types. Filters are the house style for scoping: `pnpm --filter @arcaai/database db:generate`, `turbo run build --filter=@arcaai/api...`.
+`pnpm-workspace.yaml`: `apps/*`, `packages/*`, `packages/agentic-sdk-v2/examples/*`; `onlyBuiltDependencies` for Prisma packages; `overrides` pin `class-validator` and React 19 types. No catalog: feature is not used. Internal deps use `workspace:*`. Filters are the house style for scoping: `pnpm --filter @arcaai/database db:generate`, `turbo run build --filter=@arcaai/api...`.
 
 ### 5.3 ESLint
 

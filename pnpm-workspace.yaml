@@ -8,3 +8,8 @@ onlyBuiltDependencies:
   - "@prisma/adapter-pg"
   - "@prisma/engines"
   - prisma
+
+overrides:
+  class-validator: 0.15.1
+  "@types/react": ^19.2.14
+  "@types/react-dom": ^19.2.3
