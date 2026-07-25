@@ -2,14 +2,16 @@ import os
 from enum import IntEnum, StrEnum
 from typing import Any
 
-import dotenv
+from hope_env import load_env
 from pydantic import Field, SecretStr
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from nlp.utils import get_project_root
 
-dotenv.load_dotenv()
+# NODE_ENV-selected root env file (.env.dev / .env.test); host env always wins.
+# Runs before any BaseSettings class below is instantiated.
+load_env()
 
 
 # model identity (which model to run) is selected from the DB via the

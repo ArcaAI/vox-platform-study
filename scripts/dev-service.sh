@@ -2,11 +2,20 @@
 # ============================================================================
 # TASK-346 — Single-service dev launcher (Python services + harness worker)
 # ============================================================================
-# Starts one HOPE Python service with the PROVEN-working dev defaults baked
-# in. Every default is applied with `: "${VAR:=default}"`, so anything you
-# export in your shell wins. Explicit env vars also beat the (gitignored,
-# possibly stale) app-level .env files — that is intentional: startup is
-# deterministic regardless of local file drift.
+# Starts one HOPE Python service. This script owns PROCESS SHAPE only — bind
+# address, port, conda env, the uvicorn/worker command. It is NOT a config
+# source.
+#
+# Application configuration comes from the service itself: every Python
+# service now calls the shared loader `hope_env.load_env()` (TASK-558), which
+# reads the SAME NODE_ENV-selected root file the TypeScript gateway reads
+# (.env.dev / .env.test), with host env always winning. Defaults that merely
+# restated an env-file declaration or a pydantic field default were removed
+# from this script — they were a fourth, invisible configuration layer.
+#
+# The few `: "${VAR:=default}"` lines that remain are the ones with no home in
+# an env file and a DIFFERENT value than the pydantic default (the LM Studio
+# model pairing below); anything you export in your shell still wins.
 #
 # USAGE:
 #   ./scripts/dev-service.sh <stt|smr|nlp|guardrail|harness|tts|worker> [--watch] [--print]
@@ -48,47 +57,65 @@ NC='\033[0m'
 CONDA_ENV="${CONDA_ENV:-arcaenv}"
 
 usage() {
-    sed -n '2,35p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,43p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # ----------------------------------------------------------------------------
-# STT key preflight — apps/stt reads API_GATEWAY_KEY from the environment
-# or from gitignored apps/stt/.env. A placeholder line whose inline
-# comment was parsed AS the value once caused every internal call to 401.
-# Never prints the value.
+# STT key preflight. A placeholder line whose inline comment was parsed AS the
+# value once caused every internal call to 401, so the value is sanity-checked
+# before launch. The check resolves the key through EXACTLY the resolution the
+# service performs — the shared loader (host env > root .env.<env>) and then
+# apps/stt/.env, which pydantic-settings ranks below both — instead of the
+# hand-rolled `sed` of apps/stt/.env this used to carry. Never prints the value.
 # ----------------------------------------------------------------------------
 check_stt_key() {
-    local val="" src=""
-    if [ -n "${API_GATEWAY_KEY:-}" ]; then
-        val="$API_GATEWAY_KEY"
-        src="environment"
-    elif [ -f "apps/stt/.env" ]; then
-        val="$(sed -n 's/^[[:space:]]*API_GATEWAY_KEY[[:space:]]*=//p' apps/stt/.env | tail -n1)"
-        src="apps/stt/.env"
-    fi
-    # trim whitespace and surrounding quotes
-    val="$(printf '%s' "$val" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
+    check_conda_env
 
-    local reason=""
-    if [ -z "$val" ]; then
-        reason="API_GATEWAY_KEY is empty or missing"
-    elif printf '%s' "$val" | grep -q '#'; then
-        reason="API_GATEWAY_KEY contains '#' — an inline comment was parsed as the value"
-    elif printf '%s' "$val" | grep -qiE 'REQUIRED|SECRET|PLACEHOLDER|CHANGEME|your[-_]|<|>'; then
-        reason="API_GATEWAY_KEY looks like a placeholder"
-    elif [ "${#val}" -lt 20 ]; then
-        reason="API_GATEWAY_KEY is suspiciously short (${#val} chars)"
-    fi
+    # The verdict is computed in Python (one `VERDICT|source-or-reason` line on
+    # stdout, always exit 0) and rendered here, so conda's own wrapper never
+    # decides the exit status and never adds noise to `dev-doctor` output.
+    local verdict payload
+    verdict="$(conda run -n "$CONDA_ENV" --no-capture-output python - <<'PY'
+import os
+from pathlib import Path
 
-    if [ -n "$reason" ]; then
-        echo -e "${RED}STT key preflight FAILED: ${reason}.${NC}" >&2
-        echo "Fix: set a real key in apps/stt/.env (API_GATEWAY_KEY=...) or export API_GATEWAY_KEY." >&2
+from dotenv import dotenv_values
+from hope_env import load_env
+
+from_host = "API_GATEWAY_KEY" in os.environ  # must be sampled BEFORE loading
+result = load_env()
+source = "environment" if from_host else str(result.env_file)
+value = os.environ.get("API_GATEWAY_KEY", "")
+
+overlay = Path("apps/stt/.env")
+if not value and overlay.is_file():
+    value = dotenv_values(overlay).get("API_GATEWAY_KEY") or ""
+    source = str(overlay)
+
+placeholders = ("REQUIRED", "SECRET", "PLACEHOLDER", "CHANGEME", "YOUR-", "YOUR_", "<", ">")
+if not value:
+    print("FAIL|API_GATEWAY_KEY is empty or missing")
+elif "#" in value:
+    print("FAIL|API_GATEWAY_KEY contains '#' — an inline comment was parsed as the value")
+elif any(token in value.upper() for token in placeholders):
+    print("FAIL|API_GATEWAY_KEY looks like a placeholder")
+elif len(value) < 20:
+    print(f"FAIL|API_GATEWAY_KEY is suspiciously short ({len(value)} chars)")
+else:
+    print(f"OK|{source}")
+PY
+)" || { echo -e "${RED}STT key preflight could not run.${NC}" >&2; return 1; }
+
+    payload="${verdict#*|}"
+    if [ "${verdict%%|*}" != "OK" ]; then
+        echo -e "${RED}STT key preflight FAILED: ${payload}.${NC}" >&2
+        echo "Fix: declare API_GATEWAY_KEY in .env.dev or apps/stt/.env, or export it." >&2
         echo "The committed dev-seed service-account key lives in" >&2
         echo "  packages/database/src/prisma/db_main/seed/00-constants.ts (API_KEYS.SERVICE_ACCOUNT)" >&2
         echo "or generate one with: pnpm gen:api-key" >&2
         return 1
     fi
-    echo -e "${GREEN}STT key preflight OK${NC} (source: ${src}, value not shown)"
+    echo -e "${GREEN}STT key preflight OK${NC} (source: ${payload}, value not shown)"
 }
 
 check_conda_env() {
@@ -138,69 +165,35 @@ ENV_REPORT=()   # KEY=VALUE lines for --print (non-secret only)
 CMD=()
 RELOAD_DIR=""
 
+# The LM Studio pairing is the ONE application default this script still
+# supplies. It is machine-specific (whichever model your LM Studio has loaded)
+# and it differs from the pydantic defaults — SMR's is `google/gemma-4-e4b`,
+# harness's `smr_provider`/`smr_model` are None. Removed from here it would
+# silently change which model dev requests, and it has no declaration in the
+# root env files yet. When TASK-558 lane D generates those, this moves to
+# .env.dev and these functions disappear.
+#
+# Everything else this script used to export is gone: SMR_OPENAI_COMPAT_ENABLED
+# (read by NOTHING — SMR has no `enabled` field; a provider is available iff its
+# connection config is present), SMR_OPENAI_COMPAT_BASE_URL,
+# SMR_EXTERNAL_GUARDRAIL_ENABLED, HARNESS_{SMR,NLP,API}_BASE_URL and
+# HARNESS_RETRIEVAL_ENABLED (all identical to the pydantic field default), and
+# HARNESS_SERVICE_TOKEN (the harness API *and* the worker now read .env.dev
+# themselves through hope_env.load_env(), which is what the hand-rolled `sed`
+# of .env.dev was standing in for).
 apply_smr_env() {
-    : "${SMR_OPENAI_COMPAT_ENABLED:=true}"
-    : "${SMR_OPENAI_COMPAT_BASE_URL:=http://localhost:1234/v1}"
     : "${SMR_OPENAI_COMPAT_DEFAULT_MODEL:=${LM_STUDIO_MODEL}}"
-    : "${SMR_EXTERNAL_GUARDRAIL_ENABLED:=false}"
-    export SMR_OPENAI_COMPAT_ENABLED SMR_OPENAI_COMPAT_BASE_URL \
-        SMR_OPENAI_COMPAT_DEFAULT_MODEL SMR_EXTERNAL_GUARDRAIL_ENABLED
-    ENV_REPORT+=(
-        "SMR_OPENAI_COMPAT_ENABLED=$SMR_OPENAI_COMPAT_ENABLED"
-        "SMR_OPENAI_COMPAT_BASE_URL=$SMR_OPENAI_COMPAT_BASE_URL"
-        "SMR_OPENAI_COMPAT_DEFAULT_MODEL=$SMR_OPENAI_COMPAT_DEFAULT_MODEL"
-        "SMR_EXTERNAL_GUARDRAIL_ENABLED=$SMR_EXTERNAL_GUARDRAIL_ENABLED"
-    )
-}
-
-# Resolve the shared HARNESS_SERVICE_TOKEN the harness API + worker present as the
-# outbound `X-Service-Token` to apps/api (and validate their own inbound calls
-# with). The gateway's HarnessServiceTokenGuard is FAIL-CLOSED: it compares this
-# against the `HARNESS_SERVICE_TOKEN` it resolves from Vault, so an UNSET token here
-# makes the worker send an empty header and every outbound call (fetch_policy,
-# persist_draft, ...) 401s → the loop silently degrades to reduced assurance. This
-# does NOT weaken the gateway guard — it just makes the harness present the token
-# the dev Vault bootstrap already seeded. Precedence (ambient wins, then the
-# canonical dev sources): shell env → .env.dev → the value seeded by
-# infrastructure/docker/configs/vault/dev-init.sh (== .env.example). Never printed.
-resolve_harness_service_token() {
-    if [ -n "${HARNESS_SERVICE_TOKEN:-}" ]; then
-        return 0
-    fi
-    if [ -f ".env.dev" ]; then
-        local from_env
-        from_env="$(sed -n 's/^[[:space:]]*HARNESS_SERVICE_TOKEN[[:space:]]*=//p' .env.dev | tail -n1)"
-        from_env="$(printf '%s' "$from_env" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
-        if [ -n "$from_env" ]; then
-            HARNESS_SERVICE_TOKEN="$from_env"
-            return 0
-        fi
-    fi
-    # The value seeded into dev Vault by dev-init.sh (kept in lock-step with
-    # .env.example). The gateway resolves the SAME value from Vault in dev.
-    HARNESS_SERVICE_TOKEN="dev-harness-service-token-change-me"
+    export SMR_OPENAI_COMPAT_DEFAULT_MODEL
+    ENV_REPORT+=("SMR_OPENAI_COMPAT_DEFAULT_MODEL=$SMR_OPENAI_COMPAT_DEFAULT_MODEL")
 }
 
 apply_harness_env() {
-    : "${HARNESS_SMR_BASE_URL:=http://localhost:8862}"
-    : "${HARNESS_NLP_BASE_URL:=http://localhost:8864}"
-    : "${HARNESS_API_BASE_URL:=http://localhost:8868}"
     : "${HARNESS_SMR_PROVIDER:=lm-studio}"
     : "${HARNESS_SMR_MODEL:=${LM_STUDIO_MODEL}}"
-    : "${HARNESS_RETRIEVAL_ENABLED:=false}"
-    resolve_harness_service_token
-    export HARNESS_SMR_BASE_URL HARNESS_NLP_BASE_URL HARNESS_API_BASE_URL \
-        HARNESS_SMR_PROVIDER HARNESS_SMR_MODEL HARNESS_RETRIEVAL_ENABLED \
-        HARNESS_SERVICE_TOKEN
+    export HARNESS_SMR_PROVIDER HARNESS_SMR_MODEL
     ENV_REPORT+=(
-        "HARNESS_SMR_BASE_URL=$HARNESS_SMR_BASE_URL"
-        "HARNESS_NLP_BASE_URL=$HARNESS_NLP_BASE_URL"
-        "HARNESS_API_BASE_URL=$HARNESS_API_BASE_URL"
         "HARNESS_SMR_PROVIDER=$HARNESS_SMR_PROVIDER"
         "HARNESS_SMR_MODEL=$HARNESS_SMR_MODEL"
-        "HARNESS_RETRIEVAL_ENABLED=$HARNESS_RETRIEVAL_ENABLED"
-        # HARNESS_SERVICE_TOKEN deliberately omitted from the report (secret).
-        "HARNESS_SERVICE_TOKEN=<set, not shown>"
     )
 }
 
@@ -264,7 +257,8 @@ FULL_CMD=(conda run -n "$CONDA_ENV" --no-capture-output "${CMD[@]}")
 # ----------------------------------------------------------------------------
 if [ "$PRINT" = "1" ]; then
     echo "service: $SERVICE"
-    echo "resolved env (user env > these defaults > app .env files):"
+    echo "process shape (user env > these defaults); everything else comes from"
+    echo "the service's own loader: host env > .env.<NODE_ENV> > pydantic default"
     if [ "${#ENV_REPORT[@]}" -gt 0 ]; then
         printf '  %s\n' "${ENV_REPORT[@]}"
     fi
@@ -272,7 +266,7 @@ if [ "$PRINT" = "1" ]; then
         if [ -n "${API_GATEWAY_KEY:-}" ]; then
             echo "  API_GATEWAY_KEY=<masked> (from environment)"
         else
-            echo "  API_GATEWAY_KEY=<masked> (expected in apps/stt/.env — run --check-stt-key)"
+            echo "  API_GATEWAY_KEY=<masked> (from .env.dev or apps/stt/.env — run --check-stt-key)"
         fi
     fi
     echo "command:"

@@ -24,6 +24,7 @@ conflicts = [[
 members = [
     "guardrail",
     "harness",
+    "hope-env",
     "hope-runtime-models",
     "nlp",
     "smr",
@@ -1654,6 +1655,7 @@ dependencies = [
     { name = "asyncpg", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "gliner2-onnx", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-env", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "minio", marker = "(sys_platform == 'darwin' and extra == 'extra-3-stt-ml') or (sys_platform == 'darwin' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'darwin' and extra != 'extra-3-stt-nemo') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml') or (sys_platform == 'linux' and extra == 'extra-3-stt-ml-gpu') or (sys_platform == 'linux' and extra != 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -1706,6 +1708,7 @@ requires-dist = [
     { name = "fakeredis", extras = ["lua"], marker = "extra == 'test'", specifier = ">=2.21.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
     { name = "gliner2-onnx" },
+    { name = "hope-env", editable = "packages/py-env" },
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
@@ -1767,6 +1770,7 @@ source = { editable = "apps/harness" }
 dependencies = [
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-env", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "jsonschema", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -1850,6 +1854,7 @@ requires-dist = [
     { name = "deepeval", marker = "extra == 'eval'", specifier = ">=4.0,<5" },
     { name = "fastapi", specifier = ">=0.133.0" },
     { name = "fastembed", marker = "extra == 'rag'", specifier = ">=0.4" },
+    { name = "hope-env", editable = "packages/py-env" },
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
@@ -1924,6 +1929,30 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/66/a9/cdfda214af93eeb9f93a83a099d06f26ae5569f188209ddc8a7c977ed446/hiredis-3.4.0-cp311-cp311-musllinux_1_2_s390x.whl", hash = "sha256:44660a91e0fbc803c29b337c1a9194c8d7b4cd3a3868d28f747cbec2df165483", size = 330103, upload-time = "2026-06-03T16:22:12.935Z" },
     { url = "https://files.pythonhosted.org/packages/87/05/cdc7e2e07b56c716426db4644b917b260a4f6fdc8d16cc3bbac4b27d0a17/hiredis-3.4.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:a315009b441a0105a373a9a780ebb1c6f7d9ead88ac6ea5f2a15791353c6f590", size = 309582, upload-time = "2026-06-03T16:22:14.157Z" },
 ]
+
+[[package]]
+name = "hope-env"
+version = "0.1.0"
+source = { editable = "packages/py-env" }
+dependencies = [
+    { name = "python-dotenv", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "mypy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "pytest", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "ruff", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.20.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.2" },
+    { name = "python-dotenv", specifier = ">=1.2.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.15.7" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "hope-runtime-models"
@@ -3390,6 +3419,7 @@ source = { editable = "apps/nlp" }
 dependencies = [
     { name = "aiofiles", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-env", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "minio", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -3450,6 +3480,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.1.0" },
     { name = "black", marker = "extra == 'lint'", specifier = ">=26.1.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
+    { name = "hope-env", editable = "packages/py-env" },
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
@@ -5926,6 +5957,7 @@ source = { editable = "apps/smr" }
 dependencies = [
     { name = "boto3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-env", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "openai", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -5991,6 +6023,7 @@ requires-dist = [
     { name = "botocore-stubs", marker = "extra == 'lint'", specifier = ">=1.42.0" },
     { name = "fakeredis", extras = ["lua"], marker = "extra == 'test'", specifier = ">=2.21.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
+    { name = "hope-env", editable = "packages/py-env" },
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
@@ -6295,6 +6328,7 @@ dependencies = [
     { name = "cadence-punctuation", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "dramatiq", extra = ["redis"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-env", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "minio", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -6411,6 +6445,7 @@ requires-dist = [
     { name = "faster-whisper", marker = "extra == 'ml'", specifier = "==1.2.1" },
     { name = "flash-attn", marker = "sys_platform == 'linux' and extra == 'ml-gpu'", specifier = ">=2.8.3" },
     { name = "freezegun", marker = "extra == 'test'", specifier = ">=1.5.0" },
+    { name = "hope-env", editable = "packages/py-env" },
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'ml'", specifier = ">=0.28.0" },
@@ -6979,6 +7014,7 @@ source = { editable = "apps/tts" }
 dependencies = [
     { name = "azure-cognitiveservices-speech", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "fastapi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
+    { name = "hope-env", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "hope-runtime-models", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "httpx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
     { name = "orjson", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-3-stt-ml' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-ml-gpu' and extra == 'extra-3-stt-nemo') or (extra == 'extra-3-stt-nemo' and extra == 'project-9-guardrail')" },
@@ -7040,6 +7076,7 @@ requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.1.0" },
     { name = "black", marker = "extra == 'lint'", specifier = ">=26.1.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
+    { name = "hope-env", editable = "packages/py-env" },
     { name = "hope-runtime-models", editable = "packages/py-runtime-models" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28.1" },
