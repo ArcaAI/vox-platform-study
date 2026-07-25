@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-346 — Aggregate dev-stack supervisor (clinical workspace)
+# TASK-346 / TASK-555 — Aggregate dev-stack supervisor (clinical workspace)
 # ============================================================================
 # Starts the full local clinical-workspace stack in one command:
 #   api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864),
@@ -9,19 +9,22 @@
 # start a subset to leave it out.
 #
 # USAGE:
-#   pnpm dev:stack                     # full stack
+#   pnpm dev:stack                     # ensure base Docker infra, then full app stack
+#   pnpm dev:stack-o                   # base + Prometheus/Grafana, then apps
+#   pnpm dev:stack-e                   # base + inference engines, then apps
 #   pnpm dev:stack -- smr worker       # subset
+#   pnpm dev:stack -- -o smr           # observability tier + subset
 #   pnpm dev:stack -- guardrail        # single service
 #   pnpm dev:stack down                # stop services spawned by this script
 #   DRY_RUN=1 pnpm dev:stack           # print the plan, start nothing
 #
 # BEHAVIOUR:
+#   - Ensures Docker infra is up first via `dev-infra.sh up` (idempotent):
+#     core + vault + temporal + rag; optional -o/--observability, -e/--inference.
 #   - REFUSES to start if any requested port is already bound (protects an
 #     already-running stack; run `pnpm dev:doctor` to see what is up).
 #   - REFUSES to start a second harness worker (it would consume from the
 #     same Temporal task queue).
-#   - Docker infra (postgres/redis/temporal/...) is NOT started here — run
-#     `pnpm infra:up` first if needed; `pnpm dev:doctor` verifies it.
 #   - State dir: ${HOPE_DEV_STATE_DIR:-$XDG_STATE_HOME/hope-dev} (default
 #     ~/.local/state/hope-dev), created chmod 700. Logs are one file per
 #     service under <state>/logs (override: HOPE_DEV_LOG_DIR); pidfiles are
@@ -32,6 +35,7 @@
 #   - `down` stops ONLY pids recorded in the pidfiles (e.g. orphans left by
 #     a SIGKILLed supervisor), verifying via process start time that the pid
 #     was not reused. On an empty/missing state dir it is a clean no-op.
+#     Docker infra is left running (use `pnpm infra:down` to tear it down).
 # ============================================================================
 
 set -euo pipefail
@@ -164,12 +168,17 @@ do_down() {
 }
 
 # ----------------------------------------------------------------------------
-# Resolve requested services / subcommand
+# Resolve requested services / subcommand / infra tier flags (TASK-555)
 # ----------------------------------------------------------------------------
 ARGS=()
+INFRA_FLAGS=()
 for arg in "$@"; do
     # pnpm forwards the literal `--` separator (pnpm dev:stack -- smr)
     [ "$arg" = "--" ] && continue
+    case "$arg" in
+        -o|--observability) INFRA_FLAGS+=(--observability); continue ;;
+        -e|--inference) INFRA_FLAGS+=(--inference); continue ;;
+    esac
     ARGS+=("$arg")
 done
 
@@ -193,6 +202,7 @@ else
         done
         if [ "$ok" != "1" ]; then
             echo -e "${RED}Unknown service '$arg'.${NC} Known: ${ALL_SERVICES[*]} (or 'down')" >&2
+            echo "Infra tier flags: -o/--observability, -e/--inference" >&2
             exit 2
         fi
         SERVICES+=("$arg")
@@ -204,6 +214,7 @@ fi
 # ----------------------------------------------------------------------------
 if [ "${DRY_RUN:-0}" = "1" ]; then
     echo "dev:stack plan (DRY_RUN=1 — nothing started):"
+    echo "  infra: ./scripts/dev-infra.sh up ${INFRA_FLAGS[*]+${INFRA_FLAGS[*]}}"
     for svc in "${SERVICES[@]}"; do
         port="$(port_for "$svc")"
         set_command_for "$svc"
@@ -213,6 +224,12 @@ if [ "${DRY_RUN:-0}" = "1" ]; then
     echo "pidfiles would go to: $PID_DIR/<service>.pid"
     exit 0
 fi
+
+# ----------------------------------------------------------------------------
+# Ensure Docker infra is up (idempotent; TASK-555)
+# ----------------------------------------------------------------------------
+echo -e "${CYAN}Ensuring Docker infra...${NC}"
+"$SCRIPT_DIR/dev-infra.sh" up "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"
 
 # ----------------------------------------------------------------------------
 # Preflight: ports must be free, no second worker, STT key must be usable

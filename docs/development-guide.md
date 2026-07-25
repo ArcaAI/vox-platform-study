@@ -59,7 +59,7 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
    pnpm infra:up
    ```
 
-   This runs both compose files (`infrastructure/docker/docker-compose.yml` + `docker-compose.dev.yml`) with the `vault` and `temporal` profiles — Postgres 5432, Redis 6379, MinIO 9000/9001, Qdrant 6333, Vault 8200, Temporal 7233 (UI 8233) in one command. Optional profiles: `pnpm infra:up -- --rag` adds the TEI reranker (8870); `pnpm infra:observability:up` starts Prometheus (9090) + Grafana (3001). The older `pnpm docker:dev:up` starts core only (no Vault/Temporal) — prefer `infra:up`. Expected: `pnpm infra:status` shows all containers healthy (init containers like `minio-setup` exit 0 by design).
+   This runs both compose files (`infrastructure/docker/docker-compose.yml` + `docker-compose.dev.yml`) with the base tier — `vault` + `temporal` + `rag` — Postgres 5432, Redis 6379, MinIO 9000/9001, Qdrant 6333, Vault 8200, Temporal 7233 (UI 8233), TEI reranker 8870. Tier flags: `pnpm infra:up -- -o` (or `pnpm infra:observability:up` / `pnpm dev:setup-o`) adds Prometheus (9090) + Grafana (3001); `pnpm infra:up -- -e` (or `pnpm dev:setup-e`) adds the inference profile (vLLM, llama.cpp, TEI embed). Local Grafana keeps dev-convenience auth (`admin`/`admin`, anonymous Viewer); production observability lives in cluster/ops, not this Compose file. The older `pnpm docker:dev:up` starts core only (no Vault/Temporal/rag) — prefer `infra:up`. Expected: `pnpm infra:status` shows all containers healthy (init containers like `minio-setup` exit 0 by design).
 
 5. **Database schema, client, and seed.**
 
@@ -98,11 +98,14 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 
 ## 4. Daily development
 
-The aggregate supervisor is `pnpm dev:stack` (`scripts/dev-stack.sh`): its default set starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops everything on Ctrl-C. tts-v2 (8865) and the deprecated ui-playground are not in the default set — start them explicitly. It refuses to start over busy ports or a second Temporal worker. Docker infra is not started by it — run `pnpm infra:up` first.
+The aggregate supervisor is `pnpm dev:stack` (`scripts/dev-stack.sh`): it first ensures Docker infra is up (base: core + vault + temporal + rag), then starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops app processes on Ctrl-C (Docker infra stays up — use `pnpm infra:down` to tear it down). tts-v2 (8865) and the deprecated ui-playground are not in the default set — start them explicitly. It refuses to start over busy ports or a second Temporal worker.
 
 ```bash
-pnpm dev:stack                      # full default stack (incl. admin console)
+pnpm dev:stack                      # ensure base Docker infra, then full app stack
+pnpm dev:stack-o                    # base + Prometheus/Grafana, then apps
+pnpm dev:stack-e                    # base + inference engines, then apps
 pnpm dev:stack -- smr worker        # subset (any of: api, stt, smr, guardrail, nlp, harness, worker, ui, tts)
+pnpm dev:stack -- -o smr            # observability tier + subset
 pnpm dev:stack down                 # stop orphans left by a killed supervisor (pidfile-based; no-op if none)
 DRY_RUN=1 pnpm dev:stack            # print the launch plan, start nothing
 ```
@@ -152,7 +155,7 @@ Support commands:
 | Qdrant | 6333 HTTP / 6334 gRPC | speaker embeddings, RAG knowledge chunks |
 | Vault | 8200 | dev-mode, `vault` profile |
 | Temporal | 7233 gRPC / 8233 UI | `temporal` profile; shares hope-postgres |
-| Reranker (TEI) | 8870 | `rag` profile |
+| Reranker (TEI) | 8870 | base tier (`rag` profile; started by `infra:up` / `dev:setup` / `dev:stack`) |
 | Prometheus / Grafana | 9090 / 3001 | `prometheus` (alias `observability`) profile |
 | LM Studio / Ollama | 1234 / 11434 | host-run LLM engines (not in compose) |
 
@@ -264,7 +267,7 @@ Caveat: inside `packages/*` these rules are downgraded to warnings (`eslint-plug
 
 ## 11. Deployment overview
 
-Local development runs infrastructure in Docker Compose and application services on the host: `infrastructure/docker/docker-compose.yml` (Postgres, Redis, MinIO) plus `docker-compose.dev.yml` with opt-in profiles (`vault`, `temporal`, `rag`, `prometheus`), driven by `pnpm infra:up` and the scripts in `scripts/`. Node services run via pnpm/turbo, Python services via conda `arcaenv` — nothing application-level is containerized locally.
+Local development runs infrastructure in Docker Compose and application services on the host: `infrastructure/docker/docker-compose.yml` (Postgres, Redis, MinIO) plus `docker-compose.dev.yml` with profile tiers — base `vault`+`temporal`+`rag` via `pnpm infra:up` / `dev:setup` / `dev:stack`; `-o` adds `prometheus`; `-e` adds `inference` — driven by `scripts/dev-infra.sh`. Node services run via pnpm/turbo, Python services via conda `arcaenv` — nothing application-level is containerized locally.
 
 The primary deployment target is the self-hosted k3s cluster with ArgoCD GitOps: Kustomize base + overlays under `deployment/k3s/`, ArgoCD ApplicationSet bootstrap templates under `deployment/argocd/`, namespaces `hope-v2-dev` (auto-sync from `main`) and `hope-v2-prod` (manual sync from `prod`). GitLab CI builds per-service images on change; a `db-migrate` Job runs Prisma migrations as an ArgoCD PreSync hook. PostgreSQL and MinIO are provisioned outside the cluster (external HA Postgres with Patroni/HAProxy/PgBouncer); harness + Temporal are not yet in the k3s base.
 

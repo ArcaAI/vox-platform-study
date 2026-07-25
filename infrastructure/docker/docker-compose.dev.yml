@@ -232,14 +232,13 @@ services:
   # container port 80; the harness hybrid retriever posts query/document pairs to
   # its OpenAI-style ``/rerank`` endpoint (HARNESS_RETRIEVAL_RERANKER_BASE_URL).
   #
-  # OPT-IN by design (like the Temporal stack): gated behind the `rag` profile so
-  # a plain `docker compose up` does NOT pull the model. Start with:
-  #   docker compose -f infrastructure/docker/docker-compose.yml \
-  #                  -f infrastructure/docker/docker-compose.dev.yml \
-  #                  --profile rag up -d hope-reranker
+  # Profile-gated (`rag`) so a bare `docker compose up` without profiles does
+  # NOT pull the model. TASK-555: the base tier (`pnpm infra:up` / `dev:setup` /
+  # `dev:stack`) always enables `rag`. Prefer those entry points over raw
+  # compose.
   #
-  # IMAGE: defaults to the x86_64 CPU build. On Apple Silicon set
-  #   HOPE_RERANKER_IMAGE=ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9
+  # IMAGE: defaults to the x86_64 CPU build. `scripts/dev-infra.sh` auto-sets
+  #   HOPE_RERANKER_IMAGE=...cpu-arm64-latest on Apple Silicon when unset.
   # NOTE: the TEI image is minimal (no shell/curl), so — like the qdrant service
   # above — no exec healthcheck is defined; readiness is observed via /health.
   # ==========================================================================
@@ -266,17 +265,15 @@ services:
   # host.docker.internal) and answers the NestJS PrometheusQueryService at
   # PROMETHEUS_URL=http://localhost:9090.
   #
-  # OPT-IN by design (like vault/temporal/rag): gated behind a profile so a plain
-  # `docker compose up` / `start-infra.sh --all` does NOT start it and existing
-  # stacks are untouched. TASK-397 adds the `prometheus` profile as the canonical
-  # opt-in for the dev observability stack (Prometheus + Grafana); the original
-  # TASK-386 `observability` profile is kept as an alias so older docs/commands
-  # still work. Start with EITHER:
-  #   docker compose -f infrastructure/docker/docker-compose.dev.yml \
-  #                  --profile prometheus up -d
-  # (or the two-file form, or `--profile observability`).
+  # OPT-IN observability tier (TASK-386/397/555): gated behind `prometheus`
+  # (alias `observability`) so the base tier does NOT start it. Start with:
+  #   pnpm infra:up -- -o
+  #   pnpm dev:setup-o / pnpm dev:stack-o
+  #   pnpm infra:observability:up
+  # Local Grafana keeps dev-convenience auth (admin/admin, anonymous Viewer).
+  # Production Prometheus/Grafana live under cluster/ops — not this Compose file.
   #
-  #   Prometheus UI: http://localhost:9090   ·   Grafana UI: http://localhost:3000
+  #   Prometheus UI: http://localhost:9090   ·   Grafana UI: http://localhost:3001
   # ==========================================================================
   prometheus:
     container_name: hope-prometheus
@@ -313,9 +310,8 @@ services:
   # in-network `prometheus:9090`) + a starter "HOPE Platform Metrics" dashboard
   # (running instances, per-model inference p95/avg latency, request rates).
   #
-  # OPT-IN via the same profile(s) as Prometheus. Start with:
-  #   docker compose -f infrastructure/docker/docker-compose.dev.yml \
-  #                  --profile prometheus up -d
+  # Same profile(s) as Prometheus. Start via `pnpm infra:up -- -o` /
+  # `pnpm dev:setup-o` / `pnpm dev:stack-o` (TASK-555).
   #
   #   Grafana UI: http://localhost:${GRAFANA_PORT:-3001}  (dev login admin/admin;
   #   anonymous Viewer is enabled so dashboards open without signing in).
@@ -355,15 +351,13 @@ services:
       start_period: 15s
 
   # ==========================================================================
- # Production-inference engines. All three
-  # are OPT-IN behind the `inference` profile — a plain `docker compose up` and
-  # `start-infra.sh --all` do NOT start them (mirrors the vault/temporal/rag
-  # opt-in precedent). This profile stages the PRODUCTION engine matrix (AD-4)
-  # for a GPU dev host; LM Studio + Ollama remain the default local engines.
-  #
-  # Start (from the monorepo root):
-  #   docker compose -f infrastructure/docker/docker-compose.dev.yml \
-  #                  --profile inference up -d
+  # Production-inference engines. OPT-IN behind the `inference` profile —
+  # the base tier does NOT start them. TASK-555 entry points:
+  #   pnpm infra:up -- -e
+  #   pnpm dev:setup-e / pnpm dev:stack-e
+  # This profile stages the PRODUCTION engine matrix (AD-4) for a GPU dev host;
+  # LM Studio + Ollama remain the default local engines. hope-vllm needs NVIDIA;
+  # `dev-infra.sh -e` warns when the NVIDIA runtime is missing.
   #
   # Wire SMR to them via .env (see .env.example "Production inference engines"):
   #   SMR_V2_VLLM_ENABLED=true       SMR_V2_VLLM_BASE_URL=http://localhost:8000/v1
@@ -461,7 +455,7 @@ services:
   # hope-reranker TEI service but serves the embedding model on a separate port.
   # Like the reranker, the TEI image is minimal (no shell/curl) → no exec
   # healthcheck; readiness is observed via /health. On Apple Silicon set
-  # HOPE_TEI_EMBED_IMAGE=ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9.
+  # HOPE_TEI_EMBED_IMAGE=...cpu-arm64-latest (auto-set by scripts/dev-infra.sh on arm64).
   tei-embed:
     container_name: hope-tei-embed
     image: ${HOPE_TEI_EMBED_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.9}
