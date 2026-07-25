@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import dotenv from 'dotenv';
-import fs from 'fs';
 import path from 'path';
 import ora from 'ora';
 import chalk from 'chalk';
@@ -11,76 +9,13 @@ import { scanPrismaDomains } from './utils/domainScanner';
 import { runInteractiveCLI, listActivities, listDomains } from './utils/cli';
 import { getActivityByName, getActivityNames } from './utils/activities';
 import { Logger } from '../utils/Logger';
+// Importing this module loads the env file for the current NODE_ENV. It is the
+// package's only env loader; the NODE_ENV -> file map and the host-env-wins
+// precedence live in `packages/applications/src/common/env/env-file-resolution`.
+import { findMonorepoRoot } from '../utils/loadEnv';
 import { Domain, CLIOptions, ActivityOptions } from './types';
 
-/**
- * Maps NODE_ENV values to their corresponding .env file names
- */
-const ENV_FILE_MAP: Record<string, string> = {
-  development: '.env.dev',
-  test: '.env.test',
-  production: '.env.production',
-  staging: '.env.staging',
-};
-
-/**
- * Find the monorepo root by looking for pnpm-workspace.yaml or turbo.json
- */
-function findMonorepoRoot(startPath: string): string {
-  let currentPath = startPath;
-  const maxDepth = 10;
-  let depth = 0;
-
-  while (depth < maxDepth) {
-    if (fs.existsSync(path.join(currentPath, 'pnpm-workspace.yaml'))) {
-      return currentPath;
-    }
-    if (fs.existsSync(path.join(currentPath, 'turbo.json'))) {
-      return currentPath;
-    }
-
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) {
-      break;
-    }
-    currentPath = parentPath;
-    depth++;
-  }
-
-  return path.resolve(__dirname, '..', '..', '..', '..');
-}
-
-/**
- * Load environment variables based on NODE_ENV
- */
-function loadEnv(monorepoRoot: string): void {
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  const isCI = process.env.CI === 'true' || process.env.CI === '1';
-
-  // In CI or production, skip loading env files
-  if (isCI || nodeEnv === 'production') {
-    return;
-  }
-
-  // Try environment-specific file first
-  const envFileName = ENV_FILE_MAP[nodeEnv] || '.env.dev';
-  let envFilePath = path.join(monorepoRoot, envFileName);
-
-  // Fall back to .env for development
-  if (!fs.existsSync(envFilePath) && nodeEnv === 'development') {
-    envFilePath = path.join(monorepoRoot, '.env');
-  }
-
-  if (fs.existsSync(envFilePath)) {
-    // Don't override in test mode
-    const override = nodeEnv !== 'test';
-    dotenv.config({ path: envFilePath, override });
-  }
-}
-
-// Find monorepo root and load environment
-const monorepoRoot = findMonorepoRoot(process.cwd());
-loadEnv(monorepoRoot);
+const monorepoRoot = findMonorepoRoot() ?? path.resolve(__dirname, '..', '..', '..', '..');
 
 const logger = new Logger('PrismaCommander');
 

@@ -49,18 +49,17 @@ export class ConfigService implements IConfigService, OnModuleInit {
       service: ConfigService.name,
     });
 
-    // Load environment variables using centralized utility
-    // Priority: options.envFilePath > ENV_FILE_PATH env var > auto-detect based on NODE_ENV
+    // Load environment variables using the centralized loader.
+    // Priority: options.envFilePath > ENV_FILE_PATH env var > auto-detect based on NODE_ENV.
+    // The host-env-wins precedence and the CI/production skip are declared once
+    // in `common/env/env-file-resolution` — never re-stated here.
+    // `apps/api/src/main.ts` already called `loadEnv()` before NestFactory;
+    // this call is the idempotent path for other hosts (workers, tests).
     const envFilePath = options.envFilePath || process.env['ENV_FILE_PATH'];
-
-    // In test environment, don't override existing env vars (they come from dotenv-cli)
-    // In CI or production, skip loading env files entirely (use host environment)
     const nodeEnv = getNodeEnv();
-    const shouldOverride = nodeEnv !== 'test';
 
     this.envLoadResult = loadEnv({
-      envFilePath,
-      override: shouldOverride,
+      ...(envFilePath ? { envFilePath } : {}),
       debug: process.env['DEBUG'] === 'true',
     });
 
@@ -69,7 +68,6 @@ export class ConfigService implements IConfigService, OnModuleInit {
         message: 'Loaded environment from file',
         envFilePath: this.envLoadResult.envFilePath,
         nodeEnv: this.envLoadResult.nodeEnv,
-        override: shouldOverride,
       });
     } else if (this.envLoadResult.isCI || nodeEnv === 'production') {
       this.logger.log({

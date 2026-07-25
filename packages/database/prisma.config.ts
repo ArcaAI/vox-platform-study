@@ -1,33 +1,24 @@
+/**
+ * Prisma CLI config for `@arcaai/database` (migrate / generate / studio).
+ *
+ * Env loading is delegated to the dependency-free `planEnvFileLoad()` in
+ * `packages/applications/src/common/env` — the ONE declaration of the
+ * NODE_ENV -> file map, the CI/production skip and the host-env-wins
+ * precedence. It is imported by SOURCE PATH (like `./src/migration-url.ts`
+ * above it) because this config is executed by the Prisma CLI before the
+ * workspace is built; it is not a package dependency and never becomes one
+ * (`@arcaai/applications` depends on `@arcaai/database`, not the reverse).
+ */
 import dotenv from 'dotenv'
-import fs from 'node:fs'
 import path from 'node:path'
 import { defineConfig } from 'prisma/config'
 
+import { planEnvFileLoad } from '../applications/src/common/env/env-file-resolution.ts'
 import { resolveMigrationUrl } from './src/migration-url.ts'
 
-const monorepoRoot = path.resolve(__dirname, '..', '..')
-
-const ENV_FILE_MAP: Record<string, string> = {
-  development: '.env.dev',
-  test: '.env.test',
-  production: '.env.production',
-  staging: '.env.staging',
-}
-
-const nodeEnv = process.env.NODE_ENV || 'development'
-const isCI = process.env.CI === 'true' || process.env.CI === '1'
-
-if (!isCI && nodeEnv !== 'production') {
-  const envFileName = ENV_FILE_MAP[nodeEnv] || '.env.dev'
-  let envFilePath = path.join(monorepoRoot, envFileName)
-
-  if (!fs.existsSync(envFilePath) && nodeEnv === 'development') {
-    envFilePath = path.join(monorepoRoot, '.env')
-  }
-
-  if (fs.existsSync(envFilePath)) {
-    dotenv.config({ path: envFilePath, override: nodeEnv !== 'test' })
-  }
+const plan = planEnvFileLoad({ rootDir: path.resolve(__dirname, '..', '..') })
+if (plan.envFilePath) {
+  dotenv.config({ path: plan.envFilePath, override: plan.override })
 }
 
 // Prefer DIRECT_URL for migrations so that
@@ -41,12 +32,15 @@ try {
   // Re-wrap with the original environment context so existing CI/dev
   // error breadcrumbs stay useful.
   const original = err instanceof Error ? err.message : String(err)
+  const hint = plan.isCI
+    ? `Ensure CI_DATABASE_URL is configured in GitLab CI/CD Variables.`
+    : !plan.shouldLoad
+      ? `NODE_ENV=${plan.nodeEnv} reads the host environment only — no env file is loaded.`
+      : plan.envFilePath
+        ? `Ensure ${plan.envFilePath} defines DATABASE_URL (and optionally DIRECT_URL).`
+        : `No env file was found for NODE_ENV=${plan.nodeEnv} (${plan.reason}).`
   throw new Error(
-    `${original} ` +
-      `Environment: NODE_ENV=${nodeEnv}, CI=${isCI}. ` +
-      (isCI
-        ? `Ensure CI_DATABASE_URL is configured in GitLab CI/CD Variables.`
-        : `Ensure .env.${nodeEnv === 'development' ? 'dev' : nodeEnv} exists at ${monorepoRoot} with DATABASE_URL (and optionally DIRECT_URL) defined.`),
+    `${original} Environment: NODE_ENV=${plan.nodeEnv}, CI=${plan.isCI}. ${hint}`,
   )
 }
 

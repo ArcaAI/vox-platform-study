@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import fs from 'fs';
+import dotenv from 'dotenv';
 
 // Mock dotenv before importing the module
 vi.mock('dotenv', () => ({
@@ -237,6 +238,47 @@ describe('Environment Loading Utility', () => {
 
       const result = loadDatabaseEnv();
       expect(result.loaded).toBe(false);
+    });
+
+    // TASK-558 (lane B): this package's loader must apply exactly the same
+    // precedence as the canonical declaration in
+    // `packages/applications/src/common/env/env-file-resolution.ts`. It runs
+    // FIRST in `apps/api` (imported transitively at module scope), so if it
+    // overrode host env the whole contract would be defeated here.
+    it('never overrides host environment variables (host env > env file)', () => {
+      const mockFs = vi.mocked(fs);
+      const mockDotenv = vi.mocked(dotenv);
+      process.env.NODE_ENV = 'development';
+      delete process.env.CI;
+
+      // package.json lookup succeeds at the first level, then .env.dev exists.
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({ name: 'hope-monorepo' }) as never);
+
+      const result = loadDatabaseEnv();
+
+      expect(result.loaded).toBe(true);
+      expect(mockDotenv.config).toHaveBeenCalledWith(
+        expect.objectContaining({ override: false }),
+      );
+    });
+
+    it('does not fall back to the root .env when .env.dev is missing', () => {
+      const mockFs = vi.mocked(fs);
+      const mockDotenv = vi.mocked(dotenv);
+      process.env.NODE_ENV = 'development';
+      delete process.env.CI;
+
+      // Root detected, a legacy root `.env` exists, but `.env.dev` does not.
+      mockFs.existsSync.mockImplementation(
+        ((p: string) => p.endsWith('package.json') || p.endsWith('/.env')) as never,
+      );
+      mockFs.readFileSync.mockReturnValue(JSON.stringify({ name: 'hope-monorepo' }) as never);
+
+      const result = loadDatabaseEnv();
+
+      expect(result.loaded).toBe(false);
+      expect(mockDotenv.config).not.toHaveBeenCalled();
     });
   });
 });

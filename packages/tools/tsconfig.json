@@ -9,7 +9,13 @@
     "strict": true,
     "skipLibCheck": true,
     "sourceMap": true,
-    "rootDir": "./src"
+    // `packages/` — not `./src` — because src/utils/loadEnv.ts imports the
+    // dependency-free env-file resolver from
+    // `packages/applications/src/common/env` by source path (see that file for
+    // why this package must not take a package dependency on @arcaai/applications).
+    // This package has no `build` script; `typecheck` runs with --noEmit and
+    // ts-node compiles in memory, so rootDir only affects TS6059 here.
+    "rootDir": ".."
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
