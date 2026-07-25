@@ -173,7 +173,7 @@ describe('HarnessObservabilityScreen', () => {
         stubRoutes();
         renderWithProviders(<HarnessObservabilityScreen />);
         expect(await screen.findByRole('heading', { level: 1, name: 'Harness Observability' })).toBeDefined();
-        expect(await screen.findByText('Chain intact')).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 2, name: /Chain integrity/i })).toBeDefined();
         expect(await screen.findByText(/4,812 rows/)).toBeDefined();
         expect(await screen.findByText('GATE_DECISION')).toBeDefined();
         expect(screen.getByRole('grid', { name: 'WORM audit trail' })).toBeDefined();
