@@ -9,7 +9,7 @@
       "title": "STT Active Streaming Sessions",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "stt_v2_streaming_sessions_active", "legendFormat": "" }],
+      "targets": [{ "expr": "stt_streaming_sessions_active", "legendFormat": "" }],
       "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "blue", "value": null }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
     },
@@ -19,7 +19,7 @@
       "title": "SMR Active Generations",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "smr_v2_active_generations", "legendFormat": "" }],
+      "targets": [{ "expr": "smr_active_generations", "legendFormat": "" }],
       "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "purple", "value": null }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
     },
@@ -29,7 +29,7 @@
       "title": "STT Worker Jobs In Progress",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "stt_v2_worker_jobs_in_progress", "legendFormat": "" }],
+      "targets": [{ "expr": "stt_worker_jobs_in_progress", "legendFormat": "" }],
       "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "orange", "value": null }] } } },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" }
     },
@@ -39,7 +39,7 @@
       "title": "SMR Queue Depth",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "smr_v2_queue_size", "legendFormat": "" }],
+      "targets": [{ "expr": "smr_queue_size", "legendFormat": "" }],
       "fieldConfig": {
         "defaults": {
           "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "red", "value": 150 }] }
@@ -53,7 +53,7 @@
       "title": "STT Streaming Sessions (rate)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "rate(stt_v2_streaming_sessions_total[5m])", "legendFormat": "{{status}}" }],
+      "targets": [{ "expr": "rate(stt_streaming_sessions_total[5m])", "legendFormat": "{{status}}" }],
       "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
     },
     {
@@ -62,7 +62,7 @@
       "title": "SMR Concurrent Requests (by provider)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "smr_v2_concurrent_requests", "legendFormat": "{{provider}}" }],
+      "targets": [{ "expr": "smr_concurrent_requests", "legendFormat": "{{provider}}" }],
       "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
     },
     {
@@ -71,7 +71,7 @@
       "title": "STT Worker Jobs (rate)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "rate(stt_v2_worker_jobs_total[5m])", "legendFormat": "{{queue}} / {{status}}" }],
+      "targets": [{ "expr": "rate(stt_worker_jobs_total[5m])", "legendFormat": "{{queue}} / {{status}}" }],
       "fieldConfig": { "defaults": { "unit": "ops", "custom": { "drawStyle": "bars", "fillOpacity": 50 } } }
     },
     {

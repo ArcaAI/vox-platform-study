@@ -50,7 +50,7 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
         }
 
         sendAudioFrame(data: ArrayBuffer | ArrayBufferView): boolean {
-            // Mirrors SttV2WebSocketClient: above the bufferedAmount watermark the
+            // Mirrors SttWebSocketClient: above the bufferedAmount watermark the
             // frame is dropped and a backpressure event fires.
             if (this.dropFrames) {
                 this.handlers.backpressureDrop?.('buffered_amount_high');
@@ -99,7 +99,7 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
     return { FakeSttWsClient, capture };
 });
 
-vi.mock('@arcaai/vox/core', () => ({ SttV2WebSocketClient: FakeSttWsClient }));
+vi.mock('@arcaai/vox/core', () => ({ SttWebSocketClient: FakeSttWsClient }));
 
 vi.mock('@arcaai/stt', () => ({
     createAudioCapture: vi.fn(async (_ctx: unknown, _track: unknown, onFrame: (frame: Float32Array) => void) => {
@@ -137,7 +137,7 @@ function stubFetch(handler: (call: RecordedCall) => Response | undefined): Recor
 const SESSION_RESPONSE = {
     sessionId: 's-9d42',
     status: 'created',
-    wsUrl: '/ws/stt-v2/stream',
+    wsUrl: '/ws/stt/stream',
     maxConcurrent: 5,
     currentActive: 1,
     ticket: 'tkt-abc',
@@ -210,7 +210,7 @@ describe('useLiveSttSession', () => {
         // WS client connected directly against the gateway origin.
         const ws = FakeSttWsClient.instances[0];
         const wsOrigin = publicEnv.apiHost.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
-        expect(ws.connectedUrl).toBe(`${wsOrigin}/ws/stt-v2/stream?sessionId=s-9d42&ticket=tkt-abc&tenantId=tnt-1`);
+        expect(ws.connectedUrl).toBe(`${wsOrigin}/ws/stt/stream?sessionId=s-9d42&ticket=tkt-abc&tenantId=tnt-1`);
 
         expect(hook.result.current.status).toBe('streaming');
         expect(hook.result.current.micPermission).toBe('granted');

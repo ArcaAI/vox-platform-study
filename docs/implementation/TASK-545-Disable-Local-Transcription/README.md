@@ -56,7 +56,7 @@ Scope boundaries:
 
 ## Verification Criteria / Gates
 
-- `pnpm --filter @arcaai/vox build test lint typecheck` green (pre-existing D-01 typecheck errors in `stt-v2.types.test.ts` are NOT yours to fix unless trivial — do not let them mask new errors).
+- `pnpm --filter @arcaai/vox build test lint typecheck` green (pre-existing D-01 typecheck errors in `stt.types.test.ts` are NOT yours to fix unless trivial — do not let them mask new errors).
 - `pnpm --filter @arcaai/applications build test` green.
 - If console touched: `pnpm --filter @arcaai/admin-console build lint test` green + `next-dev-loop` runtime pass of the affected playground screen.
 - Manual/runtime proof: with no `pipelineId`, starting audio surfaces the disabled-error (not silent local transcription); with a `pipelineId`, backend streaming works unchanged.

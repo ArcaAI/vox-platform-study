@@ -23,7 +23,7 @@
  * today; name preseed is out of scope and off here.
  */
 
-/** stt-v2's no-confident-match sentinel, stamped on the wire as `speaker_id`. */
+/** stt's no-confident-match sentinel, stamped on the wire as `speaker_id`. */
 const UNKNOWN_SPEAKER_SENTINEL = 'unknown';
 
 /** Neutral, clinician-facing placeholder for the `"unknown"` sentinel. */

@@ -13,7 +13,7 @@ A field-level diff against the current seed data surfaced that this is **not**
 a seed-only change: three engines named in the new spec — a `whisper.cpp`-served
 GGUF `whisper-large-v3-turbo`, `DeepFilterNet3` denoise, and
 `microsoft/wavlm-base-plus-sv` diarization embedding — have zero implementation
-in `apps/stt-v2` today. The new spec also flips the platform default pipeline
+in `apps/stt` today. The new spec also flips the platform default pipeline
 to a variant with no pre/post-processing, and reinstates a model
 (`DeepFilterNet3`) that TASK-506 deliberately soft-retired.
 
@@ -49,7 +49,7 @@ reads) established:
   string that already holds exact quantization strings for some GGUF rows
   (e.g. the parakeet nemotron row's `q8_0`) and generic buckets
   (`float16`/`int8`) for others.
-- **Processor architecture** (`apps/stt-v2/src/stt_v2/processors/`): a
+- **Processor architecture** (`apps/stt/src/stt/processors/`): a
   `(kind, name)` registry with lazy-loaded specs exists and is fully used for
   `kind="asr"` (8 registered engines including `PARAKEET_CPP`, the closest
   precedent for a new native-runtime ASR engine). It is declared but **never
@@ -58,15 +58,15 @@ reads) established:
   `transcription/preprocessing.py` (`AudioPreprocessor._apply_denoise`), and
   `preprocessing.denoise` YAML has no engine-selection field today.
 - **ECAPA-TDNN diarization embedding** is a real, working implementation
-  (`stt_v2/diarization/speechbrain_embedding.py`) — but only per-pipeline
+  (`stt/diarization/speechbrain_embedding.py`) — but only per-pipeline
   opt-in via an inline `models.embedding` YAML block (slug-based resolution is
   a documented resolver limitation); the system-wide default extractor and the
   persistent `UserVoiceProfile.embedding` column remain on the pre-TASK-505
   `pyannote/wespeaker-voxceleb-resnet34-LM` (256-dim), pending an
   owner-scheduled cutover. No code changes needed for this ticket — confirmed
   status quo only.
-- **DeepFilterNet3** has zero code history in `apps/stt-v2` (`git log -S` across
-  the whole history returns nothing under `apps/stt-v2/src`) — it only ever
+- **DeepFilterNet3** has zero code history in `apps/stt` (`git log -S` across
+  the whole history returns nothing under `apps/stt/src`) — it only ever
   existed as an `AiModel` catalog slug (`deepfilternet-v3`), referenced as a
   comment and in Python parser test fixtures, then soft-retired in TASK-506.
   This is a from-scratch addition, not a resurrection of working code.
@@ -85,8 +85,8 @@ from the approved plan file).
 
 **In scope:**
 1. New `AiModelFormat.WHISPER_CPP` Prisma enum value + migration + Python sync.
-2. New whisper.cpp ASR engine in `apps/stt-v2` (loader, adapter, registry spec, dispatch, settings, dependency).
-3. New DeepFilterNet3 denoise engine in `apps/stt-v2` — first real use of the `(kind="denoise", ...)` processor registry.
+2. New whisper.cpp ASR engine in `apps/stt` (loader, adapter, registry spec, dispatch, settings, dependency).
+3. New DeepFilterNet3 denoise engine in `apps/stt` — first real use of the `(kind="denoise", ...)` processor registry.
 4. Pipeline catalog restructure: update pipelines #1/#3/#4 (GGUF variants) in place, add a new GGUF "Transcription only" pipeline as the new default, leave #9 (`turbo-whisper-large-v3`, safetensor) and #5–#8 (azure/azure-foundry/faster-whisper/parakeet) alone except a quantize bump on faster-whisper.
 5. LLM/guardrail catalog: precision-level `computeType` updates on 9 existing rows.
 6. TTS catalog: `Kokoro` row `sourceUri`/format correction.
@@ -124,7 +124,7 @@ not retired ("keep all AI models").
 |---|---|---|
 | LLM/guardrail | 9 of 10 | `computeType` generic bucket → exact quant string (`nvfp4`, `Q4_0`, `Q8_0`, `q4_k_s`, `q4_0`×3, `q5_k_m`, `q5_k_xl`). |
 | NLP | 0 | Exact match already. |
-| TTS | 1 of 5 | `kokoro`: `sourceUri` → `'hexgrad/Kokoro-82M'`; format kept `ONNX` (tts-v2 loader dependency; spec's "tensor" treated as descriptive). |
+| TTS | 1 of 5 | `kokoro`: `sourceUri` → `'hexgrad/Kokoro-82M'`; format kept `ONNX` (tts loader dependency; spec's "tensor" treated as descriptive). |
 
 ### Phased plan
 
@@ -139,7 +139,7 @@ mirroring `20260717000000_task_505_stt_engine_enums`), `pnpm db:generate`,
 claimed for LM-Studio LLM rows and explicitly treated as catalog-only by
 `config_reader._to_model_config`).
 
-**Phase 2** — whisper.cpp ASR engine in `apps/stt-v2`, following the
+**Phase 2** — whisper.cpp ASR engine in `apps/stt`, following the
 `PARAKEET_CPP` precedent file-by-file: `pipeline/dto.py` (enum + aliases),
 `processors/asr_capabilities.py` (registration, streaming+batch capability),
 `processors/asr_engines.py` (format map + adapter), `models/whisper_cpp_loader.py`
@@ -178,8 +178,8 @@ row. Update `seed/__tests__/*.test.ts` expectations.
 - `pnpm --filter @arcaai/database test` green.
 - `pnpm db:seed` idempotent ×2; per-tenant counts correct; exactly one
   `isDefault: true` pipeline per tenant, and it's the new GGUF pipeline.
-- `pnpm py:stt-v2:test:unit` green, incl. updated manifest/health-payload tests.
-- `pnpm py:stt-v2:lint`, `py:stt-v2:typecheck` clean.
+- `pnpm py:stt:test:unit` green, incl. updated manifest/health-payload tests.
+- `pnpm py:stt:lint`, `py:stt:typecheck` clean.
 - Manual: `/api/v1/health` shows `whisper_cpp` with a resolved binding; a real
   batch transcription against the new default pipeline actually transcribes.
 - `pnpm --filter @arcaai/admin-console build lint test` green.
@@ -196,7 +196,7 @@ applied via psql against the local dev DB (additive `ALTER TYPE ... ADD VALUE
 IF NOT EXISTS`, mirroring the TASK-505 precedent); `pnpm gen:model` regenerated
 `packages/domains`'s enum (verified minimal diff — one file, one line).
 
-**Phase 2 — whisper.cpp ASR engine** (`apps/stt-v2`): implemented end-to-end
+**Phase 2 — whisper.cpp ASR engine** (`apps/stt`): implemented end-to-end
 following the `PARAKEET_CPP` precedent — `dto.py` (enum, provider shorthand,
 engine-string aliases), `processors/asr_capabilities.py` (registered
 streaming+batch, unlike azure-foundry's batch-only), `processors/asr_engines.py`
@@ -215,7 +215,7 @@ technique for genuine per-word timestamps from a single inference pass, since
 torch dependency, so no Docker native-build step is needed). 5 new tests
 (`TestP507WhisperCppEngine`) + 2 manifest-guard test updates.
 
-**Phase 3 — DeepFilterNet3 denoise engine** (`apps/stt-v2`): deviated from the
+**Phase 3 — DeepFilterNet3 denoise engine** (`apps/stt`): deviated from the
 original plan's "migrate RNNoise into the processor registry too" — after
 reading the actual RNNoise call sites, a simple `preprocessing.denoise.engine`
 selector field (default `"rnnoise"`) with an if/else branch at the two
@@ -245,7 +245,7 @@ spec string literally); 9 LLM/guardrail `computeType` values updated to exact
 quant strings (verified these are purely descriptive — not read by
 `apps/smr`/`apps/guardrail` — so no casing-driven runtime risk); Kokoro TTS row
 corrected to `hexgrad/Kokoro-82M` + `PYTORCH` format (verified against
-`tts_v2/providers/kokoro.py` — the `kokoro` PyPI package is torch-based, not
+`tts/providers/kokoro.py` — the `kokoro` PyPI package is torch-based, not
 ONNX; the old `ONNX` label was already wrong before this ticket).
 Pipeline matrix: `production-whisper-large-v3` / `whisper-turbo-no-postprocessing`
 / `whisper-turbo-no-preprocessing` updated in place to the GGUF ASR + (where
@@ -282,22 +282,22 @@ before this ticket) was flagged as a separate background task, not fixed here.
 | `pnpm --filter @arcaai/database test` | **790 passed** |
 | `pnpm db:seed` (1st run, real dev DB) | Success; verified via psql: exactly one `isDefault=true` pipeline per tenant (SYSTEM/Global/ArcaAI), the new GGUF pipeline |
 | `pnpm db:seed` (2nd run) | Idempotent — reconciliation logged "0 switched, 3 unchanged"; row counts stable (13/tenant) |
-| `pnpm py:stt-v2:test:unit` | **2366 passed** (up from 2340 baseline + new tests), 0 failed |
-| `pnpm py:stt-v2:lint` (ruff) | Clean |
-| `pnpm py:stt-v2:typecheck` (mypy) | Clean (119 files) |
+| `pnpm py:stt:test:unit` | **2366 passed** (up from 2340 baseline + new tests), 0 failed |
+| `pnpm py:stt:lint` (ruff) | Clean |
+| `pnpm py:stt:typecheck` (mypy) | Clean (119 files) |
 | `pnpm --filter @arcaai/admin-console build` | Clean |
 | `pnpm --filter @arcaai/admin-console lint` | Clean |
 | `pnpm --filter @arcaai/admin-console test` | **950 passed** |
 | `pnpm --filter @arcaai/applications test -- tenant.service` | **6302 passed** (regression check — no impact from seed changes) |
 | `pnpm turbo lint --filter=@arcaai/database --filter=@arcaai/admin-console` | Clean |
 | `uv lock --dry-run` (after the separately-spawned fix landed) | Clean — "No lockfile changes detected"; `pywhispercpp` 1.5.0 + `deepfilternet` 0.5.6 confirmed present in `uv.lock` |
-| `pnpm py:stt-v2:test:unit` (re-run after the uv.lock fix touched `apps/stt-v2/pyproject.toml`) | **2366 passed** — unaffected |
+| `pnpm py:stt:test:unit` (re-run after the uv.lock fix touched `apps/stt/pyproject.toml`) | **2366 passed** — unaffected |
 
 **Not independently verifiable in this environment / left for a live/staging
 pass**: `pywhispercpp`/`deepfilternet` are resolvable (`uv.lock` now includes
 both — see Known Issue #1) but not yet `pip install`ed into the local
 `arcaenv` conda environment (this session's sandboxed shell can't invoke
-`conda` directly to install them — `pnpm py:stt-v2:setup:apple` does it). The
+`conda` directly to install them — `pnpm py:stt:setup:apple` does it). The
 manual `/api/v1/health` + real-transcription check from the plan's
 verification section needs that install step first.
 
@@ -305,7 +305,7 @@ verification section needs that install step first.
 
 1. **`uv.lock` conflict — RESOLVED mid-ticket by a separately spawned session**
    (the user started the background task this ticket flagged). Root cause was
-   a pre-existing, unrelated conflict between `stt-v2[nemo]`'s `nemo-toolkit`
+   a pre-existing, unrelated conflict between `stt[nemo]`'s `nemo-toolkit`
    (pins `transformers>=4.57.0,<4.58.dev0`) and `guardrail`'s
    `transformers>=5.0`, surfaced only under an unbounded
    `requires-python = ">=3.11"` × a hypothetical Python 3.15+win32 marker
@@ -313,8 +313,8 @@ verification section needs that install step first.
    (now in the working tree): root `pyproject.toml` gained
    `[tool.uv].environments = ["sys_platform == 'darwin'", "sys_platform ==
    'linux'"]` (this workspace never targets Windows) and a `conflicts` pairing
-   `guardrail` × `stt-v2[nemo]`; `requires-python` bounded to `>=3.11,<3.12`
-   on `stt-v2`/`guardrail`/`harness`/`nlp`/`smr`/`tts-v2`; and — because
+   `guardrail` × `stt[nemo]`; `requires-python` bounded to `>=3.11,<3.12`
+   on `stt`/`guardrail`/`harness`/`nlp`/`smr`/`tts`; and — because
    `deepfilternet` 0.5.6 (latest on PyPI) declares `numpy>=1.22,<2.0` with no
    numpy-2.x-compatible release upstream — an `override-dependencies =
    ["numpy>=2.0.0"]` forcing the shared `ml` extra's numpy version.
@@ -346,7 +346,7 @@ verification section needs that install step first.
   agents + 3 targeted research agents) and 4 clarifying decisions confirmed
   with the user via `AskUserQuestion`.
 - 2026-07-19 — All 6 phases implemented and verified (database: 790 tests;
-  stt-v2: 2366 tests, ruff + mypy clean; admin-console: 950 tests). Real
+  stt: 2366 tests, ruff + mypy clean; admin-console: 950 tests). Real
   `pnpm db:seed` run twice against the local dev DB, confirmed idempotent via
   direct psql queries. Status: Review.
 - 2026-07-19 — `uv lock` was unrunnable from scratch (pre-existing, unrelated
@@ -361,29 +361,29 @@ verification section needs that install step first.
     Windows path — Docker images are Linux, dev is macOS/conda). Added
     `[tool.uv] environments = ["sys_platform == 'darwin'", "sys_platform ==
     'linux'"]`.
-  - Stripping the above revealed a real, pre-existing conflict: `stt-v2[nemo]`
+  - Stripping the above revealed a real, pre-existing conflict: `stt[nemo]`
     pins `nemo-toolkit` (needs `transformers>=4.57,<4.58`) while `guardrail`'s
     base deps need `transformers>=5.0`. Same shape as the already-solved
-    stt-v2 `ml`-vs-`nemo` conflict (each service installs independently via
+    stt `ml`-vs-`nemo` conflict (each service installs independently via
     `uv sync --frozen --package <svc>`, so these never share a venv) — added
-    `guardrail` vs `stt-v2[nemo]` to `[tool.uv] conflicts`.
-  - `onnxruntime-gpu`/`flash-attn` (`stt-v2[ml-gpu]`) have no macOS wheels
+    `guardrail` vs `stt[nemo]` to `[tool.uv] conflicts`.
+  - `onnxruntime-gpu`/`flash-attn` (`stt[ml-gpu]`) have no macOS wheels
     (CUDA-only). Added `; sys_platform == 'linux'` markers in
-    `apps/stt-v2/pyproject.toml` so the `ml-gpu` extra isn't required to
+    `apps/stt/pyproject.toml` so the `ml-gpu` extra isn't required to
     resolve on darwin.
   - New, ticket-specific: `deepfilternet` 0.5.6 (latest upstream release) pins
-    `numpy>=1.22,<2.0`; stt-v2's base deps require `numpy>=2.0.0`. No
+    `numpy>=1.22,<2.0`; stt's base deps require `numpy>=2.0.0`. No
     numpy-2.x-compatible deepfilternet release exists upstream. Per user
     decision, overrode via `[tool.uv] override-dependencies = ["numpy>=2.0.0"]`
-    rather than downgrading stt-v2's own numpy floor.
+    rather than downgrading stt's own numpy floor.
     **`deepfilterlib` is a compiled (PyO3) extension and numpy 2.0 made a
     C-API/ABI break — this override is UNVERIFIED at runtime.** Manually
     smoke-test the DeepFilterNet3 denoise path (Phase 3) before relying on it;
-    if it misbehaves, the fallback is pinning stt-v2's numpy requirement down
+    if it misbehaves, the fallback is pinning stt's numpy requirement down
     for the `ml` extra specifically, or dropping deepfilternet until upstream
     ships numpy 2.x support.
   - Verified: `uv lock` resolves cleanly and is stable (`uv lock --check`
     no-ops); `uv sync --frozen --package <svc> --python 3.11` dry-runs clean
-    for `stt-v2` (base, `ml`, `nemo`) and `guardrail`, with `transformers`
+    for `stt` (base, `ml`, `nemo`) and `guardrail`, with `transformers`
     correctly isolated per install profile (`4.57.6` under `nemo`, `5.5.4`
     elsewhere) and `numpy==2.4.6` under `ml` (override confirmed effective).

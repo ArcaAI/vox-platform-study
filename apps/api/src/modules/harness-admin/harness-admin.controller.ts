@@ -7,6 +7,7 @@ import {
   EvalService,
   GateEditMiningService,
   GateEditCorpusExport,
+  GateEditCurationResult,
   GateQueueResponse,
   GoldenCaseListResponse,
   GoldenCaseMetaResponse,
@@ -31,7 +32,14 @@ import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 import { resolveScopedTenantId, resolveScopedTenantIdOptional } from '../../shared/tenant-scope';
 import { HarnessOpsClient, HarnessWorkflowActionResult, HarnessWorkflowDetail, HarnessWorkflowListResult } from './harness-ops.client';
-import { CreateGoldenCaseRequest, CreateGoldenSetRequest, EditBurdenQuery, SignalWorkflowRequest, WorkflowActionRequest } from './dto';
+import {
+  CreateGoldenCaseRequest,
+  CreateGoldenSetRequest,
+  EditBurdenQuery,
+  ExemplarCurationRequest,
+  SignalWorkflowRequest,
+  WorkflowActionRequest,
+} from './dto';
 
 /**
  * HarnessAdminController — the admin surface for the clinical
@@ -385,6 +393,38 @@ export class HarnessAdminController {
       // become an unbounded read of redacted clinical text.
       limit: Number(query.limit) > 0 ? Number(query.limit) : 100,
     });
+  }
+
+  // The curation half of the learning loop (TASK-553 F-24). Export shows a
+  // human the unreviewed proposals; this records what they decided. It is the
+  // ONLY write on this table — and it may write exactly one field, because every
+  // other column is derived from the WORM audit trail and the redacted diff.
+  //
+  // No `If-Match`: unlike the policy routes there is no read-one endpoint to
+  // source an ETag from, and the service already compare-and-sets on the row's
+  // own `_version` after re-reading it, so two curators racing cannot silently
+  // clobber each other.
+  @Patch('gate-edit-exemplars/:id/curation')
+  @Authorize(['manage', 'HarnessPolicy'])
+  @ApiOperation({
+    summary: 'Record the human curation verdict on one mined gate-edit exemplar',
+    description:
+      'Moves an exemplar between PENDING / APPROVED / REJECTED. Whether the verdict actually GATES prompt injection is ' +
+      'governed separately by `agentic.fewshot.curationMode` (default `off`), so curating a corpus and enforcing the ' +
+      'gate are two deliberate, independent steps.',
+  })
+  @ApiParam({ name: 'id', description: 'GateEditExemplar id.' })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
+  @ApiResponse({ status: 200, description: 'The recorded verdict (id + previous/new status only — never a note snippet).' })
+  @ApiResponse({ status: 400, description: 'Unknown curation status.' })
+  @ApiResponse({ status: 404, description: 'No such exemplar (absent, or belongs to another tenant).' })
+  async curateGateEditExemplar(
+    @Param('id') id: string,
+    @Body() request: ExemplarCurationRequest,
+    @Query() query: { tenantId?: string },
+  ): Promise<GateEditCurationResult> {
+    const tenantId = this.resolveReadTenantId(query.tenantId);
+    return this.gateEditMiningService.curateExemplar({ id, tenantId, status: request.status });
   }
 
   // ───────────────────────── Operate (Temporal proxy) ─────────────────────────

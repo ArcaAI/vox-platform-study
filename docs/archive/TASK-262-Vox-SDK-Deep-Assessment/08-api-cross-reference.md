@@ -91,25 +91,25 @@ All SDK endpoint constants are declared in `packages/agentic-sdk-v2/src/core/con
 | `GET /consultations/:id/named-entities` | GET | `ConsultationController.getNamedEntities` (L715) | `ENTITY_ENDPOINTS.GET_ALL(id)` (const:109) | `useArca.extractEntities` (useArca:831) |
 | `GET /consultations/:id/context/:contextItemId/named-entities` | GET | ❌ **Not implemented in API** | `ENTITY_ENDPOINTS.GET_FOR_ITEM(id,cid)` (const:111-113) | `useArca.extractEntities` (useArca:831, conditional) |
 
-### 1.7 Transcription Jobs (`STT_V2_ENDPOINTS` / `useArcaSession` / `TranscriptionJobService`)
+### 1.7 Transcription Jobs (`STT_ENDPOINTS` / `useArcaSession` / `TranscriptionJobService`)
 
 | API Endpoint | Method | API Controller | SDK Constant | SDK Hook |
 |---|---|---|---|---|
-| `POST /audio/transcription-jobs/stream/session` | POST | `TranscriptionJobController.createStreamSession` (L244) | `STT_V2_ENDPOINTS.CREATE_SESSION` (const:251) | `StreamingSessionManager`, `SttV2WebSocketClient` |
-| `DELETE /audio/transcription-jobs/stream/session/:sessionId` | DELETE | `TranscriptionJobController.closeStreamSession` (L289) | `STT_V2_ENDPOINTS.CLOSE_SESSION(sid)` (const:253) | `StreamingSessionManager` |
-| `WS /ws/stt-v2/stream` | WS | `SttWsGateway` (path:'/ws/stt-v2/stream', L16) | `STT_V2_ENDPOINTS.WS_STREAM` (const:255) | `SttV2WebSocketClient` |
-| `POST /audio/transcription-jobs` | POST | `TranscriptionJobController.create` (L87) | `STT_V2_ENDPOINTS.CREATE_JOB` (const:257) | `TranscriptionJobService` |
-| `POST /audio/transcription-jobs/batch` | POST | `TranscriptionJobController.createBatch` (L95) | `STT_V2_ENDPOINTS.CREATE_BATCH_JOB` (const:259) | `TranscriptionJobService` |
-| `POST /audio/transcription-jobs/streaming` | POST | `TranscriptionJobController.createStreaming` (L103) | `STT_V2_ENDPOINTS.CREATE_STREAMING_JOB` (const:261) | `TranscriptionJobService` |
-| `POST /audio/transcription-jobs/transcribe` | POST | `TranscriptionJobController.transcribeFile` (L125) | `STT_V2_ENDPOINTS.TRANSCRIBE` (const:263) | `FileTranscriptionService` |
-| `GET /audio/transcription-jobs/:id/stream` | SSE | `TranscriptionJobController.streamJob` (L308) | `STT_V2_ENDPOINTS.JOB_STREAM(id)` (const:265) | `SSEClient` via `TranscriptionJobService` |
-| `GET /audio/transcription-jobs/:id` | GET | `TranscriptionJobController.getById` (L297) | `STT_V2_ENDPOINTS.GET_JOB(id)` (const:267) | `TranscriptionJobService` |
-| `GET /audio/transcription-jobs` | GET | `TranscriptionJobController.list` (L333) | `STT_V2_ENDPOINTS.LIST_JOBS` (const:269) | `TranscriptionJobService` |
-| `GET /audio/transcription-jobs/stats` | GET | `TranscriptionJobController.getStats` (L111) | `STT_V2_ENDPOINTS.JOB_STATS` (const:271) | ❌ **No hook calls this** |
-| `GET /audio/transcription-jobs/consultation/:id` | GET | `TranscriptionJobController.getByConsultation` (L237) | `STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION(id)` (const:273) | ❌ **No hook calls this** |
-| `GET /audio/transcription-jobs/status/:status` | GET | `TranscriptionJobController.getByStatus` (L117) | `STT_V2_ENDPOINTS.JOBS_BY_STATUS(s)` (const:275) | ❌ **No hook calls this** |
-| `POST /audio/transcription-jobs/:id/cancel` | POST | `TranscriptionJobController.cancel` (L319) | `STT_V2_ENDPOINTS.CANCEL_JOB(id)` (const:277) | `TranscriptionJobService` |
-| `POST /audio/transcription-jobs/:id/retry` | POST | `TranscriptionJobController.retry` (L325) | `STT_V2_ENDPOINTS.RETRY_JOB(id)` (const:279) | `TranscriptionJobService` |
+| `POST /audio/transcription-jobs/stream/session` | POST | `TranscriptionJobController.createStreamSession` (L244) | `STT_ENDPOINTS.CREATE_SESSION` (const:251) | `StreamingSessionManager`, `SttWebSocketClient` |
+| `DELETE /audio/transcription-jobs/stream/session/:sessionId` | DELETE | `TranscriptionJobController.closeStreamSession` (L289) | `STT_ENDPOINTS.CLOSE_SESSION(sid)` (const:253) | `StreamingSessionManager` |
+| `WS /ws/stt/stream` | WS | `SttWsGateway` (path:'/ws/stt/stream', L16) | `STT_ENDPOINTS.WS_STREAM` (const:255) | `SttWebSocketClient` |
+| `POST /audio/transcription-jobs` | POST | `TranscriptionJobController.create` (L87) | `STT_ENDPOINTS.CREATE_JOB` (const:257) | `TranscriptionJobService` |
+| `POST /audio/transcription-jobs/batch` | POST | `TranscriptionJobController.createBatch` (L95) | `STT_ENDPOINTS.CREATE_BATCH_JOB` (const:259) | `TranscriptionJobService` |
+| `POST /audio/transcription-jobs/streaming` | POST | `TranscriptionJobController.createStreaming` (L103) | `STT_ENDPOINTS.CREATE_STREAMING_JOB` (const:261) | `TranscriptionJobService` |
+| `POST /audio/transcription-jobs/transcribe` | POST | `TranscriptionJobController.transcribeFile` (L125) | `STT_ENDPOINTS.TRANSCRIBE` (const:263) | `FileTranscriptionService` |
+| `GET /audio/transcription-jobs/:id/stream` | SSE | `TranscriptionJobController.streamJob` (L308) | `STT_ENDPOINTS.JOB_STREAM(id)` (const:265) | `SSEClient` via `TranscriptionJobService` |
+| `GET /audio/transcription-jobs/:id` | GET | `TranscriptionJobController.getById` (L297) | `STT_ENDPOINTS.GET_JOB(id)` (const:267) | `TranscriptionJobService` |
+| `GET /audio/transcription-jobs` | GET | `TranscriptionJobController.list` (L333) | `STT_ENDPOINTS.LIST_JOBS` (const:269) | `TranscriptionJobService` |
+| `GET /audio/transcription-jobs/stats` | GET | `TranscriptionJobController.getStats` (L111) | `STT_ENDPOINTS.JOB_STATS` (const:271) | ❌ **No hook calls this** |
+| `GET /audio/transcription-jobs/consultation/:id` | GET | `TranscriptionJobController.getByConsultation` (L237) | `STT_ENDPOINTS.JOBS_BY_CONSULTATION(id)` (const:273) | ❌ **No hook calls this** |
+| `GET /audio/transcription-jobs/status/:status` | GET | `TranscriptionJobController.getByStatus` (L117) | `STT_ENDPOINTS.JOBS_BY_STATUS(s)` (const:275) | ❌ **No hook calls this** |
+| `POST /audio/transcription-jobs/:id/cancel` | POST | `TranscriptionJobController.cancel` (L319) | `STT_ENDPOINTS.CANCEL_JOB(id)` (const:277) | `TranscriptionJobService` |
+| `POST /audio/transcription-jobs/:id/retry` | POST | `TranscriptionJobController.retry` (L325) | `STT_ENDPOINTS.RETRY_JOB(id)` (const:279) | `TranscriptionJobService` |
 
 ### 1.8 ASR Pipelines (`PIPELINE_ENDPOINTS` / `usePipelines`)
 
@@ -489,30 +489,30 @@ where `AUTH_REFRESH_ENDPOINT = '/auth/refresh'` (L74). This is correct.
 
 ## 4. Real-Time Channel Validation
 
-### 4.1 WebSocket — STT-V2 Streaming
+### 4.1 WebSocket — STT Streaming
 
-**SDK Client:** `SttV2WebSocketClient` (SttV2WebSocketClient.ts:78)  
-**SDK connects to:** `ws://host/ws/stt-v2/stream?sessionId=<sessionId>` (derived from `STT_V2_ENDPOINTS.WS_STREAM` = `/ws/stt-v2/stream`)  
-**API Gateway:** `SttWsGateway` (`@WebSocketGateway({ path: '/ws/stt-v2/stream' })`, stt-ws.gateway.ts:16)
+**SDK Client:** `SttWebSocketClient` (SttWebSocketClient.ts:78)  
+**SDK connects to:** `ws://host/ws/stt/stream?sessionId=<sessionId>` (derived from `STT_ENDPOINTS.WS_STREAM` = `/ws/stt/stream`)  
+**API Gateway:** `SttWsGateway` (`@WebSocketGateway({ path: '/ws/stt/stream' })`, stt-ws.gateway.ts:16)
 
 **Protocol Alignment:**
 
 | Client → Server | SDK sends | API handles |
 |---|---|---|
-| Binary PCM (Int16 LE) | `sendAudioFrame(buffer)` (SttV2WebSocketClient:229) | `Buffer.isBuffer(rawData)` branch (stt-ws.gateway.ts:123) ✓ |
+| Binary PCM (Int16 LE) | `sendAudioFrame(buffer)` (SttWebSocketClient:229) | `Buffer.isBuffer(rawData)` branch (stt-ws.gateway.ts:123) ✓ |
 | JSON `{type:'audio', seq, data}` | `sendAudioFrameJson(seq, b64)` (L237) | `case 'audio'` (L151) ✓ |
 | JSON `{type:'stop'}` | `sendStop()` (L249) | `case 'stop'` → `writeControlCommand('finalize')` (L158) ✓ |
 | JSON `{type:'close'}` | `sendClose()` (L258) | `case 'close'` → session cleanup (L163) ✓ |
 
 | Server → Client | API sends | SDK handles |
 |---|---|---|
-| `{type:'transcript', text, startTime, endTime, isFinal, ...}` | `bridgeService.subscribeToResults` result | `normalizeTranscript()` (SttV2WebSocketClient:430) ✓ |
+| `{type:'transcript', text, startTime, endTime, isFinal, ...}` | `bridgeService.subscribeToResults` result | `normalizeTranscript()` (SttWebSocketClient:430) ✓ |
 | `{type:'status', status, message}` | Status messages | `isValidStatus` check (L546) ✓ |
 | `{type:'error', code, message}` | Error messages | `isValidError` check (L554) ✓ |
 
 **Assessment:** Protocol is **fully aligned**. SDK correctly normalizes both camelCase and snake_case variants from the server (L431–433 for timestamps, L436–440 for isFinal).
 
-**Gap:** SDK `SttV2WebSocketClient` connects directly to `wsUrl` from `STT_V2_ENDPOINTS.WS_STREAM`, but the session `wsUrl` returned from `POST /audio/transcription-jobs/stream/session` is hardcoded to `'/ws/stt-v2/stream'` (transcription-job.controller.ts:283). The client must build the full WebSocket URL (`ws://host/ws/stt-v2/stream?sessionId=...`) — this construction is handled in `StreamingSessionManager` (not read) but must combine base URL with WS scheme conversion.
+**Gap:** SDK `SttWebSocketClient` connects directly to `wsUrl` from `STT_ENDPOINTS.WS_STREAM`, but the session `wsUrl` returned from `POST /audio/transcription-jobs/stream/session` is hardcoded to `'/ws/stt/stream'` (transcription-job.controller.ts:283). The client must build the full WebSocket URL (`ws://host/ws/stt/stream?sessionId=...`) — this construction is handled in `StreamingSessionManager` (not read) but must combine base URL with WS scheme conversion.
 
 ### 4.2 SSE — Transcription Job Streaming
 

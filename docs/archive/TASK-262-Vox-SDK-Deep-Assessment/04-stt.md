@@ -547,15 +547,15 @@ private scheduleReconnect(): void {
 
 In `LocalSTTProvider.processBufferedAudio`, keep a `lastTranscriptText` ref and pass it as `initial_prompt` to the engine for the next chunk. This directly suppresses boundary hallucination.
 
-### 9.6 Streaming via `stt-v2` service
+### 9.6 Streaming via `stt` service
 
-The `apps/stt-v2/` Python FastAPI service likely implements streaming Whisper inference (e.g., via faster-whisper's streaming generator). To integrate:
+The `apps/stt/` Python FastAPI service likely implements streaming Whisper inference (e.g., via faster-whisper's streaming generator). To integrate:
 
 1. **Protocol extension:** Add a `stream_partial` message type to `WSInboundMessage` alongside the existing `transcription`.
 2. **MessageHandler extension:** Route `stream_partial` to an `onPartial` callback.
 3. **`RemoteSTTProvider` extension:** Add `onPartialTranscription` callback and emit `stt-partial` events.
 4. **`STTProcessor` extension:** The `handleTranscription` method already handles `isFinal: false` → `stt-partial`; this path already exists end-to-end.
-5. **VAD-gated streaming:** The `vadGate` feature flag already exists. When enabled, `ScriptProcessorNode` events are suppressed and `transcribeSegment()` is called externally. The `stt-v2` service could accept VAD-segmented audio chunks and return streaming word-by-word results.
+5. **VAD-gated streaming:** The `vadGate` feature flag already exists. When enabled, `ScriptProcessorNode` events are suppressed and `transcribeSegment()` is called externally. The `stt` service could accept VAD-segmented audio chunks and return streaming word-by-word results.
 
 ### 9.7 Add WebSocket auth token support
 

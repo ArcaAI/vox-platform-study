@@ -99,7 +99,7 @@ describe('useTtsStream', () => {
     expect(endpoint).toBe('/auth/stream-ticket');
     expect((body as { scope: string }).scope).toMatch(/^tts_session:/);
     // Origin only — the REST `/api/v1` suffix must NOT leak into the WS URL.
-    expect(ws.url).toMatch(/^ws:\/\/gw:8868\/ws\/tts-v2\/stream\?sessionId=.+&ticket=tk-1$/);
+    expect(ws.url).toMatch(/^ws:\/\/gw:8868\/ws\/tts\/stream\?sessionId=.+&ticket=tk-1$/);
     expect(ws.binaryType).toBe('arraybuffer');
   });
 

@@ -355,11 +355,11 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt-v2/stream',
+        url: 'wss://api.example.com/ws/stt/stream',
       });
 
       expect(createdWebSockets).toHaveLength(1);
-      expect(createdWebSockets[0].url).toBe('wss://api.example.com/ws/stt-v2/stream');
+      expect(createdWebSockets[0].url).toBe('wss://api.example.com/ws/stt/stream');
       manager.dispose();
     });
 
@@ -368,7 +368,7 @@ describe('SharedConnectionManager', () => {
       const onMessage = vi.fn();
 
       manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt-v2/stream',
+        url: 'wss://api.example.com/ws/stt/stream',
       }, { onMessage });
 
       createdWebSockets[0].simulateMessage('{"type":"transcript","text":"Hello"}');
@@ -382,7 +382,7 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt-v2/stream',
+        url: 'wss://api.example.com/ws/stt/stream',
       });
 
       await vi.advanceTimersByTimeAsync(10);
@@ -400,7 +400,7 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt-v2/stream',
+        url: 'wss://api.example.com/ws/stt/stream',
       });
 
       await vi.advanceTimersByTimeAsync(10);
@@ -417,7 +417,7 @@ describe('SharedConnectionManager', () => {
       const onClose = vi.fn();
 
       manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt-v2/stream',
+        url: 'wss://api.example.com/ws/stt/stream',
       }, { onClose });
 
       createdWebSockets[0].close(1000, 'Normal closure');
@@ -430,7 +430,7 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
 
       manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt-v2/stream',
+        url: 'wss://api.example.com/ws/stt/stream',
       });
 
       manager.unsubscribeWS('stream-1');
@@ -461,7 +461,7 @@ describe('SharedConnectionManager', () => {
       const onMessage = vi.fn();
 
       manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt-v2/stream',
+        url: 'wss://api.example.com/ws/stt/stream',
       });
 
       manager.onWSMessage('stream-1', onMessage);
@@ -535,12 +535,12 @@ describe('SharedConnectionManager', () => {
       __handleMessageForTests(portA, {
         type: 'subscribe_ws',
         id: 'stream-1',
-        payload: { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-A', tenantId: 'tenant-A' },
+        payload: { url: 'wss://api.example.com/ws/stt/stream', userId: 'user-A', tenantId: 'tenant-A' },
       });
       __handleMessageForTests(portB, {
         type: 'subscribe_ws',
         id: 'stream-1',
-        payload: { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-B', tenantId: 'tenant-B' },
+        payload: { url: 'wss://api.example.com/ws/stt/stream', userId: 'user-B', tenantId: 'tenant-B' },
       });
 
       // Two distinct user contexts → two distinct upstream sockets, never shared.
@@ -550,7 +550,7 @@ describe('SharedConnectionManager', () => {
     it('still SHARES one socket across two tabs of the SAME user + id (dedup preserved)', () => {
       const portA = mkPort();
       const portB = mkPort();
-      const sub = { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-A', tenantId: 'tenant-A' };
+      const sub = { url: 'wss://api.example.com/ws/stt/stream', userId: 'user-A', tenantId: 'tenant-A' };
 
       __handleMessageForTests(portA, { type: 'subscribe_ws', id: 'stream-1', payload: { ...sub } });
       __handleMessageForTests(portB, { type: 'subscribe_ws', id: 'stream-1', payload: { ...sub } });
@@ -566,12 +566,12 @@ describe('SharedConnectionManager', () => {
       __handleMessageForTests(portA, {
         type: 'subscribe_ws',
         id: 'stream-1',
-        payload: { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-A', tenantId: 'tenant-A' },
+        payload: { url: 'wss://api.example.com/ws/stt/stream', userId: 'user-A', tenantId: 'tenant-A' },
       });
       __handleMessageForTests(portB, {
         type: 'subscribe_ws',
         id: 'stream-1',
-        payload: { url: 'wss://api.example.com/ws/stt-v2/stream', userId: 'user-B', tenantId: 'tenant-B' },
+        payload: { url: 'wss://api.example.com/ws/stt/stream', userId: 'user-B', tenantId: 'tenant-B' },
       });
 
       // Let both mock sockets transition to OPEN.

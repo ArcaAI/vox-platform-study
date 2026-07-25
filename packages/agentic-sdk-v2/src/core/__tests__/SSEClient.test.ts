@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SSEClient } from '../SSEClient';
 import { createMockLogger } from '../../__tests__/setup';
-import { STT_V2_ENDPOINTS } from '../constants';
+import { STT_ENDPOINTS } from '../constants';
 
 // SSEClient now requires `(scope, apiClient, logger?)`.
 function makeApiClient() {
@@ -202,9 +202,9 @@ describe('SSEClient', () => {
       );
     });
 
-    it('should accept a URL built from STT_V2_ENDPOINTS.JOB_STREAM', async () => {
+    it('should accept a URL built from STT_ENDPOINTS.JOB_STREAM', async () => {
       const jobId = 'job-sse-1';
-      const url = `https://api.example.com${STT_V2_ENDPOINTS.JOB_STREAM(jobId)}`;
+      const url = `https://api.example.com${STT_ENDPOINTS.JOB_STREAM(jobId)}`;
       client.connect(url);
       await flushMicrotasks();
       expect(lastMockES!.url).toContain('/audio/transcription-jobs/job-sse-1/stream');

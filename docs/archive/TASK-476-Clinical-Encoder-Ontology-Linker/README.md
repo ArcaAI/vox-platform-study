@@ -35,7 +35,7 @@ The write path is a **contract chain** from the NLP producer to five DB columns;
 
 **No Prisma migration.** The five `NamedEntity` ontology columns already exist (`consultation.prisma:323-327`, nullable, plaintext) — this ticket **populates** them, it does not add them.
 
-**STOP-and-report before touching**: the **live-documentation** NER path (`live-documentation.service.ts` — re-pointing it note→transcript is [TASK-477](../TASK-477-Live-NER-Transcript-Repoint-Grounding/README.md)/C2, not here), the **browser** NER (`packages/med-ner`, `KnowledgePipeline.ts` — demoted to a display hint by policy, not rewritten here), the **eval harness** (`apps/stt-v2/tests/integration/streaming_quality.py` — TASK-470's owned files; re-run it, don't edit it), any concept-F1 scorer (TASK-482), or the five columns' definition (they are the write target — do not alter/drop). Anything outside the manifest → STOP.
+**STOP-and-report before touching**: the **live-documentation** NER path (`live-documentation.service.ts` — re-pointing it note→transcript is [TASK-477](../TASK-477-Live-NER-Transcript-Repoint-Grounding/README.md)/C2, not here), the **browser** NER (`packages/med-ner`, `KnowledgePipeline.ts` — demoted to a display hint by policy, not rewritten here), the **eval harness** (`apps/stt/tests/integration/streaming_quality.py` — TASK-470's owned files; re-run it, don't edit it), any concept-F1 scorer (TASK-482), or the five columns' definition (they are the write target — do not alter/drop). Anything outside the manifest → STOP.
 
 ## Requirement Analysis
 
@@ -110,7 +110,7 @@ pnpm py:harness:test && pnpm py:harness:lint && pnpm py:harness:typecheck
 pnpm --filter @arcaai/applications build test lint
 pnpm build:api
 # score (measure-first) — same fixtures/pipeline as TASK-470
-pnpm py:stt-v2:test:integration   # test_streaming_quality_scorecard
+pnpm py:stt:test:integration   # test_streaming_quality_scorecard
 ```
 
 Adversarial review focus: (a) do **all three** durable write paths (async ner.processor, sync extractEntities, harness persistEntities) actually persist codes — proven by tests, not asserted? (b) is the linker deterministic + offline (no hidden network, no cloud vendor)? (c) does the DTO change respect `forbidNonWhitelisted` (codes declared with validators)? (d) does the TASK-462 guard genuinely disengage on coded input **without** suppressing the un-coded case? (e) keyterm/keyphrase recall held vs TASK-470 baseline; no ASR-guardrail regression? (f) no Prisma migration; self-hosted only; zero diff outside the manifest.

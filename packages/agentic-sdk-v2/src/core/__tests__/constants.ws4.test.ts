@@ -261,7 +261,7 @@ describe('WS-4 endpoint constants', () => {
       const specialId = 'id-with-special_chars.v2';
       expect(DNA_STYLE_ENDPOINTS.UPDATE(specialId)).toBe(`/dna-writing-styles/${specialId}`);
       expect(PROMPT_TEMPLATE_ENDPOINTS.GET(specialId)).toBe(`/admin/prompt-templates/${specialId}`);
-      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('stt-v2')).toBe('/monitoring/uptime/stt-v2');
+      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('stt')).toBe('/monitoring/uptime/stt');
     });
 
     it('should handle very long IDs', () => {

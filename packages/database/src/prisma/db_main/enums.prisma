@@ -337,10 +337,10 @@ enum TranscriptionJobStatus {
 }
 
 // Tenant default transcription mode (local SDK pipeline vs
-// backend STT-v2). Overridable per-user only when transcriptionModeLocked=false.
+// backend STT). Overridable per-user only when transcriptionModeLocked=false.
 enum TranscriptionMode {
   LOCAL // Browser-side SDK transcription pipeline
-  BACKEND // Backend STT-v2 pipeline (WebSocket)
+  BACKEND // Backend STT pipeline (WebSocket)
 
   @@schema("core")
 }
@@ -383,6 +383,22 @@ enum IdpProtocol {
 enum DepartmentAgentDnaPolicy {
   INHERIT
   DISABLED
+
+  @@schema("core")
+}
+
+// Human curation verdict on a mined `GateEditExemplar` (TASK-553 F-24).
+//
+// The mining loop writes PENDING: a row is a PROPOSAL, never approved corpus.
+// APPROVED is an explicit human decision that the exemplar may be shown to the
+// model as a style reference; REJECTED excludes it permanently. Whether the
+// retriever actually ENFORCES the gate is a separate, default-off knob
+// (`agentic.fewshot.curationMode`), so adding the column changes no behaviour
+// until an operator opts in.
+enum ExemplarCurationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 
   @@schema("core")
 }

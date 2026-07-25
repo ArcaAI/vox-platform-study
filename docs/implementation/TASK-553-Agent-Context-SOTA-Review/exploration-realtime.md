@@ -1,6 +1,6 @@
 # TASK-553 — Exploration Report 3: Realtime Transcript → Agent Pipeline
 
-Produced by the TASK-553 exploration pass on 2026-07-24. Scope: browser SDK → `apps/stt-v2`
+Produced by the TASK-553 exploration pass on 2026-07-24. Scope: browser SDK → `apps/stt`
 → `apps/api` gateway → `packages/applications`/`packages/domains` → `apps/harness` (Temporal)
 / `apps/nlp`, plus the TASK-543 live-summary SSE path. All citations verified against the
 working tree (branch `fix/2605-review`).
@@ -13,7 +13,7 @@ working tree (branch `fix/2605-review`).
 
 | Hop | File:Line | Behavior |
 |---|---|---|
-| 1 | `apps/stt-v2/src/stt_v2/streaming/inference.py:447-456,509` | `StreamingInferenceWorker.process_utterance` builds `SegmentResult(text=…, is_final=utterance.is_final, …)`, calls `publisher.publish(result)`. Same path for partial and final; only `is_final` differs. |
+| 1 | `apps/stt/src/stt/streaming/inference.py:447-456,509` | `StreamingInferenceWorker.process_utterance` builds `SegmentResult(text=…, is_final=utterance.is_final, …)`, calls `publisher.publish(result)`. Same path for partial and final; only `is_final` differs. |
 | 2 | `session_manager.py:2026-2066` | Partial emission: `_fire_partial` → `worker.process_partial`, annotates `stable_chars` (LocalAgreement-2 commit policy, `:2061-2064`). |
 | 3 | `session_manager.py:2189-2210` (frame-final), `:2225-2249` (control `FINALIZE`) | Final emission → `_flush_final_utterance` → `_drain_inference_queue` → worker publishes tail `SegmentResult(is_final=True)`. |
 | 4 | `redis_streams.py:427-446` | `ResultPublisher.publish()` — `XADD stt:result:{session_id}` with `maxlen=10000, approximate=True`. |
@@ -23,7 +23,7 @@ working tree (branch `fix/2605-review`).
 | 8 | `streamingAudioBridge.service.ts:623-634` (`parseAndEmitResult`) | Terminal check: `status === 'closed' \|\| status === 'cancelled'` — **`finalizing` explicitly non-terminal** (comment `:610-621`). Fixed form of the TASK-470/471 bug (§5.1). |
 | 9 | `apps/api/src/modules/streaming/stt-ws.gateway.ts:433-459`, `:546-571` | Gateway relays to browser WS with egress backpressure (partials dropped, finals queued — §5.6). |
 | 10 | `session_manager.py:2492-2560` (`_persist_streaming_transcript`), called once from `_finalize_session_locked` (`:2997`) | At session finalize ONLY: builds full transcript text + `build_transcript_segments()` (`session.py:318-358`, one dict per **final**) and POSTs once. |
-| 11 | `apps/stt-v2/src/stt_v2/core/api_client/gateway.py:258,322-331` | `create_transcript` → `POST /internal/stt/transcripts`, `X-Internal-Service-Key`, plus an **unused** `Idempotency-Key` (§5.7). |
+| 11 | `apps/stt/src/stt/core/api_client/gateway.py:258,322-331` | `create_transcript` → `POST /internal/stt/transcripts`, `X-Internal-Service-Key`, plus an **unused** `Idempotency-Key` (§5.7). |
 | 12 | `apps/api/src/modules/internal/stt-internal.controller.ts:34-39` | → `SttInternalService.createTranscript`. |
 | 13 | `packages/applications/src/services/stt/internal/sttInternal.service.ts:223-282` | Dedup-by-existence check (`:235-238`), creates encrypted `ContextItem` type TRANSCRIPT (`:240-256`), `persistTranscriptSegments()` (`:259`), emits `TranscriptionCreated` (`:270-279`) — **the single trigger into the harness path**. |
 | 14 | `sttInternal.service.ts:75-129` | One `transcriptSegmentRepository.create` **per segment** in a loop (N+1 — §6 G1). |
@@ -130,7 +130,7 @@ Browser: useArcaLiveSummary.start(consultationId)
 `stt-ws.gateway.ts:378-424`: after `WS_RESUME_GRACE_MS` (15s) + finalize deleted the session (`:774`), reconnect creates a **new** SessionInfo with empty `resumeBuffer` (`:390`). `handleResume` (`:905-932`) checks only `buffer.length > 0` (`:916`) — vacuously passes — replies `{type:'resumed'}` (`:928`), never `resume_failed`. Re-subscribed consumer group cursor is already past `closed` → new reader gets nothing forever. Compounding: `streamingSession.service.ts:157-176` never clears `StreamSessionTenantBindingService` (24h TTL) → fresh tickets mintable against a dead session. **Net**: client believes it resumed; mic keeps capturing; nothing transcribes; no error anywhere.
 
 ### 5.9 [HIGH] SDK reconnect chain dies after one failed attempt
-`SttV2WebSocketClient.ts`: `attemptReconnect()` (`:521-595`) re-armed only from `onclose`'s `wasConnected` branch (`:315,327-333`) gated on `this.ws !== null`, but `this.ws` set only in `onopen` (`:277`). A reconnect attempt that fails to open (refused/DNS/timeout, `:256-271`) fires `onclose` with `ws` null → reject branch (`:324-326`) — retry chain dies silently, `onReconnectFailedCb` never fires, before maxAttempts exhausted. The `.catch()` comment at `:592` is incorrect for this case.
+`SttWebSocketClient.ts`: `attemptReconnect()` (`:521-595`) re-armed only from `onclose`'s `wasConnected` branch (`:315,327-333`) gated on `this.ws !== null`, but `this.ws` set only in `onopen` (`:277`). A reconnect attempt that fails to open (refused/DNS/timeout, `:256-271`) fires `onclose` with `ws` null → reject branch (`:324-326`) — retry chain dies silently, `onReconnectFailedCb` never fires, before maxAttempts exhausted. The `.catch()` comment at `:592` is incorrect for this case.
 
 ### 5.10 [MED] Flush/drain outside the finalize lock
 `_finalize_session` serialized per-session (`session_manager.py:2840-2857`), but `_flush_final_utterance` (`:2304-2352`) and `_drain_inference_queue` (`:1903-1927`) run **before/outside** the lock at all three trigger sites (`:2196-2202`, `:2236-2242`, `:3262-3268`) — near-simultaneous finalize triggers can double-flush the tail utterance.
@@ -167,7 +167,7 @@ Bounded RetryPolicies (`workflows.py:112-137`); `persist_entities` call at `work
 ---
 
 ### Key files for follow-up
-- `apps/stt-v2/src/stt_v2/streaming/{session_manager.py,session.py,redis_streams.py,inference.py,schemas.py}`
+- `apps/stt/src/stt/streaming/{session_manager.py,session.py,redis_streams.py,inference.py,schemas.py}`
 - `packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts`
 - `apps/api/src/modules/streaming/stt-ws.gateway.ts`
 - `packages/applications/src/services/stt/internal/sttInternal.service.ts`
@@ -175,5 +175,5 @@ Bounded RetryPolicies (`workflows.py:112-137`); `persist_entities` call at `work
 - `packages/applications/src/services/consultation/harness/{harness-gateway.service.ts,harness-internal.service.ts,harness-progress.service.ts}`
 - `packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts`
 - `apps/harness/src/harness/temporal/{workflows.py,activities.py,worker.py,models.py}`
-- `packages/agentic-sdk-v2/src/core/{KnowledgePipeline.ts,SSEClient.ts,AgenticClient.ts,SttV2WebSocketClient.ts}`
+- `packages/agentic-sdk-v2/src/core/{KnowledgePipeline.ts,SSEClient.ts,AgenticClient.ts,SttWebSocketClient.ts}`
 - `packages/agentic-sdk-v2/src/hooks/{useArcaLiveSummary.ts,useArcaContext.ts,useArcaAudio.ts}`

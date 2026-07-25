@@ -54,10 +54,10 @@ A comprehensive architectural review of `apps/api/src/` and `packages/applicatio
 └──────────────────────────────────────────────────┘
 ```
 
-### Best-Practice Module (Gold Standard: `stt-v2`)
+### Best-Practice Module (Gold Standard: `stt`)
 
 ```typescript
-// apps/api/src/controllers/stt-v2/stt-v2.module.ts
+// apps/api/src/controllers/stt/stt.module.ts
 @Module({
     imports: [
         CoreDatabaseModule,
@@ -67,9 +67,9 @@ A comprehensive architectural review of `apps/api/src/` and `packages/applicatio
         ...
     ],
     controllers: [PipelineController, AiModelController, ...],
-    providers: [SttV2StreamGateway],
+    providers: [SttStreamGateway],
 })
-export class SttV2Module {}
+export class SttModule {}
 ```
 
 Pattern: Import pre-built `*ServiceModule`, declare thin controllers, no local business logic.
@@ -112,7 +112,7 @@ Pattern: Import pre-built `*ServiceModule`, declare thin controllers, no local b
    # Move each controller folder into modules/
    # Folders to move: audit-log, auth, department, fedl, feedback,
    #   global-settings, health, mlflow, monitoring, nlp, rbac,
-   #   smr, stt, stt-v2, tenant, tts, user, user-settings
+   #   smr, stt, stt, tenant, tts, user, user-settings
    ```
 
 2. Update all import paths in `apps/api/src/app.module.ts`:
@@ -179,7 +179,7 @@ Pattern: Import pre-built `*ServiceModule`, declare thin controllers, no local b
    ApiKeyServiceModule, // <-- this is a service module, not a feature
 
    // AFTER: Remove from featureModules array
-   // Individual modules (monitoring, stt-v2, consultation, user-preferences)
+   // Individual modules (monitoring, stt, consultation, user-preferences)
    // already import it directly
    ```
 
@@ -432,7 +432,7 @@ This should eventually be encapsulated in `IAuthService.login()` in `@arcaai/app
 #### Task 5.1: Audit and remove redundant imports
 
 **Files**:
-- Modify: `apps/api/src/modules/stt-v2/stt-v2.module.ts`
+- Modify: `apps/api/src/modules/stt/stt.module.ts`
 - Modify: `apps/api/src/modules/department/department.module.ts`
 - Modify: `apps/api/src/modules/consultation/consultation.module.ts`
 
@@ -488,7 +488,7 @@ This should eventually be encapsulated in `IAuthService.login()` in `@arcaai/app
    │   │   ├── rbac/
    │   │   ├── smr/
    │   │   ├── stt/
-   │   │   ├── stt-v2/
+   │   │   ├── stt/
    │   │   ├── tenant/
    │   │   ├── tts/
    │   │   ├── user/
@@ -608,7 +608,7 @@ This should eventually be encapsulated in `IAuthService.login()` in `@arcaai/app
 
 ### Phase 5: Redundant Import Cleanup (R2)
 - Removed `CoreDatabaseModule` from `department.module.ts` (provided by `DepartmentServiceModule`)
-- Removed `CoreDatabaseModule` from `stt-v2.module.ts` (provided by multiple `*ServiceModule`s)
+- Removed `CoreDatabaseModule` from `stt.module.ts` (provided by multiple `*ServiceModule`s)
 - Removed `CoreDatabaseModule` from `consultation.module.ts` (provided by `ConsultationServiceModule` et al.)
 - Kept `CoreDatabaseModule` in `auth.module.ts` and `rbac.module.ts` (controllers directly use repositories)
 
@@ -669,5 +669,5 @@ These items were identified during the review but are deferred to separate ticke
 
 1. **Auth Business Logic Extraction**: Move login/password/role logic from `AuthController` to `AuthService` in `@arcaai/applications`
 2. **Test Coverage**: Add `__tests__/` directories and unit tests for modules currently lacking them (most modules under the old `controllers/` folder)
-3. **Monitoring Enhancement**: Extend `ServiceHealthMonitoringService` to also cover STT-V2 service health checks
+3. **Monitoring Enhancement**: Extend `ServiceHealthMonitoringService` to also cover STT service health checks
 4. **API Reference Docs**: Full rewrite of `05-api-reference.md` to cover all current endpoints

@@ -8,7 +8,7 @@ Repo root: `/Users/taphuynh/Desktop/igglo/ARCAAI/hope-v2`. All `.claude/worktree
 
 ## 1. `SttWsGateway` decorator + ticket auth
 
-`@WebSocketGateway({ path: '/ws/stt-v2/stream' })` — `apps/api/src/modules/streaming/stt-ws.gateway.ts:160`.
+`@WebSocketGateway({ path: '/ws/stt/stream' })` — `apps/api/src/modules/streaming/stt-ws.gateway.ts:160`.
 
 `handleConnection` (lines 281-425) reads both `sessionId` and `ticket` from the **URL query string**, not a first frame:
 ```ts
@@ -62,17 +62,17 @@ JSON message types (switch on `msg.type`, lines 828-857):
 - `'close'` (847-853): `this.finalizeSession(session, 'session closed by client'); client.close(1000, ...)`
 - default → `sendError(client, 'UNKNOWN_TYPE', ...)`.
 
-This is **Redis Streams, not an HTTP call** into stt-v2's `api/routes.py`.
+This is **Redis Streams, not an HTTP call** into stt's `api/routes.py`.
 
 - Gateway send (audio): `forwardAudioFrame()` (`stt-ws.gateway.ts:878-889`) → `StreamingAudioBridgeService.writeAudioFrame()` → XADD to `` `stt:audio:${sessionId}` `` (`packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts:232-267`, key at line 244).
-- stt-v2 receive (audio): `IngestionConsumer._run()` (`apps/stt-v2/src/stt_v2/streaming/redis_streams.py:303-388`) `xreadgroup`s `audio_stream_key(session_id)` = `f"stt:audio:{session_id}"` (lines 67-69, 305, 321-327) → `_dispatch_frame` → `AudioFrame.from_redis_dict(fields)` → `on_frame`, wired by `SessionManager.create_session()` to `self._make_frame_handler(session, preprocessor)` (`apps/stt-v2/src/stt_v2/streaming/session_manager.py:610-616`).
-- Control: gateway `writeControlCommand()` XADDs `{action}` to `` `stt:control:${sessionId}` `` (streamingAudioBridge.service.ts:279-293, key line 284); stt-v2 `ControlListener._run()` XREADs `control_stream_key(session_id)` = `f"stt:control:{session_id}"` (redis_streams.py:77-79, 540-548) → `on_control` → `SessionManager._make_control_handler` (session_manager.py:1746-1810) — FINALIZE runs `session.finalize()` + `publisher.publish_status("finalizing")`, then `_flush_final_utterance` / `_drain_inference_queue` / `_finalize_session`.
+- stt receive (audio): `IngestionConsumer._run()` (`apps/stt/src/stt/streaming/redis_streams.py:303-388`) `xreadgroup`s `audio_stream_key(session_id)` = `f"stt:audio:{session_id}"` (lines 67-69, 305, 321-327) → `_dispatch_frame` → `AudioFrame.from_redis_dict(fields)` → `on_frame`, wired by `SessionManager.create_session()` to `self._make_frame_handler(session, preprocessor)` (`apps/stt/src/stt/streaming/session_manager.py:610-616`).
+- Control: gateway `writeControlCommand()` XADDs `{action}` to `` `stt:control:${sessionId}` `` (streamingAudioBridge.service.ts:279-293, key line 284); stt `ControlListener._run()` XREADs `control_stream_key(session_id)` = `f"stt:control:{session_id}"` (redis_streams.py:77-79, 540-548) → `on_control` → `SessionManager._make_control_handler` (session_manager.py:1746-1810) — FINALIZE runs `session.finalize()` + `publisher.publish_status("finalizing")`, then `_flush_final_utterance` / `_drain_inference_queue` / `_finalize_session`.
 
 ## 3. Results consumption
 
 Redis Streams **consumer group** via `XREADGROUP`, in `StreamingAudioBridgeService.readResultStream()` (`streamingAudioBridge.service.ts:426-527`).
 
-- Stream key: `` const streamKey = `stt:result:${sessionId}`; `` (line 319) — matches stt-v2's `result_stream_key()` = `f"stt:result:{session_id}"` (redis_streams.py:72-74).
+- Stream key: `` const streamKey = `stt:result:${sessionId}`; `` (line 319) — matches stt's `result_stream_key()` = `f"stt:result:{session_id}"` (redis_streams.py:72-74).
 - Consumer group: default unique-per-subscription `` `${RESULT_CONSUMER_GROUP_PREFIX}-${this.nextSubscriptionId()}` ``, `RESULT_CONSUMER_GROUP_PREFIX = 'stt-bridge'` (lines 31, 326); the WS gateway passes a **stable** group `'captions'` — `WS_RESULT_CONSUMER_GROUP = 'captions'` (stt-ws.gateway.ts:103) via `{ consumerGroup: WS_RESULT_CONSUMER_GROUP }` (stt-ws.gateway.ts:436).
 - BLOCK: `RESULT_STREAM_BLOCK_MS = 500` ms (streamingAudioBridge.service.ts:12). Exact call (lines 455-466):
 ```ts
@@ -129,7 +129,7 @@ if (terminal) {
 +   * Returns `true` when the entry is a TERMINAL status (`closed`/`cancelled`)
 +   * so the caller completes the stream. (Parsing unchanged from the XREAD path.)
 +   *
-+   * `finalizing` is NOT terminal: stt-v2 publishes it as a progress marker
++   * `finalizing` is NOT terminal: stt publishes it as a progress marker
 +   * BEFORE it flushes the tail utterance, so the result-stream order is
 +   * `finalizing → FINAL → closed` (session_manager `publish_status("finalizing")`
 +   * precedes `_flush_final_utterance`). Completing on `finalizing` would tear the
@@ -147,7 +147,7 @@ if (terminal) {
 +      return data.status === 'closed' || data.status === 'cancelled';
      }
 ```
-Root cause: pre-fix, `finalizing` was terminal, so the reader completed/unsubscribed the instant it saw the `finalizing` status entry — one entry before stt-v2's tail FINAL segment (stt-v2 publishes FINAL *after* `finalizing`; `SessionManager._make_control_handler`, session_manager.py:1762-1766: `session.finalize()` → `publisher.publish_status("finalizing")` → later `_flush_final_utterance` publishes the real FINAL). That tail final was orphaned in Redis, never relayed — the P0 bug.
+Root cause: pre-fix, `finalizing` was terminal, so the reader completed/unsubscribed the instant it saw the `finalizing` status entry — one entry before stt's tail FINAL segment (stt publishes FINAL *after* `finalizing`; `SessionManager._make_control_handler`, session_manager.py:1762-1766: `session.finalize()` → `publisher.publish_status("finalizing")` → later `_flush_final_utterance` publishes the real FINAL). That tail final was orphaned in Redis, never relayed — the P0 bug.
 
 ## 5. `redis_streams.py` / `_runtime.py` — before/after diff
 
@@ -200,7 +200,7 @@ Both `except RedisTimeoutError: continue` blocks sit BEFORE the generic `except 
 +            health_check_interval=30,
          )
 ```
-`health_check_interval=30` set on the dedicated streaming `aioredis.from_url(...)` client in `initialize_streaming()`, `apps/stt-v2/src/stt_v2/streaming/_runtime.py:102-106`.
+`health_check_interval=30` set on the dedicated streaming `aioredis.from_url(...)` client in `initialize_streaming()`, `apps/stt/src/stt/streaming/_runtime.py:102-106`.
 
 Files touched in `0040fe3e` (`git show --stat`): `_runtime.py` (+10), `redis_streams.py` (+23), `tests/unit/streaming/test_stream_hygiene.py` (+101, new `TestBlockingReadTimeoutTolerance` class — verified live at test_stream_hygiene.py:232-326, asserting `mock_logger.error.call_count == 0` on the benign-timeout path), `docs/implementation/TASK-471-Tentative-Tail-Render/README.md` (+19), `streamingAudioBridge.service.test.ts` (+30/-1), `streamingAudioBridge.service.ts` (per hunks above). Commit message: "Long-standing since the initial commit — NOT a TASK-471 regression." Live verification cited: whisper-large-v3-turbo, medical_wer 0.03–0.07, keyterm_recall 1.0, audio_coverage 0.994–0.997, 0 redis timeout errors across 3 clinical clips.
 
@@ -208,7 +208,7 @@ Files touched in `0040fe3e` (`git show --stat`): `_runtime.py` (+10), `redis_str
 
 **Not found**: no ping/pong interval, no idle-connection timeout, no max-session-duration constant in `stt-ws.gateway.ts` or `streaming.module.ts`. `apps/api/src/main.ts:61`: `app.useWebSocketAdapter(new WsAdapter(app) as any);` — no options object, so no custom keepalive at the adapter level either.
 
-Adjacent (not a true heartbeat): `WS_RESUME_GRACE_MS = 15_000` (15s default, override `STT_WS_RESUME_GRACE_MS`) — stt-ws.gateway.ts:83-93 — a post-disconnect grace window before the upstream STT-v2 session finalizes, not an idle-while-connected timeout. Also an unrelated internal 20,000ms `socketHeartbeat` interval (lines 179, 203) that republishes this instance's open-socket count to a Redis registry — not a client ping/pong.
+Adjacent (not a true heartbeat): `WS_RESUME_GRACE_MS = 15_000` (15s default, override `STT_WS_RESUME_GRACE_MS`) — stt-ws.gateway.ts:83-93 — a post-disconnect grace window before the upstream STT session finalizes, not an idle-while-connected timeout. Also an unrelated internal 20,000ms `socketHeartbeat` interval (lines 179, 203) that republishes this instance's open-socket count to a Redis registry — not a client ping/pong.
 
 ## 7. `stt-internal.controller.ts`
 
@@ -232,13 +232,13 @@ private ensureInternalApiKey(request: RequestWithAuth): void {
   }
 }
 ```
-`request.apiKey` is populated by `UnifiedAuthGuard`'s API-key path (`apps/api/src/types/request-with-auth.ts:12`: "set by `UnifiedAuthGuard` after a successful [...] auth"). The Python caller (`APIGatewayClient.__init__`, `apps/stt-v2/src/stt_v2/core/api_client/gateway.py:26-39`) sends header `X-Internal-Service-Key: <api_key>`. Verified: `ApiKeyService.extractApiKeyFromRequest` (`packages/applications/src/services/apiKey/apikey.service.ts:887-891`) checks headers in order `apikey`, `api-key`, `x-api-key`, `x-internal-service-key` — so `X-Internal-Service-Key` is accepted, just under the generic API-key mechanism, not the `X-Service-Token` shared-secret constant-time-compare middleware documented for the outbound direction. `@ApiSecurity('api-key')` is Swagger-doc-only.
+`request.apiKey` is populated by `UnifiedAuthGuard`'s API-key path (`apps/api/src/types/request-with-auth.ts:12`: "set by `UnifiedAuthGuard` after a successful [...] auth"). The Python caller (`APIGatewayClient.__init__`, `apps/stt/src/stt/core/api_client/gateway.py:26-39`) sends header `X-Internal-Service-Key: <api_key>`. Verified: `ApiKeyService.extractApiKeyFromRequest` (`packages/applications/src/services/apiKey/apikey.service.ts:887-891`) checks headers in order `apikey`, `api-key`, `x-api-key`, `x-internal-service-key` — so `X-Internal-Service-Key` is accepted, just under the generic API-key mechanism, not the `X-Service-Token` shared-secret constant-time-compare middleware documented for the outbound direction. `@ApiSecurity('api-key')` is Swagger-doc-only.
 
 ## 8. Audio wire format
 
 Browser→Gateway: either a raw binary WS frame (bytes forwarded as-is) OR JSON `{type:'audio', seq, data:<base64>}` decoded via `Buffer.from(String(msg.data), 'base64')` (stt-ws.gateway.ts:831, 811). Both are treated as raw PCM16LE — the gateway hardcodes `writeAudioFrame(..., 'pcm_s16le', false)` (stt-ws.gateway.ts:879); it does not read an encoding hint from the client message.
 
-Gateway→stt-v2 (XADD fields, streamingAudioBridge.service.ts:246-266):
+Gateway→stt (XADD fields, streamingAudioBridge.service.ts:246-266):
 ```ts
 await this.writerRedis.xadd(
   streamKey, 'MAXLEN', '~', String(AUDIO_STREAM_MAXLEN), '*',
@@ -248,11 +248,11 @@ await this.writerRedis.xadd(
 ```
 `data` is the raw Buffer (binary Redis Stream field, not re-encoded). `AUDIO_STREAM_MAXLEN = 10000` (line 20).
 
-stt-v2 decode: `AudioFrame.from_redis_dict()` (`apps/stt-v2/src/stt_v2/streaming/schemas.py:83-121`) — `enc = AudioEncoding(_str(_get("enc")))`, `AudioEncoding` (schemas.py:20-24) is `PCM_S16LE = "pcm_s16le"` / `PCM_F32LE = "pcm_f32le"`; `data = raw_data if isinstance(raw_data, bytes) else raw_data.encode()` (line 109) — raw bytes, "NOT base64" per the dataclass docstring (schemas.py:63).
+stt decode: `AudioFrame.from_redis_dict()` (`apps/stt/src/stt/streaming/schemas.py:83-121`) — `enc = AudioEncoding(_str(_get("enc")))`, `AudioEncoding` (schemas.py:20-24) is `PCM_S16LE = "pcm_s16le"` / `PCM_F32LE = "pcm_f32le"`; `data = raw_data if isinstance(raw_data, bytes) else raw_data.encode()` (line 109) — raw bytes, "NOT base64" per the dataclass docstring (schemas.py:63).
 
 ## 9. Chunk cadence / batching thresholds
 
-**Not found** at the intended level — no producer-side minimum-bytes-before-processing or explicit batching window at the gateway or stt-v2 ingestion boundary; every WS audio frame received is forwarded via one XADD each (no coalescing in `forwardAudioFrame`/`writeAudioFrame`).
+**Not found** at the intended level — no producer-side minimum-bytes-before-processing or explicit batching window at the gateway or stt ingestion boundary; every WS audio frame received is forwarded via one XADD each (no coalescing in `forwardAudioFrame`/`writeAudioFrame`).
 
 Closest related constants (reader-side batching, not producer cadence):
 - `IngestionConsumer` XREADGROUP: `count=100, block=self._block_ms`, constructor default `block_ms: int = 5000` (redis_streams.py:143), not overridden by `SessionManager.create_session()`'s `IngestionConsumer(...)` call (session_manager.py:610-616) — audio reads use the 5000ms/100-entry default.

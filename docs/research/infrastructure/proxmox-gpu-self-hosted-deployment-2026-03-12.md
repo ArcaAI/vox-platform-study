@@ -91,7 +91,7 @@ MPS provides the best balance of sharing capability and resource control without
 
 ### Evidence 7: HOPE Platform GPU Requirements
 
-- **Source**: Codebase exploration (apps/stt-v2, apps/nlp, apps/smr)
+- **Source**: Codebase exploration (apps/stt, apps/nlp, apps/smr)
 - **Finding**:
 
 | Service | GPU Required | CUDA Version | VRAM Estimate |
@@ -348,10 +348,10 @@ nvidia-cuda-mps-control -d
 # docker-compose.gpu.yml — for GPU VMs
 # Uses CDI device syntax (Docker 29+ / NVIDIA CTK 1.17+)
 services:
-  stt-v2:
-    image: hope-stt-v2:latest
+  stt:
+    image: hope-stt:latest
     build:
-      context: ./apps/stt-v2
+      context: ./apps/stt
       target: ml-runtime
     devices:
       - nvidia.com/gpu=all

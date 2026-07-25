@@ -1,13 +1,13 @@
-# SMR V2 Load Tests (Locust)
+# SMR Load Tests (Locust)
 
-Load tests for the SMR V2 text generation service to verify resilience features under sustained load: rate limiter, circuit breaker, semaphore, and queue behavior.
+Load tests for the SMR text generation service to verify resilience features under sustained load: rate limiter, circuit breaker, semaphore, and queue behavior.
 
 ## Prerequisites
 
 - **Locust** installed (`pip install locust` or `uv pip install locust`)
-- **SMR V2** running on port 8862
+- **SMR** running on port 8862
 - **Ollama** running with a model (e.g. `gemma3` or `llama3.2`) for generate requests
-- **Redis** running (required by SMR V2 for task management)
+- **Redis** running (required by SMR for task management)
 
 ## Installation
 
@@ -89,12 +89,12 @@ Then open http://localhost:8089 and configure users/spawn rate.
 
 ### Metrics Endpoint
 
-SMR V2 exposes Prometheus metrics at `GET /metrics`. Correlate load test runs with:
+SMR exposes Prometheus metrics at `GET /metrics`. Correlate load test runs with:
 
-- `smr_v2_rate_limit_rejections_total`
-- `smr_v2_circuit_breaker_state`
-- `smr_v2_concurrent_requests`
-- `smr_v2_queue_size`
+- `smr_rate_limit_rejections_total`
+- `smr_circuit_breaker_state`
+- `smr_concurrent_requests`
+- `smr_queue_size`
 
 ## User Classes
 

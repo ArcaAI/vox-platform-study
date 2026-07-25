@@ -15,12 +15,12 @@
 |---|---|
 | `apps/api/tests/e2e/task-455-streaming-*.spec.ts` | Real-socket WS e2e specs (resume-after-drop, backpressure recovery, ticket-refresh mid-session) |
 | `tests/helpers/streaming.helper.ts` (new) | Shared helper: `createStreamSession()` (mint session + one-shot ticket), WS connect, frame feeder |
-| `apps/stt-v2/tests/integration/test_streaming_loss_harness.py` (new) | Wire-level loss/latency harness extending the existing latency-harness pattern |
-| `apps/stt-v2/tests/e2e/fixtures/` | Reuse existing WAVs; add a synthetic generator wrapper only if needed |
+| `apps/stt/tests/integration/test_streaming_loss_harness.py` (new) | Wire-level loss/latency harness extending the existing latency-harness pattern |
+| `apps/stt/tests/e2e/fixtures/` | Reuse existing WAVs; add a synthetic generator wrapper only if needed |
 
-**Read-only reference** (do not modify): `apps/stt-v2/tests/integration/test_streaming_latency_harness.py`, `apps/ui-playground/e2e/**`, `apps/api/tests/e2e/task-419-stream-ticket-scopes.spec.ts`, `playwright.config.ts`, `tests/setup/playwright.global-setup.ts`, `tests/helpers/e2e.helper.ts`.
+**Read-only reference** (do not modify): `apps/stt/tests/integration/test_streaming_latency_harness.py`, `apps/ui-playground/e2e/**`, `apps/api/tests/e2e/task-419-stream-ticket-scopes.spec.ts`, `playwright.config.ts`, `tests/setup/playwright.global-setup.ts`, `tests/helpers/e2e.helper.ts`.
 
-**Metric-counter question (STOP-and-report if it grows the manifest)**: no `commit_latency` / `dropped_frame` / `partial_revision` Prometheus counters exist today ([metrics.py] has only session/inference metrics). This suite should **compute metrics in-test from Redis stream entry-ID timestamps** (as the existing latency harness does) rather than adding product-code counters. If the team later wants scrapable counters, that is a separate ticket touching `apps/stt-v2/src/**` and `apps/api/src/**` — out of this manifest.
+**Metric-counter question (STOP-and-report if it grows the manifest)**: no `commit_latency` / `dropped_frame` / `partial_revision` Prometheus counters exist today ([metrics.py] has only session/inference metrics). This suite should **compute metrics in-test from Redis stream entry-ID timestamps** (as the existing latency harness does) rather than adding product-code counters. If the team later wants scrapable counters, that is a separate ticket touching `apps/stt/src/**` and `apps/api/src/**` — out of this manifest.
 
 ## Requirement Analysis
 
@@ -30,14 +30,14 @@ This ticket delivers (1) a Playwright WS e2e suite exercising those three paths 
 
 ### Acceptance criteria
 
-- [ ] **AC-1 (shared helper)**: `tests/helpers/streaming.helper.ts` mints a stream session + one-shot ticket via `POST /api/v1/audio/transcription-jobs/stream/session` (or the internal path), returns `{ sessionId, wsUrl, ticket }`, and opens an authenticated WS to `/ws/stt-v2/stream`. Reuses `SEEDED_USERS`/`loginUser` from `tests/helpers`. Requires a seeded ASR pipeline (assert/skip if absent).
+- [ ] **AC-1 (shared helper)**: `tests/helpers/streaming.helper.ts` mints a stream session + one-shot ticket via `POST /api/v1/audio/transcription-jobs/stream/session` (or the internal path), returns `{ sessionId, wsUrl, ticket }`, and opens an authenticated WS to `/ws/stt/stream`. Reuses `SEEDED_USERS`/`loginUser` from `tests/helpers`. Requires a seeded ASR pipeline (assert/skip if absent).
 - [ ] **AC-2 (resume-after-drop)**: an e2e spec streams audio, forces a mid-stream socket drop, reconnects with the resume handshake, and asserts transcripts resume from `lastSeq` with **no duplicate flood and no silent freeze** (the C3-01 failure mode). Documents the observed behavior against today's plain-XREAD transport (expected: this test likely FAILS or shows the duplicate-then-frozen behavior — that is the baseline the migration must fix; mark it `test.fixme`/documented-baseline rather than green-washing it).
 - [ ] **AC-3 (backpressure recovery)**: a spec drives sustained frames to exceed the client watermark and/or gateway egress watermark, then asserts recovery once buffers drain — and that drops are observable (ties to TASK-454's counters).
 - [ ] **AC-4 (ticket-refresh mid-session)**: a spec exercises a session outliving its ticket TTL and asserts the documented re-auth path (or documents its absence as a finding).
 - [ ] **AC-5 (loss/latency harness)**: `test_streaming_loss_harness.py` replays a known WAV (or the deterministic synthetic generator) through the **WS gateway** (not straight to Redis), and reports: first-partial latency, commit/stable latency P50/P99, partial-revision rate, frames-sent vs frames-transcribed (loss), all as a JSON artifact via `test.info().attach` / a report file.
 - [ ] **AC-6 (baseline captured)**: a baseline run against the current transport is recorded in §Implementation Summary — this is the number TASK-457 is compared to. No target thresholds are asserted as pass/fail yet (baseline only); document what "no regression" will mean for TASK-457.
-- [ ] **AC-7 (runnable + documented)**: the suite documents its prereqs (`pnpm docker:test:up` + `pnpm test:api:up` + `pnpm test:stt-v2:up` + seeded pipeline) and self-skips cleanly when STT-v2 is unreachable (Playwright global setup treats it as optional). A pnpm alias or documented invocation is provided (the browser e2e's lack of an alias is a known gap — do not repeat it).
-- [ ] **AC-8**: the new specs follow repo conventions (`task-455-*.spec.ts`, `**/*.spec.ts` match, env via `dotenv -e .env.test`, baseURL 8868; Python `test_*.py` under `tests/integration/`, `pytest.mark.integration`, run via `pnpm py:stt-v2:test:integration`).
+- [ ] **AC-7 (runnable + documented)**: the suite documents its prereqs (`pnpm docker:test:up` + `pnpm test:api:up` + `pnpm test:stt:up` + seeded pipeline) and self-skips cleanly when STT is unreachable (Playwright global setup treats it as optional). A pnpm alias or documented invocation is provided (the browser e2e's lack of an alias is a known gap — do not repeat it).
+- [ ] **AC-8**: the new specs follow repo conventions (`task-455-*.spec.ts`, `**/*.spec.ts` match, env via `dotenv -e .env.test`, baseURL 8868; Python `test_*.py` under `tests/integration/`, `pytest.mark.integration`, run via `pnpm py:stt:test:integration`).
 
 ### Non-goals
 
@@ -48,17 +48,17 @@ This ticket delivers (1) a Playwright WS e2e suite exercising those three paths 
 
 ## Current State Evaluation (code-verified 2026-07-09 by read-only scout)
 
-**Playwright e2e**: root `playwright.config.ts` (`testDir: apps/api/tests/e2e`, `testMatch **/*.spec.ts`, baseURL `http://localhost:8868/api/v1`); run `pnpm test:e2e` (= `dotenv -e .env.test -- playwright test`), API via `pnpm test:api:up`. Global setup resets DB, waits on API health; `E2E_WAIT_SERVICES=true` additionally waits on STT-v2 8861 (required:false). Auth helpers + `SEEDED_USERS` in `tests/helpers/e2e.helper.ts`; ticket-mint pattern in [task-419-stream-ticket-scopes.spec.ts](apps/api/tests/e2e/task-419-stream-ticket-scopes.spec.ts).
+**Playwright e2e**: root `playwright.config.ts` (`testDir: apps/api/tests/e2e`, `testMatch **/*.spec.ts`, baseURL `http://localhost:8868/api/v1`); run `pnpm test:e2e` (= `dotenv -e .env.test -- playwright test`), API via `pnpm test:api:up`. Global setup resets DB, waits on API health; `E2E_WAIT_SERVICES=true` additionally waits on STT 8861 (required:false). Auth helpers + `SEEDED_USERS` in `tests/helpers/e2e.helper.ts`; ticket-mint pattern in [task-419-stream-ticket-scopes.spec.ts](apps/api/tests/e2e/task-419-stream-ticket-scopes.spec.ts).
 
-**Isolated stack** ([tests/docker-compose.test.yml]): PG 5433, Redis 6380 (pass `test_redis_pass`), MinIO 9002, Qdrant 6335. **STT-v2 is NOT in the compose stack** — started separately via `pnpm test:stt-v2:up` (`scripts/start-test-stt-v2.sh`, uvicorn 8861 under `arcaenv`, loads `.env.test`). Full mic→WS→Redis→STT-v2 needs three processes: docker test infra + `test:api:up` + `test:stt-v2:up`.
+**Isolated stack** ([tests/docker-compose.test.yml]): PG 5433, Redis 6380 (pass `test_redis_pass`), MinIO 9002, Qdrant 6335. **STT is NOT in the compose stack** — started separately via `pnpm test:stt:up` (`scripts/start-test-stt.sh`, uvicorn 8861 under `arcaenv`, loads `.env.test`). Full mic→WS→Redis→STT needs three processes: docker test infra + `test:api:up` + `test:stt:up`.
 
-**Existing streaming tests** (all unit/integration, no real-socket e2e): gateway unit test [stt-ws.gateway.test.ts] (mocked socket; simulates resume replay, 512 KiB egress backpressure, 200-final queue bound); SDK client unit test [SttV2WebSocketClient.test.ts]; bridge unit test [streamingAudioBridge.service.test.ts]; STT-v2 sessions REST e2e [test_streaming_sessions_api.py]; **latency harness** [test_streaming_latency_harness.py] (replays WAV/synthetic straight onto Redis `stt:audio:{sid}`, reads `stt:result:{sid}`, computes TTFW/cadence/final-lag p50/p95 from entry-ID clock — bypasses the WS gateway, targets dev stack); browser e2e [apps/ui-playground/e2e/**] (real mic→WS→stt-v2 with fake-audio fixtures, WER + P50/P95/P99 — but happy-path only, no pnpm alias, dev-stack-targeted).
+**Existing streaming tests** (all unit/integration, no real-socket e2e): gateway unit test [stt-ws.gateway.test.ts] (mocked socket; simulates resume replay, 512 KiB egress backpressure, 200-final queue bound); SDK client unit test [SttWebSocketClient.test.ts]; bridge unit test [streamingAudioBridge.service.test.ts]; STT sessions REST e2e [test_streaming_sessions_api.py]; **latency harness** [test_streaming_latency_harness.py] (replays WAV/synthetic straight onto Redis `stt:audio:{sid}`, reads `stt:result:{sid}`, computes TTFW/cadence/final-lag p50/p95 from entry-ID clock — bypasses the WS gateway, targets dev stack); browser e2e [apps/ui-playground/e2e/**] (real mic→WS→stt with fake-audio fixtures, WER + P50/P95/P99 — but happy-path only, no pnpm alias, dev-stack-targeted).
 
-**Session/ticket creation**: `POST /api/v1/audio/transcription-jobs/stream/session` ([transcription-job.controller.ts:312-407]) mints `sessionId`, forwards to stt-v2 `POST /internal/streaming/sessions`, issues one-shot `stt_session:{sid}` ticket, binds tenant + meta; returns `{ sessionId, wsUrl, ticket, ticketExpiresAt }`. **No shared TS helper mints a stream session today** — AC-1 adds it.
+**Session/ticket creation**: `POST /api/v1/audio/transcription-jobs/stream/session` ([transcription-job.controller.ts:312-407]) mints `sessionId`, forwards to stt `POST /internal/streaming/sessions`, issues one-shot `stt_session:{sid}` ticket, binds tenant + meta; returns `{ sessionId, wsUrl, ticket, ticketExpiresAt }`. **No shared TS helper mints a stream session today** — AC-1 adds it.
 
-**Metrics available**: stt-v2 `/metrics` has `stt_v2_streaming_sessions_active/total`, `stt_v2_streaming_inference_latency_seconds`, `model_inference_latency_seconds` — **no commit-latency/dropped-frame/partial-revision counters**. Gateway streaming module exposes no Prometheus counters; dropped-frame counts live only as in-memory per-session fields in the disconnect log. → compute metrics in-test from Redis entry-ID timestamps (as the latency harness does).
+**Metrics available**: stt `/metrics` has `stt_streaming_sessions_active/total`, `stt_streaming_inference_latency_seconds`, `model_inference_latency_seconds` — **no commit-latency/dropped-frame/partial-revision counters**. Gateway streaming module exposes no Prometheus counters; dropped-frame counts live only as in-memory per-session fields in the disconnect log. → compute metrics in-test from Redis entry-ID timestamps (as the latency harness does).
 
-**Fixtures**: WAVs in `apps/stt-v2/tests/e2e/fixtures/` (16 kHz mono en/ml) and `apps/ui-playground/e2e/fixtures/` (with ground-truth `.txt`); deterministic `synthesize_speech_like_audio()` in the latency harness (timing-only). Inference stub patterns: ASR-callable injection (`SessionManager._make_asr_callable` with a mock model) or `get_session_manager` patch — but **no standing fake inference worker behind the real Redis loop**; existing harnesses run against a real stt-v2 with clean skips.
+**Fixtures**: WAVs in `apps/stt/tests/e2e/fixtures/` (16 kHz mono en/ml) and `apps/ui-playground/e2e/fixtures/` (with ground-truth `.txt`); deterministic `synthesize_speech_like_audio()` in the latency harness (timing-only). Inference stub patterns: ASR-callable injection (`SessionManager._make_asr_callable` with a mock model) or `get_session_manager` patch — but **no standing fake inference worker behind the real Redis loop**; existing harnesses run against a real stt with clean skips.
 
 ## Implementation Plan
 
@@ -68,35 +68,35 @@ This ticket delivers (1) a Playwright WS e2e suite exercising those three paths 
 2. Extend the latency harness into `test_streaming_loss_harness.py` (AC-5) — route through the WS gateway, add loss + P99 + partial-revision metrics + JSON report.
 3. Author the three e2e specs (AC-2/3/4). For paths that expose current defects, record the baseline behavior explicitly (documented-baseline / `test.fixme` with a comment referencing the target ticket) — do NOT assert green on broken behavior.
 4. Capture the baseline run (AC-6) into §Implementation Summary; define the "no regression" contract for TASK-457.
-5. Document prereqs + provide an invocation/alias (AC-7). Confirm clean skip when STT-v2 is down.
+5. Document prereqs + provide an invocation/alias (AC-7). Confirm clean skip when STT is down.
 
 ### Verification gate (paste output into §Implementation Summary)
 
 ```bash
 pnpm docker:test:up
 pnpm test:api:up        # terminal 1
-pnpm test:stt-v2:up     # terminal 2
-pnpm test:e2e           # runs task-455 specs (self-skip if STT-v2 unreachable)
-pnpm py:stt-v2:test:integration   # runs the loss harness
+pnpm test:stt:up     # terminal 2
+pnpm test:e2e           # runs task-455 specs (self-skip if STT unreachable)
+pnpm py:stt:test:integration   # runs the loss harness
 ```
 
-Adversarial review focus (reviewer agent): (a) does the resume-after-drop spec truly exercise a real socket close+reopen, or does it mock it? (b) are the latency metrics computed from a defensible clock (Redis entry-ID vs wall clock) and reproducible? (c) does the suite self-skip cleanly (no false failures) when STT-v2 isn't up? (d) is the baseline captured in a form TASK-457 can diff against? (e) new files only — zero diff to product code.
+Adversarial review focus (reviewer agent): (a) does the resume-after-drop spec truly exercise a real socket close+reopen, or does it mock it? (b) are the latency metrics computed from a defensible clock (Redis entry-ID vs wall clock) and reproducible? (c) does the suite self-skip cleanly (no false failures) when STT isn't up? (d) is the baseline captured in a form TASK-457 can diff against? (e) new files only — zero diff to product code.
 
 ## Implementation Summary
 
 Delivered NEW test code only (zero product diff — `git status` shows exactly the five
 manifest files, all untracked additions). Validated against the live isolated stack
-(API :8868, STT-v2 :8861 running OFFLINE from the model volume, PG :5433 / Redis :6380).
+(API :8868, STT :8861 running OFFLINE from the model volume, PG :5433 / Redis :6380).
 
 ### Files added (manifest honored)
 
 | Path | Purpose |
 |---|---|
-| `tests/helpers/streaming.helper.ts` | AC-1 shared helper: login → mint session + one-shot ticket → open authenticated WS to `/ws/stt-v2/stream` → realtime PCM frame feeder + capture wrapper; `refreshStreamTicket`, `probeStreamHandshake`, WAV loader. Takes an INJECTED `ws` ctor (the `ws` package resolves from `apps/api/**` spec files but NOT from root `tests/helpers/`, so the helper imports no `ws` at runtime — no root-manifest change). |
+| `tests/helpers/streaming.helper.ts` | AC-1 shared helper: login → mint session + one-shot ticket → open authenticated WS to `/ws/stt/stream` → realtime PCM frame feeder + capture wrapper; `refreshStreamTicket`, `probeStreamHandshake`, WAV loader. Takes an INJECTED `ws` ctor (the `ws` package resolves from `apps/api/**` spec files but NOT from root `tests/helpers/`, so the helper imports no `ws` at runtime — no root-manifest change). |
 | `apps/api/tests/e2e/task-455-streaming-resume-after-drop.spec.ts` | AC-2 |
 | `apps/api/tests/e2e/task-455-streaming-backpressure-recovery.spec.ts` | AC-3 |
 | `apps/api/tests/e2e/task-455-streaming-ticket-refresh.spec.ts` | AC-4 |
-| `apps/stt-v2/tests/integration/test_streaming_loss_harness.py` | AC-5/6 wire-level loss/latency harness through the WS gateway |
+| `apps/stt/tests/integration/test_streaming_loss_harness.py` | AC-5/6 wire-level loss/latency harness through the WS gateway |
 
 ### Environment note (load-bearing) — pipeline selection
 
@@ -181,7 +181,7 @@ stays pinned by the in-process `stt-ws.gateway.test.ts` (captured here as a `tes
    did not close the socket and an unknown-type frame drew no `UNKNOWN_TYPE` error. Consequences
    captured in the baselines: the D-17 resume handshake is unanswered (`resumeReplyType: null`,
    only `transcript`+`status` come back), and client-driven finalize is a no-op
-   (`reachedClosedStatusAfterStop: false`; sessions finalize only via VAD / the STT-v2 reaper).
+   (`reachedClosedStatusAfterStop: false`; sessions finalize only via VAD / the STT reaper).
    The fix is one line in the gateway (honor the `isBinary` arg of the `ws` `message` event) —
    filed for TASK-457/TASK-454 owners.
 2. **C3-01 duplicate flood** (as above): reconnect re-reads the result stream from 0.
@@ -206,12 +206,12 @@ Both deliverables run under EXISTING pnpm aliases (no new alias needed → no `p
 
 - **e2e** via `pnpm test:e2e` (specs match `**/*.spec.ts` in `apps/api/tests/e2e`). Baseline run:
   `RESET_DB=false E2E_WAIT_SERVICES=true npx dotenv -e .env.test -- npx playwright test task-455 --workers=1`
-  → **5 passed, 2 skipped** (the two `test.fixme` targets) in ~1.3 m. Self-skips cleanly when STT-V2 is down.
-- **loss harness** via `pnpm py:stt-v2:test:integration` (module in `tests/integration/`, `pytest.mark.integration`).
+  → **5 passed, 2 skipped** (the two `test.fixme` targets) in ~1.3 m. Self-skips cleanly when STT is down.
+- **loss harness** via `pnpm py:stt:test:integration` (module in `tests/integration/`, `pytest.mark.integration`).
   Scoped baseline run:
-  `STREAM_LOSS_REPORT_PATH=./stt-loss-report.json pytest apps/stt-v2/tests/integration/test_streaming_loss_harness.py -v -s`
+  `STREAM_LOSS_REPORT_PATH=./stt-loss-report.json pytest apps/stt/tests/integration/test_streaming_loss_harness.py -v -s`
   → `test_metric_functions_are_correct` PASSED, `test_streaming_loss_latency_harness` PASSED (105 s),
-  report written. Skips cleanly when API/STT-v2/login/session/model are unavailable.
+  report written. Skips cleanly when API/STT/login/session/model are unavailable.
 
 Reproduce from a clean checkout (stack already up per orchestrator):
 
@@ -220,7 +220,7 @@ pnpm install
 # e2e (DB already seeded — RESET_DB=false is REQUIRED; a reset is blocked by Prisma's AI guard)
 RESET_DB=false E2E_WAIT_SERVICES=true npx dotenv -e .env.test -- npx playwright test task-455 --workers=1
 # loss/latency harness (baseline JSON → ./stt-loss-report.json)
-pnpm py:stt-v2:test:integration   # or scope to the one file as above
+pnpm py:stt:test:integration   # or scope to the one file as above
 ```
 
 ## Change History

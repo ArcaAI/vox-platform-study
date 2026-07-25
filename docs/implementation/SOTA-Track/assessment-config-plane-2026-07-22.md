@@ -19,9 +19,9 @@ F-004 was **correct and understated**. The first live run of the config plane hi
 | **Correctness** | **at-risk** | Two P0 runtime defects existed at HEAD and were only found by running the surface (Runtime Evidence §A, §C). Both fixed + gate-verified in-session; the OCC contract (200-create / 412-stale / 428-missing) and the tombstone-exclusion invariant then proved out cleanly. Remaining: soft-deleted rows are unrecoverable over HTTP (Finding 4). |
 | **Completeness** | **at-risk** | The BYO lane's consumer half does not exist: `grep -rn provider_overrides apps/smr` → 0 hits; live SMR failed with boto3's *no*-credential error ("Unable to locate credentials"), not an invalid-key error, while the injected fake key sat in its request body (§D). Also missing: any restore/re-create path after DELETE; a registry DELETE lane (an operator cannot retire an override back to code-default over HTTP). |
 | **Performance** | **adequate** (thin evidence) | Not a perf-focused lane. Observed: effective-config reads 0–13 ms in API logs; settings write→read flip visible at t+0 same-instance (§E); SMR generate retry/backoff (3 attempts, exp backoff) behaved as designed against a dead provider. No load testing performed. |
-| **Security & PHI** | **adequate** | Core posture strong and now proven: apiKey write-only (never in any response; grep of response bodies = 0), `vault:v1:` ciphertext at rest (psql), decrypts only under the configured `transit/hope-globalsetting` key (§B); token guard fail-closed on missing/unknown secrets, per-service isolation holds (harness token cannot read nlp/guardrail/tts-v2), unknown-service is authenticated before the 400 (§C). Deductions: 5 of 7 service-token secrets absent from dev Vault KV → the real SMR got 401 polling its own config (Finding 5); non-production error bodies carry full stack traces with absolute paths (Finding 6). |
-| **Test posture** | **at-risk** | The defining result: unit suites were fully green (domains 1373, api 2391 pre-fix) while the create lane and the smr/nlp read lane were broken for every runtime caller — both defects live below the mocked-repository boundary. The e2e halves that would have caught them are env-gated and had never run (`E2E_SMR_V2_SERVICE_TOKEN` unset). Warm-up: the shared-singleton OCC race in `model-retention-settings.spec.ts` was real under `fullyParallel: true`; serialized and proven green twice (§F). |
-| **SOTA delta** | recorded | Envelope encryption via Vault Transit with write-only fields and no reveal route matches good practice. Best-in-class additions this assessment motivates: (1) mapper/serializer **contract tests against a real Prisma client** (testcontainers-style) so `Bytes`/`Date`/`Decimal` round-trips are locked per model; (2) **consumer-driven contract tests** for the gateway→SMR body (the injected `provider_overrides` shape had no consumer to verify against — pact-style tests would have flagged the missing consumer immediately); (3) a **boot-time provisioning check** for peer-secret pairs (gateway-side `SMR_V2_SERVICE_TOKEN` vs SMR-side `service_token`) instead of discovering the 401 in production telemetry; (4) restore-or-upsert semantics for unique-keyed soft-deleted rows (a known soft-delete pitfall). |
+| **Security & PHI** | **adequate** | Core posture strong and now proven: apiKey write-only (never in any response; grep of response bodies = 0), `vault:v1:` ciphertext at rest (psql), decrypts only under the configured `transit/hope-globalsetting` key (§B); token guard fail-closed on missing/unknown secrets, per-service isolation holds (harness token cannot read nlp/guardrail/tts), unknown-service is authenticated before the 400 (§C). Deductions: 5 of 7 service-token secrets absent from dev Vault KV → the real SMR got 401 polling its own config (Finding 5); non-production error bodies carry full stack traces with absolute paths (Finding 6). |
+| **Test posture** | **at-risk** | The defining result: unit suites were fully green (domains 1373, api 2391 pre-fix) while the create lane and the smr/nlp read lane were broken for every runtime caller — both defects live below the mocked-repository boundary. The e2e halves that would have caught them are env-gated and had never run (`E2E_SMR_SERVICE_TOKEN` unset). Warm-up: the shared-singleton OCC race in `model-retention-settings.spec.ts` was real under `fullyParallel: true`; serialized and proven green twice (§F). |
+| **SOTA delta** | recorded | Envelope encryption via Vault Transit with write-only fields and no reveal route matches good practice. Best-in-class additions this assessment motivates: (1) mapper/serializer **contract tests against a real Prisma client** (testcontainers-style) so `Bytes`/`Date`/`Decimal` round-trips are locked per model; (2) **consumer-driven contract tests** for the gateway→SMR body (the injected `provider_overrides` shape had no consumer to verify against — pact-style tests would have flagged the missing consumer immediately); (3) a **boot-time provisioning check** for peer-secret pairs (gateway-side `SMR_SERVICE_TOKEN` vs SMR-side `service_token`) instead of discovering the 401 in production telemetry; (4) restore-or-upsert semantics for unique-keyed soft-deleted rows (a known soft-delete pitfall). |
 
 ## Findings (ranked)
 
@@ -46,8 +46,8 @@ F-004 was **correct and understated**. The first live run of the config plane hi
 - **Remediation:** **S/M** — `upsertRow` should detect a DELETED underlying row on create-intent and restore-with-overwrite (repository `restore()` + change-tracked update, key required), plus an e2e locking delete→re-create. Audit the same pattern on other unique-keyed soft-deleted admin resources.
 
 ### 5. Dev Vault KV lacks 5 of 7 internal service-token secrets; the real SMR 401s on its own config poll — **P1 (env/ops), OPEN**
-- **Failure scenario:** `SECRETS_PROVIDER=vault` has no env fallback (verified in `vault-secrets.provider.ts`). KV `secret/hope/` holds only `HARNESS_SERVICE_TOKEN` + `SMR_SERVICE_TOKEN`; the guard needs `SMR_V2_SERVICE_TOKEN`, `NLP_SERVICE_TOKEN`, `GUARDRAIL_SERVICE_TOKEN`, `TTS_SERVICE_TOKEN`, `API_GATEWAY_KEY`. Result: every service except harness gets 401 on the TASK-525 read — observed live from the REAL SMR during generation (`401 Unauthorized` in its log, §D) — and each service silently stays on env-fallback config forever.
-- **Note the naming trap:** `SMR_SERVICE_TOKEN` (gateway→SMR outbound) vs `SMR_V2_SERVICE_TOKEN` (SMR→gateway inbound) are distinct names that must hold the same value by convention — drift is invisible until a 401.
+- **Failure scenario:** `SECRETS_PROVIDER=vault` has no env fallback (verified in `vault-secrets.provider.ts`). KV `secret/hope/` holds only `HARNESS_SERVICE_TOKEN` + `SMR_SERVICE_TOKEN`; the guard needs `SMR_SERVICE_TOKEN`, `NLP_SERVICE_TOKEN`, `GUARDRAIL_SERVICE_TOKEN`, `TTS_SERVICE_TOKEN`, `API_GATEWAY_KEY`. Result: every service except harness gets 401 on the TASK-525 read — observed live from the REAL SMR during generation (`401 Unauthorized` in its log, §D) — and each service silently stays on env-fallback config forever.
+- **Note the naming trap:** `SMR_SERVICE_TOKEN` (gateway→SMR outbound) vs `SMR_SERVICE_TOKEN` (SMR→gateway inbound) are distinct names that must hold the same value by convention — drift is invisible until a 401.
 - **Remediation:** **S** — add the five keys to the dev Vault bootstrap (`scripts/` Vault seed path), document the name pairing, and consider a gateway boot-time warning when a known service's token secret is unresolvable.
 
 ### 6. Non-production error bodies carry full stack traces with absolute paths — **P3, OPEN**
@@ -102,19 +102,19 @@ Before the CLS fix:
 ```
 service=smr  → 500  {"statusCode":500}   log: TenantScope: tenant context required for model AiRuntimeProfile operation findMany
 service=nlp  → 500  (same)
-guardrail / tts-v2 / stt-v2 / harness → 200 (no profile subtree)
+guardrail / tts / stt / harness → 200 (no profile subtree)
 ```
 After the CLS fix (controller pins CLS to SYSTEM tenant; unit RED→GREEN; api suite 2398 green):
 ```
 smr      → 200 {"runtimeProfiles":[],"retention":{"ttlSeconds":600,…,"source":"env-fallback"}}
 nlp      → 200 {…,"concurrency":{"maxConcurrent":4,…,"source":"env-fallback"}}
-guardrail→ 200 · tts-v2 → 200 · harness → 200 (real KV token)
-stt-v2   → 200 via X-Internal-Service-Key {…,"concurrency":{"workerConcurrency":4,"streamingMaxConcurrent":0,…}}
+guardrail→ 200 · tts → 200 · harness → 200 (real KV token)
+stt   → 200 via X-Internal-Service-Key {…,"concurrency":{"workerConcurrency":4,"streamingMaxConcurrent":0,…}}
 ```
-Auth matrix: no token → 401 · wrong-service token (harness→nlp/guardrail/tts-v2) → 401 · smr with the
-OUTBOUND `SMR_SERVICE_TOKEN` value → 401 (guard wants `SMR_V2_SERVICE_TOKEN`; Finding 5) · unknown
-service WITH a valid token → 400 `"Unknown service 'bogus'. Expected one of: smr, nlp, stt-v2, guardrail,
-harness, tts-v2."` (body carried a stack trace — Finding 6).
+Auth matrix: no token → 401 · wrong-service token (harness→nlp/guardrail/tts) → 401 · smr with the
+OUTBOUND `SMR_SERVICE_TOKEN` value → 401 (guard wants `SMR_SERVICE_TOKEN`; Finding 5) · unknown
+service WITH a valid token → 400 `"Unknown service 'bogus'. Expected one of: smr, nlp, stt, guardrail,
+harness, tts."` (body carried a stack trace — Finding 6).
 
 ### D. BYO → SMR lane (tenant admin, bedrock)
 
@@ -126,7 +126,7 @@ Wire capture (HTTP sink standing in on the SMR port; gateway forwarded body, ver
 ```
 → Gateway-side decryption + injection **proven** (exact stored plaintext at the SMR boundary); minimal-exposure invariant held (only the resolved provider's entry; the DELETED azure row was not resolved).
 
-Real SMR (`pnpm dev:smr-v2`, healthy-degraded, same request through the gateway):
+Real SMR (`pnpm dev:smr`, healthy-degraded, same request through the gateway):
 ```
 SMR log: POST /api/v1/generate → generation.retry ×3 → generation.failed
          {"provider":"bedrock","error":"Unable to locate credentials"}          ← boto3 NO-credential error
@@ -152,7 +152,7 @@ SYSTEM row → same-`_version` race → spurious 412).
 ```
 Run 1: 4 passed, 2 skipped (11.4s)     Run 2: 4 passed, 2 skipped (10.9s)
 ```
-The 2 skips are the env-gated internal-read half (`E2E_SMR_V2_SERVICE_TOKEN` unset in `.env.test` —
+The 2 skips are the env-gated internal-read half (`E2E_SMR_SERVICE_TOKEN` unset in `.env.test` —
 by design; see Finding 5 for why populating it matters). Test API killed after; 8868 verified free.
 
 ### G. Gates on code changed by this assessment
@@ -169,7 +169,7 @@ eslint (4 touched files) → 0 errors
 2. **Test-DB migration application** (part of F-004's wording) was only indirectly evidenced: the settings-registry write lane worked against the test DB in the warm-up run. `AiProviderConnection` on the TEST DB was not exercised (dev DB was, directly).
 3. **Cross-instance settings convergence** (F-007) unproven — single API instance here.
 4. **TenantTtsProviderCredential create** after the Finding-1 fix was not re-proven live (same code path, inferred fixed).
-5. Effective-config positive matrix for smr/nlp/guardrail/tts-v2/stt-v2 required **temporary Vault KV tokens** (the guard's secrets don't exist in this env — Finding 5). Created with random values, used, then destroyed (metadata delete); KV list verified byte-identical to its prior state.
+5. Effective-config positive matrix for smr/nlp/guardrail/tts/stt required **temporary Vault KV tokens** (the guard's secrets don't exist in this env — Finding 5). Created with random values, used, then destroyed (metadata delete); KV list verified byte-identical to its prior state.
 
 ## Residual environment state (disclosed)
 

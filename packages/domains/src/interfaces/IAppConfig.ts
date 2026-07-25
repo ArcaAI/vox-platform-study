@@ -26,7 +26,7 @@ export interface IAppConfig {
   //=========== INTERNAL SERVICES ============//
   PORT: string;
   URL: string;
-  STT_V2_URL: string;
+  STT_URL: string;
   SMR_PORT: string;
   SMR_URL: string;
   NLP_PORT: string;

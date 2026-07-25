@@ -85,7 +85,7 @@ Doctor users in HIPAA-regulated tenants need their personal SDK settings isolate
 | Backend `/admin/departments/:id/prompt-config` IDOR + AuthZ tuple | parent W5A-10 / TASK-293 (separate backend ticket) | Out of SDK scope. |
 | `PromptTemplate` schema `scope` / `ownerUserId` (DEF-C1) | Backend (parent W5B-7) | DB layer; cannot be done from SDK. |
 | `/prompt-templates/assign-department` route (DEF-C4) | Backend (parent W5B-8) | Cannot create routes from SDK. |
-| `StreamingSessionManager`, `SttV2WebSocketClient`, `PluginManager`, `useArcaAudio`, `usePipelines`, `useConsultationJob`, `useArcaSummary`, `useDnaStyle`, `useVoiceEmbedding`, `useVoiceEnrollmentStatus` | TASK-296 / 298 / 299 | Excluded per ownership matrix. |
+| `StreamingSessionManager`, `SttWebSocketClient`, `PluginManager`, `useArcaAudio`, `usePipelines`, `useConsultationJob`, `useArcaSummary`, `useDnaStyle`, `useVoiceEmbedding`, `useVoiceEnrollmentStatus` | TASK-296 / 298 / 299 | Excluded per ownership matrix. |
 
 ---
 
@@ -149,7 +149,7 @@ All work happens in `packages/agentic-sdk-v2/`. One RED test per defect first; m
 - `packages/agentic-sdk-v2/src/core/AgenticClient.ts` — `REFRESH_SKIP_ENDPOINTS` const adds `/auth/login`, `/auth/stream-ticket`, `/auth/impersonate` to the 401-refresh skip-list (H-HTTP-1); `postFormData` now has the same 401 → refresh → retry path as `request()` (M-HTTP-3); `requestTimestamps` bounded by `MAX_REQUEST_TIMESTAMPS` (L-HTTP-4).
 - `packages/agentic-sdk-v2/src/core/SharedConnectionWorker.ts` — SSE auth switched from `?token=<jwt>` to `?ticket=<…>`; subscriptions de-duped by `(id, userId)` not `id` alone (C-SSE-1, H-SSE-5).
 - `packages/agentic-sdk-v2/src/core/SharedConnectionManager.ts` — Fallback `EventSource` path also uses `?ticket=`; `unsubscribeSSE` forwards `userId`.
-- `packages/agentic-sdk-v2/src/core/constants.ts` — Removed dead `STORAGE_KEYS.SESSION_STATE` (DEF-L1); `DEPARTMENT_ENDPOINTS.PROMPT_CONFIG` already existed in HEAD (TASK-295 surfaced it) and is now referenced from `AgenticProvider`. No `STT_V2_ENDPOINTS` / `VOICE_EMBEDDING_ENDPOINTS` / `PIPELINE_ENDPOINTS` / `CONSULTATION_ENDPOINTS` / `SUMMARY_ENDPOINTS` modifications.
+- `packages/agentic-sdk-v2/src/core/constants.ts` — Removed dead `STORAGE_KEYS.SESSION_STATE` (DEF-L1); `DEPARTMENT_ENDPOINTS.PROMPT_CONFIG` already existed in HEAD (TASK-295 surfaced it) and is now referenced from `AgenticProvider`. No `STT_ENDPOINTS` / `VOICE_EMBEDDING_ENDPOINTS` / `PIPELINE_ENDPOINTS` / `CONSULTATION_ENDPOINTS` / `SUMMARY_ENDPOINTS` modifications.
 
 **Types:**
 - `packages/agentic-sdk-v2/src/types/common.ts` — `AgenticErrorCode` extended with `'CONFIG_NOT_READY'`.
@@ -189,19 +189,19 @@ All work happens in `packages/agentic-sdk-v2/`. One RED test per defect first; m
 
 | Gate | Command | Result |
 |------|---------|--------|
-| Unit tests | `pnpm vitest run` (in `packages/agentic-sdk-v2`) | **122 test files / 2856 tests passing.** One pre-existing failure remains in `core/__tests__/constants.task210.test.ts` (`STT_V2_ENDPOINTS should have exactly 15 keys` — now 16) caused by an unstaged `STT_V2_ENDPOINTS.REFRESH_TICKET` addition in the worktree that belongs to TASK-298's STT WS reconnect work; **not introduced by TASK-297** (see §4.4). |
+| Unit tests | `pnpm vitest run` (in `packages/agentic-sdk-v2`) | **122 test files / 2856 tests passing.** One pre-existing failure remains in `core/__tests__/constants.task210.test.ts` (`STT_ENDPOINTS should have exactly 15 keys` — now 16) caused by an unstaged `STT_ENDPOINTS.REFRESH_TICKET` addition in the worktree that belongs to TASK-298's STT WS reconnect work; **not introduced by TASK-297** (see §4.4). |
 | Build | `pnpm build` (in `packages/agentic-sdk-v2`) | ✅ ESM + CJS bundles emitted successfully (`dist/index.{mjs,js}`, `dist/plugins.{mjs,js}`, `e2e/fixtures/dist/e2e-bundle.mjs`). |
-| Lint | `pnpm lint` | ✅ 0 errors. 34 pre-existing prettier warnings in files NOT owned by TASK-297 (types/dna.ts, types/index.ts, types/stt-v2.ts, utils/idempotency.ts, utils/index.ts, utils/secureStorage.ts, core.ts, FileTranscriptionService.ts, SttV2WebSocketClient.ts, useDnaStyle.ts, useVoiceEmbedding.ts, useVoiceEnrollmentStatus.ts, and one in constants.ts on the TASK-298 `REFRESH_TICKET` line). **Zero lint warnings on TASK-297-owned files.** |
+| Lint | `pnpm lint` | ✅ 0 errors. 34 pre-existing prettier warnings in files NOT owned by TASK-297 (types/dna.ts, types/index.ts, types/stt.ts, utils/idempotency.ts, utils/index.ts, utils/secureStorage.ts, core.ts, FileTranscriptionService.ts, SttWebSocketClient.ts, useDnaStyle.ts, useVoiceEmbedding.ts, useVoiceEnrollmentStatus.ts, and one in constants.ts on the TASK-298 `REFRESH_TICKET` line). **Zero lint warnings on TASK-297-owned files.** |
 | ReadLints | All 16 owned source files | ✅ No errors. |
 
 ### 4.4 Out of scope / hand-off
 
-- **Pre-existing worktree changes in TASK-298 files.** When TASK-297 started, the worktree already contained unstaged modifications to `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` and a new `STT_V2_ENDPOINTS.REFRESH_TICKET` entry in `packages/agentic-sdk-v2/src/core/constants.ts`. These changes belong to TASK-298 (real-time STT reconnect / ticket refresh) and TASK-297 left them untouched per the ownership matrix. The single failing test (`constants.task210.test.ts → STT_V2_ENDPOINTS should have exactly 15 keys`) is a structural-drift guard owned by TASK-210/TASK-298 that needs to be updated when TASK-298 ships `REFRESH_TICKET`. Hand off to TASK-298 to bump the expected key count from 15 → 16 and append `REFRESH_TICKET` to the `expect.arrayContaining([...])` list.
+- **Pre-existing worktree changes in TASK-298 files.** When TASK-297 started, the worktree already contained unstaged modifications to `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` and a new `STT_ENDPOINTS.REFRESH_TICKET` entry in `packages/agentic-sdk-v2/src/core/constants.ts`. These changes belong to TASK-298 (real-time STT reconnect / ticket refresh) and TASK-297 left them untouched per the ownership matrix. The single failing test (`constants.task210.test.ts → STT_ENDPOINTS should have exactly 15 keys`) is a structural-drift guard owned by TASK-210/TASK-298 that needs to be updated when TASK-298 ships `REFRESH_TICKET`. Hand off to TASK-298 to bump the expected key count from 15 → 16 and append `REFRESH_TICKET` to the `expect.arrayContaining([...])` list.
 - **Backend `MeResponse.departmentId` exposure** — TASK-295. AgenticProvider consumes `me?.departmentId` defensively; if absent, the cascade gracefully degrades to 3-tier.
 - **Backend `/admin/departments/:id/prompt-config` AuthZ + IDOR hardening** — parent W5A-10 backend ticket.
 - **`PromptTemplate.scope` / `ownerUserId` schema (DEF-C1)** — backend (parent W5B-7).
 - **`/prompt-templates/assign-department` route (DEF-C4)** — backend (parent W5B-8).
-- **`StreamingSessionManager`, `SttV2WebSocketClient`, `PluginManager`, `useArcaAudio`, `usePipelines`, `useConsultationJob`, `useArcaSummary`, `useDnaStyle`, `useVoiceEmbedding`, `useVoiceEnrollmentStatus`** — TASK-296 / 298 / 299. Excluded per ownership matrix.
+- **`StreamingSessionManager`, `SttWebSocketClient`, `PluginManager`, `useArcaAudio`, `usePipelines`, `useConsultationJob`, `useArcaSummary`, `useDnaStyle`, `useVoiceEmbedding`, `useVoiceEnrollmentStatus`** — TASK-296 / 298 / 299. Excluded per ownership matrix.
 
 ### 4.5 Backward compatibility
 

@@ -9,7 +9,7 @@
 | Step | Performed by | Timestamp (UTC) | Old key fingerprint (SHA-256, first 16 chars) | New key fingerprint | Notes |
 |---|---|---|---|---|---|
 | Azure OpenAI key rotation | `<ops>` | `<ISO-8601>` | `<fp_old>` | `<fp_new>` | Old key revoked in Azure portal |
-| SMR_V2 Azure key rotation | `<ops>` | `<ISO-8601>` | `<fp_old>` | `<fp_new>` | Old key revoked in Azure portal |
+| SMR Azure key rotation | `<ops>` | `<ISO-8601>` | `<fp_old>` | `<fp_new>` | Old key revoked in Azure portal |
 | JWT_SECRET_KEY rotation (staging) | `<ops>` | `<ISO-8601>` | `<fp_old>` | `<fp_new>` | env-store updated; pods restarted |
 | JWT_SECRET_KEY rotation (production) | `<ops>` | `<ISO-8601>` | `<fp_old>` | `<fp_new>` | env-store updated; pods restarted; old refresh tokens expired |
 
@@ -26,7 +26,7 @@
 
 What is changing:
   • Azure OpenAI API key (alaas-openai resource)
-  • SMR_V2 Azure API key
+  • SMR Azure API key
   • JWT_SECRET_KEY (staging + production)
 
 Impact:
@@ -47,7 +47,7 @@ Owner: <ops-on-call>
 
 Status:
   • Azure OpenAI key rotated, revoked old key. Fingerprint logged.
-  • SMR_V2 Azure key rotated, revoked old key. Fingerprint logged.
+  • SMR Azure key rotated, revoked old key. Fingerprint logged.
   • JWT_SECRET_KEY rotated in staging + prod. Pods rolled. Sample sessions verified invalid.
 
 Next: gitleaks pre-commit hook now active for every developer on next `pnpm install`.
@@ -62,7 +62,7 @@ Next: gitleaks pre-commit hook now active for every developer on next `pnpm inst
 # 3. Confirm — note the new value into a secrets manager
 # 4. After 5 minutes (allow downstream caches to drain), revoke the OLD key
 #
-# Repeat for SMR_V2 Azure resource keys.
+# Repeat for SMR Azure resource keys.
 
 # Fingerprint computation (operator's private terminal only):
 echo -n "<new-key-here>" | shasum -a 256 | cut -c1-16

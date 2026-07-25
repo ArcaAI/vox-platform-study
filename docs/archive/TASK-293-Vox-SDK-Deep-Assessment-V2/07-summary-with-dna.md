@@ -42,7 +42,7 @@
   - `packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts`
   - `packages/applications/src/services/dna-writing-style/dna-regeneration.scheduler.ts`
   - `packages/applications/src/services/dna-writing-style/dto/generate-dna-report.request.ts`
-- Python service (protocol contract only): `apps/smr/src/smr_v2/api/endpoints/{generate,tasks,stream}.py`
+- Python service (protocol contract only): `apps/smr/src/smr/api/endpoints/{generate,tasks,stream}.py`
 
 **Method**
 
@@ -388,7 +388,7 @@ The SDK has **no** constants for `/text/*`; the proxy is reachable from any auth
 - **Patch**: Define and populate `AgenticErrorCode.{ModelTimeout, PromptTooLong, ContentFilter, RateLimited}` and translate at `AgenticClient`'s response handler.
 
 #### D-19. No first-token latency budget / streaming-tokens contract
-- **Where**: `apps/smr/src/smr_v2/api/endpoints/generate.py`, `apps/smr/src/smr_v2/api/endpoints/stream.py`
+- **Where**: `apps/smr/src/smr/api/endpoints/generate.py`, `apps/smr/src/smr/api/endpoints/stream.py`
 - **What**: SMR can stream tokens via SSE (`stream=True` returns 202 + task_id; `/tasks/:taskId/stream` emits chunks). The api-gateway summary path **does not propagate this token stream** to the SDK — the summary processor calls SMR with `stream=false` and waits for the full text. So even with D-1/D-2 fixed, the only events the SDK would receive are coarse status transitions (PENDING → RUNNING → COMPLETED), not live tokens. The product copy "streaming summary generation" is half-true.
 - **Patch**: Decide: do we want true token-stream UX? If yes, switch the summary processor to `stream=true`, forward chunks to `redis pub/sub consultation_job_updates:{jobId}` as `{type:'progress', data:{deltaText}}`, and add a `chunk` event to the SDK SSE listeners.
 

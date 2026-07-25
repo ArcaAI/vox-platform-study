@@ -14,8 +14,8 @@
 #    │   ├── api/
 #    │   │   ├── values-staging.yaml     # image.tag: "staging-<sha>"
 #    │   │   └── values-production.yaml
-#    │   ├── stt-v2-ml-runtime/
-#    │   ├── stt-v2-worker/
+#    │   ├── stt-ml-runtime/
+#    │   ├── stt-worker/
 #    │   ├── smr/
 #    │   ├── nlp/
 #    │   └── database/
@@ -62,7 +62,7 @@ deploy-staging:
 
       # Update image tags for services that were built in this pipeline
       UPDATED=0
-      for service in api nlp smr guardrail stt-v2-ml-runtime stt-v2-worker database; do
+      for service in api nlp smr guardrail stt-ml-runtime stt-worker database; do
         values_file="apps/${service}/values-staging.yaml"
         if [ -f "$values_file" ]; then
           sed -i "s|tag:.*|tag: \"${IMAGE_TAG}\"|" "$values_file"
@@ -112,7 +112,7 @@ sync-argocd:
 
       echo "Triggering Argo CD sync for staging applications..."
 
-      for app in hope-staging-api hope-staging-stt-v2-ml-runtime hope-staging-stt-v2-worker hope-staging-smr hope-staging-guardrail hope-staging-nlp hope-staging-database; do
+      for app in hope-staging-api hope-staging-stt-ml-runtime hope-staging-stt-worker hope-staging-smr hope-staging-guardrail hope-staging-nlp hope-staging-database; do
         echo "  Syncing $app..."
         curl -sSf -X POST \
           -H "Authorization: Bearer ${ARGOCD_AUTH_TOKEN}" \

@@ -17,6 +17,12 @@ export interface CreateGateEditExemplarProps extends BaseEntityFactoryCreateProp
   contextItemId?: IGateEditExemplarEntity['contextItemId'];
   modelName?: IGateEditExemplarEntity['modelName'];
   promptTemplateId?: IGateEditExemplarEntity['promptTemplateId'];
+  /**
+   * Curation verdict. Callers never pass it — a freshly mined exemplar is a
+   * PENDING proposal by construction; the prop exists only so a fixture or a
+   * re-hydration path can build an already-curated row.
+   */
+  curationStatus?: IGateEditExemplarEntity['curationStatus'];
   createdAt?: IGateEditExemplarEntity['createdAt'];
   updatedAt?: IGateEditExemplarEntity['updatedAt'];
   createdBy?: IGateEditExemplarEntity['createdBy'];
@@ -48,6 +54,8 @@ export class GateEditExemplarFactory {
       contextItemId: props.contextItemId ?? null,
       modelName: props.modelName ?? null,
       promptTemplateId: props.promptTemplateId ?? null,
+      // Omitted ⇒ the entity constructor defaults to PENDING.
+      curationStatus: props.curationStatus,
     });
   }
 }

@@ -19,7 +19,7 @@ import {
   PERSONALIZATION_ENDPOINTS,
   PIPELINE_ENDPOINTS,
   STORAGE_KEYS,
-  STT_V2_ENDPOINTS,
+  STT_ENDPOINTS,
   SUMMARY_ENDPOINTS,
 } from '../constants';
 
@@ -197,113 +197,113 @@ describe('constants', () => {
     });
   });
 
-  describe('STT_V2_ENDPOINTS', () => {
+  describe('STT_ENDPOINTS', () => {
     it('should have CREATE_SESSION endpoint', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_SESSION).toBe(
+      expect(STT_ENDPOINTS.CREATE_SESSION).toBe(
         '/audio/transcription-jobs/stream/session'
       );
     });
 
     it('should have WS_STREAM path', () => {
-      expect(STT_V2_ENDPOINTS.WS_STREAM).toBe('/ws/stt-v2/stream');
+      expect(STT_ENDPOINTS.WS_STREAM).toBe('/ws/stt/stream');
     });
 
     it('should have CREATE_JOB endpoint', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_JOB).toBe('/audio/transcription-jobs');
+      expect(STT_ENDPOINTS.CREATE_JOB).toBe('/audio/transcription-jobs');
     });
 
     it('should have CREATE_BATCH_JOB endpoint', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_BATCH_JOB).toBe(
+      expect(STT_ENDPOINTS.CREATE_BATCH_JOB).toBe(
         '/audio/transcription-jobs/batch'
       );
     });
 
     it('should have CREATE_STREAMING_JOB endpoint', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_STREAMING_JOB).toBe(
+      expect(STT_ENDPOINTS.CREATE_STREAMING_JOB).toBe(
         '/audio/transcription-jobs/streaming'
       );
     });
 
     it('should have TRANSCRIBE endpoint', () => {
-      expect(STT_V2_ENDPOINTS.TRANSCRIBE).toBe(
+      expect(STT_ENDPOINTS.TRANSCRIBE).toBe(
         '/audio/transcription-jobs/transcribe'
       );
     });
 
     it('should generate JOB_STREAM endpoint by ID', () => {
-      expect(STT_V2_ENDPOINTS.JOB_STREAM('job-123')).toBe(
+      expect(STT_ENDPOINTS.JOB_STREAM('job-123')).toBe(
         '/audio/transcription-jobs/job-123/stream'
       );
     });
 
     it('should generate GET_JOB endpoint by ID', () => {
-      expect(STT_V2_ENDPOINTS.GET_JOB('job-456')).toBe(
+      expect(STT_ENDPOINTS.GET_JOB('job-456')).toBe(
         '/audio/transcription-jobs/job-456'
       );
     });
 
     it('should have LIST_JOBS endpoint', () => {
-      expect(STT_V2_ENDPOINTS.LIST_JOBS).toBe('/audio/transcription-jobs');
+      expect(STT_ENDPOINTS.LIST_JOBS).toBe('/audio/transcription-jobs');
     });
 
     it('should have JOB_STATS endpoint', () => {
-      expect(STT_V2_ENDPOINTS.JOB_STATS).toBe(
+      expect(STT_ENDPOINTS.JOB_STATS).toBe(
         '/audio/transcription-jobs/stats'
       );
     });
 
     it('should generate JOBS_BY_CONSULTATION endpoint', () => {
-      expect(STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION('consult-789')).toBe(
+      expect(STT_ENDPOINTS.JOBS_BY_CONSULTATION('consult-789')).toBe(
         '/audio/transcription-jobs/consultation/consult-789'
       );
     });
 
     it('should generate JOBS_BY_STATUS endpoint', () => {
-      expect(STT_V2_ENDPOINTS.JOBS_BY_STATUS('completed')).toBe(
+      expect(STT_ENDPOINTS.JOBS_BY_STATUS('completed')).toBe(
         '/audio/transcription-jobs/status/completed'
       );
     });
 
     it('should generate CANCEL_JOB endpoint', () => {
-      expect(STT_V2_ENDPOINTS.CANCEL_JOB('job-abc')).toBe(
+      expect(STT_ENDPOINTS.CANCEL_JOB('job-abc')).toBe(
         '/audio/transcription-jobs/job-abc/cancel'
       );
     });
 
     it('should generate RETRY_JOB endpoint', () => {
-      expect(STT_V2_ENDPOINTS.RETRY_JOB('job-abc')).toBe(
+      expect(STT_ENDPOINTS.RETRY_JOB('job-abc')).toBe(
         '/audio/transcription-jobs/job-abc/retry'
       );
     });
 
     it('should handle UUID-format job IDs', () => {
       const uuid = '019503c0-d93f-7f41-b782-af9e1a3b5c0d';
-      expect(STT_V2_ENDPOINTS.GET_JOB(uuid)).toBe(
+      expect(STT_ENDPOINTS.GET_JOB(uuid)).toBe(
         `/audio/transcription-jobs/${uuid}`
       );
-      expect(STT_V2_ENDPOINTS.CANCEL_JOB(uuid)).toBe(
+      expect(STT_ENDPOINTS.CANCEL_JOB(uuid)).toBe(
         `/audio/transcription-jobs/${uuid}/cancel`
       );
-      expect(STT_V2_ENDPOINTS.JOB_STREAM(uuid)).toBe(
+      expect(STT_ENDPOINTS.JOB_STREAM(uuid)).toBe(
         `/audio/transcription-jobs/${uuid}/stream`
       );
     });
 
     it('should use different path prefix for WS_STREAM vs REST endpoints', () => {
-      expect(STT_V2_ENDPOINTS.WS_STREAM).toMatch(/^\/ws\//);
-      expect(STT_V2_ENDPOINTS.CREATE_SESSION).toMatch(/^\/audio\//);
+      expect(STT_ENDPOINTS.WS_STREAM).toMatch(/^\/ws\//);
+      expect(STT_ENDPOINTS.CREATE_SESSION).toMatch(/^\/audio\//);
     });
 
     it('should not have trailing slashes on any static endpoints', () => {
       const staticEndpoints = [
-        STT_V2_ENDPOINTS.CREATE_SESSION,
-        STT_V2_ENDPOINTS.WS_STREAM,
-        STT_V2_ENDPOINTS.CREATE_JOB,
-        STT_V2_ENDPOINTS.CREATE_BATCH_JOB,
-        STT_V2_ENDPOINTS.CREATE_STREAMING_JOB,
-        STT_V2_ENDPOINTS.TRANSCRIBE,
-        STT_V2_ENDPOINTS.LIST_JOBS,
-        STT_V2_ENDPOINTS.JOB_STATS,
+        STT_ENDPOINTS.CREATE_SESSION,
+        STT_ENDPOINTS.WS_STREAM,
+        STT_ENDPOINTS.CREATE_JOB,
+        STT_ENDPOINTS.CREATE_BATCH_JOB,
+        STT_ENDPOINTS.CREATE_STREAMING_JOB,
+        STT_ENDPOINTS.TRANSCRIBE,
+        STT_ENDPOINTS.LIST_JOBS,
+        STT_ENDPOINTS.JOB_STATS,
       ];
       for (const ep of staticEndpoints) {
         expect(ep).not.toMatch(/\/$/);
@@ -312,17 +312,17 @@ describe('constants', () => {
 
     it('should start all endpoints with leading slash', () => {
       const allEndpoints = [
-        STT_V2_ENDPOINTS.CREATE_SESSION,
-        STT_V2_ENDPOINTS.WS_STREAM,
-        STT_V2_ENDPOINTS.CREATE_JOB,
-        STT_V2_ENDPOINTS.LIST_JOBS,
-        STT_V2_ENDPOINTS.JOB_STATS,
-        STT_V2_ENDPOINTS.GET_JOB('x'),
-        STT_V2_ENDPOINTS.JOB_STREAM('x'),
-        STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION('x'),
-        STT_V2_ENDPOINTS.JOBS_BY_STATUS('x'),
-        STT_V2_ENDPOINTS.CANCEL_JOB('x'),
-        STT_V2_ENDPOINTS.RETRY_JOB('x'),
+        STT_ENDPOINTS.CREATE_SESSION,
+        STT_ENDPOINTS.WS_STREAM,
+        STT_ENDPOINTS.CREATE_JOB,
+        STT_ENDPOINTS.LIST_JOBS,
+        STT_ENDPOINTS.JOB_STATS,
+        STT_ENDPOINTS.GET_JOB('x'),
+        STT_ENDPOINTS.JOB_STREAM('x'),
+        STT_ENDPOINTS.JOBS_BY_CONSULTATION('x'),
+        STT_ENDPOINTS.JOBS_BY_STATUS('x'),
+        STT_ENDPOINTS.CANCEL_JOB('x'),
+        STT_ENDPOINTS.RETRY_JOB('x'),
       ];
       for (const ep of allEndpoints) {
         expect(ep).toMatch(/^\//);

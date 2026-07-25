@@ -1,7 +1,7 @@
 /**
  * `useTtsStream`: speak-while-generating over a WS duplex.
  *
- * Opens the gateway WS (`/ws/tts-v2/stream`) with a single-use stream ticket,
+ * Opens the gateway WS (`/ws/tts/stream`) with a single-use stream ticket,
  * pushes summary tokens in as SMR streams them, and plays the returned PCM
  * frames through the `TtsPlaybackPlayer` — so the clinician hears the
  * summary forming instead of waiting for the whole read-aloud.
@@ -45,13 +45,13 @@ interface ServerMessage {
   message?: string;
 }
 
-const STREAM_PATH = '/ws/tts-v2/stream';
+const STREAM_PATH = '/ws/tts/stream';
 
 function toWsBase(apiClient: { getWsUrl(): string | undefined; getBaseUrl(): string }): string {
   const explicit = apiClient.getWsUrl();
   if (explicit) return explicit.replace(/\/+$/, '');
   // Fall back to the REST base's ORIGIN (not its path): the gateway WS path is
-  // absolute (`/ws/tts-v2/stream`), so a REST base like `https://gw/api/v1` must
+  // absolute (`/ws/tts/stream`), so a REST base like `https://gw/api/v1` must
   // not leak its `/api/v1` suffix into the WS URL.
   const base = apiClient.getBaseUrl();
   try {

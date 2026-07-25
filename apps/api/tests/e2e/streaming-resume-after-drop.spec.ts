@@ -10,7 +10,7 @@
  * The gateway's resume buffer (`RESUME_BUFFER_SIZE` transcripts) lives on the
  * per-CONNECTION `SessionInfo`, keyed by the `WebSocket` object. On a socket
  * drop, `handleDisconnect` DELETES that SessionInfo (losing the buffer) AND
- * calls `removeSession(sessionId)` (tearing down the upstream STT-V2 session).
+ * calls `removeSession(sessionId)` (tearing down the upstream STT session).
  * A reconnect (same sessionId, fresh ticket) therefore gets a BRAND-NEW,
  * EMPTY-buffer SessionInfo: the resume handshake replays nothing (answers
  * `resumed fromSeq:0`, not `lastSeq`), and because the upstream session is gone
@@ -34,7 +34,7 @@
  *     `test.fixme` (replay-from-lastSeq, no duplicate flood, no silent
  *     freeze) so the desired bar is visible and cannot pass by accident.
  *
- * Live-stack requirement: needs STT-V2 behind the gateway; self-skips with an
+ * Live-stack requirement: needs STT behind the gateway; self-skips with an
  * explicit reason when unreachable. Prereqs + invocation: ticket README
  * (`RESET_DB=false E2E_WAIT_SERVICES=true`).
  */
@@ -70,7 +70,7 @@ test.describe('AC-2 — resume-after-drop (C3-01 baseline)', () => {
     test.setTimeout(150_000);
 
     const created = await createStreamSession(request, { token });
-    test.skip(!created.ok, `streaming session unavailable (is STT-V2 running?): ${created.ok ? '' : created.reason}`);
+    test.skip(!created.ok, `streaming session unavailable (is STT running?): ${created.ok ? '' : created.reason}`);
     const session = (created as { ok: true; session: StreamSessionInfo }).session;
 
     const pcm = loadPcm16(undefined, { maxSeconds: PRE_DROP_SECONDS + POST_RESUME_SECONDS });

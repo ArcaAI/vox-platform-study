@@ -8,7 +8,7 @@
 | Status | **Completed** |
 | Type | Bug-fix / Security (IDOR) / Feature (activation, enrollment-gate, local diarizer pre-seed) |
 | Parent | [TASK-293 Vox SDK Deep Assessment V2](../TASK-293-Vox-SDK-Deep-Assessment-V2/README.md) — Wave 5A-9 + 5B-3 + 5B-4 + 5B-5 + 5B-6 |
-| Scope | `@arcaai/applications`, `@hope/api` voice-profile module, `@arcaai/vox` voice-embedding hooks, `@arcaai/stt` local diarizer pre-seed, `apps/stt-v2` preseed/extraction/model |
+| Scope | `@arcaai/applications`, `@hope/api` voice-profile module, `@arcaai/vox` voice-embedding hooks, `@arcaai/stt` local diarizer pre-seed, `apps/stt` preseed/extraction/model |
 
 ---
 
@@ -24,7 +24,7 @@ Defects in scope (all from [`02-voice-enrollment.md`](../TASK-293-Vox-SDK-Deep-A
 | C-2 | Local diarizer pre-seed | `LocalSpeakerDiarizer` cannot consume the enrolled profile |
 | C-3 | IDOR | `DELETE /voice-profile/:id`, `PATCH :id/activate`, `PATCH :id/deactivate` have no ownership check |
 | C-4 | Enrollment gate | On-device diarization is not gated on the existence of an active profile |
-| Backend echo | `voiceProfileSeeded` (STT-V2 side) | `preseed_speaker(...)` returns `None` — no contract for TASK-298 to echo |
+| Backend echo | `voiceProfileSeeded` (STT side) | `preseed_speaker(...)` returns `None` — no contract for TASK-298 to echo |
 | H-1 | Local cache | `useVoiceEmbedding.profiles` is purely in-memory; no `SecureStorage` |
 | H-3 | `label` drop | SDK `enroll(files)` discards `label`, controller already accepts it |
 | H-7 | MIME precheck | SDK posts blobs without an `audio/*` type, server rejects 400 |
@@ -45,8 +45,8 @@ A doctor must be able to enrol once, have their enrolled voice both (a) pre-seed
 - `LocalSTTProvider.init` passes `config.voiceProfile.reservedSpeakerId` (when provided) to the diarizer.
 - `useVoiceEnrollmentStatus()` returns `{ hasActive, isLoading, profiles }`.
 - A typed `VoiceEnrollmentChecker` interface is published from the SDK for TASK-300 to consume.
-- `apps/stt-v2/.../preseed_speaker(...)` returns a typed `dict` with `{success, profile_id, model_id}`.
-- `apps/stt-v2/.../extraction_service.extract(...)` rejects 2 + samples whose minimum pairwise cosine similarity is `< 0.6` with a structured `ValueError` (becomes 400 in routes).
+- `apps/stt/.../preseed_speaker(...)` returns a typed `dict` with `{success, profile_id, model_id}`.
+- `apps/stt/.../extraction_service.extract(...)` rejects 2 + samples whose minimum pairwise cosine similarity is `< 0.6` with a structured `ValueError` (becomes 400 in routes).
 - `get_voice_embedding(user_id, tenant_id=None)` includes the optional tenant filter.
 - `useVoiceEmbedding.enroll(files, opts?)` accepts an optional label and short-circuits with `AgenticError('VALIDATION_ERROR', …)` when any file's `type` is not `audio/*`.
 - Voice profile list hydrates from `SecureStorage` on mount keyed by `vox.voiceProfiles.${userId}.${tenantId}` and re-writes on enroll/activate/deactivate/delete.
@@ -92,7 +92,7 @@ Missing `activate` and `deactivate`.
 - `LocalProviderConfig` (lines 766–793) has no `voiceProfile` field.
 - `LocalSTTProvider.init` does not forward voice profile info to the diarizer.
 
-### STT-V2 — `apps/stt-v2/src/stt_v2/{diarization/preseed.py,voice_profile/extraction_service.py,core/database/voice_profile_model.py}`
+### STT — `apps/stt/src/stt/{diarization/preseed.py,voice_profile/extraction_service.py,core/database/voice_profile_model.py}`
 
 - `preseed_speaker(...)` returns `None` (line 24); session-manager has no contract to echo back to the SDK.
 - `ExtractionService.extract(...)` centroids embeddings without pairwise sanity check.
@@ -104,7 +104,7 @@ Missing `activate` and `deactivate`.
 - `apps/api/.../voice-profile.controller.test.ts` covers basic dispatch; no guard test.
 - `packages/agentic-sdk-v2/.../useVoiceEmbedding.test.ts` covers contract; no label/MIME/activate/deactivate test.
 - `packages/stt/src/providers/__tests__/LocalSpeakerDiarizer.test.ts` covers MFCC clusterer; no reserved-speaker test. No `LocalSTTProvider.test.ts` exists.
-- `apps/stt-v2/tests/unit/voice_profile/test_extraction_service.py` covers validation/output; no cross-sample consistency test. No `diarization/test_preseed.py` exists.
+- `apps/stt/tests/unit/voice_profile/test_extraction_service.py` covers validation/output; no cross-sample consistency test. No `diarization/test_preseed.py` exists.
 
 ---
 
@@ -182,23 +182,23 @@ The order minimizes cross-cutting churn by following the layer chain (Service �
      - When `init({ ..., voiceProfile: { id, reservedSpeakerId } })`, the constructed diarizer reports the reserved id for the first speaker assignment.
    - Implementation: thread `config.voiceProfile?.reservedSpeakerId` into `new LocalSpeakerDiarizer({...})`.
 
-#### STT-V2 (Python) — Layer: Python service
+#### STT (Python) — Layer: Python service
 
-9. **Backend echo — `apps/stt-v2/.../diarization/preseed.py`**
-   - Tests (new `apps/stt-v2/tests/unit/diarization/test_preseed.py`):
+9. **Backend echo — `apps/stt/.../diarization/preseed.py`**
+   - Tests (new `apps/stt/tests/unit/diarization/test_preseed.py`):
      - `preseed_speaker(...)` returns a dict `{success: True, profile_id: <user_id>, model_id: None or string}` when an active profile is found.
      - Returns `{success: False, profile_id: None, model_id: None}` when no profile is found.
      - Returns `{success: False, profile_id: None, model_id: None}` when DB throws.
    - Implementation: change return type to `dict[str, object]`; populate `success`, `profile_id`, `model_id` accordingly.
 
-10. **H-8 — `apps/stt-v2/.../voice_profile/extraction_service.py`**
+10. **H-8 — `apps/stt/.../voice_profile/extraction_service.py`**
     - Tests (extend `test_extraction_service.py`):
       - Two samples with high pairwise similarity pass through (use the existing deterministic mock so all sample embeddings are identical — pairwise sim = 1.0).
       - Add a new test where the mock returns deliberately divergent embeddings (e.g., orthogonal); `extract([s1, s2])` raises `ValueError("Cross-sample similarity")`.
       - One sample: no consistency check applied, succeeds.
     - Implementation: after extracting `embeddings`, if `len(embeddings) > 1` compute pairwise cosine similarities; if `min(sim) < 0.6`, `raise ValueError("Cross-sample similarity X.XX below threshold 0.6 — samples may be from different speakers")`.
 
-11. **M-6 — `apps/stt-v2/.../core/database/voice_profile_model.py`**
+11. **M-6 — `apps/stt/.../core/database/voice_profile_model.py`**
     - Tests: dependent on actually running against a DB. Instead we'll unit-test that when `tenant_id` is provided, the generated SQL contains `AND "tenantId" = :tenant_id` — but since `UserVoiceProfile` has no `tenantId` column today (Master roadmap P2-5), this becomes:
       - The function accepts an optional `tenant_id` kwarg.
       - When `tenant_id is None`, the SQL contains no tenant clause.
@@ -238,7 +238,7 @@ TASK-300 owns `packages/stt/src/core/STTProcessor.ts`. The intended integration:
 
 ### B. `preseed_speaker(...)` return contract — for TASK-298
 
-`apps/stt-v2/src/stt_v2/diarization/preseed.py`:
+`apps/stt/src/stt/diarization/preseed.py`:
 
 ```python
 async def preseed_speaker(
@@ -258,7 +258,7 @@ async def preseed_speaker(
     """
 ```
 
-TASK-298 owns `apps/stt-v2/src/stt_v2/streaming/session_manager.py`. The intended integration: after calling `preseed_speaker(...)`, the session manager echoes `result["success"]` into the streaming-session-creation response as `voiceProfileSeeded: bool`. The API gateway then forwards it on the `StreamSessionResponse` DTO so the SDK can surface a banner when diarization is running without personalization.
+TASK-298 owns `apps/stt/src/stt/streaming/session_manager.py`. The intended integration: after calling `preseed_speaker(...)`, the session manager echoes `result["success"]` into the streaming-session-creation response as `voiceProfileSeeded: bool`. The API gateway then forwards it on the `StreamSessionResponse` DTO so the SDK can surface a banner when diarization is running without personalization.
 
 ### C. `LocalProviderConfig.voiceProfile` shape — for SDK orchestration consumers
 
@@ -317,7 +317,7 @@ pnpm build --filter @arcaai/applications @hope/api @arcaai/vox @arcaai/stt
 # Lint via Cursor ReadLints on each modified file
 
 # Python (uses conda env `arcaenv`)
-cd apps/stt-v2
+cd apps/stt
 conda run -n arcaenv python -m pytest tests/unit/diarization tests/unit/voice_profile -v
 ```
 
@@ -361,16 +361,16 @@ Outputs will be pasted in §8 (Implementation Summary) on completion.
 | `packages/stt/src/providers/__tests__/LocalSpeakerDiarizer.test.ts` | extended | 5 RED tests covering: pin the first slot, sequential slots after pinned slot, default behaviour when not set, late-set before first profile pins, late-set after first profile is a no-op |
 | `packages/stt/src/providers/__tests__/LocalSTTProvider.test.ts` | **NEW** | 2 RED tests using `vi.doMock` to capture the diarizer ctor args and confirm `reservedSpeakerId` is wired through `init(...)`. Whisper engine is mocked away to avoid loading models in the JSDOM env. |
 
-#### STT-V2 (Python)
+#### STT (Python)
 
 | File | Change | Purpose |
 |---|---|---|
-| `apps/stt-v2/src/stt_v2/diarization/preseed.py` | modified | Return type changed from `None` to `dict[str, object]` with `{success, profile_id, model_id}`. Best-effort metadata fetch (failure does NOT block tracker registration). Failure dict returned on every degraded path so callers can always echo a structured result. |
-| `apps/stt-v2/src/stt_v2/core/database/voice_profile_model.py` | modified | `get_voice_embedding` now accepts an optional `tenant_id` (M-6) with a TODO placeholder until `UserVoiceProfile.tenantId` lands (deferred to master roadmap P2-5). New `get_voice_profile_metadata(user_id, tenant_id)` returns `{profile_id, model_id}` for the preseed echo. |
-| `apps/stt-v2/src/stt_v2/voice_profile/extraction_service.py` | modified | Cross-sample consistency check: when more than one sample is provided, computes pairwise cosine similarity between per-sample embeddings and raises `ValueError` (→ 400 in routes) if `min < 0.6` (H-8). |
-| `apps/stt-v2/tests/unit/diarization/test_preseed.py` | **NEW** | 6 tests covering success, missing profile, missing identity, tracker at capacity, DB exception, and the "metadata lookup failed but registration succeeded" path |
-| `apps/stt-v2/tests/unit/voice_profile/test_extraction_service.py` | extended | 4 RED tests covering H-8: accept consistent 2 / 3 samples, reject inconsistent samples, skip the check for single sample |
-| `apps/stt-v2/tests/unit/voice_profile/test_voice_profile_model.py` | **NEW** | 4 signature + smoke tests pinning the M-6 contract |
+| `apps/stt/src/stt/diarization/preseed.py` | modified | Return type changed from `None` to `dict[str, object]` with `{success, profile_id, model_id}`. Best-effort metadata fetch (failure does NOT block tracker registration). Failure dict returned on every degraded path so callers can always echo a structured result. |
+| `apps/stt/src/stt/core/database/voice_profile_model.py` | modified | `get_voice_embedding` now accepts an optional `tenant_id` (M-6) with a TODO placeholder until `UserVoiceProfile.tenantId` lands (deferred to master roadmap P2-5). New `get_voice_profile_metadata(user_id, tenant_id)` returns `{profile_id, model_id}` for the preseed echo. |
+| `apps/stt/src/stt/voice_profile/extraction_service.py` | modified | Cross-sample consistency check: when more than one sample is provided, computes pairwise cosine similarity between per-sample embeddings and raises `ValueError` (→ 400 in routes) if `min < 0.6` (H-8). |
+| `apps/stt/tests/unit/diarization/test_preseed.py` | **NEW** | 6 tests covering success, missing profile, missing identity, tracker at capacity, DB exception, and the "metadata lookup failed but registration succeeded" path |
+| `apps/stt/tests/unit/voice_profile/test_extraction_service.py` | extended | 4 RED tests covering H-8: accept consistent 2 / 3 samples, reject inconsistent samples, skip the check for single sample |
+| `apps/stt/tests/unit/voice_profile/test_voice_profile_model.py` | **NEW** | 4 signature + smoke tests pinning the M-6 contract |
 
 #### Documentation
 
@@ -406,11 +406,11 @@ $ cd packages/stt && npx vitest run \
       Tests  17 passed (17)
    Duration  1.26s
 
-$ cd apps/stt-v2 && conda run -n arcaenv python -m pytest \
+$ cd apps/stt && conda run -n arcaenv python -m pytest \
     tests/unit/diarization/test_preseed.py tests/unit/voice_profile/ -v
  ========== 24 passed in 0.51s ==========
 
-$ cd apps/stt-v2 && conda run -n arcaenv python -m pytest \
+$ cd apps/stt && conda run -n arcaenv python -m pytest \
     tests/unit/test_batch_service.py -k preseed -v
  ========== 7 passed, 120 deselected in 0.62s ==========
    (regression check: previous preseed call-sites unaffected by dict return)
@@ -423,7 +423,7 @@ $ cd packages/stt && npx tsc --noEmit
    (exit 0 — no TS errors)
 ```
 
-`@arcaai/applications`, `@hope/api`, `@arcaai/vox` all type-check cleanly for the files this ticket owns; pre-existing TS errors elsewhere (in `prompt-management.service.ts`, `SttV2WebSocketClient.test.ts`, `useArcaSummary.summaryOptions.task299.test.ts`, `AgenticProvider.task297.test.ts`) are owned by TASK-294 / TASK-297 / TASK-298 / TASK-299 and out of scope here.
+`@arcaai/applications`, `@hope/api`, `@arcaai/vox` all type-check cleanly for the files this ticket owns; pre-existing TS errors elsewhere (in `prompt-management.service.ts`, `SttWebSocketClient.test.ts`, `useArcaSummary.summaryOptions.task299.test.ts`, `AgenticProvider.task297.test.ts`) are owned by TASK-294 / TASK-297 / TASK-298 / TASK-299 and out of scope here.
 
 `@arcaai/room` and the umbrella `pnpm build --filter ... @arcaai/vox @arcaai/stt` chain currently fails inside `@arcaai/room` due to an unrelated esbuild error that another agent has on this branch (`packages/room/tsup.config.ts` + `package.json` changes are pre-existing). The STT package itself type-checks cleanly.
 

@@ -71,7 +71,7 @@ Harden the SMR service (`apps/smr/`) OpenTelemetry implementation so that logs, 
 
 ### Task 1 — Add OTel Trace Context Processor to structlog
 
-**Files**: `apps/smr/src/smr_v2/core/logging.py`
+**Files**: `apps/smr/src/smr/core/logging.py`
 
 Add a custom structlog processor that extracts the current OTel span context and injects `traceId`/`spanId` into every log entry. Insert it after `merge_contextvars` in the processor chain.
 
@@ -81,7 +81,7 @@ Add a custom structlog processor that extracts the current OTel span context and
 
 ### Task 2 — Enrich OTel Resource Attributes & Make `insecure` Configurable
 
-**Files**: `apps/smr/src/smr_v2/core/telemetry.py`, `apps/smr/src/smr_v2/core/config.py`
+**Files**: `apps/smr/src/smr/core/telemetry.py`, `apps/smr/src/smr/core/config.py`
 
 - Add `service.namespace`, `deployment.environment` to the Resource
 - Add corresponding Settings fields: `otel_service_namespace`, `otel_deployment_environment`, `otel_insecure`
@@ -94,7 +94,7 @@ Add a custom structlog processor that extracts the current OTel span context and
 
 ### Task 3 — Add TracerProvider Graceful Shutdown
 
-**Files**: `apps/smr/src/smr_v2/core/telemetry.py`, `apps/smr/src/smr_v2/main.py`
+**Files**: `apps/smr/src/smr/core/telemetry.py`, `apps/smr/src/smr/main.py`
 
 - `setup_telemetry()` returns the `TracerProvider`
 - Store provider in `app.state.tracer_provider`
@@ -106,7 +106,7 @@ Add a custom structlog processor that extracts the current OTel span context and
 
 ### Task 4 — Add Redis Health Check to `/health` and `/health/ready`
 
-**Files**: `apps/smr/src/smr_v2/api/endpoints/health.py`, `apps/smr/src/smr_v2/core/dependencies.py`
+**Files**: `apps/smr/src/smr/api/endpoints/health.py`, `apps/smr/src/smr/core/dependencies.py`
 
 - Add Redis `PING` check to detailed health endpoint
 - Add Redis check as prerequisite in readiness probe
@@ -118,7 +118,7 @@ Add a custom structlog processor that extracts the current OTel span context and
 
 ### Task 5 — Record OTel Span Error Status in Exception Handler
 
-**Files**: `apps/smr/src/smr_v2/core/exception_handlers.py`
+**Files**: `apps/smr/src/smr/core/exception_handlers.py`
 
 - Extract current span via `trace.get_current_span()`
 - Set span status to `ERROR` and record exception
@@ -129,7 +129,7 @@ Add a custom structlog processor that extracts the current OTel span context and
 
 ### Task 6 — Fix Circuit Breaker for Streaming Failures
 
-**Files**: `apps/smr/src/smr_v2/api/endpoints/generate.py`
+**Files**: `apps/smr/src/smr/api/endpoints/generate.py`
 
 - Pass `circuit_breakers` dict to `_run_streaming_generation()`
 - Call `cb.record_failure()` in the except block
@@ -141,12 +141,12 @@ Add a custom structlog processor that extracts the current OTel span context and
 
 ### Task 7 — Add Token Metrics to Streaming Generation
 
-**Files**: `apps/smr/src/smr_v2/api/endpoints/generate.py`
+**Files**: `apps/smr/src/smr/api/endpoints/generate.py`
 
 - Track usage from streaming chunks (look for `type="usage"` chunks)
 - Increment `TOKENS_TOTAL` on streaming completion
 
-**Verification**: `smr_v2_tokens_total` increments for streaming generation requests.
+**Verification**: `smr_tokens_total` increments for streaming generation requests.
 
 ---
 
@@ -154,7 +154,7 @@ Add a custom structlog processor that extracts the current OTel span context and
 
 **Files**: `apps/smr/.env.example`, `apps/smr/Dockerfile`
 
-- Add new config vars to `.env.example`: `SMR_V2_OTEL_SERVICE_NAMESPACE`, `SMR_V2_OTEL_DEPLOYMENT_ENVIRONMENT`, `SMR_V2_OTEL_INSECURE`
+- Add new config vars to `.env.example`: `SMR_OTEL_SERVICE_NAMESPACE`, `SMR_OTEL_DEPLOYMENT_ENVIRONMENT`, `SMR_OTEL_INSECURE`
 - Update Dockerfile ENV defaults
 
 **Verification**: All new settings documented; Dockerfile has correct defaults.
@@ -169,14 +169,14 @@ None — all changes are to existing files.
 
 | File | Changes |
 |------|---------|
-| `apps/smr/src/smr_v2/core/logging.py` | Add OTel trace context processor |
-| `apps/smr/src/smr_v2/core/telemetry.py` | Enrich Resource, configurable insecure, return provider |
-| `apps/smr/src/smr_v2/core/config.py` | Add `otel_service_namespace`, `otel_deployment_environment`, `otel_insecure` |
-| `apps/smr/src/smr_v2/main.py` | Store TracerProvider, shutdown in lifespan teardown |
-| `apps/smr/src/smr_v2/api/endpoints/health.py` | Add Redis health check |
-| `apps/smr/src/smr_v2/core/dependencies.py` | Add `get_redis` dependency |
-| `apps/smr/src/smr_v2/core/exception_handlers.py` | Set span ERROR status |
-| `apps/smr/src/smr_v2/api/endpoints/generate.py` | Fix CB for streaming, add streaming token metrics |
+| `apps/smr/src/smr/core/logging.py` | Add OTel trace context processor |
+| `apps/smr/src/smr/core/telemetry.py` | Enrich Resource, configurable insecure, return provider |
+| `apps/smr/src/smr/core/config.py` | Add `otel_service_namespace`, `otel_deployment_environment`, `otel_insecure` |
+| `apps/smr/src/smr/main.py` | Store TracerProvider, shutdown in lifespan teardown |
+| `apps/smr/src/smr/api/endpoints/health.py` | Add Redis health check |
+| `apps/smr/src/smr/core/dependencies.py` | Add `get_redis` dependency |
+| `apps/smr/src/smr/core/exception_handlers.py` | Set span ERROR status |
+| `apps/smr/src/smr/api/endpoints/generate.py` | Fix CB for streaming, add streaming token metrics |
 | `apps/smr/.env.example` | Add new OTel config vars |
 | `apps/smr/Dockerfile` | Update ENV defaults |
 
@@ -203,20 +203,20 @@ All 8 tasks completed — SMR is now fully Grafana-stack compatible.
 
 | File | Changes |
 |------|---------|
-| `apps/smr/src/smr_v2/core/logging.py` | Added `_add_otel_context` processor to structlog chain |
-| `apps/smr/src/smr_v2/core/telemetry.py` | Added `service.namespace`, `deployment.environment` to Resource; configurable `insecure`; returns `TracerProvider` |
-| `apps/smr/src/smr_v2/core/config.py` | Added `otel_service_namespace`, `otel_deployment_environment`, `otel_insecure` fields |
-| `apps/smr/src/smr_v2/main.py` | Store `tracer_provider` in `app.state`; flush + shutdown in lifespan teardown |
-| `apps/smr/src/smr_v2/api/endpoints/health.py` | Added `_check_redis()` helper; Redis check in `/health` and `/health/ready` |
-| `apps/smr/src/smr_v2/core/exception_handlers.py` | Set span `StatusCode.ERROR` + `record_exception()` on domain exceptions |
-| `apps/smr/src/smr_v2/api/endpoints/generate.py` | Pass `circuit_breakers` to streaming; `cb.record_failure()` on error; track streaming tokens |
-| `apps/smr/.env.example` | Added `SMR_V2_OTEL_SERVICE_NAMESPACE`, `SMR_V2_OTEL_DEPLOYMENT_ENVIRONMENT`, `SMR_V2_OTEL_INSECURE` |
+| `apps/smr/src/smr/core/logging.py` | Added `_add_otel_context` processor to structlog chain |
+| `apps/smr/src/smr/core/telemetry.py` | Added `service.namespace`, `deployment.environment` to Resource; configurable `insecure`; returns `TracerProvider` |
+| `apps/smr/src/smr/core/config.py` | Added `otel_service_namespace`, `otel_deployment_environment`, `otel_insecure` fields |
+| `apps/smr/src/smr/main.py` | Store `tracer_provider` in `app.state`; flush + shutdown in lifespan teardown |
+| `apps/smr/src/smr/api/endpoints/health.py` | Added `_check_redis()` helper; Redis check in `/health` and `/health/ready` |
+| `apps/smr/src/smr/core/exception_handlers.py` | Set span `StatusCode.ERROR` + `record_exception()` on domain exceptions |
+| `apps/smr/src/smr/api/endpoints/generate.py` | Pass `circuit_breakers` to streaming; `cb.record_failure()` on error; track streaming tokens |
+| `apps/smr/.env.example` | Added `SMR_OTEL_SERVICE_NAMESPACE`, `SMR_OTEL_DEPLOYMENT_ENVIRONMENT`, `SMR_OTEL_INSECURE` |
 | `apps/smr/Dockerfile` | Added new OTel env defaults |
-| `apps/smr/src/smr_v2/tests/conftest.py` | Added `mock_redis` fixture for test isolation |
-| `apps/smr/src/smr_v2/tests/unit/test_api_endpoints.py` | Inject mock Redis in app fixture |
-| `apps/smr/src/smr_v2/tests/unit/test_api_edge_cases.py` | Inject mock Redis; update health assertions for Redis check |
-| `apps/smr/src/smr_v2/tests/unit/test_health_metrics.py` | Inject mock Redis in `_create_app` helper |
-| `apps/smr/src/smr_v2/tests/unit/test_dependency_injection.py` | Inject mock Redis in app fixture |
+| `apps/smr/src/smr/tests/conftest.py` | Added `mock_redis` fixture for test isolation |
+| `apps/smr/src/smr/tests/unit/test_api_endpoints.py` | Inject mock Redis in app fixture |
+| `apps/smr/src/smr/tests/unit/test_api_edge_cases.py` | Inject mock Redis; update health assertions for Redis check |
+| `apps/smr/src/smr/tests/unit/test_health_metrics.py` | Inject mock Redis in `_create_app` helper |
+| `apps/smr/src/smr/tests/unit/test_dependency_injection.py` | Inject mock Redis in app fixture |
 
 ### Test Results
 

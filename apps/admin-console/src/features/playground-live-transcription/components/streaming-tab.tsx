@@ -288,7 +288,7 @@ export function StreamingTab({
             <EmptyState
                 icon={IconBroadcast}
                 title="No live session"
-                description="Pick a pipeline and start a session to stream microphone audio to stt-v2 in real time."
+                description="Pick a pipeline and start a session to stream microphone audio to stt in real time."
                 action={
                     <Button onClick={onStart} disabled={!canStart} className="h-11">
                         <IconPlayerPlayFilled aria-hidden />

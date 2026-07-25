@@ -13,7 +13,7 @@ packages/database  →  packages/domains  →  packages/applications  →  apps/
 (Prisma schema)       (entities/repos)      (application services)    (controllers)
 ```
 
-Direct workspace consumers: `@arcaai/domains`, `@arcaai/applications`, `@arcaai/api`. Python services (`apps/stt-v2`, `apps/smr`, `apps/nlp`, `apps/guardrail`, `apps/harness`) do not use this package; they talk to the API gateway.
+Direct workspace consumers: `@arcaai/domains`, `@arcaai/applications`, `@arcaai/api`. Python services (`apps/stt`, `apps/smr`, `apps/nlp`, `apps/guardrail`, `apps/harness`) do not use this package; they talk to the API gateway.
 
 ## Directory structure
 

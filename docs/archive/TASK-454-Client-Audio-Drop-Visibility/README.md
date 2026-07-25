@@ -18,13 +18,13 @@
 | `packages/stt/src/providers/StreamingBackendSTTProvider.ts` | Honor the boolean return at the SDK call site (tighten `boolean \| void` → `boolean`) |
 | `packages/stt/src/providers/__tests__/StreamingBackendSTTProvider.test.ts` | Drop-path coverage |
 
-**Do NOT modify** `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` — the drop plumbing (`sendAudioFrame` boolean return, `onBackpressureDrop`, `getDroppedFrameCount`, the 1 MiB watermark) already exists and is well-tested; this ticket only *consumes* it at the two call sites. Do NOT touch `PluginManager.ts` or `StreamingSessionManager.ts`. `apps/ui-playground/**` is deprecated — ignore its caller. Anything outside the manifest → STOP and report.
+**Do NOT modify** `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` — the drop plumbing (`sendAudioFrame` boolean return, `onBackpressureDrop`, `getDroppedFrameCount`, the 1 MiB watermark) already exists and is well-tested; this ticket only *consumes* it at the two call sites. Do NOT touch `PluginManager.ts` or `StreamingSessionManager.ts`. `apps/ui-playground/**` is deprecated — ignore its caller. Anything outside the manifest → STOP and report.
 
 ## Requirement Analysis
 
-The client 1 MiB `bufferedAmount` watermark in `SttV2WebSocketClient` silently drops outbound audio, and **neither caller reacts**: `sendAudioFrame` returns `false` on drop but both call sites discard it, and nothing in production registers `onBackpressureDrop` or reads `getDroppedFrameCount()`. Dropped PCM never reaches the durable transcript, and there is no clinician-visible signal — the clinician believes the encounter is fully captured. The drop plumbing is already built and tested at the client level (TASK-298 D-15); the defect is purely that the two consumers ignore it and no UI surfaces it.
+The client 1 MiB `bufferedAmount` watermark in `SttWebSocketClient` silently drops outbound audio, and **neither caller reacts**: `sendAudioFrame` returns `false` on drop but both call sites discard it, and nothing in production registers `onBackpressureDrop` or reads `getDroppedFrameCount()`. Dropped PCM never reaches the durable transcript, and there is no clinician-visible signal — the clinician believes the encounter is fully captured. The drop plumbing is already built and tested at the client level (TASK-298 D-15); the defect is purely that the two consumers ignore it and no UI surfaces it.
 
-**Scope clarification from the scout**: the "two stacks" share ONE watermark implementation inside `@arcaai/vox`'s `SttV2WebSocketClient`. There are exactly two live call sites to fix — the admin-console direct hook ([use-live-stt-session.ts:324]) and the SDK provider ([StreamingBackendSTTProvider.ts:216]). Only the `buffered_amount_high` reason is ever emitted (`queue_full` is declared but dead), so the degraded signal maps 1:1 to WS send-buffer backpressure.
+**Scope clarification from the scout**: the "two stacks" share ONE watermark implementation inside `@arcaai/vox`'s `SttWebSocketClient`. There are exactly two live call sites to fix — the admin-console direct hook ([use-live-stt-session.ts:324]) and the SDK provider ([StreamingBackendSTTProvider.ts:216]). Only the `buffered_amount_high` reason is ever emitted (`queue_full` is declared but dead), so the degraded signal maps 1:1 to WS send-buffer backpressure.
 
 ### Acceptance criteria
 
@@ -57,13 +57,13 @@ captureRef.current = await createAudioCapture(audioContext, track, (frame) => {
 
 Public state `UseLiveSttSessionResult` ([:85-103]) has no dropped/degraded field (only `status`, `error`, `reconnectAttempt`, …). The hook registers only `onTranscript`/`onWsError`/`onDisconnect`/`onReconnect`/`onReconnectFailed` ([:261-296]) — never `onBackpressureDrop`.
 
-**Client plumbing already exists (do not edit)** ([SttV2WebSocketClient.ts](packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts)): `sendAudioFrame` returns `false` on drop (:345-353); `onBackpressureDrop(cb)` (:384-387); `getDroppedFrameCount()` (:374-377); reset-on-connect (:278); watermark check `shouldDropForBufferedAmount` (:891-895), default 1 MiB (:141, applied :200). Only `buffered_amount_high` is emitted; `queue_full` is dead.
+**Client plumbing already exists (do not edit)** ([SttWebSocketClient.ts](packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts)): `sendAudioFrame` returns `false` on drop (:345-353); `onBackpressureDrop(cb)` (:384-387); `getDroppedFrameCount()` (:374-377); reset-on-connect (:278); watermark check `shouldDropForBufferedAmount` (:891-895), default 1 MiB (:141, applied :200). Only `buffered_amount_high` is emitted; `queue_full` is dead.
 
 **SDK provider discards it too** ([StreamingBackendSTTProvider.ts:207-217](packages/stt/src/providers/StreamingBackendSTTProvider.ts)): `this.wsClient.sendAudioFrame(int16);` return dropped; duck-typed interface widens return to `boolean | void` ([:85]).
 
 **UI surfaces** ([streaming-tab.tsx](apps/admin-console/src/features/playground-live-transcription/components/streaming-tab.tsx)): status-badge cluster (:122-128, already shows `Reconnect attempt N`), mic-permission warning banner pattern (:144-146), transcript footer meta (:200-204).
 
-**Test gaps**: hook fake returns `true` unconditionally ([use-live-stt-session.test.tsx:50-53]); provider mock `sendAudioFrame: vi.fn(() => true)` ([StreamingBackendSTTProvider.test.ts:26]) — no drop coverage at either caller. (Client-level drop is well covered at [SttV2WebSocketClient.test.ts:1722-1787].)
+**Test gaps**: hook fake returns `true` unconditionally ([use-live-stt-session.test.tsx:50-53]); provider mock `sendAudioFrame: vi.fn(() => true)` ([StreamingBackendSTTProvider.test.ts:26]) — no drop coverage at either caller. (Client-level drop is well covered at [SttWebSocketClient.test.ts:1722-1787].)
 
 ## Implementation Plan (TDD — strict order)
 
@@ -85,13 +85,13 @@ pnpm lint
 # Runtime: verify the degraded banner appears under simulated backpressure in a running next dev (next-dev-loop skill) — screenshot both themes.
 ```
 
-Adversarial review focus (reviewer agent): (a) is EVERY drop path now visible at both call sites, or only the hook? (b) does the degraded state clear correctly on recovery/reconnect (no stuck banner)? (c) is the below-watermark send byte-for-byte unchanged? (d) a11y — announced, not color-only, contrast in both themes? (e) confirm `SttV2WebSocketClient.ts` is untouched; zero diff outside the manifest.
+Adversarial review focus (reviewer agent): (a) is EVERY drop path now visible at both call sites, or only the hook? (b) does the degraded state clear correctly on recovery/reconnect (no stuck banner)? (c) is the below-watermark send byte-for-byte unchanged? (d) a11y — announced, not color-only, contrast in both themes? (e) confirm `SttWebSocketClient.ts` is untouched; zero diff outside the manifest.
 
 ## Implementation Summary
 
 **Branch**: `fix/task-454-audio-drop-visibility` (2 commits: `a48d7b28` fix, `e72e720f` review cleanups) — merged into `fix/task-449-wave1`.
 
-**What shipped**: both callers now honor `sendAudioFrame`'s boolean and the client's `onBackpressureDrop`. The admin-console hook exposes a per-connection `droppedFrameCount` (resets on reconnect) AND a session-sticky `audioLostThisSession` latch (survives reconnect, clears only on start/stop); `streaming-tab.tsx` renders a degraded banner + live count. The SDK provider (`StreamingBackendSTTProvider`) honors the return, counts drops (`getDroppedFrameCount`), and its client interface is tightened `boolean | void` → `boolean`. `SttV2WebSocketClient.ts` untouched (its plumbing already existed).
+**What shipped**: both callers now honor `sendAudioFrame`'s boolean and the client's `onBackpressureDrop`. The admin-console hook exposes a per-connection `droppedFrameCount` (resets on reconnect) AND a session-sticky `audioLostThisSession` latch (survives reconnect, clears only on start/stop); `streaming-tab.tsx` renders a degraded banner + live count. The SDK provider (`StreamingBackendSTTProvider`) honors the return, counts drops (`getDroppedFrameCount`), and its client interface is tightened `boolean | void` → `boolean`. `SttWebSocketClient.ts` untouched (its plumbing already existed).
 
 **Gates**: `@arcaai/admin-console` build/lint clean + **840 tests**; `@arcaai/stt` **411 tests**. RED captured for the hook and provider drop paths; new `DegradedBanner` a11y render test (3/3: `role=status`, `aria-live=polite`, `aria-hidden` count, icon+text).
 

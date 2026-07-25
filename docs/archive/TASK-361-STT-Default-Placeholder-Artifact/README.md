@@ -114,14 +114,14 @@ selection path.
 | STT seed (default + catalog) | `packages/database/src/prisma/db_main/seed/06-stt.ts` | Source of the placeholder default + demotion + reconcile |
 | STT GlobalSetting | `packages/database/src/prisma/db_main/seed/91-user.ts` (`default-stt-pipeline`) | Points the runtime default at the CT2 pipeline |
 | Clone-per-tenant | `packages/applications/src/services/tenant/tenant.service.ts` (`provisionTenantPipelineCatalog`) | Propagates the default pipeline to new tenants |
-| STT runtime loader | `apps/stt-v2` (`FasterWhisperLoader`) | Where a non-resolving `sourceUri`/`hf_model_id` fails to load |
+| STT runtime loader | `apps/stt` (`FasterWhisperLoader`) | Where a non-resolving `sourceUri`/`hf_model_id` fails to load |
 | Artifact publish (D-4) | model repo / registry | The real CT2 int8 artifact that must replace the placeholder |
 
 ---
 
 ## 3. Implementation Plan (APPROVED — option (a) + AC-3 cleanup)
 
-> Phase 2 (explore) was run via three parallel read-only agents (seed/reconcile, `stt-v2` runtime
+> Phase 2 (explore) was run via three parallel read-only agents (seed/reconcile, `stt` runtime
 > resolution, default selection/propagation). Phase 3 plan approved on 2026-06-16: **option (a)** —
 > restore the resolvable `production-whisper-large-v3` pipeline as the effective default + clean up
 > the misleading tags (AC-3). Options (b) publish-artifact and (c) runtime-fallback were considered:
@@ -168,8 +168,8 @@ so pointing both at the resolvable pipeline restores a working default end-to-en
   this a small, symmetric flip). Note: re-promoting CT2 also restores its diarization + int8 capability
   that whisper-large-v3 does not carry.
 - **Runtime conservative fallback (option c):** for defense-in-depth per TASK-356 AC-5 / R-1, gate the
-  `stt-v2` load path on artifact availability and fall back to a known-good model. Natural hook:
-  `ModelCache.get_or_load` (`apps/stt-v2/.../models/cache.py`), using the already-present-but-unused
+  `stt` load path on artifact availability and fall back to a known-good model. Natural hook:
+  `ModelCache.get_or_load` (`apps/stt/.../models/cache.py`), using the already-present-but-unused
   `AiModelConfig.is_downloaded` / `ModelRegistryReader.get_downloaded_models` signals.
 
 ---

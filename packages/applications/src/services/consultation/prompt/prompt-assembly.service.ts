@@ -15,6 +15,7 @@ import { PromptResolutionService, PromptResolutionTier } from './prompt-resoluti
 import { PromptTemplateRepository, DnaWritingStyleReportRepository } from '@arcaai/domains';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
+import { truncatePriorVisitSummary } from '../../settings-registry/descriptors/agentic-revisit.descriptors';
 import { IActiveUserContext } from '../../../interfaces';
 
 const VARIABLE_PATTERN = /\{([a-zA-Z_][\w-]*)\}/g;
@@ -62,6 +63,27 @@ function wrapExternalData(section: string, header: string, body: string): string
  * caps this independently — this is the prompt side's own ceiling.
  */
 const FEW_SHOT_EXEMPLAR_LIMIT = 3;
+
+/**
+ * The non-authoritative framing for carried prior-visit content (F-18).
+ *
+ * Platform-authored guidance, so it stays OUTSIDE the `<<<EXTERNAL_DATA …>>>`
+ * delimiters — the prior note itself goes inside them. The wording is the whole
+ * safety mechanism of the feature: carry-forward reproduces the copy-paste /
+ * cloned-note failure mode (stale or unverified content propagating into a new
+ * encounter, SOTA §4.5), so the block must read as a REFERENCE the model has to
+ * re-confirm, never as this visit's findings. The exam/medication clause is
+ * explicit because those are precisely the fields a carried note most plausibly —
+ * and most dangerously — fills in without current evidence.
+ */
+const PRIOR_VISIT_SUMMARY_PREAMBLE = [
+  '--- PRIOR VISIT SUMMARY — REFERENCE ONLY, NOT CURRENT-VISIT EVIDENCE ---',
+  "The note below is this patient's documentation from a PREVIOUS encounter. It is a NON-AUTHORITATIVE prior:",
+  'use it only for continuity (known history, ongoing problems, prior plan). Every fact you take from it must be',
+  're-confirmed against the CURRENT transcript before you restate it; if the current transcript does not support it,',
+  'leave it out rather than carrying it forward. Never populate examination findings, vitals, results, or medication',
+  'statements from this block without current-visit evidence.',
+].join('\n');
 
 /**
  * Stable 32-bit fingerprint of the exemplar set, used only to VERSION the
@@ -190,7 +212,17 @@ export interface PromptAssemblyParams {
   conversationLanguage: string;
   dnaStyleId?: string;
   preSummaryText?: string;
-  sameDayPrequelSummary?: string;
+  /**
+   * The patient's most authoritative summary from the PARENT consultation of a
+   * re-visit (F-18). Supplied only when `agentic.revisit.carryForwardEnabled` is
+   * on — the producer (`HarnessInternalService.assemble`) resolves that knob and
+   * omits this field entirely when it is off, so the default-off posture holds
+   * even if a future caller forgets the gate.
+   *
+   * Injected as an explicitly NON-AUTHORITATIVE prior (see
+   * {@link PRIOR_VISIT_SUMMARY_PREAMBLE}) and hard-capped, never as fact.
+   */
+  priorVisitSummary?: string;
   explicitTemplate?: string;
   /** The requesting doctor's preferred prompt template id. */
   preferredPromptTemplateId?: string | null;
@@ -442,6 +474,21 @@ export class PromptAssemblyService {
       userPrompt += wrapExternalData('doctor_highlights', 'DOCTOR HIGHLIGHTS (clinician-flagged spans)', highlightsBlock);
     }
 
+    // Re-visit carry-forward (F-18). Same consumed-variable convention as the
+    // blocks above: if the template inlined {prior_visit_summary} the content is
+    // already present and we do NOT append a duplicate. The framing preamble is
+    // platform-authored guidance and stays OUTSIDE the delimiters; only the prior
+    // note itself is EXTERNAL_DATA. Absent variable ⇒ the prompt is byte-identical
+    // to the pre-feature prompt, which is what keeps the default-off posture real.
+    const priorVisitBlock = variables.prior_visit_summary ?? '';
+    if (priorVisitBlock && !userPrompt.includes(priorVisitBlock)) {
+      userPrompt +=
+        `\n\n${PRIOR_VISIT_SUMMARY_PREAMBLE}\n` +
+        `<<<EXTERNAL_DATA section="prior_visit_summary">>>\n` +
+        `${priorVisitBlock}\n` +
+        `<<<END_EXTERNAL_DATA>>>`;
+    }
+
     // Warm-start refinement, gated behind the
     // kill-switch (default OFF). Matured into the explicit two-stage scratchpad→final
     // lineage: the live session's running note is STAGE 1
@@ -524,8 +571,10 @@ export class PromptAssemblyService {
       variables.pre_summary_text = params.preSummaryText;
     }
 
-    if (params.sameDayPrequelSummary) {
-      variables.same_day_prequel_summary = params.sameDayPrequelSummary;
+    // Carried prior-visit summary (F-18). Bounded here as well as at the
+    // producer, so the cap is a property of the prompt rather than of one caller.
+    if (params.priorVisitSummary?.trim()) {
+      variables.prior_visit_summary = truncatePriorVisitSummary(params.priorVisitSummary.trim());
     }
 
     if (params.dnaStyleId) {

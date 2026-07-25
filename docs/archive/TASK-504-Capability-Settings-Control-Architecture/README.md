@@ -51,7 +51,7 @@ Out of scope (name explicitly so the executing agent does not scope-creep): rewr
 
 ### 2.2 Runtime config service — **env-only, not DB-backed**
 
-`IConfigService` (`packages/applications/src/services/baseServices/_meta/config/IConfigService.ts:7-69`) → `config.service.ts` reads `process.env` with defaults for downstream URLs (`STT_V2_URL`, `SMR_URL`, `NLP_URL`, `GUARDRAIL_URL`, `HARNESS_URL`, `TTS_URL`, `:144-154`) and overlays only `MQTT_PASS`/`REDIS_PASS` from Vault. Direct `process.env.<URL>` reads in `apps/api/src/modules/**` are lint-banned; controllers must resolve via `getConfigValue`. **This layer stays env-only** — it is deployment infra, not admin-controllable.
+`IConfigService` (`packages/applications/src/services/baseServices/_meta/config/IConfigService.ts:7-69`) → `config.service.ts` reads `process.env` with defaults for downstream URLs (`STT_URL`, `SMR_URL`, `NLP_URL`, `GUARDRAIL_URL`, `HARNESS_URL`, `TTS_URL`, `:144-154`) and overlays only `MQTT_PASS`/`REDIS_PASS` from Vault. Direct `process.env.<URL>` reads in `apps/api/src/modules/**` are lint-banned; controllers must resolve via `getConfigValue`. **This layer stays env-only** — it is deployment infra, not admin-controllable.
 
 ### 2.3 The three coexisting admin-toggle mechanisms (the crux)
 
@@ -85,7 +85,7 @@ model TenantTtsProviderCredential {
 
 - **Write** (`tenant-tts-config.service.ts:158-210`): `secretsService` is `@Optional()`-injected; if Vault absent the write **rejects** — no plaintext fallback (stricter than `GlobalSetting`, which keeps a legacy plaintext column). `encrypt(Buffer.from(apiKey))` → Vault `POST transit/encrypt/<key>` → `vault:vN:<b64>` stored as `Bytes`; `keyVersion` parsed from the ciphertext.
 - **Read** = **masked** (`maskCredential`, `:256-265`): DTO `TtsCredentialResponse` has **no `apiKey` field**, only `hasKey: boolean`, `keyVersion`, `endpoint`, `enabled`. Write DTO `apiKey` is **write-only** (`@MinLength(1) @MaxLength(512)`, never echoed). No reveal endpoint at all (stricter than GlobalSetting's step-up reveal).
-- **Runtime** (`speech-proxy.controller.ts:61-85`; `tts-ws.gateway.ts:119-257`): gateway resolves effective config + `resolveProviderOverrides(tenantId)` (decrypts per credential, **fails open** per-credential on decrypt error), injects `provider_overrides` into the request body / first WS `init` frame. `apps/tts-v2` stays **stateless** — no DB/Vault, receives creds per request, caches an engine keyed by `sha256(cred)`. Every error log redacts the body ("may contain PHI"); the decrypted key never appears in a log line.
+- **Runtime** (`speech-proxy.controller.ts:61-85`; `tts-ws.gateway.ts:119-257`): gateway resolves effective config + `resolveProviderOverrides(tenantId)` (decrypts per credential, **fails open** per-credential on decrypt error), injects `provider_overrides` into the request body / first WS `init` frame. `apps/tts` stays **stateless** — no DB/Vault, receives creds per request, caches an engine keyed by `sha256(cred)`. Every error log redacts the body ("may contain PHI"); the decrypted key never appears in a log line.
 - **Divergence to fix**: TASK-496 re-implemented `parseKeyVersionFromCiphertext` (`:30-36`) privately instead of reusing `GlobalSettingRepository.encryption.ts`. Two copies of the secret-crypto logic now exist. → Phase 1 hoists a single canonical util.
 
 ### 2.5 RBAC / delegation / admin surfaces
@@ -106,7 +106,7 @@ model TenantTtsProviderCredential {
 5. **No dedicated settings version-history API** — History tab reprojects the generic audit log. (Phase 4)
 6. **Client-side-only categorization** — `config-categories.ts` keyword heuristic silently buckets unknown keys into `general`; no server taxonomy. (Phase 3)
 7. **No registry** — the three patterns are chosen ad hoc per feature; nothing declares "this variable → this tier → this scope → this editor". (Phase 3, the centerpiece)
-8. **Unbounded per-tenant engine cache** in tts-v2 (`_tenant_engines` dict, no LRU/TTL) — note only; owned by TASK-496 follow-up.
+8. **Unbounded per-tenant engine cache** in tts (`_tenant_engines` dict, no LRU/TTL) — note only; owned by TASK-496 follow-up.
 
 ---
 

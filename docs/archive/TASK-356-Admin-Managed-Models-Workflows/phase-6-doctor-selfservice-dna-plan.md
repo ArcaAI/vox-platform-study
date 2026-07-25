@@ -40,7 +40,7 @@ This phase is **additive and opt-in**: with the tenant DNA flag off and no docto
 ### 2.2 Out of scope (hard boundaries)
 
 - **Doctor-preferred prompt *resolution/threading* in the cascade** → **Phase 5** owns this. Phase 6 only *writes* `UserProfile.preferredPromptTemplateId` (self-service) and *reads it back* for the picker UI. See §11.2.
-- **SMR call-path refactor** → **Phase 3** owns the SMR gateway. Phase 6 keeps the existing `callSmrV2` boundary in the DNA processor (`dna-writing-style.processor.ts:152`) stable. See §11.3.
+- **SMR call-path refactor** → **Phase 3** owns the SMR gateway. Phase 6 keeps the existing `callSmr` boundary in the DNA processor (`dna-writing-style.processor.ts:152`) stable. See §11.3.
 - **Harness gating / latency / PHI egress / sensor calibration** → TASK-355 / 357 / 358 / 359. Do not touch the harness workflow, sensors, or sign-off governance logic.
 - **Admin prompt management** (`/admin/prompt-templates`) — unchanged; Phase 1 owns the catalog plane.
 - **Changing how the approved final text is produced or signed** — TASK-355 owns `approveSummary` governance; Phase 6 only *appends* (snapshot/delta capture + best-effort DNA-pair availability).
@@ -88,7 +88,7 @@ This phase is **additive and opt-in**: with the tenant DNA flag off and no docto
 ### 3.3 DNA writing-style — model, processor, service, scheduler
 
 - **Model** `packages/database/src/prisma/db_main/dna-writing-style.prisma` — `DnaWritingStyleReport` (per-doctor, `isLatest`, `currentVersionNumber`) + `DnaWritingStyleVersion`. **No per-doctor on/off field** (gap for S3).
-- **Processor** `packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts:105-137` — corpus = `ContextItem`s of type `RAW_SUMMARY`/`MODIFIED_SUMMARY` that have a version with `changeReason='approved'` (`:121`); it takes the **final approved `item.content`** only. SMR called at `:152` (`callSmrV2`). **The AI draft is never part of the corpus** (gap for S6).
+- **Processor** `packages/applications/src/services/dna-writing-style/dna-writing-style.processor.ts:105-137` — corpus = `ContextItem`s of type `RAW_SUMMARY`/`MODIFIED_SUMMARY` that have a version with `changeReason='approved'` (`:121`); it takes the **final approved `item.content`** only. SMR called at `:152` (`callSmr`). **The AI draft is never part of the corpus** (gap for S6).
 - **Service** `…/dna-writing-style/dna-writing-style.service.ts:79` — `generateDnaReport` enqueues the BullMQ job (manual trigger). No toggle logic.
 - **Scheduler** `…/dna-writing-style/dna-regeneration.scheduler.ts` — monthly cron (default **disabled**), re-enqueues for all doctors with a latest report. **No on-sign trigger exists today.**
 - **Doctor DNA API** `apps/api/src/modules/dna-writing-style/dna-writing-style.controller.ts` — `generate` / `getMyStyle` / `getMine` / `update` / `setDefault` / `getVersions` / job status; doctor-scoped via `assertActingAsDoctor()` (`:72`). **No toggle endpoint** (gap for S3).
@@ -157,7 +157,7 @@ This phase is **additive and opt-in**: with the tenant DNA flag off and no docto
 
 | File | Change | Collision |
 |---|---|---|
-| `…/dna-writing-style/dna-writing-style.processor.ts` (corpus `:105-137`) | Extend the corpus builder: for each approved summary, also fetch the `ai_draft_v1` version (`getVersionsByChangeReason(id,'ai_draft_v1')`) and build **draft↔approved pairs**; pass pairs into the SMR payload (keep `callSmrV2` at `:152` unchanged) | **Phase 3** refactors the SMR transport — change the *corpus/payload*, not the call boundary (§11.3). |
+| `…/dna-writing-style/dna-writing-style.processor.ts` (corpus `:105-137`) | Extend the corpus builder: for each approved summary, also fetch the `ai_draft_v1` version (`getVersionsByChangeReason(id,'ai_draft_v1')`) and build **draft↔approved pairs**; pass pairs into the SMR payload (keep `callSmr` at `:152` unchanged) | **Phase 3** refactors the SMR transport — change the *corpus/payload*, not the call boundary (§11.3). |
 | `…/dna-writing-style/dna-writing-style.processor.ts` (job input) | Add an optional `mode: 'final' | 'pairs'` (or pair-aware payload) so legacy final-only behaviour is preserved when no `v1` snapshot exists (back-compat for old consults) | Back-compat: pre-Phase-6 consults have no `v1` → fall back to final-only. |
 | DNA analysis prompt template (seed `category='DNA_ANALYSIS'`, read at processor `:146`) | *(Possibly)* a pairs-aware prompt variant that teaches from `{draft}`→`{approved}` deltas | If template change needed, coordinate with Phase 1 catalog ownership; otherwise reuse existing. |
 
@@ -227,7 +227,7 @@ This phase is **additive and opt-in**: with the tenant DNA flag off and no docto
 - **Preferred-template self-service** validates the chosen template is in the caller's `listAvailableForCaller` set before writing `UserProfile.preferredPromptTemplateId` for the caller only.
 - **DNA toggle** is self-scoped via `assertActingAsDoctor()` (`:72`); an admin not impersonating a doctor cannot self-toggle (mirrors the existing DNA-page impersonation guard).
 - **Edit-capture is non-destructive & WORM-safe.** The `v1` snapshot and delta are **append-only** `ContextItemVersion` rows; they do not alter the signed note, the `ATTEST` chain, or TASK-355 sign-off governance. Snapshot/delta writes are **best-effort where they touch the TASK-355 sign path** — a snapshot/delta failure must never block or roll back generation/edit/sign (mirror the Slice 5c best-effort `signalEdit` discipline).
-- **No PHI egress change.** The DNA processor keeps the existing local `callSmrV2` boundary; pairs are the same already-stored clinical text. PHI-egress enforcement is TASK-357's domain — untouched.
+- **No PHI egress change.** The DNA processor keeps the existing local `callSmr` boundary; pairs are the same already-stored clinical text. PHI-egress enforcement is TASK-357's domain — untouched.
 - **DNA opt-out is honoured end-to-end** (generation application + processor corpus) so a doctor who disables DNA is neither styled nor learned-from.
 
 ---
@@ -254,7 +254,7 @@ This phase is **additive and opt-in**: with the tenant DNA flag off and no docto
 **DNA pairs (S6):**
 10. Corpus builder pairs `ai_draft_v1` with the approved final for a consult that has both.
 11. Falls back to final-only for a legacy consult with no `v1` snapshot (back-compat).
-12. `callSmrV2` boundary unchanged (payload includes pairs; transport signature untouched).
+12. `callSmr` boundary unchanged (payload includes pairs; transport signature untouched).
 
 **Per-doctor DNA toggle (S3):**
 13. `getDnaEnabled` default (unset) ⇒ effective flag follows the tenant flag.
@@ -301,7 +301,7 @@ Per `01-development-workflow.mdc` + `verification-before-completion` (capture ac
 | `consultation.controller.ts` | TASK-355 | *(Optional)* add read-only draft-delta route | Append-only; do not touch assurance/override routes. |
 | `clinical-workspace/review-panel.tsx`, `review/review-screen.tsx` | TASK-355 Slice 6 | **Avoid** | Put any draft↔final diff in `consultation/version-detail-panel.tsx` instead. |
 | `prompt-resolution.service.ts` (Tier-0 read `:85`), legacy BullMQ threading | **Phase 5** | **Avoid resolution**; only *write* preferred id + *read* for picker | Shared field `UserProfile.preferredPromptTemplateId` (`:164`): P6 writes, P5 reads/threads. No schema collision. |
-| DNA processor `callSmrV2` (`:152`) | **Phase 3** | Change corpus/payload, **not** transport | Keep call boundary stable for Phase 3's SMR-gateway refactor. |
+| DNA processor `callSmr` (`:152`) | **Phase 3** | Change corpus/payload, **not** transport | Keep call boundary stable for Phase 3's SMR-gateway refactor. |
 | Harness gating / latency / PHI / sensors | TASK-355/357/358/359 | **Avoid** | No harness workflow/sensor/governance edits. |
 
 **Sequencing recommendation:** Phase 6 can proceed now for S1/S2/S3/S4/S5 (all grounded against committed code). S6's *application of DNA style at generation* and the *legacy-path preferred threading* should be **coordinated with Phase 5** (resolution owner). The harness-boundary snapshot (S4 part 2) should be **coordinated with Phase 3** (SMR call-path owner) but does not block the legacy-path snapshot.
@@ -324,7 +324,7 @@ The brief states these files are "**currently** modified by in-flight TASK-355".
 
 Phase 3 refactors the SMR call path that produces the AI draft (and is named in README §4.4 as also feeding the DNA processor). Phase 6 dependencies:
 - The **`v1` snapshot must sit at the generation/persist-draft boundary** regardless of which model SMR resolves — so it survives Phase 3's transport refactor.
-- The **DNA processor change is corpus/payload only** (`dna-writing-style.processor.ts:105-137`); the `callSmrV2` boundary (`:152`) stays stable so Phase 3 can swap the transport underneath without re-touching Phase 6 logic.
+- The **DNA processor change is corpus/payload only** (`dna-writing-style.processor.ts:105-137`); the `callSmr` boundary (`:152`) stays stable so Phase 3 can swap the transport underneath without re-touching Phase 6 logic.
 
 ---
 
@@ -370,4 +370,4 @@ Phase 3 refactors the SMR call path that produces the AI draft (and is named in 
 - **DB/Domain (only if BQ-4=column):** `user.prisma` + migration + `UserProfile` regen
 - **UI:** `features/dna-writing-style/index.tsx` (switch), **new** `features/prompts/**` + `routes/_authenticated/prompts.tsx` + nav, (optional) `consultation/version-detail-panel.tsx`
 
-**Do NOT touch:** `clinical-workspace/review-*` (TASK-355 Slice 6), harness workflow/sensors/governance (TASK-355/357/358/359), `prompt-resolution.service.ts` cascade (Phase 5), `callSmrV2` transport (Phase 3), `/admin/prompt-templates` (Phase 1).
+**Do NOT touch:** `clinical-workspace/review-*` (TASK-355 Slice 6), harness workflow/sensors/governance (TASK-355/357/358/359), `prompt-resolution.service.ts` cascade (Phase 5), `callSmr` transport (Phase 3), `/admin/prompt-templates` (Phase 1).

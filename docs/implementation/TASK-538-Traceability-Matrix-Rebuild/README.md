@@ -21,7 +21,7 @@ Rebuild the traceability matrix so every **business capability** and **end-to-en
 
 | Priority | Gap |
 |---|---|
-| **P0** | **TTS has ZERO rows** — an entire service (`apps/tts-v2`: speech/voices/stream_ws endpoints), gateway `speech` module, `tenant-tts-config` module (`admin/tts-config` CRUD + test + directory-credentials + sync), models `TenantTtsConfig` + `TenantTtsProviderCredential`, console feature + route |
+| **P0** | **TTS has ZERO rows** — an entire service (`apps/tts`: speech/voices/stream_ws endpoints), gateway `speech` module, `tenant-tts-config` module (`admin/tts-config` CRUD + test + directory-credentials + sync), models `TenantTtsConfig` + `TenantTtsProviderCredential`, console feature + route |
 | **P0** | **SAML/SSO missing** (TASK-499) — `tenant-idp-config` + `auth/sso` modules, `TenantIdentityProvider(+Domain)` models, console `identity-providers` |
 | **P1** | **Row 29 factually stale** — claims notifications/webhooks/resource-subscriptions have "no public controller"; all three now ship full CRUD controllers (`admin/notifications`, `admin/webhooks`, `admin/resource-subscriptions`). Split into 3 rows |
 | **P1** | **Settings control plane missing** (TASK-504) — `settings-catalog` module shares `/admin/settings` with row-30's `global-setting`; catalog/effective-facade/kill-switch framework needs its own row + disambiguation |
@@ -30,7 +30,7 @@ Rebuild the traceability matrix so every **business capability** and **end-to-en
 | **P2** | Console features unmapped: `agentic-policy`, `harness-ops`, `harness-policy`, `pipeline-policy`, `tools-mcp`, `storage-browser`, `settings`, `tenant-tts-config`, `identity-providers`, `ai-operations-*` |
 | **P2** | Gaps-section bullet (a) partially wrong now (row 29); re-check rows 23 eval / 36 FedL while rebuilding |
 
-**Metrics:** 39 numbered rows (43 with sub-rows); 46 API modules total, 36 in matrix; 43 console features / 58 route segments; 1 of 6 Python services (tts-v2) unrepresented.
+**Metrics:** 39 numbered rows (43 with sub-rows); 46 API modules total, 36 in matrix; 43 console features / 58 route segments; 1 of 6 Python services (tts) unrepresented.
 
 ## Implementation Plan
 

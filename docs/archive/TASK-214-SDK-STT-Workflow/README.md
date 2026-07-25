@@ -84,7 +84,7 @@ interface TranscriptionProcessingConfig {
 | Mode | Behavior |
 |------|----------|
 | `'local'` | Whisper WASM in browser via `@arcaai/stt` plugin |
-| `'backend'` | WebSocket streaming to stt-v2 service |
+| `'backend'` | WebSocket streaming to stt service |
 | `'auto'` | SDK decides based on model availability and capabilities |
 
 Default: `location: 'auto', provider: 'auto', language: 'en-US'`
@@ -151,7 +151,7 @@ Configured via backend ASR pipeline YAML, not directly in SDK config. Results ap
 
 | Channel | Use Case | SDK Class | API Endpoint |
 |---------|----------|-----------|--------------|
-| WebSocket | Real-time STT streaming | `StreamingSessionManager` → `SttV2WebSocketClient` | `POST /audio/transcription-jobs/stream/session` → `wss://` |
+| WebSocket | Real-time STT streaming | `StreamingSessionManager` → `SttWebSocketClient` | `POST /audio/transcription-jobs/stream/session` → `wss://` |
 | SSE | File upload transcription | `FileTranscriptionService` → `SSEClient` | `POST /audio/transcription-jobs/transcribe` → `GET .../stream` |
 | REST | Job management | `TranscriptionJobService` | `GET/PATCH /audio/transcription-jobs/...` |
 | REST | NLP (NER, spell check) | `AgenticClient` | `POST /nlp/classify/tokens`, `/nlp/correct`, etc. |

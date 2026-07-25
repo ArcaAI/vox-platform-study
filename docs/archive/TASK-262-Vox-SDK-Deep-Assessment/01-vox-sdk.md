@@ -40,7 +40,7 @@ The audio pipeline follows a strict sequential order: `AudioContext → NoiseFil
 | `usePipelines` | Hook | Stable |
 | `AgenticClient` | Class | Advanced/Stable |
 | `ConfigManager`, `ModelRegistry`, `PersonalizationManager` | Classes | Advanced/Stable |
-| `SSEClient`, `SttV2WebSocketClient`, `StreamingSessionManager`, `FileTranscriptionService` | Classes | Advanced/Stable |
+| `SSEClient`, `SttWebSocketClient`, `StreamingSessionManager`, `FileTranscriptionService` | Classes | Advanced/Stable |
 | `useAgenticStore` | Zustand hook | Advanced – internal store exposed publicly |
 | `SDKLogger`, `createSDKLogger`, `ConsoleTransport`, `HighlightTransport`, `LokiTransport`, `OTelTransport` | Logger infra | Advanced/Stable |
 | All endpoint constants (`AUTH_ENDPOINTS`, `CONSULTATION_ENDPOINTS`, …) | Constants | Stable |
@@ -78,7 +78,7 @@ The audio pipeline follows a strict sequential order: `AudioContext → NoiseFil
 
 4. **Surgical sessionUtils extraction (REFACTOR-02).** `sessionUtils.ts:21–121` pulls the duplicated `open`/`load`/`getPatientHistory` logic into three plain async functions that both `useArca` and `useArcaSession` call. This reduces maintenance surface substantially.
 
-5. **Robust WebSocket message normalization.** `SttV2WebSocketClient.ts:430–543` normalises both snake_case and camelCase fields, validates `isFinal` as `'0'`/`'1'` strings, filters non-finite floats from `speakerEmbedding`, and drops invalid messages instead of crashing.
+5. **Robust WebSocket message normalization.** `SttWebSocketClient.ts:430–543` normalises both snake_case and camelCase fields, validates `isFinal` as `'0'`/`'1'` strings, filters non-finite floats from `speakerEmbedding`, and drops invalid messages instead of crashing.
 
 6. **`contextOwnership` flag on `TranscriptionPipeline`.** `TranscriptionPipeline.ts:341–350` checks `this.config.contextOwnership ?? 'borrowed'` before closing the `AudioContext` in `stop()`. This correctly avoids closing a context the pipeline does not own, preventing the common "closed AudioContext" bug when the caller manages context lifetime.
 
@@ -133,8 +133,8 @@ The audio pipeline follows a strict sequential order: `AudioContext → NoiseFil
 **M-3. `KnowledgePipeline.process` clears `results` on every invocation.**
 `KnowledgePipeline.ts:236` — `this.results.clear()` on every `process()` call means that a caller who has a long-running pipeline and invokes `process()` again before reading results from the first run will lose those results. The `lastInput` reference is also overwritten without any concurrency guard, so rapid consecutive transcription callbacks (each triggering `process()`) will race on `lastInput`.
 
-**M-4. `SttV2WebSocketClient.debugLogTranscript` writes unconditionally to `console.log`.**
-`SttV2WebSocketClient.ts:32–36` — the private `debugLogTranscript` function uses `console.log` directly (with an eslint-disable comment). While gated by `this._debugMode`, any debug mode enabled in production will produce unredacted transcript text (PHI) in the browser console and any console-intercepting tools (e.g., Highlight.io session replay). This should use the `SDKLogger` so redaction and level filtering apply.
+**M-4. `SttWebSocketClient.debugLogTranscript` writes unconditionally to `console.log`.**
+`SttWebSocketClient.ts:32–36` — the private `debugLogTranscript` function uses `console.log` directly (with an eslint-disable comment). While gated by `this._debugMode`, any debug mode enabled in production will produce unredacted transcript text (PHI) in the browser console and any console-intercepting tools (e.g., Highlight.io session replay). This should use the `SDKLogger` so redaction and level filtering apply.
 
 **M-5. `AgenticProvider` runs `modelRegistry.loadTenantConfig()` twice on init.**
 `AgenticProvider.tsx:265–277` and `AgenticProvider.tsx:300` — `loadTenantConfig()` is called once to set tenant state in the store, and again inside the `ConfigManager` initialization IIFE. This duplicates a network request on every provider mount.
@@ -237,7 +237,7 @@ Both selectors receive the full `store` object, but only `store.contextItems` is
 | `TranscriptionPipeline` | `TranscriptionPipeline.provider.test.ts` | VAD → STT segment hand-off path (`handleVADEvent` → `transcribeSegment`) not tested; `pause()`/`resume()` ordering not tested; `contextOwnership: 'owned'` path not tested |
 | `SSEClient` | `SSEClient.test.ts` | Named listener double-registration on reconnect not tested; exponential backoff timing not tested; `authToken` URL injection not tested |
 | `SharedConnectionManager` | `SharedConnectionManager.test.ts` | Fallback (non-SharedWorker) SSE/WS path not tested; `dispose()` double-call safety not tested |
-| `SttV2WebSocketClient` | `SttV2WebSocketClient.test.ts` | Reconnect after `acknowledgeConnection()` reset not tested; intentional disconnect vs unexpected disconnect not tested |
+| `SttWebSocketClient` | `SttWebSocketClient.test.ts` | Reconnect after `acknowledgeConnection()` reset not tested; intentional disconnect vs unexpected disconnect not tested |
 | `KnowledgePipeline` | `KnowledgePipeline.test.ts` | Concurrent `process()` race on `lastInput`/`results` not tested; `triggerSummarization` API path not tested |
 | `useArca` | `useArca.test.tsx`, `useArca.audio-pipeline.test.ts`, etc. | Audio context leak (raw `new AudioContext`) not tested; `stopAudio` track-stop not verified; lifecycle `requestGracefulShutdown` timeout logic not tested |
 | `useAuth` | `useAuth.test.ts`, `useAuth.task224.test.ts`, `useAuth.task225.test.ts` | `endImpersonation` server-error fallback path not tested; concurrent login calls (double-click) not tested |
@@ -353,8 +353,8 @@ The 490-line `agenticStore.ts` should be split into domain slices: `authSlice`, 
 **R-13 [Low — Correctness]. Fix `SSEClient` named listener accumulation on reconnect.**
 Store listener functions in a `Map<string, EventListener>` and call `removeEventListener` before each `close()`. Register named listeners only in `createEventSource`, not separately in `onEvent`.
 
-**R-14 [Low — Correctness]. Remove the `console.log` from `SttV2WebSocketClient.debugLogTranscript`.**
-`SttV2WebSocketClient.ts:32–36` — route through `ISDKLogger` (accept it via constructor injection and use `this.logger?.debug(...)`) so PHI redaction and transport routing apply.
+**R-14 [Low — Correctness]. Remove the `console.log` from `SttWebSocketClient.debugLogTranscript`.**
+`SttWebSocketClient.ts:32–36` — route through `ISDKLogger` (accept it via constructor injection and use `this.logger?.debug(...)`) so PHI redaction and transport routing apply.
 
 **R-15 [Low — Hygiene]. Remove unused `valibot` from production bundle.**
 Since valibot is in `dependencies` and not used at runtime, add it to a `peerDependencies` with `optional: true`, or remove it until schema validation (R-6) is implemented. Current state adds ~30 KB dead code to the core bundle.

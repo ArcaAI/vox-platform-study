@@ -8,7 +8,7 @@
 | **Updated** | 2026-05-26 |
 | **Status** | Review |
 | **Related** | TASK-239 (Tenant Blob Storage — In Progress), TASK-302 (Secrets Migration), TASK-258 (Tenant Config Provisioning) |
-| **Scope** | NestJS API, applications layer, domains layer, database schema, STT-v2 Python service |
+| **Scope** | NestJS API, applications layer, domains layer, database schema, STT Python service |
 
 ---
 
@@ -39,7 +39,7 @@ The HOPE-v2 storage stack today is a **single-provider, single-endpoint S3-compa
 2. **`StorageAccessKey.secretAccessKey` is stored in plain text** despite the schema comment claiming "encrypted at application layer." `CryptoService` exists but is not wired into the create path.
 3. **`StorageAccessKeyService.revokeKey(id)` does not verify tenant ownership** before deleting — this is an IDOR. Any tenant admin with another tenant's key UUID can revoke it.
 4. **Legacy `StorageController` lists/reads/deletes any bucket** without tenant ownership checks — `/storage/buckets`, `/storage/buckets/:name/files`, `/storage/buckets/:name/files/:key` are unscoped.
-5. **STT-v2 `StoragePathResolver` accepts `tenant_id` but never embeds it in keys**; `resolve_tenant_bucket()` always falls back to the global `hope-audio` bucket because the cache is never populated from the database. **In effect, every tenant's audio still lands in the global shared bucket.**
+5. **STT `StoragePathResolver` accepts `tenant_id` but never embeds it in keys**; `resolve_tenant_bucket()` always falls back to the global `hope-audio` bucket because the cache is never populated from the database. **In effect, every tenant's audio still lands in the global shared bucket.**
 6. **No retention or lifecycle policies** are configured on any bucket — the `hope-audio-chunks` interim bucket grows unbounded.
 7. **No presigned PUT URLs** — every upload streams through the Node.js process (100 MB hard cap). This is the wrong pattern for large media files.
 8. **Three concrete consumer use cases are not implemented**: session attachments (PDF/images/lab), profile avatar, tenant branding files.
@@ -53,7 +53,7 @@ The HOPE-v2 storage stack today is a **single-provider, single-endpoint S3-compa
 - All TypeScript code under `packages/applications/src/services/baseServices/storage/`, `packages/applications/src/services/storage-access-key/`, `packages/applications/src/services/tenant-bucket/`, `apps/api/src/modules/storage/`, `apps/api/src/modules/storage-access-key/`, `apps/api/src/modules/tenant-bucket/`
 - Domain entities/factories/mappers/repositories for `StorageAccessKey` and `TenantBucket`
 - Prisma schema files for storage models
-- Python storage code in `apps/stt-v2/src/stt_v2/storage/` and `apps/stt-v2/src/stt_v2/core/storage/`
+- Python storage code in `apps/stt/src/stt/storage/` and `apps/stt/src/stt/core/storage/`
 - All consumers identified across the 6 user-stated use cases
 
 ### Out of scope
@@ -106,7 +106,7 @@ packages/database  (Prisma)
    │
    └── core.TenantBucket, core.StorageAccessKey, core.Media
 
-apps/stt-v2  (Python, separate process)
+apps/stt  (Python, separate process)
    │
    ├── MinioClient            (minio SDK, not boto3)
    ├── BlobService
@@ -222,9 +222,9 @@ export const SYSTEM_BUCKET_SLUGS = {
 
 `TenantService.create()` is hooked to `provisionSystemBuckets()` which calls `s3Service.createBucket()` + `setBucketPolicy()` with an IAM-style condition that requires the principal to have a `tenantId` tag — but **HOPE never tags its principals**, so this policy effectively denies all access in any real deployment.
 
-### 3.6 Python STT-v2 storage
+### 3.6 Python STT storage
 
-```7:7:apps/stt-v2/src/stt_v2/core/storage/minio_client.py
+```7:7:apps/stt/src/stt/core/storage/minio_client.py
 from minio import Minio
 ```
 
@@ -232,7 +232,7 @@ The Python service uses the dedicated **`minio` SDK**, not boto3. It cannot targ
 
 The path resolver accepts `tenant_id` in every method signature but never embeds it in the object key — isolation is supposed to come from the bucket name:
 
-```33:70:apps/stt-v2/src/stt_v2/storage/path_resolver.py
+```33:70:apps/stt/src/stt/storage/path_resolver.py
     def audio_path(
         self,
         tenant_id: str,
@@ -248,7 +248,7 @@ The path resolver accepts `tenant_id` in every method signature but never embeds
 
 And the bucket-resolution cache is never populated from the database:
 
-```421:450:apps/stt-v2/src/stt_v2/storage/path_resolver.py
+```421:450:apps/stt/src/stt/storage/path_resolver.py
     def resolve_tenant_bucket(self, tenant_id: str, bucket_type: str) -> str:
         cache_key = f"{tenant_id}:{bucket_type}"
         if cache_key in self._tenant_bucket_cache:
@@ -269,7 +269,7 @@ And the bucket-resolution cache is never populated from the database:
         return bucket
 ```
 
-**Net effect**: in production, all tenants' audio still lands in the single global `hope-audio` bucket. TASK-239's remaining work item *"Update STT-V2 Python service to use tenant-scoped bucket names"* is still open.
+**Net effect**: in production, all tenants' audio still lands in the single global `hope-audio` bucket. TASK-239's remaining work item *"Update STT Python service to use tenant-scoped bucket names"* is still open.
 
 ---
 
@@ -406,7 +406,7 @@ To implement properly:
 
 The path resolver covers all expected paths:
 
-```224:352:apps/stt-v2/src/stt_v2/storage/path_resolver.py
+```224:352:apps/stt/src/stt/storage/path_resolver.py
     streaming_raw_chunk_path()        → .../streams/{sid}/raw/chunk_{NNNN}.pcm
     streaming_processed_chunk_path()  → .../streams/{sid}/processed/chunk_{NNNN}.pcm
     streaming_raw_complete_path()     → .../streams/{sid}/raw/complete.wav
@@ -450,7 +450,7 @@ To implement properly:
 
 ### 5.1 Current matrix (verified)
 
-| Provider | NestJS API | Python STT-v2 | Shared instance | Dedicated instance/account per tenant |
+| Provider | NestJS API | Python STT | Shared instance | Dedicated instance/account per tenant |
 |---|---|---|---|---|
 | MinIO | ✅ via `@aws-sdk/client-s3` | ✅ native `minio` SDK | ✅ default | ❌ no endpoint field |
 | AWS S3 | ✅ via `@aws-sdk/client-s3` | ❌ `minio` SDK does not target AWS reliably | Possible (untested) | ❌ no per-tenant routing |
@@ -582,7 +582,7 @@ Bucket names follow a predictable `hope-{slug}-{tenantKey}` convention, and `ten
 
 **Fix**: Resolve the requested bucket name to a `TenantBucket` row, verify `tenantBucket.tenantId === requestTenantId`, deny otherwise. Apply to **every** endpoint in `StorageController`, not just upload. Or — cleaner — deprecate `StorageController` entirely and route all client traffic through `TenantBucketController`.
 
-**C4 — STT-v2 does not embed `tenant_id` in object keys and never resolves to tenant bucket**
+**C4 — STT does not embed `tenant_id` in object keys and never resolves to tenant bucket**
 
 See Section 4.5. Two tenants' audio sessions can collide in the same bucket with the same `streams/{sessionId}` prefix (UUIDs are unique in practice but the key is wrong by design — if a tenant gets compromised, attackers can list/exfiltrate `hope-audio/*/streams/*` for every tenant).
 
@@ -700,7 +700,7 @@ Wire into provisioning so new tenant buckets receive lifecycle on creation.
 
 **M2 — No retention/lifecycle policies on temp paths either**
 
-`StoragePathResolver.temp_path()` (`apps/stt-v2/src/stt_v2/storage/path_resolver.py:385-402`) writes to `temp/...` with no TTL.
+`StoragePathResolver.temp_path()` (`apps/stt/src/stt/storage/path_resolver.py:385-402`) writes to `temp/...` with no TTL.
 
 **Fix**: lifecycle rule `temp/*` → 24h expiry.
 
@@ -758,9 +758,9 @@ The shape is known and stable.
 
 **M8 — Storage paths duplicated across TypeScript and Python**
 
-The batch upload path is constructed at `apps/api/src/modules/streaming/transcription-job.controller.ts:185-193`; the same convention is reimplemented at `apps/stt-v2/src/stt_v2/storage/path_resolver.py:33-70`. Drift is inevitable.
+The batch upload path is constructed at `apps/api/src/modules/streaming/transcription-job.controller.ts:185-193`; the same convention is reimplemented at `apps/stt/src/stt/storage/path_resolver.py:33-70`. Drift is inevitable.
 
-**Fix**: define a single source of truth — either a Python-generated TS module (cross-compile) or a small shared schema (e.g. a JSON file consumed by both runtimes), or define paths exclusively in Python and have the TS side proxy through STT-v2 for path generation when needed.
+**Fix**: define a single source of truth — either a Python-generated TS module (cross-compile) or a small shared schema (e.g. a JSON file consumed by both runtimes), or define paths exclusively in Python and have the TS side proxy through STT for path generation when needed.
 
 ### Low
 
@@ -824,8 +824,8 @@ Reordered into a logical sequence (dependencies first). Each step is small enoug
 | R1.2 | Switch `secretAccessKey` to HMAC-SHA256 hash storage; change `validateKey` to compare hashes | service + factory + schema |
 | R1.3 | Add tenant scoping to `StorageController.listFiles` / `getFileInfo` / `deleteFile` / `getBucket` | controller |
 | R1.4 | Reject upload when slug doesn't match tenant bucket (no fallback) | `StorageController.uploadFile` |
-| R1.5 | Embed `tenant_id` in STT-v2 streaming key path | `path_resolver.py` (+ tests) |
-| R1.6 | Update STT-v2 to query `TenantBucket` (or accept bucket name from caller) so audio actually lands in tenant bucket | `path_resolver.py`, batch worker, streaming session |
+| R1.5 | Embed `tenant_id` in STT streaming key path | `path_resolver.py` (+ tests) |
+| R1.6 | Update STT to query `TenantBucket` (or accept bucket name from caller) so audio actually lands in tenant bucket | `path_resolver.py`, batch worker, streaming session |
 
 ### R2 — Fix the small but distracting issues (1 day)
 
@@ -846,7 +846,7 @@ Pick **one** of the following:
 | Option | What | Pros | Cons |
 |---|---|---|---|
 | 3a | Single TypeScript path resolver, compile to a small JSON schema or constants file consumed by Python | Shared source of truth | Build coupling |
-| 3b | Define paths only in Python; have NestJS call an STT-v2 internal endpoint to mint the next key | One owner of the convention | Adds an extra hop on every upload |
+| 3b | Define paths only in Python; have NestJS call an STT internal endpoint to mint the next key | One owner of the convention | Adds an extra hop on every upload |
 | 3c | Shared YAML schema with codegen for both runtimes | Idiomatic in both languages | More tooling |
 
 Recommendation: **3a** — small JSON file under `packages/database/src/prisma/db_main/seed/storage-paths.json` or `packages/types/src/storage-paths.json`, consumed by both `transcription-job.controller.ts` and `path_resolver.py`.
@@ -1097,9 +1097,9 @@ Path convention is owned by **one** file (e.g. `packages/types/src/storage-paths
 | O6 | Tree view | `getBucketTree` fetches full prefix then builds tree client-side | Use delimiter `/` paginated listing; lazy-load children on expand. |
 | O7 | Presigned URLs | Fixed 1-hour expiry (`DEFAULT_PRESIGNED_URL_EXPIRY = 3600`) | Make expiry per-call configurable (download links shouldn't be the same as user-share links). Add `purpose` parameter (download | preview | share). |
 | O8 | Connection reuse | A new `S3Client` per provider instance (one in current code, several in target architecture) | Pool clients per tenant/credentials tuple with LRU eviction (`max=50`, `idle=10m`). |
-| O9 | STT-v2 chunk writes | Every chunk is a separate `put_object` call | Batch chunks into 30-second WAV blobs with multipart upload — fewer round-trips, fewer keys. |
+| O9 | STT chunk writes | Every chunk is a separate `put_object` call | Batch chunks into 30-second WAV blobs with multipart upload — fewer round-trips, fewer keys. |
 | O10 | Read-after-write | Strong consistency assumed for new uploads | Use `If-None-Match: *` + `HeadObject` retries for upload-then-immediate-read paths (e.g. transcription worker picking up just-uploaded file). MinIO is strongly consistent; AWS S3 became strongly consistent in 2020; Azure container read-after-write is strong. Document this assumption. |
-| O11 | STT-v2 Python SDK | `minio` SDK only — cannot use boto3 connection pooling or multipart features cleanly | Migrate Python to a single S3-compatible client (`boto3` or `aioboto3`). This aligns with Refactor R3 and future Azure support. |
+| O11 | STT Python SDK | `minio` SDK only — cannot use boto3 connection pooling or multipart features cleanly | Migrate Python to a single S3-compatible client (`boto3` or `aioboto3`). This aligns with Refactor R3 and future Azure support. |
 
 ---
 
@@ -1116,7 +1116,7 @@ Before implementation begins, please confirm:
 | 5 | **Presigned upload validation**: how do we verify the client actually uploaded what they claimed before creating the `Media` row? | `HeadObject` after `complete` to verify presence + size; ETag check optional. |
 | 6 | **Retention defaults**: are 7d/24h/90d defaults acceptable, or do specific tenants need custom values? | Start with defaults; expose via `setLifecycle()` for tenant-level overrides. |
 | 7 | **Legacy `StorageController`**: deprecate immediately, or harden + deprecate over one release? | Harden first (close C3), deprecate next release. The UI does not use it, but external consumers might. |
-| 8 | **STT-v2 SDK migration**: stay on `minio` SDK and add Azure as a second branch, or move to a unified `aioboto3` + add Azure? | Unified `aioboto3` — same direction as NestJS. |
+| 8 | **STT SDK migration**: stay on `minio` SDK and add Azure as a second branch, or move to a unified `aioboto3` + add Azure? | Unified `aioboto3` — same direction as NestJS. |
 | 9 | **Per-tenant MinIO IAM**: do we automate `mc admin user add` per tenant, or rely entirely on application-layer scoping? | Application-layer is sufficient if R1.3/H3/C3 are fixed. Defer real MinIO IAM until a compliance audit demands it. |
 
 ---

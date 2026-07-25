@@ -10,8 +10,8 @@
 | Component | Status | Port |
 |-----------|--------|------|
 | API Gateway (NestJS) | Running | 8868 |
-| STT-v2 (FastAPI) | Running | 8001 |
-| SMR-v2 (FastAPI) | Stopped | 5006 |
+| STT (FastAPI) | Running | 8001 |
+| SMR (FastAPI) | Stopped | 5006 |
 | Vite Example App | Running | 5173 |
 | Auth User | `super_admin` / `password123` |
 
@@ -235,14 +235,14 @@ All 10 action items from the original gap analysis were implemented using TDD me
 
 | Item | Detail |
 |------|--------|
-| **Files modified** | `apps/api/src/modules/stt-v2/pipeline.controller.ts`, `apps/api/src/modules/stt-v2/stt-v2.module.ts` |
-| **Change** | Added `@Post(':id/assign-tenant')` handler. Verifies pipeline exists, then upserts `GlobalSetting` with key `default-stt-pipeline`, namespace `stt`, and value = pipeline ID for the target tenant. Imported `CoreDatabaseModule` in `stt-v2.module.ts` for Prisma access |
+| **Files modified** | `apps/api/src/modules/stt/pipeline.controller.ts`, `apps/api/src/modules/stt/stt.module.ts` |
+| **Change** | Added `@Post(':id/assign-tenant')` handler. Verifies pipeline exists, then upserts `GlobalSetting` with key `default-stt-pipeline`, namespace `stt`, and value = pipeline ID for the target tenant. Imported `CoreDatabaseModule` in `stt.module.ts` for Prisma access |
 
 ### A10: POST /audio/pipelines/{id}/assign-user
 
 | Item | Detail |
 |------|--------|
-| **Files modified** | `apps/api/src/modules/stt-v2/pipeline.controller.ts` |
+| **Files modified** | `apps/api/src/modules/stt/pipeline.controller.ts` |
 | **Change** | Added `@Post(':id/assign-user')` handler. Verifies pipeline exists, then upserts `UserSettings` with namespace `arcaai-admin`, key `assigned-pipeline`, and value = pipeline ID for the target user. Compatible with `UserPreferencesService.resolveRemoteConfig` which reads this setting |
 
 ---

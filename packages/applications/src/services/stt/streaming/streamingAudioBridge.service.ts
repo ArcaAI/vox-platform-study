@@ -68,7 +68,7 @@ interface ResultSubscriberCtrl {
 /**
  * StreamingAudioBridgeService
  *
- * Bridges WebSocket audio from the API Gateway to STT-V2 via Redis Streams:
+ * Bridges WebSocket audio from the API Gateway to STT via Redis Streams:
  * - Writes audio frames to `stt:audio:{sessionId}` via XADD
  * - Writes control commands to `stt:control:{sessionId}` via XADD
  * - Reads transcription results from `stt:result:{sessionId}` via XREAD
@@ -76,7 +76,7 @@ interface ResultSubscriberCtrl {
  * Uses a dedicated ioredis connection (separate from RedisCacheService)
  * to avoid blocking the main Redis client with XREAD calls.
  *
- * This is a brand-new service for STT-V2 streaming.
+ * This is a brand-new service for STT streaming.
  */
 @Injectable()
 export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestroy {
@@ -217,11 +217,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   // ------------------------------------------------------------------
-  // Audio frame forwarding (Gateway → STT-V2)
+  // Audio frame forwarding (Gateway → STT)
   // ------------------------------------------------------------------
 
   /**
-   * Forward an audio frame to STT-V2 via Redis Streams.
+   * Forward an audio frame to STT via Redis Streams.
    *
    * @param sessionId - Streaming session identifier
    * @param seq - Monotonic sequence number
@@ -268,11 +268,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   // ------------------------------------------------------------------
-  // Control commands (Gateway → STT-V2)
+  // Control commands (Gateway → STT)
   // ------------------------------------------------------------------
 
   /**
-   * Send a control command to STT-V2.
+   * Send a control command to STT.
    *
    * @param sessionId - Streaming session identifier
    * @param action - Control action: finalize, pause, resume, cancel
@@ -294,7 +294,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   // ------------------------------------------------------------------
-  // Result subscription (STT-V2 → Gateway)
+  // Result subscription (STT → Gateway)
   // ------------------------------------------------------------------
 
   /**
@@ -612,7 +612,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * Returns `true` when the entry is a TERMINAL status (`closed`/`cancelled`)
    * so the caller completes the stream. (Parsing unchanged from the XREAD path.)
    *
-   * `finalizing` is NOT terminal: stt-v2 publishes it as a progress marker
+   * `finalizing` is NOT terminal: stt publishes it as a progress marker
    * BEFORE it flushes the tail utterance, so the result-stream order is
    * `finalizing → FINAL → closed` (session_manager `publish_status("finalizing")`
    * precedes `_flush_final_utterance`). Completing on `finalizing` would tear the

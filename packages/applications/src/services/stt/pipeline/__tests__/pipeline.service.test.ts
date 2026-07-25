@@ -213,7 +213,7 @@ describe('PipelineService', () => {
         vi.clearAllMocks();
 
         // Create/update call validateYaml, which now
-        // attempts the stt-v2 remote hop; stub fetch file-wide so unit tests
+        // attempts the stt remote hop; stub fetch file-wide so unit tests
         // never touch the network (specific tests re-stub for remote cases).
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
 
@@ -642,7 +642,7 @@ describe('PipelineService', () => {
     });
 
     describe('validateYaml', () => {
-        // ValidateYaml proxies to stt-v2 for authoritative
+        // ValidateYaml proxies to stt for authoritative
         // validation; unit tests stub fetch (unreachable by default, so the
         // local structural verdict stands).
         beforeEach(() => {
@@ -660,7 +660,7 @@ describe('PipelineService', () => {
             expect(result.errors).toBeUndefined();
         });
 
-        it('surfaces stt-v2 validation errors when the service is reachable', async () => {
+        it('surfaces stt validation errors when the service is reachable', async () => {
             vi.stubGlobal(
                 'fetch',
                 vi.fn().mockResolvedValue({
@@ -680,7 +680,7 @@ describe('PipelineService', () => {
             expect(result.errors?.[0]).toContain('preprocessing.denoise.scope');
         });
 
-        it('accepts the remote verdict when stt-v2 says valid', async () => {
+        it('accepts the remote verdict when stt says valid', async () => {
             const fetchMock = vi.fn().mockResolvedValue({
                 ok: true,
                 json: async () => ({ valid: true, errors: [] }),
@@ -696,7 +696,7 @@ describe('PipelineService', () => {
             );
         });
 
-        it('does not call stt-v2 when local structural checks already fail', async () => {
+        it('does not call stt when local structural checks already fail', async () => {
             const fetchMock = vi.fn();
             vi.stubGlobal('fetch', fetchMock);
 

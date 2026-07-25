@@ -245,7 +245,7 @@ The `08-api-cross-reference.md` matrix tracks 22 endpoint families. Coverage is:
 - 4 families: significant drift (consultation jobs, voice embedding, user settings, pipeline validate, role user-roles).
 - 1 family: SSE auth via query string is cosmetic — `JwtAuthGuard` does not read `?token=`, so SSE in production fails authentication.
 
-Real-time channels: the WebSocket protocol on `/ws/stt-v2/stream` is fully aligned (binary PCM, JSON control messages, transcript normalization). Linear backoff on reconnect (no jitter) is a stability concern under flaky networks.
+Real-time channels: the WebSocket protocol on `/ws/stt/stream` is fully aligned (binary PCM, JSON control messages, transcript normalization). Linear backoff on reconnect (no jitter) is a stability concern under flaky networks.
 
 ### 4.5 State management
 
@@ -347,7 +347,7 @@ These eliminate silent failure modes and resource leaks.
 | W2-9 | **Add `react-server` export condition.** Stub that throws a friendly error from RSC. | S | §1 (research) |
 | W2-10 | **Backpressure on STT in `TranscriptionPipeline.handleVADEvent`.** Bounded queue (e.g., 2 concurrent), drop-and-emit strategy. | S | P-4 (vox) |
 | W2-11 | **Apply `condition_on_previous_text` / sliding-window initial prompt to local Whisper.** Suppress chunk-boundary hallucination. | M | §8.4 (stt), W1-13 |
-| W2-12 | **Backend STT prompt forwarding.** `RemoteSTTProvider` already plumbs `prompt`; verify backend (`apps/stt-v2`) consumes it for biasing. | S | §6 (stt) |
+| W2-12 | **Backend STT prompt forwarding.** `RemoteSTTProvider` already plumbs `prompt`; verify backend (`apps/stt`) consumes it for biasing. | S | §6 (stt) |
 | W2-13 | **Move `localProviderPool` from static field to per-Provider scope.** Avoid cross-test and cross-instance contamination. | S | H-4 (stt) |
 | W2-14 | **Implement `processingMode` in noise-filter** (or remove option). | S | LOW-3 (noise-filter) |
 | W2-15 | **Self-host RNNoise WASM and Silero ONNX assets.** Default to bundled files; document optional CDN override. | M | CRIT-2 (noise-filter), C-1 (vad) |
@@ -425,7 +425,7 @@ This section will be filled in as Wave 0/1 PRs merge. The file table below track
 | `packages/agentic-sdk-v2/src/core/constants.ts` | `ROLE_ENDPOINTS.USER_ROLES` prefix | W0-10 |
 | `packages/agentic-sdk-v2/src/types/common.ts` | Add `FORBIDDEN`, `RATE_LIMITED` codes | W0-11 |
 | `packages/med-ner/src/types/index.ts` & `MedNERProcessor.ts` | Pin model `revision` | W0-12 |
-| `packages/agentic-sdk-v2/src/transports/SttV2WebSocketClient.ts` | Route debug log through `SDKLogger` | W0-13 |
+| `packages/agentic-sdk-v2/src/transports/SttWebSocketClient.ts` | Route debug log through `SDKLogger` | W0-13 |
 
 ### 7.2 Cross-cutting test additions
 

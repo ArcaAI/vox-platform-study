@@ -13,7 +13,7 @@ import { encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
 import { StreamingAudioBridgeService } from '../../stt/streaming/streamingAudioBridge.service';
-import { mapSmrGenerateResponse } from '../summary/smr-v2-generate';
+import { mapSmrGenerateResponse } from '../summary/smr-generate';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
@@ -38,6 +38,15 @@ import {
   type AgenticTranscriptMode,
 } from '../../settings-registry/descriptors/agentic-context.descriptors';
 import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+
+// F-28: defensive caps on the append-only `LiveSession.transcriptParts` buffer.
+// A pathological/runaway session (mic left open past `stop()`) would otherwise
+// grow it unbounded — windowing/truncation (see `bounded transcript cost`)
+// only bounds what's SENT per flush, not the underlying array's growth. WARN
+// once past this many finals (still fully served); refuse to append past the
+// hard cap (protects process memory).
+const TRANSCRIPT_PARTS_WARN_THRESHOLD = 10_000;
+const TRANSCRIPT_PARTS_HARD_CAP = 50_000;
 
 /** Shared SOAP output instruction — describes the four sections for prose-only providers. */
 const SOAP_OUTPUT_INSTRUCTION =
@@ -139,6 +148,10 @@ interface LiveSession {
   userId?: string;
   sessionId?: string;
   transcriptParts: string[];
+  /** F-28: true once a warn-threshold log has fired for `transcriptParts` (fire once, not per-append). */
+  transcriptPartsWarned: boolean;
+  /** F-28: true once a hard-cap-reached error log has fired for `transcriptParts` (fire once, not per-refusal). */
+  transcriptPartsCapLogged: boolean;
   /**
    * Live-folded notes/labs/files, keyed by their `contextItemId` so a
    * soft-delete can drop the exact entry. Insertion order is
@@ -459,6 +472,8 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       userId: params.userId,
       sessionId: params.sessionId,
       transcriptParts: [],
+      transcriptPartsWarned: false,
+      transcriptPartsCapLogged: false,
       contextNotes: [],
       pendingSegments: 0,
       segmentCounter: 0,
@@ -574,7 +589,33 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     const text = segment.text?.trim();
     if (!text) return;
 
+    // F-28: defensive caps — refuse to grow the buffer past the hard cap
+    // (protects process memory on a pathological/runaway session).
+    if (session.transcriptParts.length >= TRANSCRIPT_PARTS_HARD_CAP) {
+      if (!session.transcriptPartsCapLogged) {
+        session.transcriptPartsCapLogged = true;
+        this.logger.error({
+          message: 'transcriptParts hard cap reached — refusing further finals',
+          consultationId,
+          transcriptPartsCount: session.transcriptParts.length,
+          cap: TRANSCRIPT_PARTS_HARD_CAP,
+        });
+      }
+      return;
+    }
+
     session.transcriptParts.push(text);
+
+    if (session.transcriptParts.length > TRANSCRIPT_PARTS_WARN_THRESHOLD && !session.transcriptPartsWarned) {
+      session.transcriptPartsWarned = true;
+      this.logger.warn({
+        message: 'transcriptParts exceeded warn threshold — pathological session?',
+        consultationId,
+        transcriptPartsCount: session.transcriptParts.length,
+        warnThreshold: TRANSCRIPT_PARTS_WARN_THRESHOLD,
+      });
+    }
+
     session.pendingSegments += 1;
     session.segmentCounter += 1;
     session.lastSegmentId = segment.segmentId ?? `seg-${session.segmentCounter}`;

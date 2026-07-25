@@ -433,6 +433,16 @@ class Settings(BaseSettings):
     # HARNESS_LLM_MAX_CONCURRENCY: a hung call now ties up a real slot.
     llm_request_timeout_s: float = 120.0
 
+    # F-19 — assembled-prompt size alarm (``HARNESS_PROMPT_SIZE_WARN_CHARS``).
+    # The doc loop deliberately re-sends the ENTIRE template+transcript prefix on
+    # every regen iteration and never compacts or truncates it: dropping clinical
+    # content to fit a budget is the wrong failure mode. This threshold makes an
+    # oversized prompt VISIBLE instead — above it the ``generate`` activity emits
+    # a structured ``harness.prompt_size_warn`` and generates anyway. 400_000
+    # chars ~= 100k tokens at the chars/4 heuristic, i.e. the point where a long
+    # consultation starts to crowd a 128k-context model.
+    prompt_size_warn_chars: int = 400_000
+
     @property
     def harness_service_token(self) -> SecretStr:
         """The shared ``HARNESS_SERVICE_TOKEN`` (alias of :attr:`service_token`).
@@ -446,7 +456,7 @@ class Settings(BaseSettings):
     # Observability. There is deliberately no ``otel_*`` block here: it would have
     # zero consumers, no TracerProvider/exporter would ever be constructed, and no
     # env file would even reach it — the repo only ever defines bare ``OTEL_*`` vars
-    # for stt-v2/smr, never a ``HARNESS_OTEL_*`` prefix. Prometheus
+    # for stt/smr, never a ``HARNESS_OTEL_*`` prefix. Prometheus
     # metrics + the trajectory spine cover the observability need. ``_add_otel_context``
     # in core/logging.py is kept: it is inert until something installs a provider.
     metrics_enabled: bool = True

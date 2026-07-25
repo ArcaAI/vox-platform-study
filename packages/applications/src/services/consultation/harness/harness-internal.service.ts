@@ -17,11 +17,13 @@ import {
   HarnessAuditAction,
   HighlightRepository,
   ContextItemEntity,
+  ContextItemType,
   TranscriptSegmentRepository,
   McpServerRepository,
   SYSTEM_TENANT_ID,
   ResourceStatusType,
 } from '@arcaai/domains';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { attachSegmentEvidence, extractAndStripSegmentCitationMarkers, type SegmentOffsetRef } from '../lib/transcript-segments';
 import { HarnessAuditService } from '../../harness-audit';
 import { SecretsService } from '../../baseServices/_meta/secrets';
@@ -29,6 +31,12 @@ import { IRedisCacheService } from '../../baseServices/redis';
 import { HarnessAssuranceService } from './harness-assurance.service';
 import { ConfigResolver } from '../../config-resolver';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
+import { EffectiveSettingsService } from '../../settings-registry/effective-settings.service';
+import {
+  AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT,
+  AGENTIC_REVISIT_CARRY_FORWARD_KEY,
+  truncatePriorVisitSummary,
+} from '../../settings-registry/descriptors/agentic-revisit.descriptors';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
@@ -161,6 +169,11 @@ export class HarnessInternalService {
     // `resolveMcpToken`. Optional + trailing; absent ⇒ no token resolves (the
     // fail-closed default: nothing is callable).
     @Optional() @Inject(McpServerRepository) private readonly mcpServerRepository?: McpServerRepository,
+    // Governed read facade for the `agentic.*` control plane — today only
+    // `agentic.revisit.carryForwardEnabled` (F-18). Optional + trailing so
+    // existing positional unit fixtures keep their arity; absent ⇒ the code
+    // default (carry-forward OFF), which is also the fail-safe direction.
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -234,6 +247,88 @@ export class HarnessInternalService {
         error: error instanceof Error ? error.message : String(error),
       });
       return this.warmStartEnvFallback;
+    }
+  }
+
+  /**
+   * Effective re-visit carry-forward decision (F-18).
+   *
+   * Fails SAFE toward OFF in every degraded case (no facade, unknown key,
+   * resolver outage, non-boolean value). That direction is deliberate and is the
+   * opposite of `resolveWarmStartEnabled`'s: warm-start degrades toward its
+   * configured value because losing it only costs quality, whereas carrying a
+   * PRIOR VISIT's content into a new note on the back of a failed governance read
+   * is a clinical-safety regression (SOTA §4.5).
+   */
+  private async resolveRevisitCarryForwardEnabled(tenantId: string): Promise<boolean> {
+    if (!this.effectiveSettings) {
+      return AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT;
+    }
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(AGENTIC_REVISIT_CARRY_FORWARD_KEY, { tenantId });
+      return resolved.value === true || resolved.value === 'true';
+    } catch (error) {
+      this.logger.warn({
+        message: 'agentic.revisit.carryForwardEnabled lookup failed — carry-forward stays OFF for this run',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return AGENTIC_REVISIT_CARRY_FORWARD_DEFAULT;
+    }
+  }
+
+  /**
+   * The prior visit's most authoritative note, or `null`.
+   *
+   * Authority order is `SIGNED_NOTE` → `MODIFIED_SUMMARY` → `RAW_SUMMARY`: a note
+   * the clinician actually signed outranks one they merely edited, which outranks
+   * a raw model draft. Only the FIRST tier that yields anything is used — mixing
+   * tiers would carry a superseded draft alongside the signed note. Within a tier
+   * the newest row wins (`findByType` sorts ascending, so reduce rather than
+   * index).
+   *
+   * Three outcomes that are deliberately NOT the same:
+   *  * Parent ABSENT (deleted, or filtered out by the soft-delete extension) ⇒
+   *    `null`. A tenant deleting last month's consultation must not break this
+   *    month's note generation; there is simply nothing to carry.
+   *  * Parent EXISTS but belongs to another tenant ⇒ THROWS 404 (never 403).
+   *    That is a boundary violation, not a degraded read, and swallowing it would
+   *    hide the one case that actually matters.
+   *  * Anything else (store hiccup) ⇒ `null`. Carry-forward is an enhancement; it
+   *    must never fail a clinician's note generation.
+   *
+   * Content arrives already decrypted (repository decrypt-on-read) and is capped
+   * before it leaves this method, so an oversized prior note can never reach the
+   * assembler unbounded.
+   */
+  private async loadPriorVisitSummary(parentConsultationId: string, tenantId: string): Promise<string | null> {
+    // Outside the try: a cross-tenant parent must surface as 404, not be swallowed.
+    const parent = await this.consultationRepository.findById(parentConsultationId).catch(() => null);
+    if (!parent) {
+      this.logger.debug({
+        message: 'Re-visit parent consultation is absent or removed — nothing to carry forward',
+        consultationId: parentConsultationId,
+      });
+      return null;
+    }
+    assertEqualTenants(parent, { tenantId });
+
+    try {
+      for (const type of [ContextItemType.SIGNED_NOTE, ContextItemType.MODIFIED_SUMMARY, ContextItemType.RAW_SUMMARY]) {
+        const items = (await this.contextItemRepository.findByType(parentConsultationId, type)) ?? [];
+        const usable = items.filter((item) => item?.content?.trim());
+        if (usable.length === 0) continue;
+        const newest = usable.reduce((a, b) => (a.createdAt >= b.createdAt ? a : b));
+        return truncatePriorVisitSummary(newest.content!.trim());
+      }
+      return null;
+    } catch (error) {
+      this.logger.warn({
+        message: 'Prior-visit summary lookup failed — the re-visit prompt proceeds without carry-forward',
+        consultationId: parentConsultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
     }
   }
 
@@ -450,6 +545,15 @@ export class HarnessInternalService {
       // through) when ConfigResolver is unwired (legacy fixtures).
       const effectiveDnaStyleId = await this.resolveEffectiveDnaStyleId(tenantId, consultation?.departmentId, consultation?.doctorId, dto.dnaStyleId);
 
+      // Re-visit carry-forward (F-18). Both conditions are load-bearing: a first
+      // visit has nothing to carry, and a deployment that has not opted in must
+      // behave exactly as before. Short-circuited so neither case pays for the
+      // governance read or the context query.
+      const priorVisitSummary =
+        consultation?.parentConsultationId && (await this.resolveRevisitCarryForwardEnabled(tenantId))
+          ? await this.loadPriorVisitSummary(consultation.parentConsultationId, tenantId)
+          : null;
+
       const assembled = await this.promptAssemblyService.assemble({
         // Explicit tenant so prompt assembly resolves the SAME
         // effective warm-start policy this method just gated the snapshot on
@@ -467,6 +571,11 @@ export class HarnessInternalService {
         attachments,
         highlights,
         preSummaryText: liveSnapshot?.content ?? undefined,
+        // Spread rather than `?? undefined` so the key is ABSENT (not present-
+        // and-undefined) when carry-forward is off — the assembler's regression
+        // lock is "no such param", and an explicit undefined would still show up
+        // in a caller assertion.
+        ...(priorVisitSummary ? { priorVisitSummary } : {}),
       });
 
       const promptTemplateId = assembled.promptId ?? null;
@@ -744,36 +853,17 @@ export class HarnessInternalService {
         const alreadySigned = consultation?.status === ConsultationStatus.SIGNED;
 
         // 1. Backfill the early-persisted SummaryMeta with the inferential verdict.
-        // Fail-closed: no meta ⇒ no early draft to finalize (contract violation).
-        const meta = await this.summaryMetaRepository.findByContextItem(dto.contextItemId);
-        if (!meta) {
-          throw new BadRequestException(
-            `No draft SummaryMeta for contextItem ${dto.contextItemId} — finalizeAssurance requires a prior early persist`,
-          );
-        }
-        meta.ragTriadScore = dto.ragTriadScore ?? null;
-        // Read back whatever the EARLY persist already carried forward —
-        // ONLY `segmentCitedIds` ever survives on the early meta (persistDraft
-        // withholds everything else) — BEFORE it gets overwritten below.
-        const earlyCitedSegmentIds = HarnessInternalService.readSegmentCitedIds(meta.citationsMap as Record<string, unknown> | null | undefined);
-        // enrich the (now-arriving) verdict citation map with segment
-        // provenance before it is persisted + encrypted, then re-merge the EARLY
-        // phase's `[[seg:]]`-cited ids so they are never dropped on the floor
-        // (mirrors the LEGACY single-shot merge in persistDraft).
-        const enrichedCitationsMap = this.mergeSegmentCitedIds(
-          await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null),
-          earlyCitedSegmentIds,
-        );
-        meta.citationsMap = (enrichedCitationsMap ?? null) as never;
-        meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
-        meta.gateDecision = dto.gateDecision ?? null;
-        meta.assuranceCompletedAt = new Date();
-        // The EARLY persist wrote these JSONB blobs as NULL
-        // (verdict withheld); this finalize is where citationsMap/guardrailDecisions
-        // actually get their values, so re-encrypt here (after the backfill, before
-        // the update) to keep the ciphertext columns in sync with the plaintext.
-        await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(meta, this.secretsService!));
-        await this.summaryMetaRepository.update(meta.id, meta);
+        //
+        // This is a read-modify-write against a row `persistDraft` created moments
+        // earlier, so it is guarded by COMPARE-AND-SET on `SummaryMeta._version`
+        // (F-11) rather than a blind `update`. On drift the row is re-read once and
+        // the backfill re-applied: both phases are idempotent (the verdict comes
+        // from `dto`, not from the row), so a retry re-derives the same result from
+        // the fresher row instead of clobbering whatever moved it. A SECOND
+        // conflict is not retried — that is a genuine contention signal and the
+        // caller (a Temporal activity with its own bounded retry policy) is the
+        // right place to back off.
+        await this.applyAssuranceBackfillWithCas(consultationId, tenantId, dto);
 
         // 2. Lifecycle DRAFT_PENDING_SENSORS -> PENDING_REVIEW (idempotent — a retry
         // after the flip is a no-op, never regressing a signed/closed consultation).
@@ -889,6 +979,63 @@ export class HarnessInternalService {
         return { recorded: true, contextItemId: dto.contextItemId };
       }),
     );
+  }
+
+  /**
+   * The `finalizeAssurance` SummaryMeta backfill, as a compare-and-set with one
+   * retry (F-11).
+   *
+   * Factored out of `finalizeAssurance` because the retry has to re-run the WHOLE
+   * read-modify sequence, not just the write: the re-read returns a fresh entity
+   * with fresh change-tracking, so re-applying the verdict to the STALE entity
+   * would send a change set computed against a row that no longer exists.
+   *
+   * Fail-closed on a missing meta (no early draft to finalize = contract
+   * violation) exactly as before.
+   */
+  private async applyAssuranceBackfillWithCas(consultationId: string, tenantId: string, dto: HarnessFinalizeAssuranceRequest): Promise<void> {
+    const attempt = async (): Promise<void> => {
+      const meta = await this.summaryMetaRepository.findByContextItem(dto.contextItemId);
+      if (!meta) {
+        throw new BadRequestException(`No draft SummaryMeta for contextItem ${dto.contextItemId} — finalizeAssurance requires a prior early persist`);
+      }
+
+      meta.ragTriadScore = dto.ragTriadScore ?? null;
+      // Read back whatever the EARLY persist already carried forward —
+      // ONLY `segmentCitedIds` ever survives on the early meta (persistDraft
+      // withholds everything else) — BEFORE it gets overwritten below.
+      const earlyCitedSegmentIds = HarnessInternalService.readSegmentCitedIds(meta.citationsMap as Record<string, unknown> | null | undefined);
+      // enrich the (now-arriving) verdict citation map with segment
+      // provenance before it is persisted + encrypted, then re-merge the EARLY
+      // phase's `[[seg:]]`-cited ids so they are never dropped on the floor
+      // (mirrors the LEGACY single-shot merge in persistDraft).
+      const enrichedCitationsMap = this.mergeSegmentCitedIds(
+        await this.enrichCitationsWithSegments(consultationId, tenantId, dto.citationsMap ?? null),
+        earlyCitedSegmentIds,
+      );
+      meta.citationsMap = (enrichedCitationsMap ?? null) as never;
+      meta.guardrailDecisions = (dto.guardrailDecisions ?? null) as never;
+      meta.gateDecision = dto.gateDecision ?? null;
+      meta.assuranceCompletedAt = new Date();
+      // The EARLY persist wrote these JSONB blobs as NULL
+      // (verdict withheld); this finalize is where citationsMap/guardrailDecisions
+      // actually get their values, so re-encrypt here (after the backfill, before
+      // the update) to keep the ciphertext columns in sync with the plaintext.
+      await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(meta, this.secretsService!));
+      await this.summaryMetaRepository.updateWithVersion(meta.id, meta, meta.version ?? 1);
+    };
+
+    try {
+      await attempt();
+    } catch (error) {
+      if (!(error instanceof OptimisticConcurrencyException)) throw error;
+      this.logger.warn({
+        message: 'SummaryMeta assurance backfill lost a compare-and-set — re-reading and retrying once',
+        consultationId,
+        contextItemId: dto.contextItemId,
+      });
+      await attempt();
+    }
   }
 
   /**

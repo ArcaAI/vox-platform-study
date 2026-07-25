@@ -79,9 +79,9 @@ build-stt:
 **Change A** — Remove `stt` from default python-services (line 38):
 ```yaml
 # Before
-default: 'smr,stt,stt-v2,tts,nlp'
+default: 'smr,stt,stt,tts,nlp'
 # After
-default: 'smr,stt-v2,tts,nlp'
+default: 'smr,stt,tts,nlp'
 ```
 
 **Change B** — Remove `apps/stt/**/*.py` from PR paths (line 50):
@@ -163,7 +163,7 @@ default: 'smr,stt-v2,tts,nlp'
 
 **File**: `.env.dev`
 
-**Action**: Remove the STT v1 block (lines 111–119). Keep Azure Speech and STT-V2 variables.
+**Action**: Remove the STT v1 block (lines 111–119). Keep Azure Speech and STT variables.
 
 **Before** (lines 111–128):
 ```env
@@ -180,8 +180,8 @@ STT_PROVIDER=azure
 AZURE_SPEECH_KEY=<CHANGE_ME>-your-azure-speech-key
 AZURE_SPEECH_REGION=eastus
 
-# STT-V2 service URL (apps/stt-v2)
-STT_V2_URL=http://localhost:8001
+# STT service URL (apps/stt)
+STT_URL=http://localhost:8001
 
 # STT-specific MinIO bucket
 STT_MINIO_BUCKET=recordings
@@ -190,14 +190,14 @@ STT_MINIO_BUCKET=recordings
 **After**:
 ```env
 # =============================================================================
-# STT SERVICE (apps/stt-v2) - Speech-to-Text V2
+# STT SERVICE (apps/stt) - Speech-to-Text V2
 # =============================================================================
-# Azure Speech Service (used by STT-V2)
+# Azure Speech Service (used by STT)
 AZURE_SPEECH_KEY=<CHANGE_ME>-your-azure-speech-key
 AZURE_SPEECH_REGION=eastus
 
-# STT-V2 service URL (apps/stt-v2)
-STT_V2_URL=http://localhost:8001
+# STT service URL (apps/stt)
+STT_URL=http://localhost:8001
 
 # STT-specific MinIO bucket
 STT_MINIO_BUCKET=recordings
@@ -209,7 +209,7 @@ STT_MINIO_BUCKET=recordings
 
 **File**: `.env.example`
 
-**Action**: Remove the STT v1 block (lines 115–129). Keep Azure Speech and STT-V2 variables.
+**Action**: Remove the STT v1 block (lines 115–129). Keep Azure Speech and STT variables.
 
 **Before** (lines 115–133):
 ```env
@@ -222,7 +222,7 @@ STT_URL=http://localhost:5003
 STT_WS_URL=ws://localhost:5003/ws/stt
 STT_PROVIDER=azure
 
-# Azure Speech Service (shared with STT-V2)
+# Azure Speech Service (shared with STT)
 AZURE_SPEECH_KEY=<CHANGE_ME>-your-azure-speech-key
 AZURE_SPEECH_REGION=eastus
 
@@ -230,16 +230,16 @@ AZURE_SPEECH_REGION=eastus
 STT_MINIO_BUCKET=recordings
 
 # =============================================================================
-# STT-V2 SERVICE (apps/stt-v2) - Speech-to-Text V2
+# STT SERVICE (apps/stt) - Speech-to-Text V2
 ```
 
 **After**:
 ```env
 # =============================================================================
-# STT SERVICE (apps/stt-v2) - Speech-to-Text V2
+# STT SERVICE (apps/stt) - Speech-to-Text V2
 ```
 
-(The STT-V2 section header replaces the v1 section, and the Azure keys move under v2.)
+(The STT section header replaces the v1 section, and the Azure keys move under v2.)
 
 ---
 
@@ -312,7 +312,7 @@ All tasks in this phase can be executed in parallel.
 # Before
 stt/          Legacy STT service (deprecated)
 # After - remove the line entirely or replace with:
-stt-v2/       Speech-to-Text service
+stt/       Speech-to-Text service
 ```
 
 ---
@@ -321,7 +321,7 @@ stt-v2/       Speech-to-Text service
 
 **File**: `docs/project-structure.md`
 
-**Action**: Remove the `### STT Service (apps/stt/)` section. Ensure the STT v2 section remains.
+**Action**: Remove the `### STT Service (apps/stt/)` section. Ensure the STT section remains.
 
 ---
 
@@ -339,7 +339,7 @@ stt-v2/       Speech-to-Text service
 
 **File**: `docs/project-brief.md`
 
-**Action**: Remove references to `apps/stt/docs/` paths (lines 51–54). Replace with `apps/stt-v2/` equivalents if they exist.
+**Action**: Remove references to `apps/stt/docs/` paths (lines 51–54). Replace with `apps/stt/` equivalents if they exist.
 
 ---
 
@@ -347,7 +347,7 @@ stt-v2/       Speech-to-Text service
 
 **File**: `docs/README.md`
 
-**Action**: Remove the link `**[STT Service Documentation](../apps/stt/README.md)**` (line 49). Replace with a link to `apps/stt-v2/README.md`.
+**Action**: Remove the link `**[STT Service Documentation](../apps/stt/README.md)**` (line 49). Replace with a link to `apps/stt/README.md`.
 
 ---
 
@@ -355,7 +355,7 @@ stt-v2/       Speech-to-Text service
 
 **File**: `docs/CONSULTATION_WORKFLOW.md`
 
-**Action**: Update reference at line 1050 from `apps/stt/` to `apps/stt-v2/`.
+**Action**: Update reference at line 1050 from `apps/stt/` to `apps/stt/`.
 
 ---
 
@@ -363,7 +363,7 @@ stt-v2/       Speech-to-Text service
 
 **File**: `docs/QUALITY_CONTROL.md`
 
-**Action**: Change `apps/stt/**/*.py` to `apps/stt-v2/**/*.py` at line 687.
+**Action**: Change `apps/stt/**/*.py` to `apps/stt/**/*.py` at line 687.
 
 ---
 
@@ -388,7 +388,7 @@ stt-v2/       Speech-to-Text service
 
 **File**: `knowledge/architecture/infrastructure.md`
 
-**Action**: Change `apps/stt/**/*.py` to `apps/stt-v2/**/*.py` at line 143.
+**Action**: Change `apps/stt/**/*.py` to `apps/stt/**/*.py` at line 143.
 
 ---
 
@@ -455,7 +455,7 @@ stt-v2/       Speech-to-Text service
 
 **File**: `packages/stt/src/websocket/WebSocketClient.ts`
 
-**Action**: Update the comment at line 5 that references `apps/stt/src/stt/api/handlers/websocket.py`. Change to reference the stt-v2 equivalent path if applicable, or remove the comment.
+**Action**: Update the comment at line 5 that references `apps/stt/src/stt/api/handlers/websocket.py`. Change to reference the stt equivalent path if applicable, or remove the comment.
 
 ---
 
@@ -464,11 +464,11 @@ stt-v2/       Speech-to-Text service
 After all phases are complete, verify:
 
 1. **Directory deleted**: `apps/stt/` no longer exists
-2. **No broken CI/CD**: Run `grep -r "apps/stt/" .github/ .gitlab-ci.yml` — should return zero v1 results (only `apps/stt-v2/` hits)
+2. **No broken CI/CD**: Run `grep -r "apps/stt/" .github/ .gitlab-ci.yml` — should return zero v1 results (only `apps/stt/` hits)
 3. **No broken env configs**: `grep -n "STT_HOST\|STT_PORT=5003\|STT_URL=http://localhost:5003\|STT_WS_URL\|STT_PROVIDER" .env.dev .env.example` — should return zero results
 4. **No broken PM2**: `grep "apps/stt" ecosystem.config.js` — should return zero results (no v1 references)
 5. **No orphaned docs**: `grep -r "apps/stt/" docs/ knowledge/ --include="*.md"` — should return zero v1 results
-6. **stt-v2 untouched**: `git diff apps/stt-v2/` — should show zero changes
+6. **stt untouched**: `git diff apps/stt/` — should show zero changes
 7. **Cursor rules clean**: `grep -r "apps/stt/" .cursor/rules/` — should return zero v1 results
 
 ---

@@ -110,7 +110,7 @@ describe('SmrProxyController', () => {
   });
 
   describe('POST /text/generate', () => {
-    it('should proxy synchronous generation to SMR v2', async () => {
+    it('should proxy synchronous generation to SMR', async () => {
       const smrResponse = {
         data: {
           task_id: 'task-1',
@@ -456,7 +456,7 @@ describe('SmrProxyController', () => {
   });
 
   describe('GET /text/tasks/:taskId', () => {
-    it('should proxy task status request to SMR v2', async () => {
+    it('should proxy task status request to SMR', async () => {
       const taskResponse = {
         data: {
           task_id: 'task-1',
@@ -566,7 +566,7 @@ describe('SmrProxyController', () => {
   });
 
   describe('POST /text/tasks/:taskId/cancel', () => {
-    it('should proxy cancel request to SMR v2', async () => {
+    it('should proxy cancel request to SMR', async () => {
       const cancelResponse = {
         data: { task_id: 'task-1', status: 'cancelled' },
       };
@@ -593,7 +593,7 @@ describe('SmrProxyController', () => {
   });
 
   describe('POST /text/generate with structured output', () => {
-    it('should forward json response_format to SMR v2', async () => {
+    it('should forward json response_format to SMR', async () => {
       const smrResponse = {
         data: {
           task_id: 'task-json-1',
@@ -620,7 +620,7 @@ describe('SmrProxyController', () => {
       );
     });
 
-    it('should forward json_schema response_format to SMR v2', async () => {
+    it('should forward json_schema response_format to SMR', async () => {
       const smrResponse = {
         data: {
           task_id: 'task-schema-1',
@@ -659,7 +659,7 @@ describe('SmrProxyController', () => {
       );
     });
 
-    it('should forward streaming request with json_schema to SMR v2', async () => {
+    it('should forward streaming request with json_schema to SMR', async () => {
       const smrResponse = {
         data: {
           task_id: 'task-stream-schema-1',

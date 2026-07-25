@@ -55,7 +55,7 @@ Work was organized into 4 independent streams with a final integration gate:
 - Restructured Local Processing to pipeline order: Audio → Noise Cancellation → VAD → Voice Embedding → Transcription → NER
 - Added diarization auto-indicator when both VAD and Voice Embedding are active
 - Voice sample capture embedded inline within personalization (when Voice Embedding model selected)
-- Remote Processing section made read-only (no pipeline selector), service names: API, STT-V2, SMR-V2, NLP
+- Remote Processing section made read-only (no pipeline selector), service names: API, STT, SMR, NLP
 - Created IndexedDB voice cache (`voice-cache.ts`) with graceful degradation for unavailable environments
 - Added `noneOption` prop to `@arcaai/ui` `ModelSelector` component
 

@@ -12,7 +12,7 @@
 
 The backend produces per-segment speaker attribution but the label is dropped before rendering. The chain (per the TASK-474 review, code-verified):
 
-- **Emit (backend, OK)**: `apps/stt-v2/.../streaming/schemas.py:182-184` serializes `speaker_id`.
+- **Emit (backend, OK)**: `apps/stt/.../streaming/schemas.py:182-184` serializes `speaker_id`.
 - **Wire (gap)**: the gateway relay **type-erases** the field (does NOT strip it — a correction to the earlier imprecise "gateway drops speaker data"), but there is **no `speakerLabel` field on the streaming wire DTO** — `packages/applications/.../stt/streaming/dto/streaming-session.dto.ts:103-138` has no speaker/label field.
 - **Derive (inconsistent)**: an id→label derivation exists in the vox path (`packages/agentic-sdk-v2/.../useArcaAudio.ts:146`, raw-id copy) but **not** in the admin frame-51 hook (`use-live-stt-session.ts:193`) → the **default admin streaming tab renders no speaker**.
 - **Dead code**: the realtime forwarder `transcriptionRealtime.service.ts:267-296` (`emitTranscriptEvent`) is unused/dead.
@@ -55,16 +55,16 @@ The label now travels **wire → derive → render** with a single server-side m
 - `services/stt/realtime/{transcriptionRealtime.service.ts,ITranscriptionRealtimeService.ts}` — dead `emitTranscriptEvent` removed (AC-4).
 
 **`@arcaai/vox`** (SDK consumer — no source change needed)
-- `SttV2WebSocketClient.normalizeTranscript` already normalizes `speakerLabel` (camelCase + snake_case) off the wire, so the bridge-derived label flows straight through. Added a contract-lock test.
+- `SttWebSocketClient.normalizeTranscript` already normalizes `speakerLabel` (camelCase + snake_case) off the wire, so the bridge-derived label flows straight through. Added a contract-lock test.
 
 **`@arcaai/admin-console`** (admin surfacing — the default clinician surface)
 - `features/playground-live-transcription/api/types.ts` — `WsTranscriptPayload` mirror gains `speakerId?`.
 - `features/playground-live-transcription/api/use-live-stt-session.ts` — `speakerLabel: result.speakerLabel ?? result.speakerId` (AC-2 fallback).
 - `features/playground-live-transcription/components/streaming-tab.tsx` — `TranscriptPane` exported for the render test (render logic unchanged; already prints the label prefix).
 
-**Tests (RED→GREEN):** `speaker-label.test.ts` (derive), `streamingAudioBridge.service.test.ts` (wire — `Speaker 0` + `unknown` sentinel), `SttV2WebSocketClient.test.ts` (SDK carry), `use-live-stt-session.test.tsx` (derive→row + fallback), `streaming-tab.test.tsx` (render prefix / absent).
+**Tests (RED→GREEN):** `speaker-label.test.ts` (derive), `streamingAudioBridge.service.test.ts` (wire — `Speaker 0` + `unknown` sentinel), `SttWebSocketClient.test.ts` (SDK carry), `use-live-stt-session.test.tsx` (derive→row + fallback), `streaming-tab.test.tsx` (render prefix / absent).
 
-**Gates:** applications `build`+`lint`(0 err)+`test`(5974 pass; 2 pre-existing `stt-v1-config-removal` TTS_URL failures from the base `feat(tts-v2)` commit, unrelated); vox `build`+`test`(3532)+`lint`(0 err)+`typecheck`; admin-console `build`(✓ compiled)+`lint`(`--max-warnings 0`)+`test`(846). Diarization untouched and OFF by default.
+**Gates:** applications `build`+`lint`(0 err)+`test`(5974 pass; 2 pre-existing `stt-v1-config-removal` TTS_URL failures from the base `feat(tts)` commit, unrelated); vox `build`+`test`(3532)+`lint`(0 err)+`typecheck`; admin-console `build`(✓ compiled)+`lint`(`--max-warnings 0`)+`test`(846). Diarization untouched and OFF by default.
 
 **Deviation (reported → interim-resolved 2026-07-11):** the vox `useArcaAudio.ts:146` raw-id copy (`speakerLabel: result.speakerId`) now applies the canonical label SEMANTICS locally. A small `deriveSpeakerLabel` mirror of `@arcaai/applications`' canonical helper (`"unknown"` → `"Unknown speaker"`, anonymous `"Speaker N"` pass-through, empty/missing → no label; never fabricates a name) replaces the raw copy, so the vox path no longer surfaces the `"unknown"` no-confident-match sentinel to the clinician verbatim. The FULL "derive once / read off the wire" consolidation still requires threading the bridge-derived `speakerLabel` through the separate `@arcaai/stt` `StreamingBackendSTTProvider` → vox `TranscriptionResult` pipeline (a package outside this ticket's manifest + gate set) — that stays the follow-up; until it lands the vox path re-derives locally with identical semantics (a different STT route than the admin wire→derive→render path, so the landed contract is untouched). The default admin surface (the ticket's target) is fully consolidated. **Status stays Review** because the wire-level vox consolidation remains open.
 

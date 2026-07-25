@@ -15,15 +15,15 @@ is what looks like "gating running so many times". See [Appendix 01 §4](./01-wo
 
 | Layer | Where | What | Default state |
 |---|---|---|---|
-| 1 | SMR pre-generation gate | "is this medical content?" before every generate | **OFF** (`SMR_V2_EXTERNAL_GUARDRAIL_ENABLED=false`; not enabled in dev) |
+| 1 | SMR pre-generation gate | "is this medical content?" before every generate | **OFF** (`SMR_EXTERNAL_GUARDRAIL_ENABLED=false`; not enabled in dev) |
 | 2 | Guardrail service (:8863) | medical validate (Granite) + content safety/PII/prompt-injection (GLiNER ONNX) | service of Layer 1 + direct callers |
 | 3 | Harness computational sensors | 5 deterministic checks, pure Python | always, every regen iteration (~0 cost) |
 | 4 | Harness inferential sensors | groundedness + citation_verify + safety (LLM judge + Granite) | always (safety per policy) — **THE expensive layer** |
-| 5 | AWS Bedrock native guardrail | inline `guardrailConfig` on Bedrock converse | only when `SMR_V2_BEDROCK_GUARDRAIL_ID` set |
+| 5 | AWS Bedrock native guardrail | inline `guardrailConfig` on Bedrock converse | only when `SMR_BEDROCK_GUARDRAIL_ID` set |
 
 ### Layer 1 — SMR pre-generation gate (per generate call)
 
-`apps/smr/src/smr_v2/api/endpoints/generate.py:132–142` → `POST {guardrail}/api/medical/validate` (client: `services/external_guardrail.py`). Checks `{is_medical, confidence, context_type}`; rejects 422 if `require_medical` and not medical. Knobs: `SMR_V2_EXTERNAL_GUARDRAIL_ENABLED` (default `false`), `_FAIL_OPEN` (default `false` = fail-closed), `_REQUIRE_MEDICAL` (default `true`), `_TIMEOUT_S` (10 s). **Frequency when enabled:** 1× per SMR generate → on the harness path that is 1–3× per workflow (regen loop) **plus** every live flush (every 3 segments / 5 s idle) on the live path. Payload: full concatenated system+user prompt. Serial, blocking, before generation.
+`apps/smr/src/smr/api/endpoints/generate.py:132–142` → `POST {guardrail}/api/medical/validate` (client: `services/external_guardrail.py`). Checks `{is_medical, confidence, context_type}`; rejects 422 if `require_medical` and not medical. Knobs: `SMR_EXTERNAL_GUARDRAIL_ENABLED` (default `false`), `_FAIL_OPEN` (default `false` = fail-closed), `_REQUIRE_MEDICAL` (default `true`), `_TIMEOUT_S` (10 s). **Frequency when enabled:** 1× per SMR generate → on the harness path that is 1–3× per workflow (regen loop) **plus** every live flush (every 3 segments / 5 s idle) on the live path. Payload: full concatenated system+user prompt. Serial, blocking, before generation.
 
 ### Layer 2 — Guardrail service endpoints (`apps/guardrail`, :8863)
 
@@ -54,7 +54,7 @@ Runs **once per loop exit** (after computational sensors settle), re-runs fully 
 
 ### Layer 5 — Bedrock native guardrail
 
-`apps/smr/src/smr_v2/providers/bedrock.py:75–79` — `guardrailConfig` attached to `converse` when `SMR_V2_BEDROCK_GUARDRAIL_ID` set. Inline, ~0 extra latency, AWS-side.
+`apps/smr/src/smr/providers/bedrock.py:75–79` — `guardrailConfig` attached to `converse` when `SMR_BEDROCK_GUARDRAIL_ID` set. Inline, ~0 extra latency, AWS-side.
 
 ### PHI guard — wired but NOT in the execution path ⚠
 

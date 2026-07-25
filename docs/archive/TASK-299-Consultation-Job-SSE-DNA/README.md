@@ -375,7 +375,7 @@ non-owners already see for genuinely missing jobs.
 |---|---|---|
 | Applications full | `pnpm --filter @arcaai/applications exec vitest run` | **138 files / 3828 tests passed** |
 | API full | `pnpm --filter @arcaai/api exec vitest run` | **47 files / 1125 tests passed** |
-| SDK full | `pnpm --filter @arcaai/vox exec vitest run` | **120 files / 2845 tests passed**, 10 pre-existing failures in `SttV2WebSocketClient` (TASK-298 scope) + `agenticStore` (TASK-297 scope) — unrelated to TASK-299 changes (see §6.4). |
+| SDK full | `pnpm --filter @arcaai/vox exec vitest run` | **120 files / 2845 tests passed**, 10 pre-existing failures in `SttWebSocketClient` (TASK-298 scope) + `agenticStore` (TASK-297 scope) — unrelated to TASK-299 changes (see §6.4). |
 
 | Focused suite | Result |
 |---|---|

@@ -34,10 +34,10 @@ export type TenantOwnedResourceModelName =
   // live-summary SSE route — repo.findById(id), tenant-scoped.
   | 'Consultation'
   | 'TranscriptionJob'
-  // Opaque STT-V2 streaming session. The
+  // Opaque STT streaming session. The
   // interceptor resolves the sessionId → tenantId mapping through
   // `StreamSessionTenantBindingService`, NOT a Prisma repository — the
-  // session row lives in STT-V2 / Redis, not the API gateway DB.
+  // session row lives in STT / Redis, not the API gateway DB.
   | 'StreamSession';
 
 export interface TenantOwnedResourceOptions {

@@ -29,11 +29,11 @@ Three SMR dashboards already exist as JSON files in the repository.
 
 ```bash
 # From your local machine or the repo
-scp infrastructure/grafana/dashboards/smr-v2-overview.json \
+scp infrastructure/grafana/dashboards/smr-overview.json \
     hope@10.10.1.100:/opt/observability/configs/grafana/dashboards/
-scp infrastructure/grafana/dashboards/smr-v2-resilience.json \
+scp infrastructure/grafana/dashboards/smr-resilience.json \
     hope@10.10.1.100:/opt/observability/configs/grafana/dashboards/
-scp infrastructure/grafana/dashboards/smr-v2-security.json \
+scp infrastructure/grafana/dashboards/smr-security.json \
     hope@10.10.1.100:/opt/observability/configs/grafana/dashboards/
 ```
 
@@ -42,9 +42,9 @@ Grafana auto-discovers new JSON files (configured with `updateIntervalSeconds: 3
 ### Step 1.2 — Verify
 
 Open Grafana → Dashboards → HOPE folder. Three SMR dashboards should appear:
-- SMR V2 Overview
-- SMR V2 Resilience
-- SMR V2 Security
+- SMR Overview
+- SMR Resilience
+- SMR Security
 
 ---
 
@@ -81,7 +81,7 @@ Open Grafana → Dashboards → HOPE folder. Three SMR dashboards should appear:
 | Row | Panel | Datasource | Query | Visualization |
 |-----|-------|-----------|-------|---------------|
 | 1 | API Status | Prometheus | `up{job="api-gateway"}` | Stat (value mapping: 1=green "UP", 0=red "DOWN") |
-| 1 | STT Status | Prometheus | `up{job="stt-v2"}` | Stat |
+| 1 | STT Status | Prometheus | `up{job="stt"}` | Stat |
 | 1 | SMR Status | Prometheus | `up{job="smr"}` | Stat |
 | 1 | NLP Status | Prometheus | `up{job="nlp"}` | Stat |
 | 1 | DB Status | Prometheus | `min(up{job="postgres-exporter"})` | Stat |
@@ -163,18 +163,18 @@ Open Grafana → Dashboards → HOPE folder. Three SMR dashboards should appear:
 
 | Panel | Datasource | Query | Visualization |
 |-------|-----------|-------|---------------|
-| STT P95 Latency | Prometheus | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="stt-v2"}[5m]))` | Time series |
-| SMR Token Throughput | Prometheus | `rate(smr_v2_tokens_total[5m])` | Time series |
-| SMR Time to First Token | Prometheus | `histogram_quantile(0.95, rate(smr_v2_time_to_first_token_seconds_bucket[5m]))` | Time series |
+| STT P95 Latency | Prometheus | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="stt"}[5m]))` | Time series |
+| SMR Token Throughput | Prometheus | `rate(smr_tokens_total[5m])` | Time series |
+| SMR Time to First Token | Prometheus | `histogram_quantile(0.95, rate(smr_time_to_first_token_seconds_bucket[5m]))` | Time series |
 | NLP Classification Time | Prometheus | `histogram_quantile(0.95, rate(nlp_http_request_duration_seconds_bucket[5m]))` | Time series |
-| SMR Active Generations | Prometheus | `smr_v2_active_generations` | Gauge |
-| SMR Circuit Breaker State | Prometheus | `smr_v2_circuit_breaker_state` by provider | Stat (mapping: 0=Closed/green, 1=Open/red, 2=Half-open/yellow) |
-| SMR Queue Depth | Prometheus | `smr_v2_queue_size` | Time series |
-| SMR Generation Errors | Prometheus | `rate(smr_v2_generation_errors_total[5m])` by error_type | Time series |
-| SMR Provider Health | Prometheus | `smr_v2_provider_health` by provider | Stat (1=healthy, 0=unhealthy) |
-| SMR Rate Limit Rejections | Prometheus | `rate(smr_v2_rate_limit_rejections_total[5m])` | Time series |
-| SMR Queue Wait Time | Prometheus | `histogram_quantile(0.95, rate(smr_v2_queue_wait_seconds_bucket[5m]))` | Time series |
-| SMR Concurrent Requests | Prometheus | `smr_v2_concurrent_requests` by provider | Time series |
+| SMR Active Generations | Prometheus | `smr_active_generations` | Gauge |
+| SMR Circuit Breaker State | Prometheus | `smr_circuit_breaker_state` by provider | Stat (mapping: 0=Closed/green, 1=Open/red, 2=Half-open/yellow) |
+| SMR Queue Depth | Prometheus | `smr_queue_size` | Time series |
+| SMR Generation Errors | Prometheus | `rate(smr_generation_errors_total[5m])` by error_type | Time series |
+| SMR Provider Health | Prometheus | `smr_provider_health` by provider | Stat (1=healthy, 0=unhealthy) |
+| SMR Rate Limit Rejections | Prometheus | `rate(smr_rate_limit_rejections_total[5m])` | Time series |
+| SMR Queue Wait Time | Prometheus | `histogram_quantile(0.95, rate(smr_queue_wait_seconds_bucket[5m]))` | Time series |
+| SMR Concurrent Requests | Prometheus | `smr_concurrent_requests` by provider | Time series |
 
 ---
 
@@ -273,7 +273,7 @@ For each rule, set:
 | Rule | Expression | For | Severity |
 |------|-----------|-----|----------|
 | HighAPILatency | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api-gateway"}[5m])) > 2` | 5m | warning |
-| SMRGenerationErrors | `rate(smr_v2_generation_errors_total[5m]) > 0.1` | 5m | warning |
+| SMRGenerationErrors | `rate(smr_generation_errors_total[5m]) > 0.1` | 5m | warning |
 | DBConnectionSaturation | `pg_stat_activity_count / pg_settings_max_connections > 0.8` | 5m | warning |
 | DiskUsageHigh | `(1 - node_filesystem_avail_bytes / node_filesystem_size_bytes) > 0.8` | 10m | warning |
 | OTelCollectorDrops | `rate(otelcol_exporter_send_failed_spans_total[5m]) > 0` | 5m | warning |

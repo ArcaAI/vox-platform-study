@@ -9,7 +9,7 @@
  *   - a `StreamingSessionLike` that owns the REST session lifecycle and
  *     exposes `createSession`, `getWebSocketUrl`, `closeSession`, and the
  *     `refreshTicket` callback used on reconnects.
- *   - a `StreamingWsClientLike` that owns the new STT-V2 WebSocket
+ *   - a `StreamingWsClientLike` that owns the new STT WebSocket
  *     protocol (`{type:'audio', seq, data}`, ticket-authenticated, with
  *     `lastSeq` resumability).
  *
@@ -45,7 +45,7 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
 
 /**
  * Minimal transcript payload the provider listens for. Mirrors a subset
- * of `WsTranscriptResult` from `@arcaai/vox/types/stt-v2.ts`.
+ * of `WsTranscriptResult` from `@arcaai/vox/types/stt.ts`.
  */
 export interface StreamingTranscriptPayload {
   type: 'transcript';
@@ -69,7 +69,7 @@ export interface StreamingTranscriptPayload {
 }
 
 /**
- * Duck-typed surface of `@arcaai/vox`'s `SttV2WebSocketClient` that the
+ * Duck-typed surface of `@arcaai/vox`'s `SttWebSocketClient` that the
  * provider actually depends on. Keeping this minimal prevents accidental
  * coupling to internal client APIs.
  */
@@ -91,6 +91,13 @@ export interface StreamingWsClientLike {
   sendStop(): void;
   /** Close the WebSocket gracefully. */
   disconnect(): void;
+  /**
+   * Optional stop-drain: send the stop frame, keep the socket open until the
+   * server's terminal status (or the drain timeout) so any tail final still
+   * reaches `onTranscript`, then close. Preferred over `disconnect()` on
+   * teardown when the client supports it (`SttWebSocketClient` does).
+   */
+  stopAndDrain?(drainTimeoutMs?: number): Promise<void>;
   /** Register the transcript callback. */
   onTranscript(cb: (payload: StreamingTranscriptPayload) => void): void;
   /** Register a server-emitted error callback (e.g. `RESUME_FAILED`). */
@@ -246,7 +253,15 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
   async destroy(): Promise<void> {
     await this.stop();
     try {
-      this.wsClient.disconnect();
+      if (this.wsClient.stopAndDrain) {
+        // Drain instead of an immediate close: keeps the socket open until the
+        // server's terminal status (or the drain timeout) so a tail final
+        // emitted after stop still reaches onTranscript. The duplicate stop
+        // frame (stop() above already sent one) is idempotent server-side.
+        await this.wsClient.stopAndDrain();
+      } else {
+        this.wsClient.disconnect();
+      }
     } catch {
       // best-effort; client may already be disconnected.
     }

@@ -67,7 +67,7 @@ const KEEPER_SLUGS = [
     'mai-transcribe-1.5',
     'nemotron-3.5-asr-streaming-0.6b',
     // renamed from `silero-vad-v6` to match the v5 onnx-community
-    // model the stt-v2 runtime actually loads.
+    // model the stt runtime actually loads.
     'silero-vad',
     'rnnoise',
     'ecapa-tdnn-voxceleb',

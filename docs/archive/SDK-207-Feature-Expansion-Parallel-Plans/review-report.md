@@ -233,7 +233,7 @@ tenantId: props.tenantId ?? '50000000-0000-0000-0000-000000000000',
 **Severity**: Medium (deferred per plan)  
 **Location**: `packages/applications/src/services/consultation/summary/dto/generate-summary.request.ts`
 
-**Problem**: The `additionalContext` field was not added. This is documented as deferred until SMR v2 migration.
+**Problem**: The `additionalContext` field was not added. This is documented as deferred until SMR migration.
 
 **Status**: Acknowledged as intentionally deferred. Track for next iteration.
 

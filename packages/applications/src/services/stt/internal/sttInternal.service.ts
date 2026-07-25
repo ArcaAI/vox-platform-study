@@ -99,7 +99,7 @@ export class SttInternalService extends BaseService implements ISttInternalServi
             `stt.transcript.segment_shape_unusable — contextItem ${contextItem.id}: segment ` +
               `#${report.position} carries no timing, speaker or offsets after normalization ` +
               `(keys: ${report.keys.join(',') || 'none'}). Evidence grounding will find no source ` +
-              `for this transcript; check the stt-v2 producer payload shape.`,
+              `for this transcript; check the stt producer payload shape.`,
           );
         }
         unusable.push(report.position);

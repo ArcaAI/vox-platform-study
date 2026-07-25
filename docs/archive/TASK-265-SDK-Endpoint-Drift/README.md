@@ -293,7 +293,7 @@ existed before any TASK-265 commit and are pre-existing RED tests waiting for A2
 
 0 errors. The 30 warnings are all `prettier/prettier` cosmetic warnings in files
 outside A3's write scope: `core/FileTranscriptionService.ts`, `core/SimpleCrossTabSync.ts`,
-`core/SttV2WebSocketClient.ts`, `types/dna.ts`, `types/index.ts`. None originate
+`core/SttWebSocketClient.ts`, `types/dna.ts`, `types/index.ts`. None originate
 from TASK-265 changes.
 
 ### 6.5 ReadLints on every modified file

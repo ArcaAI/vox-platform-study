@@ -472,14 +472,14 @@ describe('PluginManager', () => {
                     stt: {
                         enabled: true,
                         provider: 'backend',
-                        sttSocket: 'wss://api.example.com/ws/stt-v2/stream',
+                        sttSocket: 'wss://api.example.com/ws/stt/stream',
                     },
                 },
                 mockLogger
             );
 
             const config = manager.getTranscriptionPipelineConfig();
-            expect(config.stt.sttSocket).toBe('wss://api.example.com/ws/stt-v2/stream');
+            expect(config.stt.sttSocket).toBe('wss://api.example.com/ws/stt/stream');
         });
 
         it('should leave sttSocket and pipelineId undefined when not configured', () => {

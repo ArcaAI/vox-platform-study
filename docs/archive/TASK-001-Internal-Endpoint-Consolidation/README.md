@@ -14,14 +14,14 @@ Standardize all internal (service-to-service) routes under a dedicated `/interna
 
 ### Business Context
 
-- Only STT-V2 has internal endpoints today (`/internal/stt/*`), but the pattern was embedded inside a feature module (`SttV2Module`) rather than isolated.
+- Only STT has internal endpoints today (`/internal/stt/*`), but the pattern was embedded inside a feature module (`SttModule`) rather than isolated.
 - Future internal controllers (streaming sessions, cache management) need a clear home.
 - Internal endpoints should not appear in public API docs, should be exempt from rate limiting, and should remain version-neutral.
 
 ### Acceptance Criteria
 
 - [x] Dedicated `InternalModule` exists at `apps/api/src/modules/internal/`
-- [x] `SttInternalController` moved from `SttV2Module` to `InternalModule`
+- [x] `SttInternalController` moved from `SttModule` to `InternalModule`
 - [x] `@ApiExcludeController()` hides internal endpoints from public Swagger
 - [x] `@SkipThrottle()` exempts internal endpoints from rate limiting
 - [x] `InternalModule` registered in `AppModule`
@@ -33,7 +33,7 @@ Standardize all internal (service-to-service) routes under a dedicated `/interna
 
 ### Before
 
-- `SttInternalController` registered in `SttV2Module` alongside public controllers
+- `SttInternalController` registered in `SttModule` alongside public controllers
 - Already had `@UseGuards(ApiKeyGuard)` and `@ApiSecurity('api-key')` — good
 - No `@SkipThrottle`, `@ApiExcludeController`, or `VERSION_NEUTRAL` anywhere in codebase
 - No dedicated `internal/` module directory
@@ -45,7 +45,7 @@ Standardize all internal (service-to-service) routes under a dedicated `/interna
 
 1. Create `apps/api/src/modules/internal/internal.module.ts`
 2. Add `@SkipThrottle()` and `@ApiExcludeController()` to `SttInternalController`
-3. Remove `SttInternalController` (and its service imports) from `SttV2Module`
+3. Remove `SttInternalController` (and its service imports) from `SttModule`
 4. Register `InternalModule` in `AppModule`
 5. Expand internal API documentation in `knowledge/05_API_LIST.md`
 
@@ -63,8 +63,8 @@ Standardize all internal (service-to-service) routes under a dedicated `/interna
 
 | File | Change |
 |------|--------|
-| `apps/api/src/modules/stt-v2/sttInternal.controller.ts` | Added `@ApiExcludeController()`, `@SkipThrottle()` decorators and their imports |
-| `apps/api/src/modules/stt-v2/stt-v2.module.ts` | Removed `SttInternalController`, `SttInternalServiceModule`, `ApiKeyServiceModule` |
+| `apps/api/src/modules/stt/sttInternal.controller.ts` | Added `@ApiExcludeController()`, `@SkipThrottle()` decorators and their imports |
+| `apps/api/src/modules/stt/stt.module.ts` | Removed `SttInternalController`, `SttInternalServiceModule`, `ApiKeyServiceModule` |
 | `apps/api/src/app.module.ts` | Added `InternalModule` import and registration |
 | `knowledge/05_API_LIST.md` | Expanded internal API section with endpoint table, common patterns, version history |
 
@@ -72,7 +72,7 @@ Standardize all internal (service-to-service) routes under a dedicated `/interna
 
 1. **`@SkipThrottle()` added now**: The throttler isn't configured yet (Section 2 of the plan), but the decorator is a safe no-op until enabled. This avoids a second pass later.
 2. **`VERSION_NEUTRAL` deferred**: API versioning (Section 3) isn't enabled yet. Adding `@Version(VERSION_NEUTRAL)` now would cause an import error. Documented as a TODO in the module comment.
-3. **Controller stays in `stt-v2/` directory**: The controller file itself remains at `apps/api/src/modules/stt-v2/sttInternal.controller.ts` and is imported cross-module. Moving the file would break barrel exports and existing import paths for no benefit.
+3. **Controller stays in `stt/` directory**: The controller file itself remains at `apps/api/src/modules/stt/sttInternal.controller.ts` and is imported cross-module. Moving the file would break barrel exports and existing import paths for no benefit.
 
 ### Route Behavior
 

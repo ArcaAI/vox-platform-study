@@ -1,0 +1,1 @@
+"""SMR Pydantic models."""

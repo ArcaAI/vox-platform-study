@@ -52,7 +52,7 @@ The mid-recording running SOAP + entities + generation stats ride the **admin-co
 |---|---|---|
 | Throughput (tok/s) | live-summary SSE `metadata.stats.tokens_per_second` (already emitted server-side) | **Console type extension only** — add `metadata.stats` to the console `LiveSummarySnapshot` and render |
 | Latency p95 (per session) | same SSE `stats.total_ms` / `ttft_ms` per flush | **Derivable now** — accumulate samples client-side, compute percentile |
-| Bandwidth (Mbps) | none | **SDK extension** — byte-rate counter in `SttV2WebSocketClient.sendAudioFrame()` → store → `useArcaAudio().uplinkBitrate` |
+| Bandwidth (Mbps) | none | **SDK extension** — byte-rate counter in `SttWebSocketClient.sendAudioFrame()` → store → `useArcaAudio().uplinkBitrate` |
 | Dropped frames / segments / level | `useArcaAudio()` today | ✅ real now (fallback third stat) |
 | ICD-10 chips | NLP `Entity.icd_code` (deterministic `OntologyLinker`, ~15 curated conditions) computed today but **dropped by `callNlp()`** before the SSE | **Plumb-through** (applications + console types); vocabulary widening is future |
 | Vitals grid (BP/HR/SpO₂/…) | none — no structured vitals extraction anywhere | **Net-new NLP parser** + plumbing (largest) |
@@ -93,7 +93,7 @@ TDD test list (Vitest, colocated `__tests__`):
 Gate: `pnpm --filter @arcaai/admin-console build lint test` green; axe 0 violations; both themes; runtime verified via `next-dev-loop`.
 
 ### Phase B — SDK extension: audio uplink bitrate (`@arcaai/vox`)
-Byte counter + rolling-window rate in `SttV2WebSocketClient.sendAudioFrame()` → `agenticStore` (mirror `droppedFrameCount`) → `useArcaAudio().uplinkBitrate`. Wire the Bandwidth stat card. Tests in the SDK suite. (Isolated; `pnpm build:sdk` green.)
+Byte counter + rolling-window rate in `SttWebSocketClient.sendAudioFrame()` → `agenticStore` (mirror `droppedFrameCount`) → `useArcaAudio().uplinkBitrate`. Wire the Bandwidth stat card. Tests in the SDK suite. (Isolated; `pnpm build:sdk` green.)
 
 ### Phase C — ICD-10 plumb-through (curated subset)
 `callNlp()` (`live-documentation.service.ts`) keeps `icd_code` → `LiveSummaryEntityDto` → console `LiveSummaryEntity` → ICD chips on the note. Applications unit tests + a console render test. Vocabulary widening (real UMLS/MedCAT) is explicitly out of scope / future.

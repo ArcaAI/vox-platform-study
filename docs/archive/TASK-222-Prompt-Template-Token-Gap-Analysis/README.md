@@ -38,7 +38,7 @@
 
 This document presents a gap analysis and enhancement plan for the HOPE platform's prompt engineering, structured output, and token management systems. The analysis is **aligned with the intentional architecture** where:
 
-- **SMR v2** is a **generic LLM gateway** (Ollama, Azure OpenAI, AWS Bedrock) — this is correct by design
+- **SMR** is a **generic LLM gateway** (Ollama, Azure OpenAI, AWS Bedrock) — this is correct by design
 - **The NestJS API layer** handles prompt composition, template resolution, variable substitution, and context assembly
 - **Med-Gemma** (via Ollama), **GPT-4/4o** (Azure OpenAI), and **Claude** (Bedrock) are the target LLM providers
 
@@ -57,7 +57,7 @@ This document presents a gap analysis and enhancement plan for the HOPE platform
 
 | # | Enhancement | Impact |
 |---|------------|--------|
-| **E1** | SMR v2: Add optional `response_format`, fix defaults (temp→0.1 fallback, max_tokens→4096 fallback), ensure streaming | Correct provider behavior; structured output when template requires it |
+| **E1** | SMR: Add optional `response_format`, fix defaults (temp→0.1 fallback, max_tokens→4096 fallback), ensure streaming | Correct provider behavior; structured output when template requires it |
 | **E2** | API Layer: Prompt assembly — load template + hyperparameters + schema, substitute variables, build full SMR payload | Enables `{conversation_language}`, `{pre_summary_text}`, `{style_DNA_*}`; passes per-template settings |
 | **E3** | Implement provider-aware context budgeting with token validation | Prevents truncation on Ollama, optimizes cost on Azure/Bedrock |
 | **E4** | Connect pre-summary output to final summary input via `{pre_summary_text}` | Completes the two-stage pipeline |
@@ -69,25 +69,25 @@ This document presents a gap analysis and enhancement plan for the HOPE platform
 
 ### Design Principles
 
-1. **SMR v2 is a generic LLM gateway** — it accepts assembled prompts and forwards them to providers. It does NOT hardcode hyperparameters; it uses sensible defaults only when values are not supplied in the request body.
+1. **SMR is a generic LLM gateway** — it accepts assembled prompts and forwards them to providers. It does NOT hardcode hyperparameters; it uses sensible defaults only when values are not supplied in the request body.
 2. **The NestJS API layer handles prompt composition** — it resolves templates, substitutes variables, attaches hyperparameters from the prompt/template configuration, and assembles the full request payload.
 3. **Hyperparameters are per-template configuration** — temperature, max_tokens, top_p, etc. are stored alongside each prompt/template in the database and sent to SMR as part of the request.
-4. **Structured JSON output is optional and per-template** — each prompt/template may optionally define a JSON schema. When present, the API layer includes it in the request; SMR v2 maps it to the provider's native structured output API.
-5. **Streaming is a core capability** — SMR v2 supports real-time streaming responses via SSE. The API layer must preserve this capability when forwarding to clients.
+4. **Structured JSON output is optional and per-template** — each prompt/template may optionally define a JSON schema. When present, the API layer includes it in the request; SMR maps it to the provider's native structured output API.
+5. **Streaming is a core capability** — SMR supports real-time streaming responses via SSE. The API layer must preserve this capability when forwarding to clients.
 
 ### Target Architecture
 
 ```
-Client SDK → API Gateway → SummaryService (Prompt Assembly) → SMR v2 → LLM Provider
+Client SDK → API Gateway → SummaryService (Prompt Assembly) → SMR → LLM Provider
                               │
                               ├── 1. Resolve prompt template by department + visit type
                               ├── 2. Load template content + hyperparameters + JSON schema (optional)
                               ├── 3. Substitute variables ({language}, {dna_style}, {pre_summary})
                               ├── 4. Assemble: { prompt, system_prompt, hyperparams, response_format?, stream }
-                              └── 5. Send to SMR v2 with all parameters
+                              └── 5. Send to SMR with all parameters
                                        │
                                        ▼
-                              SMR v2 /api/v2/generate
+                              SMR /api/v2/generate
                               ├── Uses request hyperparams (temperature, max_tokens, etc.)
                               ├── Falls back to defaults ONLY when not provided:
                               │     temperature: 0.1, max_tokens: 4096
@@ -103,15 +103,15 @@ Client SDK → API Gateway → SummaryService (Prompt Assembly) → SMR v2 → L
 |---------|---------------|-----|
 | Medical domain logic (departments, templates, DNA) | API Layer (NestJS) | Direct DB access to departments, prompts, DNA styles, consultations |
 | Prompt/template hyperparameters (temperature, max_tokens, etc.) | Stored per-template in DB → sent by API Layer | Each department/visit-type has different optimal settings |
-| Structured JSON output schema (optional) | Stored per-template in DB → sent by API Layer → mapped by SMR v2 | Not all templates need structured output; department schemas vary |
+| Structured JSON output schema (optional) | Stored per-template in DB → sent by API Layer → mapped by SMR | Not all templates need structured output; department schemas vary |
 | Variable substitution | API Layer (NestJS) | `promptUtils.ts` already exists; context data lives in NestJS |
-| LLM provider management (retry, circuit breaker, streaming) | SMR v2 (Python) | Python ecosystem for LLM provider SDKs; resilience patterns |
-| Provider-native structured output mapping | SMR v2 (Python) | Maps generic `response_format` to Ollama `format` / Azure `json_schema` / Bedrock `outputConfig` |
-| Default hyperparameters (fallback only) | SMR v2 (Python) | `temperature: 0.1`, `max_tokens: 4096` when not in request |
+| LLM provider management (retry, circuit breaker, streaming) | SMR (Python) | Python ecosystem for LLM provider SDKs; resilience patterns |
+| Provider-native structured output mapping | SMR (Python) | Maps generic `response_format` to Ollama `format` / Azure `json_schema` / Bedrock `outputConfig` |
+| Default hyperparameters (fallback only) | SMR (Python) | `temperature: 0.1`, `max_tokens: 4096` when not in request |
 
-### SMR v2 Default Behavior
+### SMR Default Behavior
 
-SMR v2 does **not** hardcode hyperparameters. It uses defaults **only** when the request body omits them:
+SMR does **not** hardcode hyperparameters. It uses defaults **only** when the request body omits them:
 
 | Parameter | Default (when not in request) | Rationale |
 |-----------|:---:|-----------|
@@ -125,12 +125,12 @@ When the API layer sends hyperparameters from the template configuration, those 
 
 ### Streaming Requirement
 
-SMR v2 **must** support real-time streaming responses for summary generation:
+SMR **must** support real-time streaming responses for summary generation:
 
 - **SSE (Server-Sent Events)** for token-by-token delivery to the client
 - The API layer passes `stream: true` when the client requests streaming
 - All 3 providers (Ollama, Azure OpenAI, Bedrock) support streaming natively
-- SMR v2 already has streaming infrastructure (`StreamChunk`, SSE endpoint, task manager) — this must be preserved and enhanced
+- SMR already has streaming infrastructure (`StreamChunk`, SSE endpoint, task manager) — this must be preserved and enhanced
 - Token usage metadata should be returned in the final stream event
 
 ### Current Flow vs Target Flow
@@ -150,7 +150,7 @@ SummaryService.generateSummary()
     │ 3. Calls SMR: POST { text, dnaStyleId, template }
     │
     ▼
-SMR v2 GenerateRequest
+SMR GenerateRequest
     │ ⚠ temperature hardcoded to 0.7 (should default to 0.1)
     │ ⚠ max_tokens hardcoded to 4096 (correct default, but should be overridable)
     │ ⚠ No response_format field
@@ -167,10 +167,10 @@ SummaryService (Prompt Assembly)
     │ 1. Resolve prompt template → load content + hyperparameters + JSON schema
     │ 2. Substitute variables: {conversation_language}, {pre_summary_text}, {style_DNA_*}
     │ 3. Build payload: { prompt, system_prompt, temperature, max_tokens, response_format?, stream }
-    │ 4. Send to SMR v2 with all parameters from template config
+    │ 4. Send to SMR with all parameters from template config
     │
     ▼
-SMR v2 GenerateRequest
+SMR GenerateRequest
     │ ✅ Uses request temperature (from template config, e.g., 0.1)
     │ ✅ Uses request max_tokens (from template config, e.g., 6000)
     │ ✅ Maps response_format to provider-native API (when present)
@@ -193,12 +193,12 @@ SMR v2 GenerateRequest
 | Pre-Summary Generation | Implemented | **Medium** | Functional; prompts need enrichment; not wired to final summary |
 | DNA Writing Style | Partial | **Medium** | DB + backend modules exist; not injected into prompts |
 | SDK Integration | Implemented | **High** | All types, hooks, utils complete |
-| SMR v2 (LLM Gateway) | Implemented | **High** | 3 providers, retry, circuit breaker, streaming. Needs: default fixes, `response_format` field |
-| Structured JSON Output | **Not implemented** | **None** | Optional per-template; no provider passes `response_format`. SMR v2 needs the field; API layer needs to attach schema from template config |
+| SMR (LLM Gateway) | Implemented | **High** | 3 providers, retry, circuit breaker, streaming. Needs: default fixes, `response_format` field |
+| Structured JSON Output | **Not implemented** | **None** | Optional per-template; no provider passes `response_format`. SMR needs the field; API layer needs to attach schema from template config |
 | Per-Template Hyperparameters | **Not implemented** | **None** | Templates don't carry temperature/max_tokens/schema config yet |
 | Token Management | **Not implemented** | **None** | No budgeting, chunking, or validation |
 | Prompt Variable Substitution | Partial | **Low** | SDK utils exist; server-side not wired |
-| Streaming (Real-time) | Implemented | **High** | SMR v2 has SSE + WebSocket streaming; API layer needs to expose it for summary generation |
+| Streaming (Real-time) | Implemented | **High** | SMR has SSE + WebSocket streaming; API layer needs to expose it for summary generation |
 | Admin UI for Prompts | Partial | **Medium** | 55% E2E stories pass (TASK-218) |
 
 ---
@@ -261,7 +261,7 @@ PromptAssemblyService.assemble(params):
 **Key design decision**: Structured JSON output is **optional** and configured **per prompt/template**. Not all templates require structured output — for example, pre-summary prompts produce narrative text. The JSON schema, when defined, is stored alongside the template in the database and sent by the API layer only when present.
 
 **The fix has two parts:**
-1. **SMR v2**: Add a `response_format` field to `GenerateRequest` (optional, defaults to plain text). Map to provider-native APIs when present.
+1. **SMR**: Add a `response_format` field to `GenerateRequest` (optional, defaults to plain text). Map to provider-native APIs when present.
 2. **Prompt Template DB schema**: Add an optional `outputSchema` (JSON) field alongside hyperparameters for each template.
 
 ### Provider-Native Structured Output APIs
@@ -272,7 +272,7 @@ PromptAssemblyService.assemble(params):
 | **Azure OpenAI** | `response_format: { type: "json_schema", json_schema: { schema, strict: true } }` | Constrained decoding | Very High — server-side enforcement |
 | **AWS Bedrock** | `outputConfig: { textFormat: { type: "json_schema", structure: { jsonSchema } } }` | Constrained decoding | Very High — server-side enforcement |
 
-All 3 providers now support **native schema-constrained generation**. When the template defines a JSON schema, SMR v2 maps it to the provider's native API. When no schema is defined, SMR v2 returns plain text.
+All 3 providers now support **native schema-constrained generation**. When the template defines a JSON schema, SMR maps it to the provider's native API. When no schema is defined, SMR returns plain text.
 
 ### Proposed `GenerateRequest` Enhancement
 
@@ -296,7 +296,7 @@ class GenerateRequest(BaseModel):
     retry_config: RetryConfig = RetryConfig()
 ```
 
-**Default resolution in SMR v2 (not hardcoded — applied only when `None`):**
+**Default resolution in SMR (not hardcoded — applied only when `None`):**
 
 ```python
 DEFAULTS = {
@@ -344,7 +344,7 @@ interface PromptTemplateConfig {
 | DNA Writing Style Analysis | 0.3 | 4096 | ❌ (structured report, not JSON) |
 | Corrective Retry | 0.0 | 4096 | Same as original template |
 
-The API layer reads these from the template record and includes them in the SMR request. SMR v2 applies its own defaults only for fields not provided.
+The API layer reads these from the template record and includes them in the SMR request. SMR applies its own defaults only for fields not provided.
 
 ### Provider Mapping
 
@@ -779,9 +779,9 @@ const smrPayload = {
 };
 ```
 
-### SMR v2 Provider Mapping
+### SMR Provider Mapping
 
-Each provider in SMR v2 maps `response_format` to their native API:
+Each provider in SMR maps `response_format` to their native API:
 
 | Provider | Native Parameter | Added To |
 |----------|-----------------|----------|
@@ -864,7 +864,7 @@ const PROVIDER_CONFIGS: Record<string, ProviderContextConfig> = {
 
 ### Temperature & Sampling Defaults
 
-| Parameter | Current (SMR v2) | Recommended | Rationale |
+| Parameter | Current (SMR) | Recommended | Rationale |
 |-----------|:---:|:---:|-----------|
 | `temperature` | 0.7 | **0.1** | Deterministic medical output; research shows minimal accuracy difference 0.0-0.4 but determinism matters for clinical docs |
 | `max_tokens` | 4,096 | **6,000** | Clinical summaries need 4-6K tokens for department-specific structured output |
@@ -893,8 +893,8 @@ Restructure all department templates to follow the lost-in-the-middle mitigation
 
 | # | Enhancement | Effort | Files Changed |
 |---|------------|--------|---------------|
-| **E1** | SMR v2: Add optional `response_format` to `GenerateRequest` + map to all 3 providers. Change defaults to `None` with fallback resolution (temperature→0.1, max_tokens→4096). Ensure streaming works end-to-end. | Medium | `models/requests.py`, `providers/ollama.py`, `providers/azure_openai.py`, `providers/bedrock.py`, `api/endpoints/generate.py` |
-| **E2** | API Layer: Build prompt assembly logic in `SummaryService` — load template content + hyperparameters + JSON schema, substitute variables, build full payload for SMR v2 | Large | `summary.service.ts`, `summary.processor.ts`, `prompt-resolution.service.ts` |
+| **E1** | SMR: Add optional `response_format` to `GenerateRequest` + map to all 3 providers. Change defaults to `None` with fallback resolution (temperature→0.1, max_tokens→4096). Ensure streaming works end-to-end. | Medium | `models/requests.py`, `providers/ollama.py`, `providers/azure_openai.py`, `providers/bedrock.py`, `api/endpoints/generate.py` |
+| **E2** | API Layer: Build prompt assembly logic in `SummaryService` — load template content + hyperparameters + JSON schema, substitute variables, build full payload for SMR | Large | `summary.service.ts`, `summary.processor.ts`, `prompt-resolution.service.ts` |
 | **E3** | Add `ProviderContextConfig` + token budget validation before calling SMR | Medium | New utility in `packages/applications/` |
 | **E4** | Wire pre-summary ContextItem into final summary via `{pre_summary_text}` | Small | Modify summary service assembly logic |
 | **E20** | **Update seed data**: Align all 42 prompt templates with `docs/prompts/prompts/` documentation. Add hyperparameters + optional outputSchema to template config. Add 4 missing departments (Dietetics, Nephrology, Surgical Oncology + Dermatology prompts). | Large | `07-prompt-template.ts`, `04-department.ts` |
@@ -1087,16 +1087,16 @@ Each template record needs a `promptConfig` field (or extension of the existing 
 
 ## Appendix C — Source File Reference Map
 
-### SMR v2 Service (Enhancement Target)
+### SMR Service (Enhancement Target)
 
 | File | Key Change Needed |
 |------|------------------|
-| `apps/smr/src/smr_v2/models/requests.py` | Add `ResponseFormat` model + optional `response_format` field; make `temperature`/`max_tokens`/`top_p` optional with `None` default |
-| `apps/smr/src/smr_v2/core/config.py` | Add `DEFAULTS` dict for fallback values (temperature: 0.1, max_tokens: 4096, top_p: 0.95) |
-| `apps/smr/src/smr_v2/providers/ollama.py` | Map `response_format` → `format`; resolve defaults from config; return token usage |
-| `apps/smr/src/smr_v2/providers/azure_openai.py` | Map `response_format` → Azure `response_format` kwarg; resolve defaults; extract `usage` |
-| `apps/smr/src/smr_v2/providers/bedrock.py` | Map `response_format` → `outputConfig.textFormat`; resolve defaults; extract `usage` |
-| `apps/smr/src/smr_v2/api/endpoints/generate.py` | Return token usage from provider responses; ensure SSE streaming path works |
+| `apps/smr/src/smr/models/requests.py` | Add `ResponseFormat` model + optional `response_format` field; make `temperature`/`max_tokens`/`top_p` optional with `None` default |
+| `apps/smr/src/smr/core/config.py` | Add `DEFAULTS` dict for fallback values (temperature: 0.1, max_tokens: 4096, top_p: 0.95) |
+| `apps/smr/src/smr/providers/ollama.py` | Map `response_format` → `format`; resolve defaults from config; return token usage |
+| `apps/smr/src/smr/providers/azure_openai.py` | Map `response_format` → Azure `response_format` kwarg; resolve defaults; extract `usage` |
+| `apps/smr/src/smr/providers/bedrock.py` | Map `response_format` → `outputConfig.textFormat`; resolve defaults; extract `usage` |
+| `apps/smr/src/smr/api/endpoints/generate.py` | Return token usage from provider responses; ensure SSE streaming path works |
 
 ### NestJS Application Layer (Enhancement Target)
 
@@ -1180,25 +1180,25 @@ Each template record needs a `promptConfig` field (or extension of the existing 
 
 1. **Hyperparameters are per-template, not hardcoded in SMR**
    - Updated Architecture Baseline (Section 2) to clarify that temperature, max_tokens, top_p, and other hyperparameters are stored per prompt template in the database
-   - The API layer reads these from the template record and includes them in the SMR v2 request
-   - SMR v2 uses sensible defaults **only** when values are not provided in the request body
+   - The API layer reads these from the template record and includes them in the SMR request
+   - SMR uses sensible defaults **only** when values are not provided in the request body
 
-2. **SMR v2 default behavior clarified**
-   - SMR v2 does NOT hardcode temperature=0.7 or max_tokens=4096
+2. **SMR default behavior clarified**
+   - SMR does NOT hardcode temperature=0.7 or max_tokens=4096
    - Instead, `GenerateRequest` fields are `Optional[float] = None` / `Optional[int] = None`
    - Fallback defaults applied in a resolver: temperature→0.1, max_tokens→4096, top_p→0.95
    - When the API layer sends values from the template config, those override defaults entirely
 
 3. **Streaming is a core capability**
    - Added streaming requirement to Architecture Baseline
-   - SMR v2 already has SSE infrastructure — this must be preserved
+   - SMR already has SSE infrastructure — this must be preserved
    - API layer must support `stream: true` parameter from client SDK
    - Token usage metadata returned in final stream event
 
 4. **Structured JSON output is optional and per-template**
    - Not all templates require structured output (e.g., pre-summaries produce narrative text)
    - JSON schema is stored as optional `outputSchema` alongside each template's hyperparameters
-   - SMR v2 maps `response_format` to provider-native APIs only when present
+   - SMR maps `response_format` to provider-native APIs only when present
    - Updated E1 and Section 5 to reflect this
 
 5. **New enhancement E20 — Seed Data Alignment**
@@ -1212,7 +1212,7 @@ Each template record needs a `promptConfig` field (or extension of the existing 
 
 ### Update 2 — 2026-02-24: TDD Implementation of E1 + E2
 
-**Implemented E1 (SMR v2 Enhancements) using strict TDD (Red-Green-Refactor):**
+**Implemented E1 (SMR Enhancements) using strict TDD (Red-Green-Refactor):**
 
 1. **`ResponseFormat` model** — New Pydantic model with `type: Literal["text", "json", "json_schema"]`, optional `json_schema`, and `strict` flag
 2. **`GenerateRequest` updated** — `temperature`, `max_tokens`, `top_p` changed from hardcoded defaults to `Optional[float|int] = None`; added `response_format: ResponseFormat | None = None`
@@ -1235,31 +1235,31 @@ Each template record needs a `promptConfig` field (or extension of the existing 
 2. **`promptUtils` test coverage** — Added 28 tests covering `substitutePromptVariables`, `extractPromptVariables`, `validatePromptVariables` with edge cases
 
 **Test Results:**
-- **Python (SMR v2)**: 360 tests passed, 97% coverage
+- **Python (SMR)**: 360 tests passed, 97% coverage
 - **TypeScript (NestJS + SDK)**: 816 tests passed, 23 test files
 
 **New files created:**
-- `apps/smr/src/smr_v2/core/defaults.py`
-- `apps/smr/src/smr_v2/tests/unit/test_request_models_e1.py` (32 tests)
-- `apps/smr/src/smr_v2/tests/unit/test_defaults_e1.py` (14 tests)
-- `apps/smr/src/smr_v2/tests/unit/test_providers_e1.py` (20 tests)
-- `apps/smr/src/smr_v2/tests/unit/test_generate_endpoint_e1.py` (9 tests)
+- `apps/smr/src/smr/core/defaults.py`
+- `apps/smr/src/smr/tests/unit/test_request_models_e1.py` (32 tests)
+- `apps/smr/src/smr/tests/unit/test_defaults_e1.py` (14 tests)
+- `apps/smr/src/smr/tests/unit/test_providers_e1.py` (20 tests)
+- `apps/smr/src/smr/tests/unit/test_generate_endpoint_e1.py` (9 tests)
 - `packages/applications/src/services/consultation/prompt/prompt-assembly.service.ts`
 - `packages/applications/src/services/consultation/prompt/__tests__/prompt-assembly.service.test.ts` (15 tests)
 - `packages/agentic-sdk-v2/src/utils/__tests__/promptUtils.test.ts` (28 tests)
 
 **Files modified:**
-- `apps/smr/src/smr_v2/models/requests.py` — ResponseFormat + optional hyperparams
-- `apps/smr/src/smr_v2/providers/ollama.py` — defaults + response_format + token usage
-- `apps/smr/src/smr_v2/providers/azure_openai.py` — defaults + response_format + token usage
-- `apps/smr/src/smr_v2/providers/bedrock.py` — defaults + response_format + token usage
-- `apps/smr/src/smr_v2/api/endpoints/generate.py` — tuple return handling + usage
-- `apps/smr/src/smr_v2/main.py` — Fixed provider constructor calls
-- `apps/smr/src/smr_v2/tests/unit/test_models.py` — Updated defaults assertion
-- `apps/smr/src/smr_v2/tests/unit/test_ollama_provider.py` — Updated to tuple return
-- `apps/smr/src/smr_v2/tests/unit/test_azure_provider.py` — Updated to tuple return
-- `apps/smr/src/smr_v2/tests/unit/test_bedrock_provider.py` — Updated to tuple return
-- `apps/smr/src/smr_v2/tests/unit/test_provider_edge_cases.py` — Updated to tuple return
-- `apps/smr/src/smr_v2/tests/unit/test_api_endpoints.py` — Updated mock return
-- `apps/smr/src/smr_v2/tests/unit/test_lifespan.py` — Fixed sentinel registry
+- `apps/smr/src/smr/models/requests.py` — ResponseFormat + optional hyperparams
+- `apps/smr/src/smr/providers/ollama.py` — defaults + response_format + token usage
+- `apps/smr/src/smr/providers/azure_openai.py` — defaults + response_format + token usage
+- `apps/smr/src/smr/providers/bedrock.py` — defaults + response_format + token usage
+- `apps/smr/src/smr/api/endpoints/generate.py` — tuple return handling + usage
+- `apps/smr/src/smr/main.py` — Fixed provider constructor calls
+- `apps/smr/src/smr/tests/unit/test_models.py` — Updated defaults assertion
+- `apps/smr/src/smr/tests/unit/test_ollama_provider.py` — Updated to tuple return
+- `apps/smr/src/smr/tests/unit/test_azure_provider.py` — Updated to tuple return
+- `apps/smr/src/smr/tests/unit/test_bedrock_provider.py` — Updated to tuple return
+- `apps/smr/src/smr/tests/unit/test_provider_edge_cases.py` — Updated to tuple return
+- `apps/smr/src/smr/tests/unit/test_api_endpoints.py` — Updated mock return
+- `apps/smr/src/smr/tests/unit/test_lifespan.py` — Fixed sentinel registry
 - `packages/applications/src/services/consultation/prompt/index.ts` — Added export

@@ -10,7 +10,7 @@ import type { TtsConfigRow, TtsFormat, TtsVoiceBindings, UpdateTtsConfigRequest 
 export type TtsFieldKind = 'string' | 'select' | 'integer' | 'fraction' | 'switch' | 'list';
 
 /**
- * Stable INTERNAL voice ids — mirror tts-v2's DEFAULT_VOICES
+ * Stable INTERNAL voice ids — mirror tts's DEFAULT_VOICES
  * (`catalog/voices.py`). These are the values `defaultVoiceEn/Ml` and the
  * bindings editor key on; per-provider voice names live in the bindings map.
  */

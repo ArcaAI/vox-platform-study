@@ -34,7 +34,7 @@
  *     generic 4401 close (no tenant material on the wire).
  *
  * Live-stack requirement: the mint fail-closed probes need only the API +
- * Redis. The live-session group additionally needs STT-V2 running (session
+ * Redis. The live-session group additionally needs STT running (session
  * create forwards to it) — those tests skip with an explicit reason when the
  * streaming service is unavailable, mirroring the task-307 conventions.
  */
@@ -77,7 +77,7 @@ interface WsHandshakeResult {
  */
 function wsHandshake(sessionId: string, ticket: string, timeoutMs = 8000): Promise<WsHandshakeResult> {
   return new Promise((resolve, reject) => {
-    const url = `${WS_ORIGIN}/ws/stt-v2/stream?sessionId=${encodeURIComponent(sessionId)}&ticket=${encodeURIComponent(ticket)}`;
+    const url = `${WS_ORIGIN}/ws/stt/stream?sessionId=${encodeURIComponent(sessionId)}&ticket=${encodeURIComponent(ticket)}`;
     const socket = new WebSocket(url);
     let settled = false;
     const settle = (result: WsHandshakeResult) => {
@@ -166,7 +166,7 @@ test.describe('C4-01 — stt_session stream-ticket tenant binding', () => {
   });
 
   // -------------------------------------------------------------------
-  // Genuine cross-tenant probe against a REAL session — requires STT-V2
+  // Genuine cross-tenant probe against a REAL session — requires STT
   // behind the gateway (session create forwards to it). Skips with an
   // explicit reason when the streaming service is unavailable.
   // -------------------------------------------------------------------
@@ -198,7 +198,7 @@ test.describe('C4-01 — stt_session stream-ticket tenant binding', () => {
     });
 
     test('cross-tenant mint (tenant ARCAAI → __GLOBAL__ session) → 404, no ticket, no tenant leak', async ({ request }) => {
-      test.skip(!sessionId, `streaming session unavailable (is STT-V2 running?): ${sessionCreateFailure}`);
+      test.skip(!sessionId, `streaming session unavailable (is STT running?): ${sessionCreateFailure}`);
       const { status, body } = await mintTicket(request, arcaaiSuperAdminToken, `stt_session:${sessionId}`);
       expect(status).toBe(404);
       expect(body.ticket).toBeUndefined();
@@ -206,7 +206,7 @@ test.describe('C4-01 — stt_session stream-ticket tenant binding', () => {
     });
 
     test('same-tenant owner mint → 200, and the WS handshake with that ticket is accepted', async ({ request }) => {
-      test.skip(!sessionId, `streaming session unavailable (is STT-V2 running?): ${sessionCreateFailure}`);
+      test.skip(!sessionId, `streaming session unavailable (is STT running?): ${sessionCreateFailure}`);
       const { status, body } = await mintTicket(request, doctorToken, `stt_session:${sessionId}`);
       expect(status).toBe(200);
       expect(body.ticket).toBeTruthy();
@@ -216,7 +216,7 @@ test.describe('C4-01 — stt_session stream-ticket tenant binding', () => {
     });
 
     test('WS handshake with a never-minted ticket → generic 4401 close, no tenant material on the wire', async () => {
-      test.skip(!sessionId, `streaming session unavailable (is STT-V2 running?): ${sessionCreateFailure}`);
+      test.skip(!sessionId, `streaming session unavailable (is STT running?): ${sessionCreateFailure}`);
       const handshake = await wsHandshake(sessionId!, 'task-450-never-minted-ticket');
       expect(handshake.outcome).toBe('closed');
       expect(handshake.code).toBe(WS_AUTH_FAILED_CODE);
@@ -225,7 +225,7 @@ test.describe('C4-01 — stt_session stream-ticket tenant binding', () => {
     });
 
     test('after the cross-tenant probes, the owner can still mint for the session (no collateral damage)', async ({ request }) => {
-      test.skip(!sessionId, `streaming session unavailable (is STT-V2 running?): ${sessionCreateFailure}`);
+      test.skip(!sessionId, `streaming session unavailable (is STT running?): ${sessionCreateFailure}`);
       const { status } = await mintTicket(request, doctorToken, `stt_session:${sessionId}`);
       expect(status).toBe(200);
     });

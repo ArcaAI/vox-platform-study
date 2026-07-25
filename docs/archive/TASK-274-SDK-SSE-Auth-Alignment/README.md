@@ -193,7 +193,7 @@ existing case).
 
 All 13 warnings are pre-existing `prettier/prettier` whitespace warnings in
 files outside this ticket's scope (`src/core.ts`,
-`src/core/FileTranscriptionService.ts`, `src/core/SttV2WebSocketClient.ts`,
+`src/core/FileTranscriptionService.ts`, `src/core/SttWebSocketClient.ts`,
 `src/types/dna.ts`, `src/types/index.ts`). They were already present on
 Wave-0 (see TASK-264 README §6.3). Zero new lint findings introduced by
 TASK-274.

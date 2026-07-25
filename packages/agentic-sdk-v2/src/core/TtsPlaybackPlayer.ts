@@ -1,7 +1,7 @@
 /**
  * Streaming TTS playback via Web Audio.
  *
- * Converts raw PCM s16le (mono, 24 kHz from tts-v2) → Float32, resamples to the
+ * Converts raw PCM s16le (mono, 24 kHz from tts) → Float32, resamples to the
  * shared AudioContext's rate (capture may hold 48 kHz), and feeds frames into the
  * `tts-playback-processor` ring buffer as they arrive. PCM16 samples that straddle
  * a network-chunk boundary are carried over via `_leftover` so no sample is split.
@@ -11,7 +11,7 @@ import { AudioContextManager } from '@arcaai/room';
 
 import { createTtsPlaybackNode, registerTtsPlaybackWorklet } from './ttsPlaybackWorklet';
 
-/** tts-v2 emits raw PCM at 24 kHz mono. */
+/** tts emits raw PCM at 24 kHz mono. */
 export const TTS_SOURCE_SAMPLE_RATE = 24000;
 
 export interface TtsPlaybackPlayerOptions {

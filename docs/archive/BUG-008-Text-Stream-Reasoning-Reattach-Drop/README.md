@@ -5,7 +5,7 @@
 | **Type** | bugfix |
 | **Status** | Pending |
 | **Severity** | Medium/High — reasoning models appear "dead" on reconnect; UX shows nothing until final output |
-| **Area** | `apps/smr` (SMR v2 streaming + provider adapters), `apps/api` (SMR proxy controller), client stream consumer |
+| **Area** | `apps/smr` (SMR streaming + provider adapters), `apps/api` (SMR proxy controller), client stream consumer |
 | **Reported** | 2026-07-13 |
 | **Related** | STT "finalizing treated as terminal" bug (different service — ruled out here) |
 
@@ -29,8 +29,8 @@ The text (SMR/LLM) streaming endpoint `/text/tasks/:taskId/stream` — gateway-p
 ### The stream path (end to end)
 
 - **Gateway (NestJS):** `apps/api/src/modules/streaming/smr-proxy.controller.ts:505-583` — `@Get('tasks/:taskId/stream')` opens an axios streaming GET to SMR and blind-forwards bytes.
-- **SMR endpoint (FastAPI / sse_starlette):** `apps/smr/src/smr_v2/api/endpoints/stream.py:17-58` — `EventSourceResponse` over a generator reading Redis Streams via XREAD BLOCK, tagging each event with the Redis message id.
-- **Redis write path:** `apps/smr/src/smr_v2/services/task_manager.py` — `append_chunk` XADD (`:97-103`), `read_chunks_blocking` XREAD (`:117-143`); background writer `generate.py:_run_streaming_generation:527-535` XADDs **only what the provider's `generate_stream` yields**.
+- **SMR endpoint (FastAPI / sse_starlette):** `apps/smr/src/smr/api/endpoints/stream.py:17-58` — `EventSourceResponse` over a generator reading Redis Streams via XREAD BLOCK, tagging each event with the Redis message id.
+- **Redis write path:** `apps/smr/src/smr/services/task_manager.py` — `append_chunk` XADD (`:97-103`), `read_chunks_blocking` XREAD (`:117-143`); background writer `generate.py:_run_streaming_generation:527-535` XADDs **only what the provider's `generate_stream` yields**.
 
 ### Root cause (PRIMARY) — reasoning tokens are never written to Redis
 
@@ -66,7 +66,7 @@ Corroboration inside the repo: `apps/harness/src/harness/eval/config.py:81-83` d
 
 ### Step 1 — Model a reasoning chunk type (SMR)
 
-- Extend `StreamChunk.type` (`apps/smr/src/smr_v2/models/stream.py:10-13`) with a `reasoning` (or `thinking`) variant; keep `chunk` for final content. Decide payload shape (reuse the text field vs. a dedicated `reasoning` field).
+- Extend `StreamChunk.type` (`apps/smr/src/smr/models/stream.py:10-13`) with a `reasoning` (or `thinking`) variant; keep `chunk` for final content. Decide payload shape (reuse the text field vs. a dedicated `reasoning` field).
 - Optionally add a task status/phase (`models/task.py`) so re-attach can distinguish reasoning from idle.
 - **Test (RED):** serializing/deserializing a reasoning chunk round-trips; consumers can tell reasoning from content.
 
@@ -99,10 +99,10 @@ Map the provider's reasoning field to the new chunk in each `generate_stream`:
 
 | File | Change |
 |---|---|
-| `apps/smr/src/smr_v2/models/stream.py` | add reasoning chunk type |
-| `apps/smr/src/smr_v2/models/task.py` (optional) | reasoning phase/status |
-| `apps/smr/src/smr_v2/services/providers/{ollama,openai_compat,azure_openai,bedrock}.py` | emit reasoning deltas; verify reasoning request params + `<think>` parsing |
-| `apps/smr/src/smr_v2/api/endpoints/stream.py` | accept `Last-Event-ID` header |
+| `apps/smr/src/smr/models/stream.py` | add reasoning chunk type |
+| `apps/smr/src/smr/models/task.py` (optional) | reasoning phase/status |
+| `apps/smr/src/smr/services/providers/{ollama,openai_compat,azure_openai,bedrock}.py` | emit reasoning deltas; verify reasoning request params + `<think>` parsing |
+| `apps/smr/src/smr/api/endpoints/stream.py` | accept `Last-Event-ID` header |
 | `apps/api/src/modules/streaming/smr-proxy.controller.ts` | read + forward `Last-Event-ID` |
 | client SSE consumer | render reasoning / keep-alive handling |
 
@@ -111,7 +111,7 @@ Map the provider's reasoning field to the new chunk in each `generate_stream`:
 - Reconnect **during** reasoning shows reasoning content/liveness and resumes without a dead stream.
 - Redis stream contains reasoning chunks during the thinking phase (inspect `smr:stream:{task_id}` via `XRANGE`).
 - `Last-Event-ID` resume returns only post-cursor events.
-- `pnpm py:smr-v2:test`, `py:smr-v2:lint`, `py:smr-v2:typecheck` green; api unit tests green.
+- `pnpm py:smr:test`, `py:smr:lint`, `py:smr:typecheck` green; api unit tests green.
 - Manual: a reasoning-heavy local model (LM Studio / Ollama qwen) reproduces the original drop before the fix and re-attaches cleanly after.
 
 ---

@@ -56,7 +56,7 @@ const mockHttpService = {
 
 const mockConfigService = {
   config: {
-    STT_V2_URL: 'http://localhost:8861',
+    STT_URL: 'http://localhost:8861',
   },
 };
 

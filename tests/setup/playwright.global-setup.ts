@@ -8,8 +8,8 @@
  *   2. Setup database: pnpm test:db:push && pnpm test:db:seed
  *   3. Start API: pnpm dev:api:test (in separate terminal)
  *   4. (Optional) Start Python services for full-stack E2E:
- *      - pnpm dev:stt-v2:test
- *      - pnpm dev:smr-v2:test
+ *      - pnpm dev:stt:test
+ *      - pnpm dev:smr:test
  *      - pnpm dev:nlp:test
  *   5. Run E2E tests: pnpm test:e2e
  *
@@ -25,7 +25,7 @@
  *   - Resets/seeds the test DB and FAILS FAST if seeding errors
  *   - Waits for API to be available
  *   - Verifies seeded users can authenticate (fails fast on an empty DB)
- *   - Optionally waits for Python services (STT-v2, SMR-v2, NLP)
+ *   - Optionally waits for Python services (STT, SMR, NLP)
  *
  * ENVIRONMENT FLAGS:
  *   - RESET_DB=false           Skip the destructive `pnpm test:db:reset`
@@ -41,7 +41,7 @@
  *                              it implicitly depends on the same database.
  *                              Default: probe runs and hard-fails on miss.
  *   - E2E_WAIT_SERVICES=true   Additionally wait for Python micro-services
- *                              (STT-v2, SMR-v2, NLP) before starting the run.
+ *                              (STT, SMR, NLP) before starting the run.
  */
 
 /**
@@ -75,14 +75,14 @@ interface ServiceConfig {
 function getServiceConfigs(): ServiceConfig[] {
   return [
     {
-      name: 'STT-v2',
-      url: process.env.STT_V2_URL || 'http://localhost:8861',
+      name: 'STT',
+      url: process.env.STT_URL || 'http://localhost:8861',
       healthPath: '/api/v1/health',
-      envVar: 'STT_V2_URL',
+      envVar: 'STT_URL',
       required: false,
     },
     {
-      name: 'SMR-v2',
+      name: 'SMR',
       url: process.env.SMR_URL || 'http://localhost:8862',
       healthPath: '/api/v1/health',
       envVar: 'SMR_URL',

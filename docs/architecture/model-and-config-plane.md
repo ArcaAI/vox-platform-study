@@ -28,10 +28,10 @@ endpoint for its own service-level knobs.
 | Provider location + auth | `AiProviderConnection` | provider resolver (tenant → SYSTEM → env) | gateway inference proxies |
 | Hyperparameters / concurrency | `AiRuntimeProfile` | injection-time cascade | gateway inference proxies |
 | Model registry + discovery | `AiModel` (+ live server enumeration) | `AiModelDiscoveryService` (merge view) | admin registration, pipeline / task references |
-| Model source resolution | `AiModel.sourceUri` / `localPath` | each service's `resolve_model_dir` | stt-v2, guardrail, nlp, harness |
+| Model source resolution | `AiModel.sourceUri` / `localPath` | each service's `resolve_model_dir` | stt, guardrail, nlp, harness |
 | Model lifecycle / retention | `global-kv` settings keys | internal effective-config route | in-process model caches (all services) |
-| Pipeline governance | `AsrPipeline` (template lineage) | pipeline service (clone / resync) | stt-v2 pipeline reader |
-| Per-tenant TTS spec | `TenantTtsConfig` (+ BYO credential) | `TenantTtsConfigService` | gateway → tts-v2 (stateless) |
+| Pipeline governance | `AsrPipeline` (template lineage) | pipeline service (clone / resync) | stt pipeline reader |
+| Per-tenant TTS spec | `TenantTtsConfig` (+ BYO credential) | `TenantTtsConfigService` | gateway → tts (stateless) |
 | External identity | `TenantIdentityProvider` (+ federation) | `idp-resolver` | auth (OIDC login) |
 | External tools | `McpServer` | harness at call time | harness MCP transport |
 
@@ -50,7 +50,7 @@ descriptor arrays that feature modules contribute
 (`packages/applications/src/services/settings-registry/registry.ts` →
 `HOPE_SETTINGS_REGISTRY`). Descriptor groups currently registered: pipeline
 toggles, TTS, entitlements, model defaults, agentic-context knobs, platform-ops
-(rate limiting, audit retention, agent-trajectory retention), and stt-v2 / nlp
+(rate limiting, audit retention, agent-trajectory retention), and stt / nlp
 service-runtime knobs. Registering a key at its current runtime default changes
 no behaviour — it only makes the key **catalogable and admin-addressable**.
 
@@ -86,7 +86,7 @@ GET /api/v1/internal/effective-config?service=<name>
 
 `effective-config.controller.ts` (guarded by `InternalServiceTokenGuard`, `@Public()`
 so the boot-time route-permission audit passes, excluded from public Swagger).
-`<name>` ∈ `smr`, `stt-v2`, `nlp`, `guardrail`, `harness`, `tts-v2`; an unknown
+`<name>` ∈ `smr`, `stt`, `nlp`, `guardrail`, `harness`, `tts`; an unknown
 service is a 400. If the control plane is unreachable a service keeps its own
 env/bootstrap value — **a degraded control plane never changes behaviour**.
 
@@ -218,7 +218,7 @@ docs/implementation/TASK-528-Model-Discovery-Hub.
 ### 6.3 Source resolution
 
 `AiModel.sourceUri` follows a scheme grammar honoured by every service's
-`resolve_model_dir` (stt-v2, guardrail, nlp, harness):
+`resolve_model_dir` (stt, guardrail, nlp, harness):
 
 | Scheme | Behaviour |
 |---|---|
@@ -253,11 +253,11 @@ Keys are `globalOnly`, `tier: global-kv`, system-scoped:
 | `<svc>.modelCache.ttlSeconds` | 600 | idle TTL before eviction (clamped `[60, 3600]`) |
 | `<svc>.modelCache.maxModels` | stt 5 · nlp 3 · guardrail 2 · harness 1 · tts 2 | max resident models (LRU beyond it) |
 | `<svc>.modelCache.vramBudgetMb` | 0 (unset) | optional VRAM bound (NVML hosts only) |
-| `stt.modelCache.maxMemoryMb` | 10000 | stt-v2 only — MB-estimate budget |
+| `stt.modelCache.maxMemoryMb` | 10000 | stt only — MB-estimate budget |
 | `smr.modelCache.ttlSeconds` | 600 | not a cache — forwarded to server-managed engines |
 
 `<svc>` ∈ `stt`, `nlp`, `guardrail`, `harness`, `tts`. **Key prefix ≠ service
-name for tts-v2:** the service registers/polls as `tts-v2` but its settings live
+name for tts:** the service registers/polls as `tts` but its settings live
 under the `tts` prefix — both spellings are load-bearing. The operator runbook is
 [operations/inference/model-retention.md](../operations/inference/model-retention.md);
 service-side retention-client adoption is tracked in
@@ -295,7 +295,7 @@ Deep dive: docs/implementation/TASK-531-Pipeline-Template-Governance.
 - **Per-tenant TTS** (`TenantTtsConfig` + `TenantTtsProviderCredential`): one
   DB-backed, tenant-admin-editable TTS spec per tenant (SYSTEM row = platform
   default; null/`[]` inherits; every value clamped to `PLATFORM_TTS_LIMITS`),
-  resolved by the gateway and injected into the stateless tts-v2 service. BYO
+  resolved by the gateway and injected into the stateless tts service. BYO
   provider keys are Vault-Transit ciphertext and are **not** SYSTEM-shared.
 - **External identity** (`TenantIdentityProvider` + `FederatedIdentity` +
   `TenantIdentityProviderDomain`): per-tenant OIDC federation (v1); client

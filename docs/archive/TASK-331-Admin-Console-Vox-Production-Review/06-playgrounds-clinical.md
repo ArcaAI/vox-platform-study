@@ -139,7 +139,7 @@ Work was executed by four non-overlapping agents in isolated git worktrees, each
 
 ### Resolved open questions (owner decisions)
 - **Q3/F1 — file/audio injection:** confirmed **upload-only** (no batch transcription expected). → **F1 closed as by-design**; the Audio File/Attachment tabs remain upload+attach. No code change; UI copy was already accurate.
-- **Q2/F2 — dual capture:** **configurable per audio pipeline** (`preprocessing`/`postprocessing` steps) **and** captured client-side when the user prefers the **local** processing pipeline. → built (config + SDK + UI + seed). The **server-side remote (Python STT-v2) dual-media path is deferred** (needs the conda-managed service); the TS writer is made ready to accept both ids.
+- **Q2/F2 — dual capture:** **configurable per audio pipeline** (`preprocessing`/`postprocessing` steps) **and** captured client-side when the user prefers the **local** processing pipeline. → built (config + SDK + UI + seed). The **server-side remote (Python STT) dual-media path is deferred** (needs the conda-managed service); the TS writer is made ready to accept both ids.
 - **Q4/F4 — prompt tier:** **persist + surface in UI.** → new `SummaryMeta` columns + badge.
 - **Q5/F3 — `useArcaAudio`:** **consolidate** mic selection / mixing / feature toggles + a prefs-driven start. → SDK hook consolidated; full playground convergence onto the SDK hook left as a follow-up (panel still uses `useRealtimeTranscription`, now with real dual capture).
 
@@ -172,7 +172,7 @@ No `DROP/DELETE/TRUNCATE`. **Not yet applied to any DB** — apply via `pnpm db:
 - Lint: applications/domains/vox/ui → **0 errors** (only pre-existing warnings).
 
 ### Deferrals / follow-ups (tracked, not blocking)
-1. **F2 remote path (Python):** STT-v2 producing two media blobs for the *remote* pipeline is deferred (separate conda-managed service). The TS writer already accepts the ids.
+1. **F2 remote path (Python):** STT producing two media blobs for the *remote* pipeline is deferred (separate conda-managed service). The TS writer already accepts the ids.
 Answer: Create new follow-up ticket to track this one.
 2. **F2 live-flag wiring:** the playground derives the live dual-capture flag from `resolvedConfig.audio.dualCapture` (absent in baseline `AppConfig` → defaults OFF), while the seed sets `dual_capture` in the *pipeline* `configYaml`. The seed-data badge renders; connecting the pipeline flag to the live SDK capture path needs backend config-surfacing + an SDK `AppConfig` field.
 Answer: For local-processing pipeline, capturing raw audio file and store it in backend storage is optional, we must allow developers to set it up as controlled by tenant admin. An endpoint for uploading raw audio file is required. Audio will be stored as context item as attachments.

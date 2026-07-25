@@ -81,17 +81,17 @@ The following table documents every log source in the SMR app. Understanding thi
 
 | # | Source File | Logger Name | Levels | Has traceId? | Output |
 |---|-------------|-------------|--------|--------------|--------|
-| 1 | `main.py` | `smr_v2.main` | INFO, WARN, ERROR | Yes | stdout JSON |
-| 2 | `middleware/logging.py` | `smr_v2.access` | INFO, ERROR | Yes | stdout JSON |
-| 3 | `middleware/auth.py` | `smr_v2.api.middleware.auth` | WARN | Yes | stdout JSON |
-| 4 | `endpoints/generate.py` | `smr_v2.api.endpoints.generate` | WARN, ERROR | Yes | stdout JSON |
-| 5 | `services/audit.py` | `smr_v2.services.audit` | INFO, WARN, ERROR | Yes | stdout JSON |
-| 6 | `services/generation_audit.py` | `smr_v2.audit.generation` | INFO, ERROR | Yes | stdout JSON |
-| 7 | `services/shutdown_manager.py` | `smr_v2.services.shutdown_manager` | WARN | Yes | stdout JSON |
-| 8 | `providers/ollama.py` | `smr_v2.providers.ollama` | WARN, ERROR | Yes | stdout JSON |
-| 9 | `providers/azure_openai.py` | `smr_v2.providers.azure_openai` | WARN, ERROR | Yes | stdout JSON |
-| 10 | `providers/bedrock.py` | `smr_v2.providers.bedrock` | WARN, ERROR | Yes | stdout JSON |
-| 11 | `providers/openai_compat.py` | `smr_v2.providers.openai_compat` | WARN, ERROR | Yes | stdout JSON |
+| 1 | `main.py` | `smr.main` | INFO, WARN, ERROR | Yes | stdout JSON |
+| 2 | `middleware/logging.py` | `smr.access` | INFO, ERROR | Yes | stdout JSON |
+| 3 | `middleware/auth.py` | `smr.api.middleware.auth` | WARN | Yes | stdout JSON |
+| 4 | `endpoints/generate.py` | `smr.api.endpoints.generate` | WARN, ERROR | Yes | stdout JSON |
+| 5 | `services/audit.py` | `smr.services.audit` | INFO, WARN, ERROR | Yes | stdout JSON |
+| 6 | `services/generation_audit.py` | `smr.audit.generation` | INFO, ERROR | Yes | stdout JSON |
+| 7 | `services/shutdown_manager.py` | `smr.services.shutdown_manager` | WARN | Yes | stdout JSON |
+| 8 | `providers/ollama.py` | `smr.providers.ollama` | WARN, ERROR | Yes | stdout JSON |
+| 9 | `providers/azure_openai.py` | `smr.providers.azure_openai` | WARN, ERROR | Yes | stdout JSON |
+| 10 | `providers/bedrock.py` | `smr.providers.bedrock` | WARN, ERROR | Yes | stdout JSON |
+| 11 | `providers/openai_compat.py` | `smr.providers.openai_compat` | WARN, ERROR | Yes | stdout JSON |
 
 #### Third-Party Logs (via stdlib `logging` — NOT through structlog)
 
@@ -190,7 +190,7 @@ Add `opentelemetry-instrumentation-logging>=0.60b1` to the `dependencies` list. 
 
 #### Task 2 — Refactor `telemetry.py` → `observability.py` with Full OTel Log Bridge
 
-**File**: `apps/smr/src/smr_v2/core/telemetry.py` (rename to `observability.py`)
+**File**: `apps/smr/src/smr/core/telemetry.py` (rename to `observability.py`)
 
 Replace the current traces-only `setup_telemetry()` with a comprehensive `setup_opentelemetry()` that configures:
 
@@ -230,7 +230,7 @@ Also create `shutdown_opentelemetry()`:
 
 #### Task 3 — Add `otel_logs_enabled` Setting to Config
 
-**File**: `apps/smr/src/smr_v2/core/config.py`
+**File**: `apps/smr/src/smr/core/config.py`
 
 Add a granular `otel_logs_enabled: bool = True` field to `Settings`. When `otel_enabled=True` but `otel_logs_enabled=False`, traces are exported but logs are not. This allows operators to enable observability incrementally.
 
@@ -239,15 +239,15 @@ Add a granular `otel_logs_enabled: bool = True` field to `Settings`. When `otel_
 | Test | Behavior | Expected |
 |------|----------|----------|
 | `test_otel_logs_enabled_default_true` | `Settings().otel_logs_enabled` defaults to `True` | `assert settings.otel_logs_enabled is True` |
-| `test_otel_logs_enabled_from_env` | `SMR_V2_OTEL_LOGS_ENABLED=false` sets field | `assert settings.otel_logs_enabled is False` |
+| `test_otel_logs_enabled_from_env` | `SMR_OTEL_LOGS_ENABLED=false` sets field | `assert settings.otel_logs_enabled is False` |
 
 ---
 
 #### Task 4 — Update `main.py` Lifespan and `create_app`
 
-**File**: `apps/smr/src/smr_v2/main.py`
+**File**: `apps/smr/src/smr/main.py`
 
-1. Replace `from smr_v2.core.telemetry import setup_telemetry` with `from smr_v2.core.observability import setup_opentelemetry, shutdown_opentelemetry`
+1. Replace `from smr.core.telemetry import setup_telemetry` with `from smr.core.observability import setup_opentelemetry, shutdown_opentelemetry`
 2. Call `setup_opentelemetry(app, settings)` instead of `setup_telemetry(app, ...)` in `create_app()`
 3. Initialize `app.state.logger_provider = None`
 4. In lifespan teardown, call `shutdown_opentelemetry(app)` (replacing the manual `tracer_provider.force_flush()/shutdown()` block)
@@ -265,7 +265,7 @@ Add a granular `otel_logs_enabled: bool = True` field to `Settings`. When `otel_
 
 #### Task 5 — Tame Uvicorn Logging (Disable Duplicate Access Logs)
 
-**File**: `apps/smr/src/smr_v2/core/logging.py`
+**File**: `apps/smr/src/smr/core/logging.py`
 
 Currently, uvicorn emits access logs that duplicate `RequestLoggingMiddleware`. Two fixes:
 
@@ -296,8 +296,8 @@ Call this from `setup_logging()`.
 
 **Files**: `apps/smr/.env.example`, `apps/smr/Dockerfile`
 
-1. Add `SMR_V2_OTEL_LOGS_ENABLED=true` to `.env.example` with documentation
-2. Add `ENV SMR_V2_OTEL_LOGS_ENABLED=true` to Dockerfile production stage
+1. Add `SMR_OTEL_LOGS_ENABLED=true` to `.env.example` with documentation
+2. Add `ENV SMR_OTEL_LOGS_ENABLED=true` to Dockerfile production stage
 
 **Tests**: No code tests — pure configuration. Manual verification.
 
@@ -305,11 +305,11 @@ Call this from `setup_logging()`.
 
 #### Task 7 — Update Existing Test Imports
 
-**Files**: All test files that import from `smr_v2.core.telemetry`
+**Files**: All test files that import from `smr.core.telemetry`
 
 After renaming `telemetry.py` → `observability.py`, update imports in:
 - `test_telemetry.py` — rename to `test_observability.py`, update imports
-- Any test that patches `smr_v2.core.telemetry.setup_telemetry`
+- Any test that patches `smr.core.telemetry.setup_telemetry`
 
 The `get_tracer()` function must remain importable from the new location. Optionally add a compatibility re-export in `telemetry.py` if other code imports from it.
 
@@ -331,22 +331,22 @@ Tasks 3, 5 are independent of each other but both depend on Task 2 being designe
 
 | File | Purpose |
 |------|---------|
-| `apps/smr/src/smr_v2/core/observability.py` | New consolidated OTel setup (replaces `telemetry.py`) |
-| `apps/smr/src/smr_v2/tests/unit/test_log_pipeline.py` | TDD tests for the log bridge |
+| `apps/smr/src/smr/core/observability.py` | New consolidated OTel setup (replaces `telemetry.py`) |
+| `apps/smr/src/smr/tests/unit/test_log_pipeline.py` | TDD tests for the log bridge |
 
 ## 5. Files to Modify
 
 | File | Changes |
 |------|---------|
 | `apps/smr/pyproject.toml` | Add `opentelemetry-instrumentation-logging>=0.60b1` |
-| `apps/smr/src/smr_v2/core/config.py` | Add `otel_logs_enabled` field |
-| `apps/smr/src/smr_v2/core/logging.py` | Add `configure_uvicorn_logging()`, call from `setup_logging()` |
-| `apps/smr/src/smr_v2/main.py` | Replace `setup_telemetry` call with `setup_opentelemetry`/`shutdown_opentelemetry`; init `logger_provider` state |
-| `apps/smr/src/smr_v2/core/telemetry.py` | Keep as thin compatibility shim (re-exports `get_tracer` from `observability.py`) |
-| `apps/smr/.env.example` | Add `SMR_V2_OTEL_LOGS_ENABLED` |
-| `apps/smr/Dockerfile` | Add `SMR_V2_OTEL_LOGS_ENABLED` env default |
-| `apps/smr/src/smr_v2/tests/unit/test_telemetry.py` | Update imports to new module path |
-| `apps/smr/src/smr_v2/tests/unit/test_observability.py` | Update imports if needed |
+| `apps/smr/src/smr/core/config.py` | Add `otel_logs_enabled` field |
+| `apps/smr/src/smr/core/logging.py` | Add `configure_uvicorn_logging()`, call from `setup_logging()` |
+| `apps/smr/src/smr/main.py` | Replace `setup_telemetry` call with `setup_opentelemetry`/`shutdown_opentelemetry`; init `logger_provider` state |
+| `apps/smr/src/smr/core/telemetry.py` | Keep as thin compatibility shim (re-exports `get_tracer` from `observability.py`) |
+| `apps/smr/.env.example` | Add `SMR_OTEL_LOGS_ENABLED` |
+| `apps/smr/Dockerfile` | Add `SMR_OTEL_LOGS_ENABLED` env default |
+| `apps/smr/src/smr/tests/unit/test_telemetry.py` | Update imports to new module path |
+| `apps/smr/src/smr/tests/unit/test_observability.py` | Update imports if needed |
 
 ## 6. Files to Delete
 
@@ -376,8 +376,8 @@ None — `telemetry.py` becomes a compatibility shim, not deleted.
 
 ### Manual (Integration)
 
-- [ ] Start SMR with `SMR_V2_OTEL_ENABLED=true` pointing to a running OTel Collector
-- [ ] Verify logs appear in Grafana Loki with `{service_name="smr-v2"}` label
+- [ ] Start SMR with `SMR_OTEL_ENABLED=true` pointing to a running OTel Collector
+- [ ] Verify logs appear in Grafana Loki with `{service_name="smr"}` label
 - [ ] Verify `traceId` field in Loki log entries matches traces in Tempo
 - [ ] Click a `traceId` in Loki → opens corresponding trace in Tempo
 - [ ] Verify uvicorn startup logs appear in Loki (via `uvicorn.error` propagation)
@@ -418,8 +418,8 @@ structlog loggers ──→ structlog pipeline ──→ stdlib logging.Logger
 
 | File | Purpose |
 |------|---------|
-| `apps/smr/src/smr_v2/core/observability.py` | Consolidated OTel setup: TracerProvider + LoggerProvider + auto-instrumentation |
-| `apps/smr/src/smr_v2/tests/unit/test_observability.py` | 24 TDD tests covering all new functionality |
+| `apps/smr/src/smr/core/observability.py` | Consolidated OTel setup: TracerProvider + LoggerProvider + auto-instrumentation |
+| `apps/smr/src/smr/tests/unit/test_observability.py` | 24 TDD tests covering all new functionality |
 | `apps/smr/.env.production` | Production environment variables with OTel log bridge enabled |
 
 ### Files Modified
@@ -427,13 +427,13 @@ structlog loggers ──→ structlog pipeline ──→ stdlib logging.Logger
 | File | Changes |
 |------|---------|
 | `apps/smr/pyproject.toml` | Added `opentelemetry-instrumentation-logging>=0.60b1` dependency |
-| `apps/smr/src/smr_v2/core/config.py` | Added `otel_logs_enabled: bool = True` to Settings |
-| `apps/smr/src/smr_v2/core/logging.py` | Added `_configure_uvicorn_logging()` to disable duplicate access logs and propagate uvicorn.error |
-| `apps/smr/src/smr_v2/core/telemetry.py` | Converted to compatibility shim re-exporting from observability.py |
-| `apps/smr/src/smr_v2/main.py` | Switched to `setup_opentelemetry`/`shutdown_opentelemetry`, initialised `logger_provider` state |
-| `apps/smr/.env.example` | Added `SMR_V2_OTEL_LOGS_ENABLED=true` |
-| `apps/smr/Dockerfile` | Added `SMR_V2_OTEL_LOGS_ENABLED=true` env default |
-| `apps/smr/src/smr_v2/tests/unit/test_telemetry.py` | Updated mock patch path for `setup_opentelemetry` |
+| `apps/smr/src/smr/core/config.py` | Added `otel_logs_enabled: bool = True` to Settings |
+| `apps/smr/src/smr/core/logging.py` | Added `_configure_uvicorn_logging()` to disable duplicate access logs and propagate uvicorn.error |
+| `apps/smr/src/smr/core/telemetry.py` | Converted to compatibility shim re-exporting from observability.py |
+| `apps/smr/src/smr/main.py` | Switched to `setup_opentelemetry`/`shutdown_opentelemetry`, initialised `logger_provider` state |
+| `apps/smr/.env.example` | Added `SMR_OTEL_LOGS_ENABLED=true` |
+| `apps/smr/Dockerfile` | Added `SMR_OTEL_LOGS_ENABLED=true` env default |
+| `apps/smr/src/smr/tests/unit/test_telemetry.py` | Updated mock patch path for `setup_opentelemetry` |
 
 ### Key Design Decisions
 

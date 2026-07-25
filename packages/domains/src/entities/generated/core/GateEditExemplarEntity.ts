@@ -1,6 +1,7 @@
 import { BusinessException } from '@arcaai/exceptions';
 
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
+import { ExemplarCurationStatus } from '../../../enums';
 
 /**
  * The mined clinician signal.
@@ -27,6 +28,12 @@ export interface IGateEditExemplarEntity extends IBaseTenantEntity {
   contextItemId?: string | null;
   modelName?: string | null;
   promptTemplateId?: string | null;
+  /**
+   * Human curation verdict. Mining writes PENDING (a proposal, never approved
+   * corpus); a curator moves it to APPROVED/REJECTED. Only consulted by the
+   * few-shot retriever when `agentic.fewshot.curationMode = 'enforce'`.
+   */
+  curationStatus?: ExemplarCurationStatus;
 }
 
 export class GateEditExemplarEntity extends BaseTenantEntity {
@@ -43,6 +50,7 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
   private _contextItemId?: IGateEditExemplarEntity['contextItemId'];
   private _modelName?: IGateEditExemplarEntity['modelName'];
   private _promptTemplateId?: IGateEditExemplarEntity['promptTemplateId'];
+  private _curationStatus?: IGateEditExemplarEntity['curationStatus'];
 
   constructor(init: IGateEditExemplarEntity) {
     super(init);
@@ -59,6 +67,9 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
     this._contextItemId = init.contextItemId;
     this._modelName = init.modelName;
     this._promptTemplateId = init.promptTemplateId;
+    // Default PENDING so an entity built by the factory (or an older fixture)
+    // is an unreviewed proposal rather than silently un-gated.
+    this._curationStatus = init.curationStatus ?? ExemplarCurationStatus.PENDING;
   }
 
   public get consultationId(): IGateEditExemplarEntity['consultationId'] {
@@ -163,6 +174,14 @@ export class GateEditExemplarEntity extends BaseTenantEntity {
 
   public set promptTemplateId(value: IGateEditExemplarEntity['promptTemplateId']) {
     this.setProperty('promptTemplateId', value);
+  }
+
+  public get curationStatus(): IGateEditExemplarEntity['curationStatus'] {
+    return this._curationStatus;
+  }
+
+  public set curationStatus(value: IGateEditExemplarEntity['curationStatus']) {
+    this.setProperty('curationStatus', value);
   }
 
   public validate(): void {

@@ -1,7 +1,7 @@
 /**
  * Config Types Tests — Stream A (ASR-R-05, ASR-R-04)
  *
- * TDD tests for config type additions needed for STT-V2 remote integration.
+ * TDD tests for config type additions needed for STT remote integration.
  * @vitest-environment jsdom
  */
 
@@ -102,10 +102,10 @@ describe('ASR-R-04: STTPluginConfig backend streaming fields', () => {
     const config: import('../config').STTPluginConfig = {
       enabled: true,
       provider: 'backend',
-      sttSocket: 'wss://api.example.com/ws/stt-v2/stream',
+      sttSocket: 'wss://api.example.com/ws/stt/stream',
     };
 
-    expect(config.sttSocket).toBe('wss://api.example.com/ws/stt-v2/stream');
+    expect(config.sttSocket).toBe('wss://api.example.com/ws/stt/stream');
   });
 
   it('should not require pipelineId or sttSocket', () => {
@@ -147,11 +147,11 @@ describe('ASR-R-04: TranscriptionProcessingConfig.stt backend fields', () => {
       stt: {
         location: 'backend',
         provider: 'backend',
-        sttSocket: 'wss://api.example.com/ws/stt-v2/stream',
+        sttSocket: 'wss://api.example.com/ws/stt/stream',
       },
     };
 
-    expect(config.stt.sttSocket).toBe('wss://api.example.com/ws/stt-v2/stream');
+    expect(config.stt.sttSocket).toBe('wss://api.example.com/ws/stt/stream');
   });
 
   it('should accept pipelineId in stt processing config', () => {

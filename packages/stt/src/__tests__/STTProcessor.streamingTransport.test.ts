@@ -35,13 +35,13 @@ function makeSession(): StreamingSessionLike {
   return {
     createSession: vi.fn(async () => ({
       sessionId: 'sess-A',
-      wsUrl: '/ws/stt-v2/stream',
+      wsUrl: '/ws/stt/stream',
       ticket: 'T-X',
       maxConcurrent: 8,
       currentActive: 1,
       status: 'active',
     })),
-    getWebSocketUrl: vi.fn(() => 'wss://api.test/ws/stt-v2/stream?sessionId=sess-A&ticket=T-X'),
+    getWebSocketUrl: vi.fn(() => 'wss://api.test/ws/stt/stream?sessionId=sess-A&ticket=T-X'),
     closeSession: vi.fn(async () => {}),
     refreshTicket: vi.fn(async () => 'T-NEW'),
     getSessionId: vi.fn(() => 'sess-A'),

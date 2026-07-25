@@ -9,7 +9,7 @@
 
 ## Problem
 
-`AuditLog` rows persisted **before** Phase 0 Item 4 was deployed may contain plaintext `value` and `defaultValue` for locked `GlobalSetting` rows (e.g., `JWT_SECRET_KEY`, `AZURE_OPENAI_API_KEY`, `SMR_V2_AZURE_API_KEY`). HIPAA audit retention is 6+ years; these rows persist in primary storage, backups, and SIEM mirrors even after the Item 4 scrubber starts redacting new writes.
+`AuditLog` rows persisted **before** Phase 0 Item 4 was deployed may contain plaintext `value` and `defaultValue` for locked `GlobalSetting` rows (e.g., `JWT_SECRET_KEY`, `AZURE_OPENAI_API_KEY`, `SMR_AZURE_API_KEY`). HIPAA audit retention is 6+ years; these rows persist in primary storage, backups, and SIEM mirrors even after the Item 4 scrubber starts redacting new writes.
 
 This document captures the SQL needed to retroactively scrub these rows in **primary storage only**. Backup and SIEM-mirror remediation is out of scope (see *Out of scope* below).
 

@@ -2,7 +2,7 @@
  * TranscriptionJobService.completeJob encryption wiring.
  *
  * `completeJob` is a genuine TS write path for the STT result fields
- * (resultText / resultMetadata) — the Python stt-v2 worker posts the result
+ * (resultText / resultMetadata) — the Python stt worker posts the result
  * back through the apps/api gateway, which calls this service. This test
  * verifies the completed job is encrypted BEFORE persist, that encryption is
  * best-effort (a Vault outage still persists the plaintext result), that no

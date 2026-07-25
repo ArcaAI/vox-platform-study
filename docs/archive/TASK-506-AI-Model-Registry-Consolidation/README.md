@@ -56,7 +56,7 @@ Align these three services with the platform pattern already used by STT (pipeli
 - `AiModelFormat` already contains `SAFETENSOR, ONNX, NEMO, PYTORCH, CTRANSLATE2, FASTER_WHISPER, MLX, GGUF, ONNX_OPTIMUM, AZURE_SPEECH, AZURE_FOUNDRY, PARAKEET_CPP` — **GGUF and MLX already exist**. `ModelTaskType` already contains `GUARDRAIL`, `TEXT_TO_SPEECH`, `TOKEN_CLASSIFICATION`, `TEXT_CLASSIFICATION`, `TEXT_GENERATION`, `SPEAKER_EMBEDDING`, … (52 members).
 - Allow-lists: `AiModel` is in `TENANT_SCOPED_MODELS` **and** `SYSTEM_SHARED_READ_MODELS` (tenant reads widen to `[tenant, SYSTEM]`; writes never widen), and is **not** in `MODELS_WITHOUT_SOFT_DELETE` (soft delete active).
 - Consumers: `AiModelService` CRUD behind `GET/POST/PATCH/DELETE /api/v1/admin/ai-models` (**global-admin-only**, TASK-419 Decision 6); tenant provisioning clones the SYSTEM catalog into new tenants (`tenant.service.ts:204-245`) gated by `tier:*` tags (`model-access.ts` — untagged rows clone to every tier, which is the current seed's behavior); admin-console feature `apps/admin-console/src/features/ai-models/` (screen + form sheet) already exists.
-- **`apps/stt-v2` reads `AiModel`/`AsrPipeline` directly via SQLAlchemy** (read-only mirrors in `core/database/models.py`; `pipeline/config_reader.py` resolves pipeline slugs → model rows). ⚠ Its `AiModelFormatType` ENUM mirror is drifted (missing all 8 post-TASK-356/505 values).
+- **`apps/stt` reads `AiModel`/`AsrPipeline` directly via SQLAlchemy** (read-only mirrors in `core/database/models.py`; `pipeline/config_reader.py` resolves pipeline slugs → model rows). ⚠ Its `AiModelFormatType` ENUM mirror is drifted (missing all 8 post-TASK-356/505 values).
 - **The browser SDK does NOT read the DB catalog.** `packages/agentic-sdk-v2` (ModelRegistry/PipelineRegistry) and `packages/utils/src/model-registry.ts` use hardcoded lists; the `/api/v1/ai-models` fetch was deliberately removed (regression-tested in `constants.task210.test.ts:764-768`). Retiring browser-local rows cannot break the SDK.
 
 ### 2.2 Seed reality (`06-stt.ts`)
@@ -88,9 +88,9 @@ Plus the uncoordinated UI-listing keys `default-smr-provider` / `default-smr-mod
 - ⚠ Root `.env.dev`/`.env.example`/`.env` set `TEXT_CLASSIFIER_MODEL_NAME=michellejieli/emotion_text_classifier`, **contradicting** the in-code retirement of that placeholder (`nlp/core/config.py:96-106`) — cleanup item.
 - Gateway fronts exactly one route for product use: `POST /ai/nlp/entities` → `POST {NLP_URL}/api/v1/classify/tokens` (no tenant id, no model field). `/diagnosis/suggestions`, `/classify/text`, `/extract`, WS routes are not proxied by `apps/api`.
 
-### 2.6 TTS today (`apps/tts-v2` + TASK-496/504)
+### 2.6 TTS today (`apps/tts` + TASK-496/504)
 
-- tts-v2 is stateless; per-tenant config is resolved by the gateway (`TenantTtsConfigService.getEffective` — tenant row over SYSTEM row over `PLATFORM_TTS_LIMITS` code defaults) and injected per request (`speech-proxy.controller.ts:61-85` batch; `tts-ws.gateway.ts` init-frame enrichment). BYO Azure/Sarvam keys are Vault-Transit ciphertext in `TenantTtsProviderCredential` (the TASK-504 canonical Class-2 pattern).
+- tts is stateless; per-tenant config is resolved by the gateway (`TenantTtsConfigService.getEffective` — tenant row over SYSTEM row over `PLATFORM_TTS_LIMITS` code defaults) and injected per request (`speech-proxy.controller.ts:61-85` batch; `tts-ws.gateway.ts` init-frame enrichment). BYO Azure/Sarvam keys are Vault-Transit ciphertext in `TenantTtsProviderCredential` (the TASK-504 canonical Class-2 pattern).
 - **The voice catalog is a hardcoded Python constant** `DEFAULT_VOICES` (`catalog/voices.py:29-34`) with exactly the voices R1 lists (internal ids `en-female-1`, `en-male-1`, `ml-female-1`, `ml-male-1` → per-provider bindings). The provider universe is a hardcoded TS constant (`platform-limits.ts:45-64`). Admins can pick default internal voice ids and reorder providers, but **cannot see or change bindings, add voices, or disable an engine platform-wide**.
 - `ModelTaskType.TEXT_TO_SPEECH` and `AiModelEntity.isTTS` exist but are **dormant** — zero TTS rows seeded, zero queries.
 - Admin UI: `apps/admin-console` `(tenant)/tts-config` screen (Configuration + Credentials tabs) shipped in TASK-504 Phase 4.
@@ -148,14 +148,14 @@ model AiTaskDefault {
 ### 3.3 Guardrail & NLP runtime alignment
 
 - **Guardrail** (smallest change that centralizes it): keep the shipped `TenantConfigResolver` direct-DB pattern, repoint its SQL from `GlobalSetting` keys to `AiTaskDefault ⋈ AiModel` (`taskKey='guardrail.validate'`, tenant → SYSTEM), returning `{provider, model=sourceUri, azure_deployment?=metaData}`. Flip `GUARDRAIL_DB_CONFIG_ENABLED` default to `True` (env still wins when the DB is unreachable — resolver already falls back to the env-built provider). Gateway `AiInferenceClient` starts forwarding `X-Tenant-Id` on guardrail calls so Path A can resolve later too (GLiNER itself stays env-pinned — auxiliary engine, not an admin-selectable model; same for groundedness/MiniCheck).
-- **NLP** (gateway-injection, keeping the service DB-free like tts-v2): request DTOs gain optional `model_name`; services move from fixed singletons to a **model-id-keyed lazy cache** (default models still eager-loaded at startup from env fallback); gateway `AiInferenceController` resolves `nlp.ner` (and `nlp.classification` when the diagnosis route gets fronted) via the new `AiTaskDefaultService` and injects `model_name` + `X-Tenant-Id` per request. Bound the cache (e.g. 2–3 pipelines, LRU-evict) to protect memory.
+- **NLP** (gateway-injection, keeping the service DB-free like tts): request DTOs gain optional `model_name`; services move from fixed singletons to a **model-id-keyed lazy cache** (default models still eager-loaded at startup from env fallback); gateway `AiInferenceController` resolves `nlp.ner` (and `nlp.classification` when the diagnosis route gets fronted) via the new `AiTaskDefaultService` and injects `model_name` + `X-Tenant-Id` per request. Bound the cache (e.g. 2–3 pipelines, LRU-evict) to protect memory.
 - **Providers-listing consolidation**: `GET /text/providers` and `GET /text/guardrail-providers` stop reading the ad-hoc `GlobalSetting` JSON keys and instead list ENABLED `AiModel` rows (`taskType IN (TEXT_GENERATION, SUMMARIZATION)` / `GUARDRAIL`) grouped by `provider` — the registry becomes the single UI catalog. The `smr-provider-models`/`default-guardrail-*` GlobalSetting seed rows are retired (soft-deleted) with a Change-History note.
 
 ### 3.4 TTS alignment (registry = platform catalog; TenantTtsConfig stays the tenant knob store)
 
 1. Seed the 5 TTS engines as SYSTEM `AiModel` rows (`taskType=TEXT_TO_SPEECH`, `category=AUDIO`, voices in `metaData.voices`); IndicF5 seeded `resourceStatus=DISABLED` (prod NO-GO).
 2. `platform-limits.ts` `providerUniverse` + voice option lists become **derived from the registry** (SYSTEM ENABLED TTS rows; code constants remain the fallback when the catalog is empty). Disabling a TTS `AiModel` row then disables that provider platform-wide (effective-config resolution filters `allowedProviders`/routing chains against ENABLED providers).
-3. Admin-selectable **voice bindings**: `TenantTtsConfig.configJson.voiceBindings` (`{internalVoiceId: {provider: providerVoiceName}}`) validated against `metaData.voices`; SYSTEM row = global default bindings. Gateway enrichment (`applyTenantConfig` / `maybeEnrichInit`) additionally injects `voice_bindings`; tts-v2 accepts the override and falls back to its built-in `DEFAULT_VOICES`. tts-v2 stays stateless and boots fine with no DB anywhere.
+3. Admin-selectable **voice bindings**: `TenantTtsConfig.configJson.voiceBindings` (`{internalVoiceId: {provider: providerVoiceName}}`) validated against `metaData.voices`; SYSTEM row = global default bindings. Gateway enrichment (`applyTenantConfig` / `maybeEnrichInit`) additionally injects `voice_bindings`; tts accepts the override and falls back to its built-in `DEFAULT_VOICES`. tts stays stateless and boots fine with no DB anywhere.
 4. Admin-console tts-config screen: voice fields become selects sourced from the registry catalog; a bindings editor appears under Configuration (design-gate note: TASK-504 precedent allowed building without a Figma frame on explicit owner direction — needs the same call here).
 
 ### 3.5 Settings-registry descriptors
@@ -217,7 +217,7 @@ TTS (5; `category=AUDIO`, `taskType=TEXT_TO_SPEECH`, voices in `metaData.voices`
 - `11-global-setting.ts`: retire the `smr-provider-models` / `default-smr-*` / guardrail-namespace rows once §3.3's registry-backed listing + `AiTaskDefault` land (same ticket, later phase — keep both alive only within the migration window inside this ticket).
 - New seed step: SYSTEM `AiTaskDefault` rows — `guardrail.validate → granite-guardian-4.1-8b`, `nlp.ner → medical-ner`, `nlp.classification → symps-disease-bert-v3-c41`.
 - Seed-file split (acknowledged TASK-505 leftover): extract `DEFAULT_AI_MODELS` into per-domain modules (`seed/ai-models/{audio,llm,nlp,tts}.ts`) imported by `06-stt.ts` — orchestrator order unchanged.
-- SMR env fallbacks aligned in `.env.example` comments only (`SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL` etc. remain last-resort).
+- SMR env fallbacks aligned in `.env.example` comments only (`SMR_OPENAI_COMPAT_DEFAULT_MODEL` etc. remain last-resort).
 
 ---
 
@@ -229,15 +229,15 @@ TTS (5; `category=AUDIO`, `taskType=TEXT_TO_SPEECH`, voices in `metaData.voices`
 1. `enums.prisma`: add `AiModelFormat.CLOUD_API`. `stt.prisma`: add `provider String?`, `architecture String?` (+ `@@index([provider])`). New `ai-task-default.prisma` per §3.2.
 2. `pnpm db:migrate:create` → `task_506_model_registry_consolidation` (review SQL: 2 `ALTER TABLE ADD COLUMN`, 1 `ALTER TYPE ADD VALUE`, 1 `CREATE TABLE`). ⚠ Dev/test DBs are `db push`-managed and behind migration history — apply the enum/table SQL via `psql` additively (per DB-gotchas runbook), never reset.
 3. Allow-lists: `AiTaskDefault` → `TENANT_SCOPED_MODELS` + `SYSTEM_SHARED_READ_MODELS`.
-4. Sync `apps/stt-v2/core/database/models.py` enum mirrors (add all 9 missing `AiModelFormat` values incl. `CLOUD_API`) — fixes the pre-existing drift this table-wide change would otherwise widen.
-- **Tests first**: `packages/database` client tests for `AiTaskDefault` tenant-scope + soft-delete injection; stt-v2 unit test asserting the SQLAlchemy format mirror matches the Prisma enum member list.
+4. Sync `apps/stt/core/database/models.py` enum mirrors (add all 9 missing `AiModelFormat` values incl. `CLOUD_API`) — fixes the pre-existing drift this table-wide change would otherwise widen.
+- **Tests first**: `packages/database` client tests for `AiTaskDefault` tenant-scope + soft-delete injection; stt unit test asserting the SQLAlchemy format mirror matches the Prisma enum member list.
 - **Gate**: migration SQL reviewed; `pnpm db:generate`; `pnpm --filter @arcaai/database test`.
 
 ### Phase 2 — Seed consolidation (R1)
 1. Split model arrays (§4.4), rewrite per §4.1–4.3, add `RETIRED_AI_MODEL_SLUGS` sweep with the pipeline-reference guard, update `13-harness-policy.ts`, add `AiTaskDefault` SYSTEM seeds.
 2. `backfillCustomerTenantAiModels` unchanged (create-only, now clones 26).
 - **Tests first**: seed unit tests — final catalog = expected 26 slugs per tenant; retired slugs DELETED across all tenants; a fabricated custom pipeline referencing `whisper-large-v3` blocks that slug's retirement; keep-set exactly covers every slug referenced by seeded pipeline YAML (regression lock).
-- **Gate**: `pnpm db:seed` twice (idempotent) against dev DB; `pnpm py:stt-v2:test` (pipeline resolution suites stay green).
+- **Gate**: `pnpm db:seed` twice (idempotent) against dev DB; `pnpm py:stt:test` (pipeline resolution suites stay green).
 
 ### Phase 3 — Domain + applications
 1. `AiTaskDefault` trio (hand-authored mapper/repo per memory) + `CoreDatabaseModule` registration + barrels.
@@ -259,9 +259,9 @@ TTS (5; `category=AUDIO`, `taskType=TEXT_TO_SPEECH`, voices in `metaData.voices`
 ### Phase 5 — Python services
 1. **Guardrail**: `tenant_config.py` resolver → `AiTaskDefault ⋈ AiModel` SQL; `db_config_enabled` default `True`; keep 60s TTL cache + env fallback; add `GUARDRAIL_DB_CONFIG_ENABLED`/`GUARDRAIL_DATABASE_URL` to `.env.dev` + `turbo.json#globalEnv`.
 2. **NLP**: optional `model_name` on classify/diagnosis DTOs; model-keyed LRU (size 3) pipeline cache with startup preload of env defaults; remove the stray `TEXT_CLASSIFIER_MODEL_NAME=michellejieli/...` from root env files.
-3. **tts-v2**: accept `voice_bindings` override in `SpeechRequest` + WS init frame; `VoiceCatalog.get` consults override first.
-- **Tests first** (pytest): guardrail resolver unit tests (tenant override, SYSTEM fallback, env fallback on DB error, TTL cache); NLP cache tests (per-model isolation, LRU bound, unknown-model 4xx, sentinel still 503s); tts-v2 binding-override routing tests.
-- **Gate**: `pnpm py:guardrail:test`, `py:nlp:test`, `py:tts-v2:test`, + `py:<svc>:lint`/`typecheck`.
+3. **tts**: accept `voice_bindings` override in `SpeechRequest` + WS init frame; `VoiceCatalog.get` consults override first.
+- **Tests first** (pytest): guardrail resolver unit tests (tenant override, SYSTEM fallback, env fallback on DB error, TTL cache); NLP cache tests (per-model isolation, LRU bound, unknown-model 4xx, sentinel still 503s); tts binding-override routing tests.
+- **Gate**: `pnpm py:guardrail:test`, `py:nlp:test`, `py:tts:test`, + `py:<svc>:lint`/`typecheck`.
 
 ### Phase 6 — Admin console (design-gated)
 1. ai-models screen/form: `provider`, `architecture`, voices/metaData display; provider filter chip.
@@ -285,7 +285,7 @@ TTS (5; `category=AUDIO`, `taskType=TEXT_TO_SPEECH`, voices in `metaData.voices`
 | `TOKEN_CLASSIFIER_MODEL_NAME`, `MEDICAL_SUGGESTER_MODEL_NAME` | Demoted to bootstrap fallback |
 | `TEXT_CLASSIFIER_MODEL_NAME` (root env files) | **Removed** (contradicts sentinel design) |
 | `TTS_AZURE_VOICE_EN/ML`, `TTS_KOKORO_VOICE`, `TTS_PARLER_SPEAKER_*`, `TTS_SARVAM_VOICE_*` | Demoted to fallback behind injected `voice_bindings` |
-| `SMR_V2_*_DEFAULT_MODEL` | Unchanged (already fallback-only behind HarnessPolicy) |
+| `SMR_*_DEFAULT_MODEL` | Unchanged (already fallback-only behind HarnessPolicy) |
 | GLiNER / groundedness vars | Unchanged (auxiliary engines, not admin-selectable) |
 
 ## 7. Out of Scope
@@ -310,16 +310,16 @@ Implemented 2026-07-17 (owner-approved same day) via one inline foundation phase
 
 ### What shipped (by lane)
 
-1. **DB groundwork (inline)** — `AiModel.provider`/`architecture` columns (+`AiModel_provider_idx`), `AiModelFormat.CLOUD_API`, `ResourceType.AiTaskDefault`, new `AiTaskDefault` table (`ai-task-default.prisma`); migration `20260717120000_task_506_model_registry_consolidation` (applied to dev DB via psql per runbook, together with the previously-unapplied TASK-505 enum migration); allow-lists (`TENANT_SCOPED_MODELS` + `SYSTEM_SHARED_READ_MODELS`) + drift-guard test; stt-v2 SQLAlchemy enum mirrors synced (were 9+ values stale) with a new drift-guard pytest.
+1. **DB groundwork (inline)** — `AiModel.provider`/`architecture` columns (+`AiModel_provider_idx`), `AiModelFormat.CLOUD_API`, `ResourceType.AiTaskDefault`, new `AiTaskDefault` table (`ai-task-default.prisma`); migration `20260717120000_task_506_model_registry_consolidation` (applied to dev DB via psql per runbook, together with the previously-unapplied TASK-505 enum migration); allow-lists (`TENANT_SCOPED_MODELS` + `SYSTEM_SHARED_READ_MODELS`) + drift-guard test; stt SQLAlchemy enum mirrors synced (were 9+ values stale) with a new drift-guard pytest.
 2. **Seeds** — `DEFAULT_AI_MODELS` 60 → 26 (split into `seed/ai-models/{shared,audio,llm,nlp,tts,retired}.ts`); 50-slug soft-retirement sweep across ALL tenants with a boundary-aware pipeline-reference guard; `backfillCustomerTenantAiModels` gains a `provider IS NULL` column-sync for pre-506 clones; `13-harness-policy.ts` SYSTEM `smrModel` → `gemma-4-e2b-it-qat`; 6 superseded GlobalSetting rows retired + `default-stt-model` → `whisper-large-v3-turbo`; new `16-ai-task-default.ts` (SYSTEM defaults: guardrail.validate→granite-guardian-4.1-8b, nlp.ner→medical-ner, nlp.classification→symps-disease-bert-v3-c41); `01-policy.ts` tenant-admin read/manage `AiTaskDefault` grants.
 3. **Domain + applications** — `AiTaskDefault` trio (mapper/repo hand-authored per generator limitation) + `CoreDatabaseModule`; `AiTaskDefaultService` (tenant→SYSTEM effective resolution, slug/taskType validation, **`guardrail.*` writes gated by `isSuperAdmin` → 403**, sys-events, OCC); AiModel DTOs expose provider/architecture; settings-registry `model-defaults.descriptors.ts` + `EffectiveSettingsService` `models.*` branch; `TenantTtsConfigService` registry catalog (`getPlatformCatalog`), `voiceBindings` validation + effective merge.
 4. **Gateway** — `/admin/ai-task-defaults` (`''` effective, `row` OCC GET/PUT, `options` tenant-accessible picker), `/admin/tts-config/catalog`; `X-Tenant-Id` + registry-resolved `model_name` injection on NLP calls; new `POST /ai/nlp/diagnosis` fronting; `/text/providers` + `/text/guardrail-providers` repointed from GlobalSetting keys to the registry; TTS enrichment injects `voice_bindings`; e2e cross-tenant spec authored.
-5. **Python services** — guardrail `TenantConfigResolver` repointed to `AiTaskDefault ⋈ AiModel` (model = `sourceUri`, provider column, `azureDeployment` from metaData; `db_config_enabled` default **True**; fail-open + TTL preserved, DB errors negatively cached); NLP optional `model_name` on classify/diagnosis routes + LRU(3) model cache (default instances protected; stray `TEXT_CLASSIFIER_MODEL_NAME` removed from root env files); tts-v2 `voice_bindings` override (MERGE over catalog bindings — preserves failover).
+5. **Python services** — guardrail `TenantConfigResolver` repointed to `AiTaskDefault ⋈ AiModel` (model = `sourceUri`, provider column, `azureDeployment` from metaData; `db_config_enabled` default **True**; fail-open + TTL preserved, DB errors negatively cached); NLP optional `model_name` on classify/diagnosis routes + LRU(3) model cache (default instances protected; stray `TEXT_CLASSIFIER_MODEL_NAME` removed from root env files); tts `voice_bindings` override (MERGE over catalog bindings — preserves failover).
 6. **Admin console** — ai-models screen/form gains provider+architecture; new `/ai-task-defaults` (global tier 10-19, incl. the platform-controlled guardrail card) + `/ai-model-defaults` (tenant tier 30-49, **NLP keys only**); tts-config voice selects + voice-bindings editor fed by the catalog endpoint; nav + permission gating.
 
 ### Adversarial review round (same day)
 
-3-lens find → adversarial-verify workflow: 12 findings → 8 verified, **8 confirmed / 0 refuted** (4 unverified by cap were duplicates/minors of confirmed ones). Deduped to 6 defects + 2 minors, all fixed: (A, critical) SYSTEM/cross-tenant `AiTaskDefault` writes went through the tenant-scoped client — global admin with a working tenant got eternal 412/500 on platform-default saves; fixed via the `HarnessPolicyService` base-client pattern + repository catch narrowing + e2e case with realistic `x-tenant-id`; (B, security) caller-supplied `modelName` reached NLP unvalidated (arbitrary HF model pull) — now validated against ENABLED `TOKEN_CLASSIFICATION` registry rows; (C) `provisionTenantModelCatalog` dropped provider/architecture/metaData on runtime tenant creation; (D) tts-v2 partial voice-binding override replaced (not merged) the binding map, breaking failover; (E) explicit tenant pinning defeated SYSTEM-shared-read widening on registry listings/options; (F) disabling a TTS registry row didn't disable the provider platform-wide; (+minors: guardrail DB-error negative caching, guardrail enum-mirror drift).
+3-lens find → adversarial-verify workflow: 12 findings → 8 verified, **8 confirmed / 0 refuted** (4 unverified by cap were duplicates/minors of confirmed ones). Deduped to 6 defects + 2 minors, all fixed: (A, critical) SYSTEM/cross-tenant `AiTaskDefault` writes went through the tenant-scoped client — global admin with a working tenant got eternal 412/500 on platform-default saves; fixed via the `HarnessPolicyService` base-client pattern + repository catch narrowing + e2e case with realistic `x-tenant-id`; (B, security) caller-supplied `modelName` reached NLP unvalidated (arbitrary HF model pull) — now validated against ENABLED `TOKEN_CLASSIFICATION` registry rows; (C) `provisionTenantModelCatalog` dropped provider/architecture/metaData on runtime tenant creation; (D) tts partial voice-binding override replaced (not merged) the binding map, breaking failover; (E) explicit tenant pinning defeated SYSTEM-shared-read widening on registry listings/options; (F) disabling a TTS registry row didn't disable the provider platform-wide; (+minors: guardrail DB-error negative caching, guardrail enum-mirror drift).
 
 ### Evidence (final gate runs)
 
@@ -329,10 +329,10 @@ Implemented 2026-07-17 (owner-approved same day) via one inline foundation phase
 | `@arcaai/domains` build + test | 1358 passed (incl. 10 review-fix tests) |
 | `@arcaai/applications` build + test | 6301 passed (incl. 19 review-fix tests) |
 | apps/api build + vitest | **2245 passed, 0 failed** (the formerly-failing `env-port-standardization` suite was fixed by concurrent branch work and now passes 386/386) |
-| apps/stt-v2 full unit | 2344 passed |
+| apps/stt full unit | 2344 passed |
 | apps/guardrail | 102 passed + **live dev-DB resolution smoke** (provider `lm-studio`, model `granite-guardian-4.1-8b` via SYSTEM row) |
 | apps/nlp | 98 passed |
-| apps/tts-v2 | 145 passed |
+| apps/tts | 145 passed |
 | admin-console | build 56/56 pages; lane tests 58 passed; full suite 945 passed + 4 pre-existing tenant-wizard failures (chip spawned) |
 | `pnpm db:seed` (dev DB) | idempotent ×2; per tenant 25 ENABLED + 1 DISABLED (indic-f5) + 50 DELETED; `AiTaskDefault` ×3 SYSTEM rows; superseded GlobalSetting rows DELETED |
 
@@ -354,4 +354,4 @@ Dev Vault had been wiped since TASK-504: re-ran `dev-init.sh` in `hope-vault` (k
 |---|---|
 | 2026-07-17 | Plan created from 4-agent codebase exploration + spot verification (schema, seeds, guardrail/NLP/TTS config flows, TASK-504 framework). Status `Pending`. |
 | 2026-07-17 | Owner approved; guardrail config restricted to global admins (no tenant-admin writes); open questions resolved (§8); status `In Progress`; implementation started (Phase 1 inline + parallel agents for seeds / domain+applications / Python services, then gateway, then admin console). |
-| 2026-07-17 | All 6 lanes implemented + verified (see §9 evidence); dev DB seeded to target state; dev Vault re-initialized; adversarial review (11 agents) confirmed 8 findings — fix round applied (critical tenant-scope write fix, NLP model-id validation, clone column pass-through, shared-read registry listings, TTS registry-driven disable, tts-v2 binding merge, guardrail minors). Status → `Review`. |
+| 2026-07-17 | All 6 lanes implemented + verified (see §9 evidence); dev DB seeded to target state; dev Vault re-initialized; adversarial review (11 agents) confirmed 8 findings — fix round applied (critical tenant-scope write fix, NLP model-id validation, clone column pass-through, shared-read registry listings, TTS registry-driven disable, tts binding merge, guardrail minors). Status → `Review`. |

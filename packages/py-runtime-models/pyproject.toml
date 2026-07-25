@@ -32,7 +32,7 @@ where = ["src"]
 # PEP 561 — ship the inline type information. Without this marker mypy treats
 # every `from hope_runtime_models import ...` in an adopting service as
 # `import-untyped` and degrades everything downstream of it to `Any`, which is
-# what produced the `no-any-return` noise in harness/stt-v2/tts-v2 (TASK-530).
+# what produced the `no-any-return` noise in harness/stt/tts (TASK-530).
 [tool.setuptools.package-data]
 hope_runtime_models = ["py.typed"]
 

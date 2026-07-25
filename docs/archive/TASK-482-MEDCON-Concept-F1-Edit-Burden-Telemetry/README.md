@@ -31,7 +31,7 @@ Two gates: **Python harness eval** (concept-F1 + harm-weight — deepen the offl
 
 **No Prisma migration.** Concept-F1 reads the five `NamedEntity` code columns that already exist (`consultation.prisma:323-327`, populated by TASK-476). Edit-burden reads the `RAW_SUMMARY`/`MODIFIED_SUMMARY` `ContextItem` versions + gate `SummaryMeta` rows that already exist. This ticket **computes over** them; it adds no column.
 
-**STOP-and-report before touching**: TASK-476's producer/linker + the five column definitions (this ticket **reads** the codes, never writes them), TASK-470's `streaming_quality.py` scorecard (`apps/stt-v2/tests/integration/` — re-run it, don't edit it; keyterm recall stays the surface proxy), the harness **workflow command sequence** (`workflows.py` — E3 adds no activity and no `workflow.patched()`; the WORM signals it reads are already emitted), the harness `record_gate_decision`/`finalize_assurance` activities (they already persist approve/edit — this ticket only *reads* the result). Anything outside the manifest → STOP.
+**STOP-and-report before touching**: TASK-476's producer/linker + the five column definitions (this ticket **reads** the codes, never writes them), TASK-470's `streaming_quality.py` scorecard (`apps/stt/tests/integration/` — re-run it, don't edit it; keyterm recall stays the surface proxy), the harness **workflow command sequence** (`workflows.py` — E3 adds no activity and no `workflow.patched()`; the WORM signals it reads are already emitted), the harness `record_gate_decision`/`finalize_assurance` activities (they already persist approve/edit — this ticket only *reads* the result). Anything outside the manifest → STOP.
 
 ## Requirement Analysis
 
@@ -109,7 +109,7 @@ pnpm py:harness:test && pnpm py:harness:lint && pnpm py:harness:typecheck
 pnpm --filter @arcaai/applications build test lint
 pnpm build:api                       # DTO change
 # score (measure-first) — after TASK-476, same fixtures/pipeline as TASK-470
-pnpm py:stt-v2:test:integration      # test_streaming_quality_scorecard (no surface-recall regression)
+pnpm py:stt:test:integration      # test_streaming_quality_scorecard (no surface-recall regression)
 ```
 
 Adversarial review focus (reviewer agent): (a) is concept-F1 **recall-correct** — a dropped reference CUI provably lowers recall, and does it truly **skip clean** on the all-`null` pre-476 codes rather than scoring a false 1.0? (b) does the harm-weight table make a **major** error outweigh a **minor** one, and do same-count/different-severity sets diverge (the npj point proven by a test, not asserted)? (c) is edit-burden **pure arithmetic over already-persisted rows** — no note text or PHI in the response, no new capture, no workflow change? (d) all three deterministic + self-hosted (no cloud judge)? (e) no Prisma migration; concept-F1 **reads** TASK-476's columns, never writes them; zero diff outside the manifest and zero edit to TASK-470's scorecard or the harness workflow command sequence.

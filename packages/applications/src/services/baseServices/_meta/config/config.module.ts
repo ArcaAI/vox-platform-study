@@ -1,12 +1,11 @@
 import { DynamicModule, Global, Module } from '@nestjs/common';
-import { IConfigService } from './IConfigService';
+import { AppConfig, IConfigService } from './IConfigService';
 import { ConfigService } from './config.service';
-import { IAppConfig } from '@arcaai/domains';
 
 // Define a proper interface for config options
 export interface ConfigModuleOptions {
   envFilePath?: string;
-  initialValues?: Partial<IAppConfig>;
+  initialValues?: Partial<AppConfig>;
 }
 
 @Global()

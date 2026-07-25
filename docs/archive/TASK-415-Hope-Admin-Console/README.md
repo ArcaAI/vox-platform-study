@@ -67,7 +67,7 @@ flowchart LR
     end
     subgraph gateway [apps/api NestJS :8868]
         adminApi["/api/v1/admin/* + /auth/* + /monitoring/*"]
-        streams["SSE endpoints + /ws/stt-v2/stream"]
+        streams["SSE endpoints + /ws/stt/stream"]
     end
     query --> apiProxy --> adminApi
     ui --> query
@@ -142,7 +142,7 @@ Every screen: 1440×940, real shell chrome (tier-grouped sidebar with correct ac
 | Frame | Content notes |
 | --- | --- |
 | `10 - Platform Dashboard` | 4 StatCards (tenants, users, active sockets, monthly consumption), MetricChart (7-day consumption area), ServiceStatusBar (7 services), recent-activity feed; matrix: `GET /admin/platform/{metrics,sockets,consumption}` |
-| `11 - Monitoring` | Health summary cards, per-service status bar (api/stt-v2/smr/guardrail/nlp/harness + Redis/PG/MinIO/Qdrant), alerts list, queue-depth note; `GET /health/services`, `/monitoring/*` |
+| `11 - Monitoring` | Health summary cards, per-service status bar (api/stt/smr/guardrail/nlp/harness + Redis/PG/MinIO/Qdrant), alerts list, queue-depth note; `GET /health/services`, `/monitoring/*` |
 | `12 - Tenants List` | Filter bar (search, Status, Plan, Sort), VirtualizedDataGrid (Name/ID/Plan/Users/Status/Storage/Updated/⋯) 7 rows, row-menu note (Suspend/Reactivate/Delete w/ confirm), cursor pagination, `+ New tenant` |
 | `12.1 - Tenant Detail` | Header (name, tnt id, Active badge, Suspend/Archive), tab bar **Overview · Entitlements · Storage · Frontend config · Tags · Danger zone**, overview form w/ If-Match note, usage stat row |
 | `13 - Entitlements & Plans` | Plans grid (Starter/Pro/Enterprise), per-tenant entitlement override table, effective-entitlements resolve note |

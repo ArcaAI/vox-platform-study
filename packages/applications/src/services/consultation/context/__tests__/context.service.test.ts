@@ -1387,6 +1387,73 @@ describe('ContextService', () => {
             expect(result!.outputTokens).toBe(800);
             expect(result!.totalTokens).toBe(1500); // From mock default
         });
+
+        // F-34: re-validate the provenance id arrays against the caller's
+        // tenant on READ, not just at addRawSummary write time — a poisoned
+        // id (however introduced) must never be re-surfaced. Reads degrade
+        // (the foreign id is dropped, with a warning) instead of throwing.
+        describe('F-34 provenance id tenant re-validation', () => {
+            it('drops a foreign-tenant id from each provenance array and warns, keeping the in-tenant ids', async () => {
+                const summaryMeta = createMockSummaryMetaEntity({
+                    caseNoteIds: ['note-good', 'note-bad'],
+                    preSummaryIds: ['ps-good'],
+                    previousSummaryIds: ['prev-bad'],
+                });
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue(summaryMeta);
+                mockContextItemRepository.findAll.mockResolvedValueOnce([
+                    createMockContextItemEntity({ id: 'note-good', tenantId: 'tenant-1' }),
+                    createMockContextItemEntity({ id: 'note-bad', tenantId: 'tenant-OTHER' }),
+                    createMockContextItemEntity({ id: 'ps-good', tenantId: 'tenant-1' }),
+                    createMockContextItemEntity({ id: 'prev-bad', tenantId: 'tenant-OTHER' }),
+                ]);
+
+                const result = await service.getSummaryMeta('context-item-id-1');
+
+                expect(result).not.toBeNull();
+                expect(result!.caseNoteIds).toEqual(['note-good']);
+                expect(result!.preSummaryIds).toEqual(['ps-good']);
+                // All previousSummaryIds dropped -> empty array -> mapper omits the field.
+                expect(result!.previousSummaryIds).toBeUndefined();
+            });
+
+            it('drops an id that no longer resolves to any ContextItem (missing, not just foreign-tenant)', async () => {
+                const summaryMeta = createMockSummaryMetaEntity({
+                    caseNoteIds: ['note-gone'],
+                });
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue(summaryMeta);
+                // The id simply isn't found (e.g. hard-deleted) — findAll returns nothing for it.
+                mockContextItemRepository.findAll.mockResolvedValueOnce([]);
+
+                const result = await service.getSummaryMeta('context-item-id-1');
+
+                expect(result!.caseNoteIds).toBeUndefined();
+            });
+
+            it('does not call findAll when the provenance arrays are all empty (no-op fast path)', async () => {
+                const summaryMeta = createMockSummaryMetaEntity();
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue(summaryMeta);
+                mockContextItemRepository.findAll.mockClear();
+
+                await service.getSummaryMeta('context-item-id-1');
+
+                expect(mockContextItemRepository.findAll).not.toHaveBeenCalled();
+            });
+
+            it('keeps ids unchanged when every provenance id is in-tenant (regression lock)', async () => {
+                const summaryMeta = createMockSummaryMetaEntity({
+                    caseNoteIds: ['cn-1', 'cn-2'],
+                    preSummaryIds: ['ps-1'],
+                    previousSummaryIds: ['prev-1', 'prev-2'],
+                });
+                mockSummaryMetaRepository.findByContextItem.mockResolvedValue(summaryMeta);
+
+                const result = await service.getSummaryMeta('context-item-id-1');
+
+                expect(result!.caseNoteIds).toEqual(['cn-1', 'cn-2']);
+                expect(result!.preSummaryIds).toEqual(['ps-1']);
+                expect(result!.previousSummaryIds).toEqual(['prev-1', 'prev-2']);
+            });
+        });
     });
 
     // ============================================
@@ -2167,6 +2234,24 @@ describe('ContextService', () => {
 
             expect(result).not.toBeNull();
             expect(result?.id).toBe('context-item-id-1');
+        });
+
+        // F-34: the embedded SummaryMeta relation goes through the same
+        // read-time provenance re-validation as getSummaryMeta.
+        it('drops a foreign-tenant provenance id from the embedded SummaryMeta relation', async () => {
+            const itemWithRelations = {
+                ...createMockContextItemEntity(),
+                SummaryMeta: createMockSummaryMetaEntity({ caseNoteIds: ['note-good', 'note-bad'] }),
+            };
+            mockContextItemRepository.findWithAllRelations.mockResolvedValue(itemWithRelations);
+            mockContextItemRepository.findAll.mockResolvedValueOnce([
+                createMockContextItemEntity({ id: 'note-good', tenantId: 'tenant-1' }),
+                createMockContextItemEntity({ id: 'note-bad', tenantId: 'tenant-OTHER' }),
+            ]);
+
+            const result = await service.getContextItemWithRelations('context-item-id-1');
+
+            expect(result?.summaryMeta?.caseNoteIds).toEqual(['note-good']);
         });
     });
 

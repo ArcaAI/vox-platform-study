@@ -69,7 +69,7 @@ export {
   DEFAULT_STT_CONFIG,
 } from './constants';
 
-// STT-V2 types
+// STT types
 export type {
   WsTranscriptResult,
   WsStatusMessage,
@@ -82,17 +82,17 @@ export type {
   StreamingSessionStatus,
   TranscriptionJobResponse,
   TranscriptionJobStatusCounts,
-} from '../types/stt-v2';
-export { TranscriptionJobStatus, TranscriptionJobType } from '../types/stt-v2';
+} from '../types/stt';
+export { TranscriptionJobStatus, TranscriptionJobType } from '../types/stt';
 
-// STT-V2 streaming clients
-export { SttV2WebSocketClient, type WsConnectOptions, type WsReconnectOptions } from './SttV2WebSocketClient';
+// STT streaming clients
+export { SttWebSocketClient, type WsConnectOptions, type WsReconnectOptions } from './SttWebSocketClient';
 export { StreamingSessionManager, type SessionManagerStatus } from './StreamingSessionManager';
 export { FileTranscriptionService, type FileTranscribeOptions } from './FileTranscriptionService';
 export { SSEClient, type SSEConnectOptions } from './SSEClient';
 
-// STT-V2 endpoint constants
-export { STT_V2_ENDPOINTS } from './constants';
+// STT endpoint constants
+export { STT_ENDPOINTS } from './constants';
 
 // Auth-based tenant endpoints
 export { MY_TENANT_ENDPOINTS } from './constants';

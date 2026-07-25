@@ -201,7 +201,7 @@ Layer order for every code-touching change follows the HOPE dependency chain: **
 | Phase | Name | Scope |
 |---|---|---|
 | **1** | At-rest disk encryption (infra) | LUKS/dm-crypt on Postgres data + WAL volumes (dev compose, single-deployment, HA Patroni VMs); MinIO SSE for media + pgBackRest buckets; Redis volume; LUKS auto-unlock key custody (clevis-tang or Vault-stored passphrase). Compliance floor — covers every column/index/WAL/temp file. |
-| **2** | In-transit TLS | `sslmode=require` (target `verify-full` with CA) on `DATABASE_URL`/`DIRECT_URL` for `api`, `stt-v2`, `smr`, `guardrail`, `harness`; server TLS on Patroni/pgBouncer; confirm MinIO SSL. Verify non-TLS rejected. |
+| **2** | In-transit TLS | `sslmode=require` (target `verify-full` with CA) on `DATABASE_URL`/`DIRECT_URL` for `api`, `stt`, `smr`, `guardrail`, `harness`; server TLS on Patroni/pgBouncer; confirm MinIO SSL. Verify non-TLS rejected. |
 | **3A** | Field-level: PHI key + keyed crypto API | Provision dedicated `hope-phi` Transit key (`min_decryption_version=1`, `deletion_allowed=false`, `exportable=false`); extend `VaultProviderConfig` + `SecretsService.encrypt/decrypt` to accept an optional key name; add `VAULT_TRANSIT_KEY_PHI`. Separate key = independent rotation/policy blast radius. |
 | **3B** | Field-level: pilot on `ContextItem.content` | Additive `encryptedContent Bytes?` + `contentKeyVersion Int?`; entity getters/setters + `@Secret()`; Bytes-safe mapper; new `ContextItemRepository.encryption.ts` sibling; service encrypt-on-write / decrypt-on-read (generic `findById` never decrypts; DTOs never expose ciphertext); idempotent `--dry-run` backfill; full test suite. |
 | **3C** | Field-level: rollout | Apply the recipe to all remaining Category B fields (`ContextItemVersion`, `Highlight`, `NamedEntity`, `SummaryMeta`, `TranscriptionJob`, `GoldenCase`, `EvalRun`/`EvalScore`, DNA style, `KnowledgeChunk`, `Notification`, `PromptTemplate`). |
@@ -278,7 +278,7 @@ Client-side TLS enforced across services; server-side TLS on Patroni/PgBouncer +
 - `.env.production`: `DATABASE_URL` `sslmode=require` (target `verify-full`); `MINIO_USE_SSL=true`.
 - `.env.dev` & `.env.test`: documented dev/test no-TLS; HA examples `sslmode=require`.
 - `apps/api/.env.example`: TLS guidance on `DATABASE_URL`/`DIRECT_URL`.
-- `apps/stt-v2/.env.production`: `?ssl=require` + `MINIO_SECURE=true`.
+- `apps/stt/.env.production`: `?ssl=require` + `MINIO_SECURE=true`.
 - `apps/guardrail/.env.example`: `?ssl=require`.
 
 #### Phase 3A — PHI Transit key + keyed crypto API (application) — verified green
@@ -389,7 +389,7 @@ SECRETS_PROVIDER=vault VAULT_ADDR=… …             pnpm --filter @arcaai/data
 
 **Infra — modified:**
 - `.env.production`, `.env.dev`, `.env.test`
-- `apps/api/.env.example`, `apps/stt-v2/.env.production`, `apps/guardrail/.env.example`
+- `apps/api/.env.example`, `apps/stt/.env.production`, `apps/guardrail/.env.example`
 - `research/configs/postgres-ha/pgbackrest/pgbackrest.conf`, `pgbackrest-local.conf.example`
 - `research/configs/postgres-ha/docker-compose.yml`, `research/configs/postgres-ha/.env.example`
 - `infrastructure/docker/docker-compose.yml`
@@ -453,7 +453,7 @@ Real-host actions that cannot be performed in the repo. Tracked in `infrastructu
 
 ### 6.8 Deferred / Follow-up Work
 
-- Python-owned bulk-write paths in STT-v2 / NLP that write directly to encrypted models (the TS HTTP API paths are wired).
+- Python-owned bulk-write paths in STT / NLP that write directly to encrypted models (the TS HTTP API paths are wired).
 - ~~Phase 6 gated plaintext cleanup (approval-gated).~~ **Done 2026-06-19 (dev, user-approved)** — see §6.2 Phase 6.
 - **Fail-closed coverage for the audit/WORM paths** — the `AuditLog` DEK-envelope service and the WORM `encryptPayloads` callers (`harness-audit`, `harness-policy`, `pipeline-policy`) were **intentionally left best-effort** in the §6.9 follow-up (different encrypt shape + an availability requirement: the clinical audit append "must never fail closed"). Whether to make these fail-closed in staging/prod is an open decision.
 

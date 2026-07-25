@@ -78,8 +78,8 @@ itself lives in the medical-NLP domain / SMR-driven `extract-entities` in
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` + `apps/stt-v2` + MinIO |
-| Key modules | `apps/api/src/modules/consultation` (recording routes on `consultation.controller.ts`); `apps/api/src/modules/internal` (`stt-internal.controller.ts` — STT-v2 callbacks); `packages/applications/src/services/consultation/context` (audio-recording persistence) |
+| App / service | `apps/api` + `apps/stt` + MinIO |
+| Key modules | `apps/api/src/modules/consultation` (recording routes on `consultation.controller.ts`); `apps/api/src/modules/internal` (`stt-internal.controller.ts` — STT callbacks); `packages/applications/src/services/consultation/context` (audio-recording persistence) |
 | Prisma models | `AudioRecording` (`db_main/consultation.prisma`), `Media` (`db_main/media.prisma`), `TenantBucket` (`db_main/*` storage domain) |
 | Key API endpoints | `POST /consultations/:id/recording/start`, `POST /consultations/:id/recording/stop`, `POST /consultations/:id/recordings` (register), `GET /consultations/:id/recordings`; internal callbacks `@Controller('internal/stt')` → `POST /internal/stt/audio-records`, `POST /internal/stt/media` |
 | Tests | unit(app): `consultation/consultation/__tests__/consultation.service.recording.test.ts`; unit(api): `internal` STT-callback tests, `consultation.controller` recording paths |

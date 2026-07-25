@@ -9,7 +9,7 @@
 | Status | Completed |
 | Type | Bugfix / Security hardening |
 | Owner | A4 (SDK observability & PHI scrubbing) |
-| Scope | `packages/agentic-sdk-v2` — logger pipeline, cross-tab sync, STT-V2 WS debug log |
+| Scope | `packages/agentic-sdk-v2` — logger pipeline, cross-tab sync, STT WS debug log |
 | Wave | TASK-262 Wave 0 (W0-2, W0-4, W0-5, W0-13) |
 
 ---
@@ -23,7 +23,7 @@ Wave 0 of TASK-262 (`docs/implementation/TASK-262-Vox-SDK-Deep-Assessment/README
 - **W0-2 — Highlight transport gating + PHI redaction.** Highlight.io is HIPAA-incompatible by default; it must be gated behind an explicit opt-in, a DSN, and non-production environment. Independently, every log entry must pass through a deep PHI redactor before reaching ANY transport (highlight, loki, otel, console, custom).
 - **W0-4 — Cross-tab message signing.** `SimpleCrossTabSync` posts on `BroadcastChannel` with no authentication, allowing same-origin malicious code (an injected extension, a sibling iframe, a service worker) to spoof context_added / context_updated events into the SDK.
 - **W0-5 — Per-tenant `BroadcastChannel`.** The channel was previously named `arcaai_session_<patient>_<doctor>_<date>` with no tenant scoping; two tenants opening the SDK in the same browser process could cross-talk.
-- **W0-13 — Ad-hoc `console.log` in `SttV2WebSocketClient.ts`.** A debug branch in the WebSocket client wrote a raw transcript JSON blob (containing PHI text) directly to `console.log`, bypassing the structured logger and PHI redactor entirely.
+- **W0-13 — Ad-hoc `console.log` in `SttWebSocketClient.ts`.** A debug branch in the WebSocket client wrote a raw transcript JSON blob (containing PHI text) directly to `console.log`, bypassing the structured logger and PHI redactor entirely.
 
 ### 1.2 Business context
 
@@ -40,7 +40,7 @@ All four defects sit on HIPAA-relevant data paths (consultation transcripts, pat
 3. `HighlightTransport` exposes a `static isAllowedToActivate(config): boolean` predicate. The constructor and `SDKLogger.initializeTransports()` both consult it. When `false`, neither `init` nor `log` calls reach the Highlight SDK and no log is queued in memory.
 4. `SimpleCrossTabSync` wraps every outgoing message as `{ payload, hmac }` where `hmac` is `HMAC-SHA-256` over `JSON.stringify(payload)`, signed with a 32-byte per-session secret held in module memory. Receivers verify and drop unsigned / mismatched / cross-secret messages, warning via the injected logger.
 5. `SimpleCrossTabSync` channel name is `agentic.<tenantId>` (preferred) or `agentic.<consultationKey>` (fallback). Never the bare `'agentic'`. `setTenantId(id)` closes the old channel and opens a new tenant-scoped one.
-6. `SttV2WebSocketClient.ts` contains no `console.log(` call sites (verified by a regex scan against the source file in a unit test). The debug transcript output is routed through `logger.debug()`.
+6. `SttWebSocketClient.ts` contains no `console.log(` call sites (verified by a regex scan against the source file in a unit test). The debug transcript output is routed through `logger.debug()`.
 7. `pnpm --filter @arcaai/vox build`, `... test` (within W0-2/4/5/13 scope), `... lint` all pass; ReadLints clean for every file in my exclusive write scope.
 
 ---
@@ -59,7 +59,7 @@ All four defects sit on HIPAA-relevant data paths (consultation transcripts, pat
 
 Channel name was `arcaai_session_${patient}_${doctor}_${date}` — no `agentic.` namespace, no tenant scoping. Authentication was an opt-in plaintext `sessionSecret` field comparison (SEC-05); without it, any same-origin code could forge messages. No HMAC. No `setTenantId` API.
 
-### 2.4 `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` (pre-W0-13)
+### 2.4 `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` (pre-W0-13)
 
 Lines 32–36 contained:
 ```ts
@@ -77,7 +77,7 @@ The `entry` object contained `speaker`, `start`, `end`, `duration`, `inference` 
 | `core/logger/__tests__/SDKLogger.test.ts` | 53 tests. One asserted `entry.user.patientId` passes through verbatim. | Inverted to assert `[REDACTED]` + added `TASK-266 W0-2: PHI redaction reaches every transport surface` suite. |
 | `core/logger/__tests__/highlight.transport.test.ts` | 31 tests (SEC-08 included). | Added `TASK-266 W0-2: gated activation` suite (6 tests). |
 | `core/__tests__/SimpleCrossTabSync.test.ts` | 22 tests, including SEC-05 sessionSecret tests. | Rewritten: async-aware (`flushAsync`), new W0-4 HMAC tampering / wrong-secret / signing tests, new W0-5 channel-naming and `setTenantId` tests. SEC-05 sessionSecret tests dropped — superseded by W0-4 HMAC. |
-| `core/__tests__/SttV2WebSocketClient.test.ts` | 61 tests. TASK-241 debug-mode block spied on `console.log`. | Updated to spy on `mockLogger.debug` + console-NOT-called assertion. Added `TASK-266 W0-13: source must not contain console.log` regex-grep test. |
+| `core/__tests__/SttWebSocketClient.test.ts` | 61 tests. TASK-241 debug-mode block spied on `console.log`. | Updated to spy on `mockLogger.debug` + console-NOT-called assertion. Added `TASK-266 W0-13: source must not contain console.log` regex-grep test. |
 
 ---
 
@@ -92,7 +92,7 @@ The `entry` object contained `speaker`, `start`, `end`, `duration`, `inference` 
 | T3 | `logger/__tests__/highlight.transport.test.ts` | `init` and `log` NOT called when NODE_ENV=production, `enabled=false`, or empty `projectId`; both called when all gates pass; no log queueing in gated-off state; `isAllowedToActivate` is a pure static predicate |
 | T4 | `__tests__/SimpleCrossTabSync.test.ts` | Outgoing message has `{payload, hmac}` envelope; unsigned messages dropped + warn; tampered payload dropped + warn; wrong-secret messages dropped + warn; happy-path verified delivery; 32-byte secret; secret regenerated on `__resetSessionHmacSecretForTests` |
 | T5 | `__tests__/SimpleCrossTabSync.test.ts` | Channel name = `agentic.<tenantId>` when tenantId given, `agentic.<consultationKey>` fallback, never `'agentic'`; cross-tenant isolation; `setTenantId` closes old + opens new; `setTenantId` is no-op for same id |
-| T6 | `__tests__/SttV2WebSocketClient.test.ts` | Debug-mode final transcript routed through `mockLogger.debug` (NOT `console.log`); console spy never invoked; segment counter still increments; source file contains zero `console.log(` call sites (regex scan, JSDoc comments stripped) |
+| T6 | `__tests__/SttWebSocketClient.test.ts` | Debug-mode final transcript routed through `mockLogger.debug` (NOT `console.log`); console spy never invoked; segment counter still increments; source file contains zero `console.log(` call sites (regex scan, JSDoc comments stripped) |
 
 ### 3.2 File creation / modification order
 
@@ -100,12 +100,12 @@ The `entry` object contained `speaker`, `start`, `end`, `duration`, `inference` 
 2. `core/logger/SDKLogger.ts` integration + test → RED → GREEN.
 3. `core/logger/transports/highlight.transport.ts` gating + test → RED → GREEN.
 4. `core/SimpleCrossTabSync.ts` HMAC + per-tenant naming + test → RED → GREEN.
-5. `core/SttV2WebSocketClient.ts` debug log replacement + test → RED → GREEN.
+5. `core/SttWebSocketClient.ts` debug log replacement + test → RED → GREEN.
 
 ### 3.3 Verification criteria
 
 - `pnpm --filter @arcaai/vox build` exits 0.
-- `pnpm --filter @arcaai/vox test` — all tests in MY exclusive write scope pass (`logger/**`, `SimpleCrossTabSync.test.ts`, `SttV2WebSocketClient.test.ts`). Failures in OTHER A-agents' files (TASK-265 constants, TASK-267 useArca audio) are not in scope.
+- `pnpm --filter @arcaai/vox test` — all tests in MY exclusive write scope pass (`logger/**`, `SimpleCrossTabSync.test.ts`, `SttWebSocketClient.test.ts`). Failures in OTHER A-agents' files (TASK-265 constants, TASK-267 useArca audio) are not in scope.
 - `pnpm --filter @arcaai/vox lint` exits 0 with zero errors and zero new warnings in files I edited.
 - `ReadLints` returns no findings on every modified file.
 
@@ -128,11 +128,11 @@ The `entry` object contained `speaker`, `start`, `end`, `duration`, `inference` 
 | `packages/agentic-sdk-v2/src/core/logger/SDKLogger.ts` | `dispatch()` now passes the entry through `redactPHI(entry, this.config.redactFields)` before invoking any transport. `initializeTransports()` gates `HighlightTransport` construction on `HighlightTransport.isAllowedToActivate(this.config.highlight)`. |
 | `packages/agentic-sdk-v2/src/core/logger/transports/highlight.transport.ts` | Added `private permanentlyDisabled` flag, `static isAllowedToActivate(config)` predicate (checks NODE_ENV !== 'production' && enabled && projectId non-empty). Constructor sets `permanentlyDisabled = true` and clears `pendingLogs` when gate fails. `initialize()` no-ops when disabled. `log()` is a hard no-op when disabled — no queueing — so a misconfigured deploy cannot buffer PHI for a later runtime gate flip. |
 | `packages/agentic-sdk-v2/src/core/SimpleCrossTabSync.ts` | Rewritten. Adds module-level singleton 32-byte secret (`crypto.getRandomValues`), lazy `Promise<CryptoKey>` via `crypto.subtle.importKey`, async sign/verify in `broadcast`/`handleIncoming`. New `{ payload, hmac }` envelope (base64 HMAC). New `agentic.<tenantId>` channel naming with `consultationKey` fallback. New `setTenantId(id)` method (close + reopen). New optional `{ tenantId, logger }` constructor option. Test-only helpers `__resetSessionHmacSecretForTests` + `__getSessionHmacSecretForTests`. `broadcastContext*` now return `Promise<void>`. |
-| `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` | `debugLogTranscript()` signature changed to `(logger?: ISDKLogger, source: string, entry: DebugTranscriptEntry)`. Body uses `logger?.debug(...)` instead of `console.log(...)`. Call site at line ~598 updated to pass `this.logger`. No other lines touched. |
+| `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` | `debugLogTranscript()` signature changed to `(logger?: ISDKLogger, source: string, entry: DebugTranscriptEntry)`. Body uses `logger?.debug(...)` instead of `console.log(...)`. Call site at line ~598 updated to pass `this.logger`. No other lines touched. |
 | `packages/agentic-sdk-v2/src/core/logger/__tests__/SDKLogger.test.ts` | Inverted the legacy `should include user context` assertion (doctorId/patientId now expect `[REDACTED]`). Added 5-test `TASK-266 W0-2: PHI redaction reaches every transport surface` suite. |
 | `packages/agentic-sdk-v2/src/core/logger/__tests__/highlight.transport.test.ts` | Added 6-test `TASK-266 W0-2: gated activation` suite. |
 | `packages/agentic-sdk-v2/src/core/__tests__/SimpleCrossTabSync.test.ts` | Rewritten end-to-end (async-aware), 24 tests covering original contract + W0-4 HMAC + W0-5 per-tenant naming. SEC-05 sessionSecret tests removed (superseded). |
-| `packages/agentic-sdk-v2/src/core/__tests__/SttV2WebSocketClient.test.ts` | TASK-241 debug-mode tests now spy on `mockLogger.debug` and assert `consoleSpy` NOT called. Added `TASK-266 W0-13: source must not contain console.log` regex-grep test using `fs.readFileSync` + comment-stripping. |
+| `packages/agentic-sdk-v2/src/core/__tests__/SttWebSocketClient.test.ts` | TASK-241 debug-mode tests now spy on `mockLogger.debug` and assert `consoleSpy` NOT called. Added `TASK-266 W0-13: source must not contain console.log` regex-grep test using `fs.readFileSync` + comment-stripping. |
 
 ### 4.3 Public API additions (config-facing)
 
@@ -210,7 +210,7 @@ URL prefixes stripped: `data:`, `blob:`, `file:` → `[REDACTED-URL]`.
 
 ### 4.7 W0-13 — surgical replacement
 
-Only two lines of `SttV2WebSocketClient.ts` were touched:
+Only two lines of `SttWebSocketClient.ts` were touched:
 
 ```ts
 // before
@@ -222,15 +222,15 @@ function debugLogTranscript(source: string, entry: DebugTranscriptEntry): void {
 function debugLogTranscript(logger: ISDKLogger | undefined, source: string, entry: DebugTranscriptEntry): void {
   logger?.debug(`[ARCAAI:DEBUG] ${source} Transcript:\n${JSON.stringify(entry, null, 2)}`, {
     operation: 'debugLogTranscript',
-    component: 'SttV2WebSocketClient',
+    component: 'SttWebSocketClient',
     attributes: { entry },
   });
 }
 ```
 and the single call site:
 ```ts
-// before:  debugLogTranscript('SttV2WebSocket', entry);
-// after:   debugLogTranscript(this.logger, 'SttV2WebSocket', entry);
+// before:  debugLogTranscript('SttWebSocket', entry);
+// after:   debugLogTranscript(this.logger, 'SttWebSocket', entry);
 ```
 No other logic in the file is touched. The W0-13 test `expect(stripped).not.toMatch(/console\.log\s*\(/)` locks this contract going forward.
 
@@ -263,7 +263,7 @@ src/core/logger/__tests__/SDKLogger.test.ts
 src/core/logger/__tests__/types.test.ts
 src/core/logger/__tests__/utils.test.ts
 src/core/__tests__/SimpleCrossTabSync.test.ts
-src/core/__tests__/SttV2WebSocketClient.test.ts
+src/core/__tests__/SttWebSocketClient.test.ts
 
 Test Files  10 passed (10)
      Tests  328 passed (328)
@@ -281,7 +281,7 @@ Both were already failing on `dev` before my work; my edits neither introduced n
 ```
 ✖ 13 problems (0 errors, 13 warnings)
 ```
-Exit code `0`. The 13 warnings are all `prettier/prettier` formatting nits in **other** files (`core.ts`, `FileTranscriptionService.ts`, `types/dna.ts`, `types/index.ts`, and the pre-existing nested ternary at `SttV2WebSocketClient.ts:463` inside `normalizeTranscript` — not a line I touched). Zero warnings in any file I created or substantively edited.
+Exit code `0`. The 13 warnings are all `prettier/prettier` formatting nits in **other** files (`core.ts`, `FileTranscriptionService.ts`, `types/dna.ts`, `types/index.ts`, and the pre-existing nested ternary at `SttWebSocketClient.ts:463` inside `normalizeTranscript` — not a line I touched). Zero warnings in any file I created or substantively edited.
 
 ### 5.4 `ReadLints` on every modified file
 

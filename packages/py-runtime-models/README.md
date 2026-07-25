@@ -1,16 +1,16 @@
 # hope-runtime-models
 
 Shared **model-lifecycle contract** for the HOPE in-process Python services
-(`stt-v2`, `guardrail`, `nlp`, `harness`, `tts-v2`).
+(`stt`, `guardrail`, `nlp`, `harness`, `tts`).
 
 Before TASK-529 three structurally identical caches existed with zero code
-sharing (stt-v2 / guardrail / nlp) and two services had no lifecycle management
-at all (harness held an immortal module dict, tts-v2 loaded eagerly at boot and
+sharing (stt / guardrail / nlp) and two services had no lifecycle management
+at all (harness held an immortal module dict, tts loaded eagerly at boot and
 never unloaded). This package is the single implementation of that policy.
 
 It is a **contract, not a framework**: one policy engine plus the two optional
 hooks it needs (metrics sink, VRAM probe). Service-specific concerns — the
-stt-v2 loader map, the tts pipeline handles, the harness llama handle — stay in
+stt loader map, the tts pipeline handles, the harness llama handle — stay in
 their own services and are passed in as `factory` / `unload` callables.
 
 **Two concurrency skins, one policy.** `ModelCache` (asyncio) and

@@ -2,7 +2,7 @@
  * API Gateway Proxy Endpoint E2E Tests
  *
  * Smoke-checks that unauthenticated requests to proxy endpoints don't crash
- * the gateway. STT v2 uses native NestJS controllers, not a proxy.
+ * the gateway. STT uses native NestJS controllers, not a proxy.
  */
 
 import { test, expect } from '@playwright/test';

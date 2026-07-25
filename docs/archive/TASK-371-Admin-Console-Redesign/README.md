@@ -323,7 +323,7 @@ Deepened the two super-admin **platform** screens from thin reskins into real op
 | KPI | Value | Grounded in |
 |---|---|---|
 | **Total users** | 1,847 (▲24 this week) | `User` rows across all tenants (Prisma `user`) — cross-tenant platform scale. |
-| **Transcription min · 24h** | 14,208 | STT is the highest-volume pipeline; audio-minutes processed is the core usage/billing signal (`apps/stt-v2`, `whisper-large-v3-turbo`). |
+| **Transcription min · 24h** | 14,208 | STT is the highest-volume pipeline; audio-minutes processed is the core usage/billing signal (`apps/stt`, `whisper-large-v3-turbo`). |
 | **Summaries · 24h** | 642 | SMR throughput; `gemma-4-e4b` is the default summarizer (`apps/smr`) — ties compute to clinical output. |
 | **Storage used** | 2.4 TB / 5 TB quota | Media + artifacts in MinIO (`media` schema, TASK-376 backfill) — capacity planning vs quota. |
 

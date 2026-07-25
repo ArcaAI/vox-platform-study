@@ -33,7 +33,7 @@ This ticket makes OTel export **explicit opt-in everywhere**, neutralizes the de
 
 ### 1.3 Acceptance criteria
 
-1. **Cold-start clean:** fresh clone → `cp .env.example .env` (and/or per-app `.env.example` copies) → `docker compose up` (core infra only) → start each service (`pnpm dev:api`, `dev:stt-v2`, `dev:smr-v2`, `dev:nlp`, `dev:guardrail`, `dev:harness`) with **no** Prometheus/Grafana/OTel collector running → **zero** OTLP export errors/retry warnings in logs; all health endpoints green.
+1. **Cold-start clean:** fresh clone → `cp .env.example .env` (and/or per-app `.env.example` copies) → `docker compose up` (core infra only) → start each service (`pnpm dev:api`, `dev:stt`, `dev:smr`, `dev:nlp`, `dev:guardrail`, `dev:harness`) with **no** Prometheus/Grafana/OTel collector running → **zero** OTLP export errors/retry warnings in logs; all health endpoints green.
 2. **Explicit opt-in only:** OTel export activates only when the service's master switch is on **and** an endpoint is configured. NLP gains `NLP_OTEL_ENABLED` (default `false`), covering traces, metrics, **and logs** (log export is currently ungated).
 3. **API gateway:** `node --import dist/instrumentation.js` (i.e. `pnpm start`, `start:prod`, Docker CMD) with `OTEL_EXPORTER_OTLP_ENDPOINT` unset/empty does **not** start the SDK (single info log states telemetry is off); no `localhost:4317` fallback remains. `OTEL_SDK_DISABLED=true` is honored as a standard kill-switch. Behavior with an explicit endpoint is unchanged.
 4. **Pull path untouched:** `/metrics` endpoints stay on by default (passive scrape surface); Prometheus + Grafana stay behind the opt-in `prometheus`/`observability` compose profiles; admin dashboard still degrades to em-dash without Prometheus.
@@ -50,7 +50,7 @@ This ticket makes OTel export **explicit opt-in everywhere**, neutralizes the de
 |---|---|
 | Prometheus + Grafana are **opt-in** compose profiles; plain `up` never starts them; **no collector/Loki/Tempo in dev compose at all** | `infrastructure/docker/docker-compose.dev.yml:275-349` (`profiles: ["observability", "prometheus"]`) |
 | Read path degrades gracefully — 2.5 s abort timeout, `null`/`[]` on any failure, debug-level logging, admin tiles render em-dash | `packages/applications/src/services/platform-metrics/prometheus-query.service.ts:44,99-125`; TASK-386 README decision #1 |
-| STT / SMR / Guardrail / Harness gate OTel behind `otel_enabled: bool = False` and only then import/start exporters | `apps/stt-v2/src/stt_v2/core/config/settings.py:500-503` + `main.py:265-273`; `apps/smr/src/smr_v2/core/config.py:145` + `main.py:249-259`; `apps/guardrail/src/guardrail/core/config.py:237` (setup never called); `apps/harness/src/harness/core/config.py:256` |
+| STT / SMR / Guardrail / Harness gate OTel behind `otel_enabled: bool = False` and only then import/start exporters | `apps/stt/src/stt/core/config/settings.py:500-503` + `main.py:265-273`; `apps/smr/src/smr/core/config.py:145` + `main.py:249-259`; `apps/guardrail/src/guardrail/core/config.py:237` (setup never called); `apps/harness/src/harness/core/config.py:256` |
 | `/metrics` endpoints are passive pull surfaces, on by default (`metrics_enabled: bool = True`) | `apps/*/main.py` (`prometheus_fastapi_instrumentator` / `prometheus_client`); API via `@willsoto/nestjs-prometheus`, deliberately public: `apps/api/src/bootstrap/third-party-public-routes.ts:33` |
 | `.env.test` already neutralized (`OTEL_EXPORTER_OTLP_ENDPOINT=` empty, flags false) | `.env.test:158-160` |
 | Loki transport default off | `packages/applications/src/services/baseServices/logging/logging.service.ts:125` (`LOKI_ENABLED` default `false`) |
@@ -84,7 +84,7 @@ apps/api/src/instrumentation.ts:35   sdk.start();   // unconditional
 | `apps/nlp/.env.example` | 23-29 | same + resource attrs | Same, app-local |
 | `apps/api/.env.example` | 71-77 | same + logs flags | Misleading for dev |
 | `apps/guardrail/.env.example` | 19-21 | `GUARDRAIL_OTEL_*` | **Dead vars** — root settings prefix is `GUARDRAIL_V2_` (`apps/guardrail/src/guardrail/core/config.py:216`), so these are silently ignored |
-| `apps/stt-v2/.env.example` | 250-254 | bare `OTEL_ENABLED=false` etc. | **Correct** — STT settings have no `env_prefix` (`settings.py:18-23`); no change |
+| `apps/stt/.env.example` | 250-254 | bare `OTEL_ENABLED=false` etc. | **Correct** — STT settings have no `env_prefix` (`settings.py:18-23`); no change |
 
 ### 2.5 Scripts / npm audit (evidence)
 
@@ -149,7 +149,7 @@ No tests (config files); guarded by grep-based verification in §3.5 and by `app
 | `apps/api/.env.example:71-77` | Endpoint empty + comment; flags `false`; document `OTEL_SDK_DISABLED` |
 | `apps/nlp/.env.example:23-29` | Add `NLP_OTEL_ENABLED=false` (master switch, first line of the block); endpoint empty + comment; traces/metrics `false` |
 | `apps/guardrail/.env.example:19-21` | Rename dead vars → `GUARDRAIL_V2_OTEL_ENABLED` / `GUARDRAIL_V2_OTEL_EXPORTER_ENDPOINT` / `GUARDRAIL_V2_OTEL_SERVICE_NAME` (root settings prefix `GUARDRAIL_V2_`, config.py:216) |
-| `.env.test`, `apps/stt-v2/.env.example`, `apps/smr/.env.example`, `apps/harness/.env.example` | **No change** (already correct) |
+| `.env.test`, `apps/stt/.env.example`, `apps/smr/.env.example`, `apps/harness/.env.example` | **No change** (already correct) |
 
 ### 3.4 Work item D — scripts, npm aliases, docs
 

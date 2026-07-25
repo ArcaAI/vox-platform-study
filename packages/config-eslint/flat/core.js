@@ -178,7 +178,7 @@ module.exports = [
         // URLs through the typed `IConfigService.getConfigValue(...)`
         // accessor so env-loading + validation happens once at bootstrap.
         // Fires on dot and bracket access for SMR_URL, SMR_SERVICE_URL,
-        // STT_V2_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL; other env reads
+        // STT_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL; other env reads
         // (NODE_ENV, npm_package_version, ...) stay legal.
         name: 'arcaai/modules-no-downstream-url-env',
         files: ['**/modules/**/*.ts'],

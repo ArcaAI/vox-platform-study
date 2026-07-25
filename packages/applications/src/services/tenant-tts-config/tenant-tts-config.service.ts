@@ -400,7 +400,7 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
   /**
    * Decrypt a tenant's enabled BYO credentials into the injectable overrides map
    * (gateway-only — never exposed by a read API). Fails OPEN per credential: a
-   * decrypt error (or no Vault) skips it, so tts-v2 falls back to platform creds.
+   * decrypt error (or no Vault) skips it, so tts falls back to platform creds.
    */
   async resolveProviderOverrides(tenantId: string): Promise<TtsProviderOverrides> {
     if (!this.secretsService) {

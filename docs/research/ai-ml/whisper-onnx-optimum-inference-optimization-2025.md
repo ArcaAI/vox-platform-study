@@ -231,7 +231,7 @@ providers = [
 ### Segment Merging + Single Inference
 
 ```python
-from stt_v2.transcription.segment_merger import merge_vad_segments
+from stt.transcription.segment_merger import merge_vad_segments
 
 # After VAD
 merged = merge_vad_segments(
@@ -302,4 +302,4 @@ model = ORTModelForSpeechSeq2Seq.from_pretrained(
 6. [Optimum #1816](https://github.com/huggingface/optimum/issues/1816) — KV-cache chunking bug
 7. [OpenAI Whisper audio.py](https://github.com/openai/whisper/blob/main/whisper/audio.py) — N_FRAMES=3000
 8. [WhisperX](https://github.com/m-bain/whisperx) — VAD + batching
-9. HOPE codebase: `apps/stt-v2`, `research/whisper-onnx-apple-silicon-best-practices.md`, TASK-017
+9. HOPE codebase: `apps/stt`, `research/whisper-onnx-apple-silicon-best-practices.md`, TASK-017

@@ -28,13 +28,13 @@ All keys are `globalOnly`, `tier: global-kv`, system-scoped (never tenant-set).
 | `<svc>.modelCache.ttlSeconds` | **600** | Idle TTL before eviction. Clamped `[60, 3600]` by the registry **and** again by the service. |
 | `<svc>.modelCache.maxModels` | stt 5 · nlp 3 · guardrail 2 · harness 1 · tts 2 | Max resident models (LRU beyond it). |
 | `<svc>.modelCache.vramBudgetMb` | 0 (unset) | Optional VRAM bound. Only effective where NVML is available. |
-| `stt.modelCache.maxMemoryMb` | 10000 | stt-v2 only — its historical MB estimate budget. |
+| `stt.modelCache.maxMemoryMb` | 10000 | stt only — its historical MB estimate budget. |
 | `smr.modelCache.ttlSeconds` | 600 | **Not a cache.** Forwarded to server-managed engines (below). |
 
 `<svc>` ∈ `stt`, `nlp`, `guardrail`, `harness`, `tts`.
 
-> **Key prefix ≠ service name for tts-v2.** The service is registered as
-> `tts-v2` (that is what it sends as `?service=` and what its token is keyed on),
+> **Key prefix ≠ service name for tts.** The service is registered as
+> `tts` (that is what it sends as `?service=` and what its token is keyed on),
 > but its settings live under the **`tts`** prefix. Both spellings are load-
 > bearing and neither is interchangeable.
 
@@ -42,16 +42,16 @@ All keys are `globalOnly`, `tier: global-kv`, system-scoped (never tenant-set).
 
 Set a key here and it reaches every service in this table within one refresh
 window, with no redeploy. **As of TASK-535 that is all six** — before it,
-guardrail, harness and tts-v2 silently ignored the console and ran on env.
+guardrail, harness and tts silently ignored the console and ran on env.
 
 | Service | Reads the control plane since | Client | Refresh trigger |
 |---|---|---|---|
-| stt-v2 | TASK-525 | `core/effective_config.py` | request-path refresher |
+| stt | TASK-525 | `core/effective_config.py` | request-path refresher |
 | nlp | TASK-529 | `core/effective_config.py` | request-path (`refresh_inference_limit`) |
 | smr | TASK-525 | `core/effective_config.py` | request path (`get_runtime_limits`) |
 | guardrail | **TASK-535** | `core/effective_config.py` | aux-model resolution (analyze / groundedness) |
 | harness | **TASK-535** | `core/effective_config.py` | **Temporal worker** housekeeping tick (60 s) — §6a |
-| tts-v2 | **TASK-535** | `core/effective_config.py` | `POST /api/v1/audio/speech` |
+| tts | **TASK-535** | `core/effective_config.py` | `POST /api/v1/audio/speech` |
 
 All six are **read-triggered, not background pollers** — a service that is never
 called never polls — and all six re-apply the `[60, 3600]` clamp client-side.
@@ -72,7 +72,7 @@ gateway is unreachable): `GUARDRAIL_V2_MODEL_CACHE_TTL_S` /
 
 ### ⚠️ The 600 s default is a change from the pre-TASK-529 behaviour
 
-stt-v2, guardrail and nlp previously ran a **3600 s** idle TTL; nlp's was
+stt, guardrail and nlp previously ran a **3600 s** idle TTL; nlp's was
 hardcoded with no knob at all. TASK-529 adopts the program-approved OD-5 default
 of **600 s** for every service. Expect **more frequent model reloads** on
 low-traffic deployments after this ships.
@@ -92,7 +92,7 @@ Not every "model" is HOPE's to evict. Three different owners:
 
 | Engine | Retention owner | Mechanism |
 |---|---|---|
-| In-process (stt-v2 loaders, GLiNER, NLP transformers, harness MiniCheck entailer, Kokoro/IndicParler/IndicF5) | **HOPE** | The shared cache: `ttl → lru → vram` eviction, per-service budgets. As of TASK-530 **no in-process engine is exempt** — see §6a. |
+| In-process (stt loaders, GLiNER, NLP transformers, harness MiniCheck entailer, Kokoro/IndicParler/IndicF5) | **HOPE** | The shared cache: `ttl → lru → vram` eviction, per-service budgets. As of TASK-530 **no in-process engine is exempt** — see §6a. |
 | **Ollama** | The Ollama server, per-request influenced | HOPE sends `keep_alive: <ttl>s` on every generate/stream, overriding the server's `OLLAMA_KEEP_ALIVE` (default 5 min). Cap residents with `OLLAMA_MAX_LOADED_MODELS`. |
 | **LM Studio** | The LM Studio server, per-request influenced | HOPE sends `ttl: <seconds>` via the OpenAI SDK's `extra_body`. JIT-loaded models otherwise default to a 60 min idle TTL. Leave **Auto-Evict ON** so a new JIT load unloads the previous one. |
 | **vLLM / llama.cpp server** | Launch-time; **resident by design** | One model per launch, stays resident. `smr.modelCache.ttlSeconds` does **not** apply. |
@@ -178,11 +178,11 @@ Every in-process cache reports under a `cache` label on the metrics in §6.
 
 | `cache=` | Service | Holds | Notes |
 |---|---|---|---|
-| `stt_model_cache` | stt-v2 | ASR/VAD/diarization models, by slug | The only cache with an **MB budget** (`stt.modelCache.maxMemoryMb`) as well as a count bound |
+| `stt_model_cache` | stt | ASR/VAD/diarization models, by slug | The only cache with an **MB budget** (`stt.modelCache.maxMemoryMb`) as well as a count bound |
 | `nlp_model_cache` | nlp | NER / text- and token-classification models | Three singletons share the label |
 | `guardrail_model_cache` | guardrail | GLiNER + the MiniCheck scorer | |
 | `harness_minicheck` | harness **worker** | The MiniCheck-Flan-T5 GGUF entailer | Lives in the **Temporal worker** process, not the FastAPI app — see below |
-| `tts_kokoro` · `tts_indic_parler` · `tts_indic_f5` | tts-v2 | One pipeline/model handle each | `maxModels` is 1 per engine by construction |
+| `tts_kokoro` · `tts_indic_parler` · `tts_indic_f5` | tts | One pipeline/model handle each | `maxModels` is 1 per engine by construction |
 
 **Two cache classes, one policy.** Most services use the asyncio cache
 (`ModelCache`). The harness entailer uses `SyncModelCache` — the same policy
@@ -208,7 +208,7 @@ ttlSeconds` change lands within ~60 s **of the worker**, and if the worker is
 down it lands when the worker comes back, not when the API restarts.
 
 
-## 7. tts-v2: the health-semantics change
+## 7. tts: the health-semantics change
 
 Local TTS engines (Kokoro, IndicParler, IndicF5) used to load at boot and
 register **only if** the load succeeded. They now register unconditionally and
@@ -255,7 +255,7 @@ and restart `pnpm dev:harness:worker` — or just wait: the worker sweeps every
 60 s and releases it once idle past `harness.modelCache.ttlSeconds`.
 
 **"I changed `ttlSeconds` in the console and nothing happened."**
-First check §2a — before TASK-535, guardrail / harness / tts-v2 did not read the
+First check §2a — before TASK-535, guardrail / harness / tts did not read the
 control plane at all. On a build that has it: the refresh is **read-triggered**,
 so a service with no traffic has not polled yet — issue one request (or, for
 harness, wait one 60 s worker tick). If it still has not moved, the fetch is
@@ -273,7 +273,7 @@ launch-time-resident engine (vLLM / llama.cpp server) instead.
 ## 9. Related
 
 - Contract + conformance clauses: `packages/py-runtime-models/README.md`
-- Tickets: `docs/implementation/TASK-529-Model-Lifecycle-Retention/README.md` (contract + first adoption wave), `docs/implementation/TASK-530-Lifecycle-Convergence-Tail/README.md` (harness D-08, stt-v2 convergence, D-09 completion) and `docs/implementation/TASK-535-Retention-Client-Adoption/README.md` (guardrail / harness / tts-v2 control-plane clients — the last three env-only services)
+- Tickets: `docs/implementation/TASK-529-Model-Lifecycle-Retention/README.md` (contract + first adoption wave), `docs/implementation/TASK-530-Lifecycle-Convergence-Tail/README.md` (harness D-08, stt convergence, D-09 completion) and `docs/implementation/TASK-535-Retention-Client-Adoption/README.md` (guardrail / harness / tts control-plane clients — the last three env-only services)
 - Config plane: `docs/implementation/TASK-525-*` (effective-config read path)
 - Ollama: <https://docs.ollama.com/faq> · LM Studio:
   <https://lmstudio.ai/docs/developer/core/ttl-and-auto-evict>

@@ -13,7 +13,7 @@ import { PromptResolutionService, type PromptResolutionTier } from '../../prompt
 import { PromptAssemblyService, type NerEntityForPrompt } from '../../prompt/prompt-assembly.service';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-v2-generate';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-generate';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
@@ -301,7 +301,7 @@ export class SummaryProcessor extends WorkerHost {
           ...(jobId && { 'X-Request-ID': jobId }),
         },
       });
-      this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateSummary, 'smr-v2', (Date.now() - smrStart) / 1000);
+      this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateSummary, 'smr', (Date.now() - smrStart) / 1000);
       return mapSmrGenerateResponse(response.data);
     } catch (error) {
       this.logger.error({

@@ -20,10 +20,10 @@ summarization is in [`harness.md`](./harness.md).
 | Field | Value |
 |---|---|
 | App / service | `apps/api` + `apps/smr` (port 8862) + BullMQ (`Generate*` queues) |
-| Key modules | `apps/api/src/modules/consultation` (summary routes on `consultation.controller.ts`); `packages/applications/src/services/consultation/summary` (`summary.service.ts`, `chain-summary.service.ts`, `smr-v2-generate.ts`, `content-diff.util.ts`, `summary.dto.mapper.ts`); `packages/applications/src/services/consultation/prompt` (`prompt-resolution.service.ts`, `prompt-assembly.service.ts`) |
+| Key modules | `apps/api/src/modules/consultation` (summary routes on `consultation.controller.ts`); `packages/applications/src/services/consultation/summary` (`summary.service.ts`, `chain-summary.service.ts`, `smr-generate.ts`, `content-diff.util.ts`, `summary.dto.mapper.ts`); `packages/applications/src/services/consultation/prompt` (`prompt-resolution.service.ts`, `prompt-assembly.service.ts`) |
 | Prisma models | `SummaryMeta`, `ContextItem` (`PRE_SUMMARY` / `RAW_SUMMARY` / `MODIFIED_SUMMARY` subtypes) — both `db_main/consultation.prisma` |
 | Key API endpoints | `POST /consultations/:id/summary[/async]`, `POST /consultations/:id/summary/pre-summary[/async]`, `POST /consultations/:id/summary/comprehensive[/async]`, `GET /consultations/:id/summary`, `GET /consultations/:id/summary/latest`, `GET /consultations/:id/summary/pre-summary/latest`, `PATCH /consultations/:id/summary/:summaryId`, `GET /consultations/:id/summary/:contextItemId/{versions,provenance,diff}`, `GET/POST /consultations/:id/summary/:contextItemId/tags`, `DELETE /consultations/:id/summary/:contextItemId/tags/:tagId`, `POST /consultations/:id/summary/:contextItemId/extract-entities` (SMR/NLP-driven entity enrichment) |
-| Tests | unit(app): `consultation/summary/__tests__/*` (`summary.service`, `chain-summary.service`, `smr-v2-generate`, `content-diff.util`, `summary.service.provenance.task330`, `summary.service.edit-capture`, `summary.service.json-repair`, `summary.service.prompt-tier.task331`, `summary.service.preferred-prompt.task329`, `summary.service.trajectory`, `summary-meta.task329`); contract: `smr.contract.test.ts`; py(smr) |
+| Tests | unit(app): `consultation/summary/__tests__/*` (`summary.service`, `chain-summary.service`, `smr-generate`, `content-diff.util`, `summary.service.provenance.task330`, `summary.service.edit-capture`, `summary.service.json-repair`, `summary.service.prompt-tier.task331`, `summary.service.preferred-prompt.task329`, `summary.service.trajectory`, `summary-meta.task329`); contract: `smr.contract.test.ts`; py(smr) |
 
 ### G2 — SMR text-generation proxy (raw LLM surface) — legacy row 15
 
@@ -45,7 +45,7 @@ blocks the generation rather than shipping an unmoderated PHI prompt).
 | Field | Value |
 |---|---|
 | App / service | `apps/smr` → `apps/guardrail` (port 8863), URL from settings |
-| Key modules | `apps/smr/src/smr_v2/services/external_guardrail.py` (`ExternalGuardrailClient`); `apps/smr/src/smr_v2/api/endpoints/generate.py` (validate-before-generate; guardrail outage → retryable 503, genuine content violation → block); `apps/guardrail/src/guardrail/api/endpoints` (`guardrails.py`, `medical.py`, `groundedness.py`, `jobs.py`) |
+| Key modules | `apps/smr/src/smr/services/external_guardrail.py` (`ExternalGuardrailClient`); `apps/smr/src/smr/api/endpoints/generate.py` (validate-before-generate; guardrail outage → retryable 503, genuine content violation → block); `apps/guardrail/src/guardrail/api/endpoints` (`guardrails.py`, `medical.py`, `groundedness.py`, `jobs.py`) |
 | Prisma models | — (guardrail is stateless; tenant config resolved per request) |
 | Key API endpoints | Guardrail `POST /api/v1/guardrail/analyze[/batch|/async]`, `GET /api/v1/guardrail/types`, `POST /api/v1/medical/validate[/batch]`; surfaced to the gateway via `GET /text/guardrail-providers` (G2). This is the capability-service view of legacy row 18 as it composes with summarization |
 | Tests | py(smr): `unit/test_external_guardrail_client.py`, `unit/test_generate_guardrail_wiring.py`, `unit/test_provider_guardrails.py`, `unit/test_guardrails.py`; py(grd) |

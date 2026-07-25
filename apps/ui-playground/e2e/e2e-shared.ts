@@ -34,7 +34,7 @@ export const EXPECTED = {
 };
 
 // ---------------------------------------------------------------------------
-// Types matching WS transcript messages from stt-v2
+// Types matching WS transcript messages from stt
 // ---------------------------------------------------------------------------
 
 export interface WsWordTimestamp {

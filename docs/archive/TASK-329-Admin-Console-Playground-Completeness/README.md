@@ -70,7 +70,7 @@ Vertical slice on branch `wave3/p6-summarization`. **No schema change / no `pris
 **Application services (`packages/applications`)**
 - `consultation/summary/dto/summary.response.ts` + `summary.dto.mapper.ts` — `structuredData.cacheHit`/`qualityScore` surfaced.
 - `consultation/context/dto/context-item.response.ts` + `context.dto.mapper.ts` — `SummaryMetaResponse.cacheHit`/`qualityScore`.
-- `consultation/summary/smr-v2-generate.ts` — capture cache/quality from the SMR response (snake/camel tolerant) into `LegacySmrSummaryResponse`.
+- `consultation/summary/smr-generate.ts` — capture cache/quality from the SMR response (snake/camel tolerant) into `LegacySmrSummaryResponse`.
 - `consultation/context/dto/add-context.request.ts` + `context.service.ts` — `addRawSummary` persists `cacheHit`/`qualityScore` onto the `SummaryMeta`.
 - `consultation/summary/summary.service.ts` — `generate(Pre)Summary` thread cache/quality into `SummaryMetaFactory`; `callSmrService` return type widened to `LegacySmrSummaryResponse`. **Edit→new version** already creates a new `ContextItemVersion` and bumps `currentVersionNumber` (now covered by a RED test).
 - `consultation/context/dto/version-diff.response.ts` (**new**) + `context.service.ts#diffVersions` + `IContextService` — fetch two versions (tenant/existence-checked), broadcast `ResourceViewed`, return `{ contextItemId, from, to }`.
@@ -299,7 +299,7 @@ Vertical slice on branch `wave3/p2-consultation`, built **layer-by-layer** (doma
 | `pnpm --filter @arcaai/ui-playground type-check && … test` | type-check **0** (after building `@arcaai/ui` dist in the fresh worktree); consultation **5 files / 49 passed** (incl. 11 new panel tests) (commit `8ba9cf2b`) |
 | IDE lint on every edited file | clean |
 
-**Pre-existing, NOT from this slice:** the umbrella `@arcaai/vox typecheck` (`tsc --noEmit` over tests) has pre-existing failures in unrelated test files (`PersonalizationManager`, `SttV2WebSocketClient`, `useLocalVoiceEmbedding`, `AgenticProvider.task297`, `config.task225`) — none are P2 files; the SDK CI gate is build + vitest (both green here). **Confirmed not run:** `git push`, `prisma migrate` / `db:migrate` / `prisma db` (columns pre-existed). **Reverted:** the ui-playground `lint --fix` churned 15 unrelated non-consultation files (admin/audio/voice-profile) — all restored; only the 7 consultation/route files committed.
+**Pre-existing, NOT from this slice:** the umbrella `@arcaai/vox typecheck` (`tsc --noEmit` over tests) has pre-existing failures in unrelated test files (`PersonalizationManager`, `SttWebSocketClient`, `useLocalVoiceEmbedding`, `AgenticProvider.task297`, `config.task225`) — none are P2 files; the SDK CI gate is build + vitest (both green here). **Confirmed not run:** `git push`, `prisma migrate` / `db:migrate` / `prisma db` (columns pre-existed). **Reverted:** the ui-playground `lint --fix` churned 15 unrelated non-consultation files (admin/audio/voice-profile) — all restored; only the 7 consultation/route files committed.
 
 ---
 

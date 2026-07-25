@@ -56,7 +56,7 @@ export function WsAudioTranscriptDemo() {
   useEffect(() => {
     const base = apiBaseUrl.replace(/\/api\/v1\/?$/, '').replace(/\/$/, '');
     const wsBase = base.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
-    setWsUrl(`${wsBase}/ws/stt-v2/stream`);
+    setWsUrl(`${wsBase}/ws/stt/stream`);
   }, [apiBaseUrl]);
 
   const addMessage = useCallback((direction: 'sent' | 'received', type: string, data: string) => {
@@ -342,7 +342,7 @@ export function WsAudioTranscriptDemo() {
         </div>
         <CardDescription>
           Bidirectional WebSocket: streams binary PCM audio frames to STT service, receives real-time transcript segments. Protocol:{' '}
-          <code className="text-[10px]">SttV2WebSocketClient</code> — binary Int16 LE mono (AudioWorklet).
+          <code className="text-[10px]">SttWebSocketClient</code> — binary Int16 LE mono (AudioWorklet).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -354,7 +354,7 @@ export function WsAudioTranscriptDemo() {
                 value={wsUrl}
                 onChange={(e) => setWsUrl(e.target.value)}
                 className="font-mono text-xs"
-                placeholder="ws://localhost:8868/ws/stt-v2/stream"
+                placeholder="ws://localhost:8868/ws/stt/stream"
               />
             </div>
             {sessionId && (
@@ -484,7 +484,7 @@ export function WsAudioTranscriptDemo() {
         </div>
 
         <div className="bg-muted/30 rounded-lg border p-3">
-          <p className="text-xs font-medium mb-1">WebSocket Protocol (SttV2)</p>
+          <p className="text-xs font-medium mb-1">WebSocket Protocol (Stt)</p>
           <div className="grid gap-2 sm:grid-cols-2 text-[10px] text-muted-foreground">
             <div>
               <p className="font-medium text-foreground">Client → Server:</p>

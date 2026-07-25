@@ -47,6 +47,11 @@ Two scenarios:
   recorded history threads the claim-check REF shape through every downstream activity. The
   command sequence is byte-identical to the inline happy path (NO new command, NO patch
   marker), so this fixture proves ref-threading is command-neutral on replay.
+* ``--assemble-reuse`` — F-13. A COMPUTATIONAL regen (``REGEN`` then ``PASS``)
+  so the pre-delivery loop runs twice: the second iteration takes the patch-gated
+  skip, so the recorded history carries the ``task-553-assemble-reuse`` marker and
+  only ONE ``assemble_prompt`` command for TWO ``generate`` commands. The
+  assemble-reuse forward-guard fixture.
 
 Usage (from the repo root):
 
@@ -171,6 +176,12 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
                 '"assessment": "a", "plan": "p"}'
             ),
         )
+    elif scenario == "assemble-reuse":
+        # F-13 — a COMPUTATIONAL regen so the pre-delivery loop runs twice and the
+        # second iteration takes the patch-gated assemble skip. The recorded history
+        # carries the ``task-553-assemble-reuse`` marker with ONE assemble_prompt and
+        # TWO generate commands — the forward-guard fixture for that skip.
+        config = StubConfig(verdicts=["REGEN", "PASS"], inferential_verdicts=["SAFE"])
     elif scenario == "claim-check":
         # Happy path with the generate + assemble stubs returning OFFLOADED
         # results (content/prompt emptied + a ClaimCheckRef), so the recorded history
@@ -277,6 +288,7 @@ if __name__ == "__main__":
         "--mcp",
         "--redaction",
         "--redaction-audit",
+        "--assemble-reuse",
     )
     if args and args[0] in _scenarios:
         scenario, args = args[0].lstrip("-"), args[1:]
@@ -284,7 +296,7 @@ if __name__ == "__main__":
         raise SystemExit(
             "usage: python -m ..._capture_replay_fixture "
             "[--failure|--optimistic|--regen|--gate-abandon|--edit-cap|--retract"
-            "|--claim-check|--mcp|--redaction|--redaction-audit]"
+            "|--claim-check|--mcp|--redaction|--redaction-audit|--assemble-reuse]"
             " <output.json>"
         )
     asyncio.run(capture(Path(args[0]), scenario=scenario))

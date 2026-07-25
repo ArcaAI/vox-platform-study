@@ -24,7 +24,7 @@
  *       and is captured here only as a `test.fixme`
  *       target (it ties to the dropped-frame counters).
  *
- * Live-stack requirement: needs STT-V2 behind the gateway; self-skips with an
+ * Live-stack requirement: needs STT behind the gateway; self-skips with an
  * explicit reason when unreachable. Prereqs + invocation: ticket README
  * (`RESET_DB=false E2E_WAIT_SERVICES=true`).
  */
@@ -57,7 +57,7 @@ test.describe('AC-3 — backpressure / overload recovery', () => {
     test.setTimeout(150_000);
 
     const created = await createStreamSession(request, { token });
-    test.skip(!created.ok, `streaming session unavailable (is STT-V2 running?): ${created.ok ? '' : created.reason}`);
+    test.skip(!created.ok, `streaming session unavailable (is STT running?): ${created.ok ? '' : created.reason}`);
     const session = (created as { ok: true; session: StreamSessionInfo }).session;
 
     const report: Record<string, unknown> = { sessionId: session.sessionId };

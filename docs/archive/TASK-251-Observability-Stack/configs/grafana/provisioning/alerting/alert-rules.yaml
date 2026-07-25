@@ -29,7 +29,7 @@ groups:
             relativeTimeRange: { from: 300, to: 0 }
             datasourceUid: Prometheus
             model:
-              expr: up{job=~"api-gateway|stt-v2|smr|nlp"}
+              expr: up{job=~"api-gateway|stt|smr|nlp"}
               instant: true
           - refId: B
             relativeTimeRange: { from: 300, to: 0 }
@@ -221,7 +221,7 @@ groups:
             relativeTimeRange: { from: 300, to: 0 }
             datasourceUid: Prometheus
             model:
-              expr: rate(smr_v2_generation_errors_total[5m])
+              expr: rate(smr_generation_errors_total[5m])
               instant: true
           - refId: B
             datasourceUid: __expr__

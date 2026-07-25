@@ -8,6 +8,8 @@
 
 import { AGENTIC_CONTEXT_SETTINGS } from './descriptors/agentic-context.descriptors';
 import { AGENTIC_EVAL_SETTINGS } from './descriptors/agentic-eval.descriptors';
+import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descriptors';
+import { AGENTIC_REVISIT_SETTINGS } from './descriptors/agentic-revisit.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
@@ -26,6 +28,10 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...AGENTIC_CONTEXT_SETTINGS,
   // agentic eval promotion-gate mode (block | warn | off).
   ...AGENTIC_EVAL_SETTINGS,
+  // Re-visit carry-forward (default OFF) — TASK-553 F-18.
+  ...AGENTIC_REVISIT_SETTINGS,
+  // Few-shot exemplar curation gate (default off) — TASK-553 F-24.
+  ...AGENTIC_FEWSHOT_SETTINGS,
   // The formerly orphaned platform-ops keys (rate limiting, audit
   // retention, agent-trajectory retention). Registered at their CURRENT runtime
   // defaults, so cataloging them changes no behaviour.

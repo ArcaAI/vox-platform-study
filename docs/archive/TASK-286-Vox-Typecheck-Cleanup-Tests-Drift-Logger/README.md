@@ -189,7 +189,7 @@ ESM ⚡️ Build success in 8632ms
 ✖ 13 problems (0 errors, 13 warnings)
 ```
 
-All 13 warnings are pre-existing prettier nits in non-C3d files (`core/SttV2WebSocketClient.ts`, `types/dna.ts`, `types/index.ts`).
+All 13 warnings are pre-existing prettier nits in non-C3d files (`core/SttWebSocketClient.ts`, `types/dna.ts`, `types/index.ts`).
 
 ### 4.5 Bucket A details — NodeNext `.js` extension additions
 

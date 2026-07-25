@@ -1,7 +1,7 @@
 # TASK-355 · Appendix 03 — Live Pipeline Review: what the live session already computes (and the harness ignores)
 
 > Produced by the live-pipeline review agent (code-level review of `apps/api`, `packages/applications`,
-> `apps/smr`, `apps/stt-v2`, `packages/database`). Focus: which artifacts exist before the harness starts,
+> `apps/smr`, `apps/stt`, `packages/database`). Focus: which artifacts exist before the harness starts,
 > where they live, and the exact recomputation overlap.
 
 ---
@@ -51,7 +51,7 @@ Guardrail is never called for NER on either path.
 
 ```
 recording stop
-  → apps/stt-v2: session_manager._finalize_session()
+  → apps/stt: session_manager._finalize_session()
       → gateway.create_transcript(...)  → POST /internal/stt/transcripts (apps/api)
           → SttInternalService.createTranscript()
               → ContextItemFactory.CreateTranscript() → ContextItem (type=TRANSCRIPT)
@@ -97,7 +97,7 @@ Key tables (`packages/database/src/prisma/db_main/`):
 
 ## 5. Guardrail during live transcription
 
-The Guardrail service (:8863) is called **by SMR, not by `LiveDocumentationService`**: `apps/smr/src/smr_v2/services/external_guardrail.py` — `ExternalGuardrailClient.validate()` → `POST {GUARDRAIL_BASE_URL}/api/medical/validate` **before every generate** when `SMR_V2_EXTERNAL_GUARDRAIL_ENABLED=true` (`generate.py:129–142`).
+The Guardrail service (:8863) is called **by SMR, not by `LiveDocumentationService`**: `apps/smr/src/smr/services/external_guardrail.py` — `ExternalGuardrailClient.validate()` → `POST {GUARDRAIL_BASE_URL}/api/medical/validate` **before every generate** when `SMR_EXTERNAL_GUARDRAIL_ENABLED=true` (`generate.py:129–142`).
 
 - **Dev/default: `false` → no guardrail calls during live flushes today.** If enabled, it fires on every live flush (every 3 segments / 5 s idle) AND again on the harness `generate`.
 - Guardrail is never called per transcript chunk or per NER request.
@@ -114,7 +114,7 @@ The **legacy** summary path (`summary/summary.service.ts` ~line 196) loads `find
 
 `SummaryMeta.preSummaryIds[]` — the provenance column designed to record consumed pre-summaries — is **never populated on the harness path**.
 
-The SMR `/api/v1/generate` request model (`apps/smr/src/smr_v2/models/requests.py`) has **no dedicated field** for a prior summary — injection must happen as prompt text (exactly how the legacy path does it).
+The SMR `/api/v1/generate` request model (`apps/smr/src/smr/models/requests.py`) has **no dedicated field** for a prior summary — injection must happen as prompt text (exactly how the legacy path does it).
 
 ## 7. Precise recomputation overlap map
 

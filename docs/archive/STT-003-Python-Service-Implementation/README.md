@@ -1,4 +1,4 @@
-# STT-003: Python STT-v2 Service Domain Implementation
+# STT-003: Python STT Service Domain Implementation
 
 | Field | Value |
 |-------|-------|
@@ -11,13 +11,13 @@
 
 ## Summary
 
-This ticket implements the domain layer and business logic for the Python STT-v2 service. Building on the project scaffold created in STT-001 and the API Gateway integration in STT-002, this ticket focuses on implementing the actual transcription functionality.
+This ticket implements the domain layer and business logic for the Python STT service. Building on the project scaffold created in STT-001 and the API Gateway integration in STT-002, this ticket focuses on implementing the actual transcription functionality.
 
 ## Requirement Analysis
 
 ### Business Context
 
-The STT-v2 Python service needs to:
+The STT Python service needs to:
 1. Load and manage ASR models from multiple sources (HuggingFace, ONNX, NeMo)
 2. Execute batch and streaming transcription jobs
 3. Communicate with the API Gateway for job status updates
@@ -43,7 +43,7 @@ The STT-v2 Python service needs to:
 
 ### Completed in STT-001
 
-- Project scaffold (`apps/stt-v2/`)
+- Project scaffold (`apps/stt/`)
 - Core infrastructure (settings, database, Redis, MinIO, exceptions)
 - FastAPI application structure
 - Docker development environment
@@ -54,12 +54,12 @@ The STT-v2 Python service needs to:
 - API Gateway domain layer (entities, factories, repositories)
 - API Gateway services (pipeline, model, job management)
 - API Gateway controllers (public and internal APIs)
-- Internal API contracts for STT-v2 → API Gateway communication
+- Internal API contracts for STT → API Gateway communication
 
 ### Files to Implement
 
 ```
-apps/stt-v2/src/stt_v2/
+apps/stt/src/stt/
 ├── pipeline/
 │   ├── config_reader.py          # Read pipeline config from DB
 │   ├── yaml_parser.py            # Parse and validate YAML
@@ -578,7 +578,7 @@ async def clear_cache() -> None:
 
 ## API Gateway Integration
 
-The STT-v2 service communicates with the API Gateway using these internal endpoints:
+The STT service communicates with the API Gateway using these internal endpoints:
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|

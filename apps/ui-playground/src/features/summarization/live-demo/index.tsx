@@ -50,7 +50,7 @@ export default function LiveDemoPage() {
                 <li>Server sends transcript segments (interim + final)</li>
                 <li>Persistent connection with session management</li>
                 <li>
-                  Protocol: <code className="text-[10px]">SttV2WebSocketClient</code>
+                  Protocol: <code className="text-[10px]">SttWebSocketClient</code>
                 </li>
               </ul>
             </div>

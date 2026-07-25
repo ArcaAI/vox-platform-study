@@ -490,7 +490,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, provider, model) (rate(smr_v2_time_to_first_token_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.5, sum by (le, provider, model) (rate(smr_time_to_first_token_seconds_bucket[5m])))",
           "legendFormat": "TTFT p50 - {{provider}}/{{model}}",
           "refId": "A"
         },
@@ -499,7 +499,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, provider, model) (rate(smr_v2_time_to_first_token_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, provider, model) (rate(smr_time_to_first_token_seconds_bucket[5m])))",
           "legendFormat": "TTFT p95 - {{provider}}/{{model}}",
           "refId": "B"
         }
@@ -586,7 +586,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(smr_v2_tokens_total{direction=\"output\"}[5m])",
+          "expr": "rate(smr_tokens_total{direction=\"output\"}[5m])",
           "legendFormat": "tok/s - {{provider}}/{{model}}",
           "refId": "A"
         }

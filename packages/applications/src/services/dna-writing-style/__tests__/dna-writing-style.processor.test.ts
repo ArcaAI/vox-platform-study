@@ -1,8 +1,8 @@
 /**
  * DnaWritingStyleProcessor Unit Tests
  *
- * Tests the BullMQ processor that calls SMR V2 to generate DNA reports.
- * Mocks at boundaries: HTTP service (SMR V2), repositories, job service.
+ * Tests the BullMQ processor that calls SMR to generate DNA reports.
+ * Mocks at boundaries: HTTP service (SMR), repositories, job service.
  * Verifies actual processor behavior: text gathering, SMR call, storage, error handling.
  */
 
@@ -142,10 +142,10 @@ const createMockJob = (overrides: Record<string, unknown> = {}) => ({
     updateProgress: vi.fn().mockResolvedValue(undefined),
 });
 
-// ─── SMR V2 Response Helper ─────────────────────────────────────────
-// Complete mock matching real SMR V2 GenerateResponse (stream: false)
+// ─── SMR Response Helper ─────────────────────────────────────────
+// Complete mock matching real SMR GenerateResponse (stream: false)
 
-const createSmrV2Response = (content: string) => ({
+const createSmrResponse = (content: string) => ({
     task_id: 'task-smr-1',
     status: 'completed' as const,
     content,
@@ -159,7 +159,7 @@ const createSmrV2Response = (content: string) => ({
 
 // Axios returns { data: response }
 const createAxiosSmrResponse = (content: string) => ({
-    data: createSmrV2Response(content),
+    data: createSmrResponse(content),
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ describe('DnaWritingStyleProcessor', () => {
             expect(result.reportData).toEqual({ formality: 'high', sentenceLength: 'medium' });
         });
 
-        it('should call SMR V2 POST /api/v1/generate with stream: false', async () => {
+        it('should call SMR POST /api/v1/generate with stream: false', async () => {
             mockPromptService.listPromptTemplates.mockResolvedValue([
                 { id: 'tpl-1', content: 'Analyze writing.', category: 'DNA_ANALYSIS' },
             ]);
@@ -1226,7 +1226,7 @@ describe('DnaWritingStyleProcessor', () => {
             expect(requestBody.prompt).not.toContain('AI DRAFT:');
         });
 
-        it('keeps the callSmrV2 transport boundary stable (payload still {prompt, system_prompt, stream:false, provider, model})', async () => {
+        it('keeps the callSmr transport boundary stable (payload still {prompt, system_prompt, stream:false, provider, model})', async () => {
             mockContextItemVersionRepo.getVersionsByChangeReason.mockImplementation(async (id: string, reason: string) => {
                 if (reason === 'approved') return [{ id: 'v', contextItemId: id, changeReason: 'approved', versionNumber: 2 }];
                 if (reason === 'ai_draft_v1') return [{ id: 'd', contextItemId: id, changeReason: 'ai_draft_v1', versionNumber: 1, content: 'AI DRAFT BODY' }];

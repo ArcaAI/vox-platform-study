@@ -7,7 +7,7 @@
 
 ## Requirement Analysis
 
-The HOPE monorepo contains several Python microservices (stt-v2, smr/smr-v2, nlp) that each have their own `pyproject.toml` and dependency sets. Engineers joining the project need a streamlined way to:
+The HOPE monorepo contains several Python microservices (stt, smr/smr, nlp) that each have their own `pyproject.toml` and dependency sets. Engineers joining the project need a streamlined way to:
 
 1. Verify all required tools are installed (Node.js, Python, conda, Docker, etc.)
 2. Create a shared conda environment (`arcaenv`) with Python 3.11
@@ -23,7 +23,7 @@ Reduces onboarding friction for new engineers and ensures consistent development
 - [x] Script checks and lists all installed frameworks and tools
 - [x] Script detects missing prerequisites and provides installation instructions
 - [x] Script creates `arcaenv` conda environment with Python 3.11
-- [x] Script installs dependencies for stt-v2, smr-v2, and nlp
+- [x] Script installs dependencies for stt, smr, and nlp
 - [x] Script supports Apple Silicon and NVIDIA GPU ML extras
 - [x] Script is accessible via `pnpm py:setup`
 
@@ -33,14 +33,14 @@ Reduces onboarding friction for new engineers and ensures consistent development
 
 | Service | Location | Python | Dependency File | Key Frameworks |
 |---------|----------|--------|-----------------|----------------|
-| stt-v2 | `apps/stt-v2/` | >=3.11 | `pyproject.toml` | FastAPI, Dramatiq, PyTorch (optional) |
-| smr-v2 | `apps/smr/src/smr_v2/` | >=3.11 | `pyproject.toml` | FastAPI, Celery, OpenAI, Ollama |
+| stt | `apps/stt/` | >=3.11 | `pyproject.toml` | FastAPI, Dramatiq, PyTorch (optional) |
+| smr | `apps/smr/src/smr/` | >=3.11 | `pyproject.toml` | FastAPI, Celery, OpenAI, Ollama |
 | nlp | `apps/nlp/` | >=3.11 | `pyproject.toml` | FastAPI, spaCy, PyTorch, Transformers |
 
 ### Existing Setup Mechanisms
 
-- `apps/stt-v2/Makefile` — conda-based setup for stt-v2 only (uses `stt-v2` env)
-- Root `package.json` — `dev:stt-v2` and `dev:smr-v2` scripts use `conda run -n arcaenv`
+- `apps/stt/Makefile` — conda-based setup for stt only (uses `stt` env)
+- Root `package.json` — `dev:stt` and `dev:smr` scripts use `conda run -n arcaenv`
 - No unified setup script existed for all Python services
 
 ## Implementation Plan
@@ -96,14 +96,14 @@ pnpm py:setup:gpu
 | 1 | Checks: OS, Node.js (>=22), pnpm, Python, **conda** (required), uv, pyenv, Docker, Docker Compose, git, make |
 | 2 | Lists existing conda environments, highlights `arcaenv` if present |
 | 3 | Creates `arcaenv` with Python 3.11 (or offers to recreate if exists). For `--apple`, installs FFmpeg and sets up `DYLD_LIBRARY_PATH` activation scripts |
-| 4 | Installs each service in editable mode: `stt-v2[dev,test]`, `smr[dev,test]`, `nlp`. ML extras added based on `--apple`/`--gpu` flags |
+| 4 | Installs each service in editable mode: `stt[dev,test]`, `smr[dev,test]`, `nlp`. ML extras added based on `--apple`/`--gpu` flags |
 | 5 | Verifies key imports (FastAPI, SQLAlchemy, PyTorch, spaCy) and prints usage instructions |
 
 ### Dependencies Installed
 
 All services are installed in **editable mode** (`pip install -e`) so code changes are reflected immediately without reinstalling.
 
-**stt-v2** extras by platform:
+**stt** extras by platform:
 - CPU (default): `[dev,test]`
 - Apple Silicon: `[ml,dev,test]` + FFmpeg via conda
 - NVIDIA GPU: `[ml-gpu,dev,test]`
@@ -121,11 +121,11 @@ After running the setup script:
 conda activate arcaenv
 
 # Run services
-pnpm dev:stt-v2    # STT v2 on port 8001
-pnpm dev:smr-v2    # SMR v2 on port 5006
+pnpm dev:stt    # STT on port 8001
+pnpm dev:smr    # SMR on port 5006
 
 # Run tests
-conda run -n arcaenv pytest apps/stt-v2/tests/ -v
+conda run -n arcaenv pytest apps/stt/tests/ -v
 conda run -n arcaenv pytest apps/smr/tests/ -v
 conda run -n arcaenv pytest apps/nlp/tests/ -v
 ```

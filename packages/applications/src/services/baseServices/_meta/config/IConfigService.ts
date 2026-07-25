@@ -1,12 +1,17 @@
 import { IAppConfig } from '@arcaai/domains';
 
 /**
+ * Gateway app config (IAppConfig; STT_URL).
+ */
+export type AppConfig = IAppConfig;
+
+/**
  * Interface for configuration service that handles application configuration
  * from multiple sources (environment variables, defaults)
  */
 export interface IConfigService {
   /** The loaded configuration object */
-  config?: IAppConfig;
+  config?: AppConfig;
 
   /**
    * Loads configuration from all sources (environment, defaults)
@@ -18,14 +23,14 @@ export interface IConfigService {
    * Gets the complete configuration object
    * @returns The current application configuration
    */
-  getConfiguration(): IAppConfig;
+  getConfiguration(): AppConfig;
 
   /**
    * Gets a specific configuration value with type safety
    * @param key - The configuration key
    * @returns The configuration value
    */
-  getConfigValue<K extends keyof IAppConfig>(key: K): IAppConfig[K];
+  getConfigValue<K extends keyof AppConfig>(key: K): AppConfig[K];
 
   /**
    * Reloads configuration from all sources

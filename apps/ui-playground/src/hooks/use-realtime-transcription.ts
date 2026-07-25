@@ -6,7 +6,7 @@ import { usePlaygroundStore } from '@/store/playground-store';
 import { createAudioCapture, float32ToInt16, type AudioCaptureHandle } from '@arcaai/stt';
 import {
   StreamingSessionManager,
-  SttV2WebSocketClient,
+  SttWebSocketClient,
   useArcaStore,
   type AgenticClient,
   type ISDKLogger,
@@ -98,7 +98,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
   const byteCounterRef = useRef(createByteCounter());
 
   const sessionManagerRef = useRef<StreamingSessionManager | null>(null);
-  const wsClientRef = useRef<SttV2WebSocketClient | null>(null);
+  const wsClientRef = useRef<SttWebSocketClient | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const ownsMediaStreamRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -179,7 +179,7 @@ export function useRealtimeTranscription(): UseRealtimeTranscriptionReturn {
           throw new Error('Failed to build WebSocket URL');
         }
 
-        const wsClient = new SttV2WebSocketClient(
+        const wsClient = new SttWebSocketClient(
           childLogger,
           {
             enabled: true,

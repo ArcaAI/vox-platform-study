@@ -36,7 +36,7 @@
 This document provides a comprehensive gap analysis between the `agentic-sdk-v2` (`@arcaai/vox`) frontend SDK and the backend services it integrates with. The SDK is the client-facing package that provides:
 
 - **Local ASR** — Whisper models running in-browser via ONNX / transformer.js (`@arcaai/stt`)
-- **Remote ASR** — Backend speech-to-text via WebSocket (`stt` gateway, `stt-v2` module)
+- **Remote ASR** — Backend speech-to-text via WebSocket (`stt` gateway, `stt` module)
 - **Local NER** — Medical BERT model running in-browser via ONNX / transformer.js (`@arcaai/med-ner`)
 - **Remote NER** — Backend named-entity-recognition via API (`nlp` service proxied through `api` app)
 - **Remote Summarization** — Backend medical text generation via API (`smr` service through `api` app)
@@ -47,7 +47,7 @@ This document provides a comprehensive gap analysis between the `agentic-sdk-v2`
 
 | Severity | Count | Summary |
 |----------|-------|---------|
-| **Critical** (compilation / runtime breaks) | 9 | Zero stt-v2 integration (3), undefined endpoint constants, missing types, broken wiring |
+| **Critical** (compilation / runtime breaks) | 9 | Zero stt integration (3), undefined endpoint constants, missing types, broken wiring |
 | **High** (feature broken or unreachable) | 12 | Wrong endpoints, missing config paths, uninitialized pipelines, no pipeline/model discovery |
 | **Medium** (missing feature parity) | 15 | No job tracking, no SSE reconnection, no file upload, no async jobs, no pagination |
 | **Low** (DX improvement) | 5 | Missing toggle methods, missing hooks, loading states, legacy cleanup |
@@ -91,7 +91,7 @@ This document provides a comprehensive gap analysis between the `agentic-sdk-v2`
 - `apps/api/src/modules/consultation/summary.controller.ts` — Summary endpoints
 - `apps/api/src/modules/nlp/nlp.controller.ts` — NLP proxy
 - `apps/api/src/modules/stt/stt.gateway.ts` — STT WebSocket gateway
-- `apps/api/src/modules/stt-v2/*.controller.ts` — STT v2 REST/streaming endpoints
+- `apps/api/src/modules/stt/*.controller.ts` — STT REST/streaming endpoints
 
 ---
 
@@ -150,9 +150,9 @@ packages/agentic-sdk-v2/
 │                                     ↓             │
 │                              Context Item          │
 │                                                   │
-│  ───── OR via STT-V2 Remote Streaming ─────      │
+│  ───── OR via STT Remote Streaming ─────      │
 │  1. POST /api/v1/transcription-jobs/stream/session│  → get sessionId
-│  2. Connect WS /ws/stt-v2/stream?sessionId=X     │  → real-time audio
+│  2. Connect WS /ws/stt/stream?sessionId=X     │  → real-time audio
 │  3. Send binary PCM frames or JSON audio          │  → receive transcripts
 │  4. Send {type:'stop'} → finalize                 │
 │                                                   │
@@ -168,9 +168,9 @@ packages/agentic-sdk-v2/
 │  ├── GET  /consultations/:id/named-entities       │
 │  └── POST /nlp/classify/tokens (proxy to NLP)    │
 │                                                   │
-│  STT-V2 APIs (NEW — all under /api/v1/)           │
+│  STT APIs (NEW — all under /api/v1/)           │
 │  ├── POST   .../transcription-jobs/stream/session │  ← create session
-│  ├── WS     /ws/stt-v2/stream?sessionId=X        │  ← real-time audio
+│  ├── WS     /ws/stt/stream?sessionId=X        │  ← real-time audio
 │  ├── POST   .../transcription-jobs/transcribe     │  ← file upload + SSE
 │  ├── SSE    .../transcription-jobs/:id/stream     │  ← reconnect to job
 │  ├── POST   .../transcription-jobs/streaming      │  ← create streaming job
@@ -186,7 +186,7 @@ packages/agentic-sdk-v2/
 │  └── WS /stt (old proxy gateway)                  │
 │                                                   │
 │  Python Services                                  │
-│  ├── STT-V2 (Whisper, streaming via Redis)        │
+│  ├── STT (Whisper, streaming via Redis)        │
 │  ├── NLP    (Medical NER, classification)         │
 │  └── SMR    (Medical summarization)               │
 │                                                   │
@@ -222,12 +222,12 @@ packages/agentic-sdk-v2/
 
 ---
 
-### 4.2 Remote ASR (Backend STT-V2 via WebSocket)
+### 4.2 Remote ASR (Backend STT via WebSocket)
 
-**Goal**: Remote speech-to-text via the `stt-v2` module exposed by the `api` app
+**Goal**: Remote speech-to-text via the `stt` module exposed by the `api` app
 
 **Backend Components**:
-- `SttV2StreamGateway` — WebSocket at `/ws/stt-v2/stream` (real-time audio streaming via Redis Streams)
+- `SttStreamGateway` — WebSocket at `/ws/stt/stream` (real-time audio streaming via Redis Streams)
 - `TranscriptionJobController` — REST at `/api/v1/transcription-jobs` (job management + session creation)
 - `TranscriptionStreamController` — REST+SSE at `/api/v1/transcription-jobs` (file upload + SSE streaming)
 - `PipelineController` — REST at `/api/v1/pipelines` (ASR pipeline configuration)
@@ -235,9 +235,9 @@ packages/agentic-sdk-v2/
 - `SttInternalController` — REST at `/internal/stt` (service-to-service, NOT for SDK)
 - `SttGateway` — Legacy WS at `/stt` (v1, DEPRECATED — old proxy to Python STT service)
 
-> **Note**: The old `SttGateway` (v1) at `/stt` is a simple pass-through proxy. The new `SttV2StreamGateway` uses Redis Streams for audio transport and supports JWT/API-key authentication. **The SDK should target stt-v2 exclusively.**
+> **Note**: The old `SttGateway` (v1) at `/stt` is a simple pass-through proxy. The new `SttStreamGateway` uses Redis Streams for audio transport and supports JWT/API-key authentication. **The SDK should target stt exclusively.**
 
-#### Backend STT-V2 Connection Flow (What the SDK Must Implement)
+#### Backend STT Connection Flow (What the SDK Must Implement)
 
 ```
 ┌─ SDK (Browser) ─────────────────────────────────────────────────┐
@@ -247,10 +247,10 @@ packages/agentic-sdk-v2/
 │  Body: { pipelineId, consultationId?, sampleRate?, language?,    │
 │          codeSwitching?, microphoneId? }                          │
 │  Response: { sessionId, status, maxConcurrent, currentActive,    │
-│             wsUrl: '/ws/stt-v2/stream' }                         │
+│             wsUrl: '/ws/stt/stream' }                         │
 │                                                                   │
 │  Step 2: Connect WebSocket                                        │
-│  WS /ws/stt-v2/stream?sessionId=<id>&token=<JWT> (or &key=<key>)│
+│  WS /ws/stt/stream?sessionId=<id>&token=<JWT> (or &key=<key>)│
 │  Server sends: { type:'status', status:'connected', message:... }│
 │                                                                   │
 │  Step 3: Stream audio frames                                      │
@@ -271,14 +271,14 @@ packages/agentic-sdk-v2/
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-#### Backend STT-V2 API Surface (Complete)
+#### Backend STT API Surface (Complete)
 
 **Streaming Session (SDK-relevant)**:
 
 | Route | Method | Controller | Purpose | Auth |
 |-------|--------|-----------|---------|------|
 | `/api/v1/transcription-jobs/stream/session` | POST | `TranscriptionJobController` | Create streaming session, returns `sessionId` + `wsUrl` | JWT |
-| `/ws/stt-v2/stream?sessionId=X&token=JWT` | WS | `SttV2StreamGateway` | Real-time audio streaming (binary PCM or JSON audio frames) | JWT or API key |
+| `/ws/stt/stream?sessionId=X&token=JWT` | WS | `SttStreamGateway` | Real-time audio streaming (binary PCM or JSON audio frames) | JWT or API key |
 
 **Transcription Jobs (SDK-relevant)**:
 
@@ -319,14 +319,14 @@ packages/agentic-sdk-v2/
 
 | Route | Method | Controller | Purpose | Auth |
 |-------|--------|-----------|---------|------|
-| `/internal/stt/transcripts` | POST | `SttInternalController` | STT-V2 creates transcript context item | API key |
-| `/internal/stt/jobs/:id/start` | PATCH | `SttInternalController` | STT-V2 marks job started | API key |
-| `/internal/stt/jobs/:id/progress` | PATCH | `SttInternalController` | STT-V2 updates progress | API key |
-| `/internal/stt/jobs/:id/complete` | PATCH | `SttInternalController` | STT-V2 marks job complete | API key |
-| `/internal/stt/jobs/:id/fail` | PATCH | `SttInternalController` | STT-V2 marks job failed | API key |
-| `/internal/stt/audio-records` | POST | `SttInternalController` | STT-V2 creates audio record | API key |
+| `/internal/stt/transcripts` | POST | `SttInternalController` | STT creates transcript context item | API key |
+| `/internal/stt/jobs/:id/start` | PATCH | `SttInternalController` | STT marks job started | API key |
+| `/internal/stt/jobs/:id/progress` | PATCH | `SttInternalController` | STT updates progress | API key |
+| `/internal/stt/jobs/:id/complete` | PATCH | `SttInternalController` | STT marks job complete | API key |
+| `/internal/stt/jobs/:id/fail` | PATCH | `SttInternalController` | STT marks job failed | API key |
+| `/internal/stt/audio-records` | POST | `SttInternalController` | STT creates audio record | API key |
 
-**WebSocket Protocol Details** (`SttV2StreamGateway`):
+**WebSocket Protocol Details** (`SttStreamGateway`):
 
 Client → Server messages:
 - **Binary**: Raw PCM audio buffer (int16 LE, mono)
@@ -361,17 +361,17 @@ WS Authentication (query params, since browsers can't send custom headers):
 
 | ID | Severity | Gap | Detail | Files Affected |
 |----|----------|-----|--------|----------------|
-| **ASR-R-01** | **Critical** | SDK has zero stt-v2 endpoint constants | The entire `stt-v2` module (session creation, WebSocket URL, transcription jobs, pipelines, AI models) is **completely absent** from `constants.ts`. SDK cannot call any stt-v2 API. | `src/core/constants.ts` — needs `STT_V2_ENDPOINTS`, `PIPELINE_ENDPOINTS`, `AI_MODEL_ENDPOINTS` |
-| **ASR-R-02** | **Critical** | No streaming session management in SDK | The stt-v2 connection flow requires: (1) `POST .../stream/session` to get `sessionId`, (2) connect WS with `sessionId`. SDK has no code for this two-step flow. | Missing entirely from SDK — needs `StreamingSessionManager` or similar |
-| **ASR-R-03** | **Critical** | No WebSocket client for stt-v2 streaming | SDK has no WebSocket client implementation that speaks the stt-v2 protocol (binary PCM frames, JSON audio messages, stop/close control messages, transcript result handling). The old `SttGateway` (v1) at `/stt` used a different protocol. | Missing entirely from SDK |
+| **ASR-R-01** | **Critical** | SDK has zero stt endpoint constants | The entire `stt` module (session creation, WebSocket URL, transcription jobs, pipelines, AI models) is **completely absent** from `constants.ts`. SDK cannot call any stt API. | `src/core/constants.ts` — needs `STT_ENDPOINTS`, `PIPELINE_ENDPOINTS`, `AI_MODEL_ENDPOINTS` |
+| **ASR-R-02** | **Critical** | No streaming session management in SDK | The stt connection flow requires: (1) `POST .../stream/session` to get `sessionId`, (2) connect WS with `sessionId`. SDK has no code for this two-step flow. | Missing entirely from SDK — needs `StreamingSessionManager` or similar |
+| **ASR-R-03** | **Critical** | No WebSocket client for stt streaming | SDK has no WebSocket client implementation that speaks the stt protocol (binary PCM frames, JSON audio messages, stop/close control messages, transcript result handling). The old `SttGateway` (v1) at `/stt` used a different protocol. | Missing entirely from SDK |
 | **ASR-R-04** | **High** | No `sttSocket` wiring from `AgenticConfig` to pipeline | `STTPluginConfig` (user-facing config) has **no `sttSocket` field**. `PluginManager.buildTranscriptionPipelineConfig()` never passes a socket URL. Even though `TranscriptionPipelineConfig.stt.sttSocket` exists, it's dead code. | `src/types/config.ts` (line 180-189), `src/core/PluginManager.ts` (line 431-457) |
-| **ASR-R-05** | **High** | `AgenticConfig` lacks WebSocket/streaming configuration | There is no `wsUrl` or `sttBaseUrl` field in `ApiConfig`. The SDK expects `baseUrl` for REST but has no parallel config for the WebSocket endpoint path (`/ws/stt-v2/stream`). | `src/types/config.ts` (line 125-134) |
+| **ASR-R-05** | **High** | `AgenticConfig` lacks WebSocket/streaming configuration | There is no `wsUrl` or `sttBaseUrl` field in `ApiConfig`. The SDK expects `baseUrl` for REST but has no parallel config for the WebSocket endpoint path (`/ws/stt/stream`). | `src/types/config.ts` (line 125-134) |
 | **ASR-R-06** | **High** | No ASR pipeline discovery in SDK | Backend has `GET /api/v1/pipelines` and `GET /api/v1/pipelines/slug/:slug` for discovering available ASR pipeline configurations. SDK `ModelRegistry` only handles local models — it doesn't fetch backend pipeline configs. | `src/core/ModelRegistry.ts`, `src/core/constants.ts` |
 | **ASR-R-07** | **High** | No backend AI model catalog integration | Backend has `GET /api/v1/ai-models`, `GET .../task/:taskType`, `GET .../status/downloaded`. SDK `MODEL_ENDPOINTS` defines `/models` and `/models/:id` which **don't match** the real backend paths (`/api/v1/ai-models`). | `src/core/constants.ts` (lines 87-90) — wrong paths |
 | **ASR-R-08** | Medium | No transcription job tracking in SDK | Backend tracks transcription jobs with status, progress, consultation association. SDK has no job types, no status polling, no ability to query `GET .../transcription-jobs/consultation/:id`. | Missing entirely from SDK types and hooks |
 | **ASR-R-09** | Medium | No SSE reconnection support | Backend offers `GET .../transcription-jobs/:id/stream` for reconnecting to an existing job's SSE stream (e.g., after browser refresh). SDK has no SSE client or reconnection logic. | Missing entirely |
 | **ASR-R-10** | Medium | No file-upload transcription support | Backend offers `POST .../transcription-jobs/transcribe` for uploading audio files with SSE streaming results. SDK has no file-upload transcription flow. | Missing entirely |
-| **ASR-R-11** | Low | Legacy STT v1 gateway still referenced | The old `SttGateway` at `/stt` is deprecated. Any existing references or documentation pointing to v1 should be updated to point to stt-v2. | Documentation + any leftover references |
+| **ASR-R-11** | Low | Legacy STT v1 gateway still referenced | The old `SttGateway` at `/stt` is deprecated. Any existing references or documentation pointing to v1 should be updated to point to stt. | Documentation + any leftover references |
 
 ---
 
@@ -570,14 +570,14 @@ WS Authentication (query params, since browsers can't send custom headers):
 | `POST /nlp/correct` | POST | `NlpController.correctText` (proxy) | **Missing** | `KnowledgePipeline` spell check calls wrong `/api/spellcheck` | ❌ Wrong endpoint |
 | `POST /nlp/suggest` | POST | `NlpController.suggestFindings` (proxy) | **Missing** | Not implemented | ❌ Missing |
 
-### STT-V2 Endpoints (NEW — Primary SDK Target)
+### STT Endpoints (NEW — Primary SDK Target)
 
 **Streaming Session + WebSocket**:
 
 | Backend Route | Protocol | Backend Component | SDK Constant | SDK Usage | Status |
 |--------------|----------|-------------------|--------------|-----------|--------|
 | `POST /api/v1/transcription-jobs/stream/session` | HTTP | `TranscriptionJobController.createStreamingSession` | **Missing** | Not implemented | ❌ Missing |
-| `/ws/stt-v2/stream?sessionId=X&token=JWT` | WebSocket | `SttV2StreamGateway` | **Missing** | Not implemented | ❌ Missing |
+| `/ws/stt/stream?sessionId=X&token=JWT` | WebSocket | `SttStreamGateway` | **Missing** | Not implemented | ❌ Missing |
 
 **Transcription Jobs**:
 
@@ -619,7 +619,7 @@ WS Authentication (query params, since browsers can't send custom headers):
 
 | Backend Route | Protocol | Backend Component | SDK Usage | Status |
 |--------------|----------|-------------------|-----------|--------|
-| `/stt?key=...&sessionId=...` | WebSocket | `SttGateway` (v1, old proxy) | Not configured | ⛔ Deprecated, use stt-v2 |
+| `/stt?key=...&sessionId=...` | WebSocket | `SttGateway` (v1, old proxy) | Not configured | ⛔ Deprecated, use stt |
 
 ### DNA / Personalization Endpoints
 
@@ -685,9 +685,9 @@ WS Authentication (query params, since browsers can't send custom headers):
 
 | ID | Gap | Impact |
 |----|-----|--------|
-| **ASR-R-01** | SDK has zero stt-v2 endpoint constants | Cannot call any stt-v2 API — entire remote STT integration broken |
+| **ASR-R-01** | SDK has zero stt endpoint constants | Cannot call any stt API — entire remote STT integration broken |
 | **ASR-R-02** | No streaming session management in SDK | Cannot create session (step 1 of connection flow) |
-| **ASR-R-03** | No WebSocket client for stt-v2 protocol | Cannot stream audio or receive transcripts |
+| **ASR-R-03** | No WebSocket client for stt protocol | Cannot stream audio or receive transcripts |
 | **SES-01** | `useArca` references 6+ undefined endpoint constants | Compilation error or runtime TypeError |
 | **SES-02** | `core.ts` exports 4 types not defined in source files | Compilation error on consumers |
 | **NER-R-01** | `KnowledgePipeline` calls non-existent `/api/ner/extract` | Runtime 404 on backend NER |
@@ -754,9 +754,9 @@ WS Authentication (query params, since browsers can't send custom headers):
 |-------|-------|------------------------|-----------------|
 | **Phase 1** | Fix Critical Breaks | SES-01, SES-02, SES-03, HOOK-01, HOOK-02 | Align `useArca` with `useArcaSession` model, fix type exports, fix provider wiring |
 | **Phase 2** | Fix Backend Integration | NER-R-01, SUM-05, NER-L-01, NER-R-05, ASR-R-07 | Correct all endpoint paths, fix type mappings, fix AI model paths |
-| **Phase 3** | **STT-V2 Remote ASR Integration** | ASR-R-01, ASR-R-02, ASR-R-03, ASR-R-04, ASR-R-05, ASR-R-06 | Full stt-v2 integration: endpoint constants, streaming session manager, WebSocket client, pipeline/model discovery, config wiring |
+| **Phase 3** | **STT Remote ASR Integration** | ASR-R-01, ASR-R-02, ASR-R-03, ASR-R-04, ASR-R-05, ASR-R-06 | Full stt integration: endpoint constants, streaming session manager, WebSocket client, pipeline/model discovery, config wiring |
 | **Phase 4** | Knowledge Pipeline | NER-L-02, NER-L-03, NER-R-02 | Auto-init pipeline, wire auto-NER on transcription |
-| **Phase 5** | STT-V2 Advanced Features | ASR-R-08, ASR-R-09, ASR-R-10 | Transcription job tracking, SSE reconnection, file-upload transcription |
+| **Phase 5** | STT Advanced Features | ASR-R-08, ASR-R-09, ASR-R-10 | Transcription job tracking, SSE reconnection, file-upload transcription |
 | **Phase 6** | Feature Parity | SUM-01, SUM-02, SES-04, SES-05, SES-06 | Async jobs, comprehensive summaries, timeline, versioning, pagination |
 | **Phase 7** | DX Polish | HOOK-04, HOOK-05, ASR-L-02, HOOK-07, ASR-R-11 | Additional hooks, toggle methods, progress, retry, deprecation cleanup |
 
@@ -784,7 +784,7 @@ The gaps fall into **5 independent work streams** that can execute concurrently,
           ▼                    ▼                     ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
 │ STREAM A         │ │ STREAM B         │ │ STREAM C         │
-│ STT-V2 Remote    │ │ Knowledge Pipe   │ │ Session/Hook     │
+│ STT Remote    │ │ Knowledge Pipe   │ │ Session/Hook     │
 │ (new files)      │ │ (existing files) │ │ Alignment        │
 │                  │ │                  │ │ (existing files)  │
 │ ASR-R-02 session │ │ NER-R-01 fix ep  │ │ SES-01 fix refs  │
@@ -807,7 +807,7 @@ The gaps fall into **5 independent work streams** that can execute concurrently,
          ▼    ▼               ▼                 ▼   ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
 │ STREAM D         │ │ STREAM E         │ │ STREAM F         │
-│ STT-V2 Advanced  │ │ Feature Parity   │ │ DX Polish        │
+│ STT Advanced  │ │ Feature Parity   │ │ DX Polish        │
 │ (after A)        │ │ (after B + C)    │ │ (after A + C)    │
 │                  │ │                  │ │                  │
 │ ASR-R-08 jobs    │ │ SUM-01 async     │ │ HOOK-04 NER hook │
@@ -817,7 +817,7 @@ The gaps fall into **5 independent work streams** that can execute concurrently,
 │ Files:           │ │ SES-04 timeline  │ │ ASR-L-01 toggles │
 │ NEW SSE client   │ │ SES-05 versions  │ │ ASR-L-02 progress│
 │ NEW file upload  │ │ SES-06 pagination│ │ ASR-L-03 auto    │
-│ stt-v2 types     │ │ NER-R-03 extract │ │ ASR-R-11 legacy  │
+│ stt types     │ │ NER-R-03 extract │ │ ASR-R-11 legacy  │
 │ useArca.ts       │ │                  │ │ SES-07 dedicated │
 └──────────────────┘ └──────────────────┘ └──────────────────┘
 ```
@@ -836,7 +836,7 @@ All streams need correct endpoint constants and type definitions. This is a sing
 
 | Gap | File | What Changes |
 |-----|------|-------------|
-| ASR-R-01 | `constants.ts` | Add `STT_V2_ENDPOINTS`, `PIPELINE_ENDPOINTS` |
+| ASR-R-01 | `constants.ts` | Add `STT_ENDPOINTS`, `PIPELINE_ENDPOINTS` |
 | ASR-R-07 | `constants.ts` | Fix `MODEL_ENDPOINTS` paths (`/models` → `/api/v1/ai-models`), add `AI_MODEL_ENDPOINTS` |
 | NER-R-04 | `constants.ts` | Add `NLP_ENDPOINTS` (`/nlp/classify/tokens`, `/nlp/correct`, `/nlp/suggest`) |
 | NER-R-05 | `constants.ts` | Fix `ENTITY_ENDPOINTS` paths (`.../entities` → `.../named-entities`) |
@@ -847,12 +847,12 @@ All streams need correct endpoint constants and type definitions. This is a sing
 
 #### Layer 1: Three Parallel Streams
 
-**Stream A — STT-V2 Remote ASR** (new files, minimal merge conflict risk):
+**Stream A — STT Remote ASR** (new files, minimal merge conflict risk):
 
 | Gap | File(s) | What Changes | Depends On |
 |-----|---------|-------------|------------|
 | ASR-R-02 | **NEW** `StreamingSessionManager.ts` | Session creation + lifecycle | Layer 0 (constants) |
-| ASR-R-03 | **NEW** `SttV2WebSocketClient.ts` | WS client speaking stt-v2 protocol | Layer 0 (constants) |
+| ASR-R-03 | **NEW** `SttWebSocketClient.ts` | WS client speaking stt protocol | Layer 0 (constants) |
 | ASR-R-04 | `types/config.ts`, `PluginManager.ts` | Wire `sttSocket` / `pipelineId` from config | Layer 0 (types) |
 | ASR-R-05 | `types/config.ts` | Add `wsUrl` to `ApiConfig` | None |
 | ASR-R-06 | `ModelRegistry.ts`, **or NEW** `PipelineRegistry.ts` | Fetch backend pipeline configs | Layer 0 (constants) |
@@ -881,7 +881,7 @@ All streams need correct endpoint constants and type definitions. This is a sing
 
 #### Layer 2: Three Parallel Streams (After Layer 1 Completes)
 
-**Stream D — STT-V2 Advanced** (depends on Stream A):
+**Stream D — STT Advanced** (depends on Stream A):
 
 | Gap | File(s) | What Changes |
 |-----|---------|-------------|
@@ -933,41 +933,41 @@ Week 1 (Sequential):
   └── Layer 0: Foundation (constants + types)               ← 1 developer, ~1 day
 
 Week 1-2 (Parallel — 3 developers):
-  ├── Stream A: STT-V2 Remote ASR                           ← Developer 1, ~3-4 days
+  ├── Stream A: STT Remote ASR                           ← Developer 1, ~3-4 days
   ├── Stream B: Knowledge Pipeline Fixes                    ← Developer 2, ~2-3 days
   └── Stream C: Session & Hook Alignment                    ← Developer 3, ~2-3 days
 
 Week 2-3 (Parallel — 3 developers, after Layer 1 merge):
-  ├── Stream D: STT-V2 Advanced Features                    ← Developer 1, ~2-3 days
+  ├── Stream D: STT Advanced Features                    ← Developer 1, ~2-3 days
   ├── Stream E: Feature Parity                              ← Developer 2, ~3-4 days
   └── Stream F: DX Polish                                   ← Developer 3, ~2-3 days
 ```
 
 **Maximum parallelism**: 3 concurrent streams per layer.
 **Total calendar time** (with 3 developers): ~2.5 weeks vs ~6 weeks sequential.
-**Critical path**: Layer 0 → Stream A → Stream D (STT-V2 is the longest chain).
+**Critical path**: Layer 0 → Stream A → Stream D (STT is the longest chain).
 
-### Phase 3 Detail: STT-V2 Remote ASR Integration
+### Phase 3 Detail: STT Remote ASR Integration
 
 This is the highest-impact phase as it enables the core remote speech-to-text functionality.
 
 **What needs to be implemented in the SDK**:
 
-1. **Endpoint Constants** — Add `STT_V2_ENDPOINTS`, `PIPELINE_ENDPOINTS`, `AI_MODEL_ENDPOINTS` to `constants.ts`:
+1. **Endpoint Constants** — Add `STT_ENDPOINTS`, `PIPELINE_ENDPOINTS`, `AI_MODEL_ENDPOINTS` to `constants.ts`:
    ```
-   STT_V2_ENDPOINTS.CREATE_SESSION       → POST /api/v1/transcription-jobs/stream/session
-   STT_V2_ENDPOINTS.WS_STREAM            → /ws/stt-v2/stream
-   STT_V2_ENDPOINTS.CREATE_JOB           → POST /api/v1/transcription-jobs
-   STT_V2_ENDPOINTS.CREATE_BATCH_JOB     → POST /api/v1/transcription-jobs/batch
-   STT_V2_ENDPOINTS.CREATE_STREAMING_JOB → POST /api/v1/transcription-jobs/streaming
-   STT_V2_ENDPOINTS.TRANSCRIBE           → POST /api/v1/transcription-jobs/transcribe
-   STT_V2_ENDPOINTS.JOB_STREAM(id)       → GET  /api/v1/transcription-jobs/:id/stream
-   STT_V2_ENDPOINTS.GET_JOB(id)          → GET  /api/v1/transcription-jobs/:id
-   STT_V2_ENDPOINTS.LIST_JOBS            → GET  /api/v1/transcription-jobs
-   STT_V2_ENDPOINTS.JOB_STATS            → GET  /api/v1/transcription-jobs/stats
-   STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION(id) → GET /api/v1/transcription-jobs/consultation/:id
-   STT_V2_ENDPOINTS.CANCEL_JOB(id)       → PATCH /api/v1/transcription-jobs/:id/cancel
-   STT_V2_ENDPOINTS.RETRY_JOB(id)        → PATCH /api/v1/transcription-jobs/:id/retry
+   STT_ENDPOINTS.CREATE_SESSION       → POST /api/v1/transcription-jobs/stream/session
+   STT_ENDPOINTS.WS_STREAM            → /ws/stt/stream
+   STT_ENDPOINTS.CREATE_JOB           → POST /api/v1/transcription-jobs
+   STT_ENDPOINTS.CREATE_BATCH_JOB     → POST /api/v1/transcription-jobs/batch
+   STT_ENDPOINTS.CREATE_STREAMING_JOB → POST /api/v1/transcription-jobs/streaming
+   STT_ENDPOINTS.TRANSCRIBE           → POST /api/v1/transcription-jobs/transcribe
+   STT_ENDPOINTS.JOB_STREAM(id)       → GET  /api/v1/transcription-jobs/:id/stream
+   STT_ENDPOINTS.GET_JOB(id)          → GET  /api/v1/transcription-jobs/:id
+   STT_ENDPOINTS.LIST_JOBS            → GET  /api/v1/transcription-jobs
+   STT_ENDPOINTS.JOB_STATS            → GET  /api/v1/transcription-jobs/stats
+   STT_ENDPOINTS.JOBS_BY_CONSULTATION(id) → GET /api/v1/transcription-jobs/consultation/:id
+   STT_ENDPOINTS.CANCEL_JOB(id)       → PATCH /api/v1/transcription-jobs/:id/cancel
+   STT_ENDPOINTS.RETRY_JOB(id)        → PATCH /api/v1/transcription-jobs/:id/retry
    PIPELINE_ENDPOINTS.LIST                → GET  /api/v1/pipelines
    PIPELINE_ENDPOINTS.GET(id)             → GET  /api/v1/pipelines/:id
    PIPELINE_ENDPOINTS.GET_BY_SLUG(slug)   → GET  /api/v1/pipelines/slug/:slug
@@ -996,7 +996,7 @@ This is the highest-impact phase as it enables the core remote speech-to-text fu
    - `onStatus(callback)` → registers status handler
    - `onError(callback)` → registers error handler
 
-4. **Config Extension** — Add stt-v2 config to `AgenticConfig`:
+4. **Config Extension** — Add stt config to `AgenticConfig`:
    - `api.wsUrl?: string` — WebSocket base URL (defaults to same host as `baseUrl`)
    - `audio.stt.pipelineId?: string` — Backend ASR pipeline to use
    - `audio.stt.provider: 'local' | 'backend' | 'auto'` — Already exists, needs wiring
@@ -1077,13 +1077,13 @@ If you use `ENTITY_ENDPOINTS` directly (rather than through hooks), note that pa
 | # | Date | Description | Status |
 |---|------|-------------|--------|
 | 1 | 2026-02-17 | Initial gap analysis document created. Full review of `agentic-sdk-v2` package against backend API controllers. Identified 24 gaps across 7 capability areas. | Complete |
-| 2 | 2026-02-17 | Deep-dive into `stt-v2` module. Updated Remote ASR section (4.2) with complete STT-V2 API surface, connection flow, WebSocket protocol, DTOs. Added 11 STT-V2-specific gaps (ASR-R-01 through ASR-R-11). Updated Endpoint Mapping Matrix with full STT-V2 endpoint tables. Updated Priority Classification. Added Phase 3 detailed implementation plan for STT-V2 integration. Total gaps now: 41. | Complete |
-| 3 | 2026-02-17 | Added Parallelization Analysis to Section 8. Mapped dependency graph across all 41 gaps into 3 layers (Foundation → 3 parallel streams → 3 parallel streams). Identified file contention points and mitigation strategies. Estimated ~2.5 weeks with 3 developers vs ~6 weeks sequential. Critical path: Layer 0 → Stream A (STT-V2) → Stream D (STT-V2 Advanced). | Complete |
-| 4 | 2026-02-17 | **Layer 0: Foundation implemented (TDD).** All 5 gaps resolved: **ASR-R-01** added `STT_V2_ENDPOINTS` (14 endpoints) + `PIPELINE_ENDPOINTS` (4 endpoints); **ASR-R-07** fixed `MODEL_ENDPOINTS` paths (`/models` → `/api/v1/ai-models`) + added `AI_MODEL_ENDPOINTS` (5 endpoints); **NER-R-04** added `NLP_ENDPOINTS` (4 endpoints); **NER-R-05** fixed `ENTITY_ENDPOINTS` paths (`.../entities` → `.../named-entities`); **SES-03** added `CONTEXT_ENDPOINTS.UPDATE`. Created new `types/stt-v2.ts` with 16 type/enum definitions (4 enums, 12 interfaces/types) matching backend DTOs. All 533 tests pass (67 constants + 25 types + 441 existing). Files: `constants.ts`, `types/stt-v2.ts`, `types/index.ts`, `constants.test.ts`, `stt-v2.types.test.ts`. | Complete |
+| 2 | 2026-02-17 | Deep-dive into `stt` module. Updated Remote ASR section (4.2) with complete STT API surface, connection flow, WebSocket protocol, DTOs. Added 11 STT-specific gaps (ASR-R-01 through ASR-R-11). Updated Endpoint Mapping Matrix with full STT endpoint tables. Updated Priority Classification. Added Phase 3 detailed implementation plan for STT integration. Total gaps now: 41. | Complete |
+| 3 | 2026-02-17 | Added Parallelization Analysis to Section 8. Mapped dependency graph across all 41 gaps into 3 layers (Foundation → 3 parallel streams → 3 parallel streams). Identified file contention points and mitigation strategies. Estimated ~2.5 weeks with 3 developers vs ~6 weeks sequential. Critical path: Layer 0 → Stream A (STT) → Stream D (STT Advanced). | Complete |
+| 4 | 2026-02-17 | **Layer 0: Foundation implemented (TDD).** All 5 gaps resolved: **ASR-R-01** added `STT_ENDPOINTS` (14 endpoints) + `PIPELINE_ENDPOINTS` (4 endpoints); **ASR-R-07** fixed `MODEL_ENDPOINTS` paths (`/models` → `/api/v1/ai-models`) + added `AI_MODEL_ENDPOINTS` (5 endpoints); **NER-R-04** added `NLP_ENDPOINTS` (4 endpoints); **NER-R-05** fixed `ENTITY_ENDPOINTS` paths (`.../entities` → `.../named-entities`); **SES-03** added `CONTEXT_ENDPOINTS.UPDATE`. Created new `types/stt.ts` with 16 type/enum definitions (4 enums, 12 interfaces/types) matching backend DTOs. All 533 tests pass (67 constants + 25 types + 441 existing). Files: `constants.ts`, `types/stt.ts`, `types/index.ts`, `constants.test.ts`, `stt.types.test.ts`. | Complete |
 | 5 | 2026-02-17 | **Layer 1 Stream B: Knowledge Pipeline Fixes implemented (TDD).** 7 gaps resolved: **NER-R-01** fixed backend NER endpoint from `/api/ner/extract` → `NLP_ENDPOINTS.CLASSIFY_TOKENS` (`/nlp/classify/tokens`); also fixed spell check from `/api/spellcheck` → `NLP_ENDPOINTS.CORRECT` (`/nlp/correct`). **NER-L-01** fixed browser NER entity field mapping: `type`→`entityType`, `score`→`confidence`, `start/end`→`startOffset/endOffset` to match `MedicalEntity` interface; introduced `RawNEREntity` interface for raw processor output. **SUM-05** fixed summarization endpoint from `/api/consultations/:id/summaries` → `SUMMARY_ENDPOINTS.GENERATE()` (`/consultations/:id/summary`). **NER-L-03 + HOOK-02** `AgenticProvider.tsx` now passes `apiClient` as 3rd arg to `PluginManager` constructor (backend NER/summarization no longer fails); also initializes knowledge pipeline on mount when NER config is enabled. **NER-L-02** wired auto-NER on final transcriptions: `useArca.ts` `onTranscription` callback now feeds completed transcriptions into the knowledge pipeline, storing extracted entities in the store. **NER-R-02** unified NER paths: pipeline NER results now flow through auto-NER → store, no longer disconnected from context. **SUM-06** deprecated DNA endpoints (no backend exists): `DNA_ENDPOINTS` marked `@deprecated`; `analyzeDNA()` now throws "not supported" immediately instead of calling non-existent `/dna/analyze`. All 72 Stream B tests pass (34 KnowledgePipeline + 24 useArca + 14 AgenticProvider, including 15 new TDD tests). Files modified: `KnowledgePipeline.ts`, `useArca.ts`, `AgenticProvider.tsx`, `constants.ts` (deprecation only); test files: `KnowledgePipeline.test.ts`, `useArca.test.tsx`, `AgenticProvider.test.tsx`. | Complete |
-|| 6 | 2026-02-17 | **Layer 1 Stream A: STT-V2 Remote ASR implemented (TDD).** All 5 gaps resolved. **ASR-R-05**: Added `wsUrl` to `ApiConfig` for WebSocket base URL configuration. **ASR-R-04**: Added `pipelineId` and `sttSocket` to `STTPluginConfig` and `TranscriptionProcessingConfig.stt`; made `PluginManager.getTranscriptionPipelineConfig()` public and wired new fields through. **ASR-R-02**: Created `StreamingSessionManager` — manages the two-step stt-v2 connection flow (POST session → store sessionId → build WS URL → close). Supports event callbacks (`onSessionCreated`, `onSessionClosed`, `onError`), state inspection, and prevents duplicate sessions (21 tests). **ASR-R-03**: Created `SttV2WebSocketClient` — full WebSocket client speaking stt-v2 protocol. Supports binary PCM frames, JSON audio frames (with seq/base64/microphoneId), stop/close control messages, and dispatches server messages (`transcript`, `status`, `error`) to registered callbacks (20 tests). **ASR-R-06**: Created `PipelineRegistry` — discovers and caches backend ASR pipeline configs (`GET /api/v1/pipelines`) and AI models (`GET /api/v1/ai-models`) with graceful error handling, lookup by ID/slug, and task type filtering (18 tests). All 633 tests pass (78 new Stream A: 9 config types + 4 PluginManager wiring + 21 SessionManager + 20 WebSocketClient + 18 PipelineRegistry + 6 implicit, plus 555 baseline). New files: `StreamingSessionManager.ts`, `SttV2WebSocketClient.ts`, `PipelineRegistry.ts`, `config.types.test.ts`, `StreamingSessionManager.test.ts`, `SttV2WebSocketClient.test.ts`, `PipelineRegistry.test.ts`. Modified: `config.ts` (ApiConfig, STTPluginConfig, TranscriptionProcessingConfig), `PluginManager.ts` (public method + wiring). | Complete |
+|| 6 | 2026-02-17 | **Layer 1 Stream A: STT Remote ASR implemented (TDD).** All 5 gaps resolved. **ASR-R-05**: Added `wsUrl` to `ApiConfig` for WebSocket base URL configuration. **ASR-R-04**: Added `pipelineId` and `sttSocket` to `STTPluginConfig` and `TranscriptionProcessingConfig.stt`; made `PluginManager.getTranscriptionPipelineConfig()` public and wired new fields through. **ASR-R-02**: Created `StreamingSessionManager` — manages the two-step stt connection flow (POST session → store sessionId → build WS URL → close). Supports event callbacks (`onSessionCreated`, `onSessionClosed`, `onError`), state inspection, and prevents duplicate sessions (21 tests). **ASR-R-03**: Created `SttWebSocketClient` — full WebSocket client speaking stt protocol. Supports binary PCM frames, JSON audio frames (with seq/base64/microphoneId), stop/close control messages, and dispatches server messages (`transcript`, `status`, `error`) to registered callbacks (20 tests). **ASR-R-06**: Created `PipelineRegistry` — discovers and caches backend ASR pipeline configs (`GET /api/v1/pipelines`) and AI models (`GET /api/v1/ai-models`) with graceful error handling, lookup by ID/slug, and task type filtering (18 tests). All 633 tests pass (78 new Stream A: 9 config types + 4 PluginManager wiring + 21 SessionManager + 20 WebSocketClient + 18 PipelineRegistry + 6 implicit, plus 555 baseline). New files: `StreamingSessionManager.ts`, `SttWebSocketClient.ts`, `PipelineRegistry.ts`, `config.types.test.ts`, `StreamingSessionManager.test.ts`, `SttWebSocketClient.test.ts`, `PipelineRegistry.test.ts`. Modified: `config.ts` (ApiConfig, STTPluginConfig, TranscriptionProcessingConfig), `PluginManager.ts` (public method + wiring). | Complete |
 | 7 | 2026-02-17 | **Layer 1 Stream C: Session & Hook Alignment implemented (TDD).** 6 gaps addressed. **SES-02**: Defined 4 missing types in `consultation.ts`: `ConsultationStatus` (string literal union), `CreateConsultationInput`, `StartRevisitInput`, `UpdateConsultationInput`; exported through `types/index.ts` and `core.ts`. Added `isNewVisit()` and `isRevisit()` utility functions (14 type tests). **SES-01 + HOOK-01**: Refactored `useArca.ts` session interface from old lifecycle model (`create`/`startRevisit`/`end`/`pause`/`resume`) to get-or-create model (`open`/`load`/`findByPatientDate`/`getPatientHistory`), aligning with `useArcaSession`. Removed all references to non-existent `CONSULTATION_ENDPOINTS` constants (`.CREATE`, `.REVISIT()`, `.CHAIN()`, `.END()`, `.PAUSE()`, `.RESUME()`, `.BY_PATIENT_DATE()`); replaced with real constants (`.OPEN`, `.GET()`, `.PATIENT_DATE()`, `.PATIENT_HISTORY()`). Removed imports of `CreateConsultationInput` and `StartRevisitInput` from useArca; now imports `OpenSessionInput` (10 alignment tests). **HOOK-02**: Verified `AgenticProvider` correctly passes `apiClient` to `PluginManager` (already fixed by Stream B); wrote 4 regression tests including source code verification, backend NER success/failure with/without apiClient. **SUM-05**: Confirmed already fixed by Stream B — `KnowledgePipeline.executeSummarization()` uses correct singular `/consultations/:id/summary` endpoint. **HOOK-03**: Marked `loadDNAStyle` and `analyzeDNA` as `@deprecated` in `SummaryActions` interface (no backend endpoint exists); `UseArcaSummary` does not expose `loadDNAStyle` (3 tests). All 166 Stream C tests pass across 8 test files. Files modified: `useArca.ts`, `consultation.ts`, `summary.ts`, `types/index.ts`, `core.ts`. New test files: `consultation.types.test.ts`, `useArca.session.test.ts`, `useArca.summary.test.ts`, `AgenticProvider.test.ts` (providers). | Complete |
-| 8 | 2026-02-17 | **Layer 2 Stream D: STT-V2 Advanced Features implemented (TDD).** All 3 gaps resolved. **ASR-R-08**: Created `TranscriptionJobService` — full transcription job lifecycle management. Provides `getJob(id)`, `listJobs(pagination)`, `getJobsByConsultation(id)`, `getJobsByStatus(status)`, `getJobStats()`, `cancelJob(id)`, `retryJob(id)`, and `pollJobStatus(id, options)` with configurable polling interval, max attempts, terminal status detection, and error callbacks. Uses all `STT_V2_ENDPOINTS` job-related constants (24 tests). **ASR-R-09**: Created `SSEClient` — Server-Sent Events client for reconnecting to job update streams at `GET /api/v1/transcription-jobs/:id/stream`. Supports generic message listeners, named event listeners (e.g., `transcript`, `status`, `progress`), automatic reconnection with configurable interval and max attempts, reconnect count reset on successful connection, and clean disconnect that prevents further reconnection (20 tests). **ASR-R-10**: Created `FileTranscriptionService` — file upload transcription workflow. Uploads audio files via `POST /api/v1/transcription-jobs/transcribe` as multipart/form-data with pipelineId, optional consultationId/language/sampleRate fields. Returns job response for SSE subscription. Provides `buildJobStreamUrl(jobId)` for constructing SSE URLs to pair with `SSEClient`, and `getActiveJobId()` for tracking the most recent upload (14 tests). All 58 Stream D tests pass. Zero regressions on 746 baseline+prior tests. New files: `TranscriptionJobService.ts`, `SSEClient.ts`, `FileTranscriptionService.ts`, `TranscriptionJobService.test.ts`, `SSEClient.test.ts`, `FileTranscriptionService.test.ts`. | Complete |
-| 9 | 2026-02-17 | **Layer 2 Stream F: DX Polish implemented (TDD).** 7 of 8 gaps resolved (1 deferred). **ASR-L-01 / HOOK-05**: Added `toggleSTT(enabled?)` and `toggleVAD(enabled?)` to `UseArcaAudio` interface; both call `pluginManager.setEnabled()` and update store audio plugin states. Toggle without argument inverts current state (6 tests). **ASR-L-03**: Added `selectedProvider` and `sttLocation` read-only getters to `TranscriptionPipeline`; expose which STT provider (`local`/`backend`/`auto`) and processing location (`browser`/`backend`/`auto`) are configured, updated after `updateConfig()` (6 tests). **ASR-R-11**: Verified no legacy STT v1 gateway references (`STT_GATEWAY`, `STT_V1`, `LEGACY_STT`) exist in exported constants; confirmed `STT_V2_ENDPOINTS.WS_STREAM` is the sole streaming path (4 tests). **SES-07**: Added `CONTEXT_ENDPOINTS.TRANSCRIPTIONS(id)` → `/consultations/:id/context/transcriptions` and `CONTEXT_ENDPOINTS.CASE_NOTES(id)` → `/consultations/:id/context/case-notes`; added `fetchTranscriptions()` and `fetchCaseNotes()` to `UseArcaContext` interface in `useArca` (4 constant tests + 5 hook tests). **HOOK-04**: Re-exported `useMedNER` from `@arcaai/med-ner` in `plugins.ts` for consistent plugin hook pattern alongside `useVAD`, `useSTT`, `useNoiseFilter` (6 tests). **HOOK-06**: Added `loadSummaries()` to both `UseArcaSummary` (in `useArca`) and `UseArcaSessionReturn` (in `useArcaSession`); fetches all summaries via `GET /consultations/:id/summary` and populates store via `setSummaries()` — ensures summaries survive page refresh (3 + 3 tests). **HOOK-07**: Added `withRetry<T>(fn, options?)` to `UseArcaReturn`; uses existing `isRetriableError()` from `errorUtils` to decide retry eligibility. Supports configurable `maxRetries` (default 3) and `delayMs` (default 1000). Non-retriable errors are thrown immediately without retry (4 tests). **ASR-L-02** (deferred): `STTPluginState.modelLoadProgress` type field already exists; actual progress wiring requires changes to `@arcaai/stt` package internals (out of SDK scope). All 767 tests pass (41 new Stream F + 726 baseline+prior). Zero regressions. Files modified: `useArca.ts`, `useArcaSession.ts`, `TranscriptionPipeline.ts`, `constants.ts`, `plugins.ts`. New test files: `useArca.dx.test.ts`, `useArcaSession.dx.test.ts`, `TranscriptionPipeline.provider.test.ts`, `constants.ses07.test.ts`, `constants.sttv1.test.ts`, `plugins.exports.test.ts`. | Complete |
+| 8 | 2026-02-17 | **Layer 2 Stream D: STT Advanced Features implemented (TDD).** All 3 gaps resolved. **ASR-R-08**: Created `TranscriptionJobService` — full transcription job lifecycle management. Provides `getJob(id)`, `listJobs(pagination)`, `getJobsByConsultation(id)`, `getJobsByStatus(status)`, `getJobStats()`, `cancelJob(id)`, `retryJob(id)`, and `pollJobStatus(id, options)` with configurable polling interval, max attempts, terminal status detection, and error callbacks. Uses all `STT_ENDPOINTS` job-related constants (24 tests). **ASR-R-09**: Created `SSEClient` — Server-Sent Events client for reconnecting to job update streams at `GET /api/v1/transcription-jobs/:id/stream`. Supports generic message listeners, named event listeners (e.g., `transcript`, `status`, `progress`), automatic reconnection with configurable interval and max attempts, reconnect count reset on successful connection, and clean disconnect that prevents further reconnection (20 tests). **ASR-R-10**: Created `FileTranscriptionService` — file upload transcription workflow. Uploads audio files via `POST /api/v1/transcription-jobs/transcribe` as multipart/form-data with pipelineId, optional consultationId/language/sampleRate fields. Returns job response for SSE subscription. Provides `buildJobStreamUrl(jobId)` for constructing SSE URLs to pair with `SSEClient`, and `getActiveJobId()` for tracking the most recent upload (14 tests). All 58 Stream D tests pass. Zero regressions on 746 baseline+prior tests. New files: `TranscriptionJobService.ts`, `SSEClient.ts`, `FileTranscriptionService.ts`, `TranscriptionJobService.test.ts`, `SSEClient.test.ts`, `FileTranscriptionService.test.ts`. | Complete |
+| 9 | 2026-02-17 | **Layer 2 Stream F: DX Polish implemented (TDD).** 7 of 8 gaps resolved (1 deferred). **ASR-L-01 / HOOK-05**: Added `toggleSTT(enabled?)` and `toggleVAD(enabled?)` to `UseArcaAudio` interface; both call `pluginManager.setEnabled()` and update store audio plugin states. Toggle without argument inverts current state (6 tests). **ASR-L-03**: Added `selectedProvider` and `sttLocation` read-only getters to `TranscriptionPipeline`; expose which STT provider (`local`/`backend`/`auto`) and processing location (`browser`/`backend`/`auto`) are configured, updated after `updateConfig()` (6 tests). **ASR-R-11**: Verified no legacy STT v1 gateway references (`STT_GATEWAY`, `STT_V1`, `LEGACY_STT`) exist in exported constants; confirmed `STT_ENDPOINTS.WS_STREAM` is the sole streaming path (4 tests). **SES-07**: Added `CONTEXT_ENDPOINTS.TRANSCRIPTIONS(id)` → `/consultations/:id/context/transcriptions` and `CONTEXT_ENDPOINTS.CASE_NOTES(id)` → `/consultations/:id/context/case-notes`; added `fetchTranscriptions()` and `fetchCaseNotes()` to `UseArcaContext` interface in `useArca` (4 constant tests + 5 hook tests). **HOOK-04**: Re-exported `useMedNER` from `@arcaai/med-ner` in `plugins.ts` for consistent plugin hook pattern alongside `useVAD`, `useSTT`, `useNoiseFilter` (6 tests). **HOOK-06**: Added `loadSummaries()` to both `UseArcaSummary` (in `useArca`) and `UseArcaSessionReturn` (in `useArcaSession`); fetches all summaries via `GET /consultations/:id/summary` and populates store via `setSummaries()` — ensures summaries survive page refresh (3 + 3 tests). **HOOK-07**: Added `withRetry<T>(fn, options?)` to `UseArcaReturn`; uses existing `isRetriableError()` from `errorUtils` to decide retry eligibility. Supports configurable `maxRetries` (default 3) and `delayMs` (default 1000). Non-retriable errors are thrown immediately without retry (4 tests). **ASR-L-02** (deferred): `STTPluginState.modelLoadProgress` type field already exists; actual progress wiring requires changes to `@arcaai/stt` package internals (out of SDK scope). All 767 tests pass (41 new Stream F + 726 baseline+prior). Zero regressions. Files modified: `useArca.ts`, `useArcaSession.ts`, `TranscriptionPipeline.ts`, `constants.ts`, `plugins.ts`. New test files: `useArca.dx.test.ts`, `useArcaSession.dx.test.ts`, `TranscriptionPipeline.provider.test.ts`, `constants.ses07.test.ts`, `constants.sttv1.test.ts`, `plugins.exports.test.ts`. | Complete |
 | 10 | 2026-02-17 | **Layer 2 Stream E: Feature Parity implemented (TDD).** All 8 gaps resolved. **SUM-01**: Added async summary generation — new `SUMMARY_ENDPOINTS.GENERATE_ASYNC`, `.PRE_SUMMARY_ASYNC`, `.COMPREHENSIVE_ASYNC` constants; new `AsyncJobResponse` and `SummaryJobStatus` types in `summary.ts`; new `generateSummaryAsync()` and `generatePreSummaryAsync()` methods on `UseArcaSummary` interface (5 tests). **SUM-02**: Added comprehensive (cross-chain) summary — new `SUMMARY_ENDPOINTS.COMPREHENSIVE` constant; new `ComprehensiveSummaryResponse` and `ComprehensiveSummaryOptions` types; new `generateComprehensiveSummary()` method on `UseArcaSummary` (2 tests). **SUM-03**: Added latest pre-summary fetch — new `SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY` constant; new `getLatestPreSummary()` method on `UseArcaSummary` (2 tests). **SUM-04**: Enhanced `loadSummaries()` to use `SUMMARY_ENDPOINTS.LIST` constant; added pagination support via optional `PaginationParams` argument; populates store via `setSummaries()` (2 tests). **SES-04**: Added consultation timeline — new `CONSULTATION_ENDPOINTS.TIMELINE` constant; new `TimelineEntry` and `TimelineScope` types in `consultation.ts`; new `getTimeline(scope?)` method on `UseArcaSession` supporting `?scope=single|chain` query param (3 tests). **SES-05**: Added context version history — new `CONTEXT_ENDPOINTS.VERSIONS` and `CONTEXT_ENDPOINTS.VERSION` constants; new `ContextVersionEntry` type in `context.ts`; new `getContextVersions(contextItemId)` method on `UseArcaContext` (2 tests). **SES-06**: Added pagination parameters to `ContextFilters.page`, `getPatientHistory(patientId, pagination?)` and `loadSummaries(pagination?)` — URL query string constructed via `URLSearchParams` (2 tests). **NER-R-03**: Wired `SUMMARY_ENDPOINTS.EXTRACT_ENTITIES` into NER flow — new `triggerEntityExtraction(contextItemId)` method on `UseArcaContext` calls `POST /consultations/:id/summary/:contextItemId/extract-entities` (3 tests). All 767 tests pass (43 new Stream E: 10 constants + 12 types + 21 hooks, plus 724 baseline+prior). Zero regressions. Files modified: `constants.ts` (7 new endpoints), `useArca.ts` (8 new methods + 2 enhanced methods + interface updates), `types/summary.ts` (4 new types), `types/consultation.ts` (2 new types), `types/context.ts` (1 new type + pagination field), `types/index.ts` (new exports), `core.ts` (new exports). New test files: `stream-e-constants.test.ts`, `stream-e-types.test.ts`, `useArca.streamE.test.ts`. | Complete |
-| 11 | 2026-02-17 | **Post-review fixes: all recommendations and suggestions addressed.** (1) **Bug fix**: `useArcaSession.loadSummaries()` was calling `SUMMARY_ENDPOINTS.GENERATE` (POST endpoint) instead of `SUMMARY_ENDPOINTS.LIST` (GET endpoint) — would have caused HTTP 405. Fixed. (2) **DRY refactor**: Extracted `withRetry()` and `RetryOptions` from `useArca.ts` into shared `utils/errorUtils.ts` with `onRetry` callback support. Hook's `withRetry` now delegates to the shared utility, enabling reuse in `useArcaSession`, STT-V2 services, and any consumer. (3) **Cache TTL**: Added `PipelineRegistryOptions.cacheTtlMs` (default 5 min), `isPipelinesStale()`/`isModelsStale()` checks, `invalidate()` to clear all caches, and `refresh()` to invalidate + reload. `PipelineRegistryState` now includes staleness fields. (4) **WS reconnection**: Added `WsReconnectOptions` to `SttV2WebSocketClient` constructor with `enabled`, `maxAttempts` (5), `baseDelayMs` (1s), `maxDelayMs` (30s). Auto-reconnect on unexpected disconnect with exponential backoff. Added `onReconnect(cb)`, `onReconnectFailed(cb)`, `cancelReconnect()`, `getReconnectAttempts()`. Intentional `disconnect()` suppresses reconnection. (5) **Breaking changes documented**: Added Section 9 "Breaking Changes & Migration Guide" covering session API (HOOK-01), DNA deprecation (SUM-06), entity paths (NER-R-05), model paths (ASR-R-07) with migration examples. Files: `useArcaSession.ts`, `useArca.ts`, `errorUtils.ts`, `PipelineRegistry.ts`, `SttV2WebSocketClient.ts`, `README.md`. | Complete |
+| 11 | 2026-02-17 | **Post-review fixes: all recommendations and suggestions addressed.** (1) **Bug fix**: `useArcaSession.loadSummaries()` was calling `SUMMARY_ENDPOINTS.GENERATE` (POST endpoint) instead of `SUMMARY_ENDPOINTS.LIST` (GET endpoint) — would have caused HTTP 405. Fixed. (2) **DRY refactor**: Extracted `withRetry()` and `RetryOptions` from `useArca.ts` into shared `utils/errorUtils.ts` with `onRetry` callback support. Hook's `withRetry` now delegates to the shared utility, enabling reuse in `useArcaSession`, STT services, and any consumer. (3) **Cache TTL**: Added `PipelineRegistryOptions.cacheTtlMs` (default 5 min), `isPipelinesStale()`/`isModelsStale()` checks, `invalidate()` to clear all caches, and `refresh()` to invalidate + reload. `PipelineRegistryState` now includes staleness fields. (4) **WS reconnection**: Added `WsReconnectOptions` to `SttWebSocketClient` constructor with `enabled`, `maxAttempts` (5), `baseDelayMs` (1s), `maxDelayMs` (30s). Auto-reconnect on unexpected disconnect with exponential backoff. Added `onReconnect(cb)`, `onReconnectFailed(cb)`, `cancelReconnect()`, `getReconnectAttempts()`. Intentional `disconnect()` suppresses reconnection. (5) **Breaking changes documented**: Added Section 9 "Breaking Changes & Migration Guide" covering session API (HOOK-01), DNA deprecation (SUM-06), entity paths (NER-R-05), model paths (ASR-R-07) with migration examples. Files: `useArcaSession.ts`, `useArca.ts`, `errorUtils.ts`, `PipelineRegistry.ts`, `SttWebSocketClient.ts`, `README.md`. | Complete |

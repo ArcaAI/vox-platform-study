@@ -10,7 +10,7 @@
 
 ## Scope (narrowed at execution)
 
-This ticket now covers the **apps/api receiver half only** — **C1-03** (WORM/draft callback dedup on the harness `Idempotency-Key`) and **C1-05** (the `/escalation` endpoint). The **SMR idempotency half (C1-04, AC-3)** is **split out to TASK-469**, so `apps/smr` and the harness SMR client are untouched here. AC-4 accordingly narrows to `pnpm --filter @arcaai/api test` + the applications/domains suites (no `py:smr-v2:test` in this ticket).
+This ticket now covers the **apps/api receiver half only** — **C1-03** (WORM/draft callback dedup on the harness `Idempotency-Key`) and **C1-05** (the `/escalation` endpoint). The **SMR idempotency half (C1-04, AC-3)** is **split out to TASK-469**, so `apps/smr` and the harness SMR client are untouched here. AC-4 accordingly narrows to `pnpm --filter @arcaai/api test` + the applications/domains suites (no `py:smr:test` in this ticket).
 
 ## Requirement Analysis
 

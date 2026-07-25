@@ -186,7 +186,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
 
       await job.updateProgress(40);
       this.jobService.notifyProgress(job.data.jobId, 40, 'Generating DNA analysis');
-      const smrResponse = await this.callSmrV2(samples, systemPrompt);
+      const smrResponse = await this.callSmr(samples, systemPrompt);
 
       await job.updateProgress(80);
       this.jobService.notifyProgress(job.data.jobId, 80, 'Storing results');
@@ -312,7 +312,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
       .join('\n\n---\n\n');
   }
 
-  private async callSmrV2(
+  private async callSmr(
     textSamples: string,
     systemPrompt: string,
   ): Promise<{
@@ -346,7 +346,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         },
       },
     );
-    this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateDnaReport, 'smr-v2', (Date.now() - smrStart) / 1000);
+    this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateDnaReport, 'smr', (Date.now() - smrStart) / 1000);
     return response.data;
   }
 }

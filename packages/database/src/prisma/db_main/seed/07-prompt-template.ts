@@ -447,7 +447,7 @@ When the current encounter's department is "Surgery" (or "General Surgery") and 
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_surgery: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -518,7 +518,7 @@ When the current encounter's department is "Surgery" (or "General Surgery") and 
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_surgery: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -595,7 +595,7 @@ Contains the following sub-sections:
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_medicine: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -612,7 +612,7 @@ Contains the following sub-sections:
 
 - You are acting as a clinical documentation assistant, generating a structured medical note based strictly on:
   - The current doctor–patient conversation.
-  - The provided clinical context inputs (such as PREVIOUS CASE NOTES SUMMARY, Recent Vitals, and any same_day_prequel_summary when available).
+  - The provided clinical context inputs (such as PREVIOUS CASE NOTES SUMMARY, Recent Vitals, and any prior_visit_summary when available).
 - Always respond in English.
 - Write the note as if authored by the treating physician, using neutral, professional clinical language.
 - Do not include AI opinions, suggestions, or commentary to the doctor.
@@ -663,7 +663,7 @@ When the current encounter's department is "General Medicine" (or "Internal Medi
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_medicine: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -745,7 +745,7 @@ Act as an expert medical scribe with postgraduate training in Medicine and Breas
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_breast_endocrine: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -815,7 +815,7 @@ Act as an expert medical scribe with postgraduate training in Medicine and Breas
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_breast_endocrine: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -899,7 +899,7 @@ When the current encounter's department is "Rheumatology" and the patient is NEW
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_rheumatology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -973,7 +973,7 @@ When the current encounter's department is "Rheumatology" and the patient is a R
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_rheumatology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1050,7 +1050,7 @@ When the current encounter's department is "Orthopedics" and the patient is NEW 
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_orthopedics: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1112,7 +1112,7 @@ When the current encounter's department is "Orthopedics" and the patient is a RE
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_orthopedics: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1174,7 +1174,7 @@ When the current encounter's department is "Neurology" and the patient is NEW or
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_neurology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1248,7 +1248,7 @@ When the current encounter's department is "Neurology" and the patient is a REVI
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_neurology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1330,7 +1330,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_hematology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1429,7 +1429,7 @@ When the current encounter's department is **Hematology** (or "Haematology") and
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_hematology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1632,7 +1632,7 @@ Now generate the pre-summary.`,
 - Context inputs that may be available:
   - PREVIOUS CASE NOTES SUMMARY
   - Recent Vitals
-  - same_day_prequel_summary
+  - prior_visit_summary
   - style_DNA_doctor_department_dermatology
 - Do not carry over information from any other patient. Treat each request independently.]
 
@@ -1673,7 +1673,7 @@ When the current encounter's department is "Dermatology" (or "Derm") and the pat
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_dermatology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1693,7 +1693,7 @@ When the current encounter's department is "Dermatology" (or "Derm") and the pat
 - This follow-up summary should reflect only changes, new findings, or updated plans since the previous visit.
 - Use English, third person, past tense.
 - Prioritize today's transcript; avoid repeating prior content unless reaffirmed/changed.
-- If same_day_prequel_summary exists, treat this as a continuation visit and suppress redundancy.
+- If prior_visit_summary exists, treat this as a continuation visit and suppress redundancy.
 - Do not copy/quote any context variables directly; use them only for continuity.
 - Apply stylistic overlay: style_DNA_doctor_department_dermatology (fallback: Doctor → Department → Default).
 - Medication details must be complete: name, dose, route, frequency, duration.
@@ -1701,7 +1701,7 @@ When the current encounter's department is "Dermatology" (or "Derm") and the pat
 - Context inputs that may be available:
   - PREVIOUS CASE NOTES SUMMARY
   - Recent Vitals
-  - same_day_prequel_summary
+  - prior_visit_summary
   - style_DNA_doctor_department_dermatology
 - Do not carry over information from any other patient. Treat each request independently.]
 
@@ -1726,7 +1726,7 @@ When the current encounter's department is "Dermatology" and the patient is a RE
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_dermatology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1753,7 +1753,7 @@ When the current encounter's department is "Dermatology" and the patient is a RE
 - Context inputs that may be available:
   - PREVIOUS CASE NOTES SUMMARY
   - Recent Vitals
-  - same_day_prequel_summary
+  - prior_visit_summary
   - style_DNA_doctor_department_dietetics
 - Do not carry over information from any other patient. Treat each request independently.]
 
@@ -1776,7 +1776,7 @@ When the current encounter's department is "Dietetics" (or "Dietitian", "Clinica
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_dietetics: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1803,7 +1803,7 @@ When the current encounter's department is "Dietetics" (or "Dietitian", "Clinica
 - Context inputs that may be available:
   - PREVIOUS CASE NOTES SUMMARY
   - Recent Vitals
-  - same_day_prequel_summary
+  - prior_visit_summary
   - style_DNA_doctor_department_dietetics
 - Do not carry over information from any other patient. Treat each request independently.]
 
@@ -1822,7 +1822,7 @@ When the current encounter's department is "Dietetics" and the patient is a REVI
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_dietetics: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1849,7 +1849,7 @@ When the current encounter's department is "Dietetics" and the patient is a REVI
 - Context inputs that may be available:
   - PREVIOUS CASE NOTES SUMMARY
   - Recent Vitals
-  - same_day_prequel_summary
+  - prior_visit_summary
   - style_DNA_doctor_department_nephrology
 - Do not carry over information from any other patient. Treat each request independently.]
 
@@ -1874,7 +1874,7 @@ When the current encounter's department is "Nephrology" (or "Nephro") and the pa
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_nephrology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1894,14 +1894,14 @@ When the current encounter's department is "Nephrology" (or "Nephro") and the pa
 - Focus on disease evolution, adherence, investigation review, and therapy adjustments.
 - Use English, third person, past tense.
 - Avoid repetition from previous summaries unless explicitly referenced today.
-- If same_day_prequel_summary exists, treat as continuation and suppress redundancy.
+- If prior_visit_summary exists, treat as continuation and suppress redundancy.
 - Do not quote/copy context variables verbatim; use only for continuity.
 - Apply stylistic overlay: style_DNA_doctor_department_nephrology (fallback: Doctor → Department → Default).
 - Medication details must include: name, dose, route, frequency, duration.
 - Context inputs that may be available:
   - PREVIOUS CASE NOTES SUMMARY
   - Recent Vitals
-  - same_day_prequel_summary
+  - prior_visit_summary
   - style_DNA_doctor_department_nephrology
 - Do not carry over information from any other patient. Treat each request independently.]
 
@@ -1926,7 +1926,7 @@ When the current encounter's department is "Nephrology" and the patient is a REV
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_nephrology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -1953,7 +1953,7 @@ When the current encounter's department is "Nephrology" and the patient is a REV
 - Context inputs that may be available:
   - PREVIOUS CASE NOTES SUMMARY
   - Recent Vitals
-  - same_day_prequel_summary
+  - prior_visit_summary
   - style_DNA_doctor_department_surgical_oncology
 - Do not carry over information from any other patient. Treat each request independently.]
 
@@ -2008,7 +2008,7 @@ When the current encounter's department is "Surgical Oncology" (or "Surg Oncolog
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_surgical_oncology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -2028,14 +2028,14 @@ When the current encounter's department is "Surgical Oncology" (or "Surg Oncolog
 - Generate a concise, structured note for a Surgical Oncology follow-up/review (post-op) visit from today's transcript.
 - Use English, third person, past tense only.
 - Prioritize today's transcript; use historical context only for continuity.
-- If same_day_prequel_summary exists, suppress repetition and focus on updates.
+- If prior_visit_summary exists, suppress repetition and focus on updates.
 - Do not quote/copy context variables verbatim; use only for continuity.
 - Apply stylistic overlay: style_DNA_doctor_department_surgical_oncology (fallback: Doctor → Department → Default).
 - Medications must include: name, dose, route, frequency, duration.
 - Context inputs that may be available:
   - PREVIOUS CASE NOTES SUMMARY
   - Recent Vitals
-  - same_day_prequel_summary
+  - prior_visit_summary
   - style_DNA_doctor_department_surgical_oncology
 - Do not carry over information from any other patient. Treat each request independently.]
 
@@ -2070,7 +2070,7 @@ When the current encounter's department is "Surgical Oncology" and the patient i
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
             style_DNA_doctor_department_surgical_oncology: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
@@ -2131,7 +2131,7 @@ When no department-specific template matches the current encounter's department,
         variables: {
             conversation_language: { type: 'string', required: true },
             pre_summary_text: { type: 'string', required: false },
-            same_day_prequel_summary: { type: 'string', required: false },
+            prior_visit_summary: { type: 'string', required: false },
         },
         currentVersionNumber: 1,
         departmentId: null,

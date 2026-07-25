@@ -2,7 +2,7 @@
 
 **Date**: 2026-03-09  
 **Topic**: Timeout reliability for AI capabilities over HTTP, SSE, and WebSocket  
-**Scope**: `apps/api`, `apps/smr`, `apps/stt-v2`, `apps/nlp`, deployment guidance, and stream client behavior
+**Scope**: `apps/api`, `apps/smr`, `apps/stt`, `apps/nlp`, deployment guidance, and stream client behavior
 
 ---
 
@@ -32,13 +32,13 @@ Main findings:
 
 ### Python services
 
-- `apps/smr/src/smr_v2/api/endpoints/generate.py`
-- `apps/smr/src/smr_v2/api/endpoints/stream.py`
-- `apps/smr/src/smr_v2/services/task_manager.py`
-- `apps/smr/src/smr_v2/core/config.py`
-- `apps/stt-v2/src/stt_v2/core/config/settings.py`
-- `apps/stt-v2/src/stt_v2/streaming/session_manager.py`
-- `apps/stt-v2/src/stt_v2/streaming/redis_streams.py`
+- `apps/smr/src/smr/api/endpoints/generate.py`
+- `apps/smr/src/smr/api/endpoints/stream.py`
+- `apps/smr/src/smr/services/task_manager.py`
+- `apps/smr/src/smr/core/config.py`
+- `apps/stt/src/stt/core/config/settings.py`
+- `apps/stt/src/stt/streaming/session_manager.py`
+- `apps/stt/src/stt/streaming/redis_streams.py`
 - `apps/nlp/src/nlp/core/config.py`
 - `apps/nlp/src/nlp/core/websocket_manager.py`
 
@@ -48,7 +48,7 @@ Main findings:
 - `infrastructure/docker/docker-compose.dev.yml`
 - `apps/ui-playground/src/features/summarization/api/smr-client.ts` (deprecated app)
 - `packages/agentic-sdk-v2/src/core/SSEClient.ts`
-- `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`
+- `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`
 
 ---
 
@@ -76,7 +76,7 @@ Main findings:
 - Semaphore acquire timeout: `30s`
 - Redis stream blocking read: `5000ms`
 
-### STT-v2 service
+### STT service
 
 - API gateway client timeout: `30s`
 - Worker timeout: `600000ms`
@@ -110,7 +110,7 @@ Main findings:
 
 ### WebSocket
 
-- API STT gateway websocket: `/ws/stt-v2/stream`
+- API STT gateway websocket: `/ws/stt/stream`
 - NLP websocket classify endpoints:
   - `/ws/classify/token/{session_id}`
   - `/ws/classify/text/{session_id}`

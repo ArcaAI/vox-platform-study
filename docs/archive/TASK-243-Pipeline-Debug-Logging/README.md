@@ -80,10 +80,10 @@ Fix debug logging across the audio pipeline (`@arcaai/vad`, `@arcaai/stt`, `@arc
 - Modify: `packages/stt/src/core/STTProcessor.ts`
 - Modify: `packages/stt/src/types/index.ts`
 
-### Task 5: Fix SttV2WebSocketClient debug logging
+### Task 5: Fix SttWebSocketClient debug logging
 
 **Files**:
-- Modify: `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`
+- Modify: `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`
 
 ### Task 6: Fix `useArcaAudio` TranscriptSegment timing
 
@@ -128,7 +128,7 @@ Fixed the audio pipeline debug logging so that when debug mode is enabled, the s
 | `packages/vad/README.md` | Updated code example |
 | `packages/agentic-sdk-v2/src/types/audio.ts` | Expanded `VADEvent` and `TranscriptionResult` types |
 | `packages/agentic-sdk-v2/src/core/TranscriptionPipeline.ts` | Forward VAD metadata, enrich results, add pipeline debug logging |
-| `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` | Documented inference=0 limitation |
+| `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` | Documented inference=0 limitation |
 | `packages/agentic-sdk-v2/src/hooks/useArcaAudio.ts` | Use VAD timing for TranscriptSegment |
 | `packages/stt/src/providers/LocalSTTProvider.ts` | Include `latencyMs` and `duration` in transcribeSegment result |
 

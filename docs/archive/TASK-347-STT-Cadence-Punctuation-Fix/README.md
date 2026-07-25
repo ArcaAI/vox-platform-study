@@ -10,7 +10,7 @@
 
 ### Description
 
-At STT (`apps/stt-v2`, FastAPI, :8861) startup the Cadence punctuation model
+At STT (`apps/stt`, FastAPI, :8861) startup the Cadence punctuation model
 **downloads** successfully but **fails to load**, printing a raw `FATAL` traceback
 into the boot log:
 
@@ -76,7 +76,7 @@ nothing today.
 
 | App | transformers constraint | Source |
 |---|---|---|
-| **stt-v2** | **`==5.5.4`** (hard pin) | `apps/stt-v2/pyproject.toml` `[ml]` — required by `optimum==2.1.0` + ORT Whisper-turbo ONNX, its own ASR |
+| **stt** | **`==5.5.4`** (hard pin) | `apps/stt/pyproject.toml` `[ml]` — required by `optimum==2.1.0` + ORT Whisper-turbo ONNX, its own ASR |
 | nlp (:8864) | `>=4.48.0` | `apps/nlp/pyproject.toml` — flexible |
 | guardrail (:8863) | `>=4.40.0` (via `gliner2-onnx`) | flexible |
 | smr (:8862) | none | no transformers |
@@ -108,11 +108,11 @@ Config-level disable + clean logging (smallest safe fix; no env mutation):
 
 | File | Purpose |
 |---|---|
-| `apps/stt-v2/src/stt_v2/core/config/settings.py` | New `punctuation_enabled: bool = False` (env `PUNCTUATION_ENABLED`), documented rationale. |
-| `apps/stt-v2/src/stt_v2/punctuation/service.py` | Module flag `_enabled`; `initialize()` skips Cadence + logs one INFO line when disabled; `punctuate`/`punctuate_batch`/`punctuate_sync` pass through when disabled. |
-| `apps/stt-v2/src/stt_v2/main.py` | API-process punctuation init failure → one clean `warning` + `debug` exc_info. |
-| `apps/stt-v2/src/stt_v2/worker.py` | Batch-worker punctuation init failure → one clean `warning` + `debug` exc_info. |
-| `apps/stt-v2/tests/unit/punctuation/test_service.py` | RED→GREEN tests for the disabled path (init skip + 3 passthrough entry points); reset `_enabled` in the autouse fixture. |
+| `apps/stt/src/stt/core/config/settings.py` | New `punctuation_enabled: bool = False` (env `PUNCTUATION_ENABLED`), documented rationale. |
+| `apps/stt/src/stt/punctuation/service.py` | Module flag `_enabled`; `initialize()` skips Cadence + logs one INFO line when disabled; `punctuate`/`punctuate_batch`/`punctuate_sync` pass through when disabled. |
+| `apps/stt/src/stt/main.py` | API-process punctuation init failure → one clean `warning` + `debug` exc_info. |
+| `apps/stt/src/stt/worker.py` | Batch-worker punctuation init failure → one clean `warning` + `debug` exc_info. |
+| `apps/stt/tests/unit/punctuation/test_service.py` | RED→GREEN tests for the disabled path (init skip + 3 passthrough entry points); reset `_enabled` in the autouse fixture. |
 
 Both the API process (`main.py` lifespan) and the batch worker
 (`worker.py.initialize_services`) call `punctuation_service.initialize()`, so the
@@ -138,7 +138,7 @@ single service-level gate covers both processes.
 
 ## Verification (evidence)
 
-Run from `apps/stt-v2` with `conda run -n arcaenv`:
+Run from `apps/stt` with `conda run -n arcaenv`:
 
 ```
 $ python -m pytest tests/unit/punctuation/test_service.py -q
@@ -151,14 +151,14 @@ $ python -m pytest tests/unit/streaming/test_inference_punctuation.py \
 $ python -m pytest tests/unit/test_settings.py -q
 29 passed in 2.12s
 
-$ ruff check src/stt_v2/{punctuation/service.py,core/config/settings.py,main.py,worker.py}
+$ ruff check src/stt/{punctuation/service.py,core/config/settings.py,main.py,worker.py}
 All checks passed!
 ```
 
 Real default-settings probe (no mocks):
 
 ```
-$ python -c "import asyncio; from stt_v2.punctuation import service; \
+$ python -c "import asyncio; from stt.punctuation import service; \
 service.initialize(); print(service._enabled, service._models, \
 asyncio.run(service.punctuate('hello world how are you')))"
 [info] Punctuation restoration disabled (PUNCTUATION_ENABLED=false); Cadence model not loaded

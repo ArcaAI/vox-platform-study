@@ -5,9 +5,9 @@ import { StreamingSessionService } from '../streamingSession.service';
 describe('StreamingSessionService', () => {
     let httpService: any;
 
-    const configWithSttV2Url = (url?: string): any => ({
+    const configWithSttUrl = (url?: string): any => ({
         config: {
-            STT_V2_URL: url,
+            STT_URL: url,
         },
     });
 
@@ -20,7 +20,7 @@ describe('StreamingSessionService', () => {
         };
     });
 
-    it('uses STT_V2_URL when checking availability', async () => {
+    it('uses STT_URL when checking availability', async () => {
         httpService.get.mockReturnValue(of({
             data: {
                 available: true,
@@ -33,18 +33,18 @@ describe('StreamingSessionService', () => {
 
         const service = new StreamingSessionService(
             httpService,
-            configWithSttV2Url('http://stt-v2.internal:9000'),
+            configWithSttUrl('http://stt.internal:9000'),
         );
 
         await service.checkAvailability();
 
         expect(httpService.get).toHaveBeenCalledWith(
-            'http://stt-v2.internal:9000/internal/streaming/availability',
+            'http://stt.internal:9000/internal/streaming/availability',
             { timeout: 5000 },
         );
     });
 
-    it('falls back to localhost when STT_V2_URL is missing', async () => {
+    it('falls back to localhost when STT_URL is missing', async () => {
         httpService.get.mockReturnValue(of({
             data: {
                 available: true,
@@ -57,7 +57,7 @@ describe('StreamingSessionService', () => {
 
         const service = new StreamingSessionService(
             httpService,
-            configWithSttV2Url(undefined),
+            configWithSttUrl(undefined),
         );
 
         await service.checkAvailability();
@@ -78,7 +78,7 @@ describe('StreamingSessionService', () => {
 
         const service = new StreamingSessionService(
             httpService,
-            configWithSttV2Url('http://stt-v2.internal:9000'),
+            configWithSttUrl('http://stt.internal:9000'),
         );
 
         const result = await service.createSession({
@@ -91,7 +91,7 @@ describe('StreamingSessionService', () => {
 
         expect(result).toBeNull();
         expect(httpService.post).toHaveBeenCalledWith(
-            'http://stt-v2.internal:9000/internal/streaming/sessions',
+            'http://stt.internal:9000/internal/streaming/sessions',
             expect.objectContaining({
                 session_id: 's-1',
                 tenant_id: 'tenant-1',
@@ -115,13 +115,13 @@ describe('StreamingSessionService', () => {
 
         const service = new StreamingSessionService(
             httpService,
-            configWithSttV2Url('http://stt-v2.internal:9000'),
+            configWithSttUrl('http://stt.internal:9000'),
         );
 
         const result = await service.getSessionStatus('s-2');
 
         expect(httpService.get).toHaveBeenCalledWith(
-            'http://stt-v2.internal:9000/internal/streaming/sessions/s-2',
+            'http://stt.internal:9000/internal/streaming/sessions/s-2',
             { timeout: 5000 },
         );
         expect(result).toEqual({
@@ -145,7 +145,7 @@ describe('StreamingSessionService', () => {
 
         const service = new StreamingSessionService(
             httpService,
-            configWithSttV2Url('http://stt-v2.internal:9000'),
+            configWithSttUrl('http://stt.internal:9000'),
         );
 
         await service.createSession({
@@ -156,7 +156,7 @@ describe('StreamingSessionService', () => {
         });
 
         expect(httpService.post).toHaveBeenCalledWith(
-            'http://stt-v2.internal:9000/internal/streaming/sessions',
+            'http://stt.internal:9000/internal/streaming/sessions',
             expect.objectContaining({
                 audio_bucket_name: 'hope-audio-arcaai',
             }),

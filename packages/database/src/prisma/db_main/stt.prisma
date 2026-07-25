@@ -133,7 +133,7 @@ model AiModel {
   // Model source and location
   //
   // `sourceUri` scheme grammar honoured by every service's
-  // `resolve_model_dir` (stt-v2, guardrail, nlp, harness):
+  // `resolve_model_dir` (stt, guardrail, nlp, harness):
   //   hf:<org>/<repo> | <org>/<repo>  HuggingFace Hub snapshot (bare id also
   //                                   accepted); honours HF_HUB_OFFLINE
   //   file:///abs/path                verified in place, never copied

@@ -67,7 +67,7 @@ Uses `SERVICE_HEALTH_ENDPOINTS` in `SERVICE_CHECKS` array (lines 24-31). All fou
 - `NlpController` (`@Controller('nlp')`) → `GET /api/v1/nlp/health` — requires JWT
 - `TtsController` (`@Controller('speech')`) → `GET /api/v1/speech/health` — requires JWT
 - `SmrController` (`@Controller('text')`) → `GET /api/v1/text/api/v2/health` — no guard on controller (but health endpoint itself has no guard)
-- STT v2 — **no health endpoint at all**
+- STT — **no health endpoint at all**
 - `MonitoringController` → all routes require `JwtAuthGuard`
 
 ## Implementation Plan (Option A — Fix SDK to match backend)
@@ -146,4 +146,4 @@ None. All planned changes were implemented as described.
 
 ### Known Limitation
 
-The STT v2 service has no health endpoint exposed through the API gateway. If one is added in the future, `SERVICE_HEALTH_ENDPOINTS` and `useHealthCheck` should be updated to include it.
+The STT service has no health endpoint exposed through the API gateway. If one is added in the future, `SERVICE_HEALTH_ENDPOINTS` and `useHealthCheck` should be updated to include it.

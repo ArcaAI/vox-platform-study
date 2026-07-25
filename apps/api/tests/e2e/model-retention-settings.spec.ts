@@ -41,8 +41,8 @@
  * The internal `/api/v1/internal/effective-config` read is service-token
  * gated (`InternalServiceTokenGuard`) and no `*_SERVICE_TOKEN` secret is
  * configured in `.env.test` by default, so that half is ENV-GATED and skipped
- * unless the operator sets `E2E_SMR_V2_SERVICE_TOKEN` to the same value
- * configured as `SMR_V2_SERVICE_TOKEN` on the running gateway (mirrors the
+ * unless the operator sets `E2E_SMR_SERVICE_TOKEN` to the same value
+ * configured as `SMR_SERVICE_TOKEN` on the running gateway (mirrors the
  * `HARNESS_SERVICE_TOKEN` gating pattern in `harness-gate.spec.ts`). The
  * always-on half of this spec uses the admin effective read
  * (`GET admin/settings/registry/:key`), which needs no such token.
@@ -54,7 +54,8 @@ const REGISTRY_KEY = 'smr.modelCache.ttlSeconds';
 const REGISTRY_ROUTE = `/api/v1/admin/settings/registry/${REGISTRY_KEY}`;
 const INTERNAL_EFFECTIVE_CONFIG = '/api/v1/internal/effective-config?service=smr';
 
-const SMR_SERVICE_TOKEN = process.env.E2E_SMR_V2_SERVICE_TOKEN ?? '';
+const SMR_SERVICE_TOKEN =
+  process.env.E2E_SMR_SERVICE_TOKEN ?? process.env.E2E_SMR_V2_SERVICE_TOKEN ?? '';
 
 interface RegistrySettingBody {
   key: string;
@@ -147,7 +148,7 @@ test.describe('model-cache retention TTL — write lane reaches the effective-co
   test.describe('internal effective-config read (env-gated)', () => {
     test.skip(
       !SMR_SERVICE_TOKEN,
-      'requires E2E_SMR_V2_SERVICE_TOKEN set to the same value as the running gateway’s SMR_V2_SERVICE_TOKEN secret ' +
+      'requires E2E_SMR_SERVICE_TOKEN set to the same value as the running gateway’s SMR_SERVICE_TOKEN secret ' +
         '(the InternalServiceTokenGuard fails closed with no configured secret — see the file header)',
     );
 

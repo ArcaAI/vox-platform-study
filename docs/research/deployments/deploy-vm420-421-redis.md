@@ -43,7 +43,7 @@ Redis serves multiple roles in the HOPE platform: BullMQ job queues, application
                          │            HOPE APPLICATION STACK            │
                          │                                              │
                          │  NestJS API (BullMQ, Cache, Pub/Sub, Streams)│
-                         │  STT-V2    (Dramatiq, Pub/Sub, Streams)      │
+                         │  STT    (Dramatiq, Pub/Sub, Streams)      │
                          │  SMR       (Task state, Streams, Celery)     │
                          │  NLP       (Celery)                          │
                          └──────────┬──────────────────┬────────────────┘
@@ -104,10 +104,10 @@ Redis logical databases (`SELECT N`) isolate concerns without running multiple p
 |----|---------|-----------|
 | 0 | **BullMQ job queues** | NestJS API — consultation jobs (PreSummary, Summary, ComprehensiveSummary, ExtractNamedEntities) |
 | 1 | **Application cache + rate limiting** | `IRedisCacheService` — get/set/setex/del, `ApiKeyRateLimiter`, `RateLimitingService` |
-| 2 | **STT Pub/Sub + Streams** | `RedisSubscriberService` (stt:transcription:*), `StreamingAudioBridgeService` (stt:audio:*, stt:control:*, stt:result:*), STT-V2 Python (redis.asyncio) |
+| 2 | **STT Pub/Sub + Streams** | `RedisSubscriberService` (stt:transcription:*), `StreamingAudioBridgeService` (stt:audio:*, stt:control:*, stt:result:*), STT Python (redis.asyncio) |
 | 3 | **SMR Pub/Sub + Streams** | `SmrStreamConsumerService` (smr:stream:*), SMR Python `TaskManager` (smr:task:*) |
 | 4 | **Celery broker + results** | SMR async tasks (legacy — former MLflow/FedL consumers were removed with those apps) |
-| 5 | **Dramatiq broker + results** | STT-V2 `RedisBroker` + `RedisBackend` |
+| 5 | **Dramatiq broker + results** | STT `RedisBroker` + `RedisBackend` |
 
 > **Note**: Pub/Sub in Redis is global — it works across all databases. The database number only isolates key-based operations (GET/SET/XADD/etc). Pub/Sub channel naming conventions (`stt:`, `smr:`) provide logical isolation.
 
@@ -961,11 +961,11 @@ REDIS_HOST=10.10.1.120
 REDIS_PORT=6379
 REDIS_PASS=<dev-password>
 
-# STT-V2 — Dramatiq broker (db5) + Pub/Sub + Streams (db2)
+# STT — Dramatiq broker (db5) + Pub/Sub + Streams (db2)
 REDIS_URL=redis://:${REDIS_PASS}@10.10.1.120:6379/5
 
 # SMR — Task state + Streams (db3)
-SMR_V2_REDIS_URL=redis://:${REDIS_PASS}@10.10.1.120:6379/3
+SMR_REDIS_URL=redis://:${REDIS_PASS}@10.10.1.120:6379/3
 
 # Celery — Broker + results (db4)
 CELERY_BROKER_URL=redis://:${REDIS_PASS}@10.10.1.120:6379/4
@@ -983,11 +983,11 @@ REDIS_HOST=10.10.1.121
 REDIS_PORT=6379
 REDIS_PASS=<staging-password>
 
-# STT-V2
+# STT
 REDIS_URL=redis://:${REDIS_PASS}@10.10.1.121:6379/5
 
 # SMR
-SMR_V2_REDIS_URL=redis://:${REDIS_PASS}@10.10.1.121:6379/3
+SMR_REDIS_URL=redis://:${REDIS_PASS}@10.10.1.121:6379/3
 
 # Celery
 CELERY_BROKER_URL=redis://:${REDIS_PASS}@10.10.1.121:6379/4

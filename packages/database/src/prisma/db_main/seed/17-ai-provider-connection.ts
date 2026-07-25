@@ -49,7 +49,7 @@ export interface AiProviderConnectionSeed {
  */
 export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     {
-        // Local/self-host Ollama engine (`SMR_V2_OLLAMA_BASE_URL`).
+        // Local/self-host Ollama engine (`SMR_OLLAMA_BASE_URL`).
         id: '87000000-0000-0000-0000-000000000001',
         tenantId: SYSTEM_TENANT_ID,
         provider: 'ollama',
@@ -60,11 +60,11 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
         encryptedApiKey: null,
         keyVersion: null,
         enabled: false,
-        metaData: { placeholder: true, note: 'Reference value from SMR_V2_OLLAMA_BASE_URL.' },
+        metaData: { placeholder: true, note: 'Reference value from SMR_OLLAMA_BASE_URL.' },
     },
     {
         // LM Studio — the default local OpenAI-compatible engine
-        // (`SMR_V2_OPENAI_COMPAT_BASE_URL`).
+        // (`SMR_OPENAI_COMPAT_BASE_URL`).
         id: '87000000-0000-0000-0000-000000000002',
         tenantId: SYSTEM_TENANT_ID,
         provider: 'lm-studio',
@@ -75,7 +75,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
         encryptedApiKey: null,
         keyVersion: null,
         enabled: false,
-        metaData: { placeholder: true, note: 'Reference value from SMR_V2_OPENAI_COMPAT_BASE_URL.' },
+        metaData: { placeholder: true, note: 'Reference value from SMR_OPENAI_COMPAT_BASE_URL.' },
     },
     {
         // Azure OpenAI — endpoint/apiVersion/deployment are per-deployment and
@@ -136,7 +136,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
         metaData: null,
     },
     {
-        // vLLM production self-host engine (`SMR_V2_VLLM_BASE_URL`).
+        // vLLM production self-host engine (`SMR_VLLM_BASE_URL`).
         id: '87000000-0000-0000-0000-000000000007',
         tenantId: SYSTEM_TENANT_ID,
         provider: 'vllm',
@@ -147,10 +147,10 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
         encryptedApiKey: null,
         keyVersion: null,
         enabled: false,
-        metaData: { placeholder: true, note: 'Reference value from SMR_V2_VLLM_BASE_URL (k3s Service).' },
+        metaData: { placeholder: true, note: 'Reference value from SMR_VLLM_BASE_URL (k3s Service).' },
     },
     {
-        // llama.cpp production self-host engine (`SMR_V2_LLAMA_CPP_BASE_URL`).
+        // llama.cpp production self-host engine (`SMR_LLAMA_CPP_BASE_URL`).
         id: '87000000-0000-0000-0000-000000000008',
         tenantId: SYSTEM_TENANT_ID,
         provider: 'llama-cpp',
@@ -161,7 +161,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
         encryptedApiKey: null,
         keyVersion: null,
         enabled: false,
-        metaData: { placeholder: true, note: 'Reference value from SMR_V2_LLAMA_CPP_BASE_URL (k3s Service).' },
+        metaData: { placeholder: true, note: 'Reference value from SMR_LLAMA_CPP_BASE_URL (k3s Service).' },
     },
 ];
 

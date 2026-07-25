@@ -1,7 +1,7 @@
 /**
  * `StreamSessionTenantBindingService`.
  *
- * Maps `sessionId → tenantId` for the lifetime of an STT-V2 streaming
+ * Maps `sessionId → tenantId` for the lifetime of an STT streaming
  * session so the gateway can run a route-level tenant check on
  * `DELETE /stream/session/:sessionId` (the legacy enforcement was the
  * Prisma `tenantScope` extension on whatever rows the downstream
@@ -17,7 +17,7 @@
  * doesn't leak Redis memory. The TTL is *not* a security boundary —
  * the close-endpoint guard 404s missing bindings, so an expired
  * binding just means the close call also 404s. The session itself
- * lives in STT-V2 / Redis with its own lifetime.
+ * lives in STT / Redis with its own lifetime.
  *
  * The service intentionally treats:
  *   - empty / whitespace `sessionId`  →  null lookup (no existence leak)
@@ -26,7 +26,7 @@
  *                                        with every other resolver)
  *
  * For a discussion of alternative designs (a nested
- * `/jobs/:id/stream-session/:sessionId` URL, STT-V2 returning tenantId
+ * `/jobs/:id/stream-session/:sessionId` URL, STT returning tenantId
  * on its status endpoint, etc.) see the TSDoc on
  * `TranscriptionJobController.closeStreamSession`.
  */

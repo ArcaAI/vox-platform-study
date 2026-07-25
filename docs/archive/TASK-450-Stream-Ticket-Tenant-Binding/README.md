@@ -127,7 +127,7 @@ Adversarial review focus (reviewer agent): (a) is the mint check truly fail-clos
 
 **Adversarial review**: no Critical (PHI hole closed end-to-end; `X-Tenant-Id` spoof-resistance, fail-closed, and no-info-leak all verified). Important I-1 found and fixed (above).
 
-**Deferred**: `apps/api/tests/e2e/task-450-stt-session-cross-tenant.spec.ts` written and compiling (`playwright --list`, 7 tests) but NOT executed — needs the live test stack (docker + test API + STT-v2). Its 3 mint-level fail-closed tests are the strongest wire pin; run at landing/CI. The 135 unit tests cover the cross-tenant scenarios in the interim.
+**Deferred**: `apps/api/tests/e2e/task-450-stt-session-cross-tenant.spec.ts` written and compiling (`playwright --list`, 7 tests) but NOT executed — needs the live test stack (docker + test API + STT). Its 3 mint-level fail-closed tests are the strongest wire pin; run at landing/CI. The 135 unit tests cover the cross-tenant scenarios in the interim.
 
 **Register wording correction**: the mint skip is a silent regex non-match, not a documented `stt_session` skip (does not change the fix).
 

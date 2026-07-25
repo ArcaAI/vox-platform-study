@@ -11,7 +11,7 @@
 ## Requirement Analysis
 
 ### Description
-Optimize Docker images for all Python services (NLP, SMR, STT-v2) to reduce image sizes from ~5.69GB to the smallest possible while maintaining functionality.
+Optimize Docker images for all Python services (NLP, SMR, STT) to reduce image sizes from ~5.69GB to the smallest possible while maintaining functionality.
 
 ### Business Context
 Large Docker images increase deployment time, storage costs, and CI/CD pipeline duration. The 5.69GB images were primarily caused by CUDA binaries shipped with PyTorch and inefficient multi-stage build patterns.
@@ -33,7 +33,7 @@ Large Docker images increase deployment time, storage costs, and CI/CD pipeline 
 |---------|-----------|
 | NLP | PyTorch with CUDA binaries (~2.3GB), outdated uv (0.4.29), double-copy venv pattern, `editdistpy` build failure masked by `\|\| true` |
 | SMR | Missing `.dockerignore`, `wget` installed for healthcheck, unnecessary `src/` copy in builder, fragile version pins |
-| STT-v2 | Builder installed `ml-gpu,dev,test` extras for runtime target, copied entire `/usr/local/bin`, used `pip` instead of `uv`, no `.pyc` cleanup |
+| STT | Builder installed `ml-gpu,dev,test` extras for runtime target, copied entire `/usr/local/bin`, used `pip` instead of `uv`, no `.pyc` cleanup |
 
 ### Root Causes of 5.69GB Images
 1. **PyTorch CUDA binaries** (~1.5-2.3GB): Default PyTorch wheels include CUDA libraries even when not needed
@@ -54,14 +54,14 @@ Large Docker images increase deployment time, storage costs, and CI/CD pipeline 
 4. **Selective binary copy**: Copy only `uvicorn` and `dramatiq` binaries instead of entire `/usr/local/bin`
 5. **Artifact cleanup**: Remove `.pyc`, `.pyo`, `__pycache__`, `.egg-info`, strip `.so` files
 6. **Python-based healthcheck**: Replace `wget`/`curl` with `python -c "import urllib.request; ..."` to avoid installing extra packages
-7. **New CPU ML target for STT-v2**: Added `ml-runtime-cpu` and `worker-cpu` targets that use CPU-only PyTorch
+7. **New CPU ML target for STT**: Added `ml-runtime-cpu` and `worker-cpu` targets that use CPU-only PyTorch
 
 ### Image Size Results
 
 | Service | Target | Size | Notes |
 |---------|--------|------|-------|
 | SMR | production | **211MB** | No ML deps, pure API service |
-| STT-v2 | runtime | **696MB** | No ML deps, API + task queue |
+| STT | runtime | **696MB** | No ML deps, API + task queue |
 | NLP | production | **981MB** | Includes PyTorch CPU, spacy, transformers, scikit-learn, pandas |
 
 ### Files Changed
@@ -73,15 +73,15 @@ Large Docker images increase deployment time, storage costs, and CI/CD pipeline 
 | `apps/nlp/uv.lock` | Regenerated with updated dependency versions |
 | `apps/smr/Dockerfile` | Rewrote: uv from ghcr.io, `uv sync --frozen`, removed wget, Python-based healthcheck |
 | `apps/smr/.dockerignore` | **Created**: Excludes VCS, Python artifacts, tests, IDE files, env files |
-| `apps/stt-v2/docker/Dockerfile` | Rewrote: 8 stages (builder, ml-builder, gpu-builder, runtime, ml-runtime-cpu, ml-runtime, worker, worker-cpu), uv for CPU stages, selective binary copy |
-| `apps/stt-v2/docker/Dockerfile.apple` | Rewrote: uv-based builder, separate ml-builder-apple stage, proper multi-stage |
-| `apps/stt-v2/Makefile` | Added `docker-build-ml-cpu`, `docker-build-worker-cpu` targets, updated CI build |
+| `apps/stt/docker/Dockerfile` | Rewrote: 8 stages (builder, ml-builder, gpu-builder, runtime, ml-runtime-cpu, ml-runtime, worker, worker-cpu), uv for CPU stages, selective binary copy |
+| `apps/stt/docker/Dockerfile.apple` | Rewrote: uv-based builder, separate ml-builder-apple stage, proper multi-stage |
+| `apps/stt/Makefile` | Added `docker-build-ml-cpu`, `docker-build-worker-cpu` targets, updated CI build |
 
 ### Key Design Decisions
 
 1. **NLP uses `uv pip install` instead of `uv sync`**: The `editdistpy` package (transitive dep of `symspellpy`) requires `pkg_resources` at build time but doesn't declare it. `uv sync` uses build isolation which breaks this. `uv pip install --system` works around it.
 
-2. **STT-v2 new `ml-runtime-cpu` target**: Previously there was no way to run ML inference without the NVIDIA CUDA base image. The new target uses `python:3.11-slim` with CPU-only PyTorch, suitable for development, testing, and CPU-based production deployments.
+2. **STT new `ml-runtime-cpu` target**: Previously there was no way to run ML inference without the NVIDIA CUDA base image. The new target uses `python:3.11-slim` with CPU-only PyTorch, suitable for development, testing, and CPU-based production deployments.
 
 3. **Distroless for NLP production**: Kept `gcr.io/distroless/python3-debian12:nonroot` for the smallest attack surface. Required explicit `PYTHONPATH` since distroless doesn't include `/usr/local/lib/python3.11/site-packages` in default path.
 
@@ -94,9 +94,9 @@ Large Docker images increase deployment time, storage costs, and CI/CD pipeline 
 | Date | Description | Files |
 |------|-------------|-------|
 | 2026-03-23 | Initial optimization of all Python Dockerfiles | See files changed above |
-| 2026-03-23 | Replace `latest`-only tagging with commit-pinned multi-tag strategy | `.gitlab-ci.yml`, `apps/stt-v2/Makefile`, `apps/stt-v2/scripts/validate-build.sh` |
+| 2026-03-23 | Replace `latest`-only tagging with commit-pinned multi-tag strategy | `.gitlab-ci.yml`, `apps/stt/Makefile`, `apps/stt/scripts/validate-build.sh` |
 | 2026-03-23 | Phase 2: Comprehensive review & optimization pass | See below |
-| 2026-03-23 | Phase 3: STT-V2 GPU dependency optimization — eliminate ~2.9 GB redundant downloads | `apps/stt-v2/docker/Dockerfile` |
+| 2026-03-23 | Phase 3: STT GPU dependency optimization — eliminate ~2.9 GB redundant downloads | `apps/stt/docker/Dockerfile` |
 | 2026-03-23 | Phase 4: GitLab Runner config review & security fixes | `research/configs/gitlab-runner/config.toml` |
 | 2026-03-23 | Phase 5: Registry metadata database migration — fix "missing manifest digest" | `research/configs/gitlab/gitlab.rb` |
 
@@ -125,7 +125,7 @@ Comprehensive review against 2025-2026 Docker best practices with research from 
 - Replaced `curl` healthcheck with `python -c urllib` (removes 9.3MB curl dependency)
 - Added `PATH` env var for proper venv activation in production stage
 
-#### STT-V2 Dockerfile (`apps/stt-v2/docker/Dockerfile`)
+#### STT Dockerfile (`apps/stt/docker/Dockerfile`)
 - Added `# syntax=docker/dockerfile:1` BuildKit directive
 - Replaced `rm -rf /var/lib/apt/lists/*` with `--mount=type=cache,target=/var/cache/apt,sharing=locked` across all stages (builder, ml-builder, gpu-builder, cpu-runtime-base, ml-runtime)
 
@@ -134,7 +134,7 @@ Comprehensive review against 2025-2026 Docker best practices with research from 
 - Added `compression=zstd` to registry cache for 30-50% faster cache push/pull
 
 #### .dockerignore Files
-- Standardized SMR and NLP `.dockerignore` to match STT-V2 structure
+- Standardized SMR and NLP `.dockerignore` to match STT structure
 - Added CI/CD exclusions (`.github/`, `.gitlab-ci.yml`) to all services
 - Added `.gitattributes` exclusion
 
@@ -145,19 +145,19 @@ Comprehensive review against 2025-2026 Docker best practices with research from 
 | `apps/smr/.dockerignore` | Standardized |
 | `apps/nlp/Dockerfile` | Rewritten |
 | `apps/nlp/.dockerignore` | Standardized |
-| `apps/stt-v2/docker/Dockerfile` | Optimized |
-| `apps/stt-v2/.dockerignore` | Updated |
+| `apps/stt/docker/Dockerfile` | Optimized |
+| `apps/stt/.dockerignore` | Updated |
 | `.gitlab-ci.yml` | Security fix + optimization |
 
-### Phase 3: STT-V2 GPU Dependency Optimization (2026-03-23)
+### Phase 3: STT GPU Dependency Optimization (2026-03-23)
 
 #### Problem: ~2.9 GB Redundant NVIDIA Downloads
 
-The `stt-v2` and `stt-v2-worker` builds were downloading ~2.9 GB of `nvidia-*` pip packages and `triton` during every uncached build, only to uninstall them immediately after. The Phase 2 "install-then-uninstall" approach still wasted bandwidth and 10-12 minutes of build time.
+The `stt` and `stt-worker` builds were downloading ~2.9 GB of `nvidia-*` pip packages and `triton` during every uncached build, only to uninstall them immediately after. The Phase 2 "install-then-uninstall" approach still wasted bandwidth and 10-12 minutes of build time.
 
 #### Codebase Audit Findings
 
-A thorough audit of `apps/stt-v2/src/` confirmed:
+A thorough audit of `apps/stt/src/` confirmed:
 
 - **Zero direct imports** of any `nvidia.*` Python package
 - **Zero `torch.compile()` calls** — `triton` not needed
@@ -174,7 +174,7 @@ Replaced the "download-then-uninstall" approach with a `uv pip install --overrid
 
 **Impact**: Eliminates ~2.9 GB of wasted downloads and ~10-12 minutes of build time per uncached build. No changes to `pyproject.toml` or `uv.lock` — the override is Dockerfile-scoped.
 
-#### STT-V2 Dockerfile Architecture (Final)
+#### STT Dockerfile Architecture (Final)
 
 | Stage | Base Image | Purpose |
 |-------|-----------|---------|
@@ -188,7 +188,7 @@ Replaced the "download-then-uninstall" approach with a `uv pip install --overrid
 
 | File | Change |
 |------|--------|
-| `apps/stt-v2/docker/Dockerfile` | Replaced install-then-uninstall with `--override` strategy |
+| `apps/stt/docker/Dockerfile` | Replaced install-then-uninstall with `--override` strategy |
 
 ---
 

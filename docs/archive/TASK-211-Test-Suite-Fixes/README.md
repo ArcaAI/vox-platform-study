@@ -25,8 +25,8 @@ The failures stem from four root causes: (1) tests not updated after TASK-209/21
 | Unit (TS) | 9,553 | **83** | 9 files |
 | Integration (TS) | 56 | **28** | 1 file |
 | E2E (Playwright) | 0 | **0** | Setup fails before tests run |
-| STT-v2 (Python) | 1,363 | **9** | |
-| SMR-v2 (Python) | 270 | **15** | |
+| STT (Python) | 1,363 | **9** | |
+| SMR (Python) | 270 | **15** | |
 | NLP (Python) | 0 | **0** | Collection error |
 | **Total** | **11,242** | **135** | |
 
@@ -34,7 +34,7 @@ The failures stem from four root causes: (1) tests not updated after TASK-209/21
 
 After all tasks, run:
 ```bash
-pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt-v2:test && pnpm py:smr-v2:test
+pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt:test && pnpm py:smr:test
 ```
 
 ---
@@ -121,8 +121,8 @@ pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt-v2:test 
 **Category**: Mock mismatch
 
 **Files**:
-- Modify: `apps/api/src/modules/stt-v2/__tests__/transcriptionStream.controller.test.ts`
-- Reference: `apps/api/src/modules/stt-v2/transcriptionStream.controller.ts`
+- Modify: `apps/api/src/modules/stt/__tests__/transcriptionStream.controller.test.ts`
+- Reference: `apps/api/src/modules/stt/transcriptionStream.controller.ts`
 
 **Root Cause**: Test mocks `s3Service.uploadFile` but the controller calls `s3Service.putFile`. The `IS3Service` interface defines `putFile` (returns `Promise<void>`), not `uploadFile`.
 
@@ -132,7 +132,7 @@ pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt-v2:test 
 2. Read `IS3Service` interface to confirm method signature
 3. In the test, replace `uploadFile: vi.fn().mockResolvedValue('s3://...')` with `putFile: vi.fn().mockResolvedValue(undefined)`
 4. Update any assertions that check the return value of the upload (since `putFile` returns void)
-5. Run: `KAFKA_ENABLED=false dotenv -e .env.test -- vitest run apps/api/src/modules/stt-v2/__tests__/transcriptionStream.controller.test.ts`
+5. Run: `KAFKA_ENABLED=false dotenv -e .env.test -- vitest run apps/api/src/modules/stt/__tests__/transcriptionStream.controller.test.ts`
 6. Expected: 10 tests passing
 
 **Commit**: `fix(api): correct s3Service mock in transcriptionStream controller tests`
@@ -215,7 +215,7 @@ pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt-v2:test 
 
 ---
 
-## Task 7: Fix AuthController Throttle + SttV2Stream Gateway (2 failures)
+## Task 7: Fix AuthController Throttle + SttStream Gateway (2 failures)
 
 **Priority**: Medium
 **Fix Location**: SOURCE (throttle) + TEST (gateway mock)
@@ -236,10 +236,10 @@ pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt-v2:test 
 4. Run: `KAFKA_ENABLED=false dotenv -e .env.test -- vitest run apps/api/src/modules/throttle/__tests__/throttle-decorators.test.ts`
 5. Expected: 1 test passing (plus existing passing tests)
 
-### Part B: SttV2Stream Gateway (1 suite failure)
+### Part B: SttStream Gateway (1 suite failure)
 
 **Files**:
-- Modify: `apps/api/src/modules/stt-v2/__tests__/sttV2Stream.gateway.test.ts`
+- Modify: `apps/api/src/modules/stt/__tests__/sttStream.gateway.test.ts`
 
 **Root Cause**: Test transitively imports `FedlModule` which uses `@/services/api-key-validation.service` alias that doesn't resolve in test context.
 
@@ -251,7 +251,7 @@ pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt-v2:test 
        FedlModule: class FedlModule {},
    }));
    ```
-2. Run: `KAFKA_ENABLED=false dotenv -e .env.test -- vitest run apps/api/src/modules/stt-v2/__tests__/sttV2Stream.gateway.test.ts`
+2. Run: `KAFKA_ENABLED=false dotenv -e .env.test -- vitest run apps/api/src/modules/stt/__tests__/sttStream.gateway.test.ts`
 3. Expected: Suite loads and tests pass
 
 **Commit**: `fix(api): add AuthController throttle decorator + fix gateway test mock`
@@ -332,11 +332,11 @@ pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt-v2:test 
 **Fix Location**: SOURCE + CONFIG
 **Category**: Mixed
 
-### Part A: STT-v2 Form Parameter Issue (5 failures)
+### Part A: STT Form Parameter Issue (5 failures)
 
 **Files**:
-- Modify: `apps/stt-v2/src/stt_v2/transcription/api/routes.py` (or test file)
-- Reference: `apps/stt-v2/src/stt_v2/pipeline/dto.py`
+- Modify: `apps/stt/src/stt/transcription/api/routes.py` (or test file)
+- Reference: `apps/stt/src/stt/pipeline/dto.py`
 
 **Root Cause**: Tests call `transcribe_audio()` directly (not via HTTP), so FastAPI's `Form()` dependency injection doesn't run. The `language` parameter arrives as a `Form` object instead of a string.
 
@@ -348,16 +348,16 @@ pnpm test:unit && pnpm test:integration && pnpm test:e2e && pnpm py:stt-v2:test 
        language = str(language)
    ```
 2. OR fix the test to pass `language` as a plain string (not through Form)
-3. Run: `pnpm py:stt-v2:test`
+3. Run: `pnpm py:stt:test`
 
-### Part B: STT-v2 Other Failures (4 failures)
+### Part B: STT Other Failures (4 failures)
 
 - `test_passes_language`: `KeyError: 'language'` — fix mock data to include `language` key
 - `test_lifespan_startup_and_shutdown`: `TypeError: '<=' not supported` — fix mock to return int instead of MagicMock
 - `test_redis_import_failure_disables_streaming`: `assert <SessionManager> is None` — update assertion or fix the disable logic
 - `test_progress_callback_updates_api_and_publishes_event`: `assert 25 in [100]` — fix progress callback to emit intermediate values
 
-### Part C: SMR-v2 boto3 Missing (14 failures)
+### Part C: SMR boto3 Missing (14 failures)
 
 **Fix**: Install `boto3` in the conda environment:
 ```bash
@@ -365,7 +365,7 @@ conda run -n arcaenv pip install boto3
 ```
 Or add `boto3` to `apps/smr/requirements.txt` as an optional dependency.
 
-### Part D: SMR-v2 Lifespan Test (1 failure)
+### Part D: SMR Lifespan Test (1 failure)
 
 - `test_lifespan_preserves_injected_state`: `'object' has no attribute 'list_providers'` — update mock or source
 
@@ -377,7 +377,7 @@ export HF_HOME=/tmp/huggingface_cache
 ```
 Or add to `.env.test`.
 
-**Commit**: `fix(python): fix STT-v2 Form handling, install boto3, fix NLP cache path`
+**Commit**: `fix(python): fix STT Form handling, install boto3, fix NLP cache path`
 
 ---
 
@@ -415,8 +415,8 @@ Task 10 requires the conda environment.
 Unit Tests:     9,637 passed, 0 failed
 Integration:       84 passed, 0 failed
 E2E (Playwright):  All passing
-STT-v2:         1,372 passed, 0 failed
-SMR-v2:           285 passed, 0 failed
+STT:         1,372 passed, 0 failed
+SMR:           285 passed, 0 failed
 NLP:              All passing (with correct env)
 ```
 
@@ -446,8 +446,8 @@ All 8 tasks executed successfully. Results:
 - `packages/agentic-sdk-v2/src/core/logger/__tests__/highlight.transport.test.ts` — rewrote mock to use `vi.mock` factory for dynamic import
 - `packages/agentic-sdk-v2/examples/vite-app/src/__tests__/plan-a-validation.test.ts` — updated route count, nav sections, imports
 - `packages/agentic-sdk-v2/src/__tests__/examples/nextjs-app-planb.test.ts` — updated nav section labels
-- `apps/api/src/modules/stt-v2/__tests__/transcriptionStream.controller.test.ts` — fixed s3 mock (`uploadFile` → `putFile`)
-- `apps/api/src/modules/stt-v2/__tests__/sttV2Stream.gateway.test.ts` — mocked `main.ts` instead of `app.module`
+- `apps/api/src/modules/stt/__tests__/transcriptionStream.controller.test.ts` — fixed s3 mock (`uploadFile` → `putFile`)
+- `apps/api/src/modules/stt/__tests__/sttStream.gateway.test.ts` — mocked `main.ts` instead of `app.module`
 - `packages/agentic-sdk-v2/src/hooks/__tests__/useAuth.test.ts` — added missing impersonation store mocks
 - `packages/applications/src/services/consultation/jobs/__tests__/integration/job-queue.integration.test.ts` — added missing constructor params
 

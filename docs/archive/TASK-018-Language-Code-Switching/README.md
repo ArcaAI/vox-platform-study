@@ -17,7 +17,7 @@ Enable users to:
 
 ### Business Context
 
-HOPE's STT-V2 service supports multiple ASR engines (Whisper ONNX, Transformers, Azure Speech, NeMo). Many real-world audio recordings contain speakers switching between languages (e.g. English and Malayalam, Hindi and English). Without code-switching support, the transcriber either forces a single language or relies on auto-detection that resets per chunk, producing poor results for multilingual audio.
+HOPE's STT service supports multiple ASR engines (Whisper ONNX, Transformers, Azure Speech, NeMo). Many real-world audio recordings contain speakers switching between languages (e.g. English and Malayalam, Hindi and English). Without code-switching support, the transcriber either forces a single language or relies on auto-detection that resets per chunk, producing poor results for multilingual audio.
 
 ### Acceptance Criteria
 
@@ -77,15 +77,15 @@ Six tasks organized by layer:
 
 | File | Changes |
 |---|---|
-| `src/stt_v2/pipeline/dto.py` | Added `code_switching: bool = False` to `InferenceConfig`; added `VALID_WHISPER_LANGUAGES` set (99 languages) and `is_valid_language_code()` validation helper |
-| `src/stt_v2/pipeline/yaml_parser.py` | Parse `code_switching` from YAML; validate language codes; warn when code-switching + fixed language |
-| `src/stt_v2/transcription/api/routes.py` | Added `code_switching` form param; validate language with `is_valid_language_code()`; removed unnecessary `hasattr` check |
-| `src/stt_v2/transcription/batch_service.py` | Wired `code_switching` through Optimum ONNX, Transformers, Azure Speech, and NeMo paths; Azure uses `AutoDetectSourceLanguageConfig` when enabled |
-| `src/stt_v2/transcription/workers/transcribe_file.py` | Added `language` and `code_switching` params to actor + async impl; applies overrides to pipeline config |
-| `src/stt_v2/streaming/api/schemas.py` | Added `language` and `code_switching` to `CreateStreamingSessionRequest` |
-| `src/stt_v2/streaming/api/routes.py` | Passes `language` and `code_switching` through to `SessionManager.create_session()` |
-| `src/stt_v2/streaming/schemas.py` | Added `language` and `code_switching` to `SessionMetadata`; updated `to_redis_dict` / `from_redis_dict` |
-| `src/stt_v2/streaming/session_manager.py` | Updated `create_session()` to accept and store `language` and `code_switching` |
+| `src/stt/pipeline/dto.py` | Added `code_switching: bool = False` to `InferenceConfig`; added `VALID_WHISPER_LANGUAGES` set (99 languages) and `is_valid_language_code()` validation helper |
+| `src/stt/pipeline/yaml_parser.py` | Parse `code_switching` from YAML; validate language codes; warn when code-switching + fixed language |
+| `src/stt/transcription/api/routes.py` | Added `code_switching` form param; validate language with `is_valid_language_code()`; removed unnecessary `hasattr` check |
+| `src/stt/transcription/batch_service.py` | Wired `code_switching` through Optimum ONNX, Transformers, Azure Speech, and NeMo paths; Azure uses `AutoDetectSourceLanguageConfig` when enabled |
+| `src/stt/transcription/workers/transcribe_file.py` | Added `language` and `code_switching` params to actor + async impl; applies overrides to pipeline config |
+| `src/stt/streaming/api/schemas.py` | Added `language` and `code_switching` to `CreateStreamingSessionRequest` |
+| `src/stt/streaming/api/routes.py` | Passes `language` and `code_switching` through to `SessionManager.create_session()` |
+| `src/stt/streaming/schemas.py` | Added `language` and `code_switching` to `SessionMetadata`; updated `to_redis_dict` / `from_redis_dict` |
+| `src/stt/streaming/session_manager.py` | Updated `create_session()` to accept and store `language` and `code_switching` |
 
 ### How Code-Switching Works Per Engine
 
@@ -139,13 +139,13 @@ curl -X POST /internal/streaming/sessions \
 
 ### NestJS API Gateway Changes
 
-In addition to the Python STT-V2 changes, the NestJS API Gateway was updated to propagate `language` and `codeSwitching` from client requests through to the STT-V2 service.
+In addition to the Python STT changes, the NestJS API Gateway was updated to propagate `language` and `codeSwitching` from client requests through to the STT service.
 
 | File | Changes |
 |---|---|
 | `packages/applications/src/services/stt/job/dto/create-job.request.ts` | Added `language?: string` and `codeSwitching?: boolean` to `CreateJobRequest`, `CreateBatchJobRequest`, and `CreateStreamingJobRequest` with Swagger + class-validator decorators |
 | `packages/applications/src/services/stt/streaming/dto/streaming-session.dto.ts` | Added `language?: string` and `codeSwitching?: boolean` to `CreateStreamingSessionRequest` interface |
-| `packages/applications/src/services/stt/streaming/streamingSession.service.ts` | Passes `language` and `code_switching` in the HTTP POST body to STT-V2 `POST /internal/streaming/sessions` |
+| `packages/applications/src/services/stt/streaming/streamingSession.service.ts` | Passes `language` and `code_switching` in the HTTP POST body to STT `POST /internal/streaming/sessions` |
 | `packages/applications/src/services/stt/realtime/ITranscriptionRealtimeService.ts` | Added `language` and `codeSwitching` to `createAndStream()` params interface |
 | `packages/applications/src/services/stt/realtime/transcriptionRealtime.service.ts` | Passes `language` and `codeSwitching` through `createAndStream()` → `dispatchDramatiqJob()`; Dramatiq message `args` now includes `language` (pos 7) and `code_switching` (pos 8) |
 

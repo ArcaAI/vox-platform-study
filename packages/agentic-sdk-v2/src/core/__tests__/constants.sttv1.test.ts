@@ -22,14 +22,14 @@ describe('Legacy STT v1 Cleanup (ASR-R-11)', () => {
     expect(v1References).toHaveLength(0);
   });
 
-  it('should have STT_V2_ENDPOINTS as the only STT streaming constant', () => {
-    expect(constants.STT_V2_ENDPOINTS).toBeDefined();
-    expect(constants.STT_V2_ENDPOINTS.WS_STREAM).toBe('/ws/stt-v2/stream');
+  it('should have STT_ENDPOINTS as the only STT streaming constant', () => {
+    expect(constants.STT_ENDPOINTS).toBeDefined();
+    expect(constants.STT_ENDPOINTS.WS_STREAM).toBe('/ws/stt/stream');
   });
 
-  it('STT_V2_ENDPOINTS.WS_STREAM should NOT contain the v1 path /stt', () => {
-    expect(constants.STT_V2_ENDPOINTS.WS_STREAM).not.toBe('/stt');
-    expect(constants.STT_V2_ENDPOINTS.WS_STREAM).not.toContain('/stt?');
+  it('STT_ENDPOINTS.WS_STREAM should NOT contain the v1 path /stt', () => {
+    expect(constants.STT_ENDPOINTS.WS_STREAM).not.toBe('/stt');
+    expect(constants.STT_ENDPOINTS.WS_STREAM).not.toContain('/stt?');
   });
 
   it('PIPELINE_ENDPOINTS should exist for ASR pipeline discovery', () => {

@@ -12,10 +12,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockErrorResponse, createMockLogger, createMockResponse, mockFetch } from '../../__tests__/setup';
-import type { TranscriptionJobResponse } from '../../types/stt-v2';
-import { TranscriptionJobStatus, TranscriptionJobType } from '../../types/stt-v2';
+import type { TranscriptionJobResponse } from '../../types/stt';
+import { TranscriptionJobStatus, TranscriptionJobType } from '../../types/stt';
 import { AgenticClient } from '../AgenticClient';
-import { STT_V2_ENDPOINTS } from '../constants';
+import { STT_ENDPOINTS } from '../constants';
 import { FileTranscriptionService } from '../FileTranscriptionService';
 
 // ===========================================================================
@@ -149,7 +149,7 @@ describe('FileTranscriptionService', () => {
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
-      expect(callUrl).toContain(STT_V2_ENDPOINTS.TRANSCRIBE);
+      expect(callUrl).toContain(STT_ENDPOINTS.TRANSCRIBE);
     });
 
     it('should send FormData with the audio file', async () => {
@@ -331,10 +331,10 @@ describe('FileTranscriptionService', () => {
       );
     });
 
-    it('should use STT_V2_ENDPOINTS.JOB_STREAM', () => {
+    it('should use STT_ENDPOINTS.JOB_STREAM', () => {
       const url = service.buildJobStreamUrl('my-job');
 
-      expect(url).toContain(STT_V2_ENDPOINTS.JOB_STREAM('my-job'));
+      expect(url).toContain(STT_ENDPOINTS.JOB_STREAM('my-job'));
     });
   });
 

@@ -5,6 +5,7 @@ import { DataNotFoundException } from '@arcaai/exceptions';
 
 import { Repository } from '../../../common';
 import { CoreUnitOfWorkService } from '../../../common/unitsOfWork/core';
+import { ExemplarCurationStatus } from '../../../enums';
 import { GateEditExemplarEntity } from '../../../entities';
 import { GateEditExemplarEntityMapper } from '../../../mappers';
 import { GateEditExemplar } from '../../../models';
@@ -54,6 +55,14 @@ export class GateEditExemplarRepository extends Repository<GateEditExemplarEntit
     departmentId?: string | null;
     qualitySignal: string;
     limit: number;
+    /**
+     * Human curation gate (TASK-553 F-24). OMITTED ⇒ no curation predicate at
+     * all, which is byte-identical to the pre-gate query — the caller decides,
+     * because the gate is governed by a default-off knob and this repository must
+     * not invent a policy. When supplied, the `(tenantId, curationStatus)` index
+     * backs the filter.
+     */
+    curationStatus?: ExemplarCurationStatus;
   }): Promise<GateEditExemplarEntity[]> {
     const filters: Record<string, unknown> = {
       tenantId: params.tenantId,
@@ -62,6 +71,9 @@ export class GateEditExemplarRepository extends Repository<GateEditExemplarEntit
 
     if (params.departmentId) {
       filters.departmentId = params.departmentId;
+    }
+    if (params.curationStatus) {
+      filters.curationStatus = params.curationStatus;
     }
 
     return this.findAll({

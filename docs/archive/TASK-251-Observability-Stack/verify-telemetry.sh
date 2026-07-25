@@ -57,7 +57,7 @@ echo "--- Prometheus Scrape Targets ---"
 
 TARGETS_JSON=$(curl -sf "${PROM_URL}/api/v1/targets" 2>/dev/null || echo '{}')
 
-for JOB in "api-gateway" "stt-v2" "smr" "nlp" "node-exporter"; do
+for JOB in "api-gateway" "stt" "smr" "nlp" "node-exporter"; do
   HEALTH=$(echo "$TARGETS_JSON" | python3 -c "
 import json, sys
 try:
@@ -85,7 +85,7 @@ echo ""
 # --- Loki Log Ingestion ---
 echo "--- Loki Log Ingestion ---"
 
-for SERVICE in "api-gateway" "stt-v2" "smr-v2" "hope-nlp"; do
+for SERVICE in "api-gateway" "stt" "smr" "hope-nlp"; do
   COUNT=$(curl -sf "${LOKI_URL}/loki/api/v1/query" \
     --data-urlencode "query=count_over_time({service_name=\"${SERVICE}\"}[1h])" \
     2>/dev/null | python3 -c "
@@ -110,7 +110,7 @@ echo ""
 # --- Tempo Traces ---
 echo "--- Tempo Trace Ingestion ---"
 
-for SERVICE in "api-gateway" "stt-v2" "smr-v2" "hope-nlp"; do
+for SERVICE in "api-gateway" "stt" "smr" "hope-nlp"; do
   TRACE_RESULT=$(curl -sf "${TEMPO_URL}/api/search?q=resource.service.name%3D${SERVICE}&limit=1" 2>/dev/null || echo '{}')
   TRACE_COUNT=$(echo "$TRACE_RESULT" | python3 -c "
 import json, sys

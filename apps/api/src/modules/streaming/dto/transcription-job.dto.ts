@@ -107,7 +107,7 @@ export class StreamSessionResponse {
 
   /**
    * True when the speaker voice profile was preseeded into
-   * STT-V2 during session creation. Surfaced so the SDK can short-circuit a
+   * STT during session creation. Surfaced so the SDK can short-circuit a
    * follow-up `voice-enrollment-status` request.
    */
   @ApiPropertyOptional({ description: 'Whether the speaker voice profile was preseeded' })

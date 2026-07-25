@@ -67,13 +67,13 @@ SMR loads every provider config at startup; enable the engine and point its
 
 ```bash
 # vLLM (OpenAI wire; base_url INCLUDES /v1; /health + /metrics at the root)
-SMR_V2_VLLM_ENABLED=true
-SMR_V2_VLLM_BASE_URL=http://localhost:8000/v1     # cluster: http://hope-vllm:8000/v1
-SMR_V2_VLLM_USE_GUIDED_JSON=false                 # vLLM < 0.8 only
+SMR_VLLM_ENABLED=true
+SMR_VLLM_BASE_URL=http://localhost:8000/v1     # cluster: http://hope-vllm:8000/v1
+SMR_VLLM_USE_GUIDED_JSON=false                 # vLLM < 0.8 only
 
 # llama.cpp (native /completion; GGUF tier)
-SMR_V2_LLAMA_CPP_ENABLED=true
-SMR_V2_LLAMA_CPP_BASE_URL=http://localhost:8080   # cluster: http://hope-llama-cpp:8080
+SMR_LLAMA_CPP_ENABLED=true
+SMR_LLAMA_CPP_BASE_URL=http://localhost:8080   # cluster: http://hope-llama-cpp:8080
 ```
 
 Model routing stays caller-authoritative (D-7): the `provider` + `model` on each
@@ -143,12 +143,12 @@ curl -fsS http://localhost:8862/api/v1/generate \
 ```bash
 SMR_E2E_VLLM_BASE_URL=http://localhost:8000/v1 SMR_E2E_VLLM_MODEL=Qwen/Qwen3-8B \
   conda run -n arcaenv --no-capture-output \
-    pytest apps/smr/src/smr_v2/tests/e2e/test_vllm_live.py -q -m e2e
+    pytest apps/smr/src/smr/tests/e2e/test_vllm_live.py -q -m e2e
 ```
 
 ---
 
 ## 7. Structured output & prefix caching
 
-- **vLLM**: JSON-schema structured output via native `response_format={"type":"json_schema",...}` (vLLM ≥ 0.8); flip `SMR_V2_VLLM_USE_GUIDED_JSON=true` to route through `extra_body.guided_json` on older builds. Automatic prefix caching is on by default — SMR scrapes the hit rate into `smr_engine_cache_hit_rate{engine="vllm"}`.
+- **vLLM**: JSON-schema structured output via native `response_format={"type":"json_schema",...}` (vLLM ≥ 0.8); flip `SMR_VLLM_USE_GUIDED_JSON=true` to route through `extra_body.guided_json` on older builds. Automatic prefix caching is on by default — SMR scrapes the hit rate into `smr_engine_cache_hit_rate{engine="vllm"}`.
 - **llama.cpp**: JSON-schema (`json_schema` field) or raw **GBNF** grammar (via `context.grammar`). `cache_prompt: true` reuses the KV cache of a stable prefix across flushes/regens (the 4C prompt-reorder program depends on this).

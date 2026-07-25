@@ -24,7 +24,7 @@ directly from the database** (decision Q3c).
 
 - **Admin console = `apps/ui-playground`** (`features/admin/configurations`, reuse `provider-model-select.tsx`).
 - **Azure: deployment-name configurable via console; API key stays env/Vault** (raw key never in a non-secret GlobalSetting — blocked on TASK-302 Phase 4D).
-- **Q3c — Guardrail reads tenant config from DB directly** (SQLAlchemy + asyncpg; precedent: STT-v2).
+- **Q3c — Guardrail reads tenant config from DB directly** (SQLAlchemy + asyncpg; precedent: STT).
 
 ### Acceptance criteria
 
@@ -42,7 +42,7 @@ directly from the database** (decision Q3c).
 - **GlobalSetting model** already supports everything needed (namespace/key/value/defaultValue/dataType/locked, `encryptedValue`/`keyVersion` for future secrets). No new DB model required.
 - **Secrets:** `SecretsService` (env|vault|aws|azure). Azure key is env/Vault-only today; `encryptedValue` Vault-Transit path (TASK-302 Phase 4) not fully wired (Phase 4D pending) → no admin-set raw keys yet.
 - **Guardrail service:** env-only config (`GUARDRAIL_*`), no DB access. Called only by SMR's `ExternalGuardrailClient` → `POST /api/medical/validate` (not yet wired into SMR generate). **No tenant context is currently propagated to guardrail.**
-- **Python DB precedent:** STT-v2 uses `sqlalchemy` + `asyncpg` (`create_async_engine`) against the core DB.
+- **Python DB precedent:** STT uses `sqlalchemy` + `asyncpg` (`create_async_engine`) against the core DB.
 
 ---
 

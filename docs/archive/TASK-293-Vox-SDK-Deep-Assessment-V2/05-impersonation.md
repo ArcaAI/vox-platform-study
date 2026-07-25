@@ -382,9 +382,9 @@ Risk: this is a sharp edge that invites misuse. If a developer wires a "switch u
 ### Medium
 
 **M-1. `endImpersonation` does not abort in-flight streams.**
-`useAuth.endImpersonation` (`useAuth.ts:198-222`) flips the access token but does not signal any currently-open SSE / WebSocket / WebRTC connection to reconnect. Any in-flight consultation transcription will keep streaming under the impersonation JWT (and survives until the JWT expires on the server side, given C-4 means no real revocation). The `TranscriptionPipeline` / `SttV2WebSocketClient` should be told to reconnect when the SDK swaps tokens.
+`useAuth.endImpersonation` (`useAuth.ts:198-222`) flips the access token but does not signal any currently-open SSE / WebSocket / WebRTC connection to reconnect. Any in-flight consultation transcription will keep streaming under the impersonation JWT (and survives until the JWT expires on the server side, given C-4 means no real revocation). The `TranscriptionPipeline` / `SttWebSocketClient` should be told to reconnect when the SDK swaps tokens.
 
-**Patch**: emit a typed `auth:tokenChanged` event from `AgenticClient.updateAccessToken` that `SttV2WebSocketClient`, `SSEClient`, and `PluginManager` subscribe to and trigger a clean reconnect.
+**Patch**: emit a typed `auth:tokenChanged` event from `AgenticClient.updateAccessToken` that `SttWebSocketClient`, `SSEClient`, and `PluginManager` subscribe to and trigger a clean reconnect.
 
 **M-2. `impersonatedUser` is `unknown` in the store.**
 `packages/agentic-sdk-v2/src/store/agenticStore.ts:93-97`:

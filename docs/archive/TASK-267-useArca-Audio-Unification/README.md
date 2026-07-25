@@ -204,7 +204,7 @@ Includes `useArca.audio-pipeline.test.ts` (60 tests), `useArca.audioSegments.tes
 ✖ 28 problems (0 errors, 28 warnings)
 ```
 
-All 28 warnings are prettier formatting issues in unrelated files (`FileTranscriptionService.ts`, `SttV2WebSocketClient.ts`, `types/dna.ts`, `types/index.ts`) that pre-existed this ticket and are outside the write scope. Zero warnings or errors in `useArca.ts` or the colocated tests.
+All 28 warnings are prettier formatting issues in unrelated files (`FileTranscriptionService.ts`, `SttWebSocketClient.ts`, `types/dna.ts`, `types/index.ts`) that pre-existed this ticket and are outside the write scope. Zero warnings or errors in `useArca.ts` or the colocated tests.
 
 #### Build — `pnpm --filter @arcaai/vox build`
 

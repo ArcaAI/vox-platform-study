@@ -7,7 +7,7 @@ A Python/FastAPI service whose real job is a **Temporal durable workflow**:
 clinical-documentation loop for one consultation. `apps/api` (NestJS) stays the gateway and
 system-of-record (authZ, tenant/CLS, Postgres, WORM audit, consent, sign-off) and drives the loop
 through two internal HTTP endpoints — it never talks to Temporal directly. The harness treats
-STT-v2 / NLP / SMR / Qdrant / Temporal as tools (ACI): all non-deterministic I/O (HTTP calls,
+STT / NLP / SMR / Qdrant / Temporal as tools (ACI): all non-deterministic I/O (HTTP calls,
 model inference, clock/random access) lives in Temporal **activities**; the workflow **body**
 stays deterministic.
 

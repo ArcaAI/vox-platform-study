@@ -293,7 +293,7 @@ describe('TranscriptionJobController', () => {
             );
             expect(result).toMatchObject({
                 sessionId: expect.any(String),
-                wsUrl: '/ws/stt-v2/stream',
+                wsUrl: '/ws/stt/stream',
                 maxConcurrent: 5,
                 currentActive: 1,
             });
@@ -447,7 +447,7 @@ describe('TranscriptionJobController', () => {
         });
 
         // The concurrency gate runs on the caller's
-        // tenant before any STT-V2 session is created.
+        // tenant before any STT session is created.
         it('asserts the tenant concurrency quota before creating the session', async () => {
             mockSessionService.createSession.mockResolvedValue({
                 sessionId: 'sess-conc',

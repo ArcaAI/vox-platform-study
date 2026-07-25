@@ -64,7 +64,7 @@ AgenticConfig.debug → AgenticProvider → PluginManager._debugMode
     → createNoiseFilter({ debugMode })
     → createVAD({ debugMode })
     → createSTT({ debugMode })
-  → SttV2WebSocketClient({ debugMode })
+  → SttWebSocketClient({ debugMode })
 ```
 
 ### Transcript JSON Format
@@ -117,15 +117,15 @@ AgenticConfig.debug → AgenticProvider → PluginManager._debugMode
 | `packages/agentic-sdk-v2/src/core/TranscriptionPipeline.ts` | Import `debugLogConfig`, propagate `debugMode` to all plugin factories, log consolidated config at pipeline start |
 | `packages/agentic-sdk-v2/src/core/PluginManager.ts` | Added `_debugMode` field, accept `debugMode` in constructor, set `debugMode` on pipeline config |
 | `packages/agentic-sdk-v2/src/providers/AgenticProvider.tsx` | Pass `cfg.debug` to `PluginManager` constructor |
-| `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` | Added `_debugMode` and `debugSegmentCounter` fields, accept `debugMode` in constructor, log transcript JSON for backend path |
-| `packages/agentic-sdk-v2/src/core/__tests__/SttV2WebSocketClient.test.ts` | Added 4 debug mode tests |
+| `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` | Added `_debugMode` and `debugSegmentCounter` fields, accept `debugMode` in constructor, log transcript JSON for backend path |
+| `packages/agentic-sdk-v2/src/core/__tests__/SttWebSocketClient.test.ts` | Added 4 debug mode tests |
 | `packages/agentic-sdk-v2/vitest.config.mts` | Added `@arcaai/room` source alias for test resolution |
 | `apps/ui-playground/src/components/layout/header.tsx` | Added `DebugToggle` import and placement next to `ThemeSwitch` |
 
 ### Test Results
 
 - `debugLogger.test.ts`: **10/10 passed** — format correctness, precision, words inclusion/omission
-- `SttV2WebSocketClient.test.ts`: **60/60 passed** — including 4 new debug mode tests (final logging, no-debug, non-final skip, segment counter increment)
+- `SttWebSocketClient.test.ts`: **60/60 passed** — including 4 new debug mode tests (final logging, no-debug, non-final skip, segment counter increment)
 - `BaseProcessor.test.ts`: **31/31 passed** — existing tests unaffected by `debugMode` addition
 
 ### API Changes
@@ -173,8 +173,8 @@ The ui-playground app exposes the debug mode toggle in the global header, next t
 | Document | Changes |
 |----------|---------|
 | `knowledge/agentic-sdk-v2/README.md` | Added `debug: true` to Quick Start, new "Debug Mode" section |
-| `knowledge/agentic-sdk-v2/api-reference.md` | Added "Debug Mode" subsection with transcript JSON schema, updated `SttV2WebSocketClient` constructor |
-| `knowledge/agentic-sdk-v2/streaming.md` | Added `debugMode` to `SttV2WebSocketClient` example |
+| `knowledge/agentic-sdk-v2/api-reference.md` | Added "Debug Mode" subsection with transcript JSON schema, updated `SttWebSocketClient` constructor |
+| `knowledge/agentic-sdk-v2/streaming.md` | Added `debugMode` to `SttWebSocketClient` example |
 | `knowledge/agentic-sdk-v2/migration-guide.md` | Updated debug FAQ with audio pipeline debug details |
 | `knowledge/agentic-sdk-v2/examples.md` | Added "Debug Mode" example section |
 | `packages/agentic-sdk-v2/README.md` | Added `debug: true` to Quick Start, new "Debug Mode" section |

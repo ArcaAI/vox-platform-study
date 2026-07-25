@@ -21,15 +21,15 @@ import {
   createMockErrorResponse,
 } from '../../__tests__/setup';
 import { AgenticClient } from '../AgenticClient';
-import { STT_V2_ENDPOINTS } from '../constants';
+import { STT_ENDPOINTS } from '../constants';
 import {
   TranscriptionJobStatus,
   TranscriptionJobType,
-} from '../../types/stt-v2';
+} from '../../types/stt';
 import type {
   TranscriptionJobResponse,
   TranscriptionJobStatusCounts,
-} from '../../types/stt-v2';
+} from '../../types/stt';
 
 // ===========================================================================
 // Fixtures
@@ -125,7 +125,7 @@ describe('TranscriptionJobService', () => {
       await service.getJob('job-xyz');
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
-      expect(callUrl).toContain(STT_V2_ENDPOINTS.GET_JOB('job-xyz'));
+      expect(callUrl).toContain(STT_ENDPOINTS.GET_JOB('job-xyz'));
     });
 
     it('should throw on 404', async () => {
@@ -202,7 +202,7 @@ describe('TranscriptionJobService', () => {
       await service.listJobs();
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
-      expect(callUrl).toContain(STT_V2_ENDPOINTS.LIST_JOBS);
+      expect(callUrl).toContain(STT_ENDPOINTS.LIST_JOBS);
     });
 
     it('should not append query string when called with no params', async () => {
@@ -277,7 +277,7 @@ describe('TranscriptionJobService', () => {
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
       expect(callUrl).toContain(
-        STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION('consult-123'),
+        STT_ENDPOINTS.JOBS_BY_CONSULTATION('consult-123'),
       );
     });
 
@@ -315,7 +315,7 @@ describe('TranscriptionJobService', () => {
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
       expect(callUrl).toContain(
-        STT_V2_ENDPOINTS.JOBS_BY_STATUS('COMPLETED'),
+        STT_ENDPOINTS.JOBS_BY_STATUS('COMPLETED'),
       );
     });
   });
@@ -344,7 +344,7 @@ describe('TranscriptionJobService', () => {
       await service.getJobStats();
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
-      expect(callUrl).toContain(STT_V2_ENDPOINTS.JOB_STATS);
+      expect(callUrl).toContain(STT_ENDPOINTS.JOB_STATS);
     });
   });
 
@@ -376,7 +376,7 @@ describe('TranscriptionJobService', () => {
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
       const callMethod = mockFetch.mock.calls[0][1]?.method;
-      expect(callUrl).toContain(STT_V2_ENDPOINTS.CANCEL_JOB('job-xyz'));
+      expect(callUrl).toContain(STT_ENDPOINTS.CANCEL_JOB('job-xyz'));
       expect(callMethod).toBe('POST');
     });
 
@@ -417,7 +417,7 @@ describe('TranscriptionJobService', () => {
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
       const callMethod = mockFetch.mock.calls[0][1]?.method;
-      expect(callUrl).toContain(STT_V2_ENDPOINTS.RETRY_JOB('job-abc'));
+      expect(callUrl).toContain(STT_ENDPOINTS.RETRY_JOB('job-abc'));
       expect(callMethod).toBe('POST');
     });
 

@@ -295,7 +295,7 @@ export const LLM_AI_MODELS: AiModelSeed[] = [
         tenantId: SYSTEM_TENANT_ID,
         name: 'Claude 3.5 Haiku (Bedrock)',
         slug: 'bedrock-claude-3.5-haiku',
-        description: 'Anthropic Claude 3.5 Haiku via AWS Bedrock — cloud text generation. Matches the SMR Bedrock provider default (SMR_V2_BEDROCK_DEFAULT_MODEL). Region/keys stay in env/Vault.',
+        description: 'Anthropic Claude 3.5 Haiku via AWS Bedrock — cloud text generation. Matches the SMR Bedrock provider default (SMR_BEDROCK_DEFAULT_MODEL). Region/keys stay in env/Vault.',
         category: ModelCategory.NLP,
         taskType: ModelTaskType.TEXT_GENERATION,
         modelType: ModelType.BASE_MODEL,

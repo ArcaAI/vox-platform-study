@@ -100,7 +100,7 @@ describe('TranscriptionPipeline: local transcription disabled (TASK-545)', () =>
     const pipeline = new TranscriptionPipeline({
       noiseFilter: { enabled: false, location: 'skip' },
       vad: { enabled: false, location: 'browser' },
-      stt: { enabled: true, location: 'auto', provider: 'auto', sttSocket: 'wss://api.example.com/ws/stt-v2/stream' },
+      stt: { enabled: true, location: 'auto', provider: 'auto', sttSocket: 'wss://api.example.com/ws/stt/stream' },
     });
 
     await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });

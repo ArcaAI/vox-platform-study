@@ -8,14 +8,14 @@ import { CreateStreamingSessionRequest, StreamingAvailability, StreamingSessionS
 /**
  * StreamingSessionService
  *
- * Manages streaming session lifecycle by communicating with the STT-V2
+ * Manages streaming session lifecycle by communicating with the STT
  * internal API endpoints:
  * - GET  /internal/streaming/availability
  * - POST /internal/streaming/sessions
  * - GET  /internal/streaming/sessions/{sessionId}
  * - DELETE /internal/streaming/sessions/{sessionId}
  *
- * This is a brand-new service for STT-V2 WebSocket streaming.
+ * This is a brand-new service for STT WebSocket streaming.
  * It does NOT touch or reuse the old STT v1 WebSocket implementation.
  */
 @Injectable()
@@ -27,7 +27,7 @@ export class StreamingSessionService implements IStreamingSessionService {
     private readonly httpService: HttpService,
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
   ) {
-    this.sttBaseUrl = this.configService?.config?.STT_V2_URL || 'http://localhost:8861';
+    this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
     this.logger.log({
       message: 'StreamingSessionService initialized',
       sttBaseUrl: this.sttBaseUrl,
@@ -35,7 +35,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
-   * Check if the STT-V2 streaming module is available and has capacity.
+   * Check if the STT streaming module is available and has capacity.
    */
   async checkAvailability(): Promise<StreamingAvailability> {
     try {
@@ -59,7 +59,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
-   * Create a new streaming session on STT-V2.
+   * Create a new streaming session on STT.
    *
    * @returns Session status, or null if at capacity (503)
    */
@@ -107,7 +107,7 @@ export class StreamingSessionService implements IStreamingSessionService {
       // 503 = at capacity → return null (not an error)
       if (error?.response?.status === 503) {
         this.logger.warn({
-          message: 'STT-V2 streaming at capacity',
+          message: 'STT streaming at capacity',
           sessionId: dto.sessionId,
           detail: error.response?.data?.detail,
         });
@@ -152,7 +152,7 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
-   * Remove a streaming session (triggers finalization on STT-V2).
+   * Remove a streaming session (triggers finalization on STT).
    */
   async removeSession(sessionId: string): Promise<void> {
     try {

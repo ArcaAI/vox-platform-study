@@ -51,17 +51,17 @@ scan-api:
       when: never
     - !reference [.rules-api, rules]
 
-scan-stt-v2:
+scan-stt:
   extends: .trivy-scan
   needs:
-    - job: build-stt-v2
+    - job: build-stt
       artifacts: true
   variables:
     SCAN_IMAGE: $IMAGE
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
-    - !reference [.rules-stt-v2, rules]
+    - !reference [.rules-stt, rules]
 
 scan-smr:
   extends: .trivy-scan

@@ -1,9 +1,9 @@
 // Python service-runtime descriptors (the effective-config pull path).
 //
-// These are the SERVICE-LEVEL knobs the stt-v2 and nlp services consume through
+// These are the SERVICE-LEVEL knobs the stt and nlp services consume through
 // `GET /api/v1/internal/effective-config`. They are deliberately
 // NOT per-request model selection: SMR's stateless-gateway contract
-// (`apps/smr/src/smr_v2/core/config.py:1-9`) stays intact, and SMR's own tunables
+// (`apps/smr/src/smr/core/config.py:1-9`) stays intact, and SMR's own tunables
 // arrive as `AiRuntimeProfile` rows rather than registry keys.
 //
 // Registering them changes ZERO runtime behaviour: every `default` below is
@@ -43,8 +43,8 @@ export const SERVICE_RUNTIME_DEFAULTS = {
   'nlp.inference.maxConcurrent': 4,
 
   // ── the remaining in-process caches ───────────────────────────
-  // The `<svc>.modelCache.<knob>` grammar originally served stt-v2 only,
-  // leaving guardrail/harness/tts-v2 as explicitly reserved subsets. This
+  // The `<svc>.modelCache.<knob>` grammar originally served stt only,
+  // leaving guardrail/harness/tts as explicitly reserved subsets. This
   // fills them in the SAME family rather than adding a parallel
   // `models.retention.*` namespace: two key families for one knob would be
   // pure redundancy.
@@ -81,11 +81,11 @@ export type ModelCacheService = (typeof MODEL_CACHE_SERVICES)[number];
 
 /** Human-facing service names for the generated retention descriptions. */
 const SERVICE_LABEL: Record<ModelCacheService, string> = {
-  stt: 'stt-v2',
+  stt: 'stt',
   nlp: 'nlp',
   guardrail: 'guardrail',
   harness: 'harness',
-  tts: 'tts-v2',
+  tts: 'tts',
 };
 
 const TTL_DESCRIPTION = (service: string): string =>
@@ -105,7 +105,7 @@ type KeyMeta = { label: string; description: string };
 
 /**
  * Retention metadata for the four services added here, generated so
- * the wording can never drift between them. stt-v2's three pre-existing entries
+ * the wording can never drift between them. stt's three pre-existing entries
  * keep their hand-written text below (they are equivalent in substance).
  */
 const RETENTION_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = Object.fromEntries(
@@ -131,7 +131,7 @@ const RETENTION_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = Object.fromE
 const HAND_WRITTEN_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = {
   'stt.modelCache.maxModels': {
     label: 'STT model cache size',
-    description: 'Maximum number of ASR models held in the stt-v2 LRU cache.',
+    description: 'Maximum number of ASR models held in the stt LRU cache.',
   },
   'stt.modelCache.ttlSeconds': {
     label: 'STT model cache idle TTL (s)',

@@ -12,7 +12,7 @@ Last updated: 2026-07-04
 | Depends on | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Stages of the transcription pipeline |
 | Optional peer | `@arcaai/med-ner` | Browser NER stage; hook at `@arcaai/vox/plugins/med-ner` |
 | Optional peer | `highlight.run` | Optional logging transport |
-| Talks to | `apps/api` (NestJS gateway, port 8868) | REST + WebSocket/SSE (streaming ASR via the STT-V2 service behind the gateway) |
+| Talks to | `apps/api` (NestJS gateway, port 8868) | REST + WebSocket/SSE (streaming ASR via the STT service behind the gateway) |
 | Consumed by | `apps/ui-playground` (deprecated) | Only current in-repo consumer |
 
 Peer dependencies: `react` / `react-dom` `^18.3.0 || ^19.0.4`.
@@ -39,12 +39,12 @@ packages/agentic-sdk-v2/
 │   ├── store/         # Zustand store: createAgenticStore, useArcaStore, useStoreApi
 │   ├── core/          # AgenticClient, ConfigManager/ConfigSchema (valibot),
 │   │                  # PluginManager, TranscriptionPipeline, KnowledgePipeline,
-│   │                  # SttV2WebSocketClient, SSEClient, StreamingSessionManager,
+│   │                  # SttWebSocketClient, SSEClient, StreamingSessionManager,
 │   │                  # SharedConnectionManager/Worker, SimpleCrossTabSync,
 │   │                  # PersonalizationManager, ModelRegistry, LocalVoiceEmbedder,
 │   │                  # DualStreamRecorder, ProcessedAudioTap, FileTranscriptionService,
 │   │                  # logger/ (SDKLogger + transports)
-│   ├── types/         # Config, consultation, context, summary, STT-V2, admin types
+│   ├── types/         # Config, consultation, context, summary, STT, admin types
 │   └── utils/         # Diff, dates, errors, idempotency, citations, voice embedding
 ├── docs/API-Reference.md   # Full generated API reference
 ├── e2e/               # Playwright tests (fixtures + specs)
@@ -131,7 +131,7 @@ Microphone → @arcaai/room AudioTrack
   → transcription events → store → context items
 ```
 
-Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioStartOptions`): `pipelineId` (selects the backend ASR pipeline and switches the STT stage to a streaming transport built on `StreamingSessionManager` + `SttV2WebSocketClient`), `language`, `deviceId`, and `secondaryDeviceId` (second microphone mixed in via `AudioMixer` before the pipeline). `DualStreamRecorder` can record raw and processed tracks in parallel, and `createProcessedAudioTap` exposes the genuine post-RNNoise audio as a recordable stream without running the full pipeline.
+Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioStartOptions`): `pipelineId` (selects the backend ASR pipeline and switches the STT stage to a streaming transport built on `StreamingSessionManager` + `SttWebSocketClient`), `language`, `deviceId`, and `secondaryDeviceId` (second microphone mixed in via `AudioMixer` before the pipeline). `DualStreamRecorder` can record raw and processed tracks in parallel, and `createProcessedAudioTap` exposes the genuine post-RNNoise audio as a recordable stream without running the full pipeline.
 
 > **Local (in-browser) transcription is disabled platform-wide (TASK-545).** `LOCAL_TRANSCRIPTION_ENABLED` in `src/core/constants.ts` gates the STT stage's local/offline path — it currently reads `false`, so `TranscriptionPipeline.resolveSTTRuntimeProvider()` never resolves to `'local'`: a configured backend transport (`stt.sttSocket`/`stt.streamingTransport`) resolves to `'remote'`; with no transport it throws `AgenticError('LOCAL_TRANSCRIPTION_DISABLED', ...)` instead of silently transcribing on-device (the local Whisper processor is never constructed while the flag is off — no model-download side effects). NoiseFilter and VAD are unaffected — they keep running in the browser as preprocessing stages for the backend stream. **To re-enable**, flip `LOCAL_TRANSCRIPTION_ENABLED` back to `true`; it is the single, findable switch.
 
@@ -144,7 +144,7 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 | Component | Purpose |
 |---|---|
 | `AgenticClient` | REST client: auth/refresh (single-slot 401 handler, `autoWireTokenRefresh`), idempotency keys, optimistic locking (ETag/If-Match) |
-| `SttV2WebSocketClient` | Streaming ASR WebSocket (audio frames out, transcripts in, reconnect) |
+| `SttWebSocketClient` | Streaming ASR WebSocket (audio frames out, transcripts in, reconnect) |
 | `SSEClient` | Server-sent events (job progress) |
 | `FileTranscriptionService` / `TranscriptionJobService` | File-based transcription jobs |
 | `SharedConnectionManager` + `SharedConnectionWorker` | One shared WS/SSE connection across tabs (SharedWorker), dedup keyed per user |

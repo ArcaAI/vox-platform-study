@@ -15,11 +15,11 @@ This review evaluates the **remote** transcription path that the doctor selects 
 
 I evaluated the following surfaces:
 
-1. **SDK** — `packages/agentic-sdk-v2/src/core/constants.ts`, `usePipelines.ts`, `useArcaPipelines.ts`, `useUserSettings.ts`, `useArcaAudio.ts`, `core/StreamingSessionManager.ts`, `core/SttV2WebSocketClient.ts`, `core/PluginManager.ts`, `core/TranscriptionPipeline.ts`, `types/stt-v2.ts`, `types/config.ts`.
+1. **SDK** — `packages/agentic-sdk-v2/src/core/constants.ts`, `usePipelines.ts`, `useArcaPipelines.ts`, `useUserSettings.ts`, `useArcaAudio.ts`, `core/StreamingSessionManager.ts`, `core/SttWebSocketClient.ts`, `core/PluginManager.ts`, `core/TranscriptionPipeline.ts`, `types/stt.ts`, `types/config.ts`.
 2. **SDK STT package** — `packages/stt/src/providers/BackendSTTProvider.ts` (a.k.a. `RemoteSTTProvider`), `packages/stt/src/core/STTProcessor.ts`.
 3. **API gateway** — `apps/api/src/modules/pipeline/{audio-pipeline,audio-pipeline-public}.controller.ts`, `apps/api/src/modules/pipeline/dto/validate-yaml.dto.ts`, `apps/api/src/modules/streaming/{stt-ws.gateway,transcription-job.controller,smr-proxy.controller}.ts`, `apps/api/src/modules/consultation/{consultation,consultation-job}.controller.ts`, `apps/api/src/modules/internal/stt-internal.controller.ts`, `apps/api/src/guards/jwtauth.guard.ts`, `apps/api/src/modules/auth/decorators/stream-scope.decorator.ts`.
 4. **Application + domain services** — `packages/applications/src/services/stt/pipeline/pipeline.service.ts`, `packages/applications/src/services/stt/streaming/streamingSession.service.ts`, `packages/domains/src/repositories/generated/core/AsrPipelineRepository.ts`.
-5. **STT-V2 Python service** — `apps/stt-v2/src/stt_v2/streaming/api/routes.py`, `streaming/session_manager.py`, `pipeline/config_reader.py`.
+5. **STT Python service** — `apps/stt/src/stt/streaming/api/routes.py`, `streaming/session_manager.py`, `pipeline/config_reader.py`.
 6. **Tests** — `apps/api/src/modules/pipeline/__tests__/audio-pipeline.controller.test.ts`, SDK `usePipelines.test.ts`.
 
 Method: static code review with file/line citations, cross-referenced against the TASK-262 gap matrix (GAP-05, GAP-06, R-04, R-06).
@@ -51,17 +51,17 @@ usePipelines.delete()                                                           
                                                   │                              StreamingSessionManager
                                                   │   ┌── DEAD CODE (no consumer) ─►   POST /audio/transcription-jobs
                                                   │   │   StreamingSessionManager      /stream/session   { pipelineId, … }
-                                                  │   │   SttV2WebSocketClient    ───►  ▼
+                                                  │   │   SttWebSocketClient    ───►  ▼
                                                   ▼   ▼                                StreamingSessionService
-                                          ws://api/ws/stt-v2/stream?sessionId=X       (forwards to STT-V2 internal)
+                                          ws://api/ws/stt/stream?sessionId=X       (forwards to STT internal)
                                           (NO auth required by gateway) ⚠               ▼
-                                                  │                                    STT-V2 /internal/streaming/sessions
+                                                  │                                    STT /internal/streaming/sessions
                                                   ▼                                       ─ get_pipeline(id) (no tenant check) ⚠
                                           SttWsGateway.handleConnection                   ─ load pipeline_config, build VAD/ASR
                                           (only checks ?sessionId=)                       ─ stream PCM → ASR → publish results
                                                   │                                            
                                                   ▼                                            
-                                          bridgeService.subscribeToResults ──── stream back ◄── stt-v2 worker
+                                          bridgeService.subscribeToResults ──── stream back ◄── stt worker
                                                   │
                                                   ▼
                                           server-side result → ws.send(transcript JSON)
@@ -70,7 +70,7 @@ usePipelines.delete()                                                           
 Two key flow anomalies are visible in this diagram and substantiated in §5:
 
 - **`useArcaAudio` path** uses the legacy v1 WebSocket via `RemoteSTTProvider` and never tells the backend which admin pipeline to run.
-- **`StreamingSessionManager` + `SttV2WebSocketClient`** are the pipeline-aware client the SDK shipped in W2/W3 of TASK-262 — but no top-level hook wires them in. They are reachable only via direct import.
+- **`StreamingSessionManager` + `SttWebSocketClient`** are the pipeline-aware client the SDK shipped in W2/W3 of TASK-262 — but no top-level hook wires them in. They are reachable only via direct import.
 
 ---
 
@@ -107,7 +107,7 @@ That is the **entire** end-user surface. There is no per-id or per-slug end-user
 |---|---|---|---|
 | POST | `/audio/transcription-jobs/stream/session` | `CreateStreamSessionRequest` (requires `pipelineId`) | `StreamingSessionManager` (UNUSED by main flow) |
 | DELETE | `/audio/transcription-jobs/stream/session/:sessionId` | — | `StreamingSessionManager.closeSession` |
-| WS | `/ws/stt-v2/stream?sessionId=…` | binary PCM Int16 LE or JSON `{type:'audio',seq,data}` | `SttV2WebSocketClient` (UNUSED by main flow); legacy `WebSocketClient` (`packages/stt/src/websocket/WebSocketClient.ts`) is what `STTProcessor` actually instantiates |
+| WS | `/ws/stt/stream?sessionId=…` | binary PCM Int16 LE or JSON `{type:'audio',seq,data}` | `SttWebSocketClient` (UNUSED by main flow); legacy `WebSocketClient` (`packages/stt/src/websocket/WebSocketClient.ts`) is what `STTProcessor` actually instantiates |
 | POST | `/audio/transcription-jobs/transcribe` (multipart) | `TranscribeFileRequest` (requires `pipelineId`) | `useArca.transcribeFile` via `FileTranscriptionService` |
 | GET (SSE) | `/audio/transcription-jobs/:id/stream` | — | `SSEClient` via `TranscriptionJobService` |
 | GET | `/consultations/jobs/:jobId` (+ `/cancel`, `/stream`) | — | `ConsultationJobController` (TASK-263, ticket-auth on SSE) |
@@ -122,15 +122,15 @@ That is the **entire** end-user surface. There is no per-id or per-slug end-user
 
 3. **SSE auth via single-use ticket** (`JwtAuthGuard.handleTicketAuth` + `StreamTicketService` + `@StreamScope` decorator at `apps/api/src/modules/auth/decorators/stream-scope.decorator.ts`) is well-implemented: namespace-scoped, one-shot, 30 s TTL. `ConsultationJobController.streamJob` (`apps/api/src/modules/consultation/consultation-job.controller.ts:60-71`) demonstrates correct usage.
 
-4. **STT-V2 protocol is faithfully proxied.** `StreamingSessionService.createSession` (`packages/applications/src/services/stt/streaming/streamingSession.service.ts:66-121`) sends snake_case (`pipeline_id`, `tenant_id`, `audio_bucket_name`) to STT-V2 and tolerates camel/snake variants on the response.
+4. **STT protocol is faithfully proxied.** `StreamingSessionService.createSession` (`packages/applications/src/services/stt/streaming/streamingSession.service.ts:66-121`) sends snake_case (`pipeline_id`, `tenant_id`, `audio_bucket_name`) to STT and tolerates camel/snake variants on the response.
 
-5. **`SttV2WebSocketClient` reconnection is sound.** Exponential backoff + 50% jitter + `intentionalDisconnect` guard + `cancelReconnect()` (`packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts:360-415`). Fixes TASK-262 §13 linear-backoff and re-connect-after-disconnect bugs **for this client only**.
+5. **`SttWebSocketClient` reconnection is sound.** Exponential backoff + 50% jitter + `intentionalDisconnect` guard + `cancelReconnect()` (`packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts:360-415`). Fixes TASK-262 §13 linear-backoff and re-connect-after-disconnect bugs **for this client only**.
 
 6. **Tenant-scoped admin queries.** `PipelineService.create`, `update`, `getBySlug`, `getAll`, `list` (`packages/applications/src/services/stt/pipeline/pipeline.service.ts:25-196`) all require `this.tenantId` and enforce isolation in the queries.
 
 7. **YAML uniqueness per tenant.** `AsrPipelineRepository.isSlugUnique(tenantId, slug, excludeId?)` is called on create and update.
 
-8. **Internal stt-callback API is API-key gated.** `SttInternalController.ensureInternalApiKey` (`apps/api/src/modules/internal/stt-internal.controller.ts:23`) is correct; the STT-V2 worker uses its issued API key to write transcripts back through `/internal/stt/transcripts`.
+8. **Internal stt-callback API is API-key gated.** `SttInternalController.ensureInternalApiKey` (`apps/api/src/modules/internal/stt-internal.controller.ts:23`) is correct; the STT worker uses its issued API key to write transcripts back through `/internal/stt/transcripts`.
 
 ---
 
@@ -160,7 +160,7 @@ handleConnection(client: WebSocket, req: IncomingMessage): void {
 }
 ```
 
-**Impact.** Any actor that knows or guesses a `sessionId` can connect to the WS, stream arbitrary PCM, and receive live transcripts. `sessionId` is a `uuidv7` (`apps/api/src/modules/streaming/transcription-job.controller.ts:247`) which is *time-ordered* — its high bits are predictable. Combined with the absence of a per-session capacity limit at the gateway layer, this is a session-hijack and PHI-exfiltration vector. The SDK doc in `StreamingSessionManager.getWebSocketUrl` (lines 134-138) claims callers "should send the token as the first WebSocket message after connecting" but `SttV2WebSocketClient.connect()` (`packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts:130-230`) **never sends any auth message** — the claim is unrealized.
+**Impact.** Any actor that knows or guesses a `sessionId` can connect to the WS, stream arbitrary PCM, and receive live transcripts. `sessionId` is a `uuidv7` (`apps/api/src/modules/streaming/transcription-job.controller.ts:247`) which is *time-ordered* — its high bits are predictable. Combined with the absence of a per-session capacity limit at the gateway layer, this is a session-hijack and PHI-exfiltration vector. The SDK doc in `StreamingSessionManager.getWebSocketUrl` (lines 134-138) claims callers "should send the token as the first WebSocket message after connecting" but `SttWebSocketClient.connect()` (`packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts:130-230`) **never sends any auth message** — the claim is unrealized.
 
 **Patch (sketch).** Adopt the same ticket model used for SSE.
 
@@ -208,7 +208,7 @@ async createStreamSession(@Body() body: CreateStreamSessionRequest) {
 }
 ```
 
-`body.pipelineId` is forwarded verbatim. There is **no `PipelineService.getById(body.pipelineId)` lookup** to confirm that the pipeline's `tenantId` matches `this.getTenantId()`. STT-V2 then `_load_pipeline_config(pipeline_id)` without a tenant check either (see D-3).
+`body.pipelineId` is forwarded verbatim. There is **no `PipelineService.getById(body.pipelineId)` lookup** to confirm that the pipeline's `tenantId` matches `this.getTenantId()`. STT then `_load_pipeline_config(pipeline_id)` without a tenant check either (see D-3).
 
 **Impact.** A doctor in Tenant-A can send `pipelineId = <Tenant-B's pipeline>` and the system will happily attach the foreign pipeline to a session bound to Tenant-A's `tenantId`. If Tenant-B has a more capable model (e.g., a paid LLM), this is theft of compute. If Tenant-B's pipeline references models scoped to Tenant-B's storage, the cross-tenant model load may fail in surprising ways — or worse, may succeed.
 
@@ -228,9 +228,9 @@ Mirror the same guard in `TranscriptionJobController.transcribeFile` (line 147-1
 
 ---
 
-#### D-3 — STT-V2 `_load_pipeline_config(pipeline_id)` is not tenant-scoped
+#### D-3 — STT `_load_pipeline_config(pipeline_id)` is not tenant-scoped
 
-`apps/stt-v2/src/stt_v2/streaming/session_manager.py:636-656` and `apps/stt-v2/src/stt_v2/pipeline/config_reader.py:37-63`
+`apps/stt/src/stt/streaming/session_manager.py:636-656` and `apps/stt/src/stt/pipeline/config_reader.py:37-63`
 
 ```python
 async def get_pipeline(self, pipeline_id: str) -> PipelineConfig:
@@ -245,9 +245,9 @@ The sibling method `get_pipeline_by_slug(slug, tenant_id=None)` (L65-95) *does* 
 
 #### D-4 — Two parallel remote transports; the pipeline-aware one is dead code
 
-| | Legacy v1 (in use) | stt-v2 (designed, unwired) |
+| | Legacy v1 (in use) | stt (designed, unwired) |
 |---|---|---|
-| SDK client | `packages/stt/src/providers/BackendSTTProvider.ts` (`RemoteSTTProvider`) | `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` + `StreamingSessionManager.ts` |
+| SDK client | `packages/stt/src/providers/BackendSTTProvider.ts` (`RemoteSTTProvider`) | `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` + `StreamingSessionManager.ts` |
 | Session bootstrap | none (uses pre-issued `sessionId` + `sttSocket` URL) | `POST /audio/transcription-jobs/stream/session` with `pipelineId` |
 | Knows about pipelineId | **NO** | **YES** |
 | Wired into `STTProcessor` / `useArcaAudio` | YES (`STTProcessor.initializeRemoteProvider`, `packages/stt/src/core/STTProcessor.ts:520-556`) | NO (no `import` from `useArcaAudio` / `STTProcessor` / `PluginManager`) |
@@ -258,13 +258,13 @@ I verified by grepping the SDK for `StreamingSessionManager` consumers: matches 
 
 `useArcaAudio.startAudio(options?: AudioStartOptions)` (`packages/agentic-sdk-v2/src/hooks/useArcaAudio.ts:53-205`) accepts `options.pipelineId`, logs it (line 66), and then **never uses it** — only `options.language` is propagated to the store. The plumbing into `PluginManager.getTranscriptionPipelineConfig().stt.pipelineId` (`PluginManager.ts:457`) flows into `TranscriptionPipelineConfig.stt.pipelineId`, but `TranscriptionPipeline` (`packages/agentic-sdk-v2/src/core/TranscriptionPipeline.ts`) never reads that field — verified with `grep "pipelineId" packages/agentic-sdk-v2/src/core/TranscriptionPipeline.ts → 0 matches`.
 
-**Impact.** The actual code path a doctor exercises today (`useArca.startAudio()` → `STTProcessor` → `RemoteSTTProvider`) does NOT call the session-create endpoint, does NOT forward a `pipelineId`, and connects to the v1 WS at `sttSocket/sessionId`. The pipeline selection has **no effect on the running session**. The stt-v2-aware `StreamingSessionManager` ships in the bundle (~12 KB) for nothing.
+**Impact.** The actual code path a doctor exercises today (`useArca.startAudio()` → `STTProcessor` → `RemoteSTTProvider`) does NOT call the session-create endpoint, does NOT forward a `pipelineId`, and connects to the v1 WS at `sttSocket/sessionId`. The pipeline selection has **no effect on the running session**. The stt-aware `StreamingSessionManager` ships in the bundle (~12 KB) for nothing.
 
 **Patch.** Three plausible directions, in increasing surgery cost:
 
 1. **Bridge** — extend `RemoteProviderConfig` with `pipelineId`, and add a pre-flight to `STTProcessor.initializeRemoteProvider` that calls `apiClient.post('/audio/transcription-jobs/stream/session', { pipelineId, consultationId, … })`, then sets `sttSocket` / `sessionId` from the response. Plus mint a stream ticket (per D-1).
-2. **Replace** — retire `RemoteSTTProvider` in favor of a new `StreamingSttProvider` that internally owns a `StreamingSessionManager` + `SttV2WebSocketClient`. Cleaner end-state.
-3. **Remove dead code** — if the org has decided the v1 WS *is* the keeper, delete `StreamingSessionManager` and `SttV2WebSocketClient`. This is the worst outcome but consistent with what is actually shipped.
+2. **Replace** — retire `RemoteSTTProvider` in favor of a new `StreamingSttProvider` that internally owns a `StreamingSessionManager` + `SttWebSocketClient`. Cleaner end-state.
+3. **Remove dead code** — if the org has decided the v1 WS *is* the keeper, delete `StreamingSessionManager` and `SttWebSocketClient`. This is the worst outcome but consistent with what is actually shipped.
 
 Most likely (2) is the intended end state; the implementation is half-done.
 
@@ -400,13 +400,13 @@ CASL `can('manage', 'all')` is the *root* permission — only the global super-a
 
 There is NO check of:
 
-- `preprocessing.vad` schema (the STT-V2 service reads `pipeline_config.preprocessing.vad.{enabled,threshold,min_speech_duration_ms,…}` at `session_manager.py:303-317`). A malformed VAD block will not be caught until session create — at which point a doctor sees a 500-class error mid-consultation.
+- `preprocessing.vad` schema (the STT service reads `pipeline_config.preprocessing.vad.{enabled,threshold,min_speech_duration_ms,…}` at `session_manager.py:303-317`). A malformed VAD block will not be caught until session create — at which point a doctor sees a 500-class error mid-consultation.
 - `preprocessing.denoise.{enabled,strength}` validity.
 - `preprocessing.target_sample_rate` value range.
 - `inference.language` ISO 639-1.
 - Model references resolve to *enabled* AI-model rows in the tenant.
 
-**Patch.** Hoist STT-V2's `PipelineSpec` Pydantic schema into a shared YAML schema (e.g. a JSON Schema published from the Python service), and use Ajv or Zod on the Node side to validate against it. Add a contract test that round-trips a known-good pipeline YAML through SDK → API → STT-V2 to detect drift.
+**Patch.** Hoist STT's `PipelineSpec` Pydantic schema into a shared YAML schema (e.g. a JSON Schema published from the Python service), and use Ajv or Zod on the Node side to validate against it. Add a contract test that round-trips a known-good pipeline YAML through SDK → API → STT to detect drift.
 
 ---
 
@@ -428,7 +428,7 @@ There is NO check of:
 
 #### D-13 — Selected pipeline deletion is not communicated to live sessions
 
-`AudioPipelineController.delete` (`audio-pipeline.controller.ts:91`) calls `PipelineService.delete` (`pipeline.service.ts:201-216`) which soft-deletes. There is no notification to running streaming sessions that referenced this pipeline (verified by grep: `pipeline.service.ts` emits `ResourceDeleted` but `StreamingSessionService` and `SttWsGateway` do not subscribe). Active sessions keep streaming because the pipeline config is loaded once at session-create. On reconnect (`SttV2WebSocketClient.attemptReconnect()`), the API would re-validate (if D-2 is fixed) and reject, but the user would only see "WebSocket reconnection failed — max attempts exhausted" without a remediation hint.
+`AudioPipelineController.delete` (`audio-pipeline.controller.ts:91`) calls `PipelineService.delete` (`pipeline.service.ts:201-216`) which soft-deletes. There is no notification to running streaming sessions that referenced this pipeline (verified by grep: `pipeline.service.ts` emits `ResourceDeleted` but `StreamingSessionService` and `SttWsGateway` do not subscribe). Active sessions keep streaming because the pipeline config is loaded once at session-create. On reconnect (`SttWebSocketClient.attemptReconnect()`), the API would re-validate (if D-2 is fixed) and reject, but the user would only see "WebSocket reconnection failed — max attempts exhausted" without a remediation hint.
 
 **Patch.** Add a `SysEvent` listener that pushes a `{type:'status', status:'pipeline_deleted', message:'…'}` to all affected sessions and instructs the client to surface a "pipeline was removed; pick another" UI.
 
@@ -442,7 +442,7 @@ There is NO check of:
 
 `packages/stt/src/providers/BackendSTTProvider.ts:160-171` enqueues every incoming audio chunk into `audioQueue` regardless of WS state. `flushAudioQueue` (line 237-263) only drains when `isConnected()`. In the gap (e.g., slow handshake, mid-reconnect), audio piles up. For 5 s of `connecting` at 44.1 kHz × 4 bytes ≈ 880 KB — manageable but unbounded if the gap is longer.
 
-`SttV2WebSocketClient.sendAudioFrame()` (`packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts:235-238`) goes straight to `ws.send(buffer)` with no check on `WebSocket.bufferedAmount`. A slow server (or a high-loss network) will inflate the browser's outgoing buffer without telling the caller.
+`SttWebSocketClient.sendAudioFrame()` (`packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts:235-238`) goes straight to `ws.send(buffer)` with no check on `WebSocket.bufferedAmount`. A slow server (or a high-loss network) will inflate the browser's outgoing buffer without telling the caller.
 
 **Patch.** Cap `audioQueue` size; drop oldest frames with a `stt-frame-dropped` event so the UI can show "buffering / poor connection." Guard `sendAudioFrame` with a check `if (this.ws!.bufferedAmount > HIGH_WATER_MARK) emit('backpressure', amount)` and either drop or apply application-level rate limiting.
 
@@ -450,13 +450,13 @@ There is NO check of:
 
 The WS protocol is unconditional Int16 LE mono @ 16 kHz (`stt-ws.gateway.ts:126` hard-codes `16000, 'pcm_s16le'`). A 60-minute consultation streams ~115 MB. There is no Opus negotiation, no FLAC, no even per-frame deflate.
 
-**Patch.** Add a `Sec-WebSocket-Protocol` negotiation step where the client offers `opus` and the server falls back to `pcm`. STT-V2 already loads `pyrnnoise` for denoise — adding `opuslib` decode is straightforward. Saves ~10× bandwidth and lowers mobile data costs.
+**Patch.** Add a `Sec-WebSocket-Protocol` negotiation step where the client offers `opus` and the server falls back to `pcm`. STT already loads `pyrnnoise` for denoise — adding `opuslib` decode is straightforward. Saves ~10× bandwidth and lowers mobile data costs.
 
 #### D-17 — Reconnect is lossy (no resumability token)
 
-`SttV2WebSocketClient.attemptReconnect` (`SttV2WebSocketClient.ts:360-415`) just re-opens the URL with the original `sessionId`. There is no `?lastSeq=N` query param and no client-side replay buffer. Audio sent during the disconnect window is silently lost; the partial transcript visible to the user may be incorrect.
+`SttWebSocketClient.attemptReconnect` (`SttWebSocketClient.ts:360-415`) just re-opens the URL with the original `sessionId`. There is no `?lastSeq=N` query param and no client-side replay buffer. Audio sent during the disconnect window is silently lost; the partial transcript visible to the user may be incorrect.
 
-**Patch.** Buffer the last *N* seconds of frames in `SttV2WebSocketClient`. On reconnect, send the buffered frames in order before resuming live frames. The server can de-duplicate on `seq`. (TASK-262 §13 R-04 left this open.)
+**Patch.** Buffer the last *N* seconds of frames in `SttWebSocketClient`. On reconnect, send the buffered frames in order before resuming live frames. The server can de-duplicate on `seq`. (TASK-262 §13 R-04 left this open.)
 
 #### D-18 — Reconnect re-uses URL but, once D-1 is fixed, will need a fresh ticket
 
@@ -491,7 +491,7 @@ Mixing `/admin/...` and `/audio/...` in one constant (lines 292-311) is confusin
 | # | Finding | Severity |
 |---|---|---|
 | S-1 | WS gateway has no authentication; session-id-only access; sessionIds are time-ordered `uuidv7` (D-1) | 🔴 Critical |
-| S-2 | Cross-tenant pipelineId not validated at API gateway or STT-V2 service (D-2, D-3) | 🔴 Critical |
+| S-2 | Cross-tenant pipelineId not validated at API gateway or STT service (D-2, D-3) | 🔴 Critical |
 | S-3 | `PipelineService.getById` leaks foreign-tenant pipelines via configYaml (D-9) | 🟠 High |
 | S-4 | Tenant admin cannot self-serve — requires `manage all` super-admin (D-10) | 🟠 High |
 | S-5 | YAML validation is shallow; malformed pipelines fail at runtime, not at admin-publish time (D-11) | 🟠 High |
@@ -499,7 +499,7 @@ Mixing `/admin/...` and `/audio/...` in one constant (lines 292-311) is confusin
 | S-7 | Reconnect path (when auth added) will need fresh ticket minting (D-18) | 🟢 Low |
 | S-8 | Opus negotiation absent; PCM in cleartext on the wire (D-16) — mitigated by `wss://` requirement but verbose | 🟢 Low |
 
-**Tenant-isolation summary.** Today an attacker with a doctor account in Tenant-A can (a) enumerate pipeline IDs (e.g., via leaked logs or `ResourceViewed` audit dumps), (b) call `POST /audio/transcription-jobs/stream/session` with Tenant-B's `pipelineId`, (c) connect to the WS with the returned `sessionId` (no auth required), and (d) stream audio that is transcribed using Tenant-B's pipeline configuration. Whether transcripts are stored against the attacker's tenant is configurable but the *compute* is stolen. Defense-in-depth at three layers (API gateway D-2, STT-V2 D-3, WS gateway D-1) is required to fully close this.
+**Tenant-isolation summary.** Today an attacker with a doctor account in Tenant-A can (a) enumerate pipeline IDs (e.g., via leaked logs or `ResourceViewed` audit dumps), (b) call `POST /audio/transcription-jobs/stream/session` with Tenant-B's `pipelineId`, (c) connect to the WS with the returned `sessionId` (no auth required), and (d) stream audio that is transcribed using Tenant-B's pipeline configuration. Whether transcripts are stored against the attacker's tenant is configurable but the *compute* is stolen. Defense-in-depth at three layers (API gateway D-2, STT D-3, WS gateway D-1) is required to fully close this.
 
 ---
 
@@ -508,7 +508,7 @@ Mixing `/admin/...` and `/audio/...` in one constant (lines 292-311) is confusin
 | # | Finding | Note |
 |---|---|---|
 | P-1 | No audio compression on WS — ~115 MB/hr/session | D-16 |
-| P-2 | `SttV2WebSocketClient.sendAudioFrame` doesn't check `bufferedAmount` | D-15 |
+| P-2 | `SttWebSocketClient.sendAudioFrame` doesn't check `bufferedAmount` | D-15 |
 | P-3 | `RemoteSTTProvider.audioQueue` is unbounded during `connecting` | D-15 |
 | P-4 | `usePipelines.list()` returns ALL tenant pipelines (no pagination on public route) | D-14 |
 | P-5 | Reconnect is lossy → user-perceived gap; partial transcripts can be wrong | D-17 |
@@ -521,7 +521,7 @@ Mixing `/admin/...` and `/audio/...` in one constant (lines 292-311) is confusin
 - Resampling 44.1 → 16 kHz (linear interp) ≈ 1 ms
 - Queue + 100 ms flush interval in `RemoteSTTProvider.SEND_INTERVAL_MS` ≈ 50 ms avg
 - WS send + network round-trip (regional) ≈ 30-100 ms
-- STT-V2 VAD + Whisper inference (depends on model) ≈ 200-2000 ms
+- STT VAD + Whisper inference (depends on model) ≈ 200-2000 ms
 - Result publish via Redis → bridge → ws.send ≈ 5-20 ms
 
 The dominant variability is STT inference; the SDK adds ~150 ms of unnecessary buffering that could be reduced by event-driven flush (see TASK-262 §4 P-6).
@@ -536,10 +536,10 @@ The dominant variability is STT inference; the SDK adds ~150 ms of unnecessary b
 | Public pipeline endpoints | none | Permission check for doctor account, pagination behavior on `fetchAll` (D-14) |
 | `usePipelines.validateConfig` body shape | unit test mocks the client | Real integration test catching the `configYaml` vs `yaml` mismatch (D-6) |
 | `StreamingSessionManager` | unit test exists | Cross-tenant pipelineId rejection (D-2) |
-| `SttV2WebSocketClient` | unit test exists | Auth message protocol (currently broken — D-1) |
+| `SttWebSocketClient` | unit test exists | Auth message protocol (currently broken — D-1) |
 | `SttWsGateway` | minimal test fixture present | No test exercising auth, no test for cross-tenant sessionId hijack, no test for reconnect resumption (D-17) |
 | `useArcaAudio.start({pipelineId})` | none for pipelineId | Does not verify the pipelineId reaches the backend at all (D-4) |
-| End-to-end SDK → API → STT-V2 contract | none | Round-trip pipeline YAML, round-trip session create, round-trip transcript |
+| End-to-end SDK → API → STT contract | none | Round-trip pipeline YAML, round-trip session create, round-trip transcript |
 | Pipeline deleted during active session | none | D-13 |
 
 ---
@@ -588,8 +588,8 @@ The dominant variability is STT inference; the SDK adds ~150 ms of unnecessary b
 | `useArca.startAudio({pipelineId})` accepts the option but never propagates it (`useArcaAudio.ts:53-205`, used only in logger attribute on line 66) | ✗ |
 | `STTProcessor.initializeRemoteProvider` builds `RemoteProviderConfig` without a pipelineId field (`STTProcessor.ts:520-556`) | ✗ |
 | `RemoteSTTProvider.init` has no pipelineId parameter (`BackendSTTProvider.ts:68-121`) | ✗ |
-| The pipeline-id-aware `StreamingSessionManager` + `SttV2WebSocketClient` exist but no top-level hook constructs them | ✗ Dead code |
-| STT-V2 `_load_pipeline_config` and the WS gateway *would* route correctly IF a pipelineId reached them, but it never does via the actual SDK path | — |
+| The pipeline-id-aware `StreamingSessionManager` + `SttWebSocketClient` exist but no top-level hook constructs them | ✗ Dead code |
+| STT `_load_pipeline_config` and the WS gateway *would* route correctly IF a pipelineId reached them, but it never does via the actual SDK path | — |
 
 **Verdict.** Audio is streamed via a v1 WS that knows nothing about admin-configured pipelines. The most charitable reading is "this requirement is implemented in design but not in execution path."
 
@@ -603,7 +603,7 @@ The dominant variability is STT inference; the SDK adds ~150 ms of unnecessary b
 |---|---|---|---|
 | F-1 | Add stream-ticket auth to STT WS gateway | `apps/api/src/modules/streaming/stt-ws.gateway.ts`, `apps/api/src/modules/auth/stream-ticket.service.ts` (extend namespace), `apps/api/src/modules/streaming/transcription-job.controller.ts` (mint ticket on createStreamSession), `packages/agentic-sdk-v2/src/core/StreamingSessionManager.ts` (append `&ticket=…`) | D-1 |
 | F-2 | Validate `pipelineId` belongs to caller's tenant in `createStreamSession` and `transcribeFile` | `apps/api/src/modules/streaming/transcription-job.controller.ts` | D-2 |
-| F-3 | Add `tenant_id` enforcement to `PipelineConfigReader.get_pipeline` | `apps/stt-v2/src/stt_v2/pipeline/config_reader.py`, `apps/stt-v2/src/stt_v2/streaming/session_manager.py` | D-3 |
+| F-3 | Add `tenant_id` enforcement to `PipelineConfigReader.get_pipeline` | `apps/stt/src/stt/pipeline/config_reader.py`, `apps/stt/src/stt/streaming/session_manager.py` | D-3 |
 | F-4 | Tenant-scope `PipelineService.getById` | `packages/applications/src/services/stt/pipeline/pipeline.service.ts` | D-9 |
 | F-5 | Wire `pipelineId` through to a session-create call. Replace `RemoteSTTProvider` (or extend it) so live audio actually uses the chosen pipeline | `packages/stt/src/core/STTProcessor.ts`, `packages/stt/src/providers/BackendSTTProvider.ts`, `packages/agentic-sdk-v2/src/hooks/useArcaAudio.ts`, `packages/agentic-sdk-v2/src/core/PluginManager.ts` | D-4 (root cause of FAIL on 9.4) |
 | F-6 | Add a persistence path for the doctor's selected pipeline. Extend `UserPreferencesUpdate` with `selectedPipelineId` and validate server-side | `packages/agentic-sdk-v2/src/types/config.ts`, `apps/api/src/modules/user/...preferences...`, `packages/agentic-sdk-v2/src/hooks/usePipelines.ts` (call updatePreferences inside `select`) | D-5 (root cause of FAIL on 9.3) |
@@ -616,7 +616,7 @@ The dominant variability is STT inference; the SDK adds ~150 ms of unnecessary b
 | F-8 | Implement `POST /admin/audio/pipelines/:id/assign-tenant` (or remove SDK stub) | `apps/api/src/modules/pipeline/audio-pipeline.controller.ts`, `packages/applications/src/services/stt/pipeline/pipeline.service.ts` | D-7 |
 | F-9 | Add `GET /audio/pipelines/:id` and `/audio/pipelines/slug/:slug` to public controller | `apps/api/src/modules/pipeline/audio-pipeline-public.controller.ts` | D-8 |
 | F-10 | Change `@Authorize` on admin controller to `['manage','AsrPipeline']` with tenant condition | `apps/api/src/modules/pipeline/audio-pipeline.controller.ts`, CASL policy | D-10 |
-| F-11 | Deep YAML schema validation (mirror STT-V2 PipelineSpec) | `packages/applications/src/services/stt/pipeline/pipeline.service.ts` (or share schema package) | D-11 |
+| F-11 | Deep YAML schema validation (mirror STT PipelineSpec) | `packages/applications/src/services/stt/pipeline/pipeline.service.ts` (or share schema package) | D-11 |
 | F-12 | SysEvent audit + Prometheus per-pipeline metrics for WS sessions | `apps/api/src/modules/streaming/stt-ws.gateway.ts` | D-12 |
 | F-13 | Add pagination to `AudioPipelinePublicController.fetchAll` | `apps/api/src/modules/pipeline/audio-pipeline-public.controller.ts` | D-14 |
 
@@ -625,10 +625,10 @@ The dominant variability is STT inference; the SDK adds ~150 ms of unnecessary b
 | # | Fix | Files | Linked defects |
 |---|---|---|---|
 | F-14 | Pipeline-deleted-mid-session notification | `apps/api/src/modules/pipeline/...`, `apps/api/src/modules/streaming/...` | D-13 |
-| F-15 | Bounded `audioQueue` + drop policy + `bufferedAmount` check | `packages/stt/src/providers/BackendSTTProvider.ts`, `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` | D-15 |
-| F-16 | Opus negotiation on WS protocol | `apps/api/src/modules/streaming/stt-ws.gateway.ts`, `apps/stt-v2/src/stt_v2/streaming/...`, SDK clients | D-16 |
-| F-17 | Frame replay buffer on reconnect | `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`, gateway dedup | D-17 |
-| F-18 | Mint fresh ticket on reconnect (when F-1 lands) | `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`, `StreamingSessionManager` | D-18 |
+| F-15 | Bounded `audioQueue` + drop policy + `bufferedAmount` check | `packages/stt/src/providers/BackendSTTProvider.ts`, `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` | D-15 |
+| F-16 | Opus negotiation on WS protocol | `apps/api/src/modules/streaming/stt-ws.gateway.ts`, `apps/stt/src/stt/streaming/...`, SDK clients | D-16 |
+| F-17 | Frame replay buffer on reconnect | `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`, gateway dedup | D-17 |
+| F-18 | Mint fresh ticket on reconnect (when F-1 lands) | `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`, `StreamingSessionManager` | D-18 |
 | F-19 | Validate `pipelineId` shape | `apps/api/src/modules/streaming/dto/transcription-job.dto.ts` | D-19 |
 | F-20 | Remove dead `pipelineId` field from `STTPluginConfig` / `AudioStartOptions` if F-5 takes the "delete legacy" branch | various | D-20 |
 
@@ -642,11 +642,11 @@ The dominant variability is STT inference; the SDK adds ~150 ms of unnecessary b
 | Permission boundary | 3 / 10 | Doctor properly denied from authoring, but admin role grant too broad and `getById` leaks cross-tenant |
 | Pipeline schema validation | 4 / 10 | Validate endpoint exists and is wired; depth is insufficient; integration tests missing |
 | Selection persistence | 1 / 10 | No path exists; `UserPreferences.remoteConfig` is documented as read-only |
-| Streaming session bootstrap | 3 / 10 | Bootstrap controller exists and forwards `pipelineId` to STT-V2; SDK does NOT call it on the live path |
+| Streaming session bootstrap | 3 / 10 | Bootstrap controller exists and forwards `pipelineId` to STT; SDK does NOT call it on the live path |
 | Backpressure / flow control | 3 / 10 | Old provider queues unbounded; new client lacks `bufferedAmount` check |
 | Resume / reconnect | 4 / 10 | Reconnect logic with backoff exists; lossless resume does not (TASK-262 §13 open) |
 | Auth on streaming channels | 4 / 10 | SSE is solid (ticket + scope); WS has zero auth — net average |
-| Tenant isolation | 2 / 10 | Multiple layers (API gateway, STT-V2, repository) all skip the tenant check on the by-id path |
+| Tenant isolation | 2 / 10 | Multiple layers (API gateway, STT, repository) all skip the tenant check on the by-id path |
 | Observability | 2 / 10 | Console-style logging only; no audit, no per-pipeline metrics |
 | Failure modes | 3 / 10 | Pipeline deletion not propagated; STT-down not surfaced to user |
 | Performance | 5 / 10 | Functional; uncompressed PCM; no SAB; minor over-buffering |
@@ -656,7 +656,7 @@ The dominant variability is STT inference; the SDK adds ~150 ms of unnecessary b
 
 ## Reviewer summary
 
-The architecture of the remote-pipeline feature is *designed* correctly — there is an admin controller, a public controller, a session-bootstrap controller, a stream-ticket primitive for SSE, a `StreamingSessionManager` in the SDK that knows about `pipelineId`, a `SttV2WebSocketClient` with proper reconnect, and an STT-V2 service that consumes the `pipelineId` end-to-end. But the **execution path the doctor actually exercises bypasses all of it**: `useArca` → legacy `RemoteSTTProvider` → v1 WebSocket → unauthenticated `SttWsGateway`. The pipeline-aware client is dead code.
+The architecture of the remote-pipeline feature is *designed* correctly — there is an admin controller, a public controller, a session-bootstrap controller, a stream-ticket primitive for SSE, a `StreamingSessionManager` in the SDK that knows about `pipelineId`, a `SttWebSocketClient` with proper reconnect, and an STT service that consumes the `pipelineId` end-to-end. But the **execution path the doctor actually exercises bypasses all of it**: `useArca` → legacy `RemoteSTTProvider` → v1 WebSocket → unauthenticated `SttWsGateway`. The pipeline-aware client is dead code.
 
 Combined with the absence of a persistence path for the doctor's selection (D-5) and three layers of missing tenant checks (D-2, D-3, D-9), the feature today behaves as: "the doctor sees a list of pipelines; their UI selection has no effect on the transcription; the live audio is sent unauthenticated over a WebSocket that any actor with the session-id can hijack."
 

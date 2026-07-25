@@ -23,34 +23,34 @@ Today the read-aloud path is **one-shot**: a completed summary → `POST /api/v1
 
 ## 2. Current State Evaluation
 
-- **Router** (`apps/tts-v2/src/tts_v2/routing/router.py`) implements `synthesize()` (chunked) only; the TASK-488 design already anticipates a `stream()` + `SynthesisStream` protocol — not yet built. `native_streaming` per engine exists.
+- **Router** (`apps/tts/src/tts/routing/router.py`) implements `synthesize()` (chunked) only; the TASK-488 design already anticipates a `stream()` + `SynthesisStream` protocol — not yet built. `native_streaming` per engine exists.
 - **Providers**: Azure (`azure_speech.py`) uses `start_speaking_text_async` (one-shot); the SDK also supports the **v2 websocket `SpeechSynthesisRequestInputType.TextStream`** for incremental text (no SSML in that mode) — the native duplex path. Kokoro/Parler are full-utterance → aggregate to sentences.
-- **Gateway WS exemplar**: `apps/api/src/modules/streaming/stt-ws.gateway.ts` — `@WebSocketGateway({ path: '/ws/stt-v2/stream' })`, handshake `?sessionId=&ticket=`, `StreamTicketService.consumeTicket` (scope `stt_session:{id}`), `StreamSessionTenantBindingService`, all rejections close with the same `4401`. Stream tickets minted via `POST /api/v1/auth/stream-ticket`.
-- **STT streaming session control-plane**: `apps/stt-v2/src/stt_v2/streaming/api/routes.py` (`/internal/streaming/sessions`) + Redis Streams transport — the shape to mirror for a tts-v2 session/WS runtime.
+- **Gateway WS exemplar**: `apps/api/src/modules/streaming/stt-ws.gateway.ts` — `@WebSocketGateway({ path: '/ws/stt/stream' })`, handshake `?sessionId=&ticket=`, `StreamTicketService.consumeTicket` (scope `stt_session:{id}`), `StreamSessionTenantBindingService`, all rejections close with the same `4401`. Stream tickets minted via `POST /api/v1/auth/stream-ticket`.
+- **STT streaming session control-plane**: `apps/stt/src/stt/streaming/api/routes.py` (`/internal/streaming/sessions`) + Redis Streams transport — the shape to mirror for a tts session/WS runtime.
 - **SDK**: `TtsPlaybackPlayer` (TASK-491) already does gapless PCM playback; SMR SSE is consumed today via `SSEClient`/summary hooks.
 
 ## 3. Design
 
-- **tts-v2 WS endpoint** — a FastAPI `websocket` route (behind `X-Service-Token` at the gateway hop; browser never connects directly). Protocol (ElevenLabs-style, from the TASK-488 API research):
+- **tts WS endpoint** — a FastAPI `websocket` route (behind `X-Service-Token` at the gateway hop; browser never connects directly). Protocol (ElevenLabs-style, from the TASK-488 API research):
   - init: `{ voice, format?, speed? }`
   - incremental: `{ text: "words ending with a space " }`, `{ flush: true }`
   - EOS: `{ text: "" }`
   - server → **binary audio frames** (PCM) + optional JSON `{ type: "alignment", ... }`; final `{ type: "done" }`.
 - **Router `stream(voice_id, fmt)` → `SynthesisStream`** with `push_text()`, `flush()`, `end_input()`, `__aiter__()` (chunks). Native-streaming engines (Azure text-stream) forward directly; others wrap in a `SentenceAdapter` that buffers tokens to sentence boundaries (`chunk_text`) then calls `synthesize()` per sentence. Failover only before first byte (unchanged rule).
 - **Azure text-stream provider path** — connect to `wss://{region}.tts.speech.microsoft.com/cognitiveservices/websocket/v2`, `SpeechSynthesisRequestInputType.TextStream`, `request.input_stream.write(token)` / `.close()`; pre-warmed connection pool. (No SSML in this mode — plain voice.)
-- **Gateway `TtsWsGateway`** — `@WebSocketGateway({ path: '/ws/tts-v2/stream' })` mirroring `SttWsGateway`: `?sessionId=&ticket=`, `consumeTicket` (new scope `tts_session:{id}`), tenant binding, uniform `4401` close. Bridges browser frames ↔ tts-v2 WS, injecting `X-Service-Token`. Add `tts_session` to the stream-ticket scope allow-list.
+- **Gateway `TtsWsGateway`** — `@WebSocketGateway({ path: '/ws/tts/stream' })` mirroring `SttWsGateway`: `?sessionId=&ticket=`, `consumeTicket` (new scope `tts_session:{id}`), tenant binding, uniform `4401` close. Bridges browser frames ↔ tts WS, injecting `X-Service-Token`. Add `tts_session` to the stream-ticket scope allow-list.
 - **SDK** — a `useTtsStream` hook (or a `speakStream()` mode on `useTtsPlayback`): opens the gateway WS with a stream ticket, `pushText(token)` from the SMR SSE callback, pipes returned audio into `TtsPlaybackPlayer`.
 
 ## 4. Implementation Plan (phased, TDD)
 
 1. **Provider `stream()` + SentenceAdapter** (`routing/`, `providers/base.py`): `SynthesisStream` protocol; adapter over non-streaming engines; unit tests with `FakeEngine` (push_text → per-sentence synth, flush, EOS, no-mid-stream-failover).
 2. **Azure native text-stream** (`azure_speech.py`): `stream()` via the v2 WS TextStream; hermetic tests (mock SDK), live test behind `TTS_AZURE_LIVE_TEST=1`.
-3. **tts-v2 WS endpoint** (`api/…/ws` + a `StreamingSessionManager`): protocol handling; hermetic tests (fake engine, in-memory WS).
+3. **tts WS endpoint** (`api/…/ws` + a `StreamingSessionManager`): protocol handling; hermetic tests (fake engine, in-memory WS).
 4. **Gateway `TtsWsGateway`** (`apps/api/src/modules/speech/`): mirror `SttWsGateway`; new `tts_session` ticket scope; unit tests (ticket consume, tenant binding, 4401 on bad ticket) + e2e handshake.
 5. **SDK duplex hook** (`packages/agentic-sdk-v2`): `useTtsStream`; WS client (reuse transport conventions); pipe SMR SSE → pushText → `TtsPlaybackPlayer`; vitest with mocked WS.
 6. **Docs**: architecture overview (WS path), rules 05/06/08 as needed.
 
-**Verification**: per-layer green (`py:tts-v2:test`, `pnpm build:api test:unit`, `pnpm --filter @arcaai/vox test`); manual: type into a demo → hear incremental audio; SMR-stream → read-aloud latency (first-audio-after-first-sentence) measured.
+**Verification**: per-layer green (`py:tts:test`, `pnpm build:api test:unit`, `pnpm --filter @arcaai/vox test`); manual: type into a demo → hear incremental audio; SMR-stream → read-aloud latency (first-audio-after-first-sentence) measured.
 
 ## 5. Risks
 - Azure text-stream is SDK-only + no SSML (speed via a different mechanism) — validate the pooled-connection latency.
@@ -67,7 +67,7 @@ Today the read-aloud path is **one-shot**: a completed summary → `POST /api/v1
   - Rules: one `init`→one stream→one `done` (no multiplexing day 1); **failover only before the first audio frame** (unchanged rule); binary opcode preserved end-to-end (never JSON-wrap audio).
 - **SentenceAdapter algorithm** (non-native engines): reuse the existing `routing/chunking.py` `chunk_text` (pysbd en / punctuation-fallback ml — decimals/ratios/`X-ray-യിൽ` already safe); on `push_text` buffer + emit complete sentences, **keep the last segment buffered** until more text/whitespace confirms the boundary; `flush`/`end` force-emit the remainder; `MIN_FIRST_FRAGMENT≈10` (first-fragment-fast → audio ASAP), `MIN_SENTENCE≈10–20` after sentence 1; a concurrent synth loop `synthesize()`s each sentence and yields its frames. Mirrors LiveKit `StreamAdapter`; tune params in Phase 0.
 - **`stream()` interface**: `SynthesisStream` = `push_text` / `flush` / `end_input` / `__aiter__` / **`aclose`** (client-disconnect cancellation → Azure `stop_speaking_async()` + close pooled conn; local → cancel synth task, freeing GPU). Router picks native-streaming vs `SentenceAdapter`, with the Azure-speed fallback above.
-- **Gateway `TtsWsGateway`**: mirror `stt-ws.gateway.ts` — path `/ws/tts-v2/stream`, `?sessionId=&ticket=`, **new `tts_session` ticket scope** (add to the allow-list), tenant binding, uniform **`4401`** close on any auth failure, `X-Service-Token` on the upstream hop only, **binary PCM passthrough** (no re-encode/compress), backpressure via `bufferedAmount` (stop reading upstream when the browser socket saturates), `TTS_URL`→`ws(s)://…` form.
+- **Gateway `TtsWsGateway`**: mirror `stt-ws.gateway.ts` — path `/ws/tts/stream`, `?sessionId=&ticket=`, **new `tts_session` ticket scope** (add to the allow-list), tenant binding, uniform **`4401`** close on any auth failure, `X-Service-Token` on the upstream hop only, **binary PCM passthrough** (no re-encode/compress), backpressure via `bufferedAmount` (stop reading upstream when the browser socket saturates), `TTS_URL`→`ws(s)://…` form.
 - **Flag**: end-to-end TTFA is gated by *when SMR delivers the first sentence's tokens*, not the Azure model boundary — measure SMR-token→first-audio, not just the provider latency.
 
 Full spike (Azure code sketch, protocol table, adapter pseudo-code, gateway notes) in the completion report; cited sources: Azure lower-latency how-to + `tts-text-stream` sample, ElevenLabs stream-input reference, LiveKit `stream_adapter.py`, RealtimeTTS/stream2sentence, Deepgram chunking.
@@ -83,11 +83,11 @@ Full spike (Azure code sketch, protocol table, adapter pseudo-code, gateway note
 **Phase 2 — Azure native text-stream** (`providers/azure_speech.py`)
 - `open_stream` → `AzureTextStream` (v2 WS `…/cognitiveservices/websocket/v2`, `SpeechConfig(endpoint=…, subscription=…)`, `SpeechSynthesisRequest(TextStream)`): tokens → `request.input_stream.write/close`; audio arrives on the SDK `synthesizing` event (native callback thread) bridged to an asyncio queue via `call_soon_threadsafe`; blocking `speak_async().get()` off-loaded with `to_thread`; frame/RTF timeouts so slow LLM tokens don't abort; `aclose` → `stop_speaking_async()` + unblock.
 
-**Phase 3 — tts-v2 WS endpoint** (`api/endpoints/stream_ws.py`, `/api/v1/audio/stream`)
+**Phase 3 — tts WS endpoint** (`api/endpoints/stream_ws.py`, `/api/v1/audio/stream`)
 - Protocol: `init`→`ready` (voice + provider availability validated up front), `text`/`flush`/`end`, **binary PCM frames out**, `done`, generic PHI-safe `error` (`invalid_voice`/`provider_unavailable`/`invalid_input`/`internal`). One init→one stream→one done; PCM only.
 - Own `X-Service-Token` check (constant-time; empty = dev bypass) because `BaseHTTPMiddleware` doesn't cover the WS scope; auth failure closes `4401`. Concurrent reader (control frames) + writer (audio); client disconnect → `aclose` frees upstream.
 
-**Phase 4 — NestJS `TtsWsGateway`** (`apps/api/src/modules/speech/tts-ws.gateway.ts`, `/ws/tts-v2/stream`)
+**Phase 4 — NestJS `TtsWsGateway`** (`apps/api/src/modules/speech/tts-ws.gateway.ts`, `/ws/tts/stream`)
 - Mirrors `SttWsGateway`: `?sessionId=&ticket=`, `consumeTicket` + scope `tts_session:<sessionId>`, uniform generic **`4401`** on any auth failure, `X-Service-Token` injected on the upstream hop only, **binary PCM passthrough** (never re-encoded), client→upstream frames buffered until upstream open, egress backpressure (pause/resume the upstream on `bufferedAmount` over `TTS_WS_EGRESS_HIGH_WATERMARK_BYTES`), teardown closes the peer. **No tenant-binding cross-check** — unlike STT there is no server-side session resource to own; the ticket is minted bound to the caller's active tenant, so scope-match + single-use consume is the authorization (documented in the gateway header). Registered in `SpeechModule`.
 
 **Phase 5 — SDK `useTtsStream`** (`packages/agentic-sdk-v2/src/hooks/useTtsStream.ts`, exported from `@arcaai/vox/plugins`)
@@ -95,7 +95,7 @@ Full spike (Azure code sketch, protocol table, adapter pseudo-code, gateway note
 
 ### Evidence
 ```
-tts-v2:  pytest src/tts_v2/tests -q   → 131 passed, 2 deselected (azure + sarvam live)   · ruff clean
+tts:  pytest src/tts/tests -q   → 131 passed, 2 deselected (azure + sarvam live)   · ruff clean
 api:     vitest tts-ws.gateway.test   → 9 passed   · pnpm build:api → success   · eslint clean
 vox:     vitest useTtsStream.test     → 5 passed   · build + tsc --noEmit → clean   · eslint clean
          bundle isolation: useTtsStream in dist/plugins.mjs (2 refs), dist/core.mjs (0 refs)
@@ -109,4 +109,4 @@ Hermetic throughout: fake engines, a fully-faked Azure SDK (event bridge exercis
 |---|---|---|
 | 2026-07-11 | Plan scaffolded (TASK-488 follow-up #2) | Claude (Fable 5) + Tap Huynh |
 | 2026-07-11 | Research spike done (§5b): Azure text-stream confirmed (v2 WS, SDK-only, **no speed → speed≠1.0 falls back to one-shot**); finalized binary-PCM WS protocol; SentenceAdapter algorithm; `stream()`/`aclose` interface; `TtsWsGateway` (tts_session scope, 4401, binary passthrough, backpressure) | Claude (Fable 5) + Tap Huynh |
-| 2026-07-11 | **Implemented all 6 phases (§6).** Provider `stream()` + `SentenceAdapter` + `split_confirmed` + `_ChainSynthesizer`; Azure `open_stream`/`AzureTextStream` (v2 WS, event→queue bridge); tts-v2 WS endpoint (`/api/v1/audio/stream`); NestJS `TtsWsGateway` (`/ws/tts-v2/stream`, tts_session scope, 4401, binary passthrough, backpressure, no tenant-binding by design); SDK `useTtsStream` (plugins-only). Evidence: tts-v2 131 pytest, api gateway 9 vitest + build, vox 5 vitest + build/typecheck, bundle isolation. Live Azure + browser E2E remain gated | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | **Implemented all 6 phases (§6).** Provider `stream()` + `SentenceAdapter` + `split_confirmed` + `_ChainSynthesizer`; Azure `open_stream`/`AzureTextStream` (v2 WS, event→queue bridge); tts WS endpoint (`/api/v1/audio/stream`); NestJS `TtsWsGateway` (`/ws/tts/stream`, tts_session scope, 4401, binary passthrough, backpressure, no tenant-binding by design); SDK `useTtsStream` (plugins-only). Evidence: tts 131 pytest, api gateway 9 vitest + build, vox 5 vitest + build/typecheck, bundle isolation. Live Azure + browser E2E remain gated | Claude (Fable 5) + Tap Huynh |

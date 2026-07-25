@@ -24,7 +24,7 @@ Scaffold a clean, production-grade `apps/admin` (React 19 / Vite 7 / Tailwind v4
 
 1. **Data-grid surface** — `VirtualizedDataGrid` with **offset** pagination (cursor inert per D7/TASK-373), faceted filters / search / column features, and the **server-persisted grid-layout adapter** (`useUserSettings`, `ui.data-grid` namespace, D8).
 2. **Consultation-history surface** — `HistoryTimelineList` bound to consultation context-item data (the content types).
-3. **Live-session surface** — `LiveTranscript` consuming the `@arcaai/vox` transcript stream, wired via the component's word interface so it works whether word timings arrive via the store (D9 SDK plumbing) or `SttV2WebSocketClient.onTranscript`.
+3. **Live-session surface** — `LiveTranscript` consuming the `@arcaai/vox` transcript stream, wired via the component's word interface so it works whether word timings arrive via the store (D9 SDK plumbing) or `SttWebSocketClient.onTranscript`.
 
 Plus the **app shell** (sidebar + topbar nav per TASK-371) and **login** wired to real JWT auth/session.
 
@@ -54,7 +54,7 @@ Plus the **app shell** (sidebar + topbar nav per TASK-371) and **login** wired t
 
 - **`apps/admin` does not exist.** `.cursor/rules/07-react-ui.mdc` references it (`@arcaai/admin`, port 5174) but with a **stale stack note** (Ant Design / Jotai). This ticket builds it with **`@arcaai/ui` + shadcn + Tailwind v4** per the explicit TASK-371/372 design direction (the Ant Design note predates the design-system work and is superseded). See **deviation §5.3.1**.
 - **`@arcaai/ui` is built & verified** (TASK-372 §4): barrel exports `VirtualizedDataGrid`, `HistoryTimelineList`, `LiveTranscript`, `DensityProvider`, `lib/shared/*` contracts, etc. `globals.css` already carries the teal tokens. Consumed from **source subpaths** at runtime (tree-shake; avoids pulling the 2.2 MB barrel with three.js/maplibre) and from `dist/index.d.ts` for types — mirroring `ui-playground`.
-- **`@arcaai/vox` SDK** is the data layer (no react-query/generated SDK). Relevant hooks (verified): `useAuth` (login/logout/getMe), `useTenants.list`, `useUsers.listPaginated` (returns `{data,total,page,limit,totalPages,hasMore}` ← maps to `fromSdkPaginated`), `useAuditLog`, `useUserSettings` (`list` / `updateByKey(ns,key,value)`), `useAdminConsultations.list`, `useArcaSession.loadConsultation` (hydrates `context.items`), `useArcaContext` (`items`, `updateItem`), `useArcaAudio` (`transcriptSegments`, `currentTranscript`, `isCapturing`, `start`/`stop`). `SttV2WebSocketClient.onTranscript` is exported for the rich (word-level) path.
+- **`@arcaai/vox` SDK** is the data layer (no react-query/generated SDK). Relevant hooks (verified): `useAuth` (login/logout/getMe), `useTenants.list`, `useUsers.listPaginated` (returns `{data,total,page,limit,totalPages,hasMore}` ← maps to `fromSdkPaginated`), `useAuditLog`, `useUserSettings` (`list` / `updateByKey(ns,key,value)`), `useAdminConsultations.list`, `useArcaSession.loadConsultation` (hydrates `context.items`), `useArcaContext` (`items`, `updateItem`), `useArcaAudio` (`transcriptSegments`, `currentTranscript`, `isCapturing`, `start`/`stop`). `SttWebSocketClient.onTranscript` is exported for the rich (word-level) path.
 - **Auth/session pattern (from `ui-playground`, reused not copied):** Zustand auth store (sessionStorage, token + tenant) → `SDKProvider` feeds `AgenticProvider` `config.api.{baseUrl,accessToken,tenantId}` → TanStack Router `_authenticated` guard → Vite dev proxy `/api` → `http://localhost:8868`.
 
 ### 2.1 Data-binding map (real sources)

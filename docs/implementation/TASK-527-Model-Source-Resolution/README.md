@@ -4,22 +4,22 @@
 - **Type**: feature
 - **Program**: Phase 2 of the [2026-07-20 agentic platform program plan](../SOTA-Track/2026-07-20-agentic-platform-program-plan.md) (§3 **AD-3** frozen design, §4 Phase 2, §8 **OD-4**) · findings basis: [2026-07-20 review](../SOTA-Track/2026-07-20-agentic-platform-review-findings.md) §3-E5 (transformer row), §4.B **D-12**, §7 **GAP-C3**
 - **Suggested number**: TASK-527 per the program plan's TASK-523…534 allocation (highest committed number was TASK-522 when the plan was authored) — confirm at open time per the CLAUDE.md ticket workflow.
-- **Size**: M · **Lanes**: A (database) + D (stt-v2) + E (guardrail/nlp/harness), with one small lane-B touchpoint (`apps/api/src/modules/ai-inference/` DTO/injection — recorded in the ownership manifest §4.7 so no lane collision occurs)
+- **Size**: M · **Lanes**: A (database) + D (stt) + E (guardrail/nlp/harness), with one small lane-B touchpoint (`apps/api/src/modules/ai-inference/` DTO/injection — recorded in the ownership manifest §4.7 so no lane collision occurs)
 - **Dependencies**: **TASK-523** (P0 defect clearance; starts only after the owner commits the current ~330-file tree, plan §2.3/OD-7). **Coordination (not a hard block)**: TASK-525's effective-config client is the recommended weight-path transport for **harness** (§3.6); the env-fallback design lets every other stage land before 525 does. TASK-529 owns the MiniCheck *cache* structure — this ticket only changes the *path fed into it* (boundary in §4.7).
 - **Owner decision recorded (OD-4, plan §8)**: **`s3://` only this program** (MinIO-compatible endpoints). `azure-blob://` is explicitly out of scope; the scheme-dispatch design leaves room for it later.
-- **Closes**: GAP-C3 (no S3 source; `localPath` honored only by stt-v2) and D-12 (`AiModel.localPath` dead for guardrail/NLP/harness weights).
+- **Closes**: GAP-C3 (no S3 source; `localPath` honored only by stt) and D-12 (`AiModel.localPath` dead for guardrail/NLP/harness weights).
 
 ---
 
 ## 1. Requirement Analysis
 
-Owner expectation **E5** (findings §"Owner requirements assessed", verbatim): *"Provider-specific model management: **transformer→HF path default + admin-declarable path (local/S3)**; lmstudio/ollama→server-managed …; llama.cpp/whisper.cpp→stt-v2 owns the binding …; azure/cloud→…"* — this ticket implements the bolded transformer clause across all four weight-loading services, plus the D-12 closure so an admin editing an `AiModel` row actually changes what loads.
+Owner expectation **E5** (findings §"Owner requirements assessed", verbatim): *"Provider-specific model management: **transformer→HF path default + admin-declarable path (local/S3)**; lmstudio/ollama→server-managed …; llama.cpp/whisper.cpp→stt owns the binding …; azure/cloud→…"* — this ticket implements the bolded transformer clause across all four weight-loading services, plus the D-12 closure so an admin editing an `AiModel` row actually changes what loads.
 
 | ID | Requirement | Source |
 |---|---|---|
 | R1 | `AiModelSource` gains `S3`; Prisma↔Python enum mirrors stay in sync (test-locked) | GAP-C3; plan AD-3 |
 | R2 | `sourceUri` scheme conventions documented where admins see them (schema comment + `admin/ai-models` Swagger): `hf:<org>/<repo>` or bare HF id · `file:///abs/path` · `s3://bucket/prefix` | plan AD-3 |
-| R3 | One `resolve_model_dir(identity) -> Path` contract per service-family (stt-v2 extends, guardrail/nlp/harness adopt): `local_path` first (exists-check) → scheme dispatch (HF `snapshot_download` honoring `HF_HUB_OFFLINE` · `s3://` download-once with single-flight + checksum · `file://` verify+use) | plan AD-3 |
+| R3 | One `resolve_model_dir(identity) -> Path` contract per service-family (stt extends, guardrail/nlp/harness adopt): `local_path` first (exists-check) → scheme dispatch (HF `snapshot_download` honoring `HF_HUB_OFFLINE` · `s3://` download-once with single-flight + checksum · `file://` verify+use) | plan AD-3 |
 | R4 | D-12: guardrail read model gains `local_path`; gateway NLP DTO gains `modelPath?` next to `model_name`; both MiniCheck GGUF weight paths (guardrail groundedness, harness atomic-fact) resolve DB-first with env fallback — the `AiModel` row is `minicheck-flan-t5-large` | findings D-12 |
 | R5 | House constraints: additive migration; lazy imports for optional S3 clients; `asyncio.to_thread` for blocking downloads; structlog dotted events; harness weight resolution inside activities only (workflow determinism untouched) | plan §2.3; rules 02/06 |
 
@@ -29,16 +29,16 @@ Owner expectation **E5** (findings §"Owner requirements assessed", verbatim): *
 
 - `AiModelSource` = `HUGGINGFACE | GITHUB | MLFLOW | LOCAL` — `packages/database/src/prisma/db_main/enums.prisma:282-289`. **No S3/cloud value.**
 - `AiModel` already has every field the resolver needs: `source` (`stt.prisma:121`, comment still says "HUGGINGFACE, GITHUB, MLFLOW, LOCAL"), `sourceUri` (`:122`, comment gives no scheme grammar), `sourceRevision` (`:123`), `downloadStatus` (`:138`), `localPath` (`:139`, comment "Local cache path after download" — understates its operator-override role), `checksum` (`:142`, "SHA256 for verification").
-- Python mirrors (stt-v2):
-  - SQLAlchemy pg-enum mirror `AiModelSourceType` = exactly the 4 Prisma values (`apps/stt-v2/src/stt_v2/core/database/models.py:34-42`, `create_type=False` — Postgres owns the type).
-  - Pipeline StrEnum `AiModelSource` (`apps/stt-v2/src/stt_v2/pipeline/dto.py:21-28`) is a **superset**: adds reserved `KSERVE` (not in Prisma; pre-existing, deliberate).
-  - **The TASK-505/506-era enum-sync test** is `apps/stt-v2/tests/unit/test_db_enum_mirrors.py` — it locks format/category/task-type mirrors against `enums.prisma` (`:13-28` expected sets, `:90-99` asserts) but has **no `AiModelSource` assertion** (only the columns test `:102-104` touches `AiModelRead`). StrEnum values are separately asserted in `tests/unit/test_pipeline_dto_updates.py:322-353`.
+- Python mirrors (stt):
+  - SQLAlchemy pg-enum mirror `AiModelSourceType` = exactly the 4 Prisma values (`apps/stt/src/stt/core/database/models.py:34-42`, `create_type=False` — Postgres owns the type).
+  - Pipeline StrEnum `AiModelSource` (`apps/stt/src/stt/pipeline/dto.py:21-28`) is a **superset**: adds reserved `KSERVE` (not in Prisma; pre-existing, deliberate).
+  - **The TASK-505/506-era enum-sync test** is `apps/stt/tests/unit/test_db_enum_mirrors.py` — it locks format/category/task-type mirrors against `enums.prisma` (`:13-28` expected sets, `:90-99` asserts) but has **no `AiModelSource` assertion** (only the columns test `:102-104` touches `AiModelRead`). StrEnum values are separately asserted in `tests/unit/test_pipeline_dto_updates.py:322-353`.
 
 ### 2.2 Per-service model-path resolution (re-verified findings §3-E5 table)
 
 | Service | Honors `localPath` | Scheme support | Evidence |
 |---|---|---|---|
-| **stt-v2** | ✅ every loader prefers `local_path` | HF id only (`snapshot_download`); no `s3://`, no `file://` parsing, no explicit `HF_HUB_OFFLINE` handling | `config_reader.py:334-353` maps `local_path` (`:348`); loaders: `faster_whisper_loader.py:59-60`, `huggingface_loader.py:46` (`local_path or source_uri`), `parakeet_cpp_loader.py:54`, `nemo_loader.py:44-49`, `whisper_cpp_loader.py:54-58` (falls to `_fetch_gguf_file` → `snapshot_download`, `:100-108`), `onnx_loader.py:70,334`. HF cache/token settings exist: `core/config/settings.py:148-155` |
+| **stt** | ✅ every loader prefers `local_path` | HF id only (`snapshot_download`); no `s3://`, no `file://` parsing, no explicit `HF_HUB_OFFLINE` handling | `config_reader.py:334-353` maps `local_path` (`:348`); loaders: `faster_whisper_loader.py:59-60`, `huggingface_loader.py:46` (`local_path or source_uri`), `parakeet_cpp_loader.py:54`, `nemo_loader.py:44-49`, `whisper_cpp_loader.py:54-58` (falls to `_fetch_gguf_file` → `snapshot_download`, `:100-108`), `onnx_loader.py:70,334`. HF cache/token settings exist: `core/config/settings.py:148-155` |
 | **guardrail** | ❌ read model doesn't even select it | GLiNER loads by HF id (`providers/gliner.py:87-91` `GLiNER2ONNXRuntime.from_pretrained(model_id)`); MiniCheck path 100 % env | `AiModelRead` selects only `id/tenantId/slug/provider/sourceUri/_metadata/resourceStatus` (`core/tenant_config.py:110-122`); `_load_from_db` returns provider/`sourceUri`/azureDeployment only (`:255-304`); groundedness scorer refuses to start without env `GUARDRAIL_V2_GROUNDEDNESS_MODEL_PATH` (`core/config.py:186` via prefix `:175`; hard raise `services/groundedness_scorer_minicheck.py:187-192` — "no network pull in the clinical gate") |
 | **nlp** | ❌ path never reaches it | Gateway injects `AiModel.sourceUri` as `model_name` only; loaders `from_pretrained(model_name)` | gateway `ai-inference.controller.ts:68-89` (inject sites), `:105-128` (override validated → returns `sourceUri`), `:130-155` (default → `sourceUri`); NLP schemas carry only `model_name` (`schemas/classification.py` TextClassification/TokenClassification requests, `schemas/diagnosis.py` DiagnosisSuggestionRequest; endpoint guards `api/v1/rest/classify.py:27,58`, `rest/diagnosis.py:18`); loaders `services/token_classifier.py:81-82`, `text_classifier.py:75-76`, `medical_suggester.py:36-37`. Note: `_MODEL_IDENTITY_FIELDS` **already includes `model_path`** in the env-block filter (`core/config.py:19`) — request-injection is the sanctioned identity lane |
 | **harness** | ❌ env-only | MiniCheck atomic-fact path from `HARNESS_ATOMIC_FACT_MODEL_PATH` | `core/config.py:342-360` (`atomic_fact_model_path` `:350`); consumed by `_atomic_fact_entailer` (`temporal/activities.py:375-403` — falls back to `DeterministicOverlapEntailer` when unset); loaded via module-level per-path cache `sensors/inferential/minicheck_entailer.py:164-202`. Harness has **no DB access** (no sqlalchemy in `apps/harness/pyproject.toml`; verified) — it reaches the gateway via `_api_client` (`fetch_policy`, `activities.py:524-545`) |
@@ -53,19 +53,19 @@ Owner expectation **E5** (findings §"Owner requirements assessed", verbatim): *
 
 | Service | S3-capable client today | Evidence |
 |---|---|---|
-| stt-v2 | ✅ `minio>=7.2.20` (comment: "backs both the `minio` and `aws_s3` providers") | `apps/stt-v2/pyproject.toml:48-49`; `core/storage/minio_client.py`, `core/storage/providers/s3_provider.py` |
+| stt | ✅ `minio>=7.2.20` (comment: "backs both the `minio` and `aws_s3` providers") | `apps/stt/pyproject.toml:48-49`; `core/storage/minio_client.py`, `core/storage/providers/s3_provider.py` |
 | harness | ✅ `boto3>=1.34.0`; lazy-import precedent in claim-check | `apps/harness/pyproject.toml:49`; `temporal/claim_check.py:124-149` (`S3BlobStore`, "boto3 is imported LAZILY", `asyncio.to_thread` offload) |
 | smr | `boto3>=1.42.0` (Bedrock) — out of scope (server-managed engines) | `apps/smr/pyproject.toml:39` |
 | **guardrail** | ❌ none (httpx/sqlalchemy/transformers only) | `apps/guardrail/pyproject.toml:30,38,42` |
 | **nlp** | ❌ none | `apps/nlp/pyproject.toml:35,48` |
 
-→ **Adding `minio` to guardrail + nlp requires editing their `pyproject.toml` and re-running `uv lock` at the repo root** (one workspace lock; rule 06). stt-v2 and harness need **no new dependency**.
+→ **Adding `minio` to guardrail + nlp requires editing their `pyproject.toml` and re-running `uv lock` at the repo root** (one workspace lock; rule 06). stt and harness need **no new dependency**.
 
 ### 2.5 Admin surface & gateway DTO
 
 - `admin/ai-models` controller is global-admin (`manage:all`) — `apps/api/src/modules/ai-model/ai-model-admin.controller.ts:20-24`; DTOs: `packages/applications/src/services/stt/model/dto/` — `create-model.request.ts:65-79` / `update-model.request.ts:62-75` (`source`, `sourceUri` `@ApiProperty` descriptions carry **no scheme conventions**), `model.response.ts:26-30,54,63` (`localPath`, `checksum` exposed read-side).
 - Gateway NLP DTOs: `extract-entities.request.ts:34` has `modelName?` only; no `modelPath` anywhere in `apps/api/src/modules/ai-inference/dto/`.
-- `HF_HUB_OFFLINE` precedent already documented for tts-v2 mirrors: `.env.example:511-516`.
+- `HF_HUB_OFFLINE` precedent already documented for tts mirrors: `.env.example:511-516`.
 - The internal `GET /api/v1/internal/effective-config` route **does not exist yet** (TASK-525 builds it; re-verified — no such route in `apps/api/src`).
 
 ### 2.6 What this ticket does NOT depend on (verified)
@@ -92,13 +92,13 @@ def resolve_model_dir(identity: ModelWeightIdentity) -> Path:  # async in async 
     # 3. anything else                      -> ModelSourceError (never a silent fallback)
 ```
 
-`ModelWeightIdentity` is a small frozen dataclass `{slug, source, source_uri, source_revision, local_path, checksum}` — a strict subset of what stt-v2's `AiModelConfig` already carries (`config_reader.py:334-353`), so stt-v2's resolver is an *extraction* of its existing precedence, not new behavior.
+`ModelWeightIdentity` is a small frozen dataclass `{slug, source, source_uri, source_revision, local_path, checksum}` — a strict subset of what stt's `AiModelConfig` already carries (`config_reader.py:334-353`), so stt's resolver is an *extraction* of its existing precedence, not new behavior.
 
-- **`localPath`-first rationale**: it is the admin/operator escape hatch (air-gapped hosts, pre-staged NFS mounts, the tts-v2 mirror pattern) and it is what stt-v2 already does at 6 loader sites (§2.2) — the contract codifies the incumbent behavior instead of inventing a new one. A set-but-missing `local_path` **falls through with a structlog warning** (`<svc>.model_source.local_path_missing`) rather than failing, matching `whisper_cpp_loader.py:54-58`.
+- **`localPath`-first rationale**: it is the admin/operator escape hatch (air-gapped hosts, pre-staged NFS mounts, the tts mirror pattern) and it is what stt already does at 6 loader sites (§2.2) — the contract codifies the incumbent behavior instead of inventing a new one. A set-but-missing `local_path` **falls through with a structlog warning** (`<svc>.model_source.local_path_missing`) rather than failing, matching `whisper_cpp_loader.py:54-58`.
 - **Checksum verify (supply-chain: weight substitution)**: when `AiModel.checksum` is set, single-file artifacts (GGUF, ONNX files) are SHA256-verified after download and on first use of a pre-existing cache entry (then a `.verified` marker skips re-hashing). Mismatch = **hard error, model never served** — a poisoned bucket or swapped weight file must not reach a clinical gate. Directory snapshots (HF) rely on the hub's own per-file ETag verification; checksum on a directory URI is a documented no-op with a warning.
 - **Single-flight download**: in-process `asyncio.Lock` per URI + cross-process safety via download-to-`<target>.tmp-<pid>` + atomic `os.replace` — concurrent workers never interleave partial files, and a crashed download leaves only a temp dir to sweep. All blocking I/O (minio/boto3 SDK calls, hashing) runs under `asyncio.to_thread` (claim-check precedent, `claim_check.py:88`).
 - **HF offline mode**: `snapshot_download` natively honors `HF_HUB_OFFLINE=1`; the resolver surfaces it explicitly — offline + not-in-cache raises `ModelSourceError` naming the env var (no hanging network retries in air-gapped deploys). `.env.example:511-516` already establishes the pattern.
-- **`s3://` via the MinIO-compatible client**: every HOPE deployment ships MinIO (`infrastructure/` core compose; k3s external MinIO), so `s3://` gives admins an in-deployment, PHI-posture-compatible weight store without any cloud dependency. Per service the *existing* client is reused: stt-v2 → `minio` SDK, harness → lazy `boto3` (claim-check pattern); guardrail/nlp add `minio` (small, pure-Python) as a **lazily imported** dependency — a deployment that never uses `s3://` never imports it (mypy: add `minio` to the per-service `ignore_missing_imports` module lists, mirroring `apps/stt-v2/pyproject.toml:238`).
+- **`s3://` via the MinIO-compatible client**: every HOPE deployment ships MinIO (`infrastructure/` core compose; k3s external MinIO), so `s3://` gives admins an in-deployment, PHI-posture-compatible weight store without any cloud dependency. Per service the *existing* client is reused: stt → `minio` SDK, harness → lazy `boto3` (claim-check pattern); guardrail/nlp add `minio` (small, pure-Python) as a **lazily imported** dependency — a deployment that never uses `s3://` never imports it (mypy: add `minio` to the per-service `ignore_missing_imports` module lists, mirroring `apps/stt/pyproject.toml:238`).
 - **Guardrail clinical posture preserved**: the groundedness call site invokes the resolver with `allow_network=False` for HF sources — the scorer's documented "a clinical gate never auto-downloads weights" contract (`groundedness_scorer_minicheck.py:182-192`) stays true for hub pulls; `s3://` (in-deployment MinIO, checksum-verified, admin-declared) and `local_path`/`file://` are permitted. *(Flagged as a decision row in §4.4 — default: keep hub pulls blocked for the clinical gate.)*
 - **Why NOT a central download service**: a gateway-side downloader would (a) put multi-GB blob traffic through the NestJS process, (b) create a shared mutable cache with cross-service permission/versioning problems, and (c) duplicate what each Python service's runtime (HF hub cache, existing loaders) already does well. The DB row is the shared *source of truth*; the *bytes* stay a per-service concern with a per-service cache dir — same reasoning the program used to reject a cross-process VRAM arbiter (plan AD-4).
 
@@ -106,7 +106,7 @@ def resolve_model_dir(identity: ModelWeightIdentity) -> Path:  # async in async 
 
 | Service | Has DB read today | Recommended transport | Rationale |
 |---|---|---|---|
-| stt-v2 | ✅ pipeline/registry SQLAlchemy reader | Keep (already delivers `local_path`) | Nothing to change in transport |
+| stt | ✅ pipeline/registry SQLAlchemy reader | Keep (already delivers `local_path`) | Nothing to change in transport |
 | guardrail | ✅ `TenantConfigResolver` (60 s TTL, fail-safe) | **Extend the existing SQLAlchemy read**: `AiModelRead` gains `local_path` (+ `checksum`, `source`, `source_revision`); `_load_from_db` select + returned key-map gain them | Proven path (findings §2), zero new moving parts, TTL gives the "DB row edit picked up ≤ 60 s" behavior for free |
 | nlp | ❌ (deliberately stateless) | **Gateway injection**: `resolveDefaultModelName`/`resolveValidatedModelOverride` return `{modelName, modelPath}` (from `sourceUri` + `localPath`); payload gains `model_path` next to `model_name` | Preserves the stateless-NLP contract; `_MODEL_IDENTITY_FIELDS` already blocks env from setting `model_path` (`nlp/core/config.py:19`) — the request lane is the sanctioned one |
 | harness | ❌ (no sqlalchemy; gateway-client only) | **TASK-525 effective-config client**: `service=harness` response includes a `modelWeights` map `{<slug>: {localPath, sourceUri, checksum}}` for the slugs harness consumes (`minicheck-flan-t5-large`); resolved **inside `_atomic_fact_entailer`** with env fallback | Adding a DB dependency to harness contradicts AD-1 ("services never read GlobalSetting/DB directly" except the two grandfathered readers); the fetch-with-TTL client is 525's deliverable. Env fallback = today's behavior, so all other stages land without waiting |
@@ -115,7 +115,7 @@ Contract note for TASK-525 (frozen here so lanes can build one batch apart): the
 
 ### 3.3 Enum-sync discipline
 
-Prisma is the source of truth; three Python literals mirror it (stt-v2 SQLAlchemy pg-enum mirror, stt-v2 StrEnum, and — after this ticket — nothing new elsewhere: guardrail/nlp/harness consume the *string* value, never enumerate it). The mirror test gains the missing `AiModelSource` assertion (§5.1) so the next value addition cannot drift, exactly like the TASK-505/506 format-mirror precedent (`test_db_enum_mirrors.py:1-9` module docstring records why). The StrEnum's extra `KSERVE` (reserved, `dto.py:27`) is asserted as a *known, deliberate* superset member — the sync test allows documented supersets, never subsets.
+Prisma is the source of truth; three Python literals mirror it (stt SQLAlchemy pg-enum mirror, stt StrEnum, and — after this ticket — nothing new elsewhere: guardrail/nlp/harness consume the *string* value, never enumerate it). The mirror test gains the missing `AiModelSource` assertion (§5.1) so the next value addition cannot drift, exactly like the TASK-505/506 format-mirror precedent (`test_db_enum_mirrors.py:1-9` module docstring records why). The StrEnum's extra `KSERVE` (reserved, `dto.py:27`) is asserted as a *known, deliberate* superset member — the sync test allows documented supersets, never subsets.
 
 ## 4. Implementation Plan (ordered; layer chain DB → services; each stage independently green)
 
@@ -124,7 +124,7 @@ Stage order with per-stage verification (rule 01 layer gates):
 ```
 1. enum + migration          → verify: db:generate clean, database build+test green, psql apply logged
 2. schema/Swagger docs       → verify: applications build green, Swagger renders the grammar (manual check)
-3. stt-v2 extension          → verify: py:stt-v2 triple green incl. new resolver + enum-sync tests
+3. stt extension          → verify: py:stt triple green incl. new resolver + enum-sync tests
 4. guardrail adoption        → verify: py:guardrail triple green incl. TTL-pickup + posture tests; uv lock diff
 5. nlp + gateway DTO         → verify: py:nlp triple + pnpm test:unit (gateway) green; payload snapshot unchanged when localPath absent
 6. harness adoption          → verify: py:harness triple green; replay fixtures green; env fallback proven
@@ -148,14 +148,14 @@ Workflow per rule 02 + repo memory: `pnpm db:migrate:create` → review → comm
 | `packages/database/src/prisma/db_main/stt.prisma:120-123,138-142` | UPDATE comments — `source` value list gains S3; `sourceUri` documents the grammar (`hf:<org>/<repo>` **or bare HF id** · `file:///abs/path` · `s3://bucket/prefix`); **`localPath` comment gains the precedence contract** ("operator/admin override — HIGHEST precedence in every service's `resolve_model_dir`; set-but-missing falls through with a warning") |
 | `packages/applications/src/services/stt/model/dto/create-model.request.ts:65-79`, `update-model.request.ts:62-75`, `model.response.ts:26-30,54,63` | UPDATE — `@ApiProperty` descriptions for `source`/`sourceUri` (scheme grammar, OD-4 note) and `localPath` (precedence contract) so `admin/ai-models` Swagger tells admins exactly what to enter |
 
-### 4.3 Stage 3 — stt-v2 extension (lane D)
+### 4.3 Stage 3 — stt extension (lane D)
 
 | File | Change |
 |---|---|
-| `apps/stt-v2/src/stt_v2/models/source_resolver.py` | NEW — `resolve_model_dir` per §3.1; reuses `minio` SDK (lazy import) + `settings.huggingface_cache_dir/token` (`settings.py:148-155`); new S3 settings block (§4.6); structlog events `stt_v2.model_source.*` |
-| `apps/stt-v2/src/stt_v2/models/{whisper_cpp_loader,faster_whisper_loader,huggingface_loader,nemo_loader,onnx_loader,parakeet_cpp_loader}.py` | UPDATE — replace per-loader `local_path`-or-download branches with the resolver (whisper-cpp keeps its `.gguf`-selection tail from `whisper_cpp_loader.py:114-127` applied to the resolved dir). **Stale-comment delta**: `whisper_cpp_loader.py:12-15` module docstring ("must be fetched via huggingface_hub first") rewritten to name the resolver |
-| `apps/stt-v2/src/stt_v2/pipeline/dto.py:21-28` | UPDATE — StrEnum gains `S3 = "S3"` |
-| `apps/stt-v2/src/stt_v2/core/database/models.py:34-42` | UPDATE — pg-enum mirror gains `"S3"` |
+| `apps/stt/src/stt/models/source_resolver.py` | NEW — `resolve_model_dir` per §3.1; reuses `minio` SDK (lazy import) + `settings.huggingface_cache_dir/token` (`settings.py:148-155`); new S3 settings block (§4.6); structlog events `stt.model_source.*` |
+| `apps/stt/src/stt/models/{whisper_cpp_loader,faster_whisper_loader,huggingface_loader,nemo_loader,onnx_loader,parakeet_cpp_loader}.py` | UPDATE — replace per-loader `local_path`-or-download branches with the resolver (whisper-cpp keeps its `.gguf`-selection tail from `whisper_cpp_loader.py:114-127` applied to the resolved dir). **Stale-comment delta**: `whisper_cpp_loader.py:12-15` module docstring ("must be fetched via huggingface_hub first") rewritten to name the resolver |
+| `apps/stt/src/stt/pipeline/dto.py:21-28` | UPDATE — StrEnum gains `S3 = "S3"` |
+| `apps/stt/src/stt/core/database/models.py:34-42` | UPDATE — pg-enum mirror gains `"S3"` |
 
 ### 4.4 Stage 4 — guardrail adoption (lane E)
 
@@ -192,19 +192,19 @@ Workflow per rule 02 + repo memory: `pnpm db:migrate:create` → review → comm
 
 - **This ticket owns**: the files listed in §4.1–§4.6 only. Barrel/`index.ts` edits: none expected (no new TS exports).
 - **Explicit non-ownership**: `minicheck_entailer.py` cache structure + `services/model_cache.py` ×3 (TASK-529); `internal/effective-config` route + Python fetch client (TASK-525 — this ticket only *consumes* the frozen `modelWeights` contract, §3.2); `/ai-models` console screen + discovery (TASK-528); seeds (no data change — the minicheck row already exists).
-- **New env vars** (bootstrap-only S3 credentials per service, all optional — unset ⇒ `s3://` URIs error cleanly): `STT_V2_MODEL_S3_ENDPOINT/_ACCESS_KEY/_SECRET_KEY`, `GUARDRAIL_V2_MODEL_S3_*`, `NLP_MODEL_S3_*`, `HARNESS_MODEL_S3_*` (pydantic `SecretStr` keys; per-concern `env_prefix` per rule 06) → added to `.env.example` (+ `.env.dev` where used) and — per house rule — `turbo.json#globalEnv` for any var a TS task reads (none expected; verify before closing).
+- **New env vars** (bootstrap-only S3 credentials per service, all optional — unset ⇒ `s3://` URIs error cleanly): `STT_MODEL_S3_ENDPOINT/_ACCESS_KEY/_SECRET_KEY`, `GUARDRAIL_V2_MODEL_S3_*`, `NLP_MODEL_S3_*`, `HARNESS_MODEL_S3_*` (pydantic `SecretStr` keys; per-concern `env_prefix` per rule 06) → added to `.env.example` (+ `.env.dev` where used) and — per house rule — `turbo.json#globalEnv` for any var a TS task reads (none expected; verify before closing).
 - **Out of scope**: model *discovery*/console hub (TASK-528), download-progress UI, retention/eviction (TASK-529), `azure-blob://` (OD-4), `downloadStatus`/`downloadedAt` write-back automation (registry bookkeeping stays manual this program — note in Swagger text).
 
 ## 5. TDD Plan (RED first — paste failing runs in this README before implementing)
 
-### 5.1 Enum sync (stt-v2, Stage 1/3 gate)
+### 5.1 Enum sync (stt, Stage 1/3 gate)
 
-- `apps/stt-v2/tests/unit/test_db_enum_mirrors.py` — NEW `PRISMA_AI_MODEL_SOURCE = {"HUGGINGFACE","GITHUB","MLFLOW","LOCAL","S3"}` + `test_ai_model_source_mirror_matches_prisma` (RED until `models.py` mirror updated) + `test_ai_model_source_strenum_superset` (StrEnum ⊇ Prisma set; `KSERVE` documented as the only extra).
-- `apps/stt-v2/tests/unit/test_pipeline_dto_updates.py:322-353` — extend `TestAiModelSource` with `S3` (RED until `dto.py` updated).
+- `apps/stt/tests/unit/test_db_enum_mirrors.py` — NEW `PRISMA_AI_MODEL_SOURCE = {"HUGGINGFACE","GITHUB","MLFLOW","LOCAL","S3"}` + `test_ai_model_source_mirror_matches_prisma` (RED until `models.py` mirror updated) + `test_ai_model_source_strenum_superset` (StrEnum ⊇ Prisma set; `KSERVE` documented as the only extra).
+- `apps/stt/tests/unit/test_pipeline_dto_updates.py:322-353` — extend `TestAiModelSource` with `S3` (RED until `dto.py` updated).
 
 ### 5.2 Resolver conformance (same suite, mirrored per service)
 
-New files: `apps/stt-v2/tests/unit/test_model_source_resolver.py` · `apps/guardrail/src/guardrail/tests/test_model_source_resolver.py` · `apps/nlp/tests/test_model_source_resolver.py` · `apps/harness/src/harness/tests/unit/test_model_source_resolver.py` (locations follow each app's convention, rule 06). Named cases (identical across the four files — the mirrored-implementation conformance discipline from plan AD-3/AD-4):
+New files: `apps/stt/tests/unit/test_model_source_resolver.py` · `apps/guardrail/src/guardrail/tests/test_model_source_resolver.py` · `apps/nlp/tests/test_model_source_resolver.py` · `apps/harness/src/harness/tests/unit/test_model_source_resolver.py` (locations follow each app's convention, rule 06). Named cases (identical across the four files — the mirrored-implementation conformance discipline from plan AD-3/AD-4):
 
 | Test | Asserts | RED because |
 |---|---|---|
@@ -217,7 +217,7 @@ New files: `apps/stt-v2/tests/unit/test_model_source_resolver.py` · `apps/guard
 | `test_hf_offline_uncached_raises_cleanly` | `HF_HUB_OFFLINE=1` + uncached `hf:` → error naming the env var (`snapshot_download` stubbed, env monkeypatched) | ditto |
 | `test_unknown_scheme_rejected` | `azure-blob://…` → `ModelSourceError` naming OD-4 (no silent fallback) | ditto |
 
-S3 double = a **stubbed client object injected at the lazy-import seam** — matching each service's hermetic posture (no `moto` anywhere in the workspace, verified across all `pyproject.toml`s; harness claim-check precedent: "hermetic suite never imports boto3", `claim_check.py:127-145`). stt-v2 additionally gets one integration-lane test against the real test MinIO (`tests/docker-compose.test.yml`, port 9002) — authored now, executed in the local/integration lane, never unit CI. Determinism note (repo memory): any randomized fixture data seeds inside the test body — pytest-randomly reseeds numpy after fixtures.
+S3 double = a **stubbed client object injected at the lazy-import seam** — matching each service's hermetic posture (no `moto` anywhere in the workspace, verified across all `pyproject.toml`s; harness claim-check precedent: "hermetic suite never imports boto3", `claim_check.py:127-145`). stt additionally gets one integration-lane test against the real test MinIO (`tests/docker-compose.test.yml`, port 9002) — authored now, executed in the local/integration lane, never unit CI. Determinism note (repo memory): any randomized fixture data seeds inside the test body — pytest-randomly reseeds numpy after fixtures.
 
 ### 5.3 D-12 closure tests
 
@@ -234,7 +234,7 @@ S3 double = a **stubbed client object injected at the lazy-import seam** — mat
 |---|---|
 | Database | `pnpm db:generate` · migration SQL reviewed · `pnpm --filter @arcaai/database build test` · psql apply recorded for dev/test DBs |
 | Domains/Applications/API | `pnpm --filter @arcaai/domains build test` · `pnpm --filter @arcaai/applications build test` · `pnpm build:api` · `pnpm test:unit` (gateway controller tests) |
-| Python lanes | `pnpm py:stt-v2:test` + `py:stt-v2:lint` + `py:stt-v2:typecheck` · same triple for `py:guardrail`, `py:nlp`, `py:harness` |
+| Python lanes | `pnpm py:stt:test` + `py:stt:lint` + `py:stt:typecheck` · same triple for `py:guardrail`, `py:nlp`, `py:harness` |
 | Workspace | root `uv lock` diff committed in the same MR as the guardrail/nlp `pyproject.toml` edits · `pnpm lint` (only-warn warnings in `packages/*` treated as errors) |
 | E2E | specs (admin PATCHes `localPath` on `minicheck-flan-t5-large` → guardrail/nlp inference reflects it; `s3://` row → downloaded + served) **authored here** under `apps/api/tests/e2e/`, **executed in TASK-534** per the program's e2e-last discipline |
 
@@ -257,7 +257,7 @@ S3 double = a **stubbed client object injected at the lazy-import seam** — mat
 | Postgres enum values are effectively irreversible | Rollback = stop writing `S3` rows (query for `source='S3'` count first); the value itself stays dormant — additive-only posture per rule 02 |
 | Behavior drift on the guardrail clinical gate | `allow_network=False` for HF at the groundedness site; env fallback preserves today's staged-file posture byte-for-byte when the DB row has no path |
 | TASK-525 slip strands the harness lane | Harness stage is last and env-fallback-complete — ships as "env-first until 525 lands", flipped by one config read |
-| `minio` add breaks mypy/CI extras lanes | Lazy import + per-module `ignore_missing_imports` (the `apps/stt-v2/pyproject.toml:238` pattern); D-05's lesson applied up front |
+| `minio` add breaks mypy/CI extras lanes | Lazy import + per-module `ignore_missing_imports` (the `apps/stt/pyproject.toml:238` pattern); D-05's lesson applied up front |
 | NLP cache re-key `(model_name, model_path)` doubles resident models during a path rollover | Old key ages out via the existing `ModelCache` TTL (`nlp/services/model_cache.py`); acceptable transient — TASK-529's retention lane owns systematic eviction |
 | Gateway sends `model_path` to an older NLP build (deploy skew) | Pydantic ignores unknown request fields only if declared — NLP DTO change ships in the same MR wave; until both sides deploy, the gateway's omit-when-absent default keeps payloads identical to today |
 
@@ -266,8 +266,8 @@ S3 double = a **stubbed client object injected at the lazy-import seam** — mat
 - Program: plan §3 **AD-3** (frozen contract), §8 **OD-4**; findings §3-E5, D-12 (`§4.B`), GAP-C3 (`§7`)
 - Rules: `.claude/rules/02-database-prisma.md` (additive migrations, `task_<nnn>_<desc>` naming, allow-lists untouched — no new model), `.claude/rules/06-python-services.md` (env_prefix, uv workspace/`uv lock`, lazy imports, structlog, test placement)
 - Repo memory: dev/test DB is db-push-managed — apply enum SQL via psql; rebuild database/domains dist after enum changes
-- TASK-505/506 enum-sync precedent: `apps/stt-v2/tests/unit/test_db_enum_mirrors.py` (module docstring `:1-9` records the drift incident this pattern prevents)
-- HF offline env vars: `HF_HUB_OFFLINE` / `TRANSFORMERS_OFFLINE` — hub honors them natively; in-repo precedent `.env.example:511-516` (tts-v2 mirror runbook `docs/operations/tts-model-mirror/`)
+- TASK-505/506 enum-sync precedent: `apps/stt/tests/unit/test_db_enum_mirrors.py` (module docstring `:1-9` records the drift incident this pattern prevents)
+- HF offline env vars: `HF_HUB_OFFLINE` / `TRANSFORMERS_OFFLINE` — hub honors them natively; in-repo precedent `.env.example:511-516` (tts mirror runbook `docs/operations/tts-model-mirror/`)
 - Lazy-S3 + `to_thread` precedent: `apps/harness/src/harness/temporal/claim_check.py:124-160`
 - Sibling tickets (cross-reference only, never edited here): TASK-524/525/526 (Phase 1), TASK-528 (discovery hub), TASK-529 (lifecycle/retention), TASK-531, TASK-534
 
@@ -281,10 +281,10 @@ S3 double = a **stubbed client object injected at the lazy-import seam** — mat
 |---|---|
 | `packages/database/src/prisma/db_main/enums.prisma` | `AiModelSource` gains `S3` |
 | `packages/database/src/prisma/db_main/migrations/20260720120000_task_527_ai_model_source_s3/migration.sql` | NEW — `ALTER TYPE "core"."AiModelSource" ADD VALUE IF NOT EXISTS 'S3';` |
-| `apps/stt-v2/src/stt_v2/core/database/models.py` | pg-enum mirror gains `"S3"` |
-| `apps/stt-v2/src/stt_v2/pipeline/dto.py` | StrEnum gains `S3 = "S3"` |
-| `apps/stt-v2/tests/unit/test_db_enum_mirrors.py` | NEW `PRISMA_AI_MODEL_SOURCE` + mirror/superset assertions (the §5.1 gap) |
-| `apps/stt-v2/tests/unit/test_pipeline_dto_updates.py` | `TestAiModelSource` gains `test_s3_enum_value_exists` |
+| `apps/stt/src/stt/core/database/models.py` | pg-enum mirror gains `"S3"` |
+| `apps/stt/src/stt/pipeline/dto.py` | StrEnum gains `S3 = "S3"` |
+| `apps/stt/tests/unit/test_db_enum_mirrors.py` | NEW `PRISMA_AI_MODEL_SOURCE` + mirror/superset assertions (the §5.1 gap) |
+| `apps/stt/tests/unit/test_pipeline_dto_updates.py` | `TestAiModelSource` gains `test_s3_enum_value_exists` |
 
 **RED observed** (before the mirror/enum edits):
 
@@ -341,23 +341,23 @@ The second failure exposed a *fidelity gap in the test double*: the real `AiMode
 
 GREEN: `@arcaai/applications` build + **6516 passed / 4 skipped**.
 
-### 9.3 Stage 3 — stt-v2 resolver (lane D)
+### 9.3 Stage 3 — stt resolver (lane D)
 
-`apps/stt-v2/src/stt_v2/models/source_resolver.py` (NEW) is the **canonical** implementation of the §3.1 contract: `local_path` → `hf:`/bare-id → `file://` → `s3://` → `ModelSourceError`. Single-flight `asyncio.Lock` per URI, temp-dir + atomic `os.replace`, SHA256 verify on download AND first use of a warm cache entry (`.verified` marker), all blocking I/O under `asyncio.to_thread`, lazy `minio` import behind `_make_s3_client`, structlog `stt_v2.model_source.*` events.
+`apps/stt/src/stt/models/source_resolver.py` (NEW) is the **canonical** implementation of the §3.1 contract: `local_path` → `hf:`/bare-id → `file://` → `s3://` → `ModelSourceError`. Single-flight `asyncio.Lock` per URI, temp-dir + atomic `os.replace`, SHA256 verify on download AND first use of a warm cache entry (`.verified` marker), all blocking I/O under `asyncio.to_thread`, lazy `minio` import behind `_make_s3_client`, structlog `stt.model_source.*` events.
 
 `ModelSourceError` on unknown schemes names OD-4 explicitly. `allow_network=False` blocks HF hub pulls while permitting `s3://`/`file://`/`localPath`.
 
-**RED observed:** `ModuleNotFoundError: No module named 'stt_v2.models.source_resolver'` (collection error, 0 tests run). **GREEN: 16 passed** — the full §5.2 quartet plus single-flight, checksum-match, missing-`file://`, bare-HF-id, allow_network, empty-URI and missing-credentials cases.
+**RED observed:** `ModuleNotFoundError: No module named 'stt.models.source_resolver'` (collection error, 0 tests run). **GREEN: 16 passed** — the full §5.2 quartet plus single-flight, checksum-match, missing-`file://`, bare-HF-id, allow_network, empty-URI and missing-credentials cases.
 
 Loaders wired: `whisper_cpp_loader` and `parakeet_cpp_loader` use the full resolver (they need a real directory; whisper-cpp keeps its `.gguf` selection tail, now `_select_gguf_file`, and its stale module docstring was rewritten). `faster_whisper`, `huggingface`, `nemo` and `onnx` use a new `resolve_weights_or_hf_id` passthrough.
 
 **DECISION ROW — `resolve_weights_or_hf_id` passthrough (refinement of §4.3).** §4.3 said "replace per-loader branches with the resolver". Done literally, that would force `snapshot_download` for loaders whose runtime does its own hub fetch (`WhisperModel`, `from_pretrained`, NeMo `from_pretrained`) — **changing the fetch mechanism for every existing HuggingFace row**, and in ONNX's case discarding `_download_onnx_model`'s `allow_patterns` selective fetch that "can save tens of GB of bandwidth". So the resolver materialises only what the runtime cannot fetch itself (`localPath`, `file://`, `s3://`) and passes a bare hub id through. Today's HF behaviour is preserved byte-for-byte; the new schemes work everywhere.
 
-New settings: `model_s3_endpoint/_access_key/_secret_key/_secure`. **DECISION ROW:** stt-v2's `Settings` carries no `env_prefix` (its env vars are bare uppercase field names), so the documented `STT_V2_MODEL_S3_*` names are wired via explicit `validation_alias`. Un-prefixed names would collide — all services share one env file.
+New settings: `model_s3_endpoint/_access_key/_secret_key/_secure`. **DECISION ROW:** stt's `Settings` carries no `env_prefix` (its env vars are bare uppercase field names), so the documented `STT_MODEL_S3_*` names are wired via explicit `validation_alias`. Un-prefixed names would collide — all services share one env file.
 
-Gates: `py:stt-v2:lint` **All checks passed** · `py:stt-v2:typecheck` **no issues in 123 source files** · tests **2629 passed / 35 skipped / 3 xfailed, 1 failed**.
+Gates: `py:stt:lint` **All checks passed** · `py:stt:typecheck` **no issues in 123 source files** · tests **2629 passed / 35 skipped / 3 xfailed, 1 failed**.
 
-⚠️ **The 1 failure is NOT this ticket's** — `test_health_endpoints_comprehensive.py::test_health_returns_200_with_complete_schema`, failing on an extra `effective_config` key in the `/health` payload. That key comes from TASK-525's concurrent edit to `apps/stt-v2/.../health/api/routes.py` (a sibling-owned file). Verified against a clean tree: passes at HEAD, fails with the combined working tree. **Left for TASK-525 to update its own schema test** — not touched here.
+⚠️ **The 1 failure is NOT this ticket's** — `test_health_endpoints_comprehensive.py::test_health_returns_200_with_complete_schema`, failing on an extra `effective_config` key in the `/health` payload. That key comes from TASK-525's concurrent edit to `apps/stt/.../health/api/routes.py` (a sibling-owned file). Verified against a clean tree: passes at HEAD, fails with the combined working tree. **Left for TASK-525 to update its own schema test** — not touched here.
 
 ### 9.4 Stage 4 — guardrail adoption (lane E)
 
@@ -387,7 +387,7 @@ GREEN: ai-inference **62 passed**; `py:nlp:test` **164 passed**; lint **All chec
 
 ### 9.6 Stage 6 — harness adoption (lane E; activities only)
 
-**TASK-525 re-verified as instructed:** its effective-config client shipped for nlp/smr/stt-v2, but **the `modelWeights` contract does NOT exist**, and harness has **no** effective-config client at all (`grep -rln effective_config apps/harness/src/` → no matches). So §3.2's env-fallback-first path was implemented exactly as specified, and this is recorded as the expected deviation: the control-plane lane is built and tested against a stub, and degrades to `HARNESS_ATOMIC_FACT_MODEL_PATH` whenever the key or client is absent — which is every deployment today. Flipping it later is one key appearing in the response; no code change.
+**TASK-525 re-verified as instructed:** its effective-config client shipped for nlp/smr/stt, but **the `modelWeights` contract does NOT exist**, and harness has **no** effective-config client at all (`grep -rln effective_config apps/harness/src/` → no matches). So §3.2's env-fallback-first path was implemented exactly as specified, and this is recorded as the expected deviation: the control-plane lane is built and tested against a stub, and degrades to `HARNESS_ATOMIC_FACT_MODEL_PATH` whenever the key or client is absent — which is every deployment today. Flipping it later is one key appearing in the response; no code change.
 
 `apps/harness/src/harness/models/source_resolver.py` (NEW) mirrors the resolver over harness's **existing `boto3`** (no new dependency) via a small `_Boto3MinioAdapter` that presents the same client surface, keeping the resolver body identical across all four services. `resolve_atomic_fact_model_path` resolves by SLUG (harness has no task key). Resolution happens **inside the activity** — `workflows.py` is untouched, so replay compatibility is unaffected; `minicheck_entailer.py`'s cache is untouched (TASK-529 owns it).
 
@@ -409,7 +409,7 @@ Gates: `py:harness:test` **886 passed** · lint **All checks passed** · typeche
 | `pnpm test:unit` | ✅ **16666 passed / 4 skipped / 9 todo (947 files)** |
 | `pnpm lint` | ✅ 29 tasks successful, **0 errors**; my files produce zero warnings (prettier-formatted) |
 | root `uv lock` | ✅ minimal 4-line diff — `minio` for guardrail + nlp only |
-| `py:stt-v2` test/lint/typecheck | ✅ / ✅ / ✅ (1 pre-existing sibling failure, §9.3) |
+| `py:stt` test/lint/typecheck | ✅ / ✅ / ✅ (1 pre-existing sibling failure, §9.3) |
 | `py:guardrail` test/lint/typecheck | ✅ 163 / ✅ / ✅ |
 | `py:nlp` test/lint/typecheck | ✅ 164 / ✅ / ✅ |
 | `py:harness` test/lint/typecheck | ✅ 886 / ✅ / ✅ |
@@ -428,15 +428,15 @@ The three infra-gated items from §9.8 were closed once the dev/test stacks were
 | Item | Resolution | Evidence |
 |---|---|---|
 | Test DB `ALTER TYPE` | **Closed — no patch needed.** The owner's reset re-applied schema from the Prisma files, so both DBs already carry the value. | `AiModelSource` = `HUGGINGFACE,GITHUB,MLFLOW,LOCAL,S3` on dev (`hope`) **and** test (`hope_test`, role `test`), read from `pg_enum` |
-| stt-v2 MinIO integration test (§5.2) | **Authored and passing** against the real test MinIO on :9002 — `apps/stt-v2/tests/integration/test_model_source_resolver_s3.py`, `@pytest.mark.integration`, 4 cases: download-prefix-then-cache-hit (cache proven by deleting the source objects between resolves), checksum match + `.verified` marker, checksum mismatch → hard error leaving no servable entry, empty prefix rejected. | `4 passed in 0.60s`. Non-vacuity checked: pointed at a dead endpoint (`TEST_MINIO_ENDPOINT=localhost:9999`) the suite **hangs on connection retries** instead of passing — it genuinely exercises the `minio` SDK call shapes, which the hermetic stub cannot prove. |
-| `/health` schema test | **Fixed** (TASK-525's key, but it was the red gate in *this* ticket's suite). `expected_keys` now includes `effective_config` with a comment citing TASK-525 §3.7, plus a type assertion. | `apps/stt-v2/tests/e2e/test_health_endpoints_comprehensive.py` — 32 passed |
+| stt MinIO integration test (§5.2) | **Authored and passing** against the real test MinIO on :9002 — `apps/stt/tests/integration/test_model_source_resolver_s3.py`, `@pytest.mark.integration`, 4 cases: download-prefix-then-cache-hit (cache proven by deleting the source objects between resolves), checksum match + `.verified` marker, checksum mismatch → hard error leaving no servable entry, empty prefix rejected. | `4 passed in 0.60s`. Non-vacuity checked: pointed at a dead endpoint (`TEST_MINIO_ENDPOINT=localhost:9999`) the suite **hangs on connection retries** instead of passing — it genuinely exercises the `minio` SDK call shapes, which the hermetic stub cannot prove. |
+| `/health` schema test | **Fixed** (TASK-525's key, but it was the red gate in *this* ticket's suite). `expected_keys` now includes `effective_config` with a comment citing TASK-525 §3.7, plus a type assertion. | `apps/stt/tests/e2e/test_health_endpoints_comprehensive.py` — 32 passed |
 
 **One further pre-existing failure found and fixed** (out of scope, test-only, recorded for honesty): `test_new_services_integration.py::test_vad_smart_uses_silero_service_when_available` failed because `_apply_vad_smart` awaits `vad_service.initialize()` while the test supplied a plain `MagicMock` — the non-awaitable raised into the branch's `except Exception`, so `detect_speech` was never reached. It had been invisible because the whole file is infra-gated and **skipped** whenever test infra is down. Fix: `initialize = AsyncMock()`. Not caused by this ticket; unrelated to model-source resolution.
 
 **Full re-verification with infra up** (every gate re-run, not inherited):
 
 ```
-stt-v2    2687 passed, 38 skipped, 3 xfailed      ruff: All checks passed   mypy: no issues (123 files)
+stt    2687 passed, 38 skipped, 3 xfailed      ruff: All checks passed   mypy: no issues (123 files)
 guardrail  163 passed
 nlp        173 passed
 harness    901 passed

@@ -28,7 +28,7 @@ import {
   ROLE_ENDPOINTS,
   SERVICE_HEALTH_ENDPOINTS,
   STORAGE_ENDPOINTS,
-  STT_V2_ENDPOINTS,
+  STT_ENDPOINTS,
   SUMMARY_ENDPOINTS,
   TENANT_ENDPOINTS,
   USER_ENDPOINTS,
@@ -58,86 +58,86 @@ describe('SDK v2 route standardization', () => {
   });
 
   // ===========================================================================
-  // STT_V2_ENDPOINTS: /api/v1/transcription-jobs -> /audio/transcription-jobs
+  // STT_ENDPOINTS: /api/v1/transcription-jobs -> /audio/transcription-jobs
   // ===========================================================================
 
-  describe('STT_V2_ENDPOINTS (/api/v1/transcription-jobs -> /audio/transcription-jobs)', () => {
+  describe('STT_ENDPOINTS (/api/v1/transcription-jobs -> /audio/transcription-jobs)', () => {
     it('should use /audio/transcription-jobs/stream/session for CREATE_SESSION', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_SESSION).toBe('/audio/transcription-jobs/stream/session');
+      expect(STT_ENDPOINTS.CREATE_SESSION).toBe('/audio/transcription-jobs/stream/session');
     });
 
-    it('should keep WS_STREAM unchanged at /ws/stt-v2/stream', () => {
-      expect(STT_V2_ENDPOINTS.WS_STREAM).toBe('/ws/stt-v2/stream');
+    it('should keep WS_STREAM unchanged at /ws/stt/stream', () => {
+      expect(STT_ENDPOINTS.WS_STREAM).toBe('/ws/stt/stream');
     });
 
     it('should use /audio/transcription-jobs for CREATE_JOB', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_JOB).toBe('/audio/transcription-jobs');
+      expect(STT_ENDPOINTS.CREATE_JOB).toBe('/audio/transcription-jobs');
     });
 
     it('should use /audio/transcription-jobs/batch for CREATE_BATCH_JOB', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_BATCH_JOB).toBe('/audio/transcription-jobs/batch');
+      expect(STT_ENDPOINTS.CREATE_BATCH_JOB).toBe('/audio/transcription-jobs/batch');
     });
 
     it('should use /audio/transcription-jobs/streaming for CREATE_STREAMING_JOB', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_STREAMING_JOB).toBe('/audio/transcription-jobs/streaming');
+      expect(STT_ENDPOINTS.CREATE_STREAMING_JOB).toBe('/audio/transcription-jobs/streaming');
     });
 
     it('should use /audio/transcription-jobs/transcribe for TRANSCRIBE', () => {
-      expect(STT_V2_ENDPOINTS.TRANSCRIBE).toBe('/audio/transcription-jobs/transcribe');
+      expect(STT_ENDPOINTS.TRANSCRIBE).toBe('/audio/transcription-jobs/transcribe');
     });
 
     it('should use /audio/transcription-jobs/:id/stream for JOB_STREAM', () => {
-      expect(STT_V2_ENDPOINTS.JOB_STREAM('job-123')).toBe('/audio/transcription-jobs/job-123/stream');
+      expect(STT_ENDPOINTS.JOB_STREAM('job-123')).toBe('/audio/transcription-jobs/job-123/stream');
     });
 
     it('should use /audio/transcription-jobs/:id for GET_JOB', () => {
-      expect(STT_V2_ENDPOINTS.GET_JOB('job-456')).toBe('/audio/transcription-jobs/job-456');
+      expect(STT_ENDPOINTS.GET_JOB('job-456')).toBe('/audio/transcription-jobs/job-456');
     });
 
     it('should use /audio/transcription-jobs for LIST_JOBS', () => {
-      expect(STT_V2_ENDPOINTS.LIST_JOBS).toBe('/audio/transcription-jobs');
+      expect(STT_ENDPOINTS.LIST_JOBS).toBe('/audio/transcription-jobs');
     });
 
     it('should use /audio/transcription-jobs/stats for JOB_STATS', () => {
-      expect(STT_V2_ENDPOINTS.JOB_STATS).toBe('/audio/transcription-jobs/stats');
+      expect(STT_ENDPOINTS.JOB_STATS).toBe('/audio/transcription-jobs/stats');
     });
 
     it('should use /audio/transcription-jobs/consultation/:id for JOBS_BY_CONSULTATION', () => {
-      expect(STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION('c-789')).toBe('/audio/transcription-jobs/consultation/c-789');
+      expect(STT_ENDPOINTS.JOBS_BY_CONSULTATION('c-789')).toBe('/audio/transcription-jobs/consultation/c-789');
     });
 
     it('should use /audio/transcription-jobs/status/:status for JOBS_BY_STATUS', () => {
-      expect(STT_V2_ENDPOINTS.JOBS_BY_STATUS('completed')).toBe('/audio/transcription-jobs/status/completed');
+      expect(STT_ENDPOINTS.JOBS_BY_STATUS('completed')).toBe('/audio/transcription-jobs/status/completed');
     });
 
     it('should use /audio/transcription-jobs/:id/cancel for CANCEL_JOB', () => {
-      expect(STT_V2_ENDPOINTS.CANCEL_JOB('job-abc')).toBe('/audio/transcription-jobs/job-abc/cancel');
+      expect(STT_ENDPOINTS.CANCEL_JOB('job-abc')).toBe('/audio/transcription-jobs/job-abc/cancel');
     });
 
     it('should use /audio/transcription-jobs/:id/retry for RETRY_JOB', () => {
-      expect(STT_V2_ENDPOINTS.RETRY_JOB('job-abc')).toBe('/audio/transcription-jobs/job-abc/retry');
+      expect(STT_ENDPOINTS.RETRY_JOB('job-abc')).toBe('/audio/transcription-jobs/job-abc/retry');
     });
 
     it('should generate CLOSE_SESSION with /audio/ prefix', () => {
-      expect(STT_V2_ENDPOINTS.CLOSE_SESSION('sess-1')).toBe('/audio/transcription-jobs/stream/session/sess-1');
+      expect(STT_ENDPOINTS.CLOSE_SESSION('sess-1')).toBe('/audio/transcription-jobs/stream/session/sess-1');
     });
 
     it('should NOT contain /api/v1/ prefix on any REST endpoint', () => {
       const restEndpoints = [
-        STT_V2_ENDPOINTS.CREATE_SESSION,
-        STT_V2_ENDPOINTS.CREATE_JOB,
-        STT_V2_ENDPOINTS.CREATE_BATCH_JOB,
-        STT_V2_ENDPOINTS.CREATE_STREAMING_JOB,
-        STT_V2_ENDPOINTS.TRANSCRIBE,
-        STT_V2_ENDPOINTS.LIST_JOBS,
-        STT_V2_ENDPOINTS.JOB_STATS,
-        STT_V2_ENDPOINTS.GET_JOB('x'),
-        STT_V2_ENDPOINTS.JOB_STREAM('x'),
-        STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION('x'),
-        STT_V2_ENDPOINTS.JOBS_BY_STATUS('x'),
-        STT_V2_ENDPOINTS.CANCEL_JOB('x'),
-        STT_V2_ENDPOINTS.RETRY_JOB('x'),
-        STT_V2_ENDPOINTS.CLOSE_SESSION('x'),
+        STT_ENDPOINTS.CREATE_SESSION,
+        STT_ENDPOINTS.CREATE_JOB,
+        STT_ENDPOINTS.CREATE_BATCH_JOB,
+        STT_ENDPOINTS.CREATE_STREAMING_JOB,
+        STT_ENDPOINTS.TRANSCRIBE,
+        STT_ENDPOINTS.LIST_JOBS,
+        STT_ENDPOINTS.JOB_STATS,
+        STT_ENDPOINTS.GET_JOB('x'),
+        STT_ENDPOINTS.JOB_STREAM('x'),
+        STT_ENDPOINTS.JOBS_BY_CONSULTATION('x'),
+        STT_ENDPOINTS.JOBS_BY_STATUS('x'),
+        STT_ENDPOINTS.CANCEL_JOB('x'),
+        STT_ENDPOINTS.RETRY_JOB('x'),
+        STT_ENDPOINTS.CLOSE_SESSION('x'),
       ];
       restEndpoints.forEach(ep => expect(ep).not.toContain('/api/v1/'));
     });
@@ -445,13 +445,13 @@ describe('SDK v2 route standardization', () => {
       const statics = [
         PERSONALIZATION_ENDPOINTS.GET_PREFERENCES,
         PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES,
-        STT_V2_ENDPOINTS.CREATE_SESSION,
-        STT_V2_ENDPOINTS.CREATE_JOB,
-        STT_V2_ENDPOINTS.CREATE_BATCH_JOB,
-        STT_V2_ENDPOINTS.CREATE_STREAMING_JOB,
-        STT_V2_ENDPOINTS.TRANSCRIBE,
-        STT_V2_ENDPOINTS.LIST_JOBS,
-        STT_V2_ENDPOINTS.JOB_STATS,
+        STT_ENDPOINTS.CREATE_SESSION,
+        STT_ENDPOINTS.CREATE_JOB,
+        STT_ENDPOINTS.CREATE_BATCH_JOB,
+        STT_ENDPOINTS.CREATE_STREAMING_JOB,
+        STT_ENDPOINTS.TRANSCRIBE,
+        STT_ENDPOINTS.LIST_JOBS,
+        STT_ENDPOINTS.JOB_STATS,
         PIPELINE_ENDPOINTS.LIST,
         PIPELINE_ENDPOINTS.VALIDATE,
         GLOBAL_SETTINGS_ENDPOINTS.LIST,
@@ -470,13 +470,13 @@ describe('SDK v2 route standardization', () => {
 
     it('all dynamic changed endpoints should return paths starting with /', () => {
       const dynamics = [
-        STT_V2_ENDPOINTS.GET_JOB('x'),
-        STT_V2_ENDPOINTS.JOB_STREAM('x'),
-        STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION('x'),
-        STT_V2_ENDPOINTS.JOBS_BY_STATUS('x'),
-        STT_V2_ENDPOINTS.CANCEL_JOB('x'),
-        STT_V2_ENDPOINTS.RETRY_JOB('x'),
-        STT_V2_ENDPOINTS.CLOSE_SESSION('x'),
+        STT_ENDPOINTS.GET_JOB('x'),
+        STT_ENDPOINTS.JOB_STREAM('x'),
+        STT_ENDPOINTS.JOBS_BY_CONSULTATION('x'),
+        STT_ENDPOINTS.JOBS_BY_STATUS('x'),
+        STT_ENDPOINTS.CANCEL_JOB('x'),
+        STT_ENDPOINTS.RETRY_JOB('x'),
+        STT_ENDPOINTS.CLOSE_SESSION('x'),
         PIPELINE_ENDPOINTS.GET('x'),
         PIPELINE_ENDPOINTS.GET_BY_SLUG('x'),
         GLOBAL_SETTINGS_ENDPOINTS.GET('x'),
@@ -511,15 +511,15 @@ describe('SDK v2 route standardization', () => {
     const dangerous = 'id/with?special#chars&more=true';
     const encoded = encodeURIComponent(dangerous);
 
-    it('STT_V2_ENDPOINTS should encode special chars in all dynamic endpoints', () => {
-      expect(STT_V2_ENDPOINTS.GET_JOB(dangerous)).toContain(encoded);
-      expect(STT_V2_ENDPOINTS.GET_JOB(dangerous)).not.toContain(dangerous);
-      expect(STT_V2_ENDPOINTS.JOB_STREAM(dangerous)).toContain(encoded);
-      expect(STT_V2_ENDPOINTS.CLOSE_SESSION(dangerous)).toContain(encoded);
-      expect(STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION(dangerous)).toContain(encoded);
-      expect(STT_V2_ENDPOINTS.JOBS_BY_STATUS(dangerous)).toContain(encoded);
-      expect(STT_V2_ENDPOINTS.CANCEL_JOB(dangerous)).toContain(encoded);
-      expect(STT_V2_ENDPOINTS.RETRY_JOB(dangerous)).toContain(encoded);
+    it('STT_ENDPOINTS should encode special chars in all dynamic endpoints', () => {
+      expect(STT_ENDPOINTS.GET_JOB(dangerous)).toContain(encoded);
+      expect(STT_ENDPOINTS.GET_JOB(dangerous)).not.toContain(dangerous);
+      expect(STT_ENDPOINTS.JOB_STREAM(dangerous)).toContain(encoded);
+      expect(STT_ENDPOINTS.CLOSE_SESSION(dangerous)).toContain(encoded);
+      expect(STT_ENDPOINTS.JOBS_BY_CONSULTATION(dangerous)).toContain(encoded);
+      expect(STT_ENDPOINTS.JOBS_BY_STATUS(dangerous)).toContain(encoded);
+      expect(STT_ENDPOINTS.CANCEL_JOB(dangerous)).toContain(encoded);
+      expect(STT_ENDPOINTS.RETRY_JOB(dangerous)).toContain(encoded);
     });
 
     it('PIPELINE_ENDPOINTS should encode special chars', () => {
@@ -570,12 +570,12 @@ describe('SDK v2 route standardization', () => {
   describe('UUID-format IDs on changed endpoints', () => {
     const uuid = '550e8400-e29b-41d4-a716-446655440000';
 
-    it('STT_V2_ENDPOINTS should handle UUID IDs', () => {
-      expect(STT_V2_ENDPOINTS.GET_JOB(uuid)).toBe(`/audio/transcription-jobs/${uuid}`);
-      expect(STT_V2_ENDPOINTS.CANCEL_JOB(uuid)).toBe(`/audio/transcription-jobs/${uuid}/cancel`);
-      expect(STT_V2_ENDPOINTS.RETRY_JOB(uuid)).toBe(`/audio/transcription-jobs/${uuid}/retry`);
-      expect(STT_V2_ENDPOINTS.JOB_STREAM(uuid)).toBe(`/audio/transcription-jobs/${uuid}/stream`);
-      expect(STT_V2_ENDPOINTS.CLOSE_SESSION(uuid)).toBe(`/audio/transcription-jobs/stream/session/${uuid}`);
+    it('STT_ENDPOINTS should handle UUID IDs', () => {
+      expect(STT_ENDPOINTS.GET_JOB(uuid)).toBe(`/audio/transcription-jobs/${uuid}`);
+      expect(STT_ENDPOINTS.CANCEL_JOB(uuid)).toBe(`/audio/transcription-jobs/${uuid}/cancel`);
+      expect(STT_ENDPOINTS.RETRY_JOB(uuid)).toBe(`/audio/transcription-jobs/${uuid}/retry`);
+      expect(STT_ENDPOINTS.JOB_STREAM(uuid)).toBe(`/audio/transcription-jobs/${uuid}/stream`);
+      expect(STT_ENDPOINTS.CLOSE_SESSION(uuid)).toBe(`/audio/transcription-jobs/stream/session/${uuid}`);
     });
 
     it('PIPELINE_ENDPOINTS should handle UUID IDs', () => {
@@ -597,7 +597,7 @@ describe('SDK v2 route standardization', () => {
 
   describe('empty string parameters on changed endpoints', () => {
     it('should not throw for empty string IDs', () => {
-      expect(() => STT_V2_ENDPOINTS.GET_JOB('')).not.toThrow();
+      expect(() => STT_ENDPOINTS.GET_JOB('')).not.toThrow();
       expect(() => PIPELINE_ENDPOINTS.GET('')).not.toThrow();
       expect(() => GLOBAL_SETTINGS_ENDPOINTS.GET('')).not.toThrow();
       expect(() => USER_SETTINGS_ENDPOINTS.updateByKey('', '')).not.toThrow();
@@ -607,7 +607,7 @@ describe('SDK v2 route standardization', () => {
     });
 
     it('should still produce valid path structure with empty IDs', () => {
-      expect(STT_V2_ENDPOINTS.GET_JOB('')).toMatch(/^\/audio\/transcription-jobs\//);
+      expect(STT_ENDPOINTS.GET_JOB('')).toMatch(/^\/audio\/transcription-jobs\//);
       expect(GLOBAL_SETTINGS_ENDPOINTS.GET('')).toMatch(/^\/admin\/settings\//);
       expect(API_KEY_ENDPOINTS.GET('')).toMatch(/^\/admin\/api-keys\//);
       expect(ROLE_ENDPOINTS.GET('')).toMatch(/^\/admin\/rbac\/roles\//);
@@ -624,13 +624,13 @@ describe('SDK v2 route standardization', () => {
       const statics = [
         PERSONALIZATION_ENDPOINTS.GET_PREFERENCES,
         PERSONALIZATION_ENDPOINTS.UPDATE_PREFERENCES,
-        STT_V2_ENDPOINTS.CREATE_SESSION,
-        STT_V2_ENDPOINTS.CREATE_JOB,
-        STT_V2_ENDPOINTS.CREATE_BATCH_JOB,
-        STT_V2_ENDPOINTS.CREATE_STREAMING_JOB,
-        STT_V2_ENDPOINTS.TRANSCRIBE,
-        STT_V2_ENDPOINTS.LIST_JOBS,
-        STT_V2_ENDPOINTS.JOB_STATS,
+        STT_ENDPOINTS.CREATE_SESSION,
+        STT_ENDPOINTS.CREATE_JOB,
+        STT_ENDPOINTS.CREATE_BATCH_JOB,
+        STT_ENDPOINTS.CREATE_STREAMING_JOB,
+        STT_ENDPOINTS.TRANSCRIBE,
+        STT_ENDPOINTS.LIST_JOBS,
+        STT_ENDPOINTS.JOB_STATS,
         PIPELINE_ENDPOINTS.LIST,
         PIPELINE_ENDPOINTS.VALIDATE,
         GLOBAL_SETTINGS_ENDPOINTS.LIST,
@@ -649,13 +649,13 @@ describe('SDK v2 route standardization', () => {
     it('dynamic endpoints with valid IDs should not contain //', () => {
       const id = 'test-id';
       const dynamics = [
-        STT_V2_ENDPOINTS.GET_JOB(id),
-        STT_V2_ENDPOINTS.JOB_STREAM(id),
-        STT_V2_ENDPOINTS.CLOSE_SESSION(id),
-        STT_V2_ENDPOINTS.CANCEL_JOB(id),
-        STT_V2_ENDPOINTS.RETRY_JOB(id),
-        STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION(id),
-        STT_V2_ENDPOINTS.JOBS_BY_STATUS(id),
+        STT_ENDPOINTS.GET_JOB(id),
+        STT_ENDPOINTS.JOB_STREAM(id),
+        STT_ENDPOINTS.CLOSE_SESSION(id),
+        STT_ENDPOINTS.CANCEL_JOB(id),
+        STT_ENDPOINTS.RETRY_JOB(id),
+        STT_ENDPOINTS.JOBS_BY_CONSULTATION(id),
+        STT_ENDPOINTS.JOBS_BY_STATUS(id),
         PIPELINE_ENDPOINTS.GET(id),
         PIPELINE_ENDPOINTS.GET_BY_SLUG(id),
         GLOBAL_SETTINGS_ENDPOINTS.GET(id),
@@ -691,11 +691,11 @@ describe('SDK v2 route standardization', () => {
       expect(Object.keys(PERSONALIZATION_ENDPOINTS)).toHaveLength(2);
     });
 
-    it('STT_V2_ENDPOINTS should have exactly 16 keys', () => {
+    it('STT_ENDPOINTS should have exactly 16 keys', () => {
       // REFRESH_TICKET supports stream-ticket refresh
       // on reconnect.
-      expect(Object.keys(STT_V2_ENDPOINTS)).toHaveLength(16);
-      expect(Object.keys(STT_V2_ENDPOINTS)).toEqual(expect.arrayContaining([
+      expect(Object.keys(STT_ENDPOINTS)).toHaveLength(16);
+      expect(Object.keys(STT_ENDPOINTS)).toEqual(expect.arrayContaining([
         'CREATE_SESSION', 'CLOSE_SESSION', 'WS_STREAM', 'CREATE_JOB',
         'CREATE_BATCH_JOB', 'CREATE_STREAMING_JOB', 'TRANSCRIBE',
         'JOB_STREAM', 'GET_JOB', 'LIST_JOBS', 'JOB_STATS',
@@ -857,7 +857,7 @@ describe('SDK v2 route standardization', () => {
         'HEALTH_ENDPOINTS',
         'MONITORING_ENDPOINTS',
         'TENANT_ENDPOINTS',
-        'STT_V2_ENDPOINTS',
+        'STT_ENDPOINTS',
         'PIPELINE_ENDPOINTS',
         'NLP_ENDPOINTS',
         'AUTH_ENDPOINTS',
@@ -889,7 +889,7 @@ describe('SDK v2 route standardization', () => {
 
   describe('backend route alignment', () => {
     it('audio domain endpoints should use /audio/ prefix (matching audio/* controllers)', () => {
-      expect(STT_V2_ENDPOINTS.CREATE_JOB).toMatch(/^\/audio\//);
+      expect(STT_ENDPOINTS.CREATE_JOB).toMatch(/^\/audio\//);
     });
 
     it('admin endpoints should use /admin/ prefix (matching admin/* controllers)', () => {
@@ -906,8 +906,8 @@ describe('SDK v2 route standardization', () => {
     });
 
     it('WS_STREAM should NOT use /audio/ prefix (WebSocket bypasses global prefix)', () => {
-      expect(STT_V2_ENDPOINTS.WS_STREAM).toMatch(/^\/ws\//);
-      expect(STT_V2_ENDPOINTS.WS_STREAM).not.toMatch(/^\/audio\//);
+      expect(STT_ENDPOINTS.WS_STREAM).toMatch(/^\/ws\//);
+      expect(STT_ENDPOINTS.WS_STREAM).not.toMatch(/^\/audio\//);
     });
 
     it('ROLE_ENDPOINTS.USER_ROLES should stay under /users/ (not /admin/)', () => {

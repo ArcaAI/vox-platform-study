@@ -1,6 +1,5 @@
 import { Inject, Injectable, OnModuleInit, Logger, Optional } from '@nestjs/common';
-import { IConfigService } from './IConfigService';
-import { IAppConfig } from '@arcaai/domains';
+import { AppConfig, IConfigService } from './IConfigService';
 import { ConfigModuleOptions } from './config.module';
 import { SecretsService } from '../secrets';
 import { loadEnv, getNodeEnv, type LoadEnvResult } from '../../../../common/env';
@@ -28,7 +27,7 @@ export class ConfigService implements IConfigService, OnModuleInit {
   private readonly logger = new Logger(ConfigService.name);
 
   /** Holds the application configuration */
-  config!: IAppConfig;
+  config!: AppConfig;
 
   /** Result of environment loading */
   private envLoadResult?: LoadEnvResult;
@@ -127,7 +126,7 @@ export class ConfigService implements IConfigService, OnModuleInit {
       // Internal Services
       PORT: process.env.PORT || '8868',
       URL: process.env.URL || 'http://localhost',
-      STT_V2_URL: process.env.STT_V2_URL || 'http://localhost:8861',
+      STT_URL: process.env.STT_URL || process.env.STT_V2_URL || 'http://localhost:8861',
       SMR_PORT: process.env.SMR_PORT || '8862',
       SMR_URL: process.env.SMR_URL || 'http://localhost:8862',
       NLP_PORT: process.env.NLP_PORT || '8864',
@@ -228,7 +227,7 @@ export class ConfigService implements IConfigService, OnModuleInit {
    * Retrieves the current application configuration.
    * @returns The current application configuration
    */
-  public getConfiguration(): IAppConfig {
+  public getConfiguration(): AppConfig {
     return this.config;
   }
 
@@ -246,7 +245,7 @@ export class ConfigService implements IConfigService, OnModuleInit {
    * @param key - The configuration key
    * @returns The configuration value
    */
-  public getConfigValue<K extends keyof IAppConfig>(key: K): IAppConfig[K] {
+  public getConfigValue<K extends keyof AppConfig>(key: K): AppConfig[K] {
     return this.config[key];
   }
 

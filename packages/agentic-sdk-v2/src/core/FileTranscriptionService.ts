@@ -13,9 +13,9 @@
  */
 
 import type { PaginatedResponse } from '../types/common';
-import { TranscriptionJobStatus, TranscriptionJobType, type TranscriptionJobResponse } from '../types/stt-v2';
+import { TranscriptionJobStatus, TranscriptionJobType, type TranscriptionJobResponse } from '../types/stt';
 import type { AgenticClient } from './AgenticClient';
-import { STT_V2_ENDPOINTS } from './constants';
+import { STT_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
 
 type BatchTranscribeResponse = {
@@ -95,7 +95,7 @@ export class FileTranscriptionService {
       formData.append('diarization', String(options.diarization));
     }
 
-    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData, {
+    const response = await this.apiClient.postFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_ENDPOINTS.TRANSCRIBE, formData, {
       signal: options.signal,
     });
 
@@ -161,7 +161,7 @@ export class FileTranscriptionService {
       formData.append('diarization', String(options.diarization));
     }
 
-    const response = await this.apiClient.uploadFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_V2_ENDPOINTS.TRANSCRIBE, formData, {
+    const response = await this.apiClient.uploadFormData<TranscriptionJobResponse | BatchTranscribeResponse>(STT_ENDPOINTS.TRANSCRIBE, formData, {
       signal: options.signal,
       onProgress: options.onProgress,
       // Default: disable the XHR timeout for batch audio uploads. Arbitrary-length medical
@@ -188,14 +188,14 @@ export class FileTranscriptionService {
   }
 
   async cancelJob(jobId: string): Promise<void> {
-    await this.apiClient.post(STT_V2_ENDPOINTS.CANCEL_JOB(jobId));
+    await this.apiClient.post(STT_ENDPOINTS.CANCEL_JOB(jobId));
     if (this.activeJobId === jobId) {
       this.activeJobId = null;
     }
   }
 
   async getJob(jobId: string): Promise<TranscriptionJobResponse> {
-    return this.apiClient.get<TranscriptionJobResponse>(STT_V2_ENDPOINTS.GET_JOB(jobId));
+    return this.apiClient.get<TranscriptionJobResponse>(STT_ENDPOINTS.GET_JOB(jobId));
   }
 
   async listJobs(params?: { page?: number; limit?: number }): Promise<PaginatedResponse<TranscriptionJobResponse>> {
@@ -203,7 +203,7 @@ export class FileTranscriptionService {
     if (params?.page !== undefined) query.set('page', String(params.page));
     if (params?.limit !== undefined) query.set('limit', String(params.limit));
     const qs = query.toString();
-    const endpoint = qs ? `${STT_V2_ENDPOINTS.LIST_JOBS}?${qs}` : STT_V2_ENDPOINTS.LIST_JOBS;
+    const endpoint = qs ? `${STT_ENDPOINTS.LIST_JOBS}?${qs}` : STT_ENDPOINTS.LIST_JOBS;
     return this.apiClient.get<PaginatedResponse<TranscriptionJobResponse>>(endpoint);
   }
 
@@ -245,7 +245,7 @@ export class FileTranscriptionService {
    * Used to subscribe to real-time results via SSEClient.
    */
   buildJobStreamUrl(jobId: string): string {
-    return `${this.apiClient.getBaseUrl()}${STT_V2_ENDPOINTS.JOB_STREAM(jobId)}`;
+    return `${this.apiClient.getBaseUrl()}${STT_ENDPOINTS.JOB_STREAM(jobId)}`;
   }
 
   /**

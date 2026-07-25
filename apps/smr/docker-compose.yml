@@ -1,18 +1,18 @@
 services:
-  smr-v2:
+  smr:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: hope-smr-v2
+    container_name: hope-smr
     ports:
       - "${SMR_PORT:-8862}:8862"
     env_file:
       - .env.example
     environment:
-      - SMR_V2_HOST=0.0.0.0
-      - SMR_V2_PORT=8862
-      - SMR_V2_REDIS_URL=redis://redis:6379/0
-      - SMR_V2_LOG_LEVEL=info
+      - SMR_HOST=0.0.0.0
+      - SMR_PORT=8862
+      - SMR_REDIS_URL=redis://redis:6379/0
+      - SMR_LOG_LEVEL=info
     depends_on:
       redis:
         condition: service_healthy

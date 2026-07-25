@@ -2,7 +2,7 @@
  * Wire types for the `text/*` SMR proxy (matrix row 38). The gateway pipes
  * the Python service's Pydantic bodies through VERBATIM, so every field here
  * is snake_case on purpose — do NOT camelCase them. Sources of truth:
- * `apps/smr/src/smr_v2/models/{responses,stream}.py` and the request DTOs in
+ * `apps/smr/src/smr/models/{responses,stream}.py` and the request DTOs in
  * `apps/api/src/modules/streaming/smr-proxy.controller.ts`.
  */
 

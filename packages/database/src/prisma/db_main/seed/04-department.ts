@@ -118,7 +118,7 @@ export const DEFAULT_DEPARTMENTS = [
         newPatientPromptId: '71000000-0000-0000-0000-000000000028',
         revisitPromptId: '71000000-0000-0000-0000-000000000029',
         promptConfig: {
-            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'same_day_prequel_summary', 'style_DNA_doctor_department_dermatology'],
+            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'prior_visit_summary', 'style_DNA_doctor_department_dermatology'],
             preferredSections: ['Presenting Complaints', 'Evolution of Symptoms', 'Clinical Examination', 'Impression', 'Treatment Plan', 'Follow-Up Advice'],
             abbreviationDensity: 'low',
         },
@@ -262,7 +262,7 @@ export const DEFAULT_DEPARTMENTS = [
         newPatientPromptId: '71000000-0000-0000-0000-000000000030',
         revisitPromptId: '71000000-0000-0000-0000-000000000031',
         promptConfig: {
-            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'same_day_prequel_summary', 'style_DNA_doctor_department_dietetics'],
+            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'prior_visit_summary', 'style_DNA_doctor_department_dietetics'],
             preferredSections: ['Patient History', 'Anthropometric Measurements', 'Diet History', 'Nutrition Screening', 'Nutritional Status', 'Plan of Care'],
             abbreviationDensity: 'low',
         },
@@ -278,7 +278,7 @@ export const DEFAULT_DEPARTMENTS = [
         newPatientPromptId: '71000000-0000-0000-0000-000000000032',
         revisitPromptId: '71000000-0000-0000-0000-000000000033',
         promptConfig: {
-            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'same_day_prequel_summary', 'style_DNA_doctor_department_nephrology'],
+            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'prior_visit_summary', 'style_DNA_doctor_department_nephrology'],
             preferredSections: ['Diagnosis', 'History', 'Examination', 'Investigations', 'Medicine', 'Plan of Care'],
             abbreviationDensity: 'medium',
         },
@@ -294,7 +294,7 @@ export const DEFAULT_DEPARTMENTS = [
         newPatientPromptId: '71000000-0000-0000-0000-000000000034',
         revisitPromptId: '71000000-0000-0000-0000-000000000035',
         promptConfig: {
-            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'same_day_prequel_summary', 'style_DNA_doctor_department_surgical_oncology'],
+            contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'prior_visit_summary', 'style_DNA_doctor_department_surgical_oncology'],
             preferredSections: ['Patient Demographics', 'History', 'Presenting Complaints', 'Investigations Done', 'Impression', 'Plan', 'MDT Plan'],
             abbreviationDensity: 'medium',
         },

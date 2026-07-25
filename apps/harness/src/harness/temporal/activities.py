@@ -1025,6 +1025,26 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
         )
         raise
 
+    # F-19 — measure the prompt ACTUALLY dispatched (assembled user prompt incl.
+    # the RAG / segment-citation / regen-feedback blocks, plus the system
+    # prompt). Observation ONLY: clinical content is never compacted or
+    # truncated to fit a budget, so an oversized prompt is made LOUD instead.
+    # Emitted before the call so a prompt that then blows the context window is
+    # still visible in the logs.
+    prompt_chars = len(prompt) + len(system_prompt or "")
+    prompt_tokens_est = prompt_chars // 4
+    if prompt_chars > settings.prompt_size_warn_chars:
+        activity.logger.warning(
+            "harness.prompt_size_warn",
+            extra={
+                "prompt_chars": prompt_chars,
+                "prompt_tokens_est": prompt_tokens_est,
+                "threshold_chars": settings.prompt_size_warn_chars,
+                "provider": payload.provider,
+                "model": payload.model,
+            },
+        )
+
     try:
         result = await _smr_client(settings).generate(
             prompt=prompt,
@@ -1071,13 +1091,21 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     # a bounded-regen generation bumps ``harness_regen_total``. When SMR returned
     # non-empty reasoning, emit a stats-only THINKING step (payloadRef stays null until
     # a capture-payload policy flag is on — which it is not yet).
+    # F-19 / F-35 — the backend's generation stats VERBATIM (so any cache
+    # counters it reports — ``cached_tokens``, ``prompt_cache_*``, whatever sits
+    # in ``engine_native`` — reach the trajectory rollups untouched) plus the
+    # locally measured prompt size. A legacy SMR response with no ``stats`` still
+    # gets the size fields.
+    llm_stats: dict[str, Any] = dict(result.stats or {})
+    llm_stats["prompt_chars"] = prompt_chars
+    llm_stats["prompt_tokens_est"] = prompt_tokens_est
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
         step_type=STEP_LLM_CALL,
         name="generate",
         status=STATUS_OK,
         started=started,
-        stats=result.stats,
+        stats=llm_stats,
     )
     reasoning = _reasoning_tokens(result.stats)
     if reasoning > 0:

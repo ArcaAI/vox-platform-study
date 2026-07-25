@@ -78,7 +78,7 @@ describe('PipelineConfigEditor dual_capture (TASK-333 T5)', () => {
 });
 
 // TASK-356 Phase 4 (UI-T2) — the Diarization section reuses the existing
-// form→YAML round-trip; the STT-v2 yaml_parser already reads `diarization`
+// form→YAML round-trip; the STT yaml_parser already reads `diarization`
 // (enabled / high_threshold / low_threshold / max_speakers), so exposing it in
 // the structured form is NOT a YAML-semantics change. Defaults preserve today's
 // behavior (disabled) so existing configs round-trip unchanged.

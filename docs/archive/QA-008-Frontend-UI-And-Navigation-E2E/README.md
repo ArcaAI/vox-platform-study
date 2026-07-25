@@ -82,7 +82,7 @@
 20. Custom Models
 21. Cross-Tab Session
 22. Plugin Hooks
-23. STT-V2 Streaming *(NEW)*
+23. STT Streaming *(NEW)*
 24. Diff Viewer *(NEW)*
 25. Error Handling *(NEW)*
 
@@ -338,7 +338,7 @@ const handleNavClick = () => {
 | 4 | Dashboard | Admin Panel |
 | 5 | Prompts | Admin Panel |
 | 6 | Departments | Admin Panel |
-| 7 | STT-V2 Streaming | Developer Tools |
+| 7 | STT Streaming | Developer Tools |
 | 8 | Diff Viewer | Developer Tools |
 | 9 | Error Handling | Developer Tools |
 

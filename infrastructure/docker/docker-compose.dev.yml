@@ -360,8 +360,8 @@ services:
   # `dev-infra.sh -e` warns when the NVIDIA runtime is missing.
   #
   # Wire SMR to them via .env (see .env.example "Production inference engines"):
-  #   SMR_V2_VLLM_ENABLED=true       SMR_V2_VLLM_BASE_URL=http://localhost:8000/v1
-  #   SMR_V2_LLAMA_CPP_ENABLED=true  SMR_V2_LLAMA_CPP_BASE_URL=http://localhost:8080
+  #   SMR_VLLM_ENABLED=true       SMR_VLLM_BASE_URL=http://localhost:8000/v1
+  #   SMR_LLAMA_CPP_ENABLED=true  SMR_LLAMA_CPP_BASE_URL=http://localhost:8080
   #
   # Images are PINNED (no `latest`). vLLM + llama.cpp roll fast; bump to a build
   # you have validated on your hardware (see docs/operations/inference/README.md).
@@ -380,7 +380,7 @@ services:
     # vLLM needs a large /dev/shm for its NCCL/worker IPC.
     ipc: host
     ports:
-      - '${SMR_V2_VLLM_PORT:-8000}:8000'
+      - '${SMR_VLLM_PORT:-8000}:8000'
     environment:
       # A gated model download needs a token; ungated models ignore it.
       HF_TOKEN: ${HF_TOKEN:-}
@@ -427,7 +427,7 @@ services:
       - hope-network
     restart: unless-stopped
     ports:
-      - '${SMR_V2_LLAMA_CPP_PORT:-8080}:8080'
+      - '${SMR_LLAMA_CPP_PORT:-8080}:8080'
     environment:
       LLAMA_ARG_HOST: "0.0.0.0"
       LLAMA_ARG_PORT: "8080"

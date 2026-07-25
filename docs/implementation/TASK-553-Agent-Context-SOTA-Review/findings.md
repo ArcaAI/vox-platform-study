@@ -19,35 +19,35 @@ maps to (§ refs into `sota-research.md`), and a disposition:
 | F-04 | **HIGH** | Realtime | Live-summary SSE: direct un-refcounted channel teardown kills co-viewers' streams | **Lane B** |
 | F-05 | **HIGH** | Realtime | Live-summary SSE: snapshot-before-subscribe race drops events (incl. terminal `closed`) | **Lane B** |
 | F-06 | **HIGH** | Realtime | STT WS reconnect after grace expiry gets a false `resumed` ack — session silently dead | **Lane B** |
-| F-07 | **HIGH** | SDK | `SttV2WebSocketClient` reconnect chain dies silently when a reconnect attempt fails to open | **Lane B** |
+| F-07 | **HIGH** | SDK | `SttWebSocketClient` reconnect chain dies silently when a reconnect attempt fails to open | **Lane B** |
 | F-08 | **HIGH** | STT-v2 | Inference-queue overflow blocks the ingestion consumer → silent raw-audio loss; queue size knob undeclared | **Lane C** |
 | F-09 | **HIGH** | Data | Streaming-transcript create TOCTOU duplicates + `Idempotency-Key` sent but never read | **Lane D** |
 | F-10 | **HIGH** | Data | Harness write-back paths ignore consultation `resourceStatus` (writes to soft-deleted consultations) | **Lane D** |
-| F-11 | MED | OCC | `SummaryMeta` has no `_version` despite two-phase read-modify-write | DEFER |
+| F-11 | MED | OCC | `SummaryMeta` has no `_version` despite two-phase read-modify-write | **Wave 2 · Lane E** |
 | F-12 | MED | Harness | `persist_entities` retry exhaustion fails the whole workflow → note permanently stranded | **Lane C** |
-| F-13 | MED | Perf | `assemble` re-fetches all context every regen iteration (≤3×/run) | DEFER |
+| F-13 | MED | Perf | `assemble` re-fetches all context every regen iteration (≤3×/run) | **Wave 2 · Lane F** (patch era `task-553-assemble-reuse`) |
 | F-14 | MED | Perf | N+1 inserts: transcript segments (per-segment) and NER entities (per-entity, per-regen) | **Lane D** |
 | F-15 | MED | Perf | Context reads: in-memory pagination, sequential per-id N+1 chains, sequential tenant asserts | **Lane D** |
 | F-16 | MED | Perf | Missing composite index for `DepartmentAgent` default-agent lookup (hottest read path) | **Lane A** (schema owner) |
 | F-17 | MED | Quality | DNA style broadcast into all 11 hardcoded department slots + dead locals | **Lane A** |
-| F-18 | MED | Feature gap | Re-visit carry-forward absent — `sameDayPrequelSummary` has zero producers; `revisit` only swaps template | DEFER → follow-up ticket |
-| F-19 | MED | Context | No compaction / token-budget shaping of transcript context (full re-send every call) | DEFER |
+| F-18 | MED | Feature gap | Re-visit carry-forward absent — `sameDayPrequelSummary` has zero producers; `revisit` only swaps template | **Wave 2 · Lane E** (default-OFF knob) |
+| F-19 | MED | Context | No compaction / token-budget shaping of transcript context (full re-send every call) | **Wave 2 · Lane F** (observability; no truncation by design) |
 | F-20 | MED | Quality | System prompt is one hardcoded sentence — no platform-tier safety layer in the system role | **Lane A** |
 | F-21 | LOW | Dead knob | `agentic.context.claimCheck.minBytes` live-editable but governs nothing | **Lane B** |
-| F-22 | MED | Arch | Four uncoordinated NER paths can duplicate work for the same content | DEFER (owner decision) |
+| F-22 | MED | Arch | Four uncoordinated NER paths can duplicate work for the same content | **Wave 2 · Lane G** (server-side dedup; browser NER = remaining owner decision) |
 | F-23 | MED | Ops | `fetch_policy` auth failure indistinguishable from transient outage (silent policy degrade) | **Lane C** |
-| F-24 | MED | Governance | `GateEditExemplar` few-shot corpus feeds every generation with no human curation gate | DEFER (owner decision) |
+| F-24 | MED | Governance | `GateEditExemplar` few-shot corpus feeds every generation with no human curation gate | **Wave 2 · Lane E** (`curationMode` default `off`) |
 | F-25 | LOW | Audit | Trajectory posts are best-effort/swallowed (accepted: WORM chain is separate) | DOC |
 | F-26 | LOW | Hygiene | `warm_start_enabled` dead field on the Python `HarnessPolicy` model | **Lane C** |
 | F-27 | LOW | Docs | TASK-533 README says 8 `workflow.patched` eras; there are now 10 | DOC (fixed in this ticket) |
-| F-28 | LOW | Robustness | Unbounded `StreamSession.results` / `LiveSession.transcriptParts` buffers | DEFER |
+| F-28 | LOW | Robustness | Unbounded `StreamSession.results` / `LiveSession.transcriptParts` buffers | **Wave 2 · Lane G** |
 | F-29 | MED | Capacity | Temporal worker has no `max_concurrent_activities`; uncoordinated with the LLM semaphore | **Lane C** |
 | F-30 | LOW | Hygiene | Dead duplicate SSE hook `useLiveSummaryStream` in admin-console | **Lane B** |
-| F-31 | LOW | Residual | Tail final can still miss the live caption UI when WS closes on stop (durable transcript unaffected) | DEFER |
-| F-32 | MED | STT-v2 | `_flush_final_utterance`/`_drain_inference_queue` run outside the finalize lock (double-tail risk) | DEFER |
+| F-31 | LOW | Residual | Tail final can still miss the live caption UI when WS closes on stop (durable transcript unaffected) | **Wave 2 · Lane G** + orchestrator wire-up |
+| F-32 | MED | STT-v2 | `_flush_final_utterance`/`_drain_inference_queue` run outside the finalize lock (double-tail risk) | **Wave 2 · Lane F** (4-site latch) |
 | F-33 | LOW | Audit | Template-update sys-event lacks `wasApproved`/live-edit marker | **Lane A** |
-| F-34 | LOW | Defense | `SummaryMeta` provenance id arrays not tenant-re-validated on read | DEFER |
-| F-35 | INFO | Cost | No wire-level prompt-caching protocol (`cache_control`); KV-cache reliance is invisible/unverifiable | DEFER |
+| F-34 | LOW | Defense | `SummaryMeta` provenance id arrays not tenant-re-validated on read | **Wave 2 · Lane G** |
+| F-35 | INFO | Cost | No wire-level prompt-caching protocol (`cache_control`); KV-cache reliance is invisible/unverifiable | **Wave 2 · Lane F** (passthrough proven; SMR normalization recommended) |
 | F-36 | LOW | Realtime | `removeSession` never clears the stream-session tenant binding (24h TTL) — tickets mintable against dead sessions | **Lane B** (with F-06) |
 
 ## Details
@@ -115,7 +115,7 @@ dead sessions. **Fix**: track session liveness; unknown/finalized session on res
 tenant binding in `removeSession`.
 
 ### F-07 [HIGH] SDK reconnect chain dies — Lane B
-`SttV2WebSocketClient.ts:521-595,315-333,256-277`: retry re-armed only from `onclose` with
+`SttWebSocketClient.ts:521-595,315-333,256-277`: retry re-armed only from `onclose` with
 `this.ws !== null`, but `ws` is set in `onopen` — a reconnect attempt that never opens kills
 the chain silently before `maxAttempts`; `onReconnectFailedCb` never fires. **Fix**: re-arm
 the retry (or fire the failure callback) from the failed-attempt path too.
@@ -190,6 +190,12 @@ sensible default aligned with the semaphore), setting declared with `HARNESS_` p
 
 ### Deferred findings (recommendation summary)
 
+> **Wave 2 update (2026-07-25):** every finding below was subsequently closed by the
+> Wave 2 lanes per `followup-plan.md` (see the README Wave 2 Implementation Summary).
+> The recommendations are retained for design rationale. Remaining open threads:
+> browser-side NER coordination (F-22 half), a curation-queue admin UI (F-24 polish),
+> and SMR-side `GenerationStats` cache-counter normalization (F-35 upstream half).
+
 - **F-11** `SummaryMeta` OCC: add `_version` when next touching that table; HTTP-layer
   idempotency currently guards the two-phase write. (SOTA hygiene, low urgency.)
 - **F-13** assemble-reuse across regens: requires a `workflow.patched` era + replay tests for
@@ -207,7 +213,7 @@ sensible default aligned with the semaphore), setting declared with `HARNESS_` p
   retriever; owner decision on review workflow (mirrors the golden-case affordance).
 - **F-31** WS drain-ack on stop: protocol change (client waits for server drain ack);
   design with SDK + gateway together.
-- **F-32** Finalize-lock scope in stt-v2: subtle asyncio refactor in a 3k-line manager;
+- **F-32** Finalize-lock scope in stt: subtle asyncio refactor in a 3k-line manager;
   needs dedicated care + soak tests.
 - **F-34** Re-validate provenance ids on read where dereferenced.
 - **F-35** Prompt-cache observability: emit cache-hit metrics from SMR backends; adopt

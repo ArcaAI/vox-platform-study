@@ -362,7 +362,7 @@ X-API-Key: your-api-key
 
 ### Speech-to-Text v2 (Audio) Service
 
-> STT v1 has been removed. All transcription is handled via STT v2 endpoints under `/api/v1/audio/...`.
+> STT v1 has been removed. All transcription is handled via STT endpoints under `/api/v1/audio/...`.
 
 #### List Transcription Jobs
 
@@ -642,11 +642,11 @@ if (response.status === 429) {
 
 ## WebSocket Communication
 
-### Real-Time STT v2
+### Real-Time STT
 
 **Connect to WebSocket:**
 ```javascript
-const socket = io('wss://api.hope.com/stt-v2', {
+const socket = io('wss://api.hope.com/stt', {
   auth: {
     token: 'your-api-key'
   }

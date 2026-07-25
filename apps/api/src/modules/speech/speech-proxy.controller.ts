@@ -6,7 +6,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
 
-// The gateway forwards the body verbatim; tts-v2 owns strict validation. A plain
+// The gateway forwards the body verbatim; tts owns strict validation. A plain
 // interface (not a class-validator DTO) means the global ValidationPipe skips it,
 // preserving pass-through (mirrors SmrProxyController).
 interface SpeechSynthesizeRequest {
@@ -22,7 +22,7 @@ interface SpeechSynthesizeRequest {
   allowed_providers?: string[];
   provider_overrides?: Record<string, { api_key: string; region?: string; base_url?: string }>;
   // Resolved voice bindings ({internalVoiceId: {provider: providerVoiceName}});
-  // tts-v2 falls back to its built-in DEFAULT_VOICES when absent.
+  // tts falls back to its built-in DEFAULT_VOICES when absent.
   voice_bindings?: Record<string, Record<string, string>>;
 }
 
@@ -33,7 +33,7 @@ interface UpstreamErrorPayload {
 }
 
 const RETRIABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EPIPE']);
-// Only connect-phase failures prove the request never reached tts-v2. Synthesis
+// Only connect-phase failures prove the request never reached tts. Synthesis
 // is compute-costly (and streams), so the non-idempotent POST retries ONLY on
 // these — anything else may mean synthesis already started.
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
@@ -59,7 +59,7 @@ export class SpeechProxyController {
    * Resolve the caller tenant's effective TTS spec and fold it into
    * the forwarded body: fill omitted format/speed from the tenant defaults, and
    * always pass the resolved provider chains + whitelist. Fails OPEN — a config
-   * lookup error never blocks synthesis; tts-v2 falls back to its own settings.
+   * lookup error never blocks synthesis; tts falls back to its own settings.
    */
   private async applyTenantConfig(body: SpeechSynthesizeRequest): Promise<SpeechSynthesizeRequest> {
     const tenantId = this.cls?.get('tenantId');
@@ -78,7 +78,7 @@ export class SpeechProxyController {
         allowed_providers: eff.allowedProviders,
         ...(Object.keys(overrides).length > 0 ? { provider_overrides: overrides } : {}),
         // Resolved voice bindings (tenant over SYSTEM merge); only
-        // injected when non-empty so tts-v2 keeps its built-in defaults otherwise.
+        // injected when non-empty so tts keeps its built-in defaults otherwise.
         ...(eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0 ? { voice_bindings: eff.voiceBindings } : {}),
       };
     } catch (err) {
@@ -164,7 +164,7 @@ export class SpeechProxyController {
 
   @Post('synthesize')
   @Authorize()
-  @ApiOperation({ summary: 'Synthesize speech via TTS v2 (batch audio, streamed audio, or SSE)' })
+  @ApiOperation({ summary: 'Synthesize speech via TTS (batch audio, streamed audio, or SSE)' })
   async synthesize(@Body() body: SpeechSynthesizeRequest, @Res() res: Response): Promise<void> {
     const base = this.getTtsBaseUrl();
     const forwardBody = await this.applyTenantConfig(body);

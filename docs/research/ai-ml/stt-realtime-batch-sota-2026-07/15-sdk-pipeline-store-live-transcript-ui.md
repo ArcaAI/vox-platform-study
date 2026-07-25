@@ -48,7 +48,7 @@ buildStreamingTransport(sttConfig: STTPluginConfig, pipelineId: string | undefin
   const provider = sttConfig.provider ?? DEFAULT_STT_CONFIG.provider;
   if (provider === 'local') { return undefined; }
   const sessionManager = new StreamingSessionManager(this.apiClient, this.logger);
-  const wsClient = new SttV2WebSocketClient(this.logger, { enabled: true, refreshTicket: async () => sessionManager.refreshTicket() }, this._debugMode);
+  const wsClient = new SttWebSocketClient(this.logger, { enabled: true, refreshTicket: async () => sessionManager.refreshTicket() }, this._debugMode);
   return { sessionManager, wsClient, pipelineId, consultationId: this.runtimeOptions.consultationId };
 }
 ```
@@ -133,7 +133,7 @@ By contrast, `KnowledgePipeline` (NER/spellCheck/summarization — `packages/age
 
 ---
 
-### 3. `SttV2WebSocketClient.ts` (`packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`)
+### 3. `SttWebSocketClient.ts` (`packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`)
 
 The file's own header doc (lines 1-18) summarizes the protocol (this docblock is itself slightly stale — it omits the `resume`/`resumed`/`resume_failed` frames that exist in the actual code):
 ```
@@ -149,24 +149,24 @@ The file's own header doc (lines 1-18) summarizes the protocol (this docblock is
  *   - { type: 'error', code, message }
 ```
 
-**a. WS URL construction** — NOT built inside `SttV2WebSocketClient.ts`; built by `StreamingSessionManager.getWebSocketUrl()` (`packages/agentic-sdk-v2/src/core/StreamingSessionManager.ts:148-183`):
+**a. WS URL construction** — NOT built inside `SttWebSocketClient.ts`; built by `StreamingSessionManager.getWebSocketUrl()` (`packages/agentic-sdk-v2/src/core/StreamingSessionManager.ts:148-183`):
 ```ts
 const parsed = new URL(this.apiClient.getWsUrl() ?? this.apiClient.getBaseUrl());
 const wsProtocol = parsed.protocol === 'https:' || parsed.protocol === 'wss:' ? 'wss:' : 'ws:';
 const wsOrigin = `${wsProtocol}//${parsed.host}`;
-const wsPath = this.sessionResponse.wsUrl || STT_V2_ENDPOINTS.WS_STREAM;   // '/ws/stt-v2/stream'
+const wsPath = this.sessionResponse.wsUrl || STT_ENDPOINTS.WS_STREAM;   // '/ws/stt/stream'
 const params = new URLSearchParams({ sessionId: this.sessionId });
 if (this.sessionResponse.ticket) params.set('ticket', this.sessionResponse.ticket);
 const tenantId = this.apiClient.getTenantId();
 if (tenantId) params.set('tenantId', tenantId);
 return `${wsOrigin}${wsPath}?${params.toString()}`;
 ```
-Base origin source: `apiClient.getWsUrl() ?? apiClient.getBaseUrl()` (`packages/agentic-sdk-v2/src/core/AgenticClient.ts:990-1001`, TASK-431 — lets REST ride a same-origin BFF proxy while WS hits the gateway directly). `STT_V2_ENDPOINTS.WS_STREAM = '/ws/stt-v2/stream'` (`packages/agentic-sdk-v2/src/core/constants.ts:379`).
+Base origin source: `apiClient.getWsUrl() ?? apiClient.getBaseUrl()` (`packages/agentic-sdk-v2/src/core/AgenticClient.ts:990-1001`, TASK-431 — lets REST ride a same-origin BFF proxy while WS hits the gateway directly). `STT_ENDPOINTS.WS_STREAM = '/ws/stt/stream'` (`packages/agentic-sdk-v2/src/core/constants.ts:379`).
 
 **b. Auth — yes, a stream ticket is fetched first, then attached as a query param (not a control frame).**
-- `StreamingSessionManager.createSession()` (`StreamingSessionManager.ts:81-135`) does `POST STT_V2_ENDPOINTS.CREATE_SESSION` = `'/audio/transcription-jobs/stream/session'` (`constants.ts:369`). Response `StreamingSessionResponse.ticket?: string` (`types/stt-v2.ts:98-124`, comment lines 109-115: "One-shot stream ticket... The SDK appends `?ticket=<value>`... the ticket becomes invalid afterwards").
-- The ticket is appended as `?ticket=` (see `getWebSocketUrl` above) — **not** sent as a first control frame. `StreamingSessionManager.getWebSocketUrl` doc (lines 141-146) explicitly states the JWT is never in the URL and suggests `ws.send(JSON.stringify({ type: 'auth', token }))` as the pattern, but **no such `'auth'` message is ever actually sent anywhere in `SttV2WebSocketClient.ts`** — real auth for the WS upgrade is entirely the one-shot `ticket` query param.
-- On reconnect, a fresh ticket is minted via `STT_V2_ENDPOINTS.REFRESH_TICKET(sessionId)` = `` `/audio/transcription-jobs/stream/session/${sessionId}/refresh-ticket` `` (`StreamingSessionManager.refreshTicket()`, lines 192-214), and `SttV2WebSocketClient.replaceTicketParam()` swaps `?ticket=` on `lastUrl` before reconnecting (lines 974-986).
+- `StreamingSessionManager.createSession()` (`StreamingSessionManager.ts:81-135`) does `POST STT_ENDPOINTS.CREATE_SESSION` = `'/audio/transcription-jobs/stream/session'` (`constants.ts:369`). Response `StreamingSessionResponse.ticket?: string` (`types/stt.ts:98-124`, comment lines 109-115: "One-shot stream ticket... The SDK appends `?ticket=<value>`... the ticket becomes invalid afterwards").
+- The ticket is appended as `?ticket=` (see `getWebSocketUrl` above) — **not** sent as a first control frame. `StreamingSessionManager.getWebSocketUrl` doc (lines 141-146) explicitly states the JWT is never in the URL and suggests `ws.send(JSON.stringify({ type: 'auth', token }))` as the pattern, but **no such `'auth'` message is ever actually sent anywhere in `SttWebSocketClient.ts`** — real auth for the WS upgrade is entirely the one-shot `ticket` query param.
+- On reconnect, a fresh ticket is minted via `STT_ENDPOINTS.REFRESH_TICKET(sessionId)` = `` `/audio/transcription-jobs/stream/session/${sessionId}/refresh-ticket` `` (`StreamingSessionManager.refreshTicket()`, lines 192-214), and `SttWebSocketClient.replaceTicketParam()` swaps `?ticket=` on `lastUrl` before reconnecting (lines 974-986).
 - A fail-closed **tenant-claim guard** also runs before any socket opens: `connect()` rejects with `Error('WebSocket connect blocked: no tenant claim resolvable from connect context')` when `requireTenantClaim` (default `true`, line 223) can't resolve a claim from `options.tenantClaim` or the URL's `tenantId`/`tenant` param (`resolveTenantClaim`, lines 616-630).
 
 **c. Outgoing audio frame protocol — raw binary Int16LE, not JSON/base64, in actual runtime use.** Two send methods exist:
@@ -187,7 +187,7 @@ sendAudioFrameJson(seq: number, data: string, microphoneId?: string): boolean {
   return true;
 }
 ```
-`ws.binaryType = 'arraybuffer'` is set at connect (`SttV2WebSocketClient.ts:247`). The real caller is `StreamingBackendSTTProvider.processAudio()` (`packages/stt/src/providers/StreamingBackendSTTProvider.ts:225-243`):
+`ws.binaryType = 'arraybuffer'` is set at connect (`SttWebSocketClient.ts:247`). The real caller is `StreamingBackendSTTProvider.processAudio()` (`packages/stt/src/providers/StreamingBackendSTTProvider.ts:225-243`):
 ```ts
 async processAudio(audio: Float32Array, sampleRate: number): Promise<void> {
   if (!this.processing || !this.wsClient.isConnected()) return;
@@ -202,17 +202,17 @@ async processAudio(audio: Float32Array, sampleRate: number): Promise<void> {
 
 **d. Control frames — exact JSON shapes, verbatim:**
 ```ts
-// sendStop() — SttV2WebSocketClient.ts:402-405
+// sendStop() — SttWebSocketClient.ts:402-405
 this.ws!.send(JSON.stringify({ type: 'stop' }));
 
-// sendClose() — SttV2WebSocketClient.ts:410-413
+// sendClose() — SttWebSocketClient.ts:410-413
 this.ws!.send(JSON.stringify({ type: 'close' }));
 
-// sendResumeHandshake() — SttV2WebSocketClient.ts:988-1005, fired automatically on reconnect-open
+// sendResumeHandshake() — SttWebSocketClient.ts:988-1005, fired automatically on reconnect-open
 const handshake: WsResumeRequest = { type: 'resume', sessionId, lastSeq };
 ws.send(JSON.stringify(handshake));
 ```
-`WsResumeRequest` type (`types/stt-v2.ts:170-176`):
+`WsResumeRequest` type (`types/stt.ts:170-176`):
 ```ts
 export interface WsResumeRequest {
   type: 'resume';
@@ -223,7 +223,7 @@ export interface WsResumeRequest {
 
 **e. Incoming schema — verbatim field lists.** Two layers: a tolerant wire payload, normalized into a strict result.
 
-`WsTranscriptWirePayload` (raw, dual-cased, everything `unknown`) — `types/stt-v2.ts:264-298`:
+`WsTranscriptWirePayload` (raw, dual-cased, everything `unknown`) — `types/stt.ts:264-298`:
 ```ts
 export interface WsTranscriptWirePayload {
   type?: unknown;
@@ -246,7 +246,7 @@ export interface WsTranscriptWirePayload {
   [key: string]: unknown;
 }
 ```
-`WsTranscriptResult` (strict, post-`normalizeTranscript`) — `types/stt-v2.ts:193-245`:
+`WsTranscriptResult` (strict, post-`normalizeTranscript`) — `types/stt.ts:193-245`:
 ```ts
 export interface WsTranscriptResult {
   type: 'transcript';
@@ -268,21 +268,21 @@ export interface WsTranscriptResult {
   inference?: number;
 }
 ```
-`normalizeTranscript` (`SttV2WebSocketClient.ts:650-787`) is the single tolerant coercion point: `text` missing → the whole message is dropped (`return null`, line 657-658); `isFinal`/`is_final` accepts boolean, `1`/`0`, or `'1'`/`'0'` via `coerceIsFinal` (lines 643-648), defaulting to `false` (never a premature final) when unparseable. Other server message types, verbatim:
+`normalizeTranscript` (`SttWebSocketClient.ts:650-787`) is the single tolerant coercion point: `text` missing → the whole message is dropped (`return null`, line 657-658); `isFinal`/`is_final` accepts boolean, `1`/`0`, or `'1'`/`'0'` via `coerceIsFinal` (lines 643-648), defaulting to `false` (never a premature final) when unparseable. Other server message types, verbatim:
 ```ts
-// WsStatusMessage — types/stt-v2.ts:317-323
+// WsStatusMessage — types/stt.ts:317-323
 export interface WsStatusMessage { type: 'status'; status: string; message: string; }
-// WsErrorMessage — types/stt-v2.ts:328-334
+// WsErrorMessage — types/stt.ts:328-334
 export interface WsErrorMessage { type: 'error'; code: string; message: string; }
-// WsResumedMessage — types/stt-v2.ts:341-346
+// WsResumedMessage — types/stt.ts:341-346
 export interface WsResumedMessage { type: 'resumed'; sessionId: string; fromSeq: number; }
-// WsResumeFailedMessage — types/stt-v2.ts:353-359
+// WsResumeFailedMessage — types/stt.ts:353-359
 export interface WsResumeFailedMessage { type: 'resume_failed'; sessionId: string; reason: 'buffer_overflow' | 'unknown_session'; minAvailableSeq?: number; }
 ```
-Handled in `handleMessage`'s `switch (msg.type)` (`SttV2WebSocketClient.ts:828-916`): cases `'transcript'`, `'resumed'`, `'resume_failed'`, `'status'`, `'error'`, `default` (logs "Unknown WebSocket message type"). `WsStatusMessage.status` doc example includes `'finalizing'` (`types/stt-v2.ts:319`) and `StreamingSessionStatus = 'active' | 'finalizing' | 'closed' | 'rejected'` (`types/stt-v2.ts:131`) — but **no code path in the SDK gates on a `'finalizing'` status** (see 3h below).
+Handled in `handleMessage`'s `switch (msg.type)` (`SttWebSocketClient.ts:828-916`): cases `'transcript'`, `'resumed'`, `'resume_failed'`, `'status'`, `'error'`, `default` (logs "Unknown WebSocket message type"). `WsStatusMessage.status` doc example includes `'finalizing'` (`types/stt.ts:319`) and `StreamingSessionStatus = 'active' | 'finalizing' | 'closed' | 'rejected'` (`types/stt.ts:131`) — but **no code path in the SDK gates on a `'finalizing'` status** (see 3h below).
 
 **f. Reconnect/backoff — exact numeric defaults and formula.**
-`WsReconnectOptions` defaults (`SttV2WebSocketClient.ts:194-200`):
+`WsReconnectOptions` defaults (`SttWebSocketClient.ts:194-200`):
 ```ts
 this.reconnectOptions = {
   enabled: reconnect?.enabled ?? false,
@@ -292,7 +292,7 @@ this.reconnectOptions = {
   refreshTicket: reconnect?.refreshTicket ?? null,
 };
 ```
-Backoff formula, `attemptReconnect()` (`SttV2WebSocketClient.ts:545-547`):
+Backoff formula, `attemptReconnect()` (`SttWebSocketClient.ts:545-547`):
 ```ts
 const exponentialDelay = Math.min(this.reconnectOptions.baseDelayMs * Math.pow(2, this.reconnectAttempts - 1), this.reconnectOptions.maxDelayMs);
 const jitter = Math.random() * exponentialDelay * 0.5;
@@ -301,7 +301,7 @@ const delay = Math.round(exponentialDelay + jitter);
 So: pure exponential doubling (1000ms, 2000ms, 4000ms, 8000ms, 16000ms, capped at 30000ms), **additive** jitter of `0–50%` of the exponential value on top (i.e., actual delay ∈ `[exponentialDelay, 1.5×exponentialDelay]` — not the "full jitter"/decorrelated-jitter pattern, no randomization below the base value). `maxAttempts` default `5`; exhausting it fires `onReconnectFailedCb` (lines 522-531) and does not retry further unless `cancelReconnect()`/a fresh `connect()` resets `reconnectAttempts`. Before each attempt, if `reconnectOptions.refreshTicket` is set it's called to mint a fresh ticket and rewrite the URL (lines 567-583) — PluginManager wires this to `sessionManager.refreshTicket()` (`PluginManager.ts:761-763`); a failed refresh aborts the reconnect attempt entirely (`this.onReconnectFailedCb?.()`, line 580).
 `acknowledgeConnection()` (TASK-2605, lines 494-505) resets `reconnectAttempts = 0` on the **first server message received after a reconnect** (called from `handleMessage`, lines 824-826) — so a genuinely-stable reconnect gets a fresh attempt budget for the *next* disconnect episode, while a flapping connection that closes before any message arrives keeps depleting the same budget.
 
-**g. Buffering while disconnected — dropped, not queued.** The `WsBackpressureOptions` docblock (`SttV2WebSocketClient.ts:103-119`) claims: *"Without these limits, `audioQueue.length` and `ws.bufferedAmount` would grow unboundedly... We drop oldest frames once the queue exceeds `maxQueueSize`"* and `DEFAULT_MAX_QUEUE_SIZE = 200` is defined (line 140) — **but no `audioQueue` array field or any queue-length check exists anywhere in the class** (verified via full read + grep). The only backpressure mechanism actually wired up is `shouldDropForBufferedAmount()` (lines 936-940), which checks `ws.bufferedAmount >= bufferedAmountHighWatermark` (default `1 * 1024 * 1024` = 1 MiB, line 142) — this only fires while the socket is still `OPEN` and backed up, not while fully disconnected. While genuinely disconnected, `sendAudioFrame`/`sendAudioFrameJson` call `requireConnection()` (lines 632-636) which **throws** `Error('WebSocket not connected. Call connect() first.')`. The actual caller never reaches that throw, though: `StreamingBackendSTTProvider.processAudio()` guards with `if (!this.processing || !this.wsClient.isConnected()) { return; }` (`StreamingBackendSTTProvider.ts:226-228`) — so **audio frames captured during a disconnect window are silently dropped at the provider level** (no queue, no replay on reconnect). `maxQueueSize` is effectively dead configuration.
+**g. Buffering while disconnected — dropped, not queued.** The `WsBackpressureOptions` docblock (`SttWebSocketClient.ts:103-119`) claims: *"Without these limits, `audioQueue.length` and `ws.bufferedAmount` would grow unboundedly... We drop oldest frames once the queue exceeds `maxQueueSize`"* and `DEFAULT_MAX_QUEUE_SIZE = 200` is defined (line 140) — **but no `audioQueue` array field or any queue-length check exists anywhere in the class** (verified via full read + grep). The only backpressure mechanism actually wired up is `shouldDropForBufferedAmount()` (lines 936-940), which checks `ws.bufferedAmount >= bufferedAmountHighWatermark` (default `1 * 1024 * 1024` = 1 MiB, line 142) — this only fires while the socket is still `OPEN` and backed up, not while fully disconnected. While genuinely disconnected, `sendAudioFrame`/`sendAudioFrameJson` call `requireConnection()` (lines 632-636) which **throws** `Error('WebSocket not connected. Call connect() first.')`. The actual caller never reaches that throw, though: `StreamingBackendSTTProvider.processAudio()` guards with `if (!this.processing || !this.wsClient.isConnected()) { return; }` (`StreamingBackendSTTProvider.ts:226-228`) — so **audio frames captured during a disconnect window are silently dropped at the provider level** (no queue, no replay on reconnect). `maxQueueSize` is effectively dead configuration.
 
 **h. Finalize-on-stop — no wait for a tail-final response; socket closes almost immediately after `sendStop()`.** Full chain on `audio.stop()`:
 1. `useArcaAudio.stopAudio()` (`useArcaAudio.ts:331-390`) → `await pluginManager.destroy()`.
@@ -319,17 +319,17 @@ So: pure exponential doubling (1000ms, 2000ms, 4000ms, 8000ms, 16000ms, capped a
    ```
    — sends `{"type":"stop"}` and **returns immediately**; there is no `await` on any server acknowledgement, no listener registered for a "final" or "finalizing" status before proceeding.
 7. `StreamingBackendSTTProvider.destroy()` (`StreamingBackendSTTProvider.ts:250-264`), called right after in the same chain: `await this.stop()` (no-op, already stopped) → `this.wsClient.disconnect()` → `await this.session.closeSession()`.
-8. `SttV2WebSocketClient.disconnect()` (`SttV2WebSocketClient.ts:419-436`) is synchronous and immediate: `this.intentionalDisconnect = true; this.cancelReconnect(); ... ws.close(1000, 'Client disconnect');`.
+8. `SttWebSocketClient.disconnect()` (`SttWebSocketClient.ts:419-436`) is synchronous and immediate: `this.intentionalDisconnect = true; this.cancelReconnect(); ... ws.close(1000, 'Client disconnect');`.
 
 **Conclusion:** there is **no state machine gate, timeout, or Promise that waits for a tail-final `transcript` message (or a `status:'finalizing'`/`'closed'` message)** between `sendStop()` and the WS `close(1000, ...)` — they happen back-to-back across a couple of `await` boundaries in the same `destroy()` call chain. This is consistent with (and likely the client-side counterpart of) the background context's P0 gateway fix, commit `0040fe3e` ("relay tail final (gateway) + tolerate redis read-timeout") — since the client tears the socket down almost immediately after requesting `stop`, the server must synchronously flush/relay the tail final as part of handling the `stop` frame itself rather than relying on a later async relay that could race the client hangup.
 
 ---
 
-### 4. `StreamingSessionManager` relationship to `SttV2WebSocketClient`
+### 4. `StreamingSessionManager` relationship to `SttWebSocketClient`
 
-`StreamingSessionManager` (`packages/agentic-sdk-v2/src/core/StreamingSessionManager.ts`) does **not** own/wrap an `SttV2WebSocketClient` instance itself — it only owns the REST session lifecycle (`createSession` → `POST /audio/transcription-jobs/stream/session`, `refreshTicket`, `closeSession` → `DELETE .../session/{id}`) and computes the WS URL string via `getWebSocketUrl()`. The two are constructed as siblings by `PluginManager.buildStreamingTransport()` (`PluginManager.ts:757-772`) into one `streamingTransport` object `{ sessionManager, wsClient, pipelineId, consultationId }`, which flows through `TranscriptionPipelineConfig.stt.streamingTransport` → the `'stt'` stage factory (`TranscriptionPipeline.ts:161-215`) → `processor.setStreamingTransport(streamingTransport)` (`STTProcessor.ts:211`, interface at `STTProcessor.ts:338-340`) → `STTProcessor.initializeStreamingRemoteProvider()` (`STTProcessor.ts:713-757`), which constructs `new StreamingBackendSTTProvider({ sessionManager: transport.sessionManager, wsClient: transport.wsClient })` (`packages/stt/src/providers/StreamingBackendSTTProvider.ts:154-167`).
+`StreamingSessionManager` (`packages/agentic-sdk-v2/src/core/StreamingSessionManager.ts`) does **not** own/wrap an `SttWebSocketClient` instance itself — it only owns the REST session lifecycle (`createSession` → `POST /audio/transcription-jobs/stream/session`, `refreshTicket`, `closeSession` → `DELETE .../session/{id}`) and computes the WS URL string via `getWebSocketUrl()`. The two are constructed as siblings by `PluginManager.buildStreamingTransport()` (`PluginManager.ts:757-772`) into one `streamingTransport` object `{ sessionManager, wsClient, pipelineId, consultationId }`, which flows through `TranscriptionPipelineConfig.stt.streamingTransport` → the `'stt'` stage factory (`TranscriptionPipeline.ts:161-215`) → `processor.setStreamingTransport(streamingTransport)` (`STTProcessor.ts:211`, interface at `STTProcessor.ts:338-340`) → `STTProcessor.initializeStreamingRemoteProvider()` (`STTProcessor.ts:713-757`), which constructs `new StreamingBackendSTTProvider({ sessionManager: transport.sessionManager, wsClient: transport.wsClient })` (`packages/stt/src/providers/StreamingBackendSTTProvider.ts:154-167`).
 
-`StreamingBackendSTTProvider` (in the separate `@arcaai/stt` package, not `@arcaai/vox`) is the actual orchestrator that sequences both: `init()` (`StreamingBackendSTTProvider.ts:173-204`) calls `session.createSession(...)` then `session.getWebSocketUrl()` then `wsClient.connect(url)`; `destroy()` (lines 250-264) calls `stop()` → `wsClient.disconnect()` → `session.closeSession()`. `useArcaAudio.ts` never touches `StreamingSessionManager`/`SttV2WebSocketClient` directly — it only calls `pluginManager.setRuntimeOptions({pipelineId, consultationId, language})` (lines 80-84) before `pluginManager.initialize(track, audioContext)` (line 240); everything downstream is wired inside `PluginManager`/`TranscriptionPipeline`/`STTProcessor`/`StreamingBackendSTTProvider`.
+`StreamingBackendSTTProvider` (in the separate `@arcaai/stt` package, not `@arcaai/vox`) is the actual orchestrator that sequences both: `init()` (`StreamingBackendSTTProvider.ts:173-204`) calls `session.createSession(...)` then `session.getWebSocketUrl()` then `wsClient.connect(url)`; `destroy()` (lines 250-264) calls `stop()` → `wsClient.disconnect()` → `session.closeSession()`. `useArcaAudio.ts` never touches `StreamingSessionManager`/`SttWebSocketClient` directly — it only calls `pluginManager.setRuntimeOptions({pipelineId, consultationId, language})` (lines 80-84) before `pluginManager.initialize(track, audioContext)` (line 240); everything downstream is wired inside `PluginManager`/`TranscriptionPipeline`/`STTProcessor`/`StreamingBackendSTTProvider`.
 
 ---
 

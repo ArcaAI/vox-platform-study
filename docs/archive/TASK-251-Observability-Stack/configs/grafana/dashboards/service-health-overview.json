@@ -27,10 +27,10 @@
     {
       "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
       "id": 2,
-      "title": "STT-v2",
+      "title": "STT",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "targets": [{ "expr": "up{job=\"stt-v2\"}", "legendFormat": "" }],
+      "targets": [{ "expr": "up{job=\"stt\"}", "legendFormat": "" }],
       "fieldConfig": {
         "defaults": {
           "mappings": [

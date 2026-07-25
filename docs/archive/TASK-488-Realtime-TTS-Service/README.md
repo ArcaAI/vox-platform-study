@@ -1,4 +1,4 @@
-# TASK-488 — Realtime Text-to-Speech Service (`apps/tts-v2`)
+# TASK-488 — Realtime Text-to-Speech Service (`apps/tts`)
 
 | | |
 |---|---|
@@ -30,21 +30,21 @@
 1. `POST` synthesize endpoint streams audible audio for English and Malayalam text through the gateway, from BOTH a cloud provider (Azure) and a local provider, selected per request.
 2. TTFA SLOs met (see §5.8): cloud p50 ≤ 300 ms (en) / ≤ 400 ms (ml) measured at the FastAPI boundary.
 3. Provider failure before first byte fails over automatically to the fallback provider; mid-stream failures surface as errors (never an audible voice-switch seam).
-4. All tests green (`pnpm py:tts-v2:test`), lint/typecheck clean, CI jobs added, service registered end-to-end (dev-stack, Docker, k3s manifests, docs).
+4. All tests green (`pnpm py:tts:test`), lint/typecheck clean, CI jobs added, service registered end-to-end (dev-stack, Docker, k3s manifests, docs).
 
 ## 2. Current State Evaluation (codebase exploration, 2026-07-10)
 
 - **Genuinely greenfield.** A legacy TTS app existed (Azure Speech based, port 8863, gateway route family `/api/v1/speech/**`, MinIO bucket `generated-audio`) but its source was never committed to this repo's history; its config/proxy footprint was fully removed in `4e05f9fa` (2026-06-08). Port 8863 was reassigned to Guardrail. Only `.env.archive` retains its env shape. **No prior TTS design doc exists** to inherit.
 - **Port 8865 is free** (former FedL slot; verified repo-wide — only numeric coincidences in test fixture filenames match).
 - **Exemplars to mirror**:
-  - Provider abstraction: `apps/smr/src/smr_v2/providers/base.py` — `Protocol` + `ProviderRegistry`, providers registered lazily in `lifespan()` gated by per-provider `enabled` flags; per-provider pydantic configs with own `env_prefix`; per-provider circuit breakers/semaphores on `app.state`.
-  - Auth: `apps/smr/src/smr_v2/api/middleware/auth.py` (`ServiceAuthMiddleware` — `hmac.compare_digest`, empty-token dev bypass, `EXEMPT_PATHS`).
+  - Provider abstraction: `apps/smr/src/smr/providers/base.py` — `Protocol` + `ProviderRegistry`, providers registered lazily in `lifespan()` gated by per-provider `enabled` flags; per-provider pydantic configs with own `env_prefix`; per-provider circuit breakers/semaphores on `app.state`.
+  - Auth: `apps/smr/src/smr/api/middleware/auth.py` (`ServiceAuthMiddleware` — `hmac.compare_digest`, empty-token dev bypass, `EXEMPT_PATHS`).
   - Streaming proxy: `apps/api/src/modules/streaming/smr-proxy.controller.ts` — `getConfigValue('SMR_URL')`, `X-Service-Token` via `SecretsService.getSecretSync`, SSE passthrough with `no-transform`/`X-Accel-Buffering: no`/`flushHeaders()`, connect-phase-only retry for non-idempotent POSTs.
   - Config keys: `packages/domains/src/interfaces/IAppConfig.ts` + `packages/applications/.../config.service.ts::loadBaseConfig()` (no `TTS_*` today).
-- **Azure credentials already exist**: `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` are live in `.env.dev`/k3s secrets (used by stt-v2 for ASR). The same Azure Speech resource serves TTS — reuse via alias fallback rather than minting a new credential pair.
+- **Azure credentials already exist**: `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` are live in `.env.dev`/k3s secrets (used by stt for ASR). The same Azure Speech resource serves TTS — reuse via alias fallback rather than minting a new credential pair.
 - **Python services do NOT run in local Docker Compose** — only infra does. Local dev is `scripts/dev-service.sh` under conda `arcaenv`. No compose changes needed.
 - **SDK is capture-only** (`packages/room` / `@arcaai/vox` have no playback pipeline; `AudioTrackRenderer.tsx` renders MediaStreamTracks, not synthesized chunks). Browser playback (`useTtsPlayback` AudioWorklet ring-buffer hook) is a **follow-up ticket**.
-- **STT-v2 bilingual precedent**: `TASK-018-Language-Code-Switching` and `_MALAYALAM_FILLER_FORMS` in `apps/stt-v2/src/stt_v2/streaming/inference.py` — conceptual precedent for threading language through requests; no TTS-side reuse.
+- **STT bilingual precedent**: `TASK-018-Language-Code-Switching` and `_MALAYALAM_FILLER_FORMS` in `apps/stt/src/stt/streaming/inference.py` — conceptual precedent for threading language through requests; no TTS-side reuse.
 
 ## 3. Research Findings — Engines & Providers (verified 2026-07-10)
 
@@ -89,8 +89,8 @@ Key Azure asymmetry to design around: for code-switched text, we feed Malayalam-
 
 | # | Decision | Rationale / alternatives rejected |
 |---|---|---|
-| DD-1 | New service **`apps/tts-v2`**, package `tts_v2` (pyproject/uv name `tts-v2`, importable `tts_v2`), src-layout `src/tts_v2/`, **port 8865**, in-package tests `src/tts_v2/tests/` | Directory `apps/tts-v2` per product-owner decision (2026-07-11); package + pnpm-script naming mirrors `stt_v2`/`smr_v2` (`dev:tts-v2`, `py:tts-v2:*`). Multi-provider shape mirrors SMR |
-| DD-2 | Env prefix **`TTS_`** (root `Settings`), per-provider sub-configs `TTS_AZURE_`, `TTS_KOKORO_`, `TTS_PARLER_` | SMR's prefixed style (rule 06); avoids bare-name collisions. `TTS_AZURE_KEY`/`TTS_AZURE_REGION` fall back to existing `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` via pydantic `AliasChoices` — same Azure resource already serves stt-v2 |
+| DD-1 | New service **`apps/tts`**, package `tts` (pyproject/uv name `tts`, importable `tts`), src-layout `src/tts/`, **port 8865**, in-package tests `src/tts/tests/` | Directory `apps/tts` per product-owner decision (2026-07-11); package + pnpm-script naming mirrors `stt`/`smr` (`dev:tts`, `py:tts:*`). Multi-provider shape mirrors SMR |
+| DD-2 | Env prefix **`TTS_`** (root `Settings`), per-provider sub-configs `TTS_AZURE_`, `TTS_KOKORO_`, `TTS_PARLER_` | SMR's prefixed style (rule 06); avoids bare-name collisions. `TTS_AZURE_KEY`/`TTS_AZURE_REGION` fall back to existing `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION` via pydantic `AliasChoices` — same Azure resource already serves stt |
 | DD-3 | Service API is **OpenAI-compatible**: `POST /api/v1/audio/speech` (+ `GET /api/v1/voices`, health, metrics) | De-facto standard; any OpenAI SDK works against the service directly for internal callers. `stream_format=audio` (chunked bytes, default) and `=sse` (base64 delta events) |
 | DD-4 | Gateway surface: **`src/modules/speech/`** — `SpeechProxyController` (`@Controller('speech')`) → `POST /api/v1/speech/synthesize`, `GET /api/v1/speech/voices` | Continues the TASK-210 standardized `/api/v1/speech/**` route family of the old service; own feature module per controller conventions. Mirrors `SmrProxyController` (config key, token injection, streaming passthrough, connect-phase-only retry) |
 | DD-5 | Day-1 providers: **`azure`** (en+ml, realtime, primary), **`kokoro`** (local en), **`indic_parler`** (local ml + Indian en); **`sarvam` added right after Azure** (2026-07-11 decision) | Covers the full R2×R3 matrix with clean licenses. **Sarvam Bulbul promoted from phase-2 to a day-1-designed provider** — best ml code-switch, India residency, VPC/on-prem for PHI; Google Chirp 3 HD remains a later option; IndicF5 audited **NO-GO** (TASK-494 — fine-tune of a CC-BY-NC base) |
@@ -147,14 +147,14 @@ Env: py3.11, torch 2.13 (MPS avail), transformers 4.46.1 (auto-pinned by parler-
 
 **Provisional exit lean:** Parler is good enough to ship as the self-hosted ml engine *for the read-aloud (pre-generatable / cacheable) use case* even at CPU RTF; keep it `enabled=false` until GPU + human quality check confirm. Final posture pending the three open items.
 
-### Phase 1 — Service scaffold (`apps/tts-v2`)
+### Phase 1 — Service scaffold (`apps/tts`)
 TDD list (write failing → implement → green):
 - `test_config.py`: defaults (port 8865), `TTS_` prefix, Azure alias fallback to `AZURE_SPEECH_KEY`, routing-chain parsing.
 - `test_auth_middleware.py`: 401 without/with-wrong token, pass with token, dev bypass on empty, exempt paths (mirror SMR's tests).
 - `test_health.py`: `/api/v1/health`, `/live`, `/ready` (ready = at least one provider registered).
-Files: `pyproject.toml` (deps: fastapi, uvicorn[standard], pydantic-settings, structlog, prometheus-fastapi-instrumentator, httpx, pysbd, azure-cognitiveservices-speech, lameenc; extras `[local]`: onnxruntime+kokoro-onnx, torch+transformers+parler-tts; `[test]`), `src/tts_v2/{__init__,main}.py`, `core/{config,logging}.py`, `api/middleware/auth.py`, `api/endpoints/health.py`, `tests/`.
-Wiring: root `pyproject.toml` uv-workspace member + `uv lock`; root `package.json` scripts (`dev:tts-v2[,watch]`, `py:tts-v2:{test,test:unit,test:cov,lint,format,typecheck}` mirroring `py:smr-v2:*`); `scripts/dev-service.sh` `tts)` case + `scripts/dev-stack.sh` arrays/`port_for()`.
-**Gate**: `pnpm py:tts-v2:test` + `py:tts-v2:lint` + `py:tts-v2:typecheck` green; `pnpm dev:tts-v2` serves health.
+Files: `pyproject.toml` (deps: fastapi, uvicorn[standard], pydantic-settings, structlog, prometheus-fastapi-instrumentator, httpx, pysbd, azure-cognitiveservices-speech, lameenc; extras `[local]`: onnxruntime+kokoro-onnx, torch+transformers+parler-tts; `[test]`), `src/tts/{__init__,main}.py`, `core/{config,logging}.py`, `api/middleware/auth.py`, `api/endpoints/health.py`, `tests/`.
+Wiring: root `pyproject.toml` uv-workspace member + `uv lock`; root `package.json` scripts (`dev:tts[,watch]`, `py:tts:{test,test:unit,test:cov,lint,format,typecheck}` mirroring `py:smr:*`); `scripts/dev-service.sh` `tts)` case + `scripts/dev-stack.sh` arrays/`port_for()`.
+**Gate**: `pnpm py:tts:test` + `py:tts:lint` + `py:tts:typecheck` green; `pnpm dev:tts` serves health.
 
 ### Phase 2 — Provider core, router, endpoints (provider-agnostic, all against a `FakeEngine`)
 TDD list:
@@ -191,11 +191,11 @@ Files: `packages/domains/src/interfaces/IAppConfig.ts` (+`TTS_URL`,`TTS_PORT`), 
 **Gate**: `pnpm --filter @arcaai/applications build test`, `pnpm build:api`, `pnpm test:unit` green; manual: browser-side `curl` through gateway streams audio.
 
 ### Phase 6 — CI, deploy, docs
-- CI: `.gitlab/ci/rules.yml` `.rules-tts` anchor (copy `.rules-smr`); `lint-python` gets `ruff check apps/tts-v2/src/`; `test.yml` `test-tts` job (copy `test-smr`; hermetic — no model downloads/Azure calls).
-- Docker: `apps/tts-v2/Dockerfile` (two-stage from `hope-python-base`, `uv sync --frozen --package tts-v2 --no-dev` **without** `[local]` extra by default, port 8865, non-root, healthcheck) **plus** add `COPY apps/tts-v2/pyproject.toml ./apps/tts-v2/` to the builder stage of ALL other services' Dockerfiles (shared-lock resolution requires every member manifest).
+- CI: `.gitlab/ci/rules.yml` `.rules-tts` anchor (copy `.rules-smr`); `lint-python` gets `ruff check apps/tts/src/`; `test.yml` `test-tts` job (copy `test-smr`; hermetic — no model downloads/Azure calls).
+- Docker: `apps/tts/Dockerfile` (two-stage from `hope-python-base`, `uv sync --frozen --package tts --no-dev` **without** `[local]` extra by default, port 8865, non-root, healthcheck) **plus** add `COPY apps/tts/pyproject.toml ./apps/tts/` to the builder stage of ALL other services' Dockerfiles (shared-lock resolution requires every member manifest).
 - k3s: `deployment/k3s/base/tts.yaml` (mirror `smr.yaml`; probes on `/api/v1/health/live`), register in `kustomization.yaml`, add `TTS_PORT`/`TTS_URL` + provider knobs to `configmap.yaml`, `TTS_SERVICE_TOKEN` to secret templates.
 - Env: `.env.dev`, `.env.example` (+ `.env.production` reference), `turbo.json#globalEnv`.
-- Docs: `docs/architecture/overview.md` (ports table + Mermaid nodes), `.claude/rules/00-project-context.md` + `06-python-services.md` (service tables, ports line, `py:*` commands, test-location table), `CLAUDE.md` map, `scripts/README.md`, `tests/README.md`, `apps/tts-v2/README.md`, `docs/traceability-matrix.md`.
+- Docs: `docs/architecture/overview.md` (ports table + Mermaid nodes), `.claude/rules/00-project-context.md` + `06-python-services.md` (service tables, ports line, `py:*` commands, test-location table), `CLAUDE.md` map, `scripts/README.md`, `tests/README.md`, `apps/tts/README.md`, `docs/traceability-matrix.md`.
 - This README: Implementation Summary + evidence (test/build/lint output pasted), status → `Review`/`Completed`.
 **Gate**: full completion checklist (rule 01) with pasted evidence.
 
@@ -234,9 +234,9 @@ Phase 0: ~1 d · Phase 1: ~1 d · Phase 2: ~1.5 d · Phase 3: ~1 d · Phase 4: ~
 
 ## 8. Resolved Decisions (2026-07-11, product owner)
 
-1. **Q1 → Confirmed.** Ticket **TASK-488**; service directory **`apps/tts-v2`** (package `tts_v2`), gateway route family `/api/v1/speech/*`.
+1. **Q1 → Confirmed.** Ticket **TASK-488**; service directory **`apps/tts`** (package `tts`), gateway route family `/api/v1/speech/*`.
 2. **Q2 → GPU exists in the k3s cluster** (local Malayalam realtime runs there); **no GPU on the dev MacBook (M3 Max)** — local dev/spike is MPS/CPU, directional only. Local engines ship `enabled=false` by default and are enabled per-deployment where a GPU is present. Kokoro (en) stays CPU-viable everywhere.
-3. **Q3 → Azure region stays `eastus`** for now (reuse the stt-v2 `AZURE_SPEECH_REGION`); revisit Central India for DPDP data-residency later.
+3. **Q3 → Azure region stays `eastus`** for now (reuse the stt `AZURE_SPEECH_REGION`); revisit Central India for DPDP data-residency later.
 4. **Q4 → Yes — onboard Sarvam AI (Bulbul) as a second cloud provider.** Promoted to a day-1-designed provider slot, implemented immediately after Azure (DD-5 updated). Commercial + DPDP evaluation still required before prod.
 5. **Q5 → First use case: summary read-aloud** (SMR output → speech). This **prioritizes the WS-duplex streaming endpoint and the SDK `useTtsPlayback` playback hook** — both moved up in §6 from "later" to "immediately after the core service."
 
@@ -244,34 +244,34 @@ Phase 0: ~1 d · Phase 1: ~1 d · Phase 2: ~1.5 d · Phase 3: ~1 d · Phase 4: ~
 
 ### Phase 1 — Service scaffold ✅ (2026-07-11)
 
-Created `apps/tts-v2` (package `tts_v2`, src-layout), mirroring SMR conventions:
+Created `apps/tts` (package `tts`, src-layout), mirroring SMR conventions:
 
-- `pyproject.toml` — name `tts-v2`, base deps (fastapi, uvicorn, pydantic(-settings), structlog, httpx, sse-starlette, prometheus, pysbd, azure-cognitiveservices-speech) + `[local]` extra (torch/transformers/kokoro/soundfile/soxr/…; `parler-tts` deferred to the GPU image since it installs from git) + dev/test/lint extras; ruff/black/mypy/pytest config.
-- `src/tts_v2/`: `main.py` (`create_app()` + `lifespan`), `core/{config,logging,dependencies}.py`, `api/middleware/auth.py` (`ServiceAuthMiddleware`), `api/endpoints/health.py` (`/health`, `/health/live`, `/health/ready`), `py.typed`.
+- `pyproject.toml` — name `tts`, base deps (fastapi, uvicorn, pydantic(-settings), structlog, httpx, sse-starlette, prometheus, pysbd, azure-cognitiveservices-speech) + `[local]` extra (torch/transformers/kokoro/soundfile/soxr/…; `parler-tts` deferred to the GPU image since it installs from git) + dev/test/lint extras; ruff/black/mypy/pytest config.
+- `src/tts/`: `main.py` (`create_app()` + `lifespan`), `core/{config,logging,dependencies}.py`, `api/middleware/auth.py` (`ServiceAuthMiddleware`), `api/endpoints/health.py` (`/health`, `/health/live`, `/health/ready`), `py.typed`.
 - `config.py`: root `Settings` (`env_prefix="TTS_"`, port 8865, routing chains, `max_input_chars=4096`, `sample_rate=24000`) + provider sub-configs `AzureSpeechConfig`/`KokoroConfig`/`IndicParlerConfig`. **Azure credential falls back to the shared `AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION`** via `AliasChoices`. Routing chains use `NoDecode` + a CSV validator so `TTS_ROUTING_EN=azure,kokoro` parses (the list-from-env JSON-decode gotcha).
 - Tests: `tests/unit/{test_config,test_auth_middleware,test_health}.py` + `conftest.py` (httpx ASGITransport).
 
-Root wiring: added `apps/tts-v2` to `[tool.uv.workspace].members`; `package.json` `dev:tts-v2[:watch]` + `py:tts-v2:{test,test:unit,test:cov,lint,format,typecheck}`; `scripts/dev-service.sh` `tts)` case (port 8865, `uvicorn tts_v2.main:app`); `scripts/dev-stack.sh` `ALL_SERVICES` + `port_for`.
+Root wiring: added `apps/tts` to `[tool.uv.workspace].members`; `package.json` `dev:tts[:watch]` + `py:tts:{test,test:unit,test:cov,lint,format,typecheck}`; `scripts/dev-service.sh` `tts)` case (port 8865, `uvicorn tts.main:app`); `scripts/dev-stack.sh` `ALL_SERVICES` + `port_for`.
 
-**Evidence** (run in an isolated py3.13 venv — this MacBook has no `arcaenv`; canonical run is `pnpm py:tts-v2:test` under conda in CI):
+**Evidence** (run in an isolated py3.13 venv — this MacBook has no `arcaenv`; canonical run is `pnpm py:tts:test` under conda in CI):
 
 ```
-$ pytest src/tts_v2/tests -q
+$ pytest src/tts/tests -q
 21 passed in 0.25s   (coverage 90%: misses are the not-yet-used deps accessor + lifespan/logging paths)
 
-$ ruff check apps/tts-v2/src
+$ ruff check apps/tts/src
 All checks passed!
 
-$ uvicorn tts_v2.main:app --port 8899   # real-server smoke
-GET /api/v1/health        -> 200 {"status":"healthy","service":"tts-v2","version":"0.1.0",...}
+$ uvicorn tts.main:app --port 8899   # real-server smoke
+GET /api/v1/health        -> 200 {"status":"healthy","service":"tts","version":"0.1.0",...}
 GET /api/v1/health/live   -> 200
 GET /api/v1/health/ready  -> 200
 GET /metrics              -> 200
 GET /api/v1/docs          -> 200
-(structured JSON lifespan logs: tts_v2.starting / started / shutdown_complete; clean shutdown)
+(structured JSON lifespan logs: tts.starting / started / shutdown_complete; clean shutdown)
 ```
 
-**Deferred (not blocking Phase 1):** `uv lock` was **not** re-run — adding the workspace member requires a lockfile refresh in a network-enabled env, and tts-v2's `[local]` extra (torch/transformers) may interact with the existing stt-v2 transformers-version conflict noted in the root `pyproject.toml`. Run `uv lock` and resolve any conflict during **Phase 6** (before the Docker/CI `uv sync --frozen` path). Local dev (conda `arcaenv` + uvicorn against `src`) does not need it.
+**Deferred (not blocking Phase 1):** `uv lock` was **not** re-run — adding the workspace member requires a lockfile refresh in a network-enabled env, and tts's `[local]` extra (torch/transformers) may interact with the existing stt transformers-version conflict noted in the root `pyproject.toml`. Run `uv lock` and resolve any conflict during **Phase 6** (before the Docker/CI `uv sync --frozen` path). Local dev (conda `arcaenv` + uvicorn against `src`) does not need it.
 
 ### Phase 2 — Provider core, router, endpoints ✅ (2026-07-11)
 
@@ -288,8 +288,8 @@ Built the provider-agnostic synthesis stack, all TDD against a `FakeEngine` (no 
 **Evidence:**
 
 ```
-pytest src/tts_v2/tests -q   → 58 passed (94% cov)   [21 Phase 1 + 37 Phase 2]
-ruff check apps/tts-v2/src   → All checks passed!
+pytest src/tts/tests -q   → 58 passed (94% cov)   [21 Phase 1 + 37 Phase 2]
+ruff check apps/tts/src   → All checks passed!
 uvicorn smoke (no providers enabled):
   GET  /api/v1/voices        → 200  4 voices (en/ml × f/m) with provider bindings
   POST /api/v1/audio/speech  → 503  (router AllProvidersUnavailable)
@@ -308,8 +308,8 @@ Router behaviors covered by tests: first-in-chain selection, ml binding/locale r
 **Evidence:**
 
 ```
-pytest src/tts_v2/tests -q   → 68 passed, 1 deselected (live e2e)   93% cov
-ruff check apps/tts-v2/src   → All checks passed!
+pytest src/tts/tests -q   → 68 passed, 1 deselected (live e2e)   93% cov
+ruff check apps/tts/src   → All checks passed!
 ```
 
 Covered: chunk emission, voice + format mapping (pcm/wav/mp3), SSML-for-speed vs plain-text, `Canceled`→error, `health()` true/false, `prewarm()` opens a connection, `TTSEngine` conformance, and an **end-to-end** `POST /api/v1/audio/speech` → router → Azure (fake SDK) → bytes with correct voice-binding resolution.
@@ -325,8 +325,8 @@ Covered: chunk emission, voice + format mapping (pcm/wav/mp3), SSML-for-speed vs
 **Evidence:**
 
 ```
-pytest src/tts_v2/tests -q   → 88 passed, 1 deselected   89% cov
-ruff check apps/tts-v2/src   → All checks passed!
+pytest src/tts/tests -q   → 88 passed, 1 deselected   89% cov
+ruff check apps/tts/src   → All checks passed!
 
 degrade-not-die smoke (TTS_KOKORO_ENABLED=true TTS_PARLER_ENABLED=true, ML libs absent):
   → server booted; logged local_provider_load_failed ("No module named 'kokoro' / 'torch'");
@@ -359,19 +359,19 @@ Controller tests cover: verbatim body proxy, `X-Service-Token` injection (+ fail
 
 ### Phase 6 — CI, Docker, k3s, docs, uv.lock ✅ (2026-07-11)
 
-- **CI**: `.gitlab/ci/rules.yml` `.rules-tts` anchor + `apps/tts-v2` added to `.rules-any-python`; `validate.yml` lint-python gains `ruff check apps/tts-v2/src/`; `test.yml` `test-tts` job (hermetic — no DB/Redis, `pip install .[test]`, `junit-tts.xml`, `.rules-tts`).
-- **Docker**: `apps/tts-v2/Dockerfile` (2-stage from `hope-python-base`, `uv sync --frozen --package tts-v2 --no-dev`, non-root, healthcheck on :8865 — base/cloud image; a `--extra local` GPU variant with git-installed parler-tts is a follow-up). Added `COPY apps/tts-v2/pyproject.toml` to the builder stage of all four other Python Dockerfiles (smr/guardrail/nlp/harness) for shared-lock resolution.
-- **k3s**: `deployment/k3s/base/tts-v2.yaml` (Deployment + Service `hope-tts`, probes on `/api/v1/health/live`, Azure reuses the shared secret, local engines off), registered in `kustomization.yaml`; `configmap.yaml` gains `TTS_PORT`/`TTS_URL`.
+- **CI**: `.gitlab/ci/rules.yml` `.rules-tts` anchor + `apps/tts` added to `.rules-any-python`; `validate.yml` lint-python gains `ruff check apps/tts/src/`; `test.yml` `test-tts` job (hermetic — no DB/Redis, `pip install .[test]`, `junit-tts.xml`, `.rules-tts`).
+- **Docker**: `apps/tts/Dockerfile` (2-stage from `hope-python-base`, `uv sync --frozen --package tts --no-dev`, non-root, healthcheck on :8865 — base/cloud image; a `--extra local` GPU variant with git-installed parler-tts is a follow-up). Added `COPY apps/tts/pyproject.toml` to the builder stage of all four other Python Dockerfiles (smr/guardrail/nlp/harness) for shared-lock resolution.
+- **k3s**: `deployment/k3s/base/tts.yaml` (Deployment + Service `hope-tts`, probes on `/api/v1/health/live`, Azure reuses the shared secret, local engines off), registered in `kustomization.yaml`; `configmap.yaml` gains `TTS_PORT`/`TTS_URL`.
 - **Env / turbo**: `.env.dev` + `.env.example` TTS block; `turbo.json#globalEnv` += `TTS_SERVICE_TOKEN` / `TTS_AZURE_ENABLED` / `TTS_KOKORO_ENABLED` / `TTS_PARLER_ENABLED` (`TTS_URL`/`TTS_PORT` added in Phase 5).
-- **Docs**: `docs/architecture/overview.md` (service-table row + ports + Mermaid node), `.claude/rules/00` (monorepo map + ports line), `.claude/rules/06` (services table + `py:tts-v2:*` commands).
-- **`uv lock`** (the Phase-1 deferral): re-run — resolved **480 packages** incl. `tts-v2` + kokoro/pysbd/soxr/lameenc, **no conflict** with the stt-v2 transformers pins. The `[test]` extra also gained numpy/soxr/lameenc so the hermetic CI suite can import the audio utils.
+- **Docs**: `docs/architecture/overview.md` (service-table row + ports + Mermaid node), `.claude/rules/00` (monorepo map + ports line), `.claude/rules/06` (services table + `py:tts:*` commands).
+- **`uv lock`** (the Phase-1 deferral): re-run — resolved **480 packages** incl. `tts` + kokoro/pysbd/soxr/lameenc, **no conflict** with the stt transformers pins. The `[test]` extra also gained numpy/soxr/lameenc so the hermetic CI suite can import the audio utils.
 
 **Evidence:**
 
 ```
-uv lock                    → Resolved 480 packages; Added tts-v2 v0.1.0 (+ kokoro/pysbd/soxr/lameenc); no conflicts
-YAML parse (k3s + CI)      → tts-v2.yaml / kustomization / configmap OK; rules/validate/test OK (!reference-aware)
-pytest src/tts_v2/tests    → 88 passed (unchanged after the [test] extra update)
+uv lock                    → Resolved 480 packages; Added tts v0.1.0 (+ kokoro/pysbd/soxr/lameenc); no conflicts
+YAML parse (k3s + CI)      → tts.yaml / kustomization / configmap OK; rules/validate/test OK (!reference-aware)
+pytest src/tts/tests    → 88 passed (unchanged after the [test] extra update)
 ```
 
 **Definition-of-done status.** All six phases are implemented and verified to the extent runnable on this machine (Python suites 88/88, TS `build:api` 8/8 + 13 gateway/contract tests, `uv lock`, YAML parse). **Not exercised here** (needs infra/creds): Docker image build, k3s apply, live API e2e, real Azure synthesis (blocked on `AZURE_SPEECH_KEY`), real-model Kokoro/Parler on a GPU, and the **human audio-quality gate** from Phase 0. Follow-up tickets remain out of scope: SDK `useTtsPlayback`, WS duplex, and the Sarvam provider (§6).
@@ -381,10 +381,10 @@ pytest src/tts_v2/tests    → 88 passed (unchanged after the [test] extra updat
 | Date | Change | Author |
 |---|---|---|
 | 2026-07-10 | Ticket created; Phase 2 exploration + deep research completed (3 parallel research tracks: codebase archaeology/patterns, engine+licensing landscape, streaming architecture); full implementation plan written; status `Pending`, awaiting plan approval | Claude (Fable 5) + Tap Huynh |
-| 2026-07-11 | Plan approved. Decisions resolved (§8): dir `apps/tts-v2`/pkg `tts_v2`; k3s has GPU (dev MacBook does not); Azure stays `eastus`; Sarvam promoted to a day-1-designed provider after Azure; first use case = summary read-aloud → WS-duplex + SDK playback prioritized. Phase 0 spike: clinical test strings authored, Azure spike script written (blocked locally on placeholder credentials), local Malayalam (Indic Parler-TTS 8/8 incl. code-switch) + English (Kokoro) spike run on M3 Max CPU — findings + wavs recorded (§Phase 0 Results); 3 findings folded into plan (gated weights, 44.1kHz resample, MPS OOM) | Claude (Fable 5) + Tap Huynh |
-| 2026-07-11 | **Phase 1 scaffold complete** (§9): `apps/tts-v2`/`tts_v2` created (config + `ServiceAuthMiddleware` + health + `create_app`/lifespan), root wiring (uv workspace member, `package.json` scripts, `dev-service.sh`/`dev-stack.sh`). Evidence: 21/21 pytest, ruff clean, real uvicorn serves health/metrics/docs. `uv lock` deferred to Phase 6 | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | Plan approved. Decisions resolved (§8): dir `apps/tts`/pkg `tts`; k3s has GPU (dev MacBook does not); Azure stays `eastus`; Sarvam promoted to a day-1-designed provider after Azure; first use case = summary read-aloud → WS-duplex + SDK playback prioritized. Phase 0 spike: clinical test strings authored, Azure spike script written (blocked locally on placeholder credentials), local Malayalam (Indic Parler-TTS 8/8 incl. code-switch) + English (Kokoro) spike run on M3 Max CPU — findings + wavs recorded (§Phase 0 Results); 3 findings folded into plan (gated weights, 44.1kHz resample, MPS OOM) | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | **Phase 1 scaffold complete** (§9): `apps/tts`/`tts` created (config + `ServiceAuthMiddleware` + health + `create_app`/lifespan), root wiring (uv workspace member, `package.json` scripts, `dev-service.sh`/`dev-stack.sh`). Evidence: 21/21 pytest, ruff clean, real uvicorn serves health/metrics/docs. `uv lock` deferred to Phase 6 | Claude (Fable 5) + Tap Huynh |
 | 2026-07-11 | **Phase 2 complete** (§9): provider `Protocol`+registry, voice catalog, sentence chunking (en pysbd / ml fallback), `TTSRouter` (fallback chains, circuit breakers, failover-only-before-first-byte, sentence adapter), Prometheus TTFA/RTF/failover metrics, OpenAI-compatible `POST /api/v1/audio/speech` (batch/audio/sse) + `GET /api/v1/voices`; readiness gates on providers. TDD against `FakeEngine`. Evidence: 58/58 pytest, ruff clean, uvicorn smoke (voices 200, synth 503 w/o providers, bad-voice 404) | Claude (Fable 5) + Tap Huynh |
 | 2026-07-11 | **Phase 3 complete** (§9): `AzureSpeechProvider` (streaming `AudioDataStream` reads via `asyncio.to_thread`, pcm/wav/mp3 format mapping, SSML speed, prewarm, `Canceled`→failover), lazy SDK import + injected fake for hermetic CI, lifespan registration gated by `TTS_AZURE_ENABLED`, live e2e gated by `TTS_AZURE_LIVE_TEST`. Evidence: 68/68 pytest (incl. endpoint→router→Azure e2e), ruff clean | Claude (Fable 5) + Tap Huynh |
 | 2026-07-11 | **Phase 4 complete** (§9): local engines — `core/audio.py` (soxr resample 44.1k→24k, pcm16/wav/mp3), `KokoroProvider` (en) + `IndicParlerProvider` (ml, internal sentence loop), `warm_and_register` (degrade-not-die), `tts_model_loaded` gauge, lifespan registration gated by `TTS_KOKORO_ENABLED`/`TTS_PARLER_ENABLED`; ML libs in `[local]` extra, lazily imported. Evidence: 88/88 pytest, ruff clean, degrade-not-die smoke (booted with providers=[] when libs absent), en→Kokoro / ml→Parler e2e | Claude (Fable 5) + Tap Huynh |
 | 2026-07-11 | **Phase 5 complete** (§9): NestJS gateway `SpeechProxyController` (`/api/v1/speech/synthesize` streaming + `/voices`; mirrors `SmrProxyController` — `IConfigService.getConfigValue('TTS_URL')`, `X-Service-Token`, connect-phase-only retry, PHI-safe generic errors, `@Authorize()`), `IAppConfig` + `config.service` `TTS_URL`/`TTS_PORT`, `turbo.json#globalEnv`, TTS contract schemas + test, e2e auth-gating spec. Evidence: `build:api` 8/8, 13 speech+contract vitest, domains 1300, config.service 36 | Claude (Fable 5) + Tap Huynh |
-| 2026-07-11 | **Phase 6 complete** (§9) → status **Review**: CI (`.rules-tts`, ruff lint, hermetic `test-tts`), `apps/tts-v2/Dockerfile` + cross-COPY into the 4 other Python Dockerfiles, k3s `tts-v2.yaml` + kustomization + configmap, `.env.dev`/`.env.example`/`turbo.json` vars, docs (overview + rules 00/06), and the deferred **`uv lock`** (480 pkgs, no conflict). Evidence: uv lock clean, k3s+CI YAML parse, 88/88 pytest. Infra/creds-gated items (Docker build, k3s apply, live e2e, Azure synth, GPU, human audio gate) remain | Claude (Fable 5) + Tap Huynh |
+| 2026-07-11 | **Phase 6 complete** (§9) → status **Review**: CI (`.rules-tts`, ruff lint, hermetic `test-tts`), `apps/tts/Dockerfile` + cross-COPY into the 4 other Python Dockerfiles, k3s `tts.yaml` + kustomization + configmap, `.env.dev`/`.env.example`/`turbo.json` vars, docs (overview + rules 00/06), and the deferred **`uv lock`** (480 pkgs, no conflict). Evidence: uv lock clean, k3s+CI YAML parse, 88/88 pytest. Infra/creds-gated items (Docker build, k3s apply, live e2e, Azure synth, GPU, human audio gate) remain | Claude (Fable 5) + Tap Huynh |

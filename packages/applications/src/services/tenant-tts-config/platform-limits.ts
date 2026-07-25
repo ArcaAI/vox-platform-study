@@ -11,7 +11,7 @@
 /** Providers that accept a BYO credential (D1). Local engines have no key. */
 export const BYO_PROVIDERS = ['azure', 'sarvam'] as const;
 
-/** Decrypted per-tenant provider credentials, injected by the gateway into tts-v2. */
+/** Decrypted per-tenant provider credentials, injected by the gateway into tts. */
 export type TtsProviderOverrides = Record<string, { api_key: string; region?: string; base_url?: string }>;
 
 /**
@@ -48,7 +48,7 @@ export interface TtsSpecInput {
   sarvamPublicApiAllowed?: boolean | null;
 }
 
-/** Fully-resolved spec — every field concrete, ready to inject into tts-v2. */
+/** Fully-resolved spec — every field concrete, ready to inject into tts. */
 export interface EffectiveTtsConfig {
   routingEn: string[];
   routingMl: string[];

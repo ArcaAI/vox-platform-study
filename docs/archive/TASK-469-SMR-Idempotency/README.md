@@ -36,16 +36,16 @@ So the **cross-process** re-invoke path (worker dies after SMR ran but before th
 
 | File | Change |
 |---|---|
-| `apps/smr/src/smr_v2/models/requests.py` | Add an idempotency field to `GenerateRequest` ([:21]) (and/or read the `Idempotency-Key` header in the endpoint) |
-| `apps/smr/src/smr_v2/api/endpoints/generate.py` | Dedup in `generate` ([:114]) using SMR's existing Redis (`get_redis` [dependencies.py:35] / `app.state.redis` [main.py:41-45]): on a key HIT return the cached `GenerateResponse` WITHOUT invoking the provider; on success CACHE it (`smr:idem:{key}`, bounded TTL) |
-| `apps/smr/src/smr_v2/tests/unit/test_generate_endpoint_e1.py` (or a new `test_generate_idempotency.py`) | RED-first: same key twice → provider invoked once, second call returns the cached response |
+| `apps/smr/src/smr/models/requests.py` | Add an idempotency field to `GenerateRequest` ([:21]) (and/or read the `Idempotency-Key` header in the endpoint) |
+| `apps/smr/src/smr/api/endpoints/generate.py` | Dedup in `generate` ([:114]) using SMR's existing Redis (`get_redis` [dependencies.py:35] / `app.state.redis` [main.py:41-45]): on a key HIT return the cached `GenerateResponse` WITHOUT invoking the provider; on success CACHE it (`smr:idem:{key}`, bounded TTL) |
+| `apps/smr/src/smr/tests/unit/test_generate_endpoint_e1.py` (or a new `test_generate_idempotency.py`) | RED-first: same key twice → provider invoked once, second call returns the cached response |
 
 STOP-and-report before touching: `apps/harness/src/harness/temporal/workflows.py` (any edit — replay gate), the SMR provider/registry/rate-limit internals, `apps/api` (TASK-466's escalation endpoint + WORM dedup), `turbo.json`/barrels, or the streaming SSE `/generate` path (this ticket is the **synchronous** `/generate` only). Anything outside the manifest → STOP.
 
 ## Requirement Analysis
 
 ### C1-04 (Med) — a worker crash after SMR ran re-invokes a second billable generation
-`generate()` POSTs `/api/v1/generate` with a body of `{prompt, stream:false, …}` and **no idempotency field** ([smr_client.py:100-117](apps/harness/src/harness/services/smr_client.py)). SMR's receiver ([generate.py:114-128](apps/smr/src/smr_v2/api/endpoints/generate.py)) has no dedup — every POST runs the provider and bills. TASK-458 closed the two *observable* re-send paths (governor + activity retry), but a bare worker **crash** mid-activity leaves no exception to intercept: Temporal replays the `generate` activity on recovery, the harness re-POSTs the same prompt, and — with no shared idempotency key and no receiver dedup — SMR **generates and bills a second time**, producing a divergent draft. The durable fix is an idempotency key the sender sets deterministically (so a replayed activity reuses it) and the receiver honors (so a duplicate returns the first result).
+`generate()` POSTs `/api/v1/generate` with a body of `{prompt, stream:false, …}` and **no idempotency field** ([smr_client.py:100-117](apps/harness/src/harness/services/smr_client.py)). SMR's receiver ([generate.py:114-128](apps/smr/src/smr/api/endpoints/generate.py)) has no dedup — every POST runs the provider and bills. TASK-458 closed the two *observable* re-send paths (governor + activity retry), but a bare worker **crash** mid-activity leaves no exception to intercept: Temporal replays the `generate` activity on recovery, the harness re-POSTs the same prompt, and — with no shared idempotency key and no receiver dedup — SMR **generates and bills a second time**, producing a divergent draft. The durable fix is an idempotency key the sender sets deterministically (so a replayed activity reuses it) and the receiver honors (so a duplicate returns the first result).
 
 ### Acceptance criteria
 
@@ -54,7 +54,7 @@ STOP-and-report before touching: `apps/harness/src/harness/temporal/workflows.py
 - [ ] **End-to-end**: the harness→SMR hop carries the key; a simulated activity replay does not produce a second generation. (Confirm the wire field name matches on both sides.)
 - [ ] **Replay-compat**: `pnpm py:harness:test` INCLUDING `test_replay_compat` green — the activity-body change adds no command, frozen histories still replay. `workflows.py` untouched.
 - [ ] **Documented residual**: an SMR **5xx after the model ran with nothing cached** still cannot be replayed (the generation happened, no cached response to return, the retry re-invokes). This is **acceptable and matches the C1-04 intent** — the key closes the common crash-replay double-bill; the rare "model ran then SMR failed to cache" window is documented, not solved. Record it in the Implementation Summary.
-- [ ] **AC-gate**: `pnpm py:harness:test` (+ `test_replay_compat`) + `pnpm py:harness:lint`/`typecheck` and `pnpm py:smr-v2:test` + `pnpm py:smr-v2:lint`/`typecheck` green; output pasted.
+- [ ] **AC-gate**: `pnpm py:harness:test` (+ `test_replay_compat`) + `pnpm py:harness:lint`/`typecheck` and `pnpm py:smr:test` + `pnpm py:smr:lint`/`typecheck` green; output pasted.
 
 ### Non-goals
 
@@ -67,7 +67,7 @@ STOP-and-report before touching: `apps/harness/src/harness/temporal/workflows.py
 ## Current State Evaluation (code-verified 2026-07-10 against `fix/2605-review`)
 
 - **Sender**: `generate()` body build [smr_client.py:100-117] — no idempotency field; the `_SmrResponseLost`/`retry_on_timeout=False` machinery [:40-139] is TASK-458's and stays. The generate activity's `smr_client.generate(...)` call [activities.py:303-313]; the residual is spelled out in the comment [:322-327] pointing at "a downstream idempotency key SMR honours — apps/smr". The `_idempotency_key(...)` helper [activities.py:137] already exists (TASK-458 built it for the WORM callbacks C1-03) — reuse it.
-- **Receiver**: `GenerateRequest` [requests.py:21-29] has `stream: bool = False` and no idempotency field; `generate` endpoint [generate.py:114-128] injects many deps but not Redis and does no dedup; `get_redis` [dependencies.py:35] + `app.state.redis` [main.py:41-45] are wired and available; `GenerateResponse` (the cache payload shape) is [responses.py:44](apps/smr/src/smr_v2/models/responses.py).
+- **Receiver**: `GenerateRequest` [requests.py:21-29] has `stream: bool = False` and no idempotency field; `generate` endpoint [generate.py:114-128] injects many deps but not Redis and does no dedup; `get_redis` [dependencies.py:35] + `app.state.redis` [main.py:41-45] are wired and available; `GenerateResponse` (the cache payload shape) is [responses.py:44](apps/smr/src/smr/models/responses.py).
 - **Tests**: `test_smr_client.py` + `test_activities.py` (harness) and `test_generate_endpoint_e1.py` (SMR) exist to extend; none asserts idempotency today.
 
 ## Implementation Plan (TDD — strict order)
@@ -81,7 +81,7 @@ STOP-and-report before touching: `apps/harness/src/harness/temporal/workflows.py
 ### Verification gate
 
 ```bash
-pnpm py:smr-v2:test && pnpm py:smr-v2:lint && pnpm py:smr-v2:typecheck
+pnpm py:smr:test && pnpm py:smr:lint && pnpm py:smr:typecheck
 pnpm py:harness:test   # MUST include test_replay_compat
 pnpm py:harness:lint && pnpm py:harness:typecheck
 ```
@@ -161,10 +161,10 @@ comment noting the key is safe un-tenant-scoped (globally-unique `run_id`; the a
 client-supplied `Idempotency-Key`).
 
 ### Verification gate output
-- `pnpm py:smr-v2:test` → **768 passed, 29 deselected** (e2e; incl. the 2 new failure-posture tests);
+- `pnpm py:smr:test` → **768 passed, 29 deselected** (e2e; incl. the 2 new failure-posture tests);
   `pnpm py:harness:test` (incl. `test_replay_compat`) → **665 passed**.
-- `pnpm py:smr-v2:lint` / `pnpm py:harness:lint` → **All checks passed!**
-- `pnpm py:smr-v2:typecheck` → **no issues in 45 files**; `pnpm py:harness:typecheck` → **no issues
+- `pnpm py:smr:lint` / `pnpm py:harness:lint` → **All checks passed!**
+- `pnpm py:smr:typecheck` → **no issues in 45 files**; `pnpm py:harness:typecheck` → **no issues
   in 79 files**.
 - (Run from the agent worktree with the worktree `src` dirs on `PYTHONPATH` to shadow the
   main-checkout editable install; commands are otherwise identical to the `pnpm py:*` scripts.)
@@ -181,11 +181,11 @@ C1-04 explicitly deems acceptable; it is not silently claimed closed (the code c
 ### Files changed
 - `apps/harness/src/harness/services/smr_client.py` (param + header + docstring)
 - `apps/harness/src/harness/temporal/activities.py` (pass `_idempotency_key()` + residual comment)
-- `apps/smr/src/smr_v2/api/endpoints/generate.py` (Redis dep + header + HIT/cache dedup + TTL const;
+- `apps/smr/src/smr/api/endpoints/generate.py` (Redis dep + header + HIT/cache dedup + TTL const;
   locally-guarded best-effort read & write + HIT debug log — review fix)
 - `apps/harness/src/harness/tests/unit/services/test_smr_client.py` (2 sender tests)
 - `apps/harness/src/harness/tests/unit/temporal/test_activities.py` (1 stable-key activity test)
-- `apps/smr/src/smr_v2/tests/unit/test_generate_idempotency.py` (**new** — 6 receiver tests: 4 dedup
+- `apps/smr/src/smr/tests/unit/test_generate_idempotency.py` (**new** — 6 receiver tests: 4 dedup
   + 2 failure-posture)
 
 `workflows.py`, `models/requests.py`, apps/api, the streaming SSE path, and provider/registry/
@@ -201,6 +201,6 @@ not touch any file in this ticket — no conflict; left for the orchestrator to 
 | Date | Change |
 |---|---|
 | 2026-07-10 | Ticket scaffolded as the split-off closure of C1-04. Verified OPEN against the current `fix/2605-review` tree: TASK-458 narrowed the in-process retries (`_SmrResponseLost`/`retry_on_timeout=False`) but left the cross-process worker-crash re-invoke open — documented in code at activities.py:322-327 ("downstream idempotency key SMR honours — apps/smr"). Sender gap (no key in smr_client body :100-117; `_idempotency_key` helper already exists :137) and receiver gap (`GenerateRequest` no field :21-29; endpoint no dedup :114-128; Redis wired via get_redis) confirmed. Supersedes TASK-466 AC-3; activity-body change is replay-safe (no patch marker, still run test_replay_compat). No implementation. |
-| 2026-07-10 | **Implemented (status → Review).** Sender: `smr_client.generate()` gained an `idempotency_key` param attached as the `Idempotency-Key` header; the `generate` activity passes `_idempotency_key()` (`workflow_run:activity_id`). Receiver: `/generate` injects `get_redis` + reads the `Idempotency-Key` header, returns the cached `GenerateResponse` on a HIT without invoking the provider, and caches it under `smr:idem:{key}` (24h TTL) on a MISS; no key / no Redis → unchanged path. `requests.py` left unmodified (header-read option). TDD RED→GREEN: 4 new receiver tests (`test_generate_idempotency.py`), 2 sender client tests, 1 stable-key activity test. Gates green — `py:smr-v2:test` 766 passed / `py:harness:test` 665 passed (incl. all 7 replay-compat histories) / lint + typecheck clean both services. `workflows.py` untouched (no patch marker needed). Residual documented: an SMR 5xx after the model ran but before caching still can't replay (accepted, matches C1-04). Branched from `fix/2605-review`@`87b33f57`; that branch since advanced one docs-only commit (`60f0bbde`) — disjoint, left for orchestrator. |
-| 2026-07-10 | **Adversarial-review fix (still Review).** CRITICAL: the idempotency cache SET sat inside the endpoint's broad `try:`, so a Redis write failure on an already-billed generation was caught by the `except Exception` → false circuit-breaker failure + task FAILED + 502 → harness retry re-invoked the model (re-opened C1-04). IMPORTANT-1: the cache GET was unguarded → a live-but-erroring Redis 500'd instead of falling through. Fix (`generate.py`): wrapped the SET in its own local `try/except` (log + fall through to `return response`, never the breaker/FAILED/502 path) and the GET likewise (log + treat as MISS → generate). IMPORTANT-2: added 2 failure-posture tests — RED against the buggy code (SET-fail→`status=failed`+502; GET-fail→500), GREEN after (both 200, provider once, task COMPLETED, no false breaker failure). Also: HIT debug log + un-tenant-scoped safety comment (MINOR, left as-is per review). Gates re-run: `py:smr-v2:test` **768 passed** / `py:harness:test` **665 passed** (incl. 7 replay-compat) / lint + typecheck clean both services. |
+| 2026-07-10 | **Implemented (status → Review).** Sender: `smr_client.generate()` gained an `idempotency_key` param attached as the `Idempotency-Key` header; the `generate` activity passes `_idempotency_key()` (`workflow_run:activity_id`). Receiver: `/generate` injects `get_redis` + reads the `Idempotency-Key` header, returns the cached `GenerateResponse` on a HIT without invoking the provider, and caches it under `smr:idem:{key}` (24h TTL) on a MISS; no key / no Redis → unchanged path. `requests.py` left unmodified (header-read option). TDD RED→GREEN: 4 new receiver tests (`test_generate_idempotency.py`), 2 sender client tests, 1 stable-key activity test. Gates green — `py:smr:test` 766 passed / `py:harness:test` 665 passed (incl. all 7 replay-compat histories) / lint + typecheck clean both services. `workflows.py` untouched (no patch marker needed). Residual documented: an SMR 5xx after the model ran but before caching still can't replay (accepted, matches C1-04). Branched from `fix/2605-review`@`87b33f57`; that branch since advanced one docs-only commit (`60f0bbde`) — disjoint, left for orchestrator. |
+| 2026-07-10 | **Adversarial-review fix (still Review).** CRITICAL: the idempotency cache SET sat inside the endpoint's broad `try:`, so a Redis write failure on an already-billed generation was caught by the `except Exception` → false circuit-breaker failure + task FAILED + 502 → harness retry re-invoked the model (re-opened C1-04). IMPORTANT-1: the cache GET was unguarded → a live-but-erroring Redis 500'd instead of falling through. Fix (`generate.py`): wrapped the SET in its own local `try/except` (log + fall through to `return response`, never the breaker/FAILED/502 path) and the GET likewise (log + treat as MISS → generate). IMPORTANT-2: added 2 failure-posture tests — RED against the buggy code (SET-fail→`status=failed`+502; GET-fail→500), GREEN after (both 200, provider once, task COMPLETED, no false breaker failure). Also: HIT debug log + un-tenant-scoped safety comment (MINOR, left as-is per review). Gates re-run: `py:smr:test` **768 passed** / `py:harness:test` **665 passed** (incl. 7 replay-compat) / lint + typecheck clean both services. |
 | 2026-07-11 | **Closed (Status -> Completed).** Closure-review pass (owner directive "close if finished completely and properly"): all ACs met, adversarial review found+fixed a Critical (cache-SET in a broad try re-opening the double-bill) with 2 new failure-posture tests; smr 768 + harness 665 passed (7 replay-compat) / lint+typecheck clean both services; the one residual is explicitly accepted per C1-04 intent. No external work remains -- only the owner's git push/PR to main. |

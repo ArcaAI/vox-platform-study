@@ -10,7 +10,7 @@ The single onboarding and daily-reference document for engineers working in this
 
 HOPE is a multi-tenant healthcare AI platform for clinical consultations. It transcribes doctor-patient conversations in real time (speech-to-text with VAD, noise filtering, and speaker diarization), extracts medical entities and ontology codes, generates LLM-based clinical summaries and SOAP notes, screens output through a guardrail safety engine, and runs a clinical documentation harness — a bounded `guides → generate → sensors → gate` loop on Temporal durable workflows that produces grounded, cited drafts and gates them through clinician attestation into immutable signed notes.
 
-Technically, it is a Turborepo + pnpm monorepo: a NestJS 11 API gateway (`apps/api`) is the system of record and the primary client-facing surface; six Python/FastAPI services (`stt-v2`, `smr`, `guardrail`, `nlp`, `harness`, `tts-v2`) do the AI work behind it; a Next.js 16 admin console (`apps/admin-console`) is the operator UI, BFF-proxied through the gateway; browser SDK packages (`@arcaai/vox` and friends) run the audio pipeline in the host application. Full topology, ports, and data flows: [architecture/overview.md](./architecture/overview.md).
+Technically, it is a Turborepo + pnpm monorepo: a NestJS 11 API gateway (`apps/api`) is the system of record and the primary client-facing surface; six Python/FastAPI services (`stt`, `smr`, `guardrail`, `nlp`, `harness`, `tts`) do the AI work behind it; a Next.js 16 admin console (`apps/admin-console`) is the operator UI, BFF-proxied through the gateway; browser SDK packages (`@arcaai/vox` and friends) run the audio pipeline in the host application. Full topology, ports, and data flows: [architecture/overview.md](./architecture/overview.md).
 
 ## 2. Prerequisites
 
@@ -98,7 +98,7 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 
 ## 4. Daily development
 
-The aggregate supervisor is `pnpm dev:stack` (`scripts/dev-stack.sh`): it first ensures Docker infra is up (base: core + vault + temporal + rag), then starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops app processes on Ctrl-C (Docker infra stays up — use `pnpm infra:down` to tear it down). tts-v2 (8865) and the deprecated ui-playground are not in the default set — start them explicitly. It refuses to start over busy ports or a second Temporal worker.
+The aggregate supervisor is `pnpm dev:stack` (`scripts/dev-stack.sh`): it first ensures Docker infra is up (base: core + vault + temporal + rag), then starts api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864), harness (8866), the harness Temporal worker, and the admin console (5176), tails all logs in the foreground, and stops app processes on Ctrl-C (Docker infra stays up — use `pnpm infra:down` to tear it down). tts (8865) and the deprecated ui-playground are not in the default set — start them explicitly. It refuses to start over busy ports or a second Temporal worker.
 
 ```bash
 pnpm dev:stack                      # ensure base Docker infra, then full app stack
@@ -116,15 +116,15 @@ Per-service dev commands (Python services run inside conda `arcaenv` via `script
 |---|---|---|
 | `pnpm dev:api` | API gateway :8868 | `NODE_ENV=development`, turbo `dev` task |
 | `pnpm dev:api:watch` | API + applications in watch mode | rebuild on change across both packages |
-| `pnpm dev:stt-v2` | STT-v2 :8861 | no reload by default (protects the ~4 GB model warm-up) |
-| `pnpm dev:smr-v2` | SMR :8862 | registers the LM Studio provider (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`) |
+| `pnpm dev:stt` | STT :8861 | no reload by default (protects the ~4 GB model warm-up) |
+| `pnpm dev:smr` | SMR :8862 | registers the LM Studio provider (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`) |
 | `pnpm dev:nlp` | NLP :8864 | |
 | `pnpm dev:guardrail` | Guardrail :8863 | |
 | `pnpm dev:harness` | Harness API :8866 | boots even when Temporal is down |
 | `pnpm dev:harness:worker` | Harness Temporal worker | no HTTP port; hard-requires Temporal (`pnpm infra:up`) |
-| `pnpm dev:tts-v2` | TTS-v2 :8865 | multi-provider text-to-speech (Azure + local Kokoro/Indic Parler) |
+| `pnpm dev:tts` | TTS :8865 | multi-provider text-to-speech (Azure + local Kokoro/Indic Parler) |
 | `pnpm dev:admin` | Admin console :5176 | Next.js 16 App Router (`next dev`); BFF-proxies the gateway |
-| `pnpm dev:<service>:watch` | scoped-reload variant | for stt-v2, smr-v2, guardrail, nlp, harness, tts-v2 (not worker) |
+| `pnpm dev:<service>:watch` | scoped-reload variant | for stt, smr, guardrail, nlp, harness, tts (not worker) |
 
 Support commands:
 
@@ -139,13 +139,13 @@ Support commands:
 
 | Service | Port(s) | Kind |
 |---|---|---|
-| API gateway (`apps/api`) | 8868 | NestJS 11 — REST `/api/v1`, WS `/ws/stt-v2/stream`, SSE |
-| STT-v2 (`apps/stt-v2`) | 8861 | FastAPI + Dramatiq batch worker (no port) |
+| API gateway (`apps/api`) | 8868 | NestJS 11 — REST `/api/v1`, WS `/ws/stt/stream`, SSE |
+| STT (`apps/stt`) | 8861 | FastAPI + Dramatiq batch worker (no port) |
 | SMR (`apps/smr`) | 8862 | FastAPI, SSE streaming |
 | Guardrail (`apps/guardrail`) | 8863 | FastAPI (health at `/api/health`, not `/api/v1`) |
 | NLP (`apps/nlp`) | 8864 | FastAPI + WS classify endpoints |
 | Harness (`apps/harness`) | 8866 | FastAPI + separate Temporal worker process |
-| TTS-v2 (`apps/tts-v2`) | 8865 | FastAPI — multi-provider text-to-speech (Azure + local Kokoro/Indic Parler), en+ml |
+| TTS (`apps/tts`) | 8865 | FastAPI — multi-provider text-to-speech (Azure + local Kokoro/Indic Parler), en+ml |
 | Admin console (`apps/admin-console`) | 5176 (dev) | Next.js 16 App Router — operator UI, BFF-proxies the gateway |
 | ui-playground (`apps/ui-playground`) | 5175 (dev) | React/Vite — **deprecated**, no development plan |
 | example (`apps/example`) | 5173 (dev) | minimal live-transcription demo |
@@ -175,7 +175,7 @@ DDD layering, enforced by lint: `packages/database` → `packages/domains` → `
 
 Rules of thumb: controllers never touch Prisma; services import repositories from `@arcaai/domains`, never `@arcaai/database` at runtime; entities are created via `XxxFactory.CreateXxx()`; every mutation broadcasts a sys-event and deletes are soft. Generator caveat: only `pnpm gen:model` truly scaffolds a domain layer. `gen:entity`/`gen:factory` reconcile barrels and check schema coverage but never create files; `gen:mapper` is destructive (never run it — it strips the `_version` OCC guard) and `gen:repository` is broken, so entities/factories/mappers/repositories are hand-authored. `gen:service | gen:controller` also exist. CI fails if the generated model layer drifts or an entity/factory misses a persisted column. Details: `.claude/rules/03-domain-layer.md` §Generated Code Discipline.
 
-Python services (`apps/stt-v2`, `smr`, `guardrail`, `nlp`, `harness`, `tts-v2`) are PEP-621 `src/<package>/` layouts: `main.py` (FastAPI `create_app()` + lifespan), `core/` (pydantic-settings config with per-service `env_prefix`, logging), `api/endpoints/`, `services/`, `models/`. Tests live in `src/<pkg>/tests/` (smr, guardrail, harness, tts-v2) or top-level `tests/` (stt-v2, nlp). Dependencies are declared per service but locked once at the repo root (`uv.lock`); run `uv lock` after changing any member's dependencies.
+Python services (`apps/stt`, `smr`, `guardrail`, `nlp`, `harness`, `tts`) are PEP-621 `src/<package>/` layouts: `main.py` (FastAPI `create_app()` + lifespan), `core/` (pydantic-settings config with per-service `env_prefix`, logging), `api/endpoints/`, `services/`, `models/`. Tests live in `src/<pkg>/tests/` (smr, guardrail, harness, tts) or top-level `tests/` (stt, nlp). Dependencies are declared per service but locked once at the repo root (`uv.lock`); run `uv lock` after changing any member's dependencies.
 
 Frontend apps and packages: `apps/admin-console` (@arcaai/admin-console — Next.js 16 App Router operator UI, BFF auth + catch-all gateway proxy, consumes `@arcaai/ui`; governed by `.claude/rules/13-nextjs-apps.md`), `packages/ui` (@arcaai/ui — shadcn/Radix/cva component library, Tailwind v4 tokens in `src/styles/globals.css`), `packages/agentic-sdk-v2` (@arcaai/vox — consultation SDK, internal Zustand store behind hooks) composing `room`, `noise-filter`, `vad`, `stt`, `med-ner`, `pipeline`. Shared backend packages: `logger`, `exceptions`, `types`, `utils`, `tools`, `config-*`.
 
@@ -217,12 +217,12 @@ All TypeScript suites load `.env.test` via dotenv-cli — the test stack is full
 | SDK E2E | `npx playwright test -c tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/playwright.config.ts` | running API; no root pnpm alias |
 | Contracts | included in `pnpm test:unit` | `vitest.config.ts` | nothing — zod schema validation in `tests/contracts/` (STT and SMR contracts) |
 | Cross-tenant | included in `pnpm test:unit` + `task-307-*` e2e specs | — | fixture in `tests/cross-tenant/fixtures.ts` |
-| Python: STT-v2 | `pnpm py:stt-v2:test` (`:unit`, `:integration`, `:cov`) | `apps/stt-v2/pyproject.toml` | conda `arcaenv` |
-| Python: SMR | `pnpm py:smr-v2:test` (`:unit`, `:cov`) | `apps/smr/pyproject.toml` | conda `arcaenv` |
+| Python: STT | `pnpm py:stt:test` (`:unit`, `:integration`, `:cov`) | `apps/stt/pyproject.toml` | conda `arcaenv` |
+| Python: SMR | `pnpm py:smr:test` (`:unit`, `:cov`) | `apps/smr/pyproject.toml` | conda `arcaenv` |
 | Python: NLP | `pnpm py:nlp:test` | `apps/nlp/pyproject.toml` | conda `arcaenv` |
 | Python: Guardrail | `pnpm py:guardrail:test` (`:cov`) | `apps/guardrail/pyproject.toml` | conda `arcaenv` |
 | Python: Harness | `pnpm py:harness:test` (`:unit`, `:cov`) | `apps/harness/pyproject.toml` | conda `arcaenv`; runs in CI as `test-harness` (hermetic — no DB/Redis) |
-| Python: TTS-v2 | `pnpm py:tts-v2:test` (`:unit`, `:cov`) | `apps/tts-v2/pyproject.toml` | conda `arcaenv` |
+| Python: TTS | `pnpm py:tts:test` (`:unit`, `:cov`) | `apps/tts/pyproject.toml` | conda `arcaenv` |
 | Admin console | `pnpm --filter @arcaai/admin-console test` (E2E `test:e2e`) | `apps/admin-console` Vitest / Playwright | Vitest unit specs colocated in `__tests__/`; Playwright E2E |
 | Everything | `pnpm test:all` / `pnpm test:ci` | — | unit → integration → e2e in sequence |
 
@@ -246,13 +246,13 @@ pnpm docker:test:down
 - `pnpm lint` — turbo runs each package's ESLint (ESLint 9 flat config: per-package `eslint.config.mjs` spreading the `packages/config-eslint/flat/` presets; do not reintroduce eslintrc-format configs).
 - `pnpm format` — Prettier over `**/*.{ts,tsx,md}` (`singleQuote`, `printWidth: 150`).
 - `pnpm build` / `pnpm build:api` / `build:packages` / `build:modules` / `build:sdk` — scoped turbo builds.
-- Python per service: `pnpm py:<svc>:lint` (ruff), `py:<svc>:format` (black, line length 100), `py:<svc>:typecheck` (mypy), where `<svc>` is `stt-v2`, `smr-v2`, `nlp`, `guardrail`, `harness`, `tts-v2`. Admin console: `pnpm --filter @arcaai/admin-console lint` (ESLint 10 flat, `--max-warnings 0`) and `check-types` (`tsc --noEmit`).
+- Python per service: `pnpm py:<svc>:lint` (ruff), `py:<svc>:format` (black, line length 100), `py:<svc>:typecheck` (mypy), where `<svc>` is `stt`, `smr`, `nlp`, `guardrail`, `harness`, `tts`. Admin console: `pnpm --filter @arcaai/admin-console lint` (ESLint 10 flat, `--max-warnings 0`) and `check-types` (`tsc --noEmit`).
 
 Architecture lint rules you will actually hit (defined in `packages/config-eslint/flat/core.js` + `packages/eslint-plugin-arcaai-internal/`):
 
 - `arcaai-internal/no-controller-direct-prisma` — controllers must not touch `databaseService.client`; go through a service + repository.
 - Service-layer `no-restricted-syntax` — application services must not use `databaseService.client` either; route through a domain repository.
-- `arcaai-internal/no-direct-downstream-url-env` — never read `process.env.SMR_URL|STT_V2_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL` in gateway modules; inject `IConfigService.getConfigValue(...)`.
+- `arcaai-internal/no-direct-downstream-url-env` — never read `process.env.SMR_URL|STT_URL|NLP_URL|GUARDRAIL_URL|HARNESS_URL` in gateway modules; inject `IConfigService.getConfigValue(...)`.
 - `no-restricted-imports` — the unscoped Prisma client (`getPlatformAdminPrismaClient_Unscoped`) is banned everywhere except seeds, back-fill scripts, and test fixtures — it bypasses both tenant scoping and soft-delete filtering.
 
 Caveat: inside `packages/*` these rules are downgraded to warnings (`eslint-plugin-only-warn` in `flat/library.js`); in `apps/api` (`flat/nestjs.js`) they are hard errors. Treat warnings in packages as errors anyway — CI lint gates run over both.
@@ -286,9 +286,9 @@ Run `pnpm dev:doctor` first — it pinpoints most of these. Issues below are gro
 | API boot: `failed to find entry for connection with name: "hope-main"` | Vault's database engine is not wired to the dev DB — `./scripts/setup-dev-vault-db.sh` (requires migrations applied first). |
 | API boot: `wrapping token is not valid` on the second start (first watch reload) | `VAULT_WRAPPED_SECRET_ID` (single-use, prod shape) is set in dev. Blank it and use the raw reusable `VAULT_SECRET_ID` — re-run `./scripts/refresh-vault-creds.sh`. |
 | TypeScript cannot resolve the Prisma client / types drift after pulling schema changes | The generated client is stale — `pnpm db:generate`, then rebuild. |
-| SMR is up but every generate 404s; live summary never appears | SMR has zero LLM providers registered (the doctor's "smr providers registered" check). Start it via `pnpm dev:smr-v2` (registers the LM Studio provider) and ensure LM Studio is serving on :1234 with a model loaded (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`). |
-| STT internal calls all return 401 | `API_GATEWAY_KEY` is missing or a placeholder. Diagnose with `./scripts/dev-service.sh --check-stt-key`; set a real key in `apps/stt-v2/.env` (the dev-seed service-account key is in `packages/database/src/prisma/db_main/seed/00-constants.ts`) or generate one with `pnpm gen:api-key`. |
-| STT-v2 first start takes forever / restarts keep interrupting it | Model downloads + ~4 GB warm-up on first boot (HuggingFace; set `HUGGINGFACE_TOKEN` if rate-limited). This is why `pnpm dev:stt-v2` runs without reload — use `dev:stt-v2:watch` only when you need it (reload is scoped to the service's own src dir). |
+| SMR is up but every generate 404s; live summary never appears | SMR has zero LLM providers registered (the doctor's "smr providers registered" check). Start it via `pnpm dev:smr` (registers the LM Studio provider) and ensure LM Studio is serving on :1234 with a model loaded (`LM_STUDIO_MODEL`, default `gemma-4-e4b-it-qat`). |
+| STT internal calls all return 401 | `API_GATEWAY_KEY` is missing or a placeholder. Diagnose with `./scripts/dev-service.sh --check-stt-key`; set a real key in `apps/stt/.env` (the dev-seed service-account key is in `packages/database/src/prisma/db_main/seed/00-constants.ts`) or generate one with `pnpm gen:api-key`. |
+| STT first start takes forever / restarts keep interrupting it | Model downloads + ~4 GB warm-up on first boot (HuggingFace; set `HUGGINGFACE_TOKEN` if rate-limited). This is why `pnpm dev:stt` runs without reload — use `dev:stt:watch` only when you need it (reload is scoped to the service's own src dir). |
 | Ran `pnpm db:all` and lost local data | Expected — it force-resets the schema. Non-destructive path: `pnpm gen:prisma push --all && pnpm db:seed` (or `pnpm db:push` + `pnpm db:seed`). |
 | `pnpm test:e2e` sporadically fails auth / returns 429 on login, worse on back-to-back runs | `/auth/login` is throttled to **5/min per source IP** (`@Throttle`, `apps/api/src/modules/auth/auth.controller.ts:138`; `/refresh` is 60/min, `/me` rides the 100/min app default). Every Playwright worker hits the one test API from the same IP and shares that counter, and the e2e test API runs the throttler with the **in-memory store** (no test Redis URL, so `throttle.module.ts` falls back), which persists across rapid successive runs against the same process. Restart the API (`pnpm test:api:up`) between fast re-runs so the window resets; run the throttle-contract spec (`apps/api/tests/e2e/auth-throttle-per-endpoint.spec.ts`) against a freshly-started API in isolation. |
 

@@ -96,19 +96,19 @@ vault kv put secret/hope/HARNESS_SERVICE_TOKEN value="dev-harness-service-token-
 
 # InternalServiceTokenGuard's per-service secret map
 # (apps/api/src/modules/internal/internal-service-token.guard.ts) — the
-# INBOUND tokens smr/nlp/guardrail/tts-v2/stt-v2 present as `X-Service-Token`
-# (stt-v2: `X-Internal-Service-Key`) when THEY poll the gateway's
+# INBOUND tokens smr/nlp/guardrail/tts/stt present as `X-Service-Token`
+# (stt: `X-Internal-Service-Key`) when THEY poll the gateway's
 # `/api/v1/internal/effective-config`. On-demand like HARNESS_SERVICE_TOKEN
 # above, not in the warmup loop.
 #
 # NAMING TRAP — smr only: the gateway's OUTBOUND credential to reach SMR is
 # `SMR_SERVICE_TOKEN` (seeded in the warmup loop above); SMR's INBOUND token
 # for calling back into the gateway is the *differently named*
-# `SMR_V2_SERVICE_TOKEN` (SMR reads it as `settings.service_token` under the
-# `SMR_V2_` pydantic-settings prefix). The two secret names are distinct but
+# `SMR_SERVICE_TOKEN` (SMR reads it as `settings.service_token` under the
+# `SMR_` pydantic-settings prefix). The two secret names are distinct but
 # MUST hold the same value by convention, or the effective-config poll 401s —
 # kept equal to SMR_SERVICE_TOKEN's value here for exactly that reason.
-vault kv put secret/hope/SMR_V2_SERVICE_TOKEN value="dev-smr-service-token-not-for-prod" >/dev/null
+vault kv put secret/hope/SMR_SERVICE_TOKEN value="dev-smr-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/NLP_SERVICE_TOKEN value="dev-nlp-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/GUARDRAIL_SERVICE_TOKEN value="dev-guardrail-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/TTS_SERVICE_TOKEN value="dev-tts-service-token-not-for-prod" >/dev/null

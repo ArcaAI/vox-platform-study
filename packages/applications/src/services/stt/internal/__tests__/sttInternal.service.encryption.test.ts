@@ -2,7 +2,7 @@
  * SttInternalService.completeJob encryption wiring.
  *
  * The STT internal callback endpoint is the genuine TS write path for the STT
- * result fields (resultText / resultMetadata): the Python stt-v2 worker posts
+ * result fields (resultText / resultMetadata): the Python stt worker posts
  * the result back through apps/api, which calls this service. This test
  * verifies the completed job is encrypted BEFORE persist, that encryption is
  * best-effort (a Vault outage still persists the plaintext result), that no

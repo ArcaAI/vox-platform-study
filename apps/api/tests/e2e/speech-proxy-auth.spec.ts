@@ -2,9 +2,9 @@
  * Speech proxy E2E (auth gating).
  *
  * Confirms the gateway registers the speech proxy routes and that the global
- * deny-by-default auth guard protects them. Full-path streaming (gateway → tts-v2)
+ * deny-by-default auth guard protects them. Full-path streaming (gateway → tts)
  * is covered by unit tests and a live check; it is not asserted here because it
- * requires the tts-v2 service running with a provider enabled.
+ * requires the tts service running with a provider enabled.
  */
 
 import { expect, test } from '@playwright/test';

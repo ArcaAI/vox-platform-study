@@ -67,7 +67,7 @@ Captured from `/tmp/c3b-tsc.log` (filtered to C3b's lane only):
 - `src/types/config.ts` — `UserPreferences`, `UserPreferencesUpdate` (no `theme`, `custom: Record<string, unknown>`).
 - `src/types/audio.ts` — `AudioPluginStates = { noiseFilter: PluginState; vad: PluginState; stt: STTPluginState }`.
 - `src/types/consultation.ts` — `OpenSessionInput = { patientId; appointmentDate?; department?; metadata? }` (no `doctorId`).
-- `src/types/stt-v2.ts` — `StreamingSessionResponse.status: StreamingSessionStatus` (required).
+- `src/types/stt.ts` — `StreamingSessionResponse.status: StreamingSessionStatus` (required).
 
 ### Out of scope (forwarded to siblings)
 

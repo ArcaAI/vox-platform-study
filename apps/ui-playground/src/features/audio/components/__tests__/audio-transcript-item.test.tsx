@@ -1,9 +1,9 @@
 /**
  * AudioTranscriptItem rendering tests (TASK-351 P1-1)
  *
- * Partials carrying `stableChars` (committed-prefix length from stt-v2's
+ * Partials carrying `stableChars` (committed-prefix length from stt's
  * local-agreement gate) render the committed prefix like final text and only
- * the tentative tail dimmed. Entries without the field — older stt-v2
+ * the tentative tail dimmed. Entries without the field — older stt
  * results — keep today's full-dim italic styling.
  */
 

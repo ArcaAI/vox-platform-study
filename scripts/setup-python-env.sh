@@ -3,12 +3,12 @@
 # HOPE Monorepo — Python Local Environment Setup
 # =============================================================================
 # Sets up a shared conda environment (arcaenv) with all dependencies for:
-#   - stt-v2  (Speech-to-Text v2)
-#   - smr-v2  (Summary Agent / SMR v2)
+#   - stt     (Speech-to-Text)
+#   - smr     (Summary Agent / SMR)
 #   - nlp     (Medical NLP)
 #   - harness (Clinical Documentation Harness orchestrator — TASK-330)
 #   - guardrail (AI content-safety / medical-context validation — TASK-338)
-#   - tts-v2  (Realtime multi-provider Text-to-Speech)
+#   - tts     (Realtime multi-provider Text-to-Speech)
 #
 # Usage:
 #   ./scripts/setup-python-env.sh              # Full setup (check + create + install)
@@ -241,7 +241,7 @@ check_prerequisites() {
     fi
 
     # --- make ---
-    print_step "make (used by stt-v2 Makefile)"
+    print_step "make (used by stt Makefile)"
     if command_exists make; then
         print_ok "make $(make --version 2>/dev/null | head -1 | awk '{print $NF}')"
     else
@@ -393,37 +393,37 @@ install_dependencies() {
         "${CR[@]}" pip install -e "${runtime_models_dir}"
     fi
 
-    # --- stt-v2 ---
-    print_header "  4a: stt-v2 (Speech-to-Text v2)"
-    local stt_v2_dir="$PROJECT_ROOT/apps/stt-v2"
-    if [[ -f "$stt_v2_dir/pyproject.toml" ]]; then
-        print_step "Installing stt-v2 dependencies..."
+    # --- stt ---
+    print_header "  4a: stt (Speech-to-Text)"
+    local stt_dir="$PROJECT_ROOT/apps/stt"
+    if [[ -f "$stt_dir/pyproject.toml" ]]; then
+        print_step "Installing stt dependencies..."
         case "$ML_PLATFORM" in
             apple)
                 print_info "Including ML extras for Apple Silicon (MPS)"
-                "${CR[@]}" pip install -e "${stt_v2_dir}[ml,dev,test]"
+                "${CR[@]}" pip install -e "${stt_dir}[ml,dev,test]"
                 ;;
             gpu)
                 print_info "Including ML extras for NVIDIA GPU (CUDA)"
-                "${CR[@]}" pip install -e "${stt_v2_dir}[ml-gpu,dev,test]"
+                "${CR[@]}" pip install -e "${stt_dir}[ml-gpu,dev,test]"
                 ;;
             *)
                 print_info "CPU-only (no ML extras). Use --apple or --gpu for ML support."
-                "${CR[@]}" pip install -e "${stt_v2_dir}[dev,test]"
+                "${CR[@]}" pip install -e "${stt_dir}[dev,test]"
                 ;;
         esac
-        print_ok "stt-v2 installed"
+        print_ok "stt installed"
     else
-        print_warn "stt-v2 pyproject.toml not found at $stt_v2_dir — skipping"
+        print_warn "stt pyproject.toml not found at $stt_dir — skipping"
     fi
 
-    # --- smr (smr-v2) ---
-    print_header "  4b: smr / smr-v2 (Summary Agent)"
+    # --- smr ---
+    print_header "  4b: smr (Summary Agent)"
     local smr_dir="$PROJECT_ROOT/apps/smr"
     if [[ -f "$smr_dir/pyproject.toml" ]]; then
         print_step "Installing smr dependencies..."
         "${CR[@]}" pip install -e "${smr_dir}[dev,test]"
-        print_ok "smr (smr-v2) installed"
+        print_ok "smr installed"
     else
         print_warn "smr pyproject.toml not found at $smr_dir — skipping"
     fi
@@ -467,24 +467,24 @@ install_dependencies() {
         print_warn "guardrail pyproject.toml not found at $guardrail_dir — skipping"
     fi
 
-    # --- tts-v2 ---
-    print_header "  4f: tts-v2 (Text-to-Speech v2)"
-    local tts_v2_dir="$PROJECT_ROOT/apps/tts-v2"
-    if [[ -f "$tts_v2_dir/pyproject.toml" ]]; then
-        print_step "Installing tts-v2 dependencies..."
+    # --- tts ---
+    print_header "  4f: tts (Text-to-Speech)"
+    local tts_dir="$PROJECT_ROOT/apps/tts"
+    if [[ -f "$tts_dir/pyproject.toml" ]]; then
+        print_step "Installing tts dependencies..."
         case "$ML_PLATFORM" in
             apple|gpu)
                 print_info "Including self-hosted local engine extras ([local]: torch/kokoro)"
-                "${CR[@]}" pip install -e "${tts_v2_dir}[local,dev,test]"
+                "${CR[@]}" pip install -e "${tts_dir}[local,dev,test]"
                 ;;
             *)
                 print_info "Cloud providers only (no [local] engines). Use --apple or --gpu for self-hosted engines."
-                "${CR[@]}" pip install -e "${tts_v2_dir}[dev,test]"
+                "${CR[@]}" pip install -e "${tts_dir}[dev,test]"
                 ;;
         esac
-        print_ok "tts-v2 installed"
+        print_ok "tts installed"
     else
-        print_warn "tts-v2 pyproject.toml not found at $tts_v2_dir — skipping"
+        print_warn "tts pyproject.toml not found at $tts_dir — skipping"
     fi
 
     # -----------------------------------------------------------------------
@@ -628,27 +628,27 @@ print_summary() {
     echo "    ${CYAN}conda activate $CONDA_ENV_NAME${NC}"
     echo ""
     echo "  ${BOLD}Run services from monorepo root:${NC}"
-    echo "    ${CYAN}pnpm dev:stt-v2${NC}      — STT v2 on port 8861"
-    echo "    ${CYAN}pnpm dev:smr-v2${NC}      — SMR v2 on port 8862"
+    echo "    ${CYAN}pnpm dev:stt${NC}         — STT on port 8861"
+    echo "    ${CYAN}pnpm dev:smr${NC}         — SMR on port 8862"
     echo "    ${CYAN}pnpm dev:guardrail${NC}   — Guardrail on port 8863"
     echo "    ${CYAN}pnpm dev:nlp${NC}         — NLP on port 8864"
-    echo "    ${CYAN}pnpm dev:tts-v2${NC}      — TTS v2 on port 8865"
+    echo "    ${CYAN}pnpm dev:tts${NC}         — TTS on port 8865"
     echo "    ${CYAN}pnpm dev:harness${NC}     — Harness on port 8866"
     echo ""
     echo "  ${BOLD}Run services directly:${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn stt_v2.main:app --reload --app-dir apps/stt-v2/src${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn smr_v2.main:app --reload --app-dir apps/smr/src${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn stt.main:app --reload --app-dir apps/stt/src${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn smr.main:app --reload --app-dir apps/smr/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn guardrail.main:app --reload --app-dir apps/guardrail/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn nlp.main:app --reload --app-dir apps/nlp/src${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn tts_v2.main:app --reload --app-dir apps/tts-v2/src${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn tts.main:app --reload --app-dir apps/tts/src${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME uvicorn harness.main:app --reload --app-dir apps/harness/src${NC}"
     echo ""
     echo "  ${BOLD}Run tests:${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/stt-v2/tests/ -v${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/smr/src/smr_v2/tests/ -v${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/stt/tests/ -v${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/smr/src/smr/tests/ -v${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/guardrail/src/guardrail/tests/ -v${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/nlp/tests/ -v${NC}"
-    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/tts-v2/src/tts_v2/tests/ -v${NC}"
+    echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/tts/src/tts/tests/ -v${NC}"
     echo "    ${CYAN}conda run -n $CONDA_ENV_NAME pytest apps/harness/src/harness/tests/ -v${NC}"
     echo ""
 

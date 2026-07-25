@@ -64,7 +64,7 @@ interface PipelineConfig {
       capture_processed: boolean;
     };
   };
-  // TASK-356 Phase 4 — speaker diarization (already read by the STT-v2 yaml_parser;
+  // TASK-356 Phase 4 — speaker diarization (already read by the STT yaml_parser;
   // surfaced here in the structured form). A subset of the parser's fields.
   diarization: {
     enabled: boolean;

@@ -18,7 +18,7 @@ live-transcription / audio-pipeline path. Split into two implementation streams
 
 ### 1A — Default live transcription / audio pipeline = "backend"
 The platform must default the **live transcription + audio processing** path to
-the **backend** (server-side STT-v2 over WebSocket), not browser-side local
+the **backend** (server-side STT over WebSocket), not browser-side local
 models. A freshly seeded environment must have working, production-ready
 pipelines on day-1.
 

@@ -6,7 +6,7 @@ import WebSocket from 'ws';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 
 /**
- * WS-duplex TTS gateway. Bridges a browser WebSocket to the tts-v2
+ * WS-duplex TTS gateway. Bridges a browser WebSocket to the tts
  * streaming endpoint so a summary can be spoken while it is still generating.
  *
  * Posture mirrors `SttWsGateway`: the handshake is gated by a
@@ -32,7 +32,7 @@ const TTS_SESSION_SCOPE_PREFIX = 'tts_session:';
 
 /**
  * WS egress backpressure threshold. When the browser socket's `bufferedAmount`
- * exceeds this many bytes the upstream (tts-v2) socket is paused until it drains,
+ * exceeds this many bytes the upstream (tts) socket is paused until it drains,
  * so a slow consumer can't make the gateway buffer audio without bound. Default
  * 512 KiB; overridable via `TTS_WS_EGRESS_HIGH_WATERMARK_BYTES`.
  */
@@ -58,13 +58,13 @@ interface Bridge {
   initEnriched: boolean;
 }
 
-@WebSocketGateway({ path: '/ws/tts-v2/stream' })
+@WebSocketGateway({ path: '/ws/tts/stream' })
 export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(TtsWsGateway.name);
   private readonly bridges = new Map<WebSocket, Bridge>();
 
   /**
-   * Factory for the upstream tts-v2 socket. Overridable in tests to inject a
+   * Factory for the upstream tts socket. Overridable in tests to inject a
    * fake without a live server.
    */
   createUpstreamSocket: (url: string, headers: Record<string, string>) => WebSocket = (url, headers) => new WebSocket(url, { headers });
@@ -124,7 +124,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     // Pre-resolve the tenant's effective TTS spec (fail-open: a lookup
-    // error leaves it null → tts-v2 uses its own settings). Injected into the
+    // error leaves it null → tts uses its own settings). Injected into the
     // first `init` frame the browser sends.
     let effectiveConfig: EffectiveTtsConfigResponse | null = null;
     let providerOverrides: TtsProviderOverrides | null = null;
@@ -248,7 +248,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       enriched.routing_ml = eff.routingMl;
       enriched.allowed_providers = eff.allowedProviders;
       // Resolved voice bindings; only injected when non-empty so
-      // tts-v2 keeps its built-in DEFAULT_VOICES otherwise.
+      // tts keeps its built-in DEFAULT_VOICES otherwise.
       if (eff.voiceBindings && Object.keys(eff.voiceBindings).length > 0) {
         enriched.voice_bindings = eff.voiceBindings;
       }
@@ -257,7 +257,7 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       enriched.provider_overrides = bridge.providerOverrides;
     }
     // Buffer (not string) to satisfy WebSocket.RawData; isBinary stays false, so
-    // ws still ships it as a TEXT frame — tts-v2 parses it as JSON init.
+    // ws still ships it as a TEXT frame — tts parses it as JSON init.
     return Buffer.from(JSON.stringify(enriched));
   }
 

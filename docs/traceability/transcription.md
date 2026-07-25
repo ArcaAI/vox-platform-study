@@ -1,7 +1,7 @@
 # Traceability — Transcription (live, batch, recordings, voice profiles, pipelines)
 
 Speech-to-text across all its shapes: live streaming transcription (WS bridge → Redis →
-STT-v2), batch transcription jobs (Dramatiq worker), speaker voice-profile enrollment +
+STT), batch transcription jobs (Dramatiq worker), speaker voice-profile enrollment +
 diarization, and the ASR pipeline registry with its TASK-531 template governance (locked
 template copies, clone-to-customize, SYSTEM-template resync). Migrates legacy matrix rows
 **10**, **11**, **13**, and the **ASR-pipeline half of row 26** (the `AiModel` registry
@@ -10,8 +10,8 @@ half is in [`ai-models-providers.md`](./ai-models-providers.md)).
 Route paths are relative to the global prefix `/api/v1`. Test shorthand is defined in
 [`index.md`](./index.md#test-location-shorthand). `—` means verified-absent.
 
-Architecture: browsers never call `apps/stt-v2` directly. Live audio bridges through the
-gateway WS gateway into a Redis-Streams session that STT-v2 consumes; batch audio uploads
+Architecture: browsers never call `apps/stt` directly. Live audio bridges through the
+gateway WS gateway into a Redis-Streams session that STT consumes; batch audio uploads
 create a `TranscriptionJob` the Dramatiq worker processes, with progress/results posted
 back to the gateway on internal service-token callbacks.
 
@@ -21,10 +21,10 @@ back to the gateway on internal service-token callbacks.
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` + `apps/stt-v2` (port 8861) + Redis |
-| Key modules | `apps/api/src/modules/streaming` (`stt-ws.gateway.ts`, `transcription-job.controller.ts` stream-session routes, `session-removal-retry.service.ts`); `packages/applications/src/services/stt/streaming` (`streamingSession.service.ts`, `streamingAudioBridge.service.ts`), `packages/applications/src/services/stt/realtime`; `apps/stt-v2/src/stt_v2/streaming` |
+| App / service | `apps/api` + `apps/stt` (port 8861) + Redis |
+| Key modules | `apps/api/src/modules/streaming` (`stt-ws.gateway.ts`, `transcription-job.controller.ts` stream-session routes, `session-removal-retry.service.ts`); `packages/applications/src/services/stt/streaming` (`streamingSession.service.ts`, `streamingAudioBridge.service.ts`), `packages/applications/src/services/stt/realtime`; `apps/stt/src/stt/streaming` |
 | Prisma models | `TranscriptionJob`, `AsrPipeline` (`db_main/stt.prisma`), `TranscriptSegment` (`db_main/consultation.prisma`) |
-| Key API endpoints | `POST /audio/transcription-jobs/stream/session` (open session + ticket), `DELETE /audio/transcription-jobs/stream/session/:sessionId`, `POST /audio/transcription-jobs/stream/session/:sessionId/refresh-ticket`; WS gateway `@WebSocketGateway({ path: '/ws/stt-v2/stream' })` → WS `/ws/stt-v2/stream`; STT-v2 internal (`streaming/api/routes.py`, `APIRouter(prefix="/internal/streaming")`) → `POST /internal/streaming/sessions`, `GET /internal/streaming/sessions/active`, `GET/DELETE /internal/streaming/sessions/:session_id`, `POST /internal/streaming/sessions/:session_id/end` |
+| Key API endpoints | `POST /audio/transcription-jobs/stream/session` (open session + ticket), `DELETE /audio/transcription-jobs/stream/session/:sessionId`, `POST /audio/transcription-jobs/stream/session/:sessionId/refresh-ticket`; WS gateway `@WebSocketGateway({ path: '/ws/stt/stream' })` → WS `/ws/stt/stream`; STT internal (`streaming/api/routes.py`, `APIRouter(prefix="/internal/streaming")`) → `POST /internal/streaming/sessions`, `GET /internal/streaming/sessions/active`, `GET/DELETE /internal/streaming/sessions/:session_id`, `POST /internal/streaming/sessions/:session_id/end` |
 | Console | `apps/admin-console` feature `playground-live-transcription` (`live-transcription-screen`, `streaming-tab`); route `/playground/live-transcription` (tier 50–59 playground, nav-gated under `(tenant)`) |
 | Tests | unit(app): `stt/streaming/__tests__/{streamingSession.service,streamingAudioBridge.service,speaker-label}.test.ts`; unit(console): `playground-live-transcription/components/__tests__/{live-transcription-screen,streaming-tab}.test.tsx`, `playground-live-transcription/api/__tests__/{use-live-stt-session.test.tsx,live-transcription-api.test.ts}`; contract: `stt.contract.test.ts` (+ `tests/contracts/stt-transcript-segments/`); e2e: `transcription-job-cross-tenant.spec.ts`; py(stt): `unit/streaming/*` |
 
@@ -32,10 +32,10 @@ back to the gateway on internal service-token callbacks.
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` + `apps/stt-v2` (Dramatiq worker `worker.py`) |
-| Key modules | `apps/api/src/modules/streaming` (`transcription-job.controller.ts`, `admin-transcription-job.controller.ts`); `apps/api/src/modules/internal` (`stt-internal.controller.ts` — job callbacks); `packages/applications/src/services/stt/job`; `apps/stt-v2/src/stt_v2/transcription` |
+| App / service | `apps/api` + `apps/stt` (Dramatiq worker `worker.py`) |
+| Key modules | `apps/api/src/modules/streaming` (`transcription-job.controller.ts`, `admin-transcription-job.controller.ts`); `apps/api/src/modules/internal` (`stt-internal.controller.ts` — job callbacks); `packages/applications/src/services/stt/job`; `apps/stt/src/stt/transcription` |
 | Prisma models | `TranscriptionJob` (`db_main/stt.prisma`), `Media` (`db_main/media.prisma`) |
-| Key API endpoints | `@Controller('audio/transcription-jobs')`: `POST ''`, `POST /batch`, `POST /streaming`, `POST /transcribe`, `GET /stats`, `GET /status/:status`, `GET /consultation/:consultationId`, `GET :id`, SSE `GET :id/stream`, `POST :id/cancel`, `POST :id/retry`, `GET ''` (list). `@Controller('admin/audio/transcription-jobs')`: `GET ''`, `GET /stats`, `GET /status/:status`. STT-v2 `POST /api/v1/transcribe`; internal callbacks `@Controller('internal/stt')` → `POST /internal/stt/transcripts`, `PATCH /internal/stt/jobs/:id/{start,progress,complete,fail}`, `GET /internal/stt/jobs/:id/status` |
+| Key API endpoints | `@Controller('audio/transcription-jobs')`: `POST ''`, `POST /batch`, `POST /streaming`, `POST /transcribe`, `GET /stats`, `GET /status/:status`, `GET /consultation/:consultationId`, `GET :id`, SSE `GET :id/stream`, `POST :id/cancel`, `POST :id/retry`, `GET ''` (list). `@Controller('admin/audio/transcription-jobs')`: `GET ''`, `GET /stats`, `GET /status/:status`. STT `POST /api/v1/transcribe`; internal callbacks `@Controller('internal/stt')` → `POST /internal/stt/transcripts`, `PATCH /internal/stt/jobs/:id/{start,progress,complete,fail}`, `GET /internal/stt/jobs/:id/status` |
 | Console | `apps/admin-console` feature `transcription-jobs` (`transcription-jobs-screen`); route `/audio/transcription-jobs` (tier 30–49, tenant-scoped) |
 | Tests | unit(app): `stt/job/__tests__/{transcriptionJob.service,transcriptionJob.service.encryption}.test.ts`; unit(console): `transcription-jobs/components/__tests__/transcription-jobs-screen.test.tsx`, `transcription-jobs/api/__tests__/transcription-jobs-api.test.ts`; py(stt): `unit/test_batch_service.py`, `unit/test_broker.py`, `unit/test_job_concurrency.py`, `integration/*` |
 
@@ -43,10 +43,10 @@ back to the gateway on internal service-token callbacks.
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` + `apps/stt-v2` + Qdrant (embedding store) |
-| Key modules | `apps/api/src/modules/voice-profile` (`voice-profile.controller.ts`); `apps/stt-v2/src/stt_v2/voice_profile`, `apps/stt-v2/src/stt_v2/diarization`, `apps/stt-v2/src/stt_v2/embedding` |
+| App / service | `apps/api` + `apps/stt` + Qdrant (embedding store) |
+| Key modules | `apps/api/src/modules/voice-profile` (`voice-profile.controller.ts`); `apps/stt/src/stt/voice_profile`, `apps/stt/src/stt/diarization`, `apps/stt/src/stt/embedding` |
 | Prisma models | `UserVoiceProfile` (`db_main/user.prisma`) |
-| Key API endpoints | `@Controller('voice-profile')`: `POST /voice-profile/enroll`, `GET /voice-profile`, `PATCH /voice-profile/:id/activate`, `PATCH /voice-profile/:id/deactivate`, `DELETE /voice-profile/:id`; STT-v2 internal (`voice_profile/api/routes.py`, `APIRouter(prefix="/internal/voice-profile")`) → `POST /internal/voice-profile/extract` |
+| Key API endpoints | `@Controller('voice-profile')`: `POST /voice-profile/enroll`, `GET /voice-profile`, `PATCH /voice-profile/:id/activate`, `PATCH /voice-profile/:id/deactivate`, `DELETE /voice-profile/:id`; STT internal (`voice_profile/api/routes.py`, `APIRouter(prefix="/internal/voice-profile")`) → `POST /internal/voice-profile/extract` |
 | Console | `apps/admin-console` feature `playground-voice-profiles` (`voice-profiles-screen`); route `/playground/voice-profiles` (tier 50–59 playground) |
 | Tests | unit(api): `voice-profile/__tests__/voice-profile.controller.test.ts`; unit(console): `playground-voice-profiles/components/__tests__/voice-profiles-screen.test.tsx`, `playground-voice-profiles/api/__tests__/voice-profiles-api.test.ts`; e2e: `voice-profile-cross-tenant.spec.ts`; py(stt): `unit/test_diarization.py`, `unit/diarization/*` |
 
@@ -54,7 +54,7 @@ back to the gateway on internal service-token callbacks.
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` + `apps/stt-v2` (reads the effective pipeline config) |
+| App / service | `apps/api` + `apps/stt` (reads the effective pipeline config) |
 | Key modules | `apps/api/src/modules/pipeline` (`audio-pipeline.controller.ts`, `audio-pipeline-public.controller.ts`); `packages/applications/src/services/stt/pipeline` (`pipeline.service.ts`, `pipeline.dto.mapper.ts`) |
 | Prisma models | `AsrPipeline`, `AsrPipelineVersion` (`db_main/stt.prisma`) |
 | Key API endpoints | `@Controller('audio/pipelines')` (public read): `GET ''`, `GET :id`, `GET /slug/:slug`. `@Controller('admin/audio/pipelines')` (via `@ApiEndpoint`): `POST ''`, `GET ''`, `GET /list`, `GET :id`, `GET /slug/:slug`, `PATCH :id` (`@RequiresIfMatch()` OCC — 412/428), `DELETE :id`, `POST /validate`, `POST :id/assign-tenant`, `POST :id/set-default`, `PATCH :id/toggle`, `GET :id/versions`, `GET :id/versions/:versionNumber` |

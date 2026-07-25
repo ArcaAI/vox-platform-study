@@ -57,7 +57,7 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
         modelType: ModelType.BASE_MODEL,
         source: AiModelSource.HUGGINGFACE,
         // Corrected to the real upstream repo + format: the
-        // `kokoro` PyPI package (tts-v2's actual runtime dependency) loads
+        // `kokoro` PyPI package (tts's actual runtime dependency) loads
         // PyTorch weights, not ONNX — `kokoro-onnx` is a different package
         // this service does not use.
         sourceUri: 'hexgrad/Kokoro-82M',
@@ -69,7 +69,7 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
         computeType: 'float32',
         tags: ['tts', 'local'],
         metaData: {
-            // tts-v2 internal provider name (catalog resolution: metaData.ttsProvider
+            // tts internal provider name (catalog resolution: metaData.ttsProvider
             // → provider column (non built-in) → slug with '-'→'_').
             ttsProvider: 'kokoro',
             voices: [

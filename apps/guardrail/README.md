@@ -266,7 +266,7 @@ service never touches the DB and behaves exactly as the env-only configuration a
 
 1. The caller (SMR) forwards the consultation tenant as the **`X-Tenant-Id`** request header
    to `POST /api/medical/validate`.
-2. The service reads (SQLAlchemy + asyncpg, read-only, mirroring STT-v2) the ENABLED
+2. The service reads (SQLAlchemy + asyncpg, read-only, mirroring STT) the ENABLED
    `core."AiTaskDefault"` row with `taskKey = 'guardrail.validate'` for
    `[tenant, SYSTEM]`, joined to the ENABLED `core."AiModel"` row matching its
    `modelSlug` in the same scope (tenant task-default preferred over SYSTEM's; the

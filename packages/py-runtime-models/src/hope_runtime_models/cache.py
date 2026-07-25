@@ -1,6 +1,6 @@
 """The one model-lifecycle cache shared by every HOPE service.
 
-Converges what were three structurally identical caches (stt-v2
+Converges what were three structurally identical caches (stt
 `models/cache.py`, guardrail `services/model_cache.py`, nlp
 `services/model_cache.py`) into a single generic implementation. The union of
 their behaviour is preserved deliberately, including the "soft ceiling under
@@ -22,7 +22,7 @@ vram ordering, the pin refcounts, the all-pinned soft ceiling, the eviction
 reason labels, :class:`CacheStats`. Neither class carries a copy of it, so the
 two cannot drift.
 
-What is NOT here, on purpose: the stt-v2 format→loader map, the tts pipeline
+What is NOT here, on purpose: the stt format→loader map, the tts pipeline
 handles, the harness llama handle. Those are service concerns injected as
 ``factory`` / ``unload`` callables. Contract, not framework.
 """

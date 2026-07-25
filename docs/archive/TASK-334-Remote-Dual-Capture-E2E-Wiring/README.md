@@ -21,7 +21,7 @@ When a tenant admin enables `dual_capture` on a remote ASR pipeline, the raw/pro
 TASK-333 was scoped to the parts that were self-contained and safe to merge. The two remaining gaps cross the Python↔NestJS contract boundary and the SDK config-population path, which need their own design + tests.
 
 ### Acceptance criteria
-- [x] **I-2a — Route contract:** `stt-v2` `gateway.create_audio_recording` posts to the **correct** internal NestJS route (was `/audio-recordings`; controller is `/audio-records`). Aligned + covered by a contract test.
+- [x] **I-2a — Route contract:** `stt` `gateway.create_audio_recording` posts to the **correct** internal NestJS route (was `/audio-recordings`; controller is `/audio-records`). Aligned + covered by a contract test.
 - [x] **I-2b — Media registration endpoint:** an internal endpoint exists to register a storage object as a `Media` row (`POST /internal/stt/media`), returning the `mediaId` used for `rawMediaId`/`processedMediaId`.
 - [x] **I-2c — Context attachment:** the streaming path resolves `consultationId → contextItem` container so the `AudioRecording` is attached to the consultation (matching the local path's `AUDIO_RECORDING` attachment).
 - [x] **I-1 — Pipeline-id population:** the resolved remote pipeline id is surfaced into `resolvedConfig.stt.transcriptionPipelineId` from the tenant/user remote-config cascade (admin-owned), so the consultation panel runs the correct pipeline. (Schema field + typed read landed in TASK-333 `95b77524`.)
@@ -34,16 +34,16 @@ TASK-333 was scoped to the parts that were self-contained and safe to merge. The
 
 | Gap | Where | Note |
 |---|---|---|
-| Route name mismatch | `apps/stt-v2/src/stt_v2/core/api_client/gateway.py` → NestJS `apps/api/.../stt` internal controller | Client posts `/audio-recordings`; controller route is `/audio-records`. |
+| Route name mismatch | `apps/stt/src/stt/core/api_client/gateway.py` → NestJS `apps/api/.../stt` internal controller | Client posts `/audio-recordings`; controller route is `/audio-records`. |
 | No `Media` registration endpoint | `apps/api` internal STT module; `packages/applications/.../stt/internal` | `sttInternal.createAudioRecord` accepts `rawMediaId`/`processedMediaId`, but there is no endpoint to first turn a storage key into a `Media` row. |
-| No consultation→context resolution | `apps/stt-v2/.../streaming/session_manager.py:_finalize_session` + internal STT service | Need `consultationId → contextItem` container lookup so the recording attaches (parity with TASK-332 local path). |
+| No consultation→context resolution | `apps/stt/.../streaming/session_manager.py:_finalize_session` + internal STT service | Need `consultationId → contextItem` container lookup so the recording attaches (parity with TASK-332 local path). |
 | Pipeline-id not populated | SDK config cascade → `AgenticProvider` / tenant-config resolver | `stt.transcriptionPipelineId` exists in `SttConfigSchema` but nothing writes it; panel falls back to `DEFAULT_TRANSCRIPTION_PIPELINE_ID` (`turbo`). |
 
 ### Already in place (reuse — do not rebuild)
 
 _Re-audit 2026-06-05: the codebase drifted **favorably** since this ticket was opened — the Python orchestration is complete; the remaining gaps are entirely on the NestJS receiving end + the SDK cascade wiring._
 
-- **Python orchestration is complete.** `session_manager._register_dual_capture` (`apps/stt-v2/src/stt_v2/streaming/session_manager.py:1551`) already, when `dual_capture` is enabled: uploads raw/processed WAVs to object storage → calls `gateway.create_media(...)` for each → calls `gateway.create_audio_recording(consultation_id, raw_media_id, processed_media_id, ...)`. Best-effort, never blocks finalization.
+- **Python orchestration is complete.** `session_manager._register_dual_capture` (`apps/stt/src/stt/streaming/session_manager.py:1551`) already, when `dual_capture` is enabled: uploads raw/processed WAVs to object storage → calls `gateway.create_media(...)` for each → calls `gateway.create_audio_recording(consultation_id, raw_media_id, processed_media_id, ...)`. Best-effort, never blocks finalization.
 - `gateway.create_media(...)` **exists** and posts `POST /internal/stt/media` (`gateway.py:357`); `gateway.create_audio_recording(...)` forwards `raw_media_id`/`processed_media_id`/`consultation_id` (`gateway.py:293`).
 - `sttInternal.createAudioRecord` (TS) accepts `rawMediaId`/`processedMediaId` (`packages/applications/src/services/stt/internal/sttInternal.service.ts:196`) and creates a `Media` from `storagePath` internally.
 - **Local-path parity helper exists:** `ContextService.findOrCreateAudioContainer(consultationId, tenantId, userId)` (`packages/applications/src/services/consultation/context/context.service.ts:983`) is exactly the `consultationId → AUDIO_RECORDING contextItem` resolution the remote path needs (I-2c reuses it).
@@ -58,8 +58,8 @@ _Re-audit 2026-06-05: the codebase drifted **favorably** since this ticket was o
 
 ### Step 1 — I-2a: route contract alignment
 - **RED:** contract test asserting `gateway.create_audio_recording` posts to the path the NestJS controller actually serves (`internal/stt/audio-records`).
-- **GREEN:** change the path string in `apps/stt-v2/src/stt_v2/core/api_client/gateway.py` from `/internal/stt/audio-recordings` → `/internal/stt/audio-records` (align client to the existing controller; the controller route is the established server contract and the route is internal-only, so the client is the safe side to change).
-- **Files:** `gateway.py`; `apps/stt-v2/tests/unit/test_api_client.py`. **Env:** conda `arcaenv`, `PYTHONPATH=apps/stt-v2/src`.
+- **GREEN:** change the path string in `apps/stt/src/stt/core/api_client/gateway.py` from `/internal/stt/audio-recordings` → `/internal/stt/audio-records` (align client to the existing controller; the controller route is the established server contract and the route is internal-only, so the client is the safe side to change).
+- **Files:** `gateway.py`; `apps/stt/tests/unit/test_api_client.py`. **Env:** conda `arcaenv`, `PYTHONPATH=apps/stt/src`.
 
 ### Step 2 — I-2b: `Media` registration endpoint
 - **RED:** applications test for a new `SttInternalService.createMedia(dto)` (returns `{ id }`); API test for `POST internal/stt/media` (api-key guarded, returns the created media id).
@@ -90,7 +90,7 @@ _Re-audit 2026-06-05: the codebase drifted **favorably** since this ticket was o
 Executed as a **single sequential TDD track** on `fix/2605-review` (I-2a → I-2b → I-2c → I-1). Every step was RED→GREEN; the consolidated gate is green (§ below). Remote dual-capture is now wired end-to-end.
 
 ### I-2a — Route contract alignment
-- `apps/stt-v2/src/stt_v2/core/api_client/gateway.py`: `create_audio_recording` now posts `POST /internal/stt/audio-records` (was `/audio-recordings`). Also **renamed the `duration` param → `duration_ms`** and maps it to the payload key `durationMs`, fixing a seconds-vs-milliseconds unit mismatch with the NestJS DTO; `session_manager._register_dual_capture` passes `duration_ms=int(round(total_duration_seconds * 1000))`.
+- `apps/stt/src/stt/core/api_client/gateway.py`: `create_audio_recording` now posts `POST /internal/stt/audio-records` (was `/audio-recordings`). Also **renamed the `duration` param → `duration_ms`** and maps it to the payload key `durationMs`, fixing a seconds-vs-milliseconds unit mismatch with the NestJS DTO; `session_manager._register_dual_capture` passes `duration_ms=int(round(total_duration_seconds * 1000))`.
 - Contract tests: `test_create_audio_recording_targets_internal_route`, `test_create_media_targets_internal_route`, and an updated metadata test asserting `durationMs`.
 
 ### I-2b — `Media` registration endpoint
@@ -112,7 +112,7 @@ Executed as a **single sequential TDD track** on `fix/2605-review` (I-2a → I-2
 - **I-1 mount-init only (not the rehydrate path).** The plan mentioned "and the rehydrate path", but re-audit showed the tenant/user-switch rehydrate effect **never re-applies `configManager.setTenantConfig`** (it only refreshes `store.tenantConfig`). This is a **pre-existing limitation shared by every tenant-tier field**, including TASK-332's `captureRawAudio`. I-1 mirrors that precedent (inject at mount `init()` Step 2) to stay surgical; full rehydrate-path tenant-tier re-application is a separate, broader change tracked outside this ticket.
 
 ### Files changed
-- **Python (`apps/stt-v2`):** `src/stt_v2/core/api_client/gateway.py`, `src/stt_v2/streaming/session_manager.py`, `tests/unit/test_api_client.py`.
+- **Python (`apps/stt`):** `src/stt/core/api_client/gateway.py`, `src/stt/streaming/session_manager.py`, `tests/unit/test_api_client.py`.
 - **applications:** `src/services/stt/internal/{sttInternal.service.ts, ISttInternalService.ts, dto/internal.request.ts}` + `__tests__/sttInternal.service.test.ts`.
 - **api:** `src/modules/internal/stt-internal.controller.ts` + `__tests__/stt-internal.controller.test.ts`.
 - **vox:** `src/providers/AgenticProvider.tsx` + `providers/__tests__/AgenticProvider.remotePipeline.task334.test.ts`.
@@ -125,7 +125,7 @@ Executed as a **single sequential TDD track** on `fix/2605-review` (I-2a → I-2
 | api `vitest` | **1573 passed**, 4 skipped |
 | api `build` (`nest build` + `tsc-alias`) | clean |
 | ui-playground `type-check` | clean |
-| stt-v2 `pytest tests/unit` (conda `arcaenv`) | **1864 passed** (+2 new contract tests) |
+| stt `pytest tests/unit` (conda `arcaenv`) | **1864 passed** (+2 new contract tests) |
 
 ### E2E reasoning (dual_capture-enabled remote pipeline)
 1. Admin enables `dual_capture` on a pipeline → Python `yaml_parser` parses it → `session_manager` stores it per session.

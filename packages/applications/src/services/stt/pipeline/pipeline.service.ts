@@ -607,7 +607,7 @@ export class PipelineService extends BaseService implements IPipelineService {
       return local;
     }
 
-    // Authoritative validation proxied to stt-v2, which runs
+    // Authoritative validation proxied to stt, which runs
     // the SAME PipelineYamlParser the runtime uses (schema v2: provider::model
     // shorthand, stage toggles, engine/quantization/language rules). This
     // replaces hand-duplicating those rules in TypeScript; when the service
@@ -657,9 +657,9 @@ export class PipelineService extends BaseService implements IPipelineService {
     yaml: string,
   ): Promise<{ valid: boolean; errors?: string[] } | null> {
     try {
-      // URL resolution mirrors serviceHealthMonitoring.service.ts; stt-v2 is
+      // URL resolution mirrors serviceHealthMonitoring.service.ts; stt is
       // gateway-fronted and carries no service-token middleware.
-      const base = process.env.STT_V2_URL || 'http://localhost:8861';
+      const base = process.env.STT_URL || process.env.STT_V2_URL || 'http://localhost:8861';
       const response = await fetch(`${base}/api/v1/pipelines/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

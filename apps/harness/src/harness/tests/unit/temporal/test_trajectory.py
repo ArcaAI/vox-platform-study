@@ -187,8 +187,9 @@ class TestActivityEmission:
         step = cap.steps[0]
         assert step.status == "OK"
         assert step.seq == 32
-        # AD-1 stats embedded verbatim on the LLM_CALL step.
-        assert step.stats == stats
+        # AD-1 stats embedded verbatim on the LLM_CALL step, alongside the
+        # F-19 locally measured prompt size (chars + chars/4 token estimate).
+        assert step.stats == {**stats, "prompt_chars": 1, "prompt_tokens_est": 0}
 
     @pytest.mark.asyncio
     async def test_generate_emits_thinking_step_when_reasoning_present(self, env, monkeypatch):
@@ -465,9 +466,12 @@ class TestWorkflowOrderedSpine:
         # session/run come from the Temporal ids; correlation threads through.
         assert all(s.session_id and s.run_id for s in cap.steps)
         assert all(s.correlation_id == "corr-1" for s in cap.steps)
-        # The LLM_CALL step carries the AD-1 stats.
+        # The LLM_CALL step carries the AD-1 stats (verbatim) plus the F-19
+        # prompt-size observability fields measured on the dispatched prompt.
         llm = next(s for s in cap.steps if s.step_type == "LLM_CALL")
-        assert llm.stats == smr_stats
+        assert {k: llm.stats[k] for k in smr_stats} == smr_stats
+        assert llm.stats["prompt_chars"] > 0
+        assert llm.stats["prompt_tokens_est"] == llm.stats["prompt_chars"] // 4
 
     @pytest.mark.asyncio
     async def test_trajectory_outage_never_fails_workflow(self, monkeypatch):

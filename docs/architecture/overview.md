@@ -49,7 +49,7 @@ graph TB
 
     subgraph hope[HOPE Platform]
         API["API Gateway - NestJS"]
-        PY["Python AI services<br/>stt-v2 / smr / guardrail / nlp / harness"]
+        PY["Python AI services<br/>stt / smr / guardrail / nlp / harness"]
         DATA[("PostgreSQL / Redis / MinIO / Qdrant / Vault / Temporal")]
     end
 
@@ -82,13 +82,13 @@ graph TB
 
 | App | Role | Port | Protocols | Key dependencies |
 |---|---|---|---|---|
-| `api` | NestJS 11 API gateway — auth, multi-tenancy, all client-facing REST/WS/SSE, system of record | 8868 | REST (`/api/v1`), WS (`/ws/stt-v2/stream`), SSE | PostgreSQL (Prisma), Redis (BullMQ + cache + streams), MinIO, Vault (secrets/transit), SMR, NLP, Harness, STT-v2 |
-| `stt-v2` | Speech-to-text — processor-registry pipeline (schema v2): multi-model ASR, VAD (Silero), embedding + diarization, streaming + batch | 8861 | REST (`/api/v1`, `/internal/*`) | PostgreSQL, Redis (streams + Dramatiq), MinIO (`recordings`), Qdrant (speaker embeddings), HuggingFace / NeMo models, Azure Speech (optional) |
-| `smr` | SMR v2 — multi-provider LLM text generation / summarization | 8862 | REST (`/api/v1`), SSE streaming | Redis (task manager), LLM providers (LM Studio default, Ollama, Azure OpenAI, Bedrock), Guardrail (external client) |
+| `api` | NestJS 11 API gateway — auth, multi-tenancy, all client-facing REST/WS/SSE, system of record | 8868 | REST (`/api/v1`), WS (`/ws/stt/stream`), SSE | PostgreSQL (Prisma), Redis (BullMQ + cache + streams), MinIO, Vault (secrets/transit), SMR, NLP, Harness, STT |
+| `stt` | Speech-to-text — processor-registry pipeline (schema v2): multi-model ASR, VAD (Silero), embedding + diarization, streaming + batch | 8861 | REST (`/api/v1`, `/internal/*`) | PostgreSQL, Redis (streams + Dramatiq), MinIO (`recordings`), Qdrant (speaker embeddings), HuggingFace / NeMo models, Azure Speech (optional) |
+| `smr` | SMR — multi-provider LLM text generation / summarization | 8862 | REST (`/api/v1`), SSE streaming | Redis (task manager), LLM providers (LM Studio default, Ollama, Azure OpenAI, Bedrock), Guardrail (external client) |
 | `guardrail` | Safety engine — content-safety / PII / prompt-injection analysis, medical validation | 8863 | REST (`/api/v1`) | Redis (job queue), LLM engines (LM Studio / Azure / Bedrock / Ollama), PostgreSQL (optional per-tenant config via SQLAlchemy) |
 | `nlp` | Medical NLP — extraction, text/token classification, correction, diagnosis suggestions | 8864 | REST (`/api/v1`), WS (`/api/v1/classify/{token,text}/{session_id}`) | HuggingFace transformer models (emotion classifier, Medical-NER, symptom/disease BERT) |
 | `harness` | Clinical Documentation Harness — FastAPI HTTP surface + Temporal durable workflows (`HarnessDocWorkflow`) | 8866 | REST (`/api/v1`) | Temporal (gRPC 7233), NLP, SMR, API gateway internal endpoints, Qdrant + reranker (hybrid RAG), Granite Guardian judge |
-| `tts-v2` | Text-to-speech — realtime multi-provider synthesis (Azure Speech cloud + self-hosted Kokoro / Indic Parler-TTS), English + Malayalam, OpenAI-compatible | 8865 | REST (`/api/v1`), chunked audio + SSE | Azure Speech (cloud), local ONNX/Torch models (GPU), reached via gateway `/api/v1/speech/*` |
+| `tts` | Text-to-speech — realtime multi-provider synthesis (Azure Speech cloud + self-hosted Kokoro / Indic Parler-TTS), English + Malayalam, OpenAI-compatible | 8865 | REST (`/api/v1`), chunked audio + SSE | Azure Speech (cloud), local ONNX/Torch models (GPU), reached via gateway `/api/v1/speech/*` |
 | `admin-console` | Governance & administration console — Next.js 16 App Router, React 19, BFF auth (encrypted httpOnly session, catch-all `/api/hope/*` proxy, stream tickets); tier-mirrored route groups `(global)` / `(shared)` / `(tenant)` | 5176 (dev) | HTTP (BFF) | API gateway (via server-side proxy) |
 | `ui-playground` | Legacy SDK playground + admin console — React 19/Vite/TanStack Router. **Deprecated** (no development/maintenance plan; superseded by `admin-console`) | 5175 (dev) | HTTP | API gateway |
 | `example` | Minimal live-transcription demo of the SDK (`live-transcription-example`) | 5173 (dev) | HTTP | API gateway |
@@ -97,7 +97,7 @@ Two additional long-running processes are not HTTP services:
 
 | Process | Started by | Role |
 |---|---|---|
-| STT-v2 Dramatiq worker | `stt-v2-worker` / `pnpm dev:stt-v2` stack | Consumes batch transcription jobs from Redis (Dramatiq broker, DB 5); loads VAD/ASR/diarization models per worker process |
+| STT Dramatiq worker | `stt-worker` / `pnpm dev:stt` stack | Consumes batch transcription jobs from Redis (Dramatiq broker, DB 5); loads VAD/ASR/diarization models per worker process |
 | Harness Temporal worker | `pnpm dev:harness:worker` (`harness.temporal.worker`) | Executes `HarnessDocWorkflow` / `HarnessPingWorkflow` activities on task queue `harness-task-queue` |
 
 The API gateway also runs in-process BullMQ workers (queues from the `JobQueue` enum in `@arcaai/domains`: `AuditLog`, `SysEvent`, `GeneratePreSummary`, `GenerateSummary`, `IngestKnowledgeDocument`, etc.).
@@ -106,7 +106,7 @@ The API gateway also runs in-process BullMQ workers (queues from the `JobQueue` 
 
 | Service | Port(s) | Used by | Dev provisioning |
 |---|---|---|---|
-| PostgreSQL 18 (TimescaleDB image, pgvector extension available) | 5432 | api (Prisma 7), stt-v2, guardrail (optional), Temporal (dedicated `temporal` + `temporal_visibility` DBs) | `infrastructure/docker/docker-compose.yml` (`hope-postgres`) |
+| PostgreSQL 18 (TimescaleDB image, pgvector extension available) | 5432 | api (Prisma 7), stt, guardrail (optional), Temporal (dedicated `temporal` + `temporal_visibility` DBs) | `infrastructure/docker/docker-compose.yml` (`hope-postgres`) |
 | Redis 8 | 6379 | BullMQ (DB 0), cache/rate-limit (DB 1), STT streams (DB 2), SMR streams (DB 3), Celery (DB 4, legacy), Dramatiq (DB 5) | base compose (`hope-redis`) |
 | MinIO | 9000 (API), 9001 (console) | Media/recordings object storage. Buckets: `recordings`, `generated-audio`, `documents`, `backups`, `mlflow` (legacy) | base compose (`hope-minio` + `minio-setup`) |
 | Qdrant | 6333 | Speaker embeddings (`stt_speaker_embeddings`), institutional-RAG knowledge chunks, prompt/DNA collections | dev compose (`qdrant`, opt-in) |
@@ -131,19 +131,19 @@ graph TB
 
     subgraph gateway[apps/api - NestJS :8868]
         REST["REST /api/v1/*"]
-        WS["WS gateway /ws/stt-v2/stream"]
+        WS["WS gateway /ws/stt/stream"]
         SSE[SSE streams]
         BULL[BullMQ workers]
         LIVEDOC[LiveDocumentationService]
     end
 
     subgraph pysvc[Python services]
-        STT["stt-v2 :8861<br/>+ Dramatiq worker"]
+        STT["stt :8861<br/>+ Dramatiq worker"]
         SMR["smr :8862"]
         GUARD["guardrail :8863"]
         NLP["nlp :8864"]
         HARN["harness :8866<br/>+ Temporal worker"]
-        TTS["tts-v2 :8865"]
+        TTS["tts :8865"]
     end
 
     subgraph stores[Data plane]
@@ -193,14 +193,14 @@ graph TB
 
 ### 3.1 Live consultation transcription + live documentation
 
-Verified against `apps/api/src/modules/streaming/` (gateway, controllers), `packages/applications/src/services/stt/streaming/` (Redis bridge), `packages/applications/src/services/consultation/live-documentation/`, and `apps/stt-v2/src/stt_v2/streaming/`.
+Verified against `apps/api/src/modules/streaming/` (gateway, controllers), `packages/applications/src/services/stt/streaming/` (Redis bridge), `packages/applications/src/services/consultation/live-documentation/`, and `apps/stt/src/stt/streaming/`.
 
 ```mermaid
 sequenceDiagram
     participant SDK as Browser SDK (@arcaai/vox)
     participant API as apps/api :8868
     participant R as Redis Streams
-    participant STT as stt-v2 :8861
+    participant STT as stt :8861
     participant SMR as smr :8862
     participant NLP as nlp :8864
 
@@ -209,7 +209,7 @@ sequenceDiagram
     SDK->>API: POST /api/v1/audio/transcription-jobs/stream/session
     API->>STT: POST /internal/streaming/sessions
     API-->>SDK: sessionId + one-time stream ticket
-    SDK->>API: WS connect /ws/stt-v2/stream?sessionId&ticket
+    SDK->>API: WS connect /ws/stt/stream?sessionId&ticket
     loop while recording
         SDK->>API: binary PCM frames (after room/noise-filter/vad)
         API->>R: XADD stt:audio:{sessionId}
@@ -232,11 +232,11 @@ Key mechanics:
 - Audio/control/result travel via Redis Streams: `stt:audio:{sessionId}`, `stt:control:{sessionId}`, `stt:result:{sessionId}` (`StreamingAudioBridgeService`).
 - The gateway keeps a 200-message resume buffer per session for reconnect replay, and applies egress backpressure (drops partials, queues finals) above a 512 KiB WS buffer watermark.
 - `LiveDocumentationService` (TASK-339/340) debounces final segments (default: 3 segments or 5 s idle), calls SMR for a bounded running note and NLP for entities, and republishes over the consultation live-summary SSE stream. Kill switch: `LIVE_DOC_ENABLED`.
-- STT-v2 calls back into the gateway's internal surface (`/api/v1/internal/stt/*`: transcripts, job lifecycle, audio-records, media) authenticated by service token.
+- STT calls back into the gateway's internal surface (`/api/v1/internal/stt/*`: transcripts, job lifecycle, audio-records, media) authenticated by service token.
 
 ### 3.2 Batch transcription
 
-`POST /api/v1/audio/transcription-jobs` (single/batch/streaming variants) creates `TranscriptionJob` rows; STT-v2's Dramatiq worker consumes jobs via Redis (broker DB 5), pulls audio from MinIO (`recordings` bucket), transcribes, and reports lifecycle transitions back through `/api/v1/internal/stt/jobs/:id/{start,progress,complete,fail}`. Job status streams to clients via SSE `GET /api/v1/audio/transcription-jobs/:id/stream`.
+`POST /api/v1/audio/transcription-jobs` (single/batch/streaming variants) creates `TranscriptionJob` rows; STT's Dramatiq worker consumes jobs via Redis (broker DB 5), pulls audio from MinIO (`recordings` bucket), transcribes, and reports lifecycle transitions back through `/api/v1/internal/stt/jobs/:id/{start,progress,complete,fail}`. Job status streams to clients via SSE `GET /api/v1/audio/transcription-jobs/:id/stream`.
 
 ### 3.3 Summary generation (BullMQ jobs)
 
@@ -290,16 +290,16 @@ Key mechanics:
 
 ### 3.5 Speaker diarization & voice-profile enrollment
 
-Verified against `apps/stt-v2/src/stt_v2/diarization/`, `.../voice_profile/`, `.../processors/base.py`, and `.../core/config/settings.py`.
+Verified against `apps/stt/src/stt/diarization/`, `.../voice_profile/`, `.../processors/base.py`, and `.../core/config/settings.py`.
 
-STT-v2 is built on a **processor registry** (`processors/base.py`): a closed set of pipeline stage kinds (`normalize`, `denoise`, `resample`, `vad`, `embedding`, `asr`, `diarization`, `stabilizer`, `punctuation`, `disfluency`, `merge`) with open implementations. Pipeline YAML (schema v2, `pipeline/yaml_parser.py`) references stages by **registry key only** — never import paths — so tenant-editable configs cannot execute arbitrary code, and each processor self-declares its device/compute support so the resolver fails fast at pipeline-load time.
+STT is built on a **processor registry** (`processors/base.py`): a closed set of pipeline stage kinds (`normalize`, `denoise`, `resample`, `vad`, `embedding`, `asr`, `diarization`, `stabilizer`, `punctuation`, `disfluency`, `merge`) with open implementations. Pipeline YAML (schema v2, `pipeline/yaml_parser.py`) references stages by **registry key only** — never import paths — so tenant-editable configs cannot execute arbitrary code, and each processor self-declares its device/compute support so the resolver fails fast at pipeline-load time.
 
 Two diarization strategies exist behind the per-pipeline `DiarizationConfig.backend` selector:
 
 - **Embedding + clustering (default path).** Speaker embeddings are extracted (`create_embedding_service()` picks the backend by HuggingFace model-id prefix — `SpeechBrainEmbeddingService` for ECAPA models, `PyannoteEmbeddingService` otherwise) and matched by cosine similarity. The **deployed default embedding model is `pyannote/wespeaker-voxceleb-resnet34-LM` (256-dim)**; the Qdrant collection `stt_speaker_embeddings` and the `UserVoiceProfile.embedding` `vector(N)` column must match that dimension. An **ECAPA-TDNN backend** (`speechbrain/spkrec-ecapa-voxceleb`, 192-dim) is implemented as an alternative; cutting over to it is a config + `vector(192)` migration + re-enroll step and is **not yet applied**.
 - **Streaming Sortformer (live 2-speaker loop core).** `StreamingSortformerDiarizer` wraps NVIDIA Streaming Sortformer (`nvidia/diar_streaming_sortformer_4spk-v2.1`, NVIDIA Open Model License, self-hosted only), selected via `backend == "sortformer"`. The NeMo loader is implemented but **unvalidated pending GPU** — the weights are not staged and there is no CPU/ONNX path, so `load_default_backend` raises `SortformerModelUnavailableError` and the diarizer **degrades to "no labels"** (today's default diarization-off behaviour). No path ever fabricates a speaker turn the model did not emit, and no cloud vendor may receive clinical audio.
 
-Voice-profile enrollment: `POST /api/v1/voice-profile/enroll` (gateway) → STT-v2 `POST /internal/voice-profile` → the speaker embedding is upserted into the Qdrant `stt_speaker_embeddings` collection; a `UserVoiceProfile` row tracks enrollment state. During live sessions the embedding path matches segment speakers against enrolled profiles.
+Voice-profile enrollment: `POST /api/v1/voice-profile/enroll` (gateway) → STT `POST /internal/voice-profile` → the speaker embedding is upserted into the Qdrant `stt_speaker_embeddings` collection; a `UserVoiceProfile` row tracks enrollment state. During live sessions the embedding path matches segment speakers against enrolled profiles.
 
 Transcript results persist as a `TRANSCRIPT` `ContextItem` plus ordered `TranscriptSegment` rows (time span, speaker label, character offsets used to anchor NER grounding).
 
@@ -359,7 +359,7 @@ Enforced conventions (see `.claude/rules` and `eslint-plugin-arcaai-internal`):
 - Entities are created via `XxxFactory.CreateXxx()`, never `new XxxEntity()`.
 - Services extend `BaseService` (tenant scoping, `broadcastSysEvent`, tenant guards), map entities to response DTOs, and broadcast `SysEvent` after every mutation.
 - Deletes are soft (`resourceStatus: DELETED` via `repository.softDelete()`).
-- Python services do not use Prisma; they access Postgres (stt-v2, guardrail) via their own async clients and are otherwise reached only through the gateway.
+- Python services do not use Prisma; they access Postgres (stt, guardrail) via their own async clients and are otherwise reached only through the gateway.
 
 Shared TypeScript packages: `logger` (Winston), `exceptions`, `types`, `utils`, `tools` (code generators: `gen:model|entity|mapper|repository|factory|service|controller`), `config-*` (eslint/ts/tailwind/rollup), `ui` (@arcaai/ui shadcn/Radix component library).
 
@@ -393,14 +393,14 @@ Infrastructure in containers; application services run on the host (Node via pnp
 
 - Base: `infrastructure/docker/docker-compose.yml` — `hope-postgres` (TimescaleDB pg18 image), `hope-minio` (+ bucket setup), `hope-redis`.
 - Dev overlay: `infrastructure/docker/docker-compose.dev.yml` — profile tiers (TASK-555): base `vault` (+`vault-init`) + `temporal` (+`temporal-ui`) + `rag` (`hope-reranker` TEI); `-o` adds `prometheus`/`observability` (Prometheus + Grafana); `-e` adds `inference` (vLLM / llama.cpp / TEI embed). Qdrant (+collection init) starts unprofiled with core.
-- Entry points: `pnpm dev:setup` / `dev:setup-o` / `dev:setup-e` (bootstrap tiers), `pnpm infra:up` (`-- -o` / `-- -e`), `pnpm dev:stack` / `dev:stack-o` / `dev:stack-e` (ensure infra then spawn api/stt/smr/guardrail/nlp/harness/worker/admin), `pnpm dev:doctor` (health checks). The admin console runs as its own Next.js dev server (`apps/admin-console`, `next dev -p 5176`); tts-v2 runs via `pnpm dev:tts-v2`.
+- Entry points: `pnpm dev:setup` / `dev:setup-o` / `dev:setup-e` (bootstrap tiers), `pnpm infra:up` (`-- -o` / `-- -e`), `pnpm dev:stack` / `dev:stack-o` / `dev:stack-e` (ensure infra then spawn api/stt/smr/guardrail/nlp/harness/worker/admin), `pnpm dev:doctor` (health checks). The admin console runs as its own Next.js dev server (`apps/admin-console`, `next dev -p 5176`); tts runs via `pnpm dev:tts`.
 - Env files: `.env.dev` (dev), `.env.test` (isolated test infra: PG 5433, Redis 6380, MinIO 9002), `.env.example` (canonical template). Host env always wins; production loads host env only.
 
 ### 7.2 Cluster (k3s + ArgoCD) — primary deployment target
 
 GitOps via ArgoCD ApplicationSet (`deployment/argocd/bootstrap.{dev,prod}.yaml.example`), namespaces `hope-v2-dev` (auto-sync) and `hope-v2-prod` (manual sync), GitLab CI (`.gitlab-ci.yml`) builds per-service images on change.
 
-- Kustomize base (`deployment/k3s/base/kustomization.yaml`) deploys: `redis`, `ollama`, `lmstudio`, `api`, `guardrail`, `reranker`, `vllm`, `llama-cpp`, `smr`, `stt-v2`, `stt-v2-worker`, `tts-v2`, `ui` (ui-playground image — deprecated app), `admin-console`, and a `db-migrate` Job (ArgoCD PreSync hook). An `nlp.yaml` manifest exists but is not currently listed in the kustomization resources.
+- Kustomize base (`deployment/k3s/base/kustomization.yaml`) deploys: `redis`, `ollama`, `lmstudio`, `api`, `guardrail`, `reranker`, `vllm`, `llama-cpp`, `smr`, `stt`, `stt-worker`, `tts`, `ui` (ui-playground image — deprecated app), `admin-console`, and a `db-migrate` Job (ArgoCD PreSync hook). An `nlp.yaml` manifest exists but is not currently listed in the kustomization resources.
 - PostgreSQL is not deployed in-cluster by the base; the platform targets the external HA Postgres cluster (Patroni + HAProxy + PgBouncer, VMs 500–502 — see `docs/research/deployments/deploy-vm500-502-postgres-ha.md`). Production requires the `DATABASE_URL` (PgBouncer 6432, transaction mode) / `DIRECT_URL` (un-pooled, migrations) split.
 - Harness + Temporal are not yet part of the k3s base (compose-profile / host-run only at this time).
 - Ingress: Traefik (k3s default). Overlays (`overlays/dev`, `overlays/prod`) patch image tags, hostnames, replicas.

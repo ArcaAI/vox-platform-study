@@ -34,7 +34,7 @@
 | VMID | Name | vCPU | RAM | Boot Disk | Data Disk | IP | Apps |
 |------|------|------|-----|-----------|-----------|-----|------|
 | CT 100 | cloudflared | 1 | 0.5 GB | 2 GB | — | multi-homed | Cloudflare Tunnel |
-| VM 200 | ubuntu-live-gpu | 64 | 128 GB | 64 GB | 300 GB | 10.10.1.10 | AI apps v2 + 2× GPU (api, stt-v2, smr, nlp) |
+| VM 200 | ubuntu-live-gpu | 64 | 128 GB | 64 GB | 300 GB | 10.10.1.10 | AI apps v2 + 2× GPU (api, stt, smr, nlp) |
 | VM 201 | rb | 2 | 8 GB | 64 GB | — | 10.10.2.11 | Marketing websites |
 | VM 400 | master | 8 | 16 GB | 64 GB | — | 10.10.1.100 | Rancher, Argo CD |
 | VM 401 | vuvu | 64 | 64 GB | 400 GB | — | 10.10.1.101 | AI apps v1 without GPU |
@@ -1430,7 +1430,7 @@ curl -s http://localhost:30080/health
 
 # Verify GPU is being used by inference pods
 nvidia-smi
-# Should show GPU processes from stt-v2, nlp pods
+# Should show GPU processes from stt, nlp pods
 
 exit
 ```
@@ -1896,7 +1896,7 @@ After migration, monitor these metrics daily for the first week:
 INFRASTRUCTURE (Post-Reallocation):
   VMID  NAME             IP            vCPU  RAM    DISK       APPS
   CT100 cloudflared      multi-homed   1     0.5G   2G         Tunnel ingress
-  200   ubuntu-live-gpu  10.10.1.10    16    48G    64G+300G   AI v2 + 2×GPU (stt-v2, smr, nlp, api)
+  200   ubuntu-live-gpu  10.10.1.10    16    48G    64G+300G   AI v2 + 2×GPU (stt, smr, nlp, api)
   201   rb               10.10.2.11    2     4G     64G        Marketing websites
   400   master           10.10.1.100   8     16G    64G        Rancher, Argo CD
   401   vuvu             10.10.1.101   16    32G    400G       AI v1 no GPU (stt-v1, smr-v1, nlp, api)

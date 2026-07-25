@@ -121,7 +121,7 @@ export class TranscriptionJobController {
 
   /**
    * Assert the caller's tenant owns `pipelineId` before the
-   * controller forwards work to STT-V2. We translate cross-tenant pipelines
+   * controller forwards work to STT. We translate cross-tenant pipelines
    * to `NotFoundException` so the error surface matches "unknown pipeline"
    * and we do not leak the existence of pipelines in other tenants.
    */
@@ -321,15 +321,15 @@ export class TranscriptionJobController {
 
     // HARD-BLOCK a new session when the tenant is at/
     // over its resolved `maxConcurrentSessions` (live socket-registry count).
-    // Runs before any STT-V2 / bucket I/O so an over-capacity caller is rejected
+    // Runs before any STT / bucket I/O so an over-capacity caller is rejected
     // early with a typed 429. No-op while the entitlements kill-switch is OFF.
     await this.entitlements.assertConcurrencyQuota(tenantId);
 
     // Assert tenant ownership of the requested pipeline
-    // BEFORE we forward to STT-V2 (which is itself defended downstream).
+    // BEFORE we forward to STT (which is itself defended downstream).
     // The ownership check and the bucket resolution are
     // independent reads, so they run in parallel; a rejected ownership check
-    // still rejects the whole step before anything is forwarded to STT-V2.
+    // still rejects the whole step before anything is forwarded to STT.
     //
     // Bucket resolution: the tenant's default audio bucket (configured
     // purpose → `recordings` slug → legacy `audio` slug) so STT-v2 writes
@@ -367,7 +367,7 @@ export class TranscriptionJobController {
     const result = await this.sessionService.createSession(sessionPayload);
 
     if (!result) {
-      throw new ServiceUnavailableException('STT-V2 streaming service at capacity');
+      throw new ServiceUnavailableException('STT streaming service at capacity');
     }
 
     // Three independent writes (parallelized):
@@ -397,7 +397,7 @@ export class TranscriptionJobController {
     return {
       sessionId: result.sessionId,
       status: result.status,
-      wsUrl: '/ws/stt-v2/stream',
+      wsUrl: '/ws/stt/stream',
       maxConcurrent: result.maxConcurrent,
       currentActive: result.currentActive,
       ticket: issuedTicket.ticket,
@@ -407,8 +407,8 @@ export class TranscriptionJobController {
   }
 
   /**
-   * Because `sessionId` is opaque to Prisma (the STT-V2 session row lives in
-   * STT-V2 / Redis, not the gateway DB), `@TenantOwnedResource` cannot use
+   * Because `sessionId` is opaque to Prisma (the STT session row lives in
+   * STT / Redis, not the gateway DB), `@TenantOwnedResource` cannot use
    * any of the repository-backed resolvers. Instead, `createStreamSession`
    * now writes a gateway-side `sessionId → tenantId` binding via
    * `StreamSessionTenantBindingService`, and the decorator's `'StreamSession'`
@@ -423,8 +423,8 @@ export class TranscriptionJobController {
    *   - Reshape the URL to `/jobs/:id/stream-session/:sessionId` so the
    *     parent jobId carries the tenant scope. Out of scope — would break
    *     the live SDK contract.
-   *   - Modify STT-V2 to return `tenantId` on its status endpoint.
-   *     Out of scope — touches `apps/stt-v2` (sibling Python service).
+   *   - Modify STT to return `tenantId` on its status endpoint.
+   *     Out of scope — touches `apps/stt` (sibling Python service).
    */
   @Delete('stream/session/:sessionId')
   @HttpCode(204)
@@ -438,7 +438,7 @@ export class TranscriptionJobController {
 
   /**
    * Mint a fresh single-use stream ticket for an existing
-   * session. The SDK calls this from `SttV2WebSocketClient.attemptReconnect`
+   * session. The SDK calls this from `SttWebSocketClient.attemptReconnect`
    * before reopening the WebSocket, since each ticket is one-shot and gets
    * consumed by the previous connection.
    *

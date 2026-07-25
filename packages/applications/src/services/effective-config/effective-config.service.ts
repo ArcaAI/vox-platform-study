@@ -96,7 +96,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
           concurrency: await this.resolveConcurrency(['nlp.inference.maxConcurrent']),
         };
 
-      case 'stt-v2':
+      case 'stt':
         return {
           ...base,
           retention: await this.resolveRetention('stt'),
@@ -112,7 +112,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
       case 'harness':
         return { ...base, retention: await this.resolveRetention('harness') };
 
-      case 'tts-v2':
+      case 'tts':
         return { ...base, retention: await this.resolveRetention('tts') };
     }
   }
@@ -145,7 +145,7 @@ export class EffectiveConfigService implements IEffectiveConfigService {
    *
    * `smr` gets ttlSeconds ONLY: it owns no cache, so `maxModels`/`maxMemoryMb`/
    * `vramBudgetMb` are meaningless there and stay null rather than being
-   * invented. `maxMemoryMb` remains stt-v2-only (its historical MB budget);
+   * invented. `maxMemoryMb` remains stt-only (its historical MB budget);
    * every other service uses the generalized `vramBudgetMb`.
    */
   private async resolveRetention(service: 'stt' | 'nlp' | 'guardrail' | 'harness' | 'tts' | 'smr'): Promise<EffectiveRetention> {

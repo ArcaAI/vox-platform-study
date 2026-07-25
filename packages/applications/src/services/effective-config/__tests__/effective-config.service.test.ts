@@ -2,7 +2,7 @@
 //
 // The service resolves the SERVICE-LEVEL subset only: retention, concurrency and
 // runtime profiles. It never carries per-request model selection — SMR's
-// stateless-gateway contract (`apps/smr/src/smr_v2/core/config.py:1-9`) is
+// stateless-gateway contract (`apps/smr/src/smr/core/config.py:1-9`) is
 // preserved verbatim, so a regression here would break that house constraint.
 
 import { ArgumentInvalidException } from '@arcaai/exceptions';
@@ -122,9 +122,9 @@ describe('EffectiveConfigService', () => {
       expect(res.retention).toMatchObject({ ttlSeconds: 600, maxModels: 3 });
     });
 
-    it('serves stt-v2 retention + worker/streaming concurrency, and NO runtimeProfiles', async () => {
+    it('serves stt retention + worker/streaming concurrency, and NO runtimeProfiles', async () => {
       const svc = serviceWith(settingsStub(), [profile()]);
-      const res = await svc.resolveForService('stt-v2');
+      const res = await svc.resolveForService('stt');
 
       // The ttl DEFAULT moved 3600 → 600 (the [60,3600] window
       // is unchanged). Deliberate, owner-approved behaviour change.
@@ -140,7 +140,7 @@ describe('EffectiveConfigService', () => {
     it.each([
       ['guardrail', 2],
       ['harness', 1],
-      ['tts-v2', 2],
+      ['tts', 2],
     ])('serves %s its model-cache retention subset', async (name, expectedMaxModels) => {
       const svc = serviceWith(settingsStub(), [profile()]);
       const res = await svc.resolveForService(name);
@@ -156,7 +156,7 @@ describe('EffectiveConfigService', () => {
   describe('source stamping (operators must see which lane is live)', () => {
     it('stamps env-fallback when no DB override exists', async () => {
       const svc = serviceWith(settingsStub());
-      const res = await svc.resolveForService('stt-v2');
+      const res = await svc.resolveForService('stt');
 
       expect(res.retention?.source).toBe('env-fallback');
       expect(res.concurrency?.source).toBe('env-fallback');
@@ -164,7 +164,7 @@ describe('EffectiveConfigService', () => {
 
     it('stamps db when the registry write-lane supplied the value', async () => {
       const svc = serviceWith(settingsStub({ 'stt.modelCache.ttlSeconds': 900 }));
-      const res = await svc.resolveForService('stt-v2');
+      const res = await svc.resolveForService('stt');
 
       expect(res.retention?.ttlSeconds).toBe(900);
       expect(res.retention?.source).toBe('db');
@@ -201,7 +201,7 @@ describe('EffectiveConfigService', () => {
       } as unknown as EffectiveSettingsService;
       const svc = serviceWith(settings);
 
-      const res = await svc.resolveForService('stt-v2');
+      const res = await svc.resolveForService('stt');
       expect(res.retention?.source).toBe('env-fallback');
       expect(res.retention?.ttlSeconds).toBeNull();
     });

@@ -222,15 +222,15 @@ Pre-existing test failures unrelated to this ticket (verified by stashing change
 
 ### 2026-05-25 — Voice-profile enroll: friendlier upstream-error propagation
 
-**Scope:** API gateway only (`VoiceProfileService.extractEmbeddings`). Not a TASK-304 design change — surfaced while dev-testing enrollment in `ui-playground` against a freshly-started STT-v2 stack.
+**Scope:** API gateway only (`VoiceProfileService.extractEmbeddings`). Not a TASK-304 design change — surfaced while dev-testing enrollment in `ui-playground` against a freshly-started STT stack.
 
 **Symptoms observed:**
 
-- `POST /api/v1/voice-profile/enroll` returned an opaque error to the UI even though STT-v2 (`/internal/voice-profile/extract`) already responds with a clear `{ detail: "..." }` for every failure mode (empty file, sample exceeds 15 s, cross-sample similarity below 0.6, embedding/VAD service not loaded, etc.).
+- `POST /api/v1/voice-profile/enroll` returned an opaque error to the UI even though STT (`/internal/voice-profile/extract`) already responds with a clear `{ detail: "..." }` for every failure mode (empty file, sample exceeds 15 s, cross-sample similarity below 0.6, embedding/VAD service not loaded, etc.).
 - API gateway logged `AxiosError` stack traces instead of the actionable `detail`.
-- Network failures (e.g. STT-v2 not started → `ECONNREFUSED`) were dumped as generic 500s.
+- Network failures (e.g. STT not started → `ECONNREFUSED`) were dumped as generic 500s.
 
-**Root cause:** `VoiceProfileService.extractEmbeddings` had no `try/catch` around the `httpService.post(...)`. The raw `AxiosError` propagated through the NestJS controller, so STT-v2's body (`error.response.data.detail`) was never read or re-thrown as an HTTP-shaped exception.
+**Root cause:** `VoiceProfileService.extractEmbeddings` had no `try/catch` around the `httpService.post(...)`. The raw `AxiosError` propagated through the NestJS controller, so STT's body (`error.response.data.detail`) was never read or re-thrown as an HTTP-shaped exception.
 
 **Fix:** wrap the call and translate via a new `translateExtractionError(error)`:
 
@@ -258,13 +258,13 @@ Server-side, a single `logger.warn` now records `{ status, detail, code, url }` 
 @arcaai/applications → build PASS (tsc, 8.6 s)
 ```
 
-**Local-dev note recorded for future debuggers:** STT-v2 on macOS reads `HUGGINGFACE_CACHE_DIR` from `apps/stt-v2/.env`. The committed `.env.example` default `/models/hf-cache` is the Docker path. For local conda runs, point it at the host HF cache (e.g. `HUGGINGFACE_CACHE_DIR=/Volumes/aillusion/huggingface`) **or** pin `VAD_MODEL_PATH` directly. Otherwise Silero VAD init fails with `[Errno 30] Read-only file system: '/models'` and `/internal/voice-profile/extract` returns 503.
+**Local-dev note recorded for future debuggers:** STT on macOS reads `HUGGINGFACE_CACHE_DIR` from `apps/stt/.env`. The committed `.env.example` default `/models/hf-cache` is the Docker path. For local conda runs, point it at the host HF cache (e.g. `HUGGINGFACE_CACHE_DIR=/Volumes/aillusion/huggingface`) **or** pin `VAD_MODEL_PATH` directly. Otherwise Silero VAD init fails with `[Errno 30] Read-only file system: '/models'` and `/internal/voice-profile/extract` returns 503.
 
 ---
 
 ### 2026-05-25 — Voice-profile enroll: 256/512-d dimension mismatch + configurable similarity threshold
 
-**Scope:** STT-v2 extraction service, API-gateway voice-profile service, settings, .env. Not a TASK-304 design change — surfaced while continuing dev-testing after the error-propagation fix above.
+**Scope:** STT extraction service, API-gateway voice-profile service, settings, .env. Not a TASK-304 design change — surfaced while continuing dev-testing after the error-propagation fix above.
 
 **Symptoms observed:**
 
@@ -276,10 +276,10 @@ Server-side, a single `logger.warn` now records `{ status, detail, code, url }` 
 | Layer | Dim it expects | Source |
 | --- | --- | --- |
 | DB `core.UserVoiceProfile.embedding` | **256** (only migration) | `vector(256)` |
-| Settings.py code default `DIARIZATION_HF_MODEL_ID` | **256** (wespeaker) | `apps/stt-v2/src/stt_v2/core/config/settings.py` |
-| All `.env.example` files | **256** (wespeaker) | root + stt-v2 |
+| Settings.py code default `DIARIZATION_HF_MODEL_ID` | **256** (wespeaker) | `apps/stt/src/stt/core/config/settings.py` |
+| All `.env.example` files | **256** (wespeaker) | root + stt |
 | All tests, comments, docstrings in voice-profile code | **256** | hardcoded |
-| Local `apps/stt-v2/.env` | **512** (`pyannote/embedding`) — copied from README | overrode to 512-d |
+| Local `apps/stt/.env` | **512** (`pyannote/embedding`) — copied from README | overrode to 512-d |
 | README env table, knowledge docs, Qdrant collection setup | **512** | aspirational/streaming context |
 
 The 512-d `pyannote/embedding` returned a 512-d centroid, flowed through extraction service → API gateway → repository → pgvector with **zero dimension validation anywhere**, and only the DB column constraint caught the mismatch — producing the cryptic `Code: 22000` error.
@@ -290,31 +290,31 @@ The 512-d `pyannote/embedding` returned a 512-d centroid, flowed through extract
 
 | Part | Change |
 | --- | --- |
-| A. Defense-in-depth dim guard (Python) | `extraction_service.py`: new `EXPECTED_EMBEDDING_DIM = 256` constant; constructor accepts overrides for test injection; new check after centroid computation raises `ValueError(f"…model '{model_id}' produced {N}-d but database expects {EXPECTED}-d…")` → STT-v2 returns 400 with clear detail, no cryptic Prisma error downstream. |
-| A. Defense-in-depth dim guard (TypeScript) | `voiceProfile.service.ts`: new `EXPECTED_EMBEDDING_DIM = 256` constant; `enroll()` validates `extraction.embedding.length` before `createWithEmbedding(...)`; mismatch → `BadRequestException` carrying model id + observed dim + expected dim. Belt-and-suspenders so even if STT-v2 ever skips its own guard, the SQL never runs. |
-| B. Configurable threshold | `settings.py`: new `voice_profile_min_similarity: float = Field(default=0.6, ge=0.0, le=1.0, ...)`; `extraction_service.py` reads it at construction time (via constructor default → settings); cross-similarity check uses the instance value instead of a module constant. Production behavior unchanged (default 0.6); dev sets `VOICE_PROFILE_MIN_SIMILARITY=0.3` in `apps/stt-v2/.env`. |
-| C. Local `.env` corrected | `apps/stt-v2/.env` line 173: `DIARIZATION_HF_MODEL_ID=pyannote/embedding` → `pyannote/wespeaker-voxceleb-resnet34-LM`. Now matches the 256-d DB schema. Comment expanded to warn future readers about the dim contract. |
+| A. Defense-in-depth dim guard (Python) | `extraction_service.py`: new `EXPECTED_EMBEDDING_DIM = 256` constant; constructor accepts overrides for test injection; new check after centroid computation raises `ValueError(f"…model '{model_id}' produced {N}-d but database expects {EXPECTED}-d…")` → STT returns 400 with clear detail, no cryptic Prisma error downstream. |
+| A. Defense-in-depth dim guard (TypeScript) | `voiceProfile.service.ts`: new `EXPECTED_EMBEDDING_DIM = 256` constant; `enroll()` validates `extraction.embedding.length` before `createWithEmbedding(...)`; mismatch → `BadRequestException` carrying model id + observed dim + expected dim. Belt-and-suspenders so even if STT ever skips its own guard, the SQL never runs. |
+| B. Configurable threshold | `settings.py`: new `voice_profile_min_similarity: float = Field(default=0.6, ge=0.0, le=1.0, ...)`; `extraction_service.py` reads it at construction time (via constructor default → settings); cross-similarity check uses the instance value instead of a module constant. Production behavior unchanged (default 0.6); dev sets `VOICE_PROFILE_MIN_SIMILARITY=0.3` in `apps/stt/.env`. |
+| C. Local `.env` corrected | `apps/stt/.env` line 173: `DIARIZATION_HF_MODEL_ID=pyannote/embedding` → `pyannote/wespeaker-voxceleb-resnet34-LM`. Now matches the 256-d DB schema. Comment expanded to warn future readers about the dim contract. |
 
 **Operational requirement after pulling this change:**
 
-The wespeaker model is gated on HuggingFace; accept its terms once at <https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM> with the same HF account whose token is in `HF_TOKEN`. First STT-v2 restart will download it (~30 MB) into the configured `HUGGINGFACE_CACHE_DIR` (or `HF_HOME`). After that, restart `pnpm dev:stt-v2` and `pnpm dev:api`. Enrollment via `ui-playground` then succeeds end-to-end.
+The wespeaker model is gated on HuggingFace; accept its terms once at <https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM> with the same HF account whose token is in `HF_TOKEN`. First STT restart will download it (~30 MB) into the configured `HUGGINGFACE_CACHE_DIR` (or `HF_HOME`). After that, restart `pnpm dev:stt` and `pnpm dev:api`. Enrollment via `ui-playground` then succeeds end-to-end.
 
 **Files modified:**
 
 | File | Change |
 | --- | --- |
-| `apps/stt-v2/src/stt_v2/voice_profile/extraction_service.py` | New `EXPECTED_EMBEDDING_DIM` constant; constructor adds `min_cross_sample_similarity` + `expected_embedding_dim` keyword args reading defaults from settings; new post-centroid dim guard raising `ValueError`; removed module constant `MIN_CROSS_SAMPLE_SIMILARITY`. |
-| `apps/stt-v2/src/stt_v2/core/config/settings.py` | New `voice_profile_min_similarity` field (default 0.6, 0.0–1.0 range). |
-| `apps/stt-v2/.env.example` | New `VOICE_PROFILE_MIN_SIMILARITY` section + note that embedding dim is intentionally not env-configurable (must match DB column). |
-| `apps/stt-v2/.env` | Reverted `DIARIZATION_HF_MODEL_ID` to `pyannote/wespeaker-voxceleb-resnet34-LM` + commented `VOICE_PROFILE_MIN_SIMILARITY=0.3` knob for consumer-mic dev work. |
-| `apps/stt-v2/tests/unit/voice_profile/test_extraction_service.py` | 5 new tests: 3 dim guard (`TestExtractionServiceDimensionGuard`) + 2 configurable threshold (`TestExtractionServiceConfigurableThreshold`). |
+| `apps/stt/src/stt/voice_profile/extraction_service.py` | New `EXPECTED_EMBEDDING_DIM` constant; constructor adds `min_cross_sample_similarity` + `expected_embedding_dim` keyword args reading defaults from settings; new post-centroid dim guard raising `ValueError`; removed module constant `MIN_CROSS_SAMPLE_SIMILARITY`. |
+| `apps/stt/src/stt/core/config/settings.py` | New `voice_profile_min_similarity` field (default 0.6, 0.0–1.0 range). |
+| `apps/stt/.env.example` | New `VOICE_PROFILE_MIN_SIMILARITY` section + note that embedding dim is intentionally not env-configurable (must match DB column). |
+| `apps/stt/.env` | Reverted `DIARIZATION_HF_MODEL_ID` to `pyannote/wespeaker-voxceleb-resnet34-LM` + commented `VOICE_PROFILE_MIN_SIMILARITY=0.3` knob for consumer-mic dev work. |
+| `apps/stt/tests/unit/voice_profile/test_extraction_service.py` | 5 new tests: 3 dim guard (`TestExtractionServiceDimensionGuard`) + 2 configurable threshold (`TestExtractionServiceConfigurableThreshold`). |
 | `packages/applications/src/services/user/voiceProfile/voiceProfile.service.ts` | New `EXPECTED_EMBEDDING_DIM` module constant; `enroll()` adds dim-mismatch check between extraction and repository write; `logger.warn` records observed vs expected vs model id. |
 | `packages/applications/src/services/user/voiceProfile/__tests__/voiceProfile.service.test.ts` | 3 new tests in `embedding dimension guard` group (rejects 512-d, includes model id, accepts 256-d). |
 
 **Verification:**
 
 ```
-apps/stt-v2 → pytest tests/unit/voice_profile/ tests/unit/test_settings.py
+apps/stt → pytest tests/unit/voice_profile/ tests/unit/test_settings.py
   52 passed in 0.57s (19 extraction service + 4 voice profile model + 29 settings)
 
 @arcaai/applications → vitest run
@@ -326,8 +326,8 @@ ReadLints on all 5 modified files → No linter errors
 
 **Follow-ups (out of scope of this fix, raise as separate tickets if needed):**
 
-- The codebase still has documentation drift: `apps/stt-v2/README.md` lines 234/305/516 and `knowledge/stt-v2/**` document 512-d as the canonical config; streaming-diarization tests at `test_inference_embedding_separation.py` assume 512-d. Pick one of (a) update docs/Qdrant/streaming to 256-d, or (b) plan a coordinated migration to 512-d (DB `vector(512)`, drop existing profiles, update both `EXPECTED_EMBEDDING_DIM` constants, regenerate tests).
-- `apps/stt-v2/src/stt_v2/voice_profile/api/schemas.py` and related docstrings still say "256-dimensional" in description text — fine for now since 256 is the truth, but flag if (b) above is chosen.
+- The codebase still has documentation drift: `apps/stt/README.md` lines 234/305/516 and `knowledge/stt/**` document 512-d as the canonical config; streaming-diarization tests at `test_inference_embedding_separation.py` assume 512-d. Pick one of (a) update docs/Qdrant/streaming to 256-d, or (b) plan a coordinated migration to 512-d (DB `vector(512)`, drop existing profiles, update both `EXPECTED_EMBEDDING_DIM` constants, regenerate tests).
+- `apps/stt/src/stt/voice_profile/api/schemas.py` and related docstrings still say "256-dimensional" in description text — fine for now since 256 is the truth, but flag if (b) above is chosen.
 
 ---
 

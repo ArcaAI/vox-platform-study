@@ -144,7 +144,7 @@ All 7 CRUD hooks have **every** array-returning operation covered with `extractA
 | Vite `pages/admin/dashboard.tsx` | Health, uptime, sessions | Partially — `Array.isArray` for uptimes, raw for others | Medium |
 | Both `pages/setup.tsx` | `GET /monitoring/uptime` | OK — accesses object properties with fallback | Low |
 | Both `pages/summary-workflow.tsx` | `GET /v1/summary/jobs/{id}` | OK — single object | Low |
-| Both `pages/transcription.tsx` | `GET stt-v2 job status` | OK — single object | Low |
+| Both `pages/transcription.tsx` | `GET stt job status` | OK — single object | Low |
 
 #### `useEffect` dependency issues
 
