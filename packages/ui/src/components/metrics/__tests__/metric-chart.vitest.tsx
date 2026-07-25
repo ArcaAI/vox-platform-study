@@ -14,7 +14,9 @@ vi.mock('recharts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('recharts')>();
   return {
     ...actual,
-    ResponsiveContainer: ({ children }: { children: React.ReactElement }) =>
+    // The element type carries the props being injected: a bare `ReactElement`
+    // has `unknown` props, so `cloneElement` rejects width/height.
+    ResponsiveContainer: ({ children }: { children: React.ReactElement<{ width?: number; height?: number }> }) =>
       React.cloneElement(children, { width: 800, height: 300 }),
   };
 });

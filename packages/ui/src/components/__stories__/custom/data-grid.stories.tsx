@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, RowSelectionState } from '@tanstack/react-table';
 import { useState } from 'react';
 
 import { Badge } from '../../shadcn/badge';
@@ -65,9 +65,17 @@ const columns: ColumnDef<Tenant>[] = [
  * toolbar (light/dark) to verify both palettes; resize the preview to watch the
  * toolbar collapse into a Filters button and the pager window drop end-controls.
  */
+/**
+ * Bind the generic once, up front. Handing `Meta` the generic function itself
+ * leaves `TData` unresolved, and Storybook then intersects the unbound
+ * signature with the instantiated one — producing impossible arg types like
+ * `unknown[] & Tenant[]` that no real value can satisfy.
+ */
+const TenantDataGrid = VirtualizedDataGrid<Tenant>;
+
 const meta = {
   title: 'Custom/DataGrid',
-  component: VirtualizedDataGrid,
+  component: TenantDataGrid,
   parameters: { layout: 'fullscreen' },
   decorators: [
     (Story) => (
@@ -76,7 +84,7 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof VirtualizedDataGrid<Tenant>>;
+} satisfies Meta<typeof TenantDataGrid>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -121,7 +129,7 @@ export const Busy: Story = {
 
 export const WithSelectionActionBar: Story = {
   render: (args) => {
-    const [selection, setSelection] = useState({ t0: true, t1: true });
+    const [selection, setSelection] = useState<RowSelectionState>({ t0: true, t1: true });
     const count = Object.values(selection).filter(Boolean).length;
     return (
       <VirtualizedDataGrid<Tenant>

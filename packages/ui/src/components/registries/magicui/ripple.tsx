@@ -2,7 +2,7 @@ import React, { ComponentPropsWithoutRef, CSSProperties } from 'react';
 
 import { cn } from '@/lib/utils';
 
-interface RippleProps extends ComponentPropsWithoutRef<'div'> {
+export interface RippleProps extends ComponentPropsWithoutRef<'div'> {
   mainCircleSize?: number;
   mainCircleOpacity?: number;
   numCircles?: number;
