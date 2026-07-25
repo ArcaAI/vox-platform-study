@@ -45,6 +45,7 @@
     "generate-service-module": "ts-node src/generate-service-module/index.ts",
     "generate-controller": "ts-node src/generate-controller/index.ts",
     "gen-dev-token": "ts-node src/gen-dev-token/index.ts",
-    "gen-api-key": "ts-node src/gen-api-key/index.ts create"
+    "gen-api-key": "ts-node src/gen-api-key/index.ts create",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"src/**/*.ts\" --max-warnings 0"
   }
 }
