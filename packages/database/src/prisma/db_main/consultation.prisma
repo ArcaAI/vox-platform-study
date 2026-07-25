@@ -219,7 +219,16 @@ model AudioRecording {
 
 model SummaryMeta {
   // Meta fields
-  id String @id @default(uuid(7))
+  // `_version` is the optimistic-concurrency counter. It exists because this row
+  // is written TWICE by the two-phase optimistic-delivery flow: `persistDraft`
+  // (EARLY) creates it with the computational scores only, then
+  // `finalizeAssurance` backfills the inferential verdict. Without a
+  // compare-and-set the backfill is a read-modify-write race whose only guard was
+  // the HTTP idempotency key. Database-owned: never written by the mapper (see
+  // FIELDS_NOT_WRITABLE in SummaryMetaEntityMapper), only by
+  // `Repository.updateWithVersion`.
+  version Int    @default(1) @map("_version")
+  id      String @id @default(uuid(7))
 
   // Multi-tenant
   tenantId String

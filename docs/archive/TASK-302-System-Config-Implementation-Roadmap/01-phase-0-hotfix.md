@@ -61,7 +61,7 @@ Cache layer — AppSettingsService.cacheAppSettings() (Item 5)
        └─ counts grouped by key against repository.findAll({})
 
 Source-control boundary (Item 6)
-  ├─ .env* scrubbed: AZURE_OPENAI_API_KEY / SMR_V2_AZURE_API_KEY values removed
+  ├─ .env* scrubbed: AZURE_OPENAI_API_KEY / SMR_AZURE_API_KEY values removed
   ├─ .gitleaks.toml + .gitleaksignore committed
   ├─ pre-commit hook: pnpm exec gitleaks protect --staged
   └─ GitLab CI scan stage: scan-gitleaks job blocks any MR carrying a known-secret pattern
@@ -207,7 +207,7 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
 
 ---
 
-## Task A.1 — Rotate the Azure OpenAI API key + SMR_V2 Azure key (manual ops)
+## Task A.1 — Rotate the Azure OpenAI API key + SMR Azure key (manual ops)
 
 **Agent**: `git-manager`
 
@@ -224,7 +224,7 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
    | Step | Performed by | Timestamp (UTC) | Old key fingerprint (SHA-256, first 16 chars) | New key fingerprint | Notes |
    |---|---|---|---|---|---|
    | Azure OpenAI key rotation | <ops> | <ISO-8601> | <fp_old> | <fp_new> | Old key revoked in Azure portal |
-   | SMR_V2 Azure key rotation | <ops> | <ISO-8601> | <fp_old> | <fp_new> | Old key revoked in Azure portal |
+   | SMR Azure key rotation | <ops> | <ISO-8601> | <fp_old> | <fp_new> | Old key revoked in Azure portal |
    | JWT_SECRET_KEY rotation (staging) | <ops> | <ISO-8601> | <fp_old> | <fp_new> | env-store updated; pods restarted |
    | JWT_SECRET_KEY rotation (production) | <ops> | <ISO-8601> | <fp_old> | <fp_new> | env-store updated; pods restarted; old refresh tokens expired |
 
@@ -243,7 +243,7 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
    # 3. Confirm — note the new value into a secrets manager
    # 4. After 5 minutes (allow downstream caches to drain), revoke the OLD key
    #
-   # Repeat for SMR_V2 Azure resource keys.
+   # Repeat for SMR Azure resource keys.
    ```
 
 3. Verify by computing fingerprints (operator pastes the new key into a private terminal **only**):
@@ -261,7 +261,7 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
    git commit -m "$(cat <<'EOF'
    docs(task-302/phase-0): scaffold Section A rotation log
 
-   Phase 0 Item 6: rotation log skeleton for Azure OpenAI and SMR_V2 Azure
+   Phase 0 Item 6: rotation log skeleton for Azure OpenAI and SMR Azure
    API keys. Operator fills fingerprints + timestamps during the rotation
    window. Raw secret values never enter source control or commit messages.
    EOF
@@ -304,8 +304,8 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
    FAIL=0
    for f in "${FILES[@]}"; do
      [[ ! -f "$f" ]] && continue
-     # Only check AZURE_OPENAI_API_KEY / SMR_V2_AZURE_API_KEY assignments
-     if rg -n '^(AZURE_OPENAI_API_KEY|SMR_V2_AZURE_API_KEY)[:=]\s*[A-Za-z0-9]{80,}' "$f"; then
+     # Only check AZURE_OPENAI_API_KEY / SMR_AZURE_API_KEY assignments
+     if rg -n '^(AZURE_OPENAI_API_KEY|SMR_AZURE_API_KEY)[:=]\s*[A-Za-z0-9]{80,}' "$f"; then
        echo "::error file=$f::Real Azure key value present"
        FAIL=1
      fi
@@ -346,7 +346,7 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
 
    Note the **format normalisation** (`:` → `=`) — `python-dotenv` and `dotenv-cli` both accept either, but `=` is canonical across this monorepo. Apply the same swap to lines 171–179 of `.env.dev` (the surrounding `AZURE_OPENAI_*` keys use `:` separators today).
 
-   For every other file in the FILES list above: open it, locate any `AZURE_OPENAI_API_KEY` or `SMR_V2_AZURE_API_KEY` assignment with a non-empty value matching `[A-Za-z0-9]{80,}`, and replace the value with empty. If the file is `apps/smr/.env.example`, the line currently reads `SMR_V2_AZURE_API_KEY=` (empty) — already safe; leave it.
+   For every other file in the FILES list above: open it, locate any `AZURE_OPENAI_API_KEY` or `SMR_AZURE_API_KEY` assignment with a non-empty value matching `[A-Za-z0-9]{80,}`, and replace the value with empty. If the file is `apps/smr/.env.example`, the line currently reads `SMR_AZURE_API_KEY=` (empty) — already safe; leave it.
 
 4. Verify the smoke test now passes:
 
@@ -367,7 +367,7 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
    security(env): scrub real Azure API keys from committed .env files
 
    Phase 0 Item 6 (TASK-302 Stream A): removes the real values for
-   AZURE_OPENAI_API_KEY and SMR_V2_AZURE_API_KEY that were committed in
+   AZURE_OPENAI_API_KEY and SMR_AZURE_API_KEY that were committed in
    .env.dev (workspace root) and audited siblings. Rotation in Azure
    portal completed first (see _section-a-rotation-log.md). Local devs
    must set the rotated value in .env.dev.local (uncommitted).
@@ -443,7 +443,7 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
    [[rules]]
    id = "hope-azure-openai-api-key"
    description = "Azure OpenAI API key committed to a .env or source file"
-   regex = '''(?i)(AZURE_OPENAI_API_KEY|SMR_V2_AZURE_API_KEY)\s*[:=]\s*["']?[A-Za-z0-9]{80,}["']?'''
+   regex = '''(?i)(AZURE_OPENAI_API_KEY|SMR_AZURE_API_KEY)\s*[:=]\s*["']?[A-Za-z0-9]{80,}["']?'''
    tags = ["azure", "openai", "key"]
 
    [[rules]]
@@ -802,7 +802,7 @@ This plan is the **hard predecessor** to every other stream in the TASK-302 road
 
 Reviewer checklist for Section A:
 
-- [ ] `_section-a-rotation-log.md` contains all four rotation fingerprints (Azure OpenAI, SMR_V2 Azure, JWT staging, JWT prod). Reject the PR if any are blank.
+- [ ] `_section-a-rotation-log.md` contains all four rotation fingerprints (Azure OpenAI, SMR Azure, JWT staging, JWT prod). Reject the PR if any are blank.
 - [ ] `gitleaks detect --source . --config .gitleaks.toml --no-banner` returns zero findings in the local clone.
 - [ ] `git log -p` for this branch contains **no** raw key values, only fingerprints.
 - [ ] `.gitleaksignore` is empty OR every entry has a justification in the PR description.
@@ -3133,7 +3133,7 @@ useDefault = true
 [[rules]]
 id = "hope-azure-openai-api-key"
 description = "Azure OpenAI API key committed to a .env or source file"
-regex = '''(?i)(AZURE_OPENAI_API_KEY|SMR_V2_AZURE_API_KEY)\s*[:=]\s*["']?[A-Za-z0-9]{80,}["']?'''
+regex = '''(?i)(AZURE_OPENAI_API_KEY|SMR_AZURE_API_KEY)\s*[:=]\s*["']?[A-Za-z0-9]{80,}["']?'''
 tags = ["azure", "openai", "key"]
 
 [[rules]]

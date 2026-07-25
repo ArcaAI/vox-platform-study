@@ -12,8 +12,8 @@ import path from 'path';
 
 const SERVICE_PID_ENV_VARS = [
   { name: 'API', envVar: 'API_PROCESS_PID' },
-  { name: 'STT-v2', envVar: 'STT_V2_PROCESS_PID' },
-  { name: 'SMR-v2', envVar: 'SMR_V2_PROCESS_PID' },
+  { name: 'STT', envVar: 'STT_PROCESS_PID' },
+  { name: 'SMR', envVar: 'SMR_PROCESS_PID' },
   { name: 'NLP', envVar: 'NLP_PROCESS_PID' },
 ];
 

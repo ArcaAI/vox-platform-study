@@ -24,7 +24,7 @@
  * `metadata.segments` fallback: snake_case, SECONDS as floats,
  * `speaker_id`, and no text at all.
  *
- * `apps/stt-v2` now emits the camelCase consumer shape on the typed `segments`
+ * `apps/stt` now emits the camelCase consumer shape on the typed `segments`
  * field, but this is retained deliberately: (a) in-flight/queued payloads and any
  * archived metadata blob still carry it, and (b) normalizing is strictly better
  * than the old behaviour, which silently coerced every field to null and wrote

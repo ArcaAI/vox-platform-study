@@ -9,7 +9,7 @@
 | **Status** | Review (P0 + P1 + P2 implementation complete 2026-06-11; GPU-host validation pending — see §4.5) |
 | **Decisions** | D-1: **Option B — faster-whisper/CTranslate2 engine migration** (user-selected). D-2: **Option A — Cadence-Fast direct-load spike first** (user-selected). |
 | **Type** | refactor / performance optimization (no schema migrations) |
-| **Origin** | Full-pipeline review (client SDK → API gateway → Redis Streams → STT-v2), 2026-06-11; companion canvas `realtime-transcription-review` |
+| **Origin** | Full-pipeline review (client SDK → API gateway → Redis Streams → STT), 2026-06-11; companion canvas `realtime-transcription-review` |
 | **Related tickets** | TASK-237, 241, 255, 262, 270, 271, 293, 298, 300, 304, 333, 340, 347, 350 |
 | **Out of scope** | Model fine-tuning/training (dedicated repo); batch (non-realtime) transcription path; admin console UI |
 
@@ -44,9 +44,9 @@ Kerala-based doctors dictate consultations in mixed Malayalam-English. Perceived
 | AC-3 | Frame ingestion in the gateway does not block on Redis acks; frame ordering preserved | gateway unit test |
 | AC-4 | Partial decode input is bounded (≤ configured tail window) regardless of utterance length | preprocessor unit test |
 | AC-5 | Server VAD `min_silence_duration_ms` is profile/env-driven (default 500 ms, not hardcoded 700 ms) | preprocessor unit test |
-| AC-6 | A model is loaded at most once under concurrent session creation (single-flight cache) | stt-v2 unit test |
+| AC-6 | A model is loaded at most once under concurrent session creation (single-flight cache) | stt unit test |
 | AC-7 | (P1) Partials expose a stable confirmed prefix (LocalAgreement-2); no full-text flicker | commit-policy unit tests |
-| AC-8 | (P1) Crash recovery resumes from the last processed Redis stream ID (no `0-0` replay); consumed audio is trimmed | stt-v2 unit tests |
+| AC-8 | (P1) Crash recovery resumes from the last processed Redis stream ID (no `0-0` replay); consumed audio is trimmed | stt unit tests |
 | AC-9 | (P1) Cross-session GPU batching honors `asr_max_batch_size` / `batch_scheduler_max_wait_ms` (or approved engine migration) | scheduler unit tests |
 | AC-10 | (P2) `language: ml` + `code_switching: true` pins the language token; `ml`+NEMO is a hard config error | yaml-parser + kwargs unit tests |
 | AC-11 | (P2) Replay harness reports TTFW, partial cadence, and final lag against the 800 ms SLA, before/after evidence captured | harness output in this README |
@@ -54,7 +54,7 @@ Kerala-based doctors dictate consultations in mixed Malayalam-English. Perceived
 
 ### 1.4 Constraints
 
-- Python work runs in the conda env `arcaenv` (`pnpm py:stt-v2:*` scripts already wrap this).
+- Python work runs in the conda env `arcaenv` (`pnpm py:stt:*` scripts already wrap this).
 - Wire protocol changes must be backward compatible (additive fields only) — older SDK clients keep working.
 - No new heavyweight dependencies without an explicit decision gate (D-1, D-2 below).
 
@@ -72,11 +72,11 @@ Mic → AudioContext 48 kHz (SDK) / 16 kHz (playground)
     → WS binary frames (SDK worklet: 128 samples = 8 ms)      [packages/stt, packages/agentic-sdk-v2]
 → NestJS gateway: ticket auth → await XADD stt:audio:{sid} per frame, sr hardcoded 16000
                                                               [apps/api/src/modules/streaming]
-→ STT-v2: XREAD → Silero ONNX VAD (32 ms frames; onset 350 ms; offset 700 ms;
+→ STT: XREAD → Silero ONNX VAD (32 ms frames; onset 350 ms; offset 700 ms;
   partial snapshot every 1.0 s, min 0.5 s audio) → per-utterance Whisper generate
   (HF Transformers / ONNX-Optimum / NeMo / Azure, asyncio.to_thread, no batching)
   → sanitize → hallucination gates → (punctuation OFF) → diarization on finals
-  → XADD stt:result:{sid}                                     [apps/stt-v2/src/stt_v2/streaming]
+  → XADD stt:result:{sid}                                     [apps/stt/src/stt/streaming]
 → gateway XREAD (BLOCK 2 s, shared conn) → WS JSON → Zustand/React (300-row list, no virtualization)
 ```
 
@@ -87,7 +87,7 @@ Key code-defined constants: `_PARTIAL_INTERVAL_S = 1.0`, `_PARTIAL_MIN_AUDIO_S =
 | ID | Finding | Evidence | Impact |
 |---|---|---|---|
 | **C1** | Gateway awaits a Redis `XADD` per audio frame (binary and JSON paths). With 8 ms SDK frames this is ~125 awaited round-trips/s/session serialized on the event loop. | `apps/api/src/modules/streaming/stt-ws.gateway.ts:246,274` | Event-loop churn scales with sessions × frame rate; throughput ceiling |
-| **C2** | Partials snapshot the **full** utterance buffer on a 1.0 s timer and re-decode it from scratch (skip-if-busy). No commit policy — each partial replaces the previous text. | `apps/stt-v2/src/stt_v2/streaming/preprocessor.py:481-516`; `session_manager.py:1263-1309` | O(n²) decode per utterance; partial latency grows with utterance length; UI flicker |
+| **C2** | Partials snapshot the **full** utterance buffer on a 1.0 s timer and re-decode it from scratch (skip-if-busy). No commit policy — each partial replaces the previous text. | `apps/stt/src/stt/streaming/preprocessor.py:481-516`; `session_manager.py:1263-1309` | O(n²) decode per utterance; partial latency grows with utterance length; UI flicker |
 | **C3** | No cross-session GPU batching: `asr_max_batch_size` / `batch_scheduler_max_wait_ms` defined per hardware profile but never consumed; every utterance is a lone `model.generate()` in `asyncio.to_thread`. | `execution_profile.py:52,65` (only echoed at `session_manager.py:2322`) | GPU contention instead of batching; A100 100-stream profile unreachable |
 | **C4** | Client emits 8 ms WS frames (one per AudioWorklet quantum, 256-byte payloads). Playground hook bypasses the SDK: deprecated main-thread `createScriptProcessor(4096,1,1)`, fresh `Int16Array` per callback, extra `ArrayBuffer.slice()` copy per frame. | `packages/stt/src/worklets/stt-capture.worklet.ts`; `apps/ui-playground/src/hooks/use-realtime-transcription.ts:330-346`; `packages/stt/src/providers/StreamingBackendSTTProvider.ts:206` | WS framing overhead rivals payload; GC + main-thread glitches |
 | **C5** | `sr=16000` hardcoded on every forwarded frame; `body.sampleRate` accepted at session creation but dropped (`SessionInfo` has no field). Non-16 kHz clients are decoded at the wrong rate. | `stt-ws.gateway.ts:246,274` vs `transcription-job.controller.ts:336`; existing tests pin the bug (`__tests__/stt-ws.gateway.test.ts:366-372,432-438`) | Silent quality collapse for 44.1/48 kHz clients |
@@ -96,7 +96,7 @@ Key code-defined constants: `_PARTIAL_INTERVAL_S = 1.0`, `_PARTIAL_MIN_AUDIO_S =
 
 | ID | Finding | Evidence | Remediation (work item) |
 |---|---|---|---|
-| **H1** | ModelCache TOCTOU: `get()` under lock → load **outside** lock → `put()`. Concurrent sessions for one pipeline load the same model N times (VRAM spike, slow start). | `apps/stt-v2/src/stt_v2/models/cache.py:110-171` | P0-3 single-flight |
+| **H1** | ModelCache TOCTOU: `get()` under lock → load **outside** lock → `put()`. Concurrent sessions for one pipeline load the same model N times (VRAM spike, slow start). | `apps/stt/src/stt/models/cache.py:110-171` | P0-3 single-flight |
 | **H2** | Crash recovery replays the audio stream from `0-0` — code comment admits seq→stream-ID mapping is missing. | `session_manager.py:2044-2049`; `redis_streams.py:84,94` | P1-3 |
 | **H3** | Whole-session audio kept in RAM (`bytearray`, 500 MB cap ≈ 87 min) plus a full WAV copy at finalization. | `session_manager.py` (processed_audio_buffer) | P1-3 (trim) + deferred spill note |
 | **H4** | Three disagreeing VAD configs: server default 700 ms offset vs profile 500 ms vs client redemption 1400 ms. 700 ms is a floor on every final. | `preprocessor.py:105`; `execution_profile.py:163`; `packages/vad` defaults | P0-4 |
@@ -110,7 +110,7 @@ Key code-defined constants: `_PARTIAL_INTERVAL_S = 1.0`, `_PARTIAL_MIN_AUDIO_S =
 | ID | Finding | Evidence | Remediation |
 |---|---|---|---|
 | **M1** | `code_switching: true` omits the language token → Whisper auto-LID picks one language per window → script flips mid-conversation. YAML parser *warns* when `language` + `code_switching` are both set instead of supporting pinning. | `TranscriptionPipeline.ts:603-607`; kwargs builders (see `tests/unit/test_batch_inference_kwargs.py:43-52`); `tests/unit/test_yaml_parser.py:1508` | P2-1 |
-| **M2** | Indic punctuation disabled by default: `cadence-punctuation` needs `transformers<5`, ASR pins `5.5.4` (TASK-347). Malayalam output degrades most (Whisper self-punctuates English far better). | `apps/stt-v2/src/stt_v2/punctuation/service.py`; TASK-347 README | P2-2 |
+| **M2** | Indic punctuation disabled by default: `cadence-punctuation` needs `transformers<5`, ASR pins `5.5.4` (TASK-347). Malayalam output degrades most (Whisper self-punctuates English far better). | `apps/stt/src/stt/punctuation/service.py`; TASK-347 README | P2-2 |
 | **M3** | `english_text` gloss produced only by the batch path; streaming consumers (Live SOAP) never receive English. Schema plumbing already exists (`SegmentResult.english_text`). | `streaming/inference.py:253-261` | P2-3 |
 | **M4** | Linear-interpolation 48→16 kHz resampler, no anti-aliasing — fricatives alias into the Whisper band; matters for Malayalam dental/retroflex contrasts. Documented as H-3 in TASK-262, never fixed. | `packages/stt/src/utils/audioResampler.ts:24` | P2-4 |
 | **M5** | Hallucination filler regex is English-only (`uh|um|ah|hmm…`); Malayalam-script fillers pass through. | `streaming/inference.py:36-39` | P2-1 |
@@ -184,7 +184,7 @@ P2-5 should land FIRST in P2 (provides before/after evidence for the whole wave)
 ```
 
 **Decision gate D-1 (before P1-2)** — GPU serving strategy:
-- **Option A (recommended, default)**: in-place dynamic batch scheduler inside STT-v2, honoring the existing `ExecutionProfile` fields. No new dependencies; works with current HF/ONNX engines.
+- **Option A (recommended, default)**: in-place dynamic batch scheduler inside STT, honoring the existing `ExecutionProfile` fields. No new dependencies; works with current HF/ONNX engines.
 - **Option B**: new `FASTER_WHISPER` engine (CTranslate2, `int8_float16`, `BatchedInferencePipeline`). Larger single-machine win (~4×) but new dependency + CT2 model conversion for the fine-tuned checkpoint.
 
 **Decision gate D-2 (before P2-2)** — Indic punctuation deployment:
@@ -241,13 +241,13 @@ P2-5 should land FIRST in P2 (provides before/after evidence for the whole wave)
 
 ---
 
-#### P0-3 · STT-v2: single-flight model cache
+#### P0-3 · STT: single-flight model cache
 
 **Goal**: a given model slug loads exactly once under concurrent session creation (H1).
 
 **Files**
-- Modify: `apps/stt-v2/src/stt_v2/models/cache.py`
-- Create: `apps/stt-v2/tests/unit/test_model_cache_singleflight.py`
+- Modify: `apps/stt/src/stt/models/cache.py`
+- Create: `apps/stt/tests/unit/test_model_cache_singleflight.py`
 
 **TDD tasks**
 1. RED — test: `asyncio.gather` of 5 × `get_or_load(same_config)` with a fake loader that sleeps 50 ms and counts invocations → loader called exactly **once**, all 5 callers get the same `LoadedModel`.
@@ -282,22 +282,22 @@ async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
             self._inflight.pop(model_config.slug, None)
 ```
 
-**Verification**: `pnpm py:stt-v2:test:unit` (scoped: `conda run -n arcaenv pytest apps/stt-v2/tests/unit/test_model_cache_singleflight.py -v`); `pnpm py:stt-v2:lint`, `pnpm py:stt-v2:typecheck`.
+**Verification**: `pnpm py:stt:test:unit` (scoped: `conda run -n arcaenv pytest apps/stt/tests/unit/test_model_cache_singleflight.py -v`); `pnpm py:stt:lint`, `pnpm py:stt:typecheck`.
 
 ---
 
-#### P0-4 · STT-v2: bounded partial window, profile-driven VAD silence, O(1) frame drain
+#### P0-4 · STT: bounded partial window, profile-driven VAD silence, O(1) frame drain
 
 **Goal**: partial decode cost stops growing with utterance length (C2 bounding); finals lose ~200 ms (H4); per-frame drain stops concatenating the whole buffer (H8).
 
 **Files**
-- Modify: `apps/stt-v2/src/stt_v2/streaming/preprocessor.py`
+- Modify: `apps/stt/src/stt/streaming/preprocessor.py`
   - `_maybe_emit_partial`: snapshot only the **tail** `partial_window_s` (new ctor param, default 8.0 s) — `start_time` adjusted accordingly so timestamps stay session-relative.
   - Ctor default `min_silence_duration_ms`: honor the value passed by the session manager (no behavior change in the class itself beyond the new param).
   - `drain_processed_samples`: replace per-frame `np.concatenate` with a chunk-list drain (concatenate only what is drained, keep the rest as chunks).
-- Modify: `apps/stt-v2/src/stt_v2/streaming/session_manager.py`: construct the preprocessor with `min_silence_duration_ms = profile.vad_silence_threshold_ms` (env-overridable via existing `Settings`), and `partial_window_s` from settings (new `STT_V2_STREAMING_PARTIAL_WINDOW_S`, default 8.0).
-- Modify: `apps/stt-v2/src/stt_v2/core/config/settings.py`: add `streaming_partial_window_s` setting.
-- Tests: extend `apps/stt-v2/tests/unit/streaming/test_preprocessor_vad_denoise.py` (or create `test_preprocessor_partial_window.py`), `test_session_manager_asr_callable.py` for wiring.
+- Modify: `apps/stt/src/stt/streaming/session_manager.py`: construct the preprocessor with `min_silence_duration_ms = profile.vad_silence_threshold_ms` (env-overridable via existing `Settings`), and `partial_window_s` from settings (new `STT_STREAMING_PARTIAL_WINDOW_S`, default 8.0).
+- Modify: `apps/stt/src/stt/core/config/settings.py`: add `streaming_partial_window_s` setting.
+- Tests: extend `apps/stt/tests/unit/streaming/test_preprocessor_vad_denoise.py` (or create `test_preprocessor_partial_window.py`), `test_session_manager_asr_callable.py` for wiring.
 
 **TDD tasks**
 1. RED — feed ~20 s of synthetic speech frames (constant tone + VAD stubbed "speech"); captured partial utterance `samples` length ≤ `partial_window_s * sr`; `end_time - start_time ≤ partial_window_s`; the **final** utterance still contains the full buffer.
@@ -305,7 +305,7 @@ async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
 3. RED — drain test: after N frames, total drained samples equal total fed samples (no loss), and the internal buffer is a chunk list (assert no quadratic concat — verify via callable that drain returns correct bytes when called every frame).
 4. GREEN/REFACTOR — implement; run the full streaming unit suite.
 
-**Verification**: `conda run -n arcaenv pytest apps/stt-v2/tests/unit/streaming/ -v` → green; lint + typecheck clean.
+**Verification**: `conda run -n arcaenv pytest apps/stt/tests/unit/streaming/ -v` → green; lint + typecheck clean.
 
 **Risk**: a partial that starts mid-window can clip a word at its left edge — acceptable for partials (finals are unaffected); window default 8 s ≫ typical phrase length. P1-1 replaces this heuristic with committed-prefix trimming.
 
@@ -318,11 +318,11 @@ async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
 **Files**
 - Modify: `apps/ui-playground/src/hooks/use-realtime-transcription.ts` — replace the inline `createScriptProcessor` block (lines ~325-360) with the `@arcaai/stt` capture utility (AudioWorklet, ScriptProcessor only as internal fallback).
 - Modify: `packages/stt/src/providers/StreamingBackendSTTProvider.ts:206` — stop `slice()`-copying; pass the `Int16Array` view through.
-- Modify: `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` — `sendAudioFrame(data: ArrayBuffer | ArrayBufferView)`; `ws.send` accepts views natively, internal accounting uses `byteLength`.
-- Tests: `apps/ui-playground/src/hooks/__tests__/use-realtime-transcription.test.ts` (exists), `packages/stt/src/providers/__tests__/StreamingBackendSTTProvider.test.ts`, `packages/agentic-sdk-v2/src/core/__tests__/SttV2WebSocketClient.test.ts`.
+- Modify: `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` — `sendAudioFrame(data: ArrayBuffer | ArrayBufferView)`; `ws.send` accepts views natively, internal accounting uses `byteLength`.
+- Tests: `apps/ui-playground/src/hooks/__tests__/use-realtime-transcription.test.ts` (exists), `packages/stt/src/providers/__tests__/StreamingBackendSTTProvider.test.ts`, `packages/agentic-sdk-v2/src/core/__tests__/SttWebSocketClient.test.ts`.
 
 **TDD tasks**
-1. RED — SttV2WebSocketClient test: `sendAudioFrame(new Int16Array(...))` sends without throwing; the mock `ws.send` receives an object whose `byteLength` equals the view's; no `ArrayBuffer.slice` spy hit.
+1. RED — SttWebSocketClient test: `sendAudioFrame(new Int16Array(...))` sends without throwing; the mock `ws.send` receives an object whose `byteLength` equals the view's; no `ArrayBuffer.slice` spy hit.
 2. RED — StreamingBackendSTTProvider test: `processAudio` forwards a view over the existing buffer (assert same `buffer` reference, correct `byteOffset/byteLength`) — no copy.
 3. RED — use-realtime-transcription test: starting a session wires the worklet-based capture (assert the audioCapture util is invoked; no `createScriptProcessor` on the AudioContext mock); Float32→Int16 conversion uses a reused buffer (assert no growth in allocation count via spy on `Int16Array` is impractical — instead pin behavior: same output for same input, and the capture util is the SDK one).
 4. GREEN/REFACTOR — implement; keep the 250 ms byte-counter commit (moved in P0-6).
@@ -358,12 +358,12 @@ async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
 **Goal**: stable confirmed prefixes (no flicker), bounded re-decode anchored at the last committed point (C2 fix proper). AlignAtt is rejected for now: it needs decoder-attention access that ONNX/Optimum does not expose cleanly.
 
 **Files**
-- Create: `apps/stt-v2/src/stt_v2/streaming/commit_policy.py` — pure `LocalAgreementPolicy` (n=2): compare consecutive partial hypotheses for the same utterance, emit the longest common prefix (token-level, normalized whitespace); expose `committed_text`, `tentative_text`, `reset()`.
-- Modify: `apps/stt-v2/src/stt_v2/streaming/session_manager.py` — per-session policy instance; partial flow becomes decode(tail window) → policy update → publish `{text: committed + tentative, stable_chars: len(committed)}`; on final: `reset()`.
-- Modify: `apps/stt-v2/src/stt_v2/streaming/schemas.py` — `SegmentResult.stable_chars: int | None` (additive).
+- Create: `apps/stt/src/stt/streaming/commit_policy.py` — pure `LocalAgreementPolicy` (n=2): compare consecutive partial hypotheses for the same utterance, emit the longest common prefix (token-level, normalized whitespace); expose `committed_text`, `tentative_text`, `reset()`.
+- Modify: `apps/stt/src/stt/streaming/session_manager.py` — per-session policy instance; partial flow becomes decode(tail window) → policy update → publish `{text: committed + tentative, stable_chars: len(committed)}`; on final: `reset()`.
+- Modify: `apps/stt/src/stt/streaming/schemas.py` — `SegmentResult.stable_chars: int | None` (additive).
 - Modify: `apps/api` WS relay passes `stableChars` through (additive field on `WsTranscriptResult`).
 - Modify: `packages/agentic-sdk-v2` types + `apps/ui-playground` transcript rendering — tentative tail rendered dimmed.
-- Tests: create `apps/stt-v2/tests/unit/streaming/test_commit_policy.py`; extend session-manager partial tests; SDK type test; UI rendering test.
+- Tests: create `apps/stt/tests/unit/streaming/test_commit_policy.py`; extend session-manager partial tests; SDK type test; UI rendering test.
 
 **TDD task list (abbreviated)**
 1. RED — policy unit tests: agreement on growing hypotheses commits the common prefix; disagreement keeps the previous commit; punctuation/whitespace normalization; reset on final.
@@ -371,19 +371,19 @@ async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
 3. RED — wire test: gateway forwards `stableChars` when present; absent for engines/sessions without the policy (backward compatible).
 4. GREEN/REFACTOR; UI dimming behind the existing transcript item component.
 
-**Verification**: stt-v2 unit suite + `apps/api` streaming tests + SDK tests green.
+**Verification**: stt unit suite + `apps/api` streaming tests + SDK tests green.
 
 #### P1-2 · GPU serving: faster-whisper/CTranslate2 engine migration (D-1 resolved: Option B)
 
 **Goal**: consume the hardware batch capacity (C3) via a new `FASTER_WHISPER` engine type backed by CTranslate2 (`int8_float16` on CUDA), using `BatchedInferencePipeline` for batched decode. Reported ~4× decode throughput and ~−65 % memory vs fp32 reference.
 
 **Scope**
-- Create: `apps/stt-v2/src/stt_v2/streaming/faster_whisper_asr.py` — engine adapter exposing the same ASR-callable contract as the existing engines (samples, sample_rate, prompt → text/word_timestamps/language), honoring `code_switching`/`language` semantics (P2-1 contract) and `ExecutionProfile.asr_compute_type`.
+- Create: `apps/stt/src/stt/streaming/faster_whisper_asr.py` — engine adapter exposing the same ASR-callable contract as the existing engines (samples, sample_rate, prompt → text/word_timestamps/language), honoring `code_switching`/`language` semantics (P2-1 contract) and `ExecutionProfile.asr_compute_type`.
 - Modify: `pipeline/yaml_parser.py` + DTOs — new `engine: FASTER_WHISPER` value; `hf_model_id` interpreted as a CT2 model path/repo; validation for compute-type compatibility.
 - Modify: `models/` loader + cache integration (single-flight from P0-3 applies).
 - Create: CT2 conversion runbook for the fine-tuned checkpoint (`ct2-transformers-converter` invocation, quantization choice) documented in this README — conversion itself happens in the model-training repo's release flow.
 - Modify: `session_manager.py` — route Whisper-family pipelines to the new engine when configured; NeMo/Azure untouched.
-- Dependency: add `faster-whisper` to `apps/stt-v2/pyproject.toml` (pinned; verify CUDA 12/cuDNN 9 compatibility on the GPU host; CPU fallback works in `arcaenv` for tests).
+- Dependency: add `faster-whisper` to `apps/stt/pyproject.toml` (pinned; verify CUDA 12/cuDNN 9 compatibility on the GPU host; CPU fallback works in `arcaenv` for tests).
 - Tests: create `tests/unit/streaming/test_faster_whisper_asr.py` (mocked `WhisperModel`/`BatchedInferencePipeline`): kwargs contract (language pinning vs auto-LID, prompt passthrough, batch size from profile), word-timestamp mapping, per-item error isolation; yaml-parser tests for the new engine value; session-manager routing test.
 
 **Verification**: unit suites green with mocked CT2; real-model smoke + P2-5 harness numbers on the GPU host before enabling per-pipeline.
@@ -393,10 +393,10 @@ async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
 #### P1-3 · Redis stream hygiene: resume IDs, trimming, per-session readers, removal retry
 
 **Files**
-- Modify: `apps/stt-v2/src/stt_v2/streaming/redis_streams.py` + `session_manager.py` — persist the last processed stream entry ID in the session hash (per batch); resume `XREAD` from it (kill the `0-0` replay at `session_manager.py:2044`); `XTRIM MINID` consumed audio periodically.
+- Modify: `apps/stt/src/stt/streaming/redis_streams.py` + `session_manager.py` — persist the last processed stream entry ID in the session hash (per batch); resume `XREAD` from it (kill the `0-0` replay at `session_manager.py:2044`); `XTRIM MINID` consumed audio periodically.
 - Modify: `packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts` — reader connection per subscriber (or consumer groups); `BLOCK 2000` → `500`.
 - Modify: `apps/api/src/modules/streaming/stt-ws.gateway.ts` + a small Redis-backed retry list for failed `removeSession` calls (M6 part 2).
-- Tests: stt-v2 unit (fake redis): resume-from-stored-ID; trim invoked after processing; bridge tests: two sessions don't serialize on one blocked XREAD; abort honored ≤ 500 ms; gateway test: failed DELETE enqueues a retry.
+- Tests: stt unit (fake redis): resume-from-stored-ID; trim invoked after processing; bridge tests: two sessions don't serialize on one blocked XREAD; abort honored ≤ 500 ms; gateway test: failed DELETE enqueues a retry.
 
 #### P1-4 · WS egress backpressure
 
@@ -411,8 +411,8 @@ async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
 #### P2-5 (land first) · Latency replay harness + per-stage metrics
 
 **Files**
-- Create: `apps/stt-v2/tests/integration/test_streaming_latency_harness.py` + `scripts/stt-latency-replay.sh` — feed a reference WAV (committed small fixture or generated tone+speech) into `stt:audio:{sid}` at realtime pace against a running STT-v2; measure **TTFW**, **partial cadence**, **final lag** (speech-end → final publish); emit JSON.
-- Modify: stt-v2 metrics — histograms: `vad_confirm_ms`, `inference_queue_wait_ms`, `publish_ms` (per existing Prometheus setup, TASK-255).
+- Create: `apps/stt/tests/integration/test_streaming_latency_harness.py` + `scripts/stt-latency-replay.sh` — feed a reference WAV (committed small fixture or generated tone+speech) into `stt:audio:{sid}` at realtime pace against a running STT; measure **TTFW**, **partial cadence**, **final lag** (speech-end → final publish); emit JSON.
+- Modify: stt metrics — histograms: `vad_confirm_ms`, `inference_queue_wait_ms`, `publish_ms` (per existing Prometheus setup, TASK-255).
 - Marked `integration` (needs model weights; excluded from CI unit gate; run manually on the GPU host).
 
 **Acceptance**: baseline numbers recorded in §4 **before** P1/P2 merges; post-change numbers after each wave.
@@ -420,7 +420,7 @@ async def get_or_load(self, model_config: AiModelConfig) -> LoadedModel:
 #### P2-1 · Code-switch decoding contract: language pinning + guards + fillers
 
 **Files**
-- Modify: `apps/stt-v2/src/stt_v2/pipeline/yaml_parser.py` (+ DTOs): `language: ml` + `code_switching: true` now means **pinned matrix language with CS enabled** (info log, no warning). `language: null` + CS = auto-LID (current behavior). `ml` (or any unsupported language) + `engine: NEMO` = **validation error**.
+- Modify: `apps/stt/src/stt/pipeline/yaml_parser.py` (+ DTOs): `language: ml` + `code_switching: true` now means **pinned matrix language with CS enabled** (info log, no warning). `language: null` + CS = auto-LID (current behavior). `ml` (or any unsupported language) + `engine: NEMO` = **validation error**.
 - Modify: kwargs builders (batch + streaming): when CS **and** language set → pass `language`.
 - Modify: `streaming/inference.py:36` — extend `_FILLER_PATTERN` with Malayalam filler forms (configurable extra pattern via settings).
 - Seed/update: Malayalam pipeline YAML + `PromptTemplate` row with a mixed-script clinical exemplar prompt (data seed, no migration).
@@ -446,10 +446,10 @@ Replace linear interpolation in `packages/stt/src/utils/audioResampler.ts` with 
 |---|---|---|
 | Gateway | `apps/api/src/modules/streaming/__tests__/stt-ws.gateway.test.ts`, `transcription-job.controller.test.ts` | Vitest (`apps/api`) |
 | Applications | `packages/applications/src/services/stt/streaming/__tests__/streamingAudioBridge.service.test.ts`, `streamingSession.service.test.ts` | Vitest |
-| SDK | `packages/agentic-sdk-v2/src/core/__tests__/SttV2WebSocketClient.test.ts` | Vitest |
+| SDK | `packages/agentic-sdk-v2/src/core/__tests__/SttWebSocketClient.test.ts` | Vitest |
 | STT pkg | `packages/stt/src/__tests__/sttCaptureWorklet.test.ts`, `audioCapture.test.ts`, `audioResampler.test.ts`, `providers/__tests__/StreamingBackendSTTProvider.test.ts` | Vitest |
 | Playground | `apps/ui-playground/src/hooks/__tests__/use-realtime-transcription.test.ts`, `features/audio/lib/__tests__/transcript-state.test.ts` (create) | Vitest |
-| STT-v2 | `apps/stt-v2/tests/unit/streaming/*` (+ create: `test_commit_policy.py`, `test_batch_scheduler.py`, `test_preprocessor_partial_window.py`, `test_model_cache_singleflight.py`); `tests/integration/test_streaming_latency_harness.py` (create) | pytest via `pnpm py:stt-v2:test:unit` (conda `arcaenv`) |
+| STT | `apps/stt/tests/unit/streaming/*` (+ create: `test_commit_policy.py`, `test_batch_scheduler.py`, `test_preprocessor_partial_window.py`, `test_model_cache_singleflight.py`); `tests/integration/test_streaming_latency_harness.py` (create) | pytest via `pnpm py:stt:test:unit` (conda `arcaenv`) |
 
 ### 3.5 Rollout, config gating, rollback
 
@@ -457,7 +457,7 @@ Replace linear interpolation in `packages/stt/src/utils/audioResampler.ts` with 
 |---|---|---|
 | Frame coalescing | `frameMs` option (default 80; `8` restores old behavior) | config |
 | Non-blocking XADD | code-level; dropped-frame counter alarms | revert commit |
-| Partial window / VAD silence | `STT_V2_STREAMING_PARTIAL_WINDOW_S`, profile `vad_silence_threshold_ms` (env-overridable) | env |
+| Partial window / VAD silence | `STT_STREAMING_PARTIAL_WINDOW_S`, profile `vad_silence_threshold_ms` (env-overridable) | env |
 | Commit policy | per-pipeline flag (`streaming.commit_policy: local_agreement_2 | none`, default `none` until validated on GPU host) | YAML |
 | Batch scheduler | `STREAMING_MAX_BATCH_SIZE=1` disables batching | env |
 | Language pinning | per-pipeline YAML (`language` + `code_switching`) | YAML |
@@ -475,8 +475,8 @@ pnpm build --filter @arcaai/stt --filter @arcaai/vox --filter @arcaai/applicatio
 pnpm build:api
 
 # Python (conda arcaenv)
-pnpm py:stt-v2:test:unit                        # green
-pnpm py:stt-v2:lint && pnpm py:stt-v2:typecheck # clean
+pnpm py:stt:test:unit                        # green
+pnpm py:stt:lint && pnpm py:stt:typecheck # clean
 
 # Evidence
 # - ReadLints on every modified file: zero new errors
@@ -521,18 +521,18 @@ Session-negotiated `sampleRate` persisted as session meta and stamped on every f
 
 `ModelCache.get_or_load` deduplicates concurrent loads per slug via in-flight futures; failures don't poison the cache; different slugs still load in parallel.
 
-#### P0-4 · STT-v2 partial window + profile VAD silence (C2 bounding, H4, H8)
+#### P0-4 · STT partial window + profile VAD silence (C2 bounding, H4, H8)
 
 - `streaming_partial_window_s` setting (default **8.0 s**): `_maybe_emit_partial` snapshots only the tail window (whole frames, correct `start_time` for trimmed snapshots) so per-partial decode cost stops growing with utterance length. Finals still decode the full buffer.
 - `SessionManager._build_preprocessor_vad_kwargs()` — shared by session creation **and** crash recovery: pipeline YAML wins when VAD is configured; otherwise `min_silence_duration_ms` follows the hardware profile (500 ms vs the preprocessor's legacy 700 ms default → ~200 ms off every final). Recovery previously dropped force-emit kwargs; now identical wiring.
 - H8 re-checked: `drain_processed_samples` is already O(new frames) — no change needed (finding corrected).
-- `apps/stt-v2/src/stt_v2/core/config/settings.py`, `streaming/preprocessor.py`, `streaming/session_manager.py`
+- `apps/stt/src/stt/core/config/settings.py`, `streaming/preprocessor.py`, `streaming/session_manager.py`
 - Tests: 3 new preprocessor tests + new `tests/unit/streaming/test_preprocessor_wiring_kwargs.py` (4 tests)
 
 #### P0-5 · Playground onto the SDK worklet path; zero-copy sends (C4 client half)
 
 - `use-realtime-transcription` replaced its inline `createScriptProcessor` block with `@arcaai/stt`'s `createAudioCapture` (AudioWorklet, coalesced frames, off-main-thread); conversion via shared `float32ToInt16`; **`sampleRate` now sent on `createSession`** so the P0-2 session meta actually receives it end-to-end (C5).
-- `SttV2WebSocketClient.sendAudioFrame(data: ArrayBuffer | ArrayBufferView)` — sends typed-array views natively (zero copy).
+- `SttWebSocketClient.sendAudioFrame(data: ArrayBuffer | ArrayBufferView)` — sends typed-array views natively (zero copy).
 - `StreamingBackendSTTProvider.processAudio` — forwards the `Int16Array` view; the per-frame `ArrayBuffer.slice` copy is gone.
 - `@arcaai/stt` barrel now exports `createAudioCapture` / `isAudioWorkletUsable` / capture types.
 - Tests: 7 new hook tests (capture wiring, conversion correctness, disconnected-guard, bytes accounting, sampleRate propagation incl. default, teardown), 2 provider tests (view forwarding, no-slice), 1 vox client test (view send).
@@ -552,17 +552,17 @@ Session-negotiated `sampleRate` persisted as session meta and stamped on every f
 | `packages/agentic-sdk-v2` vitest (full) | **3342 passed** (178 files) |
 | `apps/ui-playground` vitest (full) | **1285 passed** (151 files) |
 | `apps/api` streaming + common suites | **195 passed** (7 files) |
-| `apps/stt-v2` pytest unit (full, `arcaenv`) | **1903 passed** |
+| `apps/stt` pytest unit (full, `arcaenv`) | **1903 passed** |
 | `pnpm turbo build --filter @arcaai/stt --filter @arcaai/vox` | 6/6 tasks OK |
 | `pnpm build:api` | 8/8 tasks OK |
-| `ruff` + `mypy` on touched stt-v2 files | clean |
+| `ruff` + `mypy` on touched stt files | clean |
 | ui-playground `tsc --noEmit` | 3 errors — identical pre-existing baseline (unrelated admin files) |
 
 No Prisma migrations. Wire protocol unchanged (sampleRate field was already part of the session-create body).
 
 ### 4.2 Wave P1 — completed 2026-06-11
 
-Executed by two parallel exclusive-ownership lanes (stt-v2 Python lane; TS gateway/SDK lane) with the cross-lane wire contract (`stable_chars`) pinned up front. Findings closed: **C2 (commit policy proper), C3 (via D-1 engine migration), H2, H3 (stream trim — RAM spill stays deferred per plan), H5, H6, M6 (removal retry)**. AC-7…AC-9 pinned by unit tests.
+Executed by two parallel exclusive-ownership lanes (stt Python lane; TS gateway/SDK lane) with the cross-lane wire contract (`stable_chars`) pinned up front. Findings closed: **C2 (commit policy proper), C3 (via D-1 engine migration), H2, H3 (stream trim — RAM spill stays deferred per plan), H5, H6, M6 (removal retry)**. AC-7…AC-9 pinned by unit tests.
 
 #### P1-1 · LocalAgreement-2 commit policy + stableChars relay (C2, AC-7)
 
@@ -581,7 +581,7 @@ Executed by two parallel exclusive-ownership lanes (stt-v2 Python lane; TS gatew
 
 - Python: `SessionMetadata.last_stream_id` persisted to the session hash after each processed `XREAD` batch (new `IngestionConsumer(on_batch=…)` hook); crash recovery resumes from it (the `0-0` replay survives only for first-start/legacy sessions). `XTRIM MINID ~ <last_id>` on `stt:audio:{sid}` only, throttled by `streaming_audio_trim_interval_s` (default 30 s; `0` disables); result stream never trimmed; all hygiene errors swallowed with logs.
 - TS bridge: dedicated ioredis reader connection per result subscriber (one blocked XREAD no longer serializes sessions), `BLOCK 2000 → 500` (abort honored ≤ 500 ms), readers quit on teardown/disconnect.
-- Removal retry: new `apps/api/.../session-removal-retry.service.ts` — failed disconnect-time `removeSession` enqueues onto Redis SET `stt:session-removal:retry` (24 h TTL, best-effort), exponential backoff 1 s base × 5 bounded attempts, exhaustion logged for ops (STT-v2's 60 s reaper stays the backstop).
+- Removal retry: new `apps/api/.../session-removal-retry.service.ts` — failed disconnect-time `removeSession` enqueues onto Redis SET `stt:session-removal:retry` (24 h TTL, best-effort), exponential backoff 1 s base × 5 bounded attempts, exhaustion logged for ops (STT's 60 s reaper stays the backstop).
 
 #### P1-4 · WS egress backpressure (H6)
 
@@ -593,8 +593,8 @@ Findings closed: **M1, M2, M3, M4, M5, M7**; D-2 resolved **GO** via spike evide
 
 #### P2-5 · Latency replay harness (AC-11) — landed first, per plan
 
-- New `apps/stt-v2/tests/integration/test_streaming_latency_harness.py` + executable `scripts/stt-latency-replay.sh` (new files only — no existing stt-v2 file touched). Wire-format-exact: HTTP session bootstrap, `stt:audio/control/result:{sid}` streams, gateway field set; feeds a WAV at realtime pace (80 ms frames); measures **TTFW**, **partial cadence** (mean/p50/p95), **final lag** vs the 800 ms SLA using Redis server-clock timestamps; emits JSON (`LATENCY_REPORT_PATH`); `pytest.skip`s cleanly when Redis/stt-v2 unreachable. Deterministic synthetic fixture by default; `LATENCY_WAV_PATH` overrides with real speech.
-- Locally validated: collection/ruff/black clean, deterministic-fixture test passed, byte-exact wire round-trip against live dev Redis, clean skip with stt-v2 down. **Baseline + post-change numbers must be captured on the GPU host** via `./scripts/stt-latency-replay.sh`.
+- New `apps/stt/tests/integration/test_streaming_latency_harness.py` + executable `scripts/stt-latency-replay.sh` (new files only — no existing stt file touched). Wire-format-exact: HTTP session bootstrap, `stt:audio/control/result:{sid}` streams, gateway field set; feeds a WAV at realtime pace (80 ms frames); measures **TTFW**, **partial cadence** (mean/p50/p95), **final lag** vs the 800 ms SLA using Redis server-clock timestamps; emits JSON (`LATENCY_REPORT_PATH`); `pytest.skip`s cleanly when Redis/stt unreachable. Deterministic synthetic fixture by default; `LATENCY_WAV_PATH` overrides with real speech.
+- Locally validated: collection/ruff/black clean, deterministic-fixture test passed, byte-exact wire round-trip against live dev Redis, clean skip with stt down. **Baseline + post-change numbers must be captured on the GPU host** via `./scripts/stt-latency-replay.sh`.
 - Deliberately deferred from the plan: per-stage Prometheus histograms (`vad_confirm_ms`, `inference_queue_wait_ms`, `publish_ms`) — would have touched lane-owned files; tracked as follow-up.
 
 #### P2-1 · Code-switch decoding contract (M1, M5, M7, AC-10)
@@ -630,12 +630,12 @@ Findings closed: **M1, M2, M3, M4, M5, M7**; D-2 resolved **GO** via spike evide
 | Pipeline YAML | `engine: FASTER_WHISPER` (+ CT2 compute-type validation) | — |
 | Pipeline YAML | `inference.streaming_english_gloss` | `false` |
 | Pipeline YAML | `postprocessing.punctuation.model: cadence-fast` | wrapper path |
-| Env (stt-v2) | `STREAMING_AUDIO_TRIM_INTERVAL_S` | `30` (`0` disables) |
-| Env (stt-v2) | `STREAMING_EXTRA_FILLER_PATTERNS` | `""` |
-| Env (stt-v2) | `STREAMING_PUNCTUATION_TIMEOUT_S` | `0.4` |
+| Env (stt) | `STREAMING_AUDIO_TRIM_INTERVAL_S` | `30` (`0` disables) |
+| Env (stt) | `STREAMING_EXTRA_FILLER_PATTERNS` | `""` |
+| Env (stt) | `STREAMING_PUNCTUATION_TIMEOUT_S` | `0.4` |
 | Env (api) | `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` | `524288` |
 | Redis key | `stt:session-removal:retry` (SET, 24 h TTL) | — |
-| Dependency | `faster-whisper==1.2.1` (stt-v2 `ml` extra, GPU host) | not installed locally |
+| Dependency | `faster-whisper==1.2.1` (stt `ml` extra, GPU host) | not installed locally |
 
 Wire additions (all additive; old SDK clients unaffected): `stable_chars`/`stableChars` (partials only, policy on), `utterance_index`/`utteranceIndex` (all segment results), `type: gloss` results with `english_text`/`englishText`. Ops note: the bridge now opens one extra Redis connection per active result subscriber.
 
@@ -643,13 +643,13 @@ Wire additions (all additive; old SDK clients unaffected): `stable_chars`/`stabl
 
 | Suite / build | Result |
 |---|---|
-| `apps/stt-v2` pytest unit (full, `arcaenv`) | **2071 passed** (baseline 1903; +168 across P1/P2) |
+| `apps/stt` pytest unit (full, `arcaenv`) | **2071 passed** (baseline 1903; +168 across P1/P2) |
 | `apps/api` full vitest suite | **1752 passed** / streaming module **168** after gloss relay |
 | `packages/applications` streaming suites | **61 passed** |
 | `packages/agentic-sdk-v2` vitest (full) | **3349 passed** |
 | `apps/ui-playground` vitest (full) | **1296 passed** |
 | `packages/stt` vitest (full) | **401 passed** |
-| `ruff` + `mypy` on all touched stt-v2 files | clean |
+| `ruff` + `mypy` on all touched stt files | clean |
 | ui-playground `tsc --noEmit` | 3 errors — identical pre-existing baseline |
 | Root `pnpm test:unit` (all TS packages, all lanes combined) | **13816 passed** / 687 files (TASK-350 baseline: 13742 / 685) |
 | `pnpm build --filter @arcaai/stt --filter @arcaai/vox --filter @arcaai/applications` | 13/13 tasks OK |
@@ -663,5 +663,5 @@ Wire additions (all additive; old SDK clients unaffected): `stable_chars`/`stabl
 |---|---|---|
 | 2026-06-11 | Ticket opened. Full findings register (5 Critical / 8 High / 7 Medium, all file:line-verified) and phased P0/P1/P2 TDD implementation plan written from the 2026-06-11 pipeline review. Decision gates D-1 (GPU serving strategy) and D-2 (Indic punctuation deployment) defined. Awaiting plan approval. | This README |
 | 2026-06-11 | Plan approved (full plan, wave-by-wave reporting). D-1 resolved: **Option B — faster-whisper/CTranslate2 migration** (P1-2 rewritten accordingly). D-2 resolved: **Option A — Cadence-Fast direct-load spike first**. Status → In Progress; Wave P0 started. | This README |
-| 2026-06-11 | **Wave P0 completed** (P0-1…P0-6; closes C1, C2-bounding, C4, C5, H1, H4, H7, M6-parallel-awaits; H8 re-verified as already O(1)). Full evidence in §4.1. | `packages/stt` (worklet, audioCapture, provider, barrel), `packages/agentic-sdk-v2` (SttV2WebSocketClient), `apps/ui-playground` (use-realtime-transcription, transcript-panel/-list, transcript-state, byte-counter, live-byte-count, capture/consultation panels), `apps/api` (stt-ws.gateway, transcription-job.controller, stream-session-tenant-binding), `apps/stt-v2` (cache.py, preprocessor.py, session_manager.py, settings.py) + tests |
-| 2026-06-11 | **Waves P1 + P2 implemented in parallel** by five exclusive-ownership agent lanes (stt-v2 Python; TS gateway/SDK; resampler; D-2 spike; latency harness) + two follow-ups (P2-2 wiring after spike GO; gloss/utteranceIndex TS relay). Closes **C2, C3, H2, H3-trim, H5, H6, M1–M7**. D-2 resolved **GO** (Cadence-Fast direct load on transformers 5.5.4). Evidence §4.2–§4.5. Status → Review pending GPU-host validation. | `apps/stt-v2` (commit_policy.py, faster_whisper_asr.py, faster_whisper_loader.py, cadence_fast.py, session_manager.py, schemas.py, redis_streams.py, inference.py, punctuation/service.py, dto.py, yaml_parser.py, batch_service.py, settings.py, pyproject.toml; tests/integration harness — new files), `apps/api` (stt-ws.gateway, session-removal-retry.service — new, streaming.module), `packages/applications` (streamingAudioBridge.service, streaming-session.dto), `packages/agentic-sdk-v2` (stt-v2 types, SttV2WebSocketClient), `apps/ui-playground` (audio-store, use-realtime-transcription, audio-transcript-item), `packages/stt` (audioResampler), `scripts/` (spike-cadence-fast.py, stt-latency-replay.sh), spike findings doc + ~70 new/updated test files |
+| 2026-06-11 | **Wave P0 completed** (P0-1…P0-6; closes C1, C2-bounding, C4, C5, H1, H4, H7, M6-parallel-awaits; H8 re-verified as already O(1)). Full evidence in §4.1. | `packages/stt` (worklet, audioCapture, provider, barrel), `packages/agentic-sdk-v2` (SttWebSocketClient), `apps/ui-playground` (use-realtime-transcription, transcript-panel/-list, transcript-state, byte-counter, live-byte-count, capture/consultation panels), `apps/api` (stt-ws.gateway, transcription-job.controller, stream-session-tenant-binding), `apps/stt` (cache.py, preprocessor.py, session_manager.py, settings.py) + tests |
+| 2026-06-11 | **Waves P1 + P2 implemented in parallel** by five exclusive-ownership agent lanes (stt Python; TS gateway/SDK; resampler; D-2 spike; latency harness) + two follow-ups (P2-2 wiring after spike GO; gloss/utteranceIndex TS relay). Closes **C2, C3, H2, H3-trim, H5, H6, M1–M7**. D-2 resolved **GO** (Cadence-Fast direct load on transformers 5.5.4). Evidence §4.2–§4.5. Status → Review pending GPU-host validation. | `apps/stt` (commit_policy.py, faster_whisper_asr.py, faster_whisper_loader.py, cadence_fast.py, session_manager.py, schemas.py, redis_streams.py, inference.py, punctuation/service.py, dto.py, yaml_parser.py, batch_service.py, settings.py, pyproject.toml; tests/integration harness — new files), `apps/api` (stt-ws.gateway, session-removal-retry.service — new, streaming.module), `packages/applications` (streamingAudioBridge.service, streaming-session.dto), `packages/agentic-sdk-v2` (stt types, SttWebSocketClient), `apps/ui-playground` (audio-store, use-realtime-transcription, audio-transcript-item), `packages/stt` (audioResampler), `scripts/` (spike-cadence-fast.py, stt-latency-replay.sh), spike findings doc + ~70 new/updated test files |

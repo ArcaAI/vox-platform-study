@@ -2,7 +2,7 @@
 
 The Guardrail service resolves the admin-chosen provider/model **per tenant** at
 request time by reading ``core."AiTaskDefault"`` joined to ``core."AiModel"``
-directly (SQLAlchemy + asyncpg, mirroring STT-v2's read-only DB access), with a
+directly (SQLAlchemy + asyncpg, mirroring STT's read-only DB access), with a
 short TTL cache (~60s).
 
 Resolution order (tenant-level fallback):

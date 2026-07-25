@@ -20,7 +20,7 @@ interface ExtractionResponse {
 // Must match the ``vector(N)`` dimension of ``core."UserVoiceProfile"."embedding"``
 // in the Prisma migration. Changing this requires a coordinated DB migration
 // AND a matching change to ``EXPECTED_EMBEDDING_DIM`` in
-// ``apps/stt-v2/src/stt_v2/voice_profile/extraction_service.py``.
+// ``apps/stt/src/stt/voice_profile/extraction_service.py``.
 const EXPECTED_EMBEDDING_DIM = 256;
 
 @Injectable()
@@ -36,7 +36,7 @@ export class VoiceProfileService extends BaseService implements IVoiceProfileSer
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
   ) {
     super(eventEmitter, clsService, ResourceType.UserVoiceProfile);
-    this.sttBaseUrl = this.configService?.config?.STT_V2_URL || 'http://localhost:8861';
+    this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
   }
 
   async enroll(request: EnrollVoiceProfileRequest): Promise<UserVoiceProfileEntity> {

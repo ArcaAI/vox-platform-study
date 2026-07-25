@@ -12,7 +12,7 @@ export interface SmrStreamChunk {
 /**
  * SmrStreamConsumerService
  *
- * Reads SMR V2 task chunks directly from Redis Streams:
+ * Reads SMR task chunks directly from Redis Streams:
  * - Stream key: `smr:stream:{taskId}` (matches Python TaskManager._STREAM_KEY_PREFIX)
  * - Each entry has a `data` field containing JSON-serialized StreamChunk
  * - StreamChunk has: `type` (string), `data` (dict)
@@ -71,7 +71,7 @@ export class SmrStreamConsumerService implements OnModuleDestroy {
   }
 
   /**
-   * Subscribe to SMR V2 task chunks via Redis Streams.
+   * Subscribe to SMR task chunks via Redis Streams.
    * Returns an Observable that emits SSE-compatible MessageEvents.
    * Supports Last-Event-ID for resume.
    */

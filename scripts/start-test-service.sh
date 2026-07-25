@@ -3,7 +3,7 @@
 # Start a Service with Test Environment Configuration
 # ============================================================================
 # Shared script that starts any HOPE service with .env.test configuration.
-# Called by individual service scripts (start-test-api.sh, start-test-stt-v2.sh, etc.)
+# Called by individual service scripts (start-test-api.sh, start-test-stt.sh, etc.)
 #
 # USAGE (not called directly — use the service-specific scripts):
 #   source scripts/start-test-service.sh

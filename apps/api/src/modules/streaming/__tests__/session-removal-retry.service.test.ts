@@ -63,7 +63,7 @@ describe('SessionRemovalRetryService', () => {
 
     it('retries with backoff and clears the Redis entry once a retry succeeds', async () => {
         mockSessionService.removeSession
-            .mockRejectedValueOnce(new Error('stt-v2 down'))
+            .mockRejectedValueOnce(new Error('stt down'))
             .mockResolvedValueOnce(undefined);
 
         service.enqueue('sess-retry');

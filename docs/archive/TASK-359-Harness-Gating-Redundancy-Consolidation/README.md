@@ -119,13 +119,13 @@ Every inferential pass re-screens the whole note for all criteria, even when one
 
 ### 2.4 Findings #1 / #5 (Low) — cross-stack Granite stacking
 
-- **Layer 1 (SMR pre-gen gate, OFF by default):** `apps/smr/src/smr_v2/services/external_guardrail.py:28`
+- **Layer 1 (SMR pre-gen gate, OFF by default):** `apps/smr/src/smr/services/external_guardrail.py:28`
 `validate()` (returns early when `not self.settings.enabled`, `:34`). Config defaults
-(`apps/smr/src/smr_v2/core/config.py`): `enabled=False` (`:80`), `fail_open=False` (`:83`),
+(`apps/smr/src/smr/core/config.py`): `enabled=False` (`:80`), `fail_open=False` (`:83`),
 `require_medical=True` (`:84`). **Nuance for AC-5:** the guardrail *service* fails OPEN, but this
 SMR *client* defaults `fail_open=False` (fail-closed) — and the layer is OFF by default, so it is
 not standing in for any harness check today.
-- **Layer 5 (Bedrock native guardrail):** `apps/smr/src/smr_v2/providers/bedrock.py:78-82` injects
+- **Layer 5 (Bedrock native guardrail):** `apps/smr/src/smr/providers/bedrock.py:78-82` injects
 `guardrailConfig` only when `guardrail_id` is set (`core/config.py:59`, default `""`).
 - **Layer 4 (harness safety):** the harness Granite screen above — **fail-closed**. With all enabled,
 one consultation can be screened by three mechanisms (Appendix 04 §4 rows 1 & 5). Low materiality

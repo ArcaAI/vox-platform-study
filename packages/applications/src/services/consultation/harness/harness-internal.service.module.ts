@@ -10,6 +10,7 @@ import { ConsultationJobServiceModule } from '../jobs/consultation-job.service.m
 import { ConfigResolverModule } from '../../config-resolver';
 import { RedisCacheModule } from '../../baseServices/redis';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
+import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -40,6 +41,10 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
     // `warmStartEnabled` (not the process-wide env var) governs prior-draft
     // injection, per tenant and without a redeploy.
     HarnessPolicyServiceModule,
+    // Resolves the @Optional EffectiveSettingsService so
+    // `agentic.revisit.carryForwardEnabled` (F-18) is governed by the control
+    // plane rather than a redeploy. Unwired ⇒ carry-forward stays OFF.
+    EffectiveSettingsModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],

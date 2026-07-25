@@ -27,7 +27,7 @@ file:line in the working tree (branch `fix/2605-review`).
 | **AgentTrajectoryStep** | `agent-trajectory.prisma:62-120` | `sessionKind`, `stepType`, `stats`/`payloadRef` (claim-check refs only), unique `(tenantId,sessionId,runId,seq)` | tenant-scoped | **Yes**, no soft delete (retention-pruned) | — |
 | **DnaWritingStyleReport / Version** | `dna-writing-style.prisma:6-96` | `encryptedStyleText/encryptedReportData`, TASK-551 `encryptedRedactionRules Bytes?`, `isLatest`, `currentVersionNumber` | tenant-scoped | **Yes** | → Versions |
 | **ContextItem** | `consultation.prisma:73-159` | `type` enum (…TRANSCRIPT/CASE_NOTE/ATTACHMENT/SIGNED_NOTE…), `source`, `encryptedContent`, `currentVersionNumber`, loose refs | tenant-scoped | **Yes** | → Consultation, ContextItemVersion[], SummaryMeta?, NamedEntity[], TranscriptSegment[] |
-| **SummaryMeta** | `:220-320` | provenance arrays, `promptResolvedFrom/resolvedPromptId`, sensor scores, `gateDecision`, TASK-551 `redactionApplied?` + `encryptedRedactionManifest?` | tenant-scoped | **none — no OCC** | 1:1 → ContextItem |
+| **SummaryMeta** | `:220-320` | provenance arrays, `promptResolvedFrom/resolvedPromptId`, sensor scores, `gateDecision`, TASK-551 `redactionApplied?` + `encryptedRedactionManifest?` | tenant-scoped | **none — no OCC** *(historical: F-11 added `_version` in Wave 2)* | 1:1 → ContextItem |
 | **Highlight** | `:492-551` | W3C dual selector, `targetKind`, `sourceContextItemId?` | tenant-scoped | **Yes** | → Consultation |
 | **TranscriptSegment** | `:575-621` | `idx`, `t0Ms/t1Ms`, `speaker`, `charStart/charEnd` (offsets only) | tenant-scoped | **Yes**, no soft delete | → ContextItem |
 

@@ -103,8 +103,8 @@ http_check optional "ollama" "http://localhost:11434/"
 
 echo -e "${CYAN}── HOPE services ────────────────────────────────────────────────${NC}"
 http_check required "api (8868)" "http://localhost:${API_PORT:-8868}/api/v1/health" "pnpm dev:api"
-http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/health" "pnpm dev:stt-v2"
-http_check required "smr (8862)" "http://localhost:${SMR_PORT:-8862}/api/v1/health" "pnpm dev:smr-v2"
+http_check required "stt (8861)" "http://localhost:${STT_PORT:-8861}/api/v1/health" "pnpm dev:stt"
+http_check required "smr (8862)" "http://localhost:${SMR_PORT:-8862}/api/v1/health" "pnpm dev:smr"
 http_check required "nlp (8864)" "http://localhost:${NLP_PORT:-8864}/api/v1/health" "pnpm dev:nlp"
 http_check required "harness (8866)" "http://localhost:${HARNESS_PORT:-8866}/api/v1/health" "pnpm dev:harness"
 # guardrail mounts its routers under /api (no version segment), unlike the rest
@@ -117,7 +117,7 @@ if printf '%s' "$providers" | grep -q '"name"'; then
     # top-level provider entries are the ones carrying a display_name
     pass "smr providers registered" "$(printf '%s' "$providers" | grep -oE '"name":"[^"]*","display_name"' | cut -d'"' -f4 | sort -u | tr '\n' ' ')"
 else
-    fail "smr providers registered" "none — start SMR via 'pnpm dev:smr-v2' (registers the LM Studio provider)"
+    fail "smr providers registered" "none — start SMR via 'pnpm dev:smr' (registers the LM Studio provider)"
 fi
 
 # Harness Temporal worker — no port; it is a worker process polling the task

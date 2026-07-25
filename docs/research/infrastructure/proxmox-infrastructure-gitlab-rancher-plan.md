@@ -24,7 +24,7 @@
 | VMID | Name | IP | Specs | Apps | Status |
 |------|------|----|-------|------|--------|
 | CT 100 | cloudflared | multi-homed | 1c/0.5G/2GB LXC | Cloudflare Tunnel ingress | Running |
-| VM 200 | ubuntu-live-gpu | 10.10.1.10 | 16c/48G/64GB+300GB + 2× GPU | AI apps v2 with GPU (api, stt-v2, smr, nlp) | Running |
+| VM 200 | ubuntu-live-gpu | 10.10.1.10 | 16c/48G/64GB+300GB + 2× GPU | AI apps v2 with GPU (api, stt, smr, nlp) | Running |
 | VM 201 | rb | 10.10.2.11 | 2c/4G/64GB | Marketing websites | Running |
 | VM 400 | master | 10.10.1.100 | 8c/16G/64GB | Rancher, Argo CD | Running |
 | VM 401 | vuvu | 10.10.1.101 | 16c/32G/400GB | AI apps v1 without GPU (api-v1, stt-v1, smr-v1, nlp) | Running |
@@ -256,7 +256,7 @@ psql -h 10.10.1.250 -p 5000 -U postgres -c "SELECT pg_is_in_recovery();"
 INFRASTRUCTURE (v7 — 2026-03-24):
   VMID  NAME             IP            SPECS          APPS
   CT100 cloudflared      multi-homed   1c/0.5G/2G     Tunnel ingress
-  200   ubuntu-live-gpu  10.10.1.10    16c/48G/364G   AI v2 + 2×GPU (api, stt-v2, smr, nlp)
+  200   ubuntu-live-gpu  10.10.1.10    16c/48G/364G   AI v2 + 2×GPU (api, stt, smr, nlp)
   201   rb               10.10.2.11    2c/4G/64G      Marketing websites
   400   master           10.10.1.100   8c/16G/64G     Rancher, Argo CD
   401   vuvu             10.10.1.101   16c/32G/400G   AI v1 no GPU (api-v1, stt-v1, smr-v1, nlp)

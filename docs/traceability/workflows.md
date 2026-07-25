@@ -45,7 +45,7 @@ to a follow-up.
 
 1. **Open (get-or-create).** `apps/api` → `POST /consultations/open` (get-or-create by patient; the only session entry point) → `Consultation` (`db_main/consultation.prisma`). unit(app): `consultation/consultation/__tests__/consultation.service.test.ts`.
 2. **Add clinical context.** `POST /consultations/:id/context` (transcriptions / case notes) → `ContextItem`, `ContextItemVersion` (envelope-encrypted). unit(app): `context/__tests__/context.service.encryption.test.ts`.
-3. **Record.** `POST /consultations/:id/recording/{start,stop}`, `POST /consultations/:id/recordings` → `AudioRecording`, `Media`; STT-v2 posts media back on `@Controller('internal/stt')` → `POST /internal/stt/{audio-records,media}`. unit(app): `consultation.service.recording.test.ts`.
+3. **Record.** `POST /consultations/:id/recording/{start,stop}`, `POST /consultations/:id/recordings` → `AudioRecording`, `Media`; STT posts media back on `@Controller('internal/stt')` → `POST /internal/stt/{audio-records,media}`. unit(app): `consultation.service.recording.test.ts`.
 4. **Read the running record.** `GET /consultations/:id/timeline` (`?scope=single|chain`), `GET /consultations/:id/highlights`, `GET /consultations/:id/named-entities` — composed reads over `ContextItem` / `AudioRecording` / `Highlight` / `SummaryMeta` / `NamedEntity`. unit(app): `timeline/__tests__/timeline.service.test.ts`.
 5. **Close / reopen / chain.** `POST /consultations/:id/close`, `POST /consultations/:id/reopen`, `GET /consultations/:id/chain`, `GET /consultations/patient/:patientId/history`. e2e: `admin-fetchall-cross-tenant.spec.ts` (admin fetch-all cross-tenant); unit(api): `consultation/__tests__/consultation.controller.test.ts`.
 
@@ -58,11 +58,11 @@ to a follow-up.
 ## W2 — Live transcription & live documentation (streaming → running SOAP note)
 
 Real-time capture: browser audio bridges through the gateway WS into a Redis-Streams session
-STT-v2 consumes; transcript segments feed a running SOAP note streamed back over SSE.
+STT consumes; transcript segments feed a running SOAP note streamed back over SSE.
 
 1. **Open a streaming session + ticket.** `POST /audio/transcription-jobs/stream/session` → `TranscriptionJob`, `AsrPipeline` (`db_main/stt.prisma`); refresh via `POST …/:sessionId/refresh-ticket`. unit(app): `stt/streaming/__tests__/streamingSession.service.test.ts`; e2e: `stt-session-cross-tenant.spec.ts`, `stream-ticket-scopes.spec.ts`.
-2. **Stream audio (WS, single-use ticket — never a JWT in the URL).** WS `@WebSocketGateway({ path: '/ws/stt-v2/stream' })` → gateway bridges to STT-v2 internal `POST /internal/streaming/sessions` (`APIRouter(prefix="/internal/streaming")`). unit(app): `streamingAudioBridge.service.test.ts`; py(stt): `unit/streaming/*`; e2e: `streaming-{resume-after-drop,backpressure-recovery,ticket-refresh}.spec.ts`.
-3. **Persist transcript segments.** STT-v2 posts back on `@Controller('internal/stt')` → `POST /internal/stt/transcripts` → `TranscriptSegment` (`db_main/consultation.prisma`, transcription-owned). contract: `tests/contracts/stt-transcript-segments/`, `stt.contract.test.ts`.
+2. **Stream audio (WS, single-use ticket — never a JWT in the URL).** WS `@WebSocketGateway({ path: '/ws/stt/stream' })` → gateway bridges to STT internal `POST /internal/streaming/sessions` (`APIRouter(prefix="/internal/streaming")`). unit(app): `streamingAudioBridge.service.test.ts`; py(stt): `unit/streaming/*`; e2e: `streaming-{resume-after-drop,backpressure-recovery,ticket-refresh}.spec.ts`.
+3. **Persist transcript segments.** STT posts back on `@Controller('internal/stt')` → `POST /internal/stt/transcripts` → `TranscriptSegment` (`db_main/consultation.prisma`, transcription-owned). contract: `tests/contracts/stt-transcript-segments/`, `stt.contract.test.ts`.
 4. **Stream the running SOAP note.** SSE `GET /consultations/:id/live-summary/stream` (`@Sse()`) → `ContextItem` `PRE_SUMMARY` snapshot tagged `metadata.subType = LIVE_SOAP_SNAPSHOT` (SMR-generated, NLP-entity-grounded). unit(app): `consultation/live-documentation/__tests__/{live-documentation.service,soap-parser,live-documentation.groundedness}.test.ts`.
 
 **Composes:** [`transcription.md`](./transcription.md) R1 (live STT); [`consultation.md`](./consultation.md) C7 (live documentation), C2 (context).
@@ -73,11 +73,11 @@ STT-v2 consumes; transcript segments feed a running SOAP note streamed back over
 
 ## W3 — Batch transcription (upload → Dramatiq worker → callbacks)
 
-Asynchronous file transcription: an upload creates a job the STT-v2 Dramatiq worker processes,
+Asynchronous file transcription: an upload creates a job the STT Dramatiq worker processes,
 posting progress/results back on internal service-token callbacks.
 
 1. **Create the job.** `@Controller('audio/transcription-jobs')` → `POST ''` / `POST /batch` / `POST /transcribe` → `TranscriptionJob`, `Media` (`db_main/{stt,media}.prisma`). unit(app): `stt/job/__tests__/transcriptionJob.service.test.ts`.
-2. **Worker transcribes.** STT-v2 `POST /api/v1/transcribe` → Dramatiq `worker.py`. py(stt): `unit/test_batch_service.py`, `unit/test_broker.py`, `unit/test_job_concurrency.py`.
+2. **Worker transcribes.** STT `POST /api/v1/transcribe` → Dramatiq `worker.py`. py(stt): `unit/test_batch_service.py`, `unit/test_broker.py`, `unit/test_job_concurrency.py`.
 3. **Progress + result callbacks.** `@Controller('internal/stt')` → `PATCH /internal/stt/jobs/:id/{start,progress,complete,fail}`, `POST /internal/stt/transcripts`, `GET /internal/stt/jobs/:id/status`. unit(api): `internal` STT-callback tests.
 4. **Client polls / streams / cancels / retries.** `GET /audio/transcription-jobs/:id`, SSE `GET …/:id/stream`, `POST …/:id/{cancel,retry}`; admin roll-up `@Controller('admin/audio/transcription-jobs')` → `GET /stats`, `GET /status/:status`. e2e: `transcription-job-cross-tenant.spec.ts`; py(stt): `integration/*`.
 
@@ -94,7 +94,7 @@ guardrail validation applied **inside** SMR generation (a gateway hop it is not)
 
 1. **Resolve the prompt.** `packages/applications/src/services/consultation/prompt` (`prompt-resolution.service.ts`, `prompt-assembly.service.ts`) selects the effective (approved) `PromptTemplate`/`PromptVersion`. unit(app): `summary.service.prompt-tier.task331`, `summary.service.preferred-prompt.task329`.
 2. **Quota precheck.** `IEntitlementsService.assertQuantityQuota` → `QuotaExceededException` (HTTP 409), kill-switch-gated (rule 04) → `TenantEntitlement`, `TenantUsageMeter` (legacy row 6). unit(app): entitlements suite (legacy row 6).
-3. **Generate (sync or async).** `POST /consultations/:id/summary[/async]`, `/pre-summary[/async]`, `/comprehensive[/async]` → BullMQ `Generate*` queues → SMR `POST /api/v1/generate` → `SummaryMeta`, `ContextItem` (`RAW_SUMMARY`/`MODIFIED_SUMMARY`). unit(app): `consultation/summary/__tests__/{summary.service,chain-summary.service,smr-v2-generate}.test.ts`; contract: `smr.contract.test.ts`; py(smr).
+3. **Generate (sync or async).** `POST /consultations/:id/summary[/async]`, `/pre-summary[/async]`, `/comprehensive[/async]` → BullMQ `Generate*` queues → SMR `POST /api/v1/generate` → `SummaryMeta`, `ContextItem` (`RAW_SUMMARY`/`MODIFIED_SUMMARY`). unit(app): `consultation/summary/__tests__/{summary.service,chain-summary.service,smr-generate}.test.ts`; contract: `smr.contract.test.ts`; py(smr).
 4. **Guardrail gate (in-band, fail-closed).** SMR `ExternalGuardrailClient` (`external_guardrail.py`) validates every prompt before the LLM call → guardrail `POST /api/v1/guardrail/analyze` (stateless); guardrail outage → retryable **503**, genuine violation → **block**. py(smr): `unit/test_generate_guardrail_wiring.py`, `unit/test_external_guardrail_client.py`; py(grd).
 5. **Stream progress / track the job.** SSE `GET /consultations/jobs/:jobId/stream`, `GET /consultations/jobs/:jobId`, `PATCH …/cancel`. e2e: `consultation-jobs.e2e-spec.ts`, `consultation-job-cross-tenant.spec.ts`.
 6. **Read / edit / provenance.** `GET /consultations/:id/summary/latest`, `PATCH /consultations/:id/summary/:summaryId` (OCC), `GET …/:contextItemId/{versions,provenance,diff}`. unit(app): `summary.service.provenance.task330`, `summary.service.edit-capture`.
@@ -164,7 +164,7 @@ stateless generation and synthesis services.
 
 1. **Store the BYO connection.** `PUT /admin/ai-providers/:provider` → `AiProviderConnection` (`db_main/ai-provider-connection.prisma`; `apiKey` write-only, Vault-Transit, no reveal route, OCC). unit(app): `ai-provider-connection/__tests__/ai-provider-connection.service.test.ts`.
 2. **Resolve at generation time.** `resolveConnection` / `resolveTenantCloudOverrides` → `SmrProxyController.applyTenantProviderOverrides` injects `provider_overrides` onto SMR `POST /api/v1/generate`. unit(app): `ai-provider-connection.tenant-lane.test.ts`; unit(api): `streaming/__tests__/smr-proxy-tenant-byo.controller.test.ts`; e2e: `ai-provider-connections-cross-tenant.spec.ts`.
-3. **Tenant-TTS lane.** Gateway resolves the effective TTS spec (tenant row merged over SYSTEM default, clamped to platform limits) + decrypts the BYO TTS key at injection time → injected into stateless `apps/tts-v2` per request → `TenantTtsConfig`, `TenantTtsProviderCredential` (deliberately **non-OCC**). unit(app): `tenant-tts-config/__tests__/{tenant-tts-config.service,platform-limits}.test.ts`.
+3. **Tenant-TTS lane.** Gateway resolves the effective TTS spec (tenant row merged over SYSTEM default, clamped to platform limits) + decrypts the BYO TTS key at injection time → injected into stateless `apps/tts` per request → `TenantTtsConfig`, `TenantTtsProviderCredential` (deliberately **non-OCC**). unit(app): `tenant-tts-config/__tests__/{tenant-tts-config.service,platform-limits}.test.ts`.
 
 **Composes:** [`ai-models-providers.md`](./ai-models-providers.md) M6 (BYO cloud connections); [`tts.md`](./tts.md) T3 (tenant-TTS BYO).
 
@@ -172,18 +172,18 @@ stateless generation and synthesis services.
 
 ---
 
-## W9 — TTS synthesis (gateway proxy → stateless tts-v2)
+## W9 — TTS synthesis (gateway proxy → stateless tts)
 
 Text-to-speech from a browser: the gateway fronts the stateless synthesis service, resolving
 the tenant's effective TTS spec per request.
 
-1. **Request synthesis.** `@Controller('speech')` → `POST /speech/synthesize`, `GET /speech/voices`; WS `@WebSocketGateway({ path: '/ws/tts-v2/stream' })` → WS `/ws/tts-v2/stream`. unit(api): `speech/__tests__/{speech-proxy.controller,tts-ws.gateway}.test.ts`; e2e: `speech-proxy-auth.spec.ts`.
-2. **Resolve effective spec + inject.** Gateway resolves `TenantTtsConfig` (tenant over SYSTEM default, clamped), decrypts `TenantTtsProviderCredential` (BYO), injects `X-Service-Token` + spec into tts-v2. unit(app): `tenant-tts-config/__tests__/platform-limits.test.ts`.
-3. **Synthesize.** `apps/tts-v2` `POST /api/v1/audio/speech` (OpenAI-compatible), `GET /api/v1/voices`, WS `/api/v1/audio/stream` — Azure Speech + local Kokoro / Indic Parler / IndicF5 + Sarvam, en + ml. py(tts): `unit/test_speech_endpoint.py`, `unit/test_stream_ws.py`, provider suites (`test_{azure,kokoro,parler,indic_f5,sarvam}_provider.py`).
+1. **Request synthesis.** `@Controller('speech')` → `POST /speech/synthesize`, `GET /speech/voices`; WS `@WebSocketGateway({ path: '/ws/tts/stream' })` → WS `/ws/tts/stream`. unit(api): `speech/__tests__/{speech-proxy.controller,tts-ws.gateway}.test.ts`; e2e: `speech-proxy-auth.spec.ts`.
+2. **Resolve effective spec + inject.** Gateway resolves `TenantTtsConfig` (tenant over SYSTEM default, clamped), decrypts `TenantTtsProviderCredential` (BYO), injects `X-Service-Token` + spec into tts. unit(app): `tenant-tts-config/__tests__/platform-limits.test.ts`.
+3. **Synthesize.** `apps/tts` `POST /api/v1/audio/speech` (OpenAI-compatible), `GET /api/v1/voices`, WS `/api/v1/audio/stream` — Azure Speech + local Kokoro / Indic Parler / IndicF5 + Sarvam, en + ml. py(tts): `unit/test_speech_endpoint.py`, `unit/test_stream_ws.py`, provider suites (`test_{azure,kokoro,parler,indic_f5,sarvam}_provider.py`).
 
 **Composes:** [`tts.md`](./tts.md) T2 (gateway proxy), T1 (synthesis service), T3 (per-tenant config).
 
-**Invariants:** browsers never call `apps/tts-v2` directly (gateway-only, `X-Service-Token`); the Python service is stateless (effective spec injected per request); BYO key ciphertext decrypted only at injection; **no TTS-config or live-synthesis e2e** — T1/T2 have unit + `speech-proxy-auth` coverage, live Azure/GPU/browser-WS round-trips are env-gated ([`tts.md`](./tts.md) gap).
+**Invariants:** browsers never call `apps/tts` directly (gateway-only, `X-Service-Token`); the Python service is stateless (effective spec injected per request); BYO key ciphertext decrypted only at injection; **no TTS-config or live-synthesis e2e** — T1/T2 have unit + `speech-proxy-auth` coverage, live Azure/GPU/browser-WS round-trips are env-gated ([`tts.md`](./tts.md) gap).
 
 ---
 

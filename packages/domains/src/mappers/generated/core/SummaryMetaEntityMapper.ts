@@ -2,21 +2,29 @@ import { AutoClassMapper, AutoEntityChangeMapper, BaseMapper, createMapperHandle
 import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
-// `SummaryMeta` has `id`, `tenantId`, `createdAt`, `updatedAt` but NO `_version`
-// / `_metadata` / `createdBy` / `updatedBy` columns. The base entity/model carry
-// those inherited fields, so strip them before persistence to avoid Prisma
-// "Unknown argument `version`" errors on insert. (`updatedAt` IS a real column.)
-const FIELDS_NOT_IN_PRISMA: string[] = [
-  'version',
-  'metaData',
-  'createdBy',
-  'updatedBy',
-  'resourceStatus',
-  'resourceStatusUpdatedAt',
-  'resourceStatusUpdatedBy',
-];
+// `SummaryMeta` has `id`, `tenantId`, `_version`, `createdAt`, `updatedAt` but NO
+// `_metadata` / `createdBy` / `updatedBy` / resource-status columns. The base
+// entity/model carry those inherited fields, so strip them before persistence to
+// avoid Prisma "Unknown argument" errors on insert. (`updatedAt` IS a real column.)
+const FIELDS_NOT_IN_PRISMA: string[] = ['metaData', 'createdBy', 'updatedBy', 'resourceStatus', 'resourceStatusUpdatedAt', 'resourceStatusUpdatedBy'];
+
+// `_version` became a REAL column (TASK-553 F-11) so the two-phase
+// optimistic-delivery backfill (`persistDraft` EARLY → `finalizeAssurance`) can
+// compare-and-set. It is DATABASE-OWNED: the only legitimate writer is
+// `Repository.updateWithVersion`. Strip it from every write path here so the
+// auto-mappers cannot leak it into a Prisma create/update — the same treatment
+// `DepartmentEntityMapper` gives it. Reads are unaffected (`toDomainEntity`
+// carries the row's real version onto the entity, which is what the CAS needs).
+const FIELDS_NOT_WRITABLE: string[] = ['version'];
 
 function stripNonPrismaFields<T extends object>(model: T, fields: string[]): T {
+  for (const field of fields) {
+    delete (model as Record<string, unknown>)[field];
+  }
+  return model;
+}
+
+function stripNonWritableFields<T extends object>(model: T, fields: string[]): T {
   for (const field of fields) {
     delete (model as Record<string, unknown>)[field];
   }
@@ -30,12 +38,12 @@ export class SummaryMetaEntityMapper extends BaseMapper<Entities.SummaryMetaEnti
 
   public toPersistence(entity: Entities.SummaryMetaEntity): Models.SummaryMeta {
     const result = AutoClassMapper(entity, Models.SummaryMeta, SummaryMetaEntityMapperHandlers.$toPersistence);
-    return stripNonPrismaFields(result, FIELDS_NOT_IN_PRISMA);
+    return stripNonWritableFields(stripNonPrismaFields(result, FIELDS_NOT_IN_PRISMA), FIELDS_NOT_WRITABLE);
   }
 
   public toPersistenceChanges(entity: Entities.SummaryMetaEntity): Partial<Models.SummaryMeta> {
     const result = AutoEntityChangeMapper(entity, Models.SummaryMeta, SummaryMetaEntityMapperHandlers.$toPersistence);
-    return stripNonPrismaFields(result, FIELDS_NOT_IN_PRISMA);
+    return stripNonWritableFields(stripNonPrismaFields(result, FIELDS_NOT_IN_PRISMA), FIELDS_NOT_WRITABLE);
   }
 
   public toDomainEntity(dataModel: Models.SummaryMeta): Entities.SummaryMetaEntity {

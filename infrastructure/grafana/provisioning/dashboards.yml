@@ -1,9 +1,9 @@
 apiVersion: 1
 
 providers:
-  - name: SMR V2
+  - name: SMR
     orgId: 1
-    folder: SMR V2
+    folder: SMR
     type: file
     disableDeletion: false
     editable: true

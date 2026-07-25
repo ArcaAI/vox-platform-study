@@ -12,7 +12,7 @@
 
 ### Description
 
-Implement a static, seeded catalog of available text-generation providers and models (with size metadata) for the SMR v2 service. Tenant administrators select a default provider and model from this catalog. Provider naming must be consistent end-to-end (`ollama`, `lm-studio`, `azure-openai`) across the API gateway, SMR runtime, seed data, and admin UI.
+Implement a static, seeded catalog of available text-generation providers and models (with size metadata) for the SMR service. Tenant administrators select a default provider and model from this catalog. Provider naming must be consistent end-to-end (`ollama`, `lm-studio`, `azure-openai`) across the API gateway, SMR runtime, seed data, and admin UI.
 
 ### Business Context
 
@@ -22,7 +22,7 @@ Doctors and tenant admins need a reliable way to select which LLM provider and m
 
 1. A static JSON catalog of providers and their models (with `name` and `size`) is seeded per-tenant in GlobalSettings under the `ux-constants` namespace.
 2. The `GET /text/providers` endpoint returns the full catalog with the tenant's selected default marked.
-3. SMR v2 runtime registers providers using tenant-facing keys (`ollama`, `lm-studio`, `azure-openai`) instead of internal-only keys (`azure`, `openai_compat`).
+3. SMR runtime registers providers using tenant-facing keys (`ollama`, `lm-studio`, `azure-openai`) instead of internal-only keys (`azure`, `openai_compat`).
 4. Tenant config update validates that `default-smr-provider` and `default-smr-model` belong to the seeded catalog.
 5. All changes are covered by TDD (red-green-refactor) unit tests.
 6. Backward compatibility: existing tenants with `ollama` / `granite4:latest` defaults continue to work.
@@ -33,7 +33,7 @@ Doctors and tenant admins need a reliable way to select which LLM provider and m
 
 - **Seed data** (`packages/database/src/prisma/db_main/seed/11-global-setting.ts`): Seeds `default-smr-provider` (string) and `default-smr-model` (string) per tenant. No provider/model catalog exists for SMR.
 - **API gateway** (`apps/api/src/modules/streaming/smr-proxy.controller.ts`): `GET /text/providers` synthesizes a single-provider response from the two default settings. No catalog awareness.
-- **SMR runtime** (`apps/smr/src/smr_v2/main.py`): Registers providers as `ollama`, `azure`, `bedrock`, `openai_compat`. Timeout/config maps use same internal keys.
+- **SMR runtime** (`apps/smr/src/smr/main.py`): Registers providers as `ollama`, `azure`, `bedrock`, `openai_compat`. Timeout/config maps use same internal keys.
 - **SDK config** (`packages/agentic-sdk-v2/src/types/config.ts`): `TENANT_CONFIG_KEYS` references `default-smr-provider` and `default-smr-model`. `parseTenantConfig()` maps them to `defaultSmrProvider` / `defaultSmrModel`.
 
 ### Impact Areas
@@ -95,9 +95,9 @@ A static, seeded catalog of SMR text-generation providers and models (with size 
 | `packages/database/src/__tests__/seed-global-settings.test.ts` | Updated `CORE_SUFFIXES` to include `UX_SMR_PROVIDER_MODELS` |
 | `apps/api/src/modules/streaming/smr-proxy.controller.ts` | Refactored `buildProvidersFromTenantSettings()` to parse catalog JSON; added `parseProviderCatalog()` helper; returns full provider list with `is_default` marker |
 | `apps/api/src/modules/streaming/__tests__/smr-proxy.controller.test.ts` | Added 3 catalog-based tests for `/text/providers` endpoint |
-| `apps/smr/src/smr_v2/main.py` | Renamed provider registration keys (`azure` -> `azure-openai`, `openai_compat` -> `lm-studio`) with backward-compatible aliases; updated `provider_configs` dicts |
-| `apps/smr/src/smr_v2/api/endpoints/generate.py` | Updated `_get_provider_timeout()` config map with tenant-facing keys + backward aliases |
-| `apps/smr/src/smr_v2/tests/unit/test_provider_key_consistency.py` | **New** — 8 tests for registry acceptance, timeout resolution, and generate endpoint with tenant-facing keys |
+| `apps/smr/src/smr/main.py` | Renamed provider registration keys (`azure` -> `azure-openai`, `openai_compat` -> `lm-studio`) with backward-compatible aliases; updated `provider_configs` dicts |
+| `apps/smr/src/smr/api/endpoints/generate.py` | Updated `_get_provider_timeout()` config map with tenant-facing keys + backward aliases |
+| `apps/smr/src/smr/tests/unit/test_provider_key_consistency.py` | **New** — 8 tests for registry acceptance, timeout resolution, and generate endpoint with tenant-facing keys |
 | `packages/applications/src/services/tenant/tenant.service.ts` | Added `validateSmrConfigValue()`, `loadSmrCatalog()`, `getCurrentSmrProvider()` methods for catalog-aware validation on config update |
 | `packages/applications/src/services/tenant/__tests__/tenant.service.test.ts` | Added 3 tests for SMR provider/model validation against catalog |
 

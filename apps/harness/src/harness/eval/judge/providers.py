@@ -43,7 +43,7 @@ def _secret_value(value: object) -> str:
 # null-safe normalized value.
 # ---------------------------------------------------------------------------
 
-# Per-wire raw→normalized stop-reason tables (subset mirroring smr_v2.models.stats
+# Per-wire raw→normalized stop-reason tables (subset mirroring smr.models.stats
 # for the wires these clients speak: OpenAI-compatible, Ollama, Bedrock converse).
 _OPENAI_WIRE_STOP: dict[str, str] = {
     "stop": "stop",
@@ -105,7 +105,7 @@ def build_llm_call_stats(
 ) -> dict[str, Any]:
     """Assemble an AD-1-shaped stats dict from already-extracted native fields.
 
-    Mirrors ``smr_v2.models.stats.GenerationStats`` field names. ``tokens_per_second``
+    Mirrors ``smr.models.stats.GenerationStats`` field names. ``tokens_per_second``
     is used verbatim when the engine reports it; otherwise it is computed from client
     timing (predicted / decode-time), and left ``None`` when nothing can be divided.
     """

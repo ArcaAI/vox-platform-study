@@ -1,6 +1,6 @@
 """Effective-config pull client (guardrail).
 
-Structurally identical to `nlp.core.effective_config` / `smr_v2` / `stt_v2`
+Structurally identical to `nlp.core.effective_config` / `smr` / `stt`
 against the same frozen contract, exposing the ONLY subset guardrail consumes:
 `retention.{ttlSeconds,maxModels}` for the two aux-model caches. Model IDENTITY
 is untouched — it stays DB-selected per request from the SYSTEM `AiTaskDefault`

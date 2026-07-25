@@ -29,7 +29,7 @@ The three cycle-1 runtime assessments confirmed the program doctrine four times 
 | F-038 (P2) | Guardrail health path drift on the console side | C | S |
 | F-018 (P2) | NUL byte in `live-documentation.service.ts` | A | XS |
 | F-030 (P3) | Non-prod error bodies leak absolute-path stack traces | D | S |
-| QW | `pynvml` optional extra; stt-v2 black drift | D | XS |
+| QW | `pynvml` optional extra; stt black drift | D | XS |
 
 Out of scope (owner-gated, stay open): F-011 (OD-2 prod blast radius), F-012 GPU lane, F-013 SME, F-033 (per assessment), F-034 (orphan watchers — killed 2026-07-22, resolved).
 
@@ -53,9 +53,9 @@ All four lanes' fixes verified together on one machine, one API instance (8868 d
 | `pnpm --filter @arcaai/api test` | **2398 passed** / 4 skipped (152 files) |
 | `pnpm --filter @arcaai/admin-console build` | green (Next 16 production build) |
 | `pnpm --filter @arcaai/admin-console test` | **1115 passed** (144 files) |
-| `pnpm py:smr-v2:test` | **957 passed** / 32 deselected (clean rerun; see flake triage) |
+| `pnpm py:smr:test` | **957 passed** / 32 deselected (clean rerun; see flake triage) |
 | `pnpm py:harness:test` | **957 passed**, 96% coverage |
-| `pnpm py:stt-v2:lint` | "All checks passed!" |
+| `pnpm py:stt:lint` | "All checks passed!" |
 
 ```
 applications:  Tests  6714 passed | 4 skipped (6718)
@@ -64,7 +64,7 @@ api:           Tests  2398 passed | 4 skipped (2402)
 admin-console: Tests  1115 passed (1115)
 smr rerun:     957 passed, 32 deselected, 8 warnings in 150.28s
 harness:       957 passed, 2 warnings in 47.80s
-stt-v2 lint:   All checks passed!
+stt lint:   All checks passed!
 ```
 
 **SMR flake triage:** the first full run had 1 failure — `test_wired_provider_queue.py::TestQueueWhenRateLimited::test_queued_request_proceeds_when_capacity_frees` (`assert 429 == 200`). Triaged: a 50 ms race window (`asyncio.sleep(0.05)` queue-processor vs request enqueue; queue `max_wait_s=0.5` → the 429 at ~554 ms is the queue-wait timeout) that loses only under machine load — it failed identically against BOTH the pre-lane (HEAD) source (via a PYTHONPATH shadow copy) and the working tree, and passed 3/3 both ways once the parallel suites finished. Unrelated to the F-027 changes (queue path untouched). Full-suite rerun on a quiet machine: 957/957 green.
@@ -90,7 +90,7 @@ revert PATCH -> 200 v3; snapshot back to 300 after 7ms
 
 **29 ms** same-instance convergence through `@OnEvent(SysEventType.ResourceUpdated)` → `refreshCache()`. Honest caveat (also in the fix's own comment): `@nestjs/event-emitter` is in-process — cross-instance convergence is still cron-bound (worst ~60 s); a fleet-wide push needs a Redis-pub/sub follow-up.
 
-**F-027 — override consumption (unit-level; no live Azure key in this env).** `apps/smr/src/smr_v2/tests/unit/test_provider_overrides.py` — 10/10 green inside the full suite, including `test_override_builds_a_request_scoped_client_with_tenant_credential` (Azure: `AsyncAzureOpenAI` constructed with the tenant key/endpoint/api-version; shared client untouched) and the Bedrock bearer-token twin. Gateway-side decrypt+injection was already proven at the wire in `assessment-config-plane-2026-07-22.md`. **Delta stated honestly:** the full BYO lane (real Azure/Bedrock credential end-to-end) remains env-gated — no cloud key exists in this environment.
+**F-027 — override consumption (unit-level; no live Azure key in this env).** `apps/smr/src/smr/tests/unit/test_provider_overrides.py` — 10/10 green inside the full suite, including `test_override_builds_a_request_scoped_client_with_tenant_credential` (Azure: `AsyncAzureOpenAI` constructed with the tenant key/endpoint/api-version; shared client untouched) and the Bedrock bearer-token twin. Gateway-side decrypt+injection was already proven at the wire in `assessment-config-plane-2026-07-22.md`. **Delta stated honestly:** the full BYO lane (real Azure/Bedrock credential end-to-end) remains env-gated — no cloud key exists in this environment.
 
 ### Residual findings from verification
 
@@ -113,8 +113,8 @@ revert PATCH -> 200 v3; snapshot back to 300 after 7ms
   - **F-028** — `AiProviderConnectionService.upsertRow` now restores-with-overwrite when a create-intent (`If-Match: "0"`) lands on a soft-deleted `(tenantId, provider)` tombstone, instead of colliding with the unique index (previously 409 unique-constraint / 412 dead end, no HTTP recovery path). Added `AiProviderConnectionRepository.findDeletedByTenantAndProvider` + `AiProviderConnectionService.restoreAndOverwrite` (CAS-gated on the tombstone's own version, mirrors the `GlobalSettingService.create` / `UserRoleAssignmentService` revive-on-create precedent already in the codebase). TDD: 3 new tests RED (confirmed against pre-fix code — plain `create()` was called, colliding with the tombstone) → GREEN. Live OCC contract on non-deleted rows re-asserted unchanged. `packages/applications/src/services/ai-provider-connection/__tests__/ai-provider-connection.service.test.ts`: 37/37 green.
   - **F-030** — `BaseException.toJSON()` (`packages/exceptions/src/common/base.exception.ts`) no longer echoes the raw `this.stack` (absolute filesystem paths) into non-production HTTP error bodies; `sanitizeStack()` reduces every stack frame to `basename:line:col`. Also sets `this.name = this.constructor.name` in the constructor so the concrete exception class (not generic `Error`) is what survives the scrub. Production behavior (`stack: undefined`) unchanged. TDD: 4 new tests in `packages/exceptions/src/common/__tests__/base.exception.test.ts`, RED confirmed pre-fix → GREEN. No existing test asserted on raw stack shape, so nothing needed adjusting. Full `@arcaai/exceptions` suite (7/7), `apps/api` interceptor/filter suites (39/39, server-side logs unaffected — they read `err.stack` directly, not `toJSON()`) green; `apps/api` builds.
   - **pynvml optional extra** — `packages/py-runtime-models/pyproject.toml` gains `[project.optional-dependencies] nvml = ["pynvml>=11.5.0"]` (F-012's "extra omitted" half); `vram.py`'s existing feature-detected import is unchanged (still fully optional/try-except gated). `uv lock` re-run at repo root: additive-only diff (`pynvml` + `nvidia-ml-py` resolved under the new extra).
-  - **stt-v2 black drift** — fixed the one genuinely hand-drifted file, `apps/stt-v2/src/stt_v2/core/database/voice_profile_model.py` (2-line quote-style fix). `black --check` on the full `apps/stt-v2/src`/`tests` tree found ~100 files needing reformatting under the currently-pinned black 26.5.1 (matches `uv.lock`) — pre-existing, systemic drift, not caused by any single recent change (no CI job runs `black --check`; `lint-python` only runs `ruff check`). Flagged as a separate out-of-scope background task rather than bulk-reformatting 100 files under an XS-sized quick-win. `pnpm py:stt-v2:lint` clean.
-  - Verification: `pnpm --filter @arcaai/domains build`, `pnpm --filter @arcaai/exceptions build`, `pnpm --filter @arcaai/applications build`, `pnpm build:api` all green; `pnpm py:stt-v2:lint` clean; `.gitlab/ci/{test,rules}.yml` YAML-valid.
+  - **stt black drift** — fixed the one genuinely hand-drifted file, `apps/stt/src/stt/core/database/voice_profile_model.py` (2-line quote-style fix). `black --check` on the full `apps/stt/src`/`tests` tree found ~100 files needing reformatting under the currently-pinned black 26.5.1 (matches `uv.lock`) — pre-existing, systemic drift, not caused by any single recent change (no CI job runs `black --check`; `lint-python` only runs `ruff check`). Flagged as a separate out-of-scope background task rather than bulk-reformatting 100 files under an XS-sized quick-win. `pnpm py:stt:lint` clean.
+  - Verification: `pnpm --filter @arcaai/domains build`, `pnpm --filter @arcaai/exceptions build`, `pnpm --filter @arcaai/applications build`, `pnpm build:api` all green; `pnpm py:stt:lint` clean; `.gitlab/ci/{test,rules}.yml` YAML-valid.
 - 2026-07-22 — Closed the three residual findings from the verification pass above:
   - **F-031 lane 10 (P0) — CLOSED.** `LiveDocumentationService#persistDurableSnapshot` (`packages/applications/src/services/consultation/live-documentation/live-documentation.service.ts`) now calls the new private `encryptSnapshotContent()` (mirrors `context.service.ts#encryptContent` / `chain-summary.service.ts`, via the shared `encryptPhiFields` guard) before **all 3** create/update sites (dedup-reuse update, first create, and steady-state update). TDD: added `'encrypts the running summary into the ContextItem before every create/update'` to `live-documentation.service.test.ts` (durable-snapshot describe block); RED confirmed first (`expected "vi.fn()" to be called 1 times, but got 0 times`) against the pre-fix source, then GREEN after the fix. `pnpm --filter @arcaai/applications test`: **6715 passed** / 4 skipped (333 files) — 6714 baseline + 1 new. All 10 of the register's enumerated `ContextItem.content` write lanes are now encrypt-on-write; the write-side structural twin of `wrapDelegateWithPhiDecrypt` remains a separate (unbuilt) hardening item.
   - **Build hazard — FIXED.** `apps/api/package.json` `build` script changed from `rimraf dist && nest build && tsc-alias` to `rimraf dist tsconfig.build.tsbuildinfo && nest build && tsc-alias`, so a stale buildinfo can no longer make incremental tsc judge everything up-to-date and emit nothing. Proof: ran `pnpm --filter @arcaai/api build` twice back-to-back from a clean `dist`/tsbuildinfo state — `dist/main.js` existed and its mtime advanced both times (`04:22:58` → `04:23:10`), confirming both runs actually recompiled and repopulated `dist/`.

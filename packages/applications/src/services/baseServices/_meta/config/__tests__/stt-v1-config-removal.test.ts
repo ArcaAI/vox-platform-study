@@ -1,9 +1,8 @@
 /**
- * STT v1 Config Removal Verification Tests
+ * STT config naming (TASK-556) + v1 removal verification.
  *
- * Verifies that STT_PORT, STT_URL, LLM_PORT, and LLM_URL have been
- * removed from the configuration service and IAppConfig interface.
- * Only STT_V2_URL should remain for STT-related config.
+ * Verifies that STT_PORT, LLM_PORT, and LLM_URL remain removed, and that
+ * STT_URL is the canonical STT-related config key (dual-read of STT_V2_URL).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -14,20 +13,14 @@ function readFile(filePath: string): string {
     return fs.readFileSync(filePath, 'utf-8');
 }
 
-function countPatternInLines(content: string, pattern: RegExp, exclude?: RegExp): number {
-    return content.split('\n').filter(
-        (line) => pattern.test(line) && (!exclude || !exclude.test(line)),
-    ).length;
-}
-
-describe('STT v1 Config Removal (Phase 1)', () => {
+describe('STT config naming (TASK-556)', () => {
     describe('IAppConfig interface', () => {
         const interfacePath = path.resolve(
             __dirname,
             '../../../../../../../../packages/domains/src/interfaces/IAppConfig.ts',
         );
 
-        const removedProperties = ['STT_PORT', 'STT_URL', 'LLM_PORT', 'LLM_URL'];
+        const removedProperties = ['STT_PORT', 'LLM_PORT', 'LLM_URL'];
 
         for (const prop of removedProperties) {
             it(`should not contain ${prop} property`, () => {
@@ -36,14 +29,12 @@ describe('STT v1 Config Removal (Phase 1)', () => {
             });
         }
 
-        it('should still contain STT_V2_URL property', () => {
-            const content = readFile(interfacePath);
-            expect(content).toMatch(/^\s*STT_V2_URL\s*:/m);
-        });
+        // TASK-556: domains IAppConfig STT_V2_URL→STT_URL is outside this
+        // package's exclusive ownership — asserted once Sweep/Wave 2 lands.
 
         // apps/fedl was removed; the gateway no longer carries the legacy
         // FEDL_PORT/FEDL_URL config keys. (TTS_PORT/TTS_URL were REINTRODUCED by
-        // apps/tts-v2 — TTS is a real downstream service again, like
+        // apps/tts — TTS is a real downstream service again, like
         // SMR/NLP/GUARDRAIL — so their presence is now correct, not v1 cruft.)
         it('should no longer contain FEDL_PORT, FEDL_URL properties', () => {
             const content = readFile(interfacePath);
@@ -66,10 +57,9 @@ describe('STT v1 Config Removal (Phase 1)', () => {
             expect(content).not.toMatch(/STT_PORT/);
         });
 
-        it('should not reference STT_URL env variable (distinct from STT_V2_URL)', () => {
+        it('should reference STT_URL with dual-read of STT_V2_URL', () => {
             const content = readFile(configServicePath);
-            const count = countPatternInLines(content, /STT_URL/, /STT_V2_URL/);
-            expect(count).toBe(0);
+            expect(content).toMatch(/STT_URL:\s*process\.env\.STT_URL\s*\|\|\s*process\.env\.STT_V2_URL/);
         });
 
         it('should not reference LLM_PORT env variable', () => {
@@ -82,13 +72,8 @@ describe('STT v1 Config Removal (Phase 1)', () => {
             expect(content).not.toMatch(/LLM_URL/);
         });
 
-        it('should still reference STT_V2_URL', () => {
-            const content = readFile(configServicePath);
-            expect(content).toMatch(/STT_V2_URL/);
-        });
-
         // apps/fedl was removed; the config service no longer resolves the legacy
-        // FEDL_* env keys. (TTS_URL/TTS_PORT are back for apps/tts-v2 —
+        // FEDL_* env keys. (TTS_URL/TTS_PORT are back for apps/tts —
         // a legitimate downstream service, resolved like SMR_URL/NLP_URL/GUARDRAIL_URL.)
         it('should no longer reference FEDL_URL, FEDL_PORT', () => {
             const content = readFile(configServicePath);
@@ -106,9 +91,9 @@ describe('STT v1 Config Removal (Phase 1)', () => {
             'apps/api/.env.production',
         ];
 
+        // STT_PORT is a valid TASK-556 gateway key (with STT_URL); do not
+        // treat it as removed v1 cruft. Env files are Nest-owned.
         const removedVars = [
-            { pattern: /^STT_PORT=/m, label: 'STT_PORT' },
-            { pattern: /^STT_URL=/m, label: 'STT_URL' },
             { pattern: /^STT_WS_URL=/m, label: 'STT_WS_URL' },
             { pattern: /^LLM_PORT=/m, label: 'LLM_PORT' },
             { pattern: /^LLM_URL=/m, label: 'LLM_URL' },

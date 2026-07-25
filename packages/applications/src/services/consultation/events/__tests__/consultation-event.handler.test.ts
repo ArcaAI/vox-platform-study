@@ -535,6 +535,82 @@ describe('ConsultationEventHandler', () => {
             expect(mockJobService.createNerJob).not.toHaveBeenCalled();
         });
 
+        // (F-22, Lane G) — when the resolved pipeline config has
+        // harnessEnabled=true, the harness workflow persists its own NamedEntity
+        // rows for the same content, so the legacy BullMQ NER job would duplicate
+        // that work. Skip it with a structured info log naming the reason.
+        it('should NOT create NER job when harnessEnabled is true (harness persists its own NER)', async () => {
+            mockConsultationRepository.findById.mockResolvedValue({
+                id: 'consultation-001',
+                tenantId: 'tenant-abc',
+                metadata: {
+                    pipelineConfig: {
+                        autoSummaryEnabled: true,
+                        autoNerEnabled: true,
+                        harnessEnabled: true,
+                    },
+                },
+            });
+
+            const payload = makeSummaryPayload();
+            await handler.handleSummaryGenerated(payload);
+
+            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+        });
+
+        it('should still emit PipelineCompleted when NER is skipped due to harnessEnabled', async () => {
+            mockConsultationRepository.findById.mockResolvedValue({
+                id: 'consultation-001',
+                tenantId: 'tenant-abc',
+                metadata: {
+                    pipelineConfig: {
+                        autoSummaryEnabled: true,
+                        autoNerEnabled: true,
+                        harnessEnabled: true,
+                    },
+                },
+            });
+
+            const payload = makeSummaryPayload();
+            await handler.handleSummaryGenerated(payload);
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                ConsultationPipelineEvent.PipelineCompleted,
+                expect.objectContaining({
+                    consultationId: 'consultation-001',
+                    stepsExecuted: ['transcription', 'summary'],
+                }),
+            );
+        });
+
+        it('should still create NER job when harnessEnabled is false (regression lock)', async () => {
+            mockConsultationRepository.findById.mockResolvedValue({
+                id: 'consultation-001',
+                tenantId: 'tenant-abc',
+                metadata: {
+                    pipelineConfig: {
+                        autoSummaryEnabled: true,
+                        autoNerEnabled: true,
+                        harnessEnabled: false,
+                    },
+                },
+            });
+
+            const payload = makeSummaryPayload();
+            await handler.handleSummaryGenerated(payload);
+
+            expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
+        });
+
+        it('should still create NER job when harnessEnabled is undefined (regression lock)', async () => {
+            // Default metadata (null) resolves via DEFAULT_PIPELINE_CONFIG, which
+            // leaves harnessEnabled undefined — the pre-existing legacy path.
+            const payload = makeSummaryPayload();
+            await handler.handleSummaryGenerated(payload);
+
+            expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
+        });
+
         it('should emit PipelineCompleted when NER disabled and summary auto-generated', async () => {
             mockConsultationRepository.findById.mockResolvedValue({
                 id: 'consultation-001',

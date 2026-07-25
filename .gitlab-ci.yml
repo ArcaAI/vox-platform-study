@@ -5,7 +5,7 @@
 # Monorepo pipeline for:
 #   TypeScript: api (NestJS), ui-playground (React/Vite — DEPRECATED: no
 #               development/maintenance plan; still built + deployed)
-#   Python:     stt-v2 (FastAPI), smr (FastAPI), nlp (FastAPI)
+#   Python:     stt (FastAPI), smr (FastAPI), nlp (FastAPI)
 #   Infra:      database (Prisma migrations)
 #   SDK:        @arcaai/vox, @arcaai/room, @arcaai/stt, @arcaai/vad,
 #               @arcaai/noise-filter, @arcaai/med-ner, @arcaai/pipeline
@@ -97,7 +97,7 @@ variables:
   # Set any of these to "true" when running a pipeline to skip stages:
   #   SKIP_TESTS       — skip ALL test jobs
   #   SKIP_TESTS_TS    — skip TypeScript test jobs (test-api, test-packages, test-sdk, test-apps, test-ui-ct)
-  #   SKIP_TESTS_PY    — skip Python test jobs (test-stt-v2, test-smr, test-guardrail, test-nlp, test-harness)
+  #   SKIP_TESTS_PY    — skip Python test jobs (test-stt, test-smr, test-guardrail, test-nlp, test-harness)
   #
   # Usage:
   #   1. GitLab UI → CI/CD → Run pipeline → add variable SKIP_TESTS = true

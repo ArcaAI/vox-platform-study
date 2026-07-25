@@ -26,7 +26,7 @@
 # Total parallel jobs across ALL [[runners]] sections.
 # 8 vCPU host: fast(3) + build(2) + test(3) + deploy(1) = 9 max slots.
 # Set to sum of individual limits. Do NOT exceed — concurrent Docker builds
-# (especially STT-V2 with PyTorch) can each consume 4+ GB RAM.
+# (especially STT with PyTorch) can each consume 4+ GB RAM.
 concurrent = 10
 
 check_interval = 3
@@ -119,7 +119,7 @@ log_format = "text"
   token_obtained_at = 2026-03-17T00:00:00Z
   token_expires_at = 0001-01-01T00:00:00Z
   executor = "docker"
-  # 2 concurrent builds max — each Docker buildx build (especially STT-V2
+  # 2 concurrent builds max — each Docker buildx build (especially STT
   # with PyTorch) can consume 4+ GB RAM and saturate CPU.
   limit = 2
   output_limit = 20480

@@ -25,7 +25,7 @@ import { TranscriptionPipeline, createTranscriptionPipeline } from './Transcript
 import { KnowledgePipeline, createKnowledgePipeline } from './KnowledgePipeline';
 import type { AgenticClient } from './AgenticClient';
 import { StreamingSessionManager } from './StreamingSessionManager';
-import { SttV2WebSocketClient } from './SttV2WebSocketClient';
+import { SttWebSocketClient } from './SttWebSocketClient';
 
 /**
  * Runtime audio start options forwarded by `useArcaAudio.startAudio(...)`.
@@ -718,7 +718,7 @@ export class PluginManager {
 
   /**
    * Build the streaming transport (StreamingSessionManager
-   * + SttV2WebSocketClient) when the runtime config asks for a pipeline.
+   * + SttWebSocketClient) when the runtime config asks for a pipeline.
    *
    * The transport is `unknown` in `TranscriptionPipelineConfig.stt` to keep
    * `@arcaai/vox/types/pipeline.ts` free of an `@arcaai/stt` dependency;
@@ -742,7 +742,7 @@ export class PluginManager {
     }
 
     const sessionManager = new StreamingSessionManager(this.apiClient, this.logger);
-    const wsClient = new SttV2WebSocketClient(
+    const wsClient = new SttWebSocketClient(
       this.logger,
       {
         enabled: true,

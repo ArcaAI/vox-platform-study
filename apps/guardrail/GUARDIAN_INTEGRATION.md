@@ -64,7 +64,7 @@ GUARDRAIL_CONFIG_CACHE_TTL_S=60
 ```
 
 When enabled, the service resolves the guardian provider/model at request time by reading
-`core."GlobalSetting"` (read-only SQLAlchemy + asyncpg, mirroring STT-v2):
+`core."GlobalSetting"` (read-only SQLAlchemy + asyncpg, mirroring STT):
 
 | namespace | key | meaning |
 |---|---|---|

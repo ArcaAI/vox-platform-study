@@ -167,7 +167,7 @@ interface SessionInfo {
   freshlyCreated?: boolean;
 }
 
-@WebSocketGateway({ path: '/ws/stt-v2/stream' })
+@WebSocketGateway({ path: '/ws/stt/stream' })
 export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer()
   server!: Server;

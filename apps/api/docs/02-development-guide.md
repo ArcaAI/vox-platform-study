@@ -111,7 +111,7 @@ REDIS_PORT=6379
 REDIS_PASS=
 
 # Python Services (local)
-STT_V2_URL=http://localhost:8861
+STT_URL=http://localhost:8861
 SMR_URL=http://localhost:8862
 GUARDRAIL_URL=http://localhost:8863
 NLP_URL=http://localhost:8864

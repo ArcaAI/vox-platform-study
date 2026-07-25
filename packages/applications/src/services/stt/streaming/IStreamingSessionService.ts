@@ -3,17 +3,17 @@ import { CreateStreamingSessionRequest, StreamingSessionStatus, StreamingAvailab
 /**
  * Interface for the streaming session management service.
  *
- * This service communicates with the STT-V2 internal API to manage
+ * This service communicates with the STT internal API to manage
  * streaming session lifecycle (create, status, finalize).
  */
 export interface IStreamingSessionService {
   /**
-   * Check if the STT-V2 streaming module is available and has capacity.
+   * Check if the STT streaming module is available and has capacity.
    */
   checkAvailability(): Promise<StreamingAvailability>;
 
   /**
-   * Create a new streaming session on STT-V2.
+   * Create a new streaming session on STT.
    *
    * @param dto - Session creation parameters
    * @returns Session status or null if at capacity

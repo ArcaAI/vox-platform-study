@@ -148,8 +148,8 @@ case "$ACTION" in
             echo "Grafana:      http://localhost:${GRAFANA_PORT:-3001}  (admin/admin; anonymous Viewer)"
         fi
         if [ "$WANT_INF" = "1" ]; then
-            echo "vLLM:         http://localhost:${SMR_V2_VLLM_PORT:-8000}"
-            echo "llama.cpp:    http://localhost:${SMR_V2_LLAMA_CPP_PORT:-8080}"
+            echo "vLLM:         http://localhost:${SMR_VLLM_PORT:-8000}"
+            echo "llama.cpp:    http://localhost:${SMR_LLAMA_CPP_PORT:-8080}"
             echo "TEI embed:    http://localhost:${HOPE_TEI_EMBED_PORT:-8871}"
         fi
         ;;

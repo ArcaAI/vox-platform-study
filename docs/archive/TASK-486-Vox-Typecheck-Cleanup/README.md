@@ -31,7 +31,7 @@ The `@arcaai/vox` definition-of-done requires a green `typecheck` (`pnpm --filte
 
 ```
 src/__tests__/bundle-externals.task364.test.ts(32,36): error TS1470: The 'import.meta' meta-property is not allowed in files which will build into CommonJS output.
-src/core/__tests__/SttV2WebSocketClient.test.ts(334,15): error TS2352: Conversion of type 'string | ArrayBufferLike' to type 'Int16Array<ArrayBufferLike>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/core/__tests__/SttWebSocketClient.test.ts(334,15): error TS2352: Conversion of type 'string | ArrayBufferLike' to type 'Int16Array<ArrayBufferLike>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
 src/hooks/__tests__/useHarnessAdmin.test.ts(123,56): error TS2345: Argument of type '"SERVICE_UNAVAILABLE"' is not assignable to parameter of type 'AgenticErrorCode'.
 src/utils/__tests__/promptMetrics.test.ts(31,12): error TS2532: Object is possibly 'undefined'.
 src/utils/__tests__/promptMetrics.test.ts(32,12): error TS2532: Object is possibly 'undefined'.
@@ -47,7 +47,7 @@ Grouped by file (all under `packages/agentic-sdk-v2/`):
 | File | Error(s) | Line(s) | Kind |
 |---|---|---|---|
 | `src/__tests__/bundle-externals.task364.test.ts` | TS1470 | 32:36 | `import.meta` used in a file that builds to CommonJS output. |
-| `src/core/__tests__/SttV2WebSocketClient.test.ts` | TS2352 | 334:15 | Bad direct cast `string \| ArrayBufferLike` → `Int16Array` (needs `as unknown as …` or a proper buffer view). |
+| `src/core/__tests__/SttWebSocketClient.test.ts` | TS2352 | 334:15 | Bad direct cast `string \| ArrayBufferLike` → `Int16Array` (needs `as unknown as …` or a proper buffer view). |
 | `src/hooks/__tests__/useHarnessAdmin.test.ts` | TS2345 | 123:56 | `"SERVICE_UNAVAILABLE"` passed where an `AgenticErrorCode` is required — either not a member of the union or needs the correct code. |
 | `src/utils/__tests__/promptMetrics.test.ts` | TS2532 ×5, TS18048 ×2 | 31, 32, 34, 38, 39 (TS2532); 44, 45 (TS18048 `scores`) | Possibly-`undefined` access — needs non-null assertions / guards after the lookups. |
 
@@ -58,7 +58,7 @@ Grouped by file (all under `packages/agentic-sdk-v2/`):
 | File | Expected change |
 |---|---|
 | `packages/agentic-sdk-v2/src/__tests__/bundle-externals.task364.test.ts` | Resolve the `import.meta` (TS1470) in a CommonJS-targeted test — read the module value without `import.meta`, or scope it so `tsc` accepts it. |
-| `packages/agentic-sdk-v2/src/core/__tests__/SttV2WebSocketClient.test.ts` | Fix the `Int16Array` cast at ~`:334` (`as unknown as Int16Array` or construct a real view). |
+| `packages/agentic-sdk-v2/src/core/__tests__/SttWebSocketClient.test.ts` | Fix the `Int16Array` cast at ~`:334` (`as unknown as Int16Array` or construct a real view). |
 | `packages/agentic-sdk-v2/src/hooks/__tests__/useHarnessAdmin.test.ts` | Use a valid `AgenticErrorCode` at `:123` (or, if `SERVICE_UNAVAILABLE` is a legitimate missing code, surface that decision — do not silently widen the union in a test). |
 | `packages/agentic-sdk-v2/src/utils/__tests__/promptMetrics.test.ts` | Guard/assert the possibly-`undefined` accesses at lines 31/32/34/38/39/44/45. |
 
@@ -69,7 +69,7 @@ Test files only. Any need to touch SDK `src` types → STOP and report to the or
 Fixed (test-only, surgical — 4 files, +15/−12; no `src`/runtime change):
 
 - **TS1470** `bundle-externals.task364.test.ts:32` — replaced `dirname(fileURLToPath(import.meta.url))` with `__dirname` (CommonJS-valid under `module: NodeNext`; matches sibling suites) and removed the now-orphaned `fileURLToPath`/`dirname` imports.
-- **TS2352** `SttV2WebSocketClient.test.ts:334` — `as Int16Array` → `as unknown as Int16Array` (mock `sent` is `string | ArrayBufferLike`; AC-2-sanctioned cast).
+- **TS2352** `SttWebSocketClient.test.ts:334` — `as Int16Array` → `as unknown as Int16Array` (mock `sent` is `string | ArrayBufferLike`; AC-2-sanctioned cast).
 - **TS2345** `useHarnessAdmin.test.ts:123,132` — `SERVICE_UNAVAILABLE` is genuinely NOT in the `AgenticErrorCode` union; the real contract (`classifyHttpError`, `errorUtils.ts:104`) maps 5xx → `API_ERROR`, so the constructed error + `.code` assertion were corrected to `API_ERROR`. The union was **not** widened (the test was wrong, not the type).
 - **TS2532 ×5 / TS18048 ×2** `promptMetrics.test.ts` — non-null assertions at the 7 sites; `toPromptTestMetricScores` only returns `undefined` for `null`/`undefined` input, and every call here passes a real object.
 
@@ -84,5 +84,5 @@ No `any` / `@ts-ignore` / `@ts-expect-error`. SDK invariants preserved (no store
 | Date | Change |
 |---|---|
 | 2026-07-10 | **Fixed + verified (test-only, surgical) on `fix/2605-review`.** All 10 errors across the 4 test files resolved per §Implementation Summary (TS1470 `import.meta`→`__dirname`; TS2352 `as unknown as Int16Array`; TS2345 `SERVICE_UNAVAILABLE`→`API_ERROR` faithful to the 5xx→`API_ERROR` contract, union untouched; TS2532/TS18048 non-null assertions). `pnpm --filter @arcaai/vox typecheck` exit 0 re-verified in the main tree at merge; build/lint/test green in-worktree (3517 tests). No `src` runtime change; SDK invariants preserved. Flagged the stale `useHarnessAdmin.ts:146` doc-comment as an out-of-scope follow-up. Status → Review. |
-| 2026-07-10 | Ticket scaffolded from the TASK-464 + TASK-461 reviews. Ran `pnpm --filter @arcaai/vox typecheck` on `fix/2605-review` and captured the exact 10 errors / 4 files / Exit status 2 (verbatim above): `bundle-externals.task364.test.ts:32` (TS1470 import.meta), `SttV2WebSocketClient.test.ts:334` (TS2352 Int16Array cast), `useHarnessAdmin.test.ts:123` (TS2345 `SERVICE_UNAVAILABLE` not an `AgenticErrorCode`), `promptMetrics.test.ts` (TS2532 ×5 + TS18048 ×2 at lines 31/32/34/38/39/44/45). Noted the errors are proven pre-existing (identical with SOTA changes stashed) and unrelated to any merged ticket, but leave the `@arcaai/vox` `typecheck` gate RED. Status → Pending. |
+| 2026-07-10 | Ticket scaffolded from the TASK-464 + TASK-461 reviews. Ran `pnpm --filter @arcaai/vox typecheck` on `fix/2605-review` and captured the exact 10 errors / 4 files / Exit status 2 (verbatim above): `bundle-externals.task364.test.ts:32` (TS1470 import.meta), `SttWebSocketClient.test.ts:334` (TS2352 Int16Array cast), `useHarnessAdmin.test.ts:123` (TS2345 `SERVICE_UNAVAILABLE` not an `AgenticErrorCode`), `promptMetrics.test.ts` (TS2532 ×5 + TS18048 ×2 at lines 31/32/34/38/39/44/45). Noted the errors are proven pre-existing (identical with SOTA changes stashed) and unrelated to any merged ticket, but leave the `@arcaai/vox` `typecheck` gate RED. Status → Pending. |
 | 2026-07-11 | **Closed (Status -> Completed).** Closure-review pass (owner directive "close if finished completely and properly"): root-caused (10 pre-existing test-file type errors, proven pre-existing) + fixed (surgical test-only, +15/-12, no src change) + verified (typecheck exit 0 re-run in the main tree; build/lint/test 3517 passed); stale useHarnessAdmin.ts:146 doc-comment is an acceptable follow-up. No external work remains -- only the owner's git push/PR to main. |

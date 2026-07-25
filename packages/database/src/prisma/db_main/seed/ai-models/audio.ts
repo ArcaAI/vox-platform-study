@@ -192,7 +192,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         tenantId: SYSTEM_TENANT_ID,
         name: 'Silero VAD v5',
         slug: 'silero-vad',
-        description: 'Silero VAD v5 ONNX — the voice-activity detector the stt-v2 runtime loads from onnx-community/silero-vad. Lightweight, low-latency; recommended for production.',
+        description: 'Silero VAD v5 ONNX — the voice-activity detector the stt runtime loads from onnx-community/silero-vad. Lightweight, low-latency; recommended for production.',
         category: ModelCategory.AUDIO,
         taskType: ModelTaskType.VOICE_ACTIVITY_DETECTION,
         modelType: ModelType.BASE_MODEL,
@@ -211,16 +211,16 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // Punctuation restoration
     // =========================================================================
     {
-        // the Cadence punctuation/casing model the stt-v2
+        // the Cadence punctuation/casing model the stt
         // post-processing stage restores with (settings default
         // `punctuation_model_name="Cadence"`). A text task (category NLP) served
-        // in-process by the stt-v2 punctuation registry; punctuation restoration
+        // in-process by the stt punctuation registry; punctuation restoration
         // is modelled here as token classification (per-token punct/case labels).
         id: '80000000-0000-0000-0004-000000000001',
         tenantId: SYSTEM_TENANT_ID,
         name: 'Cadence Punctuation (1B)',
         slug: 'cadence-punctuation',
-        description: 'ai4bharat/Cadence — 1B punctuation & casing restoration model used by the stt-v2 post-processing stage (cadence-punctuation wrapper). Cadence-Fast (270M) is the direct-load variant for pinned transformers 5.x.',
+        description: 'ai4bharat/Cadence — 1B punctuation & casing restoration model used by the stt post-processing stage (cadence-punctuation wrapper). Cadence-Fast (270M) is the direct-load variant for pinned transformers 5.x.',
         category: ModelCategory.NLP,
         taskType: ModelTaskType.TOKEN_CLASSIFICATION,
         modelType: ModelType.BASE_MODEL,
@@ -322,7 +322,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
         tenantId: SYSTEM_TENANT_ID,
         name: 'WeSpeaker ResNet34 Speaker Embedding (pyannote)',
         slug: 'wespeaker-voxceleb-resnet34',
-        description: 'pyannote WeSpeaker ResNet34 VoxCeleb speaker-verification embeddings — the stt-v2 diarization feature-extractor default (diarization_hf_model_id). Reconciles the catalog with the running STT default.',
+        description: 'pyannote WeSpeaker ResNet34 VoxCeleb speaker-verification embeddings — the stt diarization feature-extractor default (diarization_hf_model_id). Reconciles the catalog with the running STT default.',
         category: ModelCategory.AUDIO,
         taskType: ModelTaskType.SPEAKER_EMBEDDING,
         modelType: ModelType.BASE_MODEL,

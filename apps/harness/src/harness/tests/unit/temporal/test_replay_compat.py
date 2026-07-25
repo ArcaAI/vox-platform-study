@@ -304,3 +304,31 @@ class TestReplayCompatibility:
         await replayer.replay_workflow(
             _history("doc_workflow_post_task551_redaction_audit_history")
         )
+
+    @pytest.mark.asyncio
+    async def test_post_assemble_reuse_history_replays_on_current_definition(self):
+        """Forward guard for the (F-13) assemble-REUSE era.
+
+        The fixture is a COMPUTATIONAL regen (``REGEN`` then ``PASS``) so the
+        pre-delivery loop runs twice and the second iteration takes the patch-gated
+        skip: the recorded history carries the ``task-553-assemble-reuse`` marker and
+        only ONE ``assemble_prompt`` command for TWO ``generate`` commands.
+
+        Replaying it through the current definition proves an in-flight reuse-era
+        execution survives a redeploy, and forward-guards the REMOVED command: any
+        FUTURE ungated change to the loop's command sequence fails this replay with a
+        non-determinism error unless gated behind its own ``workflow.patched()``.
+        Crucially, every fixture above — all recorded BEFORE this era, and all
+        single-iteration in the pre-delivery loop — must ALSO stay green: the
+        ``assembled is None`` operand short-circuits BEFORE ``workflow.patched`` on
+        the first iteration, so a one-pass run records no marker at all and its
+        command sequence is byte-identical to the legacy one. Recapture alongside
+        every new patch gate (``_capture_replay_fixture.py --assemble-reuse``).
+        """
+        replayer = Replayer(
+            workflows=[HarnessDocWorkflow],
+            data_converter=pydantic_data_converter,
+        )
+        await replayer.replay_workflow(
+            _history("doc_workflow_post_task553_assemble_reuse_history")
+        )

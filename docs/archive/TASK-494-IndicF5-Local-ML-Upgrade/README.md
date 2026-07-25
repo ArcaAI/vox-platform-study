@@ -41,7 +41,7 @@ TASK-488 shipped **Indic Parler-TTS** (Apache-2.0) as the day-1 self-hosted Mala
 - **Phase 0 (BLOCKER)** — legal/data-provenance audit of the four training datasets; record the verdict + citations here. Also a GPU RTF/quality spike (reuse the TASK-488 clinical strings + Phase 0 harness) to confirm IndicF5 materially beats Parler for Malayalam. **Stop if either fails.**
 - Phase 1+ (only if cleared) — `IndicF5Config` + tests; `IndicF5Provider` + hermetic tests (model mocked) mirroring `test_parler_provider.py`; reference-sample handling; catalog/routing; lifespan gating `TTS_INDICF5_ENABLED`; `[local]` extra dep (+ `uv lock`); env/turbo/k3s; docs. Real-model tests behind `TTS_LOCAL_LIVE_TEST=1`.
 
-**Verification**: `pnpm py:tts-v2:test` + lint/typecheck green; GPU live run vs Parler on the clinical strings; human quality comparison.
+**Verification**: `pnpm py:tts:test` + lint/typecheck green; GPU live run vs Parler on the clinical strings; human quality comparison.
 
 ## 5. Risks / Gates — audit outcome (2026-07-11)
 - **⛔ Legal gate FAILED:** the released IndicF5 weights are a derivative of a **CC-BY-NC-4.0** base checkpoint (SWivid F5-TTS, pretrained on Emilia). Under CC-BY-NC-4.0 an adaptation may be shared only non-commercially; a downstream MIT tag can't override it → **NO-GO** for this commercial healthcare product.
@@ -58,8 +58,8 @@ TASK-488 shipped **Indic Parler-TTS** (Apache-2.0) as the day-1 self-hosted Mala
 
 **Evidence:**
 ```
-pytest src/tts_v2/tests -q   → 104 passed, 2 deselected (azure + sarvam live e2e)
-ruff check apps/tts-v2/src   → clean
+pytest src/tts/tests -q   → 104 passed, 2 deselected (azure + sarvam live e2e)
+ruff check apps/tts/src   → clean
 ```
 Tests (mocked model): per-sentence loop, 24 kHz PCM (no resample), WAV single-container, health, protocol, gated-off default, and **catalog-binding-present-but-not-in-default-routing**. Real-model runs need the `[local]` extra + IndicF5 runtime deps + the mirrored gated weights (TASK-495), behind `TTS_LOCAL_LIVE_TEST=1` + `TTS_INDICF5_ENABLED=true`.
 

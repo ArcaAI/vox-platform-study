@@ -16,7 +16,7 @@
 The HOPE API Gateway (`apps/api/`) has grown organically across multiple tickets, resulting in:
 
 - **Inconsistent route conventions** -- some endpoints use `/api/stt`, others `/api/api/v1/transcription-jobs` (double prefix bug), others `/api/smr/api/v2/generate`.
-- **Deprecated modules still active** -- STT v1 proxy module is registered in `app.module.ts` alongside STT v2, exposing two complete transcription systems simultaneously.
+- **Deprecated modules still active** -- STT v1 proxy module is registered in `app.module.ts` alongside STT, exposing two complete transcription systems simultaneously.
 - **Code duplication** -- five proxy controllers share ~85% identical boilerplate (~860 lines total).
 - **No clear access control tiers** -- admin endpoints, user endpoints, and public endpoints are mixed without a consistent URL convention.
 - **Inconsistent port assignments** -- environment files reference conflicting port numbers across `.env`, `.env.dev`, `.env.production`, and `apps/api/.env.example`.
@@ -89,11 +89,11 @@ All 35 controllers with their current `@Controller()` decorator path and resulti
 | 21 | `smr/smr.controller.ts` | `smr` | `/api/smr` | API Key |
 | 22 | `storage/storage.controller.ts` | `storage` | `/api/storage` | JWT + RBAC |
 | 23 | `stt/stt.controller.ts` | `stt` | `/api/stt` | API Key |
-| 24 | `stt-v2/aiModel.controller.ts` | `api/v1/ai-models` | `/api/api/v1/ai-models` | JWT |
-| 25 | `stt-v2/pipeline.controller.ts` | `api/v1/pipelines` | `/api/api/v1/pipelines` | JWT |
-| 26 | `stt-v2/sttInternal.controller.ts` | `internal/stt` | `/api/internal/stt` | API Key |
-| 27 | `stt-v2/transcriptionJob.controller.ts` | `api/v1/transcription-jobs` | `/api/api/v1/transcription-jobs` | JWT |
-| 28 | `stt-v2/transcriptionStream.controller.ts` | `api/v1/transcription-jobs` | `/api/api/v1/transcription-jobs` | JWT |
+| 24 | `stt/aiModel.controller.ts` | `api/v1/ai-models` | `/api/api/v1/ai-models` | JWT |
+| 25 | `stt/pipeline.controller.ts` | `api/v1/pipelines` | `/api/api/v1/pipelines` | JWT |
+| 26 | `stt/sttInternal.controller.ts` | `internal/stt` | `/api/internal/stt` | API Key |
+| 27 | `stt/transcriptionJob.controller.ts` | `api/v1/transcription-jobs` | `/api/api/v1/transcription-jobs` | JWT |
+| 28 | `stt/transcriptionStream.controller.ts` | `api/v1/transcription-jobs` | `/api/api/v1/transcription-jobs` | JWT |
 | 29 | `tenant/tenant.controller.ts` | `tenants` | `/api/tenants` | JWT |
 | 30 | `tts/tts.controller.ts` | `tts` | `/api/tts` | API Key |
 | 31 | `user/user-role-assignment.controller.ts` | `users` | `/api/users` | JWT + RBAC |
@@ -104,8 +104,8 @@ All 35 controllers with their current `@Controller()` decorator path and resulti
 
 **Issues identified:**
 
-- Rows 24, 25, 27, 28: STT v2 controllers include `api/v1/` in their `@Controller()` path, producing a double prefix `/api/api/v1/...`
-- Row 23: STT v1 is still active alongside STT v2
+- Rows 24, 25, 27, 28: STT controllers include `api/v1/` in their `@Controller()` path, producing a double prefix `/api/api/v1/...`
+- Row 23: STT v1 is still active alongside STT
 - Row 12: `global-setting` (singular) is inconsistent with `user-settings` (plural with hyphen)
 - Row 26: Internal controller gets `/api/internal/stt` instead of `/internal/stt`
 - No consistent admin vs user vs public tier separation in URL structure
@@ -115,7 +115,7 @@ All 35 controllers with their current `@Controller()` decorator path and resulti
 | Service | `.env` | `.env.dev` | `.env.production` | `apps/api/.env.example` | Proxy Default |
 |---|---|---|---|---|---|
 | STT v1 | -- | -- | 5003 | 5003 | `http://localhost:5003` |
-| STT v2 | -- | 8001 | -- | 8002 | -- (native NestJS) |
+| STT | -- | 8001 | -- | 8002 | -- (native NestJS) |
 | TTS | 5004 | 5004 | 5004 | 5004 | `http://localhost:5004` |
 | NLP | 5005 | 5005 | 5005 | -- | `http://localhost:5005` |
 | SMR | 5006 | 5006 | 5006 | -- | `http://localhost:5006` |
@@ -127,7 +127,7 @@ All 35 controllers with their current `@Controller()` decorator path and resulti
 - STT v1 port (5003) is still referenced in `.env.production` and `apps/api/.env.example`
 - FedL has conflicting ports: env files say 5021, proxy controller defaults to 8000
 - LLM_PORT=5005 in `apps/api/.env.example` conflicts with NLP on the same port
-- `STT_V2_URL` varies: 8001 in `.env.dev`, 8002 in `apps/api/.env.example`
+- `STT_URL` varies: 8001 in `.env.dev`, 8002 in `apps/api/.env.example`
 
 ### 2.4 Current Auth Patterns
 
@@ -135,7 +135,7 @@ All 35 controllers with their current `@Controller()` decorator path and resulti
 |---|---|
 | **No guard (Public)** | `health.controller.ts`, `auth.controller.ts` (login only), `pstudio.controller.ts` (GET) |
 | **`ApiKeyGuard`** | `consultation.controller.ts`, `job.controller.ts`, `summary.controller.ts`, `stt.controller.ts`, `tts.controller.ts`, `smr.controller.ts`, `nlp.controller.ts`, `fedl.controller.ts`, `feedback.controller.ts`, `user-preferences.controller.ts`, `sttInternal.controller.ts` |
-| **`JwtAuthGuard`** | `auth.controller.ts` (logout/me), `tenant.controller.ts`, `department.controller.ts`, `dna-writing-style.controller.ts`, `prompt-management.controller.ts`, `monitoring.controller.ts`, all `stt-v2/*.controller.ts` |
+| **`JwtAuthGuard`** | `auth.controller.ts` (logout/me), `tenant.controller.ts`, `department.controller.ts`, `dna-writing-style.controller.ts`, `prompt-management.controller.ts`, `monitoring.controller.ts`, all `stt/*.controller.ts` |
 | **JWT + RBAC** (`@CanRead/@CanCreate/...`) | `users.controller.ts`, `user-role-assignment.controller.ts`, `voice-embedding.controller.ts`, `user-settings.controller.ts`, `global-settings.controller.ts`, `api-key.controller.ts`, `audit-log.controller.ts`, `storage.controller.ts` |
 | **JWT + `@CanManage('all')`** | `roles.controller.ts`, `policies.controller.ts`, `department.controller.ts`, `dna-writing-style-admin.controller.ts`, `prompt-management.controller.ts` |
 
@@ -144,7 +144,7 @@ All 35 controllers with their current `@Controller()` decorator path and resulti
 | Gateway | Path | Auth | Architecture |
 |---|---|---|---|
 | STT v1 | `/stt` | API Key (query param) | Proxy to external WS at `STT_WS_URL` |
-| STT v2 | `/ws/stt-v2/stream` | JWT or API Key (query param) | Redis Streams-based |
+| STT | `/ws/stt/stream` | JWT or API Key (query param) | Redis Streams-based |
 | NLP | `/nlp` | API Key (query param) | Proxy to NLP service WS |
 | TTS | `/tts` | API Key (query param) | Proxy to TTS service WS |
 
@@ -154,7 +154,7 @@ All 35 controllers with their current `@Controller()` decorator path and resulti
 
 The SDK defines 20+ endpoint constant groups. Key observations:
 
-- STT v2 endpoints use `/api/v1/...` prefix (e.g., `/api/v1/transcription-jobs`) which matches the double-prefix bug on the backend
+- STT endpoints use `/api/v1/...` prefix (e.g., `/api/v1/transcription-jobs`) which matches the double-prefix bug on the backend
 - NLP endpoints use `/nlp/...` (no version prefix)
 - Settings endpoints use `/global-settings/...` and `/user-settings/...`
 - Admin DNA endpoints use `/admin/dna-writing-styles/...`
@@ -201,8 +201,8 @@ Five controllers use nearly identical `http-proxy-middleware` patterns (~85% cod
 | Service | Port | Env Variable |
 |---|---|---|
 | API Gateway | 8868 | `PORT` |
-| STT v2 | 8861 | `STT_V2_URL` |
-| SMR v2 | 8862 | `SMR_URL` |
+| STT | 8861 | `STT_URL` |
+| SMR | 8862 | `SMR_URL` |
 | TTS | 8863 | `TTS_URL` |
 | NLP | 8864 | `NLP_URL` |
 | FedL | 8865 | `FEDL_URL` |
@@ -299,14 +299,14 @@ Five controllers use nearly identical `http-proxy-middleware` patterns (~85% cod
 
 | Route Pattern | Auth | Guard | Who |
 |---|---|---|---|
-| `/internal/stt/**` | API Key | `ApiKeyGuard` + `@SkipThrottle` | Python STT v2 service |
+| `/internal/stt/**` | API Key | `ApiKeyGuard` + `@SkipThrottle` | Python STT service |
 
 ### 3.5 WebSocket Paths (After Refactoring)
 
 | Gateway | Current Path | New Path | Change |
 |---|---|---|---|
 | STT v1 | `/stt` | **REMOVED** | Deleted with STT v1 module |
-| STT v2 | `/ws/stt-v2/stream` | `/ws/stt-v2/stream` | No change (not affected by global prefix) |
+| STT | `/ws/stt/stream` | `/ws/stt/stream` | No change (not affected by global prefix) |
 | NLP | `/nlp` | `/ws/nlp` | Updated to `/ws/` prefix convention |
 | TTS | `/tts` | `/ws/tts` | Updated to `/ws/` prefix convention |
 
@@ -330,7 +330,7 @@ All paths are relative to the SDK `baseUrl` (which consumers will set to `http:/
 | `TENANT_ENDPOINTS` | `/tenants/configs/...` -> `/admin/tenants/configs/...` |
 | `MODEL_ENDPOINTS` | `/api/v1/ai-models` -> `/audio/ai-models` |
 | `AI_MODEL_ENDPOINTS` | `/api/v1/ai-models/...` -> `/audio/ai-models/...` |
-| `STT_V2_ENDPOINTS` | `/api/v1/transcription-jobs/...` -> `/audio/transcription-jobs/...` |
+| `STT_ENDPOINTS` | `/api/v1/transcription-jobs/...` -> `/audio/transcription-jobs/...` |
 | `PIPELINE_ENDPOINTS` | `/api/v1/pipelines/...` -> `/audio/pipelines/...` |
 | `NLP_ENDPOINTS` | No change (paths stay `/nlp/...`) |
 | `AUTH_ENDPOINTS` | No change |
@@ -442,10 +442,10 @@ healthUrl: `http://localhost:${port}/api/v1/health`,
 
 | File | Current | New |
 |---|---|---|
-| `stt-v2/transcriptionJob.controller.ts` | `'api/v1/transcription-jobs'` | `'audio/transcription-jobs'` |
-| `stt-v2/transcriptionStream.controller.ts` | `'api/v1/transcription-jobs'` | `'audio/transcription-jobs'` |
-| `stt-v2/pipeline.controller.ts` | `'api/v1/pipelines'` | `'audio/pipelines'` |
-| `stt-v2/aiModel.controller.ts` | `'api/v1/ai-models'` | `'audio/ai-models'` |
+| `stt/transcriptionJob.controller.ts` | `'api/v1/transcription-jobs'` | `'audio/transcription-jobs'` |
+| `stt/transcriptionStream.controller.ts` | `'api/v1/transcription-jobs'` | `'audio/transcription-jobs'` |
+| `stt/pipeline.controller.ts` | `'api/v1/pipelines'` | `'audio/pipelines'` |
+| `stt/aiModel.controller.ts` | `'api/v1/ai-models'` | `'audio/ai-models'` |
 | `smr/smr.controller.ts` | `'smr'` | `'text'` |
 | `tts/tts.controller.ts` | `'tts'` | `'speech'` |
 | `user-preferences/user-preferences.controller.ts` | `'users/me'` | `'user/me'` |
@@ -541,7 +541,7 @@ export abstract class BaseProxyController {
 **Key changes:**
 
 ```typescript
-// STT_V2_ENDPOINTS: '/api/v1/transcription-jobs/...' -> '/audio/transcription-jobs/...'
+// STT_ENDPOINTS: '/api/v1/transcription-jobs/...' -> '/audio/transcription-jobs/...'
 // AI_MODEL_ENDPOINTS: '/api/v1/ai-models/...' -> '/audio/ai-models/...'
 // MODEL_ENDPOINTS: '/api/v1/ai-models/...' -> '/audio/ai-models/...'
 // PIPELINE_ENDPOINTS: '/api/v1/pipelines/...' -> '/audio/pipelines/...'
@@ -568,11 +568,11 @@ export abstract class BaseProxyController {
 # API Gateway
 PORT=8868
 
-# STT v2 (Speech-to-Text)
-STT_V2_PORT=8861
-STT_V2_URL=http://localhost:8861
+# STT (Speech-to-Text)
+STT_PORT=8861
+STT_URL=http://localhost:8861
 
-# SMR v2 (Text Generation / Summarization)
+# SMR (Text Generation / Summarization)
 SMR_PORT=8862
 SMR_URL=http://localhost:8862
 
@@ -595,7 +595,7 @@ FEDL_URL=http://localhost:8865
 |---|---|
 | `STT_URL` | STT v1 removed |
 | `STT_WS_URL` | STT v1 removed |
-| `STT_PORT` | STT v1 removed (use `STT_V2_PORT`) |
+| `STT_PORT` | STT v1 removed (use `STT_PORT`) |
 | `SMR_SERVICE_URL_HTTP` | Consolidated to `SMR_URL` |
 | `NLP_SERVICE_URL_HTTP` | Consolidated to `NLP_URL` |
 | `LLM_PORT` | Legacy reference |
@@ -605,7 +605,7 @@ FEDL_URL=http://localhost:8865
 
 | File | Changes |
 |---|---|
-| `.env` | Update TTS/SMR/NLP ports, add STT_V2_URL, add FEDL_URL |
+| `.env` | Update TTS/SMR/NLP ports, add STT_URL, add FEDL_URL |
 | `.env.dev` | Same + remove STT v1 vars |
 | `.env.production` | Remove STT v1 vars, update all ports |
 | `.env.test` | Remove STT v1 vars, update all ports |
@@ -638,7 +638,7 @@ FEDL_URL=http://localhost:8865
 |---|---|---|
 | Global prefix `api` -> `api/v1` | All SDK consumers must update `baseUrl` | SDK version bump, migration guide |
 | API port `3000` -> `8868` | All clients must update host:port | Update SDK examples, Docker configs |
-| STT v2 paths change | SDK consumers using STT v2 | Updated constants in SDK |
+| STT paths change | SDK consumers using STT | Updated constants in SDK |
 | Admin routes move to `/admin/` | Admin UI must update API calls | Coordinate with frontend |
 | Settings routes restructured | SDK consumers using settings | Updated constants in SDK |
 | Port reassignments (886x range) | Docker/K8s configurations, Python services | Update infrastructure configs, conda envs |
@@ -681,18 +681,18 @@ FEDL_URL=http://localhost:8865
 | 1 | 2026-02-21 | Initial documentation created | Complete |
 | 2 | 2026-02-21 | Phase 2: Changed global prefix from `api` to `api/v1`, added internal route exclusion, updated Swagger path to `api/v1/docs`, updated CSP check and startup log URLs. TDD: 10 tests written and passing. | Complete |
 | 3 | 2026-02-21 | Phase 1: Removed STT v1 module entirely (TDD). Deleted 4 files (controller, gateway, module, swagger test). Removed SttModule from AppModule. Removed STT v1 health check from ServiceHealthMonitoringService. Removed STT_PORT/STT_URL/LLM_PORT/LLM_URL from IAppConfig and ConfigService. Cleaned 4 env files. Updated SessionsResponse DTO. Updated existing test suites (serviceHealthMonitoring, config.service). 16 new TDD tests + 816 total passing. | Complete |
-| 4 | 2026-02-21 | Phase 1 test hardening: Anti-pattern audit and edge case coverage. Added SttV2Module preservation tests, env file cleanup verification (4 files x 3-5 vars), health check URL correctness tests (port 5003 exclusion, TTS/SMR URL verification), LLM removal verification, Redis unavailability edge cases (3 scenarios), heartbeat data shape validation (responseTime, timestamp, non-ok status), uptime rounding (66.67%), status window boundary (2 heartbeats). Tests: 21 + 12 + 33 + 39 = 105 in Phase 1 files, 880 total passing across 30 files. | Complete |
-| 5 | 2026-02-22 | Port assignment update: Revised all target port assignments to use the 886x range per latest decision. API=8868, STT v2=8861, SMR v2=8862, TTS=8863, NLP=8864, FedL=8865. Updated sections 3.2 (target ports), 3.6 (SDK baseUrl), Phase 5 (proxy targets), Phase 6 (SDK docs), Phase 7 (env values), and section 5 (risk assessment). Historical sections (2.3, 2.8) left unchanged as they document the pre-refactoring state. | Complete |
+| 4 | 2026-02-21 | Phase 1 test hardening: Anti-pattern audit and edge case coverage. Added SttModule preservation tests, env file cleanup verification (4 files x 3-5 vars), health check URL correctness tests (port 5003 exclusion, TTS/SMR URL verification), LLM removal verification, Redis unavailability edge cases (3 scenarios), heartbeat data shape validation (responseTime, timestamp, non-ok status), uptime rounding (66.67%), status window boundary (2 heartbeats). Tests: 21 + 12 + 33 + 39 = 105 in Phase 1 files, 880 total passing across 30 files. | Complete |
+| 5 | 2026-02-22 | Port assignment update: Revised all target port assignments to use the 886x range per latest decision. API=8868, STT=8861, SMR=8862, TTS=8863, NLP=8864, FedL=8865. Updated sections 3.2 (target ports), 3.6 (SDK baseUrl), Phase 5 (proxy targets), Phase 6 (SDK docs), Phase 7 (env values), and section 5 (risk assessment). Historical sections (2.3, 2.8) left unchanged as they document the pre-refactoring state. | Complete |
 | 6 | 2026-02-22 | Phase 1 port-resilience refactor: Decoupled Phase 1 health-check tests from hardcoded port numbers (5004/5006) that will change in Phase 7 (886x migration). Tests now assert health endpoint paths (`/api/health`, `/api/v2/health`) and URL structure (`http://localhost:\d+/...`) instead of exact port values. STT v1 port 5003 exclusion test retained as it validates removal. Files: `stt-v1-health-removal.test.ts`, `serviceHealthMonitoring.service.test.ts`. 881 tests passing across 30 files. | Complete |
 | 7 | 2026-02-22 | Phase 2 port alignment: Updated default port fallback in `main.ts` from `3000` to `8868` per 886x port convention. Added 2 regression guard tests (default port value, old port exclusion). 69 Phase 2 tests passing, 502 total passing across 29 files. | Complete |
 | 9 | 2026-02-22 | Phase 4: Removed duplicate settings endpoints (TDD). **GlobalSettingsController**: removed `fetchTenantConfig` (duplicate of `fetchAllByTenantId`, both called `globalSettingService.fetchAllByTenantId()`). **UserSettingsController**: removed `fetchTenantConfig` (duplicate), `fetchAllByTenantId` (admin-scoped, doesn't belong on `/user/me/settings`), `fetchByUserId` (admin-scoped, doesn't belong on `/user/me/settings`). Updated `user-settings.controller.swagger.test.ts` to remove references to deleted methods. Files modified: `global-settings.controller.ts`, `user-settings.controller.ts`, `user-settings.controller.swagger.test.ts`. 2 new test files (24 TDD tests), 207 total passing across 5 Phase 3+4 test files. No regressions. | Complete |
-| 8 | 2026-02-22 | Phase 3: Renamed all 15 controller routes (TDD). Changed `@Controller()` paths: 4 STT v2 controllers (`api/v1/*` → `audio/*`), 2 proxy controllers (`smr` → `text`, `tts` → `speech`), 2 user self-service (`users/me` → `user/me`, `user-settings` → `user/me/settings`), 7 admin routes (added `admin/` prefix to settings, tenants, api-keys, audit-logs, rbac/roles, rbac/policies, pstudio). Updated `@ApiTags` on 7 controllers. Updated proxy `pathRewrite` rules on 4 controllers (smr, tts, nlp, fedl) to match new `/api/v1/<domain>` incoming paths. Updated 3 existing swagger tests. Updated e2e test URL. 72 new TDD tests, 574 total passing across 30 files (10 pre-existing failures in transcriptionStream unrelated). | Complete |
+| 8 | 2026-02-22 | Phase 3: Renamed all 15 controller routes (TDD). Changed `@Controller()` paths: 4 STT controllers (`api/v1/*` → `audio/*`), 2 proxy controllers (`smr` → `text`, `tts` → `speech`), 2 user self-service (`users/me` → `user/me`, `user-settings` → `user/me/settings`), 7 admin routes (added `admin/` prefix to settings, tenants, api-keys, audit-logs, rbac/roles, rbac/policies, pstudio). Updated `@ApiTags` on 7 controllers. Updated proxy `pathRewrite` rules on 4 controllers (smr, tts, nlp, fedl) to match new `/api/v1/<domain>` incoming paths. Updated 3 existing swagger tests. Updated e2e test URL. 72 new TDD tests, 574 total passing across 30 files (10 pre-existing failures in transcriptionStream unrelated). | Complete |
 | 10 | 2026-02-22 | Phase 3 anti-pattern audit and edge case hardening. **Anti-pattern fix**: Added `Reflect.getMetadata(PATH_METADATA)` behavioral tests for all 16 controllers (15 renamed + internal) — source-level regex alone could miss commented-out decorators or overrides. **Bug fixes**: Fixed 2 hardcoded URLs in `pstudio.controller.ts` (`/api/pstudio` → `/api/v1/admin/pstudio`), fixed hardcoded SSE URL in `summary.controller.test.ts` (`/api/consultations/...` → `/api/v1/consultations/...`). **Edge cases added**: shared controller paths (2 controllers on `audio/transcription-jobs`, 3 on `users`), parameterized route composition (`:consultationId`, `:id`), proxy pathRewrite regex anchoring (5 tests), pstudio mixed auth decorators (`@Public` + `@Authorize` survive rename), stale old-path string literal sweep (8 controllers), complete 34-controller inventory with path format validation (no leading/trailing slashes, no double slashes). 161 Phase 3 tests passing, 748 total passing across 33 files. | Complete |
 | 10a | 2026-02-22 | Phase 4 anti-pattern audit and edge case hardening. **Anti-pattern audit**: verified tests use real `Reflect.getMetadata` on actual classes (no mocks), no test pollution, TDD-first. **Edge cases added**: HTTP method metadata verification (GET=0, POST=1, PATCH=4, DELETE=3 for all 12 remaining endpoints across both controllers), authorization decorator preservation (7 `required_permissions` checks on GlobalSettings, 6 on UserSettings, plus empty-permissions sweep), route path metadata for all remaining endpoints, source-level regression guards (no stale `config/tenant`, `fetchTenantConfig`, `fetchAllByTenantId`, `fetchByUserId`, `tenant/:tenantId`, `user/:userId` in user-settings source), SDK endpoint mismatch documentation (3 tests proving controller no longer serves paths SDK still references — `user/:userId`, `tenant/:tenantId`, `config/tenant/:tenantId`). Tests: 76 Phase 4 tests (up from 24), 259 total passing across 5 Phase 3+4 test files. No regressions. | Complete |
 | 11 | 2026-02-22 | Phase 5: Extracted BaseProxyController (TDD). Created `apps/api/src/shared/base-proxy.controller.ts` with shared proxy middleware setup, lazy proxy creation, request ID generation, structured logging, and error handling. Refactored 4 proxy controllers to extend it: `SmrController` (text), `TtsController` (speech), `NlpController`, `FedlController`. Eliminated ~85% duplicated boilerplate (860→507 lines, 41% reduction). Each controller now only defines its `config` and route handlers. New test file `base-proxy-controller.test.ts` with 66 TDD tests covering: BaseProxyController contract (existence, exports, proxyRequest behavior, error handling, headers-sent guard), inheritance verification (instanceof, prototype chain, no own proxyRequest), config value correctness (all 4 controllers), source-level duplication elimination (no createProxyMiddleware/fixRequestBody imports, no inline proxy), decorator preservation (PATH_METADATA), existing functionality preservation (all route handler methods). 751 tests passing across 33 files (10 pre-existing failures in transcriptionStream unrelated). | Complete |
 | 11a | 2026-02-22 | Phase 5 anti-pattern audit and edge case hardening. **Anti-pattern audit** against 5 testing anti-patterns: (1) verified tests use real `http-proxy-middleware` and real `Reflect.getMetadata` — no mock-only verification; (2) no test pollution — no test-only methods in production code; (3) selective mocking — only `req`/`res` boundary objects mocked; (4) complete error response shape — ISO 8601 timestamp, requestId correlation, serviceName inclusion; (5) TDD-first. **Bug found and fixed**: stale `Logger` and `Delete` imports in `smr.controller.ts` (inherited from base, no longer needed). **Edge cases added** (89 new tests): lazy proxy singleton (same instance on repeated access, independent instances per controller), request ID uniqueness (5 consecutive calls produce 5 unique IDs, base-36 format), error response completeness (ISO timestamp validation, serviceName in error message, requestId matches x-request-id header), logger subclass name (4 controllers use own class name not BaseProxyController), env var fallback chain order (SMR 3-level, NLP 3-level, TTS 2-level, FedL 2-level), pathRewrite runtime regex behavior (8 input/output pairs across all 4 services + SMR empty-string edge case), guard metadata preservation (class-level ApiKeyGuard on TTS/NLP/FedL, method-level on SMR, healthCheck public), HTTP method metadata (PUT/POST/GET via `RequestMethod` enum), non-proxy controller exclusion (18 controllers verified NOT extending BaseProxyController), stale import detection (no Logger/http-proxy-middleware in child controllers), Swagger metadata (`@ApiTags` + `@ApiBearerAuth` on all 4), default timeout behavior (60000ms default, SMR 120000ms override). **Files modified**: `smr.controller.ts` (removed stale imports), `base-proxy-controller.test.ts` (66→155 tests). 892 tests passing across 33 files (10 pre-existing failures in transcriptionStream unrelated). | Complete |
-| 12 | 2026-02-22 | Phase 6: Updated SDK v2 Constants (TDD). Updated all endpoint paths in `packages/agentic-sdk-v2/src/core/constants.ts` to match new route convention. **10 constant groups changed**: `PERSONALIZATION_ENDPOINTS` (`/users/me` → `/user/me`), `MODEL_ENDPOINTS` + `AI_MODEL_ENDPOINTS` (`/api/v1/ai-models` → `/audio/ai-models`), `STT_V2_ENDPOINTS` (`/api/v1/transcription-jobs` → `/audio/transcription-jobs`), `PIPELINE_ENDPOINTS` (`/api/v1/pipelines` → `/audio/pipelines`), `GLOBAL_SETTINGS_ENDPOINTS` (`/global-settings` → `/admin/settings`), `USER_SETTINGS_ENDPOINTS` (`/user-settings` → `/user/me/settings`), `API_KEY_ENDPOINTS` (`/api-keys` → `/admin/api-keys`), `ROLE_ENDPOINTS` (`/rbac/roles` → `/admin/rbac/roles`), `TENANT_ENDPOINTS` (`/tenants/configs` → `/admin/tenants/configs`). **Removed**: deprecated `DNA_ENDPOINTS` (replaced by `DNA_STYLE_ENDPOINTS`), cleaned re-exports from `core.ts` and `core/index.ts`. **Tests**: 88 new TDD tests in `constants.task210.test.ts` (route changes + regression guards + structural invariants). Updated 6 existing test files (`constants.test.ts`, `constants.task032.test.ts`, `constants.ws4.test.ts`, `constants.sttv1.test.ts`, `SSEClient.test.ts`, `FileTranscriptionService.test.ts`). 2282 SDK tests passing across 85 files (6 pre-existing failures unrelated to Phase 6). | Complete |
-| 12a | 2026-02-22 | Phase 6 anti-pattern audit and edge case hardening. **Anti-pattern audit** against 5 testing anti-patterns: (1) no mock behavior tested — all tests verify real constant values directly; (2) no test pollution — no production code modified for testing; (3) no blind mocking — zero mocks used; (4) complete verification — all dynamic endpoints tested with multiple input types; (5) TDD-first confirmed. **Edge cases added** (44 new tests): URI encoding on all 10 changed endpoint groups (special chars `id/with?special#chars&more=true` verified encoded, not passed raw; ROLE_ENDPOINTS double-param encoding verified with occurrence count), UUID-format IDs on all changed groups (6 test cases), empty string parameters (no-throw + valid path structure on 8 groups), no double slashes (23 static + 35 dynamic endpoints checked), key count completeness (10 structural drift guards — exact key counts for all changed groups with `arrayContaining` for STT_V2 and AI_MODEL), stale old-path source sweep (10 tests reading `constants.ts` source file, filtering out comments, verifying no code lines contain old paths: `/api/v1/ai-models`, `/api/v1/transcription-jobs`, `/api/v1/pipelines`, `/users/me/preferences`, `/global-settings`, `/user-settings`, bare `/api-keys`, bare `/rbac/roles`, bare `/tenants/configs`, `DNA_ENDPOINTS` export), re-export completeness (all 25 endpoint groups verified present in module, `DNA_ENDPOINTS` absence confirmed), backend route alignment (audio/admin/user-me prefix verification, WS_STREAM bypass check, USER_ROLES non-admin check). 132 Phase 6 tests (up from 88), 849 core tests passing across 24 files. | Complete |
-|| 13 | 2026-02-21 | Phase 7: Standardized all environment files to 886x port range (TDD). **Port assignments**: API=8868, STT v2=8861, SMR=8862, TTS=8863, NLP=8864, FedL=8865. **7 env files updated**: `.env`, `.env.dev`, `.env.production`, `.env.test`, `.env.example`, `apps/api/.env.example`, `apps/api/.env.production`. **Deprecated env vars removed from proxy controllers**: `SMR_SERVICE_URL_HTTP`, `NLP_SERVICE_URL_HTTP`, `FEDL_SERVICE_URL_HTTP` consolidated to `SMR_URL`/`NLP_URL`/`FEDL_URL`. **IAppConfig expanded**: added `SMR_PORT`, `SMR_URL`, `NLP_PORT`, `NLP_URL`, `FEDL_PORT`, `FEDL_URL`. **ConfigService updated**: 6 new env vars with 886x defaults; existing defaults updated (PORT 5002->8868, STT_V2_URL 8002->8861, TTS_PORT 5004->8863, TTS_URL 8003->8863). **4 proxy controllers**: default URLs changed to 886x, deprecated `*_SERVICE_URL_HTTP` fallbacks removed. **ServiceHealthMonitoring**: TTS 5004->8863, SMR 5006->8862. **5 stale refs fixed**: tts.gateway.ts (ws 5004->8863), nlp.gateway.ts (ws 5005->8864, removed NLP_SERVICE_URL/NLP_WS_URL), voice-embedding.controller.ts (8002->8861), 2 test mock hosts (5002->8868). **Bug fix**: nlp.controller.ts import `@/guards` -> relative path. **Tests updated**: config.service.test.ts defaults, base-proxy-controller.test.ts fallback chains. **TDD**: 228 new tests. 1482 passing across 35 files. No regressions. | Complete |
-|| 13a | 2026-02-22 | Phase 7 anti-pattern audit and edge case hardening. **Anti-pattern audit** against 5 testing anti-patterns: (1) AP#1 fix — added behavioral tests that instantiate real `SmrController`, `TtsController`, `NlpController`, `FedlController` classes and verify `config.serviceUrl` at runtime (8 tests, zero mocks); (2) AP#2 — no test pollution confirmed; (3) AP#3 — zero mocks in entire file confirmed; (4) AP#4 fix — converted vacuous `if (value !== null)` guards to hard existence assertions for critical env vars (19 tests); (5) AP#5 — TDD-first confirmed. **Edge cases added** (186 new tests): port uniqueness (15 pairwise collision checks + set-size assertion), port range validation (6 ports × valid-range + 886x-range + 7 infra-collision checks = 84 tests), URL format validation (3 env files × 4-5 vars × protocol + parseable = 34 tests), gateway WebSocket defaults (tts.gateway ws://localhost:8863, nlp.gateway ws://localhost:8864, deprecated NLP_SERVICE_URL/NLP_WS_URL absence, env var derivation = 8 tests), voice-embedding STT_V2_URL default (port 8861, no 8002, env var ref = 3 tests), cross-file consistency (ConfigService ↔ 4 proxy controllers + voice-embedding = 5 tests), SUMMARY_AGENT_PORT=SMR_PORT (3 env files × 2 assertions = 6 tests), .env.production service hostnames (api/tts/smr/nlp = 4 tests), complete 886x port inventory (count + range + uniqueness + .env.dev presence = 4 tests), deprecated env var sweep (4 source files × 5 deprecated vars = 20 tests), ConfigService type correctness (3 port defaults as quoted strings + 3 URL defaults as quoted URLs = 6 tests), IAppConfig required properties (6 new props verified non-optional = 6 tests). **Tests**: 414 Phase 7 tests (up from 228), 1664 total passing across 34 files. No regressions. | Complete |
-| 14 | 2026-02-22 | Phase 8: Updated all documentation files to reflect TASK-210 changes. **6 files updated**: `apps/api/README.md` (port 5002→8868, STT v1→STT v2, new route convention table, architecture diagram with 886x ports, env vars updated, project structure with `shared/` and route annotations, Swagger URL to `/api/v1/docs`), `apps/api/docs/01-implementation-status.md` (version 1.0.0, added TASK-210 section, replaced STT v1 with STT v2/admin/user controllers, updated completion to 80.9%), `apps/api/docs/03-usage-guide.md` (version 2.0, all endpoint examples updated to `/api/v1/...`, STT v1 section replaced with STT v2 audio endpoints, TTS→speech, SMR→text, SDK v2 baseUrl updated), `apps/api/docs/04-deployment-guide.md` (version 2.0, all port refs 5002→8868, microservice URLs updated to 886x, K8s/Docker/nginx configs updated, health probe paths to `/api/v1/health/*`, STT gateway→STT v2), `apps/api/docs/05-api-reference.md` (version 2.0, added BaseProxyController docs, replaced STT v1 with STT v2 controller table, added admin/user controller tables, proxy configs updated to 886x), `.cursor/rules/03-app-api.mdc` (updated overview with port/prefix, module list without stt, added shared/ and route convention section, env vars updated to 886x). | Complete |
+| 12 | 2026-02-22 | Phase 6: Updated SDK v2 Constants (TDD). Updated all endpoint paths in `packages/agentic-sdk-v2/src/core/constants.ts` to match new route convention. **10 constant groups changed**: `PERSONALIZATION_ENDPOINTS` (`/users/me` → `/user/me`), `MODEL_ENDPOINTS` + `AI_MODEL_ENDPOINTS` (`/api/v1/ai-models` → `/audio/ai-models`), `STT_ENDPOINTS` (`/api/v1/transcription-jobs` → `/audio/transcription-jobs`), `PIPELINE_ENDPOINTS` (`/api/v1/pipelines` → `/audio/pipelines`), `GLOBAL_SETTINGS_ENDPOINTS` (`/global-settings` → `/admin/settings`), `USER_SETTINGS_ENDPOINTS` (`/user-settings` → `/user/me/settings`), `API_KEY_ENDPOINTS` (`/api-keys` → `/admin/api-keys`), `ROLE_ENDPOINTS` (`/rbac/roles` → `/admin/rbac/roles`), `TENANT_ENDPOINTS` (`/tenants/configs` → `/admin/tenants/configs`). **Removed**: deprecated `DNA_ENDPOINTS` (replaced by `DNA_STYLE_ENDPOINTS`), cleaned re-exports from `core.ts` and `core/index.ts`. **Tests**: 88 new TDD tests in `constants.task210.test.ts` (route changes + regression guards + structural invariants). Updated 6 existing test files (`constants.test.ts`, `constants.task032.test.ts`, `constants.ws4.test.ts`, `constants.sttv1.test.ts`, `SSEClient.test.ts`, `FileTranscriptionService.test.ts`). 2282 SDK tests passing across 85 files (6 pre-existing failures unrelated to Phase 6). | Complete |
+| 12a | 2026-02-22 | Phase 6 anti-pattern audit and edge case hardening. **Anti-pattern audit** against 5 testing anti-patterns: (1) no mock behavior tested — all tests verify real constant values directly; (2) no test pollution — no production code modified for testing; (3) no blind mocking — zero mocks used; (4) complete verification — all dynamic endpoints tested with multiple input types; (5) TDD-first confirmed. **Edge cases added** (44 new tests): URI encoding on all 10 changed endpoint groups (special chars `id/with?special#chars&more=true` verified encoded, not passed raw; ROLE_ENDPOINTS double-param encoding verified with occurrence count), UUID-format IDs on all changed groups (6 test cases), empty string parameters (no-throw + valid path structure on 8 groups), no double slashes (23 static + 35 dynamic endpoints checked), key count completeness (10 structural drift guards — exact key counts for all changed groups with `arrayContaining` for STT and AI_MODEL), stale old-path source sweep (10 tests reading `constants.ts` source file, filtering out comments, verifying no code lines contain old paths: `/api/v1/ai-models`, `/api/v1/transcription-jobs`, `/api/v1/pipelines`, `/users/me/preferences`, `/global-settings`, `/user-settings`, bare `/api-keys`, bare `/rbac/roles`, bare `/tenants/configs`, `DNA_ENDPOINTS` export), re-export completeness (all 25 endpoint groups verified present in module, `DNA_ENDPOINTS` absence confirmed), backend route alignment (audio/admin/user-me prefix verification, WS_STREAM bypass check, USER_ROLES non-admin check). 132 Phase 6 tests (up from 88), 849 core tests passing across 24 files. | Complete |
+|| 13 | 2026-02-21 | Phase 7: Standardized all environment files to 886x port range (TDD). **Port assignments**: API=8868, STT=8861, SMR=8862, TTS=8863, NLP=8864, FedL=8865. **7 env files updated**: `.env`, `.env.dev`, `.env.production`, `.env.test`, `.env.example`, `apps/api/.env.example`, `apps/api/.env.production`. **Deprecated env vars removed from proxy controllers**: `SMR_SERVICE_URL_HTTP`, `NLP_SERVICE_URL_HTTP`, `FEDL_SERVICE_URL_HTTP` consolidated to `SMR_URL`/`NLP_URL`/`FEDL_URL`. **IAppConfig expanded**: added `SMR_PORT`, `SMR_URL`, `NLP_PORT`, `NLP_URL`, `FEDL_PORT`, `FEDL_URL`. **ConfigService updated**: 6 new env vars with 886x defaults; existing defaults updated (PORT 5002->8868, STT_URL 8002->8861, TTS_PORT 5004->8863, TTS_URL 8003->8863). **4 proxy controllers**: default URLs changed to 886x, deprecated `*_SERVICE_URL_HTTP` fallbacks removed. **ServiceHealthMonitoring**: TTS 5004->8863, SMR 5006->8862. **5 stale refs fixed**: tts.gateway.ts (ws 5004->8863), nlp.gateway.ts (ws 5005->8864, removed NLP_SERVICE_URL/NLP_WS_URL), voice-embedding.controller.ts (8002->8861), 2 test mock hosts (5002->8868). **Bug fix**: nlp.controller.ts import `@/guards` -> relative path. **Tests updated**: config.service.test.ts defaults, base-proxy-controller.test.ts fallback chains. **TDD**: 228 new tests. 1482 passing across 35 files. No regressions. | Complete |
+|| 13a | 2026-02-22 | Phase 7 anti-pattern audit and edge case hardening. **Anti-pattern audit** against 5 testing anti-patterns: (1) AP#1 fix — added behavioral tests that instantiate real `SmrController`, `TtsController`, `NlpController`, `FedlController` classes and verify `config.serviceUrl` at runtime (8 tests, zero mocks); (2) AP#2 — no test pollution confirmed; (3) AP#3 — zero mocks in entire file confirmed; (4) AP#4 fix — converted vacuous `if (value !== null)` guards to hard existence assertions for critical env vars (19 tests); (5) AP#5 — TDD-first confirmed. **Edge cases added** (186 new tests): port uniqueness (15 pairwise collision checks + set-size assertion), port range validation (6 ports × valid-range + 886x-range + 7 infra-collision checks = 84 tests), URL format validation (3 env files × 4-5 vars × protocol + parseable = 34 tests), gateway WebSocket defaults (tts.gateway ws://localhost:8863, nlp.gateway ws://localhost:8864, deprecated NLP_SERVICE_URL/NLP_WS_URL absence, env var derivation = 8 tests), voice-embedding STT_URL default (port 8861, no 8002, env var ref = 3 tests), cross-file consistency (ConfigService ↔ 4 proxy controllers + voice-embedding = 5 tests), SUMMARY_AGENT_PORT=SMR_PORT (3 env files × 2 assertions = 6 tests), .env.production service hostnames (api/tts/smr/nlp = 4 tests), complete 886x port inventory (count + range + uniqueness + .env.dev presence = 4 tests), deprecated env var sweep (4 source files × 5 deprecated vars = 20 tests), ConfigService type correctness (3 port defaults as quoted strings + 3 URL defaults as quoted URLs = 6 tests), IAppConfig required properties (6 new props verified non-optional = 6 tests). **Tests**: 414 Phase 7 tests (up from 228), 1664 total passing across 34 files. No regressions. | Complete |
+| 14 | 2026-02-22 | Phase 8: Updated all documentation files to reflect TASK-210 changes. **6 files updated**: `apps/api/README.md` (port 5002→8868, STT v1→STT, new route convention table, architecture diagram with 886x ports, env vars updated, project structure with `shared/` and route annotations, Swagger URL to `/api/v1/docs`), `apps/api/docs/01-implementation-status.md` (version 1.0.0, added TASK-210 section, replaced STT v1 with STT/admin/user controllers, updated completion to 80.9%), `apps/api/docs/03-usage-guide.md` (version 2.0, all endpoint examples updated to `/api/v1/...`, STT v1 section replaced with STT audio endpoints, TTS→speech, SMR→text, SDK v2 baseUrl updated), `apps/api/docs/04-deployment-guide.md` (version 2.0, all port refs 5002→8868, microservice URLs updated to 886x, K8s/Docker/nginx configs updated, health probe paths to `/api/v1/health/*`, STT gateway→STT), `apps/api/docs/05-api-reference.md` (version 2.0, added BaseProxyController docs, replaced STT v1 with STT controller table, added admin/user controller tables, proxy configs updated to 886x), `.cursor/rules/03-app-api.mdc` (updated overview with port/prefix, module list without stt, added shared/ and route convention section, env vars updated to 886x). | Complete |

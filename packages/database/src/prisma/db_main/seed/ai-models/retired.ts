@@ -7,7 +7,7 @@
  * guarded by `shouldRetireAiModelSlug`: a slug still referenced by any
  * non-deleted `AsrPipeline.configYaml` (a tenant may have built a custom
  * pipeline on it) is SKIPPED with a loud warning instead of breaking
- * `config_reader._to_model_config` resolution in stt-v2.
+ * `config_reader._to_model_config` resolution in stt.
  */
 
 export const RETIRED_AI_MODEL_SLUGS: readonly string[] = [

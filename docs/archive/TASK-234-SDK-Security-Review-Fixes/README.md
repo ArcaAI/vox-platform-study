@@ -47,7 +47,7 @@ Comprehensive security review of `@arcaai/vox` SDK and `ui-playground` identifie
 | CRIT-03 | Critical | `summarization.ts` | All 8 SMR API calls used `/api/v2/*` paths with `{ baseUrl: 'smr' }` |
 | CRIT-04 | Critical | `useConsultationJob.ts` | `streamJob()` used raw `EventSource` without authentication or reconnection |
 | REC-01 | High | `smr-proxy.controller.ts` | Missing `@ApiBearerAuth()`, `JwtAuthGuard`, and cancel route |
-| REC-02 | Medium | `SttV2WebSocketClient.ts` | Exponential backoff lacked jitter, risking thundering herd |
+| REC-02 | Medium | `SttWebSocketClient.ts` | Exponential backoff lacked jitter, risking thundering herd |
 | STRATEGIC | Feature | SDK | No multi-tab connection management; each tab creates independent connections |
 
 ### Impact Analysis
@@ -77,7 +77,7 @@ Comprehensive security review of `@arcaai/vox` SDK and `ui-playground` identifie
 3. CRIT-03: Rewrite summarization.ts (change /api/v2/* to /text/*)
 4. CRIT-04: Refactor useConsultationJob to use SSEClient
 5. REC-01: Add auth guard + cancel route to SmrProxyController
-6. REC-02: Add jitter to SttV2WebSocketClient
+6. REC-02: Add jitter to SttWebSocketClient
 7. STRATEGIC: Implement SharedWorker multi-tab connection management
 ```
 
@@ -85,7 +85,7 @@ Comprehensive security review of `@arcaai/vox` SDK and `ui-playground` identifie
 
 - Update existing `useConsultationJob.test.ts` with SSEClient mock
 - Add `SharedConnectionManager.test.ts` for fallback mode
-- Add jitter test to `SttV2WebSocketClient.test.ts`
+- Add jitter test to `SttWebSocketClient.test.ts`
 - Verify all 2535 existing tests still pass
 
 ---
@@ -229,7 +229,7 @@ async cancelTask(@Param('taskId') taskId: string): Promise<any>
 
 ### REC-02: Added Jitter to WebSocket Reconnection
 
-**File**: `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`
+**File**: `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`
 
 **Before**:
 ```typescript
@@ -251,7 +251,7 @@ const delay = Math.round(exponentialDelay + jitter);
 
 **Formula**: `delay = exponentialDelay + random(0, exponentialDelay * 0.5)`
 
-This adds 0-50% random jitter to each reconnection delay, preventing multiple clients from reconnecting simultaneously after a server restart (thundering herd problem). The `SSEClient` already had jitter — this brings `SttV2WebSocketClient` to parity.
+This adds 0-50% random jitter to each reconnection delay, preventing multiple clients from reconnecting simultaneously after a server restart (thundering herd problem). The `SSEClient` already had jitter — this brings `SttWebSocketClient` to parity.
 
 ---
 
@@ -320,7 +320,7 @@ This adds 0-50% random jitter to each reconnection delay, preventing multiple cl
 | `apps/ui-playground/src/features/summarization/api/summarization.ts` | Modified | Changed all `/api/v2/*` paths to `/text/*` gateway routes |
 | `packages/agentic-sdk-v2/src/hooks/useConsultationJob.ts` | Modified | Replaced raw `EventSource` with `SSEClient` + auth |
 | `apps/api/src/modules/streaming/smr-proxy.controller.ts` | Modified | Added `@ApiBearerAuth()`, `JwtAuthGuard`, cancel route |
-| `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` | Modified | Added jitter to reconnection backoff |
+| `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` | Modified | Added jitter to reconnection backoff |
 | `packages/agentic-sdk-v2/src/core/SharedConnectionWorker.ts` | Created | SharedWorker script for multi-tab connection management |
 | `packages/agentic-sdk-v2/src/core/SharedConnectionManager.ts` | Created | Client-side manager with SharedWorker fallback |
 | `packages/agentic-sdk-v2/src/hooks/useSharedConnection.ts` | Created | React hooks for shared connections |
@@ -333,7 +333,7 @@ This adds 0-50% random jitter to each reconnection delay, preventing multiple cl
 |------|--------|-------|
 | `packages/agentic-sdk-v2/src/hooks/__tests__/useConsultationJob.test.ts` | Modified | Updated streamJob tests for SSEClient mock, added 8 new tests |
 | `packages/agentic-sdk-v2/src/core/__tests__/SharedConnectionManager.test.ts` | Created | 15 tests for fallback mode SSE/WS, callbacks, dispose |
-| `packages/agentic-sdk-v2/src/core/__tests__/SttV2WebSocketClient.test.ts` | Modified | Added jitter test, fixed 3 timing-sensitive tests |
+| `packages/agentic-sdk-v2/src/core/__tests__/SttWebSocketClient.test.ts` | Modified | Added jitter test, fixed 3 timing-sensitive tests |
 
 ---
 

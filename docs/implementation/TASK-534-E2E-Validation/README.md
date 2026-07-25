@@ -176,10 +176,10 @@ pnpm build:api                                    # 8/8 tasks green
 pnpm --filter @arcaai/admin-console build         # after @arcaai/ui build
 pnpm turbo lint                                   # incl. api hard-errors + packages only-warn-as-error
 pnpm --filter @arcaai/vox typecheck && pnpm --filter @arcaai/vox lint
-pnpm py:stt-v2:lint  py:smr-v2:lint  py:guardrail:lint  py:nlp:lint  py:harness:lint  py:tts-v2:lint
-pnpm py:stt-v2:typecheck  py:smr-v2:typecheck  py:guardrail:typecheck  py:nlp:typecheck  py:harness:typecheck
+pnpm py:stt:lint  py:smr:lint  py:guardrail:lint  py:nlp:lint  py:harness:lint  py:tts:lint
+pnpm py:stt:typecheck  py:smr:typecheck  py:guardrail:typecheck  py:nlp:typecheck  py:harness:typecheck
 pnpm test:unit && pnpm test:integration
-pnpm py:stt-v2:test  py:smr-v2:test  py:guardrail:test  py:nlp:test  py:harness:test  py:tts-v2:test
+pnpm py:stt:test  py:smr:test  py:guardrail:test  py:nlp:test  py:harness:test  py:tts:test
 pnpm test:api:up  →  pnpm test:e2e
 ```
 

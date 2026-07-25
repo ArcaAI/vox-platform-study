@@ -1,6 +1,6 @@
 # TASK-456 — STT Finalize / Reaper Durability (C2-03 · C2-02 · C2-05 · C2-07)
 
-- **Status**: Completed -- all 4 findings RED->GREEN + 3-round adversarial review (Critical rework + both Important applied) + gates green (stt-v2 2100 passed, ruff/mypy clean); only the owner's own push/PR to main remains (per owner directive, they land it)
+- **Status**: Completed -- all 4 findings RED->GREEN + 3-round adversarial review (Critical rework + both Important applied) + gates green (stt 2100 passed, ruff/mypy clean); only the owner's own push/PR to main remains (per owner directive, they land it)
 - **Type**: bugfix (data durability — realtime transcript loss)
 - **Program**: [TASK-449 — Harness-Loop Remediation Program](../TASK-449-Harness-Loop-Remediation-Program/README.md) · Wave 2 (P1)
 - **Findings**: C2-03 (High, CONFIRMED ✓C) · C2-02 (High, PLAUSIBLE — re-verify) · C2-05 (Med) · C2-07 (Med) — see [TASK-448 register](../TASK-448-Harness-Loop-Quality-Review/README.md)
@@ -10,17 +10,17 @@
 
 ## ⚠️ Cross-stream coordination
 
-**TASK-456 and [TASK-457](../TASK-457-Redis-Consumer-Groups/README.md) both touch `session_manager.py`.** Per the [program conflict ledger](../TASK-449-Harness-Loop-Remediation-Program/README.md#cross-stream-conflict-ledger-wave-1--wave-2), **TASK-456 merges first**; TASK-457's Python half (the `stt:audio` reader → consumer groups) rebases onto it. Schedule 456 before 457's stt-v2 portion. The two touch different regions (456: finalize/reaper; 457: the audio-ingest reader), so a rebase should be clean, but 456 goes first.
+**TASK-456 and [TASK-457](../TASK-457-Redis-Consumer-Groups/README.md) both touch `session_manager.py`.** Per the [program conflict ledger](../TASK-449-Harness-Loop-Remediation-Program/README.md#cross-stream-conflict-ledger-wave-1--wave-2), **TASK-456 merges first**; TASK-457's Python half (the `stt:audio` reader → consumer groups) rebases onto it. Schedule 456 before 457's stt portion. The two touch different regions (456: finalize/reaper; 457: the audio-ingest reader), so a rebase should be clean, but 456 goes first.
 
 ## File-ownership manifest (exclusive — binding)
 
 | File | Change |
 |---|---|
-| `apps/stt-v2/src/stt_v2/streaming/session_manager.py` | Finalize durability (C2-03), reaper timeout (C2-02), drain (C2-05), per-session finalize lock (C2-07) |
-| `apps/stt-v2/src/stt_v2/core/config/settings.py` | Add/repoint the reaper + drain timeout knobs |
-| `apps/stt-v2/tests/unit/test_streaming_recording.py` | Persist-failure + concurrent-finalize tests |
-| `apps/stt-v2/tests/unit/test_session_manager_model_wiring.py` | Reaper + drain tests |
-| `apps/stt-v2/tests/unit/test_streaming.py` | Reaper-timeout config test |
+| `apps/stt/src/stt/streaming/session_manager.py` | Finalize durability (C2-03), reaper timeout (C2-02), drain (C2-05), per-session finalize lock (C2-07) |
+| `apps/stt/src/stt/core/config/settings.py` | Add/repoint the reaper + drain timeout knobs |
+| `apps/stt/tests/unit/test_streaming_recording.py` | Persist-failure + concurrent-finalize tests |
+| `apps/stt/tests/unit/test_session_manager_model_wiring.py` | Reaper + drain tests |
+| `apps/stt/tests/unit/test_streaming.py` | Reaper-timeout config test |
 
 Touching the `stt:audio` reader / `redis_streams.py` (TASK-457's territory) or the gateway client (`core/api_client/gateway.py`) beyond adding a retry/outbox seam → STOP and report. Anything outside the manifest → STOP.
 
@@ -46,7 +46,7 @@ Four finalize/reaper durability defects in `session_manager.py`, all instances o
 - [ ] **C2-02 (re-verify then fix)**: task 0 confirms the reaper finalizes an ACTIVE session on a >`streaming_session_timeout_s` stall. Fix: reap on the audio-idle timeout (repoint to `streaming_audio_idle_timeout_s`=300 or a clinical value) AND/OR re-adopt the session on reconnect; resolve the dead-config drift (either wire `streaming_audio_idle_timeout_s` or delete it). A live consultation with a normal speech pause must not be finalized out from under the clinician.
 - [ ] **C2-05**: define `streaming_inference_drain_timeout_s` in settings.py (no more `getattr` fallback) and transcribe the flushed tail utterance inline before building the transcript (or extend/removes the bound so the last utterance isn't dropped on backlog). Test the timeout branch.
 - [ ] **C2-07**: a per-session finalize lock (`asyncio.Lock`) so the four entrypoints serialize; make finalize idempotent so a second entrant is a no-op (no duplicate Media rows, no double upload). Add idempotency to `create_media` if feasible. Test concurrent finalize.
-- [ ] **AC-gate**: `pnpm py:stt-v2:test:unit` + `pnpm py:stt-v2:lint` + `pnpm py:stt-v2:typecheck` green; output pasted.
+- [ ] **AC-gate**: `pnpm py:stt:test:unit` + `pnpm py:stt:lint` + `pnpm py:stt:typecheck` green; output pasted.
 
 ### Non-goals
 
@@ -56,9 +56,9 @@ Four finalize/reaper durability defects in `session_manager.py`, all instances o
 
 ## Current State Evaluation (code-verified 2026-07-09 against `fix/2605-review`)
 
-All refs current (Wave 1 didn't touch this file). Config in [settings.py:407-418](apps/stt-v2/src/stt_v2/core/config/settings.py): `streaming_session_timeout_s`=60, `streaming_audio_idle_timeout_s`=300 (dead), `streaming_reaper_interval_s`=300; `streaming_inference_drain_timeout_s` absent (getattr 60.0). Instance fields at [session_manager.py:113-144](apps/stt-v2/src/stt_v2/streaming/session_manager.py).
+All refs current (Wave 1 didn't touch this file). Config in [settings.py:407-418](apps/stt/src/stt/core/config/settings.py): `streaming_session_timeout_s`=60, `streaming_audio_idle_timeout_s`=300 (dead), `streaming_reaper_interval_s`=300; `streaming_inference_drain_timeout_s` absent (getattr 60.0). Instance fields at [session_manager.py:113-144](apps/stt/src/stt/streaming/session_manager.py).
 
-Key sites: persist swallow [session_manager.py:1942](apps/stt-v2/src/stt_v2/streaming/session_manager.py); reaper threshold :2372 + idle compare :2392; drain timeout :1398; finalize non-atomic guard :1956 + unguarded upload/register block :1972-2083; the four finalize entrypoints :645/:1620/:1660/:2412. Callback path: `_persist_streaming_transcript` → `gateway.create_transcript` → `POST /internal/stt/transcripts` ([gateway.py:256-302]). `SessionStatus` = ACTIVE/FINALIZING/CLOSED ([schemas.py:27-32]).
+Key sites: persist swallow [session_manager.py:1942](apps/stt/src/stt/streaming/session_manager.py); reaper threshold :2372 + idle compare :2392; drain timeout :1398; finalize non-atomic guard :1956 + unguarded upload/register block :1972-2083; the four finalize entrypoints :645/:1620/:1660/:2412. Callback path: `_persist_streaming_transcript` → `gateway.create_transcript` → `POST /internal/stt/transcripts` ([gateway.py:256-302]). `SessionStatus` = ACTIVE/FINALIZING/CLOSED ([schemas.py:27-32]).
 
 Test gaps: no test exercises the streaming persist-failure swallow (C2-03), the 60-vs-300 reaper config or post-stall loss (C2-02), the drain `TimeoutError` branch (C2-05), or concurrent finalize (C2-07) — every finalize test mocks `_drain_inference_queue`/`_finalize_session`.
 
@@ -73,8 +73,8 @@ Test gaps: no test exercises the streaming persist-failure swallow (C2-03), the 
 ### Verification gate
 
 ```bash
-pnpm py:stt-v2:test:unit
-pnpm py:stt-v2:lint && pnpm py:stt-v2:typecheck
+pnpm py:stt:test:unit
+pnpm py:stt:lint && pnpm py:stt:typecheck
 ```
 
 Adversarial review focus: (a) C2-03 — is there ANY remaining path where a transient gateway failure loses the durable transcript silently? does the fix avoid double-firing the harness trigger? (b) C2-07 — can two entrypoints still both reach the upload block? is finalize truly idempotent for Media? (c) C2-02 — does the reaper change risk NOT reaping genuinely dead sessions (capacity leak)? (d) C2-05 — does inline tail-transcription block finalize unboundedly? (e) zero diff outside the manifest; the `stt:audio` reader untouched (TASK-457's).
@@ -89,9 +89,9 @@ Adversarial review focus: (a) C2-03 — is there ANY remaining path where a tran
 - **C2-05** — `_settle_inference_loop` cancels+awaits the background loop before a single-consumer inline drain, so the tail utterance lands in the transcript.
 - **C2-03 (durable transcript outbox)** — replaced the original "loud-retain" with: always finalize + release the capacity slot; on transient persist failure enqueue to a shared-Redis outbox (`stt:transcript_outbox`, idempotency-keyed); the reaper drains it **at-least-once** (soft lease → POST → HDEL only after a confirmed 2xx); permanent 4xx (excluding 429/408/425) + exhausted attempts drop loudly. `create_transcript` carries an `Idempotency-Key` (sanctioned gateway seam).
 
-**Adversarial review (3 rounds — the hardest ticket)**: round 1 found a **Critical** — the original loud-retain leaked the capacity slot forever (escalating a gateway outage into an STT-v2 capacity DoS) and lost the transcript on the reaper path anyway. Reworked to the durable outbox (round 2 confirmed C-1 closed + the lock/reaper sound). Round 2 found two Important gaps — 429-under-burst dropped as "permanent", and an at-most-once crash window — both fixed (429/408/425 transient; delete-after-ack lease). Orchestrator spot-verified the final lease state machine.
+**Adversarial review (3 rounds — the hardest ticket)**: round 1 found a **Critical** — the original loud-retain leaked the capacity slot forever (escalating a gateway outage into an STT capacity DoS) and lost the transcript on the reaper path anyway. Reworked to the durable outbox (round 2 confirmed C-1 closed + the lock/reaper sound). Round 2 found two Important gaps — 429-under-burst dropped as "permanent", and an at-most-once crash window — both fixed (429/408/425 transient; delete-after-ack lease). Orchestrator spot-verified the final lease state machine.
 
-**Gates**: `pnpm py:stt-v2:test:unit` **2100 passed**; ruff + mypy clean. RED→GREEN for capacity-release, 429-transient, crash-window-survives, redrive-order, drain-tail, reaper-config.
+**Gates**: `pnpm py:stt:test:unit` **2100 passed**; ruff + mypy clean. RED→GREEN for capacity-release, 429-transient, crash-window-survives, redrive-order, drain-tail, reaper-config.
 
 **Discovered → follow-ups**: server-side transcript dedup is check-then-act (a DB unique constraint on (consultation, transcript) would make no-double-fire non-racy — TASK-466 territory); outbox `HGETALL` + serial redrive is a throughput note under large backlogs (not correctness). Prometheus counters were left as loud structlog events (metrics.py out of manifest).
 
@@ -100,4 +100,4 @@ Adversarial review focus: (a) C2-03 — is there ANY remaining path where a tran
 | Date | Change |
 |---|---|
 | 2026-07-09 | Ticket scaffolded from TASK-448 findings C2-02/03/05/07; all four re-verified against the post-Wave-1 tree by read-only scout (refs unchanged; `streaming_audio_idle_timeout_s` confirmed dead config; C2-07 duplicate risk scoped to Media rows). No implementation. |
-| 2026-07-11 | **Closed (Status -> Completed).** Closure-review pass (owner directive "close if finished completely and properly"): all four findings shipped + tested RED->GREEN, 3-round review with the Critical rework + both Important fixes applied (none deferred), py:stt-v2:test:unit 2100 passed / ruff+mypy clean; residuals are out-of-manifest metrics + a non-AC dedup hardening (no AC pending). No external work remains -- only the owner's git push/PR to main. |
+| 2026-07-11 | **Closed (Status -> Completed).** Closure-review pass (owner directive "close if finished completely and properly"): all four findings shipped + tested RED->GREEN, 3-round review with the Critical rework + both Important fixes applied (none deferred), py:stt:test:unit 2100 passed / ruff+mypy clean; residuals are out-of-manifest metrics + a non-AC dedup hardening (no AC pending). No external work remains -- only the owner's git push/PR to main. |

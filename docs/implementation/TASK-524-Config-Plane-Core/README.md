@@ -213,7 +213,7 @@ Connections resolve independently: tenant row (enabled, cloud-only) → SYSTEM r
 
 ### 3.4 Gateway injection (scope item c)
 
-- `smr-proxy.controller.ts` — `applySmrModelSelection` (`:170-178`) additionally resolves the profile cascade for the effective `{provider, model}` and attaches a `params` object (`temperature/top_p/max_tokens/timeout_s/keep_alive_seconds/context_length/extra`) to the forwarded body **only for fields the caller did not set** (caller-wins, cascade above). SMR ignores unknown body fields today — additive and inert until TASK-525 consumes them (stateless-gateway contract preserved, `apps/smr/src/smr_v2/core/config.py:1-9` docstring).
+- `smr-proxy.controller.ts` — `applySmrModelSelection` (`:170-178`) additionally resolves the profile cascade for the effective `{provider, model}` and attaches a `params` object (`temperature/top_p/max_tokens/timeout_s/keep_alive_seconds/context_length/extra`) to the forwarded body **only for fields the caller did not set** (caller-wins, cascade above). SMR ignores unknown body fields today — additive and inert until TASK-525 consumes them (stateless-gateway contract preserved, `apps/smr/src/smr/core/config.py:1-9` docstring).
 - `ai-inference.controller.ts` — NER/diagnosis calls (`:68,84`) gain the same profile resolution keyed on the resolved model's provider, injected as optional upstream fields alongside `model_name`. Fail-OPEN for profiles (missing profile ⇒ inject nothing — env defaults keep working), in contrast to the model-identity fail-closed path (`:135-155`) which is unchanged.
 
 ### 3.5 Patterns compliance (rules 02/03/04/05)

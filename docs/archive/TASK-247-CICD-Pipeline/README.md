@@ -66,7 +66,7 @@ The `sha-<sha8>` tag is always present as an immutable audit trail reference.
 | Tag | Runner Type | Jobs | Resource Notes |
 |-----|-----------|------|----------------|
 | `node` | Node.js runner | lint-ts, typecheck, install-node, test-api, test-packages, test-sdk, scan-source, publish-sdk | 4GB RAM, 2 CPU |
-| `python` | Python runner | lint-python, test-stt-v2, test-smr, test-nlp | 4GB RAM, 2 CPU |
+| `python` | Python runner | lint-python, test-stt, test-smr, test-nlp | 4GB RAM, 2 CPU |
 | `build` | Docker builder (Buildx) | All Docker image builds, container scans | 8GB RAM, 4 CPU, `privileged: true` |
 | `deploy` | Deploy runner | deploy-staging, sync-argocd, github-backup | 2GB RAM, 1 CPU |
 
@@ -206,7 +206,7 @@ staging push -> lint + test + build -> deploy-staging job
   rules.yml                      # Change-path rules per service + branch logic
   install.yml                    # install-node (cache warming)
   validate.yml                   # lint-ts, typecheck, lint-python
-  test.yml                       # test-api, test-packages, test-sdk, test-stt-v2, test-smr, test-nlp
+  test.yml                       # test-api, test-packages, test-sdk, test-stt, test-smr, test-nlp
   build.yml                      # 7 Docker build jobs (manual on cicd, auto on staging)
   scan.yml                       # Trivy container + source scans
   publish.yml                    # SDK package publishing (release branch)

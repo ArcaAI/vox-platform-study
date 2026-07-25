@@ -66,7 +66,7 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 - [x] **Global Prefix**: Changed from `api` to `api/v1` with internal route exclusion
 - [x] **BaseProxyController**: Shared abstract proxy base class in `src/shared/` (the live `SmrProxyController` is hand-written and does not extend it; there is no NLP proxy controller)
 - [x] **STT v1 Removal**: Removed legacy STT v1 module (controller, gateway, module)
-- [x] **Port Standardization**: All services on 886x range (API=8868, STT v2=8861, SMR=8862, Guardrail=8863, NLP=8864, Harness=8866)
+- [x] **Port Standardization**: All services on 886x range (API=8868, STT=8861, SMR=8862, Guardrail=8863, NLP=8864, Harness=8866)
 
 ### 🟡 Planned
 
@@ -130,12 +130,12 @@ This document tracks the implementation status of the HOPE API Gateway, providin
   - Tenant creation and configuration
   - Tenant-specific settings management
 
-#### STT v2 Service (Audio) — Port 8861
+#### STT Service (Audio) — Port 8861
 - [x] **TranscriptionJobController**: Transcription job management (`/api/v1/audio/transcription-jobs`)
 - [x] **TranscriptionStreamController**: Streaming transcription (`/api/v1/audio/transcription-jobs`)
 - [x] **PipelineController**: Pipeline management (`/api/v1/audio/pipelines`)
 - [x] **AiModelController**: AI model management (`/api/v1/audio/ai-models`)
-- [x] **SttV2Gateway**: WebSocket gateway for real-time STT v2 (`/stt-v2`)
+- [x] **SttGateway**: WebSocket gateway for real-time STT (`/stt`)
 - [x] **SttInternalController**: Internal STT endpoints (`/internal/stt`)
 
 > **Note**: STT v1 (`SttController`, `SttGateway`) was removed in TASK-210 Phase 1.

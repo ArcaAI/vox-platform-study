@@ -518,7 +518,7 @@ export class SmrProxyController {
   @Post('generate')
   @Authorize()
   @ApiExcludeEndpoint()
-  @ApiOperation({ summary: 'Generate text via SMR v2 (sync or streaming)' })
+  @ApiOperation({ summary: 'Generate text via SMR (sync or streaming)' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async generate(@Body() body: SmrGenerateRequest): Promise<any> {
     const base = this.getSmrBaseUrl();
@@ -553,7 +553,7 @@ export class SmrProxyController {
 
   @Get('tasks/:taskId')
   @Authorize()
-  @ApiOperation({ summary: 'Get task status from SMR v2' })
+  @ApiOperation({ summary: 'Get task status from SMR' })
   @ApiParam({ name: 'taskId', description: 'Task ID' })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async getTaskStatus(@Param('taskId') taskId: string): Promise<any> {
@@ -609,7 +609,7 @@ export class SmrProxyController {
   @Authorize()
   @StreamScope({ namespace: 'smr_task', param: 'taskId' })
   @ApiOperation({
-    summary: 'Stream task chunks via SSE from SMR v2',
+    summary: 'Stream task chunks via SSE from SMR',
     description:
       'Server-Sent Events stream. Accepts either `Authorization: Bearer <jwt>` or a single-use `?ticket=<ticket>` issued by `POST /auth/stream-ticket` with scope `smr_task:<taskId>`.',
   })

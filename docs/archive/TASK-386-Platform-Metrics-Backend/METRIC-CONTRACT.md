@@ -46,8 +46,8 @@ conda), not in containers, so Prometheus (in Docker) reaches them via
 | `job` label | Target | Service | Exposes |
 |---|---|---|---|
 | `api-gateway` | `host.docker.internal:8868/metrics` | API (NestJS) | `http_requests_total`, `http_request_duration_seconds`, `active_connections_count`, `hope_job_*` |
-| `stt` | `host.docker.internal:8861/metrics` | STT-v2 | `http_*`, `stt_v2_*`, `model_*` |
-| `smr` | `host.docker.internal:8862/metrics` | SMR-v2 | `http_*`, `smr_v2_*`, `model_*` |
+| `stt` | `host.docker.internal:8861/metrics` | STT | `http_*`, `stt_*`, `model_*` |
+| `smr` | `host.docker.internal:8862/metrics` | SMR | `http_*`, `smr_*`, `model_*` |
 | `guardrail` | `host.docker.internal:8863/metrics` | Guardrail | `model_*` (no `http_*` — see gaps) |
 | `nlp` | `host.docker.internal:8864/metrics` | NLP | `nlp_http_*`, `model_*` |
 | `harness` | `host.docker.internal:8866/metrics` | Harness | `http_*` only (no models) |
@@ -122,7 +122,7 @@ sum by (service, model) (rate(model_inference_latency_seconds_count[5m]))
 
 ---
 
-## 4. STT-v2 domain metrics (`job="stt"`)
+## 4. STT domain metrics (`job="stt"`)
 
 Previously defined-but-dead; **now wired** into the real batch + streaming code
 paths (`transcription/batch_service.py`, `vad/silero_service.py`,
@@ -130,13 +130,13 @@ paths (`transcription/batch_service.py`, `vad/silero_service.py`,
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
-| `stt_v2_transcription_total` | counter | `pipeline`, `engine`, `status` | batch transcription jobs; `status` ∈ `success`/`error` |
-| `stt_v2_transcription_latency_seconds` | histogram | `pipeline`, `engine` | end-to-end batch latency |
-| `stt_v2_transcription_errors_total` | counter | `pipeline`, `error_type` | batch failures by exception type |
-| `stt_v2_audio_duration_seconds` | histogram | _(none)_ | submitted audio seconds — **transcription-minutes source** |
-| `stt_v2_streaming_sessions_active` | gauge | _(none)_ | currently-active streaming sessions |
-| `stt_v2_streaming_sessions_total` | counter | `status` | streaming sessions started (`status="started"`) |
-| `stt_v2_streaming_inference_latency_seconds` | histogram | _(none)_ | per-utterance streaming ASR latency |
+| `stt_transcription_total` | counter | `pipeline`, `engine`, `status` | batch transcription jobs; `status` ∈ `success`/`error` |
+| `stt_transcription_latency_seconds` | histogram | `pipeline`, `engine` | end-to-end batch latency |
+| `stt_transcription_errors_total` | counter | `pipeline`, `error_type` | batch failures by exception type |
+| `stt_audio_duration_seconds` | histogram | _(none)_ | submitted audio seconds — **transcription-minutes source** |
+| `stt_streaming_sessions_active` | gauge | _(none)_ | currently-active streaming sessions |
+| `stt_streaming_sessions_total` | counter | `status` | streaming sessions started (`status="started"`) |
+| `stt_streaming_inference_latency_seconds` | histogram | _(none)_ | per-utterance streaming ASR latency |
 
 Example label values: `pipeline="default"`, `engine="faster_whisper"` (the
 `AiModelFormat` value, e.g. `faster_whisper`/`onnx`/`nemo`/`azure`),
@@ -146,28 +146,28 @@ Example label values: `pipeline="default"`, `engine="faster_whisper"` (the
 
 ```promql
 # Transcription MINUTES processed (cumulative) — _sum is in seconds
-sum(stt_v2_audio_duration_seconds_sum) / 60
+sum(stt_audio_duration_seconds_sum) / 60
 
 # Transcription minutes in the last 24h
-sum(increase(stt_v2_audio_duration_seconds_sum[24h])) / 60
+sum(increase(stt_audio_duration_seconds_sum[24h])) / 60
 
 # Transcription throughput (jobs/sec, successful)
-sum(rate(stt_v2_transcription_total{status="success"}[5m]))
+sum(rate(stt_transcription_total{status="success"}[5m]))
 
 # Transcription error ratio
-sum(rate(stt_v2_transcription_total{status="error"}[5m]))
-  / clamp_min(sum(rate(stt_v2_transcription_total[5m])), 1)
+sum(rate(stt_transcription_total{status="error"}[5m]))
+  / clamp_min(sum(rate(stt_transcription_total[5m])), 1)
 
 # Active streaming sessions (single-instance dev)
-sum(stt_v2_streaming_sessions_active)
+sum(stt_streaming_sessions_active)
 
 # Batch p95 end-to-end latency
-histogram_quantile(0.95, sum by (le) (rate(stt_v2_transcription_latency_seconds_bucket[5m])))
+histogram_quantile(0.95, sum by (le) (rate(stt_transcription_latency_seconds_bucket[5m])))
 ```
 
 ---
 
-## 5. SMR-v2 domain metrics (`job="smr"`)
+## 5. SMR domain metrics (`job="smr"`)
 
 Pre-existing; the standardized `model_*` pair (§3) was added alongside them in
 `api/endpoints/generate.py` (inc/dec running gauge around generation, observe
@@ -175,13 +175,13 @@ latency on completion — both non-streaming and streaming paths).
 
 | Metric | Type | Labels |
 |---|---|---|
-| `smr_v2_generation_total` | counter | `provider`, `model`, `status` (`completed`/`failed`) |
-| `smr_v2_generation_latency_seconds` | histogram | `provider`, `model` |
-| `smr_v2_tokens_total` | counter | `provider`, `model`, `direction` (`input`/`output`) |
-| `smr_v2_generation_errors_total` | counter | `provider`, `model`, `error_type` |
-| `smr_v2_active_generations` | gauge | `provider` |
-| `smr_v2_time_to_first_token_seconds` | histogram | `provider`, `model` |
-| `smr_v2_concurrent_requests` | gauge | `provider` |
+| `smr_generation_total` | counter | `provider`, `model`, `status` (`completed`/`failed`) |
+| `smr_generation_latency_seconds` | histogram | `provider`, `model` |
+| `smr_tokens_total` | counter | `provider`, `model`, `direction` (`input`/`output`) |
+| `smr_generation_errors_total` | counter | `provider`, `model`, `error_type` |
+| `smr_active_generations` | gauge | `provider` |
+| `smr_time_to_first_token_seconds` | histogram | `provider`, `model` |
+| `smr_concurrent_requests` | gauge | `provider` |
 
 Example label values: `provider="lm-studio"`, `model="gemma-4-e4b"`,
 `status="completed"`, `direction="output"`.
@@ -190,13 +190,13 @@ Example label values: `provider="lm-studio"`, `model="gemma-4-e4b"`,
 
 ```promql
 # Tokens/sec (output) per model
-sum by (model) (rate(smr_v2_tokens_total{direction="output"}[5m]))
+sum by (model) (rate(smr_tokens_total{direction="output"}[5m]))
 
 # Generation p95 latency
-histogram_quantile(0.95, sum by (le, model) (rate(smr_v2_generation_latency_seconds_bucket[5m])))
+histogram_quantile(0.95, sum by (le, model) (rate(smr_generation_latency_seconds_bucket[5m])))
 
 # In-flight generations
-sum(smr_v2_active_generations)
+sum(smr_active_generations)
 ```
 
 ---
@@ -298,9 +298,9 @@ sum(active_connections_count)
 | Per-model **running** | `sum by (service, model) (model_running_instances)` |
 | Per-model **avg latency** | `sum by (service,model)(rate(model_inference_latency_seconds_sum[5m])) / sum by (service,model)(rate(model_inference_latency_seconds_count[5m]))` |
 | Per-model **p95 latency** | `histogram_quantile(0.95, sum by (le,service,model)(rate(model_inference_latency_seconds_bucket[5m])))` |
-| **Transcription minutes** (24h) | `sum(increase(stt_v2_audio_duration_seconds_sum[24h])) / 60` |
-| **Active streaming sessions** | `sum(stt_v2_streaming_sessions_active)` |
-| **SMR tokens/sec** | `sum by (model)(rate(smr_v2_tokens_total{direction="output"}[5m]))` |
+| **Transcription minutes** (24h) | `sum(increase(stt_audio_duration_seconds_sum[24h])) / 60` |
+| **Active streaming sessions** | `sum(stt_streaming_sessions_active)` |
+| **SMR tokens/sec** | `sum by (model)(rate(smr_tokens_total{direction="output"}[5m]))` |
 | **Per-service request p95** | `histogram_quantile(0.95, sum by (le, service)(rate(http_request_duration_seconds_bucket[5m])))` |
 | **Per-service error rate** | `sum by (service)(rate(http_requests_total{status=~"5.."}[5m])) / clamp_min(sum by (service)(rate(http_requests_total[5m])),1)` |
 | **Active socket connections** | `sum(active_connections_count)` |

@@ -68,7 +68,7 @@ Each row cites the **exact model/field/service** so the user can see what's real
 | M4  | **DNA report generations**      | `DnaWritingStyleReport` rows (`dna-writing-style.prisma`), doctor-scoped generation                                                            | none                                  | **Needs-work** — countable but no per-tenant meter surfaced; generation is doctor-self-scoped today      |
 
 
-> **Metering caveat (important):** the Prometheus metrics from TASK-386 (`stt_v2_audio_duration_seconds`, `smr_v2_generation_total`, etc.) are **platform-wide observability with no** `tenantId` **label** — they **cannot** be used for per-tenant billing quotas. Per-tenant consumption must come from **Postgres aggregation** (the `getUsageStats` / `ConsumptionRollupResponse` path), which is real and live-testable, but is **cumulative/point-in-time**, not a rolling monthly counter. A true "X minutes per month" quota needs a new metering table or a windowed aggregate.
+> **Metering caveat (important):** the Prometheus metrics from TASK-386 (`stt_audio_duration_seconds`, `smr_generation_total`, etc.) are **platform-wide observability with no** `tenantId` **label** — they **cannot** be used for per-tenant billing quotas. Per-tenant consumption must come from **Postgres aggregation** (the `getUsageStats` / `ConsumptionRollupResponse` path), which is real and live-testable, but is **cumulative/point-in-time**, not a rolling monthly counter. A true "X minutes per month" quota needs a new metering table or a windowed aggregate.
 
 
 

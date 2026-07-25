@@ -40,7 +40,7 @@ Added all 19+ missing routes to the React Router configuration:
 - `/plugin-hooks`, `/pipeline-control`, `/custom-pipeline`
 - `/personalization`, `/custom-models`, `/cross-tab-session`
 - `/admin/prompts`, `/admin/departments`, `/admin/dashboard`
-- `/dev/stt-v2`, `/dev/diff-viewer`, `/dev/error-handling`
+- `/dev/stt`, `/dev/diff-viewer`, `/dev/error-handling`
 
 #### 2. Navigation Test Fixes (Both Apps)
 **Files**:
@@ -83,7 +83,7 @@ All 138 tests pass including:
 - Navigation dropdown and mobile menu
 - API settings panel
 - Admin pages (prompts, departments, dashboard)
-- Developer pages (STT-V2, Diff Viewer, Error Handling)
+- Developer pages (STT, Diff Viewer, Error Handling)
 - Doctor workflow pages
 - Edge cases (SPA navigation, form validation, responsive)
 - 404 handling
@@ -102,7 +102,7 @@ Manual browser verification confirmed:
 - **Basic Consultation**: Form renders with Patient ID, Doctor ID, Doctor Name fields and Start button
 - **Admin Prompts**: H1, Templates panel, New button, Category/Department filters, empty state
 - **Admin Dashboard**: Health monitoring cards, Tenant Configuration, refresh buttons
-- **STT-V2 Streaming**: 4 tabs, Create Session/Connect/Disconnect, WebSocket status
+- **STT Streaming**: 4 tabs, Create Session/Connect/Disconnect, WebSocket status
 - **Diff Viewer**: Old/New text inputs, 4 diff algorithm tabs, Compute Diff function works client-side
 - **DNA Writing Style**: Renders without crash after fix, shows consultation selector and workflow stepper
 

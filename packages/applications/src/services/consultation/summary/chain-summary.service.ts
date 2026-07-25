@@ -15,7 +15,7 @@ import {
   ConsultationEntity,
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
-import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-v2-generate';
+import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-generate';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';

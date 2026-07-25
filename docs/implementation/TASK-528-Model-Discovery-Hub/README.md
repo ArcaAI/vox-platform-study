@@ -37,10 +37,10 @@ Out of scope (owned elsewhere): hyperparameters/context/concurrency admin (TASK-
 
 ### 2.2 SMR probe implementations (per provider)
 
-- Endpoint: `apps/smr/src/smr_v2/api/endpoints/providers.py:16-25` — **sequential** `for` loop over `registry.list_providers()`, awaiting `provider.get_info()` one by one. No per-provider timeout, no error/latency detail in the response.
-- Ollama: `apps/smr/src/smr_v2/providers/ollama.py:195-213` — `GET {base_url}/api/tags` on the **shared** httpx client, whose timeout is `httpx.Timeout(300.0)` (`main.py:110`). Exceptions caught → `status: "unavailable"`, so a *down* provider doesn't 500 — but a *hung* one blocks the whole endpoint for up to 300 s. Load state (`/api/ps`) is never queried.
-- LM Studio / vLLM (OpenAI-compat): `apps/smr/src/smr_v2/providers/openai_compat.py:229-246` — `await self._client.models.list()` on an `AsyncOpenAI` client constructed with `timeout=float(config.timeout_s)` = **300 s** default (`core/config.py:72` — the generation timeout reused for a listing probe) and a bare `except Exception: pass` (`:237-238`) that swallows all diagnostics.
-- `ProviderInfo`/`ModelInfo` (`apps/smr/src/smr_v2/models/provider.py:8-20`): `name`, `display_name`, `status: str`, `default_model`, `models[{name, supports_streaming, context_window}]` — no probe-error field, no latency, no per-model load state.
+- Endpoint: `apps/smr/src/smr/api/endpoints/providers.py:16-25` — **sequential** `for` loop over `registry.list_providers()`, awaiting `provider.get_info()` one by one. No per-provider timeout, no error/latency detail in the response.
+- Ollama: `apps/smr/src/smr/providers/ollama.py:195-213` — `GET {base_url}/api/tags` on the **shared** httpx client, whose timeout is `httpx.Timeout(300.0)` (`main.py:110`). Exceptions caught → `status: "unavailable"`, so a *down* provider doesn't 500 — but a *hung* one blocks the whole endpoint for up to 300 s. Load state (`/api/ps`) is never queried.
+- LM Studio / vLLM (OpenAI-compat): `apps/smr/src/smr/providers/openai_compat.py:229-246` — `await self._client.models.list()` on an `AsyncOpenAI` client constructed with `timeout=float(config.timeout_s)` = **300 s** default (`core/config.py:72` — the generation timeout reused for a listing probe) and a bare `except Exception: pass` (`:237-238`) that swallows all diagnostics.
+- `ProviderInfo`/`ModelInfo` (`apps/smr/src/smr/models/provider.py:8-20`): `name`, `display_name`, `status: str`, `default_model`, `models[{name, supports_streaming, context_window}]` — no probe-error field, no latency, no per-model load state.
 - **Provider naming** (findings note, verified `main.py:61-67`): the registry keys are **`lm-studio`** (product key) and `openai_compat` (alias to the same shared instance). `lmstudio` is **not** a registered alias — the gateway and console must use `lm-studio` exactly. `azure-openai`/`azure`, `ollama`, `bedrock`, `vllm`, `llama-cpp` complete the key set.
 
 ### 2.3 What load-state data each engine exposes today
@@ -104,7 +104,7 @@ Task routing (`AiTaskDefault` → `AiModel`) reads **only** the DB registry — 
 
 ### 3.3 Probe timeout / partial-failure contract (R3, frozen for the SMR lane)
 
-- `GET /providers` gains `asyncio.gather` over providers with `asyncio.wait_for(provider.get_info(), timeout=probe_timeout_s)` — new `SMR_V2_PROVIDER_PROBE_TIMEOUT_S` setting, **default 5 s** (bootstrap env per plan §2.3; joins the TASK-524/525 control plane later, not here). One hung provider ⇒ its entry reports `probe_status: "timeout"`; the endpoint returns 200 with the other providers intact — never 500, never 300 s.
+- `GET /providers` gains `asyncio.gather` over providers with `asyncio.wait_for(provider.get_info(), timeout=probe_timeout_s)` — new `SMR_PROVIDER_PROBE_TIMEOUT_S` setting, **default 5 s** (bootstrap env per plan §2.3; joins the TASK-524/525 control plane later, not here). One hung provider ⇒ its entry reports `probe_status: "timeout"`; the endpoint returns 200 with the other providers intact — never 500, never 300 s.
 - `ProviderInfo` gains additive optional fields `probe_status`, `probe_latency_ms`, `probe_error`; `ModelInfo` gains `state: str | None` and `engine_native: dict | None`. Additive-only ⇒ the gateway fallback mapper (`smr-proxy.controller.ts:970-973`) and `tests/contracts/smr.contract.test.ts` stay compatible (contract test extended, not rewritten).
 - Ollama `get_info` additionally probes `GET /api/ps` (same timeout envelope) to mark `state: "loaded"` on running models; `openai_compat.get_info` replaces `except Exception: pass` with logged, classified handling (mirror `health_check` `:222-227`).
 - **Optional enhancement (R4, recommended — small)**: LM Studio native `GET {root}/api/v0/models` (root = `base_url` minus trailing `/v1`) via the shared httpx client fills `state`/`engine_native` (`quantization`, `max_context_length`); any failure degrades silently to the `/v1/models` result. Applied only when `provider_name == "lm-studio"`.
@@ -131,7 +131,7 @@ The register DTO validates `provider` with `@IsIn(AI_MODEL_PROVIDERS)`; the DTO 
 
 ### 4.0 Stage sequence (goal-driven, each with its verify)
 
-1. **SMR probe hardening** (files 1–6) → verify: §5.1 tests GREEN; `pnpm py:smr-v2:test|lint|typecheck` clean; manual `curl :8862/api/v1/providers` with one engine stopped returns 200 with `probe_status` populated.
+1. **SMR probe hardening** (files 1–6) → verify: §5.1 tests GREEN; `pnpm py:smr:test|lint|typecheck` clean; manual `curl :8862/api/v1/providers` with one engine stopped returns 200 with `probe_status` populated.
 2. **DTO alignment + register DTO** (files 7–9, 15) → verify: applications build+test green; contracts test GREEN (RED first proves the §2.5 drift).
 3. **Gateway discovery routes** (files 10–14) → verify: §5.2 tests GREEN; `pnpm build:api && pnpm test:unit`; Swagger shows both routes under `admin-ai-models`; boot-time route audit passes (both routes decorated).
 4. **Console hub** (files 16–24) → verify: §5.4 tests GREEN incl. axe/themes; `pnpm --filter @arcaai/admin-console build lint test`; runtime pass via `next-dev-loop` (open drawer against live local Ollama, register a model, watch it appear in the grid without reload).
@@ -143,12 +143,12 @@ Stages 1–2 are independent and may run in parallel (lanes E vs B); stage 3 dep
 
 | # | File | NEW/UPDATE | Change |
 |---|---|---|---|
-| 1 | `apps/smr/src/smr_v2/models/provider.py` | UPDATE | `ProviderInfo` + `ModelInfo` additive fields (§3.3) |
-| 2 | `apps/smr/src/smr_v2/core/config.py` | UPDATE | `provider_probe_timeout_s: int = 5` on the SMR settings (env `SMR_V2_PROVIDER_PROBE_TIMEOUT_S`) |
-| 3 | `apps/smr/src/smr_v2/api/endpoints/providers.py` | UPDATE | parallel gather + `wait_for` + probe fields (§3.3) |
-| 4 | `apps/smr/src/smr_v2/providers/ollama.py` | UPDATE | `get_info` + `/api/ps` load state |
-| 5 | `apps/smr/src/smr_v2/providers/openai_compat.py` | UPDATE | logged error handling; LM Studio native `/api/v0/models` enrichment (R4, guarded) |
-| 6 | `apps/smr/src/smr_v2/tests/unit/test_providers_endpoint.py` | NEW | §5 SMR tests |
+| 1 | `apps/smr/src/smr/models/provider.py` | UPDATE | `ProviderInfo` + `ModelInfo` additive fields (§3.3) |
+| 2 | `apps/smr/src/smr/core/config.py` | UPDATE | `provider_probe_timeout_s: int = 5` on the SMR settings (env `SMR_PROVIDER_PROBE_TIMEOUT_S`) |
+| 3 | `apps/smr/src/smr/api/endpoints/providers.py` | UPDATE | parallel gather + `wait_for` + probe fields (§3.3) |
+| 4 | `apps/smr/src/smr/providers/ollama.py` | UPDATE | `get_info` + `/api/ps` load state |
+| 5 | `apps/smr/src/smr/providers/openai_compat.py` | UPDATE | logged error handling; LM Studio native `/api/v0/models` enrichment (R4, guarded) |
+| 6 | `apps/smr/src/smr/tests/unit/test_providers_endpoint.py` | NEW | §5 SMR tests |
 | 7 | `packages/applications/src/services/stt/model/dto/create-model.request.ts` | UPDATE | `AI_MODEL_PROVIDERS` +`vllm`,`llama-cpp` (§2.5 drift) + comment pointing at seed `shared.ts` |
 | 8 | `packages/applications/src/services/stt/model/dto/register-discovered-model.request.ts` | NEW | register DTO (`provider`, `modelName`, optional `slug`/`name`/`description`; class-validator + `@ApiProperty` on every field) |
 | 9 | `packages/applications/src/services/stt/model/dto/index.ts` (+ feature barrel) | UPDATE | export new DTO |
@@ -167,7 +167,7 @@ Stages 1–2 are independent and may run in parallel (lanes E vs B); stage 3 dep
 | 22 | `apps/admin-console/src/features/ai-models/components/__tests__/discovery-drawer.test.tsx` | NEW | §5 console tests |
 | 23 | `apps/admin-console/src/features/ai-models/components/__tests__/ai-models-screen.test.tsx` | UPDATE | action button + drawer wiring |
 | 24 | `apps/admin-console/src/features/ai-task-defaults/components/ai-task-defaults-platform-screen.tsx` (+ its test) | UPDATE | `PageHeader` "Manage models" link → `/ai-models` |
-| 25 | `.env.example` (+ `.env.dev`, `turbo.json#globalEnv` if TS-read — it is not; Python-only, so `.env.example` SMR section only) | UPDATE | document `SMR_V2_PROVIDER_PROBE_TIMEOUT_S` |
+| 25 | `.env.example` (+ `.env.dev`, `turbo.json#globalEnv` if TS-read — it is not; Python-only, so `.env.example` SMR section only) | UPDATE | document `SMR_PROVIDER_PROBE_TIMEOUT_S` |
 
 No other files. No migrations. Barrel edits append-only (plan §7).
 
@@ -184,7 +184,7 @@ No other files. No migrations. Barrel edits append-only (plan §7).
 
 ## 5. TDD Plan (RED first — paste failing runs into this README before implementing)
 
-### 5.1 SMR — `apps/smr/src/smr_v2/tests/unit/test_providers_endpoint.py` (NEW)
+### 5.1 SMR — `apps/smr/src/smr/tests/unit/test_providers_endpoint.py` (NEW)
 
 1. `test_hung_provider_times_out_without_blocking` — registry stub with one provider whose `get_info` sleeps past the timeout: response 200 within budget; that provider `probe_status == "timeout"`; others `"ok"` with `probe_latency_ms` set.
 2. `test_raising_provider_yields_error_not_500` — `get_info` raising → 200, `probe_status == "error"`, `probe_error` populated.
@@ -219,7 +219,7 @@ DTO `AI_MODEL_PROVIDERS` (applications) === seed `AI_MODEL_PROVIDERS` (`shared.t
 
 ### 5.5 Gate commands (per stage)
 
-`pnpm py:smr-v2:test && pnpm py:smr-v2:lint && pnpm py:smr-v2:typecheck` · `pnpm --filter @arcaai/applications build test` · `pnpm build:api && pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test` · e2e spec (`apps/api/tests/e2e/ai-model-discovery.spec.ts` incl. cross-tenant 404 case) **authored here, executed in Phase 7 (TASK-534)** per plan §2.2.
+`pnpm py:smr:test && pnpm py:smr:lint && pnpm py:smr:typecheck` · `pnpm --filter @arcaai/applications build test` · `pnpm build:api && pnpm test:unit` · `pnpm --filter @arcaai/admin-console build lint test` · e2e spec (`apps/api/tests/e2e/ai-model-discovery.spec.ts` incl. cross-tenant 404 case) **authored here, executed in Phase 7 (TASK-534)** per plan §2.2.
 
 ## 6. Acceptance & DoD
 
@@ -260,12 +260,12 @@ Implemented end-to-end per §4, in the §4.0 stage order. 30 files (24 of the 25
 
 | File | Change |
 |---|---|
-| `apps/smr/src/smr_v2/models/provider.py` | `ModelInfo` += `state`, `engine_native`; `ProviderInfo` += `probe_status`, `probe_latency_ms`, `probe_error`. All optional/additive. |
-| `apps/smr/src/smr_v2/core/config.py` | `Settings.provider_probe_timeout_s: int = 5` appended at the END of the field block (`SMR_V2_PROVIDER_PROBE_TIMEOUT_S`). Nothing else touched — TASK-529's fenced regions untouched. |
-| `apps/smr/src/smr_v2/api/endpoints/providers.py` | Rewritten: `asyncio.gather` over providers, each under `asyncio.wait_for(…, timeout)`; per-entry `probe_status` / `probe_latency_ms` / `probe_error`; `registry.get()` itself is inside the try, so a failing lazy factory is a probe result, not a 500. |
-| `apps/smr/src/smr_v2/providers/ollama.py` | New `_running_model_names()` probing `GET /api/ps`; `get_info` stamps `state` = `loaded`/`not-loaded`. A `/api/ps` failure returns `None` → `state` stays `None` (UNKNOWN), never a false "not loaded". |
-| `apps/smr/src/smr_v2/providers/openai_compat.py` | `except Exception: pass` replaced with the classified/logged handling `health_check` already used; new `_lm_studio_native_models()` + module-level `_native_probe_client()` factory for the R4 native enrichment. |
-| `apps/smr/src/smr_v2/tests/unit/test_providers_endpoint.py` | NEW — 8 hermetic tests (§5.1 plus the registry-key identity test from §9.4 D1). |
+| `apps/smr/src/smr/models/provider.py` | `ModelInfo` += `state`, `engine_native`; `ProviderInfo` += `probe_status`, `probe_latency_ms`, `probe_error`. All optional/additive. |
+| `apps/smr/src/smr/core/config.py` | `Settings.provider_probe_timeout_s: int = 5` appended at the END of the field block (`SMR_PROVIDER_PROBE_TIMEOUT_S`). Nothing else touched — TASK-529's fenced regions untouched. |
+| `apps/smr/src/smr/api/endpoints/providers.py` | Rewritten: `asyncio.gather` over providers, each under `asyncio.wait_for(…, timeout)`; per-entry `probe_status` / `probe_latency_ms` / `probe_error`; `registry.get()` itself is inside the try, so a failing lazy factory is a probe result, not a 500. |
+| `apps/smr/src/smr/providers/ollama.py` | New `_running_model_names()` probing `GET /api/ps`; `get_info` stamps `state` = `loaded`/`not-loaded`. A `/api/ps` failure returns `None` → `state` stays `None` (UNKNOWN), never a false "not loaded". |
+| `apps/smr/src/smr/providers/openai_compat.py` | `except Exception: pass` replaced with the classified/logged handling `health_check` already used; new `_lm_studio_native_models()` + module-level `_native_probe_client()` factory for the R4 native enrichment. |
+| `apps/smr/src/smr/tests/unit/test_providers_endpoint.py` | NEW — 8 hermetic tests (§5.1 plus the registry-key identity test from §9.4 D1). |
 
 ### 9.2 Gateway (lane B, files 7–15)
 
@@ -303,14 +303,14 @@ Not-a-deviation, but worth flagging for the reviewer: §3.6's third assumption (
 
 ### 9.5 RED-then-GREEN evidence (real captured output)
 
-**9.5.1 SMR — RED** (`pytest apps/smr/src/smr_v2/tests/unit/test_providers_endpoint.py`, before implementation):
+**9.5.1 SMR — RED** (`pytest apps/smr/src/smr/tests/unit/test_providers_endpoint.py`, before implementation):
 
 ```
 E       pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
 E       provider_probe_timeout_s
 E         Extra inputs are not permitted [type=extra_forbidden, input_value=1, input_type=int]
 E                   AttributeError: 'ModelInfo' object has no attribute 'state'
-E       AttributeError: <module 'smr_v2.providers.openai_compat'> has no attribute '_native_probe_client'
+E       AttributeError: <module 'smr.providers.openai_compat'> has no attribute '_native_probe_client'
 5 failed, 3 errors in 3.14s
 ```
 
@@ -361,7 +361,7 @@ ollama states after loading qwen3.5:2b:
   [('gemma4:12b-mlx', 'not-loaded'), ('gemma4:e2b-it-qat', 'not-loaded'), ('qwen3.5:2b', 'loaded')]
 ```
 
-**The hung-provider gate** (`SMR_V2_OLLAMA_BASE_URL` pointed at a black-hole IP, `SMR_V2_PROVIDER_PROBE_TIMEOUT_S=5`):
+**The hung-provider gate** (`SMR_OLLAMA_BASE_URL` pointed at a black-hole IP, `SMR_PROVIDER_PROBE_TIMEOUT_S=5`):
 
 ```
 HTTP=200 total=5.025244s
@@ -397,7 +397,7 @@ FAIL …                                               TypeError: aiModelKeys.di
 
 | Gate | Result |
 |---|---|
-| `pytest apps/smr/src/smr_v2/tests/` | **PASS** — `931 passed, 32 deselected, 8 warnings in 137.74s` |
+| `pytest apps/smr/src/smr/tests/` | **PASS** — `931 passed, 32 deselected, 8 warnings in 137.74s` |
 | `ruff check apps/smr/src/` | **PASS** — `All checks passed!` |
 | `mypy --config-file apps/smr/pyproject.toml apps/smr/src/` | **PASS** — `Success: no issues found in 51 source files` |
 | `turbo build --filter=@arcaai/applications` | **PASS** — `Tasks: 7 successful, 7 total` |
@@ -411,7 +411,7 @@ FAIL …                                               TypeError: aiModelKeys.di
 | `next dev` + `/_next/mcp` | **PASS (framework half)** — `compile_route /ai-models` → `{"issues":[]}`, `compile_route /ai-task-defaults` → `{"issues":[]}`, `get_compilation_issues` → `{"issues":[]}`, `get_errors` → `{"configErrors":[],"sessionErrors":[]}` |
 | `apps/api/tests/e2e/ai-model-discovery.spec.ts` | **NOT RUN** — authored here, executed in TASK-534 per plan §2.2 |
 
-Note for whoever runs the Python gates in a worktree: the `smr_v2` editable install (`__editable__.smr_v2-2.0.0.pth`) points at the MAIN checkout, so `pytest` silently tests the main tree. Export `PYTHONPATH=<worktree>/apps/smr/src` first. (The RED runs above were captured before implementation and are unaffected — the two trees were identical at that point.)
+Note for whoever runs the Python gates in a worktree: the `smr` editable install (`__editable__.smr-2.0.0.pth`) points at the MAIN checkout, so `pytest` silently tests the main tree. Export `PYTHONPATH=<worktree>/apps/smr/src` first. (The RED runs above were captured before implementation and are unaffected — the two trees were identical at that point.)
 
 ## 10. Change History
 
@@ -420,4 +420,4 @@ Note for whoever runs the Python gates in a worktree: the `smr_v2` editable inst
 | 2026-07-20 | Ticket README authored (execution-ready): code-verified current state (fallback mechanics, SMR probe internals incl. the 300 s probe-timeout reuse and the `lm-studio` naming, per-engine load-state availability, existing full registry screen, DTO provider-list drift), AD-5 merge-view architecture, ordered implementation plan with exclusive file manifest, RED-first TDD plan, DoD, risks. Status Pending — awaiting owner approval + design-gate resolution. |
 | 2026-07-20 | Program plan §2.5 **Completion & Cleanup Doctrine** adopted as BINDING for this ticket (owner directive): incorrect implementations in the owned surface are removed completely with the fix; partial implementations are finished end-to-end (or explicitly retired); redundant implementations are converged and deleted. Reviewer enforces the §2.5 classification table, plan-conformance (deviations = recorded decision rows), full-closure traceability of the claimed GAP/D/M IDs, and the performance gates. |
 | 2026-07-20 | **DESIGN-GATE WAIVER (owner, 2026-07-20).** Rule 12 gate 2 (approved Figma frames before implementation) is WAIVED by the owner for this ticket, following the TASK-512-wave waiver precedent. Scope of the waiver: the discovery drawer, the per-entry register action, the unhidden `/ai-models` nav entry, and the ai-task-defaults "Manage models" link — all built without an updated/approved frame. Mitigations applied in lieu of a frame: the drawer instances the console-wide `DetailDrawer` rather than a bespoke surface, uses only existing semantic tokens and `@arcaai/ui` primitives (no new colour values), and ships the full state set (skeleton / empty / error / loaded) with an axe 0-violations scan. Follow-up for the designer: retro-document the drawer into frame `15 - AI Model Registry` and run the post-deploy visual QA checkpoint. |
-| 2026-07-20 | **Implemented end-to-end** (§9). SMR probe hardening (parallel gather + `SMR_V2_PROVIDER_PROBE_TIMEOUT_S`, `/api/ps` load state, LM Studio native `/api/v0/models` enrichment — R4 IMPLEMENTED, not deferred); DTO provider-list drift closed and contract-pinned; gateway discovery merge + explicit register routes (global-admin, no auto-sync); console hub (discovery drawer, register action, nav unhidden, task-defaults link). 30 files, no migrations. Six recorded deviations (§9.4), the load-bearing one being D1/D2: `main.py` registers the LM Studio instance under both `lm-studio` and `openai_compat` WITHOUT a `provider_name`, so both keys reported `openai_compat` — the endpoint now stamps the registry key, without which the whole `lm-studio` merge would have been wrong. Probe gate measured against a live Ollama: 200 in 5.025 s with a hung provider at a 5 s cap. Status → Review. Two boxes left open: the authenticated browser pass (no `agent-browser`, no live gateway/DB here) and the e2e spec run (owned by TASK-534). |
+| 2026-07-20 | **Implemented end-to-end** (§9). SMR probe hardening (parallel gather + `SMR_PROVIDER_PROBE_TIMEOUT_S`, `/api/ps` load state, LM Studio native `/api/v0/models` enrichment — R4 IMPLEMENTED, not deferred); DTO provider-list drift closed and contract-pinned; gateway discovery merge + explicit register routes (global-admin, no auto-sync); console hub (discovery drawer, register action, nav unhidden, task-defaults link). 30 files, no migrations. Six recorded deviations (§9.4), the load-bearing one being D1/D2: `main.py` registers the LM Studio instance under both `lm-studio` and `openai_compat` WITHOUT a `provider_name`, so both keys reported `openai_compat` — the endpoint now stamps the registry key, without which the whole `lm-studio` merge would have been wrong. Probe gate measured against a live Ollama: 200 in 5.025 s with a hung provider at a 5 s cap. Status → Review. Two boxes left open: the authenticated browser pass (no `agent-browser`, no live gateway/DB here) and the e2e spec run (owned by TASK-534). |

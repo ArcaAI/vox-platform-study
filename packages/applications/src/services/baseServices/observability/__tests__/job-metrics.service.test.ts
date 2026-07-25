@@ -99,7 +99,7 @@ describe('JobMetricsService', () => {
 
             service.recordSmrCallDuration('GenerateSummary', 'smr-v1', 1.5);
             service.recordSmrCallDuration('GeneratePreSummary', 'smr-v1', 2.0);
-            service.recordSmrCallDuration('GenerateDnaReport', 'smr-v2', 3.0);
+            service.recordSmrCallDuration('GenerateDnaReport', 'smr', 3.0);
 
             const d1 = timer1();
             const d2 = timer2();

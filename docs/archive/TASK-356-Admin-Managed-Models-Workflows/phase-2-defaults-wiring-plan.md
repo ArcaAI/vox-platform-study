@@ -41,7 +41,7 @@ activation, or the SMR runtime. Concretely:
   value flip; one new `AiModel` catalog row; one new `AsrPipeline` (per tenant) + `isDefault` switch;
   `GlobalSetting` default-pipeline-slug switches; an idempotent existing-tenant default-switch backfill.
 - **Tests:** seed assertions (TS, `@arcaai/database`) + one STT YAML-validity unit test (Python,
-  `apps/stt-v2`).
+  `apps/stt`).
 
 ### Out of scope (drawn as hard boundaries in §10)
 - **Phase 3 (D-7) SMR gateway refactor** — "no SMR default; pass the resolved model on EVERY call incl.
@@ -151,14 +151,14 @@ activation, or the SMR runtime. Concretely:
   per-user admin `assigned-pipeline` → **tenant `AsrPipeline.isDefault`** → `GlobalSetting
   default-stt-pipeline`. **⇒ the tenant `isDefault` row wins over the GlobalSetting**, so switching the
   default genuinely requires flipping `isDefault` (not just the GlobalSetting).
-- **YAML parser supports the target shape** (`apps/stt-v2/src/stt_v2/pipeline/yaml_parser.py`):
+- **YAML parser supports the target shape** (`apps/stt/src/stt/pipeline/yaml_parser.py`):
   inline `engine: faster_whisper` (or `faster-whisper`) → `AiModelFormat.FASTER_WHISPER`
   (test `tests/unit/test_yaml_parser_faster_whisper.py:37-67`); model `compute_type` validated against
   `VALID_CT2_COMPUTE_TYPES` which **includes `int8`** (`pipeline/dto.py:208-211`); `inference.compute_type`
   accepts `int8` (`yaml_parser.py:241-245`); `diarization` is a recognised top-level section with
   `enabled` + `max_speakers` (`yaml_parser.py:49-58,610-621`).
 - **`FasterWhisperLoader` supports `compute_type=int8` + local/HF paths** —
-  `apps/stt-v2/src/stt_v2/models/faster_whisper_loader.py:31-36,53-60` (uses `local_path` if it exists,
+  `apps/stt/src/stt/models/faster_whisper_loader.py:31-36,53-60` (uses `local_path` if it exists,
   else `source_uri`). **Confirms the README claim.**
 
 ### 3.4 Clone host (new tenants)
@@ -373,8 +373,8 @@ SYSTEM `HarnessPolicy` row takes those columns' DB `@default`s, which mirror the
 9. **S-test 9 (if Q-3 = yes)** — `switchTenantDefaultPipelineBackfill` is idempotent and only flips a
    tenant whose current default is the untouched prior seed default.
 
-### STT (Python) — `pnpm py:stt-v2:test` (conda `arcaenv`)
-`apps/stt-v2/tests/unit/test_yaml_parser_ct2_default_pipeline.py` (**N**):
+### STT (Python) — `pnpm py:stt:test` (conda `arcaenv`)
+`apps/stt/tests/unit/test_yaml_parser_ct2_default_pipeline.py` (**N**):
 - `it parses + validates the seeded CT2 default YAML` — inline `engine: faster_whisper`,
   `compute_type: int8` (model + inference), `diarization.enabled/max_speakers`, and dual_capture all
   pass `PipelineYamlParser.parse(...).validate(...)` with `valid is True`. (Mirrors the seeded YAML so we
@@ -394,7 +394,7 @@ Per `.cursor/rules/01-development-workflow.mdc`:
 |---|---|---|
 | DB / migration | **N/A** (no schema change). `pnpm --filter @arcaai/database db:migrate:status` clean | — |
 | Seed | `pnpm --filter @arcaai/database db:seed` runs clean **and is idempotent on re-run** (no duplicate defaults) | `seed.test.ts` green (S-tests 1-9) |
-| STT (Python) | — | `pnpm py:stt-v2:test` green (new YAML test) + existing `test_yaml_parser*` |
+| STT (Python) | — | `pnpm py:stt:test` green (new YAML test) + existing `test_yaml_parser*` |
 | Domain/App/API/UI | unchanged — confirm no compile impact: `pnpm build --filter @arcaai/domains @arcaai/applications` + `pnpm build:api` still green | existing suites unaffected |
 
 Completion also requires (workflow checklist): `ReadLints` clean on touched files; `seed/index.ts`
@@ -419,7 +419,7 @@ This plan sets **MODEL DEFAULTS only**. It explicitly:
 
 **Files this plan modifies (complete list):** `seed/13-harness-policy.ts` (new), `seed/index.ts`,
 `seed/11-global-setting.ts`, `seed/06-stt.ts`, `seed/91-user.ts`, `packages/database/src/__tests__/seed.test.ts`,
-`apps/stt-v2/tests/unit/test_yaml_parser_ct2_default_pipeline.py` (new). **No other file.**
+`apps/stt/tests/unit/test_yaml_parser_ct2_default_pipeline.py` (new). **No other file.**
 
 **Shared-file coordination:** `seed/06-stt.ts`, `seed/11-global-setting.ts`, `seed/index.ts`, and
 `seed.test.ts` were also touched by Phase 1/Phase 4 (already merged) — Phase 2 appends additive rows /
@@ -437,7 +437,7 @@ values).
 | R-3 | **New `tenant.service` tenants get no `AsrPipeline` rows** (pre-existing, §3.4), so they rely on the GlobalSetting cascade and won't carry an `isDefault` CT2 row. | Out of scope for Phase 2 (no regression — same as today). Note for a future phase if per-tenant pipeline provisioning is wanted. |
 | R-4 | **Accuracy↔speed tradeoff:** making turbo-int8 the *batch* default trades some accuracy for speed vs the prior full `whisper-large-v3` batch default. | Intentional per the ticket (CT2 turbo int8 is THE target default). If batch accuracy must be preserved, keep `batch_pipeline_slug` on a full-v3 pipeline (sub-decision; flag at review). |
 | R-5 | **`default-smr-model` value flip clobbers admin override on re-seed** (the GlobalSetting seed `update` block writes `value`, `11-global-setting.ts:689-696`). | It's `locked` (SUPER-only) + "UI consistency"; the harness authority is `HarnessPolicy` (non-clobbered, A1). Acceptable; called out in Q-4. |
-| R-6 | **Hard-coded references to the old default pipeline** elsewhere could assume `production-whisper-large-v3`. | Grep at implementation: refs found in `seed.test.ts`, `create-job.request.ts`, `backend-pipelines-tab.tsx`, stt-v2 e2e fixtures — review each; the slug still exists (only its `isDefault` changes), so most are unaffected. Update only the seed-test expectations (S-tests 6-8). |
+| R-6 | **Hard-coded references to the old default pipeline** elsewhere could assume `production-whisper-large-v3`. | Grep at implementation: refs found in `seed.test.ts`, `create-job.request.ts`, `backend-pipelines-tab.tsx`, stt e2e fixtures — review each; the slug still exists (only its `isDefault` changes), so most are unaffected. Update only the seed-test expectations (S-tests 6-8). |
 | R-7 | **Seeding the SYSTEM `HarnessPolicy` row "freezes" the other knobs** at today's code defaults (future code-default changes won't propagate to the seeded row). | Acceptable + intended (a global-default row is meant to be authoritative). The `update` block can be limited to smr fields; other columns rely on DB `@default` at create time. |
 
 ---

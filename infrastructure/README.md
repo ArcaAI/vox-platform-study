@@ -76,7 +76,7 @@ Dashboard JSONs and provisioning for a Grafana instance pointed at a Prometheus 
 
 | Dashboard | Focus |
 |---|---|
-| `dashboards/smr-v2-overview.json`, `smr-v2-resilience.json`, `smr-v2-security.json` | SMR v2 service health, resilience, and security metrics |
+| `dashboards/smr-overview.json`, `smr-resilience.json`, `smr-security.json` | SMR service health, resilience, and security metrics |
 | `dashboards/pgbouncer.json` | PgBouncer pool stats |
 | `dashboards/optimistic-locking.json` | Optimistic-locking conflict metrics |
 

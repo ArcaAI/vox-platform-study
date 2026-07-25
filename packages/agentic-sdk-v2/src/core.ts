@@ -399,7 +399,7 @@ export type {
 export type { DiffChange, DiffMode, DiffResult, DiffStats, PromptVersionDiff, PromptVersionDiffField } from './types';
 
 // =============================================================================
-// Types - STT-V2 Streaming
+// Types - STT Streaming
 // =============================================================================
 
 export type {
@@ -535,7 +535,7 @@ export {
   SMR_ENDPOINTS,
   STORAGE_ENDPOINTS,
   STORAGE_KEY_ENDPOINTS,
-  STT_V2_ENDPOINTS,
+  STT_ENDPOINTS,
   SUMMARY_ENDPOINTS,
   TENANT_BUCKET_ENDPOINTS,
   TENANT_ENDPOINTS,
@@ -664,7 +664,7 @@ export {
 export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } from './utils/voiceEmbedding';
 
 // =============================================================================
-// STT-V2 Streaming Clients
+// STT Streaming Clients
 // =============================================================================
 
 export { FileTranscriptionService, type FileTranscribeOptions } from './core/FileTranscriptionService';
@@ -675,7 +675,7 @@ export { SSEClient, type SSEConnectOptions } from './core/SSEClient';
 export { DualStreamRecorder } from './core/DualStreamRecorder';
 export type { DualStreamRecorderOptions, DualStreamRecorderResult } from './core/DualStreamRecorder';
 export { StreamingSessionManager, type SessionManagerStatus } from './core/StreamingSessionManager';
-export { SttV2WebSocketClient, type WsConnectOptions, type WsReconnectOptions } from './core/SttV2WebSocketClient';
+export { SttWebSocketClient, type WsConnectOptions, type WsReconnectOptions } from './core/SttWebSocketClient';
 
 // =============================================================================
 // Store (Advanced Usage)

@@ -218,7 +218,7 @@ export interface AudioOptions {
 /**
  * A single word-level timestamp within a transcript segment.
  *
- * Originates from stt-v2 `SegmentResult.word_timestamps` →
+ * Originates from stt `SegmentResult.word_timestamps` →
  * `WsTranscriptResult.wordTimestamps` and is carried through the SDK store so
  * consumers can render word timings / click-to-seek directly from
  * `audio.transcriptSegments` (rather than only from the raw socket).

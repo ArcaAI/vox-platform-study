@@ -94,21 +94,21 @@
         - apps/admin-console/**/*
         - packages/ui/**/*
 
-# ── STT-v2 (Speech-to-Text) ─────────────────────────────────────────────────
+# ── STT (Speech-to-Text) ─────────────────────────────────────────────────
 
-.rules-stt-v2:
+.rules-stt:
   rules:
     - !reference [.rules-always, rules]
     - !reference [.rules-cicd-always, rules]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
-          - apps/stt-v2/**/*
+          - apps/stt/**/*
         compare_to: refs/heads/main
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
-        - apps/stt-v2/**/*
+        - apps/stt/**/*
 
 # ── SMR (Summarization) ─────────────────────────────────────────────────────
 
@@ -135,12 +135,12 @@
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
-          - apps/tts-v2/**/*
+          - apps/tts/**/*
         compare_to: refs/heads/main
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
-        - apps/tts-v2/**/*
+        - apps/tts/**/*
 
 # ── NLP (Medical NLP) ───────────────────────────────────────────────────────
 
@@ -266,31 +266,31 @@
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
-          - "apps/stt-v2/**/*.py"
+          - "apps/stt/**/*.py"
           - "apps/smr/**/*.py"
           - "apps/nlp/**/*.py"
           - "apps/guardrail/**/*.py"
           - "apps/harness/**/*.py"
-          - "apps/tts-v2/**/*.py"
-          - "apps/stt-v2/**/requirements*.txt"
+          - "apps/tts/**/*.py"
+          - "apps/stt/**/requirements*.txt"
           - "apps/smr/**/requirements*.txt"
           - "apps/nlp/**/requirements*.txt"
-          - "apps/stt-v2/**/pyproject.toml"
+          - "apps/stt/**/pyproject.toml"
           - "apps/smr/**/pyproject.toml"
           - "apps/nlp/**/pyproject.toml"
           - "apps/guardrail/**/pyproject.toml"
           - "apps/harness/**/pyproject.toml"
-          - "apps/tts-v2/**/pyproject.toml"
+          - "apps/tts/**/pyproject.toml"
         compare_to: refs/heads/main
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
-        - "apps/stt-v2/**/*.py"
+        - "apps/stt/**/*.py"
         - "apps/smr/**/*.py"
         - "apps/nlp/**/*.py"
         - "apps/guardrail/**/*.py"
         - "apps/harness/**/*.py"
-        - "apps/tts-v2/**/*.py"
+        - "apps/tts/**/*.py"
 
 # ── SDK packages (for publish stage) ────────────────────────────────────────
 

@@ -13,7 +13,7 @@ Static read of SDK transport modules + backend gateways/controllers. Cross-check
 |---|---|---|---|---|---|---|---|
 | HTTP | REST API (CRUD, ticket mint, session create) | `AgenticClient.ts` | `apps/api/src/modules/**/*.controller.ts` | `Authorization: Bearer` + `X-Tenant-ID` (header), 401→`/auth/refresh` | n/a (per-request `AbortController`) | Implicit (`fetch`) | OK with caveats |
 | SSE | Async job updates (consultation jobs, DNA, transcription) + SMR streaming | `SSEClient.ts`, `SharedConnectionWorker.ts`, `SharedConnectionManager.ts` | `consultation-job.controller.ts`, `dna-writing-style*.controller.ts`, `transcription-job.controller.ts`, `smr-proxy.controller.ts` | `?ticket=<single-use>` (TASK-274) on `consultation-job` only; **all other SSE endpoints expect `Authorization` header which `EventSource` cannot send** | Bounded exp+jitter (cap 30 s, 10 attempts) | None (server→client only) | **Broken on 4 of 5 producers** |
-| WebSocket | STT-V2 audio streaming | `SttV2WebSocketClient.ts`, `StreamingSessionManager.ts` | `apps/api/src/modules/streaming/stt-ws.gateway.ts` | **NONE — `sessionId` only; gateway does not validate JWT/ticket/tenant** | Bounded exp+jitter (cap 30 s, 5 attempts) | Implicit (UA buffering); no `bufferedAmount` checks; mic frames sent unconditionally | **CRITICAL — unauth** |
+| WebSocket | STT audio streaming | `SttWebSocketClient.ts`, `StreamingSessionManager.ts` | `apps/api/src/modules/streaming/stt-ws.gateway.ts` | **NONE — `sessionId` only; gateway does not validate JWT/ticket/tenant** | Bounded exp+jitter (cap 30 s, 5 attempts) | Implicit (UA buffering); no `bufferedAmount` checks; mic frames sent unconditionally | **CRITICAL — unauth** |
 | WebRTC | (none) | — | — | — | — | — | **ABSENT** — verified by grep of `RTCPeerConnection`, `RTCDataChannel`, `mediasoup`, `livekit`, `WebRTCAdapter` across `packages/`, `apps/`. Only matches were `pnpm-lock.yaml` and `knowledge/room/README.md` (a doc reference). |
 
 ## 3. HTTP
@@ -49,7 +49,7 @@ Defects:
 
 ## 5. WebSocket
 
-`SttV2WebSocketClient` is the only WS client. It accepts `WsConnectOptions{timeoutMs}`, `WsReconnectOptions{enabled,maxAttempts=5,baseDelayMs=1000,maxDelayMs=30000}`, exp+jitter (≤50 %), bounded attempts. `acknowledgeConnection()` resets the counter once the server proves liveness. `binaryType='arraybuffer'`. URL is logged with query params stripped (`stripQueryParams`, `:421-428`).
+`SttWebSocketClient` is the only WS client. It accepts `WsConnectOptions{timeoutMs}`, `WsReconnectOptions{enabled,maxAttempts=5,baseDelayMs=1000,maxDelayMs=30000}`, exp+jitter (≤50 %), bounded attempts. `acknowledgeConnection()` resets the counter once the server proves liveness. `binaryType='arraybuffer'`. URL is logged with query params stripped (`stripQueryParams`, `:421-428`).
 
 `StreamingSessionManager.getWebSocketUrl()` (`:131-157`) builds `wss://host${wsUrl}?sessionId=...` and explicitly **does not** include the JWT — comments claim "Callers should send the token as the first WebSocket message".
 
@@ -64,13 +64,13 @@ Defects:
 |---|---|---|---|
 | C-WS-1 | `stt-ws.gateway.ts:29-50` | **Critical** | **WS gateway is unauthenticated.** The H-1/S-1 finding from TASK-262 is unmitigated. Any client that knows or guesses a `sessionId` can attach to the live transcript stream and inject audio frames. There is no JWT verification, no ticket consumption, no tenant binding, no per-session ownership check. |
 | C-WS-2 | `stt-ws.gateway.ts:147-174` | **Critical** | The auth-as-first-message contract documented in `StreamingSessionManager.ts:135-138` is not implemented server-side; the gateway returns `UNKNOWN_TYPE` for `{type:'auth'}`. Even a well-meaning SDK update cannot fix the auth gap without a backend change. |
-| C-WS-3 | `SttV2WebSocketClient.ts:175-230` | **Critical** | Client never sends an `auth` message at all. The contract is unimplemented on both ends. |
+| C-WS-3 | `SttWebSocketClient.ts:175-230` | **Critical** | Client never sends an `auth` message at all. The contract is unimplemented on both ends. |
 | H-WS-4 | `stt-ws.gateway.ts:38-50` | High | No tenant isolation: `SessionInfo` does not record `tenantId`, `userId`, or `consultationId`. Cross-tenant session-id collisions or misuse are not detectable. |
 | H-WS-5 | `stt-ws.gateway.ts:62-87` | High | Result subscription is created before any auth check. If C-WS-1 is ever fixed, the bridge subscription must move *after* auth or PHI streams to unauth clients during the validation window. |
-| M-WS-6 | `SttV2WebSocketClient.ts:235-258` | Medium | Audio sends do not check `bufferedAmount`. A slow server lets the UA's send buffer grow unbounded — memory pressure on long sessions. No drop policy, no high-water-mark backpressure event. |
-| M-WS-7 | `SttV2WebSocketClient.ts:202-224` | Medium | `intentionalDisconnect=true` is set in `disconnect()` but `ws.onclose=null` clears the close handler before the close event fires; the disconnect callback is invoked synchronously — fine in practice, but the `wasConnected` guard (`:204`) is now unreachable after `disconnect()` because `ws` is nulled first. Cleanup is correct; the dead code path is misleading. |
+| M-WS-6 | `SttWebSocketClient.ts:235-258` | Medium | Audio sends do not check `bufferedAmount`. A slow server lets the UA's send buffer grow unbounded — memory pressure on long sessions. No drop policy, no high-water-mark backpressure event. |
+| M-WS-7 | `SttWebSocketClient.ts:202-224` | Medium | `intentionalDisconnect=true` is set in `disconnect()` but `ws.onclose=null` clears the close handler before the close event fires; the disconnect callback is invoked synchronously — fine in practice, but the `wasConnected` guard (`:204`) is now unreachable after `disconnect()` because `ws` is nulled first. Cleanup is correct; the dead code path is misleading. |
 | M-WS-8 | `SharedConnectionWorker.ts:155-200` | Medium | The shared-worker WS path **never sends an auth message**, has no awareness of TASK-274 tickets, and would inherit C-WS-1 if anyone routed STT through it. Currently no SDK caller wires WS through the worker; document scope explicitly. |
-| L-WS-9 | `SttV2WebSocketClient.ts:341-344` | Low | `acknowledgeConnection()` is only callable by SDK callers — no internal trigger on first transcript. Counter resets only when consumer remembers; default is "every reconnect counts forever". |
+| L-WS-9 | `SttWebSocketClient.ts:341-344` | Low | `acknowledgeConnection()` is only callable by SDK callers — no internal trigger on first transcript. Counter resets only when consumer remembers; default is "every reconnect counts forever". |
 
 ## 6. WebRTC
 
@@ -80,7 +80,7 @@ Defects:
 
 ## 7. Cross-cutting Critical / High defects
 
-- **C-WS-1, C-WS-2, C-WS-3** (`stt-ws.gateway.ts:29-50,147-174`; `SttV2WebSocketClient.ts:175-230`): unauth WS — entire STT-V2 streaming path lacks JWT/ticket/tenant binding; auth-as-first-message contract is one-sided documentation, neither side implements it.
+- **C-WS-1, C-WS-2, C-WS-3** (`stt-ws.gateway.ts:29-50,147-174`; `SttWebSocketClient.ts:175-230`): unauth WS — entire STT streaming path lacks JWT/ticket/tenant binding; auth-as-first-message contract is one-sided documentation, neither side implements it.
 - **C-SSE-1** (`SharedConnectionWorker.ts:99-102`; `SharedConnectionManager.ts:363-366`): `?token=<jwt>` query-string regression in SharedWorker SSE — re-introduces SEC-A in any consumer that uses the connection multiplexer.
 - **C-SSE-2** (`useConsultationJob.ts:20,110`): SDK ticket scope `'consultation-jobs'` ≠ guard expectation `'consultation_job:<jobId>'`; **all** consultation-job SSE streams 401 (already documented as D-2 in `07-summary-with-dna.md`).
 - **H-SSE-3** (`transcription-job.controller.ts:306`, `dna-writing-style*.controller.ts`): `@Sse()` routes without `@StreamScope` cannot be opened by browser `EventSource` — JWT header is unreachable. Effectively dead endpoints from SDK perspective.
@@ -92,7 +92,7 @@ Defects:
 | Concern | Status | Notes |
 |---|---|---|
 | PHI in URL query | **Partially regressed** | `SSEClient` is clean (TASK-274). `SharedConnectionWorker`/`SharedConnectionManager` still append `?token=<jwt>` (C-SSE-1). `StreamingSessionManager.getWebSocketUrl()` is clean (sessionId only). |
-| PHI in logs | OK | `SttV2WebSocketClient.stripQueryParams` (`:421-428`); `AgenticClient` logs `endpoint`, not `url`. Transcript debug entries pass through `SDKLogger.debug` with `redactPHI` (`SttV2WebSocketClient.ts:32-42`). |
+| PHI in logs | OK | `SttWebSocketClient.stripQueryParams` (`:421-428`); `AgenticClient` logs `endpoint`, not `url`. Transcript debug entries pass through `SDKLogger.debug` with `redactPHI` (`SttWebSocketClient.ts:32-42`). |
 | Replay | **Partial** | Stream tickets are single-use, 30 s TTL (`stream-ticket.service.ts:25-101`). WS `sessionId` is *not* single-use and *not* TTL-bound — anyone with the ID can re-attach (C-WS-1). |
 | MITM | OK if HTTPS | `wss:`/`https:` selected from `apiClient.getBaseUrl().protocol`; assumes deployment uses TLS. |
 | Tenant isolation | **Broken on WS, partial on SSE** | HTTP injects `X-Tenant-ID` (verified by ContextInterceptor per `08-api-cross-reference.md §3.4`). SSE ticket carries `tenantId`. WS `SessionInfo` carries no tenant — H-WS-4. |
@@ -103,7 +103,7 @@ Defects:
 | Surface | Existing | Missing |
 |---|---|---|
 | `SSEClient` | Unit, leak, ticket | Reconnect-after-ticket-expiry race; concurrent `disconnect()`+`connect()` |
-| `SttV2WebSocketClient` | Unit, basic reconnect | bufferedAmount backpressure; partial frame on disconnect; no test asserting auth message is *required* |
+| `SttWebSocketClient` | Unit, basic reconnect | bufferedAmount backpressure; partial frame on disconnect; no test asserting auth message is *required* |
 | `stt-ws.gateway.ts` | Unit (counts) | **No auth tests** — C-WS-1 has no negative test; gateway accepts arbitrary sessionIds |
 | `SharedConnectionWorker` | None visible | Token-leak-across-tabs (H-SSE-5); tab-close → connection cleanup (M-SSE-6); SEC-A regression (C-SSE-1) |
 | `SharedConnectionManager` | None visible | Fallback `?token=` regression (C-SSE-1) |
@@ -121,7 +121,7 @@ Defects:
 ## 11. Recommended fixes
 
 **P0 (block release):**
-- Fix WS gateway auth: extend `JwtAuthGuard` (or a sibling `WsTicketGuard`) to consume a `?ticket=` from the upgrade request, scope-bind to `stt_session:<sessionId>`, populate `request.user`+`tenantId`, and store on `SessionInfo`. SDK: mint a ticket per WS connect via `apiClient.post('/auth/stream-ticket',{scope:`stt_session:${sessionId}`})` and append `?ticket=...` in `StreamingSessionManager.getWebSocketUrl()`. Tests: negative-auth e2e on `/ws/stt-v2/stream`. (C-WS-1/2/3, H-WS-4, H-WS-5.)
+- Fix WS gateway auth: extend `JwtAuthGuard` (or a sibling `WsTicketGuard`) to consume a `?ticket=` from the upgrade request, scope-bind to `stt_session:<sessionId>`, populate `request.user`+`tenantId`, and store on `SessionInfo`. SDK: mint a ticket per WS connect via `apiClient.post('/auth/stream-ticket',{scope:`stt_session:${sessionId}`})` and append `?ticket=...` in `StreamingSessionManager.getWebSocketUrl()`. Tests: negative-auth e2e on `/ws/stt/stream`. (C-WS-1/2/3, H-WS-4, H-WS-5.)
 - Remove `?token=` paths from `SharedConnectionWorker.ts:99-102` and `SharedConnectionManager.ts:363-366`; require ticket-mint at the SDK boundary before `subscribeSSE`. (C-SSE-1.)
 - Change `useConsultationJob.ts:20` to `scopeFor(jobId) = `consultation_job:${jobId}``; pass to `new SSEClient(scopeFor(jobId), …)`. (C-SSE-2.)
 
@@ -129,7 +129,7 @@ Defects:
 - Add `@StreamScope` (or equivalent ticket support) to `transcription-job`, `dna-writing-style`, `dna-writing-style-admin`, and `smr-proxy` SSE routes — or remove `@Sse()` and switch to a fetch-based stream readable from the SDK. (H-SSE-3, H-SSE-4.)
 - De-dup SSE in `SharedConnectionWorker` by `(id, userId)` not `id` alone; refuse to share an upstream connection across distinct tickets. (H-SSE-5.)
 - Skip refresh on `/auth/login`, `/auth/stream-ticket`, `/auth/impersonate` 401s in `AgenticClient.ts:243`. (H-HTTP-1.)
-- Add `bufferedAmount` watermark with drop or pause policy in `SttV2WebSocketClient.sendAudioFrame*`. (M-WS-6.)
+- Add `bufferedAmount` watermark with drop or pause policy in `SttWebSocketClient.sendAudioFrame*`. (M-WS-6.)
 - Implement real tab-disconnect detection in `SharedConnectionWorker` via heartbeat ping/pong with timeout. (M-SSE-6.)
 
 **P2 (hygiene):**

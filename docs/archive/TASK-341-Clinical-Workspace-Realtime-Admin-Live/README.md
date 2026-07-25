@@ -233,7 +233,7 @@ $ pnpm --filter @arcaai/ui-playground test     # = vitest run
 ### Coexisting working-tree changes NOT attributable to TASK-341
 The working tree contains uncommitted changes from adjacent efforts that this worker did **not** author and left intact:
 - **TASK-340 (Live SOAP Hardening), uncommitted:** `docs/implementation/TASK-340-Live-SOAP-Hardening/README.md`, `soap-parser.ts` (+test), `streamingAudioBridge.service.ts` (+test) — confirmed via `TASK-340` markers in their diffs. `live-documentation.service.ts` (+test) is a **shared** file: it carries both TASK-340 hardening (P0-A/P0-B/P1-A) and the TASK-341 B1/B3 additions. TASK-341 builds directly on this engine.
-- **Guardrail / LM-Studio effort, uncommitted:** the TTS→Guardrail and `SMR_V2_OPENAI_COMPAT_*` / Ollama-default changes in `.env.dev` and `.env.example` (the TASK-341 env change is *only* `LIVE_DOC_STATS_TTL_SEC=300`).
+- **Guardrail / LM-Studio effort, uncommitted:** the TTS→Guardrail and `SMR_OPENAI_COMPAT_*` / Ollama-default changes in `.env.dev` and `.env.example` (the TASK-341 env change is *only* `LIVE_DOC_STATS_TTL_SEC=300`).
 - **E2E test config, uncommitted:** `.env.test` (`S3_*`, `JWT_SECRET_KEY`, `SECRETS_TTL_SEC`) — unrelated auth/storage test fixes.
 
 ### Not verified: live end-to-end with real STT/SMR/NLP (expected; GPU/model host unavailable)

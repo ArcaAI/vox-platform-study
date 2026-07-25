@@ -10,7 +10,7 @@
             "cwd": "${workspaceFolder}/apps/smr/src",
             "request": "launch",
             "module": "uvicorn",
-            "args": ["smr_v2.main:app", "--host", "0.0.0.0", "--port", "8862", "--reload"],
+            "args": ["smr.main:app", "--host", "0.0.0.0", "--port", "8862", "--reload"],
             "jinja": true
         }
     ]

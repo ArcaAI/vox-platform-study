@@ -22,7 +22,7 @@
 # ── Skip controls ────────────────────────────────────────────────────────────
 # Set SKIP_TESTS=true to skip ALL test jobs, or use the granular variants:
 #   SKIP_TESTS_TS — skip TypeScript tests (test-api, test-packages, test-sdk, test-apps, test-ui-ct)
-#   SKIP_TESTS_PY — skip Python tests (test-stt-v2, test-smr, test-guardrail, test-nlp, test-harness)
+#   SKIP_TESTS_PY — skip Python tests (test-stt, test-smr, test-guardrail, test-nlp, test-harness)
 #
 # Usage:
 #   GitLab UI → Run pipeline → add variable SKIP_TESTS = true
@@ -49,8 +49,8 @@
   PORT: "8868"
   API_PORT: "8868"
   API_URL: "http://localhost:8868"
-  STT_V2_PORT: "8861"
-  STT_V2_URL: "http://localhost:8861"
+  STT_PORT: "8861"
+  STT_URL: "http://localhost:8861"
   SMR_PORT: "8862"
   SMR_URL: "http://localhost:8862"
   NLP_PORT: "8864"
@@ -288,9 +288,9 @@ test-ui-ct:
       changes:
         - packages/ui/**/*
 
-# ── STT-v2 tests (pytest) ───────────────────────────────────────────────────
+# ── STT tests (pytest) ───────────────────────────────────────────────────
 
-test-stt-v2:
+test-stt:
   stage: test
   image: python:3.11-slim
   tags: [test]
@@ -304,7 +304,7 @@ test-stt-v2:
     REDIS_URL: $CI_REDIS_URL
     TEST_REDIS_URL: $CI_REDIS_URL
   cache:
-    - key: pip-stt-v2
+    - key: pip-stt
       paths:
         - .pip-cache/
       policy: pull-push
@@ -313,21 +313,21 @@ test-stt-v2:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
-    - cd apps/stt-v2
+    - cd apps/stt
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
-    - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt-v2.xml || true
-    - python -m pytest tests/ -v --tb=short --junitxml=../../junit-stt-v2.xml --ignore=tests/e2e/ --ignore=tests/integration/ -x
+    - python -m pytest tests/unit/ -v --tb=short --junitxml=../../junit-stt.xml || true
+    - python -m pytest tests/ -v --tb=short --junitxml=../../junit-stt.xml --ignore=tests/e2e/ --ignore=tests/integration/ -x
   artifacts:
     when: always
     reports:
-      junit: junit-stt-v2.xml
+      junit: junit-stt.xml
     expire_in: 30 days
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
     - if: $SKIP_TESTS_PY == "true"
       when: never
-    - !reference [.rules-stt-v2, rules]
+    - !reference [.rules-stt, rules]
 
 # ── SMR tests (pytest) ──────────────────────────────────────────────────────
 
@@ -360,7 +360,7 @@ test-smr:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/smr
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
-    - PYTHONPATH=src python -m pytest src/smr_v2/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
+    - PYTHONPATH=src python -m pytest src/smr/tests/ -v --tb=short --junitxml=../../junit-smr.xml -x
   artifacts:
     when: always
     reports:
@@ -394,9 +394,9 @@ test-tts:
         - pip-$CI_DEFAULT_BRANCH
   script:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
-    - cd apps/tts-v2
+    - cd apps/tts
     - pip install --quiet --retries 5 --timeout 120 ".[test]"
-    - PYTHONPATH=src python -m pytest src/tts_v2/tests/ -v --tb=short --junitxml=../../junit-tts.xml -x
+    - PYTHONPATH=src python -m pytest src/tts/tests/ -v --tb=short --junitxml=../../junit-tts.xml -x
   artifacts:
     when: always
     reports:

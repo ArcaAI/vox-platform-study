@@ -38,7 +38,7 @@ HOPE is a multi-tenant healthcare AI platform handling PHI (Protected Health Inf
 
 ### Out of scope (will be revisited if user prioritizes)
 
-- Python service config (apps/stt-v2, apps/smr, apps/nlp, apps/tts) — only touched insofar as they consume `GlobalSetting`-derived values from the API layer
+- Python service config (apps/stt, apps/smr, apps/nlp, apps/tts) — only touched insofar as they consume `GlobalSetting`-derived values from the API layer
 - Frontend state management beyond config reads
 
 ---
@@ -477,7 +477,7 @@ Adopt OpenTelemetry semantic conventions for config events (`feature_flag.evalua
 | 3 | Invert default in `AuthorizationGuard` for `admin/*` (deny on empty list) + sweep admin controllers for missing `@CanManage` | S | Closes P0-3 / P0-4 escalation chain |
 | 4 | Add audit-log secret scrubbing (`@Secret` decorator or quick filter for `locked: true` rows) | S | Closes P0-6 ongoing leak |
 | 5 | Add boot-time invariant check: refuse to start if > 1 row exists for any platform key | XS | Detects P0-1 cache poisoning |
-| 6 | **Rotate and remove the real `AZURE_OPENAI_API_KEY` / `SMR_V2_AZURE_API_KEY` currently committed in `apps/api/.env.dev`** | XS | Treats live credential exposure as immediate incident |
+| 6 | **Rotate and remove the real `AZURE_OPENAI_API_KEY` / `SMR_AZURE_API_KEY` currently committed in `apps/api/.env.dev`** | XS | Treats live credential exposure as immediate incident |
 
 **Outcome**: closes the most critical exploit chains AND removes the live-credential exposure detected by the inventory audit. No Phase 1 item starts until items 1-6 are deployed to prod and verified via the smoke checklist below.
 
@@ -593,7 +593,7 @@ A parallel inventory pass over **all environment variables** and **all DB-stored
 
 ### IV.1 Live credentials in source-controlled files (CRITICAL — Phase 0 Item 6)
 
-`apps/api/.env.dev` currently contains real Azure OpenAI credentials (`AZURE_OPENAI_API_KEY`, `SMR_V2_AZURE_API_KEY`). Treat as compromised: rotate immediately, remove from all `.env*` files, add `gitleaks` pre-commit hook.
+`apps/api/.env.dev` currently contains real Azure OpenAI credentials (`AZURE_OPENAI_API_KEY`, `SMR_AZURE_API_KEY`). Treat as compromised: rotate immediately, remove from all `.env*` files, add `gitleaks` pre-commit hook.
 
 ### IV.2 Scope violations — settings in the wrong bucket
 
@@ -603,7 +603,7 @@ A parallel inventory pass over **all environment variables** and **all DB-stored
 | `S3_ENDPOINT`, `base_url` (api_gateway) | `GlobalSetting` table (`seed/06-stt.ts`) | Process env (SYSTEM) | Infrastructure URLs vary by deployment, not by tenant |
 | `JWT_SECRET_KEY`, `OIDC_CLIENT_SECRET` | `GlobalSetting` cache + env fallback (drift) | Env / Vault only | Currently routed through three paths (`AppSettingsService`, `authenticateJwt.ts`, `gen-dev-token`) — sign/verify can drift |
 | `local-asr-models`, `local-vad-models`, `local-noise-suppression-models`, `smr-provider-models` | `GlobalSetting` per-tenant (×4 identical copies) | `GlobalSetting` on `__GLOBAL__` only (GLOBAL-DB catalog) | Identical catalog for every tenant; wastes rows; drift risk on update |
-| `SMR_V2_OLLAMA_DEFAULT_MODEL`, `AZURE_TTS_DEFAULT_VOICE`, `AZURE_TTS_DEFAULT_LANGUAGE` | Process env | TENANT-DB (`default-smr-model`, `default-tts-voice`, `default-tts-language`) | Per-tenant preferences hardcoded as a system-wide env |
+| `SMR_OLLAMA_DEFAULT_MODEL`, `AZURE_TTS_DEFAULT_VOICE`, `AZURE_TTS_DEFAULT_LANGUAGE` | Process env | TENANT-DB (`default-smr-model`, `default-tts-voice`, `default-tts-language`) | Per-tenant preferences hardcoded as a system-wide env |
 
 ### IV.3 Setting key drift between backend seed and SDK `TENANT_CONFIG_KEYS`
 
@@ -627,15 +627,15 @@ Five distinct styles currently coexist:
 | camelCase | UserSettings keys (✓) | Keep for user preferences |
 | snake_case | Python pydantic field names (internally only, env vars are SCREAMING_SNAKE) | OK at field level; env vars must stay SCREAMING_SNAKE |
 
-### IV.5 Inter-service env var inconsistencies (api / stt-v2 / smr / nlp / tts)
+### IV.5 Inter-service env var inconsistencies (api / stt / smr / nlp / tts)
 
-| Concept | api | stt-v2 | smr | Action |
+| Concept | api | stt | smr | Action |
 |---|---|---|---|---|
-| OTel exporter | `OTEL_EXPORTER_OTLP_ENDPOINT` | `OTEL_EXPORTER_ENDPOINT` (missing `_OTLP_`) | `SMR_V2_OTEL_EXPORTER_ENDPOINT` | Standardize on `OTEL_EXPORTER_OTLP_ENDPOINT` everywhere |
-| OTel enable | `OTEL_TRACES_ENABLED` + `OTEL_METRICS_ENABLED` | `OTEL_ENABLED` (combined) | `SMR_V2_OTEL_ENABLED` | Split per-signal granularity in all services |
-| Log level | `LOG_LEVEL` (`info` lowercase) | `LOG_LEVEL` (`INFO` uppercase) | `SMR_V2_LOG_LEVEL` | Drop service prefix; standardize lowercase values |
+| OTel exporter | `OTEL_EXPORTER_OTLP_ENDPOINT` | `OTEL_EXPORTER_ENDPOINT` (missing `_OTLP_`) | `SMR_OTEL_EXPORTER_ENDPOINT` | Standardize on `OTEL_EXPORTER_OTLP_ENDPOINT` everywhere |
+| OTel enable | `OTEL_TRACES_ENABLED` + `OTEL_METRICS_ENABLED` | `OTEL_ENABLED` (combined) | `SMR_OTEL_ENABLED` | Split per-signal granularity in all services |
+| Log level | `LOG_LEVEL` (`info` lowercase) | `LOG_LEVEL` (`INFO` uppercase) | `SMR_LOG_LEVEL` | Drop service prefix; standardize lowercase values |
 | DB URL | `DATABASE_URL` (and stale `DB_CONNECTION_STRING` in some `.env`) | `DATABASE_URL` | `DATABASE_URL` | Delete `DB_CONNECTION_STRING*` aliases |
-| Redis | `REDIS_HOST` + `REDIS_PORT` + `REDIS_PASS` | `REDIS_URL` | `SMR_V2_REDIS_URL` | Document: api uses decomposed form, Python uses URL; both valid, just call out |
+| Redis | `REDIS_HOST` + `REDIS_PORT` + `REDIS_PASS` | `REDIS_URL` | `SMR_REDIS_URL` | Document: api uses decomposed form, Python uses URL; both valid, just call out |
 | MinIO/S3 secret | env + GlobalSetting + Docker `MINIO_ROOT_*` | env | — | Single source = Vault; remove duplicates |
 
 ### IV.6 Dead env vars (no code reads)
@@ -665,7 +665,7 @@ Five distinct styles currently coexist:
 
 | Bucket | Owner | Naming | Examples | Notes |
 |---|---|---|---|---|
-| **Environment / process** | Platform engineers | `SCREAMING_SNAKE_CASE` | `DATABASE_URL`, `REDIS_HOST`, `STT_V2_URL`, `LOG_LEVEL`, OTel vars, ports | Deployment-scoped; never changes at runtime |
+| **Environment / process** | Platform engineers | `SCREAMING_SNAKE_CASE` | `DATABASE_URL`, `REDIS_HOST`, `STT_URL`, `LOG_LEVEL`, OTel vars, ports | Deployment-scoped; never changes at runtime |
 | **Global DB config** (`GlobalSetting`, `tenantId = __GLOBAL__`) | Platform engineers via admin UI | `dot.notation` for system keys, `kebab-case` for ops flags | `stt.config.*`, `crypto.*`, `healthCheck.*`, `monitoring.*`, `ux-constants.smr-provider-models`, catalog rows | Platform-wide; cached |
 | **Tenant DB config** (`GlobalSetting`, per-tenant) | Tenant admins via admin UI | `kebab-case` | `enable-*`, `default-stt-model`, `default-smr-provider`, `vad-sensitivity` | Per-tenant overrides |
 | **User DB config** (`UserSetting`, `arcaai-sdk` namespace) | End users | `camelCase` | `workflowMode`, `language`, `dnaStyleId`, `localConfig` | Per-user prefs |
@@ -713,4 +713,4 @@ External sources cited in the research phase (year-tagged for currency):
 - **2026-05-24** — Initial assessment authored by parent orchestrator agent, drawing on parallel subagent reports (researcher / code-reviewer / database-admin / security-auditor / scout). Status: Review. No source code modified.
 - **2026-05-24** — Decisions locked-in: tenant count ≤ 50, pooled multi-tenant DB, PG ≥ 17, `__GLOBAL__` kept clone-on-create, secrets stay in env, PgBouncer recommended in session-mode (deferred to Phase 3), `_version` opt-locking documented but not implemented, Phase 0 made a hard gate. Phase 0 expanded with Item 6 (rotate live Azure keys committed in `.env.dev`) and explicit exit criteria. Added cross-stack Configuration Inventory section (live-credential incident, scope violations, SDK ↔ backend drift, naming convention map, target taxonomy). Added Companion Research Documents section linking to four knowledge bases under `research/architecture/system-config-multi-tenancy/`. No source code modified.
 - **2026-05-24** — Implementation roadmap commissioned: user selected (a) **implement Vault migration** with HashiCorp Vault as primary for local + self-hosted (AWS/Azure deferred as stub providers), (b) **implement optimistic locking**, (c) **roll out PgBouncer** per user's locked-in answers in research doc §10 (keep transaction mode IF Prisma 7 validation passes; keep `auth_file`; keep per-node placement; use `DATABASE_URL`+`DIRECT_URL` split), (d) **skip layered resolution** (research doc 01 archived). Created [`TASK-302 — System Configuration Implementation Roadmap`](../TASK-302-System-Config-Implementation-Roadmap/README.md) coordinating 4 streams (~157 tasks, ~30 code-review gates, ~61–66 eng-days total, ~5–6 calendar weeks with 4 engineers + 1 SRE in parallel). Stream A (Phase 0) is the hard gate. Updated Companion Research Documents table with companion-stream links. No source code modified.
-- **2026-05-24** — TASK-302 Stream A (Phase 0 emergency hotfix) code-complete on branch `feat/task-302-stream-a`. All six items shipped: (1) global `ValidationPipe` switched to strict whitelist + `forbidNonWhitelisted` + `forbidUnknownValues`; (2) `TenantService.updateTenantConfigs` rewritten with an explicit `{value, description}` allowlist (no spread) and `GlobalSettingEntity` setters for `key` / `tenantId` / `locked` / `defaultValue` throw `BusinessException` post-construction; (3) `AuthorizationGuard` denies on empty `requiredPermissions` for `admin/*` routes, all 9 admin controllers swept onto explicit `@CanManage` / `@CanRead`, boot-time `auditAdminRoutePermissions` refuses startup if any admin route lacks a permission decorator; (4) new `@Secret` decorator in `@arcaai/domains` marks `GlobalSettingEntity.value` and `.defaultValue`, `scrubLockedForAudit` replaces them with `[REDACTED]` in `ResourceUpdated` SysEvent payloads for locked rows, coverage test fails on any new unmarked entity field; (5) `AppSettingsService.cacheAppSettings` refuses boot if >1 row exists for the same platform key (`tenantId === GLOBAL_TENANT_ID`), with a dev-only `APP_SETTINGS_BOOT_INVARIANT=skip` escape hatch; (6) hardcoded `AZURE_OPENAI_API_KEY` scrubbed from `.env.dev` + `research/security/vuln-scan-apps-api.md`, `gitleaks` rule pack added with HOPE-specific rules + extensive allowlist, `simple-git-hooks` pre-commit hook installed with worktree compatibility note, GitLab `scan-gitleaks` CI job hard-fails on detected leaks. 3855 unit tests GREEN locally (3842 applications + 7 domains + 6 api); E2E `phase-0-redteam.spec.ts` lists 4 tests, execution deferred to CI. `gitleaks detect` clean across 356 commits. **Operational remainder (blocked on portal access)**: Azure OpenAI + SMR_V2 + production JWT_SECRET_KEY rotation (runbook in `_section-a-rotation-log.md`), staging duplicate-key smoke, AuditLog historical backfill (proposal in `_section-d-backfill-proposal.md` — `UPDATE`-only, awaits user approval per workspace rule). Phase 0 exit gate set to Code-Complete; Status will flip to Completed once the operational checklist in `_section-a-rotation-log.md` §F.3 is signed off.
+- **2026-05-24** — TASK-302 Stream A (Phase 0 emergency hotfix) code-complete on branch `feat/task-302-stream-a`. All six items shipped: (1) global `ValidationPipe` switched to strict whitelist + `forbidNonWhitelisted` + `forbidUnknownValues`; (2) `TenantService.updateTenantConfigs` rewritten with an explicit `{value, description}` allowlist (no spread) and `GlobalSettingEntity` setters for `key` / `tenantId` / `locked` / `defaultValue` throw `BusinessException` post-construction; (3) `AuthorizationGuard` denies on empty `requiredPermissions` for `admin/*` routes, all 9 admin controllers swept onto explicit `@CanManage` / `@CanRead`, boot-time `auditAdminRoutePermissions` refuses startup if any admin route lacks a permission decorator; (4) new `@Secret` decorator in `@arcaai/domains` marks `GlobalSettingEntity.value` and `.defaultValue`, `scrubLockedForAudit` replaces them with `[REDACTED]` in `ResourceUpdated` SysEvent payloads for locked rows, coverage test fails on any new unmarked entity field; (5) `AppSettingsService.cacheAppSettings` refuses boot if >1 row exists for the same platform key (`tenantId === GLOBAL_TENANT_ID`), with a dev-only `APP_SETTINGS_BOOT_INVARIANT=skip` escape hatch; (6) hardcoded `AZURE_OPENAI_API_KEY` scrubbed from `.env.dev` + `research/security/vuln-scan-apps-api.md`, `gitleaks` rule pack added with HOPE-specific rules + extensive allowlist, `simple-git-hooks` pre-commit hook installed with worktree compatibility note, GitLab `scan-gitleaks` CI job hard-fails on detected leaks. 3855 unit tests GREEN locally (3842 applications + 7 domains + 6 api); E2E `phase-0-redteam.spec.ts` lists 4 tests, execution deferred to CI. `gitleaks detect` clean across 356 commits. **Operational remainder (blocked on portal access)**: Azure OpenAI + SMR + production JWT_SECRET_KEY rotation (runbook in `_section-a-rotation-log.md`), staging duplicate-key smoke, AuditLog historical backfill (proposal in `_section-d-backfill-proposal.md` — `UPDATE`-only, awaits user approval per workspace rule). Phase 0 exit gate set to Code-Complete; Status will flip to Completed once the operational checklist in `_section-a-rotation-log.md` §F.3 is signed off.

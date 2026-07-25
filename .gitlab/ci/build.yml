@@ -50,7 +50,7 @@ warm-up-base-images:
 
 # ── Shared Python base image ─────────────────────────────────────────────────
 # Single base image consumed by ALL Python service builds (guardrail, nlp, smr,
-# harness, stt-v2 CPU stages) via `--build-arg BASE_IMAGE`. Must build BEFORE the
+# harness, stt CPU stages) via `--build-arg BASE_IMAGE`. Must build BEFORE the
 # Python service jobs (they `needs:` this job).
 
 build-python-base:
@@ -246,21 +246,21 @@ build-harness:
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
 
-# ── STT-v2 ML Runtime ───────────────────────────────────────────────────────
+# ── STT ML Runtime ───────────────────────────────────────────────────────
 
-build-stt-v2:
+build-stt:
   extends: .build-template
   needs:
     - job: warm-up-base-images
       optional: true
-    - job: test-stt-v2
+    - job: test-stt
       optional: true
   variables:
-    SERVICE_NAME: stt-v2-ml-runtime
-    # Root context: Dockerfile now references apps/stt-v2/* paths + workspace lock.
+    SERVICE_NAME: stt-ml-runtime
+    # Root context: Dockerfile now references apps/stt/* paths + workspace lock.
     # GPU stages use the nvidia/cuda base (not hope-python-base), so no BASE_IMAGE.
     DOCKER_CONTEXT: "."
-    DOCKERFILE: apps/stt-v2/docker/Dockerfile
+    DOCKERFILE: apps/stt/docker/Dockerfile
     BUILD_TARGET: ml-runtime
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
@@ -270,21 +270,21 @@ build-stt-v2:
       allow_failure: true
     - if: $CI_COMMIT_TAG =~ /^v\d+/
 
-# ── STT-v2 Worker ───────────────────────────────────────────────────────────
+# ── STT Worker ───────────────────────────────────────────────────────────
 
-build-stt-v2-worker:
+build-stt-worker:
   extends: .build-template
   needs:
     - job: warm-up-base-images
       optional: true
-    - job: test-stt-v2
+    - job: test-stt
       optional: true
   variables:
-    SERVICE_NAME: stt-v2-worker
-    # Root context: Dockerfile now references apps/stt-v2/* paths + workspace lock.
+    SERVICE_NAME: stt-worker
+    # Root context: Dockerfile now references apps/stt/* paths + workspace lock.
     # GPU stages use the nvidia/cuda base (not hope-python-base), so no BASE_IMAGE.
     DOCKER_CONTEXT: "."
-    DOCKERFILE: apps/stt-v2/docker/Dockerfile
+    DOCKERFILE: apps/stt/docker/Dockerfile
     BUILD_TARGET: worker
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"

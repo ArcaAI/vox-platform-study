@@ -15,10 +15,10 @@
 --        embedding Unsupported("vector(256)") -> Unsupported("vector(192)")
 --      and commit the schema change together with a proper migration copy of
 --      this file (folder name task_505_voice_profile_embedding_192).
---   4. Flip stt-v2 settings:
+--   4. Flip stt settings:
 --        DIARIZATION_HF_MODEL_ID=speechbrain/spkrec-ecapa-voxceleb
 --        VOICE_PROFILE_EMBEDDING_DIM=192
---   5. Restart stt-v2; clinicians re-enroll (profiles are modelId-stamped,
+--   5. Restart stt; clinicians re-enroll (profiles are modelId-stamped,
 --      so any stragglers restored from backup are detectable).
 --
 BEGIN;

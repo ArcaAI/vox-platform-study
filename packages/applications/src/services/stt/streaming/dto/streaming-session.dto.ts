@@ -1,8 +1,8 @@
 /**
  * DTOs for the streaming session management service.
  *
- * These DTOs mirror the Python STT-V2 internal API schemas and are used
- * by the StreamingSessionService to communicate with the STT-V2 service.
+ * These DTOs mirror the Python STT internal API schemas and are used
+ * by the StreamingSessionService to communicate with the STT service.
  */
 
 import { StorageDescriptor } from '../../../baseServices/storage/providers/IBlobStorageProvider';
@@ -39,7 +39,7 @@ export interface CreateStreamingSessionRequest {
 }
 
 // ---------------------------------------------------------------------------
-// Responses (from STT-V2 internal API)
+// Responses (from STT internal API)
 // ---------------------------------------------------------------------------
 
 export interface StreamingSessionStatus {
@@ -112,12 +112,12 @@ export interface StreamingTranscriptMessage {
   isFinal: boolean;
   /**
    * Committed-prefix length of `text` on partial results
-   * (stt-v2 local-agreement gate). Absent on finals and on older stt-v2
+   * (stt local-agreement gate). Absent on finals and on older stt
    * workers that don't emit the field.
    */
   stableChars?: number;
   /**
-   * Utterance ordinal stamped by stt-v2 on every
+   * Utterance ordinal stamped by stt on every
    * segment result; gloss results carry the same index as the final they
    * translate. Absent on older workers.
    */

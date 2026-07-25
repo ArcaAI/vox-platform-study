@@ -38,7 +38,7 @@
  *
  * Live-stack requirement: this spec depends on the dev stack
  * (`docker compose up postgres redis`) plus the seed in
- * `06-stt.ts` (production ASR pipeline). STT-V2 does NOT need to be
+ * `06-stt.ts` (production ASR pipeline). STT does NOT need to be
  * running — the create endpoint only writes the row; it does not
  * dispatch the job until `transcribeFile` is invoked separately.
  */
@@ -76,7 +76,7 @@ test.describe('AC-2/AC-3 — TranscriptionJob ownership genuine probe (AC-12)', 
 
     // Bootstrap a real TranscriptionJob row in tenant __GLOBAL__.
     // The create endpoint persists the row but does not dispatch
-    // to STT-V2; status will stay QUEUED, which is enough for the
+    // to STT; status will stay QUEUED, which is enough for the
     // interceptor (it reads tenantId off the row regardless).
     const createResp = await request.post('/api/v1/audio/transcription-jobs', {
       headers: { Authorization: `Bearer ${doctorToken}` },

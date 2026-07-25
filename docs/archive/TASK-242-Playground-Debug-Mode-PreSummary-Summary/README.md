@@ -44,7 +44,7 @@ The pre-summary and summary playgrounds are testing tools for developers and adm
 
 - `@arcaai/domains` — `ContextItemRepository`, `PromptTemplateRepository`, `DnaWritingStyleReportRepository`, `DepartmentRepository`
 - `@arcaai/ui` — UI components (Card, Tabs, Select, Switch, Badge, Textarea, etc.)
-- `apps/smr` — SMR v2 service for LLM generation
+- `apps/smr` — SMR service for LLM generation
 
 ---
 
@@ -59,7 +59,7 @@ Server-side prompt assembly endpoint that:
 - Enforces debug mode access control (SUPER_ADMIN, GLOBAL_ADMIN, TENANT_ADMIN only)
 - Fetches context item content, prompt template, and DNA writing style by ID
 - Constructs final prompt and system_prompt combining all inputs
-- Forwards assembled payload to SMR v2 `/api/v1/generate`
+- Forwards assembled payload to SMR `/api/v1/generate`
 - Returns debug metadata alongside generation results
 
 **DTOs**: `VisitType`, `GenerationType`, `AssembledGenerateRequest`
@@ -104,8 +104,8 @@ Note: qwen3.5:latest is a thinking model requiring `max_tokens=2048` to allow ro
 | `apps/api/src/modules/streaming/__tests__/smr-proxy.controller.test.ts` | 15 new unit tests for assembled endpoint |
 | `apps/ui-playground/src/features/summarization/pre-summary/index.tsx` | Debug mode UI for pre-summary |
 | `apps/ui-playground/src/features/summarization/summary/index.tsx` | Debug mode UI for summary |
-| `apps/smr/src/smr_v2/tests/e2e/conftest.py` | Fixed provider registry initialization, added LM Studio fixtures |
-| `apps/smr/src/smr_v2/tests/e2e/test_presummary_summary_providers.py` | New E2E tests for both providers |
+| `apps/smr/src/smr/tests/e2e/conftest.py` | Fixed provider registry initialization, added LM Studio fixtures |
+| `apps/smr/src/smr/tests/e2e/test_presummary_summary_providers.py` | New E2E tests for both providers |
 
 ### Test Results
 

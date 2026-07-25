@@ -821,7 +821,7 @@ Exported from `@arcaai/vox/core` for advanced use cases:
 | `FileTranscriptionService` | Upload and transcribe audio files |
 | `SSEClient` | Authenticated, reconnectable Server-Sent Events client |
 | `StreamingSessionManager` | Manage STT streaming sessions |
-| `SttV2WebSocketClient` | WebSocket client for STT-V2 streaming protocol |
+| `SttWebSocketClient` | WebSocket client for STT streaming protocol |
 | `useAgenticStore` | Direct access to the Zustand store (advanced) |
 | `createSDKLogger` | Logger factory with Console, Highlight.io, Loki, OpenTelemetry transports |
 

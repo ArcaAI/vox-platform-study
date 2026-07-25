@@ -46,7 +46,7 @@ import {
 } from './dto';
 import { Paginated } from '../../common/dto/paginated.response';
 import { PromptManagementDtoMapper } from './prompt-management.dto.mapper';
-import { mapSmrGenerateResponse } from '../consultation/summary/smr-v2-generate';
+import { mapSmrGenerateResponse } from '../consultation/summary/smr-generate';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { HarnessPolicyService } from '../harness-policy/harness-policy.service';
 import { IDepartmentService } from '../department/IDepartmentService';

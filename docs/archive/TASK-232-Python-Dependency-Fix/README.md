@@ -12,20 +12,20 @@
 
 ### Description
 
-Multiple Python services (NLP, STT-v2) failed to start due to native library symbol conflicts in the shared `arcaenv` conda environment on macOS (Apple Silicon). The root causes were:
+Multiple Python services (NLP, STT) failed to start due to native library symbol conflicts in the shared `arcaenv` conda environment on macOS (Apple Silicon). The root causes were:
 
 1. **NLP service crash**: `ImportError: Symbol not found: _iconv` — PyAV (pip wheel) bundled FFmpeg 7 libs that expected `_iconv` from the system `libiconv`, but conda's `libiconv` exports `_libiconv` (GNU convention).
-2. **STT-v2 warnings**: `python-dotenv` parse errors from YAML-style colons in `.env`, missing `omegaconf` module, and `torchcodec` FFmpeg linkage failure.
+2. **STT warnings**: `python-dotenv` parse errors from YAML-style colons in `.env`, missing `omegaconf` module, and `torchcodec` FFmpeg linkage failure.
 
 ### Business Context
 
-Both services are critical to the HOPE platform — NLP provides medical entity recognition and STT-v2 provides speech-to-text. Neither could start locally for development.
+Both services are critical to the HOPE platform — NLP provides medical entity recognition and STT provides speech-to-text. Neither could start locally for development.
 
 ### Acceptance Criteria
 
 - [x] NLP service starts without import errors
-- [x] STT-v2 service starts without python-dotenv parse errors
-- [x] STT-v2 diarization dependencies (pyannote.audio, omegaconf) load correctly
+- [x] STT service starts without python-dotenv parse errors
+- [x] STT diarization dependencies (pyannote.audio, omegaconf) load correctly
 - [x] Dependency versions captured in pyproject.toml files
 - [x] Setup script updated to install conda-managed packages correctly
 - [x] Documentation updated with new FFmpeg version, troubleshooting, and constraints
@@ -76,7 +76,7 @@ Replaced YAML-style `KEY: value` with `.env`-standard `KEY=value` for 10 Azure O
 | omegaconf | not installed | 2.3.0 | pip |
 | torchcodec | 0.7.0 | 0.7.0 (now loads correctly) | pip |
 
-#### 3. `apps/stt-v2/pyproject.toml`
+#### 3. `apps/stt/pyproject.toml`
 
 - Added `omegaconf>=2.3.0` to `[ml]` optional dependencies
 - Added documentation comment block about conda-managed packages
@@ -95,11 +95,11 @@ Replaced YAML-style `KEY: value` with `.env`-standard `KEY=value` for 10 Azure O
 - Moved DYLD_LIBRARY_PATH scripts to only run for `--apple` flag (conda installs are now platform-agnostic)
 - Added verification checks for av, numpy, scipy, omegaconf, and transformers.pipeline
 
-#### 6. `apps/stt-v2/src/stt_v2/health/api/routes.py`
+#### 6. `apps/stt/src/stt/health/api/routes.py`
 
 - Fixed Redis health check: replaced `broker.connection` (non-existent attribute) with `broker.client.ping()`
 
-#### 6. `knowledge/stt-v2/README.md`
+#### 6. `knowledge/stt/README.md`
 
 - Updated prerequisites: FFmpeg 8.x (was 6.x)
 - Added note explaining FFmpeg version constraint and torchcodec trade-off
@@ -118,10 +118,10 @@ Replaced YAML-style `KEY: value` with `.env`-standard `KEY=value` for 10 Azure O
 | File | Purpose |
 |------|---------|
 | `.env` | Fixed YAML-style colons to `.env`-standard equals signs |
-| `apps/stt-v2/pyproject.toml` | Added omegaconf dep, conda-managed package docs, torchcodec notes |
+| `apps/stt/pyproject.toml` | Added omegaconf dep, conda-managed package docs, torchcodec notes |
 | `apps/nlp/pyproject.toml` | Added conda-managed package docs, organized dependency groups |
 | `scripts/setup-python-env.sh` | FFmpeg 8, conda av/numpy/scipy/libiconv, omegaconf, new verifications |
-| `knowledge/stt-v2/README.md` | Prerequisites, setup, tech stack, troubleshooting updates |
+| `knowledge/stt/README.md` | Prerequisites, setup, tech stack, troubleshooting updates |
 | `docs/implementation/TASK-232-Python-Dependency-Fix/README.md` | This document |
 
 ### Dependency Constraint Summary

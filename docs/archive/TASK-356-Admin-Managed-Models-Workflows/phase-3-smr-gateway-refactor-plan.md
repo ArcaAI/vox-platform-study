@@ -55,7 +55,7 @@ cloud provider.
 - **ConfigResolver generalization (Phase 5).** Phase 3 reuses the *existing* `HarnessPolicyService`
   cascade; it does **not** build or depend on the generalized resolver (seam decided in §10 / Q-7).
 - **Hyperparameters.** SMR's `GENERATION_DEFAULTS` (temperature/max_tokens/top_p) in
-  `apps/smr/src/smr_v2/core/defaults.py` are **not** a "model default" — D-7 is about the **model**.
+  `apps/smr/src/smr/core/defaults.py` are **not** a "model default" — D-7 is about the **model**.
   They stay (callers may still omit them).
 
 ### Decisions applied / to confirm
@@ -74,21 +74,21 @@ cloud provider.
 
 ### 3.1 SMR carries an in-gateway model default today (the thing D-7 removes)
 
-- **Per-provider `default_model` config values** — `apps/smr/src/smr_v2/core/config.py`:
+- **Per-provider `default_model` config values** — `apps/smr/src/smr/core/config.py`:
   `OllamaConfig.default_model = "google/gemma-4-e4b"` (`:20`); `AzureOpenAIConfig.default_model = "gpt-5-mini"`
   (`:36`); `BedrockConfig.default_model = "anthropic.claude-3-5-haiku-…"` (`:52`);
   `OpenAICompatConfig.default_model = "google/gemma-4-e4b"` (`:71`).
-- **Request model is optional** — `apps/smr/src/smr_v2/models/requests.py`: `provider: str = "lm-studio"`
+- **Request model is optional** — `apps/smr/src/smr/models/requests.py`: `provider: str = "lm-studio"`
   (`:24`), `model: str | None = None` (`:25`). So an omitted model arrives as `None`.
 - **Providers apply the fallback** — `request.model or self._default_model`:
   `providers/openai_compat.py:41-42` (default stored `:33`), `providers/ollama.py:38-39` (`:35`),
   `providers/azure_openai.py:40-41` (`:33`), `providers/bedrock.py:45-46` (`:35`). The provider's
   `ProviderInfo.default_model` is also surfaced in the providers listing (`openai_compat.py:179`,
   `ollama.py:154`).
-- **Endpoint last-resort** — `apps/smr/src/smr_v2/api/endpoints/generate.py:145`:
+- **Endpoint last-resort** — `apps/smr/src/smr/api/endpoints/generate.py:145`:
   `model = request_body.model or "default"` (used for task/metrics labels); streaming mirror
   `resolved_model = model or request_body.model or "default"` (`:430`).
-- **Hyperparameters are separate** — `apps/smr/src/smr_v2/core/defaults.py` resolves only
+- **Hyperparameters are separate** — `apps/smr/src/smr/core/defaults.py` resolves only
   temperature/max_tokens/top_p; **no model defaulting here** (confirms the model fallback lives only in
   config + providers).
 
@@ -142,7 +142,7 @@ needing **zero `apps/harness/**` change** (key overlap win, §10).
 
 Grounded via repo-wide grep of `/api/v1/generate`. Ten production call sites; the shared TS payload
 builder is `buildSmrGeneratePayload` / `mapSmrGenerateResponse`
-(`packages/applications/src/services/consultation/summary/smr-v2-generate.ts`), which reads the model from
+(`packages/applications/src/services/consultation/summary/smr-generate.ts`), which reads the model from
 `pickString(options, 'model','smrModel','defaultSmrModel')` — **`undefined` when options omit it**.
 
 | # | Caller (method) | `path:line` | Path class | Model source **today** | After D-7 |
@@ -152,7 +152,7 @@ builder is `buildSmrGeneratePayload` / `mapSmrGenerateResponse`
 | 3 | `SummaryProcessor.callSmrService` | `summary.processor.ts:253` | **BullMQ** summary | `request.options` | resolve + pass |
 | 4 | `PreSummaryProcessor.callSmrService` | `pre-summary.processor.ts:210` | **BullMQ** pre-summary | `request.options` | resolve + pass |
 | 5 | `ComprehensiveSummaryProcessor.callSmrService` | `comprehensive-summary.processor.ts:303` | **BullMQ** comprehensive | `request.options` | resolve + pass |
-| 6 | `DnaWritingStyleProcessor.callSmrV2` | `dna-writing-style.processor.ts:259` | **BullMQ DNA** | **none** — body is `{prompt, system_prompt, stream}` only (`:260-264`) ⇒ SMR default | resolve + pass |
+| 6 | `DnaWritingStyleProcessor.callSmr` | `dna-writing-style.processor.ts:259` | **BullMQ DNA** | **none** — body is `{prompt, system_prompt, stream}` only (`:260-264`) ⇒ SMR default | resolve + pass |
 | 7 | `LiveDocumentationService.callSmr` | `live-documentation.service.ts:799` | **Live** running-SOAP | `LIVE_DOC_SMR_PROVIDER`/`LIVE_DOC_SMR_MODEL` env (`:174-175`, payload `:793-794`), often `undefined` | resolve + pass (Q-3b) |
 | 8 | `PromptManagementService.callSmrGenerate` | `prompt-management.service.ts:617` | **Admin** prompt-template test | **none** — body is `{prompt, stream}` only (`:618`) ⇒ SMR default | resolve + pass (Q-3a) |
 | 9 | `SmrProxyController.generate` | `smr-proxy.controller.ts:361` | **SDK/playground** direct proxy (`POST /text/generate`) | **pass-through** of client `body.model` (client-supplied) | pass-through; 422 if omitted (Q-3c) |
@@ -203,7 +203,7 @@ and add the two fields explicitly.
 | C3 | `summary.processor.ts` | **M** | Resolve in `callSmrService` (`:246-253`) using `job.data` tenant. | `summary.processor.test.ts` (T-C3) |
 | C4 | `pre-summary.processor.ts` | **M** | Same (`:205-210`). | `pre-summary.processor.test.ts` (T-C4) |
 | C5 | `comprehensive-summary.processor.ts` | **M** | Same (`:291-303`). | `comprehensive-summary.processor.test.ts` (T-C5) |
-| C6 | `dna-writing-style.processor.ts` | **M** | In `callSmrV2` (`:249-264`) add `provider`/`model` from B2 (tenant from `job.data`) to the currently model-less body. | `dna-writing-style.processor.test.ts` (T-C6) |
+| C6 | `dna-writing-style.processor.ts` | **M** | In `callSmr` (`:249-264`) add `provider`/`model` from B2 (tenant from `job.data`) to the currently model-less body. | `dna-writing-style.processor.test.ts` (T-C6) |
 | C7 | `live-documentation.service.ts` | **M / decision** | `callSmr` (`:784-805`) today uses `LIVE_DOC_SMR_*` env (`:174-175`). **Q-3b:** either resolve via B2 (needs the session tenantId — the service is a Redis-subscribing singleton, not request-CLS) or keep env but **require non-null** (no SMR fallback). | `live-documentation.service.test.ts` (T-C7) |
 | C8 | `prompt-management.service.ts` | **M / decision** | `callSmrGenerate` (`:610-625`) is an admin prompt-template **test**. It has `this.tenantId` (BaseService/CLS). **Q-3a:** resolve via B2 with `this.tenantId` and pass `{provider, model}`. | prompt-management test suite (T-C8) |
 
@@ -221,10 +221,10 @@ and add the two fields explicitly.
 
 | # | File | N/M | Change | Covering test |
 |---|---|---|---|---|
-| E1 | `apps/smr/src/smr_v2/models/requests.py` | **M** | Make `model` **required** (`model: str` with `min_length`), `:25`. A missing model ⇒ FastAPI **422** (fail-closed; Q-2). Keep `provider` default behavior per Q-4. | `test_request_models_e1.py` / `test_models.py` (T-E1) |
-| E2 | `apps/smr/src/smr_v2/core/config.py` | **M** | Remove the per-provider `default_model` fields (`:20,:36,:52,:71`) — or, if the providers listing still needs an informational value, keep them out of generation entirely (E3). | `test_config.py` (T-E2) |
-| E3 | `apps/smr/src/smr_v2/providers/{openai_compat,ollama,azure_openai,bedrock}.py` | **M** | Delete `_resolve_model`'s `or self._default_model` fallback; use `request.model` directly (`openai_compat:41-42`, `ollama:38-39`, `azure_openai:40-41`, `bedrock:45-46`). Decide `ProviderInfo.default_model` (`openai_compat:179`, `ollama:154`) → informational only (e.g. empty) or removed (Q-5). | provider tests (T-E3) |
-| E4 | `apps/smr/src/smr_v2/api/endpoints/generate.py` | **M** | Drop the `or "default"` last-resort (`:145`, streaming `:430`) — `model` is now guaranteed present. | `test_generate_endpoint_e1.py` (T-E4) |
+| E1 | `apps/smr/src/smr/models/requests.py` | **M** | Make `model` **required** (`model: str` with `min_length`), `:25`. A missing model ⇒ FastAPI **422** (fail-closed; Q-2). Keep `provider` default behavior per Q-4. | `test_request_models_e1.py` / `test_models.py` (T-E1) |
+| E2 | `apps/smr/src/smr/core/config.py` | **M** | Remove the per-provider `default_model` fields (`:20,:36,:52,:71`) — or, if the providers listing still needs an informational value, keep them out of generation entirely (E3). | `test_config.py` (T-E2) |
+| E3 | `apps/smr/src/smr/providers/{openai_compat,ollama,azure_openai,bedrock}.py` | **M** | Delete `_resolve_model`'s `or self._default_model` fallback; use `request.model` directly (`openai_compat:41-42`, `ollama:38-39`, `azure_openai:40-41`, `bedrock:45-46`). Decide `ProviderInfo.default_model` (`openai_compat:179`, `ollama:154`) → informational only (e.g. empty) or removed (Q-5). | provider tests (T-E3) |
+| E4 | `apps/smr/src/smr/api/endpoints/generate.py` | **M** | Drop the `or "default"` last-resort (`:145`, streaming `:430`) — `model` is now guaranteed present. | `test_generate_endpoint_e1.py` (T-E4) |
 | E5 | `apps/harness/**` | — | **No change** (3.3 + B1). Listed to make the boundary explicit (Q-6). | existing harness suite |
 
 ---
@@ -373,9 +373,9 @@ the shared summary files.
 `chain-summary.service.ts`; `summary.processor.ts`; `pre-summary.processor.ts`;
 `comprehensive-summary.processor.ts`; `dna-writing-style.processor.ts`; `live-documentation.service.ts`
 (Q-3b); `prompt-management.service.ts` (Q-3a); `smr-proxy.controller.ts` (Q-3c);
-`apps/smr/src/smr_v2/models/requests.py`; `apps/smr/src/smr_v2/core/config.py`;
-`apps/smr/src/smr_v2/providers/{openai_compat,ollama,azure_openai,bedrock}.py`;
-`apps/smr/src/smr_v2/api/endpoints/generate.py`; plus the matching test files. **No `apps/harness/**`, no
+`apps/smr/src/smr/models/requests.py`; `apps/smr/src/smr/core/config.py`;
+`apps/smr/src/smr/providers/{openai_compat,ollama,azure_openai,bedrock}.py`;
+`apps/smr/src/smr/api/endpoints/generate.py`; plus the matching test files. **No `apps/harness/**`, no
 seed, no schema, no other file.**
 
 ---

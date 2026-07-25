@@ -26,13 +26,13 @@ scrape_configs:
           service: "api-gateway"
           vm: "200"
 
-  - job_name: "stt-v2"
+  - job_name: "stt"
     metrics_path: "/metrics"
     scrape_interval: 15s
     static_configs:
       - targets: ["10.10.1.10:8861"]
         labels:
-          service: "stt-v2"
+          service: "stt"
           vm: "200"
 
   - job_name: "smr"

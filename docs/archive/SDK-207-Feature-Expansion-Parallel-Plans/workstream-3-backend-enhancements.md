@@ -25,7 +25,7 @@ This workstream focuses on fixing gaps in existing services: SummaryService shou
 
 - [x] `SummaryService.updateSummary()` creates `ContextItemVersion` before updating
 - [x] `UpdateSummaryRequest` supports `changeReason`, `changeSummary`, `changeSource`
-- [ ] ~~`GenerateSummaryRequest` supports `additionalContext`~~ — **Deferred**: relevant when summary generation migrates to SMR v2
+- [ ] ~~`GenerateSummaryRequest` supports `additionalContext`~~ — **Deferred**: relevant when summary generation migrates to SMR
 - [x] `DepartmentController` has `PATCH /departments/:id` endpoint
 - [x] `DepartmentResponse` DTO exposes prompt fields
 - [x] MLflow module removed from `app.module.ts` and filesystem
@@ -324,8 +324,8 @@ Before marking WS-3 complete:
 
 | Task | Reason | When |
 |------|--------|------|
-| Task 3: `additionalContext` on `GenerateSummaryRequest` | Summary generation still uses SMR v1; this field is for SMR v2 | When summary generation migrates to SMR v2 |
-| Task 7: Wire `PromptResolutionService` into summary paths | Same — relevant when summary generation moves to SMR v2 | When summary generation migrates to SMR v2 |
+| Task 3: `additionalContext` on `GenerateSummaryRequest` | Summary generation still uses SMR v1; this field is for SMR | When summary generation migrates to SMR |
+| Task 7: Wire `PromptResolutionService` into summary paths | Same — relevant when summary generation moves to SMR | When summary generation migrates to SMR |
 
 ### Key Design Decisions
 
@@ -334,4 +334,4 @@ Before marking WS-3 complete:
 | 1 | Used `ContextItemVersionFactory.CreateFromContextItem()` (not `CreateUserEditVersion`) | `CreateFromContextItem` accepts custom `changeReason` and `changeSource` from the request, while `CreateUserEditVersion` hardcodes them |
 | 2 | Added `ContextItemVersionRepository` as last constructor parameter | Avoids breaking existing constructor call order in tests and DI |
 | 3 | Version snapshot created BEFORE content update | Ensures the version captures the previous state, not the new state |
-| 4 | Deferred Tasks 3 and 7 | Both relate to SMR v2 integration which hasn't happened yet for summary generation; implementing now would be premature (YAGNI) |
+| 4 | Deferred Tasks 3 and 7 | Both relate to SMR integration which hasn't happened yet for summary generation; implementing now would be premature (YAGNI) |

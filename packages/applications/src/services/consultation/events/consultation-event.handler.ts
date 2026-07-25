@@ -315,6 +315,22 @@ export class ConsultationEventHandler {
           return;
         }
 
+        // (F-22, Lane G) — when the harness workflow owns this
+        // consultation, it persists its own NamedEntity rows for the same
+        // content (server-side NER inside the durable workflow), so the
+        // legacy BullMQ NER job would be duplicate work. Skip it.
+        if (config.harnessEnabled) {
+          this.logger.log({
+            message: 'Skipping legacy auto-NER job — harness workflow persists its own NamedEntity rows',
+            consultationId,
+            contextItemId,
+            correlationId,
+          });
+
+          this.emitPipelineCompleted(payload, ['transcription', 'summary']);
+          return;
+        }
+
         const nerJob = await this.consultationJobService.createNerJob(contextItemId, consultationId, tenantId, payload.userId ?? 'system');
 
         this.logger.log({

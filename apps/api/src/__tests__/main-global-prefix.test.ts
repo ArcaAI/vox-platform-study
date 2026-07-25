@@ -4,7 +4,7 @@ import { join } from 'path';
 
 /**
  * Reduced after module removal — internal route exclusion tests removed
- * since stt-v2 (the only internal route consumer) was removed.
+ * since stt (the only internal route consumer) was removed.
  */
 
 const mainTsSource = readFileSync(

@@ -433,25 +433,45 @@ describe('ConfigService', () => {
     describe('service URLs configuration', () => {
         it('should load service URLs from environment', () => {
             process.env.URL = 'http://api.example.com';
-            process.env.STT_V2_URL = 'http://stt-v2.example.com:8012';
+            process.env.STT_URL = 'http://stt.example.com:8012';
+            delete process.env.STT_V2_URL;
             process.env.GUARDRAIL_URL = 'http://guardrail.example.com:8863';
 
             const service = createService();
 
             expect(service.config.URL).toBe('http://api.example.com');
-            expect(service.config.STT_V2_URL).toBe('http://stt-v2.example.com:8012');
+            expect(service.config.STT_URL).toBe('http://stt.example.com:8012');
             expect(service.config.GUARDRAIL_URL).toBe('http://guardrail.example.com:8863');
+        });
+
+        it('should dual-read STT_V2_URL when STT_URL is unset', () => {
+            delete process.env.STT_URL;
+            process.env.STT_V2_URL = 'http://stt-legacy.example.com:8012';
+
+            const service = createService();
+
+            expect(service.config.STT_URL).toBe('http://stt-legacy.example.com:8012');
+        });
+
+        it('should prefer STT_URL over STT_V2_URL', () => {
+            process.env.STT_URL = 'http://stt.example.com:8012';
+            process.env.STT_V2_URL = 'http://stt-legacy.example.com:8012';
+
+            const service = createService();
+
+            expect(service.config.STT_URL).toBe('http://stt.example.com:8012');
         });
 
         it('should use default service URLs', () => {
             delete process.env.URL;
+            delete process.env.STT_URL;
             delete process.env.STT_V2_URL;
             delete process.env.GUARDRAIL_URL;
 
             const service = createService();
 
             expect(service.config.URL).toBe('http://localhost');
-            expect(service.config.STT_V2_URL).toBe('http://localhost:8861');
+            expect(service.config.STT_URL).toBe('http://localhost:8861');
             expect(service.config.GUARDRAIL_URL).toBe('http://localhost:8863');
         });
     });

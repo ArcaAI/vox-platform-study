@@ -29,7 +29,7 @@ Read each package's `package.json`, `tsup.config.ts`, `tsconfig.json`, store / b
 - **C-XCUT-7 (High)** — No package adopts `useActionState` / `useOptimistic`. Streaming-transcript hook (`useArca.audio-pipeline`) hand-rolls partial-vs-final state with `useState` only. No `Suspense`-compatible `createResource()` factory. Anchor §1.
 - **C-XCUT-8 (High)** — `vad/worklets/vad.worklet.ts:131` allocates a fresh `Float32Array(this.frameBuffer)` **on every accumulated frame** on the audio render thread, then transfers via `postMessage` (line 134). RNNoise worklet shows the correct pattern (pre-allocated). No SAB ringbuffer anywhere in the stack despite `crossOriginIsolated()` helper. Anchor §7.
 - **C-XCUT-9 (Critical)** — No package emits HIPAA audit-events from the SDK pipeline. `useAuditLog` (vox) only reads server logs; the on-device pipeline (capture / VAD / STT / NER) emits none. (`packages/agentic-sdk-v2/src/hooks/useAuditLog.ts`). Anchor §12.
-- **C-XCUT-10 (High)** — STT WS reconnect uses **half-jitter** (`Math.random() * exponentialDelay * 0.5`) and **no resumability tokens / lastSeq replay** (`packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts:384-386`). Token pre-refresh missing. Anchor §13.
+- **C-XCUT-10 (High)** — STT WS reconnect uses **half-jitter** (`Math.random() * exponentialDelay * 0.5`) and **no resumability tokens / lastSeq replay** (`packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts:384-386`). Token pre-refresh missing. Anchor §13.
 
 ## 4. 2026 best-practice adoption matrix (15 rows)
 
@@ -45,7 +45,7 @@ Read each package's `package.json`, `tsup.config.ts`, `tsconfig.json`, store / b
 | 8 | GLiNER-BioMed | P2 | **Not yet** | `med-ner` still on token-classification BERT (TASK-262 §4.3); model registry has no GLiNER entries |
 | 9 | Per-user VAD calibration | P1 | **Not yet** | grep `calibrateVAD\|noise floor\|RMS noise` returns 0 hits in `packages/vad/src` |
 | 10 | OPFS for model weights | P2 | **Not yet** | `navigator.storage` only used for quota estimate (`packages/utils/src/ModelManagementService.ts:349`); no `getDirectory()` calls |
-| 11 | Resumability tokens on STT WS | P1 | **Not yet** | `SttV2WebSocketClient.ts:357-389` uses bare `attemptReconnect`; no `resumeToken`/`lastSeq` round-trip |
+| 11 | Resumability tokens on STT WS | P1 | **Not yet** | `SttWebSocketClient.ts:357-389` uses bare `attemptReconnect`; no `resumeToken`/`lastSeq` round-trip |
 | 12 | HIPAA audit-event emission from SDK pipeline | P2 | **Not yet** | `useAuditLog` reads server log only; capture/VAD/STT/NER emit no audit events |
 | 13 | Per-user LoRA adapters | P2 | **Not yet** | `PersonalizationManager` is scaffolding (TASK-262 §3.7); no LoRA download/cache path |
 | 14 | OpenAPI codegen for SDK constants | P1 | **Not yet** | `core/constants.ts` hand-maintained; no generator in `package.json` scripts |
@@ -60,7 +60,7 @@ Read each package's `package.json`, `tsup.config.ts`, `tsconfig.json`, store / b
 | 1 | Refactor `agenticStore` to vanilla `createStore()` + Context + slices + atomic selectors. Replace every `useAgenticStore()` no-selector call with `(s => s.field)` (or `useShallow`). Single biggest perf + SSR fix. | **P0** | M | §2 |
 | 2 | Add `"use client"` directive (source-level or banner) to `room`, `vad`, `noise-filter`. Add `react-server` export condition that throws a friendly error in all 7 packages. Add `sideEffects: false` (or explicit array for worklet entries) to the 5 missing packages. | **P0** | S | §1, §10 |
 | 3 | Pin `onnxruntime-web` to one stable version across `vox`, `stt`, `vad` (`vad` CDN URL too). Stop using `1.22.0-dev.*` dev tag in production deps. | **P0** | S | §11 |
-| 4 | Add resumability tokens + full-jitter (`Math.random() * cappedDelay`) + token pre-refresh to `SttV2WebSocketClient`. Add `lastSeq`/replay handshake on reconnect. | **P1** | M | §13 |
+| 4 | Add resumability tokens + full-jitter (`Math.random() * cappedDelay`) + token pre-refresh to `SttWebSocketClient`. Add `lastSeq`/replay handshake on reconnect. | **P1** | M | §13 |
 | 5 | Migrate `tsup → tsdown` and enable `isolatedDeclarations` once across the seven packages. Schedule `useActionState`+`createResource()` exposure for the next iteration. | **P1** | M | §10 |
 
 ## 6. Consolidated scorecard

@@ -31,8 +31,8 @@
  * wire (DEF-C3).
  *
  * Live-stack requirement: this spec depends on the dev stack PLUS the
- * STT-V2 service for `/voice-profile/extract` (called by
- * `VoiceProfileService.enroll`). If STT-V2 is unreachable, the
+ * STT service for `/voice-profile/extract` (called by
+ * `VoiceProfileService.enroll`). If STT is unreachable, the
  * enrolment in `beforeAll` 5xxs and every dependent test is reported
  * as a setup failure — the cross-user assertion intentionally does
  * NOT fall back to a synthetic id, because that would silently
@@ -50,9 +50,9 @@ const SYNTHETIC_PROFILE_ID = '018f0000-0000-7200-8000-000000000000';
 
 /**
  * Build a minimal 16-bit PCM WAV buffer with `durationSeconds` of
- * silence at 16 kHz, mono. STT-V2's voice-profile extractor needs
+ * silence at 16 kHz, mono. STT's voice-profile extractor needs
  * enough audio to compute an embedding; ~3 seconds is the documented
- * minimum in `apps/stt-v2/docs/voice-profile.md`. We pad to 4 s to
+ * minimum in `apps/stt/docs/voice-profile.md`. We pad to 4 s to
  * stay safely above the floor without making the test artifact huge.
  */
 function createSilenceWav(durationSeconds: number): Buffer {
@@ -98,7 +98,7 @@ test.describe('AC-2/AC-3 — UserVoiceProfile ownership genuine probe (AC-11)', 
     doctor2Token = doctor2Login!.token;
 
     // Bootstrap a real voice profile owned by `doctor`. The
-    // enrolment hits STT-V2 for the embedding — if the service is
+    // enrolment hits STT for the embedding — if the service is
     // unavailable the response is 5xx, in which case downstream
     // cross-user probes intentionally `expect(profileId).toBeTruthy()`
     // to surface the setup failure rather than degrade to a
@@ -138,7 +138,7 @@ test.describe('AC-2/AC-3 — UserVoiceProfile ownership genuine probe (AC-11)', 
   });
 
   test('PATCH /voice-profile/:id/activate from a different user → 404', async ({ request }) => {
-    test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT-V2 may be unavailable');
+    test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT may be unavailable');
     const response = await request.patch(`/api/v1/voice-profile/${profileId}/activate`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
     expect(response.status()).toBe(404);
     const body = await response.json();
@@ -146,13 +146,13 @@ test.describe('AC-2/AC-3 — UserVoiceProfile ownership genuine probe (AC-11)', 
   });
 
   test('PATCH /voice-profile/:id/deactivate from a different user → 404', async ({ request }) => {
-    test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT-V2 may be unavailable');
+    test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT may be unavailable');
     const response = await request.patch(`/api/v1/voice-profile/${profileId}/deactivate`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
     expect(response.status()).toBe(404);
   });
 
   test('DELETE /voice-profile/:id from a different user → 404 (no 200 leak)', async ({ request }) => {
-    test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT-V2 may be unavailable');
+    test.skip(!profileId, 'enrolment failed — see beforeAll warning; STT may be unavailable');
     const response = await request.delete(`/api/v1/voice-profile/${profileId}`, { headers: { Authorization: `Bearer ${doctor2Token}` } });
     expect(response.status()).toBe(404);
   });

@@ -25,7 +25,7 @@ first offline load).
 
 ## 2. Chosen approach — Option A: MinIO + init-container
 
-Mirrors the pattern `apps/stt-v2` already runs on GPU nodes (a node-local model
+Mirrors the pattern `apps/stt` already runs on GPU nodes (a node-local model
 cache hydrated before startup):
 
 1. An authorized operator does **one** gated `snapshot_download` (token used here **only**).
@@ -46,7 +46,7 @@ export HF_TOKEN=hf_...          # a token that has ACCEPTED the indic-parler-tts
 huggingface-cli login           # or rely on HF_TOKEN
 
 # From the repo root:
-python apps/tts-v2/scripts/mirror_parler_weights.py --out ./mirror
+python apps/tts/scripts/mirror_parler_weights.py --out ./mirror
 ```
 
 The script pins the current commit sha of each repo, downloads them into

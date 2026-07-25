@@ -702,20 +702,45 @@ class HarnessDocWorkflow:
             # Progress stage 3 — re-emitted on every regen iteration (the fold on
             # the API side re-activates it and bumps the attempt counter).
             await self._report_progress(inp, "drafting_note")
-            assembled = await workflow.execute_activity(
-                assemble_prompt,
-                AssembleInput(
-                    consultation_id=inp.consultation_id,
-                    tenant_id=inp.tenant_id,
-                    user_id=inp.user_id,
-                    template=inp.template,
-                    dna_style_id=inp.dna_style_id,
-                    conversation_language=inp.conversation_language,
-                    trajectory=self._traj(inp),
-                ),
-                start_to_close_timeout=_ACTIVITY_TIMEOUT,
-                retry_policy=_API_RETRY,
-            )
+            # F-13 — assemble ONCE per pre-delivery loop. Every field of
+            # ``AssembleInput`` is run-constant, and the activity is a pure read of
+            # state this loop does not touch: the transcript is written before the
+            # run, ``persist_entities`` ran ONCE above the loop, the clinician
+            # notes/attachments/highlights and the live-SOAP warm-start snapshot are
+            # written elsewhere, and the regen critique is appended LATER — inside
+            # ``generate`` (``prompt_cache.assemble_generation_prompt``), never here.
+            # So a repeat call re-fetched byte-identical bytes; same reasoning as the
+            # retrieval pass above, which already runs once.
+            #
+            # Skipping a scheduled activity REMOVES a command, so the skip is gated on
+            # ``workflow.patched()``. The ``assembled is None`` operand comes FIRST, so
+            # the FIRST iteration never calls ``workflow.patched`` — a single-iteration
+            # run (the overwhelming majority) records NO marker and its history stays
+            # byte-identical to the legacy one, and an old multi-iteration history
+            # replays with ``patched`` False ⇒ the legacy per-iteration call. The
+            # ``task-516-mcp-tools`` / ``task-551-redaction`` conditional-patch
+            # precedent.
+            #
+            # The reuse stops at the delivery boundary on purpose: the post-delivery
+            # regen path (``_regen_compute``) runs after ``persist_draft``, whose
+            # apps/api-side handling can persist further ``NamedEntity`` rows for the
+            # delivered note — a genuinely different assemble output — so it keeps its
+            # own call.
+            if assembled is None or not workflow.patched("task-553-assemble-reuse"):
+                assembled = await workflow.execute_activity(
+                    assemble_prompt,
+                    AssembleInput(
+                        consultation_id=inp.consultation_id,
+                        tenant_id=inp.tenant_id,
+                        user_id=inp.user_id,
+                        template=inp.template,
+                        dna_style_id=inp.dna_style_id,
+                        conversation_language=inp.conversation_language,
+                        trajectory=self._traj(inp),
+                    ),
+                    start_to_close_timeout=_ACTIVITY_TIMEOUT,
+                    retry_policy=_API_RETRY,
+                )
             # the retrieved Knowledge Context (StrictCitations) block + the
             # (possibly offloaded) prompt refs are threaded to ``generate``, which resolves
             # the prompt inline-or-ref and folds in the block. The workflow no longer

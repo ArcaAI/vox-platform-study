@@ -45,9 +45,9 @@ This ticket addresses **5 gaps** and **3 enhancements** identified during the co
 |---|---|---|
 | Consultation get-or-create | PASS | Natural key `(patientId, doctorId, date)`, idempotent |
 | Context injection (CRUD) | PASS | All types: `CASE_NOTE`, `TRANSCRIPT`, `WORKNOTE`, `ATTACHMENT`, etc. |
-| STT real-time streaming (WebSocket) | PASS | `/ws/stt-v2/stream`, Redis Streams, binary + JSON audio |
+| STT real-time streaming (WebSocket) | PASS | `/ws/stt/stream`, Redis Streams, binary + JSON audio |
 | STT batch transcription (SSE) | PASS | `POST /api/v1/transcription-jobs/transcribe` with SSE progress |
-| Transcript auto-storage | PASS | STT-v2 internal callback creates `ContextItem(TRANSCRIPT)` automatically |
+| Transcript auto-storage | PASS | STT internal callback creates `ContextItem(TRANSCRIPT)` automatically |
 | Summary generation (sync + async) | PASS | BullMQ jobs with SSE progress tracking |
 | Summary update with versioning | PASS | Version snapshot before update, Qdrant re-sync marking |
 | NER extraction (sync + async) | PASS | Async persists entities; sync now persists too (GAP-5 fixed) |
@@ -1188,7 +1188,7 @@ Extends standard `SummaryResponse` with: `sourceConsultationIds`, `sectionCount`
 
 **Problem**: The SSE endpoint in `ConsultationJobController` used `interval(2000)` polling to check job status every 2 seconds, despite `ConsultationJobService` already publishing updates to the `consultation_job_updates:{jobId}` Redis channel.
 
-**Solution**: Replaced the polling-based `interval()` RxJS pipeline with a real-time Redis Pub/Sub subscription, following the same pattern used by the STT-v2 `TranscriptionRealtimeService`.
+**Solution**: Replaced the polling-based `interval()` RxJS pipeline with a real-time Redis Pub/Sub subscription, following the same pattern used by the STT `TranscriptionRealtimeService`.
 
 **Files Modified**:
 
@@ -1213,7 +1213,7 @@ Extends standard `SummaryResponse` with: `sourceConsultationIds`, `sectionCount`
 **Benefits**:
 - Eliminates 2-second polling delay — updates are now instant
 - Reduces Redis GET load (no polling reads every 2s per SSE connection)
-- Consistent pattern with STT-v2 realtime transcription streaming
+- Consistent pattern with STT realtime transcription streaming
 - Proper cleanup of Redis subscriptions via reference counting
 | 2 | 2026-02-17 | **GAP-6 implemented**: Consolidated ContextController into ConsultationController | Completed |
 | 4 | 2026-02-17 | **GAP-2 implemented**: Fix `getSharedContext()` to combine chain + date-based strategies | Completed |

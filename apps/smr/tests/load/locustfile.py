@@ -1,5 +1,5 @@
 """
-SMR V2 Load Tests — Locust
+SMR Load Tests — Locust
 
 Verifies resilience features under sustained load:
 - Baseline throughput
@@ -25,7 +25,7 @@ from locust import HttpUser, between, constant, tag, task
 
 
 class BaseSmrUser(HttpUser):
-    """Base class for SMR V2 load test users. Sets auth header and provider."""
+    """Base class for SMR load test users. Sets auth header and provider."""
 
     abstract = True
     provider = "lm-studio"

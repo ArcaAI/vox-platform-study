@@ -160,6 +160,11 @@ const createMockSummaryMetaRepository = () => ({
         assuranceCompletedAt: null,
     }),
     update: vi.fn().mockImplementation((id, entity) => Promise.resolve({ id, ...entity })),
+    // TASK-553 F-11: SummaryMeta gained `_version`, so `finalizeAssurance`
+    // backfills through the versioned compare-and-set path rather than a blind
+    // `update`. The early meta fixture above has no explicit `version`, so the
+    // service passes the `?? 1` fallback.
+    updateWithVersion: vi.fn().mockImplementation((id, entity) => Promise.resolve({ id, ...entity })),
 });
 
 const createMockPromptAssemblyService = () => ({
@@ -1391,7 +1396,7 @@ describe('HarnessInternalService', () => {
 
             await service.finalizeAssurance('consultation-1', finalizeBody());
 
-            const [, updated] = summaryMetaRepository.update.mock.calls[0];
+            const [, updated] = summaryMetaRepository.updateWithVersion.mock.calls[0];
             expect(updated.citationsMap).toEqual(
                 expect.objectContaining({
                     claims: [{ id: 'c1', status: 'verified' }],
@@ -1403,15 +1408,15 @@ describe('HarnessInternalService', () => {
         it('leaves citationsMap as the fresh verdict map when no EARLY segmentCitedIds exist', async () => {
             // Default beforeEach mock: early meta citationsMap is null.
             await service.finalizeAssurance('consultation-1', finalizeBody());
-            const [, updated] = summaryMetaRepository.update.mock.calls[0];
+            const [, updated] = summaryMetaRepository.updateWithVersion.mock.calls[0];
             expect(updated.citationsMap).toEqual({ claims: [{ id: 'c1', status: 'verified' }] });
         });
 
         it('backfills the early SummaryMeta with the inferential verdict + assuranceCompletedAt', async () => {
             await service.finalizeAssurance('consultation-1', finalizeBody());
             expect(summaryMetaRepository.findByContextItem).toHaveBeenCalledWith('ctx-draft-1');
-            expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
-            const [, updated] = summaryMetaRepository.update.mock.calls[0];
+            expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
+            const [, updated] = summaryMetaRepository.updateWithVersion.mock.calls[0];
             expect(updated.ragTriadScore).toBe(0.92);
             expect(updated.gateDecision).toBe('PASS');
             expect(updated.guardrailDecisions).toEqual({ safety: { verdict: 'pass' }, groundedness: { score: 0.88 } });
@@ -1451,7 +1456,7 @@ describe('HarnessInternalService', () => {
             await service.finalizeAssurance('consultation-1', finalizeBody());
             expect(consultationRepository.update).not.toHaveBeenCalled();
             // …but it still re-stamps the verdict (safe to repeat).
-            expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
+            expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
         });
 
         it('appends REDUCED_ASSURANCE when reducedAssurance is true', async () => {
@@ -1500,7 +1505,7 @@ describe('HarnessInternalService', () => {
             // Note stands — the signed consultation is NEVER regressed.
             expect(consultationRepository.update).not.toHaveBeenCalled();
             // The verdict is still backfilled onto the meta (audit completeness).
-            expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
+            expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
         });
 
         it('records POST_SIGN_FLAG for a REGEN verdict after an early sign', async () => {
@@ -1618,7 +1623,7 @@ describe('HarnessInternalService', () => {
             await expect(service.finalizeAssurance('consultation-1', finalizeBody())).resolves.toEqual(
                 expect.objectContaining({ recorded: true, contextItemId: 'ctx-draft-1' }),
             );
-            expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
+            expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
             expect(consultationRepository.update).toHaveBeenCalledWith(
                 'consultation-1',
                 expect.objectContaining({ status: ConsultationStatus.PENDING_REVIEW }),
@@ -1834,7 +1839,7 @@ describe('HarnessInternalService', () => {
             const first = await service.finalizeAssurance('consultation-1', finalizeBody() as any, 'run-1:finalize_assurance');
             const second = await service.finalizeAssurance('consultation-1', finalizeBody() as any, 'run-1:finalize_assurance');
 
-            expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
+            expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
             expect(second).toEqual(first);
             expect(second).toEqual({ recorded: true, contextItemId: 'ctx-draft-1' });
         });
@@ -2024,7 +2029,7 @@ describe('HarnessInternalService', () => {
                 secretsService,
             );
             const encOrder = summaryMetaRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
-            const updateOrder = summaryMetaRepository.update.mock.invocationCallOrder[0];
+            const updateOrder = summaryMetaRepository.updateWithVersion.mock.invocationCallOrder[0];
             expect(encOrder).toBeLessThan(updateOrder);
         });
 
@@ -2041,7 +2046,7 @@ describe('HarnessInternalService', () => {
             const result = await service.finalizeAssurance('consultation-1', finalizeBody() as any);
 
             expect(result).toEqual(expect.objectContaining({ recorded: true }));
-            expect(summaryMetaRepository.update).toHaveBeenCalledTimes(1);
+            expect(summaryMetaRepository.updateWithVersion).toHaveBeenCalledTimes(1);
         });
 
         // ── Required mode (SECRETS_PROVIDER=vault) — FAIL-CLOSED ──
@@ -2127,7 +2132,7 @@ describe('HarnessInternalService', () => {
                     gateDecision: 'PASS',
                 } as any),
             ).rejects.toThrow(NotFoundException);
-            expect(summaryMetaRepository.update).not.toHaveBeenCalled();
+            expect(summaryMetaRepository.updateWithVersion).not.toHaveBeenCalled();
         });
 
         it('recordGateDecision → 404, no WORM append', async () => {

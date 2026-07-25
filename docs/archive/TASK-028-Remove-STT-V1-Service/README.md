@@ -13,11 +13,11 @@
 
 ### Description
 
-Remove the legacy STT v1 service (`apps/stt/`) from the HOPE monorepo. The STT v2 service (`apps/stt-v2/`) is the production replacement and must **not** be modified in any way.
+Remove the legacy STT v1 service (`apps/stt/`) from the HOPE monorepo. The STT service (`apps/stt/`) is the production replacement and must **not** be modified in any way.
 
 ### Business Context
 
-- STT v2 has fully replaced STT v1 for all speech-to-text capabilities.
+- STT has fully replaced STT v1 for all speech-to-text capabilities.
 - Keeping the deprecated v1 service creates confusion, increases CI/CD time, and adds maintenance burden.
 - The v1 service is already marked as "Legacy (deprecated)" in `.env.example`.
 
@@ -30,12 +30,12 @@ Remove the legacy STT v1 service (`apps/stt/`) from the HOPE monorepo. The STT v
 - [x] Cursor rules for STT v1 are removed/updated
 - [x] PM2 ecosystem config no longer references STT v1
 - [x] GitLab CI build job for STT v1 is removed
-- [x] `apps/stt-v2/` is **untouched** (zero modifications)
+- [x] `apps/stt/` is **untouched** (zero modifications)
 
 ### Constraints
 
-- **DO NOT** touch `apps/stt-v2/` at all
-- **DO NOT** remove references to `stt-v2` or the `@arcaai/stt` SDK plugin (these are legitimate v2 references)
+- **DO NOT** touch `apps/stt/` at all
+- **DO NOT** remove references to `stt` or the `@arcaai/stt` SDK plugin (these are legitimate v2 references)
 - **DO NOT** remove the `packages/stt/` client package (shared TS library used across the monorepo)
 - **DO NOT** remove Qdrant `stt_speaker_embeddings` collection references (used by v2)
 - **DO NOT** remove database seed files for STT config (`06-stt`) — these are shared
@@ -73,7 +73,7 @@ The following categories of files reference `apps/stt/` (v1):
 
 | Item | Reason |
 |------|--------|
-| `apps/stt-v2/` | Production v2 service — must not be touched |
+| `apps/stt/` | Production v2 service — must not be touched |
 | `packages/stt/` | Shared TypeScript client library |
 | Qdrant `stt_speaker_embeddings` | Used by v2 speaker diarization |
 | Database seeds (`06-stt`) | STT config namespace shared by v2 |
@@ -154,7 +154,7 @@ The following categories of files reference `apps/stt/` (v1):
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Accidentally modifying stt-v2 | Low | High | Explicit constraint; verify no stt-v2 files are touched |
+| Accidentally modifying stt | Low | High | Explicit constraint; verify no stt files are touched |
 | Breaking CI/CD by removing too much | Medium | High | Only remove v1-specific entries; keep all v2 paths |
 | Orphaned environment variables | Low | Low | Review .env files for any remaining STT v1 vars |
 | Missing documentation updates | Medium | Low | Comprehensive file list in plan above |
@@ -179,9 +179,9 @@ The following categories of files reference `apps/stt/` (v1):
 - `.github/actions/setup-test-env/action.yml` — Removed `STT_PORT`/`STT_URL` env vars
 
 ### Configuration Files Modified (Phase 3)
-- `.env.dev` — Removed STT v1 variables, updated section header to stt-v2
-- `.env.example` — Removed STT v1 variables, updated section header to stt-v2
-- `.env` — Removed STT v1 variables, updated section header to stt-v2
+- `.env.dev` — Removed STT v1 variables, updated section header to stt
+- `.env.example` — Removed STT v1 variables, updated section header to stt
+- `.env` — Removed STT v1 variables, updated section header to stt
 - `ecosystem.config.js` — Removed STT v1 PM2 app entry
 
 ### Infrastructure Files Modified (Phase 4)
@@ -193,9 +193,9 @@ The following categories of files reference `apps/stt/` (v1):
 - `docs/ENVIRONMENT_VARIABLES.md` — Removed STT v1 section and commands
 - `docs/project-brief.md` — Removed STT v1 documentation links
 - `docs/README.md` — Removed STT v1 documentation section
-- `docs/CONSULTATION_WORKFLOW.md` — Updated `apps/stt/` to `apps/stt-v2/`
-- `docs/QUALITY_CONTROL.md` — Updated glob pattern to `apps/stt-v2/**/*.py`
-- `docs/immediate-next-steps.md` — Updated reference to stt-v2
+- `docs/CONSULTATION_WORKFLOW.md` — Updated `apps/stt/` to `apps/stt/`
+- `docs/QUALITY_CONTROL.md` — Updated glob pattern to `apps/stt/**/*.py`
+- `docs/immediate-next-steps.md` — Updated reference to stt
 - `knowledge/api/configuration.md` — Removed STT v1 env var rows
 - `knowledge/api/api-reference.md` — Removed STT Proxy (v1) section
 - `knowledge/api/README.md` — Removed SttModule v1 row
@@ -213,18 +213,18 @@ The following categories of files reference `apps/stt/` (v1):
 
 ### Verification Results
 - `apps/stt/` — Confirmed deleted
-- `apps/stt-v2/` — Confirmed zero git changes (untouched)
+- `apps/stt/` — Confirmed zero git changes (untouched)
 - No `apps/stt/` references in config files (`.yml`, `.yaml`, `.json`, `.js`, `.ts`, `.mdc`)
 - No `STT_HOST`, `STT_PROVIDER` in env files (except implementation docs)
 - Only remaining `apps/stt/` references are in `docs/implementation/` (historical records — preserved intentionally)
 
 ### Post-Removal Test Results
 
-A fresh `stt-v2` conda environment (Apple Silicon/MPS, Python 3.11.14, PyTorch 2.8.0) was created and all tests were run to verify zero regression.
+A fresh `stt` conda environment (Apple Silicon/MPS, Python 3.11.14, PyTorch 2.8.0) was created and all tests were run to verify zero regression.
 
-**STT-V2 Unit Tests** (conda env `stt-v2`, `make test-unit`):
+**STT Unit Tests** (conda env `stt`, `make test-unit`):
 - **1330 passed, 9 failed** (13.4s)
-- The 9 failures are pre-existing bugs (identical to results before removal, confirmed via `git diff apps/stt-v2/` = zero changes)
+- The 9 failures are pre-existing bugs (identical to results before removal, confirmed via `git diff apps/stt/` = zero changes)
 - Failures: `test_passes_language` (KeyError), `test_lifespan_startup_and_shutdown` (MagicMock), `test_redis_import_failure` (singleton), `test_progress_callback` (race condition), 5x `test_transcription_api` (Form parameter)
 
 **TypeScript Unit Tests** (`pnpm test:unit`, Vitest 4.0.18):

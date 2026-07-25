@@ -19,7 +19,7 @@ Local entry points must bring up a complete Docker tier without hidden opt-ins:
 
 `dev:stack*` must ensure Docker infra is up (idempotent) before spawning app processes.
 
-Out of scope: auto-flipping `SMR_V2_VLLM_ENABLED` in `.env.dev`; HA/auth-hardening of Compose Grafana (dev convenience auth stays); replacing LM Studio/Ollama as the default local LLM path.
+Out of scope: auto-flipping `SMR_VLLM_ENABLED` in `.env.dev`; HA/auth-hardening of Compose Grafana (dev convenience auth stays); replacing LM Studio/Ollama as the default local LLM path.
 
 ## Current State Evaluation
 

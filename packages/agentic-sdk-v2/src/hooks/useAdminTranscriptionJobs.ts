@@ -6,7 +6,7 @@
  * so a plain DOCTOR is denied (403) — surfaced here as a clean
  * `AgenticError('FORBIDDEN')`.
  *
- * IMPORTANT: the end-user `STT_V2_ENDPOINTS` reads (`LIST_JOBS`/`JOB_STATS`/
+ * IMPORTANT: the end-user `STT_ENDPOINTS` reads (`LIST_JOBS`/`JOB_STATS`/
  * `JOBS_BY_STATUS`) are owner-scoped. Admin consumers that
  * need every job in the tenant MUST use this hook instead.
  */

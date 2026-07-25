@@ -145,7 +145,7 @@ Each spec follows the same shape as `task-307-tenant-bucket-cross-tenant.spec.ts
 
 Notes:
 - **Storage spec** explicitly verifies the ARCAAI seed shipped the target bucket BEFORE the cross-tenant probe — otherwise a seed regression would silently degrade "cross-tenant 404" to "missing-bucket 404" and erase the test's meaning.
-- **Voice-profile spec** depends on STT-V2 being reachable for the embedding extraction in `beforeAll`. If STT-V2 is down the cross-user assertions are skipped (with a console warning) rather than degrading to a synthetic-id-only probe.
+- **Voice-profile spec** depends on STT being reachable for the embedding extraction in `beforeAll`. If STT is down the cross-user assertions are skipped (with a console warning) rather than degrading to a synthetic-id-only probe.
 
 ### 4.3 AC-4 — TestAppModule helper (PARTIAL; sanity test is the gate)
 

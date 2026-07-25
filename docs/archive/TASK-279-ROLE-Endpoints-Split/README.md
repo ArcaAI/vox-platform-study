@@ -235,7 +235,7 @@ That file is not part of TASK-279 scope (see §7).
 **0 errors, 0 new warnings.** All 13 remaining warnings are pre-existing prettier
 warnings in files outside TASK-279 scope:
 
-- `src/core/SttV2WebSocketClient.ts` (1 warning)
+- `src/core/SttWebSocketClient.ts` (1 warning)
 - `src/types/dna.ts` (1 warning)
 - `src/types/index.ts` (1 warning)
 - `src/core/SimpleCrossTabSync.ts`, `src/core/FileTranscriptionService.ts` (10 warnings, same as TASK-265 verification 6.4)

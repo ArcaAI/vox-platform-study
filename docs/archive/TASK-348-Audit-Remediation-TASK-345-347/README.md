@@ -30,7 +30,7 @@ A comprehensive pre-commit audit was performed on the uncommitted working tree i
 | Agent | Scope | Mode |
 |---|---|---|
 | TS backend reviewer | `apps/api` consultation module, `packages/applications` harness progress service/DTOs | read-only |
-| Python reviewer | `apps/harness` (Temporal, api_client), `apps/stt-v2` (punctuation, settings) | read-only |
+| Python reviewer | `apps/harness` (Temporal, api_client), `apps/stt` (punctuation, settings) | read-only |
 | Frontend reviewer | `apps/ui-playground` clinical-workspace (hook, lib, panel, api) | read-only |
 | Security auditor | internal endpoint auth, SSE authz/IDOR, PHI exposure, env diffs, shell scripts | read-only |
 | System integration auditor | end-to-end TASK-345 wiring, contract consistency, scripts/docs/config gaps | read-only |
@@ -41,7 +41,7 @@ Test evidence (all run 2026-06-10 against the working tree):
 |---|---|---|---|
 | TS unit (applications harness + api consultation) | `pnpm test:unit <changed paths>` | **150 passed** (10 files) | 4.6s |
 | Python harness unit | `pnpm py:harness:test:unit` (conda `arcaenv`) | **476 passed** | 24.7s |
-| Python stt-v2 unit | `pnpm py:stt-v2:test:unit` (conda `arcaenv`) | **1,876 passed** | 22.7s |
+| Python stt unit | `pnpm py:stt:test:unit` (conda `arcaenv`) | **1,876 passed** | 22.7s |
 | ui-playground full suite | `pnpm --filter @arcaai/ui-playground test` | **1,243 passed** (147 files) | 21.3s |
 
 **Total: 3,745 tests, 0 failures.** All findings below are latent defects/gaps not covered by the current suites.
@@ -173,10 +173,10 @@ Severity: **Critical** (deploy/data-safety blocker) · **Major** (functional def
 | MIN-7 | Frontend | Normalizer doesn't dedupe by `stage` key → React duplicate-key warnings on malformed payloads | `lib/harness-progress.ts:56-73`; `review-panel.tsx:75` | Dedupe-last via `Map` keyed on `stage` before sorting | P2 |
 | MIN-8 | Frontend / a11y | Live checklist not announced to screen readers; icons use `aria-label` on bare SVGs | `review-panel.tsx:72-91` | `role="status" aria-live="polite"` + `aria-busy`; `role="img"` or visually-hidden labels | P2 |
 | MIN-9 | Frontend / UX | Checklist grows one row at a time; `total` threaded end-to-end but never rendered (no "Step N of 5") | `review-panel.tsx:63-92` | Pre-render stage catalog (or placeholders up to `total`) as pending | P2 |
-| MIN-10 | STT | `_enabled` stays `true` after failed model load → per-utterance reload attempts (crash-loop class; dodged only because default is off) | `apps/stt-v2/src/stt_v2/punctuation/service.py:78-92` | Flip `_enabled = False` on load failure → degrade to passthrough | P1 |
+| MIN-10 | STT | `_enabled` stays `true` after failed model load → per-utterance reload attempts (crash-loop class; dodged only because default is off) | `apps/stt/src/stt/punctuation/service.py:78-92` | Flip `_enabled = False` on load failure → degrade to passthrough | P1 |
 | MIN-11 | STT | Global kill-switch silently overrides per-pipeline `punctuation.enabled: true` YAML | `service.py:115,131,147` | One-time startup warning + document precedence | P3 |
 | MIN-12 | STT | Contradictory boot logs: "disabled…" immediately followed by "initialized" | `main.py:188-193`; `worker.py:101` | Condition the "initialized" line on actual outcome | P3 |
-| MIN-13 | Config/docs | `PUNCTUATION_ENABLED` undocumented in env reference | `settings.py:479` vs `apps/stt-v2/.env.example` | Commented `PUNCTUATION_ENABLED=false` block in `.env.example` + service README | P2 |
+| MIN-13 | Config/docs | `PUNCTUATION_ENABLED` undocumented in env reference | `settings.py:479` vs `apps/stt/.env.example` | Commented `PUNCTUATION_ENABLED=false` block in `.env.example` + service README | P2 |
 | MIN-14 | Dev scripts | `dev-stack.sh`: no `down`/detached mode (orphans after SIGKILL); predictable shared `/tmp` log dir (symlink truncation + PHI-in-logs vector, CWE-377); `$(command_for "$svc")` word-splitting | `scripts/dev-stack.sh:41,123-128,179` | Pidfile-based `down`; logs under `$HOME`/`$XDG_STATE_HOME` `chmod 700`; array-built command | P2 |
 | MIN-15 | Dev scripts | Python dev services bind `0.0.0.0` — PHI-processing dev services exposed on LAN | `scripts/dev-service.sh:171-197` | Default `--host 127.0.0.1`; `0.0.0.0` as explicit opt-in | P2 |
 | MIN-16 | Docs | README command table missing `infra:down\|status\|logs`, `:watch` variants, `DRY_RUN=1`, subset launches | `README.md:65-78` | Add rows or link TASK-346 README | P3 |
@@ -258,7 +258,7 @@ Severity: **Critical** (deploy/data-safety blocker) · **Major** (functional def
 |---|---|---|---|
 | 4.1 | MIN-10 | RED: failed `_load_model()` → `_enabled` false, passthrough, no reload per utterance; GREEN: flip flag on failure | `punctuation/service.py`, `test_service.py` |
 | 4.2 | TG-5, MIN-12 | Logging tests (one warning + debug exc_info); fix contradictory boot log | `main.py`, `worker.py`, tests |
-| 4.3 | MIN-11, MIN-13 | Precedence warning + `.env.example`/README documentation | `service.py`, `apps/stt-v2/.env.example`, README |
+| 4.3 | MIN-11, MIN-13 | Precedence warning + `.env.example`/README documentation | `service.py`, `apps/stt/.env.example`, README |
 | 4.4 | MIN-14, MIN-15 | `dev-stack down` (pidfiles), `$HOME`-scoped logs `chmod 700`, array-built command, `127.0.0.1` default binding | `scripts/dev-stack.sh`, `scripts/dev-service.sh` |
 | 4.5 | MIN-16, MIN-18 | README command rows; model identifier alignment | `README.md`, `.env.dev` |
 | 4.6 | TG-4 | Cross-tenant 404 e2e for the progress stream | `apps/api/tests/e2e/` |
@@ -351,7 +351,7 @@ Executed test-first by a dedicated agent; RED evidence captured per finding. Hig
 - **MIN-10**: `_enabled` flips to `False` on punctuation model-load failure → clean passthrough degrade, no per-utterance reload attempts.
 - **MIN-11**: one-time startup warning when the global kill-switch suppresses a per-pipeline `punctuation.enabled: true`; precedence documented.
 - **MIN-12 + TG-5**: `initialize()` returns a bool; "initialized" boot log now conditioned on actual outcome in both `main.py` and the Dramatiq `worker.py`; logging contract tests added (one clean warning + traceback at debug).
-- **MIN-13**: `PUNCTUATION_ENABLED` block added to `apps/stt-v2/.env.example` + README config section (rationale + precedence).
+- **MIN-13**: `PUNCTUATION_ENABLED` block added to `apps/stt/.env.example` + README config section (rationale + precedence).
 - **MIN-14**: `dev-stack.sh` — pidfile-based `down`, logs under the user state dir with symlink refusal, array-built service commands (no word-splitting).
 - **MIN-15**: `dev-service.sh` — loopback (`127.0.0.1`) default binding; `0.0.0.0` is an explicit `HOST` opt-in.
 - **MIN-16/18**: root README command-table rows + TASK-346 pointer; `.env.dev` model identifier annotated with the authoritative source (comment-only change).
@@ -364,7 +364,7 @@ Full matrix re-run after all phases merged in the working tree:
 |---|---|---|
 | TS unit (full root) | `pnpm test:unit` | **13,741 passed**, 4 skipped, 9 todo — 2 failures, both **pre-existing at HEAD** (§5.2) |
 | Python harness unit | `pnpm py:harness:test:unit` | **480 passed** (incl. both replay-compat fixtures) |
-| Python stt-v2 unit | `pnpm py:stt-v2:test:unit` | **1,892 passed** |
+| Python stt unit | `pnpm py:stt:test:unit` | **1,892 passed** |
 | ui-playground full suite | `pnpm --filter @arcaai/ui-playground test` | **1,261 passed** (148 files) |
 | Builds | `pnpm build:modules` + `pnpm build:api` | green (7/7, 8/8) |
 | Lints | ReadLints across every touched directory + new e2e spec | zero errors |
@@ -399,7 +399,7 @@ Known benign interaction (documented, not a defect): a client connecting to an *
 | `Highlight` model has `tenantId` but is missing from `TENANT_SCOPED_MODELS` | `packages/database/src/extensions/__tests__/tenant-scope.test.ts` fails at HEAD (drift guard working as designed) | **Security-relevant**: Highlight queries are not auto-tenant-scoped. Zero working-tree changes under `packages/database` — predates this work |
 | EU-07 DTO test expects non-UUID `pipelineId` rejection, but TASK-298 D-19 deliberately widened the pattern to slug-or-UUID | `apps/api/src/modules/streaming/__tests__/transcription-job.controller.test.ts` fails at HEAD | Test/DTO drift — test not updated when D-19 landed |
 | ui-playground `tsc` errors in admin files | Phase 3 agent report | Unrelated to clinical-workspace changes |
-| stt-v2 `black`/`mypy` non-compliance outside touched files | Phase 4 agent report | Touched files verified clean |
+| stt `black`/`mypy` non-compliance outside touched files | Phase 4 agent report | Touched files verified clean |
 
 ---
 
@@ -411,5 +411,5 @@ Known benign interaction (documented, not a defect): a client connecting to an *
 | 2026-06-10 | Plan approved for Phases 0-1. Phase 0 executed: secrets stripped from `.env.dev` (MAJ-7), env changes split into commit `57fb4d2c` (MIN-17), reviewed gitleaks fingerprint added for the `.env.test` e2e JWT placeholder (audit addendum). | `.env.dev`, `.env.test`, `.gitleaksignore` |
 | 2026-06-10 | Phase 1 executed test-first: replay-compat suite added (RED reproduced CRIT-1's NondeterminismError), `workflow.patched("task-345-harness-progress")` gate added (GREEN), forward-guard fixture captured (TG-1). 478 harness unit tests, ruff/black/mypy all green. Status → In Progress. | `workflows.py`, `test_replay_compat.py`, `_capture_replay_fixture.py`, 2 history fixtures |
 | 2026-06-10 | Phases 2-4 executed in parallel (three non-overlapping agents), all test-first. Phase 2: failure terminal contract, jobId snapshot reset, refcounted teardown, monotonic fold guard, payload bounds + stage catalog mirror, bounded activity timeout, generalized mint-time ownership, subscribe-before-snapshot, `@HttpCode(200)`, TG-4 e2e spec. Phase 3: hook test suite, honest error/failed rendering, bounded re-minting reconnect, stale-close handling, stage dedupe, a11y + step counter. Phase 4: punctuation disable-on-failure, truthful boot logs + logging tests, env/README docs, script hardening (state-dir logs, pidfile `down`, loopback default). | See §5 Phase 2/3/4 file tables in agent reports; 28 findings resolved |
-| 2026-06-10 | Phase 5 verification on the combined tree: 13,741 TS + 480 harness + 1,892 stt-v2 + 1,261 ui-playground tests passed; builds green; zero lints. The only 2 root-suite failures verified **pre-existing at HEAD** (§5.2: `Highlight` tenant-scope drift, EU-07 pipelineId test drift). Stage-catalog mirror + `failed` wire contract reconciled across Python/TS/UI. Per-finding disposition recorded (§5.1); ENH backlog triaged. Status → Review. | This README |
+| 2026-06-10 | Phase 5 verification on the combined tree: 13,741 TS + 480 harness + 1,892 stt + 1,261 ui-playground tests passed; builds green; zero lints. The only 2 root-suite failures verified **pre-existing at HEAD** (§5.2: `Highlight` tenant-scope drift, EU-07 pipelineId test drift). Stage-catalog mirror + `failed` wire contract reconciled across Python/TS/UI. Per-finding disposition recorded (§5.1); ENH backlog triaged. Status → Review. | This README |
 | 2026-06-10 | TG-4 executed live: test stack brought up (API test mode, fresh DB reset + seed), `pnpm test:e2e task-348-harness-progress-cross-tenant` → **5 passed (4.3s)**. Follow-up tickets opened for the pre-existing §5.2 findings: TASK-349 (Highlight tenant-scope drift), TASK-350 (EU-07 pipelineId test drift). Status → Completed. | This README, TASK-349/TASK-350 READMEs |

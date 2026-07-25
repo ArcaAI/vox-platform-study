@@ -267,7 +267,7 @@ export type {
 
 export { DEFAULT_KNOWLEDGE_PIPELINE_CONFIG, DEFAULT_TRANSCRIPTION_PIPELINE_CONFIG } from './pipeline';
 
-// STT-V2 types (Layer 0 Foundation — SDK-206)
+// STT types (Layer 0 Foundation — SDK-206)
 export type {
   // AI models
   AiModelResponse,
@@ -291,9 +291,9 @@ export type {
   // WebSocket protocol (server → client)
   WsTranscriptResult,
   WsWordTimestamp,
-} from './stt-v2';
+} from './stt';
 
-export { AiModelDownloadStatus, ResourceStatus, TranscriptionJobStatus, TranscriptionJobType } from './stt-v2';
+export { AiModelDownloadStatus, ResourceStatus, TranscriptionJobStatus, TranscriptionJobType } from './stt';
 
 // Consultation job types
 export type { ConsultationJob, JobStatus, JobStreamCallbacks, PollOptions } from './consultation-job';

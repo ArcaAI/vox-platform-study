@@ -168,7 +168,7 @@ Same posture as TASK-339 §6d/§7. Probed on this machine (`curl /health`, conda
 
 | Service | Port | Status | Evidence / cause |
 |---|---|---|---|
-| STT-v2 | 8861 | ⛔ down | HTTP 000 — needs model/GPU/mic (expected, not blocked). |
+| STT | 8861 | ⛔ down | HTTP 000 — needs model/GPU/mic (expected, not blocked). |
 | SMR | 8862 | ⛔ down | HTTP 000 — needs LLM (GPU/LM Studio) (expected, not blocked). |
 | NLP | 8864 | ⛔ down | HTTP 000 — `pnpm dev:nlp` (arcaenv) reached uvicorn but **app startup failed**: HF model cache resolves to `/Volumes/aillusion` (external volume **not mounted**) → `PermissionError [Errno 13]` downloading `michellejieli/emotion_text_classifier`. Environment/config issue (NLP was healthy in TASK-339 when that cache was available), **not** caused by this work. |
 

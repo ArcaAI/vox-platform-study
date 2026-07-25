@@ -98,8 +98,8 @@ Sources: IBM Granite Guardian docs, `ibm-granite/granite-guardian` repo (4.1 coo
 ### ✅ Resolved decisions (approval round 2)
 
 - **Q1 — Admin console = `apps/ui-playground`** (in this workspace; has `features/admin/configurations` + `summarization/components/provider-model-select.tsx`). Admin-configurability work lives in **TASK-338**.
-- **Q2 — Azure: deployment-name configurable via console now; API key stays env/Vault** (`SMR_V2_AZURE_API_KEY` / `GUARDRAIL_AZURE_API_KEY`). A non-secret GlobalSetting MUST NOT hold the raw key (blocked on TASK-302 Phase 4D). → **TASK-338**.
-- **Q3 — Guardrail reads tenant config directly from the DB (option c)** — guardrail service gains SQLAlchemy/asyncpg access to the `core.GlobalSetting` table (precedent: STT-v2 already uses SQLAlchemy+asyncpg). → **TASK-338**.
+- **Q2 — Azure: deployment-name configurable via console now; API key stays env/Vault** (`SMR_AZURE_API_KEY` / `GUARDRAIL_AZURE_API_KEY`). A non-secret GlobalSetting MUST NOT hold the raw key (blocked on TASK-302 Phase 4D). → **TASK-338**.
+- **Q3 — Guardrail reads tenant config directly from the DB (option c)** — guardrail service gains SQLAlchemy/asyncpg access to the `core.GlobalSetting` table (precedent: STT already uses SQLAlchemy+asyncpg). → **TASK-338**.
 - **Q4 — Split into two tickets:**
   - **TASK-337 (this doc)** — Python engine standardization: LM-Studio default + `provider` switch across SMR/Harness/Guardrail; Granite-over-OpenAI; env renames; tests; docs.
   - **TASK-338** — Admin-configurability backend + UI: guardrail GlobalSettings + catalog, generalized `tenant.service.ts` validation, API catalog endpoint, `ui-playground` UI, Azure deployment-name setting, and guardrail-reads-DB runtime application.
@@ -131,7 +131,7 @@ Sources: IBM Granite Guardian docs, `ibm-granite/granite-guardian` repo (4.1 coo
 
 ### Phase A — SMR default-model alignment (low risk)
 
-A1. `apps/smr/src/smr_v2/core/config.py`:
+A1. `apps/smr/src/smr/core/config.py`:
 - `OllamaConfig.default_model` → `google/gemma-4-e4b`
 - `AzureOpenAIConfig.default_model` → `gpt-5-mini`
 - `BedrockConfig.default_model` → `anthropic.claude-3-5-haiku-20241022-v1:0`
@@ -141,7 +141,7 @@ A2. Seed `packages/database/src/prisma/db_main/seed/11-global-setting.ts`:
 - `default-smr-model` value/defaultValue → `google/gemma-4-e4b`
 - Add `google/gemma-4-e4b` to the `lm-studio` catalog block (first entry).
 
-A3. `.env.dev` + `deployment/k3s/base/configmap.yaml`: set `SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL=google/gemma-4-e4b`; flip configmap to LM-Studio-default (`SMR_V2_OPENAI_COMPAT_ENABLED=true`, `SMR_V2_OLLAMA_ENABLED=false`).
+A3. `.env.dev` + `deployment/k3s/base/configmap.yaml`: set `SMR_OPENAI_COMPAT_DEFAULT_MODEL=google/gemma-4-e4b`; flip configmap to LM-Studio-default (`SMR_OPENAI_COMPAT_ENABLED=true`, `SMR_OLLAMA_ENABLED=false`).
 
 A4. **Tests (RED→GREEN):**
 - `apps/smr/.../tests/unit/test_config.py`: update `default_model` assertions (currently `qwen3.5:2b`, `gpt-4`).
@@ -205,9 +205,9 @@ D2. This README → Implementation Summary + Change History on completion.
 Implemented 2026-06-07 via three parallel workers (one per service). All scoped surgically.
 
 ### Phase A — SMR (config + seed + docs)
-- `apps/smr/src/smr_v2/core/config.py`: provider `default_model`s → Ollama/OpenAI-compat `google/gemma-4-e4b`, Azure `gpt-5-mini`, Bedrock `anthropic.claude-3-5-haiku-20241022-v1:0`.
+- `apps/smr/src/smr/core/config.py`: provider `default_model`s → Ollama/OpenAI-compat `google/gemma-4-e4b`, Azure `gpt-5-mini`, Bedrock `anthropic.claude-3-5-haiku-20241022-v1:0`.
 - `packages/database/src/prisma/db_main/seed/11-global-setting.ts`: `default-smr-model` → `google/gemma-4-e4b`; added `google/gemma-4-e4b` as first `lm-studio` catalog entry (15→16).
-- `.env.dev`: `SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL=google/gemma-4-e4b`.
+- `.env.dev`: `SMR_OPENAI_COMPAT_DEFAULT_MODEL=google/gemma-4-e4b`.
 - Tests updated: `test_config.py`, `test_openai_compat_provider.py`, `seed-smr-provider-models.test.ts`. **Python 39/39, TS 305/305.**
 - Docs: `docs/marketing/V2_BRIEF_TECHNICAL.md` model table.
 

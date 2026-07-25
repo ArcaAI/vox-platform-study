@@ -6,13 +6,13 @@
 - **Origin**: TASK-474 findings **B-04 / B-05 (Important)** — the diarization voice-profile preseed path drops `tenant_id` and logs clinician PII.
 - **Finding + severity**: **P2 security/PHI** — latent today (diarization preseed off by default), **live once [TASK-475](../TASK-475-Streaming-2Speaker-Diarization/README.md) enables diarization**. Two distinct defects: (a) clinician PII (name + ids) written to INFO logs; (b) voice-profile lookups not tenant-scoped (a cross-tenant read/leak surface once populated).
 - **Size**: M
-- **Suggested agent**: security-auditor / backend (Python stt-v2 + the `UserVoiceProfile` model + a possible Prisma column) — a PHI-hygiene + tenant-isolation lens.
+- **Suggested agent**: security-auditor / backend (Python stt + the `UserVoiceProfile` model + a possible Prisma column) — a PHI-hygiene + tenant-isolation lens.
 
 ## Requirement Analysis
 
 The voice-profile preseed (used to name anonymous diarized speakers) has a PHI-logging leak and a broken tenant boundary (per the TASK-474 review, code-verified — re-verified on assignment 2026-07-11):
 
-- **PHI in logs (B-04/B-05)**: `apps/stt-v2/src/stt_v2/diarization/preseed.py:121-137` (plus sibling records at `:73-78, 90-94, 99-104, 110-115, 144-156`) logged the clinician **display name + user/consultation ids** at INFO/WARNING. Additionally, the `log_context` label fell back to raw consultation/user ids, and `voice_profile_model.py`'s failure logs carried raw user/consultation ids (and `exc_info` on SQLAlchemy errors can embed bind parameters — another id-leak vector).
+- **PHI in logs (B-04/B-05)**: `apps/stt/src/stt/diarization/preseed.py:121-137` (plus sibling records at `:73-78, 90-94, 99-104, 110-115, 144-156`) logged the clinician **display name + user/consultation ids** at INFO/WARNING. Additionally, the `log_context` label fell back to raw consultation/user ids, and `voice_profile_model.py`'s failure logs carried raw user/consultation ids (and `exc_info` on SQLAlchemy errors can embed bind parameters — another id-leak vector).
 - **Tenant scoping dropped (B-04)**: streaming preseed dropped `tenant_id` (`session_manager.py` `create_session` → `_preseed_speaker` passed no tenant); the voice-profile tenant filter was **commented out** (`voice_profile_model.py`) because `UserVoiceProfile` had **no `tenantId` column** (documented TASK-296 M-6 TODO, master roadmap P2-5).
 
 ## Current State Evaluation (on assignment)
@@ -50,14 +50,14 @@ The voice-profile preseed (used to name anonymous diarized speakers) has a PHI-l
 
 | Area | Files |
 |---|---|
-| 2026-07-11 | **Closed (Status → Completed).** Adversarial SECURITY review = APPROVE (no Critical/Important): all 14 log sites PHI-clean (ids → `redact_id` sha-256, clinician name → bool, exceptions → type-only), tenant scoping fails closed BEFORE any DB touch (an unscoped read is structurally impossible), `tenant_id` threaded at every hop, cross-tenant no-match asserted behaviorally, migration correctly ordered before `task_496` with a fail-closed SYSTEM backfill; re-run green (stt-v2 28 / database 809 / applications 6003). **Also applied the 2 non-blocking Low findings** for a pristine PHI ticket: (1) `get_user_identity` now fails closed on missing tenant (top guard + unconditional filter, uniform with `get_voice_embedding`); (2) preseed.py's two residual `exc_info=True` → exception **type-name only** (no traceback bind-params). ruff+mypy clean, 25 tests green. Migration applies at deploy. No external work remains — only the owner's push/PR. |
+| 2026-07-11 | **Closed (Status → Completed).** Adversarial SECURITY review = APPROVE (no Critical/Important): all 14 log sites PHI-clean (ids → `redact_id` sha-256, clinician name → bool, exceptions → type-only), tenant scoping fails closed BEFORE any DB touch (an unscoped read is structurally impossible), `tenant_id` threaded at every hop, cross-tenant no-match asserted behaviorally, migration correctly ordered before `task_496` with a fail-closed SYSTEM backfill; re-run green (stt 28 / database 809 / applications 6003). **Also applied the 2 non-blocking Low findings** for a pristine PHI ticket: (1) `get_user_identity` now fails closed on missing tenant (top guard + unconditional filter, uniform with `get_voice_embedding`); (2) preseed.py's two residual `exc_info=True` → exception **type-name only** (no traceback bind-params). ruff+mypy clean, 25 tests green. Migration applies at deploy. No external work remains — only the owner's push/PR. |
 | Prisma schema + migration | `packages/database/src/prisma/db_main/user.prisma`; `…/migrations/20260711000000_task_490_user_voice_profile_tenant_id/migration.sql` (new) |
 | Tenant-scope extension | `packages/database/src/extensions/tenant-scope.ts`; `…/__tests__/tenant-scope.test.ts` (44→45 + comment) |
 | Seeds | `packages/database/src/prisma/db_main/seed/91-user.ts` (profiles stamped `SEED_TENANT_ID` / `SEED_CUSTOMER_TENANT_IDS.ARCAAI`; INSERT + upsert carry `tenantId`) |
 | Domain trio | `packages/domains/src/models/generated/core/UserVoiceProfileModel.ts` (regen → `BaseTenantDataModel`); `…/entities/generated/core/UserVoiceProfileEntity.ts` (→ `BaseTenantEntity`); `…/factories/generated/core/UserVoiceProfileFactory.ts` (`tenantId` required); `…/repositories/generated/core/UserVoiceProfileRepository.ts` (INSERT gains `tenantId`) |
 | Applications writer | `packages/applications/src/services/user/voiceProfile/voiceProfile.service.ts` (+ tests: tenant stamped; no-tenant → 400) |
-| STT-v2 | `apps/stt-v2/src/stt_v2/core/database/voice_profile_model.py`; `…/diarization/preseed.py`; `…/streaming/session_manager.py`; `…/core/logging.py` (`redact_id`) |
-| STT-v2 tests | `tests/unit/voice_profile/test_voice_profile_model.py` (+9); `tests/unit/diarization/test_preseed.py` (+6); `tests/unit/streaming/test_session_manager_preseed_tenant.py` (new, +2); `tests/unit/streaming/test_session_manager_denoiser.py` (call-shape assertion updated for the tenant kwarg) |
+| STT | `apps/stt/src/stt/core/database/voice_profile_model.py`; `…/diarization/preseed.py`; `…/streaming/session_manager.py`; `…/core/logging.py` (`redact_id`) |
+| STT tests | `tests/unit/voice_profile/test_voice_profile_model.py` (+9); `tests/unit/diarization/test_preseed.py` (+6); `tests/unit/streaming/test_session_manager_preseed_tenant.py` (new, +2); `tests/unit/streaming/test_session_manager_denoiser.py` (call-shape assertion updated for the tenant kwarg) |
 
 ### Migration verification (evidence)
 
@@ -67,8 +67,8 @@ The voice-profile preseed (used to name anonymous diarized speakers) has a PHI-l
 
 ### Gate evidence (2026-07-11)
 
-- `stt-v2 tests` (full suite): `2436 passed, 37 skipped (infra-gated), 3 xfailed` — includes the 17 TASK-490 tests (RED first: 14 failed pre-implementation).
-- `ruff check apps/stt-v2/src/ apps/stt-v2/tests/`: `All checks passed!` · `mypy apps/stt-v2/src/`: `Success: no issues found in 105 source files`.
+- `stt tests` (full suite): `2436 passed, 37 skipped (infra-gated), 3 xfailed` — includes the 17 TASK-490 tests (RED first: 14 failed pre-implementation).
+- `ruff check apps/stt/src/ apps/stt/tests/`: `All checks passed!` · `mypy apps/stt/src/`: `Success: no issues found in 105 source files`.
 - `pnpm --filter @arcaai/database test`: `23 files / 809 tests passed` (tenant-scope drift guard RED→GREEN around the allow-list update).
 - `pnpm --filter @arcaai/domains test`: `1300 passed`; `pnpm --filter @arcaai/applications` voiceProfile suite: `21 passed` (2 new).
 - `pnpm turbo lint` (database/domains/applications) + `pnpm turbo build --filter=@arcaai/api`: successful.

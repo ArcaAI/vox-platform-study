@@ -2,17 +2,17 @@
  * TASK-455 (S-10) — Shared streaming e2e helper.
  *
  * Mints a real STT streaming session + one-shot ticket through the API
- * gateway and opens an AUTHENTICATED WebSocket to `/ws/stt-v2/stream`, plus a
+ * gateway and opens an AUTHENTICATED WebSocket to `/ws/stt/stream`, plus a
  * realtime PCM frame feeder. Used by the `task-455-streaming-*.spec.ts` suite
  * (resume-after-drop, backpressure recovery, ticket-refresh mid-session).
  *
  * This helper exercises the REALTIME LOOP end to end over a real socket:
  *
- *   mic frames → WS `/ws/stt-v2/stream` → Redis `stt:audio` → STT-v2
+ *   mic frames → WS `/ws/stt/stream` → Redis `stt:audio` → STT
  *              → Redis `stt:result` → WS caption messages
  *
  * Wire protocol (verified against `apps/api/src/modules/streaming/stt-ws.gateway.ts`
- * + `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`):
+ * + `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`):
  *
  *   Client → Server:
  *     - binary PCM frame (Int16 LE mono)         → audio (server assigns seq)
@@ -74,7 +74,7 @@ export const DEFAULT_STREAM_PIPELINE_ID =
  */
 export const STREAM_FIXTURE_WAV =
   process.env.STREAM_E2E_WAV?.trim() ||
-  resolve(__dirname, '../../apps/stt-v2/tests/e2e/fixtures/20260205_52886591770282917_ml.wav');
+  resolve(__dirname, '../../apps/stt/tests/e2e/fixtures/20260205_52886591770282917_ml.wav');
 
 const WAV_HEADER_BYTES = 44;
 
@@ -102,11 +102,11 @@ export interface StreamWsCtor {
 
 export interface StreamSessionInfo {
   sessionId: string;
-  /** Relative WS path returned by the API (`/ws/stt-v2/stream`). */
+  /** Relative WS path returned by the API (`/ws/stt/stream`). */
   wsUrl: string;
   /** `ws://host` origin (WS path sits OUTSIDE the `/api/v1` prefix). */
   wsOrigin: string;
-  /** Fully-qualified `ws://host/ws/stt-v2/stream?sessionId=…&ticket=…`. */
+  /** Fully-qualified `ws://host/ws/stt/stream?sessionId=…&ticket=…`. */
   wsFullUrl: string;
   ticket: string;
   ticketExpiresAt: number;
@@ -119,7 +119,7 @@ export type CreateStreamResult =
 
 /**
  * Derive the `ws://host` origin from the HTTP API base URL. The WS gateway is
- * mounted at `/ws/stt-v2/stream`, OUTSIDE the global `/api/v1` prefix.
+ * mounted at `/ws/stt/stream`, OUTSIDE the global `/api/v1` prefix.
  */
 export function wsOriginFromApiUrl(apiUrl?: string): string {
   const base = apiUrl || process.env.API_URL || 'http://localhost:8868/api/v1';
@@ -127,7 +127,7 @@ export function wsOriginFromApiUrl(apiUrl?: string): string {
 }
 
 export function streamWsUrl(wsOrigin: string, sessionId: string, ticket: string): string {
-  return `${wsOrigin}/ws/stt-v2/stream?sessionId=${encodeURIComponent(sessionId)}&ticket=${encodeURIComponent(ticket)}`;
+  return `${wsOrigin}/ws/stt/stream?sessionId=${encodeURIComponent(sessionId)}&ticket=${encodeURIComponent(ticket)}`;
 }
 
 /**
@@ -156,9 +156,9 @@ export async function loginStreamUser(
  *
  * Returns `{ ok:false, status, reason }` (never throws) for the two expected
  * "cannot proceed" outcomes so specs can `test.skip(...)` cleanly:
- *   - 404 → pipeline not owned/visible to the caller (or STT-v2 unreachable
+ *   - 404 → pipeline not owned/visible to the caller (or STT unreachable
  *     behind the gateway on the ownership read),
- *   - 503 → STT-v2 streaming service at capacity / not initialized.
+ *   - 503 → STT streaming service at capacity / not initialized.
  */
 export async function createStreamSession(
   request: APIRequestContext,
@@ -184,7 +184,7 @@ export async function createStreamSession(
     return {
       ok: false,
       status,
-      reason: `POST stream/session → ${status}: ${body} (pipeline=${pipelineId}; is STT-V2 running + the pipeline owned by the caller?)`,
+      reason: `POST stream/session → ${status}: ${body} (pipeline=${pipelineId}; is STT running + the pipeline owned by the caller?)`,
     };
   }
 

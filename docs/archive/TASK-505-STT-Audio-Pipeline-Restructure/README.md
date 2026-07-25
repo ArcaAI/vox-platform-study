@@ -108,7 +108,7 @@ Other parity bugs: streaming ignores pipeline `models.embedding` (always setting
 | 7 | **ET** | uncommitted diff already points at `deepdml/faster-whisper-large-v3-turbo-ct2` — but **batch branch missing** (2.3) and **the diff breaks `seed.test.ts`** (still asserts `MODEL_REPO_PLACEHOLDER`) |
 | 8 | **NNC** | no parakeet.cpp integration; **no Python bindings exist upstream** (C API + CLI only) — needs FFI wrapper or sidecar; stateful cache-aware streaming doesn't fit the per-utterance callable contract (minimal per-utterance adapter first) |
 
-`provider :: model` syntax does not exist (current: slug string or inline dict). Python parser hard-rejects unknown `version:` values — **stt-v2 must ship v2 parsing before any v2 seed lands**.
+`provider :: model` syntax does not exist (current: slug string or inline dict). Python parser hard-rejects unknown `version:` values — **stt must ship v2 parsing before any v2 seed lands**.
 
 ### 2.5 External research verdicts (engines)
 
@@ -124,7 +124,7 @@ Other parity bugs: streaming ignores pipeline `models.embedding` (always setting
 ### 2.6 Diarization research
 
 - `microsoft/wavlm-base-plus-sv`: WavLM Base+ with X-vector head, **512-dim**, 16 kHz, ungated Microsoft license, suggested cosine 0.86. **Caution**: the oft-quoted 0.84% EER belongs to WavLM-**Large**-sv; base+ is ~2-3% class (UNVERIFIED), and it's the **heaviest** option per window. Verdict: *workable; justified almost solely by its ungated license*.
-- Better on merits: **SpeechBrain ECAPA-TDNN** (`speechbrain/spkrec-ecapa-voxceleb`) — ~1.71% EER, ~69 ms/inference, Apache-2.0 ungated (a SpeechBrain backend **already exists** in stt-v2). NVIDIA TitaNet if NeMo-native. Current default `pyannote/wespeaker-voxceleb-resnet34-LM` is what pyannote 3.1 uses internally — decent.
+- Better on merits: **SpeechBrain ECAPA-TDNN** (`speechbrain/spkrec-ecapa-voxceleb`) — ~1.71% EER, ~69 ms/inference, Apache-2.0 ungated (a SpeechBrain backend **already exists** in stt). NVIDIA TitaNet if NeMo-native. Current default `pyannote/wespeaker-voxceleb-resnet34-LM` is what pyannote 3.1 uses internally — decent.
 - **DB constraint**: `UserVoiceProfile.embedding` is `vector(256)` (wespeaker dims); WavLM-sv = 512-d, ECAPA = 192-d → **either choice needs a Prisma migration + voice-profile re-enrollment** (embeddings not comparable cross-model; profiles are stamped with `model_id`).
 - Streaming: **Sortformer 4spk-v2.1** confirmed strong (CALLHOME 2-spk DER ~5.1–6.7% @1.04 s latency, graceful at 0.32 s, overlap-aware end-to-end, NVIDIA Open Model License) — **needs NVIDIA GPU** (RTF numbers on RTX 6000 Ada); community ONNX exports exist to shed the NeMo dependency. CPU/dev fallback: embedding-clustering (current path).
 - **Architecture consensus (WhisperX/NeMo pattern)**: diarization = **parallel track to ASR, joined by word-timestamp overlap**; within the diarizer: VAD/segmentation → embedding → clustering. Do NOT feed embeddings into the ASR path. The product table's "diar feature extraction in pre-processing" should be *declared* in the pre section but *executed* as a parallel track — streaming already extracts embeddings in parallel with ASR (`inference.py:316-329`), so this is mostly a declaration/wiring change, not a data-flow change. Fix `num_speakers=2` prior where possible.
@@ -183,18 +183,18 @@ Quick wins, all with failing tests first:
 10. Seed param fixes (with Phase 5, or hotfix now): `best-practice-realtime` min_silence 150 → 500; drop min_silence 1000 → 700 on the default streaming pipeline.
 
 New tests: tail-phone clipping (synthetic fricative fixture), short-utterance keep ("yes"/"no" fixtures), ring-capacity vs min_speech, flush-with-pending-onset, smart-split mid-word, hysteresis on/off transitions, transient-then-speech normalizer regression.
-Gate: `pnpm py:stt-v2:test` green; A/B WER + clipped-word count on a fixture corpus (before/after evidence in this README).
+Gate: `pnpm py:stt:test` green; A/B WER + clipped-word count on a fixture corpus (before/after evidence in this README).
 
 ### Phase 1 — Processor registration architecture (refactor, no behavior change)
 
-1. `stt_v2/processors/` package: `base.py` (Protocol + Capability + HardwareBinding), `registry.py` ((kind, name) → spec, decorator registration, lazy impl targets, scoped test registries), manifest `__init__.py` + CI registry-contents test.
+1. `stt/processors/` package: `base.py` (Protocol + Capability + HardwareBinding), `registry.py` ((kind, name) → spec, decorator registration, lazy impl targets, scoped test registries), manifest `__init__.py` + CI registry-contents test.
 2. Promote the 5 batch `_run_*_inference` + 5 streaming `_make_asr_callable` branches into **one `AsrEngine` adapter per engine** declaring capabilities (devices, compute, streaming/batch, word-TS, prompt, gloss); single shared generate-kwargs builder (kills the ×3 duplication). **Fix FASTER_WHISPER batch parity** as the proof-of-refactor.
 3. Wrap existing stage functions as registered processors (normalize, denoise, resample, vad, punctuation, disfluency, merge, diarizer backends) — implementations unchanged, invocation via registry.
 4. Hardware resolution: extend `ExecutionProfile` with per-engine capability intersection at pipeline-load time (fail-fast with full matrix); thread the profile into the **batch** path; surface resolved bindings in `/health` + Prometheus; startup warning on ASR-CPU-fallback.
 5. `SessionAssembly.build()` shared by `create_session` and `_recover_sessions` (kills the duplicated recovery wiring).
 6. Unknown engine string → hard error (remove silent SAFETENSOR default).
 
-Gate: all existing stt-v2 tests green (behavior-preserving); registry CI test; replay-compat n/a (no harness change).
+Gate: all existing stt tests green (behavior-preserving); registry CI test; replay-compat n/a (no harness change).
 
 ### Phase 2 — Pipeline schema v2
 
@@ -203,7 +203,7 @@ Gate: all existing stt-v2 tests green (behavior-preserving); registry CI test; r
 3. Parse `preprocessing.endpoint` (exists in DTO, parser never populates it).
 4. Wire `models.embedding` into streaming session creation (parity with batch).
 5. Streaming disfluency + case parity with batch (registered post-processors, both paths).
-6. Gateway: TS `validateYaml` learns v2 — **proxy validation to stt-v2** (new internal validate endpoint) instead of hand-duplicating rules; `KNOWN_TOP_LEVEL_KEYS` update.
+6. Gateway: TS `validateYaml` learns v2 — **proxy validation to stt** (new internal validate endpoint) instead of hand-duplicating rules; `KNOWN_TOP_LEVEL_KEYS` update.
 
 Gate: v1.0/1.1 pipelines parse unchanged (regression suite over all seed YAMLs); v2 golden fixtures.
 
@@ -236,7 +236,7 @@ Gate: loader/adapter contract tests (import-skip if binding absent), yaml valida
 1. Clipping regression corpus: synthetic short-word/"yes-no"/fricative-tail fixtures + a real consultation sample; assert zero dropped short confirmations, measure boundary word integrity before/after Phase 0.
 2. WER/latency benchmark harness per hardware profile (Apple Silicon dev, CUDA, CPU) × engine (transformer/faster-whisper/parakeet.cpp) — records into this README.
 3. Per-platform capability CI test (registry matrix vs profiles); both-paths e2e (batch Dramatiq + streaming WS); admin validate-endpoint e2e for v2 YAML.
-4. Docs: `apps/stt-v2/README.md` processor-registry section; update `docs/architecture/overview.md` STT flow.
+4. Docs: `apps/stt/README.md` processor-registry section; update `docs/architecture/overview.md` STT flow.
 
 **Effort/order note**: Phase 0 is independent and highest clinical value — ship first. Phases 1→2→3 are sequential (registry before schema before engines). Phase 4 parallel to 3. Phase 5 last (seeds reference everything). Phase 6 continuous.
 
@@ -251,7 +251,7 @@ Gate: loader/adapter contract tests (import-skip if binding absent), yaml valida
 | VAD default changes shift clinical behavior | A/B fixture corpus + staged rollout via per-pipeline YAML (defaults only change where seeds updated) |
 | Registry refactor regressions | Phase 1 is behavior-preserving; existing test suite is the gate; adapters carry the old code bodies |
 | Embedding dim migration invalidates voice profiles | model_id-stamped profiles; re-enrollment flow; dual-read window if needed |
-| v2 schema vs old stt-v2 instances | version-gated parser ships before any v2 row; v1.1 parsing retained indefinitely |
+| v2 schema vs old stt instances | version-gated parser ships before any v2 row; v1.1 parsing retained indefinitely |
 | Seed test invariants (exactly-one-default etc.) | invariants enumerated in 2.8; test updates in same commits as seed changes |
 
 ## 6. Implementation Summary
@@ -278,7 +278,7 @@ TDD: 17 new tests written first (all RED), then implementation (all GREEN).
 **Evidence:**
 
 ```
-apps/stt-v2 unit:  2236 passed, 12 warnings in 19.42s   (pytest tests/unit)
+apps/stt unit:  2236 passed, 12 warnings in 19.42s   (pytest tests/unit)
 ruff (changed files): All checks passed!
 mypy (preprocessor + silero_service): Success: no issues found in 2 source files
 @arcaai/database:  Test Files 23 passed (23) · Tests 809 passed (809)
@@ -294,7 +294,7 @@ Increment 1 (TDD, done):
 
 Evidence: 2243 py unit passed · ruff clean · mypy clean on touched files.
 
-Increment 2 (done 2026-07-17) — **processor registry foundation**: new package `apps/stt-v2/src/stt_v2/processors/`:
+Increment 2 (done 2026-07-17) — **processor registry foundation**: new package `apps/stt/src/stt/processors/`:
 - `base.py` — closed `STAGE_KINDS` set (11 kinds), `Capability` (device × compute × streaming/batch × rank), `HardwareBinding`, `ProcessorSpec` (validated: known kind, ≥1 capability, `module:attr` lazy target), `CapabilityError`.
 - `registry.py` — `ProcessorRegistry`: duplicate-registration guard (identical re-registration idempotent for module re-imports), helpful unknown-key errors listing registered names, **lazy implementation import** (`load()` caches `module:attr`), **`resolve_binding()`** — first non-empty (profile devices × compute_pref × mode) intersection, rank tie-break, `CapabilityError` with the full declared matrix (fail fast at pipeline load, never first request), `scoped()` child registries for tests, module singleton + `register_processor()`.
 - `asr_capabilities.py` — first registered family: the 6 ASR engines as spec-only declarations (verified engine matrix from §2.3 encoded as capabilities: safetensor cuda/mps/cpu, onnx batch-only no-MPS, onnx_optimum no-MPS, nemo, faster_whisper no-MPS **batch=true** locking increment 1, azure_speech cloud) with `traits` (`initial_prompt`/`word_timestamps`/`gloss`) and lazy targets pointing at the EXISTING loaders/adapters. YAML never carries import paths — registry keys only.
@@ -303,14 +303,14 @@ Increment 2 (done 2026-07-17) — **processor registry foundation**: new package
 20 new tests (`tests/unit/processors/test_registry.py`). Evidence: 2263 py unit passed · ruff clean · mypy clean (4 files).
 
 Increment 3 (done 2026-07-17) — **streaming force-emit boundary dedup** (the P0 deferral):
-- `_dedup_overlap` body extracted to shared `stt_v2/postprocessing/overlap.py` (`dedup_overlap()`, pure text, import-cheap); `batch_service._dedup_overlap` delegates (behavior unchanged — batch_service is Azure-SDK-heavy at import and must not be imported by the streaming worker).
+- `_dedup_overlap` body extracted to shared `stt/postprocessing/overlap.py` (`dedup_overlap()`, pure text, import-cheap); `batch_service._dedup_overlap` delegates (behavior unchanged — batch_service is Azure-SDK-heavy at import and must not be imported by the streaming worker).
 - `StreamingInferenceWorker`: per-session `_last_final_end`/`_last_final_tail` state; `_dedup_forced_boundary()` strips words the previous FINAL already published when the new final's audio starts before the previous ended (the preprocessor carry region — 120 ms smart split / 500 ms hard split). Word window bounded by overlap duration (~4 words/s, cap 12) so genuine repeats outside the carry are never eaten; runs before the prev-text-context update (Whisper conditioning doesn't inherit duplicates); leading `word_timestamps` entries trimmed to match. Silence-separated finals (no time overlap) untouched.
 - 7 new tests (`tests/unit/streaming/test_inference_boundary_dedup.py`): shared-function semantics, overlapping-final dedup, genuine-repeat preservation, overlap-window bounding, empty-previous-final no-op.
 
 Evidence: 2270 py unit passed · ruff clean · mypy clean (3 files).
 
 Increment 4 (done 2026-07-17) — **shared decode-kwargs builder + SessionAssembly**:
-- `stt_v2/models/whisper_kwargs.py` — `build_whisper_generate_kwargs()`: ONE builder for the Whisper decode params previously triplicated (batch transformers, batch Optimum-ONNX, streaming callable — three hand-kept copies that had drifted). The pre-existing mirror-helper in `test_batch_inference_kwargs.py` now delegates to the production builder, converting its 23 tests from replica-tests into real coverage. All three call sites consume it (~150 duplicated lines removed); site-specifics (prompt_ids, translate-language override, code-switching logs, None-filter) stay at the call sites.
+- `stt/models/whisper_kwargs.py` — `build_whisper_generate_kwargs()`: ONE builder for the Whisper decode params previously triplicated (batch transformers, batch Optimum-ONNX, streaming callable — three hand-kept copies that had drifted). The pre-existing mirror-helper in `test_batch_inference_kwargs.py` now delegates to the production builder, converting its 23 tests from replica-tests into real coverage. All three call sites consume it (~150 duplicated lines removed); site-specifics (prompt_ids, translate-language override, code-switching logs, None-filter) stay at the call sites.
 - `SessionManager._assemble_session_runtime()` + `_SessionRuntime` dataclass — ONE per-session wiring (publisher, VAD, preprocessor, denoiser, ASR, sortformer/speaker-identifier, gloss, inference worker) shared by `create_session` AND `_recover_sessions` (~180 duplicated lines removed). **Fixed real recovery drift found during extraction**: the recovered worker previously dropped `max_segment_text_chars`, both hallucination knobs, and the `enable_prev_text_context` zeroing — recovered sessions silently ran with code defaults. TDD: `TestRecoverSessionsWorkerParity` (RED against old code, GREEN after). `build_speaker_identifier=False` preserves the intentional recovery semantics (embedding tracker state lost on crash; Sortformer reconstructed — TASK-475 AC-4).
 - 3 mock-driven test harnesses updated to bind the real assembly method (`MagicMock(spec=SessionManager)` pattern).
 
@@ -319,14 +319,14 @@ Evidence: 2271 py unit passed · ruff clean · mypy clean.
 Increment 5 (done 2026-07-17) — **registry-driven ASR dispatch (both paths)**:
 - Streaming: the `_make_asr_callable` if/elif chain decomposed into per-engine builder methods (`_make_nemo_callable`, `_make_faster_whisper_callable`, `_make_azure_callable`, `_make_transformers_callable` — bodies moved verbatim, multimodal-LM routing preserved inside the transformers builder); `_make_asr_callable` is now a thin registry dispatch.
 - Batch: the `_run_inference` if/elif chain replaced by the same registry dispatch (historical `TranscriptionError("Unsupported model format: ...")` preserved for unmapped formats).
-- New `stt_v2/processors/asr_engines.py` — delegation adapters per engine family (`SafetensorEngine`, `OnnxEngine` [keeps the runtime Optimum-vs-raw routing], `NemoEngine`, `FasterWhisperEngine`, `AzureSpeechEngine`) + `ASR_FORMAT_TO_NAME` + `resolve_asr_engine()`. **Adding an engine = one spec + one adapter class** (previously 10+ edit sites across two 2,000+ line modules). Capability lazy-targets now point at these adapters, so the CI manifest test imports the real dispatch surface. Bodies remain on the orchestrators (battle-tested); they can migrate into adapters engine-by-engine without touching dispatch again.
+- New `stt/processors/asr_engines.py` — delegation adapters per engine family (`SafetensorEngine`, `OnnxEngine` [keeps the runtime Optimum-vs-raw routing], `NemoEngine`, `FasterWhisperEngine`, `AzureSpeechEngine`) + `ASR_FORMAT_TO_NAME` + `resolve_asr_engine()`. **Adding an engine = one spec + one adapter class** (previously 10+ edit sites across two 2,000+ line modules). Capability lazy-targets now point at these adapters, so the CI manifest test imports the real dispatch surface. Bodies remain on the orchestrators (battle-tested); they can migrate into adapters engine-by-engine without touching dispatch again.
 - Contract hardening: streaming previously fell through to the transformers path for ANY unrecognized format — now unmapped formats fail loudly; `test_every_model_format_is_mapped` forces future `AiModelFormat` additions to declare a dispatch mapping at CI time.
 - 11 new tests (`tests/unit/processors/test_asr_engines.py`); ~25 existing mock-harness tests updated (real `AiModelFormat`s on mock models; `_bind_asr_dispatch` helper for `MagicMock(spec=SessionManager)` harnesses).
 
 Evidence: 2282 py unit passed · ruff clean · mypy clean (7 files incl. both orchestrators).
 
 Increment 6 (done 2026-07-17) — **P1 tail: platform-aware binding resolution + `/health` surfacing**:
-- `stt_v2/processors/binding.py` — `platform_device_preferences()` (detected platform → device order, `cloud` always appended), `resolve_engine_binding()` (registry intersection; **warn-never-block**: the capability table is engine-level while some support is per-loaded-model — raw-vs-Optimum ONNX is decided by processor presence — so hard enforcement waits for per-model capability nuance), `asr_processor_health()`.
+- `stt/processors/binding.py` — `platform_device_preferences()` (detected platform → device order, `cloud` always appended), `resolve_engine_binding()` (registry intersection; **warn-never-block**: the capability table is engine-level while some support is per-loaded-model — raw-vs-Optimum ONNX is decided by processor presence — so hard enforcement waits for per-model capability nuance), `asr_processor_health()`.
 - `/health` gains a `checks.processors` section: platform + per-engine per-mode resolved `(device, compute)` bindings (or `"unsupported"`) — silent downgrades like faster-whisper MPS→CPU are now visible. Defensive: never affects overall status.
 - Streaming `_make_asr_callable` logs the resolved binding once per session (compute pref from `ExecutionProfile.asr_compute_type`); batch `_load_models` runs the advisory capability check for inline engines (warn only).
 - 6 new binding tests. Evidence: **2288 py unit passed** · ruff clean (src+tests) · mypy clean (9 files).
@@ -352,10 +352,10 @@ Increment 6 (done 2026-07-17) — **P1 tail: platform-aware binding resolution +
   - Batch segment merge — per-pipeline override wired into `_run_per_segment_inference` (isinstance-gated reads; MagicMock-tolerant per codebase idiom).
   - **`models.embedding` streaming wiring** — session assembly now honors the pipeline's embedding model via `create_embedding_service(hf_model_id=…)` (parity with batch; was settings-singleton-only).
   - (Verified already present, stale research note: streaming disfluency + lowercase parity.)
-- **Validate proxy** — new stt-v2 endpoint `POST /api/v1/pipelines/validate` (same `PipelineYamlParser` the runtime uses; parse errors reported as `config_yaml` field errors); gateway `PipelineService.validateYaml` now: local structural fast-fail → remote authoritative verdict (3 s timeout) → graceful fallback to the local verdict when stt-v2 is unreachable. TypeScript never duplicates the Python rules. 4 endpoint tests + 4 TS proxy tests (fetch stubbed).
+- **Validate proxy** — new stt endpoint `POST /api/v1/pipelines/validate` (same `PipelineYamlParser` the runtime uses; parse errors reported as `config_yaml` field errors); gateway `PipelineService.validateYaml` now: local structural fast-fail → remote authoritative verdict (3 s timeout) → graceful fallback to the local verdict when stt is unreachable. TypeScript never duplicates the Python rules. 4 endpoint tests + 4 TS proxy tests (fetch stubbed).
 - **Drive-by defect fixed** (pre-existing, unrelated): `saml-sp-key.util.test.ts` asserted `X509Certificate.signatureAlgorithm` — a property that doesn't exist on Node 22 (always `undefined`; the assertion could never pass). Now version-tolerant: property on Node ≥23, sha256WithRSAEncryption OID bytes in the DER otherwise.
 
-Evidence: **2327 stt-v2 unit passed** · ruff clean · mypy clean (11 files) · **applications 6244 passed** (299 files) · pipeline TS suite 47 passed.
+Evidence: **2327 stt unit passed** · ruff clean · mypy clean (11 files) · **applications 6244 passed** (299 files) · pipeline TS suite 47 passed.
 
 ### Phase 3 — new engines (2026-07-17) — COMPLETE (python-side, inline-YAML-only)
 
@@ -365,7 +365,7 @@ Per the AZURE_SPEECH precedent, both engines integrate **without any Prisma/DB c
 - **`AZURE_FOUNDRY`** (matrix pipeline #6, `azure-foundry :: mai-transcribe-1.5`): loader validates settings (no `compute_type` credential smuggling — the AZURE_SPEECH wart deliberately not repeated); **decision D4 enforced in code**: `azure_foundry_enabled=false` by default (loader refuses), capability `streaming=False` + adapter raises on streaming (batch-only; realtime = Voice Live API, separate ticket); batch method = httpx REST `transcriptions:transcribe` with `enhancedMode`, phrase/word timestamp mapping, 401→`CloudASRAuthError` / 429→`CloudASRQuotaError`; gloss excluded.
 - Settings (`AZURE_FOUNDRY_{ENABLED,ENDPOINT,API_KEY,MODEL}`, `PARAKEET_CPP_{LIBRARY_PATH,NUM_THREADS}`) added to `turbo.json#globalEnv` + both `.env.example`s. Language validation for the new engines accepts plausible BCP-47 primaries (locale coverage is service/model-side and release-dependent). `test_every_model_format_is_mapped` forced the dispatch mapping at CI time exactly as designed.
 
-Evidence: **2335 stt-v2 unit passed** (13 new P3 tests) · ruff clean · mypy clean (13 files incl. both loaders + adapter).
+Evidence: **2335 stt unit passed** (13 new P3 tests) · ruff clean · mypy clean (13 files incl. both loaders + adapter).
 
 ### Phase 4 — diarization (2026-07-17) — COMPLETE (code-side; cutover owner-scheduled)
 
@@ -390,7 +390,7 @@ Evidence: **2335 stt-v2 unit passed** (13 new P3 tests) · ruff clean · mypy cl
 
 - **Clipping regression fixtures**: the Phase 0 TDD suites ARE the synthetic corpus (short-confirmation "yes/no" fixtures, fricative-tail hysteresis, ring-capacity, flush-with-pending-onset, smart-split, transient-normalizer, alias-attenuation) — 2337 tests run in CI.
 - **Capability CI matrix**: registry manifest tests + `test_every_model_format_is_mapped` + per-platform binding tests.
-- **Benchmark harness**: [apps/stt-v2/scripts/benchmark_pipelines.py](../../../apps/stt-v2/scripts/benchmark_pipelines.py) — env-gated (`STT_BENCH_CORPUS`/`STT_BENCH_PIPELINES`/optional `STT_BENCH_REFERENCE_DIR` for WER via jiwer), prints a markdown latency/RTF/WER table per pipeline for this README. Requires real models/hardware — owner-run, not CI.
+- **Benchmark harness**: [apps/stt/scripts/benchmark_pipelines.py](../../../apps/stt/scripts/benchmark_pipelines.py) — env-gated (`STT_BENCH_CORPUS`/`STT_BENCH_PIPELINES`/optional `STT_BENCH_REFERENCE_DIR` for WER via jiwer), prints a markdown latency/RTF/WER table per pipeline for this README. Requires real models/hardware — owner-run, not CI.
 - Remaining owner-gated evidence: live WER/latency numbers per hardware profile; parakeet.cpp binding build (`infrastructure/docker/python-base`); MAI credentials + GA/data-residency check (D4). Deferred deliberately: hard capability enforcement at pipeline load (needs per-model nuance in the capability table); Prometheus binding metric (with the observability pass in Phase 6); full engine-body migration into adapters (dispatch surface is final; bodies can move engine-by-engine under it whenever touched).
 
 ## 7. Change History

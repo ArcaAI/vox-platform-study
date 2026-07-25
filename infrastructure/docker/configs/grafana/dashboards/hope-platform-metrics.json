@@ -30,7 +30,7 @@
       "title": "Scrape targets UP (by job)",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "hope-prometheus" },
-      "description": "1 = target UP, 0 = DOWN. Mirrors Prometheus /targets. Python-service jobs stay DOWN until stt-v2/smr/nlp/guardrail run on the host.",
+      "description": "1 = target UP, 0 = DOWN. Mirrors Prometheus /targets. Python-service jobs stay DOWN until stt/smr/nlp/guardrail run on the host.",
       "targets": [
         { "expr": "up", "legendFormat": "{{job}}", "refId": "A" }
       ],

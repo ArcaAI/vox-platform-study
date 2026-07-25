@@ -123,7 +123,7 @@ an unrelated string** — never an emission or model:
   the `database.md` CODEMAP **sketch** (never implemented).
 - **Prisma models** — `rg "model (Session|SessionEvent|SessionSyncLog)\b"`
   over all `*.prisma`: **zero** matches. No model backs any of the three.
-- **Python services** (`stt-v2`, `smr`, `guardrail`, `nlp`, `harness`) — **zero**
+- **Python services** (`stt`, `smr`, `guardrail`, `nlp`, `harness`) — **zero**
   occurrences of `resource_type` / `resourceType` of any kind; they do not write
   audit `resourceType` values, let alone `Session*`.
 - **Auth/session audit path** — login/logout/impersonation explicitly use

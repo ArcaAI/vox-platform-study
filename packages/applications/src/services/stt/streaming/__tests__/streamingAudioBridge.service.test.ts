@@ -2,7 +2,7 @@
  * StreamingAudioBridgeService Unit Tests
  *
  * Tests the Redis Streams bridge that forwards audio between the API Gateway
- * and STT-V2:
+ * and STT:
  * - Audio frame writing (XADD to stt:audio:{sessionId})
  * - Control command writing (XADD to stt:control:{sessionId})
  * - Result subscription (XREAD from stt:result:{sessionId})
@@ -526,7 +526,7 @@ describe('StreamingAudioBridgeService', () => {
             });
         });
 
-        it('should derive a neutral speakerLabel for the stt-v2 "unknown" sentinel', async () => {
+        it('should derive a neutral speakerLabel for the stt "unknown" sentinel', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     ['stt:result:s-1', [
@@ -545,7 +545,7 @@ describe('StreamingAudioBridgeService', () => {
             const obs = service.subscribeToResults('s-1');
             const result = await firstValueFrom(obs.pipe(take(1)));
 
-            // "unknown" is stt-v2's no-confident-match sentinel — the clinician
+            // "unknown" is stt's no-confident-match sentinel — the clinician
             // must see a neutral placeholder, never the raw magic string.
             expect(result).toMatchObject({ speakerId: 'unknown', speakerLabel: 'Unknown speaker' });
         });
@@ -579,7 +579,7 @@ describe('StreamingAudioBridgeService', () => {
         });
 
         // Additive stable_chars relay (committed-prefix length
-        // emitted by stt-v2 on partial results). Absent field must leave the
+        // emitted by stt on partial results). Absent field must leave the
         // message exactly as today.
         it('maps stable_chars to stableChars when present', async () => {
             mockXreadgroup
@@ -603,7 +603,7 @@ describe('StreamingAudioBridgeService', () => {
             expect(result.isFinal).toBe(false);
         });
 
-        it('omits stableChars when stable_chars is absent (older stt-v2 unchanged)', async () => {
+        it('omits stableChars when stable_chars is absent (older stt unchanged)', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     ['stt:result:s-1', [
@@ -691,7 +691,7 @@ describe('StreamingAudioBridgeService', () => {
             expect(result.utteranceIndex).toBe(0);
         });
 
-        it('omits utteranceIndex and resultType when the wire fields are absent (older stt-v2 unchanged)', async () => {
+        it('omits utteranceIndex and resultType when the wire fields are absent (older stt unchanged)', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([
                     ['stt:result:s-1', [
@@ -777,7 +777,7 @@ describe('StreamingAudioBridgeService', () => {
             expect(results).toHaveLength(0);
         });
 
-        // stt-v2 publishes the tail FINAL *after* `finalizing` (result order:
+        // stt publishes the tail FINAL *after* `finalizing` (result order:
         // finalizing → FINAL → closed). `finalizing` is a PROGRESS marker, NOT a
         // terminal status — completing on it orphans that tail final (partials
         // relay, but the closing utterance is silently dropped). Only closed /

@@ -12,7 +12,7 @@
 
 ### Description
 
-Standardize the three Python AI services (`nlp`, `smr`, `stt-v2`) to share a unified foundation:
+Standardize the three Python AI services (`nlp`, `smr`, `stt`) to share a unified foundation:
 - Same package manager conventions and `pyproject.toml` structure
 - Same local development environment setup (conda `arcaenv`)
 - Same dependency versions for shared packages
@@ -52,7 +52,7 @@ A thorough audit of all three services was performed (2026-03-30). Below is a si
 
 ### 1. pyproject.toml Structure
 
-| Aspect | NLP | SMR | STT-v2 |
+| Aspect | NLP | SMR | STT |
 |--------|:---:|:---:|:------:|
 | `[build-system]` declared | **MISSING** | `setuptools>=75.0` | `setuptools>=75.0` |
 | `authors` | **MISSING** | Present | Present |
@@ -65,11 +65,11 @@ A thorough audit of all three services was performed (2026-03-30). Below is a si
 | `[tool.uv]` (non-standard) | Present | Absent | Absent |
 | `[dependency-groups]` (redundant) | Present | Absent | Absent |
 
-**Verdict**: NLP is a minimal skeleton. SMR and STT-v2 are mature. NLP must be upgraded to match.
+**Verdict**: NLP is a minimal skeleton. SMR and STT are mature. NLP must be upgraded to match.
 
 ### 2. Dependency Versions (Shared Packages)
 
-| Package | NLP | SMR | STT-v2 | Target |
+| Package | NLP | SMR | STT | Target |
 |---------|-----|-----|--------|--------|
 | `fastapi` | `>=0.133.0` | `>=0.133.0` | `>=0.133.0` | `>=0.133.0` |
 | `uvicorn[standard]` | `>=0.41.0` | `>=0.41.0` | `>=0.41.0` | `>=0.41.0` |
@@ -91,7 +91,7 @@ A thorough audit of all three services was performed (2026-03-30). Below is a si
 
 ### 3. Dev/Test/Lint Toolchain
 
-| Tool | NLP | SMR | STT-v2 | Target |
+| Tool | NLP | SMR | STT | Target |
 |------|:---:|:---:|:------:|--------|
 | `ruff` | `>=0.15.7` | `>=0.15.4` | `>=0.15.4` | `>=0.15.7` |
 | `black` | **MISSING** | `>=26.1.0` | `>=26.1.0` | `>=26.1.0` |
@@ -106,7 +106,7 @@ A thorough audit of all three services was performed (2026-03-30). Below is a si
 
 ### 4. Tool Configuration (`[tool.*]` sections in pyproject.toml)
 
-| Config Section | NLP | SMR | STT-v2 | Target |
+| Config Section | NLP | SMR | STT | Target |
 |---------------|:---:|:---:|:------:|--------|
 | `[tool.ruff]` | **MISSING** | Full | Full | Standardize from SMR |
 | `[tool.ruff.lint]` | **MISSING** | Full | Full | Standardize from SMR |
@@ -119,7 +119,7 @@ A thorough audit of all three services was performed (2026-03-30). Below is a si
 
 ### 5. Docker Build
 
-| Aspect | NLP | SMR | STT-v2 |
+| Aspect | NLP | SMR | STT |
 |--------|-----|-----|--------|
 | Base image | `python:3.11-slim-trixie` | `python:3.11-slim-trixie` | `python:3.11-slim-bookworm` |
 | uv source | `ghcr.io/astral-sh/uv:0.8.13` | `ghcr.io/astral-sh/uv:0.8.13` | `ghcr.io/astral-sh/uv:python3.11-bookworm-slim` |
@@ -128,18 +128,18 @@ A thorough audit of all three services was performed (2026-03-30). Below is a si
 | User UID | `1001` | `1001` | `1000` |
 | Non-root user | `nlpuser:nlpuser` | `smr:hope` | `app:app` |
 | Group naming | `nlpuser` | `hope` | `app` |
-| Entrypoint style | `python -m nlp.main` | `python -m uvicorn smr_v2.main:app ...` | `uvicorn stt_v2.main:app ...` |
+| Entrypoint style | `python -m nlp.main` | `python -m uvicorn smr.main:app ...` | `uvicorn stt.main:app ...` |
 | HEALTHCHECK | Python urllib | Python urllib | Python urllib |
 | Cleanup strategy | `strip --strip-unneeded` .so | `strip --strip-unneeded` .so + `.pyc` removal | Full cleanup (see TASK-246) |
 
 ### 6. Other Inconsistencies
 
-| Aspect | NLP | SMR | STT-v2 |
+| Aspect | NLP | SMR | STT |
 |--------|:---:|:---:|:------:|
 | `.python-version` file | `3.11` | `3.11` | **MISSING** |
 | Makefile | No | No | Yes |
 | Logging library | stdlib `logging` | `structlog` | `structlog` |
-| Test location | `tests/` (top-level) | `src/smr_v2/tests/` | `tests/` (top-level) |
+| Test location | `tests/` (top-level) | `src/smr/tests/` | `tests/` (top-level) |
 | `package.json` scripts style | Direct `conda run` | Direct `conda run` | `make -C` delegation |
 
 ---
@@ -149,15 +149,15 @@ A thorough audit of all three services was performed (2026-03-30). Below is a si
 ### Design Decisions
 
 #### D1: Drop `isort` in favor of ruff's `I` rules
-**Rationale**: ruff already includes isort-compatible import sorting via `"I"` in its rule set. Running a separate `isort` is redundant and adds configuration surface. SMR already does not use `isort`. STT-v2 will have it removed.
+**Rationale**: ruff already includes isort-compatible import sorting via `"I"` in its rule set. Running a separate `isort` is redundant and adds configuration surface. SMR already does not use `isort`. STT will have it removed.
 
 #### D2: Standardize on `tests/` at project root (not inside `src/`)
-**Rationale**: NLP and STT-v2 both use `tests/` at project root. SMR is the outlier with `src/smr_v2/tests/`. The top-level `tests/` pattern is the more common Python convention and is what `setup-python-env.sh` already expects. SMR's test location will remain as-is for now (moving tests is high-risk for a standardization ticket) but `testpaths` in `pyproject.toml` will be configured correctly for each service.
+**Rationale**: NLP and STT both use `tests/` at project root. SMR is the outlier with `src/smr/tests/`. The top-level `tests/` pattern is the more common Python convention and is what `setup-python-env.sh` already expects. SMR's test location will remain as-is for now (moving tests is high-risk for a standardization ticket) but `testpaths` in `pyproject.toml` will be configured correctly for each service.
 
 #### D3: Shared Docker base image
 **Rationale**: All three CPU-only services share the same foundation: Python 3.11, uv, non-root user, health-check pattern, cleanup logic. A shared `hope-python-base` image eliminates duplication and ensures consistency. Services only add their own `pyproject.toml`, `uv.lock`, and `src/` on top.
 
-**Base image choice**: `python:3.11-slim-trixie` (Debian Trixie is newer, NLP and SMR already use it; STT-v2 will be migrated from bookworm).
+**Base image choice**: `python:3.11-slim-trixie` (Debian Trixie is newer, NLP and SMR already use it; STT will be migrated from bookworm).
 
 #### D4: Standardize non-root user as `hope:hope` (UID/GID 1001)
 **Rationale**: Currently each service uses a different user/group name and inconsistent UID/GID. A unified `hope:hope` user with UID/GID 1001 simplifies volume mounts and security policies.
@@ -169,7 +169,7 @@ A thorough audit of all three services was performed (2026-03-30). Below is a si
 **Rationale**: Calling uvicorn via `python -m` ensures the correct Python interpreter is used from the venv. This is what SMR does. NLP uses `python -m nlp.main` which runs uvicorn internally — this is also fine but less transparent for Docker orchestrators that expect to see the uvicorn process.
 
 #### D7: NLP's `torch` moves to optional `[ml]` extras
-**Rationale**: NLP currently lists `torch>=2.1.0` as a production dependency, forcing a ~700MB download for every Docker build. Torch should be optional (like STT-v2's `[ml]` extras) since NLP can run with just CPU-based transformers inference.
+**Rationale**: NLP currently lists `torch>=2.1.0` as a production dependency, forcing a ~700MB download for every Docker build. Torch should be optional (like STT's `[ml]` extras) since NLP can run with just CPU-based transformers inference.
 
 ---
 
@@ -230,9 +230,9 @@ Changes:
 2. Bump `ruff` from `>=0.15.4` to `>=0.15.7`
 3. Regenerate `uv.lock`
 
-#### Task 1.4: Align STT-v2's pyproject.toml
+#### Task 1.4: Align STT's pyproject.toml
 
-**Files modified**: `apps/stt-v2/pyproject.toml`
+**Files modified**: `apps/stt/pyproject.toml`
 
 Changes:
 1. Remove `[tool.isort]` section (ruff `I` rules handle this)
@@ -249,7 +249,7 @@ Changes:
 
 **Files modified**: `apps/nlp/pyproject.toml`
 
-Add to NLP (matching SMR/STT-v2 versions):
+Add to NLP (matching SMR/STT versions):
 
 ```toml
 [project.optional-dependencies]
@@ -280,7 +280,7 @@ lint = [
 
 Ensure all three services follow the same pattern:
 
-| Script | NLP | SMR | STT-v2 |
+| Script | NLP | SMR | STT |
 |--------|-----|-----|--------|
 | `dev:{service}` | `conda run -n arcaenv ... uvicorn` | same | same |
 | `py:{service}:test` | `conda run ... pytest apps/{svc}/tests/` | same | **Change from `make -C`** |
@@ -383,9 +383,9 @@ Same pattern as NLP. Key changes:
 - Replace `smr:hope` user with standard `hope:hope`
 - Standardize uv sync flag to `--frozen`
 
-#### Task 3.4: Refactor STT-v2 Dockerfile (CPU runtime) to use shared base
+#### Task 3.4: Refactor STT Dockerfile (CPU runtime) to use shared base
 
-**Files modified**: `apps/stt-v2/docker/Dockerfile`
+**Files modified**: `apps/stt/docker/Dockerfile`
 
 Changes to the `builder` and `runtime` stages only (ML stages keep CUDA base):
 - Replace `FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim` with `FROM hope-python-base` builder-base
@@ -446,7 +446,7 @@ Run `uv lock` in each service directory after `pyproject.toml` changes:
 ```bash
 cd apps/nlp && uv lock
 cd apps/smr && uv lock
-cd apps/stt-v2 && uv lock
+cd apps/stt && uv lock
 ```
 
 #### Task 4.3: Verify local development setup
@@ -462,15 +462,15 @@ docker build -t hope-python-base infrastructure/docker/python-base/
 # Build each service
 docker build --target production -t hope-nlp apps/nlp/
 docker build --target production -t hope-smr apps/smr/
-docker build -f apps/stt-v2/docker/Dockerfile --target runtime -t hope-stt-v2 apps/stt-v2/
+docker build -f apps/stt/docker/Dockerfile --target runtime -t hope-stt apps/stt/
 ```
 
 #### Task 4.5: Run all test suites
 
 ```bash
 pnpm py:nlp:test
-pnpm py:smr-v2:test
-pnpm py:stt-v2:test
+pnpm py:smr:test
+pnpm py:stt:test
 ```
 
 #### Task 4.6: Update cursor rule `06-python-services.mdc`
@@ -494,11 +494,11 @@ Update to reflect:
 #### Phase 1: pyproject.toml Standardization
 - **NLP** (`apps/nlp/pyproject.toml`): Complete rewrite — added `[build-system]`, authors, license, classifiers, keywords, URLs, `[tool.setuptools]`, full `[tool.black]`/`[tool.mypy]`/`[tool.ruff]`/`[tool.coverage]` configs. Removed `[dependency-groups]` and `[tool.uv]`. Added `structlog`, `python-dotenv`, `orjson`, `prometheus-client`. Replaced `opentelemetry-exporter-otlp` with `opentelemetry-exporter-otlp-proto-grpc`.
 - **SMR** (`apps/smr/pyproject.toml`): Bumped `opentelemetry-api`/`sdk` from `>=1.39.0` to `>=1.39.1`. Bumped `ruff` from `>=0.15.4` to `>=0.15.7` in dev and lint extras.
-- **STT-v2** (`apps/stt-v2/pyproject.toml`): Removed `[tool.isort]` section. Removed `isort>=8.0.0` from dev deps. Bumped `ruff` from `>=0.15.4` to `>=0.15.7`. Added `.python-version` file.
+- **STT** (`apps/stt/pyproject.toml`): Removed `[tool.isort]` section. Removed `isort>=8.0.0` from dev deps. Bumped `ruff` from `>=0.15.4` to `>=0.15.7`. Added `.python-version` file.
 
 #### Phase 2: Dev Toolchain Alignment
 - **NLP**: Added `dev`, `test`, `lint` optional dependency groups with `black>=26.1.0`, `mypy>=1.19.1`, `pre-commit>=4.5.1`, `pytest-asyncio>=1.3.0`, `pytest-cov>=7.0.0`, `pytest-mock>=3.15.1`, `pytest-xdist>=3.8.0`.
-- **Root `package.json`**: Standardized STT-v2 scripts from `make -C` delegation to direct `conda run` commands. Added `py:{service}:typecheck` and `py:{service}:format` scripts for all services.
+- **Root `package.json`**: Standardized STT scripts from `make -C` delegation to direct `conda run` commands. Added `py:{service}:typecheck` and `py:{service}:format` scripts for all services.
 - **`setup-python-env.sh`**: Updated NLP install from bare `pip install -e` to `pip install -e ".[dev,test]"`. Added `structlog` import verification.
 
 #### Phase 3: Shared Docker Base Image
@@ -507,8 +507,8 @@ Update to reflect:
   - `runtime-base`: Python 3.11-slim-trixie + `hope:hope` user (UID/GID 1001)
 - **NLP Dockerfile**: Refactored to use `hope-python-base`. Standardized user to `hope:hope`. Changed entrypoint to `python -m uvicorn`. Added full cleanup. Changed uv sync to `--frozen`.
 - **SMR Dockerfile**: Refactored to use `hope-python-base`. Standardized user to `hope:hope`. Kept `--frozen` flag.
-- **STT-v2 Dockerfile**: CPU stages (`builder`, `runtime`) refactored to use `hope-python-base`. Migrated from bookworm to trixie. Standardized user to `hope:hope` (UID 1001). ML stages (`ml-builder`, `ml-runtime`, `worker`) updated user to `hope:hope` but kept CUDA base unchanged. Changed uv sync to `--frozen`.
-- **`.dockerignore`**: Standardized across all three services with identical structure (+ `docker/` exclusion for STT-v2).
+- **STT Dockerfile**: CPU stages (`builder`, `runtime`) refactored to use `hope-python-base`. Migrated from bookworm to trixie. Standardized user to `hope:hope` (UID 1001). ML stages (`ml-builder`, `ml-runtime`, `worker`) updated user to `hope:hope` but kept CUDA base unchanged. Changed uv sync to `--frozen`.
+- **`.dockerignore`**: Standardized across all three services with identical structure (+ `docker/` exclusion for STT).
 
 #### Phase 4: Cleanup
 - Removed stale `src/nlp.egg-info/` directory from NLP.
@@ -521,28 +521,28 @@ Update to reflect:
 |------|--------|-------------|
 | `apps/nlp/pyproject.toml` | Modified | Full standardization (build-system, metadata, deps, tool configs) |
 | `apps/smr/pyproject.toml` | Modified | OTel + ruff version bumps |
-| `apps/stt-v2/pyproject.toml` | Modified | Removed isort, bumped ruff |
-| `apps/stt-v2/.python-version` | Created | Python 3.11 |
+| `apps/stt/pyproject.toml` | Modified | Removed isort, bumped ruff |
+| `apps/stt/.python-version` | Created | Python 3.11 |
 | `apps/nlp/uv.lock` | Regenerated | Updated for new deps |
 | `apps/smr/uv.lock` | Regenerated | Updated for version bumps |
-| `apps/stt-v2/uv.lock` | Regenerated | Removed isort |
+| `apps/stt/uv.lock` | Regenerated | Removed isort |
 | `package.json` | Modified | Standardized Python scripts |
 | `scripts/setup-python-env.sh` | Modified | NLP dev/test extras, structlog check |
 | `infrastructure/docker/python-base/Dockerfile` | Created | Shared base image |
 | `apps/nlp/Dockerfile` | Modified | Uses hope-python-base |
 | `apps/smr/Dockerfile` | Modified | Uses hope-python-base |
-| `apps/stt-v2/docker/Dockerfile` | Modified | CPU stages use hope-python-base |
+| `apps/stt/docker/Dockerfile` | Modified | CPU stages use hope-python-base |
 | `apps/nlp/.dockerignore` | Modified | Standardized + added linter caches |
 | `apps/smr/.dockerignore` | Modified | Standardized + added linter caches |
-| `apps/stt-v2/.dockerignore` | Modified | Standardized + added linter caches |
+| `apps/stt/.dockerignore` | Modified | Standardized + added linter caches |
 | `.cursor/rules/06-python-services.mdc` | Modified | Updated to reflect standardization |
 | `apps/nlp/src/nlp.egg-info/` | Deleted | Stale artifact |
 
 ### Deviations from Plan
 
 1. **torch kept in NLP production deps**: Originally planned to move to `[ml]` extras, but audit showed `torch` is directly imported in 3 NLP service files (`text_classifier.py`, `token_classifier.py`, `medical_suggester.py`). It's a genuine production dependency for NLP inference.
-2. **STT-v2 Makefile retained**: Plan considered removing it; decided to keep for backward compatibility since it provides useful targets like `setup-cpu`, `setup-apple`, `setup-gpu` that go beyond what `package.json` scripts offer.
-3. **SMR test location unchanged**: Tests remain at `src/smr_v2/tests/` as planned — moving them would be high-risk and out of scope.
+2. **STT Makefile retained**: Plan considered removing it; decided to keep for backward compatibility since it provides useful targets like `setup-cpu`, `setup-apple`, `setup-gpu` that go beyond what `package.json` scripts offer.
+3. **SMR test location unchanged**: Tests remain at `src/smr/tests/` as planned — moving them would be high-risk and out of scope.
 
 ---
 
@@ -551,14 +551,14 @@ Update to reflect:
 | Test | Command | Validates |
 |------|---------|-----------|
 | NLP unit tests | `pnpm py:nlp:test` | No regressions from pyproject.toml changes |
-| SMR unit tests | `pnpm py:smr-v2:test` | No regressions from version bumps |
-| STT-v2 unit tests | `pnpm py:stt-v2:test` | No regressions from isort removal |
+| SMR unit tests | `pnpm py:smr:test` | No regressions from version bumps |
+| STT unit tests | `pnpm py:stt:test` | No regressions from isort removal |
 | NLP Docker build | `docker build --target production apps/nlp/` | Dockerfile refactor works |
 | SMR Docker build | `docker build --target production apps/smr/` | Dockerfile refactor works |
-| STT-v2 Docker build | `docker build -f docker/Dockerfile --target runtime .` | Base image migration works |
+| STT Docker build | `docker build -f docker/Dockerfile --target runtime .` | Base image migration works |
 | Setup script | `./scripts/setup-python-env.sh --install` | Conda env installs all deps |
-| Lint all services | `ruff check apps/{nlp,smr,stt-v2}/src/` | Ruff config standardized |
-| Type check | `mypy apps/{nlp,smr,stt-v2}/src/` | Mypy config standardized |
+| Lint all services | `ruff check apps/{nlp,smr,stt}/src/` | Ruff config standardized |
+| Type check | `mypy apps/{nlp,smr,stt}/src/` | Mypy config standardized |
 
 ---
 
@@ -567,7 +567,7 @@ Update to reflect:
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | `uv lock` changes transitive deps | Medium | Medium | Run tests after lock regeneration; review lock diff |
-| Trixie migration breaks STT-v2 | Low | High | Test STT-v2 Docker build independently; keep bookworm as fallback |
+| Trixie migration breaks STT | Low | High | Test STT Docker build independently; keep bookworm as fallback |
 | NLP structlog migration breaks logging | Medium | Medium | This ticket only adds the dependency; logging migration is a separate task |
 | Shared base image adds build step | Low | Low | Base image changes infrequently; tag with version for cache stability |
 | UID/GID change breaks volume mounts | Low | Medium | Verify existing deployments don't depend on UID 1000 |
@@ -596,11 +596,11 @@ and `harness`, which were not in the original audit).
 
 1. **uv workspace root** — new root `pyproject.toml` declaring
    `[tool.uv.workspace]` with all 5 members (`apps/guardrail`, `apps/nlp`,
-   `apps/smr`, `apps/harness`, `apps/stt-v2`). A **single root `uv.lock`**
+   `apps/smr`, `apps/harness`, `apps/stt`). A **single root `uv.lock`**
    (revision 3) now governs every service. Resolved shared versions:
    `transformers 5.5.4`, `gliner2-onnx 0.1.1`, `torch 2.8.0`,
    `onnxruntime 1.26.0`, `optimum 2.1.0`.
-2. **stt-v2 `ml` vs `nemo` conflict** — `nemo-toolkit[asr]` hard-requires
+2. **stt `ml` vs `nemo` conflict** — `nemo-toolkit[asr]` hard-requires
    `transformers < 4.58`, which can never co-resolve with the `ml`/`ml-gpu`
    pin of `transformers == 5.5.4`. Declared `[tool.uv].conflicts`
    (`ml ⊥ nemo`, `ml-gpu ⊥ nemo`) so uv resolves them as independent install
@@ -616,7 +616,7 @@ and `harness`, which were not in the original audit).
    Base image parameterized with `ARG BASE_IMAGE` (defaults to
    `hope-python-base:latest` locally; CI injects the registry-qualified tag).
    `guardrail`/`smr`/`harness`/`nlp` use `hope-python-base` for both stages;
-   `stt-v2` CPU stages use it too, while GPU stages keep the `nvidia/cuda` base
+   `stt` CPU stages use it too, while GPU stages keep the `nvidia/cuda` base
    (uv there also bumped to 0.11.7).
 5. **venv cleanup fix** — the previous cleanup deleted any dir named
    `docs`/`doc`/`tests`, which removed real importable submodules (e.g.
@@ -624,13 +624,13 @@ and `harness`, which were not in the original audit).
    bytecode (`__pycache__`, `*.pyc`, `*.pyo`) and `*.egg-info`.
 6. **`Dockerfile.apple`** — dropped the now-removed `uv.lock` from its `COPY`
    (it fresh-resolves via `uv pip install`; local pytest-only, per-app context).
-7. **Per-service locks removed** — `apps/{guardrail,nlp,smr,harness,stt-v2}/uv.lock`
+7. **Per-service locks removed** — `apps/{guardrail,nlp,smr,harness,stt}/uv.lock`
    deleted; the root workspace lock is the single source of truth.
 8. **CI (`.gitlab/ci/build.yml`)** — added a `build-python-base` job (builds +
    pushes the shared base); every Python service job now sets
    `DOCKER_CONTEXT: "."`, `needs: build-python-base`, and passes
    `--build-arg BASE_IMAGE=$REGISTRY/$CI_PROJECT_PATH/hope-python-base:$CI_COMMIT_SHA`.
-   Added the previously-missing `build-harness` job. `stt-v2` jobs use root
+   Added the previously-missing `build-harness` job. `stt` jobs use root
    context with no `BASE_IMAGE` (GPU stages use `nvidia/cuda`).
 
 ### Validation
@@ -641,8 +641,8 @@ and `harness`, which were not in the original audit).
 | smr | ✅ | ✅ |
 | harness | ✅ | ✅ |
 | nlp | ✅ | ✅ |
-| stt-v2 (CPU runtime) | ✅ | ✅ |
-| stt-v2 (GPU `ml-runtime`/`worker`) | ⏳ adapted; needs a GPU CI runner to validate | — |
+| stt (CPU runtime) | ✅ | ✅ |
+| stt (GPU `ml-runtime`/`worker`) | ⏳ adapted; needs a GPU CI runner to validate | — |
 
 ### Notes / out of scope
 
@@ -662,10 +662,10 @@ and `harness`, which were not in the original audit).
 | `apps/nlp/Dockerfile` | Modified | Root context + workspace lock + `ARG BASE_IMAGE` |
 | `apps/smr/Dockerfile` | Modified | Root context + workspace lock + `ARG BASE_IMAGE`; cleanup fix |
 | `apps/harness/Dockerfile` | Modified | Root context + workspace lock + `ARG BASE_IMAGE` |
-| `apps/stt-v2/docker/Dockerfile` | Modified | CPU stages → base + workspace lock; GPU stages root context, uv 0.11.7 |
-| `apps/stt-v2/docker/Dockerfile.apple` | Modified | Dropped removed `uv.lock` from COPY |
+| `apps/stt/docker/Dockerfile` | Modified | CPU stages → base + workspace lock; GPU stages root context, uv 0.11.7 |
+| `apps/stt/docker/Dockerfile.apple` | Modified | Dropped removed `uv.lock` from COPY |
 | `.gitlab/ci/build.yml` | Modified | `build-python-base` + `build-harness` jobs; root context + `BASE_IMAGE` args |
-| `apps/{guardrail,nlp,smr,harness,stt-v2}/uv.lock` | Deleted | Superseded by root workspace lock |
+| `apps/{guardrail,nlp,smr,harness,stt}/uv.lock` | Deleted | Superseded by root workspace lock |
 
 ---
 

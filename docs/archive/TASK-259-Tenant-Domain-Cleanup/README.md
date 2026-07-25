@@ -103,7 +103,7 @@ The current GitLab CI test stage (`.gitlab/ci/test.yml`) has unit-only jobs:
 | `test-api` | `.test-node-base` | `pnpm --filter @arcaai/api test` (Vitest unit tests under `apps/api/src/**/__tests__`) |
 | `test-packages` | `.test-node-base` | `@arcaai/logger`, `@arcaai/utils`, `@arcaai/pipeline` Vitest unit tests |
 | `test-sdk` | `.test-node-base` | SDK + UI package Vitest unit tests |
-| `test-stt-v2` / `test-smr` / `test-nlp` / `test-guardrail` | `python:3.11-slim` | pytest unit tests (E2E dirs explicitly ignored) |
+| `test-stt` / `test-smr` / `test-nlp` / `test-guardrail` | `python:3.11-slim` | pytest unit tests (E2E dirs explicitly ignored) |
 
 There is **no Playwright job** today — `apps/api/tests/e2e/` is not exercised by CI on any branch. The CI variable surface already provides `CI_DATABASE_URL` + `CI_REDIS_URL` + JWT secrets via masked/protected variables, which would feed a Playwright job's API process.
 
@@ -270,7 +270,7 @@ All 78 warnings are pre-existing prettier formatting nits in files not touched b
 Parsed with `pyyaml` (custom loader that tolerates GitLab's `!reference` tag) — jobs enumerate cleanly:
 
 ```
-Jobs: ['test-api', 'test-api-e2e', 'test-guardrail', 'test-nlp', 'test-packages', 'test-sdk', 'test-smr', 'test-stt-v2']
+Jobs: ['test-api', 'test-api-e2e', 'test-guardrail', 'test-nlp', 'test-packages', 'test-sdk', 'test-smr', 'test-stt']
 test-api-e2e present: True
 test-api-e2e stage: test
 test-api-e2e extends: .test-node-base

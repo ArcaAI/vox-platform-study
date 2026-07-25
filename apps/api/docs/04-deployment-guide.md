@@ -91,7 +91,7 @@ This guide covers deploying the HOPE API Gateway to various environments. The AP
 **Outbound Access:**
 - PostgreSQL (typically port 5432)
 - Redis (typically port 6379)
-- Python microservices (STT v2=8861, SMR=8862, Guardrail=8863, NLP=8864, Harness=8866)
+- Python microservices (STT=8861, SMR=8862, Guardrail=8863, NLP=8864, Harness=8866)
 - External APIs (HTTPS 443)
 
 ---
@@ -156,9 +156,9 @@ REDIS_DB=0
 #### Microservices URLs
 
 ```bash
-# STT v2 (Speech-to-Text)
-STT_V2_PORT=8861
-STT_V2_URL=http://stt-service:8861
+# STT (Speech-to-Text)
+STT_PORT=8861
+STT_URL=http://stt-service:8861
 
 # SMR (Summarization)
 SMR_PORT=8862
@@ -452,8 +452,8 @@ server {
         proxy_request_buffering off;
     }
 
-    # WebSocket Support (STT v2, NLP)
-    location /stt-v2 {
+    # WebSocket Support (STT, NLP)
+    location /stt {
         proxy_pass http://api_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -1017,7 +1017,7 @@ Watch the logs for the shutdown sequence:
 INFO [Bootstrap] Graceful shutdown enabled with timeout: 30000ms, drain delay: 5000ms
 INFO [GracefulShutdownService] Shutdown signal received - stopping acceptance of new requests
 INFO [GracefulShutdownService] Waiting 5000ms for load balancer to drain traffic
-INFO [SttV2Gateway] STT v2 Gateway shutting down, closing 2 connections
+INFO [SttGateway] STT Gateway shutting down, closing 2 connections
 INFO [GracefulShutdownService] Application shutdown complete
 ```
 

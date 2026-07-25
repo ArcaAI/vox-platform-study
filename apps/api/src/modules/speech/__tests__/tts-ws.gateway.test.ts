@@ -40,7 +40,7 @@ const createMockSecrets = () => ({
   getSecretSync: vi.fn((k: string) => (k === 'TTS_SERVICE_TOKEN' ? 'svc-token' : undefined)),
 });
 
-const req = (qs: string) => ({ url: `/ws/tts-v2/stream${qs}` }) as never;
+const req = (qs: string) => ({ url: `/ws/tts/stream${qs}` }) as never;
 
 describe('TtsWsGateway', () => {
   let gateway: TtsWsGateway;

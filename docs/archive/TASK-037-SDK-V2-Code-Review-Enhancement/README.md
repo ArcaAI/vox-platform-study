@@ -93,7 +93,7 @@ The `useEffect` has `[config, store]` in deps but uses an `initRef` guard. If `c
 
 ### BUG-04: WebSocket Reconnect Loop Can Cycle Infinitely
 
-**File**: `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts:329-382`
+**File**: `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts:329-382`
 **Severity**: Critical
 **Impact**: Infinite reconnection attempts consuming resources
 
@@ -288,7 +288,7 @@ A new object literal is created every render, defeating the downstream `useMemo`
 
 **File**: `packages/agentic-sdk-v2/src/core/SSEClient.ts:209-212`
 
-The 10th attempt delay reaches ~25 minutes. No `maxDelayMs` cap like `SttV2WebSocketClient` has.
+The 10th attempt delay reaches ~25 minutes. No `maxDelayMs` cap like `SttWebSocketClient` has.
 
 **Fix**: Add a `maxDelayMs` option (default ~30s).
 
@@ -353,7 +353,7 @@ No schema validation, no integrity verification, predictable channel names.
 
 ### SEC-06: WebSocket URL with Token Logged in Debug Output (MEDIUM)
 
-**File**: `SttV2WebSocketClient.ts:123-127`
+**File**: `SttWebSocketClient.ts:123-127`
 
 Full URL including JWT logged to all transports.
 
@@ -433,7 +433,7 @@ Define a proper `INERProcessor` interface instead of casting to inline types.
 
 ### REFACTOR-05: Use Consistent Event Pattern
 
-`StreamingSessionManager` and `SttV2WebSocketClient` use single-callback `on*` methods that silently drop previous listeners. The pipeline classes use `EventEmitter`. Standardize on `EventEmitter` throughout.
+`StreamingSessionManager` and `SttWebSocketClient` use single-callback `on*` methods that silently drop previous listeners. The pipeline classes use `EventEmitter`. Standardize on `EventEmitter` throughout.
 
 ---
 
@@ -647,7 +647,7 @@ WebSocket messages are parsed with `JSON.parse()` and cast with `as`. Add runtim
 
 | ID | Fix | Files Modified | Tests Added |
 |----|-----|---------------|-------------|
-| BUG-04 | Fixed WebSocket infinite reconnect loop — `onopen` no longer resets counter during reconnect cycle; added `acknowledgeConnection()` for callers to confirm stability | `core/SttV2WebSocketClient.ts` | 1 |
+| BUG-04 | Fixed WebSocket infinite reconnect loop — `onopen` no longer resets counter during reconnect cycle; added `acknowledgeConnection()` for callers to confirm stability | `core/SttWebSocketClient.ts` | 1 |
 | BUG-14 | Fixed polling timers leaking on unmount — stored timer IDs in refs, cleared in cleanup effects | `hooks/useDnaStyle.ts`, `hooks/useConsultationJob.ts` | 2 |
 | BUG-13 | Added server-side session cleanup — `closeSession()` now async, DELETEs session on backend before local reset; backend errors logged but don't block cleanup | `core/StreamingSessionManager.ts`, `core/constants.ts` | 2 |
 | SEC-01 | Removed JWT token from WebSocket URL query string — token no longer appears in URLs (prevents logging by proxies/CDNs/browser history); callers should send via first WS message | `core/StreamingSessionManager.ts` | 1 |
@@ -666,7 +666,7 @@ WebSocket messages are parsed with `JSON.parse()` and cast with `as`. Add runtim
 ### Files Modified
 
 **Core classes:**
-- `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`
+- `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`
 - `packages/agentic-sdk-v2/src/core/StreamingSessionManager.ts`
 - `packages/agentic-sdk-v2/src/core/KnowledgePipeline.ts`
 - `packages/agentic-sdk-v2/src/core/SimpleCrossTabSync.ts`
@@ -682,7 +682,7 @@ WebSocket messages are parsed with `JSON.parse()` and cast with `as`. Add runtim
 - `packages/agentic-sdk-v2/src/hooks/useConsultationJob.ts`
 
 **Test files:**
-- `core/__tests__/SttV2WebSocketClient.test.ts` (+1 test, 1 updated)
+- `core/__tests__/SttWebSocketClient.test.ts` (+1 test, 1 updated)
 - `core/__tests__/StreamingSessionManager.test.ts` (+3 tests, 4 updated)
 - `core/__tests__/KnowledgePipeline.test.ts` (+1 test, 1 updated)
 - `core/logger/__tests__/SDKLogger.test.ts` (+2 tests)
@@ -701,7 +701,7 @@ WebSocket messages are parsed with `JSON.parse()` and cast with `as`. Add runtim
 |----|-----|---------------|-------------|
 | BUG-02 | Fixed AudioContext/MediaStream leak — `stop()` now calls `track.stop()` and `audioContext.close()` (if not already closed) before resetting local state | `core/TranscriptionPipeline.ts` | 3 |
 | BUG-15 | Made `pause()` and `resume()` async — now `await`s `processor.disable()` / `processor.enable()` so audio data isn't processed after pipeline reports being paused | `core/TranscriptionPipeline.ts` | 2 |
-| SEC-06 | Stripped query parameters from WebSocket URL before logging — defense-in-depth against sensitive data in log transports | `core/SttV2WebSocketClient.ts` | 1 |
+| SEC-06 | Stripped query parameters from WebSocket URL before logging — defense-in-depth against sensitive data in log transports | `core/SttWebSocketClient.ts` | 1 |
 | REFACTOR-07 | Added `destroy()` to ModelRegistry — clears `models`, `selected`, `loadingModels`, `loadProgress`, `loadedModels`, `errors` maps | `core/ModelRegistry.ts` | 1 |
 | REFACTOR-08 | Added `encodeURIComponent()` to all dynamic endpoint parameters — prevents URL injection and routing issues from special characters in IDs | `core/constants.ts` | 3 |
 | REFACTOR-09 | Cleared `callbacks` object in `PluginManager.destroy()` — prevents stale closures from holding references after teardown | `core/PluginManager.ts` | 1 |
@@ -720,7 +720,7 @@ WebSocket messages are parsed with `JSON.parse()` and cast with `as`. Add runtim
 
 **Core classes:**
 - `packages/agentic-sdk-v2/src/core/TranscriptionPipeline.ts` (BUG-02, BUG-15)
-- `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` (SEC-06)
+- `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` (SEC-06)
 - `packages/agentic-sdk-v2/src/core/ModelRegistry.ts` (REFACTOR-07)
 - `packages/agentic-sdk-v2/src/core/PluginManager.ts` (REFACTOR-09)
 - `packages/agentic-sdk-v2/src/core/SimpleCrossTabSync.ts` (REFACTOR-10)
@@ -732,7 +732,7 @@ WebSocket messages are parsed with `JSON.parse()` and cast with `as`. Add runtim
 
 **Test files:**
 - `core/__tests__/TranscriptionPipeline.test.ts` (+5 tests, 2 updated)
-- `core/__tests__/SttV2WebSocketClient.test.ts` (+1 test)
+- `core/__tests__/SttWebSocketClient.test.ts` (+1 test)
 - `core/__tests__/ModelRegistry.test.ts` (+1 test)
 - `core/__tests__/PluginManager.test.ts` (+1 test)
 - `core/__tests__/SimpleCrossTabSync.test.ts` (+3 tests)
@@ -831,7 +831,7 @@ WebSocket messages are parsed with `JSON.parse()` and cast with `as`. Add runtim
 
 | ID | Fix | Files Modified | Tests Added |
 |----|-----|---------------|-------------|
-| ENH-08 | Added runtime validation for all WebSocket server messages — `handleMessage()` now validates required fields for `transcript` (text, startTime, endTime, isFinal), `status` (status, message), and `error` (code, message) before dispatching to callbacks; invalid messages are logged and dropped instead of silently cast | `core/SttV2WebSocketClient.ts` | 6 |
+| ENH-08 | Added runtime validation for all WebSocket server messages — `handleMessage()` now validates required fields for `transcript` (text, startTime, endTime, isFinal), `status` (status, message), and `error` (code, message) before dispatching to callbacks; invalid messages are logged and dropped instead of silently cast | `core/SttWebSocketClient.ts` | 6 |
 | ENH-05 | Added `updateRuntimeConfig({ logLevel })` store action — allows changing log level at runtime without full SDK re-initialization; safe when logger is null (SSR/pre-init) | `store/agenticStore.ts` | 2 |
 | BUG-01 | Added 18 granular Zustand selectors (`selectConsultation`, `selectIsCapturing`, `selectAudioLevel`, `selectEntities`, `selectSummaries`, `selectIsMuted`, `selectIsSpeaking`, `selectCurrentTranscript`, `selectSessionLoading`, `selectSessionError`, `selectContextItems`, `selectPreferences`, `selectDnaStyle`, `selectAudioPlugins`, `selectInitialized`, `selectApiClient`, `selectLogger`, `selectPluginManager`) — hooks can now subscribe to individual state slices instead of the full store, eliminating unnecessary re-renders | `store/agenticStore.ts`, `store/index.ts` | 5 |
 
@@ -845,14 +845,14 @@ WebSocket messages are parsed with `JSON.parse()` and cast with `as`. Add runtim
 ### Affected Files
 
 **Core:**
-- `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts` (ENH-08)
+- `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts` (ENH-08)
 
 **Store:**
 - `packages/agentic-sdk-v2/src/store/agenticStore.ts` (ENH-05, BUG-01)
 - `packages/agentic-sdk-v2/src/store/index.ts` (BUG-01 — selector exports)
 
 **Test files:**
-- `core/__tests__/SttV2WebSocketClient.test.ts` (+6 tests: ENH-08 ×6)
+- `core/__tests__/SttWebSocketClient.test.ts` (+6 tests: ENH-08 ×6)
 - `store/__tests__/agenticStore.test.ts` (+7 tests: ENH-05 ×2, BUG-01 ×5)
 
 ---

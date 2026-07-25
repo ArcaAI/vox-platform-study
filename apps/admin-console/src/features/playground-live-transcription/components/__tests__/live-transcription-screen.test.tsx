@@ -1,7 +1,7 @@
 /**
  * Frame 51 Live Transcription screen. fetch, EventSource and the
  * audio SDK modules are all stubbed: the WS leg drives through a fake
- * `SttV2WebSocketClient`, capture through a fake `@arcaai/stt`, SSE through a
+ * `SttWebSocketClient`, capture through a fake `@arcaai/stt`, SSE through a
  * FakeEventSource. Covers the NoTenant gate, the 429 quota panel, the
  * partial-vs-final transcript stream, batch multipart upload + job SSE panel
  * and the my-jobs strip with cancel/retry.
@@ -82,7 +82,7 @@ const { FakeSttWsClient, capture } = vi.hoisted(() => {
     return { FakeSttWsClient, capture };
 });
 
-vi.mock('@arcaai/vox/core', () => ({ SttV2WebSocketClient: FakeSttWsClient }));
+vi.mock('@arcaai/vox/core', () => ({ SttWebSocketClient: FakeSttWsClient }));
 
 vi.mock('@arcaai/stt', () => ({
     createAudioCapture: vi.fn(async (_ctx: unknown, _track: unknown, onFrame: (frame: Float32Array) => void) => {
@@ -210,7 +210,7 @@ const PIPELINES = [
 const SESSION_RESPONSE = {
     sessionId: 's-9d42',
     status: 'created',
-    wsUrl: '/ws/stt-v2/stream',
+    wsUrl: '/ws/stt/stream',
     maxConcurrent: 5,
     currentActive: 1,
     ticket: 'tkt-abc',

@@ -23,7 +23,7 @@ Provisioning (1) must precede or ship atomically with (3). If a receiver gets a 
 TASK-460 closed C4-02's gateway half. The full fix requires the NLP + Guardrail FastAPI services to reject requests whose `X-Service-Token` is missing/empty/mismatched — mirroring the proven SMR middleware. Pre-implementation state:
 - `apps/guardrail` had a `service_token: SecretStr("")` setting but **no enforcing middleware**, and it read the **wrong env key** (`GUARDRAIL_V2_` prefix).
 - `apps/nlp` had **neither** the setting nor middleware.
-- Reference mirrored: `apps/smr/src/smr_v2/api/middleware/auth.py` — `X-Service-Token` shared-secret middleware with constant-time compare (`hmac.compare_digest`); EMPTY token = dev-mode bypass; health/docs/metrics paths exempt.
+- Reference mirrored: `apps/smr/src/smr/api/middleware/auth.py` — `X-Service-Token` shared-secret middleware with constant-time compare (`hmac.compare_digest`); EMPTY token = dev-mode bypass; health/docs/metrics paths exempt.
 
 ### Acceptance criteria
 

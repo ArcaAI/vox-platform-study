@@ -353,7 +353,7 @@ $ pnpm --filter @arcaai/vox lint
 ```
 
 All 13 remaining warnings are prettier whitespace nits in **pre-existing**
-files I did not touch (`FileTranscriptionService.ts`, `SttV2WebSocketClient.ts`,
+files I did not touch (`FileTranscriptionService.ts`, `SttWebSocketClient.ts`,
 `types/dna.ts`, `types/index.ts`). My new files (`CrossTabHmacSharedWorker.ts`,
 `CrossTabHmacKeyManager.ts`) report zero warnings, and the modified files
 (`SimpleCrossTabSync.ts`, `core/index.ts`, the two test files) introduce no

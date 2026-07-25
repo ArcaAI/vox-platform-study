@@ -244,7 +244,7 @@ All 13 are pre-existing prettier-whitespace warnings in files OUTSIDE TASK-264's
 
 - `packages/agentic-sdk-v2/src/core.ts`
 - `packages/agentic-sdk-v2/src/core/FileTranscriptionService.ts`
-- `packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts`
+- `packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts`
 - `packages/agentic-sdk-v2/src/types/dna.ts`
 - `packages/agentic-sdk-v2/src/types/index.ts`
 

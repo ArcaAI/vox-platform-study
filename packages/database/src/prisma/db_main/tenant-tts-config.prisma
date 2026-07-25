@@ -2,7 +2,7 @@
 // Per-Tenant TTS Configuration
 //
 // DB-backed, tenant-admin-editable TTS "spec", resolved at request time by the
-// apps/api gateway and injected into the STATELESS apps/tts-v2 service (the
+// apps/api gateway and injected into the STATELESS apps/tts service (the
 // Python service never touches Postgres). Two models:
 //
 //   1. TenantTtsConfig — ONE row per tenant (tenantId @unique). The reserved

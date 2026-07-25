@@ -37,7 +37,7 @@ plaintext (loopback, no cert); production/staging examples enforce TLS.
 | `.env.production` | `DATABASE_URL` MUST carry `sslmode=require` (target `verify-full` + `sslrootcert`); `MINIO_USE_SSL=true` confirmed |
 | `.env.dev` / `.env.test` | Commented: dev/test intentionally no-TLS; HA examples show `sslmode=require` |
 | `apps/api/.env.example` | `DATABASE_URL` + `DIRECT_URL` TLS guidance (`verify-full` target) |
-| `apps/stt-v2/.env.production` | `DATABASE_URL=...?ssl=require` (asyncpg), `MINIO_SECURE=true` |
+| `apps/stt/.env.production` | `DATABASE_URL=...?ssl=require` (asyncpg), `MINIO_SECURE=true` |
 | `apps/guardrail/.env.example` | `GUARDRAIL_DATABASE_URL` `?ssl=require` guidance (asyncpg) |
 
 > `apps/smr/**` and `apps/harness/**` env files carry **no** Postgres/MinIO

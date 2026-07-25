@@ -52,8 +52,8 @@ usage() {
 }
 
 # ----------------------------------------------------------------------------
-# STT key preflight — apps/stt-v2 reads API_GATEWAY_KEY from the environment
-# or from gitignored apps/stt-v2/.env. A placeholder line whose inline
+# STT key preflight — apps/stt reads API_GATEWAY_KEY from the environment
+# or from gitignored apps/stt/.env. A placeholder line whose inline
 # comment was parsed AS the value once caused every internal call to 401.
 # Never prints the value.
 # ----------------------------------------------------------------------------
@@ -62,9 +62,9 @@ check_stt_key() {
     if [ -n "${API_GATEWAY_KEY:-}" ]; then
         val="$API_GATEWAY_KEY"
         src="environment"
-    elif [ -f "apps/stt-v2/.env" ]; then
-        val="$(sed -n 's/^[[:space:]]*API_GATEWAY_KEY[[:space:]]*=//p' apps/stt-v2/.env | tail -n1)"
-        src="apps/stt-v2/.env"
+    elif [ -f "apps/stt/.env" ]; then
+        val="$(sed -n 's/^[[:space:]]*API_GATEWAY_KEY[[:space:]]*=//p' apps/stt/.env | tail -n1)"
+        src="apps/stt/.env"
     fi
     # trim whitespace and surrounding quotes
     val="$(printf '%s' "$val" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")"
@@ -82,7 +82,7 @@ check_stt_key() {
 
     if [ -n "$reason" ]; then
         echo -e "${RED}STT key preflight FAILED: ${reason}.${NC}" >&2
-        echo "Fix: set a real key in apps/stt-v2/.env (API_GATEWAY_KEY=...) or export API_GATEWAY_KEY." >&2
+        echo "Fix: set a real key in apps/stt/.env (API_GATEWAY_KEY=...) or export API_GATEWAY_KEY." >&2
         echo "The committed dev-seed service-account key lives in" >&2
         echo "  packages/database/src/prisma/db_main/seed/00-constants.ts (API_KEYS.SERVICE_ACCOUNT)" >&2
         echo "or generate one with: pnpm gen:api-key" >&2
@@ -139,17 +139,17 @@ CMD=()
 RELOAD_DIR=""
 
 apply_smr_env() {
-    : "${SMR_V2_OPENAI_COMPAT_ENABLED:=true}"
-    : "${SMR_V2_OPENAI_COMPAT_BASE_URL:=http://localhost:1234/v1}"
-    : "${SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL:=${LM_STUDIO_MODEL}}"
-    : "${SMR_V2_EXTERNAL_GUARDRAIL_ENABLED:=false}"
-    export SMR_V2_OPENAI_COMPAT_ENABLED SMR_V2_OPENAI_COMPAT_BASE_URL \
-        SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL SMR_V2_EXTERNAL_GUARDRAIL_ENABLED
+    : "${SMR_OPENAI_COMPAT_ENABLED:=true}"
+    : "${SMR_OPENAI_COMPAT_BASE_URL:=http://localhost:1234/v1}"
+    : "${SMR_OPENAI_COMPAT_DEFAULT_MODEL:=${LM_STUDIO_MODEL}}"
+    : "${SMR_EXTERNAL_GUARDRAIL_ENABLED:=false}"
+    export SMR_OPENAI_COMPAT_ENABLED SMR_OPENAI_COMPAT_BASE_URL \
+        SMR_OPENAI_COMPAT_DEFAULT_MODEL SMR_EXTERNAL_GUARDRAIL_ENABLED
     ENV_REPORT+=(
-        "SMR_V2_OPENAI_COMPAT_ENABLED=$SMR_V2_OPENAI_COMPAT_ENABLED"
-        "SMR_V2_OPENAI_COMPAT_BASE_URL=$SMR_V2_OPENAI_COMPAT_BASE_URL"
-        "SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL=$SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL"
-        "SMR_V2_EXTERNAL_GUARDRAIL_ENABLED=$SMR_V2_EXTERNAL_GUARDRAIL_ENABLED"
+        "SMR_OPENAI_COMPAT_ENABLED=$SMR_OPENAI_COMPAT_ENABLED"
+        "SMR_OPENAI_COMPAT_BASE_URL=$SMR_OPENAI_COMPAT_BASE_URL"
+        "SMR_OPENAI_COMPAT_DEFAULT_MODEL=$SMR_OPENAI_COMPAT_DEFAULT_MODEL"
+        "SMR_EXTERNAL_GUARDRAIL_ENABLED=$SMR_EXTERNAL_GUARDRAIL_ENABLED"
     )
 }
 
@@ -208,14 +208,14 @@ case "$SERVICE" in
     stt)
         : "${STT_PORT:=8861}"
         ENV_REPORT+=("HOST=$HOST" "STT_PORT=$STT_PORT")
-        CMD=(uvicorn stt_v2.main:app --host "$HOST" --port "$STT_PORT" --app-dir apps/stt-v2/src)
-        RELOAD_DIR="apps/stt-v2/src"
+        CMD=(uvicorn stt.main:app --host "$HOST" --port "$STT_PORT" --app-dir apps/stt/src)
+        RELOAD_DIR="apps/stt/src"
         ;;
     smr)
         : "${SMR_PORT:=8862}"
         apply_smr_env
         ENV_REPORT+=("HOST=$HOST" "SMR_PORT=$SMR_PORT")
-        CMD=(uvicorn smr_v2.main:app --host "$HOST" --port "$SMR_PORT" --app-dir apps/smr/src)
+        CMD=(uvicorn smr.main:app --host "$HOST" --port "$SMR_PORT" --app-dir apps/smr/src)
         RELOAD_DIR="apps/smr/src"
         ;;
     nlp)
@@ -240,8 +240,8 @@ case "$SERVICE" in
     tts)
         : "${TTS_PORT:=8865}"
         ENV_REPORT+=("HOST=$HOST" "TTS_PORT=$TTS_PORT")
-        CMD=(uvicorn tts_v2.main:app --host "$HOST" --port "$TTS_PORT" --app-dir apps/tts-v2/src)
-        RELOAD_DIR="apps/tts-v2/src"
+        CMD=(uvicorn tts.main:app --host "$HOST" --port "$TTS_PORT" --app-dir apps/tts/src)
+        RELOAD_DIR="apps/tts/src"
         ;;
     worker)
         apply_harness_env
@@ -272,7 +272,7 @@ if [ "$PRINT" = "1" ]; then
         if [ -n "${API_GATEWAY_KEY:-}" ]; then
             echo "  API_GATEWAY_KEY=<masked> (from environment)"
         else
-            echo "  API_GATEWAY_KEY=<masked> (expected in apps/stt-v2/.env — run --check-stt-key)"
+            echo "  API_GATEWAY_KEY=<masked> (expected in apps/stt/.env — run --check-stt-key)"
         fi
     fi
     echo "command:"

@@ -132,7 +132,7 @@ describe('PipelineService — template governance', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // validateYaml hops to stt-v2; keep unit tests off the network.
+    // validateYaml hops to stt; keep unit tests off the network.
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
 
     mockClsService.get.mockImplementation((key: string) => {

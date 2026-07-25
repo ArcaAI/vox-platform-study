@@ -12,7 +12,7 @@
 
 1. [Pre-Flight: VM 200 Port Verification](#1-pre-flight-vm-200-port-verification)
 2. [API Gateway Telemetry](#2-api-gateway-telemetry)
-3. [STT-v2 Telemetry](#3-stt-v2-telemetry)
+3. [STT Telemetry](#3-stt-telemetry)
 4. [SMR Telemetry](#4-smr-telemetry)
 5. [NLP Telemetry](#5-nlp-telemetry)
 6. [Client-Side RUM: @arcaai/vox + Grafana Faro](#6-client-side-rum-arcaaivox--grafana-faro)
@@ -31,7 +31,7 @@ ssh hope@10.10.1.100
 
 # Test each service's /metrics endpoint
 curl -s http://10.10.1.10:8868/metrics | head -5   # API Gateway
-curl -s http://10.10.1.10:8861/metrics | head -5   # STT-v2
+curl -s http://10.10.1.10:8861/metrics | head -5   # STT
 curl -s http://10.10.1.10:8862/metrics | head -5   # SMR
 curl -s http://10.10.1.10:8864/metrics | head -5   # NLP
 ```
@@ -228,9 +228,9 @@ curl -s 'http://localhost:3200/api/search?tags=service.name%3Dapi-gateway&limit=
 
 ---
 
-## 3. STT-v2 Telemetry
+## 3. STT Telemetry
 
-**Service**: `apps/stt-v2/` (Python FastAPI, port 8861)
+**Service**: `apps/stt/` (Python FastAPI, port 8861)
 **Current state**: structlog used but NOT configured. OTel packages installed but ZERO instrumentation code.
 
 ### Audit Findings (Critical Gaps)
@@ -246,7 +246,7 @@ curl -s 'http://localhost:3200/api/search?tags=service.name%3Dapi-gateway&limit=
 
 ### Step 3.1 — Create Logging Configuration Module
 
-Create file: `apps/stt-v2/src/stt_v2/core/logging.py`
+Create file: `apps/stt/src/stt/core/logging.py`
 
 Follow the SMR pattern exactly:
 
@@ -299,12 +299,12 @@ def get_logger(name: str) -> structlog.stdlib.BoundLogger:
 
 ### Step 3.2 — Create Telemetry Module
 
-Create file: `apps/stt-v2/src/stt_v2/core/telemetry.py`
+Create file: `apps/stt/src/stt/core/telemetry.py`
 
 Follow the SMR pattern:
 
 ```python
-"""OpenTelemetry setup for STT-v2."""
+"""OpenTelemetry setup for STT."""
 
 from __future__ import annotations
 
@@ -323,7 +323,7 @@ def setup_telemetry(
     app,
     *,
     endpoint: str = "http://localhost:4317",
-    service_name: str = "stt-v2",
+    service_name: str = "stt",
 ) -> None:
     """Configure OpenTelemetry tracing with OTLP gRPC exporter."""
     resource = Resource.create({
@@ -342,14 +342,14 @@ def setup_telemetry(
     HTTPXClientInstrumentor().instrument()
 
 
-def get_tracer(name: str = "stt_v2") -> trace.Tracer:
+def get_tracer(name: str = "stt") -> trace.Tracer:
     """Get a tracer instance for creating spans."""
     return trace.get_tracer(name, _TRACER_VERSION)
 ```
 
 ### Step 3.3 — Create Request ID Middleware
 
-Create file: `apps/stt-v2/src/stt_v2/core/middleware/request_id.py`
+Create file: `apps/stt/src/stt/core/middleware/request_id.py`
 
 Follow the SMR pattern:
 
@@ -384,22 +384,22 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 ### Step 3.4 — Add OTel Settings to Config
 
-Update `apps/stt-v2/src/stt_v2/core/config/settings.py`:
+Update `apps/stt/src/stt/core/config/settings.py`:
 
 ```python
 # Add these fields to the Settings class:
 otel_enabled: bool = False
 otel_exporter_endpoint: str = "http://localhost:4317"
-otel_service_name: str = "stt-v2"
+otel_service_name: str = "stt"
 ```
 
 ### Step 3.5 — Wire Everything in main.py
 
-In `apps/stt-v2/src/stt_v2/main.py`, within the `create_app()` or `lifespan()` function:
+In `apps/stt/src/stt/main.py`, within the `create_app()` or `lifespan()` function:
 
 ```python
-from stt_v2.core.logging import setup_logging
-from stt_v2.core.middleware.request_id import RequestIDMiddleware
+from stt.core.logging import setup_logging
+from stt.core.middleware.request_id import RequestIDMiddleware
 
 # At app startup:
 setup_logging(settings.log_level.lower())
@@ -409,7 +409,7 @@ app.add_middleware(RequestIDMiddleware)
 
 # Conditional OTel:
 if settings.otel_enabled:
-    from stt_v2.core.telemetry import setup_telemetry
+    from stt.core.telemetry import setup_telemetry
     setup_telemetry(
         app,
         endpoint=settings.otel_exporter_endpoint,
@@ -420,10 +420,10 @@ if settings.otel_enabled:
 ### Step 3.6 — Set Environment Variables for Deployment
 
 ```bash
-OTEL_SERVICE_NAME=stt-v2
-STT_V2_OTEL_ENABLED=true
-STT_V2_OTEL_EXPORTER_ENDPOINT=http://10.10.1.100:4317
-STT_V2_OTEL_SERVICE_NAME=stt-v2
+OTEL_SERVICE_NAME=stt
+STT_OTEL_ENABLED=true
+STT_OTEL_EXPORTER_ENDPOINT=http://10.10.1.100:4317
+STT_OTEL_SERVICE_NAME=stt
 ```
 
 ### Step 3.7 — Verification
@@ -443,7 +443,7 @@ SMR is the most mature service. Only minor gaps:
 
 | # | Gap | Severity |
 |---|-----|----------|
-| 1 | Uses custom `SMR_V2_OTEL_*` env vars instead of standard `OTEL_*` | LOW |
+| 1 | Uses custom `SMR_OTEL_*` env vars instead of standard `OTEL_*` | LOW |
 | 2 | `insecure=True` hardcoded in OTLP exporter | LOW |
 | 3 | No Redis health check in `/health` | LOW |
 
@@ -452,9 +452,9 @@ SMR is the most mature service. Only minor gaps:
 Set environment variables for the SMR container/pod:
 
 ```bash
-SMR_V2_OTEL_ENABLED=true
-SMR_V2_OTEL_EXPORTER_ENDPOINT=http://10.10.1.100:4317
-SMR_V2_OTEL_SERVICE_NAME=smr
+SMR_OTEL_ENABLED=true
+SMR_OTEL_EXPORTER_ENDPOINT=http://10.10.1.100:4317
+SMR_OTEL_SERVICE_NAME=smr
 ```
 
 ### Step 4.2 — Verification
@@ -472,8 +472,8 @@ for t in d['data']['activeTargets']:
 # Expected: up
 
 # Verify custom metrics are being scraped
-curl -s http://10.10.1.10:8862/metrics | grep smr_v2_generation_total
-# Expected: smr_v2_generation_total{...} <value>
+curl -s http://10.10.1.10:8862/metrics | grep smr_generation_total
+# Expected: smr_generation_total{...} <value>
 ```
 
 ---
@@ -800,7 +800,7 @@ const config: AgenticConfig = {
 | Check | Command (from VM 400) | Expected |
 |-------|----------------------|----------|
 | Prometheus: api-gateway UP | `curl localhost:9090/api/v1/targets \| grep api-gateway` | health: up |
-| Prometheus: stt-v2 UP | `curl localhost:9090/api/v1/targets \| grep stt-v2` | health: up |
+| Prometheus: stt UP | `curl localhost:9090/api/v1/targets \| grep stt` | health: up |
 | Prometheus: smr UP | `curl localhost:9090/api/v1/targets \| grep smr` | health: up |
 | Prometheus: nlp UP | `curl localhost:9090/api/v1/targets \| grep nlp` | health: up |
 | Prometheus: postgres-exporter UP | `curl localhost:9090/api/v1/targets \| grep postgres` | 3 targets up |
@@ -808,7 +808,7 @@ const config: AgenticConfig = {
 | Prometheus: etcd UP | `curl localhost:9090/api/v1/targets \| grep etcd` | 3 targets up |
 | Prometheus: redis UP | `curl localhost:9090/api/v1/targets \| grep redis` | 2 targets up |
 | Loki: API logs | `curl 'localhost:3100/loki/api/v1/query?query={service_name="api-gateway"}&limit=3'` | Log entries |
-| Loki: STT logs | `curl 'localhost:3100/loki/api/v1/query?query={service_name="stt-v2"}&limit=3'` | Log entries |
+| Loki: STT logs | `curl 'localhost:3100/loki/api/v1/query?query={service_name="stt"}&limit=3'` | Log entries |
 | Loki: SMR logs | `curl 'localhost:3100/loki/api/v1/query?query={service_name="smr"}&limit=3'` | Log entries |
 | Loki: NLP logs | `curl 'localhost:3100/loki/api/v1/query?query={service_name="nlp"}&limit=3'` | Log entries |
 | Tempo: Traces | `curl 'localhost:3200/api/search?limit=5'` | Traces with multiple services |

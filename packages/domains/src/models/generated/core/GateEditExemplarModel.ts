@@ -21,6 +21,7 @@ export class GateEditExemplar extends BaseTenantDataModel {
   public contextItemId: string | null;
   public modelName: string | null;
   public promptTemplateId: string | null;
+  public curationStatus: Enums.ExemplarCurationStatus;
 
   constructor(data: GateEditExemplar & BaseTenantDataModel) {
     super(data);
@@ -37,5 +38,6 @@ export class GateEditExemplar extends BaseTenantDataModel {
     this.contextItemId = data.contextItemId;
     this.modelName = data.modelName;
     this.promptTemplateId = data.promptTemplateId;
+    this.curationStatus = data.curationStatus;
   }
 }

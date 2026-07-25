@@ -99,7 +99,7 @@ These drive every decision below; each is a direct read of the working tree.
 
 7. **Provenance must be re-resolved inside `persistDraft()` (cannot be threaded through the workflow).** The harness calls three *separate* apps/api endpoints — `assemble` (loads snapshot, injects text), `generate` (SMR), `persist_draft` (writes `SummaryMeta`). Because **no Temporal workflow change** is allowed, the consumed snapshot id cannot be carried from `assemble` → workflow → `persist_draft` (that would require editing the Python activity/workflow models). Instead `persistDraft()` independently re-resolves the same `LIVE_SOAP_SNAPSHOT` row (deterministic post-stop: the row is a single, frozen, upserted row by the time the workflow runs) and writes its id into `preSummaryIds`. Both `assemble()` and `persistDraft()` will use one shared private helper so they always agree.
 
-8. **SMR has no dedicated prior-summary field → injection must be prompt text.** `GenerateRequest` only has `prompt` / `system_prompt` (`apps/smr/src/smr_v2/models/requests.py:21-32`). Confirms the legacy mechanism (`{pre_summary_text}` woven into the prompt) is the only channel — exactly what this plan does.
+8. **SMR has no dedicated prior-summary field → injection must be prompt text.** `GenerateRequest` only has `prompt` / `system_prompt` (`apps/smr/src/smr/models/requests.py:21-32`). Confirms the legacy mechanism (`{pre_summary_text}` woven into the prompt) is the only channel — exactly what this plan does.
 
 ---
 

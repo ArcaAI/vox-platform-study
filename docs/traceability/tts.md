@@ -1,10 +1,10 @@
 # Traceability — Text-to-Speech (TTS)
 
-Multi-provider text-to-speech: the stateless `apps/tts-v2` synthesis service, the gateway
+Multi-provider text-to-speech: the stateless `apps/tts` synthesis service, the gateway
 `speech` proxy that fronts it, and the DB-backed per-tenant TTS configuration + BYO
 provider-credential plane (TASK-488 / TASK-496). This entire domain had **zero rows** in
 the legacy matrix (the former `apps/tts` service and its `tts.contract.test.ts` were
-removed in TASK-414; the new `apps/tts-v2` was never added back) — the TASK-538 Wave-1 P0
+removed in TASK-414; the new `apps/tts` was never added back) — the TASK-538 Wave-1 P0
 gap.
 
 Route paths are relative to the global prefix `/api/v1`. Test shorthand is defined in
@@ -12,16 +12,16 @@ Route paths are relative to the global prefix `/api/v1`. Test shorthand is defin
 
 Architecture: the gateway resolves a tenant's effective TTS spec (tenant row merged over
 the SYSTEM-tenant platform default, clamped to platform limits) and injects it into the
-**stateless** `apps/tts-v2` per request — the Python service never touches Postgres.
+**stateless** `apps/tts` per request — the Python service never touches Postgres.
 BYO provider keys are Vault-Transit ciphertext at rest, decrypted only at injection time.
 
 ## Capabilities
 
-### T1 — Speech synthesis service (`apps/tts-v2`)
+### T1 — Speech synthesis service (`apps/tts`)
 
 | Field | Value |
 |---|---|
-| App / service | `apps/tts-v2` (`tts_v2`, port 8865) — multi-provider (Azure Speech + local Kokoro / Indic Parler / IndicF5 + Sarvam), en + ml |
+| App / service | `apps/tts` (`tts`, port 8865) — multi-provider (Azure Speech + local Kokoro / Indic Parler / IndicF5 + Sarvam), en + ml |
 | Endpoints (mounted `prefix="/api/v1"` in `main.py`) | `POST /api/v1/audio/speech` (`api/endpoints/speech.py`, OpenAI-compatible); `GET /api/v1/voices` (`api/endpoints/voices.py`); WS `/api/v1/audio/stream` (`api/endpoints/stream_ws.py`); `GET /api/v1/health*` (`api/endpoints/health.py`) |
 | Auth | `X-Service-Token` middleware (`api/middleware/auth.py`), empty token = dev bypass; health/docs/metrics exempt |
 | Prisma models | — (stateless; effective spec injected by the gateway per request) |
@@ -31,10 +31,10 @@ BYO provider keys are Vault-Transit ciphertext at rest, decrypted only at inject
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` fronts `apps/tts-v2` (browsers never call the Python service directly) |
+| App / service | `apps/api` fronts `apps/tts` (browsers never call the Python service directly) |
 | Key modules | `apps/api/src/modules/speech` (`speech-proxy.controller.ts`, `tts-ws.gateway.ts`, `speech.module.ts`) |
 | Prisma models | — (proxy; resolves the effective spec via T3's service, injects `X-Service-Token`) |
-| Key API endpoints | `@Controller('speech')` → `POST /speech/synthesize`, `GET /speech/voices`; WS gateway `@WebSocketGateway({ path: '/ws/tts-v2/stream' })` → WS `/ws/tts-v2/stream` |
+| Key API endpoints | `@Controller('speech')` → `POST /speech/synthesize`, `GET /speech/voices`; WS gateway `@WebSocketGateway({ path: '/ws/tts/stream' })` → WS `/ws/tts/stream` |
 | Console | consumed by the playground (`apps/admin-console` playground surfaces) |
 | Tests | unit(api): `speech/__tests__/speech-proxy.controller.test.ts`, `speech/__tests__/tts-ws.gateway.test.ts`; e2e: `speech-proxy-auth.spec.ts` |
 

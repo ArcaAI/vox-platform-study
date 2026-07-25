@@ -14,10 +14,10 @@ Over a **real** WebSocket, the STT gateway's entire JSON control channel (`stop`
 **Root cause.** `apps/api` runs `ws ^8.21.0`. In **ws v8** the `WebSocket` `message` event delivers **both** text and binary frames as a Node `Buffer`, and signals which via a **second `isBinary: boolean` argument** — a breaking change from ws v7, where a text frame arrived as a `string` and a binary frame as a `Buffer`. `SttWsGateway.handleMessage` classified frames with `Buffer.isBuffer(rawData)` ([apps/api/src/modules/streaming/stt-ws.gateway.ts:537](../../../apps/api/src/modules/streaming/stt-ws.gateway.ts) pre-fix), so **every** `{type:'stop'|'resume'|'close'|'audio'}` **text** control frame matched `Buffer.isBuffer` and was misrouted into the binary-audio branch; the JSON `switch` never ran.
 
 **Impact is production, not just e2e.** The SDK sends control frames as text and audio as binary:
-- `sendStop()` → `ws.send(JSON.stringify({type:'stop'}))`, `sendClose()` → `{type:'close'}`, `sendResume()` → `{type:'resume',…}` ([packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts:394,402,947](../../../packages/agentic-sdk-v2/src/core/SttV2WebSocketClient.ts))
+- `sendStop()` → `ws.send(JSON.stringify({type:'stop'}))`, `sendClose()` → `{type:'close'}`, `sendResume()` → `{type:'resume',…}` ([packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts:394,402,947](../../../packages/agentic-sdk-v2/src/core/SttWebSocketClient.ts))
 - `sendAudioFrame()` → `ws.send(ArrayBuffer)` (binary), unaffected.
 
-So over a real socket, **client-driven finalize (`stop`), graceful `close`, and the D-17 `resume` handshake were all silent no-ops**; audio still flowed. Sessions could only finalize via VAD silence / the STT-v2 inactivity reaper.
+So over a real socket, **client-driven finalize (`stop`), graceful `close`, and the D-17 `resume` handshake were all silent no-ops**; audio still flowed. Sessions could only finalize via VAD silence / the STT inactivity reaper.
 
 ## Current State Evaluation
 
@@ -45,7 +45,7 @@ Scope boundary — **this ticket fixes frame CLASSIFICATION only.** It is indepe
 - New `describe('TASK-467 — ws@8 text control frames arrive as Buffer + isBinary=false')` (5 tests) — the regression guard.
 - Six existing binary-frame call sites updated to `handleMessage(client, buf, true)` (they relied on the removed heuristic).
 
-**E2e narrative + one live assert** (cannot be run without a live STT-V2 stack — see Verification):
+**E2e narrative + one live assert** (cannot be run without a live STT stack — see Verification):
 - [task-455-streaming-resume-after-drop.spec.ts](../../../apps/api/tests/e2e/task-455-streaming-resume-after-drop.spec.ts) — corrected the "gateway never processes the handshake" narrative; added Invariant #2: the reconnect resume now draws a reply, i.e. `expect(baseline.finding_control_frames_ignored).toBe(false)`. The TASK-457 `test.fixme` (replay-from-lastSeq, no duplicate flood) is **unchanged**.
 - [task-455-streaming-backpressure-recovery.spec.ts](../../../apps/api/tests/e2e/task-455-streaming-backpressure-recovery.spec.ts) — corrected the "`{type:stop}` is a no-op" comment/notes; `reachedClosedStatusAfterStop` stays **recorded, not asserted** (post-fix it hinges on the upstream finalize emitting `closed`, not on frame classification).
 
@@ -77,7 +77,7 @@ Scope boundary — **this ticket fixes frame CLASSIFICATION only.** It is indepe
   (run: `pnpm exec dotenv -e .env.test -- vitest run apps/api`)
 - **Build** (`pnpm build:api`): `Tasks: 8 successful, 8 total`.
 - **Lint**: `stt-ws.gateway.ts` → 0 errors. Test file is eslint-ignored (test glob). The two e2e specs sit OUTSIDE the API lint glob (`{src,apps,libs,test}/**` — note `test`, not `tests`) and carry pre-existing prettier violations (44 + 7 at HEAD); this change adds **0** new (verified HEAD-vs-now).
-- **Live e2e — NOT run here.** No STT-V2 stack in this session. To confirm the resume-spec Invariant #2 and refresh the baselines, run against a live stack:
+- **Live e2e — NOT run here.** No STT stack in this session. To confirm the resume-spec Invariant #2 and refresh the baselines, run against a live stack:
   ```bash
   RESET_DB=false E2E_WAIT_SERVICES=true npx dotenv -e .env.test -- \
     npx playwright test task-455 --workers=1

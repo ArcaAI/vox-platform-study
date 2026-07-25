@@ -13,15 +13,15 @@
 
 ### Description
 
-Remove the legacy SMR v1 service code (`apps/smr/src/smr/`) from the HOPE monorepo. The SMR v2 service (`apps/smr/src/smr_v2/`) is the production replacement and must **not** be modified in any way.
+Remove the legacy SMR v1 service code (`apps/smr/src/smr/`) from the HOPE monorepo. The SMR service (`apps/smr/src/smr/`) is the production replacement and must **not** be modified in any way.
 
 Both v1 and v2 coexisted inside `apps/smr/` as separate Python packages:
 - **v1**: `src/smr/` — Medical conversation summarization (port 5005)
-- **v2**: `src/smr_v2/` — General-purpose text generation API (port 5006)
+- **v2**: `src/smr/` — General-purpose text generation API (port 5006)
 
 ### Business Context
 
-- SMR v2 (TASK-023) fully replaces v1 for all text generation capabilities.
+- SMR (TASK-023) fully replaces v1 for all text generation capabilities.
 - v1 was a medical-domain-specific summarization monolith with 1,500+ LoC in `summary_service.py`, 14 department-specific prompt files, Celery + PostgreSQL dependencies, and 40+ packages.
 - v2 is a clean, general-purpose service with multi-provider support (Ollama, Azure OpenAI, AWS Bedrock), Redis Streams task management, ~18 core dependencies, and 285 passing tests at 98% coverage.
 - Keeping the deprecated v1 code creates confusion, inflates the dependency footprint, and adds maintenance burden.
@@ -40,12 +40,12 @@ Both v1 and v2 coexisted inside `apps/smr/` as separate Python packages:
 - [x] Monorepo `package.json` test scripts updated for v2 test paths
 - [x] `.vscode/launch.json` updated for v2
 - [x] Cursor rules updated for v2
-- [x] `apps/smr/src/smr_v2/` is **untouched** (zero modifications)
+- [x] `apps/smr/src/smr/` is **untouched** (zero modifications)
 
 ### Constraints
 
-- **DO NOT** touch `apps/smr/src/smr_v2/` at all
-- **DO NOT** modify v2 test files in `apps/smr/src/smr_v2/tests/`
+- **DO NOT** touch `apps/smr/src/smr/` at all
+- **DO NOT** modify v2 test files in `apps/smr/src/smr/tests/`
 - **DO NOT** remove environment variables for SMR (port 5006, `SMR_URL`, etc.) — these serve v2
 
 ---
@@ -67,7 +67,7 @@ A FastAPI-based medical conversation summarization service with:
 | Port | 5005 (v1) / 5006 (v2) — both could run simultaneously |
 | API prefix | `/api/v1/` |
 
-### SMR v2 Service (`apps/smr/src/smr_v2/`)
+### SMR Service (`apps/smr/src/smr/`)
 
 | Aspect | v2 Detail |
 |--------|-----------|
@@ -137,10 +137,10 @@ A FastAPI-based medical conversation summarization service with:
 
 | # | Task | File(s) | Change |
 |---|------|---------|--------|
-| 4.1 | Update Dockerfile | `apps/smr/Dockerfile` | Entrypoint: `smr.main` → `uvicorn smr_v2.main:app`, port 5005 → 5006, remove v1 OTel env vars, update labels to v2.0.0 |
-| 4.2 | Rewrite pyproject.toml | `apps/smr/pyproject.toml` | Name: `summary-agent` → `smr-v2`, remove 30+ v1 deps (Celery, SQLAlchemy, Alembic, OpenTelemetry, etc.), add `openai` + `boto3` for providers, update all tool paths to `smr_v2` |
-| 4.3 | Update package.json | `package.json` | Test scripts: `apps/smr/tests/` → `apps/smr/src/smr_v2/tests/`, coverage source: `apps/smr/src/smr` → `apps/smr/src/smr_v2`, lint/format paths: remove `apps/smr/tests/` |
-| 4.4 | Update launch.json | `.vscode/launch.json` | Debug config: `smr.main:app` → `smr_v2.main:app`, port 3000 → 5006, cwd to `apps/smr/src` |
+| 4.1 | Update Dockerfile | `apps/smr/Dockerfile` | Entrypoint: `smr.main` → `uvicorn smr.main:app`, port 5005 → 5006, remove v1 OTel env vars, update labels to v2.0.0 |
+| 4.2 | Rewrite pyproject.toml | `apps/smr/pyproject.toml` | Name: `summary-agent` → `smr`, remove 30+ v1 deps (Celery, SQLAlchemy, Alembic, OpenTelemetry, etc.), add `openai` + `boto3` for providers, update all tool paths to `smr` |
+| 4.3 | Update package.json | `package.json` | Test scripts: `apps/smr/tests/` → `apps/smr/src/smr/tests/`, coverage source: `apps/smr/src/smr` → `apps/smr/src/smr`, lint/format paths: remove `apps/smr/tests/` |
+| 4.4 | Update launch.json | `.vscode/launch.json` | Debug config: `smr.main:app` → `smr.main:app`, port 3000 → 5006, cwd to `apps/smr/src` |
 
 ### Phase 5: Update API Gateway
 
@@ -160,7 +160,7 @@ A FastAPI-based medical conversation summarization service with:
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Accidentally modifying smr_v2 | Low | High | Verified with `git diff --name-only -- apps/smr/src/smr_v2/` returning empty |
+| Accidentally modifying smr | Low | High | Verified with `git diff --name-only -- apps/smr/src/smr/` returning empty |
 | Breaking CI/CD by removing too much | Low | High | Only v1-specific entries removed; all v2 paths preserved |
 | Missing provider SDKs in pyproject.toml | Medium | Medium | Added `openai` and `boto3` to dependencies after test run revealed they're required |
 | V2 tests failing after v1 removal | Low | High | Verified: 285/285 tests pass in fresh conda env |
@@ -175,18 +175,18 @@ The complete removal of SMR v1 legacy code from `apps/smr/`, leaving only the v2
 
 ### Verification Results
 
-A **brand-new conda environment** (`smr-v2-test`, Python 3.11.14) was created to verify the removal did not break v2:
+A **brand-new conda environment** (`smr-test`, Python 3.11.14) was created to verify the removal did not break v2:
 
 | Check | Result |
 |-------|--------|
 | Fresh `pip install -e "apps/smr[dev,test]"` | All dependencies resolved cleanly |
-| All `smr_v2` module imports | 16/16 modules import successfully |
+| All `smr` module imports | 16/16 modules import successfully |
 | `import smr` (v1) | Correctly raises `ImportError` — v1 is gone |
-| `create_app()` | Builds cleanly: "SMR V2 — Text Generation Service v2.0.0", 11 routes |
+| `create_app()` | Builds cleanly: "SMR — Text Generation Service v2.0.0", 11 routes |
 | **Unit tests** | **285 passed, 0 failed** |
 | **Coverage** | **98%** (857 stmts, 13 missed) |
 | Duration | 2.69s |
-| Temporary env cleanup | `conda env remove -n smr-v2-test` completed |
+| Temporary env cleanup | `conda env remove -n smr-test` completed |
 
 ### Files Deleted (121 files, ~31,500 lines)
 
@@ -203,13 +203,13 @@ A **brand-new conda environment** (`smr-v2-test`, Python 3.11.14) was created to
 
 | File | Change Summary |
 |------|---------------|
-| `apps/smr/Dockerfile` | Entrypoint → `uvicorn smr_v2.main:app`, port → 5006, labels → v2.0.0 |
-| `apps/smr/pyproject.toml` | Rewritten: name `smr-v2`, 14 core deps (from 40+), all paths → `smr_v2` |
+| `apps/smr/Dockerfile` | Entrypoint → `uvicorn smr.main:app`, port → 5006, labels → v2.0.0 |
+| `apps/smr/pyproject.toml` | Rewritten: name `smr`, 14 core deps (from 40+), all paths → `smr` |
 | `apps/api/src/modules/smr/smr.controller.ts` | 12 v1 routes → 6 v2 routes (health, generate, tasks, stream, providers) |
 | `package.json` | 5 test/lint/format scripts updated for v2 paths |
-| `.vscode/launch.json` | Debug config → `smr_v2.main:app` on port 5006 |
+| `.vscode/launch.json` | Debug config → `smr.main:app` on port 5006 |
 | `.cursor/rules/06-app-smr.mdc` | Complete rewrite for v2 architecture |
-| `apps/smr/src/smr_v2/main.py` | **NOT modified by this task** (pre-existing diff from TASK-023) |
+| `apps/smr/src/smr/main.py` | **NOT modified by this task** (pre-existing diff from TASK-023) |
 
 ### Dependency Changes (pyproject.toml)
 

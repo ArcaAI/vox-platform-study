@@ -292,7 +292,7 @@ for target in data['data']['activeTargets']:
     print(f'  {job:25s} {health:6s} {error}')
 "
 # Expected: at least "prometheus" shows "up"
-# Other targets (api-gateway, stt-v2, etc.) may show "down" until Phase 2
+# Other targets (api-gateway, stt, etc.) may show "down" until Phase 2
 ```
 
 ---

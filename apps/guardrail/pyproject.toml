@@ -33,7 +33,7 @@ dependencies = [
     "python-dotenv>=1.2.0",
     "prometheus-client>=0.24.1",
     "prometheus-fastapi-instrumentator>=7.1.0",
-    # Async DB access for per-tenant config resolution (TASK-338; mirrors STT-v2).
+    # Async DB access for per-tenant config resolution (TASK-338; mirrors STT).
     # SQLAlchemy has no `asyncpg` extra — the async driver must be declared explicitly.
     "sqlalchemy[asyncio]>=2.0.47",
     "asyncpg>=0.31.0",

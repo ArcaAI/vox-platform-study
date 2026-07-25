@@ -13,7 +13,7 @@ import type { AgenticClient } from './AgenticClient';
 import { PIPELINE_ENDPOINTS } from './constants';
 import { withRetry } from '../utils/errorUtils';
 import type { ISDKLogger } from './logger';
-import type { AsrPipelineResponse } from '../types/stt-v2';
+import type { AsrPipelineResponse } from '../types/stt';
 
 /**
  * Configuration options for PipelineRegistry.

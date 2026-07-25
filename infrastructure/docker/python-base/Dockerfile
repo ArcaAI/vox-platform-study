@@ -35,7 +35,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     PYTHONHASHSEED=random \
     PATH="/app/.venv/bin:$PATH"
 
-# libgomp1: required at runtime by onnxruntime (guardrail, stt-v2, nlp).
+# libgomp1: required at runtime by onnxruntime (guardrail, stt, nlp).
 # curl: used by container HEALTHCHECKs.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \

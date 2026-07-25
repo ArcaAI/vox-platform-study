@@ -5,7 +5,7 @@
 | Reviewer | A2 |
 | Parent | TASK-293 Vox SDK Deep Assessment V2 |
 | Created | 2026-05-24 |
-| Scope | `@arcaai/vox` `useVoiceEmbedding` ↔ API Gateway `voice-profile` ↔ STT-v2 `voice_profile`/`diarization` ↔ local `@arcaai/stt` diarizer |
+| Scope | `@arcaai/vox` `useVoiceEmbedding` ↔ API Gateway `voice-profile` ↔ STT `voice_profile`/`diarization` ↔ local `@arcaai/stt` diarizer |
 | Status | Review |
 
 ---
@@ -20,7 +20,7 @@ This file evaluates the voice-enrollment surface end-to-end against the five bus
 4. Enrollment is **prerequisite** for enabling on-device diarization.
 5. Enrollment supports re-enrollment, deletion, and audit.
 
-Method: full read of the SDK hook, transport, store, secure storage, and panel; full read of the backend controller, application service, repository, Prisma model, migration, and the STT-v2 Python receiver including the preseed path; cross-reference against TASK-262 GAP-02 (which TASK-265-D2 and TASK-275-B2 nominally closed). Every claim cites `file:line`.
+Method: full read of the SDK hook, transport, store, secure storage, and panel; full read of the backend controller, application service, repository, Prisma model, migration, and the STT Python receiver including the preseed path; cross-reference against TASK-262 GAP-02 (which TASK-265-D2 and TASK-275-B2 nominally closed). Every claim cites `file:line`.
 
 The verdict is **non-conformant in production**. Although TASK-265-D2 fixed the 404 path mismatch and TASK-275-B2 wired the playground panel, three structural defects remain:
 
@@ -33,7 +33,7 @@ The verdict is **non-conformant in production**. Although TASK-265-D2 fixed the 
 ## 2. Current architecture (end-to-end)
 
 ```
-Browser (vox SDK)                         API Gateway (NestJS)                   STT-v2 (Python)            Postgres / pgvector
+Browser (vox SDK)                         API Gateway (NestJS)                   STT (Python)            Postgres / pgvector
 ────────────────────                      ───────────────────────                ─────────────────          ──────────────────
 
 useVoiceEmbedding                                                                                          core."UserVoiceProfile"
@@ -110,7 +110,7 @@ The diagram makes plain that the wire-up between SDK and backend is correct in *
 
 | SDK hook action | HTTP verb + path | Backend method | Storage | Status |
 |---|---|---|---|---|
-| `useVoiceEmbedding.enroll(files)` | `POST /voice-profile/enroll` (multipart, ≤3 files, 10 MB ea., `audio/*`) | `VoiceProfileController.enroll` → `VoiceProfileService.enroll` → STT-v2 `/internal/voice-profile/extract` → `repository.createWithEmbedding` | pgvector(256) row, **`isActive:false`** by default | Aligned |
+| `useVoiceEmbedding.enroll(files)` | `POST /voice-profile/enroll` (multipart, ≤3 files, 10 MB ea., `audio/*`) | `VoiceProfileController.enroll` → `VoiceProfileService.enroll` → STT `/internal/voice-profile/extract` → `repository.createWithEmbedding` | pgvector(256) row, **`isActive:false`** by default | Aligned |
 | `useVoiceEmbedding.list()` | `GET /voice-profile` | `VoiceProfileController.list` → `service.listByUserId(cls.user.id)` | Reads `findAllByUserId` | Aligned |
 | `useVoiceEmbedding.delete(profileId)` | `DELETE /voice-profile/:id` | `VoiceProfileController.deleteById` → `service.deleteById` (soft) | `resourceStatus='DELETED'` | Aligned but **no ownership check** |
 | **— (missing)** | `PATCH /voice-profile/:id/activate` | `VoiceProfileController.activate` (`voice-profile.controller.ts:87`) | Sets `isActive=true`, deactivates all others for the user | Backend exists, **SDK does NOT expose** |
@@ -128,9 +128,9 @@ The diagram makes plain that the wire-up between SDK and backend is correct in *
 ## 4. Strengths
 
 1. **Path/multipart alignment is correct** post TASK-265-D2. `useVoiceEmbedding.enroll` calls `apiClient.postFormData()` (`packages/agentic-sdk-v2/src/hooks/useVoiceEmbedding.ts:59`), which omits Content-Type and lets the browser set the multipart boundary (`AgenticClient.postFormData`, `packages/agentic-sdk-v2/src/core/AgenticClient.ts:393`). The controller uses `FilesInterceptor('files', 3)` with `ParseFilePipe` enforcing `MaxFileSizeValidator({ maxSize: 10 MB })` and `FileTypeValidator({ fileType: /^audio\// })` (`apps/api/src/modules/voice-profile/voice-profile.controller.ts:50-58`). The SDK's FormData key is `'files'` and the controller's interceptor field name matches.
-2. **Raw audio is not persisted.** The application service streams the buffers to STT-v2 via `multipart/form-data` and only stores the 256-dim embedding plus metadata (`packages/applications/src/services/user/voiceProfile/voiceProfile.service.ts:105-124`). The Python receiver does not write the audio to disk (`apps/stt-v2/src/stt_v2/voice_profile/api/routes.py:33-91`). This is the right HIPAA posture for the raw biometric input.
-3. **User identity is derived server-side from CLS, not client-supplied.** The controller uses `this.cls.get('user').id` (`voice-profile.controller.ts:38`), and the streaming session controller forwards `user_id` to STT-v2 from CLS, not from the SDK (`apps/api/src/modules/streaming/transcription-job.controller.ts:268`). The SDK cannot enrol on behalf of another user.
-4. **Backend preseed wiring is implemented.** `preseed_speaker` (`apps/stt-v2/src/stt_v2/diarization/preseed.py:17`) is invoked by both the streaming session manager (`apps/stt-v2/src/stt_v2/streaming/session_manager.py:409-415`) and the batch transcription service (`apps/stt-v2/src/stt_v2/transcription/batch_service.py:280-285`). When a profile *is* active, both pipelines pre-register the speaker on the `SpeakerTracker` with the doctor's display name (`preseed.py:99-107`). The architecture for reqt 3 (backend side) is correct.
+2. **Raw audio is not persisted.** The application service streams the buffers to STT via `multipart/form-data` and only stores the 256-dim embedding plus metadata (`packages/applications/src/services/user/voiceProfile/voiceProfile.service.ts:105-124`). The Python receiver does not write the audio to disk (`apps/stt/src/stt/voice_profile/api/routes.py:33-91`). This is the right HIPAA posture for the raw biometric input.
+3. **User identity is derived server-side from CLS, not client-supplied.** The controller uses `this.cls.get('user').id` (`voice-profile.controller.ts:38`), and the streaming session controller forwards `user_id` to STT from CLS, not from the SDK (`apps/api/src/modules/streaming/transcription-job.controller.ts:268`). The SDK cannot enrol on behalf of another user.
+4. **Backend preseed wiring is implemented.** `preseed_speaker` (`apps/stt/src/stt/diarization/preseed.py:17`) is invoked by both the streaming session manager (`apps/stt/src/stt/streaming/session_manager.py:409-415`) and the batch transcription service (`apps/stt/src/stt/transcription/batch_service.py:280-285`). When a profile *is* active, both pipelines pre-register the speaker on the `SpeakerTracker` with the doctor's display name (`preseed.py:99-107`). The architecture for reqt 3 (backend side) is correct.
 5. **Audit-event broadcast on every mutation.** `VoiceProfileService.enroll/activate/deactivate/deleteById` all emit `broadcastSysEvent(SysEventType.*)` (`voiceProfile.service.ts:58, 77, 88, 97`). Provides a tap point for downstream audit storage.
 6. **Embedding-only entity boundary.** `UserVoiceProfileEntity` (`packages/domains/src/entities/generated/core/UserVoiceProfileEntity.ts:14`) holds only `userId`, `isActive`, `label`, `modelId`. The 256-d vector lives in pgvector and is never round-tripped to the HTTP layer or audit log, limiting biometric exposure on the wire.
 7. **Per-user partial-unique constraint on active profile.** Migration `20260413000000_add_user_voice_profile/migration.sql:40-42` enforces "only 1 active per user", so the activate path cannot create a forked active state.
@@ -146,8 +146,8 @@ The diagram makes plain that the wire-up between SDK and backend is correct in *
 
 - `VoiceProfileService.enroll` (`packages/applications/src/services/user/voiceProfile/voiceProfile.service.ts:45-51`) calls `UserVoiceProfileFactory.CreateUserVoiceProfile({ ..., isActive: false })`. The new row's `isActive` is `false`.
 - `VOICE_EMBEDDING_ENDPOINTS` (`packages/agentic-sdk-v2/src/core/constants.ts:595-599`) contains only `{ enroll, list, delete }`. There is no `activate` constant and no `useVoiceEmbedding.activate(profileId)` method (`packages/agentic-sdk-v2/src/hooks/useVoiceEmbedding.ts:30-38`).
-- Backend `get_voice_embedding(user_id)` selects `WHERE "isActive" = true AND "resourceStatus" = 'ENABLED'` (`apps/stt-v2/src/stt_v2/core/database/voice_profile_model.py:48-51`). It will return `None` for every newly enrolled profile.
-- Result: `preseed_speaker` logs "No active voice profile for user … skipping pre-seed" (`apps/stt-v2/src/stt_v2/diarization/preseed.py:82-89`) and proceeds without pre-registering the doctor. The doctor sees generic `Speaker 1` / `Speaker 2` labels even though they enrolled.
+- Backend `get_voice_embedding(user_id)` selects `WHERE "isActive" = true AND "resourceStatus" = 'ENABLED'` (`apps/stt/src/stt/core/database/voice_profile_model.py:48-51`). It will return `None` for every newly enrolled profile.
+- Result: `preseed_speaker` logs "No active voice profile for user … skipping pre-seed" (`apps/stt/src/stt/diarization/preseed.py:82-89`) and proceeds without pre-registering the doctor. The doctor sees generic `Speaker 1` / `Speaker 2` labels even though they enrolled.
 
 **Impact**: requirement #3 (backend consumption) is wired but **functionally non-conformant**. The user-visible value of enrollment is zero.
 
@@ -189,7 +189,7 @@ async enroll(request: EnrollVoiceProfileRequest): Promise<UserVoiceProfileEntity
 
 - **Short term (S):** add an opaque server-issued "doctor pre-seed" string to `LocalProviderConfig` that the local diarizer treats as "speaker 1 is reserved for the doctor". The diarizer can pin the first speech segment's profile to that ID rather than auto-numbering. Solves the labelling half of the requirement without sharing the embedding.
 - **Medium term (M):** ship a tiny browser-side MFCC re-extraction in `useVoiceEmbedding.enroll` so the SDK simultaneously POSTs the file to the backend AND computes a 40-dim local feature vector that gets cached and passed to `LocalSpeakerDiarizer` via a new `preseededProfiles: { id: string; features: number[] }[]` constructor option.
-- **Long term (L):** unify on a single ONNX speaker-embedding model (e.g., 256-d WeSpeaker or X-vector) that runs both in the browser worker and in STT-v2. This is the only way to satisfy reqt 3 with byte-for-byte fidelity.
+- **Long term (L):** unify on a single ONNX speaker-embedding model (e.g., 256-d WeSpeaker or X-vector) that runs both in the browser worker and in STT. This is the only way to satisfy reqt 3 with byte-for-byte fidelity.
 
 #### C-3 — IDOR on `DELETE /voice-profile/:id`, `PATCH :id/activate`, `PATCH :id/deactivate`
 
@@ -323,7 +323,7 @@ for (const f of fileList) {
 
 #### H-8 — No inter-sample consistency check
 
-- `ExtractionService` computes a centroid of the three embeddings (`apps/stt-v2/src/stt_v2/voice_profile/extraction_service.py:61-64`) but does not check that the three samples actually came from the same speaker. There is no minimum cosine-similarity threshold across the samples.
+- `ExtractionService` computes a centroid of the three embeddings (`apps/stt/src/stt/voice_profile/extraction_service.py:61-64`) but does not check that the three samples actually came from the same speaker. There is no minimum cosine-similarity threshold across the samples.
 - A doctor could enrol their voice as one sample plus two samples of a colleague's voice; the centroid is a noisy average and downstream diarization labels both speakers as "the doctor".
 - Could also be a vector for malicious impersonation if the device is shared.
 
@@ -333,7 +333,7 @@ for (const f of fileList) {
 
 #### M-1 — `extractEmbeddings` HTTP call has 60 s timeout but no retry
 
-- `voiceProfile.service.ts:118` sets `timeout: 60000` but no retry on transient 5xx. Buffers are already consumed from the multipart stream by then, so a 502/503 from STT-v2 → unrecoverable from the user's perspective.
+- `voiceProfile.service.ts:118` sets `timeout: 60000` but no retry on transient 5xx. Buffers are already consumed from the multipart stream by then, so a 502/503 from STT → unrecoverable from the user's perspective.
 
 **Patch:** wrap with `retry({ count: 2, delay: 1000 })` from rxjs OR explicit try/catch + 1 retry.
 
@@ -388,7 +388,7 @@ this.broadcastSysEvent(SysEventType.ResourceCreated, {
 
 #### M-8 — Backend `preseed_speaker` swallows all exceptions silently
 
-- `try: … except Exception: logger.warning(…)` (`apps/stt-v2/src/stt_v2/diarization/preseed.py:114-120`). DB connectivity issues / SQL errors degrade silently to "no preseed". The streaming session continues without informing the API gateway or the SDK.
+- `try: … except Exception: logger.warning(…)` (`apps/stt/src/stt/diarization/preseed.py:114-120`). DB connectivity issues / SQL errors degrade silently to "no preseed". The streaming session continues without informing the API gateway or the SDK.
 
 **Patch:** at minimum emit a structured metric (`voice_profile.preseed.failed{reason}`) and a `status` field in the session response so the SDK can warn the user that diarization is running unpersonalized.
 
@@ -406,7 +406,7 @@ this.broadcastSysEvent(SysEventType.ResourceCreated, {
 
 #### L-3 — No model-version compatibility check on consumption
 
-- `modelId` is persisted on enrollment (`UserVoiceProfile.modelId`, `migration.sql:14`) but `get_voice_embedding` does not return it (`voice_profile_model.py:36-67`); `preseed_speaker` does not check that the live `embedding_service` model id matches the stored one. If STT-v2 is upgraded to a new embedding model, old 256-d vectors are used silently with degraded accuracy.
+- `modelId` is persisted on enrollment (`UserVoiceProfile.modelId`, `migration.sql:14`) but `get_voice_embedding` does not return it (`voice_profile_model.py:36-67`); `preseed_speaker` does not check that the live `embedding_service` model id matches the stored one. If STT is upgraded to a new embedding model, old 256-d vectors are used silently with degraded accuracy.
 
 **Patch:** return `modelId` from `get_voice_embedding` and skip preseed when it differs from the current `embedding_service._hf_model_id`; emit a `voice_profile.stale_model` metric and force re-enrollment.
 
@@ -425,11 +425,11 @@ this.broadcastSysEvent(SysEventType.ResourceCreated, {
 | ID | Finding | Severity | Source |
 |---|---|---|---|
 | SEC-V-1 | IDOR — `DELETE /voice-profile/:id`, `PATCH :id/activate`, `PATCH :id/deactivate` have no ownership check | Critical | `voice-profile.controller.ts:91-112`, service `:71-102` |
-| SEC-V-2 | No tenant scoping on `get_voice_embedding` | High | `apps/stt-v2/src/stt_v2/core/database/voice_profile_model.py:36-67` |
+| SEC-V-2 | No tenant scoping on `get_voice_embedding` | High | `apps/stt/src/stt/core/database/voice_profile_model.py:36-67` |
 | SEC-V-3 | Audit-event payload includes full entity via `toObject()` — risk grows as entity grows | Medium | `voiceProfile.service.ts:60-62, 97-99` |
 | SEC-V-4 | No retention TTL; soft-deleted biometric data lives forever in the table | Medium | `migration.sql` |
 | SEC-V-5 | Raw audio buffer not zeroized after extraction in the application service | Medium | `voiceProfile.service.ts:105-124` |
-| SEC-V-6 | No client-side or server-side speaker-consistency check across samples (impersonation vector) | Medium | `apps/stt-v2/src/stt_v2/voice_profile/extraction_service.py:51-64` |
+| SEC-V-6 | No client-side or server-side speaker-consistency check across samples (impersonation vector) | Medium | `apps/stt/src/stt/voice_profile/extraction_service.py:51-64` |
 | SEC-V-7 | `@Authorize()` invoked without permission tuple — only authentication is enforced, not subject-level authorization | High (root cause of SEC-V-1) | `packages/applications/src/authorization/decorators.ts:53-65` |
 | SEC-V-8 | Voice samples uploaded over the same transport as everything else — no separate stricter TLS / circuit policy for biometric uploads | Low | observation, no explicit fix needed if API TLS posture is correct |
 | SEC-V-9 | No SDK-side "data-minimization" — file is sent in full to the backend even though only the embedding is retained. A future on-device extractor would let the backend never see raw biometric audio (data-minimization principle, HIPAA & GDPR favoured) | Low | architecture |
@@ -443,8 +443,8 @@ this.broadcastSysEvent(SysEventType.ResourceCreated, {
 | PERF-V-1 | `enroll` uses `fetch` without progress reporting; UX freeze on slow networks for 10 MB × 3 files | `AgenticClient.postFormData` (`AgenticClient.ts:440`) |
 | PERF-V-2 | Each consumer of `useVoiceEmbedding` fires its own `list()` on mount | M-7 above |
 | PERF-V-3 | No client-side `SecureStorage` cache → every tab / page nav refetches | H-1 above |
-| PERF-V-4 | STT-v2 `/internal/voice-profile/extract` re-runs the embedding model on every sample even when several samples are identical (no dedup hash) | `extraction_service.py:51-56` |
-| PERF-V-5 | The application service builds FormData on every call rather than streaming the request body to STT-v2; for 30 MB of audio this materializes another 30 MB copy in Node | `voiceProfile.service.ts:106-110` |
+| PERF-V-4 | STT `/internal/voice-profile/extract` re-runs the embedding model on every sample even when several samples are identical (no dedup hash) | `extraction_service.py:51-56` |
+| PERF-V-5 | The application service builds FormData on every call rather than streaming the request body to STT; for 30 MB of audio this materializes another 30 MB copy in Node | `voiceProfile.service.ts:106-110` |
 | PERF-V-6 | `postFormData` does not call `checkRateLimit()` (also a security finding, H-4) | `AgenticClient.ts:393` |
 
 ---
@@ -459,8 +459,8 @@ this.broadcastSysEvent(SysEventType.ResourceCreated, {
 | TST-V-4 | No test that re-enrollment in tab A invalidates tab B's `profiles` cache | `packages/agentic-sdk-v2/src/sync/__tests__` |
 | TST-V-5 | No test for `enroll(label)` propagation (currently the SDK can't even send it) | `useVoiceEmbedding.test.ts` |
 | TST-V-6 | No test that the backend rejects non-audio Blobs / `application/octet-stream` | `voice-profile.controller.test.ts` |
-| TST-V-7 | No test for "samples are not the same speaker" rejection (SEC-V-6) | `apps/stt-v2/tests/unit/voice_profile/test_extraction_service.py` |
-| TST-V-8 | No test for `get_voice_embedding` tenant scoping (after M-6 lands) | `apps/stt-v2/tests/unit/voice_profile/` |
+| TST-V-7 | No test for "samples are not the same speaker" rejection (SEC-V-6) | `apps/stt/tests/unit/voice_profile/test_extraction_service.py` |
+| TST-V-8 | No test for `get_voice_embedding` tenant scoping (after M-6 lands) | `apps/stt/tests/unit/voice_profile/` |
 | TST-V-9 | No Playwright test for "enrol → start streaming consultation → transcript labels show doctor's name" | `apps/ui-playground/tests` or `tests/` |
 | TST-V-10 | No test that the `EnrollBodyDto.label` MaxLength is enforced (boundary 100 / 101) | `voice-profile.controller.test.ts` |
 
@@ -483,7 +483,7 @@ The existing `useVoiceEmbedding.test.ts` (`packages/agentic-sdk-v2/src/hooks/__t
 
 ### 9.3 Consumed by backend diarizer — **WIRED BUT FUNCTIONALLY INERT**
 
-- Wire-up is correct: API GW forwards `user_id` from JWT/CLS → STT-v2 `create_session(user_id)` → `preseed_speaker(user_id)` → `get_voice_embedding(user_id)` → `tracker.register(embedding, speaker_id=display_name)` (`apps/api/src/modules/streaming/transcription-job.controller.ts:268`, `packages/applications/src/services/stt/streaming/streamingSession.service.ts:78`, `apps/stt-v2/src/stt_v2/streaming/session_manager.py:409-415`, `apps/stt-v2/src/stt_v2/diarization/preseed.py:81-107`).
+- Wire-up is correct: API GW forwards `user_id` from JWT/CLS → STT `create_session(user_id)` → `preseed_speaker(user_id)` → `get_voice_embedding(user_id)` → `tracker.register(embedding, speaker_id=display_name)` (`apps/api/src/modules/streaming/transcription-job.controller.ts:268`, `packages/applications/src/services/stt/streaming/streamingSession.service.ts:78`, `apps/stt/src/stt/streaming/session_manager.py:409-415`, `apps/stt/src/stt/diarization/preseed.py:81-107`).
 - **BUT**: `get_voice_embedding` filters `WHERE "isActive" = true`, and enrolled rows are always `isActive=false`, and the SDK has no activate surface. So `preseed_speaker` always logs "No active voice profile … skipping pre-seed" and proceeds without the doctor pre-registered. See C-1.
 
 ### 9.4 Gated as prerequisite for on-device diarization — **NOT MET**
@@ -515,7 +515,7 @@ The existing `useVoiceEmbedding.test.ts` (`packages/agentic-sdk-v2/src/hooks/__t
 | P1-4 | Switch `enroll` to `apiClient.uploadFormData(...)` with `onProgress`, `signal`, `timeout: 0` | `useVoiceEmbedding.ts`, `AgenticClient.ts` | S |
 | P1-5 | Call `this.checkRateLimit()` first thing in `postFormData` | `AgenticClient.ts:393` | XS |
 | P1-6 | Zeroize `request.audioBuffers` after `extractEmbeddings` resolves | `voiceProfile.service.ts` | XS |
-| P1-7 | Add server-side cross-sample cosine-similarity rejection in `ExtractionService.extract` | `apps/stt-v2/src/stt_v2/voice_profile/extraction_service.py` | S |
+| P1-7 | Add server-side cross-sample cosine-similarity rejection in `ExtractionService.extract` | `apps/stt/src/stt/voice_profile/extraction_service.py` | S |
 | P1-8 | Client-side MIME precheck (`type?.startsWith('audio/')`) before POST | `useVoiceEmbedding.ts` | XS |
 
 ### P2
@@ -528,7 +528,7 @@ The existing `useVoiceEmbedding.test.ts` (`packages/agentic-sdk-v2/src/hooks/__t
 | P2-4 | Route activate/deactivate through `repository.update(id, entity.changes)` to stamp `updatedBy` and emit domain events | `UserVoiceProfileRepository.ts`, `voiceProfile.service.ts` | S |
 | P2-5 | Add `tenantId` column to `UserVoiceProfile`; scope `get_voice_embedding` by tenant | `user.prisma`, new migration, `voice_profile_model.py` | M |
 | P2-6 | Return `modelId` from `get_voice_embedding`; skip preseed when stale; emit `voice_profile.stale_model` metric | `voice_profile_model.py`, `preseed.py` | S |
-| P2-7 | Long-term: unify on a single ONNX speaker-embedding model so the local diarizer can consume the backend embedding byte-for-byte | `packages/stt/src/providers/`, `apps/stt-v2/src/stt_v2/diarization/` | XL |
+| P2-7 | Long-term: unify on a single ONNX speaker-embedding model so the local diarizer can consume the backend embedding byte-for-byte | `packages/stt/src/providers/`, `apps/stt/src/stt/diarization/` | XL |
 
 ---
 

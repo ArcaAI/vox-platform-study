@@ -1,10 +1,10 @@
 """Model weight source & path resolution, harness mirror.
 
-MIRROR of ``apps/stt-v2/src/stt_v2/models/source_resolver.py`` — the conformance
+MIRROR of ``apps/stt/src/stt/models/source_resolver.py`` — the conformance
 suite in ``apps/harness/src/harness/tests/unit/test_model_source_resolver.py`` is the same named quartet, so a
 behavioural drift between the copies fails a named test.
 
-One contract, mirrored across stt-v2 / guardrail / nlp / harness:
+One contract, mirrored across stt / guardrail / nlp / harness:
 
     1. ``local_path`` set AND exists    -> return it. The operator/admin override
                                            has the HIGHEST precedence everywhere

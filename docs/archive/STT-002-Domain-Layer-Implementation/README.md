@@ -21,7 +21,7 @@ The STT service requires domain layer support in the API Gateway (NestJS) to:
 1. Manage ASR pipelines (CRUD operations)
 2. Manage AI models registry (CRUD operations)
 3. Create and track transcription jobs
-4. Provide internal APIs for the Python STT-v2 service to call
+4. Provide internal APIs for the Python STT service to call
 
 ### Acceptance Criteria
 
@@ -77,7 +77,7 @@ The project follows a consistent DDD pattern as seen in:
   - `pipeline/` - ASR Pipeline service
   - `model/` - AI Model service
   - `job/` - Transcription Job service
-  - `internal/` - Internal APIs for STT-v2 service
+  - `internal/` - Internal APIs for STT service
 
 **API Layer** (`apps/api/`):
 - `src/controllers/stt/` - STT controllers
@@ -200,8 +200,8 @@ Create service classes with business logic.
    - `updateStatus()`, `getById()`, `list()`
    - `getJobsByConsultation()`
 4. Create `SttInternalService` (`packages/applications/src/services/stt/internal/`)
-   - `createTranscriptContextItem()` - called by STT-v2 after transcription
-   - `updateJobProgress()` - called by STT-v2 during processing
+   - `createTranscriptContextItem()` - called by STT after transcription
+   - `updateJobProgress()` - called by STT during processing
 
 ### Phase 9: API Controllers (Size: M)
 
@@ -226,9 +226,9 @@ Create NestJS controllers.
    - `GET /api/v1/transcription-jobs/:id` - Get job
    - `GET /api/v1/transcription-jobs/consultation/:id` - Jobs by consultation
 4. Create `SttInternalController`
-   - `POST /internal/stt/transcripts` - Create transcript (from STT-v2)
-   - `PATCH /internal/stt/jobs/:id/status` - Update job status (from STT-v2)
-   - `PATCH /internal/stt/jobs/:id/progress` - Update job progress (from STT-v2)
+   - `POST /internal/stt/transcripts` - Create transcript (from STT)
+   - `PATCH /internal/stt/jobs/:id/status` - Update job status (from STT)
+   - `PATCH /internal/stt/jobs/:id/progress` - Update job progress (from STT)
 
 ### Phase 10: Module Registration (Size: S)
 
@@ -338,7 +338,7 @@ None - all dependencies already in monorepo.
 - **Pipeline Service**: Full CRUD with YAML validation
 - **AI Model Service**: Full CRUD with download status management
 - **Transcription Job Service**: Create, list, cancel, retry
-- **STT Internal Service**: Internal APIs for STT-v2
+- **STT Internal Service**: Internal APIs for STT
 
 #### API Layer (`apps/api/`)
 - **PipelineController**: `/api/v1/pipelines`
@@ -346,7 +346,7 @@ None - all dependencies already in monorepo.
 - **TranscriptionJobController**: `/api/v1/transcription-jobs`
 - **SttInternalController**: `/internal/stt/*`
 
-### Internal APIs for STT-v2
+### Internal APIs for STT
 
 | Endpoint | Purpose |
 |----------|---------|
@@ -362,9 +362,9 @@ None - all dependencies already in monorepo.
 ## Next Steps
 
 1. **Run Prisma migration** - `npx prisma migrate dev --name add_stt_models`
-2. ~~**Import SttV2Module** - Add to `AppModule` in `apps/api/src/app.module.ts`~~ ✅ Done
+2. ~~**Import SttModule** - Add to `AppModule` in `apps/api/src/app.module.ts`~~ ✅ Done
 3. ~~**Write unit tests** - Target 80%+ coverage~~ ✅ Done (Entity and Factory tests created)
-4. **Implement STT-v2 Python service** - Separate ticket (STT-003)
+4. **Implement STT Python service** - Separate ticket (STT-003)
 
 ---
 
@@ -465,23 +465,23 @@ Conducted comprehensive test review against the testing anti-patterns skill to e
    - ❌ `aiModel.controller.ts` - DELETED
    - ❌ `transcriptionJob.controller.ts` - DELETED
    - ❌ `sttInternal.controller.ts` - DELETED
-   - ❌ `sttV2.module.ts` - DELETED
+   - ❌ `stt.module.ts` - DELETED
 
 2. **V1 folder (`stt/`) now contains ONLY V1 files**:
    - ✅ `stt.controller.ts` - Proxy to STT Python service
    - ✅ `stt.gateway.ts` - WebSocket gateway
    - ✅ `stt.module.ts` - V1 module
 
-3. **V2 folder (`stt-v2/`) contains ALL V2 files**:
+3. **V2 folder (`stt/`) contains ALL V2 files**:
    - ✅ `pipeline.controller.ts` - `/api/v1/pipelines`
    - ✅ `aiModel.controller.ts` - `/api/v1/ai-models`
    - ✅ `transcriptionJob.controller.ts` - `/api/v1/transcription-jobs`
    - ✅ `sttInternal.controller.ts` - `/internal/stt/*`
-   - ✅ `stt-v2.module.ts` - V2 module
+   - ✅ `stt.module.ts` - V2 module
    - ✅ `index.ts` - Exports
 
 4. **Updated `app.module.ts`**:
-   - Changed import from `./controllers/stt/sttV2.module` to `./controllers/stt-v2/stt-v2.module`
+   - Changed import from `./controllers/stt/stt.module` to `./controllers/stt/stt.module`
 
 **Final Structure**:
 ```
@@ -490,12 +490,12 @@ apps/api/src/controllers/
 │   ├── stt.controller.ts
 │   ├── stt.gateway.ts
 │   └── stt.module.ts
-├── stt-v2/                 # V2 - New architecture with domain layer
+├── stt/                 # V2 - New architecture with domain layer
 │   ├── pipeline.controller.ts
 │   ├── aiModel.controller.ts
 │   ├── transcriptionJob.controller.ts
 │   ├── sttInternal.controller.ts
-│   ├── stt-v2.module.ts
+│   ├── stt.module.ts
 │   └── index.ts
 ```
 
@@ -520,8 +520,8 @@ This implementation has been verified against STT-001 architecture specification
 Key verification points:
 - All database models match STT-001 schema specification
 - All 5 enums implemented exactly as specified
-- All 6 internal API endpoints implemented for STT-v2 service communication
-- Responsibility matrix honored (API Gateway owns CRUD, STT-v2 calls internal APIs)
+- All 6 internal API endpoints implemented for STT service communication
+- Responsibility matrix honored (API Gateway owns CRUD, STT calls internal APIs)
 - Domain entities include all specified custom methods plus enhancements
 
 ---

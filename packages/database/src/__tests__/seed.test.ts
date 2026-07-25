@@ -1138,7 +1138,7 @@ describe('STT Seed Data', () => {
                 const silero = DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad');
                 expect(silero).toBeDefined();
                 expect(silero?.taskType).toBe(ModelTaskType.VOICE_ACTIVITY_DETECTION);
-                // identity reconciled with the stt-v2 runtime loader.
+                // identity reconciled with the stt runtime loader.
                 expect(silero?.sourceUri).toBe('onnx-community/silero-vad');
                 // The old mislabelled slug is gone; v4/v5/pyannote stay retired.
                 expect(DEFAULT_AI_MODELS.find((m) => m.slug === 'silero-vad-v6')).toBeUndefined();
@@ -1424,7 +1424,7 @@ describe('STT Seed Data', () => {
 
         describe('Setting Categories', () => {
             // The `model_cache` and `workers` GlobalSetting rows were
-            // removed: they had no reader (stt-v2's `GlobalSettingRead` mapping,
+            // removed: they had no reader (stt's `GlobalSettingRead` mapping,
             // deleted) and are superseded by the registered settings keys
             // `stt.modelCache.*` / `stt.workers.concurrency`, served over the
             // internal effective-config route. These assertions now lock the
@@ -2284,7 +2284,7 @@ describe('Usage Record Seed Data', () => {
 });
 
 // =============================================================================
-// SMR V2 LLM MODELS SEED DATA TESTS
+// SMR LLM MODELS SEED DATA TESTS
 // =============================================================================
 
 describe('LLM Models Seed Data (consolidated matrix)', () => {

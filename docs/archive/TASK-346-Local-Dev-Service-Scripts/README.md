@@ -21,15 +21,15 @@ A live mic test repeatedly failed for infrastructure reasons, not code
 reasons. Each failure burned debugging time because the existing `dev:*`
 scripts start services in misconfigured or fragile ways:
 
-1. **SMR (:8862)** — `pnpm dev:smr-v2` starts SMR with **no LLM provider
-   registered** (root `.env` has `SMR_V2_OLLAMA_ENABLED=false` and no
-   `SMR_V2_OPENAI_COMPAT_*` keys; Python services do *not* read `.env.dev`,
+1. **SMR (:8862)** — `pnpm dev:smr` starts SMR with **no LLM provider
+   registered** (root `.env` has `SMR_OLLAMA_ENABLED=false` and no
+   `SMR_OPENAI_COMPAT_*` keys; Python services do *not* read `.env.dev`,
    which is where the correct values live). Every `/api/v1/generate` then
    404s ("Provider 'lm-studio' not found") and live summaries silently die.
 2. **STT (:8861)** — STT reads `API_GATEWAY_KEY` from gitignored
-   `apps/stt-v2/.env`. A placeholder line whose inline comment was parsed
+   `apps/stt/.env`. A placeholder line whose inline comment was parsed
    *as the value* caused all internal calls to 401. Additionally, the
-   `--reload` watcher in `dev:stt-v2` watches the **whole repo** (uvicorn
+   `--reload` watcher in `dev:stt` watches the **whole repo** (uvicorn
    default reload dir = cwd), so unrelated file churn kept cancelling STT's
    ~4 GB Cadence model warm-up.
 3. **Harness Temporal worker** — `py:harness:worker` exists but starts the
@@ -69,8 +69,8 @@ scripts start services in misconfigured or fragile ways:
 |---|---|---|
 | `dev:api`, `dev:api:watch`, `dev:api:test` | Working | None — kept as-is |
 | `dev:ui-playground` | Working | None — kept as-is |
-| `dev:stt-v2` | Broken-ish | Repo-wide `--reload` cancels 4 GB model warm-up; no key preflight |
-| `dev:smr-v2` | Broken | No provider env → 0 providers registered; repo-wide `--reload` |
+| `dev:stt` | Broken-ish | Repo-wide `--reload` cancels 4 GB model warm-up; no key preflight |
+| `dev:smr` | Broken | No provider env → 0 providers registered; repo-wide `--reload` |
 | `dev:nlp` | Fragile | Repo-wide `--reload` churns heavy HF model loads |
 | `dev:guardrail` | OK-ish | Repo-wide `--reload`; config defaults otherwise fine |
 | `dev:harness` / `py:harness:dev` | Duplicate + fragile | Repo-wide `--reload`; inherits stale `apps/harness/.env` values |
@@ -78,7 +78,7 @@ scripts start services in misconfigured or fragile ways:
 | Aggregate bring-up | Missing | — |
 | `docker:dev:up[:all]` | Partial | Never starts the `temporal` profile the harness needs |
 | Doctor/health | Missing | — |
-| `test:*` / `test:{api,stt-v2,smr-v2,nlp}:up` | Working | No harness/worker/guardrail test bring-up (gap documented, out of scope) |
+| `test:*` / `test:{api,stt,smr,nlp}:up` | Working | No harness/worker/guardrail test bring-up (gap documented, out of scope) |
 
 ### Env-loading facts that shaped the design
 
@@ -86,7 +86,7 @@ scripts start services in misconfigured or fragile ways:
   (NODE_ENV-mapped) or `dotenv -e`.
 - Python services do **not** read `.env.dev`. SMR/harness walk up loading
   plain `.env` files (app-level overrides root; explicit env always wins).
-  STT reads only `apps/stt-v2/.env` via pydantic `env_file`. NLP reads
+  STT reads only `apps/stt/.env` via pydantic `env_file`. NLP reads
   `PORT`/`NLP_*`. Guardrail reads `GUARDRAIL_*`.
 - Therefore: the only deterministic, file-state-independent way to encode
   "the proven invocation" is **explicit env vars set by the launcher**,
@@ -124,10 +124,10 @@ qdrant/temporal(+ui)/reranker up, plus the `*-test` containers.
    currently running (none of which use reload).
 3. **Machine-specific model name** — single knob `LM_STUDIO_MODEL`
    (default `gemma-4-e4b-it-qat`) feeds both
-   `SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL` and `HARNESS_SMR_MODEL`; each is
+   `SMR_OPENAI_COMPAT_DEFAULT_MODEL` and `HARNESS_SMR_MODEL`; each is
    also individually overridable.
 4. **STT key preflight** — fail fast (clear remediation message, no value
-   printed) when neither env nor `apps/stt-v2/.env` provides a plausible
+   printed) when neither env nor `apps/stt/.env` provides a plausible
    `API_GATEWAY_KEY` (empty / inline-comment / placeholder detection).
    Reused by `dev:doctor` via `dev-service.sh --check-stt-key`.
 5. **Aggregate runner = plain bash supervisor** (`scripts/dev-stack.sh`):
@@ -171,10 +171,10 @@ qdrant/temporal(+ui)/reranker up, plus the `*-test` containers.
 |---|---|---|---|
 | `pnpm dev:api` | API gateway (NestJS, watch) | 8868 | unchanged (`.env.dev` via env.ts) |
 | `pnpm dev:ui-playground` | UI playground (Vite) | 5175 | unchanged |
-| `pnpm dev:stt-v2` | STT v2, **no reload** | 8861 | `STT_PORT`; key preflight on `API_GATEWAY_KEY` (from `apps/stt-v2/.env` or env) |
-| `pnpm dev:stt-v2:watch` | STT v2, reload scoped to `apps/stt-v2/src` | 8861 | same |
-| `pnpm dev:smr-v2` | SMR v2, **no reload**, LM Studio provider registered | 8862 | `SMR_PORT`; `SMR_V2_OPENAI_COMPAT_ENABLED` (true), `SMR_V2_OPENAI_COMPAT_BASE_URL` (`http://localhost:1234/v1`), `SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL` (`$LM_STUDIO_MODEL` → `gemma-4-e4b-it-qat`), `SMR_V2_EXTERNAL_GUARDRAIL_ENABLED` (false) |
-| `pnpm dev:smr-v2:watch` | SMR v2, scoped reload | 8862 | same |
+| `pnpm dev:stt` | STT, **no reload** | 8861 | `STT_PORT`; key preflight on `API_GATEWAY_KEY` (from `apps/stt/.env` or env) |
+| `pnpm dev:stt:watch` | STT, reload scoped to `apps/stt/src` | 8861 | same |
+| `pnpm dev:smr` | SMR, **no reload**, LM Studio provider registered | 8862 | `SMR_PORT`; `SMR_OPENAI_COMPAT_ENABLED` (true), `SMR_OPENAI_COMPAT_BASE_URL` (`http://localhost:1234/v1`), `SMR_OPENAI_COMPAT_DEFAULT_MODEL` (`$LM_STUDIO_MODEL` → `gemma-4-e4b-it-qat`), `SMR_EXTERNAL_GUARDRAIL_ENABLED` (false) |
+| `pnpm dev:smr:watch` | SMR, scoped reload | 8862 | same |
 | `pnpm dev:nlp` | NLP, **no reload** | 8864 | `NLP_PORT` |
 | `pnpm dev:nlp:watch` | NLP, scoped reload | 8864 | same |
 | `pnpm dev:guardrail` | Guardrail, **no reload** | 8863 | `GUARDRAIL_PORT`; engine defaults from `GUARDRAIL_V2_*` (LM Studio :1234) |
@@ -215,7 +215,7 @@ qdrant/temporal(+ui)/reranker up, plus the `*-test` containers.
   provider check, worker pgrep, STT key preflight), `scripts/dev-infra.sh`
   (compose wrapper incl. `vault`+`temporal` profiles, `--rag` opt-in,
   `--print`).
-- **package.json**: `dev:stt-v2|smr-v2|nlp|guardrail|harness` rewired to
+- **package.json**: `dev:stt|smr|nlp|guardrail|harness` rewired to
   the launcher (no-reload defaults) + `:watch` variants; new
   `dev:harness:worker`, `dev:stack`, `dev:doctor`, `infra:up|down|status|logs`;
   `py:harness:dev`/`py:harness:worker` repointed to the launcher so the
@@ -236,10 +236,10 @@ qdrant/temporal(+ui)/reranker up, plus the `*-test` containers.
 | Script | Method | Result |
 |---|---|---|
 | `dev:doctor` | Full run against live stack (twice) | exit 0; all required PASS; with guardrail temporarily up: **0 warnings** |
-| `dev:smr-v2` | **Full start-verify** on `SMR_PORT=18862` | `smr_v2.started` with `"providers": ["lm-studio", "openai_compat"]`; `/api/v1/health` 200; `/api/v1/providers` non-empty; clean stop |
+| `dev:smr` | **Full start-verify** on `SMR_PORT=18862` | `smr.started` with `"providers": ["lm-studio", "openai_compat"]`; `/api/v1/health` 200; `/api/v1/providers` non-empty; clean stop |
 | `dev:harness` | **Full start-verify** on `HARNESS_PORT=18866` | `harness.temporal_connected` + health 200; clean stop |
 | `dev:guardrail` | **Full start-verify** on its real port :8863 (was down) | provider `lm-studio` initialized, `/api/health` 200; clean stop |
-| `dev:stt-v2` | Validated-by-equivalence (`--print`) | resolved command string-identical to the proven running invocation (no reload); key preflight PASS on real file, FAIL+remediation on simulated placeholder/empty (no value printed) |
+| `dev:stt` | Validated-by-equivalence (`--print`) | resolved command string-identical to the proven running invocation (no reload); key preflight PASS on real file, FAIL+remediation on simulated placeholder/empty (no value printed) |
 | `dev:harness:worker` | Validated-by-equivalence (`--print`) | env+command identical to the proven running worker (plus `HARNESS_API_BASE_URL` = config default); not started to avoid a second consumer on `harness-task-queue` |
 | `dev:nlp` | Validated-by-equivalence (`--print`) | identical to the proven invocation minus repo-wide `--reload` (intentional); not started to avoid duplicate HF model load during the live test |
 | `dev:stack` | DRY_RUN plan (full + subset + pnpm `--` pass-through) and **refusal path** against live stack | refused with all 7 services listed (busy ports + existing worker), exit 1; nothing touched |

@@ -59,6 +59,13 @@ function makeController(ctx: Ctx) {
       count: 0,
       candidates: [],
     }),
+    // TASK-553 F-24: the curation write half.
+    curateExemplar: vi.fn().mockResolvedValue({
+      id: 'ex-1',
+      tenantId: 'tenant-1',
+      curationStatus: 'APPROVED',
+      previousStatus: 'PENDING',
+    }),
   };
   const evalRunService = {
     runGoldenSet: vi.fn().mockResolvedValue({ id: 'run-1' }),
@@ -513,5 +520,41 @@ describe('HarnessAdminController — gate-edit corpus export', () => {
     const [args] = gateEditMiningService.exportCorpusCandidates.mock.calls[0];
     expect(typeof args.limit).toBe('number');
     expect(args.limit).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The curation WRITE half (TASK-553 F-24). Same tenancy posture as the export
+ * beside it — a foreign `?tenantId=` is a 403 that never reaches the store —
+ * plus the one property specific to a write: the verdict body reaches the
+ * service verbatim, so an admin console cannot smuggle extra fields through.
+ */
+describe('HarnessAdminController — gate-edit exemplar curation', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('records the verdict for the caller tenant', async () => {
+    const { controller, gateEditMiningService } = makeController({ user: SUPER, tenantId: 'tenant-1' });
+
+    const result = await controller.curateGateEditExemplar('ex-1', { status: 'APPROVED' } as never, {});
+
+    expect(gateEditMiningService.curateExemplar).toHaveBeenCalledWith({ id: 'ex-1', tenantId: 'tenant-1', status: 'APPROVED' });
+    expect(result).toEqual(expect.objectContaining({ id: 'ex-1', curationStatus: 'APPROVED' }));
+  });
+
+  it('rejects a tenant admin curating another tenant\'s exemplar (and never reaches the store)', async () => {
+    const { controller, gateEditMiningService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
+
+    await expect(controller.curateGateEditExemplar('ex-1', { status: 'APPROVED' } as never, { tenantId: 'tenant-elsewhere' })).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(gateEditMiningService.curateExemplar).not.toHaveBeenCalled();
+  });
+
+  it('pins a tenant admin to their own tenant', async () => {
+    const { controller, gateEditMiningService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
+
+    await controller.curateGateEditExemplar('ex-1', { status: 'REJECTED' } as never, {});
+
+    expect(gateEditMiningService.curateExemplar).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', status: 'REJECTED' }));
   });
 });

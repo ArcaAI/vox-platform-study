@@ -12,6 +12,7 @@ export * from './ConsultationStatus';
 export * from './ContextItemSource';
 export * from './ContextItemType';
 export * from './DepartmentAgentDnaPolicy';
+export * from './ExemplarCurationStatus';
 export * from './FedlRoundStatus';
 export * from './HarnessAuditAction';
 export * from './HighlightTargetKind';

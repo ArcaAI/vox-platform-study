@@ -1077,10 +1077,10 @@ export const DEFAULT_STT_SETTINGS = [
     // The `model_cache` (max_models / ttl_seconds / max_memory_mb) and
     // `workers` (concurrency / batch_queue / streaming_queue) rows were REMOVED here.
     //
-    // They were never read by anything: stt-v2's only GlobalSetting reader was the
+    // They were never read by anything: stt's only GlobalSetting reader was the
     // `GlobalSettingRead` SQLAlchemy mapping, which had zero callers and is now
     // deleted. Their replacements are registered settings keys served over
-    // `GET /api/v1/internal/effective-config?service=stt-v2`:
+    // `GET /api/v1/internal/effective-config?service=stt`:
     //     stt.modelCache.{maxModels,ttlSeconds,maxMemoryMb}
     //     stt.workers.concurrency
     // (packages/applications/src/services/settings-registry/descriptors/service-runtime.descriptors.ts)
@@ -1404,7 +1404,7 @@ export const backfillCustomerTenantAiModels = async (client: CorePrismaClient) =
  *
  * Safety guard: a slug still referenced by ANY non-deleted
  * `AsrPipeline.configYaml` (a tenant may have built a custom pipeline on it)
- * is SKIPPED with a loud warning instead of breaking stt-v2's
+ * is SKIPPED with a loud warning instead of breaking stt's
  * `config_reader._to_model_config` slug resolution. The decision itself is the
  * pure helper `shouldRetireAiModelSlug` (seed/ai-models/retired.ts).
  */

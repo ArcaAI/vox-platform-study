@@ -59,7 +59,7 @@ Verify that useArca() provides session, audio, context, summary, and pipeline me
 **Sections Displayed:**
 - **Doctor Workflows:** Basic Consultation, With Plugins, Summary Workflow, DNA Writing Style, Appointment View, Multi-Doctor Workflow
 - **Admin Management:** Prompt Management, Department Management, Admin Dashboard
-- **Developer Tools:** Pipeline Control, Custom Pipeline, Personalization, Custom Models, Cross-Tab Session, Plugin Hooks, STT-V2 Streaming, Diff Viewer, Error Handling
+- **Developer Tools:** Pipeline Control, Custom Pipeline, Personalization, Custom Models, Cross-Tab Session, Plugin Hooks, STT Streaming, Diff Viewer, Error Handling
 
 **Screenshot Evidence:** Home page showing all sections and navigation menu.
 

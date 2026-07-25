@@ -5500,7 +5500,7 @@ Add a test that sending the same audit line twice publishes exactly two events (
    [[rules]]
    id = "azure-openai-key"
    description = "Azure OpenAI API key"
-   regex = '''(?i)(AZURE_OPENAI_API_KEY|SMR_V2_AZURE_API_KEY)\s*=\s*["']?[A-Za-z0-9]{32,}'''
+   regex = '''(?i)(AZURE_OPENAI_API_KEY|SMR_AZURE_API_KEY)\s*=\s*["']?[A-Za-z0-9]{32,}'''
    tags = ["azure", "openai"]
 
    [allowlist]

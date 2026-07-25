@@ -238,7 +238,7 @@ model UserVoiceProfile {
 
   // multi tenant fields
   // The enrollment tenant. A voice profile is biometric PHI — reads are tenant-scoped
-  // (STT-v2 preseed filters on it; the tenant-scope extension injects it),
+  // (STT preseed filters on it; the tenant-scope extension injects it),
   // so a cross-tenant lookup returns nothing. Backfilled from the user's
   // earliest ENABLED UserRoleAssignment; SYSTEM tenant when none exists
   // (unreachable by tenant-scoped reads → fail-closed, re-enroll to use).

@@ -80,7 +80,7 @@ class SmrGenerationResult(BaseModel):
     # the normalized ``GenerationStats`` block SMR now returns
     # (stop reason + raw, total/TTFT ms, tokens/second, token counts, engine-native blob).
     # Captured verbatim as a dict (the SMR wire shape) — the harness does not depend on the
-    # smr_v2 model. Additive-optional default None ⇒ replay-safe: an old ``generate`` activity
+    # smr model. Additive-optional default None ⇒ replay-safe: an old ``generate`` activity
     # result deserializes it to None, and a legacy SMR cache hit that omits ``stats`` stays
     # None (never throws over missing stats). The generate activity returns this model, so the
     # field threads through to the activity result command-neutrally (no new workflow command).

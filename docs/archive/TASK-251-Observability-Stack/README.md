@@ -15,7 +15,7 @@
 
 ### 1.1 Description
 
-Deploy a centralized observability stack for the HOPE healthcare AI platform covering log aggregation, metrics collection, distributed tracing, real-user monitoring, visualization, and alerting. The stack must support all backend services (API Gateway, STT-v2, SMR, NLP), the TimescaleDB HA cluster, Redis instances, and the `@arcaai/vox` browser SDK with multi-tenancy.
+Deploy a centralized observability stack for the HOPE healthcare AI platform covering log aggregation, metrics collection, distributed tracing, real-user monitoring, visualization, and alerting. The stack must support all backend services (API Gateway, STT, SMR, NLP), the TimescaleDB HA cluster, Redis instances, and the `@arcaai/vox` browser SDK with multi-tenancy.
 
 ### 1.2 Business Context
 
@@ -28,7 +28,7 @@ Deploy a centralized observability stack for the HOPE healthcare AI platform cov
 
 - [ ] All 5 observability containers (OTel Collector, Prometheus, Loki, Tempo, Grafana) running on VM 400
 - [ ] Prometheus scrapes `/metrics` from all services, database exporters, and Redis exporters — all targets `UP`
-- [ ] Loki receives structured logs from API Gateway, STT-v2, SMR, and NLP
+- [ ] Loki receives structured logs from API Gateway, STT, SMR, and NLP
 - [ ] Tempo receives distributed traces with cross-service span correlation
 - [ ] Grafana displays 7+ dashboards with live data
 - [ ] Grafana Alerting sends critical/warning/info alerts to Slack
@@ -50,7 +50,7 @@ Deploy a centralized observability stack for the HOPE healthcare AI platform cov
 - OTEL env vars pre-configured in Dockerfile (`OTEL_SERVICE_NAME=hope-api`)
 - Health endpoints: `/api/v1/health/{live,ready,startup,services}`
 
-#### STT-v2 (`apps/stt-v2/`)
+#### STT (`apps/stt/`)
 - `structlog` JSON-structured logging with context vars
 - `prometheus_fastapi_instrumentator` exposing `/metrics`
 - Health endpoints with per-dependency checks (DB, MinIO, Redis, streaming)
@@ -59,7 +59,7 @@ Deploy a centralized observability stack for the HOPE healthcare AI platform cov
 #### SMR (`apps/smr/`)
 - `structlog` JSON logging with `RequestIDMiddleware` and `RequestLoggingMiddleware`
 - 14 custom Prometheus metrics (generation latency, token throughput, circuit breaker, queue depth, etc.)
-- OpenTelemetry opt-in via `SMR_V2_OTEL_ENABLED` with OTLP gRPC exporter
+- OpenTelemetry opt-in via `SMR_OTEL_ENABLED` with OTLP gRPC exporter
 - Rich exception hierarchy with structured error responses
 
 #### NLP (`apps/nlp/`)
@@ -152,7 +152,7 @@ MinIO buckets to create: `loki-chunks`, `loki-ruler`, `tempo-traces`.
 ┌─────────────────────── VM 200 (10.10.1.10) ───────────────────────┐
 │                                                                     │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐              │
-│  │ API     │  │ STT-v2  │  │ SMR     │  │ NLP     │              │
+│  │ API     │  │ STT  │  │ SMR     │  │ NLP     │              │
 │  │ :8868   │  │ :8861   │  │ :8862   │  │ :8864   │              │
 │  │ OTel SDK│  │ OTel SDK│  │ OTel SDK│  │ OTel SDK│              │
 │  │ /metrics│  │ /metrics│  │ /metrics│  │ /metrics│              │
@@ -246,10 +246,10 @@ Browser (Cloudflare Tunnel)
 
 The SDK already generates `traceparent` headers on every HTTP request via `createTraceparent()`. This links browser spans to backend spans automatically.
 
-For WebSocket (where headers aren't available after the upgrade handshake), the existing `SttV2WebSocketClient` sends an auth message as the first frame. The trace context will be included in this initial message using the envelope pattern:
+For WebSocket (where headers aren't available after the upgrade handshake), the existing `SttWebSocketClient` sends an auth message as the first frame. The trace context will be included in this initial message using the envelope pattern:
 
 ```
-Browser                          API Gateway                 STT-v2
+Browser                          API Gateway                 STT
 ───────                          ───────────                 ──────
 [consultation.start]
   └→ POST /api/v1/sessions
@@ -491,12 +491,12 @@ scrape_configs:
           service: "api-gateway"
           vm: "200"
 
-  - job_name: "stt-v2"
+  - job_name: "stt"
     metrics_path: "/metrics"
     static_configs:
       - targets: ["10.10.1.10:8861"]
         labels:
-          service: "stt-v2"
+          service: "stt"
           vm: "200"
 
   - job_name: "smr"
@@ -1199,11 +1199,11 @@ import './instrumentation';
 // ... rest of imports
 ```
 
-#### Step 2.3 — STT-v2 OTel Instrumentation
+#### Step 2.3 — STT OTel Instrumentation
 
 ```python
-# apps/stt-v2 — add/update environment variables:
-OTEL_SERVICE_NAME=stt-v2
+# apps/stt — add/update environment variables:
+OTEL_SERVICE_NAME=stt
 OTEL_EXPORTER_OTLP_ENDPOINT=http://10.10.1.100:4317
 OTEL_TRACES_ENABLED=true
 
@@ -1216,7 +1216,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.resources import Resource
 
 resource = Resource.create({
-    "service.name": "stt-v2",
+    "service.name": "stt",
     "service.version": "2.0.0",
     "service.namespace": "hope",
     "deployment.environment": "production",
@@ -1236,7 +1236,7 @@ FastAPIInstrumentor.instrument_app(app)
 SMR already supports OTel. Enable via environment:
 
 ```bash
-SMR_V2_OTEL_ENABLED=true
+SMR_OTEL_ENABLED=true
 OTEL_SERVICE_NAME=smr
 OTEL_EXPORTER_OTLP_ENDPOINT=http://10.10.1.100:4317
 ```
@@ -1296,11 +1296,11 @@ curl -s http://10.10.1.10:8868/api/v1/health/services
 ssh hope@10.10.1.100
 
 # From the repo (clone or scp):
-cp infrastructure/grafana/dashboards/smr-v2-overview.json \
+cp infrastructure/grafana/dashboards/smr-overview.json \
    /opt/observability/configs/grafana/dashboards/
-cp infrastructure/grafana/dashboards/smr-v2-resilience.json \
+cp infrastructure/grafana/dashboards/smr-resilience.json \
    /opt/observability/configs/grafana/dashboards/
-cp infrastructure/grafana/dashboards/smr-v2-security.json \
+cp infrastructure/grafana/dashboards/smr-security.json \
    /opt/observability/configs/grafana/dashboards/
 
 # Grafana auto-discovers new files (updateIntervalSeconds: 30)
@@ -1315,7 +1315,7 @@ This is the primary at-a-glance dashboard. Build in Grafana UI or provision as J
 | Row | Panel | Query | Visualization |
 |-----|-------|-------|---------------|
 | 1 | API Status | `up{job="api-gateway"}` | Stat (green/red) |
-| 1 | STT Status | `up{job="stt-v2"}` | Stat |
+| 1 | STT Status | `up{job="stt"}` | Stat |
 | 1 | SMR Status | `up{job="smr"}` | Stat |
 | 1 | NLP Status | `up{job="nlp"}` | Stat |
 | 1 | DB Status | `min(up{job="postgres-exporter"})` | Stat |
@@ -1359,13 +1359,13 @@ This is the primary at-a-glance dashboard. Build in Grafana UI or provision as J
 
 | Panel | Query | Purpose |
 |-------|-------|---------|
-| STT P95 Latency | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="stt-v2"}[5m]))` | Transcription speed |
-| SMR Token Throughput | `rate(smr_v2_tokens_total[5m])` | Generation speed |
-| SMR Time to First Token | `histogram_quantile(0.95, rate(smr_v2_time_to_first_token_seconds_bucket[5m]))` | Responsiveness |
+| STT P95 Latency | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="stt"}[5m]))` | Transcription speed |
+| SMR Token Throughput | `rate(smr_tokens_total[5m])` | Generation speed |
+| SMR Time to First Token | `histogram_quantile(0.95, rate(smr_time_to_first_token_seconds_bucket[5m]))` | Responsiveness |
 | NLP Classification Time | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="nlp"}[5m]))` | NER speed |
-| SMR Active Generations | `smr_v2_active_generations` | Concurrency |
-| SMR Circuit Breaker | `smr_v2_circuit_breaker_state` | Provider health |
-| SMR Queue Depth | `smr_v2_queue_size` | Backpressure |
+| SMR Active Generations | `smr_active_generations` | Concurrency |
+| SMR Circuit Breaker | `smr_circuit_breaker_state` | Provider health |
+| SMR Queue Depth | `smr_queue_size` | Backpressure |
 
 #### Step 3.6 — Configure Slack Alerting
 
@@ -1429,7 +1429,7 @@ In Grafana UI → Alerting → Alert Rules:
 | Rule | Expression | For | Labels |
 |------|-----------|-----|--------|
 | High API Latency | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api-gateway"}[5m])) > 2` | 5m | severity=warning |
-| SMR Generation Errors | `rate(smr_v2_generation_errors_total[5m]) > 0.1` | 5m | severity=warning |
+| SMR Generation Errors | `rate(smr_generation_errors_total[5m]) > 0.1` | 5m | severity=warning |
 | DB Connection Saturation | `pg_stat_activity_count / pg_settings_max_connections > 0.8` | 5m | severity=warning |
 | Disk Usage High | `(1 - node_filesystem_avail_bytes/node_filesystem_size_bytes) > 0.8` | 10m | severity=warning |
 | OTel Collector Drops | `rate(otelcol_exporter_send_failed_spans_total[5m]) > 0` | 5m | severity=warning |
@@ -1762,10 +1762,10 @@ LOKI_HOST=http://10.10.1.100:3100
 LOKI_ENABLED=true
 ```
 
-#### STT-v2 (apps/stt-v2/)
+#### STT (apps/stt/)
 
 ```bash
-OTEL_SERVICE_NAME=stt-v2
+OTEL_SERVICE_NAME=stt
 OTEL_EXPORTER_OTLP_ENDPOINT=http://10.10.1.100:4317
 OTEL_TRACES_ENABLED=true
 ```
@@ -1773,7 +1773,7 @@ OTEL_TRACES_ENABLED=true
 #### SMR (apps/smr/)
 
 ```bash
-SMR_V2_OTEL_ENABLED=true
+SMR_OTEL_ENABLED=true
 OTEL_SERVICE_NAME=smr
 OTEL_EXPORTER_OTLP_ENDPOINT=http://10.10.1.100:4317
 ```
@@ -1814,7 +1814,7 @@ VITE_FARO_COLLECTOR_URL=https://grafana.taphuynh.dev/collect
 | VM | IP | Port | Service | Protocol | Scraped By |
 |---|---|---|---|---|---|
 | 200 | 10.10.1.10 | 8868 | API Gateway | HTTP | Prometheus |
-| 200 | 10.10.1.10 | 8861 | STT-v2 | HTTP | Prometheus |
+| 200 | 10.10.1.10 | 8861 | STT | HTTP | Prometheus |
 | 200 | 10.10.1.10 | 8862 | SMR | HTTP | Prometheus |
 | 200 | 10.10.1.10 | 8864 | NLP | HTTP | Prometheus |
 | 400 | 10.10.1.100 | 4317 | OTel Collector gRPC | gRPC | — (receives) |
@@ -1863,7 +1863,7 @@ VITE_FARO_COLLECTOR_URL=https://grafana.taphuynh.dev/collect
 | Alert | PromQL / LogQL | Threshold | For |
 |---|---|---|---|
 | HighAPILatency | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api-gateway"}[5m]))` | > 2s | 5m |
-| SMRGenerationErrors | `rate(smr_v2_generation_errors_total[5m])` | > 0.1/s | 5m |
+| SMRGenerationErrors | `rate(smr_generation_errors_total[5m])` | > 0.1/s | 5m |
 | DBConnectionSaturation | `pg_stat_activity_count / pg_settings_max_connections` | > 80% | 5m |
 | DiskUsageHigh | `(1 - node_filesystem_avail_bytes/node_filesystem_size_bytes)` | > 80% | 10m |
 | OTelCollectorDrops | `rate(otelcol_exporter_send_failed_spans_total[5m])` | > 0 | 5m |
@@ -1895,7 +1895,7 @@ VITE_FARO_COLLECTOR_URL=https://grafana.taphuynh.dev/collect
 ### Metrics Collection
 
 - [ ] Prometheus: `api-gateway` target UP
-- [ ] Prometheus: `stt-v2` target UP
+- [ ] Prometheus: `stt` target UP
 - [ ] Prometheus: `smr` target UP
 - [ ] Prometheus: `nlp` target UP
 - [ ] Prometheus: `postgres-exporter` (3 targets) UP
@@ -1907,7 +1907,7 @@ VITE_FARO_COLLECTOR_URL=https://grafana.taphuynh.dev/collect
 ### Log Aggregation
 
 - [ ] Loki receives logs from api-gateway
-- [ ] Loki receives logs from stt-v2
+- [ ] Loki receives logs from stt
 - [ ] Loki receives logs from smr
 - [ ] Loki receives logs from nlp
 - [ ] Log entries contain traceId and spanId
@@ -1917,7 +1917,7 @@ VITE_FARO_COLLECTOR_URL=https://grafana.taphuynh.dev/collect
 ### Distributed Tracing
 
 - [ ] Tempo receives traces from api-gateway
-- [ ] Tempo receives traces from stt-v2
+- [ ] Tempo receives traces from stt
 - [ ] Tempo receives traces from smr
 - [ ] Tempo receives traces from nlp
 - [ ] Cross-service traces visible (one trace spans multiple services)
@@ -1955,7 +1955,7 @@ VITE_FARO_COLLECTOR_URL=https://grafana.taphuynh.dev/collect
 - [ ] Start consultation in browser
 - [ ] Speak into microphone
 - [ ] Find browser trace in Tempo
-- [ ] Trace shows: browser → API Gateway → STT-v2
+- [ ] Trace shows: browser → API Gateway → STT
 - [ ] Each span links to corresponding logs in Loki
 
 ---

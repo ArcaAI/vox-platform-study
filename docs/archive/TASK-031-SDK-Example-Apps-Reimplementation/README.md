@@ -31,7 +31,7 @@ Both apps had the same set of routes:
 - `/basic-consultation`, `/with-plugins`, `/summary-workflow`, `/dna-style`, `/multi-doctor-workflow`
 - `/pipeline-control`, `/personalization`, `/custom-models`, `/cross-tab-session`
 - `/admin/prompts`, `/admin/departments`, `/admin/dashboard` (Next.js only)
-- Developer pages: `/dev/stt-v2`, `/dev/diff-viewer`, `/dev/error-handling` (Vite only)
+- Developer pages: `/dev/stt`, `/dev/diff-viewer`, `/dev/error-handling` (Vite only)
 - `/appointment-view`, `/consultation`, `/plugin-hooks`, `/custom-pipeline` (Vite only)
 
 Issues:
@@ -116,7 +116,7 @@ Strategy: **Vite-first as reference implementation, then port to Next.js.**
 - `personalization.tsx`, `custom-models.tsx`, `multi-doctor-workflow.tsx`
 - `summary-workflow.tsx`, `dna-style.tsx`, `appointment-view.tsx`
 - `admin/dashboard.tsx`, `admin/departments.tsx`, `admin/prompts.tsx`
-- `dev/stt-v2.tsx`, `dev/diff-viewer.tsx`, `dev/error-handling.tsx`
+- `dev/stt.tsx`, `dev/diff-viewer.tsx`, `dev/error-handling.tsx`
 
 **Next.js app** (11 old page directories):
 - `basic-consultation/`, `with-plugins/`, `summary-workflow/`, `dna-style/`

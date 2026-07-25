@@ -1,10 +1,23 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { GateEditExemplarEntity, GateEditExemplarFactory, GateEditExemplarRepository, ResourceType, SysEventType } from '@arcaai/domains';
+import {
+  ExemplarCurationStatus,
+  GateEditExemplarEntity,
+  GateEditExemplarFactory,
+  GateEditExemplarRepository,
+  ResourceType,
+  SysEventType,
+} from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { computeEditBurden } from '../harness-observability/edit-burden';
+import {
+  AGENTIC_FEWSHOT_CURATION_MODE_DEFAULT,
+  AGENTIC_FEWSHOT_CURATION_MODE_KEY,
+  type FewShotCurationMode,
+} from '../settings-registry/descriptors/agentic-fewshot.descriptors';
+import { EffectiveSettingsService } from '../settings-registry/effective-settings.service';
 import { IPhiRedactor } from './IPhiRedactor';
 
 /**
@@ -60,6 +73,18 @@ export interface GateEditCorpusExport {
   candidates: GateEditCorpusCandidate[];
 }
 
+/**
+ * The result of a curation decision. A PROJECTION, never the entity: the row
+ * carries PHI-redacted clinical snippets and every derived mining stat, and a
+ * curation response has no business echoing any of it back.
+ */
+export interface GateEditCurationResult {
+  id: string;
+  tenantId: string;
+  curationStatus: ExemplarCurationStatus;
+  previousStatus: ExemplarCurationStatus;
+}
+
 export interface GateEditCandidate {
   tenantId: string;
   consultationId: string;
@@ -107,6 +132,10 @@ export class GateEditMiningService extends BaseService {
     // Optional so fixtures compile without one — but note the consequence is
     // fail-CLOSED, not fail-open: with no redactor nothing is ever mined.
     @Optional() @Inject(IPhiRedactor) private readonly phiRedactor?: IPhiRedactor,
+    // Governed read of `agentic.fewshot.curationMode` (TASK-553 F-24). Optional
+    // + trailing so existing positional fixtures keep their arity; absent ⇒ the
+    // code default `off`, i.e. the pre-gate behaviour.
+    @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.GateEditExemplar);
   }
@@ -201,6 +230,13 @@ export class GateEditMiningService extends BaseService {
    */
   async retrieveExemplars(params: { tenantId: string; departmentId?: string | null; limit: number }): Promise<GateEditExemplarEntity[]> {
     try {
+      // The HUMAN curation gate (F-24), distinct from the mined `qualitySignal`
+      // below: `qualitySignal` is what the CLINICIAN's edit behaviour implied,
+      // `curationStatus` is what a curator explicitly decided. In `off` mode the
+      // key is omitted entirely rather than set to some catch-all value, so the
+      // query — and its index plan — stays exactly what it was before the gate.
+      const curationMode = await this.resolveCurationMode(params.tenantId);
+
       const rows = await this.exemplarRepository.findTopForRetrieval({
         tenantId: params.tenantId,
         departmentId: params.departmentId ?? null,
@@ -209,6 +245,7 @@ export class GateEditMiningService extends BaseService {
         // that distinction reliably.
         qualitySignal: 'APPROVED_CLEAN',
         limit: Math.min(Math.max(params.limit, 0), MAX_RETRIEVAL_LIMIT),
+        ...(curationMode === 'enforce' ? { curationStatus: ExemplarCurationStatus.APPROVED } : {}),
       });
 
       return (rows ?? []).filter(
@@ -289,7 +326,67 @@ export class GateEditMiningService extends BaseService {
     };
   }
 
+  /**
+   * Record a curator's verdict on one mined exemplar (F-24).
+   *
+   * The counterpart to `exportCorpusCandidates`: export shows a human the
+   * unreviewed proposals, this records what they decided. Deliberately NOT a
+   * generic update — `curationStatus` is the only field a curator may move.
+   * Everything else on the row is DERIVED from the WORM audit trail and the
+   * redacted diff, so a writable surface over it would let an "edit" rewrite
+   * mined history.
+   *
+   * Cross-tenant ids return 404, never 403 (the platform's tenancy posture:
+   * existence itself is not disclosed). Uses the versioned CAS path because the
+   * row carries `_version` and two curators can hold the queue open at once.
+   */
+  async curateExemplar(params: { id: string; tenantId: string; status: ExemplarCurationStatus }): Promise<GateEditCurationResult> {
+    const existing = await this.exemplarRepository.findById(params.id).catch(() => null);
+    if (!existing || existing.tenantId !== params.tenantId) {
+      throw new NotFoundException('Resource not found');
+    }
+
+    const previousStatus = existing.curationStatus ?? ExemplarCurationStatus.PENDING;
+    existing.curationStatus = params.status;
+    existing.updatedBy = this.requestUserId ?? undefined;
+
+    await this.exemplarRepository.updateWithVersion(params.id, existing, existing.version ?? 1);
+
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: params.id,
+      // PHI-free: the verdict transition only, never a snippet.
+      data: { previousStatus, curationStatus: params.status },
+    });
+
+    return { id: params.id, tenantId: params.tenantId, curationStatus: params.status, previousStatus };
+  }
+
   // ────────────────────────────── internals ──────────────────────────────
+
+  /**
+   * The effective few-shot curation mode.
+   *
+   * Degrades to `off` — NOT to `enforce` — on every failure path. That is the
+   * safe direction here even though this is a governance gate: failing to
+   * `enforce` on an un-curated corpus empties the few-shot block entirely, a
+   * silent prompt-quality regression during an unrelated outage, whereas failing
+   * to `off` merely restores the behaviour every deployment had before the gate
+   * existed (rows that are still PHI-redacted and still `APPROVED_CLEAN`).
+   */
+  private async resolveCurationMode(tenantId: string): Promise<FewShotCurationMode> {
+    if (!this.effectiveSettings) return AGENTIC_FEWSHOT_CURATION_MODE_DEFAULT;
+    try {
+      const resolved = await this.effectiveSettings.resolveEffective(AGENTIC_FEWSHOT_CURATION_MODE_KEY, { tenantId });
+      return resolved.value === 'enforce' ? 'enforce' : AGENTIC_FEWSHOT_CURATION_MODE_DEFAULT;
+    } catch (error) {
+      this.logger.warn({
+        message: 'agentic.fewshot.curationMode lookup failed — retrieval falls back to the ungated (off) behaviour',
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return AGENTIC_FEWSHOT_CURATION_MODE_DEFAULT;
+    }
+  }
 
   /** Map an edit ratio onto the learning signal, or null for the ambiguous band. */
   private classify(ratio: number | null): string | null {

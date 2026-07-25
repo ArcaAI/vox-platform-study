@@ -24,7 +24,7 @@ Code-switching is a pipeline configuration feature that enables multilingual tra
 1. Code-switching must be configurable at the pipeline level (YAML `inference.code_switching`)
 2. Code-switching must be overridable per-request on all transcription paths (WebSocket streaming, batch jobs, SSE file upload)
 3. Code-switching must NOT be stored in `global_settings` or `user_settings` (it is a runtime parameter)
-4. The STT-V2 Python service must correctly apply code-switching per ASR engine
+4. The STT Python service must correctly apply code-switching per ASR engine
 
 ---
 
@@ -42,7 +42,7 @@ Client SDK (codeSwitching: boolean)
     → Application Service (codeSwitching → code_switching, snake_case)
       → [Streaming] HTTP POST to Python /internal/streaming/sessions
       → [Batch] Dramatiq message args[7]
-        → Python STT-V2 Service
+        → Python STT Service
           → Overrides InferenceConfig.code_switching on PipelineSpec
             → ASR Engine:
               • Whisper/Optimum: omits language kwarg → auto-detect per chunk
@@ -52,31 +52,31 @@ Client SDK (codeSwitching: boolean)
 
 ### 2.2 Component-by-Component Review
 
-#### A. Pipeline Configuration (Python STT-V2) — PASS ✅
+#### A. Pipeline Configuration (Python STT) — PASS ✅
 
 | File | What | Status |
 |------|------|--------|
-| `apps/stt-v2/src/stt_v2/pipeline/dto.py:340` | `InferenceConfig.code_switching: bool = False` | ✅ Correct default |
-| `apps/stt-v2/src/stt_v2/pipeline/yaml_parser.py:316` | Parses `code_switching` from YAML | ✅ Correct |
-| `apps/stt-v2/src/stt_v2/pipeline/yaml_parser.py:207-213` | Warns if `code_switching=True` + fixed `language` | ✅ Good validation |
+| `apps/stt/src/stt/pipeline/dto.py:340` | `InferenceConfig.code_switching: bool = False` | ✅ Correct default |
+| `apps/stt/src/stt/pipeline/yaml_parser.py:316` | Parses `code_switching` from YAML | ✅ Correct |
+| `apps/stt/src/stt/pipeline/yaml_parser.py:207-213` | Warns if `code_switching=True` + fixed `language` | ✅ Good validation |
 
 #### B. Streaming Path — PASS ✅
 
 | File | What | Status |
 |------|------|--------|
-| `apps/stt-v2/src/stt_v2/streaming/api/schemas.py:30-38` | Pydantic `code_switching: bool \| None` field | ✅ |
-| `apps/stt-v2/src/stt_v2/streaming/api/routes.py:72-80` | Passes to `SessionManager.create_session()` | ✅ |
-| `apps/stt-v2/src/stt_v2/streaming/session_manager.py:196-236` | Accepts `code_switching`, stores in `SessionMetadata` | ✅ |
-| `apps/stt-v2/src/stt_v2/streaming/session_manager.py:418-461` | Uses `dataclasses.replace()` to override `InferenceConfig` | ✅ Clean |
-| `apps/stt-v2/src/stt_v2/streaming/schemas.py:246-272` | Redis persistence as `"1"/"0"` string | ✅ Survives restarts |
+| `apps/stt/src/stt/streaming/api/schemas.py:30-38` | Pydantic `code_switching: bool \| None` field | ✅ |
+| `apps/stt/src/stt/streaming/api/routes.py:72-80` | Passes to `SessionManager.create_session()` | ✅ |
+| `apps/stt/src/stt/streaming/session_manager.py:196-236` | Accepts `code_switching`, stores in `SessionMetadata` | ✅ |
+| `apps/stt/src/stt/streaming/session_manager.py:418-461` | Uses `dataclasses.replace()` to override `InferenceConfig` | ✅ Clean |
+| `apps/stt/src/stt/streaming/schemas.py:246-272` | Redis persistence as `"1"/"0"` string | ✅ Survives restarts |
 
 #### C. Batch Path — PASS ✅
 
 | File | What | Status |
 |------|------|--------|
-| `apps/stt-v2/src/stt_v2/transcription/workers/transcribe_file.py:29-38` | Receives `code_switching` as arg[7] | ✅ |
-| `apps/stt-v2/src/stt_v2/transcription/workers/transcribe_file.py:127-130` | Mutates `InferenceConfig.code_switching` | ✅ |
-| `apps/stt-v2/src/stt_v2/transcription/api/routes.py:74-81` | Direct HTTP `Form(None)` parameter | ✅ |
+| `apps/stt/src/stt/transcription/workers/transcribe_file.py:29-38` | Receives `code_switching` as arg[7] | ✅ |
+| `apps/stt/src/stt/transcription/workers/transcribe_file.py:127-130` | Mutates `InferenceConfig.code_switching` | ✅ |
+| `apps/stt/src/stt/transcription/api/routes.py:74-81` | Direct HTTP `Form(None)` parameter | ✅ |
 
 #### D. ASR Engine Behavior — PASS ✅
 
@@ -93,8 +93,8 @@ Client SDK (codeSwitching: boolean)
 
 | File | What | Status |
 |------|------|--------|
-| `apps/api/src/modules/stt-v2/dto/create-streaming-session.request.ts:56-62` | `codeSwitching?: boolean` with `@IsBoolean() @IsOptional()` | ✅ |
-| `apps/api/src/modules/stt-v2/transcriptionJob.controller.ts:170-179` | Passes `codeSwitching` to `StreamingSessionService` | ✅ |
+| `apps/api/src/modules/stt/dto/create-streaming-session.request.ts:56-62` | `codeSwitching?: boolean` with `@IsBoolean() @IsOptional()` | ✅ |
+| `apps/api/src/modules/stt/transcriptionJob.controller.ts:170-179` | Passes `codeSwitching` to `StreamingSessionService` | ✅ |
 
 **Batch job path** — ✅ PASS
 
@@ -106,8 +106,8 @@ Client SDK (codeSwitching: boolean)
 
 | File | What | Status |
 |------|------|--------|
-| `apps/api/src/modules/stt-v2/dto/create-transcription-stream.request.ts` | **Missing `codeSwitching` field entirely** | ❌ |
-| `apps/api/src/modules/stt-v2/transcriptionStream.controller.ts:170-177` | **Does not pass `codeSwitching` to `realtimeService.createAndStream()`** | ❌ |
+| `apps/api/src/modules/stt/dto/create-transcription-stream.request.ts` | **Missing `codeSwitching` field entirely** | ❌ |
+| `apps/api/src/modules/stt/transcriptionStream.controller.ts:170-177` | **Does not pass `codeSwitching` to `realtimeService.createAndStream()`** | ❌ |
 
 The downstream `TranscriptionRealtimeService.createAndStream()` already accepts `codeSwitching?: boolean` — the gap is only at the controller/DTO layer.
 
@@ -124,7 +124,7 @@ The downstream `TranscriptionRealtimeService.createAndStream()` already accepts 
 
 | File | What | Status |
 |------|------|--------|
-| `packages/agentic-sdk-v2/src/types/stt-v2.ts:85-86` | `codeSwitching?: boolean` on `CreateStreamingSessionRequest` | ✅ |
+| `packages/agentic-sdk-v2/src/types/stt.ts:85-86` | `codeSwitching?: boolean` on `CreateStreamingSessionRequest` | ✅ |
 
 #### H. Global Settings & User Settings — PASS ✅ (Correct by Design)
 
@@ -146,8 +146,8 @@ Code-switching is **NOT** present in `global_settings` or `user_settings`. This 
 **Root Cause**: The `CreateTranscriptionStreamRequest` DTO was created without the `codeSwitching` field, and the controller never passes it to the downstream service.
 
 **Affected Files**:
-1. `apps/api/src/modules/stt-v2/dto/create-transcription-stream.request.ts` — Missing field
-2. `apps/api/src/modules/stt-v2/transcriptionStream.controller.ts:170-177` — Missing passthrough
+1. `apps/api/src/modules/stt/dto/create-transcription-stream.request.ts` — Missing field
+2. `apps/api/src/modules/stt/transcriptionStream.controller.ts:170-177` — Missing passthrough
 
 **Downstream already supports it**:
 - `packages/applications/src/services/stt/realtime/ITranscriptionRealtimeService.ts` — `codeSwitching?: boolean` ✅
@@ -174,7 +174,7 @@ Code-switching is **NOT** present in `global_settings` or `user_settings`. This 
 
 #### Step 1.1: Update `CreateTranscriptionStreamRequest` DTO
 
-**File**: `apps/api/src/modules/stt-v2/dto/create-transcription-stream.request.ts`
+**File**: `apps/api/src/modules/stt/dto/create-transcription-stream.request.ts`
 
 Add:
 ```typescript
@@ -191,7 +191,7 @@ Import `IsBoolean` from `class-validator`.
 
 #### Step 1.2: Update `TranscriptionStreamController`
 
-**File**: `apps/api/src/modules/stt-v2/transcriptionStream.controller.ts`
+**File**: `apps/api/src/modules/stt/transcriptionStream.controller.ts`
 
 Change the `createAndStream()` call (lines 170-177) to include `codeSwitching`:
 
@@ -224,7 +224,7 @@ Verify the SDK's file upload method sends `codeSwitching` in the multipart form 
 **Priority**: Low
 **Estimated effort**: Medium
 
-The Python STT-V2 batch service could include a `warnings` array in the transcription job response when code-switching is requested but the engine doesn't support it.
+The Python STT batch service could include a `warnings` array in the transcription job response when code-switching is requested but the engine doesn't support it.
 
 ### Task 3 (Optional): Enhance Pipeline YAML Validation
 
@@ -245,22 +245,22 @@ Surface the `code_switching + language` conflict in the `/api/v1/audio/pipelines
 
 | File | Change |
 |------|--------|
-| `apps/api/src/modules/stt-v2/dto/create-transcription-stream.request.ts` | Added `codeSwitching?: boolean` with `@IsOptional()`, `@IsBoolean()`, `@ApiPropertyOptional()` |
-| `apps/api/src/modules/stt-v2/transcriptionStream.controller.ts` | Pass `codeSwitching: body.codeSwitching` to `realtimeService.createAndStream()` + added `codeSwitching` to Swagger `@ApiBody` schema |
+| `apps/api/src/modules/stt/dto/create-transcription-stream.request.ts` | Added `codeSwitching?: boolean` with `@IsOptional()`, `@IsBoolean()`, `@ApiPropertyOptional()` |
+| `apps/api/src/modules/stt/transcriptionStream.controller.ts` | Pass `codeSwitching: body.codeSwitching` to `realtimeService.createAndStream()` + added `codeSwitching` to Swagger `@ApiBody` schema |
 | `packages/agentic-sdk-v2/src/core/FileTranscriptionService.ts` | Added `codeSwitching?: boolean` to `FileTranscribeOptions` interface + append to `FormData` when defined |
 
 #### Tests Added
 
 | File | Tests Added |
 |------|-------------|
-| `apps/api/src/modules/stt-v2/__tests__/create-transcription-stream.request.test.ts` | 5 new tests: accept `true`/`false`/`undefined`, reject string, reject number |
-| `apps/api/src/modules/stt-v2/__tests__/transcriptionStream.controller.test.ts` | 3 new tests: pass `true`/`false`/`undefined` to service |
+| `apps/api/src/modules/stt/__tests__/create-transcription-stream.request.test.ts` | 5 new tests: accept `true`/`false`/`undefined`, reject string, reject number |
+| `apps/api/src/modules/stt/__tests__/transcriptionStream.controller.test.ts` | 3 new tests: pass `true`/`false`/`undefined` to service |
 
 #### TDD Evidence
 
 - **RED**: 5 tests failed (2 DTO validation + 3 controller passthrough) — failed because `codeSwitching` field and passthrough did not exist
 - **GREEN**: All 8 new tests pass after adding the field, decorator, and passthrough
-- **Regression**: Full stt-v2 test suite (117 tests across 5 files) passes with zero regressions
+- **Regression**: Full stt test suite (117 tests across 5 files) passes with zero regressions
 
 #### End-to-End Data Flow (Now Complete)
 
@@ -270,7 +270,7 @@ Client SDK (codeSwitching: boolean)
     → NestJS DTO (@IsBoolean @IsOptional codeSwitching?: boolean)
       → Controller passes body.codeSwitching to realtimeService.createAndStream()
         → TranscriptionRealtimeService dispatches as Dramatiq arg[7]
-          → Python STT-V2 overrides InferenceConfig.code_switching
+          → Python STT overrides InferenceConfig.code_switching
 ```
 
 All three transcription paths now support `codeSwitching` override:

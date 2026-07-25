@@ -78,7 +78,7 @@ describe('useSharedConnection — userId/tenant threading (AC-8 / C-4)', () => {
         useSharedWS(
           'stream-1',
           {
-            url: 'wss://api.example.com/ws/stt-v2/stream',
+            url: 'wss://api.example.com/ws/stt/stream',
             userId: 'user-A',
             tenantId: 'tenant-A',
           },
@@ -90,7 +90,7 @@ describe('useSharedConnection — userId/tenant threading (AC-8 / C-4)', () => {
       expect(mock.subscribeWS).toHaveBeenCalledWith(
         'stream-1',
         expect.objectContaining({
-          url: 'wss://api.example.com/ws/stt-v2/stream',
+          url: 'wss://api.example.com/ws/stt/stream',
           userId: 'user-A',
           tenantId: 'tenant-A',
         }),
@@ -106,7 +106,7 @@ describe('useSharedConnection — userId/tenant threading (AC-8 / C-4)', () => {
         useSharedWS(
           'stream-1',
           {
-            url: 'wss://api.example.com/ws/stt-v2/stream',
+            url: 'wss://api.example.com/ws/stt/stream',
             userId: 'user-A',
             tenantId: 'tenant-A',
           },

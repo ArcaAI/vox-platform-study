@@ -2,7 +2,7 @@
  * @arcaai/stt - StreamingBackendSTTProvider Tests
  *
  * Verifies the new pipeline-aware STT provider that wraps an injected
- * `StreamingSessionManager` + `SttV2WebSocketClient` pair instead of the
+ * `StreamingSessionManager` + `SttWebSocketClient` pair instead of the
  * legacy `RemoteSTTProvider` WebSocketClient.
  *
  * @vitest-environment jsdom
@@ -48,13 +48,13 @@ function makeSession(overrides: Partial<StreamingSessionLike> = {}): StreamingSe
   return {
     createSession: vi.fn(async () => ({
       sessionId: 'sess-1',
-      wsUrl: '/ws/stt-v2/stream',
+      wsUrl: '/ws/stt/stream',
       ticket: 'T-abc',
       maxConcurrent: 8,
       currentActive: 1,
       status: 'active',
     })),
-    getWebSocketUrl: vi.fn(() => 'wss://api.test/ws/stt-v2/stream?sessionId=sess-1&ticket=T-abc'),
+    getWebSocketUrl: vi.fn(() => 'wss://api.test/ws/stt/stream?sessionId=sess-1&ticket=T-abc'),
     closeSession: vi.fn(async () => {}),
     refreshTicket: vi.fn(async () => 'T-new'),
     getSessionId: vi.fn(() => 'sess-1'),
@@ -102,7 +102,7 @@ describe('StreamingBackendSTTProvider', () => {
       );
       expect(session.getWebSocketUrl).toHaveBeenCalled();
       expect(wsClient.connect).toHaveBeenCalledWith(
-        'wss://api.test/ws/stt-v2/stream?sessionId=sess-1&ticket=T-abc',
+        'wss://api.test/ws/stt/stream?sessionId=sess-1&ticket=T-abc',
       );
       expect(provider.isReady()).toBe(true);
     });
@@ -401,6 +401,31 @@ describe('StreamingBackendSTTProvider', () => {
       await provider.destroy();
 
       expect(wsClient.disconnect).toHaveBeenCalled();
+      expect(session.closeSession).toHaveBeenCalled();
+      expect(provider.isReady()).toBe(false);
+    });
+
+    it('prefers stopAndDrain over disconnect on destroy() when the client supports it', async () => {
+      const stopAndDrain = vi.fn().mockResolvedValue(undefined);
+      (wsClient as { stopAndDrain?: () => Promise<void> }).stopAndDrain = stopAndDrain;
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+      });
+      await provider.start();
+      await provider.destroy();
+
+      expect(stopAndDrain).toHaveBeenCalled();
+      expect(wsClient.disconnect).not.toHaveBeenCalled();
       expect(session.closeSession).toHaveBeenCalled();
       expect(provider.isReady()).toBe(false);
     });

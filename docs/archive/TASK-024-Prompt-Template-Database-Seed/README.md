@@ -153,4 +153,4 @@ The seed uses `upsert` operations, so re-running is idempotent. To remove the ne
 
 - **SDK-207 WS-1**: Database schema (PromptTemplate, PromptVersion models) — prerequisite
 - **SDK-207 WS-2**: Prompt Template management module — consumes this seed data
-- **TASK-023**: SMR V2 Text Generation Service — uses prompts at runtime
+- **TASK-023**: SMR Text Generation Service — uses prompts at runtime

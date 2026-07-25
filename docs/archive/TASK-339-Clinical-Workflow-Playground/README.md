@@ -41,14 +41,14 @@ Shows the full "ambient scribe" value loop — capture → live assistance → A
 ### Out of scope
 - No Prisma models added (live summary is transient/Redis-only; only an optional `PRE_SUMMARY` on stop).
 - No harness/Temporal/Python-service code changes.
-- Bringing up real STT-v2/SMR (models/GPU/mic) is best-effort only — see the runbook for graceful degradation.
+- Bringing up real STT/SMR (models/GPU/mic) is best-effort only — see the runbook for graceful degradation.
 
 ---
 
 ## 2. Current State Evaluation
 - **SSE pattern** already exists for consultation job-updates (`consultation_job_updates:{jobId}` + `@Sse()` + `RedisSubscriberService`) and for stream auth via `@StreamScope` + the `@TenantOwnedResource` pre-stream guard (TASK-299 / TASK-307 / TASK-309). Mirrored, not reinvented.
 - **SMR + NLP clients** already exist in `@arcaai/applications` (used by the harness `summary.processor.ts` / `ner.processor.ts`). Reused via `HttpService`.
-- **STT result stream** `stt:result:{sessionId}` is produced by `apps/stt-v2`; the streaming session (`POST /api/v1/audio/transcription-jobs/stream/session`) embeds the consultationId.
+- **STT result stream** `stt:result:{sessionId}` is produced by `apps/stt`; the streaming session (`POST /api/v1/audio/transcription-jobs/stream/session`) embeds the consultationId.
 - **`Consultation.status`** column existed but had **no recording transition**; the harness flips it to `PENDING_REVIEW` post-visit. (Close/reopen lifecycle uses `metadata.status`, separate, left untouched.)
 - **`TenantFrontendConfig.captureRawAudio`** (migration `20260605073615`) defaults `false`; effective SDK enablement = platform capability `enable-local-raw-capture` **AND** this per-tenant column (computed in `GET /tenant/me/config`).
 - **Clinical-review screen** (`apps/ui-playground/src/features/clinical-review`) already implements linked-evidence / float-ungrounded / click-to-inspect; reused by the review panel.
@@ -60,10 +60,10 @@ Shows the full "ambient scribe" value loop — capture → live assistance → A
 ```mermaid
 flowchart TB
   subgraph cap [Capture - browser]
-    Mic[Mic] --> Pipe["NoiseFilter -> VAD -> STT (vox SDK)"] --> WS["ws /ws/stt-v2/stream"]
+    Mic[Mic] --> Pipe["NoiseFilter -> VAD -> STT (vox SDK)"] --> WS["ws /ws/stt/stream"]
     Mic --> Dual["DualStreamRecorder (raw + processed)"]
   end
-  WS --> Stt["apps/stt-v2"] --> Res[("Redis stt:result:{session}")]
+  WS --> Stt["apps/stt"] --> Res[("Redis stt:result:{session}")]
   subgraph live [NEW server-side realtime - LiveDocumentationService]
     LiveDoc["Debounce ~3 finals / 5s"] -->|"SMR /generate"| Smr["Running summary"]
     LiveDoc -->|"NLP /classify/tokens"| Nlp["Medical entities"]
@@ -243,7 +243,7 @@ Re-run `pnpm db:seed` to apply the raw-capture config to the demo tenant.
 
 ## 6. Manual E2E Runbook
 
-> Goal: bring up every dependency and walk the full flow. The demo degrades gracefully if STT-v2/SMR are unavailable (no models/GPU/mic) — the live-summary panel and harness SOAP step are the only parts that need them.
+> Goal: bring up every dependency and walk the full flow. The demo degrades gracefully if STT/SMR are unavailable (no models/GPU/mic) — the live-summary panel and harness SOAP step are the only parts that need them.
 
 ### 6a. Bring up dependencies (in order)
 
@@ -283,8 +283,8 @@ pnpm py:harness:worker        # python -m harness.temporal.worker (task queue: h
 **4. Python AI services** (conda env `arcaenv`; require models/GPU/mic — best-effort):
 ```bash
 pnpm dev:nlp                  # NLP  :8864  (NER /api/v1/classify/tokens) — required for entity highlights
-pnpm dev:smr-v2               # SMR  :8862  — required for running summary + harness SOAP
-pnpm dev:stt-v2               # STT  :8861  — required for live captions / STT result stream
+pnpm dev:smr               # SMR  :8862  — required for running summary + harness SOAP
+pnpm dev:stt               # STT  :8861  — required for live captions / STT result stream
 # (optional) pnpm dev:harness  # Harness API :8866
 ```
 
@@ -303,7 +303,7 @@ pnpm dev:ui-playground        # Vite :5175  → http://localhost:5175/clinical-w
 curl -s http://localhost:8868/api/v1/health    # api      → {"status":"healthy",...}
 curl -s http://localhost:8864/api/v1/health    # nlp      → token_classifier healthy
 curl -s http://localhost:8862/api/v1/health    # smr
-curl -s http://localhost:8861/api/v1/health    # stt-v2
+curl -s http://localhost:8861/api/v1/health    # stt
 curl -s http://localhost:8866/api/v1/health    # harness  → temporal "configured"
 # SSE must reject unauthenticated callers (guard runs before stream opens):
 curl -s -o /dev/null -w "%{http_code}\n" \
@@ -323,7 +323,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 10. **Artifacts panel**: raw+processed audio, `TRANSCRIPT`, notes, lab `ATTACHMENT`, `RAW_SUMMARY`, `SIGNED_NOTE`.
 
 ### 6d. Graceful degradation (what was NOT live-validated here)
-- **STT-v2 down** → no real captions / STT result stream; the live summary still reacts to context-add events; manual transcript ingest is the fallback.
+- **STT down** → no real captions / STT result stream; the live summary still reacts to context-add events; manual transcript ingest is the fallback.
 - **SMR down** → `runningSummary` stays empty (last-good retained) **and** the harness SOAP draft stalls at `RECORDING`/`OPEN` — the authoritative note cannot be produced. NLP entity highlights still work if a transcript is present.
 
 ---
@@ -375,7 +375,7 @@ No new type errors from clinical-workspace or admin/harness.
 | ui-playground | 5175 | ✅ running | Vite ready |
 | RAG reranker | 8870 | ✅ up | harness Phase-3 |
 | SMR | 8862 | ⛔ down | no model/GPU (expected — not blocked) |
-| STT-v2 | 8861 | ⛔ down | no model/GPU/mic (expected — not blocked) |
+| STT | 8861 | ⛔ down | no model/GPU/mic (expected — not blocked) |
 
 Runtime route map (from API startup log):
 ```

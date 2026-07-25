@@ -15,6 +15,7 @@ import {
   NamedEntityRepository,
   ResourceStatusType,
   ResourceType,
+  SummaryMetaEntity,
   SummaryMetaFactory,
   SummaryMetaRepository,
   SysEventType,
@@ -528,7 +529,14 @@ export class ContextService extends BaseService implements IContextService {
    */
   async getSummaryMeta(contextItemId: string): Promise<SummaryMetaResponse | null> {
     const meta = await this.summaryMetaRepository.findByContextItem(contextItemId);
-    return meta ? ContextDtoMapper.toSummaryMetaResponse(meta) : null;
+    if (!meta) return null;
+
+    // F-34: re-validate provenance ids against the caller's tenant on read.
+    if (this.tenantId) {
+      await this.scrubForeignProvenanceIds(this.tenantId, meta);
+    }
+
+    return ContextDtoMapper.toSummaryMetaResponse(meta);
   }
 
   // ============================================
@@ -1088,7 +1096,15 @@ export class ContextService extends BaseService implements IContextService {
    */
   async getContextItemWithRelations(contextItemId: string): Promise<ContextItemResponse | null> {
     const item = await this.contextItemRepository.findWithAllRelations(contextItemId);
-    return item ? ContextDtoMapper.toResponse(item) : null;
+    if (!item) return null;
+
+    // F-34: the embedded SummaryMeta relation carries the same provenance
+    // arrays as getSummaryMeta — re-validate them here too.
+    if (item.SummaryMeta && this.tenantId) {
+      await this.scrubForeignProvenanceIds(this.tenantId, item.SummaryMeta);
+    }
+
+    return ContextDtoMapper.toResponse(item);
   }
 
   // ============================================
@@ -1317,6 +1333,49 @@ export class ContextService extends BaseService implements IContextService {
         throw new NotFoundException('Resource not found');
       }
     }
+  }
+
+  /**
+   * F-34 — defense-in-depth re-validation of `SummaryMeta`'s provenance id
+   * arrays (`caseNoteIds` / `preSummaryIds` / `previousSummaryIds`) on READ.
+   *
+   * `addRawSummary` already rejects a cross-tenant id at WRITE time
+   * (`assertContextItemsInTenant`, throws). This re-checks at read time so a
+   * poisoned id introduced by any other path (a bypassed guard, a direct DB
+   * write, a future producer) is never re-surfaced to a caller who might
+   * dereference it into content later. Unlike the write-side guard, reads
+   * must DEGRADE rather than fail: any id that no longer resolves to an
+   * in-tenant `ContextItem` is silently dropped (with a structured warning)
+   * — a corrupted provenance array must never turn a read into a 500.
+   *
+   * ONE batched `findAll({ id: { in } })` covers all three arrays combined
+   * (mirrors the write-side batching, F-15). Mutates `meta`'s arrays in
+   * place; callers pass it straight to `ContextDtoMapper.toSummaryMetaResponse`.
+   */
+  private async scrubForeignProvenanceIds(tenantId: string, meta: SummaryMetaEntity): Promise<void> {
+    const allIds = [...new Set([...meta.caseNoteIds, ...meta.preSummaryIds, ...meta.previousSummaryIds])];
+    if (allIds.length === 0) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const found = await this.contextItemRepository.findAll({ filters: { id: { in: allIds } } as any });
+    const inTenantIds = new Set(found.filter((item) => item.tenantId === tenantId).map((item) => item.id));
+
+    const filterField = (ids: string[], field: 'caseNoteIds' | 'preSummaryIds' | 'previousSummaryIds'): string[] => {
+      const kept = ids.filter((id) => inTenantIds.has(id));
+      if (kept.length !== ids.length) {
+        this.logger.warn({
+          message: 'Dropping foreign-tenant/missing provenance id(s) from SummaryMeta on read',
+          summaryMetaId: meta.id,
+          field,
+          droppedCount: ids.length - kept.length,
+        });
+      }
+      return kept;
+    };
+
+    meta.caseNoteIds = filterField(meta.caseNoteIds, 'caseNoteIds');
+    meta.preSummaryIds = filterField(meta.preSummaryIds, 'preSummaryIds');
+    meta.previousSummaryIds = filterField(meta.previousSummaryIds, 'previousSummaryIds');
   }
 
   /**

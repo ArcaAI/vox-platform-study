@@ -5,7 +5,7 @@
 > **Last Updated**: 2026-02-26  
 > **Status**: Completed  
 > **Test Scope**: User Stories 26–35 (Admin — User Management)  
-> **Test Environment**: localhost (API :8868, Vite :5173, STT-V2 :8861, SMR-V2 :8862, NLP :8864)
+> **Test Environment**: localhost (API :8868, Vite :5173, STT :8861, SMR :8862, NLP :8864)
 
 ---
 
@@ -343,8 +343,8 @@ The UI for setting IP restrictions is present. Creation form includes an "Allowe
 |---------|-----|--------|
 | API Gateway (NestJS) | http://localhost:8868/api/v1 | Running |
 | Vite Example App | http://localhost:5173 | Running |
-| STT-V2 (Python/Uvicorn) | http://localhost:8861 | Running |
-| SMR-V2 (Python/Uvicorn) | http://localhost:8862 | Running |
+| STT (Python/Uvicorn) | http://localhost:8861 | Running |
+| SMR (Python/Uvicorn) | http://localhost:8862 | Running |
 | NLP (Python/Uvicorn) | http://localhost:8864 | Running |
 
 ### Test Credentials

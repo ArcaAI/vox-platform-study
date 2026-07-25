@@ -504,7 +504,7 @@ Add new repositories to providers and exports.
 #### Task 7.4: Create Internal DTOs
 **Directory**: `internal/dto/`
 
-- `create-transcript.request.ts` - For STT-v2 to create transcript
+- `create-transcript.request.ts` - For STT to create transcript
 - `index.ts`
 
 ---
@@ -656,15 +656,15 @@ export class TranscriptionJobController {
 @UseGuards(ApiKeyGuard)  // Internal API key authentication
 export class SttInternalController {
     @Post('transcripts')
-    @ApiOperation({ summary: 'Create transcript (from STT-v2)' })
+    @ApiOperation({ summary: 'Create transcript (from STT)' })
     createTranscript(@Body() request: CreateTranscriptRequest): Promise<void>;
 
     @Patch('jobs/:id/status')
-    @ApiOperation({ summary: 'Update job status (from STT-v2)' })
+    @ApiOperation({ summary: 'Update job status (from STT)' })
     updateJobStatus(@Param('id') id: string, @Body() request: UpdateJobStatusRequest): Promise<void>;
 
     @Patch('jobs/:id/progress')
-    @ApiOperation({ summary: 'Update job progress (from STT-v2)' })
+    @ApiOperation({ summary: 'Update job progress (from STT)' })
     updateJobProgress(@Param('id') id: string, @Body() request: UpdateJobProgressRequest): Promise<void>;
 }
 ```

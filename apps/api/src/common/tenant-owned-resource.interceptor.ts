@@ -147,7 +147,7 @@ export class TenantOwnedResourceInterceptor implements NestInterceptor {
       case 'StreamSession':
         // SessionId → tenantId lookup via the
         // gateway-side binding service (the session itself lives in
-        // STT-V2 / Redis, not Prisma — there is no repository to call).
+        // STT / Redis, not Prisma — there is no repository to call).
         await this.assertStreamSessionOwnership(paramValue, callerTenantId);
         return;
       default:

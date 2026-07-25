@@ -140,7 +140,7 @@ Key clinical takeaways: (i) **general WER ≠ clinical safety** — Parakeet is 
 
 ## 5. Batch / offline serving performance
 
-Your STT-v2 is FastAPI + **Dramatiq** (a task queue) → offline/batch throughput is the dominant metric. Options, mid-2026:
+Your STT is FastAPI + **Dramatiq** (a task queue) → offline/batch throughput is the dominant metric. Options, mid-2026:
 
 - **faster-whisper `BatchedInferencePipeline`** — the pragmatic Whisper batch path. **~250× realtime on RTX 4090** (large-v3, batch=16); dynamic batching gives an extra 3–5×. **`int8_float16` / `int8` quantization is effectively lossless and halves VRAM**, letting you pack multiple workers per GPU (https://knightli.com/en/2026/05/01/faster-whisper-speech-to-text/; https://modal.com/docs/examples/batched_whisper). Needs CUDA 12 / cuDNN 9.
 - **NeMo (Parakeet/Canary)** — the throughput leaders. **Parakeet-TDT** hits **RTFx ~3,380 at batch=128** on the leaderboard hardware; **int8 is essentially lossless (8.01% vs 8.03% FP32)**. On a **modest L4 GPU**, an independent benchmark shows fp16 **79.9×→228.3× going batch 1→8**, with **int8 recommended specifically for packing multiple workers** rather than max single-stream throughput (https://www.e2enetworks.com/blog/benchmarking-asr-models-nvidia-l4-parakeet-whisper-nemotron). **Optimal batch size differs per GPU** (A100 ≠ L4). IBM's **Granite-4.1-2B-NAR reaches RTFx ~1820 on one H100** by single-pass CTC editing.

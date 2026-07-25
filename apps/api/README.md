@@ -13,7 +13,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 - **Multi-Authentication System**: JWT, OIDC, and API Key authentication strategies
 - **Multi-Tenant Architecture**: Organization-level data isolation with tenant-specific configurations
-- **Microservice Orchestration**: Proxies the SMR text service and audio transcription to STT v2 (via the `streaming` module) and health-monitors the downstream Python services (STT v2, SMR, NLP, Guardrail, Harness)
+- **Microservice Orchestration**: Proxies the SMR text service and audio transcription to STT (via the `streaming` module) and health-monitors the downstream Python services (STT, SMR, NLP, Guardrail, Harness)
 - **Real-Time Communication**: WebSocket support for streaming audio transcription
 - **Enterprise Security**: HIPAA-compliant audit trails, rate limiting, and CORS management
 - **Progressive Enhancement**: Cloud-first API with support for enhanced client-side capabilities
@@ -50,7 +50,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
   - Automatic session recovery and validation
 
 - **AI Service Integration**
-  - **STT v2 (Speech-to-Text)**: Real-time audio transcription via the `streaming` module (`/api/v1/audio/...`)
+  - **STT (Speech-to-Text)**: Real-time audio transcription via the `streaming` module (`/api/v1/audio/...`)
   - **SMR (Summarization)**: Medical conversation summarization proxied by `SmrProxyController` in the `streaming` module (`/api/v1/text/...`)
   - **NLP**: Entity extraction / medical terminology — downstream Python service (port 8864), health-monitored; no gateway proxy route
   - **Guardrail**: Safety/guardrail engine (port 8863) — health-monitored downstream
@@ -86,7 +86,7 @@ The HOPE API Gateway serves as the central entry point for all client requests i
         ┌─────────────┼─────────────┬─────────────┐
         ▼             ▼             ▼             ▼
 ┌──────────────┐ ┌────────────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐
-│ STT v2 :8861 │ │Guardrail :8863 │ │SMR :8862 │ │NLP :8864 │ │Harness :8866 │
+│ STT :8861 │ │Guardrail :8863 │ │SMR :8862 │ │NLP :8864 │ │Harness :8866 │
 │ (Python)     │ │ (Python)       │ │ (Python) │ │ (Python) │ │ (Python)     │
 └──────────────┘ └────────────────┘ └──────────┘ └──────────┘ └──────────────┘
         │             │             │             │             │
@@ -210,8 +210,8 @@ REDIS_PORT=6379
 REDIS_PASS=redis-password
 
 # Python Microservices
-STT_V2_PORT=8861
-STT_V2_URL=http://localhost:8861
+STT_PORT=8861
+STT_URL=http://localhost:8861
 SMR_PORT=8862
 SMR_URL=http://localhost:8862
 GUARDRAIL_URL=http://localhost:8863
@@ -334,7 +334,7 @@ All public API endpoints follow the pattern `/api/v1/<domain>`:
 
 | Prefix | Purpose | Example |
 |--------|---------|---------|
-| `/api/v1/audio/...` | STT v2 (Speech-to-Text) | `/api/v1/audio/transcription-jobs` |
+| `/api/v1/audio/...` | STT (Speech-to-Text) | `/api/v1/audio/transcription-jobs` |
 | `/api/v1/text/...` | SMR (Summarization) | `/api/v1/text/generate` |
 | `/api/v1/admin/...` | Tenant admin endpoints | `/api/v1/admin/settings` |
 | `/api/v1/user/me/...` | Current user endpoints | `/api/v1/user/me/settings` |
@@ -365,7 +365,7 @@ GET    /api/v1/sessions/patient/:patientId # Get sessions by patient
 GET    /api/v1/sessions/tenants/:tenantId  # Get sessions by tenant
 ```
 
-#### STT v2 Service (Audio)
+#### STT Service (Audio)
 
 ```
 GET    /api/v1/audio/transcription-jobs           # List transcription jobs
@@ -373,7 +373,7 @@ POST   /api/v1/audio/transcription-jobs           # Create transcription job
 GET    /api/v1/audio/transcription-jobs/:id       # Get job by ID
 GET    /api/v1/audio/pipelines                    # List pipelines
 GET    /api/v1/audio/ai-models                    # List AI models
-WS     /stt-v2                                    # WebSocket for real-time STT v2
+WS     /stt                                    # WebSocket for real-time STT
 ```
 
 #### SMR Service (Text)
@@ -449,7 +449,7 @@ apps/api/
 │   │   ├── monitoring/           # Service health monitoring
 │   │   ├── pstudio/             # Prisma Studio             → /api/v1/admin/pstudio
 │   │   ├── rbac/                 # Role-based access control → /api/v1/admin/rbac/...
-│   │   ├── streaming/            # STT v2 audio (/api/v1/audio) + SMR proxy (/api/v1/text) + STT WebSocket
+│   │   ├── streaming/            # STT audio (/api/v1/audio) + SMR proxy (/api/v1/text) + STT WebSocket
 │   │   ├── tenant/               # Tenant management         → /api/v1/admin/tenants
 │   │   ├── user/                 # User management
 │   │   ├── user-preferences/     # User preferences          → /api/v1/user/me

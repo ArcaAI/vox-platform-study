@@ -4,7 +4,7 @@
 - **Created**: 2026-02-21
 - **Last Updated**: 2026-02-21 (quality pass)
 - **Status**: Completed
-- **Depends On**: STT-V2 diarization pipeline (complete), Qdrant infrastructure (complete)
+- **Depends On**: STT diarization pipeline (complete), Qdrant infrastructure (complete)
 - **Blocks**: TASK-034 gap F1-06 (Voice Embedding toggle on Setup page)
 - **Related Tickets**: TASK-032 (SDK V2 Frontend Demo — defined this task's scope), TASK-034 (Frontend Gap Remediation — deferred F1-06 pending this)
 
@@ -14,7 +14,7 @@
 
 ### Business Context
 
-FEAT-01 (Setup & Configuration) item 3 requires doctors to record a voice sample for personalized speaker recognition during local diarization. When a doctor records their voice, the system extracts a speaker embedding vector and stores it in Qdrant. During subsequent transcription sessions, the STT-V2 diarization pipeline compares incoming audio against stored embeddings to identify the doctor's speech vs. the patient's speech.
+FEAT-01 (Setup & Configuration) item 3 requires doctors to record a voice sample for personalized speaker recognition during local diarization. When a doctor records their voice, the system extracts a speaker embedding vector and stores it in Qdrant. During subsequent transcription sessions, the STT diarization pipeline compares incoming audio against stored embeddings to identify the doctor's speech vs. the patient's speech.
 
 ### What Exists Today
 
@@ -24,10 +24,10 @@ The **infrastructure and ML pipeline are fully operational** — what's missing 
 |-----------|--------|----------|
 | Qdrant vector DB | Running | `infrastructure/docker/docker-compose.dev.yml` — `hope-qdrant` container (v1.16) |
 | Qdrant collection | Initialized | `stt_speaker_embeddings` — 512-dim cosine, payload indexes on `tenant_id`, `speaker_id`, `consultation_id` |
-| Pyannote embedding model | Loaded | `apps/stt-v2/src/stt_v2/diarization/embedding_service.py` — `pyannote/embedding` (512-dim) |
-| Speaker identifier | Working | `apps/stt-v2/src/stt_v2/diarization/speaker_identifier.py` — orchestrates extraction + Qdrant search |
-| Speaker embedding store | Working | `apps/stt-v2/src/stt_v2/core/vectorstore/speaker_store.py` — upsert, search, delete, tenant isolation |
-| Qdrant client manager | Working | `apps/stt-v2/src/stt_v2/core/vectorstore/client.py` — async pooled connection |
+| Pyannote embedding model | Loaded | `apps/stt/src/stt/diarization/embedding_service.py` — `pyannote/embedding` (512-dim) |
+| Speaker identifier | Working | `apps/stt/src/stt/diarization/speaker_identifier.py` — orchestrates extraction + Qdrant search |
+| Speaker embedding store | Working | `apps/stt/src/stt/core/vectorstore/speaker_store.py` — upsert, search, delete, tenant isolation |
+| Qdrant client manager | Working | `apps/stt/src/stt/core/vectorstore/client.py` — async pooled connection |
 | MinIO object storage | Running | S3-compatible, `IS3Service` in `packages/applications/` |
 | NestJS file upload pattern | Established | `FileInterceptor`, `ParseFilePipe`, `MaxFileSizeValidator` (see `storage.controller.ts`) |
 | Frontend "Coming Soon" UI | Placeholder | `vite-app/src/pages/setup.tsx` line 431, `nextjs-app/src/app/setup/_content.tsx` |
@@ -41,7 +41,7 @@ The **infrastructure and ML pipeline are fully operational** — what's missing 
 
 ### Acceptance Criteria
 
-1. `POST /api/v1/users/:id/voice-embedding` accepts an audio file, extracts the embedding via STT-V2, stores in Qdrant, and returns embedding metadata
+1. `POST /api/v1/users/:id/voice-embedding` accepts an audio file, extracts the embedding via STT, stores in Qdrant, and returns embedding metadata
 2. `GET /api/v1/users/:id/voice-embedding` returns embedding status (exists/not exists, created date, vector dimensions)
 3. `DELETE /api/v1/users/:id/voice-embedding` removes the embedding from Qdrant and clears the user's embedding reference
 4. All endpoints enforce JWT auth + RBAC (`CanUpdate('User')` for POST/DELETE, `CanRead('User')` for GET)
@@ -65,9 +65,9 @@ The Qdrant instance is configured in Docker Compose with the `stt_speaker_embedd
 - **Payload indexes**: `tenant_id` (tenant isolation), `speaker_id`, `consultation_id`, `created_at`
 - **HNSW config**: Global index disabled (`m=0`), payload-based index (`payload_m=16`) for multi-tenant performance
 
-### STT-V2 Embedding Service
+### STT Embedding Service
 
-The `EmbeddingService` (`apps/stt-v2/src/stt_v2/diarization/embedding_service.py`):
+The `EmbeddingService` (`apps/stt/src/stt/diarization/embedding_service.py`):
 
 - Uses `pyannote/embedding` HuggingFace model
 - Extracts 512-dimensional speaker embeddings from audio samples
@@ -77,7 +77,7 @@ The `EmbeddingService` (`apps/stt-v2/src/stt_v2/diarization/embedding_service.py
 
 ### Speaker Embedding Store
 
-The `SpeakerEmbeddingStore` (`apps/stt-v2/src/stt_v2/core/vectorstore/speaker_store.py`):
+The `SpeakerEmbeddingStore` (`apps/stt/src/stt/core/vectorstore/speaker_store.py`):
 
 - `upsert_embedding(tenant_id, speaker_id, embedding, metadata)` — stores embedding with tenant scope
 - `search_similar(tenant_id, embedding, threshold=0.7, limit=5)` — cosine similarity search within tenant
@@ -113,7 +113,7 @@ The `User` model in Prisma has no voice embedding fields. Related models:
 
 ```
 ┌──────────────┐     ┌─────────────────────┐     ┌──────────────┐
-│   Frontend   │     │   API Gateway        │     │  STT-V2      │
+│   Frontend   │     │   API Gateway        │     │  STT      │
 │   (Vite/     │────▶│   (NestJS)           │────▶│  (FastAPI)   │
 │    Next.js)  │     │                      │     │              │
 │              │     │  POST /users/:id/    │     │  POST        │
@@ -121,9 +121,9 @@ The `User` model in Prisma has no voice embedding fields. Related models:
 │  upload WAV  │     │                      │     │  embeddings/ │
 │              │     │  1. Validate file    │     │  extract     │
 │              │     │  2. Store in MinIO   │     │              │
-│              │     │  3. Call STT-V2      │     │  1. Load     │
+│              │     │  3. Call STT      │     │  1. Load     │
 │              │     │  4. Store in Qdrant  │     │     pyannote │
-│              │     │     (via STT-V2)     │     │  2. Extract  │
+│              │     │     (via STT)     │     │  2. Extract  │
 │              │     │  5. Update user      │     │     embedding│
 │              │     │     metadata         │     │  3. Return   │
 └──────────────┘     └─────────────────────┘     │     512-dim  │
@@ -141,11 +141,11 @@ The `User` model in Prisma has no voice embedding fields. Related models:
                     └────────────────────┘
 ```
 
-### Phase 1: Backend — STT-V2 Embedding Extraction Endpoint
+### Phase 1: Backend — STT Embedding Extraction Endpoint
 
 **Files**:
-- Create: `apps/stt-v2/src/stt_v2/api/routes/embedding_routes.py`
-- Modify: `apps/stt-v2/src/stt_v2/api/app.py` (register routes)
+- Create: `apps/stt/src/stt/api/routes/embedding_routes.py`
+- Modify: `apps/stt/src/stt/api/app.py` (register routes)
 
 **What to implement**:
 
@@ -166,9 +166,9 @@ This endpoint:
 
 Authentication: API Key guard (same pattern as `/internal/stt/*` callbacks).
 
-**Why separate from upsert?** The API Gateway owns the Qdrant write (via STT-V2's `SpeakerEmbeddingStore`) to maintain a single source of truth for user-to-speaker mapping. Alternatively, the STT-V2 service can handle the full upsert if a `speaker_id` and `tenant_id` are provided — this is the simpler approach since `SpeakerEmbeddingStore.upsert_embedding()` already exists.
+**Why separate from upsert?** The API Gateway owns the Qdrant write (via STT's `SpeakerEmbeddingStore`) to maintain a single source of truth for user-to-speaker mapping. Alternatively, the STT service can handle the full upsert if a `speaker_id` and `tenant_id` are provided — this is the simpler approach since `SpeakerEmbeddingStore.upsert_embedding()` already exists.
 
-**Recommended approach**: Full upsert in STT-V2:
+**Recommended approach**: Full upsert in STT:
 
 ```
 POST /internal/embeddings/upsert
@@ -211,7 +211,7 @@ export class VoiceEmbeddingController {
   ): Promise<VoiceEmbeddingResponse> {
     // 1. Verify user exists and belongs to request tenant
     // 2. Store audio file in MinIO (private bucket, path: voice-samples/{tenantId}/{userId}.wav)
-    // 3. Forward file to STT-V2 POST /internal/embeddings/upsert
+    // 3. Forward file to STT POST /internal/embeddings/upsert
     //    with tenant_id from request context, speaker_id = userId
     // 4. Store embedding metadata in UserSettings (key: 'voice-embedding-status')
     // 5. Return response with embedding status
@@ -223,7 +223,7 @@ export class VoiceEmbeddingController {
     @Param('id') userId: string,
   ): Promise<VoiceEmbeddingStatusResponse> {
     // 1. Check UserSettings for voice-embedding-status
-    // 2. Optionally verify with STT-V2 GET /internal/embeddings/{userId}
+    // 2. Optionally verify with STT GET /internal/embeddings/{userId}
     // 3. Return status (exists, created_at, dimensions, audio_file_key)
   }
 
@@ -232,7 +232,7 @@ export class VoiceEmbeddingController {
   async removeVoiceEmbedding(
     @Param('id') userId: string,
   ): Promise<void> {
-    // 1. Call STT-V2 DELETE /internal/embeddings/{userId}?tenant_id=xxx
+    // 1. Call STT DELETE /internal/embeddings/{userId}?tenant_id=xxx
     // 2. Delete audio file from MinIO
     // 3. Remove UserSettings voice-embedding-status entry
   }
@@ -316,8 +316,8 @@ Replace the "Coming Soon" badge and disabled button in `UserSettingsCard` with:
 ### Phase 5: Testing
 
 **Unit tests (TDD)**:
-- STT-V2 embedding extraction endpoint tests
-- API Gateway controller tests (mock STT-V2 calls)
+- STT embedding extraction endpoint tests
+- API Gateway controller tests (mock STT calls)
 - SDK `useVoiceEmbedding` hook tests
 - Frontend component tests
 
@@ -329,10 +329,10 @@ Replace the "Coming Soon" badge and disabled button in `UserSettingsCard` with:
 ### Deployment Considerations
 
 - **Qdrant**: Already running in Docker Compose, no changes needed
-- **STT-V2**: New internal endpoint, requires service restart
+- **STT**: New internal endpoint, requires service restart
 - **API Gateway**: New controller, requires service restart
 - **MinIO**: New bucket path (`voice-samples/`), auto-created on first upload
-- **HuggingFace token**: Required for `pyannote/embedding` model download (already configured in STT-V2)
+- **HuggingFace token**: Required for `pyannote/embedding` model download (already configured in STT)
 
 ---
 
@@ -342,16 +342,16 @@ Replace the "Coming Soon" badge and disabled button in `UserSettingsCard` with:
 
 All four phases were implemented using strict TDD — tests were written first, verified to fail for the right reason, then minimal production code was written to make them pass.
 
-### Phase 1: STT-V2 Internal Embedding Endpoints (Python/FastAPI)
+### Phase 1: STT Internal Embedding Endpoints (Python/FastAPI)
 
 **Files created:**
-- `apps/stt-v2/src/stt_v2/embedding/__init__.py` — Module package
-- `apps/stt-v2/src/stt_v2/embedding/api/__init__.py` — API subpackage
-- `apps/stt-v2/src/stt_v2/embedding/api/routes.py` — Internal embedding API routes
-- `apps/stt-v2/tests/unit/test_embedding_routes.py` — 16 unit tests
+- `apps/stt/src/stt/embedding/__init__.py` — Module package
+- `apps/stt/src/stt/embedding/api/__init__.py` — API subpackage
+- `apps/stt/src/stt/embedding/api/routes.py` — Internal embedding API routes
+- `apps/stt/tests/unit/test_embedding_routes.py` — 16 unit tests
 
 **Files modified:**
-- `apps/stt-v2/src/stt_v2/main.py` — Registered `embedding_router`
+- `apps/stt/src/stt/main.py` — Registered `embedding_router`
 
 **Endpoints implemented:**
 | Method | Path | Description |
@@ -365,7 +365,7 @@ All four phases were implemented using strict TDD — tests were written first, 
 ### Phase 2: NestJS API Gateway Controller
 
 **Files created:**
-- `apps/api/src/modules/user/voice-embedding.controller.ts` — REST controller proxying to STT-V2
+- `apps/api/src/modules/user/voice-embedding.controller.ts` — REST controller proxying to STT
 - `apps/api/tests/unit/voice-embedding.controller.test.ts` — 8 unit tests
 
 **Files modified:**
@@ -374,11 +374,11 @@ All four phases were implemented using strict TDD — tests were written first, 
 **Endpoints implemented:**
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/users/:id/voice-embedding` | `@CanUpdate('User')` | Upload + S3 storage + STT-V2 upsert |
-| GET | `/users/:id/voice-embedding` | `@CanRead('User')` | Status check via STT-V2 |
-| DELETE | `/users/:id/voice-embedding` | `@CanUpdate('User')` | Delete from STT-V2 + S3 cleanup |
+| POST | `/users/:id/voice-embedding` | `@CanUpdate('User')` | Upload + S3 storage + STT upsert |
+| GET | `/users/:id/voice-embedding` | `@CanRead('User')` | Status check via STT |
+| DELETE | `/users/:id/voice-embedding` | `@CanUpdate('User')` | Delete from STT + S3 cleanup |
 
-**Test coverage:** 20 tests covering S3 storage, STT-V2 proxy calls, error propagation, graceful S3 failure handling, `tenant_id` propagation to STT-V2 on all 3 endpoints, correct S3 path construction with tenantId, `audioFileKey` presence/absence based on embedding existence, STT-V2 delete failure propagation, S3 upload failure preventing STT-V2 call, STT-V2 503 status code propagation, complete response DTO verification (all fields), and delete operation sequencing (STT-V2 before S3). All pass.
+**Test coverage:** 20 tests covering S3 storage, STT proxy calls, error propagation, graceful S3 failure handling, `tenant_id` propagation to STT on all 3 endpoints, correct S3 path construction with tenantId, `audioFileKey` presence/absence based on embedding existence, STT delete failure propagation, S3 upload failure preventing STT call, STT 503 status code propagation, complete response DTO verification (all fields), and delete operation sequencing (STT before S3). All pass.
 
 ### Phase 3: SDK `useVoiceEmbedding` Hook
 
@@ -426,7 +426,7 @@ interface UseVoiceEmbeddingReturn {
 
 | Suite | Tests | Status |
 |-------|-------|--------|
-| STT-V2 embedding routes (Python) | 33 | All pass |
+| STT embedding routes (Python) | 33 | All pass |
 | API Gateway controller (TypeScript) | 20 | All pass |
 | SDK useVoiceEmbedding hook (TypeScript) | 19 | All pass |
 | **Total** | **72** | **All pass** |
@@ -453,8 +453,8 @@ Audited all implementation files against the plan's acceptance criteria and adde
 - Qdrant store failure during upsert now caught and returned as HTTP 500 instead of an unhandled exception
 
 **Tests added (13 new):**
-- STT-V2: boundary at 4s (rejected), exact 5s (accepted), metadata forwarding, Qdrant store failure, `created_at` in GET response, multi-tenant isolation verification
-- API Gateway: `tenant_id` propagation on POST/GET/DELETE, S3 path construction with tenantId, `audioFileKey` presence/absence, STT-V2 delete error propagation
+- STT: boundary at 4s (rejected), exact 5s (accepted), metadata forwarding, Qdrant store failure, `created_at` in GET response, multi-tenant isolation verification
+- API Gateway: `tenant_id` propagation on POST/GET/DELETE, S3 path construction with tenantId, `audioFileKey` presence/absence, STT delete error propagation
 
 **Test totals:** 22 Python + 15 TypeScript (API) + 9 TypeScript (SDK) = **46 tests, all green**
 
@@ -467,7 +467,7 @@ Audited all tests against the 5 testing anti-patterns (testing mocks instead of 
 
 **Tests added (26 new):**
 
-STT-V2 (11 new → 33 total):
+STT (11 new → 33 total):
 - Corrupted WAV bytes (non-WAV data → 400)
 - Empty file (0 bytes → 400)
 - Stereo WAV downmixing (2-channel → mono, accepted)
@@ -481,11 +481,11 @@ STT-V2 (11 new → 33 total):
 - DELETE: store exception → HTTP 500
 
 API Gateway (5 new → 20 total):
-- S3 upload failure prevents STT-V2 call
-- STT-V2 503 status propagation
+- S3 upload failure prevents STT call
+- STT 503 status propagation
 - Complete response DTO verification (all 6 fields)
 - Complete GET response DTO verification (all 4 fields)
-- Delete operation sequencing (STT-V2 called before S3)
+- Delete operation sequencing (STT called before S3)
 
 SDK Hook (10 new → 19 total):
 - Upload updates status with embedding data

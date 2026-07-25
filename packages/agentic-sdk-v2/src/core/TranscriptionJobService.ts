@@ -13,9 +13,9 @@
  */
 
 import type { AgenticClient } from './AgenticClient';
-import { STT_V2_ENDPOINTS } from './constants';
+import { STT_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
-import type { TranscriptionJobResponse, TranscriptionJobStatusCounts } from '../types/stt-v2';
+import type { TranscriptionJobResponse, TranscriptionJobStatusCounts } from '../types/stt';
 
 /**
  * Options for status polling
@@ -42,7 +42,7 @@ export interface JobListParams {
 }
 
 /**
- * Service for tracking and managing transcription jobs via the stt-v2 API.
+ * Service for tracking and managing transcription jobs via the stt API.
  */
 export class TranscriptionJobService {
   private apiClient: AgenticClient;
@@ -64,7 +64,7 @@ export class TranscriptionJobService {
       attributes: { jobId },
     });
 
-    return this.apiClient.get<TranscriptionJobResponse>(STT_V2_ENDPOINTS.GET_JOB(jobId));
+    return this.apiClient.get<TranscriptionJobResponse>(STT_ENDPOINTS.GET_JOB(jobId));
   }
 
   /**
@@ -77,7 +77,7 @@ export class TranscriptionJobService {
       attributes: params as Record<string, unknown> | undefined,
     });
 
-    let endpoint = STT_V2_ENDPOINTS.LIST_JOBS;
+    let endpoint = STT_ENDPOINTS.LIST_JOBS;
     if (params) {
       const qs = new URLSearchParams();
       if (params.page !== undefined) qs.set('page', String(params.page));
@@ -99,7 +99,7 @@ export class TranscriptionJobService {
       attributes: { consultationId },
     });
 
-    return this.apiClient.get<TranscriptionJobResponse[]>(STT_V2_ENDPOINTS.JOBS_BY_CONSULTATION(consultationId));
+    return this.apiClient.get<TranscriptionJobResponse[]>(STT_ENDPOINTS.JOBS_BY_CONSULTATION(consultationId));
   }
 
   /**
@@ -112,7 +112,7 @@ export class TranscriptionJobService {
       attributes: { status },
     });
 
-    return this.apiClient.get<TranscriptionJobResponse[]>(STT_V2_ENDPOINTS.JOBS_BY_STATUS(status));
+    return this.apiClient.get<TranscriptionJobResponse[]>(STT_ENDPOINTS.JOBS_BY_STATUS(status));
   }
 
   /**
@@ -124,7 +124,7 @@ export class TranscriptionJobService {
       component: 'TranscriptionJobService',
     });
 
-    return this.apiClient.get<TranscriptionJobStatusCounts>(STT_V2_ENDPOINTS.JOB_STATS);
+    return this.apiClient.get<TranscriptionJobStatusCounts>(STT_ENDPOINTS.JOB_STATS);
   }
 
   /**
@@ -137,7 +137,7 @@ export class TranscriptionJobService {
       attributes: { jobId },
     });
 
-    return this.apiClient.post<TranscriptionJobResponse>(STT_V2_ENDPOINTS.CANCEL_JOB(jobId), {});
+    return this.apiClient.post<TranscriptionJobResponse>(STT_ENDPOINTS.CANCEL_JOB(jobId), {});
   }
 
   /**
@@ -150,7 +150,7 @@ export class TranscriptionJobService {
       attributes: { jobId },
     });
 
-    return this.apiClient.post<TranscriptionJobResponse>(STT_V2_ENDPOINTS.RETRY_JOB(jobId), {});
+    return this.apiClient.post<TranscriptionJobResponse>(STT_ENDPOINTS.RETRY_JOB(jobId), {});
   }
 
   /**

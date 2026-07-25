@@ -85,7 +85,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'UserDepartment',
   // Biometric voice profile, stamped with the enrollment tenant so
   // reads/writes are tenant-scoped like every other PHI-bearing model (the
-  // STT-v2 preseed path applies the same filter in raw SQL).
+  // STT preseed path applies the same filter in raw SQL).
   'UserVoiceProfile',
   // dna-writing-style.prisma (4)
   'DnaWritingStyleReport',

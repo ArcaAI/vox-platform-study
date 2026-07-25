@@ -51,7 +51,7 @@ A green test suite is a prerequisite for CI/CD pipeline health, developer confid
 | 5 | `apps/api/src/modules/user/__tests__/users.controller.swagger.test.ts` | 11 | Missing swagger decorators |
 | 6 | `apps/api/src/modules/user-settings/__tests__/user-settings.controller.swagger.test.ts` | 11 | Missing swagger decorators |
 | 7 | `apps/api/src/modules/global-settings/__tests__/global-settings.controller.swagger.test.ts` | 11 | Missing swagger decorators |
-| 8 | `apps/api/src/modules/stt-v2/__tests__/transcriptionStream.controller.test.ts` | 10 | Implementation drift |
+| 8 | `apps/api/src/modules/stt/__tests__/transcriptionStream.controller.test.ts` | 10 | Implementation drift |
 | 9 | `packages/agentic-sdk-v2/src/hooks/__tests__/useDepartments.extended.test.ts` | 9 | Missing hook methods |
 | 10 | `packages/agentic-sdk-v2/src/__tests__/examples/nextjs-app-edge-cases.test.ts` | 7 | Missing null safety guards |
 | 11 | `packages/applications/src/services/user/userRoleAssignment/__tests__/userRoleAssignment.service.test.ts` | 5 | Incomplete test mocks |
@@ -141,7 +141,7 @@ Add missing `@ApiParam`, `@ApiQuery`, `@ApiResponse`, `@ApiBearerAuth` to 5 cont
 | `SummaryController` | `apps/api/src/modules/consultation/summary.controller.ts` | `@Throttle({ default: { limit: 20, ttl: 60000 } })` |
 | `ApiHealthController` | `apps/api/src/modules/health/health.controller.ts` | `@Throttle({ default: { limit: 300, ttl: 60000 } })` |
 | `MonitoringController` | `apps/api/src/modules/monitoring/monitoring.controller.ts` | `@Throttle({ default: { limit: 300, ttl: 60000 } })` |
-| `SttInternalController` | `apps/api/src/modules/stt-v2/sttInternal.controller.ts` | `@SkipThrottle()` |
+| `SttInternalController` | `apps/api/src/modules/stt/sttInternal.controller.ts` | `@SkipThrottle()` |
 
 #### 2.3 Null Safety Guards — dna-style Page (7 tests)
 
@@ -237,7 +237,7 @@ Added missing `@ApiParam`, `@ApiQuery`, `@ApiResponse`, `@ApiBearerAuth` decorat
 | SummaryController | `apps/api/src/modules/consultation/summary.controller.ts` | `@Throttle({ default: { limit: 20, ttl: 60000 } })` |
 | ApiHealthController | `apps/api/src/modules/health/health.controller.ts` | `@Throttle({ default: { limit: 300, ttl: 60000 } })` |
 | MonitoringController | `apps/api/src/modules/monitoring/monitoring.controller.ts` | `@Throttle({ default: { limit: 300, ttl: 60000 } })` |
-| SttInternalController | `apps/api/src/modules/stt-v2/sttInternal.controller.ts` | `@SkipThrottle()` |
+| SttInternalController | `apps/api/src/modules/stt/sttInternal.controller.ts` | `@SkipThrottle()` |
 
 #### 2.3 Null Safety Guards — 7 tests fixed
 

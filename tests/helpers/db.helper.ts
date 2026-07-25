@@ -249,24 +249,24 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
     healthPath: '/api/v1/health',
     debugEnvVar: 'DEBUG_API',
   },
-  'stt-v2': {
-    name: 'STT-v2',
+  'stt': {
+    name: 'STT',
     command: [
       'conda', 'run', '-n', 'arcaenv', '--no-capture-output',
-      'uvicorn', 'stt_v2.main:app',
+      'uvicorn', 'stt.main:app',
       '--host', '0.0.0.0',
-      '--port', process.env.STT_V2_PORT || '8861',
-      '--app-dir', 'apps/stt-v2/src',
+      '--port', process.env.STT_PORT || '8861',
+      '--app-dir', 'apps/stt/src',
     ],
-    baseUrl: process.env.STT_V2_URL || 'http://localhost:8861',
+    baseUrl: process.env.STT_URL || 'http://localhost:8861',
     healthPath: '/api/v1/health',
     debugEnvVar: 'DEBUG_STT',
   },
-  'smr-v2': {
-    name: 'SMR-v2',
+  'smr': {
+    name: 'SMR',
     command: [
       'conda', 'run', '-n', 'arcaenv', '--no-capture-output',
-      'uvicorn', 'smr_v2.main:app',
+      'uvicorn', 'smr.main:app',
       '--host', '0.0.0.0',
       '--port', process.env.SMR_PORT || '8862',
       '--app-dir', 'apps/smr/src',
@@ -291,7 +291,7 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
 };
 
 /**
- * Start a test service by key ('api', 'stt-v2', 'smr-v2', 'nlp').
+ * Start a test service by key ('api', 'stt', 'smr', 'nlp').
  * Returns the ChildProcess for lifecycle management.
  */
 export function startTestService(serviceKey: keyof typeof SERVICE_CONFIGS): ChildProcess {
@@ -387,7 +387,7 @@ export async function waitForApi(
  * Wait for a Python microservice to be ready by service key.
  */
 export async function waitForMicroservice(
-  serviceKey: 'stt-v2' | 'smr-v2' | 'nlp',
+  serviceKey: 'stt' | 'smr' | 'nlp',
   maxRetries = 60,
   retryInterval = 1000
 ): Promise<void> {

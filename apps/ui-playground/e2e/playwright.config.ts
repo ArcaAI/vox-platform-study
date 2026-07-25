@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
  *
  * Prerequisites (must be running externally):
  *   - API Gateway (NestJS):   http://localhost:8868
- *   - stt-v2 (FastAPI):       http://localhost:8861
+ *   - stt (FastAPI):       http://localhost:8861
  *   - Redis:                  localhost:6379
  *   - PostgreSQL:             localhost:5432
  *   - ui-playground (Vite):   http://localhost:5175

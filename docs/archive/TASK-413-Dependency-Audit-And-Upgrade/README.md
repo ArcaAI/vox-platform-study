@@ -31,22 +31,22 @@ Review every dependency used by the Node.js and Python apps/services and:
 | pnpm | `packageManager: pnpm@10.31.0` | 10.31.0 | **`PNPM_VERSION=10.6.5`** in api/ui-playground Dockerfiles | Drift. (pnpm 11.9.0 exists = major.) |
 | TypeScript | `^5.9.3` everywhere except **`^5.4.0` in apps/example** | 5.9.3 | — | TS 6.0.3 exists (major). |
 | Python | `requires-python >=3.11` (all 5 services), `.python-version` = 3.11 (guardrail missing the file) | conda `arcaenv` = 3.11.15 | `python:3.11-slim-trixie` (base image), `python:3.11-slim` (CI) | ✅ Consistent. 3.11 security-fixes-only, EOL 2027-10. |
-| uv | lock `revision = 3` | 0.11.7 | 0.11.7 pinned in base image + stt-v2 GPU stage | ✅ Consistent. |
+| uv | lock `revision = 3` | 0.11.7 | 0.11.7 pinned in base image + stt GPU stage | ✅ Consistent. |
 
 ### 2.2 Python base-environment consistency — ✅ CONFIRMED (with 3 defects)
 
-All five services (`stt-v2`, `smr`, `guardrail`, `nlp`, `harness`) share one base environment on every plane:
+All five services (`stt`, `smr`, `guardrail`, `nlp`, `harness`) share one base environment on every plane:
 
-- **Local dev/test**: every root `py:*` script and `scripts/dev-service.sh` runs `conda run -n arcaenv`; `scripts/setup-python-env.sh` installs all five services into `arcaenv` (Python 3.11); stt-v2's Makefile uses `CONDA_ENV := arcaenv`.
-- **Resolution**: single uv workspace at repo root → one `uv.lock` for all services; the stt-v2 `ml`-vs-`nemo` transformers conflict is handled via declared `[tool.uv] conflicts` (independent install profiles in the same lock).
-- **Deployment**: all five Dockerfiles build `FROM hope-python-base` (python:3.11-slim-trixie + uv 0.11.7 + non-root `hope`) and install with `uv sync --frozen --package <svc>` against the root lock. Deliberate exceptions: stt-v2 GPU stages (`nvidia/cuda:12.8.1` + python3.11) and `Dockerfile.apple` (arm64 local variant).
+- **Local dev/test**: every root `py:*` script and `scripts/dev-service.sh` runs `conda run -n arcaenv`; `scripts/setup-python-env.sh` installs all five services into `arcaenv` (Python 3.11); stt's Makefile uses `CONDA_ENV := arcaenv`.
+- **Resolution**: single uv workspace at repo root → one `uv.lock` for all services; the stt `ml`-vs-`nemo` transformers conflict is handled via declared `[tool.uv] conflicts` (independent install profiles in the same lock).
+- **Deployment**: all five Dockerfiles build `FROM hope-python-base` (python:3.11-slim-trixie + uv 0.11.7 + non-root `hope`) and install with `uv sync --frozen --package <svc>` against the root lock. Deliberate exceptions: stt GPU stages (`nvidia/cuda:12.8.1` + python3.11) and `Dockerfile.apple` (arm64 local variant).
 
 **Defects found:**
 
 | # | Severity | Finding | Evidence |
 |---|---|---|---|
-| P-1 | **P0 — breaks Docker builds** | `uv.lock` is STALE vs the pyprojects. `uv lock --check` fails ("lockfile needs to be updated"). Missing from lock: `faster-whisper`/`ctranslate2` (stt-v2 `[ml]`), `pymupdf`, `rapidocr-onnxruntime` (+opencv/shapely/pyclipper) (nlp OCR). Any `uv sync --frozen` image build fails today. | `uv lock --check` → exit 1 |
-| P-2 | **P0 — guardrail runtime bug** | `apps/guardrail/pyproject.toml` declares `sqlalchemy[asyncpg]>=2.0.0` — **SQLAlchemy has no `asyncpg` extra** (uv warns). Result: `asyncpg` is NOT in guardrail's locked dependency closure, but the service connects via `postgresql+asyncpg://` (`core/config.py`). Works locally only because stt-v2 installs asyncpg into the shared conda env; a guardrail Docker image would crash on tenant-config DB access. Correct form (as in stt-v2): `sqlalchemy[asyncio]` + explicit `asyncpg`. | `uv lock` warning; guardrail block in `uv.lock` lacks asyncpg |
+| P-1 | **P0 — breaks Docker builds** | `uv.lock` is STALE vs the pyprojects. `uv lock --check` fails ("lockfile needs to be updated"). Missing from lock: `faster-whisper`/`ctranslate2` (stt `[ml]`), `pymupdf`, `rapidocr-onnxruntime` (+opencv/shapely/pyclipper) (nlp OCR). Any `uv sync --frozen` image build fails today. | `uv lock --check` → exit 1 |
+| P-2 | **P0 — guardrail runtime bug** | `apps/guardrail/pyproject.toml` declares `sqlalchemy[asyncpg]>=2.0.0` — **SQLAlchemy has no `asyncpg` extra** (uv warns). Result: `asyncpg` is NOT in guardrail's locked dependency closure, but the service connects via `postgresql+asyncpg://` (`core/config.py`). Works locally only because stt installs asyncpg into the shared conda env; a guardrail Docker image would crash on tenant-config DB access. Correct form (as in stt): `sqlalchemy[asyncio]` + explicit `asyncpg`. | `uv lock` warning; guardrail block in `uv.lock` lacks asyncpg |
 | P-3 | P2 — env drift | conda `arcaenv` has drifted below the lock (fastapi 0.135.3 vs 0.136.3, uvicorn 0.44 vs 0.49, onnxruntime 1.24.4 vs 1.26, openai 2.30 vs 2.41, sqlalchemy 2.0.49 vs 2.0.50, structlog 25.5 vs 26.1). `pip install -e` resolves freshly, so drift is structural — refresh after each re-lock. | `pip list` in arcaenv vs `uv.lock` |
 
 Minor: guardrail is missing `.python-version` (other 4 services have it); guardrail has a stray `[dependency-groups] dev = ["ruff>=0.15.8"]` duplicating its `dev` extra with a different floor.
@@ -61,7 +61,7 @@ Minor: guardrail is missing `.python-version` (other 4 services have it); guardr
 | uvicorn | 0.49.0 | 0.50.0 | in-range |
 | pydantic | 2.13.4 | 2.13.4 | ✅ current |
 | dramatiq | 2.1.0 | 2.2.0 | **2.2 allows redis <9** → unblocks R-1 below |
-| redis-py | 6.4.0 | 8.0.1 | capped `<7.0` by stt-v2 (stale reason — see R-1) |
+| redis-py | 6.4.0 | 8.0.1 | capped `<7.0` by stt (stale reason — see R-1) |
 | temporalio | 1.28.0 | 1.30.0 | run harness replay-compat tests |
 | onnxruntime | 1.26.0 | 1.27.0 | in-range |
 | openai | 2.41.0 | 2.44.0 | in-range |
@@ -72,13 +72,13 @@ Minor: guardrail is missing `.python-version` (other 4 services have it); guardr
 | boto3 | 1.43.25 | 1.43.40 | in-range |
 | cryptography | 48.0.0 | 46.0.7 | 48.0.0 appears yanked upstream; re-lock will (correctly) downgrade |
 | **HOLD** torch/torchaudio | 2.8.0 | 2.12.1 | torch 2.12 needs torchcodec ≥0.10 → FFmpeg 7, but conda env pins FFmpeg 6.x for PyAV/torchcodec 0.7 compat. Separate ML ticket. |
-| **HOLD** transformers (stt-v2 `[ml]`) | ==5.5.4 | 5.13.0 | exact pin for Whisper-ONNX/optimum orchestration; nemo profile stays 4.57.x by design |
+| **HOLD** transformers (stt `[ml]`) | ==5.5.4 | 5.13.0 | exact pin for Whisper-ONNX/optimum orchestration; nemo profile stays 4.57.x by design |
 | **HOLD** optimum | ==2.1.0 | 2.2.0 | paired with transformers pin |
 | nemo-toolkit / faster-whisper / spacy / structlog | 2.7.3 / 1.2.1 / 3.8.14 / 26.1.0 | same | ✅ already latest |
 
 Cleanups enabled by re-locking:
-- **R-1**: stt-v2 caps `redis[hiredis]>=5.2.0,<7.0` because "dramatiq 2.0.x pins redis<7.0". dramatiq 2.2.0 requires `redis>=4.0,<9.0` → cap can be lifted to `<9.0` (redis-py 8.x). Needs a smoke test of Redis Streams paths (stt-v2 streaming, smr resume).
-- **R-2**: stt-v2's `qdrant-client` is documented LEGACY/UNUSED, "retained only because `uv lock` cannot currently re-resolve … drop when fixed". We are re-locking → drop it (verify zero imports first).
+- **R-1**: stt caps `redis[hiredis]>=5.2.0,<7.0` because "dramatiq 2.0.x pins redis<7.0". dramatiq 2.2.0 requires `redis>=4.0,<9.0` → cap can be lifted to `<9.0` (redis-py 8.x). Needs a smoke test of Redis Streams paths (stt streaming, smr resume).
+- **R-2**: stt's `qdrant-client` is documented LEGACY/UNUSED, "retained only because `uv lock` cannot currently re-resolve … drop when fixed". We are re-locking → drop it (verify zero imports first).
 
 ### 2.4 Node.js findings
 
@@ -128,12 +128,12 @@ Order: correctness first (A), then zero-risk hygiene + in-range sweep (B), then 
 
 | Step | Action | Verify |
 |---|---|---|
-| A1 | `apps/guardrail/pyproject.toml`: `sqlalchemy[asyncpg]>=2.0.0` → `sqlalchemy[asyncio]>=2.0.47` + add `asyncpg>=0.31.0` (mirror stt-v2); fold the stray `[dependency-groups]` ruff into the `dev` extra; add `apps/guardrail/.python-version` = 3.11 | `uv lock` runs with **zero warnings**; guardrail lock block contains asyncpg |
-| A2 | `apps/stt-v2/pyproject.toml`: lift `redis[hiredis]>=5.2.0,<7.0` → `<9.0` and update the stale dramatiq comment; drop legacy `qdrant-client` (grep `qdrant` in `apps/stt-v2/src` first — README already declares it unused) | grep shows no runtime imports |
+| A1 | `apps/guardrail/pyproject.toml`: `sqlalchemy[asyncpg]>=2.0.0` → `sqlalchemy[asyncio]>=2.0.47` + add `asyncpg>=0.31.0` (mirror stt); fold the stray `[dependency-groups]` ruff into the `dev` extra; add `apps/guardrail/.python-version` = 3.11 | `uv lock` runs with **zero warnings**; guardrail lock block contains asyncpg |
+| A2 | `apps/stt/pyproject.toml`: lift `redis[hiredis]>=5.2.0,<7.0` → `<9.0` and update the stale dramatiq comment; drop legacy `qdrant-client` (grep `qdrant` in `apps/stt/src` first — README already declares it unused) | grep shows no runtime imports |
 | A3 | `uv lock --upgrade` (single re-resolution; picks up everything in §2.3 incl. fastapi 0.139, temporalio 1.30, dramatiq 2.2, redis-py 8.x, onnxruntime 1.27) | `uv lock --check` passes; dry-run already proved conflict-free |
-| A4 | Frozen-sync sanity for every member: `uv sync --frozen --package <svc> --dry-run` for guardrail, nlp, smr, harness, stt-v2 (+ optional real Docker build of `hope-python-base` + one service) | all five succeed — this is what CI/production images run |
+| A4 | Frozen-sync sanity for every member: `uv sync --frozen --package <svc> --dry-run` for guardrail, nlp, smr, harness, stt (+ optional real Docker build of `hope-python-base` + one service) | all five succeed — this is what CI/production images run |
 | A5 | Refresh conda env: `pnpm py:setup --install` (`--apple` on this machine); keep conda-managed ffmpeg 6.x / av / numpy / scipy untouched | key imports OK (script verifies) |
-| A6 | Full Python gate: `pnpm py:{stt-v2,smr-v2,guardrail,nlp,harness}:test` + `:lint` + `:typecheck`. Harness MUST include the Temporal replay-compat tests (temporalio 1.28→1.30) and is not covered by CI — run locally. Smoke Redis Streams paths (stt-v2 streaming, smr SSE resume) against redis-py 8 | paste outputs into §4 |
+| A6 | Full Python gate: `pnpm py:{stt,smr,guardrail,nlp,harness}:test` + `:lint` + `:typecheck`. Harness MUST include the Temporal replay-compat tests (temporalio 1.28→1.30) and is not covered by CI — run locally. Smoke Redis Streams paths (stt streaming, smr SSE resume) against redis-py 8 | paste outputs into §4 |
 
 Holds (documented, not bumped): torch/torchaudio 2.8.x, torchcodec <0.8, transformers==5.5.4, optimum==2.1.0, the `ml`-vs-`nemo` conflict. Revisit in ticket D-6.
 
@@ -184,7 +184,7 @@ Phase A ≈ 0.5–1 day · Phase B ≈ 1 day · Phase C ≈ 0.5–1 day per batc
 | Risk | Mitigation |
 |---|---|
 | temporalio 1.28→1.30 breaks workflow replay | harness replay-compat tests (A6) before merging; harness not in CI — local gate mandatory |
-| redis-py 6→8 behavior changes (RESP3 defaults, timeouts) | Redis Streams smoke on stt-v2 + smr SSE resume; fakeredis in tests already >=2.21 |
+| redis-py 6→8 behavior changes (RESP3 defaults, timeouts) | Redis Streams smoke on stt + smr SSE resume; fakeredis in tests already >=2.21 |
 | Playwright bump without CI image bump | B4 explicitly paired with B3 |
 | class-validator 0.15 changes validation defaults | root override moves atomically; api e2e validation suite |
 | recharts 3 / @casl 7 / openid-client 6 API rewrites | isolated batches in C4/C6 with dedicated feature verification, easy revert |
@@ -200,19 +200,19 @@ Phase A ≈ 0.5–1 day · Phase B ≈ 1 day · Phase C ≈ 0.5–1 day per batc
 
 #### A1 — guardrail manifest fixes (P-2 + minor defects)
 
-- `sqlalchemy[asyncpg]>=2.0.0` → `sqlalchemy[asyncio]>=2.0.47` **+ explicit `asyncpg>=0.31.0`** (mirrors stt-v2). The guardrail block in `uv.lock` now contains `asyncpg` in both `dependencies` and `metadata.requires-dist`; the bogus-extra warning is gone from `uv lock` output.
+- `sqlalchemy[asyncpg]>=2.0.0` → `sqlalchemy[asyncio]>=2.0.47` **+ explicit `asyncpg>=0.31.0`** (mirrors stt). The guardrail block in `uv.lock` now contains `asyncpg` in both `dependencies` and `metadata.requires-dist`; the bogus-extra warning is gone from `uv lock` output.
 - Stray `[dependency-groups] dev = ["ruff>=0.15.8"]` removed; its stricter floor preserved by raising ruff to `>=0.15.8` in the `dev` and `lint` extras.
 - Added `apps/guardrail/.python-version` = `3.11` (parity with the other 4 services).
 
-#### A2 — stt-v2 manifest fixes (R-1 + R-2)
+#### A2 — stt manifest fixes (R-1 + R-2)
 
 - **R-1**: `redis[hiredis]>=5.2.0,<7.0` → `<9.0`; stale dramatiq comment rewritten (dramatiq 2.2.0 declares `redis>=4.0,<9.0`).
-- **R-2 (qdrant-client decision): REMOVED.** `rg -i qdrant apps/stt-v2/{src,tests}` shows zero runtime imports — only comments, the guard test `tests/unit/diarization/test_no_qdrant_vectorstore.py` (which asserts qdrant is NOT imported; still passes), and the mypy override. Dependency + comment dropped, `qdrant_client.*` removed from mypy overrides. `qdrant-client` 1.18.0 remains in the lock solely via harness's optional `[rag]` extra.
+- **R-2 (qdrant-client decision): REMOVED.** `rg -i qdrant apps/stt/{src,tests}` shows zero runtime imports — only comments, the guard test `tests/unit/diarization/test_no_qdrant_vectorstore.py` (which asserts qdrant is NOT imported; still passes), and the mypy override. Dependency + comment dropped, `qdrant_client.*` removed from mypy overrides. `qdrant-client` 1.18.0 remains in the lock solely via harness's optional `[rag]` extra.
 - torch/torchaudio/torchcodec/transformers/optimum/faster-whisper pins and the `ml`-vs-`nemo` conflict mechanism untouched (deliberate holds → ticket D-6).
 
 #### A3 — `uv lock --upgrade` (single full re-resolution, uv 0.11.7)
 
-Resolved 458 packages, zero warnings. P-1 fixed: previously-unlocked `faster-whisper==1.2.1`/`ctranslate2==4.8.1` (stt-v2 `[ml]`) and `pymupdf==1.28.0`/`rapidocr-onnxruntime==1.4.4` (+opencv 5.0.0.93/shapely 2.1.2/pyclipper 1.4.0, nlp OCR) are now locked. Key movements (locked → locked):
+Resolved 458 packages, zero warnings. P-1 fixed: previously-unlocked `faster-whisper==1.2.1`/`ctranslate2==4.8.1` (stt `[ml]`) and `pymupdf==1.28.0`/`rapidocr-onnxruntime==1.4.4` (+opencv 5.0.0.93/shapely 2.1.2/pyclipper 1.4.0, nlp OCR) are now locked. Key movements (locked → locked):
 
 | Package | Before | After |
 |---|---|---|
@@ -239,48 +239,48 @@ Resolved 458 packages in 11ms   # exit 0 — lock is up to date
 
 #### A4 — frozen-sync sanity (what Docker/CI runs)
 
-`uv sync --frozen --package <pkg> --dry-run` from the repo root succeeds for all five members: `guardrail`, `nlp`, `smr-v2` (package name — not `smr`), `harness`, `stt-v2`. No root `.venv` created.
+`uv sync --frozen --package <pkg> --dry-run` from the repo root succeeds for all five members: `guardrail`, `nlp`, `smr` (package name — not `smr`), `harness`, `stt`. No root `.venv` created.
 
 #### A5 — conda `arcaenv` refresh
 
-`./scripts/setup-python-env.sh --install --apple` completed (all key-import verifications OK, MPS available, libomp dedup applied). Because `pip install -e` does not upgrade already-satisfied ranges (the structural P-3 drift), the env was then pinned to the exact lock closure: `uv export --frozen` per service (stt-v2 with `[ml]`) merged into one pin list (markers evaluated for darwin/arm64 py3.11; conda-managed `av`/`numpy`/`scipy` excluded) and applied with `pip install --no-deps -r`. Result: **0 deviations from the lock** across 251 pinned requirements (conda keeps av 13.1.0 / numpy 2.4.3 / scipy 1.17.1 / ffmpeg 6.1.2 by design); sklearn's bundled libomp re-symlinked to conda's. `pip check`: only pre-existing stray `mkdocs-material` (not in any service tree) complains about `babel`.
+`./scripts/setup-python-env.sh --install --apple` completed (all key-import verifications OK, MPS available, libomp dedup applied). Because `pip install -e` does not upgrade already-satisfied ranges (the structural P-3 drift), the env was then pinned to the exact lock closure: `uv export --frozen` per service (stt with `[ml]`) merged into one pin list (markers evaluated for darwin/arm64 py3.11; conda-managed `av`/`numpy`/`scipy` excluded) and applied with `pip install --no-deps -r`. Result: **0 deviations from the lock** across 251 pinned requirements (conda keeps av 13.1.0 / numpy 2.4.3 / scipy 1.17.1 / ffmpeg 6.1.2 by design); sklearn's bundled libomp re-symlinked to conda's. `pip check`: only pre-existing stray `mkdocs-material` (not in any service tree) complains about `babel`.
 
 #### A6 — quality gates (all via root `pnpm py:*` → conda `arcaenv`)
 
 Tests:
 
 ```text
-py:smr-v2:test      762 passed, 29 deselected, 8 warnings in 144.09s
+py:smr:test      762 passed, 29 deselected, 8 warnings in 144.09s
 py:guardrail:test    44 passed in 2.33s
 py:nlp:test          48 passed, 30 warnings in 1.90s
 py:harness:test     638 passed, 3 warnings in 24.00s   # incl. ALL replay-compat tests:
                     # test_replay_compat.py 5/5 PASSED (pre-task345/task345/post-task348/
                     # post-task355 optimistic + regen histories) + gating-consolidation
                     # replay fixtures byte-identical — temporalio 1.28→1.30 replay-safe
-py:stt-v2:test:unit 2080 passed, 13 warnings in 29.36s
-py:stt-v2:test      2283 passed, 70 skipped, 3 xfailed in 107.30s  (first run: test infra down,
+py:stt:test:unit 2080 passed, 13 warnings in 29.36s
+py:stt:test      2283 passed, 70 skipped, 3 xfailed in 107.30s  (first run: test infra down,
                     # integration auto-skipped)
-py:stt-v2:test:integration  (re-run with pnpm docker:test:up)  32 passed, 1 skipped, 4 errors
+py:stt:test:integration  (re-run with pnpm docker:test:up)  32 passed, 1 skipped, 4 errors
                     # PASSED: all Redis (streams/pubsub/hash/queue vs live Redis 8 server),
                     # MinIO storage, chunk storage. ERRORS: 4 test_database.py setups fail with
                     # 'type "core.PromptTemplateCategory" does not exist' — fresh test Postgres
                     # volume has no Prisma schema (needs Node-side `pnpm test:db:reset`);
                     # environment bootstrap issue, NOT dependency breakage. 1 skip = latency
-                    # harness (needs live stt-v2 on :8861).
+                    # harness (needs live stt on :8861).
 ```
 
-Lint (ruff): `All checks passed!` for stt-v2, smr-v2, guardrail, nlp, harness.
+Lint (ruff): `All checks passed!` for stt, smr, guardrail, nlp, harness.
 
-Typecheck (mypy 2.1.0): `Success: no issues found` — stt-v2 (103 files), smr-v2 (45), guardrail (22), nlp (36), harness (79).
+Typecheck (mypy 2.1.0): `Success: no issues found` — stt (103 files), smr (45), guardrail (22), nlp (36), harness (79).
 
-**redis-py 8 decision: KEPT (no fallback to <8.0).** Canaries all green: stt-v2 streaming unit tests (220 passed), smr fakeredis suite (762 passed, fakeredis 2.36.2), and stt-v2 Redis integration tests against a real Redis server (streams/pubsub/queue paths).
+**redis-py 8 decision: KEPT (no fallback to <8.0).** Canaries all green: stt streaming unit tests (220 passed), smr fakeredis suite (762 passed, fakeredis 2.36.2), and stt Redis integration tests against a real Redis server (streams/pubsub/queue paths).
 
 Upgrade-driven code fixes (2 files):
 
-1. `apps/smr/src/smr_v2/tests/unit/test_lifespan.py` — FastAPI 0.139 includes routers lazily (`app.routes` now holds opaque `_IncludedRouter` wrappers instead of flattened `APIRoute`s), so the recursive route walker found no service paths. `collect_route_paths` now walks the OpenAPI schema plus top-level plain routes. Test-only; app code unchanged.
+1. `apps/smr/src/smr/tests/unit/test_lifespan.py` — FastAPI 0.139 includes routers lazily (`app.routes` now holds opaque `_IncludedRouter` wrappers instead of flattened `APIRoute`s), so the recursive route walker found no service paths. `collect_route_paths` now walks the OpenAPI schema plus top-level plain routes. Test-only; app code unchanged.
 2. `apps/harness/src/harness/temporal/workflows.py` — 4 new mypy 2.1.0 findings: annotated the two TASK-355 Slice-4b nested helpers (`_deliver_early`, `_regen_compute`), dropped a duplicate `inferential_results` annotation, added `assert verdict is not None` narrowing in the legacy persist branch. Annotation/assert-only — no behavior or command-sequence change; full replay-compat suite re-run after the edit (638 passed).
 
-Files changed (full inventory): `apps/guardrail/pyproject.toml`, `apps/guardrail/.python-version` (new), `apps/stt-v2/pyproject.toml`, `uv.lock` (via uv only), plus the two upgrade fixes above.
+Files changed (full inventory): `apps/guardrail/pyproject.toml`, `apps/guardrail/.python-version` (new), `apps/stt/pyproject.toml`, `uv.lock` (via uv only), plus the two upgrade fixes above.
 
 ### Phase B Evidence (Node)
 
@@ -523,7 +523,7 @@ Final C6 gate (after item 7, all landed items in the tree):
 | Date | Change |
 |---|---|
 | 2026-07-04 | Initial audit completed (Node + Python inventory, currency, collisions); phased plan drafted; awaiting approval |
-| 2026-07-04 | Plan approved. Phase A executed (agent): guardrail asyncpg fix + `.python-version`, stt-v2 redis cap → `<9.0`, qdrant-client removed, `uv lock --upgrade` (fastapi 0.139, redis-py 8.0.1, temporalio 1.30, dramatiq 2.2, onnxruntime 1.27), frozen-sync verified ×5, arcaenv pinned to lock; all 5 services test/lint/typecheck green incl. harness replay-compat. 2 upgrade fixes (smr lifespan test, harness workflows.py annotations). |
+| 2026-07-04 | Plan approved. Phase A executed (agent): guardrail asyncpg fix + `.python-version`, stt redis cap → `<9.0`, qdrant-client removed, `uv lock --upgrade` (fastapi 0.139, redis-py 8.0.1, temporalio 1.30, dramatiq 2.2, onnxruntime 1.27), frozen-sync verified ×5, arcaenv pinned to lock; all 5 services test/lint/typecheck green incl. harness replay-compat. 2 upgrade fixes (smr lifespan test, harness workflows.py annotations). |
 | 2026-07-04 | Phase B executed (agent): N-1/N-3/N-6/N-8/N-9/N-10 hygiene, in-range sweep + anchor floors (Prisma 7.8.0, NestJS 11.1.27, Playwright 1.61.1 + `v1.61.1-noble` CI images, turbo 2.10.3). Gates: build 19/19, lint 28/28, e2e 519 passed; test:unit has 2 PRE-EXISTING failures (tenant-scope drift guard: `TenantEntitlement`/`TenantUsageMeter` missing from `TENANT_SCOPED_MODELS`; seed-global-settings 57 vs 58) — owner decisions pending. Deferrals annotated: vad onnxruntime-web held at 1.24.3 (→C5), peer rules `bullmq>redis:4` (→C6) and `@base-ui/react>date-fns:3` (→C4). |
 | 2026-07-04 | Phase C batches C1–C3 executed (agent), zero holds/reverts: C1 codegen CLIs (chalk 5, commander 15, inquirer 14, ora 9, glob 13, yargs 18, ts-morph 28 — generator output byte-identical), C2 backend majors (pino 10/pino-roll 4, nodemailer 9, node-vault 0.12, supertest 7, express-rate-limit 8, diff 9, pdf-parse 2, studio-core 0.31.2), C3 OTel 0.220 line alignment. 4 mechanical code fixes; gates: build 19/19, unit = baseline-only failures, e2e 519/17 after C2 and C3. New findings logged as D-8 (runtime-dead deps) and D-9 (pre-existing codegen drift + gen:mapper crash). |
 | 2026-07-04 | Phase C batches C4–C6 executed (agent). C4: date-fns 4, resolvers 5, panels 4, lexical 0.46, marked 18, jsdom 29, three 0.185, cobe 2, recharts 3.9.2, ai 7, elevenlabs 1.x — ui pdfjs-dist HELD (react-pdf pin → D-12). C5: transformers 4.2.0 + onnxruntime-web/common 1.27.0 lock-step, vad `ORT_WEB_VERSION` + TASK-271 guard updated. C6 one-at-a-time: class-validator 0.15.1, nestjs-cls 6.2.1, casl 7 + casl-prisma 2, http-proxy-middleware 4.1.1, `redis` dep REMOVED (zero call sites; peer rule dropped), langchain 1.x landed; openid-client HELD at 5.7.1 (→ D-10). Pre-existing e2e cron-vs-reset race root-caused (→ D-11). Final gates: build 20/20, lint fingerprint unchanged, unit 15003 passed (baseline-only failures), e2e 519/17 = baseline. Status → Review. |

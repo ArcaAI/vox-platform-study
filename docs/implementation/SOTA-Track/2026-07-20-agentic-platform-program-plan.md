@@ -76,8 +76,8 @@ This section is the "how we work in parallel" contract. It restates only what th
 | A — Data | `packages/database`, `packages/domains` | 524, 527, 531 |
 | B — Platform TS | `packages/applications`, `apps/api` | 524, 526, 528, 531, 532 |
 | C — Console | `apps/admin-console` | 526, 528, 531, 532 |
-| D — STT | `apps/stt-v2` | 523(part), 525, 527, 529 |
-| E — LLM services | `apps/smr`, `apps/guardrail`, `apps/nlp`, `apps/harness`, `apps/tts-v2` | 523(part), 525, 527, 529, 533 |
+| D — STT | `apps/stt` | 523(part), 525, 527, 529 |
+| E — LLM services | `apps/smr`, `apps/guardrail`, `apps/nlp`, `apps/harness`, `apps/tts` | 523(part), 525, 527, 529, 533 |
 | F — Infra/CI | `.gitlab/ci`, compose, k3s, Grafana | 523(part), 529(part), 534 |
 
 A lane never edits another lane's files inside the same phase; cross-lane handoffs happen at the frozen contracts in §3.
@@ -94,7 +94,7 @@ Three non-negotiable rules, enforced by the per-ticket independent review and pa
 
 | Class | Item | Owning ticket |
 |---|---|---|
-| Incorrect | D-22 stt-v2 segment producers (streaming emits nothing; batch emits wrong field shape) | 533-A |
+| Incorrect | D-22 stt segment producers (streaming emits nothing; batch emits wrong field shape) | 533-A |
 | Incorrect | D-23 `warmStartEnabled` dead console knob shadowing the real env switch | 533-A |
 | Incorrect | D-24 MCP triple-orphan (unpatchable knob, unserialized policy fields, stub token resolver) | 533-A |
 | Incorrect | D-13 tenant-write-on-SYSTEM error shape (412/raw Prisma instead of clean 404) | 523 (0.10) |
@@ -104,9 +104,9 @@ Three non-negotiable rules, enforced by the per-ticket independent review and pa
 | Incorrect | E3-L1/L2 tenant-writable guardrail/PHI/NLP on-off switches (per OD-2) | 532 |
 | Partial | D-19/GAP-C7 `agentic.context.*` catalog-only stub (no write route, env-only consumption) | 524 + 533-B |
 | Partial | GAP-C1/C2 provider connections + hyperparameters env-only (SMR: zero override of any kind) | 524 + 525 + 526 |
-| Partial | D-12/GAP-C3 `localPath` honored only by stt-v2; no S3 source; MiniCheck paths env-only | 527 |
+| Partial | D-12/GAP-C3 `localPath` honored only by stt; no S3 source; MiniCheck paths env-only | 527 |
 | Partial | GAP-C4 LM Studio/Ollama discovery fallback-only, no admin surface | 528 |
-| Partial | GAP-L1/L2 retention env-wired (stt-v2/guardrail), unwired (nlp), absent (harness MiniCheck, tts-v2); no `keep_alive`/`ttl` propagation; no VRAM probe | 529 |
+| Partial | GAP-L1/L2 retention env-wired (stt/guardrail), unwired (nlp), absent (harness MiniCheck, tts); no `keep_alive`/`ttl` propagation; no VRAM probe | 529 |
 | Partial | D-26 `smr.live` routing built, never invoked · D-25 finalize path missing JSON repair · D-27 OTel dead flag (finish or retire — ticket decides) · D-28 claim-check prod guard | 533-A |
 | Partial | GAP-T1/T2/T3 template clones unlocked, clone implicit-only, no resync | 531 |
 | Partial | GAP-A2 evidence-link machinery without data or production UI · GAP-A1 gate-edit signal captured but unused · GAP-A6 eval gate `allow_failure` | 533 |
@@ -140,7 +140,7 @@ Everything an admin can change at runtime lives behind exactly three DB-backed r
 **The missing write-lane** (GAP-C7) is built once, in TASK-524: registered keys with `tier: 'global-kv'` become writable through a single route pair —
 `GET/PUT admin/settings/registry/:key` — that (a) resolves the descriptor via `HOPE_SETTINGS_REGISTRY.getOrThrow`, (b) enforces `globalOnly` + `editableBy` + `maxScope` **from the descriptor** (one enforcement point, replacing today's hand-rolled per-surface guards), (c) persists to the tier's store (`GlobalSetting` row for `global-kv`/`db-config`), (d) emits a sys-event + audit row, (e) invalidates the `AppSettingsService` cache. `EffectiveSettingsService` gains the missing override lane: DB value → code default (and per-namespace cascades where they exist). The kill-switch fail-safe invariant moves from test-only into the registry assembly path (boot guard).
 
-**Python delivery**: services never read `GlobalSetting` tables directly (except guardrail's existing resolver and stt-v2's pipeline reader, both kept). A new internal endpoint
+**Python delivery**: services never read `GlobalSetting` tables directly (except guardrail's existing resolver and stt's pipeline reader, both kept). A new internal endpoint
 `GET /api/v1/internal/effective-config?service=<name>` (X-Service-Token guarded, like the existing internal routes) returns the resolved subset each service consumes (retention, concurrency, provider profiles, agentic-context). Services poll it with a 60 s TTL cache + negative-cache fallback to env (exact guardrail `tenant_config.py` pattern — proven fail-safe). Env vars remain **bootstrap fallback only** and their pydantic field docstrings say so.
 
 ### AD-2 — Two new tables (Prisma, `@@schema("core")`, house field template)
@@ -191,7 +191,7 @@ model AiRuntimeProfile {
 }
 ```
 
-Cascade at request/injection time: explicit request params → `AiTaskDefault.configJson` (per-task tweaks, already exists) → `AiRuntimeProfile(modelSlug)` → `AiRuntimeProfile(provider default)` → service env/pydantic default. The gateway injects the resolved profile alongside `{provider, model}` for SMR/NLP (stateless-gateway contract preserved); guardrail's resolver and stt-v2's reader pick profiles up in their existing DB reads; harness receives them through `fetch_policy`/effective-config.
+Cascade at request/injection time: explicit request params → `AiTaskDefault.configJson` (per-task tweaks, already exists) → `AiRuntimeProfile(modelSlug)` → `AiRuntimeProfile(provider default)` → service env/pydantic default. The gateway injects the resolved profile alongside `{provider, model}` for SMR/NLP (stateless-gateway contract preserved); guardrail's resolver and stt's reader pick profiles up in their existing DB reads; harness receives them through `fetch_policy`/effective-config.
 
 ### AD-3 — Model source resolution (E5-transformer; GAP-C3, D-12)
 
@@ -201,13 +201,13 @@ Cascade at request/injection time: explicit request params → `AiTaskDefault.co
 
 ### AD-4 — Unified model lifecycle & retention (E6; GAP-L1…L4)
 
-- **Contract, not framework**: the three convergent `ModelCache` implementations (stt-v2 / guardrail / nlp) are aligned to one documented contract — single-flight load, pin/unpin, idle-TTL sweep, LRU eviction, clamp **[60 s, 3600 s]**, soft ceiling under all-pinned load, load/evict/resident metrics. Preferred packaging: a shared uv-workspace package (`packages/py-runtime-models`, workspace member consumed by stt-v2/guardrail/nlp/harness/tts-v2); fallback if the owner rejects a new workspace member: keep per-service copies + a shared conformance-test template asserting the contract (**owner decision OD-3**).
+- **Contract, not framework**: the three convergent `ModelCache` implementations (stt / guardrail / nlp) are aligned to one documented contract — single-flight load, pin/unpin, idle-TTL sweep, LRU eviction, clamp **[60 s, 3600 s]**, soft ceiling under all-pinned load, load/evict/resident metrics. Preferred packaging: a shared uv-workspace package (`packages/py-runtime-models`, workspace member consumed by stt/guardrail/nlp/harness/tts); fallback if the owner rejects a new workspace member: keep per-service copies + a shared conformance-test template asserting the contract (**owner decision OD-3**).
 - **Retention config** (the "only global admin controls retention" requirement): new settings-registry keys, all `globalOnly: true`, `tier: 'global-kv'` —
-  `models.retention.ttlSeconds` (default 600, clamp 60–3600) · `models.retention.maxModels.<service>` · `models.retention.vramBudgetMb.<service>` · optional `models.retention.ttlSeconds.<service>` override. Delivered via the AD-1 effective-config endpoint; env become fallback. NLP's unwired cache (D-07) and stt-v2's dead `GlobalSettingRead` path (D-11) are both closed by this lane (the stt-v2 seed rows `stt.config.model_cache.*` are migrated into the registry keys and the SQLAlchemy dead model deleted).
-- **Adoption**: harness MiniCheck entailer moves onto the cache (bounded, evictable — closes D-08); tts-v2 local engines (Kokoro/IndicParler) become lazy load-on-first-request + TTL-evicted (closes D-09; startup `warm_and_register` becomes an optional warmup flag, default off).
+  `models.retention.ttlSeconds` (default 600, clamp 60–3600) · `models.retention.maxModels.<service>` · `models.retention.vramBudgetMb.<service>` · optional `models.retention.ttlSeconds.<service>` override. Delivered via the AD-1 effective-config endpoint; env become fallback. NLP's unwired cache (D-07) and stt's dead `GlobalSettingRead` path (D-11) are both closed by this lane (the stt seed rows `stt.config.model_cache.*` are migrated into the registry keys and the SQLAlchemy dead model deleted).
+- **Adoption**: harness MiniCheck entailer moves onto the cache (bounded, evictable — closes D-08); tts local engines (Kokoro/IndicParler) become lazy load-on-first-request + TTL-evicted (closes D-09; startup `warm_and_register` becomes an optional warmup flag, default off).
 - **Server-managed engines**: HOPE forwards its retention decision instead of ignoring it — Ollama requests gain `keep_alive: <resolved ttl>` (closes D-10); LM Studio requests gain the `ttl` field (JIT-loaded models; LM Studio default is 60 min JIT TTL, auto-evict is an ops recommendation documented in the runbook); vLLM/llama.cpp server are resident-by-design on dedicated tiers — documented, with optional vLLM **sleep-mode** (level 1/2 sleep + `/wake_up`) noted as a later opt-in for multi-model GPU sharing, not in this program's scope.
 - **VRAM awareness** (GAP-L3): optional `pynvml` probe util in the shared package — before a load, if `free_vram < estimate + headroom`, evict idle (unpinned) LRU entries first; estimates remain the fallback on CPU-only hosts or when NVML is absent. Per-service `vramBudgetMb` bounds multi-service hosts deterministically (no cross-process arbiter daemon — deliberately rejected as over-engineering; single-GPU multi-service hosts get budgets instead).
-- **Concurrency** (GAP-L4): per-provider `maxConcurrent` moves into `AiRuntimeProfile`; stt-v2 `worker_concurrency`/`streaming_max_concurrent` and guardrail/nlp inference semaphores read effective-config (nlp gains the semaphore it currently lacks entirely).
+- **Concurrency** (GAP-L4): per-provider `maxConcurrent` moves into `AiRuntimeProfile`; stt `worker_concurrency`/`streaming_max_concurrent` and guardrail/nlp inference semaphores read effective-config (nlp gains the semaphore it currently lacks entirely).
 
 ### AD-5 — Discovery as a first-class admin surface (E5-lmstudio/ollama; GAP-C4)
 
@@ -259,14 +259,14 @@ Goal: every gate green (E8) and every stale comment corrected (so later phases i
 
 | # | Fix | Files (owner-lane) | TDD/verification |
 |---|---|---|---|
-| 0.1 | D-01 `codeSwitching` — add the field to `CreateStreamingSessionRequest`, matching `code_switching` in `apps/stt-v2/src/stt_v2/pipeline/dto.py` (SDK↔Python contract; coordinate with any open ASR ticket owner) | `packages/agentic-sdk-v2/src/types/stt-v2.ts` (lane E/SDK) | existing RED tests in `stt-v2.types.test.ts:58-75` turn GREEN; `pnpm --filter @arcaai/vox typecheck` |
+| 0.1 | D-01 `codeSwitching` — add the field to `CreateStreamingSessionRequest`, matching `code_switching` in `apps/stt/src/stt/pipeline/dto.py` (SDK↔Python contract; coordinate with any open ASR ticket owner) | `packages/agentic-sdk-v2/src/types/stt.ts` (lane E/SDK) | existing RED tests in `stt.types.test.ts:58-75` turn GREEN; `pnpm --filter @arcaai/vox typecheck` |
 | 0.2 | D-02 unused import | `apps/api/tests/e2e/mcp-admin.spec.ts` (lane B) | `pnpm --filter @arcaai/api lint` |
 | 0.3 | D-03 prettier ×71 | `packages/agentic-sdk-v2/**` (lane E/SDK) | `pnpm --filter @arcaai/vox lint` clean |
-| 0.4 | D-04 mypy `no-any-return` | `apps/stt-v2/src/stt_v2/transcription/preprocessing.py:288` (lane D) | `pnpm py:stt-v2:typecheck` |
+| 0.4 | D-04 mypy `no-any-return` | `apps/stt/src/stt/transcription/preprocessing.py:288` (lane D) | `pnpm py:stt:typecheck` |
 | 0.5 | D-05 mypy wave: replace `llama_cpp._internals` private imports with public API (or a typed local shim); add per-module `ignore_missing_imports` overrides for genuinely optional extras (`presidio_*`, `qdrant_client`, `deepeval*`) in the two pyproject mypy configs; drop the `unused-ignore` | `apps/guardrail/src/guardrail/services/groundedness_scorer_minicheck.py`, `apps/harness/{pyproject.toml,src/harness/sensors/inferential/minicheck_entailer.py}`, `apps/guardrail/pyproject.toml` (lane E) | `pnpm py:guardrail:typecheck` + `py:harness:typecheck` clean; harness/guardrail test suites stay green |
 | 0.6 | D-06 unused import warning | `packages/ui/src/components/registries/diceui/media-player.tsx` (lane C) | ui build warning gone |
 | 0.7 | D-14/M-10 `@StreamScope` on the SMR task stream + console switch to ticket flow | `apps/api/src/modules/streaming/smr-proxy.controller.ts`, `apps/admin-console/src/features/playground-llm/api/client.ts` (lanes B+C) | RED: controller unit test asserting the decorator/ticket handshake; existing stream e2e stays green in P7 |
-| 0.8 | D-15 `.env.example` hygiene: correct the Azure block to `SMR_V2_AZURE_*`; remove (after verifying no TS reader) `SUMMARY_SERVICE_PROVIDER` + the SMR-section `LANGFLOW_*` quartet; add the missing `turbo.json#globalEnv` URL vars; fix the guardrail fail-posture comment | `.env.example` (lane F) | doc-only; grep assert in review |
+| 0.8 | D-15 `.env.example` hygiene: correct the Azure block to `SMR_AZURE_*`; remove (after verifying no TS reader) `SUMMARY_SERVICE_PROVIDER` + the SMR-section `LANGFLOW_*` quartet; add the missing `turbo.json#globalEnv` URL vars; fix the guardrail fail-posture comment | `.env.example` (lane F) | doc-only; grep assert in review |
 | 0.9 | D-16…D-18, D-20, D-21 comment/copy/dead-code sweep (the four "nlp.* tenant-editable" sites, tools-mcp "read-only", `NLP_TASK_KEYS`, `suggest-diagnosis.request.ts:8`, settings-registry barrel export) | listed files (lanes B+C) | admin-console tests updated where copy is asserted; lint clean |
 | 0.10 | D-13 clean-404 hardening: explicit ownership guards in `PipelineService.update()/delete()` (mirrors `setDefault`) | `packages/applications/src/services/stt/pipeline/pipeline.service.ts` + tests (lane B) | RED: cross-tenant update/delete asserts `DataNotFoundException` (not 412/raw Prisma) |
 
@@ -285,9 +285,9 @@ Goal: every gate green (E8) and every stale comment corrected (so later phases i
 
 **TASK-525 — Service pull-paths (env → effective-config)**
 
-- **Changes**: NEW gateway internal route `GET internal/effective-config?service=` (service-token; returns retention/concurrency/profile/agentic-context subsets); Python: shared fetch-with-TTL-cache helper per service (guardrail pattern); SMR providers consume injected profile params (temperature/max_tokens/timeouts/max_concurrent semaphore resizing on refresh) with env fallback; guardrail resolver extends its SQL read with profiles + `local_path`; NLP consumes injected params + gains its inference semaphore; stt-v2 replaces the dead `GlobalSettingRead` path with the effective-config client for `model_cache`/`workers` keys (delete the dead SQLAlchemy model + migrate the two seed rows into registry keys); pydantic field docstrings across all services annotated "bootstrap fallback — runtime value comes from the control plane".
+- **Changes**: NEW gateway internal route `GET internal/effective-config?service=` (service-token; returns retention/concurrency/profile/agentic-context subsets); Python: shared fetch-with-TTL-cache helper per service (guardrail pattern); SMR providers consume injected profile params (temperature/max_tokens/timeouts/max_concurrent semaphore resizing on refresh) with env fallback; guardrail resolver extends its SQL read with profiles + `local_path`; NLP consumes injected params + gains its inference semaphore; stt replaces the dead `GlobalSettingRead` path with the effective-config client for `model_cache`/`workers` keys (delete the dead SQLAlchemy model + migrate the two seed rows into registry keys); pydantic field docstrings across all services annotated "bootstrap fallback — runtime value comes from the control plane".
 - **TDD**: per-service RED tests — "profile injected → overrides env default", "endpoint unreachable → env fallback + negative cache", "semaphore resizes without dropping in-flight permits" (smr), "nlp concurrent requests bounded" (new semaphore). Hermetic: stub the gateway with a local fixture server.
-- **Gates**: `py:{smr-v2,guardrail,nlp,stt-v2}:test|lint|typecheck`; no new env vars except none (uses existing gateway URL + tokens).
+- **Gates**: `py:{smr,guardrail,nlp,stt}:test|lint|typecheck`; no new env vars except none (uses existing gateway URL + tokens).
 
 **TASK-526 — Cloud BYO credentials + tenant screens**
 
@@ -301,7 +301,7 @@ Goal: every gate green (E8) and every stale comment corrected (so later phases i
 
 **TASK-527 — S3/local model sources honored everywhere**
 
-- **Changes**: `AiModelSource` + migration; `sourceUri` scheme conventions documented in the schema comment + `admin/ai-models` Swagger; Python `resolve_model_dir` implementations (stt-v2 extends its existing loader-precedence util; guardrail/nlp/harness adopt); guardrail read model + NLP gateway DTO gain `local_path`/`modelPath` (D-12); MiniCheck weight paths DB-first (both services) with env fallback; download cache + checksum verify + single-flight.
+- **Changes**: `AiModelSource` + migration; `sourceUri` scheme conventions documented in the schema comment + `admin/ai-models` Swagger; Python `resolve_model_dir` implementations (stt extends its existing loader-precedence util; guardrail/nlp/harness adopt); guardrail read model + NLP gateway DTO gain `local_path`/`modelPath` (D-12); MiniCheck weight paths DB-first (both services) with env fallback; download cache + checksum verify + single-flight.
 - **TDD**: RED per service — "localPath set + exists → used, no network"; "s3:// URI → downloaded once, second call cache-hit" (moto/minio test double); "checksum mismatch → hard error, model not served"; "DB row edited → next TTL window picks new path" (guardrail). Enum-sync test: Prisma `AiModelSource` ⇄ Python literals (the TASK-505 enum-sync precedent).
 - **Gates**: database + all Python lanes; `uv lock` if boto3/minio client added to any service.
 
@@ -315,9 +315,9 @@ Goal: every gate green (E8) and every stale comment corrected (so later phases i
 
 ### Phase 3 — Unified lifecycle & retention (`TASK-529`, size L, lanes D+E+B(F) — after 524/525 land the settings lane)
 
-- **Changes**: AD-4 in full — shared package `packages/py-runtime-models` (or conformance-spec fallback per OD-3): cache contract + NVML probe util + estimates fallback; stt-v2/guardrail/nlp caches converge onto it (behavioral parity tests first); harness MiniCheck adoption (D-08) — bounded, evictable, activity-safe (load inside activities only, never workflow code); tts-v2 lazy-load + TTL (D-09; `warmup` flag default off; `warm_and_register` becomes opt-in); Ollama `keep_alive` + LM Studio `ttl` propagation from resolved retention (D-10); new settings keys registered (`models.retention.*` incl. per-service maxModels/vramBudget); Prometheus metrics per service (`model_cache_loads_total`, `evictions_total{reason=ttl|lru|vram}`, `resident_models`, `resident_bytes_estimate`, `vram_free_bytes` when NVML) + one Grafana dashboard; runbook `docs/operations/inference/model-retention.md` (LM Studio auto-evict/JIT recommendation, Ollama `OLLAMA_MAX_LOADED_MODELS`, vLLM resident posture + sleep-mode pointer).
+- **Changes**: AD-4 in full — shared package `packages/py-runtime-models` (or conformance-spec fallback per OD-3): cache contract + NVML probe util + estimates fallback; stt/guardrail/nlp caches converge onto it (behavioral parity tests first); harness MiniCheck adoption (D-08) — bounded, evictable, activity-safe (load inside activities only, never workflow code); tts lazy-load + TTL (D-09; `warmup` flag default off; `warm_and_register` becomes opt-in); Ollama `keep_alive` + LM Studio `ttl` propagation from resolved retention (D-10); new settings keys registered (`models.retention.*` incl. per-service maxModels/vramBudget); Prometheus metrics per service (`model_cache_loads_total`, `evictions_total{reason=ttl|lru|vram}`, `resident_models`, `resident_bytes_estimate`, `vram_free_bytes` when NVML) + one Grafana dashboard; runbook `docs/operations/inference/model-retention.md` (LM Studio auto-evict/JIT recommendation, Ollama `OLLAMA_MAX_LOADED_MODELS`, vLLM resident posture + sleep-mode pointer).
 - **TDD (RED first, per service)**: "second request within TTL → no reload (load-count 1)"; "TTL expiry sweep evicts (fake clock)"; "pinned entry survives eviction pressure"; "VRAM probe short → idle LRU evicted before load (NVML stubbed)"; "clamp: admin value 30 s → 60 s, 7200 s → 3600 s"; "retention change via settings → new TTL within one refresh window"; harness: replay-compat untouched (no workflow-code change — cache lives in activities); tts: "first synth request loads; idle unloads; warmup flag preserves old behavior".
-- **Comment deltas**: delete stt-v2 `GlobalSettingRead` remnants' comments; `minicheck_entailer.py` "loaded once per worker" comment rewritten; tts `main.py` lifespan comment.
+- **Comment deltas**: delete stt `GlobalSettingRead` remnants' comments; `minicheck_entailer.py` "loaded once per worker" comment rewritten; tts `main.py` lifespan comment.
 - **Gates**: all five Python lanes test+lint+typecheck; hermetic (NVML/pynvml stubbed; no GPU in CI).
 
 ---
@@ -380,7 +380,7 @@ Three sub-scopes with different start conditions. The loop **core** is verified 
 ## 5. Consolidated TDD guidance (program-wide)
 
 1. **RED evidence is mandatory** — paste the failing run in the child README before implementing. A test that never failed is not evidence (repo skill: `test-driven-development`).
-2. **Test placement**: TS unit colocated `__tests__/`; integration under `**/integration/**` (live test DB via `pnpm test:setup`); API e2e `apps/api/tests/e2e/*.spec.ts` (P7); Python per-service convention (stt-v2/nlp top-level `tests/`, smr/guardrail/harness in-package).
+2. **Test placement**: TS unit colocated `__tests__/`; integration under `**/integration/**` (live test DB via `pnpm test:setup`); API e2e `apps/api/tests/e2e/*.spec.ts` (P7); Python per-service convention (stt/nlp top-level `tests/`, smr/guardrail/harness in-package).
 3. **What to always assert on new admin surfaces**: DTO whitelist rejection · OCC 428 (missing If-Match) / 412 (drift) · cross-tenant 404 (never 403) · secrets never in any response · sys-event broadcast on mutation · factory-created entities (`new XxxEntity` is banned).
 4. **Python determinism**: pytest-randomly reseeds numpy per-test *after* fixtures — seed inside test bodies or use local `default_rng` (repo memory); fake clocks for TTL tests; NVML/HTTP always stubbed in CI.
 5. **Temporal**: replay-compat fixtures re-captured only when a `workflow.patched` era is added; otherwise additive activity inputs (command-neutral). Harness CI stays hermetic.
@@ -396,7 +396,7 @@ Beyond D-16…D-21 (P0), each phase's "Comment deltas" row is binding. Program-l
 | Risk | Mitigation |
 |---|---|
 | Config-plane migration changes live behavior silently (the D-07 lesson: wiring a dead field flips real defaults) | Every adopted setting's default reproduces today's effective behavior byte-for-byte; deviations are their own reviewed decision rows (the 508 D-04/D-07 discipline) |
-| Two registries during transition (env + DB) drift | Effective-config responses carry `source: db|env-fallback`; a `/health`-adjacent diagnostics block lists which lane served each key (stt-v2 binding-health precedent) |
+| Two registries during transition (env + DB) drift | Effective-config responses carry `source: db|env-fallback`; a `/health`-adjacent diagnostics block lists which lane served each key (stt binding-health precedent) |
 | Secret handling regressions | Only `encryptSecretField`/`decryptSecretField`; read-DTO snapshot tests; reveal flows require step-up (`GlobalSetting.reveal` precedent) — no new reveal for provider keys (Configured/None only) |
 | Template backfill mislabels customized pipelines as pristine | Backfill compares YAML hash against the template's clone-time version before setting `templateLocked`; ambiguous rows left unlocked + logged for operator review |
 | VRAM probe flakiness across drivers | NVML strictly optional (feature-detect); estimates path remains; CI never depends on GPU |

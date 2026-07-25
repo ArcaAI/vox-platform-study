@@ -176,7 +176,7 @@ Auth pattern: every SSE route accepts `Authorization: Bearer <jwt>` or a single-
 | Consultation jobs | `GET /consultations/jobs/:jobId/stream` | Async summary/comprehensive job progress |
 | Transcription job | `GET /audio/transcription-jobs/:id/stream` | Batch job progress from the jobs admin screen |
 | SMR task stream | `GET /text/tasks/:taskId/stream` | Playground LLM streaming (deferred, TASK-420) |
-| Live STT | WS `/ws/stt-v2/stream` (session via `POST /audio/transcription-jobs/stream/session`) | Playground live transcription (deferred, TASK-420) |
+| Live STT | WS `/ws/stt/stream` (session via `POST /audio/transcription-jobs/stream/session`) | Playground live transcription (deferred, TASK-420) |
 
 ## 6. Gaps & Deferred — resolutions from the 2026-07-04 review
 

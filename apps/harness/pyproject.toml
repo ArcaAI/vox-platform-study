@@ -44,7 +44,7 @@ dependencies = [
     # payloads out of Temporal history. Lazy-imported (claim_check.py, inside
     # S3BlobStore only) and gated behind HARNESS_CLAIM_CHECK_STORE=s3 (default
     # `memory`), but promoted to a base dep so the production S3 path is always
-    # installable without an extra — matching the smr-v2 base-dep precedent.
+    # installable without an extra — matching the smr base-dep precedent.
     "boto3>=1.34.0",
     # --- Shared runtime contracts (TASK-529) ---
     "hope-runtime-models",
@@ -250,7 +250,7 @@ ignore_missing_imports = true
 minversion = "9.0"
 # pythonpath lets pytest import `harness` from src/ without requiring an
 # editable install (the service is also installed via `pip install -e` to
-# mirror smr/stt-v2/nlp, but tests must work standalone too).
+# mirror smr/stt/nlp, but tests must work standalone too).
 pythonpath = ["src"]
 addopts = [
     "-ra",

@@ -299,22 +299,28 @@ describe('PromptAssemblyService', () => {
             expect(result.userPrompt).not.toContain('{pre_summary_text}');
         });
 
-        it('should include sameDayPrequelSummary when provided', async () => {
+        // Replaced the `sameDayPrequelSummary` case (TASK-553 F-18): that param and
+        // its {same_day_prequel_summary} variable had zero producers and were
+        // removed in favour of the real re-visit carry-forward below. Full
+        // behaviour (safety preamble, spotlighting, truncation) lives in
+        // prompt-assembly.prior-visit.test.ts.
+        it('should include priorVisitSummary when provided', async () => {
             mockPromptTemplateRepository.findById.mockResolvedValue(
                 createMockPromptTemplate({
-                    content: 'Template with {same_day_prequel_summary}. Language: {conversation_language}.',
+                    content: 'Template with {prior_visit_summary}. Language: {conversation_language}.',
                 }),
             );
             service = await getService();
             const result = await service.assemble({
                 departmentId: 'dept-001',
-                promptType: 'new-patient',
+                promptType: 'revisit',
                 transcript: 'test',
                 conversationLanguage: 'English',
-                sameDayPrequelSummary: 'Earlier visit: vitals stable',
+                priorVisitSummary: 'Earlier visit: vitals stable',
             });
 
             expect(result.userPrompt).toContain('Earlier visit: vitals stable');
+            expect(result.userPrompt).not.toContain('{prior_visit_summary}');
         });
     });
 

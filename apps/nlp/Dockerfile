@@ -40,8 +40,8 @@ COPY apps/nlp/pyproject.toml ./apps/nlp/
 COPY apps/guardrail/pyproject.toml ./apps/guardrail/
 COPY apps/smr/pyproject.toml ./apps/smr/
 COPY apps/harness/pyproject.toml ./apps/harness/
-COPY apps/stt-v2/pyproject.toml ./apps/stt-v2/
-COPY apps/tts-v2/pyproject.toml ./apps/tts-v2/
+COPY apps/stt/pyproject.toml ./apps/stt/
+COPY apps/tts/pyproject.toml ./apps/tts/
 # TASK-529 — the shared model-lifecycle package is a workspace PATH dependency,
 # and `--no-install-project` skips only the target package, not its workspace
 # deps: uv builds this one here, so its source must be present in layer 1. It is

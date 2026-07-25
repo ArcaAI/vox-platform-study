@@ -111,7 +111,7 @@ Every claim below is cited as `path:line`.
   - **medgemma row** `lms-medgemma-1.5-4b-mlx`, id `80000000-0000-0000-0005-000000000050`, `format: AiModelFormat.SAFETENSOR` at **line 859** (despite the MLX slug/tag, lines 851/862). This is the row to fix → `MLX`.
   - **granite-guardian** is **absent** (no `granite` slug in the catalog).
   - `seedAiModels(...)` performs an idempotent upsert keyed by `id`.
-- `packages/database/src/prisma/db_main/seed/00-constants.ts:22-27` — AiModel id-prefix convention; `80000000-0005` = "LLM/Summarization (SMR v2)" (line 26). No dedicated guardrail prefix → granite reuses the `0005` LLM block.
+- `packages/database/src/prisma/db_main/seed/00-constants.ts:22-27` — AiModel id-prefix convention; `80000000-0005` = "LLM/Summarization (SMR)" (line 26). No dedicated guardrail prefix → granite reuses the `0005` LLM block.
 - Seed assertions to update: `packages/database/src/__tests__/seed.test.ts:892` asserts every `DEFAULT_AI_MODELS` row has `tenantId === SYSTEM_TENANT_ID` (granite-under-SYSTEM stays consistent); `:1268` asserts pipelines are NOT SYSTEM.
 
 ### 3.8 UI (the mirror)

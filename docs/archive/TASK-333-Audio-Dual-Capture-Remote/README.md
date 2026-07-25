@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Ticket** | TASK-333 |
-| **Track** | B — Remote (Python `apps/stt-v2` + TS/UI) |
+| **Track** | B — Remote (Python `apps/stt` + TS/UI) |
 | **Parent** | TASK-331 doc-06 (F2 — clinical playground dual capture) |
 | **Created** | 2026-06-05 |
 | **Updated** | 2026-06-05 |
@@ -11,7 +11,7 @@
 
 > Sibling ticket: **TASK-332 — Audio Dual-Capture: Local (raw)**. The two run in parallel.
 >
-> **Open input required before any Python is written:** which **conda env** the `apps/stt-v2` work uses (per environment rule).
+> **Open input required before any Python is written:** which **conda env** the `apps/stt` work uses (per environment rule).
 
 ---
 
@@ -38,14 +38,14 @@ The remote streaming path **already uploads** raw+processed WAV to MinIO, but th
 | Area | Finding | Evidence |
 |---|---|---|
 | Seeded config | `dual_capture` is seeded on the **`production`** pipeline only (not `turbo`/others) | `seed/06-stt.ts` (`PIPELINE_CONFIGS.production`) |
-| Python parser ignores it | `PreprocessingConfig`/`PostprocessingConfig` have **no** `dual_capture` field; `yaml_parser.py` never reads it → **intent-only no-op** | `apps/stt-v2/src/stt_v2/pipeline/dto.py:465,517`; `pipeline/yaml_parser.py` |
-| Bytes uploaded, not registered | `_finalize_session` uploads raw+processed WAV to MinIO but **never** creates `Media`/`AudioRecording`; `gateway.create_audio_recording()` exists but is **unused** on the streaming path and **lacks** `rawMediaId`/`processedMediaId` | `apps/stt-v2/src/stt_v2/streaming/session_manager.py`; `core/api_client/gateway.py` |
+| Python parser ignores it | `PreprocessingConfig`/`PostprocessingConfig` have **no** `dual_capture` field; `yaml_parser.py` never reads it → **intent-only no-op** | `apps/stt/src/stt/pipeline/dto.py:465,517`; `pipeline/yaml_parser.py` |
+| Bytes uploaded, not registered | `_finalize_session` uploads raw+processed WAV to MinIO but **never** creates `Media`/`AudioRecording`; `gateway.create_audio_recording()` exists but is **unused** on the streaming path and **lacks** `rawMediaId`/`processedMediaId` | `apps/stt/src/stt/streaming/session_manager.py`; `core/api_client/gateway.py` |
 | TS writer ready | `sttInternal.createAudioRecord` **already accepts** `rawMediaId`/`processedMediaId` (TASK-331 doc-06 F2) — no TS change needed for the DB write path | `packages/applications/src/services/stt/internal/sttInternal.service.ts` |
 | Pipeline-selection mismatch | Consultation panel hardcodes `DEFAULT_TRANSCRIPTION_PIPELINE_ID` = `turbo` (`…0002`), which has **no** `dual_capture`; only `production` (`…0001`) does | `apps/ui-playground/.../consultation-recording-panel.tsx`; `apps/ui-playground/src/features/audio/constants.ts` |
 | Admin editor gap | `PipelineConfig` interface doesn't model `dual_capture`; admins can only edit it via the raw-YAML tab | `apps/ui-playground/src/features/admin/audio-pipelines/pipeline-config-editor.tsx:~21-59` |
 
 ### Impact areas
-Python `apps/stt-v2` (dto/parser/session/gateway); admin pipeline editor; consultation pipeline selection; seed alignment.
+Python `apps/stt` (dto/parser/session/gateway); admin pipeline editor; consultation pipeline selection; seed alignment.
 
 ---
 
@@ -66,7 +66,7 @@ Python `apps/stt-v2` (dto/parser/session/gateway); admin pipeline editor; consul
 - **TDD:** editor round-trips `dual_capture`; panel forwards the resolved pipeline id (not the constant).
 
 ### Testing strategy
-- Python: pytest in the project conda env — `apps/stt-v2/tests/unit`. TS/UI: vitest (editor, panel).
+- Python: pytest in the project conda env — `apps/stt/tests/unit`. TS/UI: vitest (editor, panel).
 
 ### Verification criteria
 - `dual_capture` parsed + honored; `Media`/`AudioRecording` rows created with both ids; context item attached.
@@ -92,10 +92,10 @@ Built in worktree branch `fix/2605-doc06-remote` (TDD, conda `arcaenv`), code-re
 - **AC#2 and AC#4 are now met end-to-end** via TASK-334.
 
 ### Gate evidence (post-merge, `fix/2605-review`)
-Python `apps/stt-v2` unit **1862 passed** (conda `arcaenv`) · pipeline editor + consultation panel vitest green (within ui-playground **541 passed**) · `@arcaai/vox` **3297 passed** (incl. the I-1 `transcriptionPipelineId` preservation regression guard).
+Python `apps/stt` unit **1862 passed** (conda `arcaenv`) · pipeline editor + consultation panel vitest green (within ui-playground **541 passed**) · `@arcaai/vox` **3297 passed** (incl. the I-1 `transcriptionPipelineId` preservation regression guard).
 
 ### Conda env
-`arcaenv` (per environment rule). The `stt_v2` editable install points at the main checkout, so post-merge pytest exercises the merged code directly.
+`arcaenv` (per environment rule). The `stt` editable install points at the main checkout, so post-merge pytest exercises the merged code directly.
 
 ## 5. Change History
 | Date | Change | Files / Commits |

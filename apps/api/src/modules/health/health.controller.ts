@@ -66,7 +66,7 @@ export class ApiHealthController {
   ) {
     // Downstream URLs resolve through the typed
     // `IConfigService.getConfigValue(...)` accessor. The pre-W7 direct
-    // `process.env.{SMR,STT_V2,TTS,NLP}_URL` reads are forbidden by
+    // `process.env.{SMR,STT,TTS,NLP}_URL` reads are forbidden by
     // the `no-direct-downstream-url-env` lint rule; the env-or-fallback
     // resolution happens once at bootstrap in
     // `ConfigService.loadBaseConfig()`. Built once per controller
@@ -87,7 +87,7 @@ export class ApiHealthController {
       {
         key: 'stt',
         name: 'Speech to Text',
-        url: this.configService.getConfigValue('STT_V2_URL'),
+        url: this.configService.getConfigValue('STT_URL'),
         healthEndpoint: '/api/v1/health',
       },
       {

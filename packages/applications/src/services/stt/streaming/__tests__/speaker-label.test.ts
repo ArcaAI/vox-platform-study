@@ -20,7 +20,7 @@ describe('deriveSpeakerLabel (canonical mapping)', () => {
     expect(deriveSpeakerLabel('   ')).toBeUndefined();
   });
 
-  it('maps the stt-v2 "unknown" sentinel to a neutral placeholder (never the raw magic string)', () => {
+  it('maps the stt "unknown" sentinel to a neutral placeholder (never the raw magic string)', () => {
     // inference.py stamps speaker_id="unknown" when diarization ran but found
     // no confident match; the clinician must not see the raw sentinel.
     expect(deriveSpeakerLabel('unknown')).toBe('Unknown speaker');

@@ -390,7 +390,7 @@ export interface TranscriptionTimestamp {
 }
 
 /**
- * Word-level timestamp emitted by the streaming backend (stt-v2
+ * Word-level timestamp emitted by the streaming backend (stt
  * `SegmentResult.word_timestamps`). Carried through {@link TranscriptionResult.words}
  * so the SDK store can expose word timings to consumers.
  *

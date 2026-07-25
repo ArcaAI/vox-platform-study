@@ -32,7 +32,7 @@ vi.mock('@arcaai/vox', async (importOriginal) => {
         getWebSocketUrl = mockRefs.getWebSocketUrl;
     }
 
-    class MockSttV2WebSocketClient {
+    class MockSttWebSocketClient {
         onTranscript = vi.fn((cb: (result: WsTranscriptResult) => void) => {
             mockRefs.transcriptHandler = cb;
         });
@@ -55,7 +55,7 @@ vi.mock('@arcaai/vox', async (importOriginal) => {
         ...actual,
         useArcaStore: vi.fn(),
         StreamingSessionManager: MockStreamingSessionManager,
-        SttV2WebSocketClient: MockSttV2WebSocketClient,
+        SttWebSocketClient: MockSttWebSocketClient,
     };
 });
 
@@ -357,7 +357,7 @@ describe('useRealtimeTranscription', () => {
             expect(result.current.transcripts[0]!.stableChars).toBe(5);
         });
 
-        it('leaves stableChars undefined when the WS result omits it (older stt-v2)', async () => {
+        it('leaves stableChars undefined when the WS result omits it (older stt)', async () => {
             const result = await startStreaming();
 
             act(() => {

@@ -18,8 +18,8 @@ Developer started the stack manually, one terminal per service, in this order:
 ```
 pnpm dev:api
 pnpm dev:admin
-pnpm dev:stt-v2
-pnpm dev:smr-v2
+pnpm dev:stt
+pnpm dev:smr
 pnpm dev:nlp
 pnpm dev:harness
 pnpm dev:harness:worker
@@ -61,7 +61,7 @@ Key code facts:
 |---|---|---|
 | 8868 | api | node ✅ (`*:8868`) |
 | 5176 | admin | node ✅ (`*:5176`) |
-| 8861 | stt-v2 | python ✅ (`127.0.0.1:8861`) |
+| 8861 | stt | python ✅ (`127.0.0.1:8861`) |
 | 8862 | smr | python ✅ (`127.0.0.1:8862`) |
 | 8864 | nlp | python ✅ (`127.0.0.1:8864`) |
 | 8863 | guardrail | python ✅ (`127.0.0.1:8863`) |

@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createAudioCapture, float32ToInt16, type AudioCaptureHandle } from '@arcaai/stt';
-import { SttV2WebSocketClient } from '@arcaai/vox/core';
+import { SttWebSocketClient } from '@arcaai/vox/core';
 import { publicEnv } from '@/config/public-env';
 import { GatewayError } from '@/shared/api';
 import { buildStreamWsUrl, closeStreamSession, createStreamSession, refreshStreamTicket } from './client';
@@ -58,7 +58,7 @@ const SAMPLE_RATE = 16_000;
 const LEVEL_COMMIT_MS = 200;
 
 /**
- * Structural view of `SttV2WebSocketClient` — @arcaai/vox ships `dts: false`,
+ * Structural view of `SttWebSocketClient` — @arcaai/vox ships `dts: false`,
  * so the constructed instance is typed locally against the methods this hook
  * uses (and tests fake).
  */
@@ -277,7 +277,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
             // 3. WS direct to the gateway. Reconnects mint a FRESH one-shot
             // ticket through the BFF refresh route.
             setStatus('connecting');
-            const client = new SttV2WebSocketClient(
+            const client = new SttWebSocketClient(
                 undefined,
                 {
                     enabled: true,
@@ -347,7 +347,7 @@ export function useLiveSttSession(): UseLiveSttSessionResult {
                 setAudioLostThisSession(true);
             });
 
-            const wsUrl = buildStreamWsUrl(publicEnv.apiHost, created.wsUrl || '/ws/stt-v2/stream', {
+            const wsUrl = buildStreamWsUrl(publicEnv.apiHost, created.wsUrl || '/ws/stt/stream', {
                 sessionId: created.sessionId,
                 ticket: created.ticket,
                 tenantId: options.tenantId,

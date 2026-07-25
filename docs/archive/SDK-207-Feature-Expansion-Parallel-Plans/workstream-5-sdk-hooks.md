@@ -600,4 +600,4 @@ Before marking WS-5 complete:
 | 4 | `updateSummary` backwards compatible | Third `options` parameter is optional, preserving the existing `(id, content)` signature |
 | 5 | `compareSummaryVersions` uses `computeSummaryDiff` (words mode) | Summaries are prose text — word-level diffs are more readable than line-level |
 | 6 | `compareVersions` in usePrompts uses `computePromptDiff` (lines mode) | Prompts are structured text — line-level diffs are more appropriate |
-| 7 | SMR V2 integration via `useDnaStyle.generate()` | DNA generation is queued via backend (WS-2 BullMQ processor calls SMR V2); the hook just triggers the queue and returns `{ jobId }` |
+| 7 | SMR integration via `useDnaStyle.generate()` | DNA generation is queued via backend (WS-2 BullMQ processor calls SMR); the hook just triggers the queue and returns `{ jobId }` |

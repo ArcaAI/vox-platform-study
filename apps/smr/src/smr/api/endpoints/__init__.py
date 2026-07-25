@@ -1,0 +1,1 @@
+"""SMR API endpoints."""

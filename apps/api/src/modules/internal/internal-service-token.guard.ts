@@ -12,10 +12,10 @@ import { timingSafeEqual } from 'node:crypto';
  * header, an unconfigured secret, or an absent SecretsService, and a
  * constant-time compare so the token cannot be recovered by timing.
  *
- * Header: every service presents `X-Service-Token`, EXCEPT stt-v2, which already
+ * Header: every service presents `X-Service-Token`, EXCEPT stt, which already
  * authenticates to the gateway with `X-Internal-Service-Key` + `API_GATEWAY_KEY`
- * (`apps/stt-v2/src/stt_v2/core/api_client/gateway.py`). Rather than mint a
- * second stt-v2 credential, the guard accepts that header for `service=stt-v2`
+ * (`apps/stt/src/stt/core/api_client/gateway.py`). Rather than mint a
+ * second stt credential, the guard accepts that header for `service=stt`
  * only, matching `SttInternalController`'s existing API-key posture.
  */
 @Injectable()
@@ -25,23 +25,23 @@ export class InternalServiceTokenGuard implements CanActivate {
   /**
    * Service name → the secret holding that service's token.
    *
-   * NOTE `smr` → `SMR_V2_SERVICE_TOKEN`: the SMR service reads its inbound token
-   * from `settings.service_token` under the `SMR_V2_` pydantic prefix, so that is
+   * NOTE `smr` → `SMR_SERVICE_TOKEN`: the SMR service reads its inbound token
+   * from `settings.service_token` under the `SMR_` pydantic prefix, so that is
    * the name it actually presents. The gateway's OUTBOUND proxying separately
    * resolves `SMR_SERVICE_TOKEN`; the two are distinct secret names that hold the
    * same shared value by deployment convention.
    */
   private static readonly SERVICE_SECRETS: Readonly<Record<string, string>> = {
-    smr: 'SMR_V2_SERVICE_TOKEN',
+    smr: 'SMR_SERVICE_TOKEN',
     nlp: 'NLP_SERVICE_TOKEN',
     guardrail: 'GUARDRAIL_SERVICE_TOKEN',
     harness: 'HARNESS_SERVICE_TOKEN',
-    'tts-v2': 'TTS_SERVICE_TOKEN',
-    'stt-v2': 'API_GATEWAY_KEY',
+    tts: 'TTS_SERVICE_TOKEN',
+    stt: 'API_GATEWAY_KEY',
   };
 
   /** The one service that authenticates with the alternate header. */
-  private static readonly ALT_HEADER_SERVICE = 'stt-v2';
+  private static readonly ALT_HEADER_SERVICE = 'stt';
 
   constructor(@Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService) {}
 
@@ -87,7 +87,7 @@ export class InternalServiceTokenGuard implements CanActivate {
     return true;
   }
 
-  /** stt-v2 may present its gateway key; every other service must use X-Service-Token. */
+  /** stt may present its gateway key; every other service must use X-Service-Token. */
   private readToken(headers: Record<string, string | string[] | undefined>, service: string): string | undefined {
     if (service === InternalServiceTokenGuard.ALT_HEADER_SERVICE) {
       return first(headers['x-internal-service-key']) ?? first(headers['x-service-token']);

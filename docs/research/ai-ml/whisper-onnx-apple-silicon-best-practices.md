@@ -729,7 +729,7 @@ Your current implementation in `batch_service.py` follows best practices:
 3. [Transformers AutomaticSpeechRecognitionPipeline](https://huggingface.co/docs/transformers/main_classes/pipelines#transformers.AutomaticSpeechRecognitionPipeline)
 4. [ONNX Runtime Thread Management](https://onnxruntime.ai/docs/performance/tune-performance/threading.html)
 5. HuggingFace Community Discussions on Whisper ONNX
-6. Your codebase: `apps/stt-v2/src/stt_v2/models/onnx_loader.py` and `batch_service.py`
+6. Your codebase: `apps/stt/src/stt/models/onnx_loader.py` and `batch_service.py`
 
 ---
 

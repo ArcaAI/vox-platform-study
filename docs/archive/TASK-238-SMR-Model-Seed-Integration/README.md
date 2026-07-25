@@ -11,14 +11,14 @@
 
 ### Objective
 
-Three-part task to ensure the SMR v2 (text generation/summarization) service has correct seed data for all available models, works correctly with all three local/cloud providers, and that the API gateway properly proxies requests.
+Three-part task to ensure the SMR (text generation/summarization) service has correct seed data for all available models, works correctly with all three local/cloud providers, and that the API gateway properly proxies requests.
 
 ### Scope
 
 | Area | Description |
 |------|-------------|
 | **Seed Data** | Update `06-stt.ts` and `11-global-setting.ts` with current Ollama, LM Studio, and Azure OpenAI model inventories |
-| **SMR v2 Providers** | Verify Ollama, OpenAI-compat (LM Studio), and Azure OpenAI providers work with streaming |
+| **SMR Providers** | Verify Ollama, OpenAI-compat (LM Studio), and Azure OpenAI providers work with streaming |
 | **API Gateway** | Verify `SmrProxyController` endpoints forward correctly and stream SSE properly |
 
 ### Business Context
@@ -29,9 +29,9 @@ The HOPE platform supports multiple LLM providers for medical text generation an
 
 1. Seed data in `06-stt.ts` includes all specified Ollama (11), LM Studio (13), and Azure OpenAI (1) models
 2. Default SMR settings in `11-global-setting.ts` updated to reflect current model availability
-3. SMR v2 Ollama provider generates text and streams correctly with `granite4:latest`
-4. SMR v2 OpenAI-compat provider generates text and streams correctly with `qwen3.5-0.8b` via LM Studio
-5. SMR v2 Azure OpenAI provider generates text and streams correctly with `gpt-4o-mini`
+3. SMR Ollama provider generates text and streams correctly with `granite4:latest`
+4. SMR OpenAI-compat provider generates text and streams correctly with `qwen3.5-0.8b` via LM Studio
+5. SMR Azure OpenAI provider generates text and streams correctly with `gpt-4o-mini`
 6. API gateway `/api/v1/text/generate` proxies sync and streaming requests correctly
 7. All existing tests continue to pass
 8. New integration tests cover real provider connectivity
@@ -64,7 +64,7 @@ The HOPE platform supports multiple LLM providers for medical text generation an
 
 **Issue:** Default model `llama3.1:8b` is no longer in the available Ollama model list.
 
-### 2.3 SMR v2 Providers
+### 2.3 SMR Providers
 
 | Provider | Implementation | Streaming | Status |
 |----------|---------------|-----------|--------|
@@ -95,10 +95,10 @@ The HOPE platform supports multiple LLM providers for medical text generation an
 | Location | Provider Names |
 |----------|---------------|
 | `packages/types/src/llm.ts` | `'ollama' \| 'azure-openai' \| 'lm-studio'` |
-| SMR v2 registry | `'ollama'`, `'azure'`, `'bedrock'`, `'openai_compat'` |
+| SMR registry | `'ollama'`, `'azure'`, `'bedrock'`, `'openai_compat'` |
 | Seed data tags | `'ollama'`, `'azure-openai'`, `'bedrock'`, `'openai-compat'` |
 
-**Issue:** `lm-studio` exists as a type but maps to `openai_compat` in SMR v2. The seed data uses `openai-compat` tag. This needs alignment.
+**Issue:** `lm-studio` exists as a type but maps to `openai_compat` in SMR. The seed data uses `openai-compat` tag. This needs alignment.
 
 ---
 
@@ -181,7 +181,7 @@ export type LLMProvider = 'ollama' | 'azure-openai' | 'lm-studio' | 'openai-comp
 
 ---
 
-### Phase 2: SMR v2 Provider Verification (Integration Tests)
+### Phase 2: SMR Provider Verification (Integration Tests)
 
 #### Task 2.1: Verify Ollama Provider with `granite4:latest`
 
@@ -301,10 +301,10 @@ Test full streaming flow:
 
 | Test File | What It Tests |
 |-----------|--------------|
-| `apps/smr/src/smr_v2/tests/e2e/test_ollama_e2e.py` | Ollama with `granite4:latest` |
-| `apps/smr/src/smr_v2/tests/e2e/test_lm_studio_e2e.py` | LM Studio with `qwen3.5-0.8b` |
-| `apps/smr/src/smr_v2/tests/e2e/test_azure_openai_e2e.py` | Azure with `gpt-4o-mini` |
-| `apps/smr/src/smr_v2/tests/e2e/test_cross_provider_streaming.py` | All providers streaming comparison |
+| `apps/smr/src/smr/tests/e2e/test_ollama_e2e.py` | Ollama with `granite4:latest` |
+| `apps/smr/src/smr/tests/e2e/test_lm_studio_e2e.py` | LM Studio with `qwen3.5-0.8b` |
+| `apps/smr/src/smr/tests/e2e/test_azure_openai_e2e.py` | Azure with `gpt-4o-mini` |
+| `apps/smr/src/smr/tests/e2e/test_cross_provider_streaming.py` | All providers streaming comparison |
 
 ### API Gateway Tests
 
@@ -327,7 +327,7 @@ Phase 1: Seed Data (TDD)
   ├── 1.6 Update LLMProvider type
   └── 1.7 Verify tests pass (GREEN)
 
-Phase 2: SMR v2 Provider Verification
+Phase 2: SMR Provider Verification
   ├── 2.1 Ollama integration test
   ├── 2.2 LM Studio integration test
   ├── 2.3 Azure OpenAI integration test
@@ -358,21 +358,21 @@ Phase 4: Review & Refactor
 ### Environment Variables
 
 ```bash
-# SMR v2 — Ollama
-SMR_V2_OLLAMA_ENABLED=true
-SMR_V2_OLLAMA_BASE_URL=http://localhost:11434
-SMR_V2_OLLAMA_DEFAULT_MODEL=granite4:latest
+# SMR — Ollama
+SMR_OLLAMA_ENABLED=true
+SMR_OLLAMA_BASE_URL=http://localhost:11434
+SMR_OLLAMA_DEFAULT_MODEL=granite4:latest
 
-# SMR v2 — LM Studio (via OpenAI-compat)
-SMR_V2_OPENAI_COMPAT_ENABLED=true
-SMR_V2_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1
-SMR_V2_OPENAI_COMPAT_DEFAULT_MODEL=qwen3.5-0.8b
+# SMR — LM Studio (via OpenAI-compat)
+SMR_OPENAI_COMPAT_ENABLED=true
+SMR_OPENAI_COMPAT_BASE_URL=http://localhost:1234/v1
+SMR_OPENAI_COMPAT_DEFAULT_MODEL=qwen3.5-0.8b
 
-# SMR v2 — Azure OpenAI
-SMR_V2_AZURE_ENABLED=true
-SMR_V2_AZURE_ENDPOINT=<from .env>
-SMR_V2_AZURE_API_KEY=<from .env>
-SMR_V2_AZURE_DEFAULT_MODEL=gpt-4o-mini
+# SMR — Azure OpenAI
+SMR_AZURE_ENABLED=true
+SMR_AZURE_ENDPOINT=<from .env>
+SMR_AZURE_API_KEY=<from .env>
+SMR_AZURE_DEFAULT_MODEL=gpt-4o-mini
 ```
 
 ---
@@ -499,8 +499,8 @@ Ollama is now an optional, lower-priority engine. This supersedes the original
 Task 1.5 decision ("keep `default-smr-provider` as `ollama`").
 
 Files modified:
-- `apps/smr/src/smr_v2/models/requests.py` — `GenerateRequest.provider` default `ollama` → `lm-studio`
-- `apps/smr/src/smr_v2/main.py` — LM Studio registered before Ollama
+- `apps/smr/src/smr/models/requests.py` — `GenerateRequest.provider` default `ollama` → `lm-studio`
+- `apps/smr/src/smr/main.py` — LM Studio registered before Ollama
 - `packages/database/src/prisma/db_main/seed/11-global-setting.ts` — `default-smr-provider` → `lm-studio`, `default-smr-model` → `lmstudio-community/gemma-4-E4B-it-QAT-GGUF`, `SMR_PROVIDER_NAMES`/catalog reordered (LM Studio first), added `gemma-4-E4B-it-QAT-GGUF` and `gemma-4-12b-qat` to the LM Studio catalog
 - `packages/applications/src/services/tenant/tenant.service.ts` — fallback provider `ollama` → `lm-studio`
 - `.env.dev` — LM Studio enabled by default, Ollama disabled

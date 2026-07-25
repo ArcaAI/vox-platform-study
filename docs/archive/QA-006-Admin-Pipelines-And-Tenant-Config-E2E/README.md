@@ -28,8 +28,8 @@
 |-----------|-----------|--------|
 | API Gateway (NestJS) | `http://localhost:8868/api/v1` | Running |
 | Vite Example App | `http://localhost:5174` | Running |
-| STT v2 Service | `http://localhost:8861` | Running |
-| SMR v2 Service | `http://localhost:8862` | Running |
+| STT Service | `http://localhost:8861` | Running |
+| SMR Service | `http://localhost:8862` | Running |
 | NLP Service | `http://localhost:8864` | Running |
 | Login Credentials | `super_admin` / `password123` | Verified |
 
@@ -603,7 +603,7 @@ const handleToggleStatus = async (tenant: Tenant) => {
 |------|-------|
 | `src/modules/audit-log/audit-log.controller.ts` | Verify RBAC permissions for super_admin |
 | `src/modules/pstudio/pstudio.controller.ts` | No changes needed (endpoint works) |
-| `src/modules/stt-v2/pipeline.controller.ts` | No changes needed (endpoints work) |
+| `src/modules/stt/pipeline.controller.ts` | No changes needed (endpoints work) |
 | `src/modules/tenant/tenant.controller.ts` | No changes needed (validation works correctly) |
 | `src/modules/global-settings/global-settings.controller.ts` | No changes needed (full CRUD exists) |
 

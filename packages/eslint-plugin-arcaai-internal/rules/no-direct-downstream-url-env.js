@@ -7,7 +7,8 @@
  * (which loads-and-validates env once at bootstrap).
  *
  *   const url = process.env.SMR_URL || 'http://localhost:8862';   // ERROR
- *   const url = process.env['STT_V2_URL'];                         // ERROR
+ *   const url = process.env['STT_URL'];                            // ERROR
+ *   const url = process.env['STT_V2_URL'];                         // ERROR (dual-read window)
  *   const url = this.configService.getConfigValue('SMR_URL');     // OK
  *
  * The rule is a tight denylist on the known downstream URL keys —
@@ -21,6 +22,7 @@
 const BANNED_KEYS = new Set([
   'SMR_URL',
   'SMR_SERVICE_URL',
+  'STT_URL',
   'STT_V2_URL',
   'NLP_URL',
   'GUARDRAIL_URL',

@@ -492,11 +492,11 @@ interface ProxyControllerConfig {
 
 ---
 
-### STT v2 Controllers (Audio)
+### STT Controllers (Audio)
 
-> STT v1 (`SttController`, `SttGateway`) has been removed. All transcription is handled via STT v2.
+> STT v1 (`SttController`, `SttGateway`) has been removed. All transcription is handled via STT.
 
-**Location**: `src/modules/stt-v2/`
+**Location**: `src/modules/stt/`
 
 | Controller | Route | Purpose |
 |---|---|---|
@@ -714,15 +714,15 @@ interface PaginatedQuery {
 
 ## WebSocket Gateways
 
-> **Note**: The STT v1 gateway (`SttGateway` at `/stt`) has been removed. Use STT v2 gateway instead.
+> **Note**: The STT v1 gateway (`SttGateway` at `/stt`) has been removed. Use STT gateway instead.
 
-### SttV2Gateway
+### SttGateway
 
-**Location**: `src/modules/stt-v2/sttV2.gateway.ts`
+**Location**: `src/modules/stt/sttV2.gateway.ts`
 
-Provides real-time STT v2 streaming.
+Provides real-time STT streaming.
 
-**Namespace**: `/stt-v2`
+**Namespace**: `/stt`
 
 ---
 

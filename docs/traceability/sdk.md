@@ -20,9 +20,9 @@ tenancy stays authoritative; the SDK's per-tenant namespacing is defense-in-dept
 | Field | Value |
 |---|---|
 | App / service | `packages/agentic-sdk-v2` (`@arcaai/vox`) — client-side |
-| Key modules | `packages/agentic-sdk-v2/src` (`core/` provider + store + `AgenticClient`/`SttV2WebSocketClient`/`SSEClient`, ~45 `hooks/`, `store/agenticStore.ts`); entry points `@arcaai/vox` (full), `@arcaai/vox/core` (no audio/ML), `@arcaai/vox/plugins` (audio hooks + `PluginManager`), `@arcaai/vox/plugins/med-ner` (optional med-ner isolation) |
+| Key modules | `packages/agentic-sdk-v2/src` (`core/` provider + store + `AgenticClient`/`SttWebSocketClient`/`SSEClient`, ~45 `hooks/`, `store/agenticStore.ts`); entry points `@arcaai/vox` (full), `@arcaai/vox/core` (no audio/ML), `@arcaai/vox/plugins` (audio hooks + `PluginManager`), `@arcaai/vox/plugins/med-ner` (optional med-ner isolation) |
 | Prisma models | — (client-side; server owns persistence) |
-| Consumes (gateway surfaces) | consultation `session.open` → `POST /consultations/open` ([`consultation.md`](./consultation.md)); live STT WS `/ws/stt-v2/stream` + stream ticket ([`transcription.md`](./transcription.md)); summary + live-documentation SSE ([`summarization.md`](./summarization.md), [`consultation.md`](./consultation.md)); auth refresh / stream-ticket ([`auth-identity.md`](./auth-identity.md)) |
+| Consumes (gateway surfaces) | consultation `session.open` → `POST /consultations/open` ([`consultation.md`](./consultation.md)); live STT WS `/ws/stt/stream` + stream ticket ([`transcription.md`](./transcription.md)); summary + live-documentation SSE ([`summarization.md`](./summarization.md), [`consultation.md`](./consultation.md)); auth refresh / stream-ticket ([`auth-identity.md`](./auth-identity.md)) |
 | Tests | pkg unit: `packages/agentic-sdk-v2/src/**/__tests__/*` (hooks, store, clients — Vitest + `renderHook`, mocked `AudioContext`/`MediaStream`/workers); e2e: `tests/e2e/sdk/sdk-api.e2e.spec.ts` (SDK API against the live gateway) + package-local Playwright (`packages/agentic-sdk-v2/e2e/playwright.config.ts`, `pnpm --filter @arcaai/vox test:e2e`) |
 
 ### SDK2 — Audio & ML packages (capture / filter / VAD / STT / NER / pipeline)

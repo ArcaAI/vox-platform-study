@@ -171,7 +171,7 @@ def main():
         print(f"✓ Collection '{COLLECTION_NAME}' created successfully")
 
         # Create payload indexes for multi-tenant filtering
-        # These match the filters used by stt_v2.core.vectorstore.speaker_store
+        # These match the filters used by stt.core.vectorstore.speaker_store
         for field in ("tenant_id", "speaker_id", "consultation_id"):
             client.create_payload_index(
                 collection_name=COLLECTION_NAME,

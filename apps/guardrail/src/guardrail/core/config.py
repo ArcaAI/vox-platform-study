@@ -246,7 +246,7 @@ class DatabaseConfig(BaseSettings):
     When ``db_config_enabled`` is true (the default) the service
     resolves the admin-chosen guardrail provider/model **per tenant** at request
     time by reading ``core."AiTaskDefault"`` ⋈ ``core."AiModel"`` directly
-    (SQLAlchemy + asyncpg, mirroring STT-v2), with a short TTL cache. When false
+    (SQLAlchemy + asyncpg, mirroring STT), with a short TTL cache. When false
     the service uses only the env-selected engine (``GUARDRAIL_V2_PROVIDER``).
     """
 
@@ -276,7 +276,7 @@ class DatabaseConfig(BaseSettings):
     def _normalize_database_url(cls, v: str) -> str:
         """Normalize Prisma-style postgres:// URLs to asyncpg form.
 
-        Mirrors STT-v2: convert ``postgres://``/``postgresql://`` to
+        Mirrors STT: convert ``postgres://``/``postgresql://`` to
         ``postgresql+asyncpg://`` and strip the Prisma-only ``?schema=`` param
         that asyncpg rejects.
         """

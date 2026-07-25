@@ -1,7 +1,7 @@
 /**
  * StreamingSessionManager Unit Tests — ASR-R-02
  *
- * TDD tests for the STT-V2 streaming session lifecycle manager.
+ * TDD tests for the STT streaming session lifecycle manager.
  * @vitest-environment jsdom
  */
 
@@ -9,11 +9,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StreamingSessionManager } from '../StreamingSessionManager';
 import { createMockLogger, mockFetch, createMockResponse, createMockErrorResponse } from '../../__tests__/setup';
 import { AgenticClient } from '../AgenticClient';
-import { STT_V2_ENDPOINTS } from '../constants';
+import { STT_ENDPOINTS } from '../constants';
 import type {
   CreateStreamingSessionRequest,
   StreamingSessionResponse,
-} from '../../types/stt-v2';
+} from '../../types/stt';
 
 describe('StreamingSessionManager', () => {
   let manager: StreamingSessionManager;
@@ -65,7 +65,7 @@ describe('StreamingSessionManager', () => {
       status: 'active',
       maxConcurrent: 5,
       currentActive: 1,
-      wsUrl: '/ws/stt-v2/stream',
+      wsUrl: '/ws/stt/stream',
     };
 
     it('should create a streaming session and return the response', async () => {
@@ -82,7 +82,7 @@ describe('StreamingSessionManager', () => {
 
       expect(result).toEqual(mockSessionResponse);
       expect(result.sessionId).toBe('session-abc-123');
-      expect(result.wsUrl).toBe('/ws/stt-v2/stream');
+      expect(result.wsUrl).toBe('/ws/stt/stream');
     });
 
     it('should store the sessionId after creation', async () => {
@@ -108,7 +108,7 @@ describe('StreamingSessionManager', () => {
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const callUrl = mockFetch.mock.calls[0][0] as string;
-      expect(callUrl).toContain(STT_V2_ENDPOINTS.CREATE_SESSION);
+      expect(callUrl).toContain(STT_ENDPOINTS.CREATE_SESSION);
     });
 
     it('should send the full request body', async () => {
@@ -216,7 +216,7 @@ describe('StreamingSessionManager', () => {
       status: 'active',
       maxConcurrent: 5,
       currentActive: 1,
-      wsUrl: '/ws/stt-v2/stream',
+      wsUrl: '/ws/stt/stream',
     };
 
     it('should build the full WebSocket URL with sessionId (no token in URL)', async () => {
@@ -225,7 +225,7 @@ describe('StreamingSessionManager', () => {
 
       const wsUrl = manager.getWebSocketUrl('my-jwt-token');
 
-      expect(wsUrl).toContain('/ws/stt-v2/stream');
+      expect(wsUrl).toContain('/ws/stt/stream');
       expect(wsUrl).toContain('sessionId=session-ws-test');
       expect(wsUrl).not.toContain('token=');
     });
@@ -241,7 +241,7 @@ describe('StreamingSessionManager', () => {
 
       const wsUrl = manager.getWebSocketUrl('token');
 
-      expect(wsUrl).toMatch(/^wss:\/\/api\.example\.com\/ws\/stt-v2\/stream/);
+      expect(wsUrl).toMatch(/^wss:\/\/api\.example\.com\/ws\/stt\/stream/);
     });
 
     it('should convert http:// base to ws:// in WebSocket URL', async () => {
@@ -255,7 +255,7 @@ describe('StreamingSessionManager', () => {
 
       const wsUrl = httpManager.getWebSocketUrl('tok');
 
-      expect(wsUrl).toMatch(/^ws:\/\/localhost:8868\/ws\/stt-v2\/stream/);
+      expect(wsUrl).toMatch(/^ws:\/\/localhost:8868\/ws\/stt\/stream/);
       expect(wsUrl).not.toContain('/api/v1');
       expect(wsUrl).not.toContain('wss:');
     });
@@ -277,7 +277,7 @@ describe('StreamingSessionManager', () => {
 
       const wsUrl = bffManager.getWebSocketUrl();
 
-      expect(wsUrl).toMatch(/^ws:\/\/localhost:8868\/ws\/stt-v2\/stream/);
+      expect(wsUrl).toMatch(/^ws:\/\/localhost:8868\/ws\/stt\/stream/);
       expect(wsUrl).toContain('sessionId=session-ws-test');
       expect(wsUrl).not.toContain('5176');
     });
@@ -290,7 +290,7 @@ describe('StreamingSessionManager', () => {
       const httpsManager = new StreamingSessionManager(httpsClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
       await httpsManager.createSession({ pipelineId: 'default' });
-      expect(httpsManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt-v2\/stream/);
+      expect(httpsManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt\/stream/);
 
       const wssClient = new AgenticClient(
         { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'wss://gateway.example.com' },
@@ -299,10 +299,10 @@ describe('StreamingSessionManager', () => {
       const wssManager = new StreamingSessionManager(wssClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
       await wssManager.createSession({ pipelineId: 'default' });
-      expect(wssManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt-v2\/stream/);
+      expect(wssManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt\/stream/);
     });
 
-    it('should fall back to STT_V2_ENDPOINTS.WS_STREAM when server returns empty wsUrl', async () => {
+    it('should fall back to STT_ENDPOINTS.WS_STREAM when server returns empty wsUrl', async () => {
       const emptyWsUrlResponse: StreamingSessionResponse = {
         ...mockSessionResponse,
         wsUrl: '',
@@ -312,7 +312,7 @@ describe('StreamingSessionManager', () => {
 
       const wsUrl = manager.getWebSocketUrl('token');
 
-      expect(wsUrl).toContain(STT_V2_ENDPOINTS.WS_STREAM);
+      expect(wsUrl).toContain(STT_ENDPOINTS.WS_STREAM);
     });
 
     it('should not include token in URL even with special characters', async () => {
@@ -390,7 +390,7 @@ describe('StreamingSessionManager', () => {
       status: 'active',
       maxConcurrent: 5,
       currentActive: 1,
-      wsUrl: '/ws/stt-v2/stream',
+      wsUrl: '/ws/stt/stream',
     };
 
     it('should reset sessionId and status after closing', async () => {
@@ -448,7 +448,7 @@ describe('StreamingSessionManager', () => {
         status: 'active',
         maxConcurrent: 5,
         currentActive: 1,
-        wsUrl: '/ws/stt-v2/stream',
+        wsUrl: '/ws/stt/stream',
       };
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
@@ -466,7 +466,7 @@ describe('StreamingSessionManager', () => {
         status: 'active',
         maxConcurrent: 5,
         currentActive: 1,
-        wsUrl: '/ws/stt-v2/stream',
+        wsUrl: '/ws/stt/stream',
       };
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
@@ -509,7 +509,7 @@ describe('StreamingSessionManager', () => {
         status: 'active',
         maxConcurrent: 10,
         currentActive: 3,
-        wsUrl: '/ws/stt-v2/stream',
+        wsUrl: '/ws/stt/stream',
       };
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
 
@@ -542,7 +542,7 @@ describe('StreamingSessionManager', () => {
         status: 'active',
         maxConcurrent: 10,
         currentActive: 1,
-        wsUrl: '/ws/stt-v2/stream',
+        wsUrl: '/ws/stt/stream',
         voiceProfileSeeded: true,
       };
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
@@ -562,7 +562,7 @@ describe('StreamingSessionManager', () => {
       const sessionResponse: StreamingSessionResponse = {
         sessionId: 'session-cleanup',
         status: 'active',
-        wsUrl: '/ws/stt-v2/stream',
+        wsUrl: '/ws/stt/stream',
         maxConcurrent: 5,
         currentActive: 1,
       };
@@ -590,7 +590,7 @@ describe('StreamingSessionManager', () => {
       const sessionResponse: StreamingSessionResponse = {
         sessionId: 'session-fail',
         status: 'active',
-        wsUrl: '/ws/stt-v2/stream',
+        wsUrl: '/ws/stt/stream',
         maxConcurrent: 5,
         currentActive: 1,
       };

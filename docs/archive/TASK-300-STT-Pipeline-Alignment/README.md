@@ -1,4 +1,4 @@
-# TASK-300: Align STT-v2 Pipelines to Canonical Order
+# TASK-300: Align STT Pipelines to Canonical Order
 
 | Field | Value |
 |-------|-------|
@@ -14,7 +14,7 @@
 
 ### Description
 
-Both STT-v2 batch and streaming transcription pipelines deviate from the canonical pipeline order. This task aligns them strictly to the following sequence, fixing all identified gaps. Every code block must be annotated with a comment indicating its pipeline step.
+Both STT batch and streaming transcription pipelines deviate from the canonical pipeline order. This task aligns them strictly to the following sequence, fixing all identified gaps. Every code block must be annotated with a comment indicating its pipeline step.
 
 ### Target Pipeline Order
 
@@ -106,7 +106,7 @@ Pipeline ordering consistency ensures:
 
 #### A1 -- `SpeakerIdentifier` interface extension
 
-**File**: `apps/stt-v2/src/stt_v2/diarization/speaker_identifier.py` (MODIFY)
+**File**: `apps/stt/src/stt/diarization/speaker_identifier.py` (MODIFY)
 
 Add two new methods:
 
@@ -133,7 +133,7 @@ Add two new methods:
 
 #### A2 -- New `StreamingDenoiser` class
 
-**File**: `apps/stt-v2/src/stt_v2/streaming/denoiser.py` (CREATE)
+**File**: `apps/stt/src/stt/streaming/denoiser.py` (CREATE)
 
 Persistent RNNoise session with 48kHz ring buffer for frame-by-frame streaming.
 
@@ -171,7 +171,7 @@ Latency analysis:
 
 #### B1 -- Separate embedding from diarization in `batch_service.py`
 
-**File**: `apps/stt-v2/src/stt_v2/transcription/batch_service.py` (MODIFY)
+**File**: `apps/stt/src/stt/transcription/batch_service.py` (MODIFY)
 
 Current order in `transcribe()`:
 ```
@@ -221,8 +221,8 @@ Changes:
 
 #### B2 -- Move MinIO storage before postprocessor
 
-**File**: `apps/stt-v2/src/stt_v2/transcription/batch_service.py` (MODIFY)
-**File**: `apps/stt-v2/src/stt_v2/transcription/workers/transcribe_file.py` (MODIFY)
+**File**: `apps/stt/src/stt/transcription/batch_service.py` (MODIFY)
+**File**: `apps/stt/src/stt/transcription/workers/transcribe_file.py` (MODIFY)
 
 The key insight: `batch_service.transcribe()` must return an intermediate result that allows the worker to upload BEFORE postprocessing.
 
@@ -258,7 +258,7 @@ In `transcribe_file.py`:
 
 #### S1 -- Add normalize + resample to `StreamingPreprocessor`
 
-**File**: `apps/stt-v2/src/stt_v2/streaming/preprocessor.py` (MODIFY)
+**File**: `apps/stt/src/stt/streaming/preprocessor.py` (MODIFY)
 
 Add new `__init__` parameters:
 - `target_sample_rate: int = 16000` -- from `PreprocessingConfig.target_sample_rate`
@@ -337,7 +337,7 @@ preprocessor = StreamingPreprocessor(
 
 #### S2 -- Wire StreamingDenoiser into preprocessor
 
-**File**: `apps/stt-v2/src/stt_v2/streaming/session_manager.py` (MODIFY)
+**File**: `apps/stt/src/stt/streaming/session_manager.py` (MODIFY)
 
 In `create_session()`, after loading VAD:
 ```python
@@ -348,7 +348,7 @@ denoise_enabled = (
     or self._profile.denoise_enabled_default
 )
 if denoise_enabled:
-    from stt_v2.streaming.denoiser import StreamingDenoiser
+    from stt.streaming.denoiser import StreamingDenoiser
     strength = (
         pipeline_config.preprocessing.denoise.strength
         if pipeline_config
@@ -371,8 +371,8 @@ if denoise_enabled:
 
 #### S3 -- Separate embedding before ASR in streaming inference
 
-**File**: `apps/stt-v2/src/stt_v2/streaming/preprocessor.py` (MODIFY) -- add `embedding` field to `AudioUtterance`
-**File**: `apps/stt-v2/src/stt_v2/streaming/inference.py` (MODIFY) -- restructure `process_utterance()`
+**File**: `apps/stt/src/stt/streaming/preprocessor.py` (MODIFY) -- add `embedding` field to `AudioUtterance`
+**File**: `apps/stt/src/stt/streaming/inference.py` (MODIFY) -- restructure `process_utterance()`
 
 Add to `AudioUtterance`:
 ```python
@@ -431,9 +431,9 @@ Remove old `_identify_speaker()` method.
 
 #### S4 -- Upload processed audio via snapshot loop
 
-**File**: `apps/stt-v2/src/stt_v2/streaming/session.py` (MODIFY)
-**File**: `apps/stt-v2/src/stt_v2/streaming/preprocessor.py` (MODIFY)
-**File**: `apps/stt-v2/src/stt_v2/streaming/session_manager.py` (MODIFY)
+**File**: `apps/stt/src/stt/streaming/session.py` (MODIFY)
+**File**: `apps/stt/src/stt/streaming/preprocessor.py` (MODIFY)
+**File**: `apps/stt/src/stt/streaming/session_manager.py` (MODIFY)
 
 Add to `StreamSession`:
 ```python
@@ -491,8 +491,8 @@ In `_finalize_session`:
 
 #### S5 -- Add punctuation restoration to streaming
 
-**File**: `apps/stt-v2/src/stt_v2/streaming/inference.py` (MODIFY)
-**File**: `apps/stt-v2/src/stt_v2/streaming/session_manager.py` (MODIFY)
+**File**: `apps/stt/src/stt/streaming/inference.py` (MODIFY)
+**File**: `apps/stt/src/stt/streaming/session_manager.py` (MODIFY)
 
 Add `punctuation_config` parameter to `StreamingInferenceWorker.__init__()`:
 ```python
@@ -552,20 +552,20 @@ inference_worker = StreamingInferenceWorker(
 
 | File | Operation | Gap(s) | Description |
 |------|-----------|--------|-------------|
-| `apps/stt-v2/src/stt_v2/diarization/speaker_identifier.py` | MODIFY | A1 (B1, S3) | Add `diarize_with_embeddings()`, `identify_with_embedding()`; refactor `diarize_segments()` |
-| `apps/stt-v2/src/stt_v2/transcription/batch_service.py` | MODIFY | B1, B2 | Add Step 2b (embedding extraction), reorder Step 5/6 (MinIO before postprocess) |
-| `apps/stt-v2/src/stt_v2/transcription/workers/transcribe_file.py` | MODIFY | B2 | Restructure upload timing |
-| `apps/stt-v2/src/stt_v2/transcription/dto.py` | MODIFY | B1 | Add `embedding_seconds` to `TimingMetrics` |
-| `apps/stt-v2/src/stt_v2/streaming/preprocessor.py` | MODIFY | S1, S2, S4 | Add normalize, resample, denoiser integration, processed buffer |
-| `apps/stt-v2/src/stt_v2/streaming/inference.py` | MODIFY | S3, S5 | Restructure `process_utterance()` order; add embedding + punctuation |
-| `apps/stt-v2/src/stt_v2/streaming/session.py` | MODIFY | S4 | Add `processed_audio_buffer`, `_denoise_active` |
-| `apps/stt-v2/src/stt_v2/streaming/session_manager.py` | MODIFY | S2, S4, S5 | Wire denoiser, processed audio buffer, punctuation config |
+| `apps/stt/src/stt/diarization/speaker_identifier.py` | MODIFY | A1 (B1, S3) | Add `diarize_with_embeddings()`, `identify_with_embedding()`; refactor `diarize_segments()` |
+| `apps/stt/src/stt/transcription/batch_service.py` | MODIFY | B1, B2 | Add Step 2b (embedding extraction), reorder Step 5/6 (MinIO before postprocess) |
+| `apps/stt/src/stt/transcription/workers/transcribe_file.py` | MODIFY | B2 | Restructure upload timing |
+| `apps/stt/src/stt/transcription/dto.py` | MODIFY | B1 | Add `embedding_seconds` to `TimingMetrics` |
+| `apps/stt/src/stt/streaming/preprocessor.py` | MODIFY | S1, S2, S4 | Add normalize, resample, denoiser integration, processed buffer |
+| `apps/stt/src/stt/streaming/inference.py` | MODIFY | S3, S5 | Restructure `process_utterance()` order; add embedding + punctuation |
+| `apps/stt/src/stt/streaming/session.py` | MODIFY | S4 | Add `processed_audio_buffer`, `_denoise_active` |
+| `apps/stt/src/stt/streaming/session_manager.py` | MODIFY | S2, S4, S5 | Wire denoiser, processed audio buffer, punctuation config |
 
 ### Files to Create
 
 | File | Gap(s) | Description |
 |------|--------|-------------|
-| `apps/stt-v2/src/stt_v2/streaming/denoiser.py` | A2 (S2) | `StreamingDenoiser` -- persistent RNNoise session with 48kHz ring buffer |
+| `apps/stt/src/stt/streaming/denoiser.py` | A2 (S2) | `StreamingDenoiser` -- persistent RNNoise session with 48kHz ring buffer |
 
 ### New Test Files
 
@@ -586,10 +586,10 @@ inference_worker = StreamingInferenceWorker(
 
 | File | Reason |
 |------|--------|
-| `apps/stt-v2/src/stt_v2/transcription/preprocessing.py` | Reference implementation for RNNoise -- no changes |
-| `apps/stt-v2/src/stt_v2/diarization/embedding_service.py` | Already has `extract_from_samples()`, `extract_batch()` -- no changes |
-| `apps/stt-v2/src/stt_v2/pipeline/dto.py` | `PreprocessingConfig`, `PunctuationConfig` already defined -- no changes |
-| `apps/stt-v2/src/stt_v2/streaming/execution_profile.py` | `denoise_enabled_default` already exists -- no changes |
+| `apps/stt/src/stt/transcription/preprocessing.py` | Reference implementation for RNNoise -- no changes |
+| `apps/stt/src/stt/diarization/embedding_service.py` | Already has `extract_from_samples()`, `extract_batch()` -- no changes |
+| `apps/stt/src/stt/pipeline/dto.py` | `PreprocessingConfig`, `PunctuationConfig` already defined -- no changes |
+| `apps/stt/src/stt/streaming/execution_profile.py` | `denoise_enabled_default` already exists -- no changes |
 
 ---
 
@@ -637,7 +637,7 @@ Per-phase verification gates:
 | S3 | `pytest tests/unit/streaming/test_inference_embedding_separation.py` passes. Existing `test_streaming_inference.py` still passes. |
 | S4 | `pytest tests/unit/streaming/test_preprocessor_processed_buffer.py && pytest tests/unit/streaming/test_snapshot_processed_audio.py` passes. |
 | S5 | `pytest tests/unit/streaming/test_inference_punctuation.py` passes. |
-| Final | Full test suite: `cd apps/stt-v2 && python -m pytest tests/` passes. |
+| Final | Full test suite: `cd apps/stt && python -m pytest tests/` passes. |
 
 ---
 

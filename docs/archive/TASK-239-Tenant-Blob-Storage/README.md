@@ -158,7 +158,7 @@ Implement tenant-scoped blob storage management to replace the current shared-bu
 - [ ] Implement MinIO policy enforcement per-tenant (bucket-level IAM)
 - [ ] Update existing `StorageController` file upload to set `bucketId` on `Media` records
 - [ ] Add presigned URL generation scoped to tenant buckets
-- [ ] Update STT-V2 Python service to use tenant-scoped bucket names
+- [ ] Update STT Python service to use tenant-scoped bucket names
 - [ ] E2E tests for full tenant lifecycle (create tenant -> buckets provisioned -> upload file -> verify isolation)
 
 ---

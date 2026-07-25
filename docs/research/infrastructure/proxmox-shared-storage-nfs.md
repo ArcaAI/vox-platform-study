@@ -389,8 +389,8 @@ The NFS mount at `/mnt/shared` appears as a local directory to Docker. No specia
 
 ```yaml
 services:
-  stt-v2:
-    image: arcaai/stt-v2:latest
+  stt:
+    image: arcaai/stt:latest
     volumes:
       - /mnt/shared/models:/app/models:ro
       - /mnt/shared/media:/app/input
@@ -409,8 +409,8 @@ If you prefer Docker-managed NFS volumes (useful for Swarm or when you want Dock
 
 ```yaml
 services:
-  stt-v2:
-    image: arcaai/stt-v2:latest
+  stt:
+    image: arcaai/stt:latest
     volumes:
       - nfs-shared:/mnt/shared
 

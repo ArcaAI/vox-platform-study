@@ -115,21 +115,21 @@ describe('batch + jobs client', () => {
 
 describe('buildStreamWsUrl', () => {
     it('derives ws:// from an http gateway origin and carries sessionId, ticket and tenantId', () => {
-        const url = buildStreamWsUrl('http://localhost:8868', '/ws/stt-v2/stream', {
+        const url = buildStreamWsUrl('http://localhost:8868', '/ws/stt/stream', {
             sessionId: 's-9d42',
             ticket: 'tkt-abc',
             tenantId: 'tnt-1',
         });
-        expect(url).toBe('ws://localhost:8868/ws/stt-v2/stream?sessionId=s-9d42&ticket=tkt-abc&tenantId=tnt-1');
+        expect(url).toBe('ws://localhost:8868/ws/stt/stream?sessionId=s-9d42&ticket=tkt-abc&tenantId=tnt-1');
     });
 
     it('derives wss:// from an https origin and encodes params round-trippably', () => {
-        const url = buildStreamWsUrl('https://api.hope.example', '/ws/stt-v2/stream', {
+        const url = buildStreamWsUrl('https://api.hope.example', '/ws/stt/stream', {
             sessionId: 's 1',
             ticket: 't+k',
             tenantId: 'tnt-1',
         });
-        expect(url.startsWith('wss://api.hope.example/ws/stt-v2/stream?')).toBe(true);
+        expect(url.startsWith('wss://api.hope.example/ws/stt/stream?')).toBe(true);
         const parsed = new URL(url);
         expect(parsed.searchParams.get('sessionId')).toBe('s 1');
         expect(parsed.searchParams.get('ticket')).toBe('t+k');
@@ -139,9 +139,9 @@ describe('buildStreamWsUrl', () => {
     it('defaults to the publicEnv gateway host contract used by the hook', () => {
         // publicEnv.apiHost is the documented WS origin — assert the builder
         // accepts it verbatim (http(s) origin, no trailing slash handling bugs).
-        const url = buildStreamWsUrl(publicEnv.apiHost, '/ws/stt-v2/stream', { sessionId: 's-1', ticket: 't-1', tenantId: 'tnt-1' });
+        const url = buildStreamWsUrl(publicEnv.apiHost, '/ws/stt/stream', { sessionId: 's-1', ticket: 't-1', tenantId: 'tnt-1' });
         const parsed = new URL(url);
-        expect(parsed.pathname).toBe('/ws/stt-v2/stream');
+        expect(parsed.pathname).toBe('/ws/stt/stream');
         expect(['ws:', 'wss:']).toContain(parsed.protocol);
     });
 });

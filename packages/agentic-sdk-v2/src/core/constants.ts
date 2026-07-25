@@ -356,13 +356,13 @@ export const MY_TENANT_ENDPOINTS = {
 } as const;
 
 // =============================================================================
-// STT-V2 Endpoints (ASR-R-01)
+// STT Endpoints (ASR-R-01)
 // =============================================================================
 
 /**
- * STT-V2 endpoints
+ * STT endpoints
  *
- * Complete endpoint set for the stt-v2 module:
+ * Complete endpoint set for the stt module:
  * - Streaming session management (create session + WebSocket)
  * - Transcription job lifecycle (create, list, status, cancel, retry)
  * - File upload transcription with SSE
@@ -370,19 +370,19 @@ export const MY_TENANT_ENDPOINTS = {
  * REST endpoints are relative to the API base URL.
  * WebSocket path (WS_STREAM) is absolute from host root.
  */
-export const STT_V2_ENDPOINTS = {
+export const STT_ENDPOINTS = {
   /** Create a streaming session — returns sessionId + wsUrl */
   CREATE_SESSION: '/audio/transcription-jobs/stream/session',
   /** Close/delete a streaming session */
   CLOSE_SESSION: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}`,
   /**
    * Refresh the one-shot stream ticket for a live session.
-   * SDK calls this from `SttV2WebSocketClient.attemptReconnect` because the
+   * SDK calls this from `SttWebSocketClient.attemptReconnect` because the
    * previous ticket is consumed by the gateway on the first WS open.
    */
   REFRESH_TICKET: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/refresh-ticket`,
   /** WebSocket path for real-time audio streaming (absolute, not API-prefixed) */
-  WS_STREAM: '/ws/stt-v2/stream',
+  WS_STREAM: '/ws/stt/stream',
   /** Create a generic transcription job */
   CREATE_JOB: '/audio/transcription-jobs',
   /** Create a batch transcription job (pre-recorded audio) */
@@ -833,7 +833,7 @@ export const ADMIN_CONSULTATION_ENDPOINTS = {
  * Admin transcription-job endpoints.
  *
  * Tenant-wide transcription-job supervision — class-level `@CanManage('Tenant')`.
- * Distinct from the owner-scoped end-user `STT_V2_ENDPOINTS.*` reads.
+ * Distinct from the owner-scoped end-user `STT_ENDPOINTS.*` reads.
  * Controller: `apps/api/src/modules/streaming/admin-transcription-job.controller.ts`
  * (`@Controller('admin/audio/transcription-jobs')`).
  */

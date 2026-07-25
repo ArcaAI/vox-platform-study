@@ -42,7 +42,7 @@
 
 `apps/harness` (Python/FastAPI) runs the bounded **`guides → generate → sensors → gate`** loop as a **Temporal
 durable workflow**; `apps/api` (NestJS) stays gateway + system-of-record (authZ, tenant/CLS, Postgres, WORM audit,
-consent, sign-off). Existing STT-v2 / NLP / SMR / Qdrant are reused **as tools** (ACI). See HLD §4.
+consent, sign-off). Existing STT / NLP / SMR / Qdrant are reused **as tools** (ACI). See HLD §4.
 
 **Temporal mapping**
 
@@ -132,7 +132,7 @@ provenance map in review UI; bounded regen. This is the **highest-leverage** ant
 | 1.2 | DB | `ContextItemType += SIGNED_NOTE`; `ContextItemVersion` attestation cols; `NamedEntity` ontology cols + transcript-span FK; `SummaryMeta` sensor/citation cols | `db_main/consultation.prisma` |
 | 1.3 | Domain | Extend entities/factories/mappers/repos; `NamedEntityRepository.findByContextItem` returns offsets+codes | `packages/domains/src/**` |
 | 1.4 | Services | **NER→prompt injection**: add `nerEntities` to `PromptAssemblyParams`; `buildVariables()` serialises entities; `SummaryProcessor` queries `NamedEntityRepository` before `assemble()` | `prompt-assembly.service.ts:119`, `summary.processor.ts:~119/133` |
-| 1.5 | Services | **Activate SOAP `json_schema`**: seed a SOAP `outputSchema` into a template's `metaData.promptConfig`; assert `responseFormat` flows (non-Ollama) | `prompt-assembly.service.ts:97`, `smr-v2-generate.ts:112`, prompt-template seed |
+| 1.5 | Services | **Activate SOAP `json_schema`**: seed a SOAP `outputSchema` into a template's `metaData.promptConfig`; assert `responseFormat` flows (non-Ollama) | `prompt-assembly.service.ts:97`, `smr-generate.ts:112`, prompt-template seed |
 | 1.6 | Python | `apps/harness` Temporal workflow + worker; Activities: `extract_entities`, `assemble_prompt`, `generate`, sensors; bounded regen loop (max N) | `apps/harness/workflow/**`, `activities/**` |
 | 1.7 | Python | **Computational sensors** (RED-first, deterministic fixtures): entity-faithfulness (note entity ↔ transcript NER span), coverage/omission (transcript entities absent from note), schema validity, citation-presence, numeric/dose cross-check | `apps/harness/sensors/computational/**` |
 | 1.8 | Python | Verdict aggregator (pass / bounded-regen / flag-claims); regen only the offending section | `apps/harness/loop/aggregator.py` |
@@ -365,7 +365,7 @@ WORM + drift-guard tests).
 | Item | Fix | Files |
 |---|---|---|
 | NLP doc-type classifier | replace `michellejieli/emotion_text_classifier` default with a real doc-type model | `apps/nlp/.../config.py:~90` |
-| STT-v2 speaker store | restore/replace deleted Qdrant vectorstore source (only `.pyc` remains) or document in-memory-only diarization | `apps/stt-v2/**` |
+| STT speaker store | restore/replace deleted Qdrant vectorstore source (only `.pyc` remains) or document in-memory-only diarization | `apps/stt/**` |
 
 ---
 

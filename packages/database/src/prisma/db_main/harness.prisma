@@ -473,6 +473,14 @@ model GateEditExemplar {
   modelName        String?
   promptTemplateId String?
 
+  // Human curation gate (TASK-553 F-24). Mining writes PENDING; a curator
+  // moves the row to APPROVED/REJECTED through the admin curation endpoint.
+  // The few-shot retriever only FILTERS on this when
+  // `agentic.fewshot.curationMode = 'enforce'` — default `off` keeps today's
+  // behaviour (every mined APPROVED_CLEAN row is eligible), so the column is
+  // inert until an operator turns the gate on.
+  curationStatus ExemplarCurationStatus @default(PENDING)
+
   // audit fields
   createdBy String?  @default("60000000-0000-0000-0000-000000000000")
   updatedBy String?
@@ -484,5 +492,7 @@ model GateEditExemplar {
   // Retrieval path: findTopForRetrieval filters (tenantId, qualitySignal
   // [, departmentId]) and orders by createdAt desc.
   @@index([tenantId, departmentId, qualitySignal, createdAt], name: "GateEditExemplar_retrieval_idx")
+  // Curation queue + enforce-mode retrieval filter.
+  @@index([tenantId, curationStatus], name: "GateEditExemplar_tenant_curationStatus_idx")
   @@schema("core")
 }

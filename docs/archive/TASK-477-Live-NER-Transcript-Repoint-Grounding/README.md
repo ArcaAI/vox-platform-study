@@ -78,7 +78,7 @@ This is a **live-surface** correctness/safety fix. It does not change the durabl
 ```bash
 pnpm --filter @arcaai/applications build test lint
 # score (measure-first) — same fixtures/pipeline as TASK-470
-pnpm py:stt-v2:test:integration   # test_streaming_quality_scorecard
+pnpm py:stt:test:integration   # test_streaming_quality_scorecard
 ```
 
 Adversarial review focus: (a) is NER genuinely re-pointed to the **transcript delta** (not still the note) — proven by a RED that failed on the old source? (b) are note-only/unsupported entities actually flagged/dropped (no hallucination-laundering), and are real transcript-supported entities retained (no recall loss)? (c) do highlight offsets index the surface the panel renders — no cross-string offset bug? (d) is the ephemeral posture intact (zero new `NamedEntity` writes, durable authority unchanged)? (e) keyterm/keyphrase recall held vs TASK-470? (f) coordinated with TASK-476 on the shared NER wiring — no double rewrite; zero diff outside the manifest.

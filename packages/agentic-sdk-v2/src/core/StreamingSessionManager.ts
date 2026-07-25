@@ -1,7 +1,7 @@
 /**
  * @arcaai/vox - StreamingSessionManager
  *
- * Manages STT-V2 streaming session lifecycle:
+ * Manages STT streaming session lifecycle:
  *   1. Create session (POST /audio/transcription-jobs/stream/session)
  *   2. Provide WebSocket URL for connection
  *   3. Close session and clean up
@@ -10,9 +10,9 @@
  */
 
 import type { AgenticClient } from './AgenticClient';
-import { STT_V2_ENDPOINTS } from './constants';
+import { STT_ENDPOINTS } from './constants';
 import type { ISDKLogger } from './logger';
-import type { CreateStreamingSessionRequest, StreamingSessionResponse } from '../types/stt-v2';
+import type { CreateStreamingSessionRequest, StreamingSessionResponse } from '../types/stt';
 
 /**
  * Session manager status values
@@ -37,7 +37,7 @@ export interface SessionManagerState {
 }
 
 /**
- * Manages the STT-V2 streaming session lifecycle.
+ * Manages the STT streaming session lifecycle.
  *
  * Usage:
  * ```typescript
@@ -51,7 +51,7 @@ export interface SessionManagerState {
  *
  * // Step 2: Get WebSocket URL
  * const wsUrl = session.getWebSocketUrl(jwtToken);
- * // → wss://api.example.com/ws/stt-v2/stream?sessionId=X&token=JWT
+ * // → wss://api.example.com/ws/stt/stream?sessionId=X&token=JWT
  *
  * // Step 3: Close when done
  * session.closeSession();
@@ -75,7 +75,7 @@ export class StreamingSessionManager {
   }
 
   /**
-   * Create a streaming session via the stt-v2 backend.
+   * Create a streaming session via the stt backend.
    * Stores the sessionId for subsequent WebSocket connection.
    */
   async createSession(request: CreateStreamingSessionRequest): Promise<StreamingSessionResponse> {
@@ -99,7 +99,7 @@ export class StreamingSessionManager {
     });
 
     try {
-      const response = await this.apiClient.post<StreamingSessionResponse>(STT_V2_ENDPOINTS.CREATE_SESSION, request);
+      const response = await this.apiClient.post<StreamingSessionResponse>(STT_ENDPOINTS.CREATE_SESSION, request);
 
       this.sessionId = response.sessionId;
       this.sessionResponse = response;
@@ -135,7 +135,7 @@ export class StreamingSessionManager {
   }
 
   /**
-   * Build the full WebSocket URL for connecting to the stt-v2 stream.
+   * Build the full WebSocket URL for connecting to the stt stream.
    * Returns null if no session has been created.
    *
    * SECURITY: The JWT token is NOT included in the URL to prevent exposure
@@ -157,7 +157,7 @@ export class StreamingSessionManager {
     const wsProtocol = parsed.protocol === 'https:' || parsed.protocol === 'wss:' ? 'wss:' : 'ws:';
     const wsOrigin = `${wsProtocol}//${parsed.host}`;
 
-    const wsPath = this.sessionResponse.wsUrl || STT_V2_ENDPOINTS.WS_STREAM;
+    const wsPath = this.sessionResponse.wsUrl || STT_ENDPOINTS.WS_STREAM;
     const params = new URLSearchParams({
       sessionId: this.sessionId,
     });
@@ -184,7 +184,7 @@ export class StreamingSessionManager {
 
   /**
    * Mint a fresh stream ticket for the current session.
-   * Used by `SttV2WebSocketClient.attemptReconnect` to swap the consumed
+   * Used by `SttWebSocketClient.attemptReconnect` to swap the consumed
    * ticket with a new one before reopening the WebSocket.
    *
    * @throws if no session exists or the backend returns an error.
@@ -203,7 +203,7 @@ export class StreamingSessionManager {
     const response = await this.apiClient.post<{
       ticket: string;
       ticketExpiresAt: number;
-    }>(STT_V2_ENDPOINTS.REFRESH_TICKET(this.sessionId), {});
+    }>(STT_ENDPOINTS.REFRESH_TICKET(this.sessionId), {});
 
     this.sessionResponse = {
       ...this.sessionResponse,
@@ -229,7 +229,7 @@ export class StreamingSessionManager {
 
     if (closedId) {
       try {
-        await this.apiClient.delete(STT_V2_ENDPOINTS.CLOSE_SESSION(closedId));
+        await this.apiClient.delete(STT_ENDPOINTS.CLOSE_SESSION(closedId));
       } catch (err) {
         this.logger?.warn('Failed to close session on server — local state still cleaned up', {
           operation: 'closeSession',

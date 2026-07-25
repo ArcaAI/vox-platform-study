@@ -337,7 +337,7 @@ Output format: Structured JSON or narrative per department default
 | # | Gap | Entity | Impact |
 |---|-----|--------|--------|
 | G1 | SMR v1 ↔ v2 endpoint mismatch | SMR Service | NestJS calls `/api/v1/summary/sync` but v2 only has `/api/v2/generate`. Summary generation may fail. |
-| G2 | No medical-domain logic in SMR v2 | SMR Service | V2 is a generic text generation wrapper; all medical summarization logic must exist elsewhere. |
+| G2 | No medical-domain logic in SMR | SMR Service | V2 is a generic text generation wrapper; all medical summarization logic must exist elsewhere. |
 | G3 | Prompt variable substitution not implemented | PromptTemplate | Templates declare `{conversation_language}`, `{pre_summary_text}` but no service performs substitution. |
 | G4 | No consultation lifecycle status | Consultation | Cannot track if a consultation is open, recording, summarized, or closed. |
 
@@ -345,7 +345,7 @@ Output format: Structured JSON or narrative per department default
 
 | # | Gap | Entity | Impact |
 |---|-----|--------|--------|
-| G5 | DNA style not applied in SMR v2 | DNA/SMR | `dnaStyleId` is passed but never injected into the prompt chain. |
+| G5 | DNA style not applied in SMR | DNA/SMR | `dnaStyleId` is passed but never injected into the prompt chain. |
 | G6 | No FK constraints on Department prompt IDs | Department | Invalid prompt references can be stored; no referential integrity. |
 | G7 | Pre-summary content not injected into final summary | Consultation | Pre-summaries are generated but the injection mechanism into the final summary prompt is missing. |
 | G8 | No doctor-department direct association | User/Department | Doctor's department is only inferred from Consultation.departmentId, not from User entity. |

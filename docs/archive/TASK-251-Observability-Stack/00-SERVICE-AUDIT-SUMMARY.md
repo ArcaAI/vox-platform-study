@@ -3,7 +3,7 @@
 | Field | Value |
 |-------|-------|
 | **Audit Date** | 2026-04-02 |
-| **Services Reviewed** | API Gateway, STT-v2, SMR, NLP, @arcaai/vox SDK |
+| **Services Reviewed** | API Gateway, STT, SMR, NLP, @arcaai/vox SDK |
 | **Purpose** | Identify gaps before wiring telemetry to the observability stack |
 
 ---
@@ -13,7 +13,7 @@
 | Service | Logging | Metrics | Tracing (OTel) | Health | Overall |
 |---------|---------|---------|----------------|--------|---------|
 | **API Gateway** | 8/10 (5 transports, but no auto trace context) | 6/10 (custom metrics exist but not wired to interceptors) | 1/10 (SDK installed but never bootstrapped) | 7/10 (no DB/Redis checks) | 5.5/10 |
-| **STT-v2** | 3/10 (structlog used but never configured) | 3/10 (default HTTP metrics only) | 0/10 (7 packages installed, zero code) | 8/10 (DB, MinIO, Redis checks) | 3.5/10 |
+| **STT** | 3/10 (structlog used but never configured) | 3/10 (default HTTP metrics only) | 0/10 (7 packages installed, zero code) | 8/10 (DB, MinIO, Redis checks) | 3.5/10 |
 | **SMR** | 10/10 (structlog + JSON + request ID + audit) | 10/10 (14 custom metrics) | 9/10 (opt-in, working) | 8/10 (per-provider checks) | 9.5/10 |
 | **NLP** | 6/10 (JSON formatter but no trace-log correlation) | 5/10 (default metrics only, no business metrics) | 6/10 (TracerProvider works, MeterProvider broken) | 8/10 (per-model checks) | 6.5/10 |
 | **@arcaai/vox** | 9/10 (4 transports, PHI redaction) | 0/10 (no client-side metrics) | 7/10 (traceparent on HTTP, missing on WS) | N/A | 5/10 |
@@ -35,7 +35,7 @@
 | 7 | **Dual metrics systems** — prom-client + @opentelemetry/api (latter is no-op) | MEDIUM | Consolidate after OTel SDK bootstrap |
 | 8 | **`@sentry/node` still in package.json** but unused | LOW | Remove dead dependency |
 
-### STT-v2 (`apps/stt-v2/`)
+### STT (`apps/stt/`)
 
 | # | Finding | Severity | Fix |
 |---|---------|----------|-----|
@@ -52,7 +52,7 @@
 |---|---------|----------|-----|
 | 1 | No Redis health check in `/health` endpoint | LOW | Add Redis check in health endpoint |
 | 2 | `insecure=True` hardcoded in OTLP exporter | LOW | Acceptable for internal network |
-| 3 | Uses custom `SMR_V2_OTEL_*` env vars instead of standard `OTEL_*` | LOW | Acceptable, documented |
+| 3 | Uses custom `SMR_OTEL_*` env vars instead of standard `OTEL_*` | LOW | Acceptable, documented |
 
 **SMR is production-ready — minimal work needed.**
 
@@ -88,7 +88,7 @@ Based on the audit, the implementation order for Phase 2 should be:
 1. **SMR** — Already 9.5/10. Just enable OTel with env vars. (30 min)
 2. **NLP** — Has OTel infrastructure but needs bug fixes. (2-3 hours) → **TASK-253**
 3. **API Gateway** — Needs `instrumentation.ts` and env var fixes. (4 hours) → **TASK-252**
-4. **STT-v2** — Needs logging, telemetry, and middleware modules from scratch. (1 day)
+4. **STT** — Needs logging, telemetry, and middleware modules from scratch. (1 day)
 5. **@arcaai/vox** — Needs Faro integration. (1-2 days, Phase 4)
 
 ---
@@ -98,9 +98,9 @@ Based on the audit, the implementation order for Phase 2 should be:
 | Service | File | Purpose |
 |---------|------|---------|
 | API Gateway | `apps/api/src/instrumentation.ts` | OTel SDK bootstrap |
-| STT-v2 | `apps/stt-v2/src/stt_v2/core/logging.py` | structlog configuration |
-| STT-v2 | `apps/stt-v2/src/stt_v2/core/telemetry.py` | OTel tracing setup |
-| STT-v2 | `apps/stt-v2/src/stt_v2/core/middleware/request_id.py` | Request ID middleware |
+| STT | `apps/stt/src/stt/core/logging.py` | structlog configuration |
+| STT | `apps/stt/src/stt/core/telemetry.py` | OTel tracing setup |
+| STT | `apps/stt/src/stt/core/middleware/request_id.py` | Request ID middleware |
 | @arcaai/vox | `packages/agentic-sdk-v2/src/core/faro/FaroIntegration.ts` | Grafana Faro integration |
 
 ## Files to Modify
@@ -113,7 +113,7 @@ Based on the audit, the implementation order for Phase 2 should be:
 | NLP | `apps/nlp/src/nlp/core/observability.py` | Fix MeterProvider, excluded_urls, resource attributes |
 | NLP | `apps/nlp/src/nlp/core/logging.py` | Fix JsonFormatter trace-log correlation + UTC time |
 | NLP | `apps/nlp/Dockerfile` | Add `OTEL_EXPORTER_OTLP_ENDPOINT` |
-| STT-v2 | `apps/stt-v2/src/stt_v2/main.py` | Wire logging, telemetry, middleware |
-| STT-v2 | `apps/stt-v2/src/stt_v2/core/config/settings.py` | Add OTel settings fields |
+| STT | `apps/stt/src/stt/main.py` | Wire logging, telemetry, middleware |
+| STT | `apps/stt/src/stt/core/config/settings.py` | Add OTel settings fields |
 | @arcaai/vox | `packages/agentic-sdk-v2/src/types/config.ts` | Add `faro` to `LoggingConfig` |
 | @arcaai/vox | `packages/agentic-sdk-v2/src/providers/AgenticProvider.tsx` | Initialize Faro on mount |

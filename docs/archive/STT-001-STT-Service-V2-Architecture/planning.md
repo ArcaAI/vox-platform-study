@@ -26,7 +26,7 @@
 - [ ] Test migration locally
 
 #### 1.2 Project Scaffold
-- [x] Create `apps/stt-v2/` directory structure
+- [x] Create `apps/stt/` directory structure
 - [x] Set up `pyproject.toml` with dependencies
 - [ ] Configure conda environment
 - [x] Set up Docker development environment

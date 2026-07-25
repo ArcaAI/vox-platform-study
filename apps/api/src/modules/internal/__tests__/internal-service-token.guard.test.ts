@@ -14,7 +14,7 @@ const makeContext = (headers: Record<string, string>, query: Record<string, stri
   }) as any;
 
 const SECRETS: Record<string, string> = {
-  SMR_V2_SERVICE_TOKEN: 'smr-token',
+  SMR_SERVICE_TOKEN: 'smr-token',
   NLP_SERVICE_TOKEN: 'nlp-token',
   GUARDRAIL_SERVICE_TOKEN: 'guardrail-token',
   HARNESS_SERVICE_TOKEN: 'harness-token',
@@ -37,7 +37,7 @@ describe('InternalServiceTokenGuard', () => {
       ['nlp', 'nlp-token'],
       ['guardrail', 'guardrail-token'],
       ['harness', 'harness-token'],
-      ['tts-v2', 'tts-token'],
+      ['tts', 'tts-token'],
     ])('allows %s with its own service token', async (service, token) => {
       const guard = guardWith();
       await expect(guard.canActivate(makeContext({ 'x-service-token': token }, { service }))).resolves.toBe(true);
@@ -51,10 +51,10 @@ describe('InternalServiceTokenGuard', () => {
     });
   });
 
-  describe('stt-v2 alternate header (existing X-Internal-Service-Key posture)', () => {
-    it('accepts X-Internal-Service-Key for service=stt-v2', async () => {
+  describe('stt alternate header (existing X-Internal-Service-Key posture)', () => {
+    it('accepts X-Internal-Service-Key for service=stt', async () => {
       const guard = guardWith();
-      await expect(guard.canActivate(makeContext({ 'x-internal-service-key': 'stt-key' }, { service: 'stt-v2' }))).resolves.toBe(true);
+      await expect(guard.canActivate(makeContext({ 'x-internal-service-key': 'stt-key' }, { service: 'stt' }))).resolves.toBe(true);
     });
 
     it('does NOT accept X-Internal-Service-Key for any other service', async () => {

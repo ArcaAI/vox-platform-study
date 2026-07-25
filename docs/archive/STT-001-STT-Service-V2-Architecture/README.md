@@ -10,7 +10,7 @@
 
 ## Summary
 
-This document defines the architecture for a new high-availability Python STT (Speech-to-Text) service (`stt-v2`) designed to handle live audio streaming and batch transcription. The service supports multiple ASR model formats (SafeTensor/Transformers, ONNX, NVIDIA NeMo) with an LRU caching strategy, communicates with the API Gateway via Dramatiq job queues, and maintains read-only database access for configuration while delegating all writes to the API Gateway.
+This document defines the architecture for a new high-availability Python STT (Speech-to-Text) service (`stt`) designed to handle live audio streaming and batch transcription. The service supports multiple ASR model formats (SafeTensor/Transformers, ONNX, NVIDIA NeMo) with an LRU caching strategy, communicates with the API Gateway via Dramatiq job queues, and maintains read-only database access for configuration while delegating all writes to the API Gateway.
 
 ## Design Decisions Summary
 
@@ -97,7 +97,7 @@ This document defines the architecture for a new high-availability Python STT (S
 ## Project Structure
 
 ```
-apps/stt-v2/
+apps/stt/
 ├── pyproject.toml                    # uv/poetry config, dependencies
 ├── README.md
 ├── docker/
@@ -607,7 +607,7 @@ Examples:
 
 1. Create detailed implementation plan (`planning.md`)
 2. Implement Prisma schema changes
-3. Set up `stt-v2` project scaffold
+3. Set up `stt` project scaffold
 4. Implement core infrastructure (DB, Redis, MinIO clients)
 5. Implement model loaders (HuggingFace first)
 6. Implement Dramatiq workers

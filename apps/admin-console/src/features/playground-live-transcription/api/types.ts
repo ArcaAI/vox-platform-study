@@ -116,7 +116,7 @@ export const ACCEPTED_AUDIO_MIME_TYPES: readonly string[] = [
 
 // ---------------------------------------------------------------------------
 // WS wire protocol (server → client). Local mirrors of
-// packages/agentic-sdk-v2/src/types/stt-v2.ts — @arcaai/vox ships with
+// packages/agentic-sdk-v2/src/types/stt.ts — @arcaai/vox ships with
 // `dts: false`, so type-only imports from the package do not resolve.
 // ---------------------------------------------------------------------------
 

@@ -22,7 +22,7 @@ extension.
 
 | Field | Value |
 |---|---|
-| App / service | `apps/api` (+ `apps/stt-v2` reads the pipeline/model config) |
+| App / service | `apps/api` (+ `apps/stt` reads the pipeline/model config) |
 | Key modules | `apps/api/src/modules/ai-model` (`ai-model-admin.controller.ts`); `packages/applications/src/services/stt/model` (`AiModelService`) |
 | Prisma models | `AiModel` (`db_main/stt.prisma`) |
 | Key API endpoints | `@Controller('admin/ai-models')` (`@Authorize(['manage','all'])`, via `@ApiEndpoint`): `POST /admin/ai-models`, `GET /admin/ai-models` (all-status, exact tenant), `GET /admin/ai-models/list` (paginated), `GET /admin/ai-models/:id`, `GET /admin/ai-models/slug/:slug`, `PATCH /admin/ai-models/:id` (`@RequiresIfMatch()` OCC — 412 drift / 428 missing), `DELETE /admin/ai-models/:id` |

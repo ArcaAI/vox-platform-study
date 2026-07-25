@@ -765,6 +765,75 @@ describe('LiveDocumentationService', () => {
   });
 
   // ------------------------------------------------------------------
+  // F-28: defensive caps on the append-only `session.transcriptParts` buffer.
+  // A pathological/runaway session (mic left open, no `stop()`) would otherwise
+  // grow it unbounded. Windowing/truncation only bounds what's SENT per flush
+  // (`bounded transcript cost` above), not the underlying array's growth.
+  // ------------------------------------------------------------------
+  describe('transcriptParts buffer caps (F-28)', () => {
+    // High segment threshold + zero min-interval so ingest never auto-flushes —
+    // the loop just needs to exercise `ingestSegment`'s push/cap logic directly.
+    function buildUncappedService() {
+      return buildDeps(buildHttpMock(), {
+        config: { LIVE_DOC_MIN_INTERVAL_MS: '0', LIVE_DOC_SEGMENT_THRESHOLD: '1000000' },
+      });
+    }
+
+    it('warns once when transcriptParts exceeds 10,000 finals', () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+      const { service } = buildUncappedService();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      for (let i = 0; i < 10_005; i++) {
+        service.ingestSegment(CID, { text: `seg ${i}`, isFinal: true, segmentId: `s${i}` });
+      }
+
+      const capWarn = warnSpy.mock.calls.filter((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('transcriptparts'));
+      expect(capWarn).toHaveLength(1);
+    });
+
+    it('does not warn below the 10,000 threshold', () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+      const { service } = buildUncappedService();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      for (let i = 0; i < 500; i++) {
+        service.ingestSegment(CID, { text: `seg ${i}`, isFinal: true, segmentId: `s${i}` });
+      }
+
+      const capWarn = warnSpy.mock.calls.filter((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('transcriptparts'));
+      expect(capWarn).toHaveLength(0);
+    });
+
+    it('hard-caps transcriptParts at 50,000 and logs an error once', () => {
+      const errorSpy = vi.spyOn(Logger.prototype, 'error');
+      const { service } = buildUncappedService();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      for (let i = 0; i < 50_010; i++) {
+        service.ingestSegment(CID, { text: `seg ${i}`, isFinal: true, segmentId: `s${i}` });
+      }
+
+      const session = (service as unknown as { sessions: Map<string, { transcriptParts: string[] }> }).sessions.get(CID)!;
+      expect(session.transcriptParts.length).toBe(50_000);
+
+      const capError = errorSpy.mock.calls.filter((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('transcriptparts'));
+      expect(capError).toHaveLength(1);
+    });
+
+    it('keeps windowing/flush behaviour unaffected below the cap', async () => {
+      const { service } = buildUncappedService();
+      service.start({ consultationId: CID, tenantId: TENANT });
+
+      service.ingestSegment(CID, { text: 'Patient on amlodipine', isFinal: true, segmentId: 's1' });
+      const payload = await service.flush(CID);
+
+      expect(payload).not.toBeNull();
+      expect(payload!.runningSummary).toBe('Pt on amlodipine for HTN.');
+    });
+  });
+
+  // ------------------------------------------------------------------
   // C5-04: long-transcript truncation must not permanently drop the head.
   // When the un-flushed delta exceeds MAX_DELTA_CHARS the OLD code kept the
   // TAIL (`slice(-MAX)`) and then advanced the cursor to the full length, so

@@ -17,9 +17,9 @@
  *   3. `refresh-ticket` for an unbound/foreign session 404s (the
  *      `@TenantOwnedResource` guard — 404-over-403, no existence leak).
  *
- * Live-stack requirement: session create forwards to STT-V2, so the
+ * Live-stack requirement: session create forwards to STT, so the
  * live-session tests self-skip with an explicit reason when it is unreachable
- * (Playwright global setup treats STT-V2 as optional). See the ticket README
+ * (Playwright global setup treats STT as optional). See the ticket README
  * for prereqs + invocation (`RESET_DB=false E2E_WAIT_SERVICES=true`).
  */
 import { test, expect } from '@playwright/test';
@@ -73,7 +73,7 @@ test.describe('AC-4 — ticket-refresh mid-session', () => {
     });
 
     test('mints a fresh single-use ticket that authenticates a reconnect', async ({ request }) => {
-      test.skip(!session, `streaming session unavailable (is STT-V2 running?): ${skipReason}`);
+      test.skip(!session, `streaming session unavailable (is STT running?): ${skipReason}`);
       const s = session!;
 
       // Open with the original ticket, confirm the socket is live.
@@ -99,7 +99,7 @@ test.describe('AC-4 — ticket-refresh mid-session', () => {
     });
 
     test('the original one-shot ticket is rejected on a second open (generic 4401)', async ({ request }) => {
-      test.skip(!session, `streaming session unavailable (is STT-V2 running?): ${skipReason}`);
+      test.skip(!session, `streaming session unavailable (is STT running?): ${skipReason}`);
 
       // A dedicated session so the assertion is independent of the test above.
       const created = await createStreamSession(request, { token });

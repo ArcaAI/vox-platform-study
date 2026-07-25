@@ -5,7 +5,7 @@ import { SmrStreamConsumerService } from './smr-stream-consumer.service';
 /**
  * SMR Stream Consumer Module
  *
- * Provides direct Redis Streams consumption for SMR V2 task chunks.
+ * Provides direct Redis Streams consumption for SMR task chunks.
  * Bypasses the Python SSE proxy for lower-latency streaming.
  *
  * Imports:

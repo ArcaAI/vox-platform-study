@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | **Implemented (code) — gated OFF** (2026-07-11); ⚠️ prod/commercial enablement gated on the VPC/on-prem PHI decision (§5) |
-| **Type** | `feature` — new cloud provider in `apps/tts-v2` |
+| **Type** | `feature` — new cloud provider in `apps/tts` |
 | **Created** | 2026-07-11 |
 | **Parent** | [TASK-488](../TASK-488-Realtime-TTS-Service/README.md) §6; Q4 decision (2026-07-11) — Sarvam promoted to a day-1-designed provider, implemented after Azure |
 | **Depends on** | TASK-488 provider abstraction; a commercial + DPDP data-residency decision (see §5) |
@@ -21,7 +21,7 @@ The TASK-488 engine research found **Sarvam AI Bulbul v3** the strongest fit for
 
 ## 2. Current State Evaluation
 
-- The provider pattern is established: `apps/tts-v2/src/tts_v2/providers/azure_speech.py` (lazy SDK import, `synthesize()` async-generator, format/voice mapping, error→failover, `health()`); registry `providers/base.py`; router `routing/router.py`; catalog `catalog/voices.py`; lifespan gating in `main.py`.
+- The provider pattern is established: `apps/tts/src/tts/providers/azure_speech.py` (lazy SDK import, `synthesize()` async-generator, format/voice mapping, error→failover, `health()`); registry `providers/base.py`; router `routing/router.py`; catalog `catalog/voices.py`; lifespan gating in `main.py`.
 - Config convention: per-provider `BaseSettings` with `env_prefix` (`AzureSpeechConfig` = `TTS_AZURE_`); add `SarvamConfig` (`TTS_SARVAM_`).
 - **Sarvam API (VERIFIED — 2026-07-11 spike, docs.sarvam.ai)**: `POST https://api.sarvam.ai/text-to-speech`, auth header **`api-subscription-key`**; JSON body `{ text, target_language_code:"ml-IN", model:"bulbul:v3", speaker, speech_sample_rate:"24000" (STRING), output_audio_codec:"linear16"|"wav"|"mp3", pace }`. **Response is base64** in `{ request_id, audios:[…] }` → must `base64.b64decode(audios[0])`. **24 kHz is native → NO resample** (advantage over Parler's 44.1 kHz). Char cap 2,500 (v3) / 1,500 (v2). Malayalam speakers are cross-lingual (no per-language list); documented starting points **`ishita`** (F) / **`shubh`** (M), final pick by listening. Native **WebSocket streaming** at `wss://api.sarvam.ai/text-to-speech/ws` (config → text → flush; base64 audio frames) for phase 2. Official `sarvamai` SDK exists (v0.1.28) but we mirror Azure's httpx style (lighter deps, async-cancel control). **API-only, no open weights.**
 
@@ -33,7 +33,7 @@ The TASK-488 engine research found **Sarvam AI Bulbul v3** the strongest fit for
 - **`catalog/voices.py`** — add `sarvam` bindings to ml voices: `ml-female-1 → "ishita"`, `ml-male-1 → "shubh"` (Phase-0 listening confirms the pick).
 - **Routing** — default `TTS_ROUTING_ML=azure,sarvam,indic_parler` (config; ops can promote Sarvam to primary for Malayalam).
 - **`main.py` lifespan** — register `sarvam` gated by `TTS_SARVAM_ENABLED`.
-- **Deploy/env/CI** — add `TTS_SARVAM_ENABLED`/`TTS_SARVAM_API_KEY`/`TTS_SARVAM_USE_STREAMING` to `.env.example`, `turbo.json#globalEnv`, k3s configmap/secret; same tts-v2 image + test job.
+- **Deploy/env/CI** — add `TTS_SARVAM_ENABLED`/`TTS_SARVAM_API_KEY`/`TTS_SARVAM_USE_STREAMING` to `.env.example`, `turbo.json#globalEnv`, k3s configmap/secret; same tts image + test job.
 
 ## 4. Implementation Plan (TDD)
 1. Phase 0 spike (~0.5 d): confirm the live Sarvam API contract (endpoint, request/response schema, ml voice ids, output format/rate, streaming vs batch) against current docs + a smoke call.
@@ -43,7 +43,7 @@ The TASK-488 engine research found **Sarvam AI Bulbul v3** the strongest fit for
 5. Lifespan registration; env/turbo/k3s wiring; docs (overview + rule 06 + TASK-488 §DD-5 cross-ref).
 6. Live test behind `TTS_SARVAM_LIVE_TEST=1` (en + code-switched ml strings, reuse the TASK-488 clinical strings).
 
-**Verification**: `pnpm py:tts-v2:test` + lint/typecheck green; live smoke produces audio for the code-switched clinical strings (human quality gate — this is the provider expected to win Malayalam).
+**Verification**: `pnpm py:tts:test` + lint/typecheck green; live smoke produces audio for the code-switched clinical strings (human quality gate — this is the provider expected to win Malayalam).
 
 ## 5. Risks / Gates
 - **Commercial + DPDP decision required before prod-enable**: PHI (patient text) leaves to Sarvam unless VPC/on-prem is used — legal/procurement sign-off is a hard gate. Document the deployment mode (SaaS vs VPC/on-prem) chosen.
@@ -56,12 +56,12 @@ The TASK-488 engine research found **Sarvam AI Bulbul v3** the strongest fit for
 - `core/config.py` `SarvamConfig` (`TTS_SARVAM_`, `populate_by_name`); root `sarvam` sub-config; **`routing_ml` default → `[azure, sarvam, indic_parler]`**.
 - `catalog/voices.py`: `ml-female-1 → sarvam "ishita"`, `ml-male-1 → sarvam "shubh"`.
 - `main.py` lifespan registers `sarvam` gated by `TTS_SARVAM_ENABLED`.
-- Wiring: `.env.example`/`.env.dev` TTS block, `turbo.json#globalEnv` (`TTS_SARVAM_ENABLED`/`_API_KEY`/`_USE_STREAMING`), k3s `tts-v2.yaml` (API key from `hope-secrets`, optional).
+- Wiring: `.env.example`/`.env.dev` TTS block, `turbo.json#globalEnv` (`TTS_SARVAM_ENABLED`/`_API_KEY`/`_USE_STREAMING`), k3s `tts.yaml` (API key from `hope-secrets`, optional).
 
 **Evidence:**
 ```
-pytest src/tts_v2/tests -q   → 98 passed, 2 deselected (azure + sarvam live e2e)
-ruff check apps/tts-v2/src   → All checks passed!
+pytest src/tts/tests -q   → 98 passed, 2 deselected (azure + sarvam live e2e)
+ruff check apps/tts/src   → All checks passed!
 uvicorn smoke (TTS_SARVAM_ENABLED=true, dummy key) → provider_registered(sarvam, bulbul:v3);
    /health/ready 200; /voices lists sarvam on ml voices
 ```

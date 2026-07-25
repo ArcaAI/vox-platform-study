@@ -14,8 +14,8 @@ import { AgenticClient } from '../AgenticClient';
 import { PIPELINE_ENDPOINTS } from '../constants';
 import type {
   AsrPipelineResponse,
-} from '../../types/stt-v2';
-import { ResourceStatus } from '../../types/stt-v2';
+} from '../../types/stt';
+import { ResourceStatus } from '../../types/stt';
 
 // ===========================================================================
 // Fixtures

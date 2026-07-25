@@ -43,7 +43,7 @@ This is a **scoping proposal**. Each workstream below presents the problem, the 
   - `apps/nlp` — `spacy`, `transformers`, `torch`, plus `python-multipart` + `aiofiles` (file-upload plumbing) (`apps/nlp/pyproject.toml:34-41`). Has the ML runtime but **no** OCR/PDF lib.
   - `apps/guardrail` — `onnxruntime>=1.18` + `gliner2-onnx` (`apps/guardrail/pyproject.toml:39-41`). **ONNX Runtime is already in the stack** (relevant: RapidOCR is ONNX-based).
   - `apps/harness` — `presidio-analyzer`/`presidio-anonymizer` PHI redaction in an opt-in `guardrails` extra (`apps/harness/pyproject.toml:97-101`); no OCR.
-  - `apps/smr` — text-gen only (`openai`, `boto3`); `apps/stt-v2` — audio only.
+  - `apps/smr` — text-gen only (`openai`, `boto3`); `apps/stt` — audio only.
   - Net: **reuse is limited to ONNX Runtime (guardrail) and the NLP ML/upload plumbing**; any OCR engine or PDF text-layer parser is a **new dependency**.
 
 ### A.3 Implementation Proposal

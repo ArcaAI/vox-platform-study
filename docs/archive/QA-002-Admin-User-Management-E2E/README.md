@@ -21,7 +21,7 @@ End-to-end browser-based testing of **User Stories 26–35** (Admin — User Man
 | **Frontend** | Vite example app at `http://localhost:5173` |
 | **API Gateway** | NestJS at `http://localhost:8868/api/v1` |
 | **Auth** | JWT login as `super_admin` / `password123` |
-| **Services** | API, STT-V2, SMR-V2 — all confirmed running |
+| **Services** | API, STT, SMR — all confirmed running |
 | **Browser** | Automated via `cursor-ide-browser` MCP (Playwright-backed) |
 
 ### Acceptance Criteria

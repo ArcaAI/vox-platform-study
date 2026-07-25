@@ -9,7 +9,7 @@ import {
 /**
  * StreamSessionTenantBindingService.
  *
- * The `closeStreamSession` endpoint takes a `sessionId` (an opaque STT-V2
+ * The `closeStreamSession` endpoint takes a `sessionId` (an opaque STT
  * streaming-session id, not a Prisma row), so the existing
  * `@TenantOwnedResource` model resolvers can't run an ownership check on
  * it directly. Without this service, the only enforcement is the Prisma

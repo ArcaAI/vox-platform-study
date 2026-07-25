@@ -87,7 +87,7 @@ export class ServiceHealthMonitoringService implements IServiceHealthMonitoringS
       {
         key: 'stt',
         name: 'Speech to Text',
-        url: process.env.STT_V2_URL || 'http://localhost:8861',
+        url: process.env.STT_URL || process.env.STT_V2_URL || 'http://localhost:8861',
         healthEndpoint: '/api/v1/health',
       },
       {

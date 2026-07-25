@@ -48,7 +48,7 @@ export class TenantTtsConfigAdminController {
     summary: 'Resolve the effective TTS spec for a tenant (tenant row over the SYSTEM default, clamped)',
     description:
       'Merges the tenant row over the SYSTEM-tenant platform default and clamps every value to the platform limits. ' +
-      'Read-only; this is what the gateway injects into tts-v2 per request.',
+      'Read-only; this is what the gateway injects into tts per request.',
   })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant. Tenant admins are pinned to their own tenant.' })
   @ApiResponse({ status: 200, type: EffectiveTtsConfigResponse })

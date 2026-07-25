@@ -34,7 +34,7 @@ const createMockConfigService = () => ({
         const map: Record<string, string> = {
             SMR_URL: 'http://localhost:8862',
             NLP_URL: 'http://localhost:8864',
-            STT_V2_URL: 'http://localhost:8861',
+            STT_URL: 'http://localhost:8861',
             TTS_URL: 'http://localhost:8867',
             GUARDRAIL_URL: 'http://localhost:8863',
             HARNESS_URL: 'http://localhost:8866',
@@ -128,8 +128,8 @@ describe('ApiHealthController', () => {
     describe('GET /health/services', () => {
         const smrHealthy = { data: { status: 'healthy', service: 'smr', version: '2.0.0', uptime_seconds: 200, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const nlpHealthy = { data: { status: 'healthy', service: 'nlp', version: '1.0.0', uptime_seconds: 300, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
-        const sttHealthy = { data: { status: 'healthy', service: 'stt-v2', version: '1.0.0', uptime_seconds: 400, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
-        const ttsHealthy = { data: { status: 'healthy', service: 'tts-v2', version: '1.0.0', uptime_seconds: 450, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
+        const sttHealthy = { data: { status: 'healthy', service: 'stt', version: '1.0.0', uptime_seconds: 400, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
+        const ttsHealthy = { data: { status: 'healthy', service: 'tts', version: '1.0.0', uptime_seconds: 450, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const guardrailHealthy = { data: { status: 'healthy', service: 'guardrail', version: '1.0.0', uptime_seconds: 500, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
         const harnessHealthy = { data: { status: 'healthy', service: 'harness', version: '0.1.0', uptime_seconds: 600, timestamp: '2026-03-02T00:00:00Z', checks: {} } };
 

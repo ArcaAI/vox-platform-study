@@ -1,6 +1,6 @@
 # @arcaai/stt
 
-Speech-to-text plugin for `@arcaai/room`. Supports three provider modes: local Whisper inference in the browser (Transformers.js + ONNX Runtime, run inside a dedicated Web Worker with optional WebGPU), remote transcription over a self-managed WebSocket, and a pipeline-aware streaming mode where the host application supplies the transport (used by `@arcaai/vox` against the STT-V2 backend).
+Speech-to-text plugin for `@arcaai/room`. Supports three provider modes: local Whisper inference in the browser (Transformers.js + ONNX Runtime, run inside a dedicated Web Worker with optional WebGPU), remote transcription over a self-managed WebSocket, and a pipeline-aware streaming mode where the host application supplies the transport (used by `@arcaai/vox` against the STT backend).
 
 Last updated: 2026-07-04
 
@@ -42,7 +42,7 @@ packages/stt/
 |---|---|---|
 | `'local'` | None — Whisper runs in a Web Worker in the browser | Offline/on-device transcription; requires `features.modelId` |
 | `'remote'` (default) | `sttSocket` WebSocket URL managed by this package | Server-side ASR with a simple socket contract |
-| `'remote'` + `setStreamingTransport(...)` | Host-supplied `STTStreamingTransport` | Session-based streaming backends; this is how `@arcaai/vox` drives the STT-V2 service |
+| `'remote'` + `setStreamingTransport(...)` | Host-supplied `STTStreamingTransport` | Session-based streaming backends; this is how `@arcaai/vox` drives the STT service |
 
 > **`@arcaai/vox` disables the `'local'` provider platform-wide (TASK-545).** This package's local Whisper provider is untouched — gated OFF, not deleted — via a kill switch in the CONSUMER: `LOCAL_TRANSCRIPTION_ENABLED` (`packages/agentic-sdk-v2/src/core/constants.ts`) makes `TranscriptionPipeline.resolveSTTRuntimeProvider()` never resolve to `'local'` while it reads `false`. Calling `createSTT({ features: { provider: 'local', ... } })` directly from this package (outside `@arcaai/vox`) is unaffected and still runs on-device inference.
 

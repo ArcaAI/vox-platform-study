@@ -29,7 +29,7 @@ Verified 2026-07-08:
 - **Chrome**: `(console)/(playground)/layout.tsx` is a pure guard (`notFound()` unless `isElevated || TENANT_ADMIN`) returning children — every playground page renders inside the **full console chrome** (`(console)/layout.tsx`: `AppSidebar`, `SiteHeader`, banners). The opposite of "minimal".
 - **Pages** (all `ScreenTemplate` + `PageHeader` + `StatusFooter`, dense multi-column grids at xl):
   - consultation: `playground-consultation/…/consultation-demo-screen.tsx` — WorkingTenantGate → `AgenticProvider` (@arcaai/vox); 3-col; STT WS + SSE summary + stream tickets.
-  - live-transcription: split streaming/batch tabs; WS `/ws/stt-v2/stream` via `use-live-stt-session`.
+  - live-transcription: split streaming/batch tabs; WS `/ws/stt/stream` via `use-live-stt-session`.
   - voice-profiles: 2-col enrollment + profile list; **no** WorkingTenantGate (user-owned biometrics); REST only.
   - dna-writing-style: 3-col; SSE generation; **already impersonation-aware** — `impersonation-gate-panel.tsx` mirrors the gateway's `assertActingAsDoctor` 403 and links to `/users` to "Act as a doctor".
   - llm: 3-col prompt/output/providers; BFF-proxied SSE `text/tasks/:id/stream`; **no Guardrails/NER tabs** — text generation only.

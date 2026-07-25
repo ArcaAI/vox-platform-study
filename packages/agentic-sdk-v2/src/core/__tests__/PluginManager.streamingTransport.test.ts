@@ -2,7 +2,7 @@
  * PluginManager — streaming-transport wiring
  *
  * Verifies that `getTranscriptionPipelineConfig()` builds a
- * `streamingTransport` (StreamingSessionManager + SttV2WebSocketClient)
+ * `streamingTransport` (StreamingSessionManager + SttWebSocketClient)
  * when a runtime `pipelineId` has been set via `setRuntimeOptions(...)`,
  * and forwards `consultationId` correctly. The legacy path (no pipelineId)
  * must remain unaffected.

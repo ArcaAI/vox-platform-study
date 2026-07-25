@@ -63,7 +63,7 @@ const createMockRemovalRetry = () => ({
 // Helper — build a request URL with both sessionId and ticket so the new
 // auth gate accepts the connection.
 const buildReq = (sessionId: string, ticket = 'valid-ticket'): { url: string } => ({
-    url: `/ws/stt-v2/stream?sessionId=${sessionId}&ticket=${ticket}`,
+    url: `/ws/stt/stream?sessionId=${sessionId}&ticket=${ticket}`,
 });
 
 describe('SttWsGateway', () => {
@@ -141,7 +141,7 @@ describe('SttWsGateway', () => {
         // truth table now lives in the describe block below.
         it('should reject connection without sessionId', async () => {
             const client = createMockSocket();
-            await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream' } as any);
+            await gateway.handleConnection(client as any, { url: '/ws/stt/stream' } as any);
 
             expect(client.close).toHaveBeenCalledWith(
                 WS_CLOSE_CODES.AUTH_FAILED,
@@ -152,7 +152,7 @@ describe('SttWsGateway', () => {
 
         it('should reject connection without ticket', async () => {
             const client = createMockSocket();
-            await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream?sessionId=foo' } as any);
+            await gateway.handleConnection(client as any, { url: '/ws/stt/stream?sessionId=foo' } as any);
 
             expect(client.close).toHaveBeenCalledWith(
                 WS_CLOSE_CODES.AUTH_FAILED,
@@ -167,7 +167,7 @@ describe('SttWsGateway', () => {
 
             await gateway.handleConnection(
                 client as any,
-                { url: '/ws/stt-v2/stream?sessionId=sess-x&ticket=invalid' } as any,
+                { url: '/ws/stt/stream?sessionId=sess-x&ticket=invalid' } as any,
             );
 
             expect(client.close).toHaveBeenCalledWith(
@@ -189,7 +189,7 @@ describe('SttWsGateway', () => {
 
             await gateway.handleConnection(
                 client as any,
-                { url: '/ws/stt-v2/stream?sessionId=sess-x&ticket=t' } as any,
+                { url: '/ws/stt/stream?sessionId=sess-x&ticket=t' } as any,
             );
 
             expect(client.close).toHaveBeenCalledWith(
@@ -225,7 +225,7 @@ describe('SttWsGateway', () => {
 
             it('missing sessionId -> 4401 with the generic reason (no "sessionId" in the wire reason)', async () => {
                 const client = createMockSocket();
-                await gateway.handleConnection(client as any, { url: '/ws/stt-v2/stream' } as any);
+                await gateway.handleConnection(client as any, { url: '/ws/stt/stream' } as any);
 
                 const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
                 expect(code).toBe(GENERIC_CODE);
@@ -236,7 +236,7 @@ describe('SttWsGateway', () => {
                 const client = createMockSocket();
                 await gateway.handleConnection(
                     client as any,
-                    { url: '/ws/stt-v2/stream?sessionId=sess-x' } as any,
+                    { url: '/ws/stt/stream?sessionId=sess-x' } as any,
                 );
 
                 const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
@@ -250,7 +250,7 @@ describe('SttWsGateway', () => {
 
                 await gateway.handleConnection(
                     client as any,
-                    { url: '/ws/stt-v2/stream?sessionId=sess-x&ticket=invalid' } as any,
+                    { url: '/ws/stt/stream?sessionId=sess-x&ticket=invalid' } as any,
                 );
 
                 const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
@@ -270,7 +270,7 @@ describe('SttWsGateway', () => {
 
                 await gateway.handleConnection(
                     client as any,
-                    { url: '/ws/stt-v2/stream?sessionId=sess-x&ticket=t' } as any,
+                    { url: '/ws/stt/stream?sessionId=sess-x&ticket=t' } as any,
                 );
 
                 const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
@@ -283,7 +283,7 @@ describe('SttWsGateway', () => {
                     // missing sessionId
                     async () => {
                         const c = createMockSocket();
-                        await gateway.handleConnection(c as any, { url: '/ws/stt-v2/stream' } as any);
+                        await gateway.handleConnection(c as any, { url: '/ws/stt/stream' } as any);
                         return (c.close as ReturnType<typeof vi.fn>).mock.calls[0];
                     },
                     // missing ticket
@@ -291,7 +291,7 @@ describe('SttWsGateway', () => {
                         const c = createMockSocket();
                         await gateway.handleConnection(
                             c as any,
-                            { url: '/ws/stt-v2/stream?sessionId=s' } as any,
+                            { url: '/ws/stt/stream?sessionId=s' } as any,
                         );
                         return (c.close as ReturnType<typeof vi.fn>).mock.calls[0];
                     },
@@ -301,7 +301,7 @@ describe('SttWsGateway', () => {
                         const c = createMockSocket();
                         await gateway.handleConnection(
                             c as any,
-                            { url: '/ws/stt-v2/stream?sessionId=s&ticket=invalid' } as any,
+                            { url: '/ws/stt/stream?sessionId=s&ticket=invalid' } as any,
                         );
                         return (c.close as ReturnType<typeof vi.fn>).mock.calls[0];
                     },
@@ -317,7 +317,7 @@ describe('SttWsGateway', () => {
                         const c = createMockSocket();
                         await gateway.handleConnection(
                             c as any,
-                            { url: '/ws/stt-v2/stream?sessionId=s&ticket=t' } as any,
+                            { url: '/ws/stt/stream?sessionId=s&ticket=t' } as any,
                         );
                         return (c.close as ReturnType<typeof vi.fn>).mock.calls[0];
                     },
@@ -339,7 +339,7 @@ describe('SttWsGateway', () => {
 
                 await gateway.handleConnection(
                     client as any,
-                    { url: '/ws/stt-v2/stream?sessionId=sess-x&ticket=t' } as any,
+                    { url: '/ws/stt/stream?sessionId=sess-x&ticket=t' } as any,
                 );
 
                 const [code, reason] = (client.close as ReturnType<typeof vi.fn>).mock.calls[0] ?? [];
@@ -353,13 +353,13 @@ describe('SttWsGateway', () => {
                 warnSpy.mockClear();
 
                 const c1 = createMockSocket();
-                await gateway.handleConnection(c1 as any, { url: '/ws/stt-v2/stream' } as any);
+                await gateway.handleConnection(c1 as any, { url: '/ws/stt/stream' } as any);
 
                 mockStreamTicketService.consumeTicket.mockResolvedValueOnce(null);
                 const c2 = createMockSocket();
                 await gateway.handleConnection(
                     c2 as any,
-                    { url: '/ws/stt-v2/stream?sessionId=s&ticket=bad' } as any,
+                    { url: '/ws/stt/stream?sessionId=s&ticket=bad' } as any,
                 );
 
                 // At least two distinct warn logs — one per cause — so SRE
@@ -496,7 +496,7 @@ describe('SttWsGateway', () => {
         it('enqueues a removal retry when the upstream removeSession fails at grace expiry', async () => {
             vi.useFakeTimers();
             try {
-                mockSessionService.removeSession.mockRejectedValueOnce(new Error('stt-v2 down'));
+                mockSessionService.removeSession.mockRejectedValueOnce(new Error('stt down'));
                 const client = createMockSocket();
                 setValidTicketFor('sess-leak');
                 await gateway.handleConnection(client as any, buildReq('sess-leak') as any);

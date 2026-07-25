@@ -3,12 +3,12 @@
 **Required Skill**: executing-plans
 **Assigned to**: Engineer B
 **Estimated Duration**: 2 days
-**Dependencies**: WS-1 (database + domain layer) must complete first; TASK-023 (SMR V2) must be available for DNA generation
+**Dependencies**: WS-1 (database + domain layer) must complete first; TASK-023 (SMR) must be available for DNA generation
 **Branch**: `feat/sdk-207-ws2-prompt-dna`
 
 ## Goal
 
-Build two new NestJS backend modules: **Prompt Template management** (CRUD + versioning + department assignment) and **DNA Writing Style management** (async generation via SMR V2 + versioning + department fallback). DNA generation uses a BullMQ processor that calls SMR V2's `POST /api/v2/generate` endpoint synchronously (`stream: false`) — following the exact same pattern as existing summary processors.
+Build two new NestJS backend modules: **Prompt Template management** (CRUD + versioning + department assignment) and **DNA Writing Style management** (async generation via SMR + versioning + department fallback). DNA generation uses a BullMQ processor that calls SMR's `POST /api/v2/generate` endpoint synchronously (`stream: false`) — following the exact same pattern as existing summary processors.
 
 ## Architecture Overview
 
@@ -36,19 +36,19 @@ Build two new NestJS backend modules: **Prompt Template management** (CRUD + ver
 │              │                                         │ { stream: false }
 │              │                                         ▼
 │              │                                  ┌──────────────┐
-│              │                                  │  SMR V2      │
+│              │                                  │  SMR      │
 │              │                                  │  (Python)    │
 │              │                                  └──────────────┘
 ```
 
-Both modules are PostgreSQL-only (no MLflow). DNA generation calls SMR V2 (`POST /api/v2/generate`) with the DNA_ANALYSIS prompt as `system_prompt` and the doctor's text samples as `prompt`. The Prompt Template module provides the DNA_ANALYSIS prompt category that the DNA module consumes.
+Both modules are PostgreSQL-only (no MLflow). DNA generation calls SMR (`POST /api/v2/generate`) with the DNA_ANALYSIS prompt as `system_prompt` and the doctor's text samples as `prompt`. The Prompt Template module provides the DNA_ANALYSIS prompt category that the DNA module consumes.
 
 ## Tech Stack
 
 - NestJS 11.x, TypeScript
 - `@arcaai/domains` (entities, repositories, factories)
 - `@arcaai/applications` (service layer)
-- SMR V2 Python service (`POST /api/v2/generate`) — TASK-023
+- SMR Python service (`POST /api/v2/generate`) — TASK-023
 - BullMQ for async DNA generation jobs
 - Vitest for testing
 
@@ -56,8 +56,8 @@ Both modules are PostgreSQL-only (no MLflow). DNA generation calls SMR V2 (`POST
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| D1 | No SmrAdapterService | Follow existing processor pattern. DNA processor calls SMR V2 directly via `HttpService`, same as summary processors call V1 |
-| D2 | Synchronous SMR V2 call (`stream: false`) | DNA generation is a background job; no need for streaming complexity. Simple request/response |
+| D1 | No SmrAdapterService | Follow existing processor pattern. DNA processor calls SMR directly via `HttpService`, same as summary processors call V1 |
+| D2 | Synchronous SMR call (`stream: false`) | DNA generation is a background job; no need for streaming complexity. Simple request/response |
 | D3 | Same `SMR_SERVICE_URL` env var | V1 and V2 on same host. DNA processor uses `/api/v2/generate` path |
 | D4 | Silent usage recording | Insert `PromptUsageRecord`/`DnaUsageRecord` as side effects — no endpoints, no separate service classes. Just `repository.create()` calls |
 | D5 | Full DDD service layer pattern | Consistency with existing codebase: Interface + Service + DTOs + Mapper + Module per module |
@@ -103,8 +103,8 @@ Both modules are PostgreSQL-only (no MLflow). DNA generation calls SMR V2 (`POST
 |----------|---------|
 | Prompt template not found | 404 `NotFoundException` |
 | Duplicate template name (unique constraint) | 409 `ConflictException` |
-| SMR V2 timeout (120s) | Processor marks job FAILED, logs error |
-| SMR V2 returns invalid response | Processor marks job FAILED, stores raw response in error field |
+| SMR timeout (120s) | Processor marks job FAILED, logs error |
+| SMR returns invalid response | Processor marks job FAILED, stores raw response in error field |
 | No text samples for doctor | Processor marks job FAILED: "No text samples found for doctor" |
 | DNA_ANALYSIS prompt template missing | Processor marks job FAILED: "No DNA_ANALYSIS prompt template configured" |
 | Department not found (assign-department) | 404 `NotFoundException` |
@@ -115,7 +115,7 @@ Both modules are PostgreSQL-only (no MLflow). DNA generation calls SMR V2 (`POST
 
 - [ ] Prompt Template module: 7 endpoints (CRUD + versioning + assign-department)
 - [ ] DNA Writing Style module: 7 endpoints (generate, get, update, versions, admin generate, admin list, job status)
-- [ ] DnaWritingStyleProcessor: BullMQ processor calling SMR V2 `POST /api/v2/generate` with `stream: false`
+- [ ] DnaWritingStyleProcessor: BullMQ processor calling SMR `POST /api/v2/generate` with `stream: false`
 - [ ] All endpoints have Swagger documentation (`@ApiOperation`, `@ApiResponse`)
 - [ ] Auth guards: `CanManage` for admin endpoints, `JwtAuthGuard` for doctor endpoints
 - [ ] Unit tests for all services, controller tests with mocked services
@@ -302,7 +302,7 @@ Test the following methods:
 Follow the exact test pattern from `summary.processor.test.ts`:
 - Processor gathers text samples from ContextItems
 - Processor fetches DNA_ANALYSIS prompt template via `PromptManagementService`
-- Processor calls `POST /api/v2/generate` on SMR V2 with `stream: false`
+- Processor calls `POST /api/v2/generate` on SMR with `stream: false`
 - Processor stores `DnaWritingStyleReport` + `DnaWritingStyleVersion`
 - Processor records `DnaUsageRecord` and `PromptUsageRecord` (silent)
 - Error handling: SMR timeout, invalid response, no text samples, no DNA_ANALYSIS template
@@ -370,7 +370,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         //   - Use first template's content as system_prompt
         //   - Record PromptUsageRecord (silent)
 
-        // Step 3: Call SMR V2 synchronously (40%)
+        // Step 3: Call SMR synchronously (40%)
         //   - POST /api/v2/generate with:
         //     { prompt: textSamples, system_prompt: templateContent, stream: false }
         //   - Get back: { content, usage, latency_ms }
@@ -384,7 +384,7 @@ export class DnaWritingStyleProcessor extends WorkerHost {
         // Step 5: Complete (100%)
     }
 
-    private async callSmrV2(textSamples: string, systemPrompt: string): Promise<{
+    private async callSmr(textSamples: string, systemPrompt: string): Promise<{
         content: string;
         usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
         latency_ms?: number;
@@ -501,7 +501,7 @@ export class DnaWritingStyleServiceModule {}
 Before marking WS-2 complete:
 - [ ] All 7 Prompt Template endpoints functional (manual test with Swagger/curl)
 - [ ] All 7 DNA Writing Style endpoints functional (4 doctor + 3 admin)
-- [ ] DnaWritingStyleProcessor correctly calls SMR V2 `POST /api/v2/generate` with `stream: false`
+- [ ] DnaWritingStyleProcessor correctly calls SMR `POST /api/v2/generate` with `stream: false`
 - [ ] PromptResolutionService NOT modified (verified no changes to file)
 - [ ] `GenerateDnaReport` queue registered and working
 - [ ] Silent usage recording: `PromptUsageRecord` and `DnaUsageRecord` inserted as side effects

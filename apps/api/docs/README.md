@@ -173,7 +173,7 @@ Located in `/docs/` (project root):
 
 ### Service Documentation
 
-- [STT Service](../../stt-v2/README.md) - Speech-to-Text service
+- [STT Service](../../stt/README.md) - Speech-to-Text service
 - [SMR Service](../../smr/README.md) - Medical summarization service
 - [Guardrail Service](../../guardrail/README.md) - Safety/guardrail engine (port 8863)
 - [NLP Service](../../nlp/README.md) - Natural Language Processing service

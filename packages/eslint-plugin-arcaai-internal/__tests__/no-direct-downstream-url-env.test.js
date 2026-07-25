@@ -9,8 +9,8 @@
  * never re-read raw env at request time).
  *
  * Banned keys (the live downstream Python services + the legacy
- * SMR_SERVICE_URL alias):
- *   SMR_URL, SMR_SERVICE_URL, STT_V2_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL
+ * SMR_SERVICE_URL alias + STT_V2_URL during the STT_URL dual-read window):
+ *   SMR_URL, SMR_SERVICE_URL, STT_URL, STT_V2_URL, NLP_URL, GUARDRAIL_URL, HARNESS_URL
  *
  * Everything else under `process.env.*` stays legal (NODE_ENV,
  * npm_package_version, etc.) so the rule is a tight denylist, not a
@@ -69,7 +69,12 @@ ruleTester.run('no-direct-downstream-url-env', rule, {
       errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'SMR_SERVICE_URL' } }],
     },
     {
-      name: 'process.env.STT_V2_URL is flagged',
+      name: 'process.env.STT_URL is flagged',
+      code: `const url = process.env.STT_URL || 'http://localhost:8861';`,
+      errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'STT_URL' } }],
+    },
+    {
+      name: 'process.env.STT_V2_URL is flagged (dual-read window)',
       code: `const url = process.env.STT_V2_URL || 'http://localhost:8861';`,
       errors: [{ messageId: 'directDownstreamUrlEnv', data: { name: 'STT_V2_URL' } }],
     },

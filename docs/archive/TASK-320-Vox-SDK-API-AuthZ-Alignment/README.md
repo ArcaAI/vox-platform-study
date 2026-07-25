@@ -52,7 +52,7 @@ The review below is **evidence-based**: every finding was verified against curre
 | **B1** | High | Impersonation | `X-Tenant-ID` is **not** switched to the impersonated user's tenant; the provider syncs from `config.api.tenantId`, not `effectiveTenantId`. |
 | **B2** | Medium | Auth | `setOnUnauthorized` (401→refresh mutex) is **never wired inside the SDK**; token auto-refresh (incl. impersonated token) is inert unless the host app wires it. |
 | **B3** | Medium | Impersonation | `ImpersonateResponse.user.tenantId` is optional and unvalidated; if omitted, tenant context silently falls back to the admin's tenant. |
-| **B5** | Medium | WS auth | `SttV2WebSocketClient.requireTenantClaim` defaults `false`; streaming may open without a tenant claim. |
+| **B5** | Medium | WS auth | `SttWebSocketClient.requireTenantClaim` defaults `false`; streaming may open without a tenant claim. |
 | **A4** | Medium | Hygiene | Dead/deprecated SDK surface: `analyzeDNA` stub throws; `useRoles` deprecated aliases; unused `DNA_STYLE_ENDPOINTS` admin + `ROLE_ENDPOINTS.USER_ROLES` constants. |
 | **A5** | Low | Clarity | `useStorage`/`useMonitoring` labelled "admin" but not under `/admin`; scope intent undocumented. |
 | **B6** | Low | Auth | `/auth/revoke-impersonation` not in `REFRESH_SKIP_ENDPOINTS` → a 401 there triggers a stray refresh attempt. |
@@ -101,7 +101,7 @@ serve the tenant-admin "see all in tenant" use case TASK-319 created.
 **A2 — silent behavior change on end-user transcription-job reads.** TASK-319 F3 made
 `GET /audio/transcription-jobs`, `/stats`, `/status/:status` owner-scoped
 (`listForOwner`/`getStatusCountsForOwner`/`getByStatusForOwner`, keyed on `createdBy = caller`).
-The SDK still calls the same paths via `STT_V2_ENDPOINTS.LIST_JOBS` / `JOB_STATS` /
+The SDK still calls the same paths via `STT_ENDPOINTS.LIST_JOBS` / `JOB_STATS` /
 `JOBS_BY_STATUS` (`core/TranscriptionJobService.ts`) with no indication results are now
 owner-only. Same URL, same 200 — narrower dataset. Any admin view built on these returns only
 the caller's own jobs.
@@ -164,7 +164,7 @@ it; an expiring impersonated token has no refresh path.
 `ImpersonateResponse.user: AuthUser & { tenantId?: string }`. If the backend omits `tenantId`,
 `effectiveTenantId` silently falls back to the admin's tenant (compounding B1).
 
-**B5 — WS tenant claim opt-in.** `core/SttV2WebSocketClient.ts` `requireTenantClaim` defaults
+**B5 — WS tenant claim opt-in.** `core/SttWebSocketClient.ts` `requireTenantClaim` defaults
 `false` (TASK-317 AC-10), so a streaming session can open without a resolvable tenant claim.
 
 **B6 / B7 / B8** — minor: `/auth/revoke-impersonation` missing from `REFRESH_SKIP_ENDPOINTS`
@@ -255,7 +255,7 @@ touched suite + `ReadLints`. Test root: `packages/agentic-sdk-v2/src/**/__tests_
 - `useAdminTranscriptionJobs`: `list`, `stats`, `byStatus(status)` → the admin paths.
 
 **T7 (A2) — document owner-scoping + route admin consumers.**
-- Files: `src/core/TranscriptionJobService.ts` + `STT_V2_ENDPOINTS` doc comments; note that
+- Files: `src/core/TranscriptionJobService.ts` + `STT_ENDPOINTS` doc comments; note that
   `LIST_JOBS`/`JOB_STATS`/`JOBS_BY_STATUS` are **owner-scoped** since TASK-319 F3 and that admins
   must use `useAdminTranscriptionJobs`. No behavior change to end-user calls. Add/extend a test
   asserting the doc-contract via the constants.
@@ -325,7 +325,7 @@ reads `{ refreshToken }` from the body, and returns a rotated `{ token, refreshT
 
 ### 4.2 B5 — default-on WS tenant claim (DONE, merged)
 
-- `src/core/SttV2WebSocketClient.ts` — `requireTenantClaim` effective default flipped to `true`
+- `src/core/SttWebSocketClient.ts` — `requireTenantClaim` effective default flipped to `true`
   (the explicit `requireTenantClaim: false` escape hatch is preserved).
 - `src/core/StreamingSessionManager.ts` — `getWebSocketUrl()` now always appends `tenantId`
   from `apiClient.getTenantId()` (the SDK's only real connect site,
@@ -365,6 +365,6 @@ T4–T11 from §3 remain open.
 | Date | Change | Files |
 |---|---|---|
 | 2026-05-31 | Ticket created. SDK review complete (12 verified findings + 1 verified-correct); plan drafted. Built on TASK-319 (`dcc58a02`). | this README |
-| 2026-05-31 | **B2 + B5 implemented** (isolated worktree, commit `842ca848`) and merged to `fix/2605-review` (merge `64b19c13`). Auto-wired body-based token refresh; flipped WS `requireTenantClaim` default-on with SDK streaming always supplying the claim. SDK suite 2948→2957 green. | `AgenticClient.ts`, `useAuth.ts`, `AgenticProvider.tsx`, `SttV2WebSocketClient.ts`, `StreamingSessionManager.ts` + tests |
+| 2026-05-31 | **B2 + B5 implemented** (isolated worktree, commit `842ca848`) and merged to `fix/2605-review` (merge `64b19c13`). Auto-wired body-based token refresh; flipped WS `requireTenantClaim` default-on with SDK streaming always supplying the claim. SDK suite 2948→2957 green. | `AgenticClient.ts`, `useAuth.ts`, `AgenticProvider.tsx`, `SttWebSocketClient.ts`, `StreamingSessionManager.ts` + tests |
 | 2026-05-31 | **A3 delivered on the backend** (commit `aa883a73`, merge `3d49da96`): `POST /consultations/:id/close`, `/reopen`, `PATCH /consultations/:id`. Filed first as `TASK-321-Consultation-Lifecycle-Endpoints`, which collided with the user's parallel **Completed** `TASK-321-UI-Playground-TypeCheck-Baseline` (its number is baked into uncommitted ui-playground WIP). | docs |
 | 2026-05-31 | **Collision resolved**: renumbered the consultation ticket `TASK-321` → **TASK-322** (folder renamed + self-refs updated in the 10 consultation/api files; comments/JSDoc/decorator-description/test-names only — no functional change). UI-Playground TASK-321 left untouched. | `docs/implementation/TASK-322-Consultation-Lifecycle-Endpoints/` + 9 consultation/api files |
