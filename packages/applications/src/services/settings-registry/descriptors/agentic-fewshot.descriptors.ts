@@ -37,6 +37,8 @@ export const AGENTIC_FEWSHOT_SETTINGS: SettingDescriptor[] = [
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    // Mode knob — unset degrades to the code default (`off`), i.e. today's behaviour.
+    failMode: 'open-to-default',
     category: 'Agentic Few-Shot',
     label: 'Few-shot exemplar curation mode',
     description:

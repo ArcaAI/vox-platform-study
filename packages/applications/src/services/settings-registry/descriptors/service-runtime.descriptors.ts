@@ -184,6 +184,11 @@ export const SERVICE_RUNTIME_SETTINGS: SettingDescriptor[] = (Object.keys(SERVIC
     maxScope: 'system',
     editableBy: 'all',
     globalOnly: true,
+    // Capacity/retention TUNING — `EffectiveConfigService.resolveKey` already
+    // degrades a control-plane miss to `env-fallback` so the Python client keeps
+    // its bootstrap value. open-to-default keeps that contract exact; fail-closed
+    // would make an unwritten row an effective-config endpoint failure.
+    failMode: 'open-to-default',
     category: 'Service Runtime',
     label: META[key].label,
     description: META[key].description,

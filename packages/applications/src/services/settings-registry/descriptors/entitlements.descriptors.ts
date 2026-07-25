@@ -17,6 +17,10 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     editableBy: 'GlobalSetting',
     globalOnly: true,
     killSwitch: true,
+    // Kill-switch — unset degrades to the code default (OFF), i.e. enforcement
+    // stays a no-op. Fail-CLOSED here would mean "enforcement errors block every
+    // request", the opposite of a fail-safe rollout (plan §9.3 M9).
+    failMode: 'open-to-default',
     category: 'Platform',
     label: 'Entitlements enforcement',
     description: 'Master kill-switch for quota/feature enforcement (ships OFF; every check is a no-op until enabled).',
@@ -37,6 +41,10 @@ export const ENTITLEMENT_SETTINGS: SettingDescriptor[] = [
     maxScope: 'tenant',
     editableBy: 'PlanEntitlement',
     globalOnly: true,
+    // Entitlements are a CEILING, not a cascade level (plan §9.3 M2): an absent
+    // plan flag means "no grant", which the enforcement path already reads as
+    // the descriptor default. Not a selection, so not fail-closed.
+    failMode: 'open-to-default',
     category: 'Plan',
     label,
     description,
