@@ -135,7 +135,12 @@ export class S3HealthService {
    * Check which configuration keys are present/missing
    */
   private checkConfiguration(): { present: string[]; missing: string[] } {
-    const requiredKeys = ['S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'];
+    // S3_ACCESS_KEY / S3_SECRET_KEY are NOT AppSettings rows — they are
+    // secrets resolved through SecretsService (TASK-558 §9.3 M10, lane G G4).
+    // Listing them here reported a permanent, misleading "missing" once the
+    // plaintext GlobalSetting rows were removed; readiness for the credentials
+    // is covered by `S3Service.isConfigured()`, which this service already calls.
+    const requiredKeys = ['S3_ENDPOINT'];
     const optionalKeys = [
       'S3_REGION',
       'S3_PUBLIC_BUCKET',

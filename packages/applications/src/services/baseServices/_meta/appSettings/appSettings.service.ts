@@ -16,6 +16,34 @@ import { RedisSubscriberService } from '../../../stt/realtime/redisSubscriber.se
 // Inlined to avoid pulling tenant/constants.ts into this baseService.
 const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
+// The reserved SYSTEM tenant. Platform CAPABILITY rows are seeded here rather
+// than under the default tenant (seed `11-global-setting.ts` `PLATFORM_SETTINGS`,
+// e.g. `enable-local-raw-capture`), so it is equally platform-owned.
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * The ONLY tenants whose rows may enter this cache, highest precedence first.
+ *
+ * TASK-558 §9.3 M4 — `tenantId` must be part of every config cache key. This
+ * cache is deliberately keyed by setting KEY ALONE, because every consumer of
+ * it is platform-scoped (JWT TTLs, rate limits, password policy, cron
+ * schedules, storage endpoints, and the `global-kv` lane of
+ * `EffectiveSettingsService`) and none of them passes a tenant. A key-only
+ * cache is only sound if its CONTENTS are platform-only — otherwise a customer
+ * tenant's row lands in the shared slot and governs the whole platform.
+ *
+ * That was reachable: `TenantService.provisionTenantConfigs` clones every
+ * platform setting into each new tenant, so the loader (`findAll({})`, which
+ * runs without a CLS tenant and is therefore unscoped) sees N_tenants rows per
+ * key. Platform-row precedence alone did not close it — a key whose platform
+ * row was absent or soft-deleted still resolved to a tenant clone, both on read
+ * and on the `getFromCache(key)` → `update(row.id)` admin-write path.
+ */
+const PLATFORM_TENANT_IDS: readonly string[] = [GLOBAL_TENANT_ID, SYSTEM_TENANT_ID];
+
+/** Precedence rank of a platform tenant; non-platform rows are never cached. */
+const platformRank = (tenantId: string): number => PLATFORM_TENANT_IDS.indexOf(tenantId);
+
 /**
  * Dedicated Redis pub/sub channel for cross-instance cache invalidation
  * (F-007 follow-up). Every instance publishes here after a same-instance
@@ -234,7 +262,11 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       // Map<key> cache robust regardless of the serving client: a recreated
       // key is tolerated by construction and a DELETED row can never shadow
       // the live one. Genuine duplicates (2× live rows) still refuse to start.
-      const globalSettings = fetchedSettings.filter((s) => s.resourceStatus !== ResourceStatusType.DELETED);
+      const liveSettings = fetchedSettings.filter((s) => s.resourceStatus !== ResourceStatusType.DELETED);
+
+      // §9.3 M4 — admit ONLY platform-reserved tenants. See
+      // PLATFORM_TENANT_IDS above for why a key-only cache requires this.
+      const globalSettings = liveSettings.filter((s) => platformRank(s.tenantId) !== -1);
 
       // Boot-time duplicate-key invariant.
       // If >1 row exists for the same platform key
@@ -260,17 +292,15 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       }
 
       // Populate the new cache.
-      // Deterministic winner for cross-tenant duplicates: tenant
-      // provisioning clones every `__GLOBAL__` row (including platform-only
-      // namespaces like `rate-limit.*`) into new tenants, and the
-      // invariant above only guards duplicates WITHIN the platform tenant.
-      // With plain last-row-wins a tenant clone could shadow the platform row
-      // (e.g. the rate-limit admin surface resolving a tenant clone's id and
-      // its updates 404'ing). The platform row always wins; rows
-      // for keys that exist only on customer tenants still cache as before.
+      // Only platform rows reach this point, so the sole remaining ambiguity is
+      // a key present on BOTH platform tenants. Resolve it by declared
+      // precedence (default tenant over SYSTEM) rather than row order, and keep
+      // the first row on a tie, so the winner never depends on how the
+      // repository happened to sort. In the seeded layout the two platform
+      // tenants carry disjoint keys, so this only guards future overlap.
       globalSettings.forEach((setting) => {
         const existing = newCache.get(setting.key);
-        if (existing && existing.tenantId === GLOBAL_TENANT_ID && setting.tenantId !== GLOBAL_TENANT_ID) {
+        if (existing && platformRank(existing.tenantId) <= platformRank(setting.tenantId)) {
           return;
         }
         newCache.set(setting.key, setting);

@@ -458,14 +458,24 @@ Docker images are versioned WITHOUT `latest` (semver tags + `sha-<sha8>`); skip 
 
 Pre-commit hook via `simple-git-hooks` (root `package.json` → `"pre-commit": "./scripts/gitleaks-precommit.sh"`), which runs `gitleaks protect --staged --config .gitleaks.toml` and skips (with warning) when gitleaks isn't installed; the CI job `scan-gitleaks` is the back-stop. Config: `.gitleaks.toml` + `.gitleaksignore`.
 
-### 5.7 Env file strategy (verified loaders)
+### 5.7 Env file strategy (TASK-558 — one contract, both languages)
 
-Convention (documented in `.env.example`, implemented in `packages/database/src/env.ts` and `prisma.config.ts`):
+The contract is DECLARED ONCE in `packages/applications/src/common/env/env-file-resolution.ts` (dependency-free, so pre-bootstrap consumers can import it):
 
-- `.env.dev` → local development (`NODE_ENV=development`; falls back to `.env`)
-- `.env.test` → local testing (loaded by dotenv-cli in the `test:*` scripts; isolated infra ports: Postgres 5433, Redis 6380, MinIO 9002)
-- `.env.production` → production REFERENCE only; in CI (`CI=true|1`) and production, NO env file is loaded — host env only, host env always wins.
-- Node services load env through `packages/database/src/env.ts` (imported by `client.ts`); the API additionally centralizes typed access in `IConfigService.getConfigValue(...)` (lint-enforced for downstream URLs) and secrets in `SecretsService`. Python services read env via pydantic-settings prefixes (2.2). Turbo caching declares env in `turbo.json#globalEnv`.
+- **Precedence: host env > env file > schema default.** The file never overwrites a variable already in `process.env`. (Before TASK-558 this was inverted in development.)
+- **One file per `NODE_ENV`** — `.env.dev` / `.env.test` / `.env.production`; **no `.env` fallback**. The root `.env` is docker-compose interpolation input, not application config, and `scripts/dev-infra.sh` generates `infrastructure/docker/.env` for that purpose.
+- **No file at all when `CI` is truthy or `NODE_ENV=production`** — host env only.
+- `.env.test` is loaded by dotenv-cli in the `test:*` scripts (isolated infra ports: Postgres 5433, Redis 6380, MinIO 9002). `.env.production` is a REFERENCE template. `.env.dev` is gitignored and untracked.
+
+Consumers of the single declaration: `loadEnv()`, `apps/api/src/main.ts`, both `prisma.config.ts` files, and `@arcaai/tools`.
+
+**The one sanctioned duplicate:** `packages/database/src/env.ts` mirrors the policy by hand because `@arcaai/applications` depends on `@arcaai/database` — importing the canonical module would be a circular package edge. It is pinned by `packages/database/src/__tests__/env.test.ts`; a contract change must be made in BOTH files. Note it runs at MODULE SCOPE, so importing `@arcaai/database` is what populates `process.env` first in `apps/api`.
+
+**Python** reads the same file through `packages/py-env` (`hope_env`), with the same precedence and the same CI/production suppression — so a value changed only in `.env.dev` is observed by the gateway and by all six FastAPI services. Per-concern pydantic prefixes still apply (2.2).
+
+Typed access on top: `IConfigService.getConfigValue(...)` (lint-enforced for downstream URLs) and `SecretsService` for secrets. Turbo caching declares env in `turbo.json#globalEnv`.
+
+**What does NOT belong in an env file:** anything that must change without a process restart, and any credential that a running system should be able to rotate. Those are DB/Vault tiers — see `.claude/rules/09-infrastructure-devops.md` §Configuration Tiers for the seven-tier taxonomy, `failMode`, and the two config-cache rules (tenant-keyed keys; invalidation over TTL).
 
 ### 5.8 Vault
 

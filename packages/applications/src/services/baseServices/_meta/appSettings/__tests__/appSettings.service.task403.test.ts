@@ -14,8 +14,8 @@
  *
  * Pins:
  *   - platform row wins over a tenant clone in BOTH orderings;
- *   - a key that only exists on customer tenants is still cached (unchanged);
- *   - two tenant clones without a platform row keep last-wins (unchanged).
+ *   - (TASK-558 M4) a key that exists ONLY on customer tenants is not cached;
+ *   - (TASK-558 M4) two tenant clones without a platform row cache nothing.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AppSettingsService } from '../appSettings.service';
@@ -76,22 +76,31 @@ describe('AppSettingsService — platform row wins over tenant clones', () => {
     expect(svc.getFromCache(KEY)?.tenantId).toBe(GLOBAL_TENANT_ID);
   });
 
-  it('still caches a key that only exists on customer tenants', async () => {
+  // SUPERSEDED by TASK-558 §9.3 M4. The two cases below previously pinned the
+  // residual behaviour this ticket deliberately left alone ("unchanged"): a key
+  // with no platform row still resolved to a CUSTOMER tenant's row. That is the
+  // cross-tenant leak M4 names — for a platform-only namespace like
+  // `rate-limit.*` it means one tenant's value governs the whole platform, and
+  // the `getFromCache(key)` → `update(row.id)` admin-write path mutates that
+  // tenant's row. The cache now admits platform-reserved tenants only, so a
+  // customer row is never cached at all. See
+  // `appSettings.service.tenant-key-leak.test.ts`.
+  it('does NOT cache a key that only exists on customer tenants', async () => {
     repo.findAll.mockResolvedValue([buildSetting(TENANT_A, 'false')]);
     const svc = buildService();
 
     await svc.cacheAppSettings();
 
-    expect(svc.hasSetting(KEY)).toBe(true);
-    expect(svc.getFromCache(KEY)?.tenantId).toBe(TENANT_A);
+    expect(svc.hasSetting(KEY)).toBe(false);
+    expect(svc.getFromCache(KEY)).toBeUndefined();
   });
 
-  it('keeps last-wins between two tenant clones when no platform row exists (unchanged behavior)', async () => {
+  it('caches neither of two tenant clones when no platform row exists', async () => {
     repo.findAll.mockResolvedValue([buildSetting(TENANT_A, 'false'), buildSetting(TENANT_B, 'true')]);
     const svc = buildService();
 
     await svc.cacheAppSettings();
 
-    expect(svc.getFromCache(KEY)?.tenantId).toBe(TENANT_B);
+    expect(svc.getFromCache(KEY)).toBeUndefined();
   });
 });
