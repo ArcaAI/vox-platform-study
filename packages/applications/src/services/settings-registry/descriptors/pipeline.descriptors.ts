@@ -58,6 +58,9 @@ export const PIPELINE_SETTINGS: SettingDescriptor[] = (Object.keys(PIPELINE_SETT
   sensitivity: 'internal',
   maxScope: mapScope(PIPELINE_SETTING_DESCRIPTORS[key].maxScope),
   editableBy: 'PipelinePolicy',
+  // Feature toggles, not selection: an unset toggle degrades to the code
+  // default the resolver already applies today (plan §9.3 M5 "fail-open on tuning").
+  failMode: 'open-to-default',
   category: 'Pipeline',
   label: META[key].label,
   description: META[key].description,

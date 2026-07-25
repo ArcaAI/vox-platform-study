@@ -19,6 +19,10 @@ export const TTS_SETTINGS: SettingDescriptor[] = [
     sensitivity: 'secret',
     maxScope: 'tenant',
     editableBy: 'TenantTtsConfig',
+    // Secret ⇒ fail-closed, enforced by `SettingsRegistry.register`. A BYO key
+    // that fell back would silently send this tenant's audio through the
+    // platform's own provider account.
+    failMode: 'closed',
     category: 'Credentials',
     label: `${provider[0].toUpperCase()}${provider.slice(1)} TTS API key (BYO)`,
     description: `Tenant-supplied ${provider} key, encrypted at rest via Vault Transit; write-only, never returned.`,
@@ -30,6 +34,9 @@ export const TTS_SETTINGS: SettingDescriptor[] = [
     sensitivity: 'internal',
     maxScope: 'tenant',
     editableBy: 'TenantTtsConfig',
+    // Voice preference, not provider selection — an unset voice legitimately
+    // falls through to the platform default.
+    failMode: 'open-to-default',
     category: 'Speech',
     label: 'Default English voice',
     description: 'Default voice used for English text-to-speech.',
