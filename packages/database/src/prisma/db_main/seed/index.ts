@@ -10,6 +10,7 @@ import { seedDepartment } from './04-department';
 import { seedTenant, seedTenantFrontendConfig } from './05-tenant';
 import { seedTenantBucket } from './05a-tenant-bucket';
 import { provisionTenantBuckets } from './05b-tenant-bucket-provision';
+import { seedPlatformStorageConfig } from './05c-platform-storage-config';
 import { seedStt } from './06-stt';
 import { seedPromptTemplate } from './07-prompt-template';
 import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
@@ -90,6 +91,12 @@ export const seed = async () => {
     await seedTenantBucket(client);
     console.log('');
     await provisionTenantBuckets(client);
+    console.log('');
+    // The SYSTEM-tenant platform storage default (TASK-558 lane E) — the third
+    // tier of `bucket row → tenant default → SYSTEM default → env`. Depends
+    // only on the reserved SYSTEM tenant (seedTenant, above); CREATE-ONLY, so a
+    // re-seed never reverts a global admin's edit.
+    await seedPlatformStorageConfig(client);
     console.log('');
 
     // Phase 2: Depends on Phase 1

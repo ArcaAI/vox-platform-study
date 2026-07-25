@@ -10,6 +10,7 @@ import {
 } from '@arcaai/domains';
 import { IAppSettingsService } from '../../_meta';
 import { SecretsService } from '../../_meta/secrets';
+import { PlatformStorageConfig, PlatformStorageSource, resolvePlatformStorageConfig } from '../../../tenant-storage-config/platform-storage-config';
 import { AzureBlobProvider } from './azure-blob.provider';
 import { IBlobStorageProvider, StorageDescriptor } from './IBlobStorageProvider';
 import { S3BlobProvider } from './s3-blob.provider';
@@ -57,6 +58,9 @@ export class BlobStorageProviderFactory {
   private readonly tenantProviderCache = new Map<string, Promise<IBlobStorageProvider>>();
   private readonly maxTenantCacheEntries = 256;
 
+  /** Last platform-config tier logged, so the fallback WARN fires once, not per build. */
+  private loggedPlatformSource?: PlatformStorageSource;
+
   constructor(
     @Inject(IAppSettingsService) private readonly appSettings: IAppSettingsService,
     // Optional so direct-construction unit tests and secrets-less environments
@@ -102,43 +106,111 @@ export class BlobStorageProviderFactory {
     }
   }
 
-  private async buildProvider(): Promise<IBlobStorageProvider> {
-    const selected = this.resolveProviderType();
-    const provider = selected === StorageProvider.AZURE_BLOB ? await this.buildAzureProvider() : await this.buildS3Provider(selected);
+  /**
+   * Resolve the PLATFORM-default configuration — steps 3 and 4 of the
+   * `TenantStorageConfig` resolution order: the SYSTEM-tenant row, then the
+   * BOOTSTRAP env fallback (`AppSettings S3_*`, then raw `MINIO_*`).
+   *
+   * Reading the SYSTEM row here — rather than only at boot from env — is what
+   * makes a platform storage change take effect with no redeploy: the admin
+   * write busts this cache via {@link invalidatePlatform}.
+   */
+  private async resolvePlatformConfig(): Promise<PlatformStorageConfig> {
+    // `findSystemDefault` swallows lookup errors and returns null, so a DB
+    // hiccup degrades to the env tier rather than taking uploads down.
+    const systemRow = (await this.configRepo?.findSystemDefault()) ?? null;
 
-    this.logger.log({ message: 'Blob storage provider initialized', provider: provider.provider });
+    return resolvePlatformStorageConfig({
+      systemRow,
+      appSettings: {
+        STORAGE_PROVIDER: this.appSettings.getValueWithDefault<string>('STORAGE_PROVIDER', ''),
+        S3_ENDPOINT: this.appSettings.getValueWithDefault<string>('S3_ENDPOINT', ''),
+        S3_REGION: this.appSettings.getValueWithDefault<string>('S3_REGION', ''),
+        S3_FORCE_PATH_STYLE: this.appSettings.getValueWithDefault<boolean>('S3_FORCE_PATH_STYLE', true),
+        AZURE_STORAGE_ACCOUNT: this.appSettings.getValueWithDefault<string>('AZURE_STORAGE_ACCOUNT', ''),
+        AZURE_STORAGE_ENDPOINT_SUFFIX: this.appSettings.getValueWithDefault<string>('AZURE_STORAGE_ENDPOINT_SUFFIX', ''),
+      },
+      env: process.env,
+    });
+  }
+
+  private async buildProvider(): Promise<IBlobStorageProvider> {
+    const config = await this.resolvePlatformConfig();
+    this.logPlatformSource(config.source);
+
+    const provider = config.provider === StorageProviderType.AZURE_BLOB ? await this.buildAzureProvider(config) : await this.buildS3Provider(config);
+
+    this.logger.log({
+      message: 'Blob storage provider initialized',
+      provider: provider.provider,
+      configSource: config.source,
+    });
     return provider;
   }
 
-  private async buildS3Provider(provider: StorageProvider): Promise<IBlobStorageProvider> {
-    const endpoint = this.appSettings.getValueWithDefault<string>('S3_ENDPOINT', '');
-    const region = this.appSettings.getValueWithDefault<string>('S3_REGION', 'us-east-1');
-    const forcePathStyle = this.appSettings.getValueWithDefault<boolean>('S3_FORCE_PATH_STYLE', true);
-    const accessKeyId = (await this.secrets?.getSecretOptional('S3_ACCESS_KEY')) ?? '';
-    const secretAccessKey = (await this.secrets?.getSecretOptional('S3_SECRET_KEY')) ?? '';
+  /**
+   * Log the tier that supplied the platform configuration exactly ONCE per
+   * distinct tier (TASK-558 §9.2 L8 — every fallback is observable, and an
+   * operator can tell whether the DB row or the env bootstrap is live).
+   */
+  private logPlatformSource(source: PlatformStorageSource): void {
+    if (this.loggedPlatformSource === source) return;
+    this.loggedPlatformSource = source;
+
+    if (source === 'system-row') {
+      this.logger.log({ message: 'Platform storage config resolved from the SYSTEM TenantStorageConfig row', source });
+      return;
+    }
+    this.logger.warn({
+      message:
+        'Platform storage config resolved from the BOOTSTRAP env fallback — the SYSTEM TenantStorageConfig row is missing. ' +
+        'Run the storage seed so the platform default becomes admin-manageable.',
+      source,
+    });
+  }
+
+  private async buildS3Provider(config: PlatformStorageConfig): Promise<IBlobStorageProvider> {
+    const creds = await this.loadPlatformCredentials(config.credentialsRef);
+    const provider = config.provider === StorageProviderType.AWS_S3 ? StorageProvider.AWS_S3 : StorageProvider.MINIO;
 
     return new S3BlobProvider({
-      ...(endpoint ? { endpoint } : {}),
-      region,
-      accessKeyId,
-      secretAccessKey,
-      forcePathStyle,
+      ...(config.endpoint ? { endpoint: config.endpoint } : {}),
+      region: config.region,
+      accessKeyId: creds.accessKeyId ?? '',
+      secretAccessKey: creds.secretAccessKey ?? '',
+      forcePathStyle: config.forcePathStyle,
       provider,
     });
   }
 
-  private async buildAzureProvider(): Promise<IBlobStorageProvider> {
-    const accountName = this.appSettings.getValueWithDefault<string>('AZURE_STORAGE_ACCOUNT', '');
-    const endpointSuffix = this.appSettings.getValueWithDefault<string>('AZURE_STORAGE_ENDPOINT_SUFFIX', 'core.windows.net');
-    const connectionString = await this.secrets?.getSecretOptional('AZURE_STORAGE_CONNECTION_STRING');
-    const accountKey = await this.secrets?.getSecretOptional('AZURE_STORAGE_ACCOUNT_KEY');
+  private async buildAzureProvider(config: PlatformStorageConfig): Promise<IBlobStorageProvider> {
+    const creds = await this.loadPlatformCredentials(config.credentialsRef);
+    const connectionString = creds.connectionString ?? (await this.secrets?.getSecretOptional('AZURE_STORAGE_CONNECTION_STRING'));
+    const accountKey = creds.accountKey ?? (await this.secrets?.getSecretOptional('AZURE_STORAGE_ACCOUNT_KEY'));
 
     return new AzureBlobProvider({
-      accountName,
-      endpointSuffix,
+      accountName: config.accountName,
+      endpointSuffix: config.endpointSuffix,
       ...(connectionString ? { connectionString } : {}),
       ...(accountKey ? { accountKey } : {}),
     });
+  }
+
+  /**
+   * Platform credentials: the SYSTEM row's Vault `credentialsRef` first, then
+   * the pre-existing `S3_ACCESS_KEY` / `S3_SECRET_KEY` secrets. The second step
+   * is what keeps a dev box (`SECRETS_PROVIDER=env`, no Vault kv-v2 entry)
+   * working unchanged after the SYSTEM row is seeded with a `credentialsRef`.
+   */
+  private async loadPlatformCredentials(credentialsRef: string | null): Promise<ResolvedStorageCredentials> {
+    const fromRef = await this.loadCredentials(credentialsRef ?? undefined);
+    if (fromRef.accessKeyId || fromRef.connectionString || fromRef.accountKey) {
+      return fromRef;
+    }
+    return {
+      accessKeyId: (await this.secrets?.getSecretOptional('S3_ACCESS_KEY')) ?? '',
+      secretAccessKey: (await this.secrets?.getSecretOptional('S3_SECRET_KEY')) ?? '',
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -210,6 +282,20 @@ export class BlobStorageProviderFactory {
       access_key_id: creds.accessKeyId ?? '',
       secret_access_key: creds.secretAccessKey ?? '',
     };
+  }
+
+  /**
+   * Clear the cached PLATFORM provider so the next file operation re-resolves
+   * the SYSTEM `TenantStorageConfig` row. Also clears every tenant entry,
+   * because a SHARED tenant/bucket config resolves THROUGH the platform
+   * provider — leaving those cached would keep serving the old backend.
+   *
+   * This is what makes "change the SYSTEM row, no redeploy" true.
+   */
+  invalidatePlatform(): void {
+    this.providerPromise = undefined;
+    this.loggedPlatformSource = undefined;
+    this.tenantProviderCache.clear();
   }
 
   /** Clear cached providers for a tenant (or all tenants when omitted). */
