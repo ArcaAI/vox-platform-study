@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { TenantStorageConfigAdminController } from '../tenant-storage-config-admin.controller';
 import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../../../common/tenant-owned-resource.decorator';
+import { REQUIRES_IF_MATCH_KEY } from '../../../decorators/requiresIfMatch.decorator';
 
 const mockService = {
   listConfigs: vi.fn(),
   getEffectiveConfig: vi.fn(),
   upsertConfig: vi.fn(),
   deleteConfig: vi.fn(),
+  getPlatformDefault: vi.fn(),
+  upsertPlatformDefault: vi.fn(),
 };
 
 describe('TenantStorageConfigAdminController', () => {
@@ -58,11 +61,44 @@ describe('TenantStorageConfigAdminController', () => {
     });
 
     it('is guarded by @TenantOwnedResource for TenantStorageConfig', () => {
-      const meta = Reflect.getMetadata(
-        TENANT_OWNED_RESOURCE_KEY,
-        TenantStorageConfigAdminController.prototype.deleteConfig,
-      ) as TenantOwnedResourceOptions | undefined;
+      const meta = Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, TenantStorageConfigAdminController.prototype.deleteConfig) as
+        TenantOwnedResourceOptions | undefined;
       expect(meta).toMatchObject({ modelName: 'TenantStorageConfig', paramName: 'id' });
+    });
+  });
+
+  describe('platform default (SYSTEM row)', () => {
+    it('delegates the read to the service', async () => {
+      mockService.getPlatformDefault.mockResolvedValue({ id: 'sys', version: 3 });
+      await expect(controller.getPlatformDefault()).resolves.toMatchObject({ version: 3 });
+      expect(mockService.getPlatformDefault).toHaveBeenCalledTimes(1);
+    });
+
+    it('prefers the If-Match version over a body-supplied expectedVersion', async () => {
+      mockService.upsertPlatformDefault.mockResolvedValue({ id: 'sys', version: 5 });
+
+      await controller.upsertPlatformDefault({ provider: 'MINIO', expectedVersion: 1 } as any, 4);
+
+      expect(mockService.upsertPlatformDefault).toHaveBeenCalledWith({ provider: 'MINIO', expectedVersion: 4 });
+    });
+
+    it('falls back to the body expectedVersion when the header carries none', async () => {
+      mockService.upsertPlatformDefault.mockResolvedValue({ id: 'sys', version: 1 });
+
+      await controller.upsertPlatformDefault({ provider: 'MINIO', expectedVersion: 0 } as any, undefined);
+
+      expect(mockService.upsertPlatformDefault).toHaveBeenCalledWith({ provider: 'MINIO', expectedVersion: 0 });
+    });
+
+    it('requires If-Match on the write route (428 guard metadata present)', () => {
+      const meta = Reflect.getMetadata(REQUIRES_IF_MATCH_KEY, TenantStorageConfigAdminController.prototype.upsertPlatformDefault) as unknown;
+      expect(meta).toBeTruthy();
+    });
+
+    it('is NOT guarded by @TenantOwnedResource — the SYSTEM row is cross-tenant by design', () => {
+      const meta = Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, TenantStorageConfigAdminController.prototype.upsertPlatformDefault) as
+        TenantOwnedResourceOptions | undefined;
+      expect(meta).toBeUndefined();
     });
   });
 });

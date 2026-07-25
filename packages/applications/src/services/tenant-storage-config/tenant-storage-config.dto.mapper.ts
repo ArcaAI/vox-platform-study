@@ -1,4 +1,4 @@
-import { TenantStorageConfigEntity } from '@arcaai/domains';
+import { StorageProviderType, StorageTopologyType, SYSTEM_TENANT_ID, TenantStorageConfigEntity } from '@arcaai/domains';
 import { TenantStorageConfigResponse } from './dto';
 
 export class TenantStorageConfigDtoMapper {
@@ -17,8 +17,36 @@ export class TenantStorageConfigDtoMapper {
       containerPrefix: entity.containerPrefix ?? null,
       credentialsRef: entity.credentialsRef ?? null,
       resourceStatus: entity.resourceStatus ?? undefined,
+      version: entity.version,
       createdAt: entity.createdAt.toISOString(),
       updatedAt: entity.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * The "not created yet" platform default. `version: 0` is the OCC token a
+   * client sends back as `If-Match: "0"` to CREATE the SYSTEM row — the same
+   * placeholder contract `TenantTtsConfigDtoMapper.placeholder` uses.
+   */
+  static platformPlaceholder(): TenantStorageConfigResponse {
+    const now = new Date().toISOString();
+    return {
+      id: '',
+      tenantId: SYSTEM_TENANT_ID,
+      bucketId: null,
+      provider: StorageProviderType.MINIO,
+      topology: StorageTopologyType.SHARED,
+      endpoint: null,
+      region: null,
+      forcePathStyle: null,
+      accountName: null,
+      endpointSuffix: null,
+      containerPrefix: null,
+      credentialsRef: null,
+      resourceStatus: undefined,
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
     };
   }
 }

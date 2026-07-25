@@ -1,29 +1,56 @@
 import {
   ResourceType,
+  SYSTEM_TENANT_ID,
   SysEventType,
   TenantBucketRepository,
   TenantStorageConfigEntity,
   TenantStorageConfigFactory,
   TenantStorageConfigRepository,
 } from '@arcaai/domains';
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { OptimisticConcurrencyException } from '@arcaai/exceptions';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { BaseService } from '../../common';
+import { BaseService, isSuperAdmin } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { BlobStorageProviderFactory } from '../baseServices/storage/providers/blob-storage.provider.factory';
 import { ITenantStorageConfigService } from './ITenantStorageConfigService';
-import { UpsertTenantStorageConfigRequest, TenantStorageConfigResponse } from './dto';
+import { UpsertPlatformStorageConfigRequest, UpsertTenantStorageConfigRequest, TenantStorageConfigResponse } from './dto';
 import { TenantStorageConfigDtoMapper } from './tenant-storage-config.dto.mapper';
 
+/** Editable, non-scope fields shared by the tenant and platform write paths. */
+const CONFIG_FIELDS = [
+  'topology',
+  'endpoint',
+  'region',
+  'forcePathStyle',
+  'accountName',
+  'endpointSuffix',
+  'containerPrefix',
+  'credentialsRef',
+] as const;
+
 /**
- * Manages per-tenant / per-bucket storage configuration.
+ * Manages per-tenant / per-bucket storage configuration AND the platform
+ * default that sits under it.
  *
  * Resolution precedence (read side, applied by {@link BlobStorageProviderFactory}):
- *   per-bucket override → tenant default → global/shared config.
+ *   per-bucket override → tenant default → SYSTEM default row → env.
  *
- * Every mutation busts the factory's provider cache for the tenant so the next
- * file operation picks up the new backend immediately.
+ * The SYSTEM default is an ordinary `TenantStorageConfig` row owned by the
+ * reserved SYSTEM tenant with `bucketId = NULL` — deliberately NOT a second
+ * table, because the model already carries every field the platform needs and
+ * already declares this exact resolution order. It is GLOBAL_ADMIN-managed: the
+ * permission decorators express `action + subject` and cannot express "global
+ * admins only", so that boundary is enforced imperatively here (rule 05;
+ * `globalOnly: true` on the `storage.platformDefault` descriptor).
+ *
+ * Credentials NEVER enter the database. `credentialsRef` is a Vault kv-v2 path
+ * resolved at use time by `SecretsService`.
+ *
+ * Every mutation busts the factory's provider cache (per-tenant, or the
+ * process-wide platform provider for the SYSTEM row) so the next file operation
+ * picks up the new backend immediately — no redeploy.
  */
 @Injectable()
 export class TenantStorageConfigService extends BaseService implements ITenantStorageConfigService {
@@ -58,12 +85,18 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
       if (override) return TenantStorageConfigDtoMapper.toResponse(override);
     }
 
-    const fallback = await this.configRepository.findTenantDefault(tenantId);
-    return fallback ? TenantStorageConfigDtoMapper.toResponse(fallback) : null;
+    const tenantDefault = await this.configRepository.findTenantDefault(tenantId);
+    if (tenantDefault) return TenantStorageConfigDtoMapper.toResponse(tenantDefault);
+
+    // Third tier: the platform default. `null` from here means the runtime
+    // falls through to the env bootstrap tier (see `platform-storage-config.ts`).
+    const platformDefault = await this.configRepository.findSystemDefault();
+    return platformDefault ? TenantStorageConfigDtoMapper.toResponse(platformDefault) : null;
   }
 
   async upsertConfig(dto: UpsertTenantStorageConfigRequest): Promise<TenantStorageConfigResponse> {
     const tenantId = this.requireTenantId();
+    this.assertNotPlatformScope(tenantId);
     const bucketId = dto.bucketId ?? null;
 
     if (bucketId) {
@@ -73,6 +106,10 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     const existing = bucketId
       ? await this.configRepository.findForBucket(tenantId, bucketId)
       : await this.configRepository.findTenantDefault(tenantId);
+
+    if (!existing && !bucketId) {
+      await this.assertSingleTenantDefault(tenantId);
+    }
 
     const saved = existing ? await this.applyUpdate(existing, dto) : await this.createNew(tenantId, bucketId, dto);
 
@@ -88,13 +125,13 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
 
   async deleteConfig(id: string): Promise<TenantStorageConfigResponse> {
     const tenantId = this.requireTenantId();
+    this.assertNotPlatformScope(tenantId);
 
     const existing = await this.configRepository.findById(id).catch(() => null);
-    if (!existing) {
+    // 404-over-403: a config belonging to another tenant is reported as
+    // missing, never as forbidden, so the caller cannot probe for existence.
+    if (!existing || existing.tenantId !== tenantId) {
       throw new NotFoundException(`Storage config ${id} not found`);
-    }
-    if (existing.tenantId !== tenantId) {
-      throw new ForbiddenException('You do not have access to this storage config');
     }
 
     const deleted = await this.configRepository.softDelete(id, this.requestUserId ?? undefined);
@@ -109,7 +146,77 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     return TenantStorageConfigDtoMapper.toResponse(deleted);
   }
 
-  private async createNew(tenantId: string, bucketId: string | null, dto: UpsertTenantStorageConfigRequest): Promise<TenantStorageConfigEntity> {
+  // ---------------------------------------------------------------------------
+  // Platform default (SYSTEM tenant row) — GLOBAL_ADMIN only
+  // ---------------------------------------------------------------------------
+
+  async getPlatformDefault(): Promise<TenantStorageConfigResponse> {
+    this.assertGlobalAdmin('read the platform storage default');
+
+    const row = await this.configRepository.findSystemDefault();
+    return row ? TenantStorageConfigDtoMapper.toResponse(row) : TenantStorageConfigDtoMapper.platformPlaceholder();
+  }
+
+  async upsertPlatformDefault(dto: UpsertPlatformStorageConfigRequest): Promise<TenantStorageConfigResponse> {
+    this.assertGlobalAdmin('change the platform storage default');
+
+    const existing = await this.configRepository.findSystemDefault();
+
+    if (!existing) {
+      // No row yet — a create. The client must declare `expectedVersion: 0`
+      // (`If-Match: "0"`), mirroring the TenantTtsConfig platform-default path.
+      if (dto.expectedVersion !== 0) {
+        throw new OptimisticConcurrencyException('TenantStorageConfig', SYSTEM_TENANT_ID, {
+          expectedVersion: dto.expectedVersion,
+          currentVersion: 0,
+        });
+      }
+      const created = await this.createNew(SYSTEM_TENANT_ID, null, dto);
+      this.providerFactory.invalidatePlatform();
+      this.broadcastSysEvent(SysEventType.ResourceCreated, {
+        resourceId: created.id,
+        data: { scope: 'platform-default', provider: created.provider, topology: created.topology },
+      });
+      return TenantStorageConfigDtoMapper.toResponse(created);
+    }
+
+    existing.provider = dto.provider;
+    for (const field of CONFIG_FIELDS) {
+      const value = (dto as unknown as Record<string, unknown>)[field];
+      if (value !== undefined) {
+        (existing as unknown as Record<string, unknown>)[field] = value;
+      }
+    }
+    // `hasChanges` is checked BEFORE stamping `updatedBy` — stamping first
+    // would make every no-op PUT look like a change and burn a version.
+    if (!existing.hasChanges) {
+      throw new BadRequestException('No changes to write to the platform storage default.');
+    }
+    existing.updatedBy = this.requestUserId ?? undefined;
+    this.validateOrThrow(existing);
+
+    const previousVersion = existing.version;
+    const updated = await this.configRepository.updateWithVersion(existing.id, existing, dto.expectedVersion);
+
+    this.providerFactory.invalidatePlatform();
+    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
+      resourceId: updated.id,
+      data: { scope: 'platform-default', previousVersion, newVersion: updated.version },
+    });
+
+    this.logger.log({ message: 'Platform storage default updated', provider: updated.provider, endpoint: updated.endpoint ?? null });
+    return TenantStorageConfigDtoMapper.toResponse(updated);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Internals
+  // ---------------------------------------------------------------------------
+
+  private async createNew(
+    tenantId: string,
+    bucketId: string | null,
+    dto: UpsertTenantStorageConfigRequest | UpsertPlatformStorageConfigRequest,
+  ): Promise<TenantStorageConfigEntity> {
     const entity = TenantStorageConfigFactory.CreateConfig({
       tenantId,
       bucketId,
@@ -158,6 +265,42 @@ export class TenantStorageConfigService extends BaseService implements ITenantSt
     const bucket = await this.bucketRepository.findById(bucketId).catch(() => null);
     if (!bucket || bucket.tenantId !== tenantId) {
       throw new NotFoundException(`Bucket ${bucketId} not found`);
+    }
+  }
+
+  /**
+   * The model allows at most ONE tenant-wide default (`bucketId IS NULL`) per
+   * tenant, but Postgres cannot enforce it — NULLs are distinct in a unique
+   * index, so `@@unique([tenantId, bucketId])` does not constrain the NULL
+   * case. Enforce it here, as the model comment requires.
+   */
+  private async assertSingleTenantDefault(tenantId: string): Promise<void> {
+    const defaults = await this.configRepository.findAllTenantDefaults(tenantId);
+    if (defaults.length > 0) {
+      throw new ConflictException('A tenant-wide default storage config already exists; update it instead of creating a second one.');
+    }
+  }
+
+  /**
+   * The SYSTEM row has exactly one authoritative editor — the platform routes.
+   * Reject an attempt to reach it through the tenant routes (only possible for
+   * a global admin whose elevated working tenant IS the SYSTEM tenant).
+   */
+  private assertNotPlatformScope(tenantId: string): void {
+    if (tenantId === SYSTEM_TENANT_ID) {
+      throw new BadRequestException('The platform storage default is managed through the platform routes, not the tenant routes.');
+    }
+  }
+
+  /**
+   * AUTH-NOTE: GLOBAL_ADMIN-only boundary. The permission decorators express
+   * `action + subject` and cannot express "global admins only" — a tenant admin
+   * legitimately holds `manage:Storage` for its OWN rows. This is a 403
+   * (privilege), NOT the 404-over-403 cross-tenant posture.
+   */
+  private assertGlobalAdmin(action: string): void {
+    if (!isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException(`Only a global administrator may ${action}.`);
     }
   }
 
