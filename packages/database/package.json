@@ -36,7 +36,7 @@
     "db:studio": "prisma studio",
     "decrypt:row": "tsx scripts/decrypt-row.ts",
     "seed": "tsx src/index.ts",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"src/**/*.ts\" --max-warnings 0"
+    "lint": "eslint \"src/**/*.ts\" --max-warnings 0"
   },
   "devDependencies": {
     "@arcaai/config-eslint": "workspace:*",

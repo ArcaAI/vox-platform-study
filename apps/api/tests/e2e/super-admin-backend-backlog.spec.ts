@@ -2,7 +2,7 @@
  * Super-admin tier backend backlog (Group E) backend contract.
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Mirrors the
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`). Mirrors the
  * harness of users-backend-backlog.spec.ts (seeded `super_admin` bound
  * to `__GLOBAL__` = admin operator WITH tenant context; a second `super_admin`
  * session with NO tenant key = cross-tenant operator; `doctor` = RBAC negative).

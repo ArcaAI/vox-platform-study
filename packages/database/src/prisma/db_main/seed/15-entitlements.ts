@@ -49,133 +49,137 @@ const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
 const ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT = TRUTHY_ENV.has((process.env.ENTITLEMENTS_ENABLED_DEFAULT ?? '').trim().toLowerCase());
 
 interface PlanEntitlementSeed {
-    id: string;
-    plan: TenantPlan;
-    maxUsers: number | null;
-    maxDepartments: number | null;
-    maxPromptTemplates: number | null;
-    maxAsrPipelines: number | null;
-    maxApiKeys: number | null;
-    storageQuotaBytes: bigint | null;
-    maxConcurrentSessions: number | null;
-    monthlyConsultations: number | null;
-    monthlyTranscriptionMinutes: number | null;
-    monthlySummaries: number | null;
-    featureDnaReports: boolean;
-    featureVoiceEnrollment: boolean;
-    featureMonitoringAccess: boolean;
-    modelTier: string;
-    rateLimitTier: string;
+  id: string;
+  plan: TenantPlan;
+  maxUsers: number | null;
+  maxDepartments: number | null;
+  maxPromptTemplates: number | null;
+  maxAsrPipelines: number | null;
+  maxApiKeys: number | null;
+  storageQuotaBytes: bigint | null;
+  maxConcurrentSessions: number | null;
+  monthlyConsultations: number | null;
+  monthlyTranscriptionMinutes: number | null;
+  monthlySummaries: number | null;
+  featureDnaReports: boolean;
+  featureVoiceEnrollment: boolean;
+  featureMonitoringAccess: boolean;
+  modelTier: string;
+  rateLimitTier: string;
 }
 
 // TRIAL is a 1-week PRO-entitled window (Q4), so it shares PRO's values.
 const PRO_VALUES = {
-    maxUsers: 25,
-    maxDepartments: 10,
-    maxPromptTemplates: 50,
-    maxAsrPipelines: 5,
-    maxApiKeys: 10,
-    storageQuotaBytes: BigInt(100 * GIB),
-    maxConcurrentSessions: 25,
-    monthlyConsultations: 5_000,
-    monthlyTranscriptionMinutes: 12_000,
-    monthlySummaries: 5_000,
-    featureDnaReports: true,
-    featureVoiceEnrollment: true,
-    featureMonitoringAccess: false,
-    modelTier: 'full',
-    rateLimitTier: 'default',
+  maxUsers: 25,
+  maxDepartments: 10,
+  maxPromptTemplates: 50,
+  maxAsrPipelines: 5,
+  maxApiKeys: 10,
+  storageQuotaBytes: BigInt(100 * GIB),
+  maxConcurrentSessions: 25,
+  monthlyConsultations: 5_000,
+  monthlyTranscriptionMinutes: 12_000,
+  monthlySummaries: 5_000,
+  featureDnaReports: true,
+  featureVoiceEnrollment: true,
+  featureMonitoringAccess: false,
+  modelTier: 'full',
+  rateLimitTier: 'default',
 };
 
 const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
-    {
-        id: SEED_PLAN_ENTITLEMENT_IDS.STARTER,
-        plan: TenantPlan.STARTER,
-        maxUsers: 5,
-        maxDepartments: 2,
-        maxPromptTemplates: 10,
-        maxAsrPipelines: 1,
-        maxApiKeys: 2,
-        storageQuotaBytes: BigInt(5 * GIB),
-        maxConcurrentSessions: 5,
-        monthlyConsultations: 500,
-        monthlyTranscriptionMinutes: 1_000,
-        monthlySummaries: 500,
-        featureDnaReports: false,
-        featureVoiceEnrollment: false,
-        featureMonitoringAccess: false,
-        modelTier: 'base',
-        rateLimitTier: 'strict',
-    },
-    { id: SEED_PLAN_ENTITLEMENT_IDS.TRIAL, plan: TenantPlan.TRIAL, ...PRO_VALUES },
-    { id: SEED_PLAN_ENTITLEMENT_IDS.PRO, plan: TenantPlan.PRO, ...PRO_VALUES },
-    {
-        id: SEED_PLAN_ENTITLEMENT_IDS.ENTERPRISE,
-        plan: TenantPlan.ENTERPRISE,
-        maxUsers: 100,
-        maxDepartments: 40,
-        maxPromptTemplates: 300,
-        maxAsrPipelines: 20,
-        maxApiKeys: 50,
-        storageQuotaBytes: BigInt(1_000 * GIB),
-        maxConcurrentSessions: 100,
-        monthlyConsultations: 50_000,
-        monthlyTranscriptionMinutes: 120_000,
-        monthlySummaries: 50_000,
-        featureDnaReports: true,
-        featureVoiceEnrollment: true,
-        featureMonitoringAccess: true,
-        modelTier: 'full_custom',
-        rateLimitTier: 'relaxed',
-    },
+  {
+    id: SEED_PLAN_ENTITLEMENT_IDS.STARTER,
+    plan: TenantPlan.STARTER,
+    maxUsers: 5,
+    maxDepartments: 2,
+    maxPromptTemplates: 10,
+    maxAsrPipelines: 1,
+    maxApiKeys: 2,
+    storageQuotaBytes: BigInt(5 * GIB),
+    maxConcurrentSessions: 5,
+    monthlyConsultations: 500,
+    monthlyTranscriptionMinutes: 1_000,
+    monthlySummaries: 500,
+    featureDnaReports: false,
+    featureVoiceEnrollment: false,
+    featureMonitoringAccess: false,
+    modelTier: 'base',
+    rateLimitTier: 'strict',
+  },
+  { id: SEED_PLAN_ENTITLEMENT_IDS.TRIAL, plan: TenantPlan.TRIAL, ...PRO_VALUES },
+  { id: SEED_PLAN_ENTITLEMENT_IDS.PRO, plan: TenantPlan.PRO, ...PRO_VALUES },
+  {
+    id: SEED_PLAN_ENTITLEMENT_IDS.ENTERPRISE,
+    plan: TenantPlan.ENTERPRISE,
+    maxUsers: 100,
+    maxDepartments: 40,
+    maxPromptTemplates: 300,
+    maxAsrPipelines: 20,
+    maxApiKeys: 50,
+    storageQuotaBytes: BigInt(1_000 * GIB),
+    maxConcurrentSessions: 100,
+    monthlyConsultations: 50_000,
+    monthlyTranscriptionMinutes: 120_000,
+    monthlySummaries: 50_000,
+    featureDnaReports: true,
+    featureVoiceEnrollment: true,
+    featureMonitoringAccess: true,
+    modelTier: 'full_custom',
+    rateLimitTier: 'relaxed',
+  },
 ];
 
 export const seedEntitlements = async (client: CorePrismaClient) => {
-    console.log(`Seeding plan entitlements (${PLAN_ENTITLEMENTS.length} plan rows + kill-switch)...`);
+  console.log(`Seeding plan entitlements (${PLAN_ENTITLEMENTS.length} plan rows + kill-switch)...`);
 
-    // 1. Per-plan default matrix. Create-only on re-seed so an admin who tuned
-    //    the matrix keeps their values.
-    for (const row of PLAN_ENTITLEMENTS) {
-        await client.planEntitlement.upsert({
-            where: { plan: row.plan },
-            update: {},
-            create: { ...row, createdBy: CREATED_BY },
-        });
-        console.log(`  plan/${row.plan}`);
-    }
-
-    // 2. Enforcement kill-switch — seeded OFF (Q9). Single platform row so the
-    //    flat AppSettings cache lookup stays deterministic (mirrors rate-limit).
-    await client.globalSetting.upsert({
-        where: {
-            GlobalSetting_tenantId_name_key_unique: {
-                tenantId: SEED_TENANT_ID,
-                name: 'Entitlements Enabled',
-                key: 'entitlements.enabled',
-            },
-        },
-        update: {
-            dataType: ValueType.Boolean,
-            description: 'Global entitlements enforcement kill-switch. Set to true to enable quota/feature gating platform-wide.',
-            namespace: 'entitlements',
-        },
-        create: {
-            id: SEED_GLOBAL_SETTING_IDS.ENTITLEMENTS_ENABLED,
-            tenantId: SEED_TENANT_ID,
-            namespace: 'entitlements',
-            name: 'Entitlements Enabled',
-            key: 'entitlements.enabled',
-            // Fresh-DB initial value is env-driven (DEV/STAGING=ON, TEST/CI/PROD=OFF).
-            // `defaultValue` stays the canonical safe 'false' (reset target).
-            value: String(ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT),
-            defaultValue: 'false',
-            dataType: ValueType.Boolean,
-            description: 'Global entitlements enforcement kill-switch. Set to true to enable quota/feature gating platform-wide.',
-            locked: false,
-            createdBy: CREATED_BY,
-        },
+  // 1. Per-plan default matrix. Create-only on re-seed so an admin who tuned
+  //    the matrix keeps their values.
+  for (const row of PLAN_ENTITLEMENTS) {
+    await client.planEntitlement.upsert({
+      where: { plan: row.plan },
+      update: {},
+      create: { ...row, createdBy: CREATED_BY },
     });
-    console.log(`  entitlements/entitlements.enabled = ${ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT} (fresh-DB seed default; env ENTITLEMENTS_ENABLED_DEFAULT)`);
+    console.log(`  plan/${row.plan}`);
+  }
 
-    console.log(`Seeded ${PLAN_ENTITLEMENTS.length} plan entitlements + kill-switch (fresh-DB default ${ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT ? 'ON' : 'OFF'})`);
+  // 2. Enforcement kill-switch — seeded OFF (Q9). Single platform row so the
+  //    flat AppSettings cache lookup stays deterministic (mirrors rate-limit).
+  await client.globalSetting.upsert({
+    where: {
+      GlobalSetting_tenantId_name_key_unique: {
+        tenantId: SEED_TENANT_ID,
+        name: 'Entitlements Enabled',
+        key: 'entitlements.enabled',
+      },
+    },
+    update: {
+      dataType: ValueType.Boolean,
+      description: 'Global entitlements enforcement kill-switch. Set to true to enable quota/feature gating platform-wide.',
+      namespace: 'entitlements',
+    },
+    create: {
+      id: SEED_GLOBAL_SETTING_IDS.ENTITLEMENTS_ENABLED,
+      tenantId: SEED_TENANT_ID,
+      namespace: 'entitlements',
+      name: 'Entitlements Enabled',
+      key: 'entitlements.enabled',
+      // Fresh-DB initial value is env-driven (DEV/STAGING=ON, TEST/CI/PROD=OFF).
+      // `defaultValue` stays the canonical safe 'false' (reset target).
+      value: String(ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT),
+      defaultValue: 'false',
+      dataType: ValueType.Boolean,
+      description: 'Global entitlements enforcement kill-switch. Set to true to enable quota/feature gating platform-wide.',
+      locked: false,
+      createdBy: CREATED_BY,
+    },
+  });
+  console.log(
+    `  entitlements/entitlements.enabled = ${ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT} (fresh-DB seed default; env ENTITLEMENTS_ENABLED_DEFAULT)`,
+  );
+
+  console.log(
+    `Seeded ${PLAN_ENTITLEMENTS.length} plan entitlements + kill-switch (fresh-DB default ${ENTITLEMENTS_ENFORCEMENT_SEED_DEFAULT ? 'ON' : 'OFF'})`,
+  );
 };

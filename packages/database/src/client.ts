@@ -29,7 +29,7 @@ export const {
   PrismaClientUnknownRequestError,
   PrismaClientRustPanicError,
   PrismaClientInitializationError,
-  PrismaClientValidationError
+  PrismaClientValidationError,
 } = Prisma;
 
 // Re-export error types for TypeScript
@@ -63,9 +63,7 @@ function createPrismaClient() {
   const rawMax = process.env.PRISMA_PG_MAX;
   const max = rawMax === undefined || rawMax === '' ? 5 : Number(rawMax);
   if (!Number.isInteger(max) || max <= 0) {
-    throw new Error(
-      `PRISMA_PG_MAX must be a positive integer; got ${JSON.stringify(rawMax)}`,
-    );
+    throw new Error(`PRISMA_PG_MAX must be a positive integer; got ${JSON.stringify(rawMax)}`);
   }
 
   const adapter = new PrismaPg({
@@ -77,9 +75,7 @@ function createPrismaClient() {
 
   const prisma = new PrismaClient({
     adapter,
-    log: process.env.NODE_ENV === 'development'
-      ? ['query', 'error', 'warn']
-      : ['error'],
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
 
   return prisma;
@@ -206,42 +202,53 @@ export function applySoftDeleteFilter(args: { where?: Record<string, unknown> })
  * exact same extension config — keeping soft-delete semantics
  * identical across env-mode and vault-mode pods.
  */
+/**
+ * The subset of a Prisma query-extension callback's parameters this extension uses.
+ * Prisma's own generated parameter type is per-model; this narrows it to the fields
+ * the soft-delete filter reads.
+ */
+type SoftDeleteQueryParams = {
+  model: string;
+  args: { where?: Record<string, unknown> };
+  query: (args: { where?: Record<string, unknown> }) => Promise<unknown>;
+};
+
 export function applySoftDeleteExtension(prisma: PrismaClient) {
   return prisma.$extends({
     name: 'softDeleteFilter',
     query: {
       $allModels: {
-        async findMany({ model, args, query }: any) {
+        async findMany({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async findFirst({ model, args, query }: any) {
+        async findFirst({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async findUnique({ model, args, query }: any) {
+        async findUnique({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async count({ model, args, query }: any) {
+        async count({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async aggregate({ model, args, query }: any) {
+        async aggregate({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async groupBy({ model, args, query }: any) {
+        async groupBy({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }

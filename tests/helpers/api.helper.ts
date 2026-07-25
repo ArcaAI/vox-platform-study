@@ -27,7 +27,7 @@ export interface TypedApiResponse<T = unknown> {
   ok: boolean;
 }
 
-const DEFAULT_BASE_URL = process.env.API_URL || 'http://localhost:8868';
+const DEFAULT_BASE_URL = process.env.API_URL || 'http://localhost:8968';
 
 /**
  * Create an authenticated API client

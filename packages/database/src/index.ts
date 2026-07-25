@@ -45,10 +45,7 @@ export {
   PrismaClientValidationError,
 } from './client.js';
 
-export type {
-  CorePrismaClient,
-  ExtendedCorePrismaClient
-} from './client.js';
+export type { CorePrismaClient, ExtendedCorePrismaClient } from './client.js';
 
 // Tenant-scope extension surface.
 export {
@@ -68,11 +65,7 @@ export type { TenantContextProvider } from './extensions/tenant-scope.js';
 
 // Vault-backed PrismaClient.
 export { getPrismaClientWithVault, VaultPrismaClient } from './vault-client.js';
-export type {
-  DbCredential,
-  VaultDbSecretsLike,
-  VaultPrismaClientOpts,
-} from './vault-client.js';
+export type { DbCredential, VaultDbSecretsLike, VaultPrismaClientOpts } from './vault-client.js';
 
 // Re-export types and enums from generated client (via auto-generated index)
 export * from './generated/core-prisma-client/client.js';

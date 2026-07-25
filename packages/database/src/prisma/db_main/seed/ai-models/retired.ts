@@ -11,66 +11,66 @@
  */
 
 export const RETIRED_AI_MODEL_SLUGS: readonly string[] = [
-    // ASR
-    'whisper-large-v3',
-    'whisper-medium',
-    'faster-whisper-large-v3',
-    'parakeet-ctc-1.1b',
-    // VAD
-    'silero-vad-v4',
-    'silero-vad-v5',
-    'pyannote-vad',
-    // Noise reduction
-    'deepfilternet-v3',
-    'nvidia-cleanunet',
-    // Server-side ONNX whisper
-    'whisper-large-v3-turbo-onnx',
-    'whisper-large-v3-onnx',
-    'whisper-medium-onnx',
-    'whisper-small-onnx',
-    // Ollama LLMs
-    'ollama-qwen3.5-27b',
-    'ollama-qwen3.5-latest',
-    'ollama-translategemma-12b',
-    'ollama-translategemma-latest',
-    'ollama-medgemma-27b-text-q4km',
-    'ollama-gemma3-latest',
-    'ollama-gemma3n-e2b',
-    'ollama-gpt-oss-latest',
-    'ollama-gemma3n-latest',
-    'ollama-granite4-tiny-h',
-    'ollama-granite4-latest',
-    // Azure OpenAI LLMs
-    'gpt-4',
-    'gpt-4o',
-    'gpt-4o-mini',
-    // AWS Bedrock LLMs
-    'claude-3-haiku',
-    'claude-3.5-sonnet',
-    // OpenAI-compatible generic row
-    'local-model-openai-compat',
-    // LM Studio LLMs
-    'lms-qwen3.5-4b',
-    'lms-qwen3.5-0.8b',
-    'lms-qwen3.5-9b',
-    'lms-qwen3.5-35b-a3b',
-    'lms-lfm2-24b-a2b',
-    'lms-glm-4.6v-flash',
-    'lms-lfm2.5-1.2b-instruct',
-    'lms-lfm2.5-1.2b-thinking',
-    'lms-lfm2.5-vl-1.6b',
-    'lms-translategemma-27b-it',
-    'lms-gemma-4-e2b-it-sft-rlvr-medical',
-    'lms-medgemma-1.5-4b-unsloth',
-    'lms-gpt-oss-20b',
-    // Browser-local whisper (SDK lists are hardcoded — safe to retire)
-    'whisper-tiny',
-    'whisper-base',
-    'whisper-small-local',
-    'whisper-medium-local',
-    'whisper-tiny-en',
-    'whisper-base-en',
-    'whisper-small-en',
+  // ASR
+  'whisper-large-v3',
+  'whisper-medium',
+  'faster-whisper-large-v3',
+  'parakeet-ctc-1.1b',
+  // VAD
+  'silero-vad-v4',
+  'silero-vad-v5',
+  'pyannote-vad',
+  // Noise reduction
+  'deepfilternet-v3',
+  'nvidia-cleanunet',
+  // Server-side ONNX whisper
+  'whisper-large-v3-turbo-onnx',
+  'whisper-large-v3-onnx',
+  'whisper-medium-onnx',
+  'whisper-small-onnx',
+  // Ollama LLMs
+  'ollama-qwen3.5-27b',
+  'ollama-qwen3.5-latest',
+  'ollama-translategemma-12b',
+  'ollama-translategemma-latest',
+  'ollama-medgemma-27b-text-q4km',
+  'ollama-gemma3-latest',
+  'ollama-gemma3n-e2b',
+  'ollama-gpt-oss-latest',
+  'ollama-gemma3n-latest',
+  'ollama-granite4-tiny-h',
+  'ollama-granite4-latest',
+  // Azure OpenAI LLMs
+  'gpt-4',
+  'gpt-4o',
+  'gpt-4o-mini',
+  // AWS Bedrock LLMs
+  'claude-3-haiku',
+  'claude-3.5-sonnet',
+  // OpenAI-compatible generic row
+  'local-model-openai-compat',
+  // LM Studio LLMs
+  'lms-qwen3.5-4b',
+  'lms-qwen3.5-0.8b',
+  'lms-qwen3.5-9b',
+  'lms-qwen3.5-35b-a3b',
+  'lms-lfm2-24b-a2b',
+  'lms-glm-4.6v-flash',
+  'lms-lfm2.5-1.2b-instruct',
+  'lms-lfm2.5-1.2b-thinking',
+  'lms-lfm2.5-vl-1.6b',
+  'lms-translategemma-27b-it',
+  'lms-gemma-4-e2b-it-sft-rlvr-medical',
+  'lms-medgemma-1.5-4b-unsloth',
+  'lms-gpt-oss-20b',
+  // Browser-local whisper (SDK lists are hardcoded — safe to retire)
+  'whisper-tiny',
+  'whisper-base',
+  'whisper-small-local',
+  'whisper-medium-local',
+  'whisper-tiny-en',
+  'whisper-base-en',
+  'whisper-small-en',
 ];
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -90,16 +90,12 @@ const SLUG_BOUNDARY_CHARSET = '[A-Za-z0-9._/-]';
 
 /** True when the pipeline YAML references the slug as a standalone identifier. */
 export const pipelineYamlReferencesSlug = (configYaml: string, slug: string): boolean =>
-    new RegExp(
-        `(?<!${SLUG_BOUNDARY_CHARSET})${escapeRegExp(slug)}(?!${SLUG_BOUNDARY_CHARSET})`,
-    ).test(configYaml);
+  new RegExp(`(?<!${SLUG_BOUNDARY_CHARSET})${escapeRegExp(slug)}(?!${SLUG_BOUNDARY_CHARSET})`).test(configYaml);
 
 /**
  * Pure retirement decision for one slug (exported for testability):
  * retire (true) only when NO non-deleted pipeline YAML references it;
  * a referenced slug must be skipped (false) by the sweep.
  */
-export const shouldRetireAiModelSlug = (
-    slug: string,
-    activePipelineYamls: readonly string[],
-): boolean => !activePipelineYamls.some((yaml) => pipelineYamlReferencesSlug(yaml, slug));
+export const shouldRetireAiModelSlug = (slug: string, activePipelineYamls: readonly string[]): boolean =>
+  !activePipelineYamls.some((yaml) => pipelineYamlReferencesSlug(yaml, slug));

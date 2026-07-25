@@ -106,9 +106,11 @@ export default defineConfig({
           hookTimeout: 30000,
           pool: 'threads',
           // The app-local run (no .env.test) gets these from its setup file's
-          // `??=` defaults; the root run loads .env.test first (API_URL=
-          // http://localhost:8868), so force the values the suites are
-          // written against — scoped to this project's workers only.
+          // `??=` defaults; the root run loads .env.test first (API_URL is the
+          // real test gateway, http://localhost:8968), so force the values the
+          // suites are written against — scoped to this project's workers only.
+          // `gateway.test` is a deliberately unroutable host asserted literally
+          // by the auth route tests; its :8868 is a fixture, not a real port.
           env: {
             API_URL: 'http://gateway.test:8868',
             ADMIN_SESSION_SECRET: 'vitest-admin-session-secret-0123456789abcdef',

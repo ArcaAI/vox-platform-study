@@ -245,7 +245,7 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
   api: {
     name: 'API',
     command: ['pnpm', '--filter', 'api', 'dev'],
-    baseUrl: process.env.API_URL || 'http://localhost:8868',
+    baseUrl: process.env.API_URL || 'http://localhost:8968',
     healthPath: '/api/v1/health',
     debugEnvVar: 'DEBUG_API',
   },
@@ -376,7 +376,7 @@ export async function waitForService(
  * Convenience wrapper around waitForService.
  */
 export async function waitForApi(
-  baseUrl: string = process.env.API_URL || 'http://localhost:8868',
+  baseUrl: string = process.env.API_URL || 'http://localhost:8968',
   maxRetries = 60,
   retryInterval = 1000
 ): Promise<void> {

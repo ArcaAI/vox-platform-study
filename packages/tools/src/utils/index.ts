@@ -7,14 +7,7 @@ export { default as names, simpleNames } from './names';
 export { default as Logger, LogMethod, LogLevel } from './Logger';
 export { default as getPrismaDMMF, DMMF } from './getPrismaDMMF';
 export { discoverPrismaDomains, getDMMFForDomain, PrismaDomain } from './prismaSchema';
-export {
-    formatWithPrettier,
-    parseBarrelModules,
-    reconcileBarrel,
-    listModuleFiles,
-    writeOutputs,
-    reportDrift,
-} from './preserveGenerated';
+export { formatWithPrettier, parseBarrelModules, reconcileBarrel, listModuleFiles, writeOutputs, reportDrift } from './preserveGenerated';
 export { default as removeUnusedImports } from './removeUnusedImports';
 export { default as runCommand } from './runCommand';
 export { default as toPascalCase } from './toPascalCase';

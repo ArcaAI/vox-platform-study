@@ -1,79 +1,136 @@
 {
     "$schema": "https://turbo.build/schema.json",
-    "globalDependencies": ["**/.env.*local"],
+    "globalDependencies": [
+        "**/.env.*local"
+    ],
     "tasks": {
         "build": {
-            "dependsOn": ["^build", "^db:generate"],
+            "dependsOn": [
+                "^build",
+                "^db:generate"
+            ],
             "cache": false,
-            "outputs": ["dist/**", ".next/**", "!.next/cache/**", "public/dist/**", "storybook-static/**", "pkg/**"],
-            "env": ["NEXT_PUBLIC_API_HOST"]
+            "outputs": [
+                "dist/**",
+                ".next/**",
+                "!.next/cache/**",
+                "public/dist/**",
+                "storybook-static/**",
+                "pkg/**"
+            ],
+            "env": [
+                "NEXT_PUBLIC_API_HOST"
+            ]
         },
         "@arcaai/database#build": {
-            "dependsOn": ["db:generate", "^build"],
+            "dependsOn": [
+                "db:generate",
+                "^build"
+            ],
             "cache": false,
-            "outputs": ["dist/**"]
+            "outputs": [
+                "dist/**"
+            ]
         },
         "lint": {
-            "dependsOn": ["^build"]
+            "dependsOn": [
+                "^build"
+            ]
         },
         "lint:fix": {
             "cache": false,
-            "dependsOn": ["^build"]
+            "dependsOn": [
+                "^build"
+            ]
         },
         "typecheck": {
-            "dependsOn": ["^build", "^db:generate"],
+            "dependsOn": [
+                "^build",
+                "^db:generate"
+            ],
             "outputs": []
         },
         "dev": {
             "cache": false,
             "persistent": true,
-            "dependsOn": ["^db:generate"]
+            "dependsOn": [
+                "^db:generate"
+            ]
         },
         "dev:watch": {
             "cache": false,
             "persistent": true,
-            "dependsOn": ["^dev:watch"]
+            "dependsOn": [
+                "^dev:watch"
+            ]
         },
         "start": {
-            "dependsOn": ["^build"]
+            "dependsOn": [
+                "^build"
+            ]
         },
         "clean": {
             "cache": false
         },
         "test:e2e": {},
         "test": {
-            "dependsOn": ["build"],
+            "dependsOn": [
+                "build"
+            ],
             "outputs": [],
-            "inputs": ["src/**/*.tsx", "src/**/*.ts", "__tests__/**/*.ts", "__tests__/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
+            "inputs": [
+                "src/**/*.tsx",
+                "src/**/*.ts",
+                "__tests__/**/*.ts",
+                "__tests__/**/*.tsx",
+                "test/**/*.ts",
+                "test/**/*.tsx",
+                "tests/**/*.ts",
+                "tests/**/*.tsx"
+            ]
         },
         "test:watch": {
             "cache": false,
             "persistent": true
         },
         "test:unit": {
-            "dependsOn": ["build"],
+            "dependsOn": [
+                "build"
+            ],
             "outputs": []
         },
         "test:cov": {
-            "dependsOn": ["build"],
-            "outputs": ["coverage/**"]
+            "dependsOn": [
+                "build"
+            ],
+            "outputs": [
+                "coverage/**"
+            ]
         },
         "db:generate": {
             "cache": false,
-            "outputs": ["src/generated/**"]
+            "outputs": [
+                "src/generated/**"
+            ]
         },
         "db:push": {
             "cache": false,
-            "dependsOn": ["db:generate"]
+            "dependsOn": [
+                "db:generate"
+            ]
         },
         "db:push:force": {
             "cache": false,
-            "dependsOn": ["db:generate"]
+            "dependsOn": [
+                "db:generate"
+            ]
         },
         "db:migrate": {
             "cache": false,
             "persistent": true,
-            "dependsOn": ["db:generate"]
+            "dependsOn": [
+                "db:generate"
+            ]
         },
         "db:migrate:deploy": {
             "cache": false
@@ -84,7 +141,9 @@
         },
         "seed": {
             "cache": false,
-            "dependsOn": ["db:generate"]
+            "dependsOn": [
+                "db:generate"
+            ]
         },
         "prisma-commander": {
             "cache": false
@@ -99,7 +158,9 @@
             "cache": false
         },
         "storybook": {
-            "dependsOn": ["@arcaai/ui#build"]
+            "dependsOn": [
+                "@arcaai/ui#build"
+            ]
         }
     },
     "globalEnv": [
@@ -109,6 +170,12 @@
         "ADMIN_SESSION_SECRET",
         "DATABASE_URL",
         "PORT",
+        "API_PORT",
+        "STT_PORT",
+        "GUARDRAIL_PORT",
+        "HARNESS_PORT",
+        "ADMIN_PORT",
+        "API_INSPECT_HOSTPORT",
         "STT_URL",
         "STT_WS_EGRESS_HIGH_WATERMARK_BYTES",
         "STT_WS_RESUME_GRACE_MS",
@@ -280,6 +347,20 @@
         "OUTPUT_PATH",
         "MINIO_ENDPOINT",
         "MINIO_ACCESS_KEY",
-        "MINIO_SECRET_KEY"
+        "MINIO_SECRET_KEY",
+        "MINIO_USE_SSL",
+        "MINIO_REGION",
+        "PRISMA_PG_MAX",
+        "PG_HOST",
+        "PG_PORT",
+        "PG_DATABASE",
+        "ENTITLEMENTS_ENABLED_DEFAULT",
+        "VAULT_ADDR",
+        "VAULT_TOKEN",
+        "VAULT_DEV_ROOT_TOKEN",
+        "VAULT_TRANSIT_KEY_PHI",
+        "VAULT_ROLE_ID",
+        "VAULT_WRAPPED_SECRET_ID",
+        "VAULT_SECRET_ID"
     ]
 }

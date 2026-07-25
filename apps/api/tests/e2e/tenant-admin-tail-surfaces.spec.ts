@@ -3,7 +3,7 @@
  * Agent Jobs · Harness).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack
- * via `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Personas
+ * via `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`). Personas
  * via `tests/helpers` (seeded super_admin / tenant_admin / doctor).
  *
  * Coverage:

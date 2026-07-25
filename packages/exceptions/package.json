@@ -1,27 +1,28 @@
 {
-    "name": "@arcaai/exceptions",
-    "version": "0.0.1",
-    "private": true,
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "scripts": {
-        "build": "tsc",
-        "dev": "tsc -w",
-        "clean": "rimraf dist tsconfig.tsbuildinfo",
-        "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
-        "lint": "eslint \"src/**/*.ts*\" --max-warnings 0",
-        "typecheck": "tsc --noEmit",
-        "test": "vitest run --passWithNoTests"
-    },
-    "devDependencies": {
-        "@arcaai/config-eslint": "workspace:*",
-        "@arcaai/config-ts": "workspace:*",
-        "@types/node": "^25.9.4",
-        "eslint": "^9.39.4",
-        "ts-node": "^10.9.2",
-        "typescript": "^5.9.3"
-    },
-    "dependencies": {
-        "nestjs-cls": "^6.2.1"
-    }
+  "name": "@arcaai/exceptions",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
+    "lint": "eslint \"src/**/*.ts*\" --max-warnings 0",
+    "lint:fix": "eslint \"src/**/*.ts*\" --fix",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
+    "@arcaai/config-ts": "workspace:*",
+    "@types/node": "^25.9.4",
+    "eslint": "^9.39.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "nestjs-cls": "^6.2.1"
+  }
 }

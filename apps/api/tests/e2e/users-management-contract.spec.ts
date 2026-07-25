@@ -2,7 +2,7 @@
  * Users Management (20u grid + 38u detail) · backend contract E2E.
  *
  * Proves the **REAL** server flows the Users surface depends on, against a live
- * seeded API (`process.env.API_URL`, default `http://localhost:8868`). Scope =
+ * seeded API (`process.env.API_URL`, default `http://localhost:8968`). Scope =
  * README §2 "REAL" only — we never assert a TARGET flow (reset-password,
  * Excel/PDF export, bulk server endpoint, cross-user DNA generate, per-user
  * prompt scope, admin-edit-another preferences UI).

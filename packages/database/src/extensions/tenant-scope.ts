@@ -322,9 +322,7 @@ let providerSingleton: TenantContextProvider | null = null;
  * shutdown so the extension goes back to "no provider = pass-through"
  * behaviour required by seed scripts and one-shot CLI tools).
  */
-export function setTenantContextProvider(
-  provider: TenantContextProvider | null,
-): void {
+export function setTenantContextProvider(provider: TenantContextProvider | null): void {
   providerSingleton = provider;
 }
 
@@ -369,10 +367,7 @@ interface QueryParams {
  * `resolveTenantContext()` so a single singleton provider drives every
  * extended client in the process.
  */
-export function applyTenantScopeExtension(
-  prisma: PrismaClient,
-  options: ApplyTenantScopeOptions,
-) {
+export function applyTenantScopeExtension(prisma: PrismaClient, options: ApplyTenantScopeOptions) {
   const ctx = () => {
     const tenantId = options.getTenantId();
     const isSuperAdmin = options.isSuperAdmin?.() ?? false;
@@ -388,9 +383,7 @@ export function applyTenantScopeExtension(
     const { tenantId, isSuperAdmin } = ctx();
     if (tenantId === null || tenantId === undefined) {
       if (isSuperAdmin) return params.query(params.args);
-      throw new Error(
-        `TenantScope: tenant context required for model ${params.model} operation ${op}`,
-      );
+      throw new Error(`TenantScope: tenant context required for model ${params.model} operation ${op}`);
     }
     // SYSTEM-tenant read inheritance: shared catalog models resolve rows
     // owned by the caller OR the SYSTEM tenant. Writes are NOT widened.
@@ -410,9 +403,7 @@ export function applyTenantScopeExtension(
     const { tenantId, isSuperAdmin } = ctx();
     if (tenantId === null || tenantId === undefined) {
       if (isSuperAdmin) return query(args);
-      throw new Error(
-        `TenantScope: tenant context required for model ${model} operation create`,
-      );
+      throw new Error(`TenantScope: tenant context required for model ${model} operation create`);
     }
     enforceTenantInData(args, 'data', tenantId, model, 'create');
     return query(args);
@@ -425,15 +416,11 @@ export function applyTenantScopeExtension(
     const { tenantId, isSuperAdmin } = ctx();
     if (tenantId === null || tenantId === undefined) {
       if (isSuperAdmin) return query(args);
-      throw new Error(
-        `TenantScope: tenant context required for model ${model} operation createMany`,
-      );
+      throw new Error(`TenantScope: tenant context required for model ${model} operation createMany`);
     }
     const data = args.data;
     if (Array.isArray(data)) {
-      args.data = data.map((row, index) =>
-        applyTenantToRecord(row as Record<string, unknown>, tenantId, model, `createMany[${index}]`),
-      );
+      args.data = data.map((row, index) => applyTenantToRecord(row as Record<string, unknown>, tenantId, model, `createMany[${index}]`));
     } else if (data && typeof data === 'object') {
       args.data = applyTenantToRecord(data as Record<string, unknown>, tenantId, model, 'createMany');
     }
@@ -447,9 +434,7 @@ export function applyTenantScopeExtension(
     const { tenantId, isSuperAdmin } = ctx();
     if (tenantId === null || tenantId === undefined) {
       if (isSuperAdmin) return query(args);
-      throw new Error(
-        `TenantScope: tenant context required for model ${model} operation upsert`,
-      );
+      throw new Error(`TenantScope: tenant context required for model ${model} operation upsert`);
     }
     mergeTenantIntoWhere(args, tenantId, model, 'upsert');
     enforceTenantInData(args, 'create', tenantId, model, 'upsert.create');
@@ -457,20 +442,20 @@ export function applyTenantScopeExtension(
   };
 
   // update / updateMany / delete / deleteMany merge tenantId into where.
-  const mutateWhereHandler = (op: string) => async ({ model, args, query }: QueryParams) => {
-    if (!isTenantScopedModel(model)) {
+  const mutateWhereHandler =
+    (op: string) =>
+    async ({ model, args, query }: QueryParams) => {
+      if (!isTenantScopedModel(model)) {
+        return query(args);
+      }
+      const { tenantId, isSuperAdmin } = ctx();
+      if (tenantId === null || tenantId === undefined) {
+        if (isSuperAdmin) return query(args);
+        throw new Error(`TenantScope: tenant context required for model ${model} operation ${op}`);
+      }
+      mergeTenantIntoWhere(args, tenantId, model, op);
       return query(args);
-    }
-    const { tenantId, isSuperAdmin } = ctx();
-    if (tenantId === null || tenantId === undefined) {
-      if (isSuperAdmin) return query(args);
-      throw new Error(
-        `TenantScope: tenant context required for model ${model} operation ${op}`,
-      );
-    }
-    mergeTenantIntoWhere(args, tenantId, model, op);
-    return query(args);
-  };
+    };
 
   // The Prisma 7 typing for `query.$allModels` is the intersection of
   // operations across every model. Because the schema enables the
@@ -479,8 +464,7 @@ export function applyTenantScopeExtension(
   // disappear from the intersection's typed surface. The runtime
   // contract still accepts them on regular models — Prisma dispatches
   // by operation string at call time — so we cast the handler bag to
-  // bypass the type-level exclusion. This pattern matches the soft-
-  // delete extension's `({ model, args, query }: any)` cast style.
+  // bypass the type-level exclusion.
   const handlers = {
     // Read
     findFirst: makeReadHandler('findFirst'),
@@ -504,6 +488,7 @@ export function applyTenantScopeExtension(
   return prisma.$extends({
     name: 'tenantScopeFilter',
     query: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- see the note above the `handlers` bag: no expressible type covers the view-model exclusion.
       $allModels: handlers as any,
     },
   });
@@ -513,12 +498,7 @@ export function applyTenantScopeExtension(
 // Pure helpers (kept module-private; surface is the factory above)
 // ---------------------------------------------------------------------------
 
-function mergeTenantIntoWhere(
-  args: Record<string, unknown>,
-  tenantId: string,
-  model: string,
-  op: string,
-): void {
+function mergeTenantIntoWhere(args: Record<string, unknown>, tenantId: string, model: string, op: string): void {
   const where = (args.where ?? {}) as Record<string, unknown>;
   if ('tenantId' in where && where.tenantId !== undefined) {
     if (where.tenantId !== tenantId) {
@@ -539,12 +519,7 @@ function mergeTenantIntoWhere(
  * but only to the caller's own tenant or SYSTEM — any other value is the same
  * cross-tenant violation `mergeTenantIntoWhere` rejects.
  */
-function mergeSharedReadTenantIntoWhere(
-  args: Record<string, unknown>,
-  tenantId: string,
-  model: string,
-  op: string,
-): void {
+function mergeSharedReadTenantIntoWhere(args: Record<string, unknown>, tenantId: string, model: string, op: string): void {
   const where = (args.where ?? {}) as Record<string, unknown>;
   if ('tenantId' in where && where.tenantId !== undefined) {
     if (where.tenantId !== tenantId && where.tenantId !== SYSTEM_TENANT_ID) {
@@ -558,13 +533,7 @@ function mergeSharedReadTenantIntoWhere(
   args.where = { ...where, tenantId: { in: [tenantId, SYSTEM_TENANT_ID] } };
 }
 
-function enforceTenantInData(
-  args: Record<string, unknown>,
-  field: 'data' | 'create',
-  tenantId: string,
-  model: string,
-  op: string,
-): void {
+function enforceTenantInData(args: Record<string, unknown>, field: 'data' | 'create', tenantId: string, model: string, op: string): void {
   const payload = args[field];
   if (!payload || typeof payload !== 'object') {
     // Nothing to inject into — leave it for Prisma to reject.
@@ -573,12 +542,7 @@ function enforceTenantInData(
   args[field] = applyTenantToRecord(payload as Record<string, unknown>, tenantId, model, op);
 }
 
-function applyTenantToRecord(
-  record: Record<string, unknown>,
-  tenantId: string,
-  model: string,
-  op: string,
-): Record<string, unknown> {
+function applyTenantToRecord(record: Record<string, unknown>, tenantId: string, model: string, op: string): Record<string, unknown> {
   if ('tenantId' in record && record.tenantId !== undefined && record.tenantId !== null) {
     if (record.tenantId !== tenantId) {
       throw new Error(

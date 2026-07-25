@@ -2,7 +2,7 @@
  * Super-admin ops surfaces (Rate Limits · Queues & Jobs · Prisma Studio).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Harness mirrors
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`). Harness mirrors
  * task-398 (seeded personas via `tests/helpers`).
  *
  * Coverage:

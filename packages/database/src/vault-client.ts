@@ -88,9 +88,7 @@ interface ResolvedBaseConfig {
 function resolveBaseConfig(opts: VaultPrismaClientOpts): ResolvedBaseConfig {
   const rawMax = opts.max ?? Number(process.env.PRISMA_PG_MAX ?? 5);
   if (!Number.isInteger(rawMax) || rawMax <= 0) {
-    throw new Error(
-      `VaultPrismaClient: max must be a positive integer; got ${JSON.stringify(rawMax)}`,
-    );
+    throw new Error(`VaultPrismaClient: max must be a positive integer; got ${JSON.stringify(rawMax)}`);
   }
   const out: ResolvedBaseConfig = {
     host: opts.host ?? process.env.PG_HOST ?? 'localhost',
@@ -140,11 +138,7 @@ export class VaultPrismaClient {
    * construction in a single awaitable so callers can `await` once and
    * receive a fully-initialised wrapper.
    */
-  static async create(
-    secrets: VaultDbSecretsLike,
-    role: string = 'hope-app-role',
-    opts: VaultPrismaClientOpts = {},
-  ): Promise<VaultPrismaClient> {
+  static async create(secrets: VaultDbSecretsLike, role: string = 'hope-app-role', opts: VaultPrismaClientOpts = {}): Promise<VaultPrismaClient> {
     const instance = new VaultPrismaClient(secrets, role, opts);
     await instance.acquire();
     return instance;
@@ -248,8 +242,8 @@ export class VaultPrismaClient {
   toJSON(): { role: string; leaseId: string; ttlSec: number } {
     return {
       role: this.role,
-      leaseId: this.destroyed ? '' : this.current?.cred?.leaseId ?? '',
-      ttlSec: this.destroyed ? 0 : this.current?.cred?.ttlSec ?? 0,
+      leaseId: this.destroyed ? '' : (this.current?.cred?.leaseId ?? ''),
+      ttlSec: this.destroyed ? 0 : (this.current?.cred?.ttlSec ?? 0),
     };
   }
 }

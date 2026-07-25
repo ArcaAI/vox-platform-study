@@ -21,9 +21,9 @@
 #   - schema pushed + seeded        (pnpm test:db:reset)
 #   - conda env 'arcaenv'           (Python targets only; pnpm setup:python)
 #
-# PORT OVERLAP: .env.test reuses the DEV application ports, so this refuses to
-# start when the port is already bound (usually a dev stack). Stop the dev
-# stack first — see 'pnpm stack:test:doctor'.
+# PORTS: the TEST env owns its own application ports (DEV + 100, TASK-557), so
+# a dev stack may keep running alongside. Ports are read from .env.test; a bound
+# port is still refused, since that means a second TEST instance.
 # ============================================================================
 
 set -euo pipefail
@@ -78,14 +78,14 @@ load_env_test
 # ----------------------------------------------------------------------------
 port_for() {
     case "$1" in
-        api)       echo "${API_PORT:-8868}" ;;
-        admin)     echo "${ADMIN_PORT:-5176}" ;;
-        stt)       echo "${STT_PORT:-8861}" ;;
-        smr)       echo "${SMR_PORT:-8862}" ;;
-        guardrail) echo "${GUARDRAIL_PORT:-8863}" ;;
-        nlp)       echo "${NLP_PORT:-8864}" ;;
-        tts)       echo "${TTS_PORT:-8865}" ;;
-        harness)   echo "${HARNESS_PORT:-8866}" ;;
+        api)       echo "${API_PORT:-8968}" ;;
+        admin)     echo "${ADMIN_PORT:-5276}" ;;
+        stt)       echo "${STT_PORT:-8961}" ;;
+        smr)       echo "${SMR_PORT:-8962}" ;;
+        guardrail) echo "${GUARDRAIL_PORT:-8963}" ;;
+        nlp)       echo "${NLP_PORT:-8964}" ;;
+        tts)       echo "${TTS_PORT:-8965}" ;;
+        harness)   echo "${HARNESS_PORT:-8966}" ;;
         worker)    echo "" ;;
     esac
 }

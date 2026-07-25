@@ -104,7 +104,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
   const baseURL =
     config.projects[0]?.use?.baseURL ||
     process.env.API_URL ||
-    'http://localhost:8868';
+    'http://localhost:8968';
 
   const isCI = process.env.CI === 'true';
   const waitForServices = process.env.E2E_WAIT_SERVICES === 'true';

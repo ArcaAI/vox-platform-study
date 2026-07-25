@@ -6,7 +6,7 @@
 
 import { defineConfig } from '@playwright/test';
 
-const baseURL = process.env.API_URL || 'http://localhost:8868';
+const baseURL = process.env.API_URL || 'http://localhost:8968';
 
 export default defineConfig({
     testDir: './',

@@ -3,7 +3,7 @@
  *
  * Verifies the **server side** of the agent-instruction surface against the live
  * API (`pnpm test:e2e`, or a dev stack via `SKIP_DB_PRECHECK=true
- * API_URL=http://localhost:8868`). Each flow is a real HTTP round-trip.
+ * API_URL=http://localhost:8968`). Each flow is a real HTTP round-trip.
  *
  * Operator. We use the seeded `arcaai_admin` (TENANT_ADMIN bound to the `ARCAAI`
  * customer tenant — `91-user.ts`). This is deliberate: the Phase 0 Item 2 guard

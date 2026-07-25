@@ -19,7 +19,7 @@
  * that file's first describe block.
  *
  * Run: `pnpm test:e2e` (or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868`). Each flow is a real
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968`). Each flow is a real
  * HTTP round-trip with the seeded `super_admin` (cross-tenant operator), the
  * same persona the audit-log offset suite uses.
  *

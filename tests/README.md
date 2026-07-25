@@ -52,10 +52,10 @@ All root aliases load `.env.test` via dotenv-cli. Verified against root `package
 |---|---|---|---|
 | Unit | `pnpm test:unit` (watch: `test:unit:watch`, UI: `test:unit:ui`, coverage: `test:coverage`) | `vitest.config.ts` | All `**/*.test.ts` / `**/*.spec.ts` across packages and apps, excluding `integration/`, `e2e/`, `apps/ui-playground/`, the PgBouncer rig, and `*.postgres.test.ts`. Browser-focused packages run under jsdom. No infra needed. Setup: `tests/setup/vitest.setup.ts`. |
 | Integration | `pnpm test:integration` | `vitest.integration.config.ts` | `**/integration/**/*.test.ts`, sequential (single fork), against the live test DB. Requires test infra up. Setup: `tests/setup/integration.setup.ts` (resets DB before each test). |
-| API E2E | `pnpm test:e2e` (UI: `test:e2e:ui`, debug: `test:e2e:debug`) | `playwright.config.ts` | `apps/api/tests/e2e/**/*.spec.ts` against a RUNNING test API (`API_URL`, default `http://localhost:8868/api/v1`). Start it first: `pnpm test:up:api`. Global setup/teardown from `tests/setup/`. `pnpm test:e2e:all` runs the turbo `test:e2e` task across packages instead. |
+| API E2E | `pnpm test:e2e` (UI: `test:e2e:ui`, debug: `test:e2e:debug`) | `playwright.config.ts` | `apps/api/tests/e2e/**/*.spec.ts` against a RUNNING test API (`API_URL`, default `http://localhost:8968/api/v1`). Start it first: `pnpm test:up:api`. Global setup/teardown from `tests/setup/`. `pnpm test:e2e:all` runs the turbo `test:e2e` task across packages instead. |
 | Contract | part of `pnpm test:unit` | `vitest.config.ts` | `tests/contracts/*.contract.test.ts` — pure schema validation, no services needed. |
 | Cross-tenant | part of `pnpm test:unit` | `vitest.config.ts` | `tests/cross-tenant/example.test.ts` pins the fixture shape; downstream tenant-isolation tests import `tests/cross-tenant/fixtures.ts` from their own packages. |
-| SDK E2E | `npx playwright test -c tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/*.e2e.spec.ts` against a running API (`API_URL`, default `http://localhost:8868`). No root pnpm alias. |
+| SDK E2E | `npx playwright test -c tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/playwright.config.ts` | `tests/e2e/sdk/*.e2e.spec.ts` against a running API (`API_URL`, default `http://localhost:8968`). No root pnpm alias. |
 | All | `pnpm test:all` / `pnpm test:all` | — | unit, then integration, then E2E. |
 
 Database helpers for the test DB: `pnpm test:db:push` (force-push schema), `pnpm test:db:seed` (seed + media seed), `pnpm test:db:reset` (both).
@@ -66,7 +66,7 @@ Typical full sequence from a fresh checkout:
 pnpm setup:test      # infra + schema + seed
 pnpm test:unit
 pnpm test:integration
-pnpm test:up:api     # terminal 1 — test API on 8868
+pnpm test:up:api     # terminal 1 — test API on 8968
 pnpm test:e2e        # terminal 2
 ```
 

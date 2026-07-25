@@ -5,10 +5,10 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "rimraf dist tsconfig.build.tsbuildinfo && nest build && tsc-alias",
-    "dev": "rimraf dist *.tsbuildinfo && nest start --debug --watch",
+    "dev": "rimraf dist *.tsbuildinfo && nest start --debug ${API_INSPECT_HOSTPORT:-127.0.0.1:9229} --watch",
     "dev:watch": "rimraf dist *.tsbuildinfo && nodemon",
     "start": "node --import ./dist/instrumentation.js dist/main.js",
-    "start:debug": "rimraf dist *.tsbuildinfo && nest start --debug --watch",
+    "start:debug": "rimraf dist *.tsbuildinfo && nest start --debug ${API_INSPECT_HOSTPORT:-127.0.0.1:9229} --watch",
     "start:prod": "node --import ./dist/instrumentation.js dist/main.js",
     "clean": "rimraf dist *.tsbuildinfo",
     "nuke": "rimraf dist node_modules .turbo *.tsbuildinfo",

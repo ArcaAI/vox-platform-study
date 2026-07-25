@@ -24,7 +24,7 @@ if (process.env.NODE_ENV !== 'test') {
 // global-setup convention (real CI sets CI=true|1) so local and CI agree.
 const isCI = ['1', 'true'].includes((process.env.CI ?? '').toLowerCase());
 
-const baseURL = process.env.API_URL || 'http://localhost:8868/api/v1';
+const baseURL = process.env.API_URL || 'http://localhost:8968/api/v1';
 
 export default defineConfig({
   // Test directory

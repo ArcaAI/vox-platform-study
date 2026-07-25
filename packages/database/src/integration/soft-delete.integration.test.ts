@@ -19,12 +19,7 @@
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 // eslint-disable-next-line no-restricted-imports -- allow-list: integration test fixture, tenant context not yet established
-import {
-  getPlatformAdminPrismaClient_Unscoped,
-  getExtendedPrismaClient,
-  CorePrismaClient,
-  ExtendedCorePrismaClient,
-} from '../client';
+import { getPlatformAdminPrismaClient_Unscoped, getExtendedPrismaClient, CorePrismaClient, ExtendedCorePrismaClient } from '../client';
 
 // Test data constants
 const TEST_TENANT_ID = '50000000-0000-0000-0000-000000000000';
@@ -59,11 +54,7 @@ describe('Soft-Delete Integration Tests', () => {
     /**
      * Helper to create test departments
      */
-    async function createTestDepartment(
-      code: string,
-      name: string,
-      resourceStatus: 'ENABLED' | 'DISABLED' | 'ARCHIVED' | 'DELETED' = 'ENABLED'
-    ) {
+    async function createTestDepartment(code: string, name: string, resourceStatus: 'ENABLED' | 'DISABLED' | 'ARCHIVED' | 'DELETED' = 'ENABLED') {
       return basePrisma.department.create({
         data: {
           tenantId: TEST_TENANT_ID,
@@ -473,10 +464,7 @@ describe('Soft-Delete Integration Tests', () => {
       const results = await extendedPrisma.department.findMany({
         where: {
           tenantId: TEST_TENANT_ID,
-          OR: [
-            { code: { startsWith: 'CARD' } },
-            { code: { startsWith: 'OLD' } },
-          ],
+          OR: [{ code: { startsWith: 'CARD' } }, { code: { startsWith: 'OLD' } }],
         },
       });
 
@@ -489,9 +477,7 @@ describe('Soft-Delete Integration Tests', () => {
       const results = await extendedPrisma.department.findMany({
         where: {
           tenantId: TEST_TENANT_ID,
-          AND: [
-            { name: { contains: 'ology' } },
-          ],
+          AND: [{ name: { contains: 'ology' } }],
         },
       });
 

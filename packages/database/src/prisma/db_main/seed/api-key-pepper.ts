@@ -63,9 +63,7 @@ export async function resolveApiKeyPepper(): Promise<string | undefined> {
   const body = (await response.json()) as { data?: { data?: { value?: string } } };
   const value = body.data?.data?.value;
   if (!value) {
-    throw new Error(
-      `SECRETS_PROVIDER=vault but the Vault secret at ${url} has no "value" field for API_KEY_PEPPER.`,
-    );
+    throw new Error(`SECRETS_PROVIDER=vault but the Vault secret at ${url} has no "value" field for API_KEY_PEPPER.`);
   }
   return value;
 }
