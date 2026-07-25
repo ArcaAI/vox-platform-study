@@ -47,6 +47,14 @@ export class TenantStorageConfigResponse {
   @ApiPropertyOptional({ description: 'Resource status', enum: ResourceStatusType })
   resourceStatus?: ResourceStatusType;
 
+  /**
+   * `_version` — the strong ETag validator (`ETagInterceptor` reads exactly
+   * this field). `0` on the not-yet-created platform-default placeholder, so a
+   * client can `If-Match: "0"` to create it.
+   */
+  @ApiProperty({ description: 'Row version driving the If-Match / ETag OCC token (0 = row does not exist yet)' })
+  version: number;
+
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt: string;
 

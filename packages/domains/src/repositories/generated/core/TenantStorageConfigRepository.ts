@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { SYSTEM_TENANT_ID } from '@arcaai/database';
 
 import { Repository } from '../../../common';
 import { TenantStorageConfigEntityMapper } from '../../../mappers';
@@ -37,6 +38,34 @@ export class TenantStorageConfigRepository extends Repository<TenantStorageConfi
     } catch {
       return null;
     }
+  }
+
+  /**
+   * The PLATFORM-default config: the SYSTEM tenant's tenant-wide row
+   * (`tenantId = SYSTEM_TENANT_ID`, `bucketId IS NULL`). This is the third step
+   * of the resolution order documented on the Prisma model
+   * (`bucket row → tenant default → SYSTEM default → env`); the row is
+   * GLOBAL_ADMIN-managed and readable by every tenant because
+   * `TenantStorageConfig` is a SYSTEM-shared READ model (writes are NOT widened).
+   */
+  async findSystemDefault(): Promise<TenantStorageConfigEntity | null> {
+    return this.findTenantDefault(SYSTEM_TENANT_ID);
+  }
+
+  /**
+   * Every ENABLED tenant-wide default row for a tenant. Exists so the
+   * application layer can enforce the model's "at most one row with
+   * `bucketId IS NULL` per tenant" invariant, which Postgres cannot express
+   * (NULLs are distinct in a unique index).
+   */
+  async findAllTenantDefaults(tenantId: string): Promise<TenantStorageConfigEntity[]> {
+    return this.findAll({
+      filters: {
+        tenantId,
+        bucketId: null,
+        resourceStatus: ResourceStatusType.ENABLED,
+      },
+    });
   }
 
   /** The per-bucket override config for a specific bucket, if any. */
