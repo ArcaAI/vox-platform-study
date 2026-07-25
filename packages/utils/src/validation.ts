@@ -40,8 +40,7 @@ export function isDefined<T>(value: T | null | undefined): value is T {
  * Check if value is a valid UUID
  */
 export function isValidUUID(uuid: string): boolean {
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return uuidRegex.test(uuid);
 }
 
@@ -55,12 +54,7 @@ export function isInRange(value: number, min: number, max: number): boolean {
 /**
  * Validate that a string meets minimum and maximum length requirements
  */
-export function isValidLength(
-  str: string,
-  min: number,
-  max: number = Number.MAX_SAFE_INTEGER
-): boolean {
+export function isValidLength(str: string, min: number, max: number = Number.MAX_SAFE_INTEGER): boolean {
   const length = str.trim().length;
   return length >= min && length <= max;
 }
-

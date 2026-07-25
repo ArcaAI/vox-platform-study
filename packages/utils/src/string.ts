@@ -35,9 +35,7 @@ export function toKebabCase(str: string): string {
  * Convert string to camelCase
  */
 export function toCamelCase(str: string): string {
-  return str
-    .replace(/[-_\s]+(.)?/g, (_, char) => (char ? char.toUpperCase() : ''))
-    .replace(/^(.)/, (char) => char.toLowerCase());
+  return str.replace(/[-_\s]+(.)?/g, (_, char) => (char ? char.toUpperCase() : '')).replace(/^(.)/, (char) => char.toLowerCase());
 }
 
 /**
@@ -91,4 +89,3 @@ export function escapeHtml(str: string): string {
   };
   return str.replace(/[&<>"']/g, (char) => htmlEscapes[char]);
 }
-

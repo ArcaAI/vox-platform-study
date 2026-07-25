@@ -160,9 +160,7 @@ export class Paths {
    */
   static getTemplatesPath(generatorName: string): string {
     // Support both "repository" and "generate-repository" formats
-    const formattedGeneratorName = generatorName.startsWith('generate-')
-      ? generatorName
-      : `generate-${generatorName}`;
+    const formattedGeneratorName = generatorName.startsWith('generate-') ? generatorName : `generate-${generatorName}`;
 
     return path.resolve(this.getToolsPath(), 'src', formattedGeneratorName, 'templates');
   }
@@ -288,8 +286,7 @@ export class Paths {
     // If no domain names provided, get all domains from the directory
     if (domainNames.length === 0) {
       try {
-        domainNames = fs.readdirSync(basePath)
-          .filter(item => fs.statSync(path.join(basePath, item)).isDirectory());
+        domainNames = fs.readdirSync(basePath).filter((item) => fs.statSync(path.join(basePath, item)).isDirectory());
       } catch (error) {
         // Directory might not exist yet
         return [];

@@ -16,57 +16,52 @@ import { generatePrismaIndex } from './prisma-commander/utils/generatePrismaInde
  * Find the monorepo root by looking for pnpm-workspace.yaml or turbo.json
  */
 function findMonorepoRoot(startPath: string): string {
-    let currentPath = startPath;
-    const maxDepth = 10;
-    let depth = 0;
+  let currentPath = startPath;
+  const maxDepth = 10;
+  let depth = 0;
 
-    while (depth < maxDepth) {
-        if (fs.existsSync(path.join(currentPath, 'pnpm-workspace.yaml'))) {
-            return currentPath;
-        }
-        if (fs.existsSync(path.join(currentPath, 'turbo.json'))) {
-            return currentPath;
-        }
-
-        const parentPath = path.dirname(currentPath);
-        if (parentPath === currentPath) {
-            break;
-        }
-        currentPath = parentPath;
-        depth++;
+  while (depth < maxDepth) {
+    if (fs.existsSync(path.join(currentPath, 'pnpm-workspace.yaml'))) {
+      return currentPath;
+    }
+    if (fs.existsSync(path.join(currentPath, 'turbo.json'))) {
+      return currentPath;
     }
 
-    // Fallback: assume __dirname is in packages/tools/src
-    return path.resolve(__dirname, '..', '..', '..');
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) {
+      break;
+    }
+    currentPath = parentPath;
+    depth++;
+  }
+
+  // Fallback: assume __dirname is in packages/tools/src
+  return path.resolve(__dirname, '..', '..', '..');
 }
 
 async function main() {
-    const args = process.argv.slice(2);
+  const args = process.argv.slice(2);
 
-    // Find monorepo root dynamically
-    const monorepoRoot = findMonorepoRoot(process.cwd());
-    console.log(`Monorepo root: ${monorepoRoot}`);
+  // Find monorepo root dynamically
+  const monorepoRoot = findMonorepoRoot(process.cwd());
+  console.log(`Monorepo root: ${monorepoRoot}`);
 
-    // Default path to generated client (relative to monorepo root)
-    const defaultPath = path.resolve(
-        monorepoRoot,
-        'packages/database/src/generated/core-prisma-client'
-    );
+  // Default path to generated client (relative to monorepo root)
+  const defaultPath = path.resolve(monorepoRoot, 'packages/database/src/generated/core-prisma-client');
 
-    const generatedClientPath = args[0] || defaultPath;
-    const absolutePath = path.isAbsolute(generatedClientPath)
-        ? generatedClientPath
-        : path.resolve(monorepoRoot, generatedClientPath);
+  const generatedClientPath = args[0] || defaultPath;
+  const absolutePath = path.isAbsolute(generatedClientPath) ? generatedClientPath : path.resolve(monorepoRoot, generatedClientPath);
 
-    console.log(`Generating index.ts for Prisma client at: ${absolutePath}`);
+  console.log(`Generating index.ts for Prisma client at: ${absolutePath}`);
 
-    try {
-        await generatePrismaIndex(absolutePath);
-        console.log('✅ Index file generated successfully!');
-    } catch (error) {
-        console.error('❌ Failed to generate index file:', error);
-        process.exit(1);
-    }
+  try {
+    await generatePrismaIndex(absolutePath);
+    console.log('✅ Index file generated successfully!');
+  } catch (error) {
+    console.error('❌ Failed to generate index file:', error);
+    process.exit(1);
+  }
 }
 
 main();

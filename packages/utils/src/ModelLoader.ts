@@ -82,11 +82,7 @@ export class ModelLoader {
 
     // Option 3: Model from registry
     if (options.modelId) {
-      return await this.loadFromRegistry(
-        options.modelId,
-        options.onProgress,
-        options.forceDownload
-      );
+      return await this.loadFromRegistry(options.modelId, options.onProgress, options.forceDownload);
     }
 
     throw new Error('Must provide modelId, customUrl, or customPath');
@@ -104,7 +100,7 @@ export class ModelLoader {
   private async loadFromRegistry(
     modelId: string,
     onProgress?: (progress: ModelDownloadProgress) => void,
-    forceDownload?: boolean
+    forceDownload?: boolean,
   ): Promise<ArrayBuffer> {
     console.warn(`[ModelLoader] Loading model from registry: ${modelId}`);
 
@@ -142,10 +138,7 @@ export class ModelLoader {
    * @returns Model data as ArrayBuffer
    * @private
    */
-  private async loadFromUrl(
-    url: string,
-    onProgress?: (progress: ModelDownloadProgress) => void
-  ): Promise<ArrayBuffer> {
+  private async loadFromUrl(url: string, onProgress?: (progress: ModelDownloadProgress) => void): Promise<ArrayBuffer> {
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -269,4 +262,3 @@ export function getModelLoader(): ModelLoader {
   }
   return modelLoader;
 }
-

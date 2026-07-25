@@ -69,18 +69,14 @@ export class ModelManagementService extends ModelDownloader {
    * Get models by category
    */
   async getModelsByCategory(category: ModelCategory): Promise<ModelMetadata[]> {
-    return Array.from(this.modelRegistry.values()).filter(
-      (model) => model.category === category
-    );
+    return Array.from(this.modelRegistry.values()).filter((model) => model.category === category);
   }
 
   /**
    * Get models by priority
    */
   async getModelsByPriority(priority: ModelPriority): Promise<ModelMetadata[]> {
-    return Array.from(this.modelRegistry.values()).filter(
-      (model) => model.priority === priority
-    );
+    return Array.from(this.modelRegistry.values()).filter((model) => model.priority === priority);
   }
 
   /**
@@ -144,10 +140,7 @@ export class ModelManagementService extends ModelDownloader {
    * 2. Custom source (if set)
    * 3. Default remote URL
    */
-  async downloadModelById(
-    modelId: string,
-    onProgress?: (progress: ModelDownloadProgress) => void
-  ): Promise<void> {
+  async downloadModelById(modelId: string, onProgress?: (progress: ModelDownloadProgress) => void): Promise<void> {
     const metadata = this.modelRegistry.get(modelId);
     if (!metadata) {
       throw new Error(`Model not found: ${modelId}`);
@@ -168,11 +161,7 @@ export class ModelManagementService extends ModelDownloader {
       const localPath = registryEntry.sources?.local;
       const remoteUrl = registryEntry.sources?.remote || metadata.url;
 
-      const bestUrl = await this.sourceManager.getBestSource(
-        modelId,
-        localPath,
-        remoteUrl
-      );
+      const bestUrl = await this.sourceManager.getBestSource(modelId, localPath, remoteUrl);
 
       const config: ModelConfig = {
         name: metadata.name,
@@ -326,10 +315,7 @@ export class ModelManagementService extends ModelDownloader {
   /**
    * Update a model to latest version
    */
-  async updateModelById(
-    modelId: string,
-    onProgress?: (progress: ModelDownloadProgress) => void
-  ): Promise<void> {
+  async updateModelById(modelId: string, onProgress?: (progress: ModelDownloadProgress) => void): Promise<void> {
     // Delete old version
     await this.deleteModelById(modelId);
 
@@ -369,9 +355,7 @@ export class ModelManagementService extends ModelDownloader {
   /**
    * Download essential models (for first-time setup)
    */
-  async downloadEssentialModels(
-    onProgress?: (modelId: string, progress: ModelDownloadProgress) => void
-  ): Promise<void> {
+  async downloadEssentialModels(onProgress?: (modelId: string, progress: ModelDownloadProgress) => void): Promise<void> {
     const essentialModels = await this.getEssentialModels();
 
     for (const model of essentialModels) {
@@ -555,4 +539,3 @@ export function getModelManagementService(): ModelManagementService {
   }
   return modelManagementService;
 }
-

@@ -14,12 +14,12 @@ const logger = new Logger('generate-factory');
 const program = new Command();
 
 program
-    .name('generate-factory')
-    .description('Generate factory classes from entity class files')
-    .option('-e, --entity-path <path>', 'Directory containing entity class files', 'packages/domains/src/entities')
-    .option('-o, --output <path>', 'Output directory for generated factories', 'packages/domains/src/factories')
-    .option('-w, --overwrite', 'Overwrite existing factory files', false)
-    .parse(process.argv);
+  .name('generate-factory')
+  .description('Generate factory classes from entity class files')
+  .option('-e, --entity-path <path>', 'Directory containing entity class files', 'packages/domains/src/entities')
+  .option('-o, --output <path>', 'Output directory for generated factories', 'packages/domains/src/factories')
+  .option('-w, --overwrite', 'Overwrite existing factory files', false)
+  .parse(process.argv);
 
 const options = program.opts();
 
@@ -36,12 +36,14 @@ logger.debug(`Overwrite: ${overwrite}`);
 logger.debug('Domain folders will be preserved in output structure');
 
 generateFactories({
-    entityPath,
-    outputPath,
-    overwrite,
-}).then(() => {
+  entityPath,
+  outputPath,
+  overwrite,
+})
+  .then(() => {
     logger.info('✨ Factory generation completed successfully');
-}).catch((error) => {
+  })
+  .catch((error) => {
     logger.error('Error generating factories:', error);
     process.exit(1);
-});
+  });
