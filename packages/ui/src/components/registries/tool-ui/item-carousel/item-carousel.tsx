@@ -166,7 +166,7 @@ function CarouselNavButton({ direction, visible, onClick }: { direction: ScrollD
   );
 }
 
-interface ItemCarouselHeaderProps {
+export interface ItemCarouselHeaderProps {
   title?: string;
   description?: string;
 }
@@ -182,7 +182,7 @@ function ItemCarouselHeader({ title, description }: ItemCarouselHeaderProps) {
   );
 }
 
-interface EmptyStateProps {
+export interface EmptyStateProps {
   id: string;
   className?: string;
 }

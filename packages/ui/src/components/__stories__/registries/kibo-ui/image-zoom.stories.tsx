@@ -13,9 +13,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
-  render: () => (
-    <ImageZoom>
-      <img src="https://placehold.co/400x300" alt="Placeholder" className="rounded-lg" width={400} height={300} />
-    </ImageZoom>
-  ),
+  args: {
+    children: <img src="https://placehold.co/400x300" alt="Placeholder" className="rounded-lg" width={400} height={300} />,
+  },
+  render: (args) => <ImageZoom {...args} />,
 };

@@ -86,7 +86,7 @@ const useMorphingText = (texts: string[]) => {
   return { text1Ref, text2Ref };
 };
 
-interface MorphingTextProps {
+export interface MorphingTextProps {
   className?: string;
   texts: string[];
 }

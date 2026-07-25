@@ -28,8 +28,9 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
-  render: () => (
-    <CodeBlock data={sampleData} defaultValue="typescript" className="w-[500px]">
+  args: { data: sampleData, defaultValue: 'typescript', className: 'w-[500px]' },
+  render: (args) => (
+    <CodeBlock {...args}>
       <CodeBlockHeader>
         <CodeBlockCopyButton />
       </CodeBlockHeader>

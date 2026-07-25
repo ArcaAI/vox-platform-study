@@ -36,15 +36,18 @@ function Editable({ initial }: { initial: string }) {
  * editor does not. Syntax colours clear WCAG AA (>=4.5:1) on `--code-editor-bg`.
  */
 export const Default: Story = {
-  render: () => <Editable initial={SAMPLE} />,
+  args: { value: SAMPLE, 'aria-label': 'Configuration JSON' },
+  render: (args) => <Editable initial={args.value} />,
 };
 
 /** Live validation surfaces the parse error with its line and column. */
 export const Invalid: Story = {
-  render: () => <Editable initial={'{\n  "model": "gpt-4o",\n  "temperature":\n}'} />,
+  args: { value: '{\n  "model": "gpt-4o",\n  "temperature":\n}', 'aria-label': 'Configuration JSON' },
+  render: (args) => <Editable initial={args.value} />,
 };
 
 /** Read-only mode drops the Format action but keeps validity and Copy. */
 export const ReadOnly: Story = {
-  render: () => <CodeEditor value={SAMPLE} aria-label="Configuration JSON" readOnly className="h-full" />,
+  args: { value: SAMPLE, 'aria-label': 'Configuration JSON', readOnly: true, className: 'h-full' },
+  render: (args) => <CodeEditor {...args} />,
 };

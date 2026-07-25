@@ -6,7 +6,7 @@ interface Avatar {
   imageUrl: string;
   profileUrl: string;
 }
-interface AvatarCirclesProps {
+export interface AvatarCirclesProps {
   className?: string;
   numPeople?: number;
   avatarUrls: Avatar[];

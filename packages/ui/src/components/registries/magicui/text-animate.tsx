@@ -7,7 +7,7 @@ type AnimationType = 'text' | 'word' | 'character' | 'line';
 type AnimationVariant =
   'fadeIn' | 'blurIn' | 'blurInUp' | 'blurInDown' | 'slideUp' | 'slideDown' | 'slideLeft' | 'slideRight' | 'scaleUp' | 'scaleDown';
 
-interface TextAnimateProps extends MotionProps {
+export interface TextAnimateProps extends MotionProps {
   /**
    * The text content to animate
    */
