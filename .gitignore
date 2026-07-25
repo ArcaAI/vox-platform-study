@@ -15,6 +15,7 @@ coverage.xml
 **/*/coverage.xml
 .nyc_output
 test-results/
+playwright-report/
 htmlcov/
 .coverage
 
