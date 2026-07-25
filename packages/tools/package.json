@@ -52,6 +52,6 @@
     "generate-repository": "ts-node src/generate-repository/index.ts --overwrite true",
     "generate-service-module": "ts-node src/generate-service-module/index.ts",
     "prisma-commander": "ts-node src/prisma-commander/index.ts",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"src/**/*.ts\" --max-warnings 0"
+    "lint": "eslint \"src/**/*.ts\" --max-warnings 0"
   }
 }

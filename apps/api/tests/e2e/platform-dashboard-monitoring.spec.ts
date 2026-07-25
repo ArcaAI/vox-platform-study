@@ -4,7 +4,7 @@
  * Exercises the server side of the cross-tenant data sources the two super-admin
  * platform surfaces (`/dashboard` frame 10, `/system-health` frame 11) read,
  * against the live API (`pnpm test:e2e`, or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868`). Each flow is a real
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968`). Each flow is a real
  * HTTP round-trip with the seeded `super_admin` (cross-tenant operator — logs in
  * WITHOUT a tenantKey).
  *

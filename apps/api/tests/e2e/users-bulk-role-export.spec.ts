@@ -2,7 +2,7 @@
  * Users cluster completion (P1-6 bulk assign-role, P1-7 export enrichment).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Harness mirrors
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`). Harness mirrors
  * users-backend-backlog.spec.ts (seeded `super_admin` bound to `__GLOBAL__`
  * for tenant-scoped writes; `tenant_admin`/`doctor` pinned to `__GLOBAL__`).
  *

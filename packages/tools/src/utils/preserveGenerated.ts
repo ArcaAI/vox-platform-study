@@ -28,10 +28,10 @@ let prettierConfig: Awaited<ReturnType<typeof prettier.resolveConfig>> | undefin
  * and is idempotent (output === prettier(output)).
  */
 export async function formatWithPrettier(absolutePath: string, content: string): Promise<string> {
-    if (prettierConfig === undefined) {
-        prettierConfig = await prettier.resolveConfig(__filename);
-    }
-    return prettier.format(content, { ...prettierConfig, filepath: absolutePath, parser: 'typescript' });
+  if (prettierConfig === undefined) {
+    prettierConfig = await prettier.resolveConfig(__filename);
+  }
+  return prettier.format(content, { ...prettierConfig, filepath: absolutePath, parser: 'typescript' });
 }
 
 /**
@@ -39,13 +39,13 @@ export async function formatWithPrettier(absolutePath: string, content: string):
  * in their committed order. Lines that are not re-exports are ignored.
  */
 export function parseBarrelModules(content: string): string[] {
-    const modules: string[] = [];
-    const re = /export \* from '\.\/([^']+)';/g;
-    let match: RegExpExecArray | null;
-    while ((match = re.exec(content)) !== null) {
-        modules.push(match[1]);
-    }
-    return modules;
+  const modules: string[] = [];
+  const re = /export \* from '\.\/([^']+)';/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
+    modules.push(match[1]);
+  }
+  return modules;
 }
 
 /**
@@ -63,31 +63,23 @@ export function parseBarrelModules(content: string): string[] {
  *
  * @param trailing Trailing string to use when (re)building a changed barrel.
  */
-export function reconcileBarrel(
-    existingContent: string | null,
-    desiredModules: string[],
-    trailing = '\n',
-): string {
-    const existing = existingContent ? parseBarrelModules(existingContent) : [];
-    const desired = new Set(desiredModules);
+export function reconcileBarrel(existingContent: string | null, desiredModules: string[], trailing = '\n'): string {
+  const existing = existingContent ? parseBarrelModules(existingContent) : [];
+  const desired = new Set(desiredModules);
 
-    const kept = existing.filter((module) => desired.has(module));
-    const appended = desiredModules
-        .filter((module) => !kept.includes(module))
-        .sort((a, b) => a.localeCompare(b));
-    const finalModules = [...kept, ...appended];
+  const kept = existing.filter((module) => desired.has(module));
+  const appended = desiredModules.filter((module) => !kept.includes(module)).sort((a, b) => a.localeCompare(b));
+  const finalModules = [...kept, ...appended];
 
-    const unchanged =
-        existingContent !== null &&
-        finalModules.length === existing.length &&
-        finalModules.every((module, index) => module === existing[index]);
+  const unchanged =
+    existingContent !== null && finalModules.length === existing.length && finalModules.every((module, index) => module === existing[index]);
 
-    if (unchanged) {
-        return existingContent as string;
-    }
+  if (unchanged) {
+    return existingContent as string;
+  }
 
-    const effectiveTrailing = existingContent?.endsWith('\n\n') ? '\n\n' : trailing;
-    return finalModules.map((module) => `export * from './${module}';`).join('\n') + effectiveTrailing;
+  const effectiveTrailing = existingContent?.endsWith('\n\n') ? '\n\n' : trailing;
+  return finalModules.map((module) => `export * from './${module}';`).join('\n') + effectiveTrailing;
 }
 
 /**
@@ -96,14 +88,14 @@ export function reconcileBarrel(
  * `__tests__` directory is skipped because directories are not enumerated here.
  */
 export function listModuleFiles(directory: string, suffix: string): string[] {
-    if (!fs.existsSync(directory)) {
-        return [];
-    }
-    return fs
-        .readdirSync(directory)
-        .filter((file) => file.endsWith(`${suffix}.ts`) && !file.endsWith('.test.ts'))
-        .map((file) => file.slice(0, -'.ts'.length))
-        .sort((a, b) => a.localeCompare(b));
+  if (!fs.existsSync(directory)) {
+    return [];
+  }
+  return fs
+    .readdirSync(directory)
+    .filter((file) => file.endsWith(`${suffix}.ts`) && !file.endsWith('.test.ts'))
+    .map((file) => file.slice(0, -'.ts'.length))
+    .sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -111,15 +103,15 @@ export function listModuleFiles(directory: string, suffix: string): string[] {
  * identical so unchanged files are never rewritten).
  */
 export function writeOutputs(outputs: Map<string, string>, logger: Logger): void {
-    for (const [absolutePath, content] of outputs) {
-        const existed = fs.existsSync(absolutePath);
-        if (existed && fs.readFileSync(absolutePath, 'utf-8') === content) {
-            continue;
-        }
-        fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-        fs.writeFileSync(absolutePath, content);
-        logger.info(`${existed ? 'Overwrote' : 'Generated'} file: ${path.basename(absolutePath)}`);
+  for (const [absolutePath, content] of outputs) {
+    const existed = fs.existsSync(absolutePath);
+    if (existed && fs.readFileSync(absolutePath, 'utf-8') === content) {
+      continue;
     }
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    fs.writeFileSync(absolutePath, content);
+    logger.info(`${existed ? 'Overwrote' : 'Generated'} file: ${path.basename(absolutePath)}`);
+  }
 }
 
 /**
@@ -127,39 +119,32 @@ export function writeOutputs(outputs: Map<string, string>, logger: Logger): void
  * drift. Returns a process exit code: 0 when clean, 1 when a re-run would change
  * or create anything.
  */
-export function reportDrift(
-    outputs: Map<string, string>,
-    workspaceRoot: string,
-    logger: Logger,
-    regenHint: string,
-): number {
-    const changed: string[] = [];
-    const created: string[] = [];
+export function reportDrift(outputs: Map<string, string>, workspaceRoot: string, logger: Logger, regenHint: string): number {
+  const changed: string[] = [];
+  const created: string[] = [];
 
-    for (const [absolutePath, content] of outputs) {
-        if (!fs.existsSync(absolutePath)) {
-            created.push(absolutePath);
-        } else if (fs.readFileSync(absolutePath, 'utf-8') !== content) {
-            changed.push(absolutePath);
-        }
+  for (const [absolutePath, content] of outputs) {
+    if (!fs.existsSync(absolutePath)) {
+      created.push(absolutePath);
+    } else if (fs.readFileSync(absolutePath, 'utf-8') !== content) {
+      changed.push(absolutePath);
     }
+  }
 
-    const rel = (file: string) => path.relative(workspaceRoot, file);
+  const rel = (file: string) => path.relative(workspaceRoot, file);
 
-    if (changed.length === 0 && created.length === 0) {
-        logger.info(`check: no drift — ${outputs.size} generated file(s) match the committed files.`);
-        return 0;
-    }
+  if (changed.length === 0 && created.length === 0) {
+    logger.info(`check: no drift — ${outputs.size} generated file(s) match the committed files.`);
+    return 0;
+  }
 
-    logger.warn(
-        `check: drift detected — ${changed.length} file(s) would change, ${created.length} new file(s) would be created.`,
-    );
-    for (const file of changed.sort()) {
-        logger.warn(`  would change: ${rel(file)}`);
-    }
-    for (const file of created.sort()) {
-        logger.warn(`  would create: ${rel(file)}`);
-    }
-    logger.warn(regenHint);
-    return 1;
+  logger.warn(`check: drift detected — ${changed.length} file(s) would change, ${created.length} new file(s) would be created.`);
+  for (const file of changed.sort()) {
+    logger.warn(`  would change: ${rel(file)}`);
+  }
+  for (const file of created.sort()) {
+    logger.warn(`  would create: ${rel(file)}`);
+  }
+  logger.warn(regenHint);
+  return 1;
 }

@@ -48,6 +48,7 @@
     "clean": "rimraf dist tsconfig.tsbuildinfo e2e/fixtures/dist",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo e2e/fixtures/dist",
     "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

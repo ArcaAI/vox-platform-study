@@ -10,6 +10,7 @@
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "nuke": "rimraf dist node_modules .turbo tsconfig.tsbuildinfo",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:cov": "vitest run --coverage"

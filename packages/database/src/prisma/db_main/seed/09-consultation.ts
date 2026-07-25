@@ -1,22 +1,19 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
-import type {
-    TranscriptionJobStatus,
-    TranscriptionJobType,
-} from '../../../generated/core-prisma-client/enums';
+import type { TranscriptionJobStatus, TranscriptionJobType } from '../../../generated/core-prisma-client/enums';
 import {
-    SEED_TENANT_ID,
-    SEED_CUSTOMER_TENANT_IDS,
-    SEED_USER_IDS,
-    SEED_DEPARTMENT_IDS,
-    SEED_CONSULTATION_IDS,
-    SEED_CONTEXT_ITEM_IDS,
-    SEED_SUMMARY_META_IDS,
-    SEED_AUDIO_RECORDING_IDS,
-    SEED_CONTEXT_VERSION_IDS,
-    SEED_NAMED_ENTITY_IDS,
-    SEED_TRANSCRIPTION_JOB_IDS,
-    SYSTEM_USER_ID,
+  SEED_TENANT_ID,
+  SEED_CUSTOMER_TENANT_IDS,
+  SEED_USER_IDS,
+  SEED_DEPARTMENT_IDS,
+  SEED_CONSULTATION_IDS,
+  SEED_CONTEXT_ITEM_IDS,
+  SEED_SUMMARY_META_IDS,
+  SEED_AUDIO_RECORDING_IDS,
+  SEED_CONTEXT_VERSION_IDS,
+  SEED_NAMED_ENTITY_IDS,
+  SEED_TRANSCRIPTION_JOB_IDS,
+  SYSTEM_USER_ID,
 } from './00-constants';
 // The plaintext clinical PHI columns were dropped; seed rows must
 // persist Vault-Transit ciphertext into the sibling `encrypted*` columns.
@@ -47,13 +44,13 @@ import { encryptSeedRow } from './phi-encryption';
  */
 
 const PATIENT_IDS = {
-    PAT_001: 'PAT-20250101-001',
-    PAT_002: 'PAT-20250115-002',
-    PAT_003: 'PAT-20260110-003',
-    PAT_004: 'PAT-20260205-004',
-    PAT_005: 'PAT-20260210-005',
-    PAT_006: 'PAT-20260223-006',
-    PAT_007: 'PAT-20260218-007',
+  PAT_001: 'PAT-20250101-001',
+  PAT_002: 'PAT-20250115-002',
+  PAT_003: 'PAT-20260110-003',
+  PAT_004: 'PAT-20260205-004',
+  PAT_005: 'PAT-20260210-005',
+  PAT_006: 'PAT-20260223-006',
+  PAT_007: 'PAT-20260218-007',
 };
 
 // =============================================================================
@@ -61,162 +58,162 @@ const PATIENT_IDS = {
 // =============================================================================
 
 export const DEFAULT_CONSULTATIONS = [
-    {
-        id: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_001,
-        appointmentDate: new Date('2025-12-15'),
-        doctorId: SEED_USER_IDS.DOCTOR,
-        departmentId: SEED_DEPARTMENT_IDS.GEN,
-        parentConsultationId: null,
-        metadata: {
-            visitType: 'NEW_PATIENT',
-            status: 'CLOSED',
-            chiefComplaint: 'Persistent cough and low-grade fever for 5 days',
-            language: 'en',
-            closedAt: '2025-12-15T11:00:00Z',
-            closedBy: SEED_USER_IDS.DOCTOR,
-        },
-        createdBy: SEED_USER_IDS.DOCTOR,
+  {
+    id: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_001,
+    appointmentDate: new Date('2025-12-15'),
+    doctorId: SEED_USER_IDS.DOCTOR,
+    departmentId: SEED_DEPARTMENT_IDS.GEN,
+    parentConsultationId: null,
+    metadata: {
+      visitType: 'NEW_PATIENT',
+      status: 'CLOSED',
+      chiefComplaint: 'Persistent cough and low-grade fever for 5 days',
+      language: 'en',
+      closedAt: '2025-12-15T11:00:00Z',
+      closedBy: SEED_USER_IDS.DOCTOR,
     },
-    {
-        id: SEED_CONSULTATION_IDS.CARD_NEW,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_002,
-        appointmentDate: new Date('2026-01-20'),
-        doctorId: SEED_USER_IDS.DOCTOR2,
-        departmentId: SEED_DEPARTMENT_IDS.CARD,
-        parentConsultationId: null,
-        metadata: {
-            visitType: 'REVISIT',
-            status: 'REVIEW',
-            chiefComplaint: 'Follow-up for hypertension management and chest tightness',
-            language: 'en',
-        },
-        createdBy: SEED_USER_IDS.DOCTOR2,
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.CARD_NEW,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_002,
+    appointmentDate: new Date('2026-01-20'),
+    doctorId: SEED_USER_IDS.DOCTOR2,
+    departmentId: SEED_DEPARTMENT_IDS.CARD,
+    parentConsultationId: null,
+    metadata: {
+      visitType: 'REVISIT',
+      status: 'REVIEW',
+      chiefComplaint: 'Follow-up for hypertension management and chest tightness',
+      language: 'en',
     },
-    {
-        id: SEED_CONSULTATION_IDS.SURG_NEW,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_003,
-        appointmentDate: new Date('2026-01-10'),
-        doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
-        departmentId: SEED_DEPARTMENT_IDS.SURG,
-        parentConsultationId: null,
-        metadata: {
-            visitType: 'NEW_PATIENT',
-            status: 'SUMMARIZING',
-            chiefComplaint: 'Right iliac fossa pain for 2 days with nausea and fever',
-            language: 'en',
-        },
-        createdBy: SEED_USER_IDS.DOCTOR_SURGERY,
+    createdBy: SEED_USER_IDS.DOCTOR2,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.SURG_NEW,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_003,
+    appointmentDate: new Date('2026-01-10'),
+    doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
+    departmentId: SEED_DEPARTMENT_IDS.SURG,
+    parentConsultationId: null,
+    metadata: {
+      visitType: 'NEW_PATIENT',
+      status: 'SUMMARIZING',
+      chiefComplaint: 'Right iliac fossa pain for 2 days with nausea and fever',
+      language: 'en',
     },
-    {
-        id: SEED_CONSULTATION_IDS.SURG_FOLLOWUP,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_003,
-        appointmentDate: new Date('2026-02-05'),
-        doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
-        departmentId: SEED_DEPARTMENT_IDS.SURG,
-        parentConsultationId: SEED_CONSULTATION_IDS.SURG_NEW,
-        metadata: {
-            visitType: 'REVISIT',
-            status: 'OPEN',
-            chiefComplaint: 'Post-appendectomy follow-up — wound review and recovery assessment',
-            language: 'en',
-        },
-        createdBy: SEED_USER_IDS.DOCTOR_SURGERY,
+    createdBy: SEED_USER_IDS.DOCTOR_SURGERY,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.SURG_FOLLOWUP,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_003,
+    appointmentDate: new Date('2026-02-05'),
+    doctorId: SEED_USER_IDS.DOCTOR_SURGERY,
+    departmentId: SEED_DEPARTMENT_IDS.SURG,
+    parentConsultationId: SEED_CONSULTATION_IDS.SURG_NEW,
+    metadata: {
+      visitType: 'REVISIT',
+      status: 'OPEN',
+      chiefComplaint: 'Post-appendectomy follow-up — wound review and recovery assessment',
+      language: 'en',
     },
-    {
-        id: SEED_CONSULTATION_IDS.NEUR_REFERRAL,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_004,
-        appointmentDate: new Date('2026-02-05'),
-        doctorId: SEED_USER_IDS.DOCTOR_NEURO,
-        departmentId: SEED_DEPARTMENT_IDS.NEUR,
-        parentConsultationId: null,
-        metadata: {
-            visitType: 'REFERRAL',
-            status: 'TRANSCRIBING',
-            chiefComplaint: 'Recurrent headaches with visual disturbance — referred from General Practice',
-            language: 'en',
-            referredFrom: 'General Practice',
-            referringDoctorId: SEED_USER_IDS.DOCTOR,
-        },
-        createdBy: SEED_USER_IDS.DOCTOR_NEURO,
+    createdBy: SEED_USER_IDS.DOCTOR_SURGERY,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.NEUR_REFERRAL,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_004,
+    appointmentDate: new Date('2026-02-05'),
+    doctorId: SEED_USER_IDS.DOCTOR_NEURO,
+    departmentId: SEED_DEPARTMENT_IDS.NEUR,
+    parentConsultationId: null,
+    metadata: {
+      visitType: 'REFERRAL',
+      status: 'TRANSCRIBING',
+      chiefComplaint: 'Recurrent headaches with visual disturbance — referred from General Practice',
+      language: 'en',
+      referredFrom: 'General Practice',
+      referringDoctorId: SEED_USER_IDS.DOCTOR,
     },
-    {
-        id: SEED_CONSULTATION_IDS.PEDS_COMPLETED,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_005,
-        appointmentDate: new Date('2026-02-10'),
-        doctorId: SEED_USER_IDS.DOCTOR_PEDS,
-        departmentId: SEED_DEPARTMENT_IDS.PEDS,
-        parentConsultationId: null,
-        metadata: {
-            visitType: 'NEW_PATIENT',
-            status: 'CLOSED',
-            chiefComplaint: 'Right ear pain and fever for 3 days — 4-year-old male',
-            language: 'en',
-            closedAt: '2026-02-10T15:30:00Z',
-            closedBy: SEED_USER_IDS.DOCTOR_PEDS,
-        },
-        createdBy: SEED_USER_IDS.DOCTOR_PEDS,
+    createdBy: SEED_USER_IDS.DOCTOR_NEURO,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.PEDS_COMPLETED,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_005,
+    appointmentDate: new Date('2026-02-10'),
+    doctorId: SEED_USER_IDS.DOCTOR_PEDS,
+    departmentId: SEED_DEPARTMENT_IDS.PEDS,
+    parentConsultationId: null,
+    metadata: {
+      visitType: 'NEW_PATIENT',
+      status: 'CLOSED',
+      chiefComplaint: 'Right ear pain and fever for 3 days — 4-year-old male',
+      language: 'en',
+      closedAt: '2026-02-10T15:30:00Z',
+      closedBy: SEED_USER_IDS.DOCTOR_PEDS,
     },
-    {
-        id: SEED_CONSULTATION_IDS.ER_RECORDING,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_006,
-        appointmentDate: new Date('2026-02-23'),
-        doctorId: SEED_USER_IDS.DOCTOR_ER,
-        departmentId: SEED_DEPARTMENT_IDS.ER,
-        parentConsultationId: null,
-        metadata: {
-            visitType: 'NEW_PATIENT',
-            status: 'RECORDING',
-            chiefComplaint: 'Acute chest pain radiating to left arm — onset 45 minutes ago',
-            language: 'en',
-            triageCategory: 'RED',
-        },
-        createdBy: SEED_USER_IDS.DOCTOR_ER,
+    createdBy: SEED_USER_IDS.DOCTOR_PEDS,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.ER_RECORDING,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_006,
+    appointmentDate: new Date('2026-02-23'),
+    doctorId: SEED_USER_IDS.DOCTOR_ER,
+    departmentId: SEED_DEPARTMENT_IDS.ER,
+    parentConsultationId: null,
+    metadata: {
+      visitType: 'NEW_PATIENT',
+      status: 'RECORDING',
+      chiefComplaint: 'Acute chest pain radiating to left arm — onset 45 minutes ago',
+      language: 'en',
+      triageCategory: 'RED',
     },
-    {
-        id: SEED_CONSULTATION_IDS.GEN_REOPENED,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_001,
-        appointmentDate: new Date('2026-01-05'),
-        doctorId: SEED_USER_IDS.DOCTOR,
-        departmentId: SEED_DEPARTMENT_IDS.GEN,
-        parentConsultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        metadata: {
-            visitType: 'REVISIT',
-            status: 'OPEN',
-            chiefComplaint: 'Follow-up after pneumonia treatment — persistent mild cough',
-            language: 'en',
-            reopenReason: 'addendum',
-            reopenedAt: '2026-01-05T09:00:00Z',
-            reopenedBy: SEED_USER_IDS.DOCTOR,
-        },
-        createdBy: SEED_USER_IDS.DOCTOR,
+    createdBy: SEED_USER_IDS.DOCTOR_ER,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.GEN_REOPENED,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_001,
+    appointmentDate: new Date('2026-01-05'),
+    doctorId: SEED_USER_IDS.DOCTOR,
+    departmentId: SEED_DEPARTMENT_IDS.GEN,
+    parentConsultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    metadata: {
+      visitType: 'REVISIT',
+      status: 'OPEN',
+      chiefComplaint: 'Follow-up after pneumonia treatment — persistent mild cough',
+      language: 'en',
+      reopenReason: 'addendum',
+      reopenedAt: '2026-01-05T09:00:00Z',
+      reopenedBy: SEED_USER_IDS.DOCTOR,
     },
-    {
-        id: SEED_CONSULTATION_IDS.CARD_CROSS_DEPT,
-        tenantId: SEED_TENANT_ID,
-        patientId: PATIENT_IDS.PAT_002,
-        appointmentDate: new Date('2026-02-15'),
-        doctorId: SEED_USER_IDS.DOCTOR2,
-        departmentId: SEED_DEPARTMENT_IDS.NEUR,
-        parentConsultationId: SEED_CONSULTATION_IDS.CARD_NEW,
-        metadata: {
-            visitType: 'REFERRAL',
-            status: 'OPEN',
-            chiefComplaint: 'Neurology referral for recurrent syncope during hypertension follow-up',
-            language: 'en',
-            referredFrom: 'Cardiology',
-            referringDoctorId: SEED_USER_IDS.DOCTOR2,
-        },
-        createdBy: SEED_USER_IDS.DOCTOR2,
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.CARD_CROSS_DEPT,
+    tenantId: SEED_TENANT_ID,
+    patientId: PATIENT_IDS.PAT_002,
+    appointmentDate: new Date('2026-02-15'),
+    doctorId: SEED_USER_IDS.DOCTOR2,
+    departmentId: SEED_DEPARTMENT_IDS.NEUR,
+    parentConsultationId: SEED_CONSULTATION_IDS.CARD_NEW,
+    metadata: {
+      visitType: 'REFERRAL',
+      status: 'OPEN',
+      chiefComplaint: 'Neurology referral for recurrent syncope during hypertension follow-up',
+      language: 'en',
+      referredFrom: 'Cardiology',
+      referringDoctorId: SEED_USER_IDS.DOCTOR2,
     },
+    createdBy: SEED_USER_IDS.DOCTOR2,
+  },
 ];
 
 // =============================================================================
@@ -231,68 +228,68 @@ export const DEFAULT_CONSULTATIONS = [
 // row precedes the REVISIT so the parentConsultationId FK resolves in order.
 // =============================================================================
 export const CUSTOMER_TENANT_CONSULTATIONS = [
-    // ── ArcaAI ──────────────────────────────────────────────────────────
-    {
-        id: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        patientId: 'PAT-20260221-101',
-        appointmentDate: new Date('2026-02-21'),
-        doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
-        departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
-        parentConsultationId: null,
-        metadata: {
-            visitType: 'NEW_PATIENT',
-            status: 'OPEN',
-            chiefComplaint: 'Sore throat and mild fever for 3 days',
-            language: 'en',
-        },
-        createdBy: SEED_USER_IDS.ARCAAI_DOCTOR,
+  // ── ArcaAI ──────────────────────────────────────────────────────────
+  {
+    id: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    patientId: 'PAT-20260221-101',
+    appointmentDate: new Date('2026-02-21'),
+    doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
+    departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
+    parentConsultationId: null,
+    metadata: {
+      visitType: 'NEW_PATIENT',
+      status: 'OPEN',
+      chiefComplaint: 'Sore throat and mild fever for 3 days',
+      language: 'en',
     },
-    {
-        id: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        patientId: 'PAT-20260221-101',
-        appointmentDate: new Date('2026-02-28'),
-        doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
-        departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
-        parentConsultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
-        metadata: {
-            visitType: 'REVISIT',
-            status: 'REVIEW',
-            chiefComplaint: 'Follow-up: persistent sore throat, review of throat swab results',
-            language: 'en',
-        },
-        createdBy: SEED_USER_IDS.ARCAAI_DOCTOR,
+    createdBy: SEED_USER_IDS.ARCAAI_DOCTOR,
+  },
+  {
+    id: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    patientId: 'PAT-20260221-101',
+    appointmentDate: new Date('2026-02-28'),
+    doctorId: SEED_USER_IDS.ARCAAI_DOCTOR,
+    departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
+    parentConsultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+    metadata: {
+      visitType: 'REVISIT',
+      status: 'REVIEW',
+      chiefComplaint: 'Follow-up: persistent sore throat, review of throat swab results',
+      language: 'en',
     },
+    createdBy: SEED_USER_IDS.ARCAAI_DOCTOR,
+  },
 ];
 
 // One transcript per customer-tenant consultation, mirroring the Global
 // TRANSCRIPT context-item shape so customer clinical views are not empty.
 export const CUSTOMER_TENANT_CONTEXT_ITEMS = [
-    {
-        id: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_NEW_TRANSCRIPT,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content:
-            'Doctor: What brings you in today? Patient: Sore throat and a mild fever for about three days. Doctor: Any cough or difficulty swallowing? Patient: Some difficulty swallowing, no cough. Doctor: I will examine your throat and order a rapid swab.',
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_REVISIT_TRANSCRIPT,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content:
-            'Doctor: How is the throat now? Patient: A little better but still sore. Doctor: Your swab was positive for strep; we will continue the antibiotics and review in a week.',
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_NEW_TRANSCRIPT,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content:
+      'Doctor: What brings you in today? Patient: Sore throat and a mild fever for about three days. Doctor: Any cough or difficulty swallowing? Patient: Some difficulty swallowing, no cough. Doctor: I will examine your throat and order a rapid swab.',
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_REVISIT_TRANSCRIPT,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content:
+      'Doctor: How is the throat now? Patient: A little better but still sore. Doctor: Your swab was positive for strep; we will continue the antibiotics and review in a week.',
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
 ];
 
 // =============================================================================
@@ -314,11 +311,13 @@ Patient: Is it serious?
 Doctor: We'll know more after the tests. In the meantime, I'm going to start you on amoxicillin 500mg three times daily for seven days. Please also take paracetamol for the fever. Come back in three days or sooner if your symptoms worsen.`;
 
 const GEN_SUMMARY_V1 = JSON.stringify({
-    summary: '**Chief Complaint**: Persistent productive cough with low-grade fever (37.8°C) for 5 days.\n\n**History of Present Illness**: The patient presented with a 5-day history of persistent cough productive of yellowish sputum, predominantly in the mornings. She reported associated low-grade fever and mild exertional dyspnea on stair climbing. She denied chest pain. Her son had a recent upper respiratory tract infection approximately one week prior.\n\n**Examination**: Vitals: T 37.8°C, BP 120/78 mmHg, HR 82 bpm, SpO₂ 97%. Auscultation revealed crackles in the right lower lobe.\n\n**Assessment**: Lower respiratory tract infection, possible early community-acquired pneumonia.\n\n**Plan**:\n- Chest X-ray ordered\n- CBC ordered\n- Amoxicillin 500 mg PO TID × 7 days\n- Paracetamol PRN for fever\n- Follow-up in 3 days or sooner if symptoms worsen',
+  summary:
+    '**Chief Complaint**: Persistent productive cough with low-grade fever (37.8°C) for 5 days.\n\n**History of Present Illness**: The patient presented with a 5-day history of persistent cough productive of yellowish sputum, predominantly in the mornings. She reported associated low-grade fever and mild exertional dyspnea on stair climbing. She denied chest pain. Her son had a recent upper respiratory tract infection approximately one week prior.\n\n**Examination**: Vitals: T 37.8°C, BP 120/78 mmHg, HR 82 bpm, SpO₂ 97%. Auscultation revealed crackles in the right lower lobe.\n\n**Assessment**: Lower respiratory tract infection, possible early community-acquired pneumonia.\n\n**Plan**:\n- Chest X-ray ordered\n- CBC ordered\n- Amoxicillin 500 mg PO TID × 7 days\n- Paracetamol PRN for fever\n- Follow-up in 3 days or sooner if symptoms worsen',
 });
 
 const GEN_SUMMARY_V2 = JSON.stringify({
-    summary: '**Chief Complaint**: Persistent productive cough with low-grade fever (37.8°C) for 5 days.\n\n**History of Present Illness**: The patient presented with a 5-day history of persistent cough productive of yellowish sputum, predominantly in the mornings. She reported associated low-grade fever and mild exertional dyspnea on stair climbing. She denied chest pain. Her son had a recent upper respiratory tract infection approximately one week prior.\n\n**Examination**: Vitals: T 37.8°C, BP 120/78 mmHg, HR 82 bpm, SpO₂ 97%. Auscultation revealed crackles in the right lower lobe.\n\n**Assessment**: Lower respiratory tract infection, possible early community-acquired pneumonia (ICD-10: J18.9).\n\n**Plan**:\n- Chest X-ray ordered\n- CBC ordered\n- Amoxicillin 500 mg PO TID × 7 days (corrected from 250 mg)\n- Paracetamol 500 mg PRN for fever (max 4g/day)\n- Follow-up in 3 days or sooner if symptoms worsen\n- Return precautions: worsening dyspnea, hemoptysis, high fever >39°C',
+  summary:
+    '**Chief Complaint**: Persistent productive cough with low-grade fever (37.8°C) for 5 days.\n\n**History of Present Illness**: The patient presented with a 5-day history of persistent cough productive of yellowish sputum, predominantly in the mornings. She reported associated low-grade fever and mild exertional dyspnea on stair climbing. She denied chest pain. Her son had a recent upper respiratory tract infection approximately one week prior.\n\n**Examination**: Vitals: T 37.8°C, BP 120/78 mmHg, HR 82 bpm, SpO₂ 97%. Auscultation revealed crackles in the right lower lobe.\n\n**Assessment**: Lower respiratory tract infection, possible early community-acquired pneumonia (ICD-10: J18.9).\n\n**Plan**:\n- Chest X-ray ordered\n- CBC ordered\n- Amoxicillin 500 mg PO TID × 7 days (corrected from 250 mg)\n- Paracetamol 500 mg PRN for fever (max 4g/day)\n- Follow-up in 3 days or sooner if symptoms worsen\n- Return precautions: worsening dyspnea, hemoptysis, high fever >39°C',
 });
 
 const CARD_TRANSCRIPT_CONTENT = `Doctor: Hello Robert. How have you been since our last visit?
@@ -400,7 +399,8 @@ Parent: Should I be worried?
 Doctor: It's very common at this age. Most children recover well. Bring him back in 3 days if the fever persists, or sooner if he seems worse. Watch for fluid draining from the ear.`;
 
 const PEDS_SUMMARY_CONTENT = JSON.stringify({
-    summary: '**Chief Complaint**: Right ear pain and fever for 3 days in a 4-year-old male.\n\n**History**: 3-day history of right ear pulling, fever (38.5°C), irritability, and sleep disturbance. Associated mild rhinorrhea. No cough.\n\n**Growth & Development**: Weight 16.2 kg (50th percentile). Age-appropriate development.\n\n**Examination**: T 38.3°C, HR 120 bpm. Right tympanic membrane erythematous and bulging. Left ear normal. Mild pharyngeal erythema.\n\n**Assessment**: Acute otitis media (right ear) — ICD-10: H66.91.\n\n**Plan**:\n- Amoxicillin 45 mg/kg/day (365 mg) PO BID × 10 days\n- Ibuprofen 5 mg/kg PRN for pain and fever\n- Return in 3 days if fever persists\n- Return precautions: ear drainage, worsening symptoms, high fever',
+  summary:
+    '**Chief Complaint**: Right ear pain and fever for 3 days in a 4-year-old male.\n\n**History**: 3-day history of right ear pulling, fever (38.5°C), irritability, and sleep disturbance. Associated mild rhinorrhea. No cough.\n\n**Growth & Development**: Weight 16.2 kg (50th percentile). Age-appropriate development.\n\n**Examination**: T 38.3°C, HR 120 bpm. Right tympanic membrane erythematous and bulging. Left ear normal. Mild pharyngeal erythema.\n\n**Assessment**: Acute otitis media (right ear) — ICD-10: H66.91.\n\n**Plan**:\n- Amoxicillin 45 mg/kg/day (365 mg) PO BID × 10 days\n- Ibuprofen 5 mg/kg PRN for pain and fever\n- Return in 3 days if fever persists\n- Return precautions: ear drainage, worsening symptoms, high fever',
 });
 
 const GEN_REOPENED_TRANSCRIPT_CONTENT = `Doctor: Welcome back, Alice. How are you feeling after the antibiotic course?
@@ -430,246 +430,246 @@ const GEN_PRE_SUMMARY_CONTENT = `**Pre-Summary for General Practice Consultation
 const CARD_PRE_SUMMARY_CONTENT = `**Pre-Summary for Cardiology Follow-up**\n\n**Patient**: PAT-20250115-002\n**Previous Visits**: Initial cardiology assessment 3 months ago.\n**Key Findings from Prior Visits**:\n- Diagnosed with essential hypertension (I10)\n- Started on Amlodipine 5 mg OD\n- Baseline ECG: NSR, normal intervals\n- ECHO: LVEF 60%, no structural abnormality\n- Lipids: LDL 132, started on Atorvastatin 20 mg\n\n**Medications at Last Visit**: Amlodipine 5 mg OD, Aspirin 75 mg OD, Atorvastatin 20 mg OD.`;
 
 const DEFAULT_CONTEXT_ITEMS = [
-    // --- GEN_COMPLETED (7 items) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content: GEN_TRANSCRIPT_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.GEN_RAW_SUMMARY,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        type: 'RAW_SUMMARY' as const,
-        source: 'AI' as const,
-        currentVersionNumber: 2,
-        content: GEN_SUMMARY_V2,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.GEN_MODIFIED_SUMMARY,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        type: 'MODIFIED_SUMMARY' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 1,
-        content: GEN_SUMMARY_V2,
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.GEN_AUDIO,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        type: 'AUDIO_RECORDING' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 1,
-        content: null,
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.GEN_CASE_NOTE,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        type: 'CASE_NOTE' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 1,
-        content: 'Patient Alice, 45F. Known history: seasonal allergies. No chronic conditions. Non-smoker. Family hx: father had COPD.',
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.GEN_PRE_SUMMARY,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        type: 'PRE_SUMMARY' as const,
-        source: 'AI' as const,
-        currentVersionNumber: 1,
-        content: GEN_PRE_SUMMARY_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    // --- CARD_NEW (3 items) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.CARD_TRANSCRIPT,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content: CARD_TRANSCRIPT_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.CARD_WORKNOTE,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
-        type: 'WORKNOTE' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 2,
-        content: CARD_WORKNOTE_V2_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR2,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.CARD_PRE_SUMMARY,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
-        type: 'PRE_SUMMARY' as const,
-        source: 'AI' as const,
-        currentVersionNumber: 1,
-        content: CARD_PRE_SUMMARY_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    // --- SURG_NEW (3 items) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.SURG_TRANSCRIPT,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.SURG_NEW,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content: SURG_TRANSCRIPT_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.SURG_AUDIO,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.SURG_NEW,
-        type: 'AUDIO_RECORDING' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 1,
-        content: null,
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR_SURGERY,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.SURG_CASE_NOTE,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.SURG_NEW,
-        type: 'CASE_NOTE' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 2,
-        content: SURG_CASE_NOTE_V2_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR_SURGERY,
-    },
-    // --- SURG_FOLLOWUP (1 item) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.SURG_FOLLOWUP_TRANSCRIPT,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.SURG_FOLLOWUP,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content: SURG_FOLLOWUP_TRANSCRIPT_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    // --- NEUR_REFERRAL (1 item — still transcribing) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.NEUR_TRANSCRIPT,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.NEUR_REFERRAL,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content: NEUR_TRANSCRIPT_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    // --- PEDS_COMPLETED (3 items) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.PEDS_COMPLETED,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content: PEDS_TRANSCRIPT_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.PEDS_RAW_SUMMARY,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.PEDS_COMPLETED,
-        type: 'RAW_SUMMARY' as const,
-        source: 'AI' as const,
-        currentVersionNumber: 1,
-        content: PEDS_SUMMARY_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.PEDS_AUDIO,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.PEDS_COMPLETED,
-        type: 'AUDIO_RECORDING' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 1,
-        content: null,
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR_PEDS,
-    },
-    // --- ER_RECORDING (1 item — still recording, no transcript yet) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.ER_AUDIO,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.ER_RECORDING,
-        type: 'AUDIO_RECORDING' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 1,
-        content: null,
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR_ER,
-    },
-    // --- GEN_REOPENED (2 items) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.GEN_REOPENED_TRANSCRIPT,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_REOPENED,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content: GEN_REOPENED_TRANSCRIPT_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
-    {
-        id: SEED_CONTEXT_ITEM_IDS.GEN_REOPENED_WORKNOTE,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_REOPENED,
-        type: 'WORKNOTE' as const,
-        source: 'USER' as const,
-        currentVersionNumber: 1,
-        content: GEN_REOPENED_WORKNOTE_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SEED_USER_IDS.DOCTOR,
-    },
-    // --- CARD_CROSS_DEPT (1 item) ---
-    {
-        id: SEED_CONTEXT_ITEM_IDS.CARD_CROSS_TRANSCRIPT,
-        tenantId: SEED_TENANT_ID,
-        consultationId: SEED_CONSULTATION_IDS.CARD_CROSS_DEPT,
-        type: 'TRANSCRIPT' as const,
-        source: 'TRANSCRIPTION' as const,
-        currentVersionNumber: 1,
-        content: CARD_CROSS_TRANSCRIPT_CONTENT,
-        dnaWritingStyleId: null,
-        createdBy: SYSTEM_USER_ID,
-    },
+  // --- GEN_COMPLETED (7 items) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content: GEN_TRANSCRIPT_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.GEN_RAW_SUMMARY,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    type: 'RAW_SUMMARY' as const,
+    source: 'AI' as const,
+    currentVersionNumber: 2,
+    content: GEN_SUMMARY_V2,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.GEN_MODIFIED_SUMMARY,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    type: 'MODIFIED_SUMMARY' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 1,
+    content: GEN_SUMMARY_V2,
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.GEN_AUDIO,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    type: 'AUDIO_RECORDING' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 1,
+    content: null,
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.GEN_CASE_NOTE,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    type: 'CASE_NOTE' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 1,
+    content: 'Patient Alice, 45F. Known history: seasonal allergies. No chronic conditions. Non-smoker. Family hx: father had COPD.',
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.GEN_PRE_SUMMARY,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    type: 'PRE_SUMMARY' as const,
+    source: 'AI' as const,
+    currentVersionNumber: 1,
+    content: GEN_PRE_SUMMARY_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  // --- CARD_NEW (3 items) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.CARD_TRANSCRIPT,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content: CARD_TRANSCRIPT_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.CARD_WORKNOTE,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
+    type: 'WORKNOTE' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 2,
+    content: CARD_WORKNOTE_V2_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR2,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.CARD_PRE_SUMMARY,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
+    type: 'PRE_SUMMARY' as const,
+    source: 'AI' as const,
+    currentVersionNumber: 1,
+    content: CARD_PRE_SUMMARY_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  // --- SURG_NEW (3 items) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.SURG_TRANSCRIPT,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.SURG_NEW,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content: SURG_TRANSCRIPT_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.SURG_AUDIO,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.SURG_NEW,
+    type: 'AUDIO_RECORDING' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 1,
+    content: null,
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR_SURGERY,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.SURG_CASE_NOTE,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.SURG_NEW,
+    type: 'CASE_NOTE' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 2,
+    content: SURG_CASE_NOTE_V2_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR_SURGERY,
+  },
+  // --- SURG_FOLLOWUP (1 item) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.SURG_FOLLOWUP_TRANSCRIPT,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.SURG_FOLLOWUP,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content: SURG_FOLLOWUP_TRANSCRIPT_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  // --- NEUR_REFERRAL (1 item — still transcribing) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.NEUR_TRANSCRIPT,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.NEUR_REFERRAL,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content: NEUR_TRANSCRIPT_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  // --- PEDS_COMPLETED (3 items) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.PEDS_COMPLETED,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content: PEDS_TRANSCRIPT_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.PEDS_RAW_SUMMARY,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.PEDS_COMPLETED,
+    type: 'RAW_SUMMARY' as const,
+    source: 'AI' as const,
+    currentVersionNumber: 1,
+    content: PEDS_SUMMARY_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.PEDS_AUDIO,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.PEDS_COMPLETED,
+    type: 'AUDIO_RECORDING' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 1,
+    content: null,
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR_PEDS,
+  },
+  // --- ER_RECORDING (1 item — still recording, no transcript yet) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.ER_AUDIO,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.ER_RECORDING,
+    type: 'AUDIO_RECORDING' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 1,
+    content: null,
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR_ER,
+  },
+  // --- GEN_REOPENED (2 items) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.GEN_REOPENED_TRANSCRIPT,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_REOPENED,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content: GEN_REOPENED_TRANSCRIPT_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
+  {
+    id: SEED_CONTEXT_ITEM_IDS.GEN_REOPENED_WORKNOTE,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_REOPENED,
+    type: 'WORKNOTE' as const,
+    source: 'USER' as const,
+    currentVersionNumber: 1,
+    content: GEN_REOPENED_WORKNOTE_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
+  // --- CARD_CROSS_DEPT (1 item) ---
+  {
+    id: SEED_CONTEXT_ITEM_IDS.CARD_CROSS_TRANSCRIPT,
+    tenantId: SEED_TENANT_ID,
+    consultationId: SEED_CONSULTATION_IDS.CARD_CROSS_DEPT,
+    type: 'TRANSCRIPT' as const,
+    source: 'TRANSCRIPTION' as const,
+    currentVersionNumber: 1,
+    content: CARD_CROSS_TRANSCRIPT_CONTENT,
+    dnaWritingStyleId: null,
+    createdBy: SYSTEM_USER_ID,
+  },
 ];
 
 // =============================================================================
@@ -677,45 +677,45 @@ const DEFAULT_CONTEXT_ITEMS = [
 // =============================================================================
 
 export const DEFAULT_SUMMARY_METAS = [
-    {
-        id: SEED_SUMMARY_META_IDS.GEN_SUMMARY,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_RAW_SUMMARY,
-        aiModelId: 'gpt-4o',
-        aiModelVersion: '2025-01-01',
-        promptVersion: '1',
-        processingTimeMs: 4200,
-        inputTokens: 850,
-        outputTokens: 420,
-        // Quality analytics so the SavedSummariesPanel
-        // QualityBadge renders on demo data. Freshly generated (not cached),
-        // high quality.
-        cacheHit: false,
-        qualityScore: 0.91,
-        caseNoteIds: [SEED_CONTEXT_ITEM_IDS.GEN_CASE_NOTE],
-        preSummaryIds: [SEED_CONTEXT_ITEM_IDS.GEN_PRE_SUMMARY],
-        previousSummaryIds: [],
-        generatedAt: new Date('2025-12-15T10:35:00Z'),
-    },
-    {
-        id: SEED_SUMMARY_META_IDS.PEDS_SUMMARY,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_RAW_SUMMARY,
-        aiModelId: 'gpt-4o',
-        aiModelVersion: '2025-01-01',
-        promptVersion: '1',
-        processingTimeMs: 3800,
-        inputTokens: 720,
-        outputTokens: 380,
-        // Served from cache; slightly lower quality so the
-        // QualityBadge demos the cached + lower-score state alongside GEN above.
-        cacheHit: true,
-        qualityScore: 0.84,
-        caseNoteIds: [],
-        preSummaryIds: [],
-        previousSummaryIds: [],
-        generatedAt: new Date('2026-02-10T15:00:00Z'),
-    },
+  {
+    id: SEED_SUMMARY_META_IDS.GEN_SUMMARY,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_RAW_SUMMARY,
+    aiModelId: 'gpt-4o',
+    aiModelVersion: '2025-01-01',
+    promptVersion: '1',
+    processingTimeMs: 4200,
+    inputTokens: 850,
+    outputTokens: 420,
+    // Quality analytics so the SavedSummariesPanel
+    // QualityBadge renders on demo data. Freshly generated (not cached),
+    // high quality.
+    cacheHit: false,
+    qualityScore: 0.91,
+    caseNoteIds: [SEED_CONTEXT_ITEM_IDS.GEN_CASE_NOTE],
+    preSummaryIds: [SEED_CONTEXT_ITEM_IDS.GEN_PRE_SUMMARY],
+    previousSummaryIds: [],
+    generatedAt: new Date('2025-12-15T10:35:00Z'),
+  },
+  {
+    id: SEED_SUMMARY_META_IDS.PEDS_SUMMARY,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_RAW_SUMMARY,
+    aiModelId: 'gpt-4o',
+    aiModelVersion: '2025-01-01',
+    promptVersion: '1',
+    processingTimeMs: 3800,
+    inputTokens: 720,
+    outputTokens: 380,
+    // Served from cache; slightly lower quality so the
+    // QualityBadge demos the cached + lower-score state alongside GEN above.
+    cacheHit: true,
+    qualityScore: 0.84,
+    caseNoteIds: [],
+    preSummaryIds: [],
+    previousSummaryIds: [],
+    generatedAt: new Date('2026-02-10T15:00:00Z'),
+  },
 ];
 
 // =============================================================================
@@ -729,50 +729,50 @@ export const DEFAULT_SUMMARY_METAS = [
 // =============================================================================
 
 export const SEED_MEDIA_IDS = {
-    GEN_AUDIO_PRIMARY: '96000000-0000-0000-0000-000000000001',
-    GEN_AUDIO_RAW: '96000000-0000-0000-0000-000000000002',
-    GEN_AUDIO_PROCESSED: '96000000-0000-0000-0000-000000000003',
+  GEN_AUDIO_PRIMARY: '96000000-0000-0000-0000-000000000001',
+  GEN_AUDIO_RAW: '96000000-0000-0000-0000-000000000002',
+  GEN_AUDIO_PROCESSED: '96000000-0000-0000-0000-000000000003',
 } as const;
 
 export const DEFAULT_MEDIA = [
-    {
-        // Primary recording — browser-captured WebM kept as the back-compat
-        // playback reference (matches AudioRecording.format = 'webm').
-        id: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
-        tenantId: SEED_TENANT_ID,
-        name: 'gen-consultation-recording.webm',
-        uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.webm`,
-        extension: 'webm',
-        mimeType: 'audio/webm',
-        size: 2960000,
-        hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-        createdBy: SEED_USER_IDS.DOCTOR,
-    },
-    {
-        // RAW stream — unprocessed PCM captured BEFORE noise removal / VAD.
-        id: SEED_MEDIA_IDS.GEN_AUDIO_RAW,
-        tenantId: SEED_TENANT_ID,
-        name: 'gen-consultation-recording.raw.wav',
-        uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.raw.wav`,
-        extension: 'wav',
-        mimeType: 'audio/wav',
-        size: 5920000,
-        hash: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
-        createdBy: SEED_USER_IDS.DOCTOR,
-    },
-    {
-        // PROCESSED stream — denoised + VAD-trimmed + 16 kHz-resampled PCM fed
-        // to the ASR model (shorter than raw after silence trimming).
-        id: SEED_MEDIA_IDS.GEN_AUDIO_PROCESSED,
-        tenantId: SEED_TENANT_ID,
-        name: 'gen-consultation-recording.processed.wav',
-        uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.processed.wav`,
-        extension: 'wav',
-        mimeType: 'audio/wav',
-        size: 5120000,
-        hash: 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
-        createdBy: SEED_USER_IDS.DOCTOR,
-    },
+  {
+    // Primary recording — browser-captured WebM kept as the back-compat
+    // playback reference (matches AudioRecording.format = 'webm').
+    id: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
+    tenantId: SEED_TENANT_ID,
+    name: 'gen-consultation-recording.webm',
+    uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.webm`,
+    extension: 'webm',
+    mimeType: 'audio/webm',
+    size: 2960000,
+    hash: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
+  {
+    // RAW stream — unprocessed PCM captured BEFORE noise removal / VAD.
+    id: SEED_MEDIA_IDS.GEN_AUDIO_RAW,
+    tenantId: SEED_TENANT_ID,
+    name: 'gen-consultation-recording.raw.wav',
+    uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.raw.wav`,
+    extension: 'wav',
+    mimeType: 'audio/wav',
+    size: 5920000,
+    hash: 'fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210',
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
+  {
+    // PROCESSED stream — denoised + VAD-trimmed + 16 kHz-resampled PCM fed
+    // to the ASR model (shorter than raw after silence trimming).
+    id: SEED_MEDIA_IDS.GEN_AUDIO_PROCESSED,
+    tenantId: SEED_TENANT_ID,
+    name: 'gen-consultation-recording.processed.wav',
+    uri: `s3://hope-audio/${SEED_TENANT_ID}/2025/12/gen-consultation-recording.processed.wav`,
+    extension: 'wav',
+    mimeType: 'audio/wav',
+    size: 5120000,
+    hash: 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+    createdBy: SEED_USER_IDS.DOCTOR,
+  },
 ];
 
 // =============================================================================
@@ -780,84 +780,84 @@ export const DEFAULT_MEDIA = [
 // =============================================================================
 
 interface AudioRecordingSeed {
-    id: string;
-    tenantId: string;
-    contextItemId: string;
-    mediaId: string;
-    // Dual capture — optional raw/processed media references.
-    rawMediaId?: string;
-    processedMediaId?: string;
-    duration: number | null;
-    format: string;
-    sampleRate: number;
-    channels: number;
-    bitrate: number;
-    language: string;
-    sequenceNumber: number;
-    recordedAt: Date;
+  id: string;
+  tenantId: string;
+  contextItemId: string;
+  mediaId: string;
+  // Dual capture — optional raw/processed media references.
+  rawMediaId?: string;
+  processedMediaId?: string;
+  duration: number | null;
+  format: string;
+  sampleRate: number;
+  channels: number;
+  bitrate: number;
+  language: string;
+  sequenceNumber: number;
+  recordedAt: Date;
 }
 
 export const DEFAULT_AUDIO_RECORDINGS: AudioRecordingSeed[] = [
-    {
-        // Dual-capture demo: real primary media + raw and
-        // processed media ids so the playground's "Dual capture" badge renders.
-        id: SEED_AUDIO_RECORDING_IDS.GEN_AUDIO,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_AUDIO,
-        mediaId: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
-        rawMediaId: SEED_MEDIA_IDS.GEN_AUDIO_RAW,
-        processedMediaId: SEED_MEDIA_IDS.GEN_AUDIO_PROCESSED,
-        duration: 185000,
-        format: 'webm',
-        sampleRate: 48000,
-        channels: 1,
-        bitrate: 128000,
-        language: 'en',
-        sequenceNumber: 1,
-        recordedAt: new Date('2025-12-15T10:30:00Z'),
-    },
-    {
-        id: SEED_AUDIO_RECORDING_IDS.SURG_AUDIO,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.SURG_AUDIO,
-        mediaId: 'seed-media-placeholder-002',
-        duration: 240000,
-        format: 'webm',
-        sampleRate: 48000,
-        channels: 1,
-        bitrate: 128000,
-        language: 'en',
-        sequenceNumber: 1,
-        recordedAt: new Date('2026-01-10T09:15:00Z'),
-    },
-    {
-        id: SEED_AUDIO_RECORDING_IDS.PEDS_AUDIO,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_AUDIO,
-        mediaId: 'seed-media-placeholder-003',
-        duration: 150000,
-        format: 'webm',
-        sampleRate: 48000,
-        channels: 1,
-        bitrate: 128000,
-        language: 'en',
-        sequenceNumber: 1,
-        recordedAt: new Date('2026-02-10T14:00:00Z'),
-    },
-    {
-        id: SEED_AUDIO_RECORDING_IDS.ER_AUDIO,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.ER_AUDIO,
-        mediaId: 'seed-media-placeholder-004',
-        duration: null, // still recording
-        format: 'webm',
-        sampleRate: 48000,
-        channels: 1,
-        bitrate: 128000,
-        language: 'en',
-        sequenceNumber: 1,
-        recordedAt: new Date('2026-02-23T22:15:00Z'),
-    },
+  {
+    // Dual-capture demo: real primary media + raw and
+    // processed media ids so the playground's "Dual capture" badge renders.
+    id: SEED_AUDIO_RECORDING_IDS.GEN_AUDIO,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_AUDIO,
+    mediaId: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
+    rawMediaId: SEED_MEDIA_IDS.GEN_AUDIO_RAW,
+    processedMediaId: SEED_MEDIA_IDS.GEN_AUDIO_PROCESSED,
+    duration: 185000,
+    format: 'webm',
+    sampleRate: 48000,
+    channels: 1,
+    bitrate: 128000,
+    language: 'en',
+    sequenceNumber: 1,
+    recordedAt: new Date('2025-12-15T10:30:00Z'),
+  },
+  {
+    id: SEED_AUDIO_RECORDING_IDS.SURG_AUDIO,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.SURG_AUDIO,
+    mediaId: 'seed-media-placeholder-002',
+    duration: 240000,
+    format: 'webm',
+    sampleRate: 48000,
+    channels: 1,
+    bitrate: 128000,
+    language: 'en',
+    sequenceNumber: 1,
+    recordedAt: new Date('2026-01-10T09:15:00Z'),
+  },
+  {
+    id: SEED_AUDIO_RECORDING_IDS.PEDS_AUDIO,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_AUDIO,
+    mediaId: 'seed-media-placeholder-003',
+    duration: 150000,
+    format: 'webm',
+    sampleRate: 48000,
+    channels: 1,
+    bitrate: 128000,
+    language: 'en',
+    sequenceNumber: 1,
+    recordedAt: new Date('2026-02-10T14:00:00Z'),
+  },
+  {
+    id: SEED_AUDIO_RECORDING_IDS.ER_AUDIO,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.ER_AUDIO,
+    mediaId: 'seed-media-placeholder-004',
+    duration: null, // still recording
+    format: 'webm',
+    sampleRate: 48000,
+    channels: 1,
+    bitrate: 128000,
+    language: 'en',
+    sequenceNumber: 1,
+    recordedAt: new Date('2026-02-23T22:15:00Z'),
+  },
 ];
 
 // =============================================================================
@@ -869,221 +869,221 @@ export const DEFAULT_AUDIO_RECORDINGS: AudioRecordingSeed[] = [
 // =============================================================================
 
 const DEFAULT_CONTEXT_VERSIONS = [
-    // --- GEN_COMPLETED: raw summary (2 versions — AI initial + doctor correction) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.GEN_SUMMARY_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_RAW_SUMMARY,
-        versionNumber: 1,
-        content: GEN_SUMMARY_V1,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial SOAP-format summary generated from consultation transcript',
-        changedBy: SYSTEM_USER_ID,
-        changeSource: 'ai_model_v2',
-    },
-    {
-        id: SEED_CONTEXT_VERSION_IDS.GEN_SUMMARY_V2,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_RAW_SUMMARY,
-        versionNumber: 2,
-        content: GEN_SUMMARY_V2,
-        contentDiff: JSON.stringify({
-            'Plan': {
-                old: 'Amoxicillin 500 mg PO TID × 7 days',
-                new: 'Amoxicillin 500 mg PO TID × 7 days (corrected from 250 mg)',
-            },
-            'Assessment': {
-                old: 'possible early community-acquired pneumonia.',
-                new: 'possible early community-acquired pneumonia (ICD-10: J18.9).',
-            },
-        }),
-        changeReason: 'user_edit',
-        changeSummary: 'Doctor corrected amoxicillin dosage from 250mg to 500mg and added ICD-10 code J18.9',
-        changedBy: SEED_USER_IDS.DOCTOR,
-        changeSource: 'manual',
-    },
-    // --- GEN_COMPLETED: modified summary (1 version — initial user edit) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.GEN_MODIFIED_SUMMARY_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_MODIFIED_SUMMARY,
-        versionNumber: 1,
-        content: GEN_SUMMARY_V2,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version — doctor-approved summary with corrections applied',
-        changedBy: SEED_USER_IDS.DOCTOR,
-        changeSource: 'manual',
-    },
-    // --- GEN_COMPLETED: transcript (1 version — initial transcription) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.GEN_TRANSCRIPT_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
-        versionNumber: 1,
-        content: GEN_TRANSCRIPT_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SYSTEM_USER_ID,
-        changeSource: 'system',
-    },
-    // --- GEN_COMPLETED: case note (1 version — initial) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.GEN_CASE_NOTE_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_CASE_NOTE,
-        versionNumber: 1,
-        content: 'Patient Alice, 45F. Known history: seasonal allergies. No chronic conditions. Non-smoker. Family hx: father had COPD.',
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SEED_USER_IDS.DOCTOR,
-        changeSource: 'system',
-    },
-    // --- GEN_COMPLETED: pre-summary (1 version — initial AI) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.GEN_PRE_SUMMARY_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_PRE_SUMMARY,
-        versionNumber: 1,
-        content: GEN_PRE_SUMMARY_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SYSTEM_USER_ID,
-        changeSource: 'system',
-    },
-    // --- CARD_NEW: worknote (2 versions — initial + addendum after stress ECG) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.CARD_WORKNOTE_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.CARD_WORKNOTE,
-        versionNumber: 1,
-        content: CARD_WORKNOTE_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SEED_USER_IDS.DOCTOR2,
-        changeSource: 'system',
-    },
-    {
-        id: SEED_CONTEXT_VERSION_IDS.CARD_WORKNOTE_V2,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.CARD_WORKNOTE,
-        versionNumber: 2,
-        content: CARD_WORKNOTE_V2_CONTENT,
-        contentDiff: JSON.stringify({
-            'Plan': {
-                old: 'F/U after stress test.',
-                new: 'F/U after stress test.\nADDENDUM (2026-01-22): Stress ECG completed — no inducible ischemia.',
-            },
-        }),
-        changeReason: 'user_edit',
-        changeSummary: 'Added stress ECG results addendum — no inducible ischemia, chest tightness likely musculoskeletal',
-        changedBy: SEED_USER_IDS.DOCTOR2,
-        changeSource: 'manual',
-    },
-    // --- CARD_NEW: transcript (1 version — initial) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.CARD_TRANSCRIPT_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.CARD_TRANSCRIPT,
-        versionNumber: 1,
-        content: CARD_TRANSCRIPT_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SYSTEM_USER_ID,
-        changeSource: 'system',
-    },
-    // --- CARD_NEW: pre-summary (1 version — initial AI) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.CARD_PRE_SUMMARY_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.CARD_PRE_SUMMARY,
-        versionNumber: 1,
-        content: CARD_PRE_SUMMARY_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SYSTEM_USER_ID,
-        changeSource: 'system',
-    },
-    // --- SURG_NEW: case note (2 versions — initial + post-op addendum) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.SURG_CASE_NOTE_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.SURG_CASE_NOTE,
-        versionNumber: 1,
-        content: SURG_CASE_NOTE_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SEED_USER_IDS.DOCTOR_SURGERY,
-        changeSource: 'system',
-    },
-    {
-        id: SEED_CONTEXT_VERSION_IDS.SURG_CASE_NOTE_V2,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.SURG_CASE_NOTE,
-        versionNumber: 2,
-        content: SURG_CASE_NOTE_V2_CONTENT,
-        contentDiff: JSON.stringify({
-            'CT_Result': {
-                old: 'CT abdomen ordered.',
-                new: 'CT abdomen: confirmed appendicitis with periappendiceal fat stranding, no abscess.',
-            },
-            'Post_Op': {
-                old: null,
-                new: 'POST-OP NOTE: Laparoscopic appendectomy completed successfully.',
-            },
-        }),
-        changeReason: 'user_edit',
-        changeSummary: 'Added CT results and post-operative note after successful laparoscopic appendectomy',
-        changedBy: SEED_USER_IDS.DOCTOR_SURGERY,
-        changeSource: 'manual',
-    },
-    // --- SURG_NEW: transcript (1 version — initial) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.SURG_TRANSCRIPT_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.SURG_TRANSCRIPT,
-        versionNumber: 1,
-        content: SURG_TRANSCRIPT_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SYSTEM_USER_ID,
-        changeSource: 'system',
-    },
-    // --- PEDS_COMPLETED: raw summary (1 version — initial AI) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.PEDS_SUMMARY_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_RAW_SUMMARY,
-        versionNumber: 1,
-        content: PEDS_SUMMARY_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SYSTEM_USER_ID,
-        changeSource: 'system',
-    },
-    // --- PEDS_COMPLETED: transcript (1 version — initial) ---
-    {
-        id: SEED_CONTEXT_VERSION_IDS.PEDS_TRANSCRIPT_V1,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
-        versionNumber: 1,
-        content: PEDS_TRANSCRIPT_CONTENT,
-        contentDiff: null,
-        changeReason: 'initial_creation',
-        changeSummary: 'Initial version',
-        changedBy: SYSTEM_USER_ID,
-        changeSource: 'system',
-    },
+  // --- GEN_COMPLETED: raw summary (2 versions — AI initial + doctor correction) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.GEN_SUMMARY_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_RAW_SUMMARY,
+    versionNumber: 1,
+    content: GEN_SUMMARY_V1,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial SOAP-format summary generated from consultation transcript',
+    changedBy: SYSTEM_USER_ID,
+    changeSource: 'ai_model_v2',
+  },
+  {
+    id: SEED_CONTEXT_VERSION_IDS.GEN_SUMMARY_V2,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_RAW_SUMMARY,
+    versionNumber: 2,
+    content: GEN_SUMMARY_V2,
+    contentDiff: JSON.stringify({
+      Plan: {
+        old: 'Amoxicillin 500 mg PO TID × 7 days',
+        new: 'Amoxicillin 500 mg PO TID × 7 days (corrected from 250 mg)',
+      },
+      Assessment: {
+        old: 'possible early community-acquired pneumonia.',
+        new: 'possible early community-acquired pneumonia (ICD-10: J18.9).',
+      },
+    }),
+    changeReason: 'user_edit',
+    changeSummary: 'Doctor corrected amoxicillin dosage from 250mg to 500mg and added ICD-10 code J18.9',
+    changedBy: SEED_USER_IDS.DOCTOR,
+    changeSource: 'manual',
+  },
+  // --- GEN_COMPLETED: modified summary (1 version — initial user edit) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.GEN_MODIFIED_SUMMARY_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_MODIFIED_SUMMARY,
+    versionNumber: 1,
+    content: GEN_SUMMARY_V2,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version — doctor-approved summary with corrections applied',
+    changedBy: SEED_USER_IDS.DOCTOR,
+    changeSource: 'manual',
+  },
+  // --- GEN_COMPLETED: transcript (1 version — initial transcription) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.GEN_TRANSCRIPT_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+    versionNumber: 1,
+    content: GEN_TRANSCRIPT_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SYSTEM_USER_ID,
+    changeSource: 'system',
+  },
+  // --- GEN_COMPLETED: case note (1 version — initial) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.GEN_CASE_NOTE_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_CASE_NOTE,
+    versionNumber: 1,
+    content: 'Patient Alice, 45F. Known history: seasonal allergies. No chronic conditions. Non-smoker. Family hx: father had COPD.',
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SEED_USER_IDS.DOCTOR,
+    changeSource: 'system',
+  },
+  // --- GEN_COMPLETED: pre-summary (1 version — initial AI) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.GEN_PRE_SUMMARY_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_PRE_SUMMARY,
+    versionNumber: 1,
+    content: GEN_PRE_SUMMARY_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SYSTEM_USER_ID,
+    changeSource: 'system',
+  },
+  // --- CARD_NEW: worknote (2 versions — initial + addendum after stress ECG) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.CARD_WORKNOTE_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.CARD_WORKNOTE,
+    versionNumber: 1,
+    content: CARD_WORKNOTE_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SEED_USER_IDS.DOCTOR2,
+    changeSource: 'system',
+  },
+  {
+    id: SEED_CONTEXT_VERSION_IDS.CARD_WORKNOTE_V2,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.CARD_WORKNOTE,
+    versionNumber: 2,
+    content: CARD_WORKNOTE_V2_CONTENT,
+    contentDiff: JSON.stringify({
+      Plan: {
+        old: 'F/U after stress test.',
+        new: 'F/U after stress test.\nADDENDUM (2026-01-22): Stress ECG completed — no inducible ischemia.',
+      },
+    }),
+    changeReason: 'user_edit',
+    changeSummary: 'Added stress ECG results addendum — no inducible ischemia, chest tightness likely musculoskeletal',
+    changedBy: SEED_USER_IDS.DOCTOR2,
+    changeSource: 'manual',
+  },
+  // --- CARD_NEW: transcript (1 version — initial) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.CARD_TRANSCRIPT_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.CARD_TRANSCRIPT,
+    versionNumber: 1,
+    content: CARD_TRANSCRIPT_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SYSTEM_USER_ID,
+    changeSource: 'system',
+  },
+  // --- CARD_NEW: pre-summary (1 version — initial AI) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.CARD_PRE_SUMMARY_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.CARD_PRE_SUMMARY,
+    versionNumber: 1,
+    content: CARD_PRE_SUMMARY_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SYSTEM_USER_ID,
+    changeSource: 'system',
+  },
+  // --- SURG_NEW: case note (2 versions — initial + post-op addendum) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.SURG_CASE_NOTE_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.SURG_CASE_NOTE,
+    versionNumber: 1,
+    content: SURG_CASE_NOTE_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SEED_USER_IDS.DOCTOR_SURGERY,
+    changeSource: 'system',
+  },
+  {
+    id: SEED_CONTEXT_VERSION_IDS.SURG_CASE_NOTE_V2,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.SURG_CASE_NOTE,
+    versionNumber: 2,
+    content: SURG_CASE_NOTE_V2_CONTENT,
+    contentDiff: JSON.stringify({
+      CT_Result: {
+        old: 'CT abdomen ordered.',
+        new: 'CT abdomen: confirmed appendicitis with periappendiceal fat stranding, no abscess.',
+      },
+      Post_Op: {
+        old: null,
+        new: 'POST-OP NOTE: Laparoscopic appendectomy completed successfully.',
+      },
+    }),
+    changeReason: 'user_edit',
+    changeSummary: 'Added CT results and post-operative note after successful laparoscopic appendectomy',
+    changedBy: SEED_USER_IDS.DOCTOR_SURGERY,
+    changeSource: 'manual',
+  },
+  // --- SURG_NEW: transcript (1 version — initial) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.SURG_TRANSCRIPT_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.SURG_TRANSCRIPT,
+    versionNumber: 1,
+    content: SURG_TRANSCRIPT_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SYSTEM_USER_ID,
+    changeSource: 'system',
+  },
+  // --- PEDS_COMPLETED: raw summary (1 version — initial AI) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.PEDS_SUMMARY_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_RAW_SUMMARY,
+    versionNumber: 1,
+    content: PEDS_SUMMARY_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SYSTEM_USER_ID,
+    changeSource: 'system',
+  },
+  // --- PEDS_COMPLETED: transcript (1 version — initial) ---
+  {
+    id: SEED_CONTEXT_VERSION_IDS.PEDS_TRANSCRIPT_V1,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
+    versionNumber: 1,
+    content: PEDS_TRANSCRIPT_CONTENT,
+    contentDiff: null,
+    changeReason: 'initial_creation',
+    changeSummary: 'Initial version',
+    changedBy: SYSTEM_USER_ID,
+    changeSource: 'system',
+  },
 ];
 
 // =============================================================================
@@ -1091,128 +1091,128 @@ const DEFAULT_CONTEXT_VERSIONS = [
 // =============================================================================
 
 const DEFAULT_NAMED_ENTITIES = [
-    // GEN_COMPLETED entities (5)
-    {
-        id: SEED_NAMED_ENTITY_IDS.GEN_MED_AMOXICILLIN,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
-        text: 'amoxicillin 500mg',
-        className: 'MEDICATION',
-        normalizedText: 'Amoxicillin',
-        startOffset: 1042,
-        endOffset: 1059,
-        confidence: 0.97,
-        aiModelId: 'biomedical-ner-v1',
-        aiModelVersion: '2025-06-01',
-        processingTimeMs: 120,
-        metadata: { rxnorm: '723', atcCode: 'J01CA04', route: 'oral', frequency: 'TID', duration: '7 days' },
-    },
-    {
-        id: SEED_NAMED_ENTITY_IDS.GEN_MED_PARACETAMOL,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
-        text: 'paracetamol',
-        className: 'MEDICATION',
-        normalizedText: 'Paracetamol (Acetaminophen)',
-        startOffset: 1115,
-        endOffset: 1126,
-        confidence: 0.95,
-        aiModelId: 'biomedical-ner-v1',
-        aiModelVersion: '2025-06-01',
-        processingTimeMs: 80,
-        metadata: { rxnorm: '161', atcCode: 'N02BE01', route: 'oral', frequency: 'PRN' },
-    },
-    {
-        id: SEED_NAMED_ENTITY_IDS.GEN_COND_PNEUMONIA,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
-        text: 'early pneumonia',
-        className: 'CONDITION',
-        normalizedText: 'Community-acquired pneumonia',
-        startOffset: 945,
-        endOffset: 960,
-        confidence: 0.88,
-        aiModelId: 'biomedical-ner-v1',
-        aiModelVersion: '2025-06-01',
-        processingTimeMs: 95,
-        metadata: { icd10: 'J18.9', snomed: '385093006', severity: 'mild' },
-    },
-    {
-        id: SEED_NAMED_ENTITY_IDS.GEN_PROC_CHEST_XRAY,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
-        text: 'chest X-ray',
-        className: 'PROCEDURE',
-        normalizedText: 'Chest radiograph',
-        startOffset: 990,
-        endOffset: 1001,
-        confidence: 0.99,
-        aiModelId: 'biomedical-ner-v1',
-        aiModelVersion: '2025-06-01',
-        processingTimeMs: 60,
-        metadata: { cpt: '71046', loinc: '30746-2' },
-    },
-    {
-        id: SEED_NAMED_ENTITY_IDS.GEN_ANAT_RIGHT_LOWER_LOBE,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
-        text: 'right lower lobe',
-        className: 'ANATOMY',
-        normalizedText: 'Right lower lobe of lung',
-        startOffset: 780,
-        endOffset: 796,
-        confidence: 0.96,
-        aiModelId: 'biomedical-ner-v1',
-        aiModelVersion: '2025-06-01',
-        processingTimeMs: 55,
-        metadata: { snomed: '266005' },
-    },
-    // PEDS_COMPLETED entities (3)
-    {
-        id: SEED_NAMED_ENTITY_IDS.PEDS_MED_AMOXICILLIN,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
-        text: 'amoxicillin 45 mg/kg/day',
-        className: 'MEDICATION',
-        normalizedText: 'Amoxicillin',
-        startOffset: 680,
-        endOffset: 703,
-        confidence: 0.96,
-        aiModelId: 'biomedical-ner-v1',
-        aiModelVersion: '2025-06-01',
-        processingTimeMs: 110,
-        metadata: { rxnorm: '723', atcCode: 'J01CA04', route: 'oral', frequency: 'BID', duration: '10 days', weightBased: true },
-    },
-    {
-        id: SEED_NAMED_ENTITY_IDS.PEDS_COND_OTITIS_MEDIA,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
-        text: 'acute otitis media',
-        className: 'CONDITION',
-        normalizedText: 'Acute otitis media',
-        startOffset: 640,
-        endOffset: 658,
-        confidence: 0.94,
-        aiModelId: 'biomedical-ner-v1',
-        aiModelVersion: '2025-06-01',
-        processingTimeMs: 85,
-        metadata: { icd10: 'H66.91', snomed: '3135009' },
-    },
-    {
-        id: SEED_NAMED_ENTITY_IDS.PEDS_ANAT_TYMPANIC_MEMBRANE,
-        tenantId: SEED_TENANT_ID,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
-        text: 'right tympanic membrane',
-        className: 'ANATOMY',
-        normalizedText: 'Tympanic membrane of right ear',
-        startOffset: 420,
-        endOffset: 443,
-        confidence: 0.98,
-        aiModelId: 'biomedical-ner-v1',
-        aiModelVersion: '2025-06-01',
-        processingTimeMs: 50,
-        metadata: { snomed: '726682005' },
-    },
+  // GEN_COMPLETED entities (5)
+  {
+    id: SEED_NAMED_ENTITY_IDS.GEN_MED_AMOXICILLIN,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+    text: 'amoxicillin 500mg',
+    className: 'MEDICATION',
+    normalizedText: 'Amoxicillin',
+    startOffset: 1042,
+    endOffset: 1059,
+    confidence: 0.97,
+    aiModelId: 'biomedical-ner-v1',
+    aiModelVersion: '2025-06-01',
+    processingTimeMs: 120,
+    metadata: { rxnorm: '723', atcCode: 'J01CA04', route: 'oral', frequency: 'TID', duration: '7 days' },
+  },
+  {
+    id: SEED_NAMED_ENTITY_IDS.GEN_MED_PARACETAMOL,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+    text: 'paracetamol',
+    className: 'MEDICATION',
+    normalizedText: 'Paracetamol (Acetaminophen)',
+    startOffset: 1115,
+    endOffset: 1126,
+    confidence: 0.95,
+    aiModelId: 'biomedical-ner-v1',
+    aiModelVersion: '2025-06-01',
+    processingTimeMs: 80,
+    metadata: { rxnorm: '161', atcCode: 'N02BE01', route: 'oral', frequency: 'PRN' },
+  },
+  {
+    id: SEED_NAMED_ENTITY_IDS.GEN_COND_PNEUMONIA,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+    text: 'early pneumonia',
+    className: 'CONDITION',
+    normalizedText: 'Community-acquired pneumonia',
+    startOffset: 945,
+    endOffset: 960,
+    confidence: 0.88,
+    aiModelId: 'biomedical-ner-v1',
+    aiModelVersion: '2025-06-01',
+    processingTimeMs: 95,
+    metadata: { icd10: 'J18.9', snomed: '385093006', severity: 'mild' },
+  },
+  {
+    id: SEED_NAMED_ENTITY_IDS.GEN_PROC_CHEST_XRAY,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+    text: 'chest X-ray',
+    className: 'PROCEDURE',
+    normalizedText: 'Chest radiograph',
+    startOffset: 990,
+    endOffset: 1001,
+    confidence: 0.99,
+    aiModelId: 'biomedical-ner-v1',
+    aiModelVersion: '2025-06-01',
+    processingTimeMs: 60,
+    metadata: { cpt: '71046', loinc: '30746-2' },
+  },
+  {
+    id: SEED_NAMED_ENTITY_IDS.GEN_ANAT_RIGHT_LOWER_LOBE,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+    text: 'right lower lobe',
+    className: 'ANATOMY',
+    normalizedText: 'Right lower lobe of lung',
+    startOffset: 780,
+    endOffset: 796,
+    confidence: 0.96,
+    aiModelId: 'biomedical-ner-v1',
+    aiModelVersion: '2025-06-01',
+    processingTimeMs: 55,
+    metadata: { snomed: '266005' },
+  },
+  // PEDS_COMPLETED entities (3)
+  {
+    id: SEED_NAMED_ENTITY_IDS.PEDS_MED_AMOXICILLIN,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
+    text: 'amoxicillin 45 mg/kg/day',
+    className: 'MEDICATION',
+    normalizedText: 'Amoxicillin',
+    startOffset: 680,
+    endOffset: 703,
+    confidence: 0.96,
+    aiModelId: 'biomedical-ner-v1',
+    aiModelVersion: '2025-06-01',
+    processingTimeMs: 110,
+    metadata: { rxnorm: '723', atcCode: 'J01CA04', route: 'oral', frequency: 'BID', duration: '10 days', weightBased: true },
+  },
+  {
+    id: SEED_NAMED_ENTITY_IDS.PEDS_COND_OTITIS_MEDIA,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
+    text: 'acute otitis media',
+    className: 'CONDITION',
+    normalizedText: 'Acute otitis media',
+    startOffset: 640,
+    endOffset: 658,
+    confidence: 0.94,
+    aiModelId: 'biomedical-ner-v1',
+    aiModelVersion: '2025-06-01',
+    processingTimeMs: 85,
+    metadata: { icd10: 'H66.91', snomed: '3135009' },
+  },
+  {
+    id: SEED_NAMED_ENTITY_IDS.PEDS_ANAT_TYMPANIC_MEMBRANE,
+    tenantId: SEED_TENANT_ID,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.PEDS_TRANSCRIPT,
+    text: 'right tympanic membrane',
+    className: 'ANATOMY',
+    normalizedText: 'Tympanic membrane of right ear',
+    startOffset: 420,
+    endOffset: 443,
+    confidence: 0.98,
+    aiModelId: 'biomedical-ner-v1',
+    aiModelVersion: '2025-06-01',
+    processingTimeMs: 50,
+    metadata: { snomed: '726682005' },
+  },
 ];
 
 // =============================================================================
@@ -1241,268 +1241,262 @@ const GLOBAL_PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000401';
 const ARCAAI_PRODUCTION_PIPELINE_ID = '81000000-0000-0000-0001-000000000101';
 
 interface TranscriptionJobSeed {
-    id: string;
-    tenantId: string;
-    jobType: TranscriptionJobType;
-    status: TranscriptionJobStatus;
-    pipelineId: string;
-    consultationId: string | null;
-    contextItemId: string | null;
-    mediaId: string | null;
-    progress: number;
-    queuedAt: Date;
-    startedAt: Date | null;
-    completedAt: Date | null;
-    resultText: string | null;
-    resultMetadata: Record<string, unknown> | null;
-    errorMessage: string | null;
-    errorCode: string | null;
-    retryCount: number;
-    workerId: string | null;
+  id: string;
+  tenantId: string;
+  jobType: TranscriptionJobType;
+  status: TranscriptionJobStatus;
+  pipelineId: string;
+  consultationId: string | null;
+  contextItemId: string | null;
+  mediaId: string | null;
+  progress: number;
+  queuedAt: Date;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  resultText: string | null;
+  resultMetadata: Record<string, unknown> | null;
+  errorMessage: string | null;
+  errorCode: string | null;
+  retryCount: number;
+  workerId: string | null;
 }
 
 export const DEFAULT_TRANSCRIPTION_JOBS: TranscriptionJobSeed[] = [
-    // ── Global tenant — COMPLETED batch (produced the GEN transcript) ──────
-    {
-        id: SEED_TRANSCRIPTION_JOB_IDS.GEN_COMPLETED,
-        tenantId: SEED_TENANT_ID,
-        jobType: 'BATCH' as TranscriptionJobType,
-        status: 'COMPLETED' as TranscriptionJobStatus,
-        pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
-        consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
-        mediaId: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
-        progress: 100,
-        queuedAt: new Date('2025-12-15T10:30:05Z'),
-        startedAt: new Date('2025-12-15T10:30:08Z'),
-        completedAt: new Date('2025-12-15T10:33:12Z'),
-        resultText:
-            'Patient presents with a three-day history of productive cough and low-grade fever. Chest examination reveals scattered crepitations at the right base. Plan: chest X-ray, oral amoxicillin, review in five days.',
-        resultMetadata: { confidence: 0.94, language: 'en', durationMs: 185000, wordCount: 38 },
-        errorMessage: null,
-        errorCode: null,
-        retryCount: 0,
-        workerId: 'asr-worker-01',
-    },
-    // ── Global tenant — PROCESSING batch (neurology referral) ──────────────
-    {
-        id: SEED_TRANSCRIPTION_JOB_IDS.NEUR_PROCESSING,
-        tenantId: SEED_TENANT_ID,
-        jobType: 'BATCH' as TranscriptionJobType,
-        status: 'PROCESSING' as TranscriptionJobStatus,
-        pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
-        consultationId: SEED_CONSULTATION_IDS.NEUR_REFERRAL,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.NEUR_TRANSCRIPT,
-        mediaId: null,
-        progress: 45,
-        queuedAt: new Date('2026-02-20T09:00:00Z'),
-        startedAt: new Date('2026-02-20T09:00:06Z'),
-        completedAt: null,
-        resultText: null,
-        resultMetadata: null,
-        errorMessage: null,
-        errorCode: null,
-        retryCount: 0,
-        workerId: 'asr-worker-02',
-    },
-    // ── Global tenant — QUEUED streaming (ER live recording) ───────────────
-    {
-        id: SEED_TRANSCRIPTION_JOB_IDS.ER_QUEUED,
-        tenantId: SEED_TENANT_ID,
-        jobType: 'STREAMING' as TranscriptionJobType,
-        status: 'QUEUED' as TranscriptionJobStatus,
-        pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
-        consultationId: SEED_CONSULTATION_IDS.ER_RECORDING,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.ER_AUDIO,
-        mediaId: null,
-        progress: 0,
-        queuedAt: new Date('2026-02-20T09:15:00Z'),
-        startedAt: null,
-        completedAt: null,
-        resultText: null,
-        resultMetadata: null,
-        errorMessage: null,
-        errorCode: null,
-        retryCount: 0,
-        workerId: null,
-    },
-    // ── Global tenant — FAILED batch (exhausted retries) ───────────────────
-    {
-        id: SEED_TRANSCRIPTION_JOB_IDS.CARD_FAILED,
-        tenantId: SEED_TENANT_ID,
-        jobType: 'BATCH' as TranscriptionJobType,
-        status: 'FAILED' as TranscriptionJobStatus,
-        pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
-        consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
-        contextItemId: null,
-        mediaId: null,
-        progress: 20,
-        queuedAt: new Date('2026-02-19T14:00:00Z'),
-        startedAt: new Date('2026-02-19T14:00:04Z'),
-        completedAt: null,
-        resultText: null,
-        resultMetadata: null,
-        errorMessage: 'ASR worker timed out while decoding audio segment 3/7',
-        errorCode: 'ASR_DECODE_TIMEOUT',
-        retryCount: 3,
-        workerId: 'asr-worker-03',
-    },
-    // ── ArcaAI tenant — COMPLETED batch ────────────────────────────────────
-    {
-        id: SEED_TRANSCRIPTION_JOB_IDS.ARCAAI_COMPLETED,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        jobType: 'BATCH' as TranscriptionJobType,
-        status: 'COMPLETED' as TranscriptionJobStatus,
-        pipelineId: ARCAAI_PRODUCTION_PIPELINE_ID,
-        consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
-        contextItemId: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_NEW_TRANSCRIPT,
-        mediaId: null,
-        progress: 100,
-        queuedAt: new Date('2026-02-21T11:00:02Z'),
-        startedAt: new Date('2026-02-21T11:00:05Z'),
-        completedAt: new Date('2026-02-21T11:01:40Z'),
-        resultText:
-            'Patient reports a sore throat and mild fever for three days, with some difficulty swallowing and no cough. Throat examination performed; rapid swab ordered.',
-        resultMetadata: { confidence: 0.92, language: 'en', durationMs: 96000, wordCount: 27 },
-        errorMessage: null,
-        errorCode: null,
-        retryCount: 0,
-        workerId: 'asr-worker-01',
-    },
-    // ── ArcaAI tenant — QUEUED streaming (revisit) ─────────────────────────
-    {
-        id: SEED_TRANSCRIPTION_JOB_IDS.ARCAAI_QUEUED,
-        tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-        jobType: 'STREAMING' as TranscriptionJobType,
-        status: 'QUEUED' as TranscriptionJobStatus,
-        pipelineId: ARCAAI_PRODUCTION_PIPELINE_ID,
-        consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
-        contextItemId: null,
-        mediaId: null,
-        progress: 0,
-        queuedAt: new Date('2026-02-28T10:30:00Z'),
-        startedAt: null,
-        completedAt: null,
-        resultText: null,
-        resultMetadata: null,
-        errorMessage: null,
-        errorCode: null,
-        retryCount: 0,
-        workerId: null,
-    },
+  // ── Global tenant — COMPLETED batch (produced the GEN transcript) ──────
+  {
+    id: SEED_TRANSCRIPTION_JOB_IDS.GEN_COMPLETED,
+    tenantId: SEED_TENANT_ID,
+    jobType: 'BATCH' as TranscriptionJobType,
+    status: 'COMPLETED' as TranscriptionJobStatus,
+    pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+    consultationId: SEED_CONSULTATION_IDS.GEN_COMPLETED,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.GEN_TRANSCRIPT,
+    mediaId: SEED_MEDIA_IDS.GEN_AUDIO_PRIMARY,
+    progress: 100,
+    queuedAt: new Date('2025-12-15T10:30:05Z'),
+    startedAt: new Date('2025-12-15T10:30:08Z'),
+    completedAt: new Date('2025-12-15T10:33:12Z'),
+    resultText:
+      'Patient presents with a three-day history of productive cough and low-grade fever. Chest examination reveals scattered crepitations at the right base. Plan: chest X-ray, oral amoxicillin, review in five days.',
+    resultMetadata: { confidence: 0.94, language: 'en', durationMs: 185000, wordCount: 38 },
+    errorMessage: null,
+    errorCode: null,
+    retryCount: 0,
+    workerId: 'asr-worker-01',
+  },
+  // ── Global tenant — PROCESSING batch (neurology referral) ──────────────
+  {
+    id: SEED_TRANSCRIPTION_JOB_IDS.NEUR_PROCESSING,
+    tenantId: SEED_TENANT_ID,
+    jobType: 'BATCH' as TranscriptionJobType,
+    status: 'PROCESSING' as TranscriptionJobStatus,
+    pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+    consultationId: SEED_CONSULTATION_IDS.NEUR_REFERRAL,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.NEUR_TRANSCRIPT,
+    mediaId: null,
+    progress: 45,
+    queuedAt: new Date('2026-02-20T09:00:00Z'),
+    startedAt: new Date('2026-02-20T09:00:06Z'),
+    completedAt: null,
+    resultText: null,
+    resultMetadata: null,
+    errorMessage: null,
+    errorCode: null,
+    retryCount: 0,
+    workerId: 'asr-worker-02',
+  },
+  // ── Global tenant — QUEUED streaming (ER live recording) ───────────────
+  {
+    id: SEED_TRANSCRIPTION_JOB_IDS.ER_QUEUED,
+    tenantId: SEED_TENANT_ID,
+    jobType: 'STREAMING' as TranscriptionJobType,
+    status: 'QUEUED' as TranscriptionJobStatus,
+    pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+    consultationId: SEED_CONSULTATION_IDS.ER_RECORDING,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.ER_AUDIO,
+    mediaId: null,
+    progress: 0,
+    queuedAt: new Date('2026-02-20T09:15:00Z'),
+    startedAt: null,
+    completedAt: null,
+    resultText: null,
+    resultMetadata: null,
+    errorMessage: null,
+    errorCode: null,
+    retryCount: 0,
+    workerId: null,
+  },
+  // ── Global tenant — FAILED batch (exhausted retries) ───────────────────
+  {
+    id: SEED_TRANSCRIPTION_JOB_IDS.CARD_FAILED,
+    tenantId: SEED_TENANT_ID,
+    jobType: 'BATCH' as TranscriptionJobType,
+    status: 'FAILED' as TranscriptionJobStatus,
+    pipelineId: GLOBAL_PRODUCTION_PIPELINE_ID,
+    consultationId: SEED_CONSULTATION_IDS.CARD_NEW,
+    contextItemId: null,
+    mediaId: null,
+    progress: 20,
+    queuedAt: new Date('2026-02-19T14:00:00Z'),
+    startedAt: new Date('2026-02-19T14:00:04Z'),
+    completedAt: null,
+    resultText: null,
+    resultMetadata: null,
+    errorMessage: 'ASR worker timed out while decoding audio segment 3/7',
+    errorCode: 'ASR_DECODE_TIMEOUT',
+    retryCount: 3,
+    workerId: 'asr-worker-03',
+  },
+  // ── ArcaAI tenant — COMPLETED batch ────────────────────────────────────
+  {
+    id: SEED_TRANSCRIPTION_JOB_IDS.ARCAAI_COMPLETED,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    jobType: 'BATCH' as TranscriptionJobType,
+    status: 'COMPLETED' as TranscriptionJobStatus,
+    pipelineId: ARCAAI_PRODUCTION_PIPELINE_ID,
+    consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_NEW,
+    contextItemId: SEED_CONTEXT_ITEM_IDS.ARCAAI_GEN_NEW_TRANSCRIPT,
+    mediaId: null,
+    progress: 100,
+    queuedAt: new Date('2026-02-21T11:00:02Z'),
+    startedAt: new Date('2026-02-21T11:00:05Z'),
+    completedAt: new Date('2026-02-21T11:01:40Z'),
+    resultText:
+      'Patient reports a sore throat and mild fever for three days, with some difficulty swallowing and no cough. Throat examination performed; rapid swab ordered.',
+    resultMetadata: { confidence: 0.92, language: 'en', durationMs: 96000, wordCount: 27 },
+    errorMessage: null,
+    errorCode: null,
+    retryCount: 0,
+    workerId: 'asr-worker-01',
+  },
+  // ── ArcaAI tenant — QUEUED streaming (revisit) ─────────────────────────
+  {
+    id: SEED_TRANSCRIPTION_JOB_IDS.ARCAAI_QUEUED,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    jobType: 'STREAMING' as TranscriptionJobType,
+    status: 'QUEUED' as TranscriptionJobStatus,
+    pipelineId: ARCAAI_PRODUCTION_PIPELINE_ID,
+    consultationId: SEED_CONSULTATION_IDS.ARCAAI_GEN_REVISIT,
+    contextItemId: null,
+    mediaId: null,
+    progress: 0,
+    queuedAt: new Date('2026-02-28T10:30:00Z'),
+    startedAt: null,
+    completedAt: null,
+    resultText: null,
+    resultMetadata: null,
+    errorMessage: null,
+    errorCode: null,
+    retryCount: 0,
+    workerId: null,
+  },
 ];
 
 export const seedConsultation = async (client: CorePrismaClient) => {
-    console.log('Seeding consultations (e2e workflow data)...');
+  console.log('Seeding consultations (e2e workflow data)...');
 
-    for (const consultation of [...DEFAULT_CONSULTATIONS, ...CUSTOMER_TENANT_CONSULTATIONS]) {
-        await client.consultation.upsert({
-            where: { id: consultation.id },
-            update: consultation,
-            create: consultation,
-        });
-    }
-    console.log(
-        `  Seeded ${DEFAULT_CONSULTATIONS.length} consultations + ${CUSTOMER_TENANT_CONSULTATIONS.length} customer-tenant consultations`,
-    );
+  for (const consultation of [...DEFAULT_CONSULTATIONS, ...CUSTOMER_TENANT_CONSULTATIONS]) {
+    await client.consultation.upsert({
+      where: { id: consultation.id },
+      update: consultation,
+      create: consultation,
+    });
+  }
+  console.log(`  Seeded ${DEFAULT_CONSULTATIONS.length} consultations + ${CUSTOMER_TENANT_CONSULTATIONS.length} customer-tenant consultations`);
 
-    for (const item of [...DEFAULT_CONTEXT_ITEMS, ...CUSTOMER_TENANT_CONTEXT_ITEMS]) {
-        const data = await encryptSeedRow<Prisma.ContextItemUncheckedCreateInput>('ContextItem', item);
-        await client.contextItem.upsert({
-            where: { id: item.id },
-            update: data,
-            create: data,
-        });
-    }
-    console.log(
-        `  Seeded ${DEFAULT_CONTEXT_ITEMS.length} context items + ${CUSTOMER_TENANT_CONTEXT_ITEMS.length} customer-tenant context items`,
-    );
+  for (const item of [...DEFAULT_CONTEXT_ITEMS, ...CUSTOMER_TENANT_CONTEXT_ITEMS]) {
+    const data = await encryptSeedRow<Prisma.ContextItemUncheckedCreateInput>('ContextItem', item);
+    await client.contextItem.upsert({
+      where: { id: item.id },
+      update: data,
+      create: data,
+    });
+  }
+  console.log(`  Seeded ${DEFAULT_CONTEXT_ITEMS.length} context items + ${CUSTOMER_TENANT_CONTEXT_ITEMS.length} customer-tenant context items`);
 
-    for (const meta of DEFAULT_SUMMARY_METAS) {
-        await client.summaryMeta.upsert({
-            where: { id: meta.id },
-            update: meta,
-            create: meta,
-        });
-    }
-    console.log(`  Seeded ${DEFAULT_SUMMARY_METAS.length} summary metas`);
+  for (const meta of DEFAULT_SUMMARY_METAS) {
+    await client.summaryMeta.upsert({
+      where: { id: meta.id },
+      update: meta,
+      create: meta,
+    });
+  }
+  console.log(`  Seeded ${DEFAULT_SUMMARY_METAS.length} summary metas`);
 
-    for (const media of DEFAULT_MEDIA) {
-        await client.media.upsert({
-            where: { id: media.id },
-            update: media,
-            create: media,
-        });
-    }
-    console.log(`  Seeded ${DEFAULT_MEDIA.length} media`);
+  for (const media of DEFAULT_MEDIA) {
+    await client.media.upsert({
+      where: { id: media.id },
+      update: media,
+      create: media,
+    });
+  }
+  console.log(`  Seeded ${DEFAULT_MEDIA.length} media`);
 
-    for (const audio of DEFAULT_AUDIO_RECORDINGS) {
-        await client.audioRecording.upsert({
-            where: { id: audio.id },
-            update: audio,
-            create: audio,
-        });
-    }
-    console.log(`  Seeded ${DEFAULT_AUDIO_RECORDINGS.length} audio recordings`);
+  for (const audio of DEFAULT_AUDIO_RECORDINGS) {
+    await client.audioRecording.upsert({
+      where: { id: audio.id },
+      update: audio,
+      create: audio,
+    });
+  }
+  console.log(`  Seeded ${DEFAULT_AUDIO_RECORDINGS.length} audio recordings`);
 
-    for (const version of DEFAULT_CONTEXT_VERSIONS) {
-        const data = await encryptSeedRow<Prisma.ContextItemVersionUncheckedCreateInput>('ContextItemVersion', version);
-        await client.contextItemVersion.upsert({
-            where: {
-                contextItemId_versionNumber: {
-                    contextItemId: version.contextItemId,
-                    versionNumber: version.versionNumber,
-                },
-            },
-            update: data,
-            create: data,
-        });
-    }
-    console.log(`  Seeded ${DEFAULT_CONTEXT_VERSIONS.length} context item versions`);
+  for (const version of DEFAULT_CONTEXT_VERSIONS) {
+    const data = await encryptSeedRow<Prisma.ContextItemVersionUncheckedCreateInput>('ContextItemVersion', version);
+    await client.contextItemVersion.upsert({
+      where: {
+        contextItemId_versionNumber: {
+          contextItemId: version.contextItemId,
+          versionNumber: version.versionNumber,
+        },
+      },
+      update: data,
+      create: data,
+    });
+  }
+  console.log(`  Seeded ${DEFAULT_CONTEXT_VERSIONS.length} context item versions`);
 
-    for (const entity of DEFAULT_NAMED_ENTITIES) {
-        const data = await encryptSeedRow<Prisma.NamedEntityUncheckedCreateInput>('NamedEntity', entity);
-        await client.namedEntity.upsert({
-            where: { id: entity.id },
-            update: data,
-            create: data,
-        });
-    }
-    console.log(`  Seeded ${DEFAULT_NAMED_ENTITIES.length} named entities`);
+  for (const entity of DEFAULT_NAMED_ENTITIES) {
+    const data = await encryptSeedRow<Prisma.NamedEntityUncheckedCreateInput>('NamedEntity', entity);
+    await client.namedEntity.upsert({
+      where: { id: entity.id },
+      update: data,
+      create: data,
+    });
+  }
+  console.log(`  Seeded ${DEFAULT_NAMED_ENTITIES.length} named entities`);
 
-    // Transcription jobs depend on ASR pipelines (FK) which
-    // are seeded earlier by seedAsrPipelines, and reference seeded consultations.
-    for (const job of DEFAULT_TRANSCRIPTION_JOBS) {
-        const data = {
-            id: job.id,
-            tenantId: job.tenantId,
-            jobType: job.jobType,
-            status: job.status,
-            pipelineId: job.pipelineId,
-            consultationId: job.consultationId,
-            contextItemId: job.contextItemId,
-            mediaId: job.mediaId,
-            progress: job.progress,
-            queuedAt: job.queuedAt,
-            startedAt: job.startedAt,
-            completedAt: job.completedAt,
-            resultText: job.resultText,
-            errorMessage: job.errorMessage,
-            errorCode: job.errorCode,
-            retryCount: job.retryCount,
-            workerId: job.workerId,
-            ...(job.resultMetadata != null
-                ? { resultMetadata: job.resultMetadata as Prisma.InputJsonValue }
-                : {}),
-        };
-        const encrypted = await encryptSeedRow<Prisma.TranscriptionJobUncheckedCreateInput>('TranscriptionJob', data);
-        await client.transcriptionJob.upsert({
-            where: { id: job.id },
-            update: encrypted,
-            create: encrypted,
-        });
-    }
-    console.log(`  Seeded ${DEFAULT_TRANSCRIPTION_JOBS.length} transcription jobs`);
+  // Transcription jobs depend on ASR pipelines (FK) which
+  // are seeded earlier by seedAsrPipelines, and reference seeded consultations.
+  for (const job of DEFAULT_TRANSCRIPTION_JOBS) {
+    const data = {
+      id: job.id,
+      tenantId: job.tenantId,
+      jobType: job.jobType,
+      status: job.status,
+      pipelineId: job.pipelineId,
+      consultationId: job.consultationId,
+      contextItemId: job.contextItemId,
+      mediaId: job.mediaId,
+      progress: job.progress,
+      queuedAt: job.queuedAt,
+      startedAt: job.startedAt,
+      completedAt: job.completedAt,
+      resultText: job.resultText,
+      errorMessage: job.errorMessage,
+      errorCode: job.errorCode,
+      retryCount: job.retryCount,
+      workerId: job.workerId,
+      ...(job.resultMetadata != null ? { resultMetadata: job.resultMetadata as Prisma.InputJsonValue } : {}),
+    };
+    const encrypted = await encryptSeedRow<Prisma.TranscriptionJobUncheckedCreateInput>('TranscriptionJob', data);
+    await client.transcriptionJob.upsert({
+      where: { id: job.id },
+      update: encrypted,
+      create: encrypted,
+    });
+  }
+  console.log(`  Seeded ${DEFAULT_TRANSCRIPTION_JOBS.length} transcription jobs`);
 
-    console.log('Consultation seeding completed');
+  console.log('Consultation seeding completed');
 };

@@ -107,9 +107,9 @@ load_env_test() {
 }
 
 # Fail fast with an actionable message when the service port is already bound.
-# dev:api and test:api:up share port 8868 (and the Node inspector on 9229), so a
-# running dev API — or a stale prior test:api:up — otherwise surfaces as an
-# unhandled EADDRINUSE crash deep in the Nest bootstrap.
+# Since TASK-557 the test env has its own ports (DEV + 100, inspector 9329), so
+# a bound test port means a stale prior test instance rather than a dev stack.
+# Without this it surfaces as an unhandled EADDRINUSE deep in the Nest bootstrap.
 check_port_available() {
     local port="$1"
     local pids
@@ -119,8 +119,9 @@ check_port_available() {
     pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
     if [ -n "$pids" ]; then
         echo -e "${RED}Error: port $port is already in use (PID(s): $(echo "$pids" | tr '\n' ' ')).${NC}"
-        echo "The test API shares port $port with 'pnpm api:dev'. Stop the conflicting"
-        echo "process first, e.g.:  kill $(echo "$pids" | tr '\n' ' ')"
+        echo "This is a TEST-environment port; something is already bound to it"
+        echo "(most likely an earlier test run). Stop it first, e.g.:"
+        echo "  pnpm stack:test:down   —or—   kill $(echo "$pids" | tr '\n' ' ')"
         exit 1
     fi
 }

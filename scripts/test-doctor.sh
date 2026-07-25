@@ -14,11 +14,11 @@
 #   required = test infra (postgres/redis/minio/qdrant) + schema presence
 #   optional = the app services (they are only up while a suite is running)
 #
-# IMPORTANT — PORT OVERLAP:
-#   .env.test reuses the DEV application ports (api 8868, stt 8861, smr 8862,
-#   nlp 8864). Only the INFRA ports differ. A dev stack and a test stack can
-#   therefore never run at the same time; this doctor flags the collision
-#   rather than reporting a dev service as a healthy test service.
+# PORTS: the TEST env is fully independent of DEV (TASK-557) — application
+#   ports are DEV + 100 (api 8968, stt 8961, smr 8962, guardrail 8963,
+#   nlp 8964, tts 8965, harness 8966, admin 5276), and the infra ports already
+#   differed (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335). Both stacks
+#   can run side by side. Ports are read from .env.test, never hardcoded.
 # ============================================================================
 
 set -uo pipefail
@@ -62,12 +62,12 @@ TEST_PG_PORT=5433
 TEST_REDIS_PORT="$(env_val REDIS_PORT)"; TEST_REDIS_PORT="${TEST_REDIS_PORT:-6380}"
 TEST_MINIO_PORT=9002
 TEST_QDRANT_PORT=6335
-T_API_PORT="$(env_val API_PORT)";  T_API_PORT="${T_API_PORT:-8868}"
-T_STT_PORT="$(env_val STT_PORT)";  T_STT_PORT="${T_STT_PORT:-8861}"
-T_SMR_PORT="$(env_val SMR_PORT)";  T_SMR_PORT="${T_SMR_PORT:-8862}"
-T_NLP_PORT="$(env_val NLP_PORT)";  T_NLP_PORT="${T_NLP_PORT:-8864}"
-T_GUARDRAIL_PORT="$(env_val GUARDRAIL_PORT)"; T_GUARDRAIL_PORT="${T_GUARDRAIL_PORT:-8863}"
-T_HARNESS_PORT="$(env_val HARNESS_PORT)";     T_HARNESS_PORT="${T_HARNESS_PORT:-8866}"
+T_API_PORT="$(env_val API_PORT)";  T_API_PORT="${T_API_PORT:-8968}"
+T_STT_PORT="$(env_val STT_PORT)";  T_STT_PORT="${T_STT_PORT:-8961}"
+T_SMR_PORT="$(env_val SMR_PORT)";  T_SMR_PORT="${T_SMR_PORT:-8962}"
+T_NLP_PORT="$(env_val NLP_PORT)";  T_NLP_PORT="${T_NLP_PORT:-8964}"
+T_GUARDRAIL_PORT="$(env_val GUARDRAIL_PORT)"; T_GUARDRAIL_PORT="${T_GUARDRAIL_PORT:-8963}"
+T_HARNESS_PORT="$(env_val HARNESS_PORT)";     T_HARNESS_PORT="${T_HARNESS_PORT:-8966}"
 
 docker_check() {
     local req="$1" name="$2" state
@@ -169,14 +169,23 @@ http_check optional "nlp ($T_NLP_PORT)"       "http://localhost:$T_NLP_PORT/api/
 http_check optional "guardrail ($T_GUARDRAIL_PORT)" "http://localhost:$T_GUARDRAIL_PORT/api/health"
 http_check optional "harness ($T_HARNESS_PORT)"     "http://localhost:$T_HARNESS_PORT/api/v1/health"
 
-echo -e "${CYAN}── Dev/test port collision ──────────────────────────────────────${NC}"
-# .env.test reuses the dev application ports. If the DEV infra is also up, any
-# listener on those ports is ambiguous — and a suite may silently run against
-# the dev database. Worth a loud warning.
-if docker inspect -f '{{.State.Status}}' hope-postgres 2>/dev/null | grep -q running; then
-    warn "dev infra also running" "dev postgres (5432) is up — app ports are shared with test; stop the dev stack before running suites"
+echo -e "${CYAN}── Dev/test isolation ───────────────────────────────────────────${NC}"
+# Since TASK-557 the two environments use disjoint ports, so both may run at
+# once. What still matters is that .env.test has not drifted back onto a dev
+# port — that would silently point a suite at the dev stack.
+collisions=""
+for pair in "API_PORT:8868" "STT_PORT:8861" "SMR_PORT:8862" "GUARDRAIL_PORT:8863" \
+            "NLP_PORT:8864" "TTS_PORT:8865" "HARNESS_PORT:8866" "ADMIN_PORT:5176"; do
+    var="${pair%%:*}"; devport="${pair##*:}"
+    testport="$(env_val "$var")"
+    if [ -n "$testport" ] && [ "$testport" = "$devport" ]; then
+        collisions="$collisions $var=$testport"
+    fi
+done
+if [ -n "$collisions" ]; then
+    fail "test ports distinct from dev" "collides on:$collisions — a suite could hit the DEV stack"
 else
-    pass "dev infra not running" "no dev/test app-port ambiguity"
+    pass "test ports distinct from dev" "test = dev + 100; both stacks can run together"
 fi
 
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

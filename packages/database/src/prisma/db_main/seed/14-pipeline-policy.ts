@@ -37,26 +37,26 @@ import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants
 
 /** Toggle snapshot mirrored from the runtime PipelinePolicyService change record. */
 interface PipelineToggleSnapshot {
-    autoSummaryEnabled: boolean | null;
-    autoNerEnabled: boolean | null;
-    harnessEnabled: boolean | null;
-    dnaStyleEnabled: boolean | null;
+  autoSummaryEnabled: boolean | null;
+  autoNerEnabled: boolean | null;
+  harnessEnabled: boolean | null;
+  dnaStyleEnabled: boolean | null;
 }
 
 /** SYSTEM-tenant GLOBAL DEFAULT — legacy platform behavior (harness OFF). */
 export const SYSTEM_PIPELINE_POLICY_DEFAULTS = {
-    autoSummaryEnabled: true,
-    autoNerEnabled: true,
-    harnessEnabled: false,
-    dnaStyleEnabled: null,
+  autoSummaryEnabled: true,
+  autoNerEnabled: true,
+  harnessEnabled: false,
+  dnaStyleEnabled: null,
 } as const satisfies PipelineToggleSnapshot;
 
 /** DEMO-tenant override — keeps the clinical-workspace harness on (others inherit). */
 export const DEMO_PIPELINE_POLICY_OVERRIDE = {
-    autoSummaryEnabled: null,
-    autoNerEnabled: null,
-    harnessEnabled: true,
-    dnaStyleEnabled: null,
+  autoSummaryEnabled: null,
+  autoNerEnabled: null,
+  harnessEnabled: true,
+  dnaStyleEnabled: null,
 } as const satisfies PipelineToggleSnapshot;
 
 const SYSTEM_REASON = 'TASK-356 Phase 5 seed: SYSTEM pipeline cascade default (auto on, harness off — legacy platform behavior)';
@@ -64,12 +64,12 @@ const DEMO_REASON = 'TASK-356 Phase 5 seed: demo-tenant harness override (preser
 
 /** Full toggle snapshot from a (possibly partial) row, defaulting absent toggles to null. */
 function snapshotToggles(row: Record<string, unknown>): PipelineToggleSnapshot {
-    return {
-        autoSummaryEnabled: (row.autoSummaryEnabled as boolean | null | undefined) ?? null,
-        autoNerEnabled: (row.autoNerEnabled as boolean | null | undefined) ?? null,
-        harnessEnabled: (row.harnessEnabled as boolean | null | undefined) ?? null,
-        dnaStyleEnabled: (row.dnaStyleEnabled as boolean | null | undefined) ?? null,
-    };
+  return {
+    autoSummaryEnabled: (row.autoSummaryEnabled as boolean | null | undefined) ?? null,
+    autoNerEnabled: (row.autoNerEnabled as boolean | null | undefined) ?? null,
+    harnessEnabled: (row.harnessEnabled as boolean | null | undefined) ?? null,
+    dnaStyleEnabled: (row.dnaStyleEnabled as boolean | null | undefined) ?? null,
+  };
 }
 
 /**
@@ -77,41 +77,41 @@ function snapshotToggles(row: Record<string, unknown>): PipelineToggleSnapshot {
  * change. Returns 'created' when a row was written, 'noop' when it already exists.
  */
 async function ensureTenantRow(
-    client: CorePrismaClient,
-    tenantId: string,
-    toggles: PipelineToggleSnapshot,
-    reason: string,
+  client: CorePrismaClient,
+  tenantId: string,
+  toggles: PipelineToggleSnapshot,
+  reason: string,
 ): Promise<'created' | 'noop'> {
-    const existing = await client.pipelinePolicy.findFirst({
-        where: { tenantId, scope: 'TENANT', scopeId: null },
-    });
-    if (existing) return 'noop';
+  const existing = await client.pipelinePolicy.findFirst({
+    where: { tenantId, scope: 'TENANT', scopeId: null },
+  });
+  if (existing) return 'noop';
 
-    const created = await client.pipelinePolicy.create({
-        data: {
-            tenantId,
-            scope: 'TENANT',
-            scopeId: null,
-            autoSummaryEnabled: toggles.autoSummaryEnabled,
-            autoNerEnabled: toggles.autoNerEnabled,
-            harnessEnabled: toggles.harnessEnabled,
-            dnaStyleEnabled: toggles.dnaStyleEnabled,
-            createdBy: SYSTEM_USER_ID,
-        },
-    });
-    await client.pipelinePolicyChange.create({
-        data: {
-            tenantId,
-            scope: 'TENANT',
-            scopeId: null,
-            changedBy: SYSTEM_USER_ID,
-            policyVersion: (created as { version?: number }).version ?? null,
-            beforeJson: null as unknown as object,
-            afterJson: snapshotToggles(created as Record<string, unknown>) as unknown as object,
-            reason,
-        },
-    });
-    return 'created';
+  const created = await client.pipelinePolicy.create({
+    data: {
+      tenantId,
+      scope: 'TENANT',
+      scopeId: null,
+      autoSummaryEnabled: toggles.autoSummaryEnabled,
+      autoNerEnabled: toggles.autoNerEnabled,
+      harnessEnabled: toggles.harnessEnabled,
+      dnaStyleEnabled: toggles.dnaStyleEnabled,
+      createdBy: SYSTEM_USER_ID,
+    },
+  });
+  await client.pipelinePolicyChange.create({
+    data: {
+      tenantId,
+      scope: 'TENANT',
+      scopeId: null,
+      changedBy: SYSTEM_USER_ID,
+      policyVersion: (created as { version?: number }).version ?? null,
+      beforeJson: null as unknown as object,
+      afterJson: snapshotToggles(created as Record<string, unknown>) as unknown as object,
+      reason,
+    },
+  });
+  return 'created';
 }
 
 /**
@@ -122,15 +122,15 @@ async function ensureTenantRow(
  *   - demo:   'created' | 'noop'
  */
 export const seedPipelinePolicy = async (
-    client: CorePrismaClient,
+  client: CorePrismaClient,
 ): Promise<{ success: true; system: 'created' | 'noop'; demo: 'created' | 'noop' }> => {
-    console.log('Seeding PipelinePolicy cascade defaults (TASK-356 Phase 5)...');
+  console.log('Seeding PipelinePolicy cascade defaults (TASK-356 Phase 5)...');
 
-    const system = await ensureTenantRow(client, SYSTEM_TENANT_ID, SYSTEM_PIPELINE_POLICY_DEFAULTS, SYSTEM_REASON);
-    console.log(`  SYSTEM default: ${system}`);
+  const system = await ensureTenantRow(client, SYSTEM_TENANT_ID, SYSTEM_PIPELINE_POLICY_DEFAULTS, SYSTEM_REASON);
+  console.log(`  SYSTEM default: ${system}`);
 
-    const demo = await ensureTenantRow(client, SEED_TENANT_ID, DEMO_PIPELINE_POLICY_OVERRIDE, DEMO_REASON);
-    console.log(`  Demo-tenant harness override: ${demo}`);
+  const demo = await ensureTenantRow(client, SEED_TENANT_ID, DEMO_PIPELINE_POLICY_OVERRIDE, DEMO_REASON);
+  console.log(`  Demo-tenant harness override: ${demo}`);
 
-    return { success: true, system, demo };
+  return { success: true, system, demo };
 };

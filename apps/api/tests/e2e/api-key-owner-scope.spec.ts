@@ -2,7 +2,7 @@
  * Api-key OWNER-SCOPE enforcement (backend contract).
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`).
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`).
  *
  * Background: the api-key admin surface's by-id operations (fetch / update /
  * delete / revoke / rotate) originally reused the tenant-scoped

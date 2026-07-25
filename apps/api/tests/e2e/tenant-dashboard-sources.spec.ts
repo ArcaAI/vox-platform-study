@@ -26,7 +26,7 @@
  *      — @CanManage('Consultation') → TENANT_ADMIN / GLOBAL_ADMIN; DOCTOR → 403.
  *
  * Run against a live, seeded stack (`pnpm test:e2e`, or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868`). Each flow is a real
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968`). Each flow is a real
  * HTTP round-trip with seeded personas (super_admin = cross-tenant operator,
  * tenant_admin = __GLOBAL__-scoped, doctor = non-admin).
  */

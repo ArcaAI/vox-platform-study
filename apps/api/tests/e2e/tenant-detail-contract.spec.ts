@@ -3,7 +3,7 @@
  *
  * Exercises the REAL server side of every data flow the page-based Tenant Detail
  * surface drives, against the live API (`pnpm test:e2e`, or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868`). Each flow is a real
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968`). Each flow is a real
  * HTTP round-trip with the seeded users (`tests/helpers`).
  *
  * Traceability (see ../../../../docs/qa/traceability/tenant-detail.md):

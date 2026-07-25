@@ -122,7 +122,7 @@ export type CreateStreamResult =
  * mounted at `/ws/stt/stream`, OUTSIDE the global `/api/v1` prefix.
  */
 export function wsOriginFromApiUrl(apiUrl?: string): string {
-  const base = apiUrl || process.env.API_URL || 'http://localhost:8868/api/v1';
+  const base = apiUrl || process.env.API_URL || 'http://localhost:8968/api/v1';
   return base.replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '');
 }
 

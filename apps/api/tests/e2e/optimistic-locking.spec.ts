@@ -21,7 +21,7 @@
  * so a mid-batch conflict rolls back every prior row.
  *
  * Environment. Requires the test API at `process.env.API_URL` (default
- * `http://localhost:8868`) and a seeded test database — see
+ * `http://localhost:8968`) and a seeded test database — see
  * `tests/setup/playwright.global-setup.ts`.
  */
 import { test, expect, request as playwrightRequest } from '@playwright/test';

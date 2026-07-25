@@ -28,50 +28,48 @@ import type { CorePrismaClient } from '../../../client';
  */
 
 export interface AiRuntimeProfileSeed {
-    id: string;
-    tenantId: string;
-    provider: string;
-    /** `""` = provider-level default; otherwise an `AiModel.slug`. */
-    modelSlug: string;
-    temperature: number | null;
-    topP: number | null;
-    maxTokens: number | null;
-    contextLength: number | null;
-    maxConcurrent: number | null;
-    tpmLimit: number | null;
-    rpmLimit: number | null;
-    timeoutS: number | null;
-    keepAliveSeconds: number | null;
+  id: string;
+  tenantId: string;
+  provider: string;
+  /** `""` = provider-level default; otherwise an `AiModel.slug`. */
+  modelSlug: string;
+  temperature: number | null;
+  topP: number | null;
+  maxTokens: number | null;
+  contextLength: number | null;
+  maxConcurrent: number | null;
+  tpmLimit: number | null;
+  rpmLimit: number | null;
+  timeoutS: number | null;
+  keepAliveSeconds: number | null;
 }
 
 /** Intentionally empty — see the file header. Ids would use the `88000000-…` block. */
 export const SYSTEM_AI_RUNTIME_PROFILES: AiRuntimeProfileSeed[] = [];
 
-export const seedAiRuntimeProfile = async (
-    client: CorePrismaClient,
-): Promise<{ success: true; created: number; skipped: number }> => {
-    console.log('Seeding SYSTEM AiRuntimeProfile rows (TASK-524)...');
+export const seedAiRuntimeProfile = async (client: CorePrismaClient): Promise<{ success: true; created: number; skipped: number }> => {
+  console.log('Seeding SYSTEM AiRuntimeProfile rows (TASK-524)...');
 
-    let created = 0;
-    let skipped = 0;
-    for (const row of SYSTEM_AI_RUNTIME_PROFILES) {
-        const existing = await client.aiRuntimeProfile.findFirst({
-            where: { tenantId: row.tenantId, provider: row.provider, modelSlug: row.modelSlug },
-        });
+  let created = 0;
+  let skipped = 0;
+  for (const row of SYSTEM_AI_RUNTIME_PROFILES) {
+    const existing = await client.aiRuntimeProfile.findFirst({
+      where: { tenantId: row.tenantId, provider: row.provider, modelSlug: row.modelSlug },
+    });
 
-        if (existing) {
-            // CREATE-ONLY — never clobber an admin-tuned profile.
-            skipped += 1;
-            continue;
-        }
-
-        await client.aiRuntimeProfile.create({ data: { ...row } });
-        created += 1;
+    if (existing) {
+      // CREATE-ONLY — never clobber an admin-tuned profile.
+      skipped += 1;
+      continue;
     }
 
-    console.log(
-        `Seeded AiRuntimeProfile: ${created} created, ${skipped} skipped ` +
-            '(empty by design — absence means "no opinion", so services keep their env defaults)',
-    );
-    return { success: true, created, skipped };
+    await client.aiRuntimeProfile.create({ data: { ...row } });
+    created += 1;
+  }
+
+  console.log(
+    `Seeded AiRuntimeProfile: ${created} created, ${skipped} skipped ` +
+      '(empty by design — absence means "no opinion", so services keep their env defaults)',
+  );
+  return { success: true, created, skipped };
 };

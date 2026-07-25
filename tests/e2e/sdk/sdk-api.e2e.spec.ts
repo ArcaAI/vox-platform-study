@@ -8,7 +8,7 @@
 import { test, expect, APIRequestContext, APIResponse } from '@playwright/test';
 
 // Test configuration
-const API_BASE_URL = process.env.API_URL || 'http://localhost:8868';
+const API_BASE_URL = process.env.API_URL || 'http://localhost:8968';
 const TEST_API_KEY = process.env.TEST_API_KEY || 'test-api-key';
 const TEST_TENANT_ID = process.env.TEST_TENANT_ID || 'test-tenant';
 

@@ -21,9 +21,9 @@
 #     then verifies the schema is pushed via test-doctor.sh --infra-only.
 #   - Every service is launched through scripts/start-test-app.sh, so it gets
 #     .env.test with `dotenv -o` (test values override the ambient shell).
-#   - REFUSES to start onto a bound port. .env.test reuses the DEV application
-#     ports, so a running dev stack must be stopped first — this is the single
-#     most common cause of "my test suite hit the dev database".
+#   - REFUSES to start onto a bound port. Since TASK-557 the test env owns its
+#     own ports (DEV + 100), so a dev stack may run alongside; a bound port now
+#     means a second TEST instance, not a dev/test clash.
 #   - After spawning, waits for each service's health endpoint (up to
 #     TEST_STACK_TIMEOUT seconds, default 90) and reports readiness, so a suite
 #     started right after this script does not race the boot.
@@ -55,14 +55,14 @@ env_val() { grep -E "^$1=" "$REPO_ROOT/.env.test" 2>/dev/null | tail -n1 | cut -
 port_for() {
     local v
     case "$1" in
-        api)       v="$(env_val API_PORT)";       echo "${v:-8868}" ;;
-        admin)     v="$(env_val ADMIN_PORT)";     echo "${v:-5176}" ;;
-        stt)       v="$(env_val STT_PORT)";       echo "${v:-8861}" ;;
-        smr)       v="$(env_val SMR_PORT)";       echo "${v:-8862}" ;;
-        guardrail) v="$(env_val GUARDRAIL_PORT)"; echo "${v:-8863}" ;;
-        nlp)       v="$(env_val NLP_PORT)";       echo "${v:-8864}" ;;
-        tts)       v="$(env_val TTS_PORT)";       echo "${v:-8865}" ;;
-        harness)   v="$(env_val HARNESS_PORT)";   echo "${v:-8866}" ;;
+        api)       v="$(env_val API_PORT)";       echo "${v:-8968}" ;;
+        admin)     v="$(env_val ADMIN_PORT)";     echo "${v:-5276}" ;;
+        stt)       v="$(env_val STT_PORT)";       echo "${v:-8961}" ;;
+        smr)       v="$(env_val SMR_PORT)";       echo "${v:-8962}" ;;
+        guardrail) v="$(env_val GUARDRAIL_PORT)"; echo "${v:-8963}" ;;
+        nlp)       v="$(env_val NLP_PORT)";       echo "${v:-8964}" ;;
+        tts)       v="$(env_val TTS_PORT)";       echo "${v:-8965}" ;;
+        harness)   v="$(env_val HARNESS_PORT)";   echo "${v:-8966}" ;;
         worker)    echo "" ;;
     esac
 }

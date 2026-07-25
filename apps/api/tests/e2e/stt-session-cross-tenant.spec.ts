@@ -61,7 +61,7 @@ const WS_AUTH_FAILED_CODE = 4401;
 const WS_GENERIC_AUTH_REASON = 'Authentication failed';
 
 /** ws:// origin derived from the HTTP base URL (WS path sits OUTSIDE /api/v1). */
-const WS_ORIGIN = (process.env.API_URL || 'http://localhost:8868/api/v1').replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '');
+const WS_ORIGIN = (process.env.API_URL || 'http://localhost:8968/api/v1').replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '');
 
 interface WsHandshakeResult {
   outcome: 'accepted' | 'closed';

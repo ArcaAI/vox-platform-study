@@ -47,10 +47,7 @@ export function resolveMigrationUrl(env: EnvLike): string {
   }
 
   if (directUrl && databaseUrl && directUrl !== databaseUrl) {
-    const looksDirect =
-      directUrl.includes(':5432') ||
-      directUrl.includes(':5000') ||
-      /\?.*directConnection/i.test(directUrl);
+    const looksDirect = directUrl.includes(':5432') || directUrl.includes(':5000') || /\?.*directConnection/i.test(directUrl);
     if (!looksDirect) {
       console.warn(
         '[prisma.config] DIRECT_URL does not look direct — ' +

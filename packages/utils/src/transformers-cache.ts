@@ -62,9 +62,7 @@ export function getTransformersCacheName(options: TransformersCacheNameOptions =
   if (source === 'custom') {
     const normalized = (tenantId ?? '').trim();
     if (!normalized) {
-      throw new Error(
-        'getTransformersCacheName: a non-empty tenantId is required for source:"custom" model weights',
-      );
+      throw new Error('getTransformersCacheName: a non-empty tenantId is required for source:"custom" model weights');
     }
     return `${CUSTOM_CACHE_NAMESPACE}/${normalized}/transformers`;
   }
@@ -95,7 +93,7 @@ export async function clearTenantCustomTransformersCache(tenantId: string): Prom
 
     const prefix = `${CUSTOM_CACHE_NAMESPACE}/${normalized}/`;
     const cacheNames = await caches.keys();
-    const tenantCaches = cacheNames.filter(name => name.startsWith(prefix));
+    const tenantCaches = cacheNames.filter((name) => name.startsWith(prefix));
 
     let deletedAny = false;
     for (const cacheName of tenantCaches) {

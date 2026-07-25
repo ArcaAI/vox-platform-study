@@ -144,7 +144,8 @@ supervisor_preflight() {
         echo -e "${RED}Refusing to start — already running:${NC}" >&2
         printf '  - %s\n' "${conflicts[@]}" >&2
         echo "Inspect the live stack with 'pnpm stack:$STACK_NAME:doctor', or stop the listed processes first." >&2
-        echo "NOTE: the dev and test stacks share application ports — only one may run at a time." >&2
+        echo "NOTE: dev and test use disjoint ports (test = dev + 100), so this is a clash" >&2
+        echo "      within the '$STACK_NAME' stack itself, not between dev and test." >&2
         return 1
     fi
     return 0

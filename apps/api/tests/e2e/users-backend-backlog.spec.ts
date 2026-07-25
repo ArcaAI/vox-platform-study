@@ -2,7 +2,7 @@
  * Users backend backlog (Group C) backend contract.
  *
  * Real HTTP round-trips against the live API (`pnpm test:e2e`, or a dev stack via
- * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8868/api/v1`). Mirrors the harness of
+ * `SKIP_DB_PRECHECK=true API_URL=http://localhost:8968/api/v1`). Mirrors the harness of
  * tenant-data-model-contract.spec.ts (seeded `super_admin` = cross-tenant operator;
  * a second `super_admin` session bound to `__GLOBAL__` for tenant-scoped writes;
  * `tenant_admin`/`doctor` pinned to `__GLOBAL__`).

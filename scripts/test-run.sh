@@ -192,11 +192,20 @@ fi
 # ----------------------------------------------------------------------------
 # Step 2 — services
 # ----------------------------------------------------------------------------
+# Ports come from .env.test (test = dev + 100), never hardcoded to the dev values.
+env_val() { grep -E "^$1=" "$REPO_ROOT/.env.test" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'"; }
 port_for() {
+    local v
     case "$1" in
-        api) echo 8868 ;; admin) echo 5176 ;; stt) echo 8861 ;; smr) echo 8862 ;;
-        guardrail) echo 8863 ;; nlp) echo 8864 ;; tts) echo 8865 ;; harness) echo 8866 ;;
-        worker) echo "" ;;
+        api)       v="$(env_val API_PORT)";       echo "${v:-8968}" ;;
+        admin)     v="$(env_val ADMIN_PORT)";     echo "${v:-5276}" ;;
+        stt)       v="$(env_val STT_PORT)";       echo "${v:-8961}" ;;
+        smr)       v="$(env_val SMR_PORT)";       echo "${v:-8962}" ;;
+        guardrail) v="$(env_val GUARDRAIL_PORT)"; echo "${v:-8963}" ;;
+        nlp)       v="$(env_val NLP_PORT)";       echo "${v:-8964}" ;;
+        tts)       v="$(env_val TTS_PORT)";       echo "${v:-8965}" ;;
+        harness)   v="$(env_val HARNESS_PORT)";   echo "${v:-8966}" ;;
+        worker)    echo "" ;;
     esac
 }
 health_path_for() {
@@ -212,7 +221,8 @@ else
         port="$(port_for "$svc")"
         if [ -n "$port" ] && lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
             echo -e "${RED}  port $port is already bound — refusing to start '$svc'.${NC}" >&2
-            echo "  The dev and test stacks share application ports. Stop the dev stack first." >&2
+            echo "  This is a TEST port (dev runs 100 lower); something already owns it —" >&2
+            echo "  most likely an earlier test run. Clear it with 'pnpm stack:test:down'." >&2
             teardown
             exit 1
         fi

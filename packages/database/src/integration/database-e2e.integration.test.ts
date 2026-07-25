@@ -20,7 +20,6 @@ import {
   getPlatformAdminPrismaClient_Unscoped,
   getExtendedPrismaClient,
   createNewPrismaClient,
-  createNewExtendedPrismaClient,
   CorePrismaClient,
   ExtendedCorePrismaClient,
 } from '../client';
@@ -280,7 +279,7 @@ describe('Database E2E Integration Tests', () => {
       }
 
       // Verify first record was rolled back
-      const dept1 = await basePrisma.department.findUnique({ where: { id: txDeptId1 } });
+      const _dept1 = await basePrisma.department.findUnique({ where: { id: txDeptId1 } });
       // If unique constraint doesn't exist, the first record might exist
       // This test verifies transaction behavior regardless
     });

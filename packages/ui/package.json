@@ -39,6 +39,7 @@
     "storybook": "storybook dev -p 6006",
     "clean": "rimraf dist tsconfig.tsbuildinfo storybook-static",
     "lint": "eslint src --max-warnings 0",
+    "lint:fix": "eslint src --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
