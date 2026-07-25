@@ -19,6 +19,7 @@
     "ts-morph": "^28.0.0"
   },
   "devDependencies": {
+    "@arcaai/config-eslint": "workspace:*",
     "@types/figlet": "^1.7.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/ms": "^2.1.0",
@@ -50,6 +51,7 @@
     "generate-prisma-index": "ts-node src/generate-prisma-index.ts",
     "generate-repository": "ts-node src/generate-repository/index.ts --overwrite true",
     "generate-service-module": "ts-node src/generate-service-module/index.ts",
-    "prisma-commander": "ts-node src/prisma-commander/index.ts"
+    "prisma-commander": "ts-node src/prisma-commander/index.ts",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint \"src/**/*.ts\" --max-warnings 0"
   }
 }

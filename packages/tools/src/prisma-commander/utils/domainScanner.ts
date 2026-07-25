@@ -72,7 +72,7 @@ export async function scanPrismaDomains(): Promise<Domain[]> {
         return {
           name: domainName,
           schemaFilePath: path.resolve(prismaDir, schemaFile),
-          path: path.resolve(prismaDir, schemaFile).replace('/schema.prisma', '')
+          path: path.resolve(prismaDir, schemaFile).replace('/schema.prisma', ''),
         };
       });
 

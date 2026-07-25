@@ -111,5 +111,4 @@ export function getPnpmWorkspaceNodeModulesPath(startPath: string = process.cwd(
   throw new Error(`pnpm workspace root not found within 10 directory levels up from ${startPath}`);
 }
 
-
 export default getNodeModulesPath;
