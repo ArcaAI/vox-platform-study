@@ -5,10 +5,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from hope_env import load_env
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _SERVICE_ROOT = Path(__file__).resolve().parents[4]  # …/apps/stt
+# Service-local overlay, ranked BELOW os.environ by pydantic-settings and so
+# below both the host env and the root `.env.<env>` the shared loader applies.
+# Retained because API_GATEWAY_KEY has no declaration in the root env files yet
+# (TASK-558 lane D owns moving it there).
 _ENV_FILE = _SERVICE_ROOT / ".env"
 
 
@@ -799,4 +804,5 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
+    load_env()
     return Settings()

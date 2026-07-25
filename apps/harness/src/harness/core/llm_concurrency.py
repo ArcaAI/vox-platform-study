@@ -41,7 +41,7 @@ from email.utils import parsedate_to_datetime
 from typing import TypeVar
 from urllib.parse import urlsplit
 
-from harness.core.config import _load_dotenv_into_environ
+from hope_env import load_env
 
 T = TypeVar("T")
 
@@ -84,8 +84,8 @@ def _env_float(name: str, default: float) -> float:
 
 
 def get_llm_governor_config() -> LlmGovernorConfig:
-    """Build the governor config from env / ``.env`` (admin-settable; call per use)."""
-    _load_dotenv_into_environ()
+    """Build the governor config from env / ``.env.<env>`` (admin-settable; call per use)."""
+    load_env()
     return LlmGovernorConfig(
         max_concurrency=max(1, _env_int("HARNESS_LLM_MAX_CONCURRENCY", 1)),
         max_attempts=max(1, _env_int("HARNESS_LLM_MAX_ATTEMPTS", 5)),

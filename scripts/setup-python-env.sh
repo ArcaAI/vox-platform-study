@@ -479,6 +479,16 @@ install_dependencies() {
         "${CR[@]}" pip install -e "${runtime_models_dir}"
     fi
 
+    # TASK-558 — the shared env-file loader. Same reason as above: every service
+    # declares `hope-env` as a workspace dependency and pip would otherwise look
+    # for it on PyPI. Its only dependency (python-dotenv) is already required by
+    # every service.
+    local env_loader_dir="$PROJECT_ROOT/packages/py-env"
+    if [[ -f "$env_loader_dir/pyproject.toml" ]]; then
+        print_step "Installing hope-env (shared .env.<env> loader)..."
+        "${CR[@]}" pip install -e "${env_loader_dir}"
+    fi
+
     # --- stt ---
     if service_selected stt; then
     print_header "  4a: stt (Speech-to-Text)"

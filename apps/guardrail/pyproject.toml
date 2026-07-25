@@ -47,10 +47,13 @@ dependencies = [
     "minio>=7.2.20",
     # --- Shared runtime contracts (TASK-529) ---
     "hope-runtime-models",
+    # --- Shared env-file loader (TASK-558): NODE_ENV -> .env.<env>, host env wins ---
+    "hope-env",
 ]
 
 [tool.uv.sources]
 hope-runtime-models = { workspace = true }
+hope-env = { workspace = true }
 
 [project.optional-dependencies]
 dev = [

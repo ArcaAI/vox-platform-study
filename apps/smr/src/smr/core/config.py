@@ -16,6 +16,7 @@ timeouts only, never a provider or model choice.
 
 from __future__ import annotations
 
+from hope_env import load_env
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -318,53 +319,7 @@ class Settings(BaseSettings):
         return v.lower()
 
 
-def _load_dotenv_into_environ() -> None:
-    """Load .env files into os.environ with correct precedence.
-
-    Walks up from this file to find all .env files (up to 10 levels).
-    Loads root-level first, then closer ones, so app-level .env
-    overrides monorepo root .env.  Explicit env vars always win.
-    """
-    import os
-    import pathlib
-
-    env_files: list[pathlib.Path] = []
-    current = pathlib.Path(__file__).resolve().parent
-    for _ in range(10):
-        candidate = current / ".env"
-        if candidate.is_file():
-            env_files.append(candidate)
-        current = current.parent
-
-    for env_file in reversed(env_files):
-        with open(env_file) as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, _, val = line.partition("=")
-                key = key.strip()
-                val = val.strip().strip('"').strip("'")
-                if key not in os.environ:
-                    os.environ[key] = val
-
-
-def _promote_legacy_smr_v2_env() -> None:
-    """Dual-read nested prefixes: SMR_V2_* fills SMR_* when the new key is unset.
-
-    Root ``Settings`` fields use AliasChoices; nested provider configs keep a
-    single ``env_prefix`` (e.g. ``SMR_OLLAMA_``) so this bridge accepts the old
-    ``SMR_V2_OLLAMA_*`` / ``SMR_V2_AZURE_*`` / … names for one transition window.
-    """
-    import os
-
-    for key, value in list(os.environ.items()):
-        if key.startswith("SMR_V2_"):
-            os.environ.setdefault("SMR_" + key.removeprefix("SMR_V2_"), value)
-
-
 def get_settings() -> Settings:
     """Create settings instance.  Not cached — call once at startup."""
-    _load_dotenv_into_environ()
-    _promote_legacy_smr_v2_env()
+    load_env()
     return Settings()

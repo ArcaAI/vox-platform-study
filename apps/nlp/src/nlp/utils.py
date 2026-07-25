@@ -2,9 +2,11 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import dotenv
-
-dotenv.load_dotenv()
+# NOTE: no env loading here. `nlp.core.config` imports this module, so a
+# `load_dotenv()` at this scope ran BEFORE the canonical loader and — because
+# dotenv does not overwrite — silently made the legacy `.env` outrank
+# `.env.dev`. Env loading happens in exactly one place: `hope_env.load_env()`,
+# called from `nlp.core.config`.
 
 
 def is_production() -> bool:

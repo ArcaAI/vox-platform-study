@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from hope_env import load_env
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -516,41 +517,9 @@ class Settings(BaseSettings):
         return self
 
 
-def _load_dotenv_into_environ() -> None:
-    """Load ``.env`` files into ``os.environ`` with correct precedence.
-
-    Walks up from this file to find all ``.env`` files (up to 10 levels).
-    Loads the root-level file first, then closer ones, so an app-level
-    ``apps/harness/.env`` overrides the monorepo-root ``.env``. Explicit
-    environment variables always win.
-    """
-    import os
-    import pathlib
-
-    env_files: list[pathlib.Path] = []
-    current = pathlib.Path(__file__).resolve().parent
-    for _ in range(10):
-        candidate = current / ".env"
-        if candidate.is_file():
-            env_files.append(candidate)
-        current = current.parent
-
-    for env_file in reversed(env_files):
-        with open(env_file) as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, _, val = line.partition("=")
-                key = key.strip()
-                val = val.strip().strip('"').strip("'")
-                if key not in os.environ:
-                    os.environ[key] = val
-
-
 def get_settings() -> Settings:
     """Create a settings instance.  Not cached — call once at startup."""
-    _load_dotenv_into_environ()
+    load_env()
     return Settings()
 
 

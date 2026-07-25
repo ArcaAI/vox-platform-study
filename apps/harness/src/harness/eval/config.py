@@ -19,6 +19,7 @@ import json
 from enum import StrEnum
 from typing import Any, cast
 
+from hope_env import load_env
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -217,20 +218,13 @@ class EvalConfig(BaseSettings):
         return v
 
 
-def _load_env() -> None:
-    """Populate ``os.environ`` from ``.env`` files (reuses the core loader)."""
-    from harness.core.config import _load_dotenv_into_environ
-
-    _load_dotenv_into_environ()
-
-
 def get_judge_config() -> JudgeConfig:
-    """Build :class:`JudgeConfig` from env / ``.env`` (call once at startup)."""
-    _load_env()
+    """Build :class:`JudgeConfig` from env / ``.env.<env>`` (call once at startup)."""
+    load_env()
     return JudgeConfig()
 
 
 def get_eval_config() -> EvalConfig:
-    """Build :class:`EvalConfig` from env / ``.env`` (call once at startup)."""
-    _load_env()
+    """Build :class:`EvalConfig` from env / ``.env.<env>`` (call once at startup)."""
+    load_env()
     return EvalConfig()
