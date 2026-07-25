@@ -2,7 +2,7 @@
 
 import React, { memo } from 'react';
 
-interface AuroraTextProps {
+export interface AuroraTextProps {
   children: React.ReactNode;
   className?: string;
   colors?: string[];

@@ -13,7 +13,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
-  args: {} as any,
+  args: {},
   render: () => (
     <div className="w-[400px]">
       <Sources defaultOpen>
@@ -29,7 +29,7 @@ export const Default: Story = {
 };
 
 export const Collapsed: Story = {
-  args: {} as any,
+  args: {},
   render: () => (
     <div className="w-[400px]">
       <Sources>

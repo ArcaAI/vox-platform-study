@@ -149,7 +149,7 @@ function ElapsedTimeBadge({ elapsedTime }: { elapsedTime?: number }) {
   );
 }
 
-interface ProgressTrackerBaseProps {
+export interface ProgressTrackerBaseProps {
   id: ProgressTrackerProps['id'];
   steps: ProgressTrackerProps['steps'];
   elapsedTime?: ProgressTrackerProps['elapsedTime'];
