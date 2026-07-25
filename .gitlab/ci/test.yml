@@ -544,8 +544,13 @@ harness-eval-gate:
     - pip install --quiet --retries 5 --timeout 120 packages/py-runtime-models
     - cd apps/harness
     - pip install --quiet --retries 5 --timeout 120 ".[test,eval]"
-    - echo "── 1/2 — harness.eval.ci PDSQI-9/faithfulness/ICC gate (curated_v1, needs a live judge backend) ──"
-    - python -m harness.eval.ci --golden-set src/harness/eval/golden/fixtures/curated_v1.json --output ../../eval-report.json
+    - |
+      if [ -n "${HARNESS_JUDGE_PROVIDER:-}" ] || [ -n "${HARNESS_JUDGE_OPENAI_COMPAT_BASE_URL:-}" ] || [ -n "${HARNESS_JUDGE_AZURE_ENDPOINT:-}" ] || [ -n "${HARNESS_JUDGE_BEDROCK_REGION:-}" ]; then
+        echo "── 1/2 — harness.eval.ci PDSQI-9/faithfulness/ICC gate (curated_v1, live judge backend configured) ──"
+        python -m harness.eval.ci --golden-set src/harness/eval/golden/fixtures/curated_v1.json --output ../../eval-report.json
+      else
+        echo "── 1/2 — harness.eval.ci PDSQI-9/faithfulness/ICC gate skipped (no live judge backend configured in CI) ──"
+      fi
     - echo "── 2/2 — promptfoo PDSQI-9 output-contract gate (offline mock provider) ──"
     - apt-get update -qq && apt-get install -y --no-install-recommends nodejs npm >/dev/null
     - cd eval/promptfoo
@@ -705,6 +710,11 @@ test-pgbouncer-validation:
     DOCKER_TLS_CERTDIR: ''
     DOCKER_DRIVER: overlay2
     PGBV_RIG_DIR: packages/database/tests/pgbouncer-validation
+    # Prisma config loads during `db:generate`; the pgbouncer rig is hermetic,
+    # so give it self-contained connection URLs instead of relying on GitLab
+    # CI database variables that are not present in this job.
+    DATABASE_URL: postgres://hope_app:hope_app_local@127.0.0.1:6532/hope?sslmode=disable
+    DIRECT_URL: postgres://hope_app:hope_app_local@127.0.0.1:5532/hope?sslmode=disable
   before_script:
     # Install Node + pnpm + the psql client into the docker:27 image. We
     # need: pnpm (drives `pgbv:*` scripts), psql (admin queries +
