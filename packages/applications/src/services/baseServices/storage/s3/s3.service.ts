@@ -122,9 +122,10 @@ export class S3Service implements IS3Service, OnModuleInit {
    */
   private async hasRequiredConfiguration(): Promise<boolean> {
     try {
-      const requiredKeys = ['S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY'];
+      // Non-secret configuration lives in AppSettings...
+      const requiredSettingKeys = ['S3_ENDPOINT'];
 
-      for (const key of requiredKeys) {
+      for (const key of requiredSettingKeys) {
         if (!this.appSettingsService.hasSetting(key)) {
           this.logger.debug({
             message: 'Required S3 setting missing',
@@ -137,6 +138,24 @@ export class S3Service implements IS3Service, OnModuleInit {
         if (!value || (typeof value === 'string' && value.trim() === '')) {
           this.logger.debug({
             message: 'Required S3 setting is empty',
+            settingKey: key,
+          });
+          return false;
+        }
+      }
+
+      // ...credentials come from SecretsService (Vault kv-v2, or process.env
+      // under SECRETS_PROVIDER=env). The gate MUST read from the same source
+      // `getS3Configuration()` builds the client from — gating on plaintext
+      // `GlobalSetting` rows made a correctly-configured box look unconfigured
+      // once those rows were removed (TASK-558 §9.3 M10, lane G G4).
+      const requiredSecretKeys = ['S3_ACCESS_KEY', 'S3_SECRET_KEY'];
+
+      for (const key of requiredSecretKeys) {
+        const secret = this.secretsService?.getSecretSync(key);
+        if (!secret || secret.trim() === '') {
+          this.logger.debug({
+            message: 'Required S3 secret missing from SecretsService cache',
             settingKey: key,
           });
           return false;

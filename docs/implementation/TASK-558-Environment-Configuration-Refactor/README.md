@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | refactor (+ infrastructure, security-hygiene) |
 | **Branch** | `fix/2605-review` (current) |
 | **Owner** | Tap Huynh |
@@ -42,20 +42,30 @@ Out of scope (explicit owner decision, 2026-07-25): **credential rotation is def
 | `.env.test` | 58 | 189 | yes | all test suites, via `dotenv-cli` |
 | 15 per-app `.env*` | ~500 | — | mixed | mostly nothing |
 
-### 2.2 Four loaders that disagree
+### 2.2 Six loaders that disagree
+
+> **Corrected during wave 3 (lane G).** This section originally said FOUR loaders and misdiagnosed the boot-ordering defect. Both corrections are recorded inline below rather than silently edited away, because the wrong version was the basis for the lane split.
 
 | # | Loader | Reads | Notes |
 |---|---|---|---|
 | 1 | `loadEnv()` — `packages/applications/src/common/env/index.ts` | `NODE_ENV` → `.env.dev` / `.env.test` / `.env.production` | The **intended** canonical path (TASK-002). Reached only via `ConfigService`. |
-| 2 | `prisma.config.ts:30` | same map, **duplicated** | Independent copy of the NODE_ENV→file table. |
-| 3 | `_load_dotenv_into_environ()` | **`.env` only — never `.env.dev`** | Copy-pasted into `apps/{smr,harness,guardrail,tts}/…/config.py` (4 near-identical bodies). |
-| 4 | `scripts/dev-service.sh` | ~30 baked defaults via `: "${VAR:=default}"` | Plus a hand-rolled `sed` of `.env.dev` for exactly one key (`HARNESS_SERVICE_TOKEN`, line 170-172). |
+| 2 | `prisma.config.ts:30` (root) | same map, **duplicated** | Independent copy of the NODE_ENV→file table. |
+| 3 | `packages/database/prisma.config.ts` | same map, **third copy** | Found in wave 2. |
+| 4 | **`packages/database/src/env.ts`** | own map, **module-scope auto-load** | Found in wave 2 (lane B). The most consequential one: importing `@arcaai/database` loads env as a SIDE EFFECT, which made it the FIRST loader to run in `apps/api`. |
+| 5 | **`packages/tools/src/prisma-commander/index.ts`** | own inline copy | Found in wave 2 (lane B). |
+| 6 | `_load_dotenv_into_environ()` | **`.env` only — never `.env.dev`** | Copy-pasted into `apps/{smr,harness,guardrail,tts}/…/config.py` (4 near-identical bodies), plus two bare `dotenv.load_dotenv()` calls in `nlp`. |
+
+(`scripts/dev-service.sh` was counted as a loader in the original draft. It is not one — it supplies shell DEFAULTS via `: "${VAR:=default}"`, which is a different failure mode: they outrank nothing but silently substitute for config the service should have read itself. Lane C removed the application-config ones.)
 
 **Consequence (the core defect):** TS services and Python services read *different files* in dev. Editing `.env.dev` changes the gateway and has **zero effect** on STT/SMR/guardrail/harness/TTS, which are configured by `.env` (a stale copy of `.env.example`) plus shell defaults. `.env.example`'s own header calls `.env` "deprecated (backwards compatibility)" — yet it is the only file half the platform reads.
 
-**Secondary defect — boot ordering.** `apps/api/src/main.ts` reads `PORT` (:62), `LOG_LEVEL` (:44), `CORS_ALLOWED_ORIGINS` (:194), `SHUTDOWN_TIMEOUT_MS` (:136) directly from `process.env` **before** the Nest module graph — therefore before `ConfigService`/`loadEnv()` has read `.env.dev`. Those four see host env only.
+**Secondary defect — boot ordering. The original diagnosis was WRONG.** This section claimed the four pre-bootstrap `process.env` reads in `apps/api/src/main.ts` (`PORT` :62, `LOG_LEVEL` :44, `CORS_ALLOWED_ORIGINS` :194, `SHUTDOWN_TIMEOUT_MS` :136) "see host env only". Lane B proved otherwise: `process.env` was **already populated** at that point, because importing `@arcaai/applications` transitively imports `@arcaai/database`, whose `src/env.ts` loads the env file at MODULE SCOPE (loader #4). The values were correct.
+
+The real defect is subtler and worse: **correctness depended on an undeclared import side effect.** Nothing in `main.ts` said "an import populates my environment", no test pinned it, and the ordering would have broken silently the moment someone reordered imports, made the database import lazy, or dropped the module-scope load. Lane B made the load EXPLICIT in `main.ts` and left a marked seam for lane D's schema. Loader #4 survives deliberately — `@arcaai/applications` depends on `@arcaai/database`, so importing the canonical module there would be a circular package edge — but it is now a documented mirror pinned by `packages/database/src/__tests__/env.test.ts`.
 
 ### 2.3 Redundancy and dead keys (R2)
+
+> **Corrected during waves 1 and 3.** The "76 dead keys" figure below was wrong. Lane A's verification pass found **65** genuinely dead keys — 11 of the original 76 are ALIVE, read through pydantic `Settings` classes whose fields carry no prefix, so the naive prefix-based scan missed them. Of those 65, **56 actually existed in a file** and were deleted; the rest were `turbo.json#globalEnv` entries with no file declaration. Lane D's D7 then added 4 more. The prose below is the original scan and is kept for the reasoning, not the number.
 
 - **76 keys** are declared in env files and read by **no** code, compose file, manifest, or CI job. Whole dead subsystems: `LANGFLOW_*` (6), `FEDL_*` (8), `PERMIT_*` (3), `LANGFUSE_*` (3), `MLFLOW_*` (3), `AZURE_OPENAI_{TEMPERATURE,TOP_P,MAX_TOKENS,FREQUENCY_PENALTY,PRESENCE_PENALTY}`, `SUMMARY_AGENT_*`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN`, `DATABASE_URL_DIRECT`, `DEBUG_PRISMA`, `DEBUG_MODE`, `SKIP_SEED`, `MODEL_CACHE_*`, `WORKER_CONCURRENCY`, `TRANSCRIPTION_{CHUNK,STRIDE}_LENGTH_S`, `VOICE_PROFILE_MIN_SIMILARITY`, `TTS_{AUDIO_CACHE_MAX_SIZE,BATCH_JOBS_MAX_SIZE,MINIO_BUCKET}`, `AZURE_TTS_*`.
 - **9 legacy shims**: `SMR_V2_*` (8) + `STT_V2_URL`, alive only through `_promote_legacy_smr_v2_env()` (`apps/smr/…/config.py:356`), a "one transition window" bridge from the `stt-v2`→`stt` rename.
@@ -99,7 +109,19 @@ TASK-504/496/506 delivered most of the target architecture. The refactor is larg
 | `TenantStorageConfig` with `credentialsRef` → SecretsService | `db_main/tenant-bucket.prisma:122` | Built — **but the global/platform default row is not implemented**; the model comment defers it to "global/shared config (env / AppSettings)" |
 | `AiProviderConnection` / `AiRuntimeProfile` / `AiTaskDefault` | TASK-506 | Built |
 
-**The gap is coverage, not capability: only 15 descriptors exist** (19 `global-kv`, 3 `db-config`, 1 `db-secret`, 1 `entitlement`) against 561 keys. The framework is idle.
+**The gap is coverage, not capability.** The original text here read *"only 15 descriptors exist (19 `global-kv`, 3 `db-config`, 1 `db-secret`, 1 `entitlement`)"* — **both numbers were wrong, and they contradicted each other**: the breakdown sums to 24, not 15. The measured figure at the pre-558 baseline (`780a7bee`) was **62**. The conclusion — the framework is built but idle relative to 561 keys — was correct; only the magnitude was misstated.
+
+After lane F the registry holds **137 descriptors**, measured at wave-2 HEAD by enumerating `HOPE_SETTINGS_REGISTRY.list()`:
+
+| Tier | Count |
+|---|---:|
+| `global-kv` | 50 |
+| `env` | 37 |
+| `vault-kv` | 25 |
+| `db-config` | 20 |
+| `entitlement` | 3 |
+| `db-secret` | 2 |
+| **total** | **137** |
 
 ### 2.6 Divergent read paths (R4 problem statement)
 
@@ -113,6 +135,15 @@ Four different ways a service obtains admin-controlled config today:
 | STT | Its own read-only DB access | separate |
 
 `apps/guardrail/src/guardrail/core/tenant_config.py:24` states the divergence outright: *"Guardrail deliberately keeps this SQL resolver rather than adopting the HTTP effective-config client the other services use."* Each path invented its own TTL, its own fail-open/fail-closed choice, and its own invalidation story (mostly: none).
+
+> **Corrected during wave 3 (lane G).** Two of those three charges do not survive verification:
+>
+> - **"invented its own TTL"** — guardrail's TTL is not a hardcoded 60. It is declared config: `settings.db.config_cache_ttl_s` (env `GUARDRAIL_V2_DB_CONFIG_CACHE_TTL_S`), passed in at construction in `main.py`. The 60 is a default, not a magic number.
+> - **"its own fail-open/fail-closed choice"** — guardrail is fail-CLOSED on provider/model selection (503 in `core/dependencies.py`, no env fallback) and fail-safe to env on tuning. That is exactly the split lane F generalised as `SettingDescriptor.failMode`, so it is the policy, not a deviation from it.
+>
+> **"no invalidation" is the one charge that stands** — and only for guardrail. See the correction under §4 B2 for the TS side, and §7 lane G for the verdict on keeping the SQL resolver.
+>
+> STT is also mischaracterised as a divergent cached reader. `pipeline/config_reader.py` (the actual DB-reading config path — not `core/config/`, which is pydantic/env only) holds **no cache at all**: every call queries, and every query is tenant-filtered. It has no TTL to converge and no cache to invalidate.
 
 ---
 
@@ -207,6 +238,14 @@ Net effect: **561 declared keys → ~120**, largest file **905 lines → ~60**.
 - Direct SQL resolvers (`guardrail/core/tenant_config.py`, STT's reader) are converged onto the effective-config client. Any remaining exception must be justified in a descriptor comment, not a docstring.
 
 **B2 — TTL is a floor, invalidation is the mechanism.** `SecretsService` already has a Redis pub/sub eviction channel used by the rotation worker. Extend the same channel to settings: a `GlobalSetting`/`db-config` write publishes an eviction; every node drops the entry. TTL becomes a safety net (60–300 s), not the propagation path. Today each consumer invented its own TTL and none invalidate.
+
+> **Corrected during wave 3 (lane G) — the premise was stale, and the prescription would have been a regression.**
+>
+> "None invalidate" is false for the `global-kv` tier. A dedicated settings channel already exists (F-007): `AppSettingsService` publishes on **`app-settings:invalidate`** after a `GlobalSetting` write and subscribes to it on `onModuleInit`, so peers converge on push. The full chain — `SettingsRegistryWriteService.write()` → `broadcastSysEvent(ResourceUpdated)` → `handleGlobalSettingUpdated` → local refresh + publish → peer refresh — was already wired; what was missing was a test proving it end to end, now added (`settings-registry/__tests__/settings-write-invalidation.test.ts`). The 45s refresh cron is already the backstop, not the mechanism.
+>
+> Moving settings onto the **`arca:secrets:invalidate`** channel as literally instructed was therefore **rejected**: it would have replaced a working, purpose-built channel with one whose payload contract is per-key SECRET eviction (`{key}` / `{all}`), conflating two different concerns and coupling the settings cache to the secret-rotation worker's message schema. Two channels for two lifecycles is the correct design; `SecretsService` needed no extension.
+>
+> The genuine remaining gap is **guardrail**, whose per-tenant SQL cache still converges only on TTL. Closing it requires a PUBLISHER on the gateway side for `AiTaskDefault` / `AiModel` writes; a subscriber in guardrail without one would be dead code, so it was deliberately not added. Recorded as follow-up work, not silently shipped half-wired.
 
 **B3 — Failure mode is declared, not decided at the call site.** Add to `SettingDescriptor`:
 
@@ -347,6 +386,28 @@ Validated against current external guidance (July 2026) and reconciled with what
 
 **M4 — `tenantId` MUST be part of every config cache key.** A per-process settings cache keyed only by setting name is a cross-tenant data leak. **Audit item for lane G**: guardrail's and STT's hand-rolled TTL caches must be verified tenant-keyed.
 
+> **AUDIT COMPLETED — wave 3, lane G.** The audit was pointed at the wrong services: guardrail and STT were both clean. The leak was in the TypeScript gateway.
+>
+> | Cache | Keyed by | Verdict |
+> |---|---|---|
+> | guardrail `TenantConfigResolver._cache` | `f"{task_key}::{tenant_id}"` | ✅ tenant-keyed |
+> | STT `PipelineConfigReader` / `ModelRegistryReader` | no cache; every query tenant-filtered | ✅ N/A |
+> | STT `get_settings()` / `get_api_client()` (`@lru_cache`) | zero-arg; process env only | ✅ platform-scoped by construction |
+> | `EffectiveSettingsService` | holds no cache; delegates per tier | ✅ N/A |
+> | `BlobStorageProviderFactory.tenantProviderCache` (lane E) | `${tenantId}::${bucketName}` | ✅ tenant-keyed |
+> | `SecretsService.cache` | full secret key/path; per-tenant secrets addressed by a tenant-scoped `credentialsRef` | ✅ tenant-distinct by path |
+> | **`AppSettingsService._cachedAppSettings`** | **setting KEY ALONE, loaded across ALL tenants** | ❌ **LEAK — fixed** |
+>
+> **The leak.** `cacheAppSettings()` calls `findAll({})` with no CLS tenant, so the tenant-scope extension passes through and the cache ingests every tenant's `GlobalSetting` rows into a `Map<key, entity>`. `TenantService.provisionTenantConfigs` clones the entire platform setting set into every new tenant, so this is the normal steady state, not an edge case. Every reader of that cache is platform-scoped and passes no tenant: JWT/impersonation TTLs, OIDC + SAML config, rate limits, password policy, cron schedules, storage endpoints, and the `global-kv` lane of `EffectiveSettingsService`.
+>
+> TASK-403 had added platform-row precedence, which fixed the case where a platform row for the key exists. It explicitly left two cases as *"unchanged behavior"*, and those are the leak: a key with **no surviving platform row** resolved to a CUSTOMER tenant's row (last-row-wins, so which tenant won depended on repository ordering). Reachable by soft-deleting a platform row — `cacheAppSettings()` filters DELETED rows, and the tenant clones then become authoritative platform-wide.
+>
+> Two distinct failure shapes, both pinned by failing tests before the fix (`appSettings.service.tenant-key-leak.test.ts`):
+> - **read** — tenant A's `JWT_EXPIRES_IN` becomes the platform-wide token lifetime (observed: `'99h'` served where the platform default `'1h'` was expected);
+> - **write** — `EntitlementsService.writeSetting` / `RateLimitAdminService.writeSetting` resolve their UPDATE target with `getFromCache(key)`, so a platform-admin write mutates a TENANT's row (the 404 symptom TASK-403 originally chased).
+>
+> **Fix.** The cache now admits only the two platform-reserved tenants (`PLATFORM_TENANT_IDS` = default `50000000-…`, SYSTEM `00000000-…` — both are needed: seed 11 puts capability rows on SYSTEM and everything else on the default tenant), and resolves a collision between them by declared precedence rather than row order. A key-only cache is sound only when its contents are platform-only. The two superseded TASK-403 assertions were updated in place with a supersession note.
+
 **M5 — Fail-closed on *selection*, fail-open on *tuning*.** Provider/model selection must never silently fall back to another tenant's or a global value (guardrail's existing posture — promote to policy). Tuning knobs may fall back to the descriptor default. Encoded as `failMode` on the descriptor (§4 B3).
 
 **M6 — Resolution respects the 404-over-403 posture.** A config read for a tenant the caller cannot see is "not found", never "forbidden".
@@ -396,6 +457,8 @@ Rationale: A is mechanical deletion against an explicit key list. B/C/E/G are co
 
 | 2026-07-26 | **558-D (typed schema, generated example files, CI drift gate) complete.** **D1** — `apps/api/src/config/` is new: `env.schema.ts` BUILDS a zod schema from `BOOTSTRAP_ENV_SETTINGS` + `PLATFORM_KNOB_SETTINGS` + `FEATURE_FLAG_SETTINGS` + a new gateway-local `env.descriptors.ts` (topology / ports / process identity / OTel / Vault client / data plane / streaming — 51 declarations, each transcribed from a verified reader), names via `toEnvVarName()`, `failMode: 'closed'` → required. Wired into lane B's marked seam in `main.ts`; the four pre-bootstrap `process.env` reads (`LOG_LEVEL`, `PORT`, `SHUTDOWN_TIMEOUT_MS`, `SHUTDOWN_DRAIN_DELAY_MS`, `CORS_ALLOWED_ORIGINS`) now read the validated object (plan §4 B5). **Correction to lane F's `failMode` mapping:** `VAULT_SECRET_ID` + `VAULT_WRAPPED_SECRET_ID` are both `closed` only because the registry forces `closed` on secrets — requiring both is unsatisfiable (they are alternatives) and neither is needed under `SECRETS_PROVIDER=env`; `VAULT_DB_ADMIN_PASS` has zero TS readers (Vault provisioning only). Handled by two exported exception sets, honoured identically by the validator and the generator. **D2/D3** — `pnpm env:sync` (`scripts/env-sync.mts`) generates `.env.example` (bootstrap floor, **60 lines**, 16 keys), `apps/api/.env.example`, a new `apps/admin-console/.env.example`, `packages/tools/.env.example`, `turbo.json#globalEnv` and `env-surface.generated.md`; `--check` exits non-zero with a set-difference drift report. **130 distinct declared keys** (from 488 across the committed templates). `globalEnv` 198 → 142, regenerated as *declared surface ∪ a comment-stripped, write-excluding scan of every non-test `process.env` read* — which also closed 4 pre-existing `turbo/no-undeclared-env-vars` warnings. **D4** — `env-drift-check` in `.gitlab/ci/validate.yml` + `.rules-env-declarations`; proven RED twice (a hand-edited `turbo.json`; a descriptor added without regenerating → 3 artifacts flagged) and GREEN after revert. **D5** — removed the confirmed-dead CI job variables `DATABASE_URL_DIRECT`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN`, `DEBUG_PRISMA`, `SKIP_SEED` (no reader in any TS/Python/shell source). **D6** — rewrote `env-port-standardization.test.ts` (26 failing at HEAD): it asserted DEV ports against `.env.test`, which commit d84f538e moved to DEV+100, and it hard-read the now-untracked `.env.dev` (12 ENOENT crashes that would also fail in CI). It now reads the DEV map from the descriptors, asserts `.env.test = DEV + 100`, and treats `.env.dev` as optional — 85 pass, 2 skipped. **D7** — `TENANT_IDP_ENABLED` / `AZURE_OPENAI_API_KEY` dropped by regeneration (and `TENANT_IDP_ENABLED` from `globalEnv`); `SMR_OPENAI_COMPAT_ENABLED` removed from `apps/smr/.env.example` (proved: `OpenAICompatConfig.model_fields` has no `enabled`). `QDRANT_API_KEY` is NOT dead as claimed — `infrastructure/docker/scripts/init-qdrant-collections.py:23` reads it; it is simply not part of the declared surface. **Deliberate scope boundary:** the six Python services' `.env.example` files stay hand-maintained — their pydantic surface is ~500 fields (vs the §8 ~120-key target) and the drift gate cannot import them in CI. Evidence: `pnpm env:sync --check` OK · `pnpm --filter @arcaai/api test` 2144 pass / 0 fail (was 26 fail) · `pnpm --filter @arcaai/admin-console test` 1215 pass · `pnpm api:build` 8/8 · `pnpm typecheck` 33/33 · `pnpm lint` 29/29, **0 errors**, warnings 492 vs the 496 HEAD baseline (−4, all `turbo/no-undeclared-env-vars`) · booting the built gateway with an invalid env fails before `NestFactory.create()` listing all 7 problems at once · `gitleaks protect --staged` clean. Staged, not committed. |
 | 2026-07-25 | **558-C (unified Python loader) complete.** New uv-workspace package `packages/py-env` (dist `hope-env`, module `hope_env`, one dependency: `python-dotenv`, already required by all six services) implements the D4/D7 contract — `NODE_ENV` → `.env.dev`/`.env.test`/`.env.staging`, host env always wins (including an explicit empty value), no file read when `CI` is truthy or `NODE_ENV=production`, monorepo root found by walking up for the `package.json` named `hope-monorepo` (no fixed parent count). 20 contract tests, TDD (RED captured). C1: the four copied `_load_dotenv_into_environ()` bodies (smr/harness/guardrail/tts) and the two bare `dotenv.load_dotenv()` calls (nlp `core/config.py` + `utils.py`) are gone; stt gained the loader in `get_settings()` and keeps `apps/stt/.env` as a pydantic overlay that the root file now outranks. C3: `_promote_legacy_smr_v2_env()` deleted (repo-wide grep confirms zero `SMR_V2_*` declarations survive Wave 1); `SMR_GATEWAY_URL` verified resolving from `.env.dev` instead of its hardcoded default. C4: `dev-service.sh` no longer supplies application config — `SMR_OPENAI_COMPAT_{ENABLED,BASE_URL}`, `SMR_EXTERNAL_GUARDRAIL_ENABLED`, `HARNESS_{SMR,NLP,API}_BASE_URL`, `HARNESS_RETRIEVAL_ENABLED` and the `sed` of `.env.dev` for `HARNESS_SERVICE_TOKEN` were all removed; the `apps/stt/.env` `grep` was replaced by a preflight that resolves the key through the real loader. Kept deliberately: loopback bind, per-service port overrides, `--print`/`--check-stt-key`/`DRY_RUN`, and the LM Studio model pairing (machine-specific, differs from the pydantic default, no env-file home yet — lane D). **Headline proof:** a value declared ONLY in `.env.dev` is observed by all six services' real settings objects (smr/guardrail/harness/tts/nlp/stt) and by the harness worker's governor; the same probes are NOT observed under `CI=true` or `NODE_ENV=production`, and a host export beats the file. Gates: `py-env` 20 · smr 957 · guardrail 174 · nlp 184 · stt 2740 · harness 1023 · tts 178 pass; ruff clean on all seven; mypy clean for py-env/stt/guardrail/harness, with the three PRE-EXISTING failures (smr `providers/bedrock.py`, nlp `dependencies.py`, tts's 7 ML-stub files) unchanged — none appears in this lane's diff. Staged, not committed. |
+
+| 2026-07-26 | **558-G (read-path convergence + docs) complete — wave 3.** **G1 (M4 audit, the security item):** audited all six config/settings caches (table under §9.3 M4). Guardrail and STT — the two the ticket suspected — are clean; the leak was `AppSettingsService`, whose key-only `Map` ingests every tenant's `GlobalSetting` rows. Two failure shapes (cross-tenant READ of platform values; cross-tenant WRITE via `getFromCache(key)` → `update(row.id)`) captured as failing tests first, then fixed by restricting the cache to the two platform-reserved tenants. Superseded two TASK-403 assertions that had pinned the leak as "unchanged behavior". **G2:** guardrail's SQL resolver is KEPT — justification re-verified and strengthened with two grounds the docstring omitted (its callers are peer services forwarding only `X-Tenant-Id`, so gateway injection is structurally unavailable; an HTTP pull would put the gateway on guardrail's safety-critical path and close a `gateway → SMR → guardrail → gateway` cycle). Two of §2.6's three charges against it were disproved (TTL is declared config; fail-closed selection IS the policy). **G3:** the `global-kv` propagation path already existed (F-007's `app-settings:invalidate`); moving it onto the secrets channel was rejected as a regression, and the missing end-to-end two-instance proof was added instead. **G4:** confirmed the plaintext `S3_ACCESS_KEY`/`S3_SECRET_KEY` seed rows (§9.3 M10 violation) and removed them; the trap the brief warned about was real — credential VALUES already came from `SecretsService`, but `S3Service.hasRequiredConfiguration()` still gated readiness on the rows' PRESENCE, so deleting them alone would have silently disabled storage on every correctly-configured box. Gate now reads `SecretsService`; added an idempotent scrub that OVERWRITES the value before retiring the row (soft delete alone leaves the secret readable) for databases already seeded. **G5/G6:** rules 00/06/09, `scripts/README.md`, `docs/development-guide.md`, `docs/development-patterns-and-standards.md` §5.7 updated; §2.2 (four→six loaders + the boot-ordering misdiagnosis), §2.3 (76→65 dead keys), §2.5 (15/24→62 baseline, 137 now), §2.6, §4 B2 and §9.3 M4 corrected in place with the reasoning preserved. Evidence: `@arcaai/applications` 7017 passed / 0 failed (353 files); guardrail 174 passed; STT 2740 passed, 9 skipped, 3 xfailed (both pinned with `PYTHONPATH` to this worktree); ruff clean on the touched Python; `pnpm typecheck` 33/33 and `pnpm lint` 29/29 green. Status → **Review**. Staged, not committed. |
 
 ---
 
