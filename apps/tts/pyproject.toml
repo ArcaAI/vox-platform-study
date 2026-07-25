@@ -38,10 +38,13 @@ dependencies = [
     "azure-cognitiveservices-speech>=1.42.0",
     # --- Shared runtime contracts (TASK-529) ---
     "hope-runtime-models",
+    # --- Shared env-file loader (TASK-558): NODE_ENV -> .env.<env>, host env wins ---
+    "hope-env",
 ]
 
 [tool.uv.sources]
 hope-runtime-models = { workspace = true }
+hope-env = { workspace = true }
 
 [project.optional-dependencies]
 # Self-hosted local engines (Phase 4). Kept OUT of the base install so the
