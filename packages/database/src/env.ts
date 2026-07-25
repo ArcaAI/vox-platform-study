@@ -1,21 +1,26 @@
 /**
- * Environment Loading Utility for Database Package
+ * Environment loading for `@arcaai/database` (seeds, scripts, the Prisma client).
  *
- * Standalone utility for loading environment variables from the correct
- * .env file based on NODE_ENV.
+ * ## Why this is a second copy
  *
- * ## Environment File Convention:
- * - `.env.dev` → Local development (NODE_ENV=development)
- * - `.env.test` → Local testing (NODE_ENV=test)
- * - `.env.production` → Production reference (NODE_ENV=production uses host env)
+ * The canonical declaration of HOPE's env-file contract lives in
+ * `packages/applications/src/common/env/env-file-resolution.ts`. This package
+ * CANNOT import it: `@arcaai/applications` depends on `@arcaai/database`, so a
+ * package edge would be circular, and a relative source import would emit
+ * applications sources into this package's `dist`. The policy below is
+ * therefore mirrored by hand and pinned by `__tests__/env.test.ts`. Any change
+ * to the contract must be made in BOTH places.
  *
- * ## Loading Priority:
- * 1. Host environment variables (always have highest priority)
- * 2. Environment-specific .env file (if exists and not in CI/production)
+ * This module matters more than it looks: importing `@arcaai/database` runs
+ * `loadDatabaseEnv()` at module scope, so in `apps/api` this is the FIRST
+ * loader to execute (via `@arcaai/applications`' barrel, before `bootstrap()`).
  *
- * ## CI/CD & Production:
- * - In CI (CI=true) or production, only host environment variables are used
- * - No .env files are loaded to ensure security and consistency
+ * ## The contract
+ * - Precedence: **host env > env file > schema default** — the file NEVER
+ *   overrides a variable already present in `process.env`.
+ * - One file per `NODE_ENV` (see {@link ENV_FILE_MAP}); no `.env` fallback —
+ *   the root `.env` is docker-compose interpolation input, not app config.
+ * - Nothing is read when `CI=true` or `NODE_ENV=production`.
  */
 
 import dotenv from 'dotenv';
@@ -110,25 +115,18 @@ export function loadDatabaseEnv(): { loaded: boolean; path?: string } {
     return { loaded: false };
   }
 
-  // Try environment-specific file first
-  const envFileName = ENV_FILE_MAP[nodeEnv];
-  let envFilePath = path.join(rootDir, envFileName);
-
+  // Exactly one candidate file per NODE_ENV. There is deliberately no `.env`
+  // fallback — the root `.env` is docker-compose interpolation input.
+  const envFilePath = path.join(rootDir, ENV_FILE_MAP[nodeEnv]);
   if (!fs.existsSync(envFilePath)) {
-    // Fall back to .env for development (backwards compatibility)
-    if (nodeEnv === 'development') {
-      envFilePath = path.join(rootDir, '.env');
-      if (!fs.existsSync(envFilePath)) {
-        return { loaded: false };
-      }
-    } else {
-      return { loaded: false };
-    }
+    return { loaded: false };
   }
 
-  // Don't override in test environment (env vars set by dotenv-cli take priority)
-  const override = nodeEnv !== 'test';
-  const result = dotenv.config({ path: envFilePath, override });
+  // `override: false` is the precedence contract, not a tunable: host
+  // environment variables always win over the file. This also makes the call
+  // idempotent, which matters because `apps/api` loads env again in
+  // `bootstrap()` and once more in `ConfigService`.
+  const result = dotenv.config({ path: envFilePath, override: false });
 
   if (result.error) {
     return { loaded: false };
@@ -137,9 +135,7 @@ export function loadDatabaseEnv(): { loaded: boolean; path?: string } {
   return { loaded: true, path: envFilePath };
 }
 
-// Auto-load when module is imported (unless in test mode where dotenv-cli handles it)
-// In test mode, we only load if DATABASE_URL is not already set
-const shouldAutoLoad = process.env.NODE_ENV !== 'test' || !process.env.DATABASE_URL;
-if (shouldAutoLoad) {
-  loadDatabaseEnv();
-}
+// Auto-load on import. Unconditional: because the file never overrides host
+// env, values injected by `dotenv-cli` in the test suites still win, so the
+// former `NODE_ENV !== 'test' || !DATABASE_URL` guard no longer has an effect.
+loadDatabaseEnv();

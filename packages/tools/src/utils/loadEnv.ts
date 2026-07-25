@@ -1,108 +1,41 @@
 /**
- * Environment Loading Utility for Tools Package
+ * Environment loading for the `@arcaai/tools` CLI generators.
  *
- * Shared utility for loading environment variables from the correct
- * .env file based on NODE_ENV.
- *
- * ## Environment File Convention:
- * - `.env.dev` → Local development (NODE_ENV=development)
- * - `.env.test` → Local testing (NODE_ENV=test)
- * - `.env.production` → Production reference (NODE_ENV=production uses host env)
- *
- * ## CI/CD & Production:
- * - In CI (CI=true) or production, only host environment variables are used
+ * This module owns NO policy. The NODE_ENV -> file map, the CI/production skip
+ * and the host-env-wins precedence are declared once in
+ * `packages/applications/src/common/env/env-file-resolution` and imported here
+ * by SOURCE PATH — `@arcaai/tools` must not gain a package dependency on
+ * `@arcaai/applications`: this package's generators produce the code that
+ * `@arcaai/domains` (and therefore `@arcaai/applications`) is built from, so a
+ * package edge would close that loop. The imported module has no dependencies
+ * beyond `node:fs` / `node:path`, so ts-node compiles it in place.
  */
 
 import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
+
+import { planEnvFileLoad } from '../../../applications/src/common/env/env-file-resolution';
+
+export { findMonorepoRoot } from '../../../applications/src/common/env/env-file-resolution';
 
 /**
- * Maps NODE_ENV values to their corresponding .env file names
- */
-const ENV_FILE_MAP: Record<string, string> = {
-  development: '.env.dev',
-  test: '.env.test',
-  production: '.env.production',
-  staging: '.env.staging',
-};
-
-/**
- * Find the monorepo root by looking for package.json with "hope-monorepo"
- */
-export function findMonorepoRoot(startDir?: string): string | null {
-  let currentDir = startDir || process.cwd();
-  const maxDepth = 10;
-  let depth = 0;
-
-  while (depth < maxDepth) {
-    const packageJsonPath = path.join(currentDir, 'package.json');
-
-    if (fs.existsSync(packageJsonPath)) {
-      try {
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-        if (packageJson.name === 'hope-monorepo') {
-          return currentDir;
-        }
-      } catch {
-        // Ignore JSON parse errors
-      }
-    }
-
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      break;
-    }
-
-    currentDir = parentDir;
-    depth++;
-  }
-
-  return null;
-}
-
-/**
- * Load environment variables from the appropriate .env file
+ * Load environment variables from the env file selected by NODE_ENV.
+ *
+ * Never overrides host environment variables, and reads nothing at all when
+ * `CI=true` or `NODE_ENV=production`.
  */
 export function loadToolsEnv(): { loaded: boolean; path?: string } {
-  const nodeEnv = process.env.NODE_ENV || 'development';
-  const isCI = process.env.CI === 'true' || process.env.CI === '1';
+  const plan = planEnvFileLoad();
 
-  // In CI or production, skip loading env files
-  if (isCI || nodeEnv === 'production') {
+  if (!plan.envFilePath) {
     return { loaded: false };
   }
 
-  const rootDir = findMonorepoRoot();
-  if (!rootDir) {
-    return { loaded: false };
-  }
-
-  // Try environment-specific file first
-  const envFileName = ENV_FILE_MAP[nodeEnv] || '.env.dev';
-  let envFilePath = path.join(rootDir, envFileName);
-
-  // Fall back to .env for development
-  if (!fs.existsSync(envFilePath) && nodeEnv === 'development') {
-    envFilePath = path.join(rootDir, '.env');
-    if (!fs.existsSync(envFilePath)) {
-      return { loaded: false };
-    }
-  }
-
-  if (!fs.existsSync(envFilePath)) {
-    return { loaded: false };
-  }
-
-  // Don't override in test mode
-  const override = nodeEnv !== 'test';
-  const result = dotenv.config({ path: envFilePath, override });
-
+  const result = dotenv.config({ path: plan.envFilePath, override: plan.override });
   if (result.error) {
     return { loaded: false };
   }
 
-  return { loaded: true, path: envFilePath };
+  return { loaded: true, path: plan.envFilePath };
 }
 
 // Auto-load when imported

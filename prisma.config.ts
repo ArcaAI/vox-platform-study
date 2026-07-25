@@ -11,47 +11,28 @@
  *
  * The datasource URL is loaded from the DATABASE_URL environment variable.
  *
- * ## Environment File Convention:
- * - `.env.dev` → Local development (NODE_ENV=development)
- * - `.env.test` → Local testing (NODE_ENV=test)
- * - `.env.production` → Production reference (NODE_ENV=production uses host env)
+ * ## Environment loading
  *
- * ## CI/CD & Production:
- * - In CI (CI=true) or production, only host environment variables are used
+ * The NODE_ENV -> file map, the CI/production skip and the host-env-wins
+ * precedence are NOT declared here — they come from the dependency-free
+ * `planEnvFileLoad()` in `packages/applications/src/common/env`.
+ *
+ * It is imported by SOURCE PATH on purpose: this config is executed by the
+ * Prisma CLI before anything in the workspace is built, so it cannot resolve
+ * the `@arcaai/applications` package entry point. The imported module has no
+ * dependencies beyond `node:fs` / `node:path`, so the CLI's TS loader can
+ * transpile it standalone.
  */
 
 import dotenv from 'dotenv';
-import fs from 'node:fs';
 import path from 'node:path';
 import { defineConfig, env } from 'prisma/config';
 
-// Map NODE_ENV to env file names
-const ENV_FILE_MAP: Record<string, string> = {
-  development: '.env.dev',
-  test: '.env.test',
-  production: '.env.production',
-  staging: '.env.staging',
-};
+import { planEnvFileLoad } from './packages/applications/src/common/env/env-file-resolution';
 
-// Determine current environment
-const nodeEnv = process.env.NODE_ENV || 'development';
-const isCI = process.env.CI === 'true' || process.env.CI === '1';
-
-// Only load env file in local development (not CI or production)
-if (!isCI && nodeEnv !== 'production') {
-  const envFileName = ENV_FILE_MAP[nodeEnv] || '.env.dev';
-  let envFilePath = path.resolve(__dirname, envFileName);
-
-  // Fall back to .env if env-specific file doesn't exist (backwards compatibility)
-  if (!fs.existsSync(envFilePath) && nodeEnv === 'development') {
-    envFilePath = path.resolve(__dirname, '.env');
-  }
-
-  if (fs.existsSync(envFilePath)) {
-    // Don't override in test mode (dotenv-cli sets vars first)
-    const override = nodeEnv !== 'test';
-    dotenv.config({ path: envFilePath, override });
-  }
+const plan = planEnvFileLoad({ rootDir: __dirname });
+if (plan.envFilePath) {
+  dotenv.config({ path: plan.envFilePath, override: plan.override });
 }
 
 export default defineConfig({

@@ -1,4 +1,4 @@
-import { ILoggingService, SecretsService } from '@arcaai/applications';
+import { ILoggingService, loadEnv, SecretsService } from '@arcaai/applications';
 import { LogLevel, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
@@ -22,6 +22,21 @@ import session = require('express-session');
 export { isOriginAllowed };
 
 async function bootstrap() {
+  // Read the env file for this NODE_ENV BEFORE anything in bootstrap() touches
+  // `process.env`. `LOG_LEVEL`, `PORT`, `SHUTDOWN_*_MS` and
+  // `CORS_ALLOWED_ORIGINS` below are all consumed before the Nest module graph
+  // (and therefore ConfigService, the only previous caller of loadEnv) exists,
+  // so without this line they silently saw host environment only.
+  //
+  // Safe to call here and again in ConfigService: the loader never overrides a
+  // variable already present in `process.env`, and reads nothing when CI=true
+  // or NODE_ENV=production.
+  //
+  // SCHEMA SEAM (TASK-558 lane D): the zod env schema validates *here*, right
+  // after loadEnv() and before NestFactory.create(), so a missing env-tier var
+  // fails fast at boot with the full list of problems (plan §9.2 L2).
+  loadEnv();
+
   // Disable colors in NestJS built-in logger
   // eslint-disable-next-line turbo/no-undeclared-env-vars -- this WRITES the standard NO_COLOR convention var to steer a third-party logger; it is not an external config input, so it does not belong in turbo.json#globalEnv
   process.env.NO_COLOR = '1';
