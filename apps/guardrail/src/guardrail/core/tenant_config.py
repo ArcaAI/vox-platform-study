@@ -28,6 +28,35 @@ effective-config client the other services use. The read is merely extended with
 window. Those tuning fields fail safe to env (absent profile ⇒ env engine config);
 the fail-closed posture above still governs provider/model selection.
 ``local_path`` / model sources stay out of scope for this resolver.
+
+TASK-558 lane G (G2) re-examined that choice against §9.3 M7 ("prefer
+gateway-resolved injection over per-service DB reads") and CONFIRMED it, on two
+grounds the paragraph above did not state:
+
+  1. Guardrail's callers are PEER SERVICES, not the gateway. SMR calls
+     ``POST /api/medical/validate`` directly (``smr/services/external_guardrail.py``)
+     and forwards only ``X-Tenant-Id`` — it has no resolved config to inject.
+     The TASK-496 TTS pattern works precisely because the gateway is the caller;
+     for guardrail that precondition does not hold, so injection is not
+     structurally available.
+  2. Pulling effective config over HTTP would put the GATEWAY on guardrail's
+     safety-critical validate path and close a call cycle
+     (gateway → SMR → guardrail → gateway). A safety engine must not acquire a
+     liveness dependency on the service it is protecting.
+
+Of the three things §4 B1 says must not survive per-service, two are already
+sound here: the TTL is DECLARED config (``settings.db.config_cache_ttl_s``,
+env ``GUARDRAIL_V2_DB_CONFIG_CACHE_TTL_S``), not an invented constant; and the
+fail-open/closed choice is fail-CLOSED on selection (503 in
+``core/dependencies.py``), which lane F generalised into
+``SettingDescriptor.failMode``. The cache key is ``f"{task_key}::{tenant_id}"`` —
+tenant-keyed, so §9.3 M4 is satisfied.
+
+The one genuine gap is INVALIDATION: a gateway-side ``AiTaskDefault`` /
+``AiModel`` change is not pushed here, so it lands within one TTL window rather
+than immediately. Closing it needs a PUBLISHER in the gateway (the TS side
+already has its own settings channel, ``app-settings:invalidate``); a subscriber
+here without one would be dead code, so it is deliberately not added yet.
 """
 
 from __future__ import annotations

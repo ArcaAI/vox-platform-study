@@ -120,6 +120,10 @@ describe('AppSettingsService', () => {
         isEncrypted?: boolean;
     }) => ({
         id: `setting-${key}`,
+        // `GlobalSetting.tenantId` is NOT NULL, and since TASK-558 §9.3 M4 the
+        // cache admits platform-reserved tenants only — so a fixture without a
+        // tenant is not a row the loader can ever see.
+        tenantId: '50000000-0000-0000-0000-000000000000',
         key,
         value,
         parsedValue: parsedValue ?? value,
@@ -312,6 +316,7 @@ describe('AppSettingsService', () => {
 
         it('should fallback to raw value if parsing fails', async () => {
             const mockSetting = {
+                tenantId: '50000000-0000-0000-0000-000000000000',
                 key: 'broken.setting',
                 value: 'raw-value',
                 get parsedValue() {
