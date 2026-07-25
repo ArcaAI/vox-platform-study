@@ -1,24 +1,28 @@
 import path from 'path';
+import { DMMF as PrismaDMMF } from '@prisma/generator-helper';
 import { checkDirectory } from './checkDirectory';
 
 /**
- * Prisma DMMF Document type
+ * Prisma DMMF Document type.
+ *
+ * Structurally the same as `PrismaDMMF.Document`, but with the members this
+ * package actually reads pinned to Prisma's own types rather than `any`.
  */
 export interface DMMF {
   datamodel: {
-    models: any[];
-    enums: any[];
-    types: any[];
+    models: PrismaDMMF.Model[];
+    enums: PrismaDMMF.DatamodelEnum[];
+    types: PrismaDMMF.Model[];
   };
   schema: {
-    inputObjectTypes: any;
-    outputObjectTypes: any;
-    enumTypes: any;
+    inputObjectTypes: PrismaDMMF.Schema['inputObjectTypes'];
+    outputObjectTypes: PrismaDMMF.Schema['outputObjectTypes'];
+    enumTypes: PrismaDMMF.Schema['enumTypes'];
     rootQueryType?: string;
     rootMutationType?: string;
   };
   mappings: {
-    modelOperations: any[];
+    modelOperations: PrismaDMMF.ModelMapping[];
     otherOperations: {
       read: string[];
       write: string[];

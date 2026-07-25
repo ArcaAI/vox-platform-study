@@ -28,18 +28,6 @@ function hasDecoratorWithName(node: ts.Node, decoratorNamePattern: string, sourc
   });
 }
 
-// Helper function to get decorator text if it exists
-function getDecoratorText(node: ts.Node, sourceFile: ts.SourceFile): string | undefined {
-  // Use proper TypeScript API to check for decorators
-  const decorators = ts.canHaveDecorators(node) ? ts.getDecorators(node) : undefined;
-  if (!decorators || decorators.length === 0) {
-    return undefined;
-  }
-
-  const decorator = decorators[0];
-  return decorator.expression.getText(sourceFile);
-}
-
 function parseModelFile(filePath: string): ModelMetadata {
   // Validate the file exists
   if (!fs.existsSync(filePath)) {

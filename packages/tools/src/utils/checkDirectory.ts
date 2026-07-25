@@ -14,7 +14,7 @@ export function checkDirectory(dirPath: string, workspacePath?: string): boolean
 
     // Check if path exists and is a directory
     return fs.existsSync(resolvedPath) && fs.statSync(resolvedPath).isDirectory();
-  } catch (error) {
+  } catch {
     return false;
   }
 }

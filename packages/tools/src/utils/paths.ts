@@ -287,7 +287,7 @@ export class Paths {
     if (domainNames.length === 0) {
       try {
         domainNames = fs.readdirSync(basePath).filter((item) => fs.statSync(path.join(basePath, item)).isDirectory());
-      } catch (error) {
+      } catch {
         // Directory might not exist yet
         return [];
       }

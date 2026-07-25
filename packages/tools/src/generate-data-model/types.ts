@@ -1,8 +1,10 @@
+import { DMMF } from '@prisma/generator-helper';
+
 // Define interface for selected items
 export interface SelectedItem {
   type: 'model' | 'enum';
   name: string;
-  data: any;
+  data: DMMF.Model | DMMF.DatamodelEnum;
 }
 
 // Define interface for DMMF.Field

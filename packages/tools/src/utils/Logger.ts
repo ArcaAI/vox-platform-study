@@ -14,10 +14,10 @@ export enum LogLevel {
  * @returns Method decorator
  */
 export function LogMethod(level: LogLevel = LogLevel.INFO) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
+  return function (_target: object, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
 
-    descriptor.value = function (...args: any[]) {
+    descriptor.value = function (...args: unknown[]) {
       const start = performance.now();
       const logger = new Logger(`Method:${propertyKey}`);
 
@@ -148,7 +148,7 @@ export class Logger {
   /**
    * Log an error message
    */
-  error(message: string, ...optionalParams: any[]): void {
+  error(message: string, ...optionalParams: unknown[]): void {
     if (this.enabled) {
       const levelTag = `${Colors.fg.red}${Colors.bright}[${LogLevel.ERROR}]${Colors.reset}`;
       console.error(`${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`, ...optionalParams);
@@ -158,7 +158,7 @@ export class Logger {
   /**
    * Log a warning message
    */
-  warn(message: string, ...optionalParams: any[]): void {
+  warn(message: string, ...optionalParams: unknown[]): void {
     if (this.enabled) {
       const levelTag = `${Colors.fg.yellow}${Colors.bright}[${LogLevel.WARN}]${Colors.reset}`;
       console.warn(`${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`, ...optionalParams);
@@ -168,7 +168,7 @@ export class Logger {
   /**
    * Log an info message
    */
-  info(message: string, ...optionalParams: any[]): void {
+  info(message: string, ...optionalParams: unknown[]): void {
     if (this.enabled) {
       const levelTag = `${Colors.fg.green}[${LogLevel.INFO}]${Colors.reset}`;
       console.info(`${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`, ...optionalParams);
@@ -178,7 +178,7 @@ export class Logger {
   /**
    * Log a debug message
    */
-  debug(message: string, ...optionalParams: any[]): void {
+  debug(message: string, ...optionalParams: unknown[]): void {
     if (this.enabled) {
       const levelTag = `${Colors.fg.blue}[${LogLevel.DEBUG}]${Colors.reset}`;
       console.debug(`${this.getTimestamp()}${levelTag}${this.formatContext()} ${message}`, ...optionalParams);

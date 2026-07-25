@@ -9,7 +9,7 @@ import chalk from 'chalk';
 import figlet from 'figlet';
 import { scanPrismaDomains } from './utils/domainScanner';
 import { runInteractiveCLI, listActivities, listDomains } from './utils/cli';
-import { prismaActivities, getActivityByName, getActivityNames } from './utils/activities';
+import { getActivityByName, getActivityNames } from './utils/activities';
 import { Logger } from '../utils/Logger';
 import { Domain, CLIOptions, ActivityOptions } from './types';
 
@@ -284,7 +284,7 @@ program
 /**
  * Helper to run an activity with options
  */
-async function runWithActivity(activityName: string, opts: any): Promise<void> {
+async function runWithActivity(activityName: string, opts: Omit<CLIOptions, 'activity'>): Promise<void> {
   const spinner = ora('Scanning for Prisma domains...').start();
 
   try {

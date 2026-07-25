@@ -127,6 +127,17 @@ export function applySoftDeleteFilter(args: { where?: Record<string, unknown> })
 }
 
 /**
+ * The subset of a Prisma query-extension callback's parameters this extension uses.
+ * Prisma's own generated parameter type is per-model; this narrows it to the fields
+ * the soft-delete filter reads.
+ */
+type SoftDeleteQueryParams = {
+  model: string;
+  args: { where?: Record<string, unknown> };
+  query: (args: { where?: Record<string, unknown> }) => Promise<unknown>;
+};
+
+/**
  * Extended Prisma Client with soft-delete filtering
  *
  * Uses Prisma Client Extensions (replacing the deprecated $use middleware)
@@ -154,34 +165,34 @@ function createExtendedPrismaClient() {
     name: 'softDeleteFilter',
     query: {
       $allModels: {
-        async findMany({ model, operation, args, query }: any) {
+        async findMany({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async findFirst({ model, operation, args, query }: any) {
+        async findFirst({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async findUnique({ model, operation, args, query }: any) {
+        async findUnique({ args, query }: SoftDeleteQueryParams) {
           return query(args);
         },
-        async count({ model, operation, args, query }: any) {
+        async count({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async aggregate({ model, operation, args, query }: any) {
+        async aggregate({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }
           return query(args);
         },
-        async groupBy({ model, operation, args, query }: any) {
+        async groupBy({ model, args, query }: SoftDeleteQueryParams) {
           if (modelHasSoftDelete(model)) {
             applySoftDeleteFilter(args);
           }

@@ -21,7 +21,7 @@ export const seedUser = async (client: CorePrismaClient) => {
 
   // Get all roles
   const roles = await client.role.findMany();
-  const roleMap = new Map<string, any>(roles.map((r: any) => [r.name as string, r]));
+  const roleMap = new Map<string, (typeof roles)[number]>(roles.map((r) => [r.name, r]));
 
   // Function to hash passwords
   const hashPassword = async (password: string): Promise<string> => {

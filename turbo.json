@@ -105,6 +105,13 @@
         "OTEL_DEBUG",
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "OTEL_SERVICE_NAME",
-        "OTEL_SERVICE_VERSION"
+        "OTEL_SERVICE_VERSION",
+        "CI",
+        "API_KEY_PEPPER",
+        "JWT_SECRET_KEY",
+        "OUTPUT_PATH",
+        "MINIO_ENDPOINT",
+        "MINIO_ACCESS_KEY",
+        "MINIO_SECRET_KEY"
     ]
 }

@@ -4,7 +4,7 @@ import path from 'path';
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'fs';
 import Handlebars from 'handlebars';
 import * as inquirer from 'inquirer';
-import { Logger, parseEntityFile, EntityMetadata, checkDirectory, toCamelCase, generateIndices, Paths } from '../utils';
+import { Logger, parseEntityFile, EntityMetadata, Paths } from '../utils';
 
 // Initialize logger
 const logger = new Logger('generate-factory:generator');
@@ -87,18 +87,19 @@ export async function generateFactories(options: GenerateFactoryOptions): Promis
       return;
     }
 
-    const entityChoices = entityFiles.map((file) => ({
+    // `'all'` is a sentinel value alongside the per-entity choices.
+    const entityChoices: { name: string; value: EntityChoice | 'all' }[] = entityFiles.map((file) => ({
       name: path.basename(file, '.ts'),
       value: {
         file,
         domain: selectedDomain,
-      } as EntityChoice,
+      },
     }));
 
     // Add "All entities" option
     entityChoices.unshift({
       name: 'All entities',
-      value: 'all' as any,
+      value: 'all',
     });
 
     const { selectedEntity } = await inquirer.prompt([
@@ -154,11 +155,10 @@ export async function generateFactories(options: GenerateFactoryOptions): Promis
 
   // Generate index files for each domain
   logger.info('Generating index files for domains');
-  // await generateDomainIndexFiles(domainMappers, outputPath);
 
   // Generate root index file that exports all domain indexes
   logger.info('Generating root index file');
-  const indexFiles = Paths.generateIndicesForType('factory', domainsToProcess);
+  Paths.generateIndicesForType('factory', domainsToProcess);
 
   logger.info('Factory generation completed successfully');
 }
@@ -278,26 +278,4 @@ function generateFactoryData(entityInfo: EntityMetadata, factoryName: string): F
     properties,
     hasDecimal,
   };
-}
-
-async function generateDomainIndexFiles(domainFactories: Record<string, string[]>, outputPath: string): Promise<void> {
-  for (const [domain, factories] of Object.entries(domainFactories)) {
-    const domainOutputPath = path.join(outputPath, domain);
-    const indexContent = factories.map((factory) => `export * from './${factory}';`).join('\n') + '\n';
-    const indexPath = path.join(domainOutputPath, 'index.ts');
-    writeFileSync(indexPath, indexContent, 'utf-8');
-    logger.debug(`Generated domain index: ${indexPath}`);
-  }
-}
-
-async function generateRootIndexFile(domains: string[], outputPath: string): Promise<void> {
-  const indexContent =
-    domains
-      .filter((domain) => domain) // Skip empty domain
-      .map((domain) => `export * from './${domain}';`)
-      .join('\n') + '\n';
-
-  const rootIndexPath = path.join(outputPath, 'index.ts');
-  writeFileSync(rootIndexPath, indexContent, 'utf-8');
-  logger.debug(`Generated root index: ${rootIndexPath}`);
 }

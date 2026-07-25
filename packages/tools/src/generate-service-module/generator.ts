@@ -1,8 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import Handlebars from 'handlebars';
-import inquirer from 'inquirer';
-import { names } from '../utils/names';
 import { Logger } from '../utils/Logger';
 
 const logger = new Logger('generate-service-module');

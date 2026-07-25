@@ -21,6 +21,15 @@ export interface DownloadProgress {
   percentage: number;
 }
 
+/** Shape of a record stored in the IndexedDB `models` object store. */
+interface CachedModelRecord {
+  name: string;
+  version: string;
+  data: ArrayBuffer;
+  downloadedAt: number;
+  size: number;
+}
+
 const DB_NAME = 'arcaai-models';
 const DB_VERSION = 1;
 const STORE_NAME = 'models';
@@ -207,7 +216,7 @@ export class ModelDownloader {
       const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
 
-      const modelData = {
+      const modelData: CachedModelRecord = {
         name,
         version,
         data,
@@ -258,7 +267,7 @@ export class ModelDownloader {
       const request = store.getAll();
 
       request.onsuccess = () => {
-        const models = request.result.map((model: any) => ({
+        const models = (request.result as CachedModelRecord[]).map((model) => ({
           name: model.name,
           version: model.version,
           size: model.size,

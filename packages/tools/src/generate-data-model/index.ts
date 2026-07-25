@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
-import path, { join } from 'path';
+import path from 'path';
 import fs from 'fs';
 import { program } from 'commander';
 import inquirer from 'inquirer';
 import Handlebars from 'handlebars';
+import { DMMF } from '@prisma/generator-helper';
 import { SelectedItem, DomainFolder, CommandLineOptions, ProcessingOptions } from './types';
-import { Logger, getNodeModulesPath, getPrismaDMMF, checkDirectory, toPascalCase, names, getPnpmWorkspaceNodeModulesPath } from '../utils';
+import { Logger, getPrismaDMMF, checkDirectory, names, getPnpmWorkspaceNodeModulesPath } from '../utils';
 // Load environment variables using centralized utility
 import '../utils/loadEnv';
 
@@ -120,7 +121,12 @@ async function selectDomains(domainFolders: DomainFolder[]): Promise<DomainFolde
   return selectedDomains === 'all' ? domainFolders : domainFolders.filter((domain) => domain.value === selectedDomains);
 }
 
-async function selectItemsForDomain(models: any[], enums: any[], domain: DomainFolder, isAllDomains: boolean): Promise<SelectedItem[]> {
+async function selectItemsForDomain(
+  models: DMMF.Model[],
+  enums: DMMF.DatamodelEnum[],
+  domain: DomainFolder,
+  isAllDomains: boolean,
+): Promise<SelectedItem[]> {
   if (isAllDomains) {
     return [
       ...models.map((model) => ({ type: 'model' as const, name: model.name, data: model })),
@@ -153,7 +159,7 @@ function generateEnumFile(
   shouldOverwrite: boolean,
 ): void {
   const className = names(enumItem.data.name).className;
-  const enumValues = enumItem.data.values.map((value: any) => ({
+  const enumValues = (enumItem.data as DMMF.DatamodelEnum).values.map((value) => ({
     name: value.name,
   }));
 
@@ -183,11 +189,12 @@ function generateModelFile(
   modelTemplate: HandlebarsTemplateDelegate,
   shouldOverwrite: boolean,
 ): void {
-  const model = modelItem.data;
+  // Only ever called for items collected with type: 'model'.
+  const model = modelItem.data as DMMF.Model;
   const className = names(model.name).className;
 
   let baseModel = 'BaseDataModel';
-  if (model.fields.find((f: any) => /tenantId/.test(f.name))) {
+  if (model.fields.find((f) => /tenantId/.test(f.name))) {
     baseModel = 'BaseTenantDataModel';
   }
   if (/audit/i.test(model.name)) {
@@ -320,7 +327,7 @@ async function processDomain(
  * @returns The scalar and enum fields for the model.
  */
 function composeScalarEnumFields(
-  fields: any[],
+  fields: readonly DMMF.Field[],
   baseModel: string,
 ): {
   scalarFields: { name: string; type: string }[];
@@ -376,7 +383,7 @@ function composeScalarEnumFields(
  * @param fields - The fields of the model.
  * @returns The relation fields for the model.
  */
-function composeRelationFields(fields: any[]): { name: string; type: string }[] {
+function composeRelationFields(fields: readonly DMMF.Field[]): { name: string; type: string }[] {
   return fields
     .filter((field) => field.kind === 'object')
     .map((field) => {
