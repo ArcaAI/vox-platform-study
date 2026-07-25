@@ -32,6 +32,9 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'all',
     globalOnly: true,
     category: 'Storage',
+    // Tuning: an absent value falls back to the descriptor default, then the env
+    // bootstrap tier — first boot must not be blocked on the SYSTEM row existing.
+    failMode: 'open-to-default',
     label: 'Platform storage provider',
     description: 'Object-store backend every tenant falls back to: minio | aws_s3 | azure_blob.',
     default: 'minio',
@@ -45,6 +48,9 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'all',
     globalOnly: true,
     category: 'Storage',
+    // Tuning: an absent value falls back to the descriptor default, then the env
+    // bootstrap tier — first boot must not be blocked on the SYSTEM row existing.
+    failMode: 'open-to-default',
     label: 'Platform storage endpoint',
     description: 'S3/MinIO endpoint URL for the platform default. Empty means the SDK default (real AWS S3).',
   },
@@ -57,6 +63,9 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'all',
     globalOnly: true,
     category: 'Storage',
+    // Tuning: an absent value falls back to the descriptor default, then the env
+    // bootstrap tier — first boot must not be blocked on the SYSTEM row existing.
+    failMode: 'open-to-default',
     label: 'Platform storage region',
     description: 'S3 region used by the platform default.',
     default: 'us-east-1',
@@ -70,6 +79,9 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'all',
     globalOnly: true,
     category: 'Storage',
+    // Tuning: an absent value falls back to the descriptor default, then the env
+    // bootstrap tier — first boot must not be blocked on the SYSTEM row existing.
+    failMode: 'open-to-default',
     label: 'Force path-style URLs',
     description: 'Required for MinIO; leave on unless the backend is real AWS S3 with virtual-hosted addressing.',
     default: true,
@@ -83,6 +95,9 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'all',
     globalOnly: true,
     category: 'Storage',
+    // Tuning: an absent value falls back to the descriptor default, then the env
+    // bootstrap tier — first boot must not be blocked on the SYSTEM row existing.
+    failMode: 'open-to-default',
     label: 'Platform bucket/container prefix',
     description: 'Optional namespace prefix applied to physical bucket/container names.',
   },
@@ -95,6 +110,9 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     editableBy: 'all',
     globalOnly: true,
     category: 'Credentials',
+    // Secret: never silently substitute another value (lane F: register() enforces
+    // `secret` => `closed`).
+    failMode: 'closed',
     label: 'Platform storage credentials (Vault kv-v2)',
     description:
       "Operator-set JSON `{ accessKeyId, secretAccessKey }` at the Vault path recorded in the SYSTEM row's `credentialsRef` " +
@@ -102,14 +120,25 @@ export const STORAGE_SETTINGS: SettingDescriptor[] = [
     default: 'platform/storage/minio',
   },
   {
-    key: 'storage.bootstrap.minioEndpoint',
+    // Key is `minio.endpoint`, not `storage.bootstrap.*`: the plan's §3.3 rule is a
+    // MECHANICAL 1:1 with the live variable name, which is `MINIO_ENDPOINT`. A
+    // `storage.bootstrap.` prefix would derive `STORAGE_BOOTSTRAP_MINIO_ENDPOINT`
+    // and break the mapping the registry test enforces.
+    key: 'minio.endpoint',
     tier: 'env',
     dataType: 'string',
     sensitivity: 'internal',
     maxScope: 'system',
-    editableBy: 'all',
-    globalOnly: true,
+    // `env` tier has no write path, so it declares the `none` sentinel rather than
+    // a CASL subject — naming one would advertise an editor that does not exist
+    // (lane F invariant: env ⇒ editableBy 'none'). `globalOnly` is omitted for the
+    // same reason: there is nothing to gate. The ADMIN-editable counterpart of this
+    // value is `storage.platformDefault.endpoint` above.
+    editableBy: 'none',
     category: 'Storage',
+    // Tuning: an absent value falls back to the descriptor default, then the env
+    // bootstrap tier — first boot must not be blocked on the SYSTEM row existing.
+    failMode: 'open-to-default',
     label: 'MINIO_ENDPOINT (bootstrap fallback)',
     description:
       'Deploy-time fallback used ONLY before the SYSTEM storage row exists (first boot / pre-seed). Scheduled for removal one ' +
