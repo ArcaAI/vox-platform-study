@@ -179,6 +179,9 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'vault.kvPrefix': 'VAULT_KV_PREFIX',
     'vault.dbAdminPass': 'VAULT_DB_ADMIN_PASS',
     secretsProvider: 'SECRETS_PROVIDER',
+    // Storage bootstrap fallback, superseded by the SYSTEM TenantStorageConfig row
+    // once seeded (TASK-558 lane E).
+    'minio.endpoint': 'MINIO_ENDPOINT',
     port: 'PORT',
     logLevel: 'LOG_LEVEL',
     corsAllowedOrigins: 'CORS_ALLOWED_ORIGINS',
@@ -205,8 +208,23 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'harness.claimCheck.enabled': 'HARNESS_CLAIM_CHECK_ENABLED',
   };
 
+  /**
+   * Descriptors whose value is addressed by a Vault kv-v2 PATH rather than by an
+   * environment variable, so the dotted↔env 1:1 does not apply to them.
+   *
+   * `storage.platformDefault.credentials` (TASK-558 lane E) describes the
+   * `TenantStorageConfig.credentialsRef` pointer — the platform storage row names a
+   * Vault path instead of carrying keys. The values BEHIND that pointer are the
+   * ordinary env-bound secrets `minio.accessKey` / `minio.secretKey`, which are
+   * registered separately above and ARE covered by the 1:1 assertion. Excluding the
+   * pointer keeps the invariant meaningful rather than weakening it for everything.
+   */
+  const KEYS_ADDRESSED_BY_VAULT_PATH = new Set(['storage.platformDefault.credentials']);
+
   it('every env/vault-kv descriptor derives its real variable name', () => {
-    const bound = HOPE_SETTINGS_REGISTRY.list().filter((d) => d.tier === 'env' || d.tier === 'vault-kv');
+    const bound = HOPE_SETTINGS_REGISTRY.list().filter(
+      (d) => (d.tier === 'env' || d.tier === 'vault-kv') && !KEYS_ADDRESSED_BY_VAULT_PATH.has(d.key),
+    );
     expect(bound.length).toBeGreaterThan(0);
     for (const d of bound) {
       expect(EXPECTED[d.key], `no expected env name recorded for '${d.key}'`).toBeDefined();

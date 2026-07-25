@@ -19,11 +19,14 @@ import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/
 import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
 import { SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
+import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
 export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().registerAll([
   ...PIPELINE_SETTINGS,
+  // Platform storage default: SYSTEM TenantStorageConfig row + Vault kv-v2 (lane E).
+  ...STORAGE_SETTINGS,
   ...TTS_SETTINGS,
   ...ENTITLEMENT_SETTINGS,
   // AI task-model defaults (guardrail/NLP/SMR).
