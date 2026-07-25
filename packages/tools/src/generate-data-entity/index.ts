@@ -68,7 +68,7 @@ async function selectDomains(domainFolders: DomainFolder[]): Promise<DomainFolde
   return selectedDomains === 'all' ? domainFolders : domainFolders.filter((domain) => domain.value === selectedDomains);
 }
 
-async function selectItemsForDomain(models: any[], domain: DomainFolder, isAllDomains: boolean): Promise<SelectedItem[]> {
+async function selectItemsForDomain(models: DMMF.Model[], domain: DomainFolder, isAllDomains: boolean): Promise<SelectedItem[]> {
   if (isAllDomains) {
     return [...models.map((model) => ({ type: 'model' as const, name: model.name, data: model }))];
   }

@@ -1,7 +1,7 @@
 import { glob } from 'glob';
 import fs from 'fs';
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from 'fs';
-import path, { dirname, join, basename, relative, resolve } from 'path';
+import path, { join, basename } from 'path';
 import * as Handlebars from 'handlebars';
 import { DMMF } from '@prisma/generator-helper';
 import {
@@ -14,7 +14,6 @@ import {
   DMMF as PrismaDMMF,
   checkDirectory,
   getPnpmWorkspaceNodeModulesPath,
-  names,
   toCamelCase,
 } from '../utils';
 // Load environment variables using centralized utility
@@ -51,14 +50,6 @@ interface DomainFolder {
   value: string;
   folderPath: string;
   module: string;
-}
-
-function getEntityName(type: string): string {
-  return type.replace('Entity.', '');
-}
-
-function getModelName(type: string): string {
-  return type.replace('Model.', '');
 }
 
 function discoverDomainFolders(prismaPath: string): DomainFolder[] {
@@ -99,7 +90,7 @@ export async function generateMappers(options: GenerateMapperOptions): Promise<v
     prismaClients[domainFolder.name] = dmmf;
   }
 
-  const { basePath, outputPath, entityPath, modelPath } = options;
+  const { outputPath, entityPath, modelPath } = options;
 
   // Ensure directories exist
   if (!existsSync(entityPath)) {
@@ -132,13 +123,18 @@ export async function generateMappers(options: GenerateMapperOptions): Promise<v
 
   logger.info('Starting mapper generation');
   for (const entityFile of entityFiles) {
-    const entityName = basename(entityFile).replace('.ts', '');
     const modelFile = modelFiles.find((m) => basename(m) === basename(entityFile).replace('Entity.ts', 'Model.ts'));
     const modelName = modelFile && basename(modelFile).replace('Model.ts', '');
 
     if (modelFile) {
       const domainPath = entityFile.split('/')[0];
       const dmmfData = prismaClients[domainPath].datamodel.models.find((m) => m.name === modelName);
+      if (!dmmfData) {
+        // The *Model.ts file exists but no matching model is in the Prisma schema;
+        // generateMapper would dereference dmmfData.fields and throw.
+        logger.warn(`No Prisma model named '${modelName}' in domain '${domainPath}' for entity: ${entityFile}`);
+        continue;
+      }
       const entityFullPath = join(entityPath, entityFile);
       const modelFullPath = join(modelPath, modelFile);
 
@@ -183,7 +179,7 @@ interface GenerateMapperParams {
   domainPath: string;
 }
 
-async function generateMapper(params: GenerateMapperParams): Promise<any> {
+async function generateMapper(params: GenerateMapperParams): Promise<MapperInfo> {
   const { dmmfData, entityPath, modelPath, outputPath, template, domainPath } = params;
 
   const entityInfo = parseEntityFile(entityPath);

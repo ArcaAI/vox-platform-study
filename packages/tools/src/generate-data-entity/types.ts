@@ -34,5 +34,5 @@ export interface EntityMetadata {
 export interface SelectedItem {
   type: 'model';
   name: string;
-  data: any;
+  data: DMMF.Model;
 }

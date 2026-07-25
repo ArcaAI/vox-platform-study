@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import path, { resolve } from 'path';
+import { resolve } from 'path';
 import { generateMappers } from './generator';
 import { Logger } from '../utils/Logger';
 // Load environment variables using centralized utility

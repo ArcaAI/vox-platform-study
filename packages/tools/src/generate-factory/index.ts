@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import path, { resolve } from 'path';
+import { resolve } from 'path';
 import { generateFactories } from './generator';
 import { Logger } from '../utils/Logger';
 import { getPnpmWorkspaceNodeModulesPath } from '../utils';

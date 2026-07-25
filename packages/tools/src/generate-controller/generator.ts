@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import Handlebars from 'handlebars';
-import { names } from '../utils/names';
 import { Logger } from '../utils/Logger';
 
 const logger = new Logger('generate-controller');

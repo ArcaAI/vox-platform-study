@@ -113,7 +113,7 @@ export const seedRole = async (client: CorePrismaClient) => {
 
   // First, get all policies
   const policies = await client.policy.findMany();
-  const policyMap = new Map<string, string>(policies.map((p: any) => [p.name as string, p.id as string]));
+  const policyMap = new Map<string, string>(policies.map((p) => [p.name, p.id]));
 
   // Track created roles for hierarchy resolution
   const createdRoleIds = new Map<string, string>();
