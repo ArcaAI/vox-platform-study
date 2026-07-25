@@ -73,7 +73,7 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
   });
 
   it('falls back to the global provider when there is no tenant context', async () => {
-    const configRepo = { findTenantDefault: vi.fn(), findForBucket: vi.fn() };
+    const configRepo = { findTenantDefault: vi.fn(), findForBucket: vi.fn(), findSystemDefault: vi.fn().mockResolvedValue(null) };
     const factory = build({ secrets: { S3_ACCESS_KEY: 'ak', S3_SECRET_KEY: 'sk' }, configRepo });
 
     const provider = await factory.getProviderForBucket(undefined, 'audio');
@@ -94,6 +94,7 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
     const configRepo = {
       findTenantDefault: vi.fn().mockResolvedValue(cfg({ topology: StorageTopologyType.SHARED })),
       findForBucket: vi.fn(),
+      findSystemDefault: vi.fn().mockResolvedValue(null),
     };
     const factory = build({ settings: { STORAGE_PROVIDER: 'minio' }, secrets: { S3_ACCESS_KEY: 'ak', S3_SECRET_KEY: 'sk' }, configRepo });
 
@@ -110,6 +111,7 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
         cfg({ provider: StorageProviderType.AWS_S3, region: 'eu-west-1', endpoint: 'https://s3.example', credentialsRef: 'TENANT_1_S3' }),
       ),
       findForBucket: vi.fn(),
+      findSystemDefault: vi.fn().mockResolvedValue(null),
     };
     const factory = build({
       secrets: { TENANT_1_S3: JSON.stringify({ accessKeyId: 'tak', secretAccessKey: 'tsk' }) },
@@ -136,6 +138,7 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
         cfg({ provider: StorageProviderType.AZURE_BLOB, accountName: 'acct', endpointSuffix: 'core.windows.net', credentialsRef: 'TENANT_1_AZ' }),
       ),
       findForBucket: vi.fn(),
+      findSystemDefault: vi.fn().mockResolvedValue(null),
     };
     const factory = build({
       secrets: { TENANT_1_AZ: JSON.stringify({ connectionString: 'cs', accountKey: 'key==' }) },
@@ -157,6 +160,7 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
         cfg({ provider: StorageProviderType.AZURE_BLOB, accountName: 'override', credentialsRef: 'OV' }),
       ),
       findTenantDefault: vi.fn().mockResolvedValue(cfg({ provider: StorageProviderType.AWS_S3, credentialsRef: 'DEF' })),
+      findSystemDefault: vi.fn().mockResolvedValue(null),
     };
     const factory = build({ secrets: { OV: JSON.stringify({ accountKey: 'k==' }) }, configRepo, bucketRepo });
 
@@ -173,6 +177,7 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
     const configRepo = {
       findForBucket: vi.fn(),
       findTenantDefault: vi.fn().mockResolvedValue(cfg({ topology: StorageTopologyType.SHARED })),
+      findSystemDefault: vi.fn().mockResolvedValue(null),
     };
     const factory = build({ secrets: { S3_ACCESS_KEY: 'ak', S3_SECRET_KEY: 'sk' }, configRepo, bucketRepo });
 
@@ -186,6 +191,7 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
     const configRepo = {
       findTenantDefault: vi.fn().mockResolvedValue(cfg({ provider: StorageProviderType.AWS_S3, credentialsRef: 'R' })),
       findForBucket: vi.fn(),
+      findSystemDefault: vi.fn().mockResolvedValue(null),
     };
     const factory = build({ secrets: { R: JSON.stringify({ accessKeyId: 'a', secretAccessKey: 'b' }) }, configRepo });
 

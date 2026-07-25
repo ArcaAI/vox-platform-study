@@ -314,6 +314,11 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'McpServer',
         'AiProviderConnection',
         'AiRuntimeProfile',
+        // TenantStorageConfig's SYSTEM row (bucketId IS NULL) is the platform
+        // storage default every tenant's upload path resolves under its own
+        // CLS; writes stay global-admin only. Carries a Vault `credentialsRef`
+        // path, never credentials.
+        'TenantStorageConfig',
       ]),
     );
   });

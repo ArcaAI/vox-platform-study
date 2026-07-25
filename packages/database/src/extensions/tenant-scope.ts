@@ -273,6 +273,18 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // [caller, SYSTEM]; WRITES are NOT widened (registry mutation is global-admin
   // only at the service layer, the guardrail.* precedent).
   'McpServer',
+  // The PLATFORM-DEFAULT storage row (SYSTEM tenant, `bucketId IS NULL`) is the
+  // third step of the model's own resolution order
+  // (bucket row → tenant default → SYSTEM default → env). Every tenant's
+  // upload/download path resolves it at request time under that tenant's CLS,
+  // so without widening the read the row is invisible and the platform silently
+  // falls back to env — the exact failure mode documented for GlobalSetting
+  // below. READS widen to [caller, SYSTEM]; WRITES are NOT widened (only a
+  // global admin mutates the platform default, enforced imperatively in
+  // `TenantStorageConfigService`). No secret material is shared: the row
+  // carries only a `credentialsRef` Vault PATH, never credentials (same posture
+  // as McpServer's `authRef`).
+  'TenantStorageConfig',
   // Platform infrastructure settings (S3/MinIO endpoint + credentials, STT
   // pipeline slugs/queues, …) are seeded under the SYSTEM tenant in
   // `seed/06-stt.ts`, alongside the SYSTEM-owned AsrPipeline/AiModel catalog.
