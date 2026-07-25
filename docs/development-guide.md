@@ -36,13 +36,21 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 
    Expected: workspace dependencies installed; the gitleaks pre-commit hook is registered via `simple-git-hooks` (skips with a warning if gitleaks is not installed).
 
-2. **Environment files.** The repo tracks `.env.dev` (development), `.env.test` (testing), and `.env.production` (reference); `NODE_ENV` selects which one is loaded, and host environment variables always win. Docker Compose reads an untracked root `.env` — create it if missing:
+2. **Environment files.** `NODE_ENV` selects exactly one file — `.env.dev` (development), `.env.test` (testing), `.env.production` (reference template). The repo tracks only the templates: **`.env.dev` is gitignored** (TASK-558; it previously held real credentials in git). Create your own from the example:
 
    ```bash
-   cp .env.example .env
+   cp .env.example .env.dev
    ```
 
-   Expected: `.env` exists; the defaults (Postgres `postgres/postgres`, MinIO `minio_admin`) match what the compose files assume. See `.env.example` header for the full convention.
+   Expected: `.env.dev` exists and is ignored by git (`git check-ignore .env.dev` prints a match). Defaults (Postgres `postgres/postgres`, MinIO `minio_admin`) match what the compose files assume.
+
+   Three rules hold in **both** TypeScript and Python, and are declared once in `packages/applications/src/common/env/env-file-resolution.ts` (Python: `packages/py-env`):
+
+   - **host env > env file > default** — an exported variable always wins over the file;
+   - **one file, no `.env` fallback** — editing `.env.dev` is observed by the gateway AND every FastAPI service;
+   - **no file is read when `CI` is truthy or `NODE_ENV=production`** — host env only.
+
+   You do NOT create a root `.env` any more. Compose interpolation has its own generated file (`infrastructure/docker/.env`), written by `scripts/dev-infra.sh` on every `pnpm infra:dev:up` — never hand-edit it, and never read it from application code.
 
 3. **Python environment.** Creates/updates the shared conda env `arcaenv` (Python 3.11) with dependencies for all six services:
 

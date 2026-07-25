@@ -1105,28 +1105,18 @@ export const DEFAULT_STT_SETTINGS = [
     dataType: ValueType.String,
     description: 'S3-compatible storage endpoint (MinIO)',
   },
-  {
-    id: '82000000-0000-0000-0003-000000000011',
-    tenantId: DEFAULT_TENANT_ID,
-    namespace: 'platform',
-    name: 's3',
-    key: 'S3_ACCESS_KEY',
-    value: process.env.MINIO_ACCESS_KEY || 'minio_admin',
-    defaultValue: 'minio_admin',
-    dataType: ValueType.String,
-    description: 'S3 access key',
-  },
-  {
-    id: '82000000-0000-0000-0003-000000000012',
-    tenantId: DEFAULT_TENANT_ID,
-    namespace: 'platform',
-    name: 's3',
-    key: 'S3_SECRET_KEY',
-    value: process.env.MINIO_SECRET_KEY || 'minio_admin',
-    defaultValue: 'minio_admin',
-    dataType: ValueType.String,
-    description: 'S3 secret key',
-  },
+  // TASK-558 §9.3 M10 (lane G, G4) — `S3_ACCESS_KEY` and `S3_SECRET_KEY` were
+  // seeded here as PLAINTEXT `GlobalSetting` rows (ids …0011 / …0012). A
+  // credential never belongs in a DB column in the clear; these now live in
+  // Vault kv-v2 under the `s3.accessKey` / `s3.secretKey` descriptors
+  // (`platform-secrets.descriptors.ts`), seeded by
+  // `scripts/vault-seed-secrets.sh` and, for the dev container, by
+  // `infrastructure/docker/configs/vault/dev-init.sh`. Under
+  // `SECRETS_PROVIDER=env` they resolve from the process environment instead.
+  //
+  // The credential VALUES were already read via `SecretsService.getSecretSync()`
+  // — these rows only still gated `S3Service.hasRequiredConfiguration()`, which
+  // now asks SecretsService directly.
   {
     id: '82000000-0000-0000-0003-000000000013',
     tenantId: DEFAULT_TENANT_ID,
@@ -1585,6 +1575,54 @@ export const switchDefaultSttPipelineToGgufTurbo = async (client: CorePrismaClie
   return { success: true, switched, skipped };
 };
 
+/**
+ * Keys whose plaintext `GlobalSetting` rows are superseded by Vault kv-v2
+ * (TASK-558 §9.3 M10, lane G G4). Removing them from `DEFAULT_STT_SETTINGS`
+ * stops NEW databases getting them, but existing databases still hold the
+ * credential in the clear — so sweep them here.
+ */
+export const PURGED_PLAINTEXT_SECRET_KEYS: readonly string[] = ['S3_ACCESS_KEY', 'S3_SECRET_KEY'];
+
+/**
+ * Idempotently scrub the superseded plaintext credential rows across ALL
+ * tenants.
+ *
+ * The value is OVERWRITTEN before the row is retired: a soft delete alone
+ * would leave the secret readable in the `value` column, which is precisely
+ * the posture M10 forbids. This is an UPDATE, never a hard delete — no row is
+ * destroyed, so the house rule against destructive seed operations holds.
+ *
+ * Rows already scrubbed are excluded, so a re-run writes nothing.
+ */
+export const purgePlaintextSecretSettings = async (client: CorePrismaClient): Promise<{ purged: number }> => {
+  console.log('Purging superseded plaintext secret Global Settings (TASK-558 M10)...');
+
+  const SCRUBBED = '__MOVED_TO_VAULT__';
+  let purged = 0;
+
+  for (const key of PURGED_PLAINTEXT_SECRET_KEYS) {
+    const result = await client.globalSetting.updateMany({
+      where: { key, value: { not: SCRUBBED } },
+      data: {
+        value: SCRUBBED,
+        defaultValue: SCRUBBED,
+        description: 'Superseded by Vault kv-v2 (TASK-558). Resolved via SecretsService, never from this row.',
+        resourceStatus: ResourceStatusType.DELETED,
+        resourceStatusUpdatedAt: new Date(),
+        resourceStatusUpdatedBy: SYSTEM_USER_ID,
+        version: { increment: 1 },
+      },
+    });
+    if (result.count > 0) {
+      console.log(`  Purged ${key} (${result.count} row(s) across all tenants)`);
+    }
+    purged += result.count;
+  }
+
+  console.log(`Purged ${purged} plaintext secret Global Setting row(s)`);
+  return { purged };
+};
+
 export const seedSttSettings = async (client: CorePrismaClient) => {
   console.log('Seeding STT Global Settings...');
 
@@ -1664,6 +1702,11 @@ export const seedStt = async (client: CorePrismaClient) => {
     console.log('');
 
     await seedSttSettings(client);
+    console.log('');
+
+    // Scrub credential rows this seed used to plant in plaintext. Runs AFTER
+    // seedSttSettings so a re-seed can never leave a freshly written value behind.
+    await purgePlaintextSecretSettings(client);
     console.log('');
 
     console.log('STT domain seeding completed successfully!');
