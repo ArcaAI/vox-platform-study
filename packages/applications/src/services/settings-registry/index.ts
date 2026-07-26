@@ -22,3 +22,5 @@ export * from './descriptors/bootstrap-env.descriptors';
 export * from './descriptors/platform-knobs.descriptors';
 export * from './descriptors/feature-flags.descriptors';
 export * from './settings-registry-write.service';
+export * from './tenant-clamp';
+export * from './tenant-settings.service';

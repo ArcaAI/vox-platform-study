@@ -1,3 +1,4 @@
+import { CommonServiceModule, TenantSettingsService } from '@arcaai/applications';
 import { Global, Module } from '@nestjs/common';
 import { GracefulShutdownService, IGracefulShutdownService } from './graceful-shutdown.service';
 
@@ -9,7 +10,11 @@ import { GracefulShutdownService, IGracefulShutdownService } from './graceful-sh
  */
 @Global()
 @Module({
+  // `CommonServiceModule` supplies `IAppSettingsService`, which backs the
+  // `global-kv` cascade for `shutdown.*` (TASK-558 lane I).
+  imports: [CommonServiceModule],
   providers: [
+    TenantSettingsService,
     {
       provide: IGracefulShutdownService,
       useClass: GracefulShutdownService,

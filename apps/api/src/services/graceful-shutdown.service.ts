@@ -1,4 +1,5 @@
-import { BeforeApplicationShutdown, Injectable, Logger, OnApplicationShutdown, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { TenantSettingsService } from '@arcaai/applications';
+import { BeforeApplicationShutdown, Injectable, Logger, OnApplicationShutdown, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 
 /**
  * GracefulShutdownService
@@ -35,26 +36,49 @@ export class GracefulShutdownService implements OnModuleInit, OnModuleDestroy, B
   private _isReady = false;
 
   /**
-   * Shutdown timeout in milliseconds.
-   * If shutdown takes longer than this, force exit.
-   * Default: 30 seconds (Kubernetes default terminationGracePeriodSeconds)
-   */
-  private readonly shutdownTimeoutMs: number;
-
-  /**
    * Registered cleanup callbacks to be executed during shutdown.
    */
   private readonly cleanupCallbacks: Map<string, () => Promise<void>> = new Map();
 
-  constructor() {
-    // Parse shutdown timeout from environment, default to 30 seconds
-    this.shutdownTimeoutMs = parseInt(process.env.SHUTDOWN_TIMEOUT_MS || '30000', 10);
-    const drainDelayMs = parseInt(process.env.SHUTDOWN_DRAIN_DELAY_MS || '5000', 10);
+  constructor(
+    // TASK-558 lane I — `shutdown.timeoutMs` / `shutdown.drainDelayMs` are
+    // `global-kv` platform settings. Optional so a graph without the settings
+    // module keeps the env-var behaviour exactly.
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
+  ) {
     this.logger.log({
       message: 'Service initialized',
       shutdownTimeoutMs: this.shutdownTimeoutMs,
-      drainDelayMs,
+      drainDelayMs: this.drainDelayMs,
     });
+  }
+
+  /**
+   * Shutdown timeout in milliseconds — resolved AT USE, not at construction.
+   *
+   * These used to be `process.env` reads captured in the constructor, which
+   * made them restart-bound (plan §9.2 L1). Resolving them when a drain
+   * actually starts means an operator can widen the window during a bad deploy
+   * and the very next pod to terminate honours it. Platform-only:
+   * `maxScope: 'system'`, so there is no tenant lane to consult.
+   * `SHUTDOWN_TIMEOUT_MS` remains the bootstrap fallback.
+   */
+  private get shutdownTimeoutMs(): number {
+    return this.resolveMs('shutdown.timeoutMs', 'SHUTDOWN_TIMEOUT_MS', 30000);
+  }
+
+  /** Load-balancer drain delay in ms — resolved at use; see `shutdownTimeoutMs`. */
+  private get drainDelayMs(): number {
+    return this.resolveMs('shutdown.drainDelayMs', 'SHUTDOWN_DRAIN_DELAY_MS', 5000);
+  }
+
+  private resolveMs(key: string, envVar: string, fallback: number): number {
+    if (this.tenantSettings) {
+      const resolved = this.tenantSettings.resolvePlatform<number>(key).value;
+      if (typeof resolved === 'number' && Number.isFinite(resolved)) return resolved;
+    }
+    const parsed = parseInt(process.env[envVar] || String(fallback), 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
   }
 
   /**
@@ -74,7 +98,7 @@ export class GracefulShutdownService implements OnModuleInit, OnModuleDestroy, B
    * This is the first phase of shutdown - stop accepting new work.
    */
   async onModuleDestroy(): Promise<void> {
-    const drainDelayMs = parseInt(process.env.SHUTDOWN_DRAIN_DELAY_MS || '5000', 10);
+    const drainDelayMs = this.drainDelayMs;
 
     this.logger.log({
       message: 'Shutdown signal received',

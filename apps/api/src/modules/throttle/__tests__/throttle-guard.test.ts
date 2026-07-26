@@ -21,7 +21,13 @@ import { APP_GUARD } from '@nestjs/core';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { IEntitlementsService, IRateLimitSettingsService, type TenantRateLimitPolicy } from '@arcaai/applications';
+import {
+  IEntitlementsService,
+  IRateLimitSettingsService,
+  RateLimitSettingsService,
+  TenantSettingsService,
+  type TenantRateLimitPolicy,
+} from '@arcaai/applications';
 import { ThrottleConfigModule } from '../throttle.module';
 import { TieredThrottlerGuard } from '../tiered-throttler.guard';
 
@@ -176,6 +182,13 @@ describe('TieredThrottlerGuard (DB-backed live overrides)', () => {
     isEnabled: () => stub.enabled,
     getTier: () => stub.tier,
     getRouteOverride: () => stub.routeOverride,
+    // TASK-558 lane I — this suite has NO tenant lane wired, so the tenant
+    // accessors resolve to the platform answer and every assertion below keeps
+    // its original meaning. `limitSource: 'system'` is what tells the guard the
+    // value did not come from a tenant's own row, which is what keeps the
+    // historical precedence chain (decorator > plan > tier) intact.
+    isEnabledForTenant: () => stub.enabled,
+    getTierForTenant: () => ({ ...stub.tier, limitSource: 'system', ttlSource: 'system' }),
   };
 
   const hit = (path: string) => request(app.getHttpServer()).get(path);
@@ -296,11 +309,17 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
     'tenant-off': null, // kill-switch OFF / ungated → global tiers unchanged
   };
 
+  const tierOf = (name: string) => (name === 'strict' ? { limit: 2, ttl: 60000 } : { limit: 1000, ttl: 60000 });
+
   const settings: IRateLimitSettingsService = {
     isEnabled: () => true,
     // default tier is generous; strict tier is tight (2/min).
-    getTier: (name) => (name === 'strict' ? { limit: 2, ttl: 60000 } : { limit: 1000, ttl: 60000 }),
+    getTier: (name) => tierOf(name),
     getRouteOverride: () => undefined,
+    // TASK-558 lane I — no tenant lane wired here either, so these report
+    // `system` and the PLAN tier keeps winning, exactly as this suite asserts.
+    isEnabledForTenant: () => true,
+    getTierForTenant: (name) => ({ ...tierOf(name), limitSource: 'system', ttlSource: 'system' }),
   };
 
   const entitlements = {
@@ -368,5 +387,146 @@ describe('TieredThrottlerGuard (per-tenant plan rate-limits)', () => {
       expect((await hit('/q7/decorated', 'tenant-strict')).status).toBe(200);
     }
     expect((await hit('/q7/decorated', 'tenant-strict')).status).toBe(429);
+  });
+});
+
+/**
+ * TASK-558 lane I — THE HEADLINE PROOF, at the HTTP layer.
+ *
+ * "Changing a rate limit for ONE tenant changes that tenant's behaviour and no
+ * other, with no redeploy."
+ *
+ * `RATE_LIMIT_MAX_REQUESTS` was a `process.env` read evaluated once while the
+ * throttler module was constructed. It is now the `global-kv` key
+ * `rateLimit.maxRequests` at `maxScope: 'tenant'`, resolved on the request
+ * path — so the number that decides a 429 comes from a settings ROW, per
+ * tenant, and a write to that row is live on the next request.
+ *
+ * Wired with a REAL `RateLimitSettingsService` + `TenantSettingsService` over a
+ * fake two-lane settings cache, so the resolution, the clamp and the guard's
+ * precedence chain are all production code.
+ */
+@Controller('lane-i')
+class LaneIController {
+  @Get('limited')
+  limited() {
+    return { ok: 'limited' };
+  }
+
+  @Get('normal')
+  normal() {
+    return { ok: 'normal' };
+  }
+
+  @Get('live')
+  live() {
+    return { ok: 'live' };
+  }
+
+  @Get('clamped')
+  clamped() {
+    return { ok: 'clamped' };
+  }
+}
+
+describe('TieredThrottlerGuard (per-tenant DB rate limits — TASK-558 lane I)', () => {
+  let app: INestApplication;
+  const prevEnabled = process.env.RATE_LIMIT_ENABLED;
+
+  const TENANT_TIGHT = 'tenant-tight';
+  const TENANT_NORMAL = 'tenant-normal';
+
+  // The platform row + per-tenant override rows, mutable so a test can perform
+  // an admin "write" mid-flight and prove it takes effect with no restart.
+  const platform: Record<string, unknown> = { 'rateLimit.maxRequests': 1000, 'rateLimit.windowMs': 60000 };
+  const tenantRows: Record<string, Record<string, unknown>> = { [TENANT_TIGHT]: { 'rateLimit.maxRequests': 2 } };
+
+  const appSettings = {
+    getValueFromCache: (key: string) => (key in platform ? platform[key] : null),
+    getTenantValueFromCache: (tenantId: string, key: string) => {
+      const rows = tenantRows[tenantId];
+      return rows && key in rows ? rows[key] : null;
+    },
+    getValueWithDefault: (key: string, fallback: unknown) => (key in platform ? platform[key] : fallback),
+    hasSetting: (key: string) => key in platform,
+  };
+
+  const settings = new RateLimitSettingsService(appSettings as never, new TenantSettingsService(appSettings as never));
+
+  const hit = (path: string, tenantId?: string) => {
+    const req = request(app.getHttpServer()).get(path);
+    return tenantId ? req.set('Authorization', `Bearer ${makeJwt(tenantId)}`) : req;
+  };
+
+  beforeAll(async () => {
+    process.env.RATE_LIMIT_ENABLED = 'true';
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [ThrottleConfigModule],
+      controllers: [LaneIController],
+      providers: [
+        { provide: APP_GUARD, useClass: TieredThrottlerGuard },
+        { provide: IRateLimitSettingsService, useValue: settings },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    if (app) await app.close();
+    if (prevEnabled === undefined) {
+      delete process.env.RATE_LIMIT_ENABLED;
+    } else {
+      process.env.RATE_LIMIT_ENABLED = prevEnabled;
+    }
+  });
+
+  // NOTE ON ROUTE-PER-TENANT. The throttler's TRACKER is IP-based by design
+  // (`tiered-throttler.guard.ts`: "only the effective limit/ttl is plan-aware"),
+  // so two tenants calling the SAME route from the same client share one
+  // counter and one block window. Each tenant therefore gets its own route
+  // here; what is under test is the LIMIT each tenant's request resolves to,
+  // which is exactly what lane I moved into the database.
+  it('enforces ONE tenant\u2019s own limit — the tight tenant 429s on its 3rd call', async () => {
+    // The tight tenant's row says 2/min, against a platform row of 1000.
+    expect((await hit('/lane-i/limited', TENANT_TIGHT)).status).toBe(200);
+    expect((await hit('/lane-i/limited', TENANT_TIGHT)).status).toBe(200);
+    expect((await hit('/lane-i/limited', TENANT_TIGHT)).status).toBe(429);
+  });
+
+  it('leaves every OTHER tenant on the platform value', async () => {
+    // Same app, same platform row, no row of its own → 1000/min, so six calls
+    // that would have 429'd under the tight tenant's limit all pass.
+    for (let i = 0; i < 6; i++) {
+      expect((await hit('/lane-i/normal', TENANT_NORMAL)).status).toBe(200);
+    }
+  });
+
+  it('picks up an admin write with NO redeploy', async () => {
+    // TENANT_NORMAL starts on the generous platform row.
+    for (let i = 0; i < 3; i++) {
+      expect((await hit('/lane-i/live', TENANT_NORMAL)).status).toBe(200);
+    }
+
+    // An admin writes a tenant-scope row; the settings cache refresh publishes
+    // it. The very next request through the SAME running app enforces it — no
+    // restart, no redeploy.
+    tenantRows[TENANT_NORMAL] = { 'rateLimit.maxRequests': 3 };
+    expect((await hit('/lane-i/live', TENANT_NORMAL)).status).toBe(429);
+
+    // …and that write did not touch any other tenant's resolved limit.
+    expect(settings.getTierForTenant('default', TENANT_TIGHT).limit).toBe(2);
+    expect(settings.getTierForTenant('default', 'tenant-third').limit).toBe(1000);
+  });
+
+  it('clamps a tenant that writes itself a limit ABOVE the platform value', async () => {
+    // A tenant trying to raise its own ceiling to 5000 gets the platform 1000.
+    tenantRows[TENANT_NORMAL] = { 'rateLimit.maxRequests': 5000 };
+    for (let i = 0; i < 8; i++) {
+      expect((await hit('/lane-i/clamped', TENANT_NORMAL)).status).toBe(200);
+    }
+    expect(settings.getTierForTenant('default', TENANT_NORMAL).limit).toBe(1000);
   });
 });

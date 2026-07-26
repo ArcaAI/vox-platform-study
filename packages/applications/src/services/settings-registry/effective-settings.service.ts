@@ -9,10 +9,10 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { IAiTaskDefaultService } from '../ai-task-default/IAiTaskDefaultService';
-import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { ConfigResolutionContext, ConfigResolver, PipelineToggleKey } from '../config-resolver/config-resolver.service';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import type { SettingDescriptor } from './registry.types';
+import { applyDeclaredFailMode, TenantSettingsService } from './tenant-settings.service';
 
 export interface EffectiveSettingResult {
   key: string;
@@ -35,13 +35,9 @@ export interface EffectiveSettingResult {
  * control plane as "the default".
  */
 export function applyFailMode(descriptor: SettingDescriptor): EffectiveSettingResult {
-  if (descriptor.failMode === 'closed') {
-    throw new ArgumentInvalidException(
-      `Setting '${descriptor.key}' could not be resolved and is declared fail-closed; ` +
-        'no default is substituted (provider/model selection and secrets never fall back).',
-    );
-  }
-  return { key: descriptor.key, tier: descriptor.tier, value: descriptor.default, sourceScope: 'code-default' };
+  // The policy itself lives in `tenant-settings.service.ts` so BOTH read
+  // surfaces share one implementation; this wrapper only shapes the result.
+  return { key: descriptor.key, tier: descriptor.tier, value: applyDeclaredFailMode(descriptor), sourceScope: 'code-default' };
 }
 
 @Injectable()
@@ -52,10 +48,16 @@ export class EffectiveSettingsService {
     // read task-model defaults (and existing unit tests) keep working; an
     // unwired models.* read falls through to the no-resolver error.
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
-    // Backs the `global-kv` override lane. Optional so graphs that
-    // never read KV settings (and existing unit tests) keep working; an unwired
-    // resolver simply falls back to the descriptor default.
-    @Optional() @Inject(IAppSettingsService) private readonly appSettings?: IAppSettingsService,
+    // Backs the `global-kv` lane. Optional so graphs that never read KV
+    // settings (and existing unit tests) keep working; an unwired resolver
+    // simply falls back to the descriptor default.
+    //
+    // TASK-558 lane I: this used to be `IAppSettingsService` read directly with
+    // a key-only lookup, which could only ever answer with the PLATFORM value.
+    // Now that six knobs are `maxScope: 'tenant'`, the facade must answer for
+    // the CALLER'S tenant or it would report a value that is not the one the
+    // consumer will actually enforce.
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {}
 
   /**
@@ -94,21 +96,19 @@ export class EffectiveSettingsService {
       return { key, tier: descriptor.tier, value: effective.modelSlug, sourceScope: effective.source ?? 'none' };
     }
 
-    // The `global-kv` override lane. Every global-kv key,
-    // INCLUDING `agentic.context.*` (which previously short-circuited to the
-    // code default here), now resolves through the AppSettings cache that the
-    // registry write lane populates:
+    // The `global-kv` lane — the full cascade (TASK-558 lane I):
     //
-    //   GlobalSetting/AppSettings value  →  descriptor.default
-    //   sourceScope: 'global-kv'         →  'code-default'
+    //   tenant override  →  SYSTEM/platform row  →  descriptor.default
+    //   sourceScope:  'tenant'  →  'system'  →  'code-default'
     //
-    // This makes the read surface TRUTHFUL: before, a value written to the KV
-    // store was invisible here and the facade always reported the code default.
-    // Live-doc/harness CONSUMPTION of the resolved value is a later ticket;
-    // this only makes the read honest.
+    // The reported `sourceScope` is the tier that actually answered, so a
+    // caller can see WHY a value is what it is (§9.2 L8). `ctx.tenantId` is the
+    // tenant the caller is asking about — for a tenant admin that is its own
+    // tenant, for a global admin the working tenant resolved by the controller.
     if (descriptor.tier === 'global-kv') {
-      const stored = this.appSettings?.getValueWithDefault<unknown>(key, null) ?? null;
-      return stored !== null ? { key, tier: descriptor.tier, value: stored, sourceScope: 'global-kv' } : applyFailMode(descriptor);
+      if (!this.tenantSettings) return applyFailMode(descriptor);
+      const resolved = this.tenantSettings.resolve(key, ctx.tenantId ?? null);
+      return { key, tier: descriptor.tier, value: resolved.value, sourceScope: resolved.source };
     }
 
     throw new ArgumentInvalidException(`No effective resolver is registered for setting '${key}'.`);

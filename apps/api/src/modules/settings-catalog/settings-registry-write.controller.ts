@@ -2,6 +2,7 @@ import {
   EffectiveSettingsService,
   HOPE_SETTINGS_REGISTRY,
   IActiveUserContext,
+  type SettingScope,
   SettingsRegistryWriteService,
   isSuperAdmin,
 } from '@arcaai/applications';
@@ -52,6 +53,13 @@ export class SettingsRegistryWriteController {
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform admins scope with this; tenant admins are pinned.' })
   @ApiQuery({ name: 'departmentId', required: false })
   @ApiQuery({ name: 'doctorId', required: false })
+  @ApiQuery({
+    name: 'scope',
+    required: false,
+    enum: ['system', 'tenant'],
+    description:
+      'Which ROW the returned `version`/ETag refers to — the scope the caller intends to PUT at. Defaults to `system` (the platform row). A tenant admin editing its own override must pass `tenant`, or it will echo the platform row’s version as `If-Match` and get a 412.',
+  })
   @ApiResponse({ status: 200, type: EffectiveSettingResponse })
   @ApiResponse({ status: 404, description: 'Unknown registry key.' })
   async getSetting(
@@ -59,6 +67,7 @@ export class SettingsRegistryWriteController {
     @Query('tenantId') tenantId?: string,
     @Query('departmentId') departmentId?: string,
     @Query('doctorId') doctorId?: string,
+    @Query('scope') scope?: SettingScope,
   ): Promise<EffectiveSettingResponse> {
     const descriptor = HOPE_SETTINGS_REGISTRY.get(key);
     // An unknown key on a path segment is a genuine "no such resource" — 404,
@@ -83,7 +92,12 @@ export class SettingsRegistryWriteController {
     // on the PUT. 0 when no row is stored yet (the value is a code default), and
     // the interceptor deliberately emits no ETag for a non-positive version —
     // which is correct: there is nothing to precondition a first write against.
-    const version = await this.writeService.getBackingRowVersion(key);
+    //
+    // TASK-558 lane I: `scope` selects WHICH row that version comes from. With
+    // `maxScope: 'tenant'` keys there are now two rows per key (the platform
+    // one and the caller tenant's override), and preconditioning a tenant write
+    // on the platform row's version would 412 forever.
+    const version = await this.writeService.getBackingRowVersion(key, scope ?? 'system');
     return { ...effective, version };
   }
 

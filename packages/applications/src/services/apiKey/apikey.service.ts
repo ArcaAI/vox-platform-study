@@ -22,6 +22,7 @@ import { assertUserBelongsToTenant } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
 import { IEntitlementsService } from '../entitlements/IEntitlementsService';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { GLOBAL_ADMIN_ROLE } from '../tenant/constants';
 import { CreateApiKeyResult, IApiKeyService } from './IApiKeyService';
 import { CreateApiKeyRequest, UpdateApiKeyRequest } from './dto';
@@ -93,8 +94,41 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
     // Optional (append-only DI); enforces the plan
     // `maxApiKeys` quota on create (kill-switch-gated, no-op when OFF).
     @Optional() @Inject(IEntitlementsService) private readonly entitlements?: IEntitlementsService,
+    // TASK-558 lane I — the `global-kv` cascade backing
+    // `apiKey.maxLifetimeDays` (per-tenant) and `apiKey.allowQueryParam`
+    // (platform-only). Optional so legacy fixtures that construct this service
+    // directly keep the env-var behaviour exactly as it was.
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {
     super(eventEmitter, clsService, ResourceType.ApiKey);
+  }
+
+  /**
+   * The API-key lifetime ceiling for `tenantId`, in days, or `null` for
+   * unlimited (TASK-558 lane I).
+   *
+   * Cascade: the tenant's own row → the SYSTEM row → the descriptor default
+   * (unset ⇒ unlimited). `API_KEY_MAX_LIFETIME_DAYS` remains the BOOTSTRAP
+   * fallback used only when no settings resolver is wired — a fresh database or
+   * a graph that does not import the settings module — so nothing changes for a
+   * deployment that has not seeded the row yet.
+   *
+   * A tenant may only SHORTEN this (`tenant-clamp.ts`: lower-is-stricter), so a
+   * tenant admin can tighten its own credential policy but never extend it past
+   * what the platform allows.
+   */
+  private resolveMaxLifetimeDays(tenantId: EntityId | null): number | null {
+    if (this.tenantSettings) {
+      const resolved = this.tenantSettings.resolve<number | undefined>('apiKey.maxLifetimeDays', tenantId ?? null);
+      const days = typeof resolved.value === 'number' ? resolved.value : null;
+      if (days !== null) return days;
+      // `code-default` for this key means "no ceiling declared" (the descriptor
+      // deliberately carries no default: UNSET MEANS UNLIMITED). Fall through
+      // to the env bootstrap value rather than silently dropping an operator's
+      // pre-migration configuration.
+    }
+    const raw = process.env.API_KEY_MAX_LIFETIME_DAYS;
+    return raw ? parseInt(raw, 10) : null;
   }
 
   // ─── Key Generation Utilities ───────────────────────────────────────
@@ -259,7 +293,8 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       await this.entitlements.assertQuantityQuota(effectiveTenantId, 'maxApiKeys', currentCount);
     }
 
-    const maxLifetimeDays = process.env.API_KEY_MAX_LIFETIME_DAYS ? parseInt(process.env.API_KEY_MAX_LIFETIME_DAYS, 10) : null;
+    // Resolved for the KEY'S tenant, not the process (TASK-558 lane I).
+    const maxLifetimeDays = this.resolveMaxLifetimeDays(effectiveTenantId ?? null);
 
     let expiresAt = request.expiresAt ? new Date(request.expiresAt) : null;
 
@@ -915,7 +950,14 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       (request.headers['x-internal-service-key'] as string);
 
     if (!apiKey && request.query?.apiKey) {
-      const allowQueryParam = process.env.API_KEY_ALLOW_QUERY_PARAM === 'true';
+      // PLATFORM-ONLY (TASK-558 lane I): this runs while the request is still
+      // ANONYMOUS — it is the step that pulls the credential out in order to
+      // discover who is calling — so there is no tenant to scope it at, and the
+      // descriptor is `maxScope: 'system'`. `API_KEY_ALLOW_QUERY_PARAM` remains
+      // the bootstrap fallback when no settings resolver is wired.
+      const allowQueryParam = this.tenantSettings
+        ? this.tenantSettings.resolvePlatform<boolean>('apiKey.allowQueryParam').value === true
+        : process.env.API_KEY_ALLOW_QUERY_PARAM === 'true';
       if (!allowQueryParam) {
         this.logger.warn({
           message: 'API key in query parameter rejected',

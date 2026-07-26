@@ -14,6 +14,33 @@ const corsLogger = new Logger('CORS');
 const DEV_LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 /**
+ * TASK-558 lane I — where the allowed-origin list comes from at REQUEST time.
+ *
+ * `corsAllowedOrigins` is a `global-kv` platform setting now, so the list an
+ * operator tightens takes effect on the next request instead of the next
+ * deploy (plan §9.2 L1). This module cannot inject a Nest provider — it is
+ * imported by `main.ts` before the module graph exists — so the resolver is
+ * INSTALLED by `PlatformKnobsBinder` once the graph is up. Until then (and in
+ * any process that never installs one) `CORS_ALLOWED_ORIGINS` is read directly:
+ * the documented bootstrap fallback, byte-identical to the pre-lane behaviour.
+ */
+let platformOriginsResolver: (() => string | undefined) | null = null;
+
+/** Install the DB-backed resolver. Called once from `PlatformKnobsBinder`. */
+export function setPlatformCorsOriginsResolver(resolver: (() => string | undefined) | null): void {
+  platformOriginsResolver = resolver;
+}
+
+/** The raw comma-separated allow-list: platform setting, else the env fallback. */
+function resolveAllowedOrigins(): string | undefined {
+  if (platformOriginsResolver) {
+    const resolved = platformOriginsResolver();
+    if (resolved !== undefined && resolved !== '') return resolved;
+  }
+  return process.env.CORS_ALLOWED_ORIGINS;
+}
+
+/**
  * Structured debug log for the staging / production callback CORS path.
  * Dev no longer hits this — the RegExp value is interpreted by Express's
  * `cors` middleware directly.
@@ -41,7 +68,7 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
   }
 
   if (nodeEnv === 'production') {
-    const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS;
+    const allowedOrigins = resolveAllowedOrigins();
     if (allowedOrigins) {
       const originList = allowedOrigins.split(',').map((o) => o.trim());
       if (originList.includes(origin)) {

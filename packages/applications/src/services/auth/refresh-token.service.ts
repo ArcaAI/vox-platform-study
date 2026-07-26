@@ -1,6 +1,7 @@
-import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import * as crypto from 'node:crypto';
 import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 
 /**
  * RefreshTokenService
@@ -35,8 +36,10 @@ import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
  *   refresh-token-family:<family>:<sha256>     → "1" (membership marker)
  *   refresh-token-consumed:<sha256>            → "<family>"
  *
- * TTL is configurable via `REFRESH_TOKEN_TTL_SECONDS` env var; default
- * 7 days (`604800`) per a deliberate, locked product decision.
+ * TTL is the `global-kv` setting `refreshToken.ttlSeconds` (TASK-558 lane I),
+ * resolved PER TENANT on every `issue()`; default 7 days (`604800`) per a
+ * deliberate, locked product decision. `REFRESH_TOKEN_TTL_SECONDS` remains the
+ * bootstrap fallback for a graph with no settings resolver.
  *
  * Documented trade-offs:
  *
@@ -59,16 +62,15 @@ import { IRedisCacheService } from '../baseServices/redis/redis-cache.service';
  *     rotation + attacker replay both winning). Race-replay covered by
  *     the `Promise.all([consume(t), consume(t)])` unit test.
  *
- *   - **`REFRESH_TOKEN_TTL_SECONDS` read via `process.env` in the
- *     constructor** (see implementation). `IConfigService` is the
- *     canonical typed-config wrapper, but the cache service this
- *     module depends on (`IRedisCacheService`) already injects
- *     `IConfigService` for its own connection setup — adding a second
- *     injection here purely for TTL parsing is more wiring than the
- *     single env-var lookup needs. The `// eslint-disable-next-line
- *     turbo/no-undeclared-env-vars` is the project convention for this
- *     pattern (see `apps/api/src/main.ts`). Deferred as a §10 nit; the
- *     compatibility contract is unchanged either way.
+ *   - **TTL resolution moved out of the constructor** (TASK-558 lane I).
+ *     It used to be a single `process.env.REFRESH_TOKEN_TTL_SECONDS` read at
+ *     construction, which made the value process-wide AND restart-bound —
+ *     both of which plan §9.2 L1 rules out for something an admin tunes.
+ *     `resolveTtlSeconds()` now walks the `global-kv` cascade per issue, so a
+ *     tenant can hold a shorter session than the platform and a platform
+ *     change lands without a restart. The env var survives as the documented
+ *     bootstrap fallback, so a graph with no settings resolver behaves
+ *     exactly as before.
  */
 
 export const REFRESH_TOKEN_KEY_PREFIX = 'refresh-token:';
@@ -172,18 +174,41 @@ interface PersistedRecord {
 @Injectable()
 export class RefreshTokenService implements IRefreshTokenService {
   private readonly logger = new Logger(RefreshTokenService.name);
-  private readonly ttlSeconds: number;
 
-  constructor(@Inject(IRedisCacheService) private readonly cache: IRedisCacheService) {
-    const rawTtl = process.env.REFRESH_TOKEN_TTL_SECONDS;
-    const parsed = rawTtl ? Number(rawTtl) : NaN;
-    this.ttlSeconds = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_TTL_SECONDS;
+  constructor(
+    @Inject(IRedisCacheService) private readonly cache: IRedisCacheService,
+    // TASK-558 lane I — `refreshToken.ttlSeconds` is a `global-kv` key at
+    // `maxScope: 'tenant'`. Optional so a graph without the settings module
+    // (and the pre-existing fixtures) keeps the env-var behaviour exactly.
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
+  ) {}
+
+  /**
+   * The refresh-token lifetime for `tenantId`, in seconds.
+   *
+   * Resolved on EVERY issue, not once in the constructor: the whole point of
+   * moving this key into the database is that a change must take effect
+   * without a restart (§9.2 L1). A tenant may only SHORTEN it
+   * (`tenant-clamp.ts`: lower-is-stricter), so this cannot be used to extend a
+   * session past the platform's own ceiling.
+   *
+   * `REFRESH_TOKEN_TTL_SECONDS` remains the BOOTSTRAP fallback for a graph with
+   * no settings resolver. A non-finite or non-positive value from EITHER source
+   * degrades to the 7-day default, unchanged from before.
+   */
+  private resolveTtlSeconds(tenantId: string | null): number {
+    const raw = this.tenantSettings
+      ? this.tenantSettings.resolve<number>('refreshToken.ttlSeconds', tenantId).value
+      : process.env.REFRESH_TOKEN_TTL_SECONDS;
+    const parsed = raw === undefined || raw === null || raw === '' ? NaN : Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_TTL_SECONDS;
   }
 
   async issue(input: IssueRefreshTokenInput): Promise<IssuedRefreshToken> {
     const rawToken = crypto.randomBytes(REFRESH_TOKEN_RAW_BYTES).toString('base64url');
     const family = input.family ?? crypto.randomBytes(REFRESH_FAMILY_RAW_BYTES).toString('hex');
-    const expiresAt = Math.floor(Date.now() / 1000) + this.ttlSeconds;
+    const ttlSeconds = this.resolveTtlSeconds(input.tenantId || null);
+    const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
     const hash = this.hash(rawToken);
 
     const record: PersistedRecord = {
@@ -194,8 +219,8 @@ export class RefreshTokenService implements IRefreshTokenService {
       expiresAt,
     };
 
-    await this.cache.setex(this.key(hash), this.ttlSeconds, JSON.stringify(record));
-    await this.cache.setex(this.familyMemberKey(family, hash), this.ttlSeconds, '1');
+    await this.cache.setex(this.key(hash), ttlSeconds, JSON.stringify(record));
+    await this.cache.setex(this.familyMemberKey(family, hash), ttlSeconds, '1');
 
     return { rawToken, family, expiresAt };
   }

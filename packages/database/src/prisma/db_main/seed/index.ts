@@ -18,6 +18,7 @@ import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
 import { seedGlobalSetting } from './11-global-setting';
+import { seedPlatformKnobSettings } from './11a-platform-knob-settings';
 import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedPipelinePolicy } from './14-pipeline-policy';
@@ -152,6 +153,10 @@ export const seed = async () => {
     }
     console.log('');
     await seedGlobalSetting(client);
+    console.log('');
+    // Platform-knob rows for the env keys TASK-558 lane I moved into the
+    // `global-kv` tier, seeded at today's env values so behaviour is identical.
+    await seedPlatformKnobSettings(client);
     console.log('');
     // Platform-wide rate-limit config (single-tenant rows).
     await seedRateLimitSettings(client);
