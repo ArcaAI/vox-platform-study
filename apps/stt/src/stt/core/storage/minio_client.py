@@ -170,8 +170,8 @@ async def initialize_minio() -> None:
 
     _client = MinIOClient(
         endpoint=settings.minio_endpoint,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key,
+        access_key=settings.minio_access_key.get_secret_value(),
+        secret_key=settings.minio_secret_key.get_secret_value(),
         secure=settings.minio_secure,
         cert_check=settings.minio_cert_check,
     )

@@ -43,7 +43,11 @@ class AzureFoundryLoader(BaseModelLoader):
             )
 
         endpoint = (settings.azure_foundry_endpoint or "").rstrip("/")
-        api_key = settings.azure_foundry_api_key
+        api_key = (
+            settings.azure_foundry_api_key.get_secret_value()
+            if settings.azure_foundry_api_key
+            else None
+        )
         if not endpoint or not api_key:
             raise CloudASRAuthError(
                 "Azure Foundry credentials missing: set AZURE_FOUNDRY_ENDPOINT "

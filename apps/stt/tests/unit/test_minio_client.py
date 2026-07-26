@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from minio.error import S3Error
+from pydantic import SecretStr
 
 from stt.core.exceptions import StorageError
 from stt.core.storage.minio_client import (
@@ -348,8 +349,8 @@ class TestMinIOClientGlobalFunctions:
 
         mock_settings = MagicMock()
         mock_settings.minio_endpoint = "localhost:9000"
-        mock_settings.minio_access_key = "access"
-        mock_settings.minio_secret_key = "secret"
+        mock_settings.minio_access_key = SecretStr("access")
+        mock_settings.minio_secret_key = SecretStr("secret")
         mock_settings.minio_secure = False
         mock_settings.minio_audio_bucket = "audio"
         mock_settings.minio_chunk_bucket = "chunks"

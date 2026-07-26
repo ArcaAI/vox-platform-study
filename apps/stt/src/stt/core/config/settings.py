@@ -5,7 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from hope_env import load_env
+from hope_env import hope_settings_sources, load_env, register_settings_cache
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,6 +19,9 @@ _ENV_FILE = _SERVICE_ROOT / ".env"
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE) if _ENV_FILE.is_file() else None,
@@ -88,8 +91,8 @@ class Settings(BaseSettings):
 
     # MinIO (Object storage)
     minio_endpoint: str = "localhost:9000"
-    minio_access_key: str = "minio_admin"
-    minio_secret_key: str = "minio_admin"
+    minio_access_key: SecretStr = SecretStr("minio_admin")
+    minio_secret_key: SecretStr = SecretStr("minio_admin")
     minio_secure: bool = False
     minio_cert_check: bool = True
     minio_audio_bucket: str = "hope-audio"
@@ -109,12 +112,13 @@ class Settings(BaseSettings):
         default="",
         description="Default Azure storage account name (used when STORAGE_PROVIDER=azure_blob).",
     )
-    azure_storage_account_key: str = Field(
-        default="",
+    azure_storage_account_key: SecretStr = Field(
+        default=SecretStr(""),
         description="Default Azure storage account shared key.",
     )
-    azure_storage_connection_string: str = Field(
-        default="",
+    # A connection string embeds `AccountKey=…`, so it is a credential in full.
+    azure_storage_connection_string: SecretStr = Field(
+        default=SecretStr(""),
         description="Default Azure connection string (preferred over account/key when set).",
     )
     azure_storage_endpoint_suffix: str = Field(
@@ -127,8 +131,8 @@ class Settings(BaseSettings):
         default="http://localhost:8868/api/v1",
         description="Internal API Gateway URL",
     )
-    api_gateway_key: str = Field(
-        default="",
+    api_gateway_key: SecretStr = Field(
+        default=SecretStr(""),
         description="Internal service authentication key",
     )
     api_gateway_timeout: int = 30
@@ -161,7 +165,7 @@ class Settings(BaseSettings):
         default_factory=lambda: os.environ.get("HF_HOME") or "/models/hf-cache",
         description="HuggingFace model cache directory",
     )
-    huggingface_token: str | None = Field(
+    huggingface_token: SecretStr | None = Field(
         default=None,
         description="HuggingFace API token (optional)",
     )
@@ -226,7 +230,7 @@ class Settings(BaseSettings):
         return str(v).strip()
 
     # Azure Speech (cloud ASR engine)
-    azure_speech_key: str | None = Field(
+    azure_speech_key: SecretStr | None = Field(
         default=None,
         description="Azure Cognitive Services Speech subscription key",
     )
@@ -247,7 +251,7 @@ class Settings(BaseSettings):
         default=None,
         description="Azure AI Foundry / Speech resource endpoint, e.g. https://<res>.cognitiveservices.azure.com",
     )
-    azure_foundry_api_key: str | None = Field(
+    azure_foundry_api_key: SecretStr | None = Field(
         default=None,
         description="Azure AI Foundry API key",
     )
@@ -806,3 +810,11 @@ def get_settings() -> Settings:
     """Get cached settings instance."""
     load_env()
     return Settings()
+
+
+# stt is the ONE service that caches its settings, so it is the one service where
+# a Vault Agent rewriting `/vault/secrets/*` in place would otherwise be served the
+# pre-rotation value forever. Registering the cache lets `hope_env.reload_secrets()`
+# drop it; the other five build a fresh `Settings()` per `get_settings()` call and
+# need no bookkeeping (§13.2 P6).
+register_settings_cache(get_settings.cache_clear)

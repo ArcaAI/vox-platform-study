@@ -67,7 +67,11 @@ class HuggingFaceLoader(BaseModelLoader):
                 torch_dtype=torch_dtype,
                 cache_dir=cache_dir,
                 revision=model_config.source_revision,
-                token=settings.huggingface_token,
+                token=(
+                    settings.huggingface_token.get_secret_value()
+                    if settings.huggingface_token
+                    else None
+                ),
                 attn_implementation=model_config.attn_implementation,
             )
 

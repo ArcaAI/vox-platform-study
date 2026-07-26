@@ -200,7 +200,7 @@ def get_effective_config_client() -> EffectiveConfigClient:
         settings = get_settings()
         _client = EffectiveConfigClient(
             base_url=settings.api_gateway_url,
-            api_key=settings.api_gateway_key,
+            api_key=settings.api_gateway_key.get_secret_value(),
         )
     return _client
 

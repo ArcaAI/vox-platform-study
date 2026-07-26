@@ -449,6 +449,6 @@ def get_api_client() -> APIGatewayClient:
     """Get the API Gateway client instance."""
     return APIGatewayClient(
         base_url=settings.api_gateway_url,
-        api_key=settings.api_gateway_key,
+        api_key=settings.api_gateway_key.get_secret_value(),
         timeout=settings.api_gateway_timeout,
     )

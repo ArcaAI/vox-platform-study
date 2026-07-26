@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from hope_env import load_env
+from hope_env import hope_settings_sources, load_env
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -24,6 +24,9 @@ def _split_csv(value: Any) -> Any:
 
 class AzureSpeechConfig(BaseSettings):
     """Azure AI Speech TTS provider configuration (primary managed cloud path)."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     # populate_by_name lets tests construct the config directly by field name
     # (api_key=...) even though api_key/region carry env validation aliases.
@@ -48,6 +51,9 @@ class AzureSpeechConfig(BaseSettings):
 class KokoroConfig(BaseSettings):
     """Self-hosted Kokoro (English) engine configuration."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="TTS_KOKORO_")
 
     enabled: bool = False
@@ -57,6 +63,9 @@ class KokoroConfig(BaseSettings):
 
 class IndicParlerConfig(BaseSettings):
     """Self-hosted AI4Bharat Indic Parler-TTS (Malayalam) engine configuration."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TTS_PARLER_")
 
@@ -84,6 +93,9 @@ class IndicF5Config(BaseSettings):
     TTS_INDICF5_ENABLED=true in production without written clearance.
     """
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="TTS_INDICF5_")
 
     enabled: bool = False
@@ -102,6 +114,9 @@ class SarvamConfig(BaseSettings):
     enabling for real patient data.
     """
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_", populate_by_name=True)
 
     enabled: bool = False
@@ -118,6 +133,9 @@ class SarvamConfig(BaseSettings):
 
 class Settings(BaseSettings):
     """Root TTS service settings."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TTS_")
 

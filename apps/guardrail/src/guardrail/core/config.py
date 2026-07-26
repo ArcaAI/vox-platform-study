@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from hope_env import load_env
+from hope_env import hope_settings_sources, load_env
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,6 +16,9 @@ class OllamaConfig(BaseSettings):
     providers backed by this config use generic SAFE/UNSAFE prompts rather than the
     Granite Guardian protocol. Select it via ``GUARDRAIL_V2_PROVIDER=ollama``.
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_OLLAMA_")
 
@@ -56,6 +59,9 @@ class OpenAICompatConfig(BaseSettings):
     ``lmstudio-community/granite-guardian-4.1-8b-GGUF``). Select it via the default
     ``GUARDRAIL_V2_PROVIDER=lm-studio``.
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_OPENAI_COMPAT_")
 
@@ -148,6 +154,9 @@ class LlamaCppConfig(OpenAICompatConfig):
 class GlinerConfig(BaseSettings):
     """GLiNER ONNX provider configuration for content safety/adversarial/PII."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_GLINER_")
 
     enabled: bool = True
@@ -172,6 +181,9 @@ class GroundednessConfig(BaseSettings):
     scoring error all degrade to ``unverified`` — no path ever yields ``grounded``
     without the model actually entailing the segment.
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_GROUNDEDNESS_")
 
@@ -222,6 +234,9 @@ class GroundednessConfig(BaseSettings):
 class RedisConfig(BaseSettings):
     """Redis configuration for job queue and caching."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_REDIS_")
 
     redis_url: str = "redis://localhost:6379/0"
@@ -232,6 +247,9 @@ class RedisConfig(BaseSettings):
 
 class QueueConfig(BaseSettings):
     """Job queue configuration."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_QUEUE_")
 
@@ -250,6 +268,9 @@ class DatabaseConfig(BaseSettings):
     (SQLAlchemy + asyncpg, mirroring STT), with a short TTL cache. When false
     the service uses only the env-selected engine (``GUARDRAIL_V2_PROVIDER``).
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_")
 
@@ -300,6 +321,9 @@ class DatabaseConfig(BaseSettings):
 
 class Settings(BaseSettings):
     """Root application settings."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_")
 
