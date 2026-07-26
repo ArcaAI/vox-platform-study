@@ -7,11 +7,15 @@ github-backup:
   image: alpine:3.20
   tags: [deploy]
   interruptible: false
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   variables:
     GIT_DEPTH: "0"            # full clone so all objects are available for push
     GIT_LFS_SKIP_SMUDGE: "1"  # skip downloading LFS blobs during clone (saves time)
+    VAULT_AUTH_ROLE: "hope-ci-deploy"
+    VAULT_SECRETS: !reference [.vault-secret-sets, github-backup]
   before_script:
-    - apk add --no-cache git git-lfs
+    - apk add --no-cache git git-lfs curl
+    - !reference [.vault-oidc, before_script]
     - git lfs install --force
     - git config --global user.name "GitLab CI"
     - git config --global user.email "ci@gitlab.com"

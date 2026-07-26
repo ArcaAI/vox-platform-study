@@ -20,6 +20,9 @@ prepare-test-db:
     - job: install-node
       optional: true
   variables:
+    # Vault first (TASK-558 §13.3 C1); $CI_DATABASE_URL is the fallback used
+    # while VAULT_ADDR is unset. `.test-node-base` carries the fetch step.
+    VAULT_SECRETS: !reference [.vault-secret-sets, ci-db]
     DATABASE_URL: $CI_DATABASE_URL
   script:
     - echo "══ prepare-test-db ══"
