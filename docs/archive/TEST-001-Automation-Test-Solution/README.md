@@ -428,7 +428,7 @@ services:
       retries: 5
 
   redis-test:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - '6380:6379'
     healthcheck:

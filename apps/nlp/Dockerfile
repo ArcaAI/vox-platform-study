@@ -47,6 +47,11 @@ COPY apps/tts/pyproject.toml ./apps/tts/
 # deps: uv builds this one here, so its source must be present in layer 1. It is
 # dependency-free and changes rarely, so this costs no meaningful cache churn.
 COPY packages/py-runtime-models ./packages/py-runtime-models
+# TASK-558 — shared env-file loader (`hope-env`). Same workspace path-dependency
+# rule as py-runtime-models above: every service now declares `hope-env`, so
+# `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
+# file:///app/packages/py-env". Dependency-light and rarely changed.
+COPY packages/py-env ./packages/py-env
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package nlp --no-dev --no-install-project --no-editable
 

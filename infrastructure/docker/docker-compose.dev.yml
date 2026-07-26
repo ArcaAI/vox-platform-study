@@ -131,7 +131,7 @@ services:
   # Qdrant Collection Initialization
   qdrant-init:
     container_name: hope-qdrant-init
-    image: python:3.11-slim
+    image: python:3.11-slim-trixie
     networks:
       - hope-network
     depends_on:

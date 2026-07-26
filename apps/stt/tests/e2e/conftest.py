@@ -49,7 +49,7 @@ def redis_container():
     try:
         from testcontainers.redis import RedisContainer
 
-        with RedisContainer("redis:7-alpine") as redis:
+        with RedisContainer("redis:8-alpine") as redis:
             yield redis
     except ImportError:
         pytest.skip("testcontainers not installed")

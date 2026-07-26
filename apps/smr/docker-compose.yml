@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: hope-smr-redis
     ports:
       - "${REDIS_PORT:-6379}:6379"
@@ -47,7 +47,7 @@ services:
       - smr-network
 
   prometheus:
-    image: prom/prometheus:v2.51.0
+    image: prom/prometheus:v3.1.0
     container_name: hope-smr-prometheus
     profiles: ["monitoring"]
     ports:
@@ -59,11 +59,11 @@ services:
       - smr-network
 
   grafana:
-    image: grafana/grafana:10.4.0
+    image: grafana/grafana:12.4.2
     container_name: hope-smr-grafana
     profiles: ["monitoring"]
     ports:
-      - "3001:8868/api/v1"
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
