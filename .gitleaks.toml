@@ -42,8 +42,15 @@ tags = ["pgbouncer"]
 
 [[rules]]
 id = "hope-redis-password"
-description = "REDIS_PASS / REDIS_URL with embedded password"
-regex = '''(?i)(REDIS_PASS|REDIS_URL)\s*[:=]\s*["']?[^"'\s]{12,}["']?'''
+description = "REDIS_URL carrying embedded user:pass@ credentials"
+# Flag ONLY a redis URL with a real `user:pass@` authority — the unambiguous
+# leak. The previous form matched any REDIS_URL >=12 chars, so passwordless
+# URLs like `redis://localhost:6379/0` were false positives. A bare
+# `REDIS_PASS=<value>` match was also tried but is not RE2-expressible without
+# false positives (it hit the TS type `REDIS_PASS: string` and the Vault
+# mapping `REDIS_PASS=REDIS_PASS`); committed secrets in .env files are already
+# covered by the `hope-committed-env-file` path rule.
+regex = '''(?i)REDIS_URL\s*[:=]\s*["']?rediss?://[^:@\s/]+:[^@\s]{3,}@'''
 tags = ["redis"]
 
 [[rules]]
@@ -254,4 +261,25 @@ commits = [
   "6bd5acc4d8f7316c5b9e7fac5dfe994c6097dda8",
   "1f617844b71f8d0867bfccedbce28b80f837c48a",
   "1ee4ce5029797ef479968b495fb95fdd0db2dbea",
+  # Historic commits where `.env.dev` / `.env.archive` existed in the tree
+  # (the `hope-committed-env-file` path tripwire). All three files are now
+  # gitignored and absent from HEAD; the genuinely sensitive values they once
+  # carried (Azure key, GitLab OAuth/API token) are covered by the rotations
+  # above, and the remaining entries were dev-tier local docker/Vault creds
+  # (VAULT_SECRET_ID is ephemeral). Full-history re-scans re-flag these on every
+  # MR; allowlisting the introducing SHAs stops the noise. The rule stays live,
+  # so a NEW commit of any of these files is still caught.
+  "f46e472b4363af46a0df5c69bddc1e4326254615",
+  "b3a9f60af3f886feba53bae59fb39ace998f18cd",
+  "83936837a6b2bd1e282426d594f0aea6e76340a7",
+  "35c8f77a74bc8bbc4bf59e0df52e7b56fab8b846",
+  "ecdea2121b2ef63d87fe440936a1572c9bb232e8",
+  "ae1e3781f4628e03527bf3eb3371119d19e067eb",
+  "802ddd9de37178c24537902393f5abea37fa7a54",
+  "9ba45929f7f4d7496a0598128feacb8dd389fd5d",
+  "729d2c75c55beee78fea11b65775243da0ec6507",
+  "4c7e02911e626e06e727c62d5240f0e0e8b6619d",
+  "ea081e3da4aba5021b50286af2b1007484ae656b",
+  "bc51226170a25cc12b68c9cd4bd8e00b2b9aa351",
+  "27dcdb31c5280f1d82157dbe8d26d7f8209100d9",
 ]
