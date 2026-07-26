@@ -490,6 +490,120 @@ Rationale: A is mechanical deletion against an explicit key list. B/C/E/G are co
 
 ---
 
+## 13. Phase 6 — Actually moving the values (pydantic + Vault + DB)
+
+Waves 1–3 built the machinery and CLASSIFIED every key; lane F's brief explicitly
+said *"do NOT migrate any value in this lane"*. Phase 6 performs the migration and
+answers the deployment question: how a pydantic service obtains secrets in the cloud
+when there is no `.env` file at all.
+
+### 13.1 The measured backlog (from the live registry, 137 descriptors)
+
+| Bucket | Count | Disposition |
+|---|---:|---|
+| `env` — bootstrap floor, **stays** | **17** | `NODE_ENV`, `PORT`, `DATABASE_URL`, `DIRECT_URL`, `PRISMA_PG_MAX`, `REDIS_{HOST,PORT,URL}`, `SECRETS_PROVIDER`, `VAULT_{ADDR,ROLE_ID,SECRET_ID,WRAPPED_SECRET_ID,KV_MOUNT,KV_PREFIX,DB_ADMIN_PASS}`, `MINIO_ENDPOINT` (bootstrap fallback) |
+| `env` → **`global-kv` (DB)** | **10** | `LOG_LEVEL`, `CORS_ALLOWED_ORIGINS`, `SHUTDOWN_{TIMEOUT,DRAIN_DELAY}_MS`, `API_KEY_{MAX_LIFETIME_DAYS,ALLOW_QUERY_PARAM}`, `REFRESH_TOKEN_TTL_SECONDS`, `RATE_LIMIT_{ENABLED,MAX_REQUESTS,WINDOW_MS}` |
+| `env` → **flags (DB + instant fan-out)** | **10** | `ENTITLEMENTS_ENABLED_DEFAULT`, `REGISTRATION_SELF_SIGNUP_ENABLED`, `SEMANTIC_ENDPOINT_ENABLED`, `SMR_EXTERNAL_GUARDRAIL_ENABLED`, `{GUARDRAIL_V2,LIVE_DOC}_GROUNDEDNESS_ENABLED`, `HARNESS_{WARM_START,NER_PRIORS,ATOMIC_FACT,CLAIM_CHECK}_ENABLED` |
+| **`vault-kv`** — classified, still read from env | **25** | every platform credential (§3.2) |
+| `db-config` / `db-secret` / `entitlement` | 25 | already in the database |
+
+**Three secrets must stay in env, permanently.** `VAULT_SECRET_ID`,
+`VAULT_WRAPPED_SECRET_ID` and `VAULT_DB_ADMIN_PASS` are the credentials used *to reach
+Vault* (and the one Vault itself uses to reach Postgres). Storing them in Vault is
+circular. They are the irreducible floor, and the only secrets a deployed host env or
+a CI variable should ever carry.
+
+### 13.2 Pydantic best practice — how a Python service gets secrets in the cloud
+
+**P1 — File injection over in-process API calls.** A Vault Agent sidecar authenticates
+(Kubernetes auth), renders secrets into a shared **memory** volume, and handles renewal
+and rotation; the service stays entirely Vault-unaware and reads files. HashiCorp names
+the injector the preferred Kubernetes method, and it avoids making every service a Vault
+client with its own auth, retry and lease logic. The in-process source (`pydantic-settings-vault`
+et al.) is the fallback for surfaces the agent cannot reach, not the default.
+
+**P2 — `secrets_dir` is the seam, and it already exists in pydantic-settings.** The agent
+writes one file per secret (`/vault/secrets/JWT_SECRET_KEY`), pydantic's
+`SecretsSettingsSource` reads that directory. No new dependency, no Vault SDK.
+
+**P3 — Reorder the sources; the default order is wrong for this.** pydantic-settings
+defaults to `init > env > dotenv > file_secret`, so a stale dotenv would outrank a
+freshly-rendered Vault file. HOPE's order, implemented once in `hope_env` and applied via
+`settings_customise_sources`:
+
+```
+init  >  host env  >  secrets_dir (Vault Agent)  >  .env.<NODE_ENV>  >  field default
+```
+
+Host env still wins so CI and one-off overrides behave; the Vault file beats the dotenv;
+the dotenv survives for local dev where no agent runs. `apps/nlp` already uses
+`settings_customise_sources` for an unrelated filter — the mechanism is proven in-repo.
+
+**P4 — `SecretStr` for every secret field, no exceptions.** It keeps values out of
+`repr()`, logs and tracebacks; `.get_secret_value()` only at the point of use. Several
+services already do this for `service_token`; make it universal.
+
+**P5 — Fail fast, and fail differently per class.** A missing bootstrap var is a boot
+failure. A missing secret is fail-closed at first use. A missing tuning knob falls back
+to the field default. This is the pydantic-side mirror of the `failMode` contract lane F
+put in the TS registry (§4 B3).
+
+**P6 — Rotation needs a re-read path.** The agent rewrites the file in place, so a settings
+object built once at startup will serve the old value forever. Provide an explicit
+`reload_secrets()` (re-read `secrets_dir`, rebuild the settings object) triggered by the
+agent's signal or a bounded TTL. Note `get_settings()` in SMR is deliberately uncached
+today — keep that property.
+
+**P7 — Never bake secrets into images or `pyproject.toml` defaults**, and keep
+`secrets_dir` on a memory-backed volume so nothing touches disk.
+
+### 13.3 CI/CD — GitLab/GitHub
+
+**C1 — Non-secret configuration as CI variables; secrets via OIDC, not variables.**
+GitLab issues a short-lived, job-scoped ID token (`id_tokens:`) that Vault's JWT auth
+exchanges for a token scoped to that job. No long-lived `VAULT_TOKEN` in project
+settings. Restrict with `bound_claims` on project/ref/environment so a feature branch
+cannot read production secrets.
+
+**C2 — Masked/protected variables are a fallback, not the design.** Masking prevents
+casual echo; it does not scope, expire, or audit. Reserve them for the irreducible floor
+of §13.1 where OIDC cannot bootstrap.
+
+**C3 — CI loads NO env file** (already true — `loadEnv()` and `hope_env` both refuse when
+`CI` is truthy). CI's env is the host env, and the drift gate proves the declared surface
+matches.
+
+### 13.4 Multi-tenancy — what "to the database" actually means
+
+Moving a key to the DB is only useful if it lands at the right **scope**. For each of the
+20 keys in §13.1:
+
+- **Platform-only** (`maxScope: 'system'`, `globalOnly: true`): `LOG_LEVEL`,
+  `CORS_ALLOWED_ORIGINS`, `SHUTDOWN_*` — operational, never per-tenant.
+- **Tenant-overridable** (`maxScope: 'tenant'`): `RATE_LIMIT_*`, `API_KEY_MAX_LIFETIME_DAYS`,
+  `REFRESH_TOKEN_TTL_SECONDS` — these are exactly the knobs a plan tier differentiates,
+  and they must resolve through the cascade with the entitlement **ceiling** applied
+  (§9.3 M2: entitlements bound what a tenant MAY set; they do not supply values).
+- **Tenant-overridable feature flags** (`maxScope: 'tenant'`): the harness/groundedness
+  toggles — a tenant may disable a capability its plan allows, never enable one it lacks.
+
+Every one inherits the M4 tenant-keyed-cache rule, the M8 audit/OCC path, and the
+`app-settings:invalidate` fan-out lane G proved end-to-end.
+
+### 13.5 Lanes
+
+| Lane | Title | Owns | Model/effort |
+|---|---|---|---|
+| **558-H** | pydantic secret-source layer (`secrets_dir` + order + `SecretStr` + reload) | `packages/py-env/**`, the six services' `config.py`/`settings.py` | opus / xhigh |
+| **558-I** | Migrate 20 env keys → DB with correct scope + entitlement ceiling | descriptors, `effective-config`, consuming services, seed | opus / xhigh |
+| **558-J** | Move the 25 `vault-kv` credentials out of env into Vault (TS gateway) | `SecretsService` warmup, `scripts/vault-seed-secrets.sh`, `apps/api/src/config/**` | opus / high |
+| **558-K** | CI/CD OIDC + k3s Vault Agent wiring | `.gitlab-ci.yml`, `.gitlab/ci/**`, `deployment/**`, `infrastructure/**` | opus / high |
+
+Not started. `env:sync` regenerates the schema from descriptors, so lane I's tier flips
+propagate to the zod schema and `.env.example` automatically — no hand-editing.
+
+---
+
 ## 12. Sources (external guidance, July 2026)
 
 - [5 Strategies for Tenant Configuration in SaaS — Antler Digital](https://antler.digital/blog/5-strategies-for-tenant-configuration-in-saas) — tier-based configuration hierarchy, most-specific-wins resolution
