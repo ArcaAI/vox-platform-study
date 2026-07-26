@@ -1,6 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
-import { IRateLimitSettingsService, RateLimitRouteOverride } from './IRateLimitSettingsService';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
+import { IRateLimitSettingsService, RateLimitRouteOverride, TenantRateLimitTierValue } from './IRateLimitSettingsService';
 import {
   RATE_LIMIT_GLOBAL_ENABLED_DEFAULT,
   RATE_LIMIT_TIER_DEFAULTS,
@@ -26,6 +27,13 @@ export class RateLimitSettingsService implements IRateLimitSettingsService {
   constructor(
     @Inject(IAppSettingsService)
     private readonly appSettings: IAppSettingsService,
+    /**
+     * The `global-kv` cascade (TASK-558 lane I). `@Optional()` so the graphs
+     * that wire only this service — and the pre-existing unit tests — keep
+     * their exact platform-only behaviour: without it, `*ForTenant` degrades
+     * to the platform answer rather than failing.
+     */
+    @Optional() private readonly tenantSettings?: TenantSettingsService,
   ) {}
 
   isEnabled(): boolean {
@@ -37,6 +45,42 @@ export class RateLimitSettingsService implements IRateLimitSettingsService {
     return {
       limit: this.appSettings.getValueWithDefault<number>(rateLimitTierLimitKey(name), fallback.limit),
       ttl: this.appSettings.getValueWithDefault<number>(rateLimitTierTtlKey(name), fallback.ttl),
+    };
+  }
+
+  isEnabledForTenant(tenantId: string | null): boolean {
+    // The platform master switch is authoritative and is NOT part of the tenant
+    // lane: an operator turning throttling off globally must not be second-
+    // guessed by a tenant row.
+    if (!this.isEnabled()) return false;
+    if (!this.tenantSettings) return true;
+    return this.tenantSettings.resolve<boolean>('rateLimit.enabled', tenantId).value !== false;
+  }
+
+  getTierForTenant(name: RateLimitTierName, tenantId: string | null, options: { entitlement?: number | null } = {}): TenantRateLimitTierValue {
+    // Only the always-on `default` tier is per-tenant — see the interface note.
+    if (name !== 'default' || !this.tenantSettings) {
+      return { ...this.getTier(name), limitSource: 'system', ttlSource: 'system' };
+    }
+
+    // The platform lane of `rateLimit.*` and the pre-existing
+    // `rate-limit.tier.default.*` rows describe the SAME number by two key
+    // grammars (the first is the migrated env baseline, the second the legacy
+    // admin surface). `getTier` already resolves the legacy key with the code
+    // baseline behind it, so it is the fallback here — which keeps every
+    // already-written `rate-limit.tier.default.*` row authoritative and makes
+    // this migration additive rather than a re-keying.
+    const legacy = this.getTier(name);
+    const limit = this.tenantSettings.resolve<number>('rateLimit.maxRequests', tenantId, {
+      ...(options.entitlement === undefined ? {} : { entitlement: options.entitlement }),
+    });
+    const ttl = this.tenantSettings.resolve<number>('rateLimit.windowMs', tenantId);
+
+    return {
+      limit: limit.source === 'code-default' ? legacy.limit : limit.value,
+      ttl: ttl.source === 'code-default' ? legacy.ttl : ttl.value,
+      limitSource: limit.source,
+      ttlSource: ttl.source,
     };
   }
 

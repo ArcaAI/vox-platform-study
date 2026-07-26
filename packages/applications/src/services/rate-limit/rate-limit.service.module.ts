@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CommonServiceModule } from '../baseServices';
 import { GlobalSettingServiceModule } from '../globalSetting/globalSetting.service.module';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 import { IRateLimitSettingsService } from './IRateLimitSettingsService';
 import { IRateLimitAdminService } from './IRateLimitAdminService';
 import { RateLimitSettingsService } from './rate-limit-settings.service';
@@ -19,6 +20,12 @@ import { RateLimitAdminService } from './rate-limit-admin.service';
 @Module({
   imports: [CommonServiceModule, GlobalSettingServiceModule],
   providers: [
+    // The `global-kv` cascade backing the per-tenant lane (TASK-558 lane I).
+    // Provided LOCALLY rather than by importing `EffectiveSettingsModule`: that
+    // module also pulls the pipeline resolver and the AI task-default service,
+    // none of which the throttler needs, and this service's only dependency is
+    // `IAppSettingsService` — already exported by `CommonServiceModule` above.
+    TenantSettingsService,
     {
       provide: IRateLimitSettingsService,
       useClass: RateLimitSettingsService,

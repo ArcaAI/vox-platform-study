@@ -79,8 +79,15 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
       return super.handleRequest(requestProps);
     }
 
-    // (1) Global kill-switch.
-    if (!settings.isEnabled()) {
+    // The caller's tenant, decoded (unverified) from the bearer/SSE token —
+    // resolved ONCE here because both the kill-switch and the tier lane now
+    // need it (TASK-558 lane I).
+    const tenantId = this.extractTenantIdPreAuth(context);
+
+    // (1) Kill-switch: the platform master switch, then the tenant's own view
+    // of it. A tenant may only make this STRICTER (`tenant-clamp.ts`), so a
+    // tenant row can turn throttling ON for itself but never off.
+    if (!settings.isEnabledForTenant(tenantId)) {
       return true;
     }
 
@@ -93,17 +100,31 @@ export class TieredThrottlerGuard extends ThrottlerGuard {
       return true;
     }
 
-    // (3) Resolve effective limit/ttl by precedence.
-    const tier = settings.getTier(name);
     const decoratorTtl = this.reflector.getAllAndOverride<number>(THROTTLER_TTL + name, [context.getHandler(), context.getClass()]);
 
-    // (3a) Per-tenant plan tier, applied only to the always-on
-    // `default` tier. Sits between the `@Throttle` decorator and the tier
-    // baseline in the precedence chain.
+    // (3a) The tenant's plan tier, applied only to the always-on `default`
+    // tier. Resolved BEFORE the tier lane so its limit can serve as the
+    // entitlement CEILING for a tenant's own override (§9.3 M2: a tenant may
+    // throttle itself harder than its plan, never softer).
     const plan = name === 'default' ? await this.resolvePlanRateLimit(context, settings) : undefined;
 
-    const limit = override?.limit ?? decoratorLimit ?? plan?.limit ?? tier.limit;
-    const ttl = override?.ttl ?? decoratorTtl ?? plan?.ttl ?? tier.ttl;
+    // (3b) The tier baseline as seen by THIS tenant — the `global-kv` cascade
+    // (tenant row → platform row → code baseline) with the tenant clamp and the
+    // plan ceiling applied. Before lane I this was `settings.getTier(name)`, a
+    // single platform-wide number read from `RATE_LIMIT_*` at boot.
+    const tier = settings.getTierForTenant(name, tenantId, plan ? { entitlement: plan.limit } : {});
+
+    // (3c) Precedence. The tenant's OWN row sits ahead of its plan tier — a
+    // tenant that has explicitly throttled itself harder must not be widened
+    // back up to the plan limit. A value that merely FELL THROUGH to the
+    // platform row or the code baseline does not: it keeps its historical
+    // position at the end of the chain, so a tenant with no row of its own
+    // resolves exactly as it did before this lane.
+    const tenantLimit = tier.limitSource === 'tenant' ? tier.limit : undefined;
+    const tenantTtl = tier.ttlSource === 'tenant' ? tier.ttl : undefined;
+
+    const limit = override?.limit ?? decoratorLimit ?? tenantLimit ?? plan?.limit ?? tier.limit;
+    const ttl = override?.ttl ?? decoratorTtl ?? tenantTtl ?? plan?.ttl ?? tier.ttl;
 
     return super.handleRequest({ ...requestProps, limit, ttl });
   }

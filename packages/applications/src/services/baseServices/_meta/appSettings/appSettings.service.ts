@@ -45,6 +45,19 @@ const PLATFORM_TENANT_IDS: readonly string[] = [GLOBAL_TENANT_ID, SYSTEM_TENANT_
 const platformRank = (tenantId: string): number => PLATFORM_TENANT_IDS.indexOf(tenantId);
 
 /**
+ * The reserved namespace the settings-registry write lane stamps on every row
+ * it creates (`SettingsRegistryWriteService.REGISTRY_SETTING_NAMESPACE`).
+ *
+ * Inlined rather than imported: this baseService must not depend on a feature
+ * service (the same reason `GLOBAL_TENANT_ID` is inlined above). A registry
+ * test asserts the two literals agree.
+ */
+const REGISTRY_NAMESPACE = 'registry';
+
+/** Cache key for the TENANT lane. The tenant id is part of the KEY, never of the value (§9.3 M4). */
+const tenantCacheKey = (tenantId: string, key: string): string => `${tenantId}::${key}`;
+
+/**
  * Dedicated Redis pub/sub channel for cross-instance cache invalidation
  * (F-007 follow-up). Every instance publishes here after a same-instance
  * `GlobalSetting` refresh and subscribes here to converge peers without
@@ -72,6 +85,25 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
 
   /** Cache for storing app settings */
   private _cachedAppSettings!: Map<string, GlobalSettingEntity>;
+
+  /**
+   * The TENANT lane (TASK-558 lane I) — per-tenant overrides for the
+   * `maxScope: 'tenant'` knobs, keyed `${tenantId}::${key}` so §9.3 M4 holds by
+   * construction: there is no slot a lookup for tenant B could collide with
+   * tenant A's row in.
+   *
+   * DELIBERATELY NARROW. Only rows in the reserved `registry` namespace whose
+   * tenant is NOT platform-reserved are admitted, for two reasons:
+   *   • `TenantService.provisionTenantConfigs` clones the whole platform
+   *     setting set into every tenant, so admitting everything would grow this
+   *     map by ~18 entries per tenant for values nothing reads here;
+   *   • the registry namespace is exactly what `SettingsRegistryWriteService`
+   *     writes, so "in this map" and "written through the governed OCC write
+   *     lane" are the same statement.
+   * Platform rows stay in `_cachedAppSettings` and are reached by the
+   * key-only accessors — the two lanes never mix.
+   */
+  private _cachedTenantSettings: Map<string, GlobalSettingEntity> = new Map();
 
   /** Flag to track if initial cache load is complete */
   private _cacheInitialized = false;
@@ -198,6 +230,35 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
   }
 
   /**
+   * The parsed value of ONE tenant's registry override for `key`, or `null`
+   * when that tenant has not overridden it.
+   *
+   * Deliberately does NOT fall back to the platform value: the cascade
+   * (tenant → SYSTEM → descriptor default) belongs to `TenantSettingsService`,
+   * which needs to know WHICH tier answered in order to report the source
+   * (§9.2 L8) and to apply the tenant clamp (§9.3 M2) against the platform
+   * value. A silent fallback here would make those two impossible.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the untyped `any` return of the sibling key-only accessors; the cache stores heterogeneous parsed setting values
+  public getTenantValueFromCache(tenantId: string, key: string): any {
+    if (!tenantId) return null;
+    const setting = this._cachedTenantSettings.get(tenantCacheKey(tenantId, key));
+    if (!setting) return null;
+
+    try {
+      return setting.parsedValue;
+    } catch (error) {
+      this.logger.error({
+        message: 'Failed to parse value for tenant setting',
+        settingKey: key,
+        tenantId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return setting.value;
+    }
+  }
+
+  /**
    * Retrieves a setting value with a default fallback
    * @param key - The key of the setting to retrieve
    * @param defaultValue - Default value to return if setting is not found
@@ -268,6 +329,18 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
       // PLATFORM_TENANT_IDS above for why a key-only cache requires this.
       const globalSettings = liveSettings.filter((s) => platformRank(s.tenantId) !== -1);
 
+      // The TENANT lane (lane I): registry-namespace overrides owned by a
+      // CUSTOMER tenant, keyed by `${tenantId}::${key}`. Built here rather than
+      // in a separate loader so both maps are produced by the same read and
+      // swapped together — which makes the existing `app-settings:invalidate`
+      // fan-out and the 45s cron converge the tenant lane with no extra wiring.
+      const newTenantCache = new Map<string, GlobalSettingEntity>();
+      for (const setting of liveSettings) {
+        if (platformRank(setting.tenantId) !== -1) continue;
+        if (setting.namespace !== REGISTRY_NAMESPACE) continue;
+        newTenantCache.set(tenantCacheKey(setting.tenantId, setting.key), setting);
+      }
+
       // Boot-time duplicate-key invariant.
       // If >1 row exists for the same platform key
       // (tenantId === GLOBAL_TENANT_ID), the Map<key>-keyed cache silently
@@ -306,8 +379,9 @@ export class AppSettingsService implements IAppSettingsService, OnModuleInit {
         newCache.set(setting.key, setting);
       });
 
-      // Atomically replace the cache
+      // Atomically replace both lanes together.
       this._cachedAppSettings = newCache;
+      this._cachedTenantSettings = newTenantCache;
       this._cacheInitialized = true;
 
       // Update statistics

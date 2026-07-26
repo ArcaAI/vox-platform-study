@@ -29,9 +29,7 @@ function makeService(opts: { roles?: string[]; cached?: any } = {}) {
   };
   const emitter = { emit: vi.fn() };
   const cls = {
-    get: vi.fn((k: string) =>
-      k === 'user' ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] } : k === 'tenantId' ? 'tenant-abc' : undefined,
-    ),
+    get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] } : k === 'tenantId' ? 'tenant-abc' : undefined)),
   };
   // The CAS version now comes from a FRESH repository read, not
   // from the (45s-stale) AppSettings snapshot. `opts.cached` therefore drives
@@ -39,13 +37,7 @@ function makeService(opts: { roles?: string[]; cached?: any } = {}) {
   const globalSettingRepository = {
     findFirst: vi.fn(async () => opts.cached ?? null),
   };
-  const svc = new SettingsRegistryWriteService(
-    appSettings as any,
-    globalSettings as any,
-    emitter as any,
-    cls as any,
-    globalSettingRepository as any,
-  );
+  const svc = new SettingsRegistryWriteService(appSettings as any, globalSettings as any, emitter as any, cls as any, globalSettingRepository as any);
   return { svc, appSettings, globalSettings, emitter, globalSettingRepository };
 }
 
@@ -64,18 +56,28 @@ describe('SettingsRegistryWriteService — globalOnly enforcement (§5 test 9)',
     await expect(svc.write('agentic.context.liveDelta.maxChars', 9000)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  // SUPERSEDED BY TASK-558 lane I — the assertion, not the intent.
+  //
+  // This case used to write a (descriptor-patched) NON-globalOnly key at the
+  // DEFAULT `system` scope as a tenant admin and expect success. That success
+  // only ever existed against the mock: a `system`-scope write persists on the
+  // reserved platform tenant, and the Prisma tenant-scope extension refuses a
+  // `GlobalSetting` create whose `tenantId` is not the caller's CLS tenant — so
+  // in a running gateway the same call raised `TenantScope: tenantId mismatch`
+  // as a bare 500. Lane I turns that into the intended answer (403: a
+  // platform-wide write is a global-admin surface) and gives a tenant admin the
+  // scope it can actually write at.
+  //
+  // The INTENT is preserved verbatim: prove the guard reads descriptor
+  // metadata rather than a hard-coded key list, by exercising a key whose
+  // descriptor says a tenant admin may set it.
   it('derives the rule from descriptor metadata, not a hard-coded key list', async () => {
-    // Prove it by flipping the descriptor: a NON-globalOnly key must pass the
-    // same guard for the same caller. If the service hard-coded keys this fails.
-    const descriptor = HOPE_SETTINGS_REGISTRY.getOrThrow('agentic.context.liveDelta.maxChars');
-    const spy = vi.spyOn(HOPE_SETTINGS_REGISTRY, 'get').mockReturnValue({
-      ...descriptor,
-      globalOnly: false,
-    });
-
     const { svc } = makeService({ roles: [] });
-    await expect(svc.write('agentic.context.liveDelta.maxChars', 9000)).resolves.toBeDefined();
-    spy.mockRestore();
+    // `rateLimit.maxRequests` — global-kv, NOT globalOnly, maxScope 'tenant'.
+    await expect(svc.write('rateLimit.maxRequests', 10, { scope: 'tenant' })).resolves.toBeDefined();
+
+    // …and the same caller is still refused a key the descriptor marks global-only.
+    await expect(svc.write('agentic.context.liveDelta.maxChars', 9000)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('allows a globalOnly key for a global admin', async () => {
@@ -99,9 +101,7 @@ describe('SettingsRegistryWriteService — maxScope clamp (§5 test 10)', () => 
   it('rejects a write deeper than the descriptor maxScope with 400', async () => {
     const { svc } = makeService();
     // The key is capped at `system`; asking for `tenant` is deeper.
-    await expect(
-      svc.write('agentic.context.liveDelta.maxChars', 9000, { scope: 'tenant' }),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(svc.write('agentic.context.liveDelta.maxChars', 9000, { scope: 'tenant' })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 });
 
@@ -123,9 +123,7 @@ describe('SettingsRegistryWriteService — gates and persistence (§5 test 11)',
   });
 
   it('rejects a non-global-kv tier with 400 (those keep their dedicated services)', async () => {
-    const dbConfigKey = HOPE_SETTINGS_REGISTRY.list().find(
-      (d) => d.tier === 'db-config' && d.sensitivity !== 'secret',
-    );
+    const dbConfigKey = HOPE_SETTINGS_REGISTRY.list().find((d) => d.tier === 'db-config' && d.sensitivity !== 'secret');
     expect(dbConfigKey, 'expected at least one db-config descriptor').toBeDefined();
     const { svc } = makeService();
     await expect(svc.write(dbConfigKey!.key, true)).rejects.toBeInstanceOf(ArgumentInvalidException);
@@ -133,9 +131,7 @@ describe('SettingsRegistryWriteService — gates and persistence (§5 test 11)',
 
   it('rejects a value whose type contradicts the descriptor dataType', async () => {
     const { svc } = makeService();
-    await expect(svc.write('agentic.context.liveDelta.maxChars', 'not-a-number')).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
+    await expect(svc.write('agentic.context.liveDelta.maxChars', 'not-a-number')).rejects.toBeInstanceOf(ArgumentInvalidException);
     await expect(svc.write('rate-limit.enabled', 'yes-please')).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
@@ -197,14 +193,11 @@ describe('Registry kill-switch governance (§5 test 13)', () => {
     expect(d.killSwitch).toBeUndefined();
   });
 
-  it.each(['audit-retention.enabled', 'agentic.trajectory.enabled'])(
-    'registers %s as a kill-switch defaulting OFF',
-    (key) => {
-      const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
-      expect(d.killSwitch).toBe(true);
-      expect(d.default).toBe(false);
-    },
-  );
+  it.each(['audit-retention.enabled', 'agentic.trajectory.enabled'])('registers %s as a kill-switch defaulting OFF', (key) => {
+    const d = HOPE_SETTINGS_REGISTRY.getOrThrow(key);
+    expect(d.killSwitch).toBe(true);
+    expect(d.default).toBe(false);
+  });
 
   it.each([
     ['rate-limit.enabled', true],

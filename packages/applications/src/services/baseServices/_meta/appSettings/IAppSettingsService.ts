@@ -20,6 +20,20 @@ export interface IAppSettingsService {
   getValueFromCache(key: string): any;
 
   /**
+   * The parsed value of ONE tenant's registry override for `key`, or `null`
+   * when that tenant has not overridden it (TASK-558 lane I).
+   *
+   * The tenant lane is a SEPARATE, `${tenantId}::${key}`-keyed map — the
+   * key-only accessors above stay platform-only (§9.3 M4). No fallback to the
+   * platform value happens here; the cascade + clamp live in
+   * `TenantSettingsService`, which must know which tier answered.
+   * @param tenantId - The tenant whose override is being read
+   * @param key - The registry key
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mirrors the untyped `any` return of the sibling key-only accessors; the cache stores heterogeneous parsed setting values
+  getTenantValueFromCache(tenantId: string, key: string): any;
+
+  /**
    * Retrieves a setting value with a default fallback
    * @param key - The key of the setting to retrieve
    * @param defaultValue - Default value to return if setting is not found

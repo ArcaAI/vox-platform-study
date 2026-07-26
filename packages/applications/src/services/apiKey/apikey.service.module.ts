@@ -5,10 +5,17 @@ import { ApiKeyService } from './apikey.service';
 import { IApiKeyService } from './IApiKeyService';
 import { ApiKeyRateLimiter, IApiKeyRateLimiter } from './apikey-rate-limiter.service';
 import { EntitlementsServiceModule } from '../entitlements/entitlements.service.module';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, EntitlementsServiceModule],
   providers: [
+    // The `global-kv` cascade for `apiKey.maxLifetimeDays` /
+    // `apiKey.allowQueryParam` (TASK-558 lane I). Provided locally — its only
+    // dependency is `IAppSettingsService`, already exported by
+    // `CommonServiceModule`, so importing the whole `EffectiveSettingsModule`
+    // (pipeline resolver + AI task defaults) would be dead weight.
+    TenantSettingsService,
     {
       provide: IApiKeyService,
       useClass: ApiKeyService,
