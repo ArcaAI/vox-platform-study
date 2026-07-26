@@ -149,6 +149,12 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'guardrail.serviceToken': 'GUARDRAIL_SERVICE_TOKEN',
     'harness.serviceToken': 'HARNESS_SERVICE_TOKEN',
     'tts.serviceToken': 'TTS_SERVICE_TOKEN',
+    // Lane J: four credentials the gateway already fetched through SecretsService
+    // but that had no descriptor, so `vault-seed-secrets.sh` never seeded them.
+    'harness.internalServiceToken': 'HARNESS_INTERNAL_SERVICE_TOKEN',
+    'storageAccessKey.pepper': 'STORAGE_ACCESS_KEY_PEPPER',
+    'azureStorage.connectionString': 'AZURE_STORAGE_CONNECTION_STRING',
+    'azureStorage.accountKey': 'AZURE_STORAGE_ACCOUNT_KEY',
     'redis.pass': 'REDIS_PASS',
     'mqtt.pass': 'MQTT_PASS',
     'minio.accessKey': 'MINIO_ACCESS_KEY',

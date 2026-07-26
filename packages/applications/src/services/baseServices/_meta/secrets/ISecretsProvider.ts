@@ -18,6 +18,17 @@ export interface SecretFetchOptions {
   required?: boolean;
   /** Bypass cache for this call. */
   refresh?: boolean;
+  /**
+   * Read a SPECIFIC kv-v2 version instead of the latest. Vault kv-v2 retains
+   * prior versions, which is what makes a STAGED secret rotation possible
+   * (plan §9.2 L6): during the overlap window, material minted under version N
+   * must still be verifiable while new material is minted under N+1.
+   *
+   * Only the Vault provider can honour it — env / aws / azure / in-memory hold
+   * exactly one value per key and IGNORE it. That is deliberate: a dev box must
+   * not fail because production is mid-rotation.
+   */
+  version?: number;
 }
 
 export interface SecretsHealth {
@@ -38,6 +49,14 @@ export interface SecretsHealth {
 }
 
 export interface ISecretsProvider {
+  /**
+   * Which tier this provider reads from. Declared SYNCHRONOUSLY (unlike
+   * `health()`, which is a round-trip) so `SecretsService` can attribute every
+   * resolved value to a tier without any I/O — plan §9.2 L8, "every fallback is
+   * observable". Optional so hand-rolled test doubles keep compiling; a
+   * provider without one is attributed as `unknown`.
+   */
+  readonly name?: SecretsProviderName;
   getSecret(key: string, opts?: SecretFetchOptions): Promise<string>;
   getSecretOptional(key: string, opts?: SecretFetchOptions): Promise<string | undefined>;
   getSecretJson<T>(key: string, opts?: SecretFetchOptions): Promise<T>;

@@ -10,6 +10,8 @@ import { ISecretsProvider, SecretFetchOptions, SecretsHealth } from '../ISecrets
  */
 @Injectable()
 export class EnvSecretsProvider implements ISecretsProvider {
+  readonly name = 'env' as const;
+
   // Logger is kept on the instance to allow downstream tests to spy on
   // log lines without surfacing a public API surface.
   private readonly logger = new Logger(EnvSecretsProvider.name);

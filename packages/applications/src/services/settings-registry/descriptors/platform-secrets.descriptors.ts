@@ -98,7 +98,12 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
       '(2) verification reads the keyVersion recorded on the ApiKey row and verifies under THAT pepper, so vN and vN+1 keys are both valid during the overlap; ' +
       '(3) newly issued and re-hashed keys are stamped with the new keyVersion; ' +
       '(4) once no row still references vN — or the announced overlap window closes — retire vN. ' +
-      'Skipping the overlap is an outage for every integration at once. Vault kv-v2 versioning is the mechanism; the keyVersion column is what makes it staged rather than a coin flip.',
+      'Skipping the overlap is an outage for every integration at once. Vault kv-v2 versioning is the mechanism; the keyVersion column is what makes it staged rather than a coin flip. ' +
+      'STATUS (lane J): step (2)’s READ PATH now exists — `SecretFetchOptions.version` addresses a specific kv-v2 version through ' +
+      '`SecretsService.getSecret(key, { version })`, cached per (key, version) and evicted together by `invalidate(key)`. ' +
+      'What is still MISSING is the per-row half: `ApiKey` has no pepper-version column, so nothing records which pepper produced a stored hash, ' +
+      'and `ApiKeyService.verify` has nothing to pass. Until that column, its migration, its domain trio and the issue/verify stamping land, ' +
+      'a pepper change remains a cliff — the read path alone does not make the rotation staged.',
   },
   platformSecret(
     'oidc.clientSecret',
@@ -132,6 +137,15 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   ),
   platformSecret('tts.serviceToken', 'TTS service token', 'Shared secret on the gateway↔TTS hop (`X-Service-Token`).', 'Service Tokens'),
   platformSecret(
+    'harness.internalServiceToken',
+    'Harness knowledge-ingest token',
+    'SECOND, SEPARATE harness credential — NOT an alias of `HARNESS_SERVICE_TOKEN`. It gates the knowledge-ingest endpoint only ' +
+      '(`apps/harness/.../api/endpoints/knowledge.py`, pydantic field `internal_service_token` under the `HARNESS_` prefix) and is ' +
+      'resolved by `KnowledgeIngestClient` for the outbound `X-Service-Token`. Added by lane J: it was read through SecretsService ' +
+      'but had no descriptor, so `vault-seed-secrets.sh` never seeded it and every ingest call would 401 on a Vault-backed deployment.',
+    'Service Tokens',
+  ),
+  platformSecret(
     'api.gatewayKey',
     'STT gateway key',
     'The credential STT presents to the gateway. STT is the one service that authenticates with `X-Internal-Service-Key` rather than `X-Service-Token`, reusing this key instead of minting a second STT credential (`InternalServiceTokenGuard.SERVICE_SECRETS.stt`). There is no `STT_SERVICE_TOKEN`.',
@@ -160,6 +174,29 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
     'Data Plane',
   ),
   platformSecret('s3.secretKey', 'S3 secret key', 'S3-protocol secret key read by `S3Service`.', 'Data Plane'),
+  platformSecret(
+    'azureStorage.connectionString',
+    'Azure Blob connection string',
+    'Full Azure Storage connection string (carries the account key) for the AZURE storage provider. Read by ' +
+      '`BlobStorageProviderFactory.buildAzureProvider` AFTER the SYSTEM row’s `credentialsRef`, i.e. it is the env/kv fallback of the ' +
+      'same two-step order as `S3_ACCESS_KEY`. Preferred over `AZURE_STORAGE_ACCOUNT_KEY`.',
+    'Data Plane',
+  ),
+  platformSecret(
+    'azureStorage.accountKey',
+    'Azure Blob shared account key',
+    'Azure Storage shared account key — the alternative to `AZURE_STORAGE_CONNECTION_STRING` when the endpoint is composed from ' +
+      '`accountName` + `endpointSuffix` on the storage config row.',
+    'Data Plane',
+  ),
+  platformSecret(
+    'storageAccessKey.pepper',
+    'Storage access-key pepper',
+    'HMAC pepper for hashing tenant STORAGE access-key secrets (`StorageAccessKeyService.hashSecretForStorage`). Falls back to the ' +
+      'shared `API_KEY_PEPPER` when unset, then to un-peppered SHA-256 — so it inherits `API_KEY_PEPPER`’s rotation cliff: changing it ' +
+      'invalidates every stored storage access key. Stage a rotation the same way (see `api.keyPepper`).',
+    'Authentication',
+  ),
 
   // ── AI provider credentials (platform-owned; BYO tenant keys are db-secret) ─
   platformSecret(

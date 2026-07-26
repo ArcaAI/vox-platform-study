@@ -13,6 +13,8 @@ import { ISecretsProvider, SecretsHealth } from '../ISecretsProvider';
  */
 @Injectable()
 export class AwsSecretsManagerProvider implements ISecretsProvider {
+  readonly name = 'aws' as const;
+
   private fail(): never {
     throw new NotImplementedException('AwsSecretsManagerProvider is a future-option stub. Set SECRETS_PROVIDER=vault or =env.');
   }
