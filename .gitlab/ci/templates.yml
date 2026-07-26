@@ -124,22 +124,25 @@
       created_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
       # ── Compute tags (NO `latest`) ────────────────────────────────────
+      # Release tags (<SVC>-<ver> / ALL-<ver>): use the raw tag verbatim + sha —
+      # no semver major/minor derivation (kept deliberately simple).
+      # Branch builds: env prefix + short sha. `case` matches the dev-*/staging-*/
+      # prod-* release-line globs.
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
-        SEMVER_TAG="${CI_COMMIT_TAG#v}"
-        MAJOR=$(echo "$SEMVER_TAG" | cut -d. -f1)
-        MINOR=$(echo "$SEMVER_TAG" | cut -d. -f1-2)
-        TAGS="$SEMVER_TAG $MINOR $MAJOR sha-${short_sha}"
-      elif [ "$CI_COMMIT_BRANCH" = "staging" ]; then
-        TAGS="staging-${short_sha} sha-${short_sha}"
-      elif [ "$CI_COMMIT_BRANCH" = "dev" ]; then
-        TAGS="dev-${short_sha} sha-${short_sha}"
-      elif [ "$CI_COMMIT_BRANCH" = "cicd" ]; then
-        TAGS="cicd-${short_sha} sha-${short_sha}"
-      elif [ "$CI_COMMIT_BRANCH" = "release-playground" ]; then
-        TAGS="playground-${short_sha} sha-${short_sha}"
+        TAG_SLUG=$(echo "$CI_COMMIT_TAG" | sed 's/[^a-zA-Z0-9._-]/-/g')
+        TAGS="$TAG_SLUG sha-${short_sha}"
       else
-        BRANCH_SLUG=$(echo "$CI_COMMIT_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
-        TAGS="${BRANCH_SLUG}-${short_sha} sha-${short_sha}"
+        case "${CI_COMMIT_BRANCH:-}" in
+          prod-*)              TAGS="prod-${short_sha} sha-${short_sha}" ;;
+          staging-*)           TAGS="staging-${short_sha} sha-${short_sha}" ;;
+          dev-*)               TAGS="dev-${short_sha} sha-${short_sha}" ;;
+          cicd)                TAGS="cicd-${short_sha} sha-${short_sha}" ;;
+          release-playground)  TAGS="playground-${short_sha} sha-${short_sha}" ;;
+          *)
+            BRANCH_SLUG=$(echo "${CI_COMMIT_BRANCH:-unknown}" | sed 's/[^a-zA-Z0-9]/-/g')
+            TAGS="${BRANCH_SLUG}-${short_sha} sha-${short_sha}"
+            ;;
+        esac
       fi
 
       build_target_arg=""

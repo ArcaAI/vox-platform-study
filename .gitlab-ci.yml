@@ -36,6 +36,12 @@ workflow:
     - if: $RUN_NOTIFY_ONLY == "true"
       variables:
         PIPELINE_TYPE: "notify_only"
+    # Per-service / all release tags: <SVC>-<ver> (e.g. SMR-2.1.0) or ALL-<ver>.
+    # The build/publish jobs key off the exact CI_COMMIT_TAG prefix; this type
+    # just makes the tag pipeline run (and run the full test suite via rules.yml).
+    - if: $CI_COMMIT_TAG =~ /^(SDK|SMR|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|ALL)-/
+      variables:
+        PIPELINE_TYPE: "release"
     - if: $CI_COMMIT_TAG =~ /^v\d+/
       variables:
         PIPELINE_TYPE: "tag_release"
@@ -47,12 +53,17 @@ workflow:
     - if: $CI_COMMIT_BRANCH == "cicd"
       variables:
         PIPELINE_TYPE: "cicd"
-    - if: $CI_COMMIT_BRANCH == "dev"
+    # Release-line branches: dev-* / staging-* / prod-* (e.g. dev-2.1). A plain
+    # push runs the full test suite then builds all images (env-tagged).
+    - if: $CI_COMMIT_BRANCH =~ /^dev-/
       variables:
         PIPELINE_TYPE: "dev"
-    - if: $CI_COMMIT_BRANCH == "staging"
+    - if: $CI_COMMIT_BRANCH =~ /^staging-/
       variables:
         PIPELINE_TYPE: "staging"
+    - if: $CI_COMMIT_BRANCH =~ /^prod-/
+      variables:
+        PIPELINE_TYPE: "prod"
     - if: $CI_COMMIT_BRANCH == "release-sdk"
       variables:
         PIPELINE_TYPE: "release_sdk"
