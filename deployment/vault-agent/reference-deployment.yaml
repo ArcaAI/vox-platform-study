@@ -1,0 +1,153 @@
+# =============================================================================
+# Vault Agent injection — the complete, working shape, for ONE service.
+# TASK-558 §13.2 (P1/P2/P7) + §9.2 L7.
+# =============================================================================
+# `guardrail` is the worked example because it is the smallest service that
+# needs all three secret classes: a service token, a provider API key, and a
+# data-plane password. Copy this shape per service and swap the secret list
+# from the table in README.md — nothing else changes.
+#
+# Everything below the `template.metadata.annotations` block is ordinary
+# deployment concern (replicas, probes, resources) and is deliberately minimal:
+# this file is the SECRET-DELIVERY contract, not a topology definition. The
+# authoritative manifests live in the `hope-deployments` repo (see ../README.md).
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hope-guardrail
+  labels:
+    app: hope-guardrail
+    app.kubernetes.io/part-of: project-hope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hope-guardrail
+  template:
+    metadata:
+      labels:
+        app: hope-guardrail
+      annotations:
+        # ── Injector on ────────────────────────────────────────────────────
+        vault.hashicorp.com/agent-inject: 'true'
+        # Kubernetes auth: the pod's ServiceAccount token is the credential.
+        # No AppRole secret_id in the cluster, no static token anywhere.
+        vault.hashicorp.com/auth-path: 'auth/kubernetes'
+        vault.hashicorp.com/role: 'hope-guardrail'
+
+        # ── Sidecar, NOT pre-populate-only ─────────────────────────────────
+        # `agent-pre-populate-only: true` would run the agent as an init
+        # container and stop. Then a rotated secret would never reach a running
+        # pod, and §13.2 P6 (`reload_secrets()`) would have nothing to re-read.
+        # Keeping the sidecar is what makes rotation possible without a restart.
+        vault.hashicorp.com/agent-pre-populate-only: 'false'
+
+        # ── File ownership — the detail that silently breaks this ──────────
+        # The injector defaults to uid 100 and writes 0640. The application
+        # container runs as uid/gid 1001 (`hope`, created in
+        # infrastructure/docker/python-base/Dockerfile:48-49), so with the
+        # default the app cannot read its own secrets. Match the agent to the
+        # app user instead of widening the file mode.
+        vault.hashicorp.com/agent-run-as-user: '1001'
+        vault.hashicorp.com/agent-run-as-group: '1001'
+
+        # ── Do not write the Vault token to the volume ─────────────────────
+        # Nothing in HOPE reads /vault/secrets/token; leaving it out keeps the
+        # blast radius of a compromised app container to the rendered secrets.
+        vault.hashicorp.com/agent-inject-token: 'false'
+
+        # ── Where files land (P2 / P7) ─────────────────────────────────────
+        # This is the injector default and is stated explicitly because
+        # HOPE_SECRETS_DIR below must agree with it. The injector backs this
+        # path with an `emptyDir{medium: Memory}`, which is exactly P7's
+        # "memory-backed volume so nothing touches disk" — do not replace it
+        # with a hostPath or a PVC.
+        vault.hashicorp.com/secret-volume-path: '/vault/secrets'
+
+        # ── The secrets ────────────────────────────────────────────────────
+        # CONTRACT (packages/py-env, lane H): one file per secret, and the
+        # FILENAME IS THE ENVIRONMENT VARIABLE NAME. The suffix after
+        # `agent-inject-secret-` becomes the filename, so the suffix must be the
+        # exact env var name — `GUARDRAIL_SERVICE_TOKEN`, not `guardrail-token`.
+        #
+        # The kv-v2 path is `<mount>/data/<prefix>/<NAME>` with the value under
+        # the `value` field: the same layout `scripts/vault-seed-secrets.sh`
+        # writes, `infrastructure/docker/configs/vault/dev-init.sh` seeds, and
+        # `VaultSecretsProvider.kvPath()` reads. Dev and cluster differ in
+        # TRANSPORT (HTTP client vs. rendered file), never in layout (K4).
+        #
+        # The template emits the raw value with NO trailing newline — `{{-` /
+        # `-}}` trim it. A trailing "\n" would be part of a service token and
+        # every `X-Service-Token` comparison would fail with a 401 that looks
+        # like a wrong secret.
+        vault.hashicorp.com/agent-inject-secret-GUARDRAIL_SERVICE_TOKEN: 'secret/data/hope/GUARDRAIL_SERVICE_TOKEN'
+        vault.hashicorp.com/agent-inject-template-GUARDRAIL_SERVICE_TOKEN: |
+          {{- with secret "secret/data/hope/GUARDRAIL_SERVICE_TOKEN" -}}{{ .Data.data.value }}{{- end -}}
+        vault.hashicorp.com/agent-inject-secret-GUARDRAIL_VLLM_API_KEY: 'secret/data/hope/GUARDRAIL_VLLM_API_KEY'
+        vault.hashicorp.com/agent-inject-template-GUARDRAIL_VLLM_API_KEY: |
+          {{- with secret "secret/data/hope/GUARDRAIL_VLLM_API_KEY" -}}{{ .Data.data.value }}{{- end -}}
+        # The value below is a Vault PATH, not a password — but the
+        # `hope-redis-password` rule matches `REDIS_PASS:` followed by 12+
+        # non-space characters, which every kv path for that secret is. The
+        # inline marker must sit on the matched line itself.
+        vault.hashicorp.com/agent-inject-secret-REDIS_PASS: 'secret/data/hope/REDIS_PASS' # gitleaks:allow
+        vault.hashicorp.com/agent-inject-template-REDIS_PASS: |
+          {{- with secret "secret/data/hope/REDIS_PASS" -}}{{ .Data.data.value }}{{- end -}}
+    spec:
+      # The ServiceAccount is the identity the Vault Kubernetes auth role binds
+      # to. One per service — a shared SA would make the per-service policies
+      # below decorative.
+      serviceAccountName: hope-guardrail
+      containers:
+        - name: guardrail
+          image: hope-v2/guardrail:dev-REPLACE_ME
+          ports:
+            - containerPort: 8863
+          env:
+            # ── The seam pydantic reads (§13.2 P2/P3) ────────────────────────
+            # `hope_env` points pydantic's SecretsSettingsSource at this
+            # directory. It must equal `secret-volume-path` above. Absent ⇒ the
+            # default `/vault/secrets` is used, so this is belt-and-braces; it
+            # is declared anyway because a pod that silently reads no secrets is
+            # the failure this whole design exists to prevent.
+            - name: HOPE_SECRETS_DIR
+              value: /vault/secrets
+            # NODE_ENV=production makes hope_env read NO env file (host env +
+            # secrets_dir only) — the same rule CI follows. See
+            # .claude/rules/00-project-context.md.
+            - name: NODE_ENV
+              value: production
+          # Non-secret configuration only. There is deliberately NO
+          # `envFrom: secretRef:` here: that was the old posture (a plaintext
+          # Secret object in etcd) that §9.2 L7 rules out for PHI.
+          envFrom:
+            - configMapRef:
+                name: hope-config
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: 8863
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: 8863
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: '1'
+              memory: 1Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hope-guardrail
+  labels:
+    app: hope-guardrail
+    app.kubernetes.io/part-of: project-hope

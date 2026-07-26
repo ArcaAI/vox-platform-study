@@ -89,9 +89,20 @@ variables:
   DOCKER_TLS_CERTDIR: ""
   DOCKER_BUILDKIT: "1"
   REGISTRY: 10.10.1.110:5050
-  GITHUB_REPO_URL: "https://github.com/4bits-vn/project-hope-v2.git"
+  # GITHUB_REPO_URL removed (TASK-558 lane K, K2): nothing read it. The
+  # github-backup job builds its remote URL from a literal in .gitlab/ci/notify.yml.
   GITHUB_BACKUP_BRANCH: "back-up"
   RUN_NOTIFY_ONLY: ""
+  #
+  # ── Vault via GitLab OIDC (TASK-558 §13.3 C1) ──────────────────────────────
+  # VAULT_ADDR EMPTY = the mechanism is off and every job uses its CI variables
+  # exactly as before. Set it (Settings → CI/CD → Variables, NOT masked — it is
+  # topology, not a secret) to switch the whole pipeline over. See
+  # .gitlab/ci/vault.yml for the job contract and the Vault-side role setup.
+  VAULT_ADDR: ""
+  VAULT_OIDC_AUD: "https://vault.hope.arcaai.com"
+  VAULT_AUTH_PATH: "jwt-gitlab"
+  VAULT_KV_MOUNT: "secret"
   #
   # ── Manual skip controls ────────────────────────────────────────────────────
   # Set any of these to "true" when running a pipeline to skip stages:
@@ -108,8 +119,15 @@ variables:
   SKIP_TESTS_PY: ""
   #
   # ── Test environment ───────────────────────────────────────────────────────
-  # These provide defaults for test jobs. Secrets (DATABASE_URL, REDIS_PASS,
-  # JWT_SECRET, etc.) MUST be set in GitLab CI/CD Variables (masked+protected):
+  # These provide defaults for test jobs.
+  #
+  # PREFERRED PATH (TASK-558 §13.3 C1): the test credentials live in Vault at
+  # `secret/ci/*` and reach the job through .gitlab/ci/vault.yml — no long-lived
+  # token in project settings, scoped by the role's bound_claims, auditable.
+  #
+  # FALLBACK (§13.3 C2 — masked variables are a fallback, not the design):
+  # while VAULT_ADDR is empty the jobs read these CI/CD Variables instead.
+  # Masking prevents casual echo; it does not scope, expire, or audit.
   #
   #   Settings → CI/CD → Variables:
   #
@@ -137,6 +155,7 @@ variables:
   SYSTEM_USER_ID: "60000000-0000-0000-0000-000000000000"
 
 include:
+  - local: .gitlab/ci/vault.yml
   - local: .gitlab/ci/templates.yml
   - local: .gitlab/ci/rules.yml
   - local: .gitlab/ci/install.yml

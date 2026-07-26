@@ -97,7 +97,14 @@ build-api:
     SERVICE_NAME: api
     DOCKER_CONTEXT: "."
     DOCKERFILE: apps/api/Dockerfile
-    BUILD_ARGS: "--build-arg DATABASE_URL=$DATABASE_URL"
+    # TASK-558 lane K (K2): the `--build-arg DATABASE_URL=$DATABASE_URL` that
+    # was here passed an EMPTY value — no job or global variable named
+    # DATABASE_URL exists at the build stage — so the Dockerfile's own
+    # generate-only placeholder (`${DATABASE_URL:-postgresql://postgres:...}`,
+    # apps/api/Dockerfile:58) took effect either way. Removed: it was a no-op
+    # that would silently start baking a real connection string into the image
+    # build history the moment anyone defined a pipeline-wide DATABASE_URL.
+    BUILD_ARGS: ""
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
