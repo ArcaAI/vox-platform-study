@@ -8,6 +8,8 @@ import { ISecretsProvider, SecretsHealth } from '../ISecretsProvider';
  */
 @Injectable()
 export class AzureKeyVaultProvider implements ISecretsProvider {
+  readonly name = 'azure' as const;
+
   private fail(): never {
     throw new NotImplementedException('AzureKeyVaultProvider is a future-option stub. Set SECRETS_PROVIDER=vault or =env.');
   }
