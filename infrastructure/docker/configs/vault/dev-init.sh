@@ -45,6 +45,38 @@ vault auth enable approle 2>/dev/null || true
 echo "[vault-init] writing hope-app policy"
 vault policy write hope-app /vault/init/policies/hope-app.hcl
 
+# TASK-558 lane K (K4) — dev/prod parity.
+#
+# THE LAYOUT IS THE CONTRACT, THE TRANSPORT IS NOT. In the cluster a Vault Agent
+# sidecar renders `secret/data/hope/<NAME>` into a file per secret and the pod
+# reads files (see deployment/vault-agent/README.md); in dev the process reads
+# the same paths over HTTP through SecretsService. Same mount, same prefix, same
+# `value` field, same per-service policies — so a policy bug shows up on a laptop
+# instead of in staging.
+#
+# The per-service policies are loaded here even though dev-mode uses the single
+# `hope-app` AppRole: writing them exercises the same files the cluster's
+# Kubernetes auth roles bind to, which is the only cheap way to catch a typo in
+# a secret name before a pod silently reads nothing.
+if [ -d /vault/init/policies/k8s ]; then
+  for POLICY in /vault/init/policies/k8s/*.hcl; do
+    [ -f "${POLICY}" ] || continue
+    NAME="$(basename "${POLICY}" .hcl)"
+    echo "[vault-init] writing ${NAME} policy (cluster parity)"
+    vault policy write "${NAME}" "${POLICY}"
+  done
+fi
+
+# CI policies (GitLab OIDC → auth/jwt-gitlab). Dev has no GitLab, so no JWT auth
+# mount is enabled here; the policies are still written so `vault policy read`
+# is a working reference and a syntax error surfaces locally.
+for CI_POLICY in hope-ci hope-ci-deploy; do
+  if [ -f "/vault/init/policies/${CI_POLICY}.hcl" ]; then
+    echo "[vault-init] writing ${CI_POLICY} policy (CI parity)"
+    vault policy write "${CI_POLICY}" "/vault/init/policies/${CI_POLICY}.hcl"
+  fi
+done
+
 echo "[vault-init] creating hope-app role"
 # TASK-312 Phase A.1 — DEV-MODE config. Production overlay (Phase D)
 # tightens to secret_id_num_uses=1, secret_id_ttl=24h. Dev posture below
@@ -113,6 +145,26 @@ vault kv put secret/hope/NLP_SERVICE_TOKEN value="dev-nlp-service-token-not-for-
 vault kv put secret/hope/GUARDRAIL_SERVICE_TOKEN value="dev-guardrail-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/TTS_SERVICE_TOKEN value="dev-tts-service-token-not-for-prod" >/dev/null
 vault kv put secret/hope/API_GATEWAY_KEY value="dev-api-gateway-key-not-for-prod" >/dev/null
+
+# TASK-558 lane K (K4) — remaining SELF-HOSTED vault-kv descriptors, so the dev
+# Vault covers every path a cluster Vault Agent will render for guardrail and
+# harness (deployment/vault-agent/README.md § Per-service secret sets).
+#
+# The harness claim-check store is self-hosted by contract (PHI blobs must not
+# egress), so in dev it aliases the MinIO credential exactly as S3_* does.
+# guardrail's vLLM endpoint is self-hosted and accepts any bearer value.
+vault kv put secret/hope/HARNESS_CLAIM_CHECK_ACCESS_KEY value="minio_admin" >/dev/null
+vault kv put secret/hope/HARNESS_CLAIM_CHECK_SECRET_KEY value="minio_admin" >/dev/null
+vault kv put secret/hope/GUARDRAIL_VLLM_API_KEY value="dev-vllm-placeholder-not-for-prod" >/dev/null
+
+# DELIBERATELY NOT SEEDED — the five EXTERNAL provider credentials:
+#   AZURE_SPEECH_KEY  AZURE_FOUNDRY_API_KEY  SMR_AZURE_API_KEY
+#   TTS_SARVAM_API_KEY  HARNESS_JUDGE_OPENAI_COMPAT_API_KEY
+# A placeholder would make an unconfigured provider look configured and turn a
+# clean "not configured" into a remote 401 that costs an afternoon to diagnose.
+# Every one is failMode 'closed', so absence is the correct, visible signal —
+# the same rule scripts/vault-seed-secrets.sh follows when a value is unset.
+# Set them with `vault kv put secret/hope/<NAME> value=...` when you need them.
 
 # TASK-302 Phase 4 Task 4.4 — Transit key for envelope-encrypting
 # GlobalSetting rows. The key is created idempotently (Vault returns 204

@@ -41,8 +41,18 @@ deploy-staging:
   tags: [deploy]
   image: alpine:3.20
   interruptible: false
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  variables:
+    # TASK-558 §13.3 C1 — DEPLOY_TOKEN is the write credential for the
+    # hope-deployments repo. The Vault role binds it to `ref` ∈ {staging,dev,v*};
+    # see the ⚠ OPEN ITEM in .gitlab/ci/vault.yml — `staging` is not a protected
+    # branch yet, so that claim is not yet a hard privilege boundary.
+    VAULT_AUTH_ROLE: "hope-ci-deploy"
+    VAULT_SECRETS: !reference [.vault-secret-sets, deploy]
   before_script:
     - apk add --no-cache git curl jq
+    # After apk, so curl+jq are present for the fetch.
+    - !reference [.vault-oidc, before_script]
     - git config --global user.email "ci@arcaai.com"
     - git config --global user.name "GitLab CI"
   script:
@@ -153,8 +163,15 @@ smoke-pgbouncer-staging:
   tags: [deploy]
   image: alpine:3.20
   interruptible: false
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  variables:
+    VAULT_AUTH_ROLE: "hope-ci-deploy"
+    VAULT_SECRETS: !reference [.vault-secret-sets, pgbouncer-smoke]
   before_script:
-    - apk add --no-cache git openssh-client
+    # curl added for vault-login.sh — busybox wget's POST support varies by
+    # build, and a credential fetch is not the place for a maybe.
+    - apk add --no-cache git openssh-client curl
+    - !reference [.vault-oidc, before_script]
     - mkdir -p ~/.ssh && chmod 700 ~/.ssh
     - echo "$PGB_SMOKE_SSH_KEY" > ~/.ssh/id_ed25519
     - chmod 600 ~/.ssh/id_ed25519

@@ -1,0 +1,11 @@
+# Buildable so the reference manifest cannot rot silently:
+#   kubectl kustomize deployment/vault-agent
+#   kubectl apply --dry-run=client -k deployment/vault-agent
+#
+# This is NOT a deployable overlay — it has no namespace, no image tag and no
+# Service. Its only job is to keep `reference-deployment.yaml` valid Kubernetes.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - reference-deployment.yaml

@@ -70,6 +70,10 @@ test-api:
       artifacts: false
   variables:
     <<: *test-env-vars
+    # TASK-558 §13.3 C1 — Vault supplies these when VAULT_ADDR is set; the
+    # *test-env-vars mappings above remain the fallback. `.test-node-base`
+    # carries the fetch step, which exports over the variables of the same name.
+    VAULT_SECRETS: !reference [.vault-secret-sets, ci-full]
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pnpm --filter @arcaai/database db:generate
@@ -104,6 +108,8 @@ test-packages:
       artifacts: false
   variables:
     <<: *test-env-vars
+    # Live-Postgres CAS guard below needs the data plane; no tokens are minted.
+    VAULT_SECRETS: !reference [.vault-secret-sets, ci-data-plane]
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pnpm --filter @arcaai/database db:generate
@@ -290,11 +296,23 @@ test-stt:
   stage: test
   image: python:3.11-slim
   tags: [test]
+  # python:3.11-slim ships neither curl nor wget; vault-login.sh falls back to
+  # python3 for both transport and JSON, so no package install is needed here.
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  before_script:
+    - !reference [.vault-oidc, before_script]
   needs:
     - job: lint-python
       optional: true
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    # One Vault path can feed several env names — the aliases below are the
+    # same credential under different reader-specific names, exactly as the
+    # $CI_DATABASE_URL fan-out already is.
+    VAULT_SECRETS: >-
+      ci/DATABASE_URL=DATABASE_URL
+      ci/DATABASE_URL=TEST_DATABASE_URL
+      ci/REDIS_URL=REDIS_URL
     DATABASE_URL: $CI_DATABASE_URL
     TEST_DATABASE_URL: $CI_DATABASE_URL
     REDIS_URL: $CI_REDIS_URL
@@ -331,11 +349,23 @@ test-smr:
   stage: test
   image: python:3.11-slim
   tags: [test]
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  before_script:
+    - !reference [.vault-oidc, before_script]
   needs:
     - job: lint-python
       optional: true
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    VAULT_SECRETS: >-
+      ci/DATABASE_URL=DATABASE_URL
+      ci/DATABASE_URL=TEST_DATABASE_URL
+      ci/DATABASE_URL=SUMMARY_AGENT_DATABASE_URL
+      ci/REDIS_URL=REDIS_URL
+      ci/REDIS_URL=TEST_REDIS_URL
+      ci/REDIS_URL=SUMMARY_AGENT_REDIS_URL
+      ci/REDIS_URL=CELERY_BROKER_URL
+      ci/REDIS_URL=CELERY_RESULT_BACKEND
     DATABASE_URL: $CI_DATABASE_URL
     TEST_DATABASE_URL: $CI_DATABASE_URL
     REDIS_URL: $CI_REDIS_URL
@@ -411,11 +441,15 @@ test-guardrail:
   stage: test
   image: python:3.11-slim
   tags: [test]
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  before_script:
+    - !reference [.vault-oidc, before_script]
   needs:
     - job: lint-python
       optional: true
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    VAULT_SECRETS: "ci/REDIS_URL=GUARDRAIL_REDIS_URL"
     # Disable model loading — no HuggingFace downloads during CI
     GUARDRAIL_GLINER_ENABLED: "false"
     GUARDRAIL_OLLAMA_ENABLED: "false"
@@ -578,6 +612,8 @@ test-api-e2e:
   stage: test
   image: mcr.microsoft.com/playwright:v1.61.1-noble
   tags: [test]
+  # Declared explicitly: this job does not extend .test-node-base (custom image).
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   cache:
     - key:
         files:
@@ -588,6 +624,7 @@ test-api-e2e:
         - packages/*/node_modules/
       policy: pull
   before_script:
+    - !reference [.vault-oidc, before_script]
     - corepack enable
     - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /pnpm-store
@@ -606,6 +643,7 @@ test-api-e2e:
       artifacts: false
   variables:
     <<: *test-env-vars
+    VAULT_SECRETS: !reference [.vault-secret-sets, ci-full]
     RESET_DB: "false"
     # Schema+seed already done by prepare-test-db
     SKIP_DB_PRECHECK: "true"
@@ -776,11 +814,19 @@ test-nlp:
   stage: test
   image: python:3.11-slim
   tags: [test]
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+  before_script:
+    - !reference [.vault-oidc, before_script]
   needs:
     - job: lint-python
       optional: true
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+    VAULT_SECRETS: >-
+      ci/DATABASE_URL=DATABASE_URL
+      ci/DATABASE_URL=TEST_DATABASE_URL
+      ci/REDIS_URL=REDIS_URL
+      ci/REDIS_URL=TEST_REDIS_URL
     DATABASE_URL: $CI_DATABASE_URL
     TEST_DATABASE_URL: $CI_DATABASE_URL
     REDIS_URL: $CI_REDIS_URL

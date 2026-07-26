@@ -18,6 +18,8 @@ see TASK-312). All commands assume `kubectl` is pointed at the k3s cluster.
 | HA Vault | 3-node Raft (integrated storage), pods `vault-0..2` | ns `vault-system`, labels `app.kubernetes.io/name=vault,component=server` |
 | Seal Vault | single node providing **Transit auto-unseal** for the HA cluster | pod `vault-seal-0`, StatefulSet/Service `vault-seal` |
 | App auth | AppRole `hope-app` + agent-injector delivers secrets to API pods | ns `hope` |
+| Workload auth | Kubernetes auth (`auth/kubernetes`), one role + one policy per service | policies: `infrastructure/docker/configs/vault/policies/k8s/hope-*.hcl` |
+| CI auth | GitLab OIDC → JWT auth (`auth/jwt-gitlab`), roles `hope-ci` / `hope-ci-deploy` | policies: `.../policies/hope-ci{,-deploy}.hcl`; job wiring `.gitlab/ci/vault.yml` |
 | Recovery keys | 5/3 recovery keys + (revoked) root, from `vault operator init` | Secret `vault-system/vault-init-keys` → **move offline** |
 | Transit token | seal Vault token the HA nodes use to auto-unseal | Secret `vault-system/vault-seal-transit` |
 | App creds | `role_id` + single-use `wrapped_secret_id` | Secret `hope/hope-vault-approle` |
@@ -104,6 +106,56 @@ API picks it up on its next cache refresh / restart.
 vex vault-0 vault kv put secret/hope/<key> value=<new>
 ```
 
+### Rotating a platform secret end to end (TASK-558 lane K)
+
+The full procedure, for a secret that both the TypeScript gateway and a Python
+service consume — `GUARDRAIL_SERVICE_TOKEN` is the worked example because it is
+a *shared* secret and therefore the one where a half-rotation causes 401s.
+
+The layout is fixed everywhere: `secret/data/hope/<ENV_VAR_NAME>`, field `value`.
+Dev, CI and cluster differ only in **transport** (HTTP client / rendered file), and
+the name is always the descriptor key from
+`packages/applications/src/services/settings-registry/descriptors/platform-secrets.descriptors.ts`
+run through `toEnvVarName()`. If a name is not a `vault-kv` descriptor,
+`scripts/vault-seed-secrets.sh` will never write it and nothing will read it.
+
+```bash
+# 0. Confirm the name is a registered vault-kv descriptor (fails loudly if not).
+pnpm --filter @arcaai/applications build
+./scripts/vault-seed-secrets.sh --dry-run --only GUARDRAIL_SERVICE_TOKEN --allow-non-dev
+
+# 1. Write the NEW value as a new kv-v2 version. Prior versions stay readable,
+#    which is what makes an overlap possible (and is mandatory for API_KEY_PEPPER).
+printf '%s' "$NEW_VALUE" | vex vault-0 vault kv put secret/hope/GUARDRAIL_SERVICE_TOKEN value=-
+
+# 2. Confirm both sides see the same version.
+vex vault-0 vault kv metadata get secret/hope/GUARDRAIL_SERVICE_TOKEN | grep -E 'current_version'
+
+# 3. Consumers converge:
+#    - TypeScript gateway: SecretsService publishes on `arca:secrets:invalidate`;
+#      every node drops its cache entry. TTL is the backstop, not the mechanism.
+#        vex vault-0 vault kv get -field=value secret/hope/GUARDRAIL_SERVICE_TOKEN >/dev/null
+#    - Python services: the Vault Agent sidecar re-renders
+#      /vault/secrets/GUARDRAIL_SERVICE_TOKEN in place. A settings object built
+#      once at startup keeps the OLD value — trigger the service's
+#      `reload_secrets()` (§13.2 P6) or roll the deployment:
+kubectl -n hope rollout restart deploy/hope-guardrail deploy/hope-api
+
+# 4. Verify no 401s on the hop that uses it.
+kubectl -n hope logs deploy/hope-guardrail --since=5m | grep -i 'service_token\|401' || echo "clean"
+```
+
+**Both ends must move together.** `GUARDRAIL_SERVICE_TOKEN` is presented by the
+gateway *and* verified by guardrail; rotating one side alone is an outage on that
+hop. `API_KEY_PEPPER` is the opposite problem — it must be rotated with a
+**staged overlap** (verify against the `keyVersion` recorded on each `ApiKey`
+row), never swapped, or every issued API key dies at once. See §9.2 L6 / the
+descriptor's own `description` field.
+
+**Never** rotate by editing a `.env` file: since TASK-558 the committed env files
+carry placeholders only, and a value that must change without a restart is by
+definition not an env var (§9.2 L1).
+
 **AppRole `secret_id` (per (re)deploy — NO root needed)** — uses the narrow issuer token:
 
 ```bash
@@ -172,6 +224,170 @@ unexpectedly frequent `Vault DB lease pool swapped` log lines.
 **Transit key rotation** (`hope-globalsetting`): `vault write -f transit/keys/hope-globalsetting/rotate`.
 Transit auto-decrypts old ciphertext with prior key versions, so this is
 zero-downtime; optionally `rewrap` historical ciphertext afterwards.
+
+---
+
+## GitLab CI → Vault (OIDC)
+
+TASK-558 §13.3. No long-lived `VAULT_TOKEN` in GitLab project settings: each job
+that needs a secret presents a short-lived, job-scoped GitLab ID token, and Vault's
+JWT auth method decides what it may read from the token's own claims.
+
+**This GitLab is Free tier**, verified 2026-07-26 against `https://git.taphuynh.dev`
+(project `arca/hope-v2`, id 6) with the project CI-lint endpoint: a config using
+the native `secrets:`/`vault:` keyword is rejected with
+`jobs:<job> config contains unknown keys: secrets`, while the same config using
+only `id_tokens:` lints valid. So the login + read is a shell step,
+`.gitlab/ci/vault-login.sh`, driven by `.gitlab/ci/vault.yml`. If the project moves
+to Premium the roles and policies below are unchanged; only the job syntax changes.
+
+### One-time setup
+
+```bash
+vault auth enable -path=jwt-gitlab jwt
+vault write auth/jwt-gitlab/config \
+  oidc_discovery_url="https://git.taphuynh.dev" \
+  bound_issuer="https://git.taphuynh.dev"
+
+vault policy write hope-ci        infrastructure/docker/configs/vault/policies/hope-ci.hcl
+vault policy write hope-ci-deploy infrastructure/docker/configs/vault/policies/hope-ci-deploy.hcl
+
+vault write auth/jwt-gitlab/role/hope-ci - <<'EOF'
+{ "role_type": "jwt", "user_claim": "user_email",
+  "bound_audiences": ["https://vault.hope.arcaai.com"],
+  "bound_claims_type": "glob",
+  "bound_claims": { "project_path": "arca/hope-v2" },
+  "token_policies": ["hope-ci"],
+  "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
+EOF
+
+vault write auth/jwt-gitlab/role/hope-ci-deploy - <<'EOF'
+{ "role_type": "jwt", "user_claim": "user_email",
+  "bound_audiences": ["https://vault.hope.arcaai.com"],
+  "bound_claims_type": "glob",
+  "bound_claims": { "project_path": "arca/hope-v2",
+                    "ref": ["staging", "dev", "v*"] },
+  "token_policies": ["hope-ci-deploy"],
+  "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
+EOF
+```
+
+Then seed the CI credentials and flip the switch:
+
+```bash
+vault kv put secret/ci/DATABASE_URL     value='postgresql://ci_user:...@10.10.1.250:5000/vox_staging'
+vault kv put secret/ci/REDIS_URL        value='redis://:...@10.10.1.120:6379/8'
+vault kv put secret/ci/REDIS_PASS       value='...'
+vault kv put secret/ci/JWT_SECRET_KEY   value='...'
+vault kv put secret/ci/API_KEY_PEPPER   value='...'
+vault kv put secret/deploy/DEPLOY_TOKEN value='...'
+vault kv put secret/deploy/GITHUB_BACKUP_USER  value='...'
+vault kv put secret/deploy/GITHUB_BACKUP_TOKEN value='...'
+vault kv put secret/deploy/PGB_SMOKE_SSH_KEY           value=@id_ed25519
+vault kv put secret/deploy/PGB_SMOKE_ADMIN_PG_PASSWORD value='...'
+vault kv put secret/deploy/PGB_SMOKE_APP_PG_PASSWORD   value='...'
+```
+
+GitLab → Settings → CI/CD → Variables: set **`VAULT_ADDR`** to the cluster Vault
+URL. It is topology, not a secret — do **not** mask it. That one variable turns the
+mechanism on for every wired job; while it is empty every job silently falls back
+to the existing `CI_*` variables, so there is no half-migrated state.
+
+### Two syntax traps
+
+Both were hit while validating this procedure against a real Vault 1.18:
+
+* `bound_claims` is a **map** field. The command-line form
+  `bound_claims='{"project_path":"..."}'` is rejected with
+  `expected a map, got 'string'`. Use JSON on stdin (`- <<'EOF'`), as above.
+* `"ref": "{staging,dev,v*}"` matches **nothing**. Vault's glob matcher supports
+  `*` only — there is no brace alternation — so that value would be compared
+  literally. Use a JSON **array**; `bound_claims` matches if any element matches.
+
+### ⚠ Open item — branch protection
+
+`GET /projects/6/protected_branches` (2026-07-26) returns **`main` and `release`
+only**. `staging` and `dev` — the refs `deploy-staging`, `smoke-pgbouncer-staging`
+and `github-backup` run on — are unprotected, so anyone who can push a branch can
+run those pipelines and obtain the deploy credentials.
+
+Protect `staging` and `dev`, then add `"ref_protected": "true"` to the
+`hope-ci-deploy` role's `bound_claims`. `ref_protected` is asserted by GitLab and
+cannot be forged by a pipeline author, which makes it the only claim in this design
+that is a genuine privilege boundary. Until then the `ref` claim is scoping, not
+enforcement.
+
+### Debugging a failed job login
+
+`vault-login.sh` prints the exact Vault error plus the job's own claims. The usual
+causes, in order:
+
+| Symptom | Cause |
+|---|---|
+| `claim "ref" does not match any associated bound claim values` | the job runs on a ref the role does not bind (see the array form above) |
+| `claim "project_path" ...` | the role is bound to a different project, or the token came from a fork |
+| `invalid audience` | `VAULT_OIDC_AUD` in `.gitlab-ci.yml` ≠ the role's `bound_audiences` |
+| `permission denied` on the kv read | login succeeded but the policy does not cover that path — check `secret/ci/*` vs `secret/deploy/*` |
+| `VAULT_ID_TOKEN is absent` | the job has no `id_tokens:` block; extend a node base or add `id_tokens: !reference [.vault-oidc-id-token, id_tokens]` |
+
+Values fetched at runtime are **not** masked by GitLab (masking only covers
+variables defined in project settings). Never wrap the job's Vault step in `set -x`.
+
+---
+
+## Kubernetes secret delivery (Vault Agent injection)
+
+TASK-558 §13.2 / §9.2 L7. Pods get platform secrets from a Vault Agent **sidecar**
+that renders one file per secret into a memory-backed volume — not from Kubernetes
+`Secret` objects. A `Secret` is base64, not encryption: its plaintext sits in etcd,
+is readable by anything with `get secrets` in the namespace, and outlives the pod.
+For PHI that is the weaker posture; External Secrets Operator, which materializes
+exactly those objects, is acceptable only for non-PHI values (currently: none).
+
+The full contract, the per-service secret table, the reference manifest and the
+Helm equivalent live in
+[`deployment/vault-agent/README.md`](../../../deployment/vault-agent/README.md).
+Operationally:
+
+```bash
+# Enable Kubernetes auth once, then one role per service ServiceAccount.
+vault auth enable kubernetes
+vault write auth/kubernetes/config kubernetes_host="https://$KUBERNETES_PORT_443_TCP_ADDR:443"
+
+for svc in api smr guardrail nlp harness tts stt; do
+  vault policy write "hope-$svc" "infrastructure/docker/configs/vault/policies/k8s/hope-$svc.hcl"
+  vault write "auth/kubernetes/role/hope-$svc" \
+    bound_service_account_names="hope-$svc" \
+    bound_service_account_namespaces=hope \
+    policies="hope-$svc" ttl=1h
+done
+```
+
+Verify a rendered manifest set before it reaches the cluster:
+
+```bash
+kubectl kustomize deployment/vault-agent | deployment/vault-agent/check-contract.sh -
+helm template <chart>                    | deployment/vault-agent/check-contract.sh -
+```
+
+Three failure modes that all present as "the secret is empty":
+
+1. **File ownership** — the injector defaults to uid 100 / mode 0640; application
+   containers run as uid 1001. Set `vault.hashicorp.com/agent-run-as-user: "1001"`.
+2. **Trailing newline** — an untrimmed template appends `\n`, so every
+   `X-Service-Token` compare fails with a 401 that looks like a wrong secret. Use
+   `{{- with secret ... -}}{{ .Data.data.value }}{{- end -}}`.
+3. **`agent-pre-populate-only: "true"`** — renders once and exits, so a rotated
+   secret never reaches a running pod. Keep the sidecar.
+
+Dev parity: `infrastructure/docker/configs/vault/dev-init.sh` writes the *same*
+per-service policy files and seeds the *same* `secret/hope/<NAME>` paths, so a
+policy typo surfaces on a laptop rather than in staging. It seeds 19 of the 24
+`vault-kv` descriptors — every self-hosted one. The five **external** provider
+credentials (`AZURE_SPEECH_KEY`, `AZURE_FOUNDRY_API_KEY`, `SMR_AZURE_API_KEY`,
+`TTS_SARVAM_API_KEY`, `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY`) are deliberately left
+absent: all five are `failMode: 'closed'`, so absence is a clean "not configured",
+while a placeholder would turn that into a remote 401.
 
 ---
 
