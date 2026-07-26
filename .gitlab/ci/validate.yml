@@ -134,6 +134,12 @@ env-drift-check:
     - job: install-node
       optional: true
   script:
+    # `scripts/env-sync.mts` imports apps/api's env.schema, which pulls
+    # `@arcaai/applications` by package name — that resolves to its built
+    # `dist`, so the package (and its workspace deps) must be built first.
+    # turbo resolves the upstream DAG (types/exceptions/logger/database/domains).
+    - pnpm --filter @arcaai/database db:generate
+    - pnpm turbo build --filter=@arcaai/applications
     - pnpm env:sync --check
   rules:
     - !reference [.rules-env-declarations, rules]
