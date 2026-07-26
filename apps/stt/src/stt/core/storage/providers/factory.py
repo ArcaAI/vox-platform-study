@@ -221,9 +221,10 @@ def default_provider() -> BlobStorageProvider:
     if getattr(settings, "storage_provider", "minio") == "azure_blob":
         return _build_azure(
             {
-                "connection_string": settings.azure_storage_connection_string or None,
+                "connection_string": settings.azure_storage_connection_string.get_secret_value()
+                or None,
                 "account_name": settings.azure_storage_account or None,
-                "account_key": settings.azure_storage_account_key or None,
+                "account_key": settings.azure_storage_account_key.get_secret_value() or None,
                 "endpoint_suffix": settings.azure_storage_endpoint_suffix or "core.windows.net",
             }
         )

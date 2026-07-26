@@ -8,6 +8,8 @@ sanctioned identity lane — these tests lock that in.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from nlp.schemas.classification import (
@@ -48,6 +50,46 @@ class TestEnvCannotSetModelPath:
 
         assert "model_path" in _MODEL_IDENTITY_FIELDS
         assert "model_name" in _MODEL_IDENTITY_FIELDS
+
+
+class TestVaultSecretsDirCannotSetModelIdentity:
+    """TASK-558-H: the Vault `secrets_dir` tier is filtered too.
+
+    Before 558-H the secrets source was inert (no `secrets_dir` was ever
+    configured), so leaving it unfiltered cost nothing. Now that a Vault Agent
+    can populate `/vault/secrets`, an unfiltered secrets source would reopen the
+    hole `_MODEL_IDENTITY_FIELDS` exists to close.
+    """
+
+    def test_a_vault_file_cannot_select_a_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from nlp.core.config import TokenClassificationConfig
+
+        secrets = tmp_path / "vault-secrets"
+        secrets.mkdir()
+        (secrets / "NLP_MODEL_NAME").write_text("attacker/model")
+        monkeypatch.setenv("HOPE_SECRETS_DIR", str(secrets))
+
+        assert TokenClassificationConfig().model_name != "attacker/model"
+
+    def test_a_vault_file_still_supplies_a_real_secret(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Control: the filter is identity-specific, not a blanket veto."""
+        from nlp.core.config import NLPServiceConfig
+
+        secrets = tmp_path / "vault-secrets"
+        secrets.mkdir()
+        (secrets / "NLP_SERVICE_TOKEN").write_text("vault-nlp-token")
+        monkeypatch.setenv("HOPE_SECRETS_DIR", str(secrets))
+
+        assert NLPServiceConfig().service_token.get_secret_value() == "vault-nlp-token"
+
+    def test_request_injection_remains_the_one_identity_lane(self) -> None:
+        from nlp.core.config import TokenClassificationConfig
+
+        assert TokenClassificationConfig(model_name="db/selected").model_name == "db/selected"
 
 
 class TestCacheKeyIncludesPath:

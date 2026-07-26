@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 
 def _resolve_hf_token(settings: Any) -> str | None:
     """Resolve HuggingFace auth token from settings or local cache."""
-    token: str | None = settings.huggingface_token
+    hf_token = settings.huggingface_token
+    token: str | None = hf_token.get_secret_value() if hf_token else None
     if not token:
         try:
             from huggingface_hub import get_token as hf_get_token

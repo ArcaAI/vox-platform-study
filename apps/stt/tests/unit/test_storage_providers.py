@@ -15,6 +15,7 @@ are mocked.
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from stt.core.storage.providers import (
     AzureBlobStorageProvider,
@@ -256,9 +257,9 @@ class TestDefaultProvider:
         ):
             mock_settings.return_value = MagicMock(
                 storage_provider="azure_blob",
-                azure_storage_connection_string="",
+                azure_storage_connection_string=SecretStr(""),
                 azure_storage_account="acct",
-                azure_storage_account_key="key",
+                azure_storage_account_key=SecretStr("key"),
                 azure_storage_endpoint_suffix="core.windows.net",
             )
             provider = default_provider()

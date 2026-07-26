@@ -20,12 +20,16 @@ a default end-to-end is not a calibration edit here.
 
 from __future__ import annotations
 
+from hope_env import hope_settings_sources
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class SensorThresholds(BaseSettings):
     """``passed`` thresholds for the computational sensors."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_SENSOR_")
 

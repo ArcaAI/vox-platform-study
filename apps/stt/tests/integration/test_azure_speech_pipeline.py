@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from pydantic import SecretStr
 
 from stt.core.exceptions import (
     CloudASRAuthError,
@@ -79,7 +80,7 @@ def mock_azure_settings():
     """Patch settings to return test Azure credentials."""
     with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
         mock_settings.return_value = MagicMock(
-            azure_speech_key="integration-test-key-12345",
+            azure_speech_key=SecretStr("integration-test-key-12345"),
             azure_speech_region="westus2",
         )
         yield mock_settings

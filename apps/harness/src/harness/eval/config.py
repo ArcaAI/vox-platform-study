@@ -19,7 +19,7 @@ import json
 from enum import StrEnum
 from typing import Any, cast
 
-from hope_env import load_env
+from hope_env import hope_settings_sources, load_env
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -41,6 +41,9 @@ class JudgeProvider(StrEnum):
 class OpenAICompatJudgeConfig(BaseSettings):
     """OpenAI-compatible local endpoint (LM Studio default)."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_OPENAI_COMPAT_")
 
     base_url: str = "http://localhost:1234/v1"  # LM Studio default
@@ -57,6 +60,9 @@ class OpenAICompatJudgeConfig(BaseSettings):
 class AzureJudgeConfig(BaseSettings):
     """Azure OpenAI judge endpoint."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_AZURE_")
 
     api_key: SecretStr = SecretStr("")
@@ -68,6 +74,9 @@ class AzureJudgeConfig(BaseSettings):
 class BedrockJudgeConfig(BaseSettings):
     """AWS Bedrock judge endpoint."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_BEDROCK_")
 
     region: str = "us-east-1"
@@ -75,6 +84,9 @@ class BedrockJudgeConfig(BaseSettings):
 
 class JudgeConfig(BaseSettings):
     """Root, model-agnostic judge configuration."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_JUDGE_")
 
@@ -188,6 +200,9 @@ class JudgeConfig(BaseSettings):
 
 class EvalConfig(BaseSettings):
     """Eval-run thresholds + golden-set pin (the release-gate knobs)."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_EVAL_")
 

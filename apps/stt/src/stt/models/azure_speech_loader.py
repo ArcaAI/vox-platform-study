@@ -97,7 +97,7 @@ class AzureSpeechLoader(BaseModelLoader):
             model_config.compute_type  # Re-purpose compute_type field for key
             if model_config.compute_type and model_config.compute_type.startswith("key:")
             else None
-        ) or settings.azure_speech_key
+        ) or (settings.azure_speech_key.get_secret_value() if settings.azure_speech_key else None)
 
         speech_region = self._resolve_region(model_config) or settings.azure_speech_region
 

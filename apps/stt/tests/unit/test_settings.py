@@ -148,8 +148,8 @@ class TestSettings:
             settings = Settings()
 
             assert settings.minio_endpoint == "minio.example.com:9000"
-            assert settings.minio_access_key == "access123"
-            assert settings.minio_secret_key == "secret456"
+            assert settings.minio_access_key.get_secret_value() == "access123"
+            assert settings.minio_secret_key.get_secret_value() == "secret456"
             assert settings.minio_secure is True
             assert settings.minio_audio_bucket == "custom-audio"
 
@@ -165,7 +165,7 @@ class TestSettings:
             settings = Settings()
 
             assert settings.api_gateway_url == "http://api:8868/api/v1"
-            assert settings.api_gateway_key == "secret-key"
+            assert settings.api_gateway_key.get_secret_value() == "secret-key"
             assert settings.api_gateway_timeout == 60
 
     def test_huggingface_token_override(self):
@@ -177,7 +177,7 @@ class TestSettings:
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
 
-            assert settings.huggingface_token == "hf_test_token"
+            assert settings.huggingface_token.get_secret_value() == "hf_test_token"
 
     def test_huggingface_token_empty_string_normalized_to_none(self):
         """An empty ``HUGGINGFACE_TOKEN`` must be treated as unset (None).
@@ -233,7 +233,7 @@ class TestSettings:
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
 
-            assert settings.azure_speech_key == "test-azure-key-123"
+            assert settings.azure_speech_key.get_secret_value() == "test-azure-key-123"
             assert settings.azure_speech_region == "eastus2"
 
     def test_azure_speech_key_only(self):
@@ -245,7 +245,7 @@ class TestSettings:
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings(_env_file=None)
 
-            assert settings.azure_speech_key == "key-only"
+            assert settings.azure_speech_key.get_secret_value() == "key-only"
             assert settings.azure_speech_region is None
 
     def test_vad_defaults(self):
@@ -344,3 +344,52 @@ class TestGetSettings:
         settings2 = get_settings()
 
         assert settings1 is settings2
+
+
+class TestSecretRedaction:
+    """TASK-558-H (§13.2 P4) — credentials must never render in the clear.
+
+    These fields become Vault-Agent-rendered files in the cloud, so a plain
+    ``str`` here would put live credentials into any ``repr()``, ``model_dump()``
+    or traceback that captures the settings object.
+    """
+
+    SECRET_ENV = {
+        "MINIO_ACCESS_KEY": "leak-minio-access",
+        "MINIO_SECRET_KEY": "leak-minio-secret",
+        "AZURE_STORAGE_ACCOUNT_KEY": "leak-azure-account",
+        "AZURE_STORAGE_CONNECTION_STRING": "leak-azure-conn",
+        "API_GATEWAY_KEY": "leak-gateway",
+        "HUGGINGFACE_TOKEN": "leak-hf",
+        "AZURE_SPEECH_KEY": "leak-speech",
+        "AZURE_FOUNDRY_API_KEY": "leak-foundry",
+    }
+
+    def _settings(self) -> Settings:
+        with patch.dict(os.environ, self.SECRET_ENV, clear=True):
+            return Settings(_env_file=None)
+
+    def test_secrets_absent_from_repr(self):
+        rendered = repr(self._settings())
+
+        for value in self.SECRET_ENV.values():
+            assert value not in rendered, f"{value} leaked into repr()"
+
+    def test_secrets_absent_from_model_dump(self):
+        settings = self._settings()
+
+        for value in self.SECRET_ENV.values():
+            assert value not in str(settings.model_dump()), f"{value} leaked into model_dump()"
+            assert value not in settings.model_dump_json(), f"{value} leaked into model_dump_json()"
+
+    def test_values_still_reachable_via_get_secret_value(self):
+        settings = self._settings()
+
+        assert settings.minio_access_key.get_secret_value() == "leak-minio-access"
+        assert settings.minio_secret_key.get_secret_value() == "leak-minio-secret"
+        assert settings.azure_storage_account_key.get_secret_value() == "leak-azure-account"
+        assert settings.azure_storage_connection_string.get_secret_value() == "leak-azure-conn"
+        assert settings.api_gateway_key.get_secret_value() == "leak-gateway"
+        assert settings.huggingface_token.get_secret_value() == "leak-hf"
+        assert settings.azure_speech_key.get_secret_value() == "leak-speech"
+        assert settings.azure_foundry_api_key.get_secret_value() == "leak-foundry"

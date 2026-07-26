@@ -69,7 +69,11 @@ def config_from_settings(settings: Any) -> ModelSourceConfig:
     return ModelSourceConfig(
         cache_dir=settings.huggingface_cache_dir,
         hf_cache_dir=settings.huggingface_cache_dir,
-        hf_token=settings.huggingface_token,
+        hf_token=(
+            settings.huggingface_token.get_secret_value()
+            if settings.huggingface_token
+            else None
+        ),
         s3_endpoint=settings.model_s3_endpoint,
         s3_access_key=access.get_secret_value() if access else None,
         s3_secret_key=secret.get_secret_value() if secret else None,

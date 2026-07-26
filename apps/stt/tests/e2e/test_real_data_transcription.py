@@ -76,6 +76,7 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
+from pydantic import SecretStr
 
 logger = logging.getLogger(__name__)
 
@@ -1238,8 +1239,8 @@ async def _ensure_minio_initialized() -> None:
     test_secret_key = os.environ.get("TEST_MINIO_SECRET_KEY", "testpassword")
 
     settings.minio_endpoint = test_endpoint
-    settings.minio_access_key = test_access_key
-    settings.minio_secret_key = test_secret_key
+    settings.minio_access_key = SecretStr(test_access_key)
+    settings.minio_secret_key = SecretStr(test_secret_key)
     settings.minio_secure = False
 
     # ``initialize_minio`` builds the client from the module-level ``settings``

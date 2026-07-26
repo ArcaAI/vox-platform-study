@@ -270,7 +270,11 @@ class SileroVADService:
                 repo_id="onnx-community/silero-vad",
                 filename="onnx/model.onnx",
                 cache_dir=settings.huggingface_cache_dir,
-                token=settings.huggingface_token,
+                token=(
+                    settings.huggingface_token.get_secret_value()
+                    if settings.huggingface_token
+                    else None
+                ),
             )
             return Path(cached_path)
         except ImportError:

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from hope_env import load_env
+from hope_env import hope_settings_sources, load_env
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,6 +29,9 @@ class TemporalConfig(BaseSettings):
     dev stack's ``localhost:7233`` (see ``infrastructure/docker``); in a
     container it is ``temporal:7233``.
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="TEMPORAL_")
 
@@ -66,6 +69,9 @@ class SafetyGuardConfig(BaseSettings):
     resolving to the ``granite-guardian-4.1-8b`` id) or override via
     ``HARNESS_SAFETY_MODEL``.
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_SAFETY_")
 
@@ -112,6 +118,9 @@ class PhiConfig(BaseSettings):
     the local SMR) are not egress and are not listed here.
     """
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="HARNESS_PHI_")
 
     enabled: bool = True
@@ -143,6 +152,9 @@ class RetrievalConfig(BaseSettings):
     set it to 1536 (and recreate the collection) only if a 1536-dim model is
     loaded — it MUST match both the loaded model and the Qdrant collection.
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_RETRIEVAL_")
 
@@ -205,6 +217,9 @@ class ClaimCheckConfig(BaseSettings):
     unchanged: this is a deployment guard, not a default change.
     """
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="HARNESS_CLAIM_CHECK_")
 
     # Offload ON by default (protect the history budget); the threshold keeps small
@@ -252,6 +267,9 @@ class McpConfig(BaseSettings):
     by the server's ``authRef`` PATH — never stored or logged here.
     """
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="HARNESS_MCP_")
 
     # Per-call wall-clock timeout for a single MCP tool invocation.
@@ -281,6 +299,9 @@ class McpConfig(BaseSettings):
 
 class Settings(BaseSettings):
     """Root harness application settings."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="HARNESS_")
 

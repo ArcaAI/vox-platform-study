@@ -16,7 +16,7 @@ timeouts only, never a provider or model choice.
 
 from __future__ import annotations
 
-from hope_env import load_env
+from hope_env import hope_settings_sources, load_env
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -32,6 +32,9 @@ _SETTINGS_ALIASES = SettingsConfigDict(
 class OllamaConfig(BaseSettings):
     """Ollama provider configuration."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="SMR_OLLAMA_")
 
     base_url: str = "http://localhost:11434"
@@ -45,6 +48,9 @@ class OllamaConfig(BaseSettings):
 
 class AzureOpenAIConfig(BaseSettings):
     """Azure OpenAI provider configuration."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_AZURE_")
 
@@ -65,6 +71,9 @@ class AzureOpenAIConfig(BaseSettings):
 class BedrockConfig(BaseSettings):
     """AWS Bedrock provider configuration."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="SMR_BEDROCK_")
 
     region: str = "us-east-1"
@@ -82,6 +91,9 @@ class BedrockConfig(BaseSettings):
 
 class OpenAICompatConfig(BaseSettings):
     """Generic OpenAI-compatible provider configuration."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_OPENAI_COMPAT_")
 
@@ -126,6 +138,9 @@ class LlamaCppConfig(BaseSettings):
     GBNF ``grammar`` / ``json_schema`` structured output are first-class.
     """
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="SMR_LLAMA_CPP_")
 
     base_url: str = "http://localhost:8080"
@@ -143,6 +158,9 @@ class ExternalGuardrailConfig(BaseSettings):
     guardrail NEVER allows (there is deliberately no ``fail_open`` option — that
     foot-gun was retired).
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_EXTERNAL_GUARDRAIL_")
 
@@ -171,6 +189,9 @@ class ExternalGuardrailConfig(BaseSettings):
 class RedisConfig(BaseSettings):
     """Redis configuration for task management."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="SMR_")
 
     redis_url: str = "redis://localhost:6379/0"
@@ -180,6 +201,9 @@ class RedisConfig(BaseSettings):
 
 class CircuitBreakerConfig(BaseSettings):
     """Circuit breaker configuration."""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = SettingsConfigDict(env_prefix="SMR_CB_")
 
@@ -198,6 +222,9 @@ class CircuitBreakerConfig(BaseSettings):
 class QueueConfig(BaseSettings):
     """Request queue configuration."""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     model_config = SettingsConfigDict(env_prefix="SMR_QUEUE_")
 
     max_size: int = 200
@@ -211,6 +238,9 @@ class Settings(BaseSettings):
     flag). A provider is available when its connection config is present and is
     built lazily on first request.
     """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     model_config = _SETTINGS_ALIASES
 

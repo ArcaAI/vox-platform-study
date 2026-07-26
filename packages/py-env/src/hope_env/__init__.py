@@ -48,11 +48,29 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
+from hope_env._provenance import record_injection
+from hope_env.settings_sources import (
+    DEFAULT_SECRETS_DIR,
+    SECRETS_DIR_ENV_VAR,
+    build_hope_sources,
+    hope_settings_sources,
+    register_settings_cache,
+    reload_secrets,
+    resolve_secrets_dir,
+)
+
 __all__ = [
+    "DEFAULT_SECRETS_DIR",
     "ENV_FILE_BY_NODE_ENV",
+    "SECRETS_DIR_ENV_VAR",
     "LoadEnvResult",
+    "build_hope_sources",
     "find_monorepo_root",
+    "hope_settings_sources",
     "load_env",
+    "register_settings_cache",
+    "reload_secrets",
+    "resolve_secrets_dir",
 ]
 
 #: ``NODE_ENV`` → env-file name. Mirrors ``ENV_FILE_MAP`` in the TS loader.
@@ -176,5 +194,9 @@ def load_env(*, start_dir: Path | None = None) -> LoadEnvResult:
     for key, value in dotenv_values(env_file, encoding="utf-8").items():
         if value is not None and key not in os.environ:
             os.environ[key] = value
+            # Remember the provenance: pydantic must be able to rank this BELOW a
+            # Vault-rendered secret file while a real host export still wins, and
+            # once merged into os.environ the two are otherwise indistinguishable.
+            record_injection(key, value)
 
     return LoadEnvResult(loaded=True, node_env=node_env, is_ci=is_ci, env_file=env_file)

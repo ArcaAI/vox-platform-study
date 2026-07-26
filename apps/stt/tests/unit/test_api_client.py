@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from stt.core.api_client.gateway import APIGatewayClient, get_api_client
 from stt.core.exceptions import APIGatewayError
@@ -579,7 +580,7 @@ class TestGetAPIClient:
         """Verify factory creates client with correct settings."""
         with patch("stt.core.api_client.gateway.settings") as mock_settings:
             mock_settings.api_gateway_url = "http://api.example.com:8868/api/v1"
-            mock_settings.api_gateway_key = "production-key-123"
+            mock_settings.api_gateway_key = SecretStr("production-key-123")
             mock_settings.api_gateway_timeout = 60
 
             # Clear cache for fresh test
@@ -597,7 +598,7 @@ class TestGetAPIClient:
         """Verify singleton pattern - same instance returned."""
         with patch("stt.core.api_client.gateway.settings") as mock_settings:
             mock_settings.api_gateway_url = "http://localhost:8868/api/v1"
-            mock_settings.api_gateway_key = "test-key"
+            mock_settings.api_gateway_key = SecretStr("test-key")
             mock_settings.api_gateway_timeout = 30
 
             get_api_client.cache_clear()

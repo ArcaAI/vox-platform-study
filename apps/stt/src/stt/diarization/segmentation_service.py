@@ -41,7 +41,8 @@ class SegmentationService:
             from stt.core.config.settings import get_settings
 
             settings = get_settings()
-            token = settings.huggingface_token
+            hf_token = settings.huggingface_token
+            token = hf_token.get_secret_value() if hf_token else None
             if not token:
                 try:
                     from huggingface_hub import get_token as hf_get_token

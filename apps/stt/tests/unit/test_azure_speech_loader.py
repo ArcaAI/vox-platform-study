@@ -10,6 +10,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from stt.core.exceptions import CloudASRAuthError
 from stt.models.azure_speech_loader import (
@@ -204,7 +205,7 @@ class TestAzureSpeechLoaderLoad:
             ) as mock_sc_class,
         ):
             mock_settings.return_value = MagicMock(
-                azure_speech_key="test-key-123",
+                azure_speech_key=SecretStr("test-key-123"),
                 azure_speech_region="westeurope",
             )
 
@@ -239,7 +240,7 @@ class TestAzureSpeechLoaderLoad:
             ) as mock_sc_class,
         ):
             mock_settings.return_value = MagicMock(
-                azure_speech_key="test-key",
+                azure_speech_key=SecretStr("test-key"),
                 azure_speech_region="centralus",
             )
 
@@ -276,7 +277,7 @@ class TestAzureSpeechLoaderLoad:
 
         with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
             mock_settings.return_value = MagicMock(
-                azure_speech_key="valid-key",
+                azure_speech_key=SecretStr("valid-key"),
                 azure_speech_region=None,
             )
 
@@ -321,7 +322,7 @@ class TestAzureSpeechLoaderLoad:
             ) as mock_sc_class,
         ):
             mock_settings.return_value = MagicMock(
-                azure_speech_key="env-key",
+                azure_speech_key=SecretStr("env-key"),
                 azure_speech_region="westus",
             )
 
@@ -349,7 +350,7 @@ class TestAzureSpeechLoaderLoad:
             ) as mock_sc_class,
         ):
             mock_settings.return_value = MagicMock(
-                azure_speech_key="env-key-123",
+                azure_speech_key=SecretStr("env-key-123"),
                 azure_speech_region="westus",
             )
 
@@ -372,7 +373,7 @@ class TestAzureSpeechLoaderLoad:
             ),
         ):
             mock_settings.return_value = MagicMock(
-                azure_speech_key="key",
+                azure_speech_key=SecretStr("key"),
                 azure_speech_region="eastus",
             )
 
@@ -398,7 +399,7 @@ class TestAzureSpeechLoaderLoad:
             ),
         ):
             mock_settings.return_value = MagicMock(
-                azure_speech_key="key",
+                azure_speech_key=SecretStr("key"),
                 azure_speech_region="westus2",
             )
 

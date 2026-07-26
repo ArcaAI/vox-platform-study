@@ -2,7 +2,7 @@ import os
 from enum import IntEnum, StrEnum
 from typing import Any
 
-from hope_env import load_env
+from hope_env import build_hope_sources, hope_settings_sources, load_env
 from pydantic import Field, SecretStr
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
@@ -44,16 +44,33 @@ def _model_identity_filtered_sources(
     dotenv_settings: PydanticBaseSettingsSource,
     file_secret_settings: PydanticBaseSettingsSource,
 ) -> tuple[PydanticBaseSettingsSource, ...]:
-    """`settings_customise_sources` that drops env/dotenv model-identity keys.
+    """`settings_customise_sources` that drops model-identity keys.
+
+    COMPOSES with the shared HOPE order rather than replacing it: `build_hope_sources`
+    supplies `init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default`,
+    and the model-identity filter is then applied to every source except
+    `init_settings`.
 
     Constructor kwargs (`init_settings`) still set model identity — that is the
     path the per-request cache factories use to load the DB-selected model.
+
+    The filter now covers the Vault `secrets_dir` source too. Before TASK-558-H
+    that source was inert (no `secrets_dir` was ever configured), so leaving it
+    unfiltered cost nothing; now that a Vault Agent can populate it, an
+    unfiltered `secrets_dir` would reopen exactly the hole this filter closes —
+    a `/vault/secrets/NLP_MODEL_NAME` file selecting a model. Model identity
+    comes from the DB, never from the environment or the filesystem.
     """
-    return (
-        init_settings,
-        _ModelIdentityFilteredSource(env_settings),
-        _ModelIdentityFilteredSource(dotenv_settings),
-        file_secret_settings,
+    ordered = build_hope_sources(
+        settings_cls,
+        init_settings=init_settings,
+        env_settings=env_settings,
+        dotenv_settings=dotenv_settings,
+        file_secret_settings=file_secret_settings,
+    )
+    return tuple(
+        source if source is init_settings else _ModelIdentityFilteredSource(source)
+        for source in ordered
     )
 
 
@@ -91,6 +108,9 @@ def _parse_otel_resource_attributes(raw: str | None) -> dict[str, str]:
 
 class NLPServiceConfig(BaseSettings):
     """Main configuration for NLP service"""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     name: str = Field(default="nlp")
     version: str = Field(default="0.1.0")
@@ -251,6 +271,9 @@ class OntologyLinkerConfig(BaseSettings):
     via the env_prefix. The bundled vocabulary is self-hosted — no cloud PHI.
     """
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     linker_enabled: bool = Field(default=True)
     linker_confidence_floor: float = Field(default=0.0, ge=0.0, le=1.0)
 
@@ -283,6 +306,9 @@ class MedicalSuggesterConfig(BaseSettings):
 class WebSocketConfig(BaseSettings):
     """WebSocket configuration"""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     # WebSocket settings
     max_connections: int = Field(default=100)
     connection_timeout: int = Field(default=300)
@@ -296,12 +322,18 @@ class WebSocketConfig(BaseSettings):
 class WebSocketTokenClassificationConfig(BaseSettings):
     """WebSocket token classification configuration"""
 
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
     class Config:
         env_prefix = "WEBSOCKET_TOKEN_CLASSIFICATION_"
 
 
 class SecurityConfig(BaseSettings):
     """Security configuration"""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     cors_origins: list[str] = Field(default=["*"])
     cors_methods: list[str] = Field(default=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
@@ -315,6 +347,9 @@ class SecurityConfig(BaseSettings):
 
 class TextCorrectorConfig(BaseSettings):
     """Text corrector configuration"""
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
 
     dictionary_path: str = Field(default=str(get_project_root() / "data" / "dictionaries"))
 
