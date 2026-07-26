@@ -15,6 +15,23 @@
 #   if the registry cannot be read this script FAILS — it never falls back to a
 #   stale copy.
 #
+#   The derivation is scoped to that ONE descriptor file on purpose. The registry
+#   holds one further `vault-kv` descriptor —
+#   `storage.platformDefault.credentials` in storage.descriptors.ts — whose VALUE
+#   is a Vault kv-v2 PATH (`platform/storage/minio`), not credential material:
+#   it is the `credentialsRef` the SYSTEM `TenantStorageConfig` row points at,
+#   and the JSON living there is written by the operator, not by this script.
+#   Widening the filter to "every vault-kv descriptor" would seed the literal
+#   string "platform/storage/minio" as if it were a secret.
+#
+#   The direction that CAN break silently — a secret the gateway fetches through
+#   SecretsService that has no descriptor, and is therefore never seeded, so it
+#   resolves to undefined on a Vault-backed deployment while working fine on
+#   every `SECRETS_PROVIDER=env` dev box — is pinned by
+#   packages/applications/src/services/baseServices/_meta/secrets/__tests__/vault-kv-coverage.test.ts.
+#   (That guard found four such secrets when it was written: HARNESS_INTERNAL_SERVICE_TOKEN,
+#   STORAGE_ACCESS_KEY_PEPPER, AZURE_STORAGE_CONNECTION_STRING, AZURE_STORAGE_ACCOUNT_KEY.)
+#
 # GUARANTEES
 #   * Idempotent      — reads the current value first and SKIPS an identical
 #                       one, so a re-run creates no new kv-v2 version. (Version
@@ -77,7 +94,7 @@ while [ $# -gt 0 ]; do
     --allow-non-dev) ALLOW_NON_DEV=true; shift ;;
     --env-file)      ENV_FILE="${2:?--env-file needs a path}"; shift 2 ;;
     --only)          ONLY="${2:?--only needs a comma-separated name list}"; shift 2 ;;
-    -h|--help)       sed -n '2,55p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help)       sed -n '2,68p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *)               red "Unknown argument: $1"; exit 2 ;;
   esac
 done
@@ -200,7 +217,18 @@ WROTE=0; UNCHANGED=0; SKIPPED=0; WOULD_WRITE=0
 
 # --- 7. Seed ----------------------------------------------------------------
 
-while IFS="$(printf '\t')" read -r NAME REGISTRY_KEY; do
+# The row list is read on FD 3, not stdin.
+#
+# `docker exec -i` (and, on some builds, the `vault` CLI) attaches the caller's
+# STDIN to the container. With the loop reading from stdin, the FIRST secret that
+# actually had a value ran `vault kv get`, which drained the remaining rows — so
+# the loop exited after one iteration and reported "1 written" as a SUCCESS while
+# 27 secrets were never seeded. Silent partial seeding is the worst possible
+# failure mode for this script: everything downstream fails closed on absence,
+# far from here, long after the operator saw a green summary.
+#
+# FD 3 keeps the row list out of reach of anything a child process attaches to.
+while IFS="$(printf '\t')" read -r NAME REGISTRY_KEY <&3; do
   [ -n "${NAME}" ] || continue
 
   # Indirect expansion: the descriptor's env name IS the variable name.
@@ -237,7 +265,7 @@ while IFS="$(printf '\t')" read -r NAME REGISTRY_KEY; do
   printf '%s' "${VALUE}" | vault_cli kv put -mount="${KV_MOUNT}" "${KV_PREFIX}/${NAME}" value=- >/dev/null
   printf '  %-38s %s\n' "${NAME}" "${ACTION}     (len=${BYTES})"
   WROTE=$((WROTE + 1))
-done <<< "${SECRET_ROWS}"
+done 3<<< "${SECRET_ROWS}"
 
 # --- 8. Summary -------------------------------------------------------------
 

@@ -13,6 +13,8 @@ import { ISecretsProvider, SecretFetchOptions, SecretsHealth } from '../ISecrets
  */
 @Injectable()
 export class InMemorySecretsProvider implements ISecretsProvider {
+  readonly name = 'in-memory' as const;
+
   private store: Map<string, string>;
 
   constructor(seed: Record<string, string> = {}) {

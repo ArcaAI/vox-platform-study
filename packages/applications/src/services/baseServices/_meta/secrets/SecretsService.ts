@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { LRUCacheWithDelete } from 'mnemonist';
-import { ISecretsProvider, SECRETS_PROVIDER_TOKEN, SecretFetchOptions, SecretsHealth } from './ISecretsProvider';
+import { ISecretsProvider, SECRETS_PROVIDER_TOKEN, SecretFetchOptions, SecretsHealth, SecretsProviderName } from './ISecretsProvider';
 
 export interface SecretsServiceOptions {
   /** Default TTL applied to every cached secret. Default 300s. */
@@ -46,15 +46,96 @@ export class SecretsService {
     return opts?.ttlSec ?? this.defaultTtlSec;
   }
 
+  // ---------------------------------------------------------------------------
+  // Cache identity — one entry per (key, kv-v2 version)
+  // ---------------------------------------------------------------------------
+  //
+  // A pinned version and "latest" are DIFFERENT values under one name (that is
+  // the whole point of staged rotation, plan §9.2 L6), so a version-blind cache
+  // key would serve v3 to a caller that asked for v2. Unversioned reads keep the
+  // bare key as their cache key, so nothing about the existing entries changes.
+
+  /** Cache key for a read. */
+  private cacheKey(key: string, opts?: SecretFetchOptions): string {
+    return opts?.version === undefined ? key : `${key}#v${opts.version}`;
+  }
+
+  /** Cache keys currently held per secret NAME, so `invalidate(name)` drops them all. */
+  private readonly cacheKeysByName = new Map<string, Set<string>>();
+
+  private cacheSet(name: string, cacheKey: string, entry: CacheEntry): void {
+    this.cache.set(cacheKey, entry);
+    const keys = this.cacheKeysByName.get(name);
+    if (keys) keys.add(cacheKey);
+    else this.cacheKeysByName.set(name, new Set([cacheKey]));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resolution source — plan §9.2 L8, "every fallback is observable"
+  // ---------------------------------------------------------------------------
+  //
+  // `getSecret()` returns a string and, before this, nothing distinguished
+  // "read from Vault kv-v2" from "read out of `process.env`". A deployment that
+  // silently kept `SECRETS_PROVIDER=env` therefore looked — in every log line
+  // and every health check — exactly like a correctly Vault-backed one, while
+  // its platform credentials sat in the process environment.
+  //
+  // We record the supplying tier for every resolved key, and warn ONCE per key
+  // when the `env` tier supplies a value in a non-development runtime. There is
+  // deliberately NO cross-tier fallback: a `vault` provider that cannot resolve
+  // a key throws (secrets are `failMode: 'closed'` — plan §4 B3). Silently
+  // reading `process.env` behind a Vault miss would authenticate as whatever
+  // happened to be in the environment, which is the failure this ticket exists
+  // to make impossible. `SECRETS_PROVIDER=env` remains fully supported: it is
+  // the dev and CI path, and it is the PROVIDER, not a fallback, there.
+
+  private readonly resolutionSource = new Map<string, SecretsProviderName | 'unknown'>();
+  private readonly warnedFallbackKeys = new Set<string>();
+
+  /** The tier that supplied `key`'s current value, or undefined if never resolved. */
+  getResolutionSource(key: string): SecretsProviderName | 'unknown' | undefined {
+    return this.resolutionSource.get(key);
+  }
+
+  /**
+   * True when this process is a deployed runtime rather than a developer's box
+   * or a test runner. Only there is a value coming from the env tier a
+   * *fallback* worth warning about.
+   *
+   * `NODE_ENV` alone, deliberately: adding a `VITEST` clause would make the
+   * deployed branch unreachable from a test, and Vitest already pins
+   * `NODE_ENV=test`, so the suite is silent without one.
+   */
+  private isDeployedRuntime(): boolean {
+    const nodeEnv = process.env.NODE_ENV;
+    return nodeEnv !== 'development' && nodeEnv !== 'test';
+  }
+
+  /** Attribute a freshly-fetched value to its tier and surface env fallbacks once. */
+  private recordResolution(key: string): void {
+    const source = this.provider.name ?? 'unknown';
+    this.resolutionSource.set(key, source);
+    if (source !== 'env' || !this.isDeployedRuntime() || this.warnedFallbackKeys.has(key)) return;
+    this.warnedFallbackKeys.add(key);
+    // Names the key and the tier only — never the value (plan §9.3 M10).
+    this.logger.warn(
+      `Secret '${key}' was supplied by the 'env' tier (process environment), not by a secrets backend. ` +
+        `SECRETS_PROVIDER is unset or 'env' in NODE_ENV=${process.env.NODE_ENV}. Deployed environments should read platform ` +
+        `credentials from Vault kv-v2 (SECRETS_PROVIDER=vault); seed them with scripts/vault-seed-secrets.sh.`,
+    );
+  }
+
   async getSecret(key: string, opts?: SecretFetchOptions): Promise<string> {
+    const cacheKey = this.cacheKey(key, opts);
     if (!opts?.refresh) {
-      const hit = this.cache.get(key);
+      const hit = this.cache.get(cacheKey);
       if (hit && hit.expiresAt > Date.now()) return hit.value;
     }
     const v = await this.provider.getSecret(key, opts);
+    this.recordResolution(key);
     const ttlSec = this.effectiveTtlSec(opts);
     if (ttlSec > 0) {
-      this.cache.set(key, { value: v, expiresAt: Date.now() + ttlSec * 1000 });
+      this.cacheSet(key, cacheKey, { value: v, expiresAt: Date.now() + ttlSec * 1000 });
     }
     return v;
   }
@@ -102,7 +183,7 @@ export class SecretsService {
         missing.push(k);
         continue;
       }
-      const hit = this.cache.get(k);
+      const hit = this.cache.get(this.cacheKey(k, opts));
       if (hit && hit.expiresAt > Date.now()) {
         out[k] = hit.value;
       } else {
@@ -113,8 +194,9 @@ export class SecretsService {
     const fetched = await this.provider.getSecrets(missing, opts);
     const ttlSec = this.effectiveTtlSec(opts);
     for (const [k, v] of Object.entries(fetched)) {
+      this.recordResolution(k);
       if (ttlSec > 0) {
-        this.cache.set(k, { value: v, expiresAt: Date.now() + ttlSec * 1000 });
+        this.cacheSet(k, this.cacheKey(k, opts), { value: v, expiresAt: Date.now() + ttlSec * 1000 });
       }
       out[k] = v;
     }
@@ -144,12 +226,23 @@ export class SecretsService {
     }
   }
 
+  /**
+   * Evict `key`. Drops EVERY cached kv-v2 version of it, not just the latest:
+   * a rotation announcement must not leave a pinned version serving material
+   * the operator believes is gone.
+   */
   invalidate(key: string): void {
     this.cache.delete(key);
+    const versioned = this.cacheKeysByName.get(key);
+    if (versioned) {
+      for (const cacheKey of versioned) this.cache.delete(cacheKey);
+      this.cacheKeysByName.delete(key);
+    }
   }
 
   invalidateAll(): void {
     this.cache.clear();
+    this.cacheKeysByName.clear();
   }
 
   /**
