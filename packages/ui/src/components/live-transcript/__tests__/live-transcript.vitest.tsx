@@ -199,7 +199,9 @@ describe('LiveTranscript editing (D4 — Lexical)', () => {
   // could exceed the 1s default async timeout, leaving the "Loading editor"
   // fallback mounted and flaking the first edit test.
   beforeAll(async () => {
-    await import('../segment-editor');
+    // `.js` extension matches the component's own `import('./segment-editor.js')`
+    // (NodeNext requires it; Vite maps it back to the .tsx source at runtime).
+    await import('../segment-editor.js');
   });
 
   it('hides the edit affordance when not editable and blocks editing interim under final-only', () => {
