@@ -129,25 +129,6 @@ build-admin-console:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ADMIN-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
-# ── Live Transcription Example UI ───────────────────────────────────────────
-
-build-example-ui:
-  extends: .build-template
-  needs:
-    - job: warm-up-base-images
-      optional: true
-    - job: test-sdk
-      optional: true
-    - job: typecheck
-      optional: true
-  variables:
-    SERVICE_NAME: example-ui
-    DOCKER_CONTEXT: "."
-    DOCKERFILE: apps/example/Dockerfile
-  rules:
-    - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^ALL-/
-
 # ── NLP ──────────────────────────────────────────────────────────────────────
 
 build-nlp:
