@@ -131,7 +131,7 @@ services:
           memory: 64M
 
   minio-createbuckets:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
     container_name: hope-minio-createbuckets
     depends_on:
       minio-test:
@@ -185,7 +185,7 @@ services:
   # Qdrant Collection Initialization (mirrors dev infrastructure)
   qdrant-init-test:
     container_name: hope-qdrant-init-test
-    image: python:3.11-slim
+    image: python:3.11-slim-trixie
     depends_on:
       qdrant-test:
         condition: service_healthy

@@ -275,7 +275,7 @@ services:
       - /var/lib/postgresql/data
 
   redis-test:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: hope-redis-test
     ports:
       - '6380:6379'
@@ -744,7 +744,7 @@ jobs:
           --health-retries 5
 
       redis:
-        image: redis:7-alpine
+        image: redis:8-alpine
         ports:
           - 6380:6379
         options: >-
@@ -834,7 +834,7 @@ jobs:
           --health-retries 5
 
       redis:
-        image: redis:7-alpine
+        image: redis:8-alpine
         ports:
           - 6380:6379
         options: >-

@@ -1,8 +1,8 @@
-ARG NODE_VERSION=22
+ARG NODE_VERSION=24
 ARG PNPM_VERSION=10.31.0
 
 # -- DEPENDENCY STAGE --
-FROM node:${NODE_VERSION}-slim AS dependencies
+FROM node:${NODE_VERSION}-bookworm-slim AS dependencies
 
 LABEL maintainer="HOPE Team" \
     service="api" \
@@ -60,7 +60,13 @@ RUN set -ex; \
     rm -rf /app/node_modules/.prisma && \
     pnpm exec prisma generate --schema=packages/database/src/prisma/db_main/schema.prisma; \
     cd packages/tools && pnpm prisma-commander generate --all; \
-    cd /app && pnpm build:packages && pnpm build:modules && pnpm build:api; \
+    # Build ONLY the api's workspace graph (`@arcaai/api...`), not every package.
+    # `build:packages` compiled ./packages/* wholesale — dragging in @arcaai/ui,
+    # @arcaai/vox and the audio SDK that the API never consumes (and whose deps
+    # aren't even installed in this image, so their build fails). `api:build`
+    # (turbo --filter=@arcaai/api...) is the correct scope. (`build:modules` /
+    # `build:api` were also dangling — no such root scripts exist.)
+    cd /app && pnpm api:build; \
     # Verify build artifacts exist
     test -f apps/api/dist/main.js || { echo "Build failed: main.js not found"; exit 1; }; \
     # Preserve ALL Prisma schema domains for production image (initContainers)
@@ -72,7 +78,7 @@ RUN set -ex; \
     pnpm store prune
 
 # -- PRODUCTION STAGE --
-FROM node:${NODE_VERSION}-slim AS production
+FROM node:${NODE_VERSION}-bookworm-slim AS production
 
 LABEL maintainer="HOPE Team" \
     service="apps-api" \

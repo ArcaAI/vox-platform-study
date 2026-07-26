@@ -34,6 +34,11 @@ COPY apps/stt/pyproject.toml ./apps/stt/
 # this COPY fails layer 1 with "Distribution not found"). Dependency-free and
 # rarely changed, so it costs no meaningful layer-cache churn.
 COPY packages/py-runtime-models ./packages/py-runtime-models
+# TASK-558 — shared env-file loader (`hope-env`). Same workspace path-dependency
+# rule as py-runtime-models above: every service now declares `hope-env`, so
+# `uv sync` needs it on disk or layer 1 fails with "Distribution not found at:
+# file:///app/packages/py-env". Dependency-light and rarely changed.
+COPY packages/py-env ./packages/py-env
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --package tts --no-dev --no-install-project --no-editable
 

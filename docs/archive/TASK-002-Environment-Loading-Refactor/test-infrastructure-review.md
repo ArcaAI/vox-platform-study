@@ -25,7 +25,7 @@ The HOPE monorepo has a well-structured test infrastructure with proper isolatio
 | Service | Image | Port | Purpose |
 |---------|-------|------|---------|
 | postgres-test | postgres:16-alpine | 5433 | Test database |
-| redis-test | redis:7-alpine | 6380 | Test cache |
+| redis-test | redis:8-alpine | 6380 | Test cache |
 | kafka-test | apache/kafka:4.0.0 | 9093 | Test message broker |
 | minio-test | minio/minio:latest | 9002 | Test object storage |
 

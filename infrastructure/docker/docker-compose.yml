@@ -117,7 +117,7 @@ services:
     # MinIO Bucket Setup
     minio-setup:
         container_name: hope-minio-setup
-        image: minio/mc:latest
+        image: minio/mc:RELEASE.2025-04-16T18-13-26Z
         networks:
             - hope-network
         depends_on:

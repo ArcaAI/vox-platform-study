@@ -79,8 +79,8 @@ The HOPE monorepo completed a migration from Kafka to Redis for all job queues a
 
 | Workflow | Kafka Present | Redis Version | MinIO Version | Issues |
 |----------|---------------|---------------|---------------|--------|
-| `test-integration.yml` | Yes (2 jobs) | `redis:7-alpine` | `minio/minio:latest` | Kafka stale, Redis version mismatch (7 vs 8) |
-| `test-e2e.yml` | Yes (1 job) | `redis:7-alpine` | -- | Kafka stale, Redis version mismatch, PG version mismatch (16 vs 18) |
+| `test-integration.yml` | Yes (2 jobs) | `redis:8-alpine` | `minio/minio:latest` | Kafka stale, Redis version mismatch (7 vs 8) |
+| `test-e2e.yml` | Yes (1 job) | `redis:8-alpine` | -- | Kafka stale, Redis version mismatch, PG version mismatch (16 vs 18) |
 | `setup-test-env/action.yml` | Yes (7 env vars) | -- | -- | Kafka inputs/outputs/env vars |
 
 **GitLab CI:**
@@ -216,10 +216,10 @@ The HOPE monorepo completed a migration from Kafka to Redis for all job queues a
 #### Task 2.6: Fix Redis Version in GitHub Actions
 
 **`.github/workflows/test-integration.yml`:**
-- Change `redis:7-alpine` to `redis:8-alpine` in both jobs
+- Change `redis:8-alpine` to `redis:8-alpine` in both jobs
 
 **`.github/workflows/test-e2e.yml`:**
-- Change `redis:7-alpine` to `redis:8-alpine`
+- Change `redis:8-alpine` to `redis:8-alpine`
 
 ---
 
