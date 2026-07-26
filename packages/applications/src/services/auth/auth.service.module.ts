@@ -16,6 +16,7 @@ import { SecretsService } from '../baseServices/_meta/secrets';
 import { UserServiceModule } from '../user/user/user.service.module';
 import { JwtRevocationModule } from './jwt-revocation.module';
 import { RefreshTokenService, IRefreshTokenService } from './refresh-token.service';
+import { TenantSettingsService } from '../settings-registry/tenant-settings.service';
 
 const logger = new Logger('AuthServiceModule');
 
@@ -106,6 +107,10 @@ const logger = new Logger('AuthServiceModule');
       inject: ['OPENID_CLIENT', IAppSettingsService, IAuthService, ClsService, SecretsService],
     },
     JwtStrategy,
+    // The `global-kv` cascade for `refreshToken.ttlSeconds` (TASK-558 lane I).
+    // Provided locally — its only dependency is `IAppSettingsService`, already
+    // available in this graph.
+    TenantSettingsService,
     {
       provide: IRefreshTokenService,
       useClass: RefreshTokenService,

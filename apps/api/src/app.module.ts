@@ -50,6 +50,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { GlobalSettingModule } from './modules/global-setting/global-setting.module';
 // /admin/settings/catalog capability inventory (registered
 // BEFORE GlobalSettingModule so the static route wins over admin/settings/:id).
+import { PlatformKnobsModule } from './modules/platform-knobs/platform-knobs.module';
 import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
@@ -280,6 +281,10 @@ const featureModules: any[] = [
   // /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
+  // Applies the pre-bootstrap platform knobs (`logLevel`,
+  // `corsAllowedOrigins`) from the settings cascade — TASK-558 lane I. No
+  // controllers; a binder only.
+  PlatformKnobsModule,
   // /admin/settings/catalog. MUST precede GlobalSettingModule
   // so the static `catalog` route registers before `admin/settings/:id`.
   SettingsCatalogModule,

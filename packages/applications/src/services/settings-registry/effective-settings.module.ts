@@ -6,6 +6,7 @@ import { GlobalSettingServiceModule } from '../globalSetting/globalSetting.servi
 import { EffectiveSettingsService } from './effective-settings.service';
 import { HOPE_SETTINGS_REGISTRY } from './registry';
 import { SettingsRegistryWriteService } from './settings-registry-write.service';
+import { TenantSettingsService } from './tenant-settings.service';
 
 /**
  * DI module for the EffectiveSettingsService facade. Imports
@@ -18,8 +19,8 @@ import { SettingsRegistryWriteService } from './settings-registry-write.service'
  */
 @Module({
   imports: [ConfigResolverModule, AiTaskDefaultServiceModule, CommonServiceModule, GlobalSettingServiceModule],
-  providers: [EffectiveSettingsService, SettingsRegistryWriteService],
-  exports: [EffectiveSettingsService, SettingsRegistryWriteService],
+  providers: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService],
+  exports: [EffectiveSettingsService, SettingsRegistryWriteService, TenantSettingsService],
 })
 export class EffectiveSettingsModule implements OnModuleInit {
   private readonly logger = new Logger(EffectiveSettingsModule.name);

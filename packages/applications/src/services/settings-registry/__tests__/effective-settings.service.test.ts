@@ -2,6 +2,7 @@ import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { describe, expect, it, vi } from 'vitest';
 import type { ConfigResolver, ResolvedPipelineToggles } from '../../config-resolver/config-resolver.service';
 import { EffectiveSettingsService } from '../effective-settings.service';
+import { TenantSettingsService } from '../tenant-settings.service';
 
 // The facade delegates pipeline keys to ConfigResolver, threads the
 // cascade trace through, and refuses secret keys.
@@ -25,12 +26,28 @@ function resolved(over: Partial<ResolvedPipelineToggles> = {}): ResolvedPipeline
 function serviceWith(
   toggles: ResolvedPipelineToggles,
   aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
-  // Backs the global-kv override lane. Omitted ⇒ no DB override, so
+  // Backs the global-kv lane. Omitted ⇒ no stored row at any scope, so
   // global-kv keys resolve to their descriptor default.
-  appSettings?: { getValueWithDefault: ReturnType<typeof vi.fn> },
+  //
+  // TASK-558 lane I: the lane is now the full cascade
+  // (tenant → SYSTEM → default) behind `TenantSettingsService`, so the facade
+  // takes THAT service rather than reading `IAppSettingsService` with a
+  // key-only lookup. A real `TenantSettingsService` is constructed over a fake
+  // two-lane cache, so these cases exercise the production resolution path
+  // instead of a stub of it.
+  stored?: { platform?: Record<string, unknown>; tenant?: Record<string, Record<string, unknown>> },
 ): EffectiveSettingsService {
   const configResolver = { resolvePipelineToggles: vi.fn(async () => toggles) } as unknown as ConfigResolver;
-  return new EffectiveSettingsService(configResolver, aiTaskDefaults as any, appSettings as any);
+  const tenantSettings = stored
+    ? new TenantSettingsService({
+        getValueFromCache: (key: string) => (stored.platform && key in stored.platform ? stored.platform[key] : null),
+        getTenantValueFromCache: (tenantId: string, key: string) => {
+          const rows = stored.tenant?.[tenantId];
+          return rows && key in rows ? rows[key] : null;
+        },
+      } as any)
+    : undefined;
+  return new EffectiveSettingsService(configResolver, aiTaskDefaults as any, tenantSettings as any);
 }
 
 const CTX = { tenantId: 'tnt-1', departmentId: 'dep-1', doctorId: null };
@@ -69,21 +86,44 @@ describe('EffectiveSettingsService', () => {
   // `agentic.context.*` short-circuited to the descriptor default and a value
   // written to the KV store was invisible here, so the read surface lied.
   describe('global-kv override lane', () => {
-    it('reports a DB override with sourceScope global-kv', async () => {
-      const appSettings = { getValueWithDefault: vi.fn(() => 9000) };
-      const svc = serviceWith(resolved(), undefined, appSettings);
+    // SUPERSEDED BY TASK-558 lane I — `sourceScope` was the literal tier name
+    // `'global-kv'`, which said WHERE the value is stored, not WHICH scope set
+    // it. With six knobs now `maxScope: 'tenant'`, "stored in the KV" no longer
+    // identifies the answer, so the lane reports the winning CASCADE tier
+    // (`tenant` | `system` | `code-default`) — the same vocabulary the pipeline
+    // branch above already uses, and what §9.2 L8 asks for.
+    it('reports a stored platform row with sourceScope system', async () => {
+      const svc = serviceWith(resolved(), undefined, { platform: { 'agentic.context.liveDelta.maxChars': 9000 } });
 
       await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
         key: 'agentic.context.liveDelta.maxChars',
         tier: 'global-kv',
         value: 9000,
-        sourceScope: 'global-kv',
+        sourceScope: 'system',
+      });
+    });
+
+    it('reports a TENANT override ahead of the platform row', async () => {
+      const svc = serviceWith(resolved(), undefined, {
+        platform: { 'rateLimit.maxRequests': 100 },
+        tenant: { 'tnt-1': { 'rateLimit.maxRequests': 10 } },
+      });
+
+      await expect(svc.resolveEffective('rateLimit.maxRequests', CTX)).resolves.toEqual({
+        key: 'rateLimit.maxRequests',
+        tier: 'global-kv',
+        value: 10,
+        sourceScope: 'tenant',
+      });
+      // …and the SAME facade answers a different tenant with the platform row.
+      await expect(svc.resolveEffective('rateLimit.maxRequests', { ...CTX, tenantId: 'tnt-2' })).resolves.toMatchObject({
+        value: 100,
+        sourceScope: 'system',
       });
     });
 
     it('falls back to the descriptor default with sourceScope code-default', async () => {
-      const appSettings = { getValueWithDefault: vi.fn(() => null) };
-      const svc = serviceWith(resolved(), undefined, appSettings);
+      const svc = serviceWith(resolved(), undefined, { platform: {} });
 
       await expect(svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX)).resolves.toEqual({
         key: 'agentic.context.liveDelta.maxChars',
@@ -93,7 +133,7 @@ describe('EffectiveSettingsService', () => {
       });
     });
 
-    it('falls back to the descriptor default when no AppSettings resolver is wired', async () => {
+    it('falls back to the descriptor default when no settings resolver is wired', async () => {
       const svc = serviceWith(resolved());
       const res = await svc.resolveEffective('agentic.context.liveDelta.maxChars', CTX);
       expect(res.sourceScope).toBe('code-default');

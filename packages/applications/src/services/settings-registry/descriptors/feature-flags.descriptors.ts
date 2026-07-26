@@ -1,23 +1,32 @@
-// Feature gates — env today, `redis-flag` eventually (TASK-558 lane F).
+// Feature gates — env today, `global-kv` eventually (TASK-558 lanes F + I).
 //
-// SAME HONESTY RULE AS `platform-knobs.descriptors.ts`, and here it matters even
-// more: plan §3.2 lists this family under `redis-flag`, but there is currently NO
-// redis-flag infrastructure at all — zero descriptors use the tier and
-// `EffectiveSettingsService` has no branch for it. Declaring `tier: 'redis-flag'`
-// would assert these values live in a flag store that does not exist and that
-// nothing reads. Every key below is therefore `tier: 'env'` (a verified
-// `process.env` / pydantic-settings read) with `targetTier: 'redis-flag'`.
+// ── THE `redis-flag` DECISION, SETTLED (lane I) ──────────────────────────────
+// Lane F recorded `targetTier: 'redis-flag'` here from plan §3.2, and at the
+// same time recorded that NO redis-flag infrastructure exists: zero descriptors
+// use the tier and `EffectiveSettingsService` has no branch for it. Lane I
+// closed that question rather than leaving it open — the destination is
+// **`global-kv`**, not a new tier, and every `targetTier` below now says so.
 //
-// WHY `redis-flag` IS THE RIGHT DESTINATION (plan §9.3 M9): a kill-switch is only
-// worth having if it fans out INSTANTLY. A flag that needs a redeploy is not a
-// kill-switch, it is a build flag. Redis pub/sub already carries the
-// `SecretsService` eviction channel, so the transport exists; the flag store on
-// top of it does not yet.
+// The reason is that the ONLY property `redis-flag` was wanted for is instant
+// fan-out (§9.3 M9: "a flag that needs a redeploy is not a kill-switch, it is a
+// build flag") — and `global-kv` already has it. `AppSettingsService` publishes
+// on `app-settings:invalidate` after every `GlobalSetting` write and subscribes
+// to it on init, so a peer node drops and reloads its cache on push; the 45s
+// cron is the backstop, not the mechanism (lane G proved this end to end).
+// Building a second flag store on the same Redis to get a property the first
+// one already has would be new infrastructure bought with no new capability —
+// plus a second write path, a second invalidation contract, and a second place
+// for a flag to be stale. `platform-knobs.descriptors.ts` shows the shape a
+// migrated key takes.
 //
-// WHAT THE MIGRATION COSTS PER KEY: a Redis-backed read with a bounded local
-// cache + eviction subscription, and — for the four Python-side flags — a route
-// through the gateway's `/api/v1/internal/effective-config` rather than a second
-// direct reader (plan §9.3 M7). Until that lands, `tier` stays `env`.
+// WHAT THE MIGRATION STILL COSTS PER KEY: moving the READER. That is what
+// `tier` tracks, and it is why the flags below have NOT flipped: six of the ten
+// are read by pydantic-settings inside a Python service, so their migration is
+// a `/api/v1/internal/effective-config` route on the gateway plus a change in
+// that service's `config.py` — files this lane does not own (they belong to the
+// Python-loader lane). Flipping `tier` while a `process.env` read is still the
+// authority would make the catalog LIE, which is the one thing the honesty rule
+// below forbids.
 //
 // ── DELIBERATELY NOT REGISTERED ──────────────────────────────────────────────
 // `TENANT_IDP_ENABLED` — NO READER EXISTS. It is declared in `.env.example` and
@@ -138,9 +147,16 @@ const FLAGS: FlagSpec[] = [
 export const FEATURE_FLAG_SETTINGS: SettingDescriptor[] = FLAGS.map<SettingDescriptor>((flag) => ({
   key: flag.key,
   tier: 'env',
-  targetTier: 'redis-flag',
+  // Corrected from `redis-flag` by lane I — see the header. The destination is
+  // the EXISTING `global-kv` tier, whose `app-settings:invalidate` fan-out
+  // already delivers the instant propagation `redis-flag` was wanted for.
+  targetTier: 'global-kv',
   dataType: 'boolean',
   sensitivity: 'internal',
+  // Stays `system` until the reader moves: a governance test binds
+  // `tier: 'env'` to `maxScope: 'system'` (an env var has no cascade), and
+  // plan §13.4's tenant scope for the harness/groundedness toggles is a
+  // property of the DB tier they are headed for, not of the env read.
   maxScope: 'system',
   editableBy: EDITABLE_BY_NONE,
   // A flag whose value cannot be read must behave as it does today: the reader's

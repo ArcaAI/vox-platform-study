@@ -22,6 +22,18 @@ export const REGISTRY_SETTING_NAMESPACE = 'registry';
 /** Platform-owned KV rows live on the reserved global tenant, like rate-limit.*. */
 const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
+/** The reserved SYSTEM tenant. Platform capability rows are seeded here. */
+const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Tenants that own PLATFORM configuration. A `tenant`-scope write may never
+ * target one of these: it would land in the key-only (platform) lane of the
+ * settings cache and silently become a platform-wide change (§9.3 M4 — that
+ * lane is sound only because its contents are platform-only). Mirrors
+ * `PLATFORM_TENANT_IDS` in `AppSettingsService`.
+ */
+const PLATFORM_TENANT_IDS: readonly string[] = [GLOBAL_TENANT_ID, SYSTEM_TENANT_ID];
+
 export interface WriteRegistrySettingOptions {
   /** Scope the value is being set at. Defaults to `system` for global-kv keys. */
   scope?: SettingScope;
@@ -108,6 +120,16 @@ export class SettingsRegistryWriteService extends BaseService {
     const scope: SettingScope = options.scope ?? 'system';
     HOPE_SETTINGS_REGISTRY.assertWithinMaxScope(key, scope);
 
+    // 4b. WHICH ROW this write targets (TASK-558 lane I). `globalOnly` gates the
+    //     KEY; this gates the SCOPE, and the two are independent: a key a tenant
+    //     admin may set for ITSELF (`rateLimit.maxRequests`) is still a
+    //     platform-wide change when written at `system` scope. Before lane I a
+    //     `scope: 'tenant'` write passed the clamp and then wrote the PLATFORM
+    //     row regardless — the clamp said yes and the value landed in the wrong
+    //     place.
+    this.assertMayWriteAtScope(scope, key);
+    const targetTenantId = this.targetTenantFor(scope, key);
+
     // 5. Tier dispatch. `db-config` keys (pipeline policy, TTS config) keep
     //    their dedicated services until those adopt this enforcement point;
     //    refusing here is deliberate, not an oversight.
@@ -121,14 +143,21 @@ export class SettingsRegistryWriteService extends BaseService {
     const { serialized, valueType } = this.serialize(descriptor, value);
 
     // 7. Upsert the backing row under COMPARE-AND-SET, then refresh the read cache.
-    const existing = await this.findBackingRow(key);
+    const existing = await this.findBackingRow(key, targetTenantId);
     const persisted = existing
       ? await this.updateExisting(existing, serialized, options.expectedVersion, key)
-      : await this.createOrRecoverRace(key, descriptor, serialized, valueType);
+      : await this.createOrRecoverRace(key, descriptor, serialized, valueType, targetTenantId);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: persisted.id,
-      data: { key, scope, tier: descriptor.tier, namespace: REGISTRY_SETTING_NAMESPACE, newVersion: persisted.version },
+      data: {
+        key,
+        scope,
+        tier: descriptor.tier,
+        namespace: REGISTRY_SETTING_NAMESPACE,
+        tenantId: targetTenantId,
+        newVersion: persisted.version,
+      },
     });
 
     await this.appSettings.refreshCache();
@@ -143,13 +172,82 @@ export class SettingsRegistryWriteService extends BaseService {
    * an ETag the client echoes as `If-Match` on the write. 0 deliberately yields
    * no ETag — there is nothing to precondition a first write against.
    */
-  async getBackingRowVersion(key: string): Promise<number> {
-    const row = await this.findBackingRow(key);
+  async getBackingRowVersion(key: string, scope: SettingScope = 'system'): Promise<number> {
+    // Deliberately does NOT assert the write privilege: rendering an ETag is a
+    // READ, and a tenant admin must be able to read the version of a key it is
+    // allowed to write. A tenant-scope read with no working tenant reports "no
+    // row" rather than erroring — a GET must not 400 because the caller has not
+    // picked a tenant yet.
+    let tenantId: string;
+    try {
+      tenantId = this.targetTenantFor(scope, key);
+    } catch {
+      return 0;
+    }
+    const row = await this.findBackingRow(key, tenantId);
     return row?.version ?? 0;
   }
 
-  /** The backing KV row for `key`, read FRESH (never the AppSettings snapshot). */
-  private async findBackingRow(key: string): Promise<{ id: string; version: number } | null> {
+  /**
+   * The privilege boundary on the SCOPE of a write.
+   *
+   * A `system`-scope write changes the value platform-wide, so it is
+   * GLOBAL-ADMIN-ONLY regardless of `globalOnly` — which gates the KEY, not the
+   * scope. This is a 403 (privilege), never the 404-over-403 cross-tenant
+   * posture: the caller may legitimately hold `manage` on the key for its OWN
+   * tenant, and is being refused only the platform-wide row.
+   *
+   * Kept SEPARATE from `targetTenantFor` so a read path can resolve which row
+   * it is looking at without inheriting a write's privilege check.
+   */
+  private assertMayWriteAtScope(scope: SettingScope, key: string): void {
+    if (scope === 'system' && !isSuperAdmin(this.requestUser)) {
+      throw new ForbiddenException(`Writing setting '${key}' at 'system' scope changes it platform-wide and is restricted to global administrators.`);
+    }
+  }
+
+  /**
+   * The tenant whose row `scope` addresses. Pure row targeting — no privilege
+   * check (see `assertMayWriteAtScope`).
+   *
+   *  - `system`  → the reserved platform tenant.
+   *  - `tenant`  → the caller's WORKING tenant, taken from CLS. Deliberately
+   *    not a caller-supplied id: the Prisma tenant-scope extension pins every
+   *    `GlobalSetting` write to the CLS tenant anyway, so accepting a target id
+   *    here would advertise a cross-tenant write path that cannot execute. A
+   *    global admin acting for a tenant already carries that tenant in CLS (the
+   *    console's `X-Tenant-Id` working-tenant header).
+   *
+   * `department` / `doctor` are refused: no key declares a deeper `maxScope`
+   * than `tenant` in this tier, and inventing a row layout for a scope with no
+   * descriptor would be speculative.
+   */
+  private targetTenantFor(scope: SettingScope, key: string): string {
+    if (scope === 'system') {
+      return GLOBAL_TENANT_ID;
+    }
+    if (scope !== 'tenant') {
+      throw new ArgumentInvalidException(`Setting '${key}' cannot be written at '${scope}' scope through the registry lane.`);
+    }
+
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new ArgumentInvalidException(`Writing setting '${key}' at 'tenant' scope requires a working tenant; none is selected for this request.`);
+    }
+    if (PLATFORM_TENANT_IDS.includes(tenantId)) {
+      throw new ArgumentInvalidException(
+        `Writing setting '${key}' at 'tenant' scope requires a CUSTOMER tenant; ` +
+          'the reserved platform tenants hold the platform-wide row, which is written at `system` scope.',
+      );
+    }
+    return tenantId;
+  }
+
+  /**
+   * The backing KV row for `key` under `tenantId`, read FRESH (never the
+   * AppSettings snapshot).
+   */
+  private async findBackingRow(key: string, tenantId: string): Promise<{ id: string; version: number } | null> {
     // `Repository.findFirst` THROWS `DataNotFoundException` on no match (it
     // never returns null) — on a fresh DB with no registry rows that exception
     // used to escape as a blanket 404 on every `GET registry/:key`.
@@ -157,7 +255,7 @@ export class SettingsRegistryWriteService extends BaseService {
     // first write), so it maps to null, not an error.
     try {
       const row = await this.globalSettingRepository.findFirst({
-        where: { key, namespace: REGISTRY_SETTING_NAMESPACE },
+        where: { key, namespace: REGISTRY_SETTING_NAMESPACE, tenantId },
       } as never);
       return row ? { id: row.id, version: row.version } : null;
     } catch (err) {
@@ -219,6 +317,7 @@ export class SettingsRegistryWriteService extends BaseService {
     descriptor: SettingDescriptor,
     serialized: string,
     valueType: ValueType,
+    tenantId: string,
   ): Promise<{ id: string; version: number }> {
     try {
       const created = await this.globalSettings.create({
@@ -227,11 +326,11 @@ export class SettingsRegistryWriteService extends BaseService {
         value: serialized,
         dataType: valueType,
         namespace: REGISTRY_SETTING_NAMESPACE,
-        tenantId: GLOBAL_TENANT_ID,
+        tenantId,
       });
       return { id: created.id, version: created.version };
     } catch (error) {
-      const winner = await this.findBackingRow(key);
+      const winner = await this.findBackingRow(key, tenantId);
       if (!winner) throw error;
       const updated = await this.globalSettings.update(winner.id, { value: serialized, expectedVersion: winner.version });
       return { id: updated.id, version: updated.version };
