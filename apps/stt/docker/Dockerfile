@@ -91,9 +91,22 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_NO_INSTALLER_METADATA=1
 
-# Only stt's own files are needed here (GPU stages fresh-resolve the package).
-COPY apps/stt/pyproject.toml apps/stt/README.md ./
-COPY apps/stt/src ./src
+# Workspace scaffolding: stt's pyproject declares hope-runtime-models / hope-env
+# as `workspace = true` sources, so even this fresh (non-frozen) GPU resolve needs
+# the workspace root (root pyproject.toml + uv.lock) and those path members on
+# disk — the same set the CPU `builder` stage and the smr/harness Dockerfiles copy.
+# Without it, `uv pip install` fails: "hope-runtime-models references a workspace
+# in tool.uv.sources, but is not a workspace member".
+COPY pyproject.toml uv.lock ./
+COPY apps/stt/pyproject.toml apps/stt/README.md ./apps/stt/
+COPY apps/guardrail/pyproject.toml ./apps/guardrail/
+COPY apps/nlp/pyproject.toml ./apps/nlp/
+COPY apps/smr/pyproject.toml ./apps/smr/
+COPY apps/harness/pyproject.toml ./apps/harness/
+COPY apps/tts/pyproject.toml ./apps/tts/
+COPY packages/py-runtime-models ./packages/py-runtime-models
+COPY packages/py-env ./packages/py-env
+COPY apps/stt/src ./apps/stt/src
 
 # Generate overrides that tell uv to skip most nvidia-* pip packages and triton.
 #
@@ -150,7 +163,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python \
         --override /tmp/cuda-overrides.txt \
-        ".[ml-gpu]"
+        "./apps/stt[ml-gpu]"
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     printf '%s\n' \
@@ -158,7 +171,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     >> /tmp/cuda-overrides.txt \
     && uv pip install --python /opt/venv/bin/python \
         --override /tmp/cuda-overrides.txt \
-        ".[nemo]"
+        "./apps/stt[nemo]"
 
 RUN find /opt/venv \( \
         -name "__pycache__" \
