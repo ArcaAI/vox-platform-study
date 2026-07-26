@@ -204,7 +204,7 @@ describe('LiveTranscript editing (D4 — Lexical)', () => {
     render(<LiveTranscript segments={finals} editable />);
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: /edit segment/i })[0]);
-    const editor = await screen.findByLabelText(/edit transcript segment/i);
+    const editor = await screen.findByRole('textbox', { name: /edit transcript segment/i });
     expect(editor.textContent).toContain('First segment');
     // Opening another segment's editor keeps only one mounted.
     fireEvent.click(screen.getByRole('button', { name: /edit segment/i }));
@@ -216,17 +216,17 @@ describe('LiveTranscript editing (D4 — Lexical)', () => {
     render(<LiveTranscript segments={finals} editable onEditSegment={onEditSegment} />);
 
     fireEvent.click(screen.getAllByRole('button', { name: /edit segment/i })[0]);
-    await screen.findByLabelText(/edit transcript segment/i);
+    await screen.findByRole('textbox', { name: /edit transcript segment/i });
     fireEvent.click(screen.getByRole('button', { name: /save edit/i }));
     expect(onEditSegment).toHaveBeenLastCalledWith('s1', 'First segment');
 
     fireEvent.click(screen.getAllByRole('button', { name: /edit segment/i })[0]);
-    const editor = await screen.findByLabelText(/edit transcript segment/i);
+    const editor = await screen.findByRole('textbox', { name: /edit transcript segment/i });
     fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true });
     expect(onEditSegment).toHaveBeenCalledTimes(2);
 
     fireEvent.click(screen.getAllByRole('button', { name: /edit segment/i })[0]);
-    const editor2 = await screen.findByLabelText(/edit transcript segment/i);
+    const editor2 = await screen.findByRole('textbox', { name: /edit transcript segment/i });
     fireEvent.keyDown(editor2, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('textbox')).not.toBeInTheDocument());
     expect(onEditSegment).toHaveBeenCalledTimes(2);
@@ -236,7 +236,7 @@ describe('LiveTranscript editing (D4 — Lexical)', () => {
     const onEditSegment = vi.fn().mockRejectedValue(new Error('nope'));
     render(<LiveTranscript segments={finals} editable onEditSegment={onEditSegment} />);
     fireEvent.click(screen.getAllByRole('button', { name: /edit segment/i })[0]);
-    await screen.findByLabelText(/edit transcript segment/i);
+    await screen.findByRole('textbox', { name: /edit transcript segment/i });
     fireEvent.click(screen.getByRole('button', { name: /save edit/i }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
@@ -262,7 +262,7 @@ describe('LiveTranscript a11y', () => {
     expect(results).toHaveNoViolations();
 
     fireEvent.click(screen.getAllByRole('button', { name: /edit segment/i })[0]);
-    await screen.findByLabelText(/edit transcript segment/i);
+    await screen.findByRole('textbox', { name: /edit transcript segment/i });
     expect(screen.getByRole('log')).toHaveAttribute('aria-live', 'off');
     rerender(<></>);
   });
