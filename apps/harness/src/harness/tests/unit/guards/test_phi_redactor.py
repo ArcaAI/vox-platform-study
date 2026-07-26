@@ -111,7 +111,22 @@ def _detected_person_redactor() -> PhiRedactor:
 
 @pytest.fixture(scope="module")
 def redactor() -> PhiRedactor:
-    """A real Presidio-backed redactor — loads ``en_core_web_lg`` once per module."""
+    """A real Presidio-backed redactor — loads ``en_core_web_lg`` once per module.
+
+    Skipped when the spaCy model isn't installed (e.g. the hermetic CI image):
+    Presidio would otherwise attempt a ~400 MB network download of the model,
+    which is neither hermetic nor reliable in CI. The model is present in the
+    conda ``arcaenv`` used for local/full runs, so real coverage stays there.
+    """
+    import spacy.util
+
+    from harness.guards.phi.redactor import DEFAULT_SPACY_MODEL
+
+    if not spacy.util.is_package(DEFAULT_SPACY_MODEL):
+        pytest.skip(
+            f"spaCy model {DEFAULT_SPACY_MODEL!r} not installed — "
+            "skipping real-analyzer PHI redaction tests"
+        )
     return PhiRedactor()
 
 

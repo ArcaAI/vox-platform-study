@@ -193,6 +193,15 @@ describe('LiveTranscript words (D9)', () => {
 describe('LiveTranscript editing (D4 — Lexical)', () => {
   const finals = [seg({ id: 's1', text: 'First segment' }), seg({ id: 's2', text: 'Second segment' })];
 
+  // Warm the lazily-imported editor (it pulls in the whole Lexical library) so
+  // its first transform/eval happens here, off the timed `findByRole` path. On
+  // a loaded CI runner a cold `React.lazy(() => import('./segment-editor'))`
+  // could exceed the 1s default async timeout, leaving the "Loading editor"
+  // fallback mounted and flaking the first edit test.
+  beforeAll(async () => {
+    await import('../segment-editor');
+  });
+
   it('hides the edit affordance when not editable and blocks editing interim under final-only', () => {
     const { rerender } = render(<LiveTranscript segments={finals} editable={false} />);
     expect(screen.queryByRole('button', { name: /edit segment/i })).not.toBeInTheDocument();
