@@ -344,6 +344,7 @@
         "rollup": "^4.62.2",
         "simple-git-hooks": "^2.13.1",
         "ts-node": "^10.9.2",
+        "tsx": "^4.23.0",
         "turbo": "^2.10.3",
         "typescript": "^5.9.3",
         "vitest": "^4.1.9",
