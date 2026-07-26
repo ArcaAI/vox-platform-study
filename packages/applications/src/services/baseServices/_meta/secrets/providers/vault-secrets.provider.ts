@@ -89,6 +89,8 @@ export interface VaultProviderConfig {
  */
 @Injectable()
 export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
+  readonly name = 'vault' as const;
+
   private readonly logger = new Logger(VaultSecretsProvider.name);
   private client: VaultClientLike;
   private booted = false;
@@ -254,8 +256,15 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
     }
   }
 
-  private kvPath(key: string): string {
-    return `${this.config.kvMount}/data/${this.config.kvPrefix}/${key}`;
+  /**
+   * kv-v2 data path for a secret. With `version` it addresses that specific
+   * kv-v2 version (`?version=N`) instead of the latest — the read half of the
+   * staged-rotation contract in plan §9.2 L6. Without one the behaviour is
+   * unchanged, so the query string only ever appears when a caller asked.
+   */
+  private kvPath(key: string, version?: number): string {
+    const base = `${this.config.kvMount}/data/${this.config.kvPrefix}/${key}`;
+    return version === undefined ? base : `${base}?version=${version}`;
   }
 
   // ---------- transient-error retry ----------
@@ -314,7 +323,7 @@ export class VaultSecretsProvider implements ISecretsProvider, OnModuleDestroy {
   // ---------- reads ----------
   async getSecret(key: string, opts?: SecretFetchOptions): Promise<string> {
     this.ensureBooted();
-    const path = this.kvPath(key);
+    const path = this.kvPath(key, opts?.version);
     try {
       const res = (await this.withRetry(() => this.client.read(path))) as { data?: { data?: { value?: string } } } | undefined;
       const value = res?.data?.data?.value;

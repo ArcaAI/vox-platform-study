@@ -30,6 +30,12 @@ export const COMMON_SERVICE_WARMUP_KEYS = [
   'S3_ACCESS_KEY',
   'S3_SECRET_KEY',
   'SMR_SERVICE_TOKEN',
+  // Read ONLY through `getSecretSync` (SpeechProxyController.getForwardHeaders,
+  // TtsWsGateway.openBridge) — both are on paths that cannot await. Because
+  // `getSecretSync` is cache-only by design, an unwarmed key resolves to
+  // undefined on EVERY request, not just the first, so the `X-Service-Token`
+  // header was silently never attached. Pinned by `warmup-coverage.test.ts`.
+  'TTS_SERVICE_TOKEN',
   'MQTT_PASS',
   'REDIS_PASS',
 ] as const;
