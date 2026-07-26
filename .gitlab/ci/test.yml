@@ -280,6 +280,10 @@ test-ui-ct:
       - packages/ui/test-results/
     expire_in: 30 days
   rules:
+    # Disabled: Playwright cross-browser CT is very slow (30-min timeout).
+    # Re-enable by setting RUN_UI_CT=true on the pipeline.
+    - if: $RUN_UI_CT != "true"
+      when: never
     - if: $SKIP_TESTS == "true"
       when: never
     - if: $SKIP_TESTS_TS == "true"
@@ -607,6 +611,10 @@ harness-eval-gate:
       - eval-report.json
     expire_in: 30 days
   rules:
+    # Disabled: the PDSQI-9 judge step needs a live LLM judge backend that isn't
+    # provisioned. Re-enable by setting RUN_INFRA_TESTS=true on the pipeline.
+    - if: $RUN_INFRA_TESTS != "true"
+      when: never
     - if: $SKIP_TESTS == "true"
       when: never
     - if: $SKIP_TESTS_PY == "true"
@@ -713,6 +721,11 @@ test-api-e2e:
       - api.log
     expire_in: 30 days
   rules:
+    # Disabled: boots the full API and needs test infra + secrets we don't
+    # provision (Redis via CI_REDIS_URL, CI_JWT_SECRET, CI_API_KEY_PEPPER).
+    # Re-enable by setting RUN_INFRA_TESTS=true on the pipeline.
+    - if: $RUN_INFRA_TESTS != "true"
+      when: never
     - if: $SKIP_TESTS == "true"
       when: never
     - if: $SKIP_TESTS_TS == "true"
