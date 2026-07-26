@@ -7,6 +7,10 @@
 .node-base:
   image: node:22-alpine
   tags: [fast]
+  # TASK-558 lane K — the ID token is minted for every job on this base, but is
+  # only USED by jobs that declare VAULT_SECRETS. Minting is local and free; the
+  # token grants nothing without a Vault role whose bound_claims match the job.
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   cache:
     - key:
         files:
@@ -17,6 +21,8 @@
         - packages/*/node_modules/
       policy: pull
   before_script:
+    # Runs FIRST so a credential problem fails in seconds, not after pnpm install.
+    - !reference [.vault-oidc, before_script]
     - corepack enable
     - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /pnpm-store
@@ -44,6 +50,7 @@
 .test-node-base:
   image: node:22-alpine
   tags: [test]
+  id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   cache:
     - key:
         files:
@@ -54,6 +61,7 @@
         - packages/*/node_modules/
       policy: pull
   before_script:
+    - !reference [.vault-oidc, before_script]
     - corepack enable
     - corepack install -g --cache-only .gitlab/corepack/pnpm-10.31.0.tgz
     - pnpm config set store-dir /pnpm-store

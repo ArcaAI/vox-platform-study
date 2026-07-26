@@ -16,7 +16,12 @@ lint-ts:
     - job: install-node
       optional: true
   variables:
-    DATABASE_URL: $CI_DATABASE_URL
+    # TASK-558 lane K (K2): `prisma generate` + `turbo lint` never OPEN a
+    # connection, they only require `env("DATABASE_URL")` to resolve. This job
+    # used to be handed the real CI_DATABASE_URL, putting a live credential in
+    # a job that cannot use it. A syntactically-valid placeholder is enough —
+    # the three `generate-*-check` jobs already run with no DATABASE_URL at all.
+    DATABASE_URL: "postgresql://generate:generate@127.0.0.1:5432/generate_only?schema=public"
   script:
     - pnpm --filter @arcaai/database db:generate
     - pnpm turbo lint
@@ -32,7 +37,8 @@ typecheck:
     - job: install-node
       optional: true
   variables:
-    DATABASE_URL: $CI_DATABASE_URL
+    # Same reasoning as lint-ts above — typecheck compiles, it does not connect.
+    DATABASE_URL: "postgresql://generate:generate@127.0.0.1:5432/generate_only?schema=public"
   script:
     - pnpm --filter @arcaai/database db:generate
     - pnpm turbo build --filter=@arcaai/database

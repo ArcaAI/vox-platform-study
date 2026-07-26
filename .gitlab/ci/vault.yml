@@ -1,0 +1,221 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Vault via GitLab OIDC — TASK-558 §13.3 C1/C2 (lane K)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# GOAL
+#   No long-lived VAULT_TOKEN in project settings. A job that needs a secret
+#   presents a short-lived, job-scoped GitLab ID token; Vault's JWT auth method
+#   exchanges it for a token whose policy is decided by `bound_claims` on the
+#   role — so a feature branch physically cannot read the deploy credentials.
+#
+# TIER — WHY THIS IS A SHELL COMMAND AND NOT THE `secrets:` KEYWORD
+#   GitLab's native `secrets: { vault: ... }` integration is Premium/Ultimate.
+#   Determined on 2026-07-26 against THIS instance (https://git.taphuynh.dev,
+#   project arca/hope-v2, id 6) with the project CI-lint endpoint:
+#
+#     POST /projects/6/ci/lint  { "content": "job:\n  script: [echo]\n
+#                                  id_tokens: {VAULT_ID_TOKEN: {aud: ...}}\n
+#                                  secrets: {X: {vault: ..., token: ...}}" }
+#       -> {"valid": false,
+#           "errors": ["jobs:tier-probe config contains unknown keys: secrets"]}
+#
+#     the same config WITHOUT `secrets:` -> {"valid": true, "errors": []}
+#
+#   `id_tokens` has been Free-tier since GitLab 15.7, so the OIDC half is
+#   available; only the login + read has to be scripted. If the project moves to
+#   Premium, jobs can migrate to `secrets:` one at a time — the Vault-side auth
+#   mount, roles and policies below are identical for both forms.
+#
+# ── HOW A JOB OPTS IN ────────────────────────────────────────────────────────
+#
+#   1. Extend a base that carries the vault step (`.node-base`,
+#      `.test-node-base`) OR add it explicitly:
+#
+#        before_script:
+#          - !reference [.vault-oidc, before_script]
+#          - ...the job's own before_script...
+#
+#   2. Declare the ID token (inherited automatically from the two node bases):
+#
+#        id_tokens: !reference [.vault-oidc-id-token, id_tokens]
+#
+#   3. Name what it needs, as `<kv-path>=<ENV_NAME>` pairs:
+#
+#        variables:
+#          VAULT_SECRETS: "ci/DATABASE_URL=DATABASE_URL ci/REDIS_PASS=REDIS_PASS"
+#
+#   A job with no VAULT_SECRETS performs ZERO Vault calls. Most jobs need none.
+#
+# ── FALLBACK / ROLLOUT SAFETY ────────────────────────────────────────────────
+#
+#   `VAULT_ADDR` is deliberately EMPTY by default (see .gitlab-ci.yml). While it
+#   is empty every job behaves exactly as it did before this file existed: the
+#   fetch is skipped and the job's `variables:` (backed by the CI_* variables)
+#   supply the values. Setting VAULT_ADDR in project settings is the single
+#   switch that turns the whole mechanism on. There is no half-migrated state
+#   in which a job silently loses its credentials.
+#
+#   When Vault IS configured, the fetched value WINS: `before_script` and
+#   `script` share one shell, so the `export` performed here overrides the
+#   job-level `variables:` entry of the same name.
+#
+# ── VAULT-SIDE SETUP (operator, once per environment) ────────────────────────
+#
+#   Full runbook: docs/operations/vault/README.md § "GitLab CI → Vault (OIDC)".
+#   Summary:
+#
+#     vault auth enable -path=jwt-gitlab jwt
+#     vault write auth/jwt-gitlab/config \
+#       oidc_discovery_url="https://git.taphuynh.dev" \
+#       bound_issuer="https://git.taphuynh.dev"
+#
+#     # Read-only CI credentials — any ref of THIS project.
+#     vault policy write hope-ci infrastructure/docker/configs/vault/policies/hope-ci.hcl
+#     vault write auth/jwt-gitlab/role/hope-ci - <<'EOF'
+#     { "role_type": "jwt", "user_claim": "user_email",
+#       "bound_audiences": ["https://vault.hope.arcaai.com"],
+#       "bound_claims_type": "glob",
+#       "bound_claims": { "project_path": "arca/hope-v2" },
+#       "token_policies": ["hope-ci"],
+#       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
+#     EOF
+#
+#     # Deploy / mirror credentials — only the refs those jobs actually run on.
+#     vault policy write hope-ci-deploy infrastructure/docker/configs/vault/policies/hope-ci-deploy.hcl
+#     vault write auth/jwt-gitlab/role/hope-ci-deploy - <<'EOF'
+#     { "role_type": "jwt", "user_claim": "user_email",
+#       "bound_audiences": ["https://vault.hope.arcaai.com"],
+#       "bound_claims_type": "glob",
+#       "bound_claims": { "project_path": "arca/hope-v2",
+#                         "ref": ["staging", "dev", "v*"] },
+#       "token_policies": ["hope-ci-deploy"],
+#       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
+#     EOF
+#
+#   TWO SYNTAX TRAPS, both hit and fixed while testing this against a real
+#   Vault 1.18 — the "obvious" one-liner forms silently do the wrong thing:
+#     * `bound_claims` is a MAP field. `bound_claims='{"a":"b"}'` on the command
+#       line is rejected with `expected a map, got 'string'`. JSON on stdin
+#       (the `- <<EOF` form above) is the reliable way to write it.
+#     * `"ref": "{staging,dev,v*}"` does NOT work. Vault's glob matcher supports
+#       `*` only — no brace alternation — so that value matches a ref literally
+#       named `{staging,dev,v*}` and nothing else. Use a JSON ARRAY; bound_claims
+#       matches if ANY element matches.
+#
+#   ⚠ OPEN ITEM — the branch-protection model does not yet back this scoping.
+#   Queried on 2026-07-26 (GET /projects/6/protected_branches): the ONLY
+#   protected branches are `main` and `release`. `staging` and `dev` — the refs
+#   deploy-staging, smoke-pgbouncer-staging and github-backup run on — are
+#   UNPROTECTED, so anyone who can push a branch can run those pipelines.
+#
+#   Consequences, in order of preference:
+#     1. Protect `staging` and `dev`, then add `"ref_protected":"true"` to the
+#        deploy role's bound_claims. `ref_protected` is asserted by GitLab and
+#        cannot be forged by a pipeline author, which makes it the only claim
+#        here that is a real privilege boundary. THIS IS THE INTENDED END STATE.
+#     2. Until then the `ref` claim above is the boundary. It still beats a
+#        masked CI variable (10-minute token, central revocation, Vault audit
+#        log, no secret in project settings) but it is only as strong as push
+#        access to `staging`/`dev`.
+#   Setting VAULT_AUTH_ROLE by hand in a pipeline does not help an attacker:
+#   Vault re-checks the claims in the presented token, not the requested role.
+#
+#   The project's ID-token subject is built from
+#   `ci_id_token_sub_claim_components = ["project_path","ref_type","ref"]`
+#   (read from the project API on 2026-07-26) — keep bound_subject, if you add
+#   one, consistent with that ordering.
+#
+# ── C2: WHAT STAYS A MASKED CI VARIABLE ──────────────────────────────────────
+#
+#   Only the irreducible floor of §13.1 — values needed to REACH the thing that
+#   holds the secrets, and GitLab-native credentials Vault cannot issue:
+#     VAULT_ADDR                (not secret; topology)
+#     CI_REGISTRY_USER/PASSWORD (GitLab-issued, per-job, already ephemeral)
+#     CI_JOB_TOKEN              (GitLab-issued)
+#   Everything else in §13.1's `vault-kv` bucket belongs at `secret/ci/*` or
+#   `secret/deploy/*` and reaches the job through this template.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── The ID token declaration ────────────────────────────────────────────────
+# Kept separate from `.vault-oidc` so a job can reference the token without
+# also inheriting the before_script (and vice versa).
+
+.vault-oidc-id-token:
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: "$VAULT_OIDC_AUD"
+
+# ── The fetch step ──────────────────────────────────────────────────────────
+# `!reference [.vault-oidc, before_script]` inserts this as the FIRST thing a
+# job runs, before dependency installation, so a credential failure is reported
+# in seconds rather than after a five-minute `pnpm install`.
+#
+# Never wrap the eval in `set -x`: values fetched at runtime are NOT masked by
+# GitLab (masking only covers variables defined in project settings).
+
+.vault-oidc:
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: "$VAULT_OIDC_AUD"
+  before_script:
+    - |
+      if [ -n "${VAULT_SECRETS:-}" ]; then
+        __hope_vault_exports="$(sh "${CI_PROJECT_DIR}/.gitlab/ci/vault-login.sh")" || exit 1
+        eval "${__hope_vault_exports}"
+        unset __hope_vault_exports
+      fi
+
+# ── Named secret sets ───────────────────────────────────────────────────────
+# Declared once here so the same set cannot drift between the jobs that share
+# it. Consumed as:
+#
+#     variables:
+#       VAULT_SECRETS: !reference [.vault-secret-sets, ci-full]
+#
+# `!reference` (not a YAML anchor) because anchors do NOT cross an `include:`
+# boundary — each included file is its own YAML document — while `!reference`
+# is resolved by GitLab after the merge.
+#
+# The kv paths deliberately live under `ci/` and `deploy/`, NOT under `hope/`:
+# the application AppRole policy grants `secret/data/hope/*`, and Vault's
+# trailing `*` matches across path separators, so putting CI credentials under
+# `hope/` would hand every application pod the pipeline's credentials.
+
+.vault-secret-sets:
+  # Everything a database-touching test job needs. JWT_SECRET_KEY is read twice
+  # on purpose: the gateway's session signing key is the same material in CI,
+  # exactly as `.test-env-vars` already maps both names to $CI_JWT_SECRET.
+  ci-full: >-
+    ci/DATABASE_URL=DATABASE_URL
+    ci/REDIS_URL=REDIS_URL
+    ci/REDIS_PASS=REDIS_PASS
+    ci/JWT_SECRET_KEY=JWT_SECRET_KEY
+    ci/JWT_SECRET_KEY=SESSION_SECRET_KEY
+    ci/API_KEY_PEPPER=API_KEY_PEPPER
+  # Data plane only — jobs that talk to Postgres/Redis but mint no tokens.
+  ci-data-plane: >-
+    ci/DATABASE_URL=DATABASE_URL
+    ci/REDIS_URL=REDIS_URL
+  # Postgres only.
+  ci-db: "ci/DATABASE_URL=DATABASE_URL"
+  # Redis only.
+  ci-redis: "ci/REDIS_URL=REDIS_URL"
+  # Deployment-repo write credential. Protected refs only — the
+  # `hope-ci-deploy` role's bound_claims enforce that, not this list.
+  #
+  # ARGOCD_AUTH_TOKEN is deliberately NOT here: `sync-argocd` treats it as
+  # OPTIONAL (absent ⇒ fall back to webhook/polling sync, exit 0). vault-login.sh
+  # fails closed on a missing path, which is right for a required secret and
+  # wrong for an optional one — listing it would turn a documented no-op into a
+  # pipeline failure. Move it here only together with making it mandatory.
+  deploy: "deploy/DEPLOY_TOKEN=DEPLOY_TOKEN"
+  # PgBouncer smoke test — SSH identity + the two PostgreSQL role passwords.
+  pgbouncer-smoke: >-
+    deploy/PGB_SMOKE_SSH_KEY=PGB_SMOKE_SSH_KEY
+    deploy/PGB_SMOKE_ADMIN_PG_PASSWORD=PGB_SMOKE_ADMIN_PG_PASSWORD
+    deploy/PGB_SMOKE_APP_PG_PASSWORD=PGB_SMOKE_APP_PG_PASSWORD
+  # GitHub backup mirror push credentials.
+  github-backup: >-
+    deploy/GITHUB_BACKUP_USER=GITHUB_BACKUP_USER
+    deploy/GITHUB_BACKUP_TOKEN=GITHUB_BACKUP_TOKEN
