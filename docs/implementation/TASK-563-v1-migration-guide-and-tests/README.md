@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | docs + tests |
 | **Parent** | [TASK-560](../TASK-560-v1-v2-consultation-migration/README.md) |
 | **Depends on** | TASK-561 (SDK hooks) **and** TASK-562 (endpoints) landed |
@@ -65,9 +65,102 @@ Sections:
 - If TASK-561/562 changed any signature during build, update TASK-560 §5 first (source of truth), then this guide.
 
 ## 5. Implementation Summary
-_(pending)_
+
+All three deliverables landed against the AS-BUILT compat code (TASK-561 SDK hooks
++ TASK-562 gateway shim), additive-only. No divergence from TASK-560 §5 was found
+that required editing §5 first (the as-built `mapV2StatusToV1` is a superset of the
+§5.2 mapping, and the optional `summarizeAsync`/`/summary/async` path is documented
+honestly as outside the reproduced shim set per §5.6/D1) — so §5 stands unchanged.
+
+### 5.1 Migration guide
+
+- `docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md`
+  — TL;DR 3-step checklist; the one unavoidable change (single
+  `<ArcaCompatProvider>` wrapper); side-by-side v1→compat hook map; seven
+  behavioral-difference notes (doctorId server-derived/`metadata.legacyDoctorId`;
+  pull-state transcripts but `onTranscript` still fires; `sendAudioData` metadata
+  sink; `pipelineId` for live backend STT; real mixing via `secondaryDeviceId` as
+  an optional upgrade; per-turn segments F2; pause/resume local-only);
+  endpoint-parity table (`/summary/sync` + `/presummary` byte-identical path +
+  `x-api-key`; async/session/STT-WS raw endpoints NOT reproduced — SDK-driven);
+  before/after full code sample; "what changes vs. what stays" matrix. Honest
+  about the single Provider wrapper being unavoidable.
+
+### 5.2 Working example
+
+- `apps/example/src/compat-consultation.tsx` — the full workflow on
+  `@arcaai/vox/compat` (framework-light plain React).
+- `apps/example/src/compat-main.tsx` + `apps/example/compat.html` — a **second,
+  additive** Vite entry mounting it wrapped in `<ArcaCompatProvider>` (the
+  existing raw-WS demo `index.html` is untouched).
+- Wiring: added `@arcaai/vox: workspace:*` to `apps/example/package.json`, a
+  `typecheck` script, `src/vite-env.d.ts` (typed `import.meta.env`), and a
+  multi-page `rollupOptions.input` in `vite.config.ts`. README gained a
+  compat-example run snippet (env vars + `/compat.html`).
+- **Builds + typechecks:** `pnpm --filter live-transcription-example typecheck`
+  (tsc clean) and `pnpm --filter live-transcription-example build` both green —
+  the build emits `dist/compat.html` + `dist/assets/compat-*.js` alongside the
+  existing `index.html`.
+
+### 5.3 Contract tests
+
+- **SDK contract** (`packages/agentic-sdk-v2/src/compat/__tests__/contract.test.ts`)
+  — type-level (`expectTypeOf`) locks on the §5.2/§5.3/§5.4 hook return shapes
+  and v1 type surface (`MedicalSession`, `SummaryResponse`, `SMRRequest`, …),
+  plus runtime checks: barrel exports the v1 names, `mapV2StatusToV1` honors
+  §5.2, and `useSMR` passes the shim `SummaryResponse`/`PreSummaryResponse` body
+  through **unchanged**. Runs in `pnpm --filter @arcaai/vox test`.
+- **Endpoint contract (JSON-schema lock)** — zod schemas
+  `tests/contracts/smr-compat.schemas.ts` mirroring §5.4/§5.5 (Enhanced +
+  Simplified + SummaryResponse envelope + PreSummaryResponse + SessionData
+  request); golden fixtures `tests/fixtures/smr-compat.fixture.ts`; hermetic
+  regression test `tests/contracts/smr-compat.contract.test.ts` validating the
+  goldens AND asserting drift bites (missing v1-required key → parse fails).
+- **E2E extension** — `apps/api/tests/e2e/task-562-smr-compat.spec.ts` now
+  validates a LIVE 200 response against the shared `SummaryResponseSchema` /
+  `PreSummaryResponseSchema`. Hermetic when SMR is down (status ≠ 200 → shape
+  check skipped); requires the live gateway (`pnpm test:up:api`) + SMR :8862 to
+  exercise the 200 path.
+
+### 5.4 Verification evidence
+
+```
+$ pnpm --filter @arcaai/vox test
+ Test Files  212 passed (212)
+      Tests  3613 passed (3613)        # +13 from contract.test.ts
+
+$ npx vitest run tests/contracts/smr-compat.contract.test.ts
+ Test Files  1 passed (1)
+      Tests  18 passed (18)
+
+$ pnpm --filter live-transcription-example typecheck   # tsc --noEmit → clean
+$ pnpm --filter live-transcription-example build        # vite build → dist/compat.html + compat-*.js emitted
+
+$ pnpm --filter @arcaai/vox lint                         # 0 errors (3 pre-existing warnings elsewhere)
+```
+
+### 5.5 Files
+
+**Created:** `docs/.../TASK-560-.../MIGRATION_GUIDE.md`;
+`apps/example/src/compat-consultation.tsx`, `apps/example/src/compat-main.tsx`,
+`apps/example/compat.html`, `apps/example/src/vite-env.d.ts`;
+`packages/agentic-sdk-v2/src/compat/__tests__/contract.test.ts`;
+`tests/contracts/smr-compat.schemas.ts`, `tests/contracts/smr-compat.contract.test.ts`,
+`tests/fixtures/smr-compat.fixture.ts`.
+**Edited:** `apps/example/package.json`, `apps/example/vite.config.ts`,
+`apps/example/README.md`; `apps/api/tests/e2e/task-562-smr-compat.spec.ts`;
+this README.
+
+### 5.6 Follow-ups / out of scope
+
+- The live Playwright happy-path (schema validation of a real 200) needs a booted
+  SMR :8862 behind the gateway — gate behind `pnpm test:up:api` + `pnpm test:e2e -- task-562`.
+- The compat example is not auto-run in CI (no headed-browser e2e for `apps/example`);
+  it is covered by typecheck + build. A driven-browser walkthrough against a live
+  stack is a manual step (TASK-563 §3.4, optional).
 
 ## 6. Change History
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-27 | (planning) | Ticket created from TASK-560. |
+| 2026-07-28 | (impl) | Delivered all three: MIGRATION_GUIDE.md; compat example (`apps/example` second Vite entry, builds+typechecks); SDK contract test (+13, `@arcaai/vox` 3613 green) and hermetic endpoint JSON-schema lock (18 green) + golden fixture + TASK-562 e2e live-schema extension. Additive-only; no §5 divergence. Status → Review. |

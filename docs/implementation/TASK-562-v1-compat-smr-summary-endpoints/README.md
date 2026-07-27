@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | feature |
 | **Parent** | [TASK-560](../TASK-560-v1-v2-consultation-migration/README.md) |
 | **Packages** | `apps/api` (controller/module) + `packages/applications` (DTOs) |
@@ -88,9 +88,40 @@
 - Do not reproduce v1's Langflow-specific `metadata.raw_llm_content` leakage unless a consumer needs it; sanitize provider internals from the response.
 
 ## 5. Implementation Summary
-_(pending)_
+
+Implemented as a **stateless, additive** module in `apps/api` — no changes to `SummaryService`, `ConsultationService`, `SttWsGateway`, the domain layer, or `apps/smr`/`apps/stt`. Only two registration edits touch existing files (`main.ts` prefix-exclude, `app.module.ts` import).
+
+### Files created (`apps/api/src/modules/smr-compat/`)
+
+| File | Contents |
+|---|---|
+| `smr-compat.controller.ts` | `@Controller('api/smr/api/v1')`; `@Post('summary/sync')` + `@Post('presummary')`, each bare `@Authorize()` (auth-required, no specific ability — x-api-key parity via `UnifiedAuthGuard`; tenant/user from CLS). Injects `HttpService`, `IConfigService`, `ClsService`, `@Optional() SecretsService`. Assembles the prompt, POSTs SMR `/api/v1/generate` (single-delivery: retries only on connect-phase `ECONNREFUSED`/`ENOTFOUND`), maps the result, and translates transport/parse failures to the v1 error shapes. |
+| `smr-compat.module.ts` | Registers the controller + its own `HttpModule`. `IConfigService`/`SecretsService`/`ClsService` come from the app-wide `@Global()` `CommonServiceModule`/`ClsModule`. |
+| `summary-prompt.builder.ts` | Pure `buildSummaryPrompt(sessionData, opts)` / `buildPreSummaryPrompt(req)`. **Per-turn transcript rendering (fixes v1 F2)**; department/visit-type/specialty/encounter-aware system prompt; folds `pre_summary_text` only when enrichment is enabled; prefers structured `test_results`/`previous_visits` over the `*_text` fallbacks; `en`/`ml` language directive. |
+| `summary-response.mapper.ts` | Pure `mapGenerateToV1Summary` / `mapGenerateToV1PreSummary` / `parseSections`. Strips markdown fences, tolerates extra LLM keys, fills `processing_time_ms` from `latency_ms`, extracts `confidence_score` from `quality_metrics.completeness_score` (Enhanced), and **never echoes `raw_llm_content`**. Presummary sections parsed from `#`/`**bold**` headings + `-`/`*` bullets, `sections:[]` fallback. |
+| `summary-schemas.ts` | `SIMPLIFIED_SUMMARY_SCHEMA` / `ENHANCED_SUMMARY_SCHEMA` JSON Schemas (with `title`, consumed by SMR as `response_format.json_schema`), chosen by `use_enhanced_format`. |
+| `dto/` | Strict request DTOs — `SyncSummaryRequest`, `SessionDataDto`, `ConversationSegmentDto`, `TestResultDto`, `PreviousVisitRecordDto`, `PreSummaryRequest` (class-validator + `@ApiProperty`/`@ApiPropertyOptional` on every field; `session_data` uses `@IsDefined()`+`@ValidateNested()`+`@Type()` so a missing value is rejected). Response types `SummaryResponse`, `PreSummaryResponse`, `StructuredPreSummary`, `TokenUsage`. |
+| `__tests__/*.test.ts` | 30 Vitest unit tests (prompt builder 9, mapper 12, controller 9). |
+| `apps/api/tests/e2e/task-562-smr-compat.spec.ts` | Playwright e2e: literal-path resolution (not under `api/v1`), deny-by-default (401), strict-DTO 400, Bearer + `x-api-key` reach the shim, v1 response-shape assertions, no `raw_llm_content` leak. |
+
+### Wiring edits (additive only)
+
+- `apps/api/src/main.ts` — added `RequestMethod` import and the two literal compat paths (`{ path: 'api/smr/api/v1/summary/sync', method: POST }`, `…/presummary`) to `setGlobalPrefix('api/v1', { exclude })`, so the routes serve at the exact v1 paths (TASK-560 §5.6).
+- `apps/api/src/app.module.ts` — imported `SmrCompatModule` into `featureModules`.
+
+### Verification (actual)
+
+- `pnpm api:build` — **8 successful, 8 total** (nest build + tsc-alias green).
+- `pnpm --filter @arcaai/api lint` — **0 errors** (65 pre-existing directive-comment warnings elsewhere; `smr-compat/` is warning-clean).
+- Unit — `npx vitest run src/modules/smr-compat` → **30 passed (3 files)**. Full `pnpm test:unit` → **17296 passed, 4 skipped, 9 todo**; the single failure (`scripts/__tests__/env-sync.test.ts`, declared env keys 134 > 130) is **pre-existing and unrelated** — TASK-562 adds no env vars (`SMR_URL`/`SMR_SERVICE_TOKEN` already declared) and touches no `.env`/`turbo.json`.
+- E2E — spec **written but not run**: requires a live gateway + seeded DB (`pnpm test:up:api` + `pnpm test:e2e`), which cannot be brought up inside the implementation agent. The spec is tolerant of the SMR service (:8862) being down (`[200,500,502,503]` on the happy path) so it exercises the gateway contract even without a live SMR.
+
+### `@arcaai/applications` note
+
+DTOs live in `apps/api` (stateless shim), so `@arcaai/applications` was **not** modified — its build/test gates were not required and were not run.
 
 ## 6. Change History
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-27 | (planning) | Ticket created from TASK-560. |
+| 2026-07-27 | Tap Huynh | Implemented the `smr-compat` module (controller, module, prompt builder, response mapper, JSON schemas, strict DTOs), the two `main.ts` prefix-exclusions, and the `app.module.ts` import. 30 unit tests + an e2e spec added. Gates: api:build green, api lint 0 errors, unit 30/30 (smr-compat) — full suite green except a pre-existing unrelated env-sync count assertion; e2e written-not-run (needs live gateway). Status → Review. |

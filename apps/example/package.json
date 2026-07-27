@@ -5,9 +5,11 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@arcaai/vox": "workspace:*",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
