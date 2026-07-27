@@ -174,6 +174,24 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         --override /tmp/cuda-overrides.txt \
         "./apps/stt[nemo]"
 
+# The two workspace path deps (hope-runtime-models, hope-env) resolve as EDITABLE
+# under `uv pip install` (tool.uv.sources workspace=true) — an
+# `__editable__.<pkg>.pth` in site-packages whose sole content is an absolute path
+# to the build tree (/build/packages/*/src). The ml-runtime/worker stages copy
+# ONLY /opt/venv (never /build), so that link dangles at import time:
+# `ModuleNotFoundError: No module named 'hope_env'`. Re-install both as plain,
+# baked-in wheels so their code lives INSIDE site-packages and survives the
+# venv-only copy — the `uv pip install` analogue of the CPU builder's
+# `uv sync --no-editable`. --no-sources treats the paths as ordinary local dirs
+# (not workspace members, so no editable link); --no-deps skips the already-
+# resolved dependency tree; --reinstall-package overwrites the editable install.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python \
+        --no-deps --no-sources \
+        --reinstall-package hope-runtime-models \
+        --reinstall-package hope-env \
+        ./packages/py-runtime-models ./packages/py-env
+
 RUN find /opt/venv \( \
         -name "__pycache__" \
         -o -name "*.egg-info" \

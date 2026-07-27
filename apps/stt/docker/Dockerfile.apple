@@ -48,6 +48,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         -o -name "*.egg-info" \
     \) -exec rm -rf {} + 2>/dev/null || true
 
+# hope-runtime-models / hope-env resolve as EDITABLE under `uv pip install`
+# (tool.uv.sources workspace=true) — a .pth pointing at /build/packages/*/src,
+# which the runtime stage (site-packages copy only) does not carry. Re-install
+# both as plain baked-in wheels so they survive the copy. See apps/stt/docker/
+# Dockerfile for the full rationale.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /usr/local/bin/python3.11 --no-cache-dir \
+        --no-deps --no-sources \
+        --reinstall-package hope-runtime-models \
+        --reinstall-package hope-env \
+        ./packages/py-runtime-models ./packages/py-env
+
 # =============================================================================
 # Stage 2: Runtime (ARM64)
 # =============================================================================
@@ -111,6 +123,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         -name "*.pyc" -o -name "*.pyo" -o -name "__pycache__" \
         -o -name "*.egg-info" \
     \) -exec rm -rf {} + 2>/dev/null || true
+
+# hope-runtime-models / hope-env resolve as EDITABLE under `uv pip install`
+# (tool.uv.sources workspace=true) — a .pth pointing at /build/packages/*/src,
+# which the ml-runtime stage (site-packages copy only) does not carry. Re-install
+# both as plain baked-in wheels so they survive the copy. See apps/stt/docker/
+# Dockerfile for the full rationale.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /usr/local/bin/python3.11 --no-cache-dir \
+        --no-deps --no-sources \
+        --reinstall-package hope-runtime-models \
+        --reinstall-package hope-env \
+        ./packages/py-runtime-models ./packages/py-env
 
 FROM --platform=linux/arm64 python:3.11-slim-trixie AS ml-runtime
 
