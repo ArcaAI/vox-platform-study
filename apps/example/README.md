@@ -38,7 +38,48 @@ than port the app onto `<AgenticProvider>` or rename the directory:
 `<AgenticProvider>`** (see `apps/ui-playground` and
 `packages/agentic-sdk-v2/`) instead of this raw demo.
 
-## Running
+## `@arcaai/vox/compat` consultation example (TASK-563)
+
+A **second, separate** entry in this app — `compat.html` / `src/compat-main.tsx`
+/ `src/compat-consultation.tsx` — is the migration example for the HOPE v1 → v2
+compatibility layer. Unlike the raw-WebSocket demo above, it **is** a
+`@arcaai/vox` consumer: it wraps the tree in a single `<ArcaCompatProvider>` and
+drives the full session → record → live-transcript → stop → summary workflow with
+the v1-named compat hooks (`useArcaSessionManager`, `useAudioCapture`,
+`useArcaSpeechToText`, `useSMR`).
+
+It is the runnable companion to
+[`docs/…/TASK-560-…/MIGRATION_GUIDE.md`](../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md).
+
+Run it against a local gateway:
+
+```bash
+# 1. Bring up the stack (gateway :8868 + STT + SMR) — see infrastructure/README.md
+pnpm setup:dev && pnpm stack:dev -- api stt smr
+
+# 2. Point the example at it (apps/example/.env.local):
+#   VITE_API_BASE_URL=http://localhost:8868
+#   VITE_WS_BASE_URL=ws://localhost:8868
+#   VITE_ARCA_API_KEY=<an SDK-type tenant api key>   # REQUIRED — no default key
+#   VITE_PIPELINE_ID=<streaming pipeline id>          # enables live backend STT
+
+# 3. Start the dev server and open the compat page:
+pnpm --filter live-transcription-example dev
+#   → http://localhost:5173/compat.html
+
+# Typecheck / build both entries:
+pnpm --filter live-transcription-example typecheck
+pnpm --filter live-transcription-example build
+```
+
+| Var | Purpose (compat example) |
+|---|---|
+| `VITE_API_BASE_URL` | REST origin of the v2 gateway (e.g. `http://localhost:8868`) |
+| `VITE_WS_BASE_URL` | WebSocket origin (e.g. `ws://localhost:8868`) |
+| `VITE_ARCA_API_KEY` | **Required** tenant SDK api key (`x-api-key` parity); no default is baked in |
+| `VITE_PIPELINE_ID` | Streaming STT pipeline id — enables live backend transcription |
+
+## Running (raw-WebSocket demo)
 
 ```bash
 pnpm --filter live-transcription-example dev      # vite dev server

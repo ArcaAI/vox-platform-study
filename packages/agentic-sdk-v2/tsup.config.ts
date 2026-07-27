@@ -175,6 +175,19 @@ export default defineConfig([
   },
 
   // ==========================================================================
+  // Compat build - v1-compatibility hooks (TASK-561). Light like `core`: no
+  // plugin bundling (external plugin packages); only consumes the public v2 API.
+  // ==========================================================================
+  {
+    ...sharedOptions,
+    entry: { compat: 'src/compat.ts' },
+    format: ['cjs', 'esm'],
+    outDir: 'dist',
+    external: [...externalDependencies, ...pluginPackages],
+    noExternal: coreBundledDependencies,
+  },
+
+  // ==========================================================================
   // Plugins build - Plugin hooks and pipelines only
   // ==========================================================================
   {

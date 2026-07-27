@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress (planning complete — ready for execution) |
+| **Status** | Review (all sub-tickets implemented + verified; pending live-stack e2e + commit) |
 | **Type** | feature / infrastructure (migration-compatibility) |
 | **Classification** | Epic — indexes sub-tickets TASK-561 · TASK-562 · TASK-563 |
 | **Owner** | (multi-agent) |
@@ -225,10 +225,42 @@ v1 paths are literally `/api/smr/api/v1/summary/sync` and `/api/smr/api/v1/presu
 
 ## 7. Implementation Summary
 
-_(pending — populated as sub-tickets complete)_
+Implemented 2026-07-28 via a 4-agent opus-4-8-high workflow (implement 561+562 in parallel → combined adversarial verify → integrate 563). **Verify verdict: PASS, zero core-business violations.** All headline gates independently re-confirmed in the main session.
+
+### 7.1 What shipped
+
+- **TASK-561 — `@arcaai/vox/compat`** (Status: Review). New opt-in subpath exporting v1-named hooks that delegate to v2:
+  - Files: `packages/agentic-sdk-v2/src/compat.ts` (barrel) + `src/compat/{config-adapter,ArcaCompatProvider,useArcaSessionManager,useAudioCapture,useArcaSpeechToText,useSMR,types}.tsx?` + 5 `__tests__/*`.
+  - Registration (additive): `tsup.config.ts` (+`compat` entry), `package.json` (`exports["./compat"]` + `typesVersions`). `dist/compat.{js,mjs,d.ts}` all emitted; 7 runtime members resolve under CJS + ESM.
+  - Behavior: `mapV1ConfigToAgenticConfig` throws on missing apiKey (no default key); `useSMR` sends **per-turn** `conversation_segments` (fixes v1 F2) to the §5.6 literal paths; `sendAudioData` is a metadata sink; `onTranscript` synthesized from store selectors; v2→v1 status mapping via `mapV2StatusToV1`.
+- **TASK-562 — gateway SMR summary shim** (Status: Review). Stateless `@Controller('api/smr/api/v1')` with `POST summary/sync` + `POST presummary` over SMR `/api/v1/generate`.
+  - Files: `apps/api/src/modules/smr-compat/{smr-compat.controller,smr-compat.module,summary-prompt.builder,summary-response.mapper,summary-schemas}.ts` + `dto/*` (strict request DTOs, response types) + 3 `__tests__/*` + e2e `apps/api/tests/e2e/task-562-smr-compat.spec.ts`.
+  - Registration (additive): `main.ts` (`setGlobalPrefix` exclude for the 2 literal paths → real `/api/smr/api/v1/...`), `app.module.ts` (`SmrCompatModule`).
+  - Behavior: `SMR_URL` only via `IConfigService`; `X-Service-Token` via `SecretsService`; `x-api-key` parity (tenant from key); `response_format:{type:'json_schema', strict:true}` chosen by `use_enhanced_format`; upstream errors PHI-redacted; presummary section-parse with `sections:[]` fallback.
+- **TASK-563 — guide + example + contract lock** (Status: Review). `MIGRATION_GUIDE.md`; runnable `apps/example/compat.html` + `src/compat-consultation.tsx`/`compat-main.tsx` on `<ArcaCompatProvider>`; contract tests `packages/agentic-sdk-v2/src/compat/__tests__/contract.test.ts` (+13) and hermetic zod schema lock `tests/contracts/smr-compat.{schemas,contract}.test.ts` + `tests/fixtures/smr-compat.fixture.ts`.
+
+### 7.2 Evidence (independently re-run in the main session, 2026-07-28)
+
+- `packages/agentic-sdk-v2/src/compat` → **42 passed** (29 unit + 13 contract).
+- `tests/contracts/smr-compat.contract.test.ts` → **18 passed** (Enhanced/Simplified/envelope/PreSummary + drift guards).
+- `apps/api/src/modules/smr-compat` → **30 passed** (prompt builder, response mapper, controller; negative branches assert PHI-redacted 502 + invalid-JSON handling).
+- `git status` confirms only sanctioned additive edits + new dirs — **no** change to `ConsultationService`, `SummaryService`, `SttWsGateway`, `StreamingSessionService`, existing v2 hooks/store/clients/providers, or `apps/smr`/`apps/stt`.
+- Full-suite: implementers/verifier reported vox `3600 passed` and api `test:unit 17296 passed`; the sole full-suite failure `scripts/__tests__/env-sync.test.ts` (134 > 130 declared env keys) is **pre-existing and unrelated** — no `.env`/`turbo.json` changed by this ticket.
+
+### 7.3 Accepted deviations (non-blocking)
+
+- Two 561 compat hooks import the **context-backed** `useAgenticStore` from `../store` (sanctioned internal per-provider hook — not the `@deprecated` inert singleton) rather than `./hooks`. Functionally correct; cosmetic vs the ticket wording.
+- 562 response DTOs are plain TS interfaces (0 `@ApiProperty`) — deliberate: they never traverse the request `ValidationPipe`. Trade-off: Swagger won't document the response body. Request DTOs remain strict. Acceptable for a v1-shape passthrough; revisit if Swagger response docs are required.
+
+### 7.4 Outstanding (infra-gated, not code-blocking)
+
+- **Live e2e happy path**: `pnpm test:up:api` then `pnpm test:e2e -- task-562-smr-compat` with SMR `:8862` booted (spec currently SMR-down-tolerant, so it asserts the gateway contract without a live LLM).
+- Optional driven-browser Playwright walkthrough of `apps/example/compat.html` (session→transcript→summary render).
+- **Commit** the change set (a concurrent `nest --watch` is live in this tree — work is staged to protect it).
 
 ## 8. Change History
 
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-27 | (planning) | Ticket created. Four-agent v1/v2 discovery complete; gap analysis, architecture diff, canonical contracts, and scope decisions D1–D3 recorded. Sub-tickets TASK-561/562/563 defined. Status → In Progress (planning complete). |
+| 2026-07-28 | (multi-agent) | All three sub-tickets implemented via opus-4-8-high workflow + combined adversarial verify (PASS, 0 core-business violations). Independently re-confirmed 42 compat + 18 contract + 30 shim tests. §7 Implementation Summary populated. Status → Review (pending live-stack e2e + commit). |
