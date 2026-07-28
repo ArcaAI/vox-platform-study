@@ -150,6 +150,84 @@ class LlamaCppConfig(BaseSettings):
     max_concurrent: int = 4
 
 
+class OpenAIConfig(BaseSettings):
+    """OpenAI (api.openai.com) provider configuration — BYO/tenant-first.
+
+    The OpenAI wire is identical to ``OpenAICompatConfig``'s, but this is the
+    governed first-class ``openai`` provider (a tenant BYO key arrives per
+    request as a ``ProviderOverride``). The env values below are the PLATFORM
+    fallback used when no tenant override is present (and the fail-open target
+    when an override client cannot be built). An empty ``api_key`` simply means
+    no platform fallback is configured — the provider is then usable only with a
+    tenant override.
+    """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="SMR_OPENAI_")
+
+    api_key: SecretStr = SecretStr("")
+    base_url: str = "https://api.openai.com/v1"
+    default_model: str = "gpt-4o-mini"
+    organization: str | None = None
+    # Bootstrap fallbacks; runtime values come from the control plane.
+    timeout_s: int = 120
+    max_concurrent: int = 10
+    tpm_limit: int = 0
+    rpm_limit: int = 0
+
+
+class AnthropicConfig(BaseSettings):
+    """Anthropic (Claude Messages API) provider configuration — BYO/tenant-first.
+
+    ``base_url`` empty ⇒ the SDK default (``https://api.anthropic.com``). Same
+    fallback semantics as ``OpenAIConfig``: env is the platform fallback / the
+    fail-open target; a tenant BYO key arrives per request as a
+    ``ProviderOverride``.
+    """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="SMR_ANTHROPIC_")
+
+    api_key: SecretStr = SecretStr("")
+    base_url: str = ""
+    default_model: str = "claude-3-5-haiku-20241022"
+    # Bootstrap fallbacks; runtime values come from the control plane.
+    timeout_s: int = 120
+    max_concurrent: int = 10
+    tpm_limit: int = 0
+    rpm_limit: int = 0
+
+
+class VertexConfig(BaseSettings):
+    """Google Vertex AI (Gemini) provider configuration — BYO/tenant-first.
+
+    A Vertex client is bound to a ``(project, location)`` pair and authenticated
+    with Application Default Credentials by default. A tenant BYO credential
+    instead carries a service-account JSON (``ProviderOverride.api_key``) plus
+    its ``project``/``location``. The env values below are the platform fallback
+    (ADC-authenticated) used when no tenant override is present; an empty
+    ``project`` means no platform fallback is configured.
+    """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="SMR_VERTEX_")
+
+    project: str = ""
+    location: str = "us-central1"
+    default_model: str = "gemini-2.0-flash"
+    # Bootstrap fallbacks; runtime values come from the control plane.
+    timeout_s: int = 120
+    max_concurrent: int = 10
+    tpm_limit: int = 0
+    rpm_limit: int = 0
+
+
 class ExternalGuardrailConfig(BaseSettings):
     """Input moderation posture for /generate.
 
@@ -313,6 +391,9 @@ class Settings(BaseSettings):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
+    openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
+    anthropic: AnthropicConfig = Field(default_factory=AnthropicConfig)
+    vertex: VertexConfig = Field(default_factory=VertexConfig)
     openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
     vllm: VllmConfig = Field(default_factory=VllmConfig)
     llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
