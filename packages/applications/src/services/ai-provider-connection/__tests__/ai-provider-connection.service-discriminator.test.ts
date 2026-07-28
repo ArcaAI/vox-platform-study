@@ -52,7 +52,11 @@ function makeService(opts: { roles?: string[]; rows?: unknown[] } = {}) {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? [] } : k === 'tenantId' ? TENANT : undefined)),
   };
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
-  const secrets = { encrypt: vi.fn(async () => 'vault:v3:cipher'), decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')) };
+  const secrets = {
+    encrypt: vi.fn(async () => 'vault:v3:cipher'),
+    decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
+    supportsTransit: vi.fn(() => true),
+  };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any);
   vi.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
   return { svc, repo };
