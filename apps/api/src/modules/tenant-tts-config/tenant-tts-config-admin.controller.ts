@@ -1,6 +1,8 @@
 import {
+  AiProviderConnectionResponse,
   EffectiveTtsConfigResponse,
   IActiveUserContext,
+  IProviderConnectionService,
   ITenantTtsConfigService,
   SetTtsCredentialRequest,
   TenantTtsConfigResponse,
@@ -13,6 +15,31 @@ import { resolveScopedTenantId } from '../../shared/tenant-scope';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
+
+/**
+ * `endpoint` on the facade's write-only request maps per provider — azure:
+ * region, sarvam: base URL — exactly the convention the pre-unification
+ * `TenantTtsProviderCredential.endpoint` column carried (see the program doc
+ * §2.3). Storing it on the matching `AiProviderConnection` column reproduces
+ * the SAME `provider_overrides` shape on read (C4).
+ */
+function endpointToConnectionFields(provider: string, endpoint?: string): { baseUrl?: string; region?: string } {
+  if (endpoint === undefined) return {};
+  return provider === 'sarvam' ? { baseUrl: endpoint } : { region: endpoint };
+}
+
+/** The facade's masked credential view, projected from the unified connection row. */
+function toTtsCredentialResponse(row: AiProviderConnectionResponse): TtsCredentialResponse {
+  const endpoint = row.provider === 'sarvam' ? row.baseUrl : row.region;
+  return {
+    provider: row.provider,
+    endpoint: endpoint ?? null,
+    enabled: row.enabled,
+    hasKey: row.hasKey,
+    keyVersion: row.keyVersion ?? null,
+    ...(row.updatedAt ? { updatedAt: row.updatedAt } : {}),
+  };
+}
 
 /**
  * TenantTtsConfigAdminController — the admin surface for a tenant's
@@ -39,6 +66,9 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
 export class TenantTtsConfigAdminController {
   constructor(
     @Inject(ITenantTtsConfigService) private readonly configService: ITenantTtsConfigService,
+    // BYO credentials live on the unified provider-connection plane
+    // (`service='tts'`, TASK-570) — the routes below are a thin facade over it.
+    @Inject(IProviderConnectionService) private readonly providerConnectionService: IProviderConnectionService,
     private readonly cls: ClsService<IActiveUserContext>,
   ) {}
 
@@ -118,24 +148,43 @@ export class TenantTtsConfigAdminController {
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
   @ApiResponse({ status: 200, type: [TtsCredentialResponse] })
   async getCredentials(@Query('tenantId') tenantId?: string): Promise<TtsCredentialResponse[]> {
-    return this.configService.getCredentials(this.resolveTenantId(tenantId));
+    const rows = await this.providerConnectionService.list('tts', this.resolveTenantId(tenantId));
+    return rows.map(toTtsCredentialResponse);
   }
 
   @Put('credentials/:provider')
   @Authorize(['manage', 'TenantTtsConfig'])
   @ApiOperation({
     summary: 'Set or rotate a tenant BYO provider key (write-only; Vault-encrypted at rest, never returned)',
+    description:
+      "Thin facade over the unified provider-connection plane (`IProviderConnectionService`, `service='tts'`). " +
+      'Not `If-Match`-gated at this route (mirrors the pre-unification contract): the current row version is read ' +
+      'internally and used as the CAS token, so the caller can set/rotate a key without tracking a version.',
   })
   @ApiParam({ name: 'provider', enum: ['azure', 'sarvam'] })
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
   @ApiResponse({ status: 200, type: TtsCredentialResponse })
-  @ApiResponse({ status: 400, description: 'Unsupported provider, or Vault secrets provider not configured.' })
+  @ApiResponse({ status: 403, description: 'Provider is not a tenant-managed cloud BYO provider for TTS.' })
+  @ApiResponse({ status: 503, description: 'Vault secrets provider not configured/reachable.' })
   async setCredential(
     @Param('provider') provider: string,
     @Body() body: SetTtsCredentialRequest,
     @Query('tenantId') tenantId?: string,
   ): Promise<TtsCredentialResponse> {
-    return this.configService.setCredential(this.resolveTenantId(tenantId), provider, body);
+    const scopedTenantId = this.resolveTenantId(tenantId);
+    const existing = await this.providerConnectionService.getRow('tts', provider, scopedTenantId);
+    const row = await this.providerConnectionService.upsertRow(
+      'tts',
+      provider,
+      {
+        apiKey: body.apiKey,
+        enabled: body.enabled ?? true,
+        ...endpointToConnectionFields(provider, body.endpoint),
+      },
+      scopedTenantId,
+      existing.version,
+    );
+    return toTtsCredentialResponse(row);
   }
 
   @Delete('credentials/:provider')
@@ -147,7 +196,7 @@ export class TenantTtsConfigAdminController {
   @ApiResponse({ status: 204, description: 'Removed.' })
   @ApiResponse({ status: 404, description: 'No credential for this provider.' })
   async removeCredential(@Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<void> {
-    return this.configService.removeCredential(this.resolveTenantId(tenantId), provider);
+    return this.providerConnectionService.deleteRow('tts', provider, this.resolveTenantId(tenantId));
   }
 
   /** Tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */

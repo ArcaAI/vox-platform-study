@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
@@ -12,34 +12,20 @@ import {
   TenantTtsConfigEntity,
   TenantTtsConfigFactory,
   TenantTtsConfigRepository,
-  TenantTtsProviderCredentialEntity,
-  TenantTtsProviderCredentialFactory,
-  TenantTtsProviderCredentialRepository,
 } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
-import { decryptSecretField, encryptSecretField, SecretsService } from '../baseServices/_meta/secrets';
 import { ITenantTtsConfigService } from './ITenantTtsConfigService';
 import { TenantTtsConfigDtoMapper } from './tenant-tts-config.dto.mapper';
 import {
   EffectiveTtsConfigResponse,
-  SetTtsCredentialRequest,
   TenantTtsConfigResponse,
   TtsCatalogProvider,
   TtsCatalogVoice,
-  TtsCredentialResponse,
   TtsPlatformCatalogResponse,
   UpdateTenantTtsConfigRequest,
 } from './dto';
-import {
-  BYO_PROVIDERS,
-  mergeVoiceBindings,
-  PLATFORM_TTS_LIMITS,
-  resolveEffectiveTtsConfig,
-  TtsProviderOverrides,
-  TtsSpecInput,
-  TtsVoiceBindings,
-} from './platform-limits';
+import { mergeVoiceBindings, PLATFORM_TTS_LIMITS, resolveEffectiveTtsConfig, TtsSpecInput, TtsVoiceBindings } from './platform-limits';
 
 /** Editable spec fields (everything on the update DTO except the OCC token). */
 const SPEC_FIELDS = [
@@ -59,15 +45,11 @@ const SPEC_FIELDS = [
 export class TenantTtsConfigService extends BaseService implements ITenantTtsConfigService {
   constructor(
     private readonly configRepository: TenantTtsConfigRepository,
-    private readonly credentialRepository: TenantTtsProviderCredentialRepository,
     // SYSTEM TTS registry rows drive the platform catalog +
     // provider-universe / voice-binding validation (code-constant fallback).
     private readonly aiModelRepository: AiModelRepository,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // BYO-key encryption (D1). Optional so non-Vault deploys still run the curated
-    // spec; credential writes then reject (no plaintext-at-rest fallback).
-    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantTtsConfig);
   }
@@ -332,109 +314,9 @@ export class TenantTtsConfigService extends BaseService implements ITenantTtsCon
     return {};
   }
 
-  // ─────────────────────── BYO credentials ───────────────────────
-
-  /** Masked list of a tenant's BYO credentials (never the key). */
-  async getCredentials(tenantId: string): Promise<TtsCredentialResponse[]> {
-    const rows = await this.credentialRepository.findByTenantId(tenantId);
-    return rows.map((row) => this.maskCredential(row));
-  }
-
-  /** Set or rotate a tenant's BYO key for a provider (encrypted at rest). */
-  async setCredential(tenantId: string, provider: string, dto: SetTtsCredentialRequest): Promise<TtsCredentialResponse> {
-    if (!tenantId) {
-      throw new BadRequestException('Tenant ID is required');
-    }
-    if (!(BYO_PROVIDERS as readonly string[]).includes(provider)) {
-      throw new BadRequestException(`Unsupported BYO provider '${provider}'. Expected: ${BYO_PROVIDERS.join(', ')}`);
-    }
-    if (!this.secretsService) {
-      throw new BadRequestException('BYO provider keys require the Vault secrets provider (SECRETS_PROVIDER=vault).');
-    }
-
-    const { ciphertext: encryptedApiKey, keyVersion } = await encryptSecretField(this.secretsService, dto.apiKey);
-    const endpoint = dto.endpoint ?? null;
-    const enabled = dto.enabled ?? true;
-
-    const existing = await this.credentialRepository.findByTenantAndProvider(tenantId, provider);
-    if (!existing) {
-      const entity = TenantTtsProviderCredentialFactory.CreateTenantTtsProviderCredential({
-        tenantId,
-        provider,
-        endpoint,
-        encryptedApiKey,
-        keyVersion,
-        enabled,
-        createdBy: this.requestUserId ?? undefined,
-      });
-      const saved = await this.credentialRepository.create(entity);
-      this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-        resourceId: saved.id,
-        data: { provider, action: 'credential-set' },
-      });
-      return this.maskCredential(saved);
-    }
-
-    await this.updateEntity(existing, { endpoint, encryptedApiKey, keyVersion, enabled });
-    const saved = await this.credentialRepository.update(existing.id, existing);
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: saved.id,
-      data: { provider, action: 'credential-rotated' },
-    });
-    return this.maskCredential(saved);
-  }
-
-  /** Remove a tenant's BYO credential for a provider (soft delete). */
-  async removeCredential(tenantId: string, provider: string): Promise<void> {
-    const existing = await this.credentialRepository.findByTenantAndProvider(tenantId, provider);
-    if (!existing) {
-      throw new NotFoundException(`No ${provider} credential for this tenant`);
-    }
-    await this.credentialRepository.softDelete(existing.id);
-    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
-      resourceId: existing.id,
-      data: { provider },
-    });
-  }
-
-  /**
-   * Decrypt a tenant's enabled BYO credentials into the injectable overrides map
-   * (gateway-only — never exposed by a read API). Fails OPEN per credential: a
-   * decrypt error (or no Vault) skips it, so tts falls back to platform creds.
-   */
-  async resolveProviderOverrides(tenantId: string): Promise<TtsProviderOverrides> {
-    if (!this.secretsService) {
-      return {};
-    }
-    const rows = await this.credentialRepository.findByTenantId(tenantId);
-    const out: TtsProviderOverrides = {};
-    for (const row of rows) {
-      if (!row.enabled || !row.encryptedApiKey) {
-        continue;
-      }
-      try {
-        const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
-        const entry: { api_key: string; region?: string; base_url?: string } = { api_key: apiKey };
-        if (row.endpoint) {
-          if (row.provider === 'azure') entry.region = row.endpoint;
-          else if (row.provider === 'sarvam') entry.base_url = row.endpoint;
-        }
-        out[row.provider] = entry;
-      } catch {
-        continue;
-      }
-    }
-    return out;
-  }
-
-  private maskCredential(entity: TenantTtsProviderCredentialEntity): TtsCredentialResponse {
-    return {
-      provider: entity.provider,
-      endpoint: entity.endpoint ?? null,
-      enabled: entity.enabled,
-      hasKey: entity.encryptedApiKey != null && entity.encryptedApiKey.length > 0,
-      keyVersion: entity.keyVersion ?? null,
-      updatedAt: entity.updatedAt?.toISOString(),
-    };
-  }
+  // BYO credential storage/resolution moved to the unified provider-connection
+  // plane (TASK-570). `TenantTtsConfigService` now owns TTS SPEC only — see
+  // `TenantTtsConfigAdminController` (credential routes) and
+  // `SpeechProxyController`/`TtsWsGateway` (injection), which call
+  // `IProviderConnectionService` with `service='tts'` directly.
 }

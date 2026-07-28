@@ -156,7 +156,10 @@ describe('TtsWsGateway', () => {
         allowedProviders: ['azure'],
         voiceBindings,
       }),
-      resolveProviderOverrides: vi.fn().mockResolvedValue({}),
+    });
+
+    const makeProviderConnectionService = (overrides: Record<string, unknown> = {}) => ({
+      resolveTenantCloudOverrides: vi.fn().mockResolvedValue(overrides),
     });
 
     const lastUpstreamTextFrame = () => {
@@ -166,7 +169,7 @@ describe('TtsWsGateway', () => {
     };
 
     it('injects voice_bindings into the first init frame when non-empty', async () => {
-      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig(BINDINGS) as never);
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig(BINDINGS) as never, makeProviderConnectionService() as never);
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
@@ -181,7 +184,7 @@ describe('TtsWsGateway', () => {
     });
 
     it('omits voice_bindings when the resolved bindings map is empty', async () => {
-      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig({}) as never);
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig({}) as never, makeProviderConnectionService() as never);
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
@@ -197,9 +200,9 @@ describe('TtsWsGateway', () => {
     it('fails open — a config resolve error relays the init frame verbatim', async () => {
       const failing = {
         getEffective: vi.fn().mockRejectedValue(new Error('config db down')),
-        resolveProviderOverrides: vi.fn().mockRejectedValue(new Error('config db down')),
       };
-      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, failing as never);
+      const failingProviders = { resolveTenantCloudOverrides: vi.fn().mockRejectedValue(new Error('config db down')) };
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, failing as never, failingProviders as never);
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
@@ -209,6 +212,37 @@ describe('TtsWsGateway', () => {
       client.emit('message', raw, false);
 
       expect(upstream.send).toHaveBeenCalledWith(raw, { binary: false });
+    });
+
+    // TASK-570 — provider_overrides now resolves through the unified
+    // IProviderConnectionService (`service='tts'`). Shape unchanged (C4).
+    it('injects provider_overrides into the first init frame via IProviderConnectionService', async () => {
+      const OVERRIDES = { sarvam: { api_key: 'THE-KEY', base_url: 'https://vpc.sarvam' } };
+      const providerConnectionService = makeProviderConnectionService(OVERRIDES);
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig({}) as never, providerConnectionService as never);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      client.emit('message', Buffer.from('{"type":"init","voice":"en-female-1"}'), false);
+
+      expect(providerConnectionService.resolveTenantCloudOverrides).toHaveBeenCalledWith('tts', 't1');
+      const frame = lastUpstreamTextFrame();
+      expect(frame.provider_overrides).toEqual(OVERRIDES);
+    });
+
+    it('omits provider_overrides when the resolved map is empty', async () => {
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig({}) as never, makeProviderConnectionService({}) as never);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      client.emit('message', Buffer.from('{"type":"init","voice":"en-female-1"}'), false);
+
+      const frame = lastUpstreamTextFrame();
+      expect('provider_overrides' in frame).toBe(false);
     });
   });
 });

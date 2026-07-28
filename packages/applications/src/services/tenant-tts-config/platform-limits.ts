@@ -8,11 +8,11 @@
  * gateway can call it on the hot path.
  */
 
-/** Providers that accept a BYO credential (D1). Local engines have no key. */
-export const BYO_PROVIDERS = ['azure', 'sarvam'] as const;
-
-/** Decrypted per-tenant provider credentials, injected by the gateway into tts. */
-export type TtsProviderOverrides = Record<string, { api_key: string; region?: string; base_url?: string }>;
+/**
+ * BYO providers + decrypted-credential injection now live on the unified
+ * `IProviderConnectionService` (`service='tts'`, `CLOUD_BYO_PROVIDERS.tts` —
+ * TASK-570). This module keeps only the non-credential spec resolver.
+ */
 
 /**
  * Admin-selectable voice bindings persisted under

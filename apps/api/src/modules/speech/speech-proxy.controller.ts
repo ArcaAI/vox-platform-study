@@ -1,4 +1,11 @@
-import { Authorize, IActiveUserContext, IConfigService, ITenantTtsConfigService, SecretsService } from '@arcaai/applications';
+import {
+  Authorize,
+  IActiveUserContext,
+  IConfigService,
+  IProviderConnectionService,
+  ITenantTtsConfigService,
+  SecretsService,
+} from '@arcaai/applications';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
 import { Body, Controller, Get, HttpException, HttpStatus, Inject, Logger, Optional, Post, Res } from '@nestjs/common';
@@ -52,6 +59,9 @@ export class SpeechProxyController {
     // Optional so positional test construction (and internal service-token calls
     // without a tenant context) still work; injection is a no-op when absent.
     @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
+    // BYO provider credential injection (`service='tts'`, TASK-570) — the
+    // unified provider-connection plane. Optional for the same reason as above.
+    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
   ) {}
 
@@ -67,7 +77,7 @@ export class SpeechProxyController {
     try {
       const [eff, overrides] = await Promise.all([
         this.tenantTtsConfig.getEffective(tenantId),
-        this.tenantTtsConfig.resolveProviderOverrides(tenantId),
+        this.providerConnectionService ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId) : Promise.resolve({}),
       ]);
       return {
         ...body,
