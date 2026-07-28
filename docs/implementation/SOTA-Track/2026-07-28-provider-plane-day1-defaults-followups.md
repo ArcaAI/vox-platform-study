@@ -39,12 +39,14 @@ The gaps are all (a) in the **Python consuming services** where a selection defa
 
 ---
 
-## 3. Owner decisions (confirm before/at implementation)
+## 3. Owner decisions — **CONFIRMED 2026-07-28**
 
-- **OD-1 — Flip to seed-authoritative? (blocks TASK-578).** The current "silent-change guard" is a *deliberate* choice that env is the Day-1 default and SYSTEM connections are inert. Criterion 2 requires the inverse. TASK-578 is written to **enable the built-in-local SYSTEM connection rows** (ollama, lm-studio, built-in, vllm, llama-cpp) so the DB is authoritative, keeping cloud-BYO rows disabled. Confirm this reversal is intended — it changes runtime resolution behavior for the LLM path and must be regression-gated. If instead the owner wants env to remain the built-in-topology source (treating seed rows as pure catalog), TASK-578 narrows to "document the split" and criterion 2 is satisfied by the `AiModel` catalog alone.
-- **OD-2 — TTS Day-1 default provider order (drives TASK-577 seed values).** The remediation seeds a SYSTEM `TenantTtsConfig` with a built-in-first chain so no cloud vendor is the implicit default. Proposed: `routingEn=["kokoro"]`, `routingMl=["indic_parler"]` (both local). Confirm, or supply the desired built-in-first order. Azure/Sarvam remain available strictly as tenant-configured BYO entries.
+Owner directive (verbatim intent): *"no provider is set as environment variables; no default provider is set as environment variables; a set of providers is seeded/available for all tenants Day-1, and the **SYSTEM tenant holds the default values**."*
 
-Neither decision blocks documentation; both are recorded in the child READMEs as gates before the code change merges.
+- **OD-1 — Flip to seed-authoritative: CONFIRMED (yes).** The "silent-change guard" (env is the Day-1 default) is reversed. TASK-578 **enables the built-in-local SYSTEM connection rows** (ollama, lm-studio, built-in, vllm, llama-cpp) so the SYSTEM DB rows are the authoritative default source; cloud-BYO rows stay disabled (tenant-opt-in). Full LLM-BYOK regression gate applies. **Consequence to enforce:** env must not *select* a provider/model default; where a consuming service still reads a provider *choice* from env, that is now a defect to close, not acceptable topology. (Connection identity — the platform-run engine base URLs — remains env-tier per `09-infrastructure-devops.md`; the SYSTEM rows carry the same values as the declared source of truth. If Discovery finds a service ignoring the SYSTEM row in favour of an env-selected default, raise it.)
+- **OD-2 — TTS Day-1 default order: CONFIRMED built-in-first.** TASK-577 seeds a SYSTEM `TenantTtsConfig` with a built-in-first chain: `routingEn=["kokoro"]`, `routingMl=["indic_parler"]` (both local; exact provider ids to be confirmed against `router.py` during implementation). No cloud vendor is the implicit default; Azure/Sarvam are tenant-configured BYO only.
+
+Both gates are now GREEN. Child READMEs updated to In-Progress-eligible.
 
 ---
 
@@ -100,6 +102,27 @@ Per `verification-before-completion` — every Implementation Summary pastes **a
 - **577 runtime proof:** with no per-tenant `TenantTtsConfig`, the gateway injects the SYSTEM routing and TTS synthesizes via a **built-in** provider (not Azure) — captured from a live `apps/tts` run or the router unit test with the SYSTEM chain.
 
 ---
+
+## 7a. Execution status (2026-07-28) + owner tails
+
+All five tickets implemented on `thuynh/2607`, **status Review, everything STAGED, nothing committed** (commits are owner-gated). Evidence pasted in each ticket README.
+
+| Ticket | Outcome | Key evidence |
+|---|---|---|
+| TASK-577 | ✅ Done | DB 880 pass (+7); TTS 183 pass; router fails closed; SYSTEM `TenantTtsConfig` psql-proven (`kokoro`/`indic_parler`); unconfigured tenant → kokoro not azure |
+| TASK-578 | ✅ Done | Discovery: `resolveConnection` has **zero runtime consumers** → flip is serving-neutral; DB 882 pass, applications 7133 pass; 5 local enabled / 11 cloud disabled psql-proven |
+| TASK-579 | ✅ Done | Found+fixed a real bug (`VertexProvider` substituted its default_model); all 5 cloud `default_model` zeroed + `require_model()` guard; SMR 989 pass |
+| TASK-580 | ✅ Done | Guardrail docstring corrected to fail-closed; `.env.production` annotated; tracked env template already clean; guardrail 174 pass, gitleaks clean |
+| TASK-581 | ✅ Non-gap | No DB-catalog embedding consumer exists; embedding is infra-tier TEI; traceability note added |
+
+**Owner tails (must be actioned before/at release):**
+
+1. **T1 — RESOLVED (no backfill).** Owner confirmed 2026-07-28: there is **no production environment**, so the create-only seeder is correct as-is — a fresh Day-1 seed creates the built-in-local `llm` rows `enabled:true` (proven). No backfill script is written. Caveat for local work only: an **already-seeded dev/test DB** keeps the old disabled rows (create-only skips them), so to *observe* the new posture locally, reseed a fresh DB (`pnpm test:db:reset` + seed) — this does not affect production correctness.
+2. **T2 — Nothing committed.** All work staged on `thuynh/2607`; owner commits when ready.
+3. **T3 — Live e2e not run (env-gated).** `apps/api/tests/e2e/ai-provider-connections.spec.ts` (assertion updated to the new posture) and TTS/STT e2e need a live stack (`pnpm test:api:up` + seed). Unit/integration gates are green.
+4. **T4 — TTS transient-DB-error posture (TASK-577 decision).** The gateway keeps fail-open-on-lookup-error, but the router is now fail-closed, so a transient DB error yields a 503 rather than a substituted vendor. Intended; confirm acceptable.
+5. **T5 — RESOLVED (keep).** Owner confirmed 2026-07-28: the `describe.configure({ mode: 'serial' })` flakiness fix in `apps/api/tests/e2e/mcp-admin.spec.ts` stays.
+6. **T6 — Gray area (from TASK-581).** `apps/harness` RAG retriever carries an env model default (`HARNESS_RETRIEVAL_EMBEDDINGS_*`, `text-embedding-bge-m3`). Classified as internal infra-tier (like the harness judge model), NOT a tenant-facing provider. If the owner wants RAG embedding DB-governed too, that is a separate follow-up ticket.
 
 ## 8. Ticket table
 

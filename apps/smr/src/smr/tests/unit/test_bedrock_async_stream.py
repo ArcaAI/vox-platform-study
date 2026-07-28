@@ -99,7 +99,7 @@ class TestBedrockAsyncStream:
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")):
             chunks.append(chunk)
 
         text_chunks = [c for c in chunks if c.type == "chunk"]
@@ -121,7 +121,7 @@ class TestBedrockAsyncStream:
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")):
             chunks.append(chunk)
 
         reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
@@ -143,7 +143,7 @@ class TestBedrockAsyncStream:
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")):
             chunks.append(chunk)
 
         done_chunks = [c for c in chunks if c.type == "done"]
@@ -163,7 +163,7 @@ class TestBedrockAsyncStream:
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")):
             chunks.append(chunk)
 
         # AD-1: the usage chunk now carries the FULL GenerationStats dict
@@ -192,7 +192,7 @@ class TestBedrockAsyncStream:
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")):
             chunks.append(chunk)
 
         text_chunks = [c for c in chunks if c.type == "chunk"]
@@ -215,7 +215,7 @@ class TestBedrockAsyncStream:
 
         chunks: list[StreamChunk] = []
         with pytest.raises(RuntimeError, match="connection reset"):
-            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")):
                 chunks.append(chunk)
 
         assert len(chunks) == 1
@@ -260,7 +260,7 @@ class TestBedrockAsyncStream:
         probe_task = asyncio.create_task(probe())
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")):
             chunks.append(chunk)
 
         await probe_task
@@ -292,7 +292,7 @@ class TestBedrockAsyncStream:
 
         with patch("smr.providers.bedrock._get_tracer", return_value=mock_tracer):
             chunks: list[StreamChunk] = []
-            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")):
                 chunks.append(chunk)
 
         calls = {

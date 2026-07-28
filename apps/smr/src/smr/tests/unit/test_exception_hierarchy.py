@@ -20,6 +20,7 @@ from smr.core.exceptions import (
     ConcurrencyLimitError,
     ContentBlockedError,
     InputValidationError,
+    ModelNotSelectedError,
     ProviderError,
     ProviderNotFoundError,
     ProviderTimeoutError,
@@ -49,6 +50,7 @@ _ALL_EXCEPTIONS: list[tuple[type[SmrError], str]] = [
     (ConcurrencyLimitError, "CONCURRENCY_LIMIT"),
     (ContentBlockedError, "CONTENT_BLOCKED"),
     (ProviderNotFoundError, "PROVIDER_NOT_FOUND"),
+    (ModelNotSelectedError, "MODEL_NOT_SELECTED"),
 ]
 
 
@@ -224,6 +226,17 @@ class TestExceptionHandlerStatusCodes:
         from smr.core.exception_handlers import smr_exception_handler
 
         exc = ContentBlockedError()
+        resp = await smr_exception_handler(MagicMock(), exc)
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_handler_returns_correct_status_for_model_not_selected(self):
+        """TASK-579: a cloud provider raising ModelNotSelectedError (no model
+        resolved — never a substituted vendor default) maps to 422, same as
+        InputValidationError (its parent)."""
+        from smr.core.exception_handlers import smr_exception_handler
+
+        exc = ModelNotSelectedError("no model", provider="azure_openai")
         resp = await smr_exception_handler(MagicMock(), exc)
         assert resp.status_code == 422
 

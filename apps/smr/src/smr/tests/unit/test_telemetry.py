@@ -442,7 +442,9 @@ class TestBedrockGenAISpans:
 
             with patch("smr.providers.bedrock.asyncio") as mock_asyncio:
                 mock_asyncio.to_thread = _fake_to_thread
-                content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi"))
+                content, _reasoning, usage = await provider.generate(
+                    GenerateRequest(prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0")
+                )
 
         spans = in_memory_exporter.get_finished_spans()
         gen_spans = [s for s in spans if s.attributes.get("gen_ai.system") == "aws_bedrock"]
@@ -471,7 +473,9 @@ class TestBedrockGenAISpans:
 
             with patch("smr.providers.bedrock.asyncio") as mock_asyncio:
                 mock_asyncio.to_thread = _fake_to_thread
-                await provider.generate(GenerateRequest(prompt="hi"))
+                await provider.generate(
+                    GenerateRequest(prompt="hi", model="anthropic.claude-3-haiku-20240307-v1:0")
+                )
 
         spans = in_memory_exporter.get_finished_spans()
         gen_span = next(s for s in spans if s.attributes.get("gen_ai.system") == "aws_bedrock")
@@ -501,7 +505,9 @@ class TestBedrockGenAISpans:
 
             chunks = []
             async for chunk in provider.generate_stream(
-                GenerateRequest(prompt="hi", stream=True)
+                GenerateRequest(
+                    prompt="hi", stream=True, model="anthropic.claude-3-haiku-20240307-v1:0"
+                )
             ):
                 chunks.append(chunk)
 

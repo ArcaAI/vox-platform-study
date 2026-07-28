@@ -37,9 +37,17 @@ async def client():
 
 @pytest.mark.asyncio
 async def test_english_voice_routes_to_kokoro(client):
+    # Built-in-first default (TASK-577): the SYSTEM TenantTtsConfig routes en to
+    # the local Kokoro engine. Injecting ["kokoro"] mirrors that resolved chain —
+    # synthesis goes to the built-in engine, never a cloud vendor.
     resp = await client.post(
         "/api/v1/audio/speech",
-        json={"input": "Hello.", "voice": "en-female-1", "stream_format": "audio"},
+        json={
+            "input": "Hello.",
+            "voice": "en-female-1",
+            "stream_format": "audio",
+            "routing_en": ["kokoro"],
+        },
     )
     assert resp.status_code == 200
     assert len(resp.content) == 4800  # 2400 samples × 2 bytes, 24k passthrough
@@ -47,9 +55,16 @@ async def test_english_voice_routes_to_kokoro(client):
 
 @pytest.mark.asyncio
 async def test_malayalam_voice_routes_to_parler_with_resample(client):
+    # Built-in-first default (TASK-577): the SYSTEM TenantTtsConfig routes ml to
+    # the local Indic Parler engine. Injecting ["indic_parler"] mirrors it.
     resp = await client.post(
         "/api/v1/audio/speech",
-        json={"input": "ഹലോ.", "voice": "ml-female-1", "stream_format": "audio"},
+        json={
+            "input": "ഹലോ.",
+            "voice": "ml-female-1",
+            "stream_format": "audio",
+            "routing_ml": ["indic_parler"],
+        },
     )
     assert resp.status_code == 200
     assert abs(len(resp.content) // 2 - 2400) < 100  # 44.1k → 24k resample

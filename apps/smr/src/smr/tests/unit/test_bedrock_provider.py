@@ -48,7 +48,13 @@ class TestBedrockGenerate:
             provider = BedrockProvider(config=bedrock_config)
             from smr.models.stats import GenerationStats
 
-            content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
+            content, _reasoning, stats = await provider.generate(
+                GenerateRequest(
+                    prompt="hi",
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
+            )
             assert content == "Bedrock says hi!"
             assert isinstance(stats, GenerationStats)
 
@@ -70,6 +76,7 @@ class TestBedrockGenerate:
                 prompt="explain AI",
                 system_prompt="You are helpful",
                 provider="bedrock",
+                model="anthropic.claude-3-sonnet-20240229-v1:0",
             ))
 
             call_kwargs = mock_client.converse.call_args.kwargs
@@ -87,7 +94,13 @@ class TestBedrockGenerate:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             with pytest.raises(Exception, match="Bedrock error"):
-                await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
+                await provider.generate(
+                    GenerateRequest(
+                        prompt="hi",
+                        provider="bedrock",
+                        model="anthropic.claude-3-sonnet-20240229-v1:0",
+                    )
+                )
 
 
 class TestBedrockGenerateStream:
@@ -109,7 +122,14 @@ class TestBedrockGenerateStream:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             chunks = []
-            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, provider="bedrock")):
+            async for chunk in provider.generate_stream(
+                GenerateRequest(
+                    prompt="hi",
+                    stream=True,
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
+            ):
                 chunks.append(chunk)
 
             text_chunks = [c for c in chunks if c.type == "chunk"]

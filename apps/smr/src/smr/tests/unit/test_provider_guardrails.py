@@ -122,7 +122,11 @@ class TestBedrockGuardrailIntervened:
 
         with patch("smr.providers.bedrock.logger") as mock_logger:
             content, _reasoning, stats = await provider.generate(
-                GenerateRequest(prompt="bad prompt", provider="bedrock")
+                GenerateRequest(
+                    prompt="bad prompt",
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
             )
 
             mock_logger.warning.assert_called_once()

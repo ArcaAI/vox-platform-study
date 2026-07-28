@@ -28,6 +28,7 @@ from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
 from smr.models.stats import GenerationStats, build_generation_stats
 from smr.models.stream import StreamChunk
+from smr.providers.base import require_model
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -109,11 +110,16 @@ class VertexProvider:
             )
             return self._client
 
-    def _resolve_model(self, request: GenerateRequest) -> str:
+    def _resolve_model(self, request: GenerateRequest) -> str | None:
+        # TASK-579: no in-gateway default — the caller-supplied model is
+        # authoritative. ``_default_model`` is retained for the providers
+        # listing (informational) only and is NEVER substituted into a
+        # generation request (provider/model SELECTION is failMode=closed —
+        # a missing model raises via `require_model` in generate/generate_stream).
         override = self._resolve_override(request)
         if override is not None and override.model:
             return override.model
-        return request.model or self._default_model
+        return request.model
 
     def _build_config(self, request: GenerateRequest) -> types.GenerateContentConfig:
         resolved = resolve_request_defaults(request)
@@ -179,7 +185,7 @@ class VertexProvider:
 
     async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
         resolved = resolve_request_defaults(request)
-        resolved_model = self._resolve_model(request)
+        resolved_model = require_model(self._resolve_model(request), provider=_PROVIDER_NAME)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate",
             attributes={
@@ -217,7 +223,7 @@ class VertexProvider:
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
-        resolved_model = self._resolve_model(request)
+        resolved_model = require_model(self._resolve_model(request), provider=_PROVIDER_NAME)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate_stream",
             attributes={
@@ -286,7 +292,12 @@ class VertexProvider:
             return False
 
     async def get_info(self) -> ProviderInfo:
-        models: list[ModelInfo] = [ModelInfo(name=self._default_model, supports_streaming=True)]
+        # TASK-579: default_model is informational-only (may be unset now that
+        # cloud configs carry no compiled-in vendor model) — never advertise an
+        # empty-named model.
+        models: list[ModelInfo] = (
+            [ModelInfo(name=self._default_model, supports_streaming=True)] if self._default_model else []
+        )
         status = "available" if self._client is not None else "unavailable"
         return ProviderInfo(
             name=_PROVIDER_NAME,

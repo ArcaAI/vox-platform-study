@@ -30,7 +30,16 @@ def _router(providers: dict) -> TTSRouter:
     return TTSRouter(reg, VoiceCatalog(), Settings())
 
 
+# The gateway always injects the tenant's resolved routing chain (built-in-first
+# by default — TASK-577); the router no longer carries a code default and fails
+# closed without one, so these tests inject the chain the way production does.
+_DEFAULT_ROUTING_EN = ["azure", "kokoro"]
+_DEFAULT_ROUTING_ML = ["azure", "sarvam", "indic_parler"]
+
+
 async def _collect(router: TTSRouter, **kwargs) -> list:
+    kwargs.setdefault("routing_en", _DEFAULT_ROUTING_EN)
+    kwargs.setdefault("routing_ml", _DEFAULT_ROUTING_ML)
     return [chunk async for chunk in router.synthesize(**kwargs)]
 
 
@@ -58,7 +67,7 @@ class TestSynthesizeOverride:
             VoiceCatalog().get("en-female-1"), {"en-female-1": {"kokoro": "af_bella"}}
         )
         assert merged.bindings == {"azure": "en-IN-NeerjaNeural", "kokoro": "af_bella"}
-        assert router.candidates(merged) == ["azure", "kokoro"]
+        assert router.candidates(merged, routing_en=_DEFAULT_ROUTING_EN) == ["azure", "kokoro"]
         await _collect(
             router,
             voice_id="en-female-1",
@@ -150,6 +159,7 @@ class TestStreamOverride:
         router = _router({"azure": azure})
         stream = router.stream(
             voice_id="en-female-1",
+            routing_en=_DEFAULT_ROUTING_EN,
             voice_bindings={"en-female-1": {"azure": "en-IN-AartiNeural"}},
         )
         await stream.push_text("Hello there. ")
@@ -172,6 +182,7 @@ class TestSpeechEndpointOverride:
                     "input": "Hello.",
                     "voice": "en-female-1",
                     "response_format": "pcm",
+                    "routing_en": ["azure", "kokoro"],
                     "voice_bindings": {"en-female-1": {"azure": "en-IN-AartiNeural"}},
                 },
             )
@@ -186,9 +197,10 @@ class TestWsInitCoercion:
         }
 
     def test_malformed_entries_dropped(self) -> None:
-        assert _voice_bindings(
-            {"en-female-1": {"azure": 123}, "ml-male-1": "nope", 7: {"a": "b"}}
-        ) is None
+        assert (
+            _voice_bindings({"en-female-1": {"azure": 123}, "ml-male-1": "nope", 7: {"a": "b"}})
+            is None
+        )
 
     def test_non_dict_or_empty_is_none(self) -> None:
         assert _voice_bindings(None) is None

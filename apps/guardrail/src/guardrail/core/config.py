@@ -274,9 +274,13 @@ class DatabaseConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_")
 
-    # Enabled by default: the resolver fails open to the env-selected
-    # engine on ANY DB error or empty result, so deployments without a reachable
-    # Postgres behave exactly as env-only ones.
+    # Enabled by default: the resolver (get_resolved_guardian_provider in
+    # core/dependencies.py) fails CLOSED (HTTP 503) when the SYSTEM
+    # AiTaskDefault selection for "guardrail.validate" is missing or a DB
+    # error occurs — there is no silent fallback to an env-selected engine.
+    # Setting this to False is a dev-only escape hatch: it makes the service
+    # use GUARDRAIL_V2_PROVIDER (below) directly, bypassing DB resolution
+    # entirely, for local development without a reachable Postgres.
     db_config_enabled: bool = True
 
     # Read-only connection string to the shared HOPE core DB.
@@ -328,6 +332,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="GUARDRAIL_V2_")
 
     # LLM engine selector: lm-studio (default) | ollama | vllm | llama-cpp | azure | bedrock
+    # Dev-only escape hatch: consumed only when DatabaseConfig.db_config_enabled
+    # is False, i.e. DB-backed provider resolution is deliberately bypassed.
     provider: str = "lm-studio"
 
     # Bootstrap credentials for `s3://` model sources (MinIO-compatible).
