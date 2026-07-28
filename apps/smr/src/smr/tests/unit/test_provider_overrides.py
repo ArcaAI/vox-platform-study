@@ -227,3 +227,361 @@ class TestProviderOverrideNeverLogged:
         )
         assert "byo-lane-fake-bedrock-key" not in str(req)
         assert "byo-lane-fake-bedrock-key" not in repr(req)
+
+
+# --- TASK-572a: new cloud BYO providers (openai / anthropic / vertex) ---------
+
+
+class TestProviderOverrideNewFields:
+    """C4 wire shape gained ``model`` (override-wins model) + Vertex
+    ``project``/``location``, additively — old callers unaffected."""
+
+    def test_model_project_location_default_to_none(self):
+        override = ProviderOverride(api_key="k")
+        assert override.model is None
+        assert override.project is None
+        assert override.location is None
+
+    def test_new_fields_round_trip(self):
+        override = ProviderOverride(
+            api_key="k", model="gemini-2.0-flash", project="proj-1", location="us-central1"
+        )
+        assert override.model == "gemini-2.0-flash"
+        assert override.project == "proj-1"
+        assert override.location == "us-central1"
+
+
+@pytest.fixture
+def openai_config():
+    from smr.core.config import OpenAIConfig
+
+    return OpenAIConfig(api_key="env-key", base_url="https://api.openai.com/v1")
+
+
+class TestOpenAIProviderOverrideConsumption:
+    @pytest.mark.asyncio
+    async def test_override_builds_a_request_scoped_client_with_tenant_credential(
+        self, openai_config
+    ):
+        from smr.providers.openai import OpenAIProvider
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "byo openai response"
+        mock_choice.message.reasoning_content = None
+        mock_choice.finish_reason = "stop"
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+
+        provider = OpenAIProvider(config=openai_config)
+        provider._client = AsyncMock()  # shared env client — must NOT be used
+
+        override_client = AsyncMock()
+        override_client.chat.completions.create = AsyncMock(return_value=mock_completion)
+
+        with patch(
+            "smr.providers.openai.AsyncOpenAI", return_value=override_client
+        ) as mock_ctor:
+            req = GenerateRequest(
+                prompt="hi",
+                provider="openai",
+                model="caller-model",
+                provider_overrides={
+                    "openai": {
+                        "api_key": "byo-secret-value",
+                        "base_url": "https://tenant.example.com/v1",
+                        "model": "tenant-model",
+                    }
+                },
+            )
+            content, _reasoning, _stats = await provider.generate(req)
+
+        assert content == "byo openai response"
+        mock_ctor.assert_called_once()
+        ctor_kwargs = mock_ctor.call_args.kwargs
+        assert ctor_kwargs["api_key"] == "byo-secret-value"
+        assert ctor_kwargs["base_url"] == "https://tenant.example.com/v1"
+        # override.model wins over the caller-supplied model.
+        call_kwargs = override_client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == "tenant-model"
+        provider._client.chat.completions.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_absent_override_reuses_the_shared_client_unchanged(self, openai_config):
+        from smr.providers.openai import OpenAIProvider
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "platform response"
+        mock_choice.message.reasoning_content = None
+        mock_choice.finish_reason = "stop"
+        mock_completion = MagicMock()
+        mock_completion.choices = [mock_choice]
+        mock_completion.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+
+        provider = OpenAIProvider(config=openai_config)
+        provider._client = AsyncMock()
+        provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
+
+        with patch("smr.providers.openai.AsyncOpenAI") as mock_ctor:
+            req = GenerateRequest(prompt="hi", provider="openai", model="caller-model")
+            content, _reasoning, _stats = await provider.generate(req)
+
+        assert content == "platform response"
+        mock_ctor.assert_not_called()
+        provider._client.chat.completions.create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_two_tenants_do_not_share_a_client(self, openai_config):
+        """A fresh request-scoped client is built per override — two tenants'
+        concurrent requests can never reuse one client instance."""
+        from smr.providers.openai import OpenAIProvider
+
+        provider = OpenAIProvider(config=openai_config)
+        with patch("smr.providers.openai.AsyncOpenAI") as mock_ctor:
+            mock_ctor.side_effect = lambda **_: AsyncMock()
+            req_a = GenerateRequest(
+                prompt="hi",
+                provider="openai",
+                provider_overrides={"openai": {"api_key": "tenant-a-key"}},
+            )
+            req_b = GenerateRequest(
+                prompt="hi",
+                provider="openai",
+                provider_overrides={"openai": {"api_key": "tenant-b-key"}},
+            )
+            client_a = provider._client_for(req_a)
+            client_b = provider._client_for(req_b)
+
+        assert client_a is not client_b
+        assert mock_ctor.call_count == 2
+
+    def test_fail_open_falls_back_to_env_client_when_override_build_raises(
+        self, openai_config, caplog
+    ):
+        from smr.providers.openai import OpenAIProvider
+
+        provider = OpenAIProvider(config=openai_config)
+        sentinel_env_client = provider._client
+
+        with patch(
+            "smr.providers.openai.AsyncOpenAI",
+            side_effect=RuntimeError("bad key"),
+        ):
+            req = GenerateRequest(
+                prompt="hi",
+                provider="openai",
+                provider_overrides={"openai": {"api_key": "byo-broken-openai-key"}},
+            )
+            client = provider._client_for(req)
+
+        # Degrades to the shared env client rather than failing the request...
+        assert client is sentinel_env_client
+        # ...and the raw key never appears in any captured log line.
+        assert "byo-broken-openai-key" not in caplog.text
+
+
+@pytest.fixture
+def anthropic_config():
+    from smr.core.config import AnthropicConfig
+
+    return AnthropicConfig(api_key="env-key", default_model="claude-3-5-haiku-20241022")
+
+
+class TestAnthropicProviderOverrideConsumption:
+    @pytest.mark.asyncio
+    async def test_override_builds_a_request_scoped_client_with_tenant_credential(
+        self, anthropic_config
+    ):
+        from smr.providers.anthropic import AnthropicProvider
+
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "byo anthropic response"
+        mock_message = MagicMock()
+        mock_message.content = [text_block]
+        mock_message.stop_reason = "end_turn"
+        mock_message.usage = MagicMock(input_tokens=3, output_tokens=4)
+
+        provider = AnthropicProvider(config=anthropic_config)
+        provider._client = MagicMock()  # shared env client — must NOT be used
+
+        override_client = MagicMock()
+        override_client.messages.create = AsyncMock(return_value=mock_message)
+
+        with patch(
+            "smr.providers.anthropic.AsyncAnthropic", return_value=override_client
+        ) as mock_ctor:
+            req = GenerateRequest(
+                prompt="hi",
+                provider="anthropic",
+                model="caller-model",
+                provider_overrides={
+                    "anthropic": {"api_key": "byo-secret-value", "model": "tenant-model"}
+                },
+            )
+            content, _reasoning, stats = await provider.generate(req)
+
+        assert content == "byo anthropic response"
+        assert stats.prompt_tokens == 3
+        assert stats.predicted_tokens == 4
+        assert stats.stop_reason == "stop"
+        mock_ctor.assert_called_once()
+        assert mock_ctor.call_args.kwargs["api_key"] == "byo-secret-value"
+        call_kwargs = override_client.messages.create.call_args.kwargs
+        assert call_kwargs["model"] == "tenant-model"
+
+    @pytest.mark.asyncio
+    async def test_absent_override_reuses_the_shared_client_unchanged(self, anthropic_config):
+        from smr.providers.anthropic import AnthropicProvider
+
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "platform response"
+        mock_message = MagicMock()
+        mock_message.content = [text_block]
+        mock_message.stop_reason = "end_turn"
+        mock_message.usage = MagicMock(input_tokens=1, output_tokens=1)
+
+        provider = AnthropicProvider(config=anthropic_config)
+        provider._client = MagicMock()
+        provider._client.messages.create = AsyncMock(return_value=mock_message)
+
+        with patch("smr.providers.anthropic.AsyncAnthropic") as mock_ctor:
+            req = GenerateRequest(prompt="hi", provider="anthropic", model="caller-model")
+            content, _reasoning, _stats = await provider.generate(req)
+
+        assert content == "platform response"
+        mock_ctor.assert_not_called()
+        provider._client.messages.create.assert_called_once()
+
+    def test_fail_open_falls_back_to_env_client_when_override_build_raises(
+        self, anthropic_config, caplog
+    ):
+        from smr.providers.anthropic import AnthropicProvider
+
+        provider = AnthropicProvider(config=anthropic_config)
+        sentinel_env_client = provider._client
+
+        with patch(
+            "smr.providers.anthropic.AsyncAnthropic",
+            side_effect=RuntimeError("bad key"),
+        ):
+            req = GenerateRequest(
+                prompt="hi",
+                provider="anthropic",
+                provider_overrides={"anthropic": {"api_key": "byo-broken-anthropic-key"}},
+            )
+            client = provider._client_for(req)
+
+        assert client is sentinel_env_client
+        assert "byo-broken-anthropic-key" not in caplog.text
+
+
+@pytest.fixture
+def vertex_config():
+    from smr.core.config import VertexConfig
+
+    return VertexConfig(project="env-project", location="us-central1")
+
+
+class TestVertexProviderOverrideConsumption:
+    @pytest.mark.asyncio
+    async def test_override_builds_a_request_scoped_client_with_tenant_sa_key(self, vertex_config):
+        from smr.providers.vertex import VertexProvider
+
+        candidate = MagicMock()
+        candidate.finish_reason = "STOP"
+        mock_response = MagicMock()
+        mock_response.text = "byo vertex response"
+        mock_response.candidates = [candidate]
+        mock_response.usage_metadata = MagicMock(
+            prompt_token_count=5, candidates_token_count=6, total_token_count=11
+        )
+
+        override_client = MagicMock()
+        override_client.aio.models.generate_content = AsyncMock(return_value=mock_response)
+
+        provider = VertexProvider(config=vertex_config)
+        provider._client = MagicMock()  # shared env client — must NOT be used
+
+        sa_json = '{"type":"service_account","project_id":"tenant-proj"}'
+        with (
+            patch("smr.providers.vertex.genai.Client", return_value=override_client) as mock_ctor,
+            patch(
+                "smr.providers.vertex.service_account.Credentials.from_service_account_info",
+                return_value=MagicMock(),
+            ),
+        ):
+            req = GenerateRequest(
+                prompt="hi",
+                provider="vertex",
+                model="gemini-2.0-flash",
+                provider_overrides={
+                    "vertex": {
+                        "api_key": sa_json,
+                        "project": "tenant-proj",
+                        "location": "europe-west1",
+                        "model": "gemini-1.5-pro",
+                    }
+                },
+            )
+            content, _reasoning, stats = await provider.generate(req)
+
+        assert content == "byo vertex response"
+        assert stats.prompt_tokens == 5
+        assert stats.predicted_tokens == 6
+        mock_ctor.assert_called_once()
+        ctor_kwargs = mock_ctor.call_args.kwargs
+        assert ctor_kwargs["vertexai"] is True
+        assert ctor_kwargs["project"] == "tenant-proj"
+        assert ctor_kwargs["location"] == "europe-west1"
+        # override.model wins.
+        call_kwargs = override_client.aio.models.generate_content.call_args.kwargs
+        assert call_kwargs["model"] == "gemini-1.5-pro"
+
+    @pytest.mark.asyncio
+    async def test_absent_override_reuses_the_shared_client_unchanged(self, vertex_config):
+        from smr.providers.vertex import VertexProvider
+
+        candidate = MagicMock()
+        candidate.finish_reason = "STOP"
+        mock_response = MagicMock()
+        mock_response.text = "platform response"
+        mock_response.candidates = [candidate]
+        mock_response.usage_metadata = MagicMock(
+            prompt_token_count=1, candidates_token_count=1, total_token_count=2
+        )
+
+        provider = VertexProvider(config=vertex_config)
+        provider._client = MagicMock()
+        provider._client.aio.models.generate_content = AsyncMock(return_value=mock_response)
+
+        with patch("smr.providers.vertex.genai.Client") as mock_ctor:
+            req = GenerateRequest(prompt="hi", provider="vertex", model="gemini-2.0-flash")
+            content, _reasoning, _stats = await provider.generate(req)
+
+        assert content == "platform response"
+        mock_ctor.assert_not_called()
+        provider._client.aio.models.generate_content.assert_called_once()
+
+    def test_fail_open_falls_back_to_env_client_when_override_build_raises(
+        self, vertex_config, caplog
+    ):
+        from smr.providers.vertex import VertexProvider
+
+        provider = VertexProvider(config=vertex_config)
+        sentinel_env_client = provider._client
+
+        with patch(
+            "smr.providers.vertex.service_account.Credentials.from_service_account_info",
+            side_effect=ValueError("bad sa json"),
+        ):
+            req = GenerateRequest(
+                prompt="hi",
+                provider="vertex",
+                provider_overrides={"vertex": {"api_key": "byo-broken-vertex-sa-key"}},
+            )
+            client = provider._client_for(req)
+
+        assert client is sentinel_env_client
+        assert "byo-broken-vertex-sa-key" not in caplog.text

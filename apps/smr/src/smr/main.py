@@ -84,6 +84,20 @@ def _register_provider_factories(
 
         _register(("bedrock",), lambda: BedrockProvider(settings.bedrock))
 
+    # Cloud BYO providers (openai / anthropic / vertex) — governed by the
+    # unified provider plane (C5). Unlike azure/bedrock these are BYO-FIRST:
+    # the tenant credential arrives per request as a ``provider_overrides`` entry
+    # injected by the gateway, so they must be AVAILABLE even when no platform
+    # env credential is configured. They are therefore registered unconditionally
+    # (the env config is only the platform fallback / fail-open target).
+    from smr.providers.anthropic import AnthropicProvider
+    from smr.providers.openai import OpenAIProvider
+    from smr.providers.vertex import VertexProvider
+
+    _register(("openai",), _shared(lambda: OpenAIProvider(settings.openai)))
+    _register(("anthropic",), _shared(lambda: AnthropicProvider(settings.anthropic)))
+    _register(("vertex",), _shared(lambda: VertexProvider(settings.vertex)))
+
     if settings.vllm.base_url:
         from smr.providers.vllm import VllmProvider
 
@@ -163,6 +177,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "azure-openai": settings.azure,
         "azure": settings.azure,
         "bedrock": settings.bedrock,
+        "openai": settings.openai,
+        "anthropic": settings.anthropic,
+        "vertex": settings.vertex,
         "lm-studio": settings.openai_compat,
         "openai_compat": settings.openai_compat,
         "vllm": settings.vllm,
@@ -204,6 +221,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "azure-openai": settings.azure,
             "azure": settings.azure,
             "bedrock": settings.bedrock,
+        "openai": settings.openai,
+        "anthropic": settings.anthropic,
+        "vertex": settings.vertex,
             "lm-studio": settings.openai_compat,
             "openai_compat": settings.openai_compat,
             "vllm": settings.vllm,
