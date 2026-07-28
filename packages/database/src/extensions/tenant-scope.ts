@@ -118,20 +118,24 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // pipeline-policy.prisma (2) — realtime-cascade policy.
   'PipelinePolicy', // also a SYSTEM-shared read model (global-default row, below)
   'PipelinePolicyChange', // append-only WORM change log (no soft-delete)
-  // tenant-tts-config.prisma (2) — per-tenant TTS config + BYO creds.
+  // tenant-tts-config.prisma (1) — per-tenant TTS config. The former
+  // per-(tenant,provider) BYO-credential model, TenantTtsProviderCredential,
+  // was DROPPED in TASK-576 — those rows now live in the unified
+  // AiProviderConnection plane (service='tts').
   'TenantTtsConfig', // also a SYSTEM-shared read model (platform-default row, below)
-  'TenantTtsProviderCredential', // per-(tenant,provider) BYO key; NOT SYSTEM-shared
-  // tenant-stt-config.prisma (2) — per-tenant STT fallback config + BYO creds.
+  // tenant-stt-config.prisma (1) — per-tenant STT fallback config. The former
+  // per-(tenant,provider) BYO-credential model, TenantSttProviderCredential,
+  // was DROPPED in TASK-576 — those rows now live in the unified
+  // AiProviderConnection plane (service='stt').
   'TenantSttConfig', // also a SYSTEM-shared read model (platform-default row, below)
-  'TenantSttProviderCredential', // per-(tenant,provider) BYO key; NOT SYSTEM-shared
   // ai-task-default.prisma (1) — per-tenant default model per AI task.
   'AiTaskDefault', // also a SYSTEM-shared read model (platform-default row, below)
   // ai-provider-connection.prisma (1) — config-plane core. WHERE a
   // serving provider lives + HOW to authenticate. SYSTEM row = platform
   // default; tenant rows are BYO cloud credentials (azure/bedrock only,
-  // service-enforced). Secret-bearing (`encryptedApiKey`), and unlike
-  // TenantTtsProviderCredential it IS SYSTEM-shared for reads — see the
-  // justification on the SYSTEM_SHARED_READ_MODELS entry below.
+  // service-enforced). Secret-bearing (`encryptedApiKey`), and IS
+  // SYSTEM-shared for reads — see the justification on the
+  // SYSTEM_SHARED_READ_MODELS entry below.
   'AiProviderConnection',
   // ai-runtime-profile.prisma (1) — config-plane core. Hyperparameter /
   // context / concurrency profiles per (provider, modelSlug). SYSTEM-only rows
@@ -243,14 +247,16 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // The per-tenant TTS PLATFORM-DEFAULT row is owned by the SYSTEM
   // tenant and read by every tenant's resolveForTenant (tenant row merged over
   // the SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened
-  // (only a platform admin mutates the SYSTEM default). Credentials are NEVER
-  // shared — TenantTtsProviderCredential is intentionally absent here.
+  // (only a platform admin mutates the SYSTEM default). This model never
+  // carries a secret — BYO credentials live in AiProviderConnection
+  // (service='tts'; see its own CAVEAT below for how ITS widening stays safe).
   'TenantTtsConfig',
   // The per-tenant STT PLATFORM-DEFAULT row is owned by the SYSTEM
   // tenant and read by every tenant's getEffective (tenant row merged over the
   // SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened
-  // (only a platform admin mutates the SYSTEM default). Credentials are NEVER
-  // shared — TenantSttProviderCredential is intentionally absent here.
+  // (only a platform admin mutates the SYSTEM default). This model never
+  // carries a secret — BYO credentials live in AiProviderConnection
+  // (service='stt'; see its own CAVEAT below for how ITS widening stays safe).
   'TenantSttConfig',
   // Per-task default-model rows (guardrail.validate / nlp.*): the
   // SYSTEM tenant row is the platform default every tenant merges under its
@@ -268,8 +274,11 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // because the widening is [caller, SYSTEM] only (never another tenant's BYO
   // row), the `encryptedApiKey` ciphertext is inert without gateway-side
   // Vault-Transit decrypt, and NO read DTO ever carries it (`hasKey` boolean
-  // only). Contrast TenantTtsProviderCredential, which is deliberately absent
-  // above: that model has no SYSTEM row at all, so sharing would buy nothing.
+  // only). This is the unified plane for LLM/STT/TTS BYO credentials
+  // (`service` discriminator) — TASK-576 dropped the former per-capability
+  // `TenantTtsProviderCredential` / `TenantSttProviderCredential` tables,
+  // which had no SYSTEM row at all, so widening them would have bought
+  // nothing.
   'AiProviderConnection',
   // Hyperparameter/context/concurrency profiles. SYSTEM-only rows,
   // read by every tenant's injection cascade at request time. No secrets on

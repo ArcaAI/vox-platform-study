@@ -1,27 +1,28 @@
 // ============================================================================
-// Per-Tenant STT (Speech-to-Text) Configuration + BYOK
+// Per-Tenant STT (Speech-to-Text) Configuration
 //
 // DB-backed, tenant-admin-editable STT "spec", resolved at request time by the
 // apps/api gateway and injected into the STATELESS apps/stt service (the Python
 // service never touches Postgres). Mirrors the TASK-496 TTS pair
-// (tenant-tts-config.prisma) file-for-file. Two models:
+// (tenant-tts-config.prisma) file-for-file.
 //
-//   1. TenantSttConfig — ONE row per tenant (tenantId @unique). The reserved
-//      SYSTEM tenant `00000000-0000-0000-0000-000000000000` owns the PLATFORM-
-//      DEFAULT row; a tenant row overrides it field-by-field (null => inherit).
-//      Carries the tenant-level FALLBACK POINTER (`fallbackPipelineId`) and the
-//      auto-switch kill-switch (`autoSwitchEnabled`, default ON). Resolution
-//      (tenant row merged over the SYSTEM default) lives in TenantSttConfigService
-//      (packages/applications, Phase C). `configJson` is the forward-compat
-//      escape hatch (mirrors TenantTtsConfig.configJson).
+//   TenantSttConfig — ONE row per tenant (tenantId @unique). The reserved
+//   SYSTEM tenant `00000000-0000-0000-0000-000000000000` owns the PLATFORM-
+//   DEFAULT row; a tenant row overrides it field-by-field (null => inherit).
+//   Carries the tenant-level FALLBACK POINTER (`fallbackPipelineId`) and the
+//   auto-switch kill-switch (`autoSwitchEnabled`, default ON). Resolution
+//   (tenant row merged over the SYSTEM default) lives in TenantSttConfigService
+//   (packages/applications, Phase C). `configJson` is the forward-compat
+//   escape hatch (mirrors TenantTtsConfig.configJson).
 //
-//   2. TenantSttProviderCredential — OPTIONAL per-(tenant, provider) bring-your-
-//      own API key. Vault-Transit ciphertext ONLY (encryptedApiKey + keyVersion);
-//      plaintext is never stored. `provider` is a String (azure-speech | sarvam |
-//      openai), NOT a Prisma enum — matching TenantTtsProviderCredential.provider.
-//      NOT a SYSTEM-shared read model — credentials are never shared cross-tenant.
+// The former per-(tenant, provider) BYO credential model, TenantSttProviderCredential,
+// was DROPPED in TASK-576 — its rows were copied (TASK-569) into the unified
+// `AiProviderConnection` table (`service='stt'`), which is now the ONLY
+// credential/connection store for STT. `ResourceType.TenantSttProviderCredential`
+// remains a harmless-unused enum member (see audit.prisma) so enum-parity stays
+// green without an unsafe Postgres enum-value drop.
 //
-// Both models are OCC-written (carry `_version`); their mappers strip `version`.
+// This model is OCC-written (carries `_version`); its mapper strips `version`.
 // ============================================================================
 
 model TenantSttConfig {
@@ -56,45 +57,5 @@ model TenantSttConfig {
 
   // indexing
   @@index([tenantId], name: "TenantSttConfig_tenantId_idx")
-  @@schema("core")
-}
-
-model TenantSttProviderCredential {
-  // meta fields
-  metaData Json?  @map("_metadata") @db.JsonB
-  version  Int    @default(1) @map("_version")
-  id       String @id @default(uuid(7))
-
-  // multi tenant fields
-  tenantId String
-
-  // core fields — bring-your-own provider credential. The plaintext API key is
-  // Vault-Transit encrypted; only the ciphertext + key version live here.
-  // `provider` ∈ azure-speech | sarvam | openai (String, not an enum). `endpoint`
-  // (Azure Foundry resource / OpenAI-compatible base URL) and `region` (classic
-  // Azure Speech) are non-secret config; `extraJson` carries per-provider extras
-  // (foundryModel / model / languageCode).
-  provider        String
-  endpoint        String?
-  region          String?
-  encryptedApiKey Bytes?
-  keyVersion      Int?
-  enabled         Boolean @default(true)
-  extraJson       Json?   @db.JsonB
-
-  // resource status fields
-  resourceStatus          ResourceStatusType @default(ENABLED)
-  resourceStatusUpdatedAt DateTime?
-  resourceStatusUpdatedBy String?
-
-  // audit fields
-  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
-  updatedBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // indexing — one credential row per (tenant, provider)
-  @@unique([tenantId, provider], name: "TenantSttProviderCredential_tenant_provider_unique")
-  @@index([tenantId], name: "TenantSttProviderCredential_tenantId_idx")
   @@schema("core")
 }

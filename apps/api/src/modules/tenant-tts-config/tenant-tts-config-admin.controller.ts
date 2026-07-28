@@ -20,8 +20,9 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
  * `endpoint` on the facade's write-only request maps per provider — azure:
  * region, sarvam: base URL — exactly the convention the pre-unification
  * `TenantTtsProviderCredential.endpoint` column carried (see the program doc
- * §2.3). Storing it on the matching `AiProviderConnection` column reproduces
- * the SAME `provider_overrides` shape on read (C4).
+ * §2.3; that table and its domain trio were DROPPED by TASK-576). Storing it
+ * on the matching `AiProviderConnection` column reproduces the SAME
+ * `provider_overrides` shape on read (C4).
  */
 function endpointToConnectionFields(provider: string, endpoint?: string): { baseUrl?: string; region?: string } {
   if (endpoint === undefined) return {};

@@ -190,10 +190,15 @@ enum ResourceType {
   // Eval run (TASK-549): the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun.
   EvalRun
-  // Per-tenant STT fallback config + BYO provider credentials (TASK-567).
-  // Emitted as audit `resourceType` by TenantSttConfigService.broadcastSysEvent
-  // for both the config row and credential mutations.
+  // Per-tenant STT fallback config (TASK-567).
+  // Emitted as audit `resourceType` by TenantSttConfigService.broadcastSysEvent.
   TenantSttConfig
+  // HARMLESS-UNUSED (TASK-576): the `TenantSttProviderCredential` table was
+  // DROPPED (credential rows now live in the unified `AiProviderConnection`
+  // plane, service='stt') but this enum VALUE is kept — Postgres cannot
+  // cheaply drop a value already used by historical rows in this column, and
+  // the domains-layer `ResourceType` TS enum must stay in parity with this
+  // one (resourceType.enum-parity.test.ts). Never emitted again.
   TenantSttProviderCredential
 
   @@schema("core")

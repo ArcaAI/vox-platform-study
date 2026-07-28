@@ -89,7 +89,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // read pre-auth by the API-key authentication lookup, so it can never
     // carry a CLS tenant. (The drift guard below is the durable check; this
     // count stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(59);
+    expect(TENANT_SCOPED_MODELS.size).toBe(57);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -287,8 +287,9 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // GlobalSetting — platform infra settings (S3/MinIO, STT) are seeded under
       // the SYSTEM tenant; the AppSettingsService platform cache reads them.
       // TenantTtsConfig's SYSTEM-tenant row is the per-tenant TTS
-      // platform default every tenant's resolveForTenant merges over (credentials
-      // are NEVER shared, so TenantTtsProviderCredential is intentionally absent).
+      // platform default every tenant's resolveForTenant merges over. This model
+      // never carries a secret — BYO credentials live in the unified
+      // AiProviderConnection plane (service='tts'), never shared cross-tenant.
       // AiTaskDefault's SYSTEM-tenant rows are the platform default
       // model per AI task (guardrail.validate / nlp.*) every tenant's
       // getEffective merges under its own row; writes are NOT widened.
@@ -311,8 +312,9 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'GlobalSetting',
         'TenantTtsConfig',
         // TenantSttConfig's SYSTEM-tenant row is the per-tenant STT platform
-        // default every tenant's getEffective merges over (credentials are NEVER
-        // shared, so TenantSttProviderCredential is intentionally absent).
+        // default every tenant's getEffective merges over. This model never
+        // carries a secret — BYO credentials live in the unified
+        // AiProviderConnection plane (service='stt'), never shared cross-tenant.
         'TenantSttConfig',
         'AiTaskDefault',
         'McpServer',
