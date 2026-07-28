@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | feature (bugfix + enhancement) |
 | **Parent** | [TASK-564](../TASK-564-live-transcription-metadata-passthrough/README.md) |
 | **Package** | `packages/agentic-sdk-v2` (`@arcaai/vox`) |
@@ -79,9 +79,42 @@ Type context (do not edit these — read only): `TranscriptSegment` (`src/types/
 - If the timeline base is unreliable, prefer **correctness (sticky) over cleverness (bad timeline)** — degrade and document (Karpathy §2).
 
 ## 5. Implementation Summary
-_(pending)_
+
+Implemented client-side only; **no core-business file touched** (`git status` shows exactly the hook, its test, and one new pure helper). All four gates green.
+
+### Files
+
+| File | Change |
+|---|---|
+| `packages/agentic-sdk-v2/src/compat/speechToTextMetadata.ts` | **NEW** pure-helper module: `composeDeliveredMetadata`, `resolveChunkId`, `resolveDetectedLanguage`, `pickMetadataForFinal`, `pickMetadataForInterim`, `applyTemplate`, `DEFAULT_TRANSCRIPT_TEMPLATE`, `MAX_METADATA_BYTES`, `METADATA_TIMELINE_CAP`, `TimelineEntry`. |
+| `packages/agentic-sdk-v2/src/compat/useArcaSpeechToText.ts` | Rewired to the helpers; timeline ring + `captureStartMs`; §5.2 compose on finals **and** interims; default template; 8 KiB guard. Public props/return shape unchanged (TASK-560 §5.4). |
+| `packages/agentic-sdk-v2/src/compat/__tests__/useArcaSpeechToText.test.ts` | Extended to 21 cases (8 pure-helper + 13 hook). |
+
+### What shipped vs. the MUST/SHOULD/MAY buckets
+
+- **MUST — F4 fixed.** `composeDeliveredMetadata` composes in the exact §5.2 order: `{ …enrichments, …callerMeta, …(chunk_id/detected_language overlay) }`. Caller keys (`speaker_id`/`confidence`/`language`/`isFinal`) now override hook enrichments; enrichments only fill keys the caller left unset. Unit-tested in isolation.
+- **MUST — §4.3 normalization.** `resolveChunkId` (`chunk_id → chunkId → other`) and `resolveDetectedLanguage` (`detected_language → detectedLanguage → seg.language`) overlay onto delivered metadata, only when defined.
+- **MUST — default template** `"{timestamp} {speaker_id}: {text}"` applied to finals when the prop is absent. **Scope decision:** the default/explicit template is applied to **finals only**; interim text is delivered **raw** — interims carry no speaker/timestamp, so templating them with those slots is meaningless (`" : partial"`). This also preserves the existing interim regression assertion. Documented in the hook header.
+- **SHOULD — timeline correlation (E2), shipped (`correlationModel = 'timeline'`).** `sendAudioData` appends `{ atMs = Date.now() − captureStartMs, metadata }` to a bounded ring (cap 256, drop-oldest). `captureStartMs` is anchored at `startTranscription()`; the ring resets on `stop`. Finals pick the latest entry with `atMs ≤ startTime*1000`, else fall back to most-recent; interims use most-recent.
+  - **Time-base verification (§5.3 RISK):** `atMs` is capture-relative wall-clock ms and `startTime*1000` is stream-relative ms, both anchored at ~capture start — the comparison is meaningful and unit-verified (`pickMetadataForFinal — capture-relative timeline base`). The design is strictly a refinement over sticky: when `captureStartMs`/`startTime` is unknown, or no entry precedes, it degrades to most-recent (today's behavior), so it is **never worse than sticky**. Kept `timeline` rather than degrading; the residual clock-offset risk (a large enough offset crossing an utterance boundary when multiple distinct metadata are in flight) is documented in `pickMetadataForFinal`'s doc comment.
+- **MAY — 8 KiB guard, shipped.** `sendAudioData` throws `Audio frame metadata exceeds 8192 bytes` (v1 `MAX_METADATA_BYTES`) when `JSON.stringify(metadata).length > 8192`. Trivial and adds v1 parity.
+
+### Gate evidence (actual tails)
+
+- `typecheck`: `tsc --noEmit` — clean, no output.
+- `lint`: `eslint src` — `0 errors`; the only remaining warnings are pre-existing (`useArcaConfig.ts`, `AgenticProvider.tsx`), none in the changed files.
+- `test`: `Test Files 212 passed (212) · Tests 3629 passed (3629)`.
+- `build`: `tsup` CJS+ESM build success + `build:dts` (`tsc --emitDeclarationOnly`) clean.
+
+### Constraints honored
+
+- `coreBusinessTouched = false` — no edits to `SttWsGateway`, streaming bridge/session services, `apps/stt`, `packages/stt`, or existing v2 hooks/store/clients/providers (read-only).
+- `"use client"` retained on both compat files; store read via the sanctioned `useAgenticStore` + `selectCurrentTranscript` selectors (not the root barrel, not the deprecated singleton).
+- Public `UseArcaSpeechToTextProps`/`Return` shape unchanged.
+- v1 defects not reproduced (no binary frame; no hardcoded-key clobber — F4 fixed).
 
 ## 6. Change History
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-28 | (planning) | Ticket created from TASK-564. |
+| 2026-07-28 | (opus) | Implemented TDD. New `speechToTextMetadata.ts` pure helpers; F4 fixed via §5.2 precedence; §4.3 `chunk_id`/`detected_language` normalization; default template (finals; interims raw — documented decision); capture-relative timeline correlation (`correlationModel='timeline'`, verified base, never-worse-than-sticky); 8 KiB guard. 21 tests (8 helper + 13 hook). Gates green (typecheck/lint/test 3629/build). Status → Review. |
