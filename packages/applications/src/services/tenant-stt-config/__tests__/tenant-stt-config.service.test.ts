@@ -1,23 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
-import {
-  ResourceStatusType,
-  SYSTEM_TENANT_ID,
-  SysEventType,
-  TenantSttConfigFactory,
-  TenantSttProviderCredentialFactory,
-} from '@arcaai/domains';
+import { ResourceStatusType, SYSTEM_TENANT_ID, SysEventType, TenantSttConfigFactory } from '@arcaai/domains';
 import { TenantSttConfigService } from '../tenant-stt-config.service';
 import { STT_FALLBACK_DEFAULTS } from '../platform-limits';
 
 const TENANT = 'tenant-abc';
-
-// Fake Vault Transit: ciphertext is `vault:v1:<base64(plaintext)>`, reversible.
-const fakeSecrets = () => ({
-  encrypt: vi.fn(async (buf: Buffer) => `vault:v1:${buf.toString('base64')}`),
-  decrypt: vi.fn(async (ct: string) => Buffer.from(ct.split(':')[2], 'base64')),
-});
 
 /** A tenant-visible, ENABLED, cloud-backed pipeline (models.asr → cloud AiModel). */
 function cloudPipeline(over: Partial<{ resourceStatus: ResourceStatusType; configYaml: string; slug: string }> = {}) {
@@ -29,32 +17,56 @@ function cloudPipeline(over: Partial<{ resourceStatus: ResourceStatusType; confi
   };
 }
 
-function makeService(opts: { withVault?: boolean } = {}) {
-  const configRepo = { findByTenantId: vi.fn().mockResolvedValue(null), create: vi.fn(), updateWithVersion: vi.fn() };
-  const credRepo = {
-    findByTenantId: vi.fn().mockResolvedValue([]),
-    findByTenantAndProvider: vi.fn().mockResolvedValue(null),
-    create: vi.fn(),
-    updateWithVersion: vi.fn(),
-    softDelete: vi.fn(),
+/** A masked `AiProviderConnectionResponse` row (`service='stt'`) — what `IProviderConnectionService` returns. */
+function connectionRow(over: Partial<Record<string, unknown>> = {}) {
+  return {
+    tenantId: TENANT,
+    service: 'stt',
+    provider: 'azure-speech',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    hasKey: true,
+    keyVersion: 1,
+    enabled: true,
+    extraJson: null,
+    version: 1,
+    updatedAt: '2026-07-28T00:00:00.000Z',
+    ...over,
   };
+}
+
+function makeService() {
+  const configRepo = { findByTenantId: vi.fn().mockResolvedValue(null), create: vi.fn(), updateWithVersion: vi.fn() };
   const aiModelRepo = { findBySlug: vi.fn().mockResolvedValue({ computeType: 'cloud', format: 'AZURE_SPEECH' }) };
-  const pipelineService = { getById: vi.fn().mockResolvedValue(cloudPipeline()) };
+  const pipelineService = { getById: vi.fn().mockResolvedValue(cloudPipeline()), getAll: vi.fn().mockResolvedValue([]) };
   const emitter = { emit: vi.fn() };
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1' } : k === 'tenantId' ? TENANT : undefined)),
   };
-  const secrets = opts.withVault ? fakeSecrets() : undefined;
+  // The unified provider-connection plane (TASK-569/571) — the ONLY credential
+  // store. `TenantSttConfigService` no longer touches a credential repository
+  // or Vault directly; every BYO STT credential path delegates here with
+  // `service='stt'`.
+  const providerConnectionService = {
+    list: vi.fn().mockResolvedValue([]),
+    getRow: vi.fn().mockResolvedValue(connectionRow({ version: 0, hasKey: false, enabled: false })),
+    upsertRow: vi.fn(),
+    deleteRow: vi.fn().mockResolvedValue(undefined),
+    resolveConnection: vi.fn(),
+    findRow: vi.fn(),
+    resolveTenantCloudOverrides: vi.fn().mockResolvedValue({}),
+  };
   const svc = new TenantSttConfigService(
     configRepo as any,
-    credRepo as any,
     aiModelRepo as any,
     pipelineService as any,
     emitter as any,
     cls as any,
-    secrets as any,
+    providerConnectionService as any,
   );
-  return { svc, configRepo, credRepo, aiModelRepo, pipelineService, emitter, secrets };
+  return { svc, configRepo, aiModelRepo, pipelineService, emitter, providerConnectionService };
 }
 
 describe('TenantSttConfigService — config row + effective', () => {
@@ -156,171 +168,144 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
   });
 });
 
-describe('TenantSttConfigService — BYO credentials', () => {
-  it('setCredential encrypts the key, stores ciphertext, returns a masked view, broadcasts ResourceCreated', async () => {
-    const ctx = makeService({ withVault: true });
-    ctx.credRepo.create.mockImplementation(async (e: unknown) => e);
+describe('TenantSttConfigService — BYO credentials (delegated to IProviderConnectionService, service="stt")', () => {
+  let ctx: ReturnType<typeof makeService>;
+  beforeEach(() => {
+    ctx = makeService();
+    vi.clearAllMocks();
+    ctx.providerConnectionService.getRow.mockResolvedValue(connectionRow({ version: 0, hasKey: false, enabled: false }));
+  });
+
+  it('setCredential creates via upsertRow(service="stt", ...), defaulting enabled=true on create, returns a masked view', async () => {
+    ctx.providerConnectionService.upsertRow.mockResolvedValue(connectionRow({ region: 'eastus', version: 1 }));
+
     const res = await ctx.svc.setCredential(TENANT, 'azure-speech', { apiKey: 'super-secret', region: 'eastus', expectedVersion: 0 });
-    expect(ctx.secrets!.encrypt).toHaveBeenCalledOnce();
+
+    expect(ctx.providerConnectionService.getRow).toHaveBeenCalledWith('stt', 'azure-speech', TENANT);
+    expect(ctx.providerConnectionService.upsertRow).toHaveBeenCalledWith(
+      'stt',
+      'azure-speech',
+      expect.objectContaining({ region: 'eastus', apiKey: 'super-secret', enabled: true }),
+      TENANT,
+      0,
+    );
     expect(JSON.stringify(res)).not.toContain('super-secret');
     expect(res).toMatchObject({ provider: 'azure-speech', region: 'eastus', hasKey: true, keyVersion: 1 });
-    const created = ctx.credRepo.create.mock.calls[0][0];
-    expect(Buffer.from(created.encryptedApiKey).toString('utf8')).toMatch(/^vault:v1:/);
-    expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.any(Object));
   });
 
-  it('setCredential rotates an existing credential via updateWithVersion (OCC)', async () => {
-    const ctx = makeService({ withVault: true });
-    const existing = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({
-      tenantId: TENANT,
-      provider: 'sarvam',
-      enabled: true,
+  it('setCredential rotate: an omitted `enabled` is passed through as undefined (unified plane leaves the flag untouched)', async () => {
+    ctx.providerConnectionService.getRow.mockResolvedValue(connectionRow({ provider: 'sarvam', enabled: false, version: 3 }));
+    ctx.providerConnectionService.upsertRow.mockResolvedValue(connectionRow({ provider: 'sarvam', enabled: false, version: 4 }));
+
+    const res = await ctx.svc.setCredential(TENANT, 'sarvam', {
+      apiKey: 'rotated',
+      endpoint: 'https://api.sarvam.ai',
+      expectedVersion: 3,
     });
-    ctx.credRepo.findByTenantAndProvider.mockResolvedValue(existing);
-    ctx.credRepo.updateWithVersion.mockImplementation(async (_id: string, e: unknown) => e);
-    const res = await ctx.svc.setCredential(TENANT, 'sarvam', { apiKey: 'rotated', endpoint: 'https://api.sarvam.ai', expectedVersion: existing.version });
-    expect(ctx.credRepo.updateWithVersion).toHaveBeenCalledWith(existing.id, existing, existing.version);
+
+    expect(ctx.providerConnectionService.upsertRow).toHaveBeenCalledWith(
+      'stt',
+      'sarvam',
+      expect.objectContaining({ baseUrl: 'https://api.sarvam.ai', enabled: undefined }),
+      TENANT,
+      3,
+    );
     expect(res).toMatchObject({ provider: 'sarvam', hasKey: true });
-    expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.any(Object));
   });
 
-  it('setCredential on an existing row with a stale expectedVersion is a concurrency conflict (before any Vault call)', async () => {
-    const ctx = makeService({ withVault: true });
-    const existing = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({ tenantId: TENANT, provider: 'openai', enabled: true });
-    ctx.credRepo.findByTenantAndProvider.mockResolvedValue(existing);
-    await expect(ctx.svc.setCredential(TENANT, 'openai', { apiKey: 'x', expectedVersion: existing.version + 9 })).rejects.toBeInstanceOf(
+  it('setCredential on an existing row with a stale expectedVersion propagates the unified plane OCC conflict', async () => {
+    ctx.providerConnectionService.getRow.mockResolvedValue(connectionRow({ provider: 'openai', version: 2 }));
+    ctx.providerConnectionService.upsertRow.mockRejectedValue(
+      new OptimisticConcurrencyException('AiProviderConnection', 'x', { expectedVersion: 11, currentVersion: 2 }),
+    );
+    await expect(ctx.svc.setCredential(TENANT, 'openai', { apiKey: 'x', expectedVersion: 11 })).rejects.toBeInstanceOf(
       OptimisticConcurrencyException,
     );
-    expect(ctx.secrets!.encrypt).not.toHaveBeenCalled();
   });
 
-  it('setCredential create with a non-zero expectedVersion is a concurrency conflict', async () => {
-    const ctx = makeService({ withVault: true });
-    ctx.credRepo.findByTenantAndProvider.mockResolvedValue(null);
+  it('setCredential create with a non-zero expectedVersion propagates the unified plane OCC conflict', async () => {
+    ctx.providerConnectionService.upsertRow.mockRejectedValue(
+      new OptimisticConcurrencyException('AiProviderConnection', 'x', { expectedVersion: 3, currentVersion: 0 }),
+    );
     await expect(ctx.svc.setCredential(TENANT, 'openai', { apiKey: 'x', expectedVersion: 3 })).rejects.toBeInstanceOf(
       OptimisticConcurrencyException,
     );
   });
 
-  it('setCredential rejects without a Vault secrets provider (no plaintext-at-rest)', async () => {
-    const ctx = makeService({ withVault: false });
+  it('setCredential propagates a rejection (e.g. no Vault secrets provider) from the unified plane unchanged', async () => {
+    ctx.providerConnectionService.upsertRow.mockRejectedValue(
+      new BadRequestException('Provider API keys require the Vault secrets provider (SECRETS_PROVIDER=vault).'),
+    );
     await expect(ctx.svc.setCredential(TENANT, 'azure-speech', { apiKey: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });
 
-  it('setCredential rejects an unsupported provider', async () => {
-    const ctx = makeService({ withVault: true });
+  it('setCredential rejects an unsupported provider WITHOUT calling the unified plane', async () => {
     await expect(ctx.svc.setCredential(TENANT, 'whisper', { apiKey: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(
       BadRequestException,
     );
+    expect(ctx.providerConnectionService.getRow).not.toHaveBeenCalled();
+    expect(ctx.providerConnectionService.upsertRow).not.toHaveBeenCalled();
   });
 
-  it('getCredentials + set never echo the key material (deep snapshot)', async () => {
-    const ctx = makeService({ withVault: true });
-    const row = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({
-      tenantId: TENANT,
-      provider: 'azure-speech',
-      enabled: true,
-      encryptedApiKey: Buffer.from(`vault:v1:${Buffer.from('THE-KEY').toString('base64')}`, 'utf8'),
-      keyVersion: 1,
-    });
-    ctx.credRepo.findByTenantId.mockResolvedValue([row]);
+  it('getCredentials lists via service="stt" and never echoes key material (deep snapshot); maps extraJson.model', async () => {
+    ctx.providerConnectionService.list.mockResolvedValue([
+      connectionRow({ provider: 'azure-speech', extraJson: { model: 'whisper-large' }, keyVersion: 1 }),
+    ]);
     const list = await ctx.svc.getCredentials(TENANT);
+    expect(ctx.providerConnectionService.list).toHaveBeenCalledWith('stt', TENANT);
     const snapshot = JSON.stringify(list);
     expect(snapshot).not.toContain('THE-KEY');
     expect(snapshot).not.toContain('vault:');
-    expect(list[0]).toMatchObject({ provider: 'azure-speech', hasKey: true, keyVersion: 1 });
+    expect(list[0]).toMatchObject({ provider: 'azure-speech', hasKey: true, keyVersion: 1, model: 'whisper-large' });
   });
 
-  it('removeCredential 404s when the provider has no credential', async () => {
-    const ctx = makeService({ withVault: true });
-    ctx.credRepo.findByTenantAndProvider.mockResolvedValue(null);
+  it('removeCredential 404s when the unified plane has no row for the provider', async () => {
+    ctx.providerConnectionService.deleteRow.mockRejectedValue(new NotFoundException("No connection row for provider 'azure-speech'"));
     await expect(ctx.svc.removeCredential(TENANT, 'azure-speech')).rejects.toBeInstanceOf(NotFoundException);
   });
 
-  it('removeCredential soft-deletes + broadcasts ResourceDeleted', async () => {
-    const ctx = makeService({ withVault: true });
-    const existing = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({ tenantId: TENANT, provider: 'sarvam', enabled: true });
-    ctx.credRepo.findByTenantAndProvider.mockResolvedValue(existing);
+  it('removeCredential delegates the soft delete to the unified plane (service="stt")', async () => {
     await ctx.svc.removeCredential(TENANT, 'sarvam');
-    expect(ctx.credRepo.softDelete).toHaveBeenCalledWith(existing.id);
-    expect(ctx.emitter.emit).toHaveBeenCalledWith(SysEventType.ResourceDeleted, expect.any(Object));
+    expect(ctx.providerConnectionService.deleteRow).toHaveBeenCalledWith('stt', 'sarvam', TENANT);
   });
 });
 
-describe('TenantSttConfigService — resolveProviderOverrides', () => {
-  it('decrypts enabled credentials into the injectable map (region/base_url/model mapped)', async () => {
-    const ctx = makeService({ withVault: true });
-    const azure = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({
-      tenantId: TENANT,
-      provider: 'azure-speech',
-      region: 'eastus',
-      enabled: true,
-      encryptedApiKey: Buffer.from(`vault:v1:${Buffer.from('AZ-KEY').toString('base64')}`, 'utf8'),
-      keyVersion: 1,
+describe('TenantSttConfigService — resolveProviderOverrides (delegated to IProviderConnectionService, service="stt")', () => {
+  let ctx: ReturnType<typeof makeService>;
+  beforeEach(() => {
+    ctx = makeService();
+    vi.clearAllMocks();
+  });
+
+  it('folds extraJson.model in on top of the decrypted overrides (region/base_url/model mapped)', async () => {
+    ctx.providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({
+      'azure-speech': { api_key: 'AZ-KEY', region: 'eastus' },
+      sarvam: { api_key: 'SV-KEY', base_url: 'https://api.sarvam.ai' },
     });
-    const sarvam = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({
-      tenantId: TENANT,
-      provider: 'sarvam',
-      endpoint: 'https://api.sarvam.ai',
-      enabled: true,
-      encryptedApiKey: Buffer.from(`vault:v1:${Buffer.from('SV-KEY').toString('base64')}`, 'utf8'),
-      keyVersion: 1,
-      extraJson: { model: 'saaras:v3' },
-    });
-    ctx.credRepo.findByTenantId.mockResolvedValue([azure, sarvam]);
+    ctx.providerConnectionService.list.mockResolvedValue([
+      connectionRow({ provider: 'azure-speech', region: 'eastus' }),
+      connectionRow({ provider: 'sarvam', baseUrl: 'https://api.sarvam.ai', extraJson: { model: 'saaras:v3' } }),
+    ]);
+
     const overrides = await ctx.svc.resolveProviderOverrides(TENANT);
+
+    expect(ctx.providerConnectionService.resolveTenantCloudOverrides).toHaveBeenCalledWith('stt', TENANT);
     expect(overrides).toEqual({
       'azure-speech': { api_key: 'AZ-KEY', region: 'eastus' },
       sarvam: { api_key: 'SV-KEY', base_url: 'https://api.sarvam.ai', model: 'saaras:v3' },
     });
   });
 
-  it('skips a disabled credential row', async () => {
-    const ctx = makeService({ withVault: true });
-    const disabled = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({
-      tenantId: TENANT,
-      provider: 'azure-speech',
-      enabled: false,
-      encryptedApiKey: Buffer.from(`vault:v1:${Buffer.from('AZ-KEY').toString('base64')}`, 'utf8'),
-      keyVersion: 1,
-    });
-    ctx.credRepo.findByTenantId.mockResolvedValue([disabled]);
+  it('short-circuits to {} without a second call when the unified plane has no overrides', async () => {
+    ctx.providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({});
     expect(await ctx.svc.resolveProviderOverrides(TENANT)).toEqual({});
+    expect(ctx.providerConnectionService.list).not.toHaveBeenCalled();
   });
 
-  it('fails OPEN per credential on decrypt error: skips it + warns with ONLY {tenantId, provider, keyVersion}', async () => {
-    const ctx = makeService({ withVault: true });
-    // decrypt throws for this row
-    (ctx.secrets!.decrypt as any).mockRejectedValueOnce(new Error('transit boom'));
-    const row = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({
-      tenantId: TENANT,
-      provider: 'openai',
-      enabled: true,
-      encryptedApiKey: Buffer.from(`vault:v1:${Buffer.from('OA-KEY').toString('base64')}`, 'utf8'),
-      keyVersion: 4,
-    });
-    ctx.credRepo.findByTenantId.mockResolvedValue([row]);
-
-    const { Logger } = await import('@nestjs/common');
-    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined as any);
-
-    const overrides = await ctx.svc.resolveProviderOverrides(TENANT);
-    expect(overrides).toEqual({}); // failed credential skipped
-
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const logged = warnSpy.mock.calls[0][0] as Record<string, unknown>;
-    // No secret material anywhere in the log payload.
-    const loggedStr = JSON.stringify(logged);
-    expect(loggedStr).not.toContain('OA-KEY');
-    expect(loggedStr).not.toContain('vault:');
-    expect(logged).toMatchObject({ tenantId: TENANT, provider: 'openai', keyVersion: 4 });
-    warnSpy.mockRestore();
-  });
-
-  it('returns empty without a Vault provider', async () => {
-    const ctx = makeService({ withVault: false });
+  it('returns empty when the unified plane resolves nothing (no Vault / all disabled / all decrypt-failed)', async () => {
+    ctx.providerConnectionService.resolveTenantCloudOverrides.mockResolvedValue({});
     expect(await ctx.svc.resolveProviderOverrides(TENANT)).toEqual({});
   });
 });
