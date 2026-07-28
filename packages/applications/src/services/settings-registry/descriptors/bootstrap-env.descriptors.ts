@@ -10,7 +10,7 @@
 // keys declared-but-unread"; the mirror obligation is zero keys READ-but-
 // undeclared. Declaring the floor makes it EXPLICIT — a reviewer can see exactly
 // which variables a deployable must be handed before it can boot, and lane D can
-// GENERATE the per-deployable zod schema and `.env.example` from this list
+// GENERATE the per-deployable zod schema and `.env.sample` from this list
 // instead of hand-maintaining one (plan §9.1 D1/D2).
 //
 // FIELD SEMANTICS FOR THIS TIER

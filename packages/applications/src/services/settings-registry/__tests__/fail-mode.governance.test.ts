@@ -213,7 +213,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'registration.selfSignupEnabled': 'REGISTRATION_SELF_SIGNUP_ENABLED',
     'entitlements.enabledDefault': 'ENTITLEMENTS_ENABLED_DEFAULT',
     // NOTE: `TENANT_IDP_ENABLED` is deliberately ABSENT — it has no reader
-    // anywhere in the repo despite an `.env.example` comment claiming one.
+    // anywhere in the repo despite an `.env.sample` comment claiming one.
     // See `feature-flags.descriptors.ts` for the evidence.
     'semanticEndpoint.enabled': 'SEMANTIC_ENDPOINT_ENABLED',
     'guardrailV2.groundedness.enabled': 'GUARDRAIL_V2_GROUNDEDNESS_ENABLED',

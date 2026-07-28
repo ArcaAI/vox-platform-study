@@ -19,7 +19,7 @@ import { BOOTSTRAP_ENV_SETTINGS, toEnvVarName } from '@arcaai/applications';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildArtifacts, declaredSurface } from '../env-sync.mts';
+import { buildArtifacts, declaredSurface, getBootstrapFloorContent } from '../env-sync.mts';
 
 const ROOT = resolve(__dirname, '..', '..');
 const artifacts = buildArtifacts();
@@ -30,7 +30,9 @@ function artifact(path: string): string {
   return found!.content;
 }
 
-/** Declared keys of an env file, in file order. */
+/** Declared (ACTIVE) keys of an env file, in file order — lines commented out
+ * by `.env.sample`'s de-duplication (`# [duplicate key, ...] # KEY=value`)
+ * don't match, by design (they aren't a second active declaration). */
 function keysOf(content: string): string[] {
   return content
     .split('\n')
@@ -38,13 +40,32 @@ function keysOf(content: string): string[] {
     .filter((name): name is string => Boolean(name));
 }
 
-const ENV_FILES = ['.env.example', 'apps/api/.env.sample', 'apps/admin-console/.env.sample', 'packages/tools/.env.sample'];
+/** The TS-declared-surface files — root floor (via `getBootstrapFloorContent`,
+ * no longer a standalone artifact, TASK-585) + the 3 generated per-app files.
+ * Used by checks specific to that surface (turbo.json#globalEnv registration,
+ * dead-keys-in-turbo, the §8 size ceiling) — `.env.sample` deliberately also
+ * carries the 6 Python services' own keys, which are NOT part of this surface
+ * and must not be pulled into those TS-specific assertions. */
+const ENV_FILES = ['apps/api/.env.sample', 'apps/admin-console/.env.sample', 'packages/tools/.env.sample'];
+
+/** Every committed, generated artifact that should read like a normal env
+ * file — the 3 above plus the consolidated `.env.sample`. Used by checks that
+ * legitimately apply file-wide (generated banner, placeholders-only, no two
+ * active declarations of one key). */
+const GENERATED_ENV_ARTIFACTS = [...ENV_FILES, '.env.sample'];
+
+/** The full TS-declared surface: bootstrap floor + the 3 generated per-app
+ * files. The floor is no longer a standalone artifact (TASK-585), so it's
+ * pulled in via `getBootstrapFloorContent()` rather than `ENV_FILES`. */
+function declaredTsSurfaceKeys(): Set<string> {
+  return new Set([...keysOf(getBootstrapFloorContent()), ...ENV_FILES.flatMap((p) => keysOf(artifact(p)))]);
+}
 
 describe('env:sync — managed artifacts', () => {
   it('generates exactly the artifacts its header declares', () => {
     expect(artifacts.map((a) => a.path).sort()).toEqual(
       [
-        '.env.example',
+        '.env.sample',
         'apps/admin-console/.env.sample',
         'apps/api/.env.sample',
         'docs/implementation/TASK-558-Environment-Configuration-Refactor/env-surface.generated.md',
@@ -55,14 +76,16 @@ describe('env:sync — managed artifacts', () => {
   });
 
   it('marks every generated env file as generated', () => {
-    for (const path of ENV_FILES) {
+    for (const path of GENERATED_ENV_ARTIFACTS) {
       expect(artifact(path), path).toContain('GENERATED FILE — DO NOT EDIT BY HAND');
     }
   });
 });
 
-describe('env:sync — the root example is the bootstrap floor', () => {
-  const rootKeys = keysOf(artifact('.env.example'));
+describe('env:sync — the bootstrap floor (.env.sample §1) carries only the floor', () => {
+  // TASK-585: the floor is no longer its own file (`.env.example`) — it's
+  // `.env.sample`'s first section, exported directly so this stays testable.
+  const rootKeys = keysOf(getBootstrapFloorContent());
 
   it('declares exactly the registry’s Bootstrap category', () => {
     const floor = BOOTSTRAP_ENV_SETTINGS.map((d) => toEnvVarName(d.key));
@@ -76,7 +99,7 @@ describe('env:sync — the root example is the bootstrap floor', () => {
   });
 
   it('stays within the plan §8 size target (≤ 60 lines)', () => {
-    expect(artifact('.env.example').split('\n').length).toBeLessThanOrEqual(60);
+    expect(getBootstrapFloorContent().split('\n').length).toBeLessThanOrEqual(60);
   });
 });
 
@@ -94,7 +117,7 @@ describe('env:sync — committed files carry placeholders only (plan §9.1 D3)',
   });
 
   it('renders every declared secret as <CHANGE_ME>', () => {
-    for (const path of ENV_FILES) {
+    for (const path of GENERATED_ENV_ARTIFACTS) {
       for (const line of artifact(path).split('\n')) {
         const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
         if (!match) continue;
@@ -106,7 +129,7 @@ describe('env:sync — committed files carry placeholders only (plan §9.1 D3)',
   });
 
   it('contains nothing shaped like a real credential', () => {
-    for (const path of ENV_FILES) {
+    for (const path of GENERATED_ENV_ARTIFACTS) {
       for (const line of artifact(path).split('\n')) {
         const value = /^[A-Za-z_][A-Za-z0-9_]*=(.*)$/.exec(line)?.[1];
         if (!value) continue;
@@ -116,8 +139,12 @@ describe('env:sync — committed files carry placeholders only (plan §9.1 D3)',
   });
 });
 
-describe('env:sync — one declaration per key per file (plan §9.1 D8)', () => {
-  for (const path of ENV_FILES) {
+describe('env:sync — one ACTIVE declaration per key per file (plan §9.1 D8)', () => {
+  // `.env.sample` deliberately carries commented-out duplicates (its own
+  // de-duplication, TASK-585) — `keysOf()` only matches ACTIVE (non-commented)
+  // lines, so this still correctly asserts zero active duplicates there too,
+  // the exact property that guards against the "silent last-wins" defect.
+  for (const path of GENERATED_ENV_ARTIFACTS) {
     it(`${path} declares no key twice`, () => {
       const keys = keysOf(artifact(path));
       const duplicates = keys.filter((k, i) => keys.indexOf(k) !== i);
@@ -130,7 +157,7 @@ describe('env:sync — turbo.json#globalEnv', () => {
   const globalEnv: string[] = JSON.parse(artifact('turbo.json')).globalEnv;
 
   it('registers every declared key', () => {
-    const declared = new Set(ENV_FILES.flatMap((p) => keysOf(artifact(p))));
+    const declared = declaredTsSurfaceKeys();
     const missing = [...declared].filter((name) => !globalEnv.includes(name));
     expect(missing).toEqual([]);
   });
@@ -157,7 +184,7 @@ describe('env:sync — dead keys stay dead (plan §2.3 + lane D D7)', () => {
   ];
 
   it('declares none of them in any generated env file', () => {
-    const declared = new Set(ENV_FILES.flatMap((p) => keysOf(artifact(p))));
+    const declared = declaredTsSurfaceKeys();
     expect(DEAD.filter((name) => declared.has(name))).toEqual([]);
   });
 
@@ -180,7 +207,7 @@ describe('env:sync — the declared surface stays small (plan §8)', () => {
     // SMR_OPENAI_ORGANIZATION, SMR_VERTEX_DEFAULT_MODEL, SMR_VERTEX_LOCATION,
     // SMR_VERTEX_PROJECT. Bump again only after checking `env:sync --check`
     // is clean — this constant exists to catch UNREVIEWED growth, not real growth.
-    const declared = new Set(ENV_FILES.flatMap((p) => keysOf(artifact(p))));
+    const declared = declaredTsSurfaceKeys();
     expect(declared.size).toBeLessThanOrEqual(144);
   });
 });

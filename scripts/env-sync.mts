@@ -23,25 +23,37 @@
  * key — never hand-copied (plan §3.3).
  *
  * ─── MANAGED OUTPUTS ─────────────────────────────────────────────────────────
- *   • `.env.example`                       the BOOTSTRAP FLOOR only (plan §3.3)
  *   • `apps/api/.env.sample`               the platform contract beyond the floor
  *   • `apps/admin-console/.env.sample`     the console's own contract
  *   • `packages/tools/.env.sample`         the generator knob
+ *   • `.env.sample`                        CONSOLIDATED — the bootstrap floor
+ *                                          + the 3 files above + the 6 Python
+ *                                          services' own `.env.sample` files,
+ *                                          assembled into ONE root artifact
+ *                                          (TASK-585). This is what
+ *                                          `pnpm setup:dev`/`pnpm setup:test`
+ *                                          copy to create `.env.dev`/`.env.test`.
  *   • `turbo.json#globalEnv`                declared surface ∪ real TS reads
  *   • `docs/implementation/TASK-558-Environment-Configuration-Refactor/env-surface.generated.md`
  *
- * (TASK-584: per-app generated targets renamed `.env.example` → `.env.sample`
- * for naming consistency with the hand-maintained Python examples and the
- * root consolidated `.env.sample`, TASK-583. Only the root bootstrap-floor
- * file keeps the `.env.example` name — it isn't itself "a service".)
+ * (TASK-558 originally wrote the bootstrap floor to its own `.env.example`
+ * file. TASK-583 then hand-assembled a SEPARATE `.env.sample` that wrapped
+ * `.env.example`'s content as its first section — two overlapping root
+ * files, kept in sync by a script run by hand. TASK-585 removed that
+ * duplication: the floor is now rendered directly into `.env.sample`'s first
+ * section by THIS generator, `.env.example` no longer exists, and `--check`
+ * covers the whole consolidated file end to end.)
  *
- * ─── DELIBERATELY *NOT* MANAGED (declared boundary, not an oversight) ────────
+ * ─── DELIBERATELY *NOT* SCHEMA-VALIDATED (declared boundary, not an oversight) ─
  *   • `apps/{stt,smr,guardrail,nlp,harness,tts}/.env.sample` — their schema is
  *     pydantic-settings, which the drift gate cannot import (CI has no Python
  *     service environment), and whose FULL field surface is ~500 keys against
  *     the plan's ~120-key target (§8). Their operator documentation therefore
- *     stays hand-maintained; the keys of theirs that ARE registry-declared
- *     appear in the generated docs table with an explicit owner column.
+ *     stays hand-maintained — this generator reads their CURRENT content
+ *     verbatim into `.env.sample` (so that assembly can't drift out of sync
+ *     the way the old by-hand script could), but does not validate it against
+ *     the registry. The keys of theirs that ARE registry-declared appear in
+ *     the generated docs table with an explicit owner column.
  *   • `apps/example`, `apps/ui-playground` — Vite demos whose vars are
  *     `import.meta.env.VITE_*`, not process env.
  *   • `.env.test`, per-app `.env.prod` — environment TEMPLATES with
@@ -317,8 +329,9 @@ function renderApiExample(): string {
         '#',
         '# THE PLATFORM CONTRACT BEYOND THE BOOTSTRAP FLOOR.',
         '#',
-        '# The floor itself (DATABASE_URL, REDIS_*, VAULT_*, …) lives in the repo-root',
-        '# `.env.example`; this file carries everything else the platform declares.',
+        '# The floor itself (DATABASE_URL, REDIS_*, VAULT_*, …) is the first section',
+        '# of the consolidated `.env.sample` at the repo root; this file carries',
+        '# everything else the platform declares.',
         '#',
         '# Since lane C there is ONE env file per environment, shared by the gateway and',
         '# all six Python services, so this is one shared contract: the `read by:` note',
@@ -345,6 +358,104 @@ function renderAdminConsoleExample(): string {
 
 function renderToolsExample(): string {
     return [BANNER('scripts/env-sync.mts (TOOLS_ENV_SETTINGS)'), ...renderVerbose(toolsSurface), ''].join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `.env.sample` — the consolidated root artifact (TASK-585)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** One key=value declaration line, keyed by name for de-duplication. */
+const SAMPLE_KEY_RE = /^([A-Za-z_][A-Za-z0-9_]*)=/;
+
+/**
+ * Hand-maintained Python service examples, read verbatim from disk. Their
+ * schema is pydantic-settings (see the "DELIBERATELY NOT SCHEMA-VALIDATED"
+ * note above) — this generator includes their CURRENT content, it does not
+ * validate it.
+ */
+const PYTHON_SAMPLE_SECTIONS: ReadonlyArray<{ path: string; title: string; note: string }> = [
+    { path: 'apps/guardrail/.env.sample', title: 'GUARDRAIL — Safety Engine (apps/guardrail, :8863)', note: 'Hand-maintained (pydantic-settings; too large for this generator to validate). Content audited TASK-582.' },
+    { path: 'apps/harness/.env.sample', title: 'HARNESS — Clinical Documentation (apps/harness, :8866)', note: 'Hand-maintained. Content audited TASK-582.' },
+    { path: 'apps/nlp/.env.sample', title: 'NLP — Medical NLP (apps/nlp, :8864)', note: 'Hand-maintained. Content audited TASK-582.' },
+    { path: 'apps/smr/.env.sample', title: 'SMR — LLM Summarization (apps/smr, :8862)', note: 'Hand-maintained. Content audited TASK-582.' },
+    { path: 'apps/stt/.env.sample', title: 'STT — Speech-to-Text (apps/stt, :8861)', note: 'Hand-maintained. Content audited TASK-582.' },
+    { path: 'apps/tts/.env.sample', title: 'TTS — Text-to-Speech (apps/tts, :8865)', note: 'Hand-maintained. Created TASK-582 (previously the only Python service with no example file).' },
+];
+
+const CONSOLIDATED_HEADER = [
+    '# ============================================================================',
+    '# HOPE Platform — Consolidated Local Dev/Test Sample (.env.sample)',
+    '# ============================================================================',
+    '# GENERATED FILE — DO NOT EDIT BY HAND. Produced by `pnpm env:sync` (TASK-585).',
+    '# `pnpm env:sync --check` fails the build (CI job `env-drift-check`) when this',
+    '# file disagrees with its sources: the settings registry (bootstrap floor +',
+    "# apps/api + apps/admin-console + packages/tools) and the 6 Python services'",
+    '# own `.env.sample` files (read verbatim — see the generator header comment',
+    '# for what "not schema-validated" means for those 6).',
+    '#',
+    '# This file is the SOURCE for local dev/test env files. It is never loaded',
+    '# directly by any application:',
+    '#   pnpm setup:dev   -> scripts/generate-env-file.sh copies this to .env.dev',
+    '#                        (only if .env.dev doesn\'t already exist)',
+    '#   pnpm setup:test  -> same, to .env.test, then applies test-specific',
+    '#                        overrides (ports, isolated infra endpoints, fake',
+    '#                        secrets) — see scripts/generate-env-file.sh',
+    '# Both .env.dev and .env.test are gitignored; neither is ever committed.',
+    '#',
+    '# DE-DUPLICATION NOTE: several services historically used bare, unprefixed',
+    '# key names (PORT, HOST, LOG_LEVEL, OTEL_SERVICE_NAME, ...) that collide',
+    '# across services when concatenated into one file. Where a later section',
+    '# would re-declare a key already set earlier, that later line is commented',
+    '# out with a `# [duplicate key, see ... above]` note instead of being',
+    '# emitted live — a flat env file can only have ONE active value per key',
+    '# name, and emitting two active lines for one key is exactly the',
+    '# "duplicate keys / silent last-wins" defect TASK-558 already found and',
+    '# fixed once (that service\'s OWN process still gets its correct value when',
+    '# launched via its `pnpm <svc>:dev` script, which injects PORT/HOST via',
+    '# scripts/dev-service.sh BEFORE the file is read — see',
+    '# docs/architecture/environment-configuration-reference.md).',
+    '#',
+    '# Full variable reference, provider/model default & fallback semantics:',
+    '#   docs/architecture/environment-configuration-reference.md',
+    '# ============================================================================',
+    '',
+].join('\n');
+
+/** Append one section's content to `out`, commenting out any key already in `seen`. */
+function appendDeduped(out: string[], seen: Map<string, string>, title: string, sourcePath: string, note: string, content: string): void {
+    out.push('# ' + '='.repeat(76), `# ${title}`, `# Source: ${sourcePath}`, `# ${note}`, '# ' + '='.repeat(76), '');
+    for (const line of content.split('\n')) {
+        const match = SAMPLE_KEY_RE.exec(line);
+        if (!match) {
+            out.push(line);
+            continue;
+        }
+        const key = match[1];
+        const prevTitle = seen.get(key);
+        if (prevTitle) {
+            out.push(`# [duplicate key, see ${prevTitle} above] # ${line}`);
+        } else {
+            seen.set(key, title);
+            out.push(line);
+        }
+    }
+    out.push('');
+}
+
+function renderConsolidatedSample(apiContent: string, adminConsoleContent: string, toolsContent: string): string {
+    const out: string[] = [CONSOLIDATED_HEADER];
+    const seen = new Map<string, string>();
+
+    appendDeduped(out, seen, 'ROOT BOOTSTRAP FLOOR', '(generated — bootstrap floor)', 'Required to reach the DB / authenticate to Vault.', renderRootExample());
+    appendDeduped(out, seen, 'API GATEWAY (apps/api)', 'apps/api/.env.sample', 'The platform contract beyond the bootstrap floor: service URLs, secrets, OTel, storage, rate limiting.', apiContent);
+    appendDeduped(out, seen, 'ADMIN CONSOLE (apps/admin-console)', 'apps/admin-console/.env.sample', 'Generated by pnpm env:sync.', adminConsoleContent);
+    appendDeduped(out, seen, 'CODE GENERATORS (packages/tools)', 'packages/tools/.env.sample', 'Generated by pnpm env:sync.', toolsContent);
+    for (const section of PYTHON_SAMPLE_SECTIONS) {
+        const content = readFileSync(join(ROOT, section.path), 'utf8');
+        appendDeduped(out, seen, section.title, section.path, section.note, content);
+    }
+
+    return out.join('\n') + '\n';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -419,7 +530,7 @@ function renderDocsTable(globalEnv: string[]): string {
         '',
         'Generated from the settings registry plus each TypeScript deployable’s own',
         'schema. `pnpm env:sync --check` (CI job `env-drift-check`) fails when this file,',
-        'the root `.env.example` / per-app `.env.sample` files, or `turbo.json#globalEnv`',
+        'the `.env.sample` files (root consolidated / per-app), or `turbo.json#globalEnv`',
         'disagree with those declarations.',
         '',
         '## Summary',
@@ -457,14 +568,26 @@ interface Artifact {
 
 export function buildArtifacts(): Artifact[] {
     const globalEnv = computeGlobalEnv();
+    const apiContent = renderApiExample();
+    const adminConsoleContent = renderAdminConsoleExample();
+    const toolsContent = renderToolsExample();
     return [
-        { path: '.env.example', content: renderRootExample() },
-        { path: 'apps/api/.env.sample', content: renderApiExample() },
-        { path: 'apps/admin-console/.env.sample', content: renderAdminConsoleExample() },
-        { path: 'packages/tools/.env.sample', content: renderToolsExample() },
+        { path: 'apps/api/.env.sample', content: apiContent },
+        { path: 'apps/admin-console/.env.sample', content: adminConsoleContent },
+        { path: 'packages/tools/.env.sample', content: toolsContent },
+        { path: '.env.sample', content: renderConsolidatedSample(apiContent, adminConsoleContent, toolsContent) },
         { path: 'turbo.json', content: renderTurboJson(globalEnv) },
         { path: `${TICKET_DOC}/env-surface.generated.md`, content: renderDocsTable(globalEnv) },
     ];
+}
+
+/**
+ * The bootstrap-floor content, exported so tests can assert its properties
+ * (exact key set, ≤60 lines, no key beyond the floor) directly — it is no
+ * longer a standalone file (TASK-585), so this is the only way to reach it.
+ */
+export function getBootstrapFloorContent(): string {
+    return renderRootExample();
 }
 
 /**
@@ -521,7 +644,7 @@ function main(): void {
     }
 
     const keyCount = declaredSurface.length;
-    const rootLines = artifacts.find((a) => a.path === '.env.example')!.content.split('\n').length;
+    const floorLines = getBootstrapFloorContent().split('\n').length;
 
     if (check) {
         if (drifted.length > 0) {
@@ -530,11 +653,11 @@ function main(): void {
             console.error('\nRun `pnpm env:sync` and commit the result.');
             process.exit(1);
         }
-        console.log(`env:sync --check OK — ${artifacts.length} artifacts match the declared surface (${keyCount} keys, root example ${rootLines} lines).`);
+        console.log(`env:sync --check OK — ${artifacts.length} artifacts match the declared surface (${keyCount} keys, bootstrap floor ${floorLines} lines).`);
         return;
     }
 
-    console.log(`\nDeclared surface: ${keyCount} keys · root .env.example ${rootLines} lines · plan §8 targets ≤ ~120 keys and ≤ ~60 lines.`);
+    console.log(`\nDeclared surface: ${keyCount} keys · bootstrap floor ${floorLines} lines · plan §8 targets ≤ ~120 keys and ≤ ~60 lines.`);
 }
 
 // `import`ed by the unit tests; executed by `pnpm env:sync`.
