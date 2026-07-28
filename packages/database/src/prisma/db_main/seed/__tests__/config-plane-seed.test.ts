@@ -33,11 +33,13 @@ import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 // =============================================================================
 
 describe('AiProviderConnection SYSTEM seed rows', () => {
-    it('seeds one llm row per canonical serving provider (+ the new cloud llm providers)', () => {
+    it('seeds one llm row per canonical serving provider', () => {
+        // `anthropic` / `vertex` are now first-class members of AI_MODEL_PROVIDERS
+        // (TASK-572), so the llm seed rows must equal it exactly — no manual append.
         const llmProviders = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'llm')
             .map((c) => c.provider)
             .sort();
-        expect(llmProviders).toEqual([...AI_MODEL_PROVIDERS, 'anthropic', 'vertex'].sort());
+        expect(llmProviders).toEqual([...AI_MODEL_PROVIDERS].sort());
     });
 
     it('seeds the STT cloud catalog rows', () => {

@@ -1,6 +1,6 @@
 # TASK-572 — LLM Provider Expansion (OpenAI / Anthropic / Vertex) + Adopt the Unified Plane
 
-- **Status**: Pending
+- **Status**: Review (572b adoption/wiring complete; see §5 seams)
 - **Type**: feature
 - **Program**: [Unified Provider-Connection Plane](../SOTA-Track/2026-07-28-unified-provider-plane-program.md) — Wave 0 (SMR adapters) + Wave 1 (adoption/wiring)
 - **Branch of record**: `thuynh/2607`
@@ -66,9 +66,35 @@ Out of scope: Realtime/streaming-token nuances beyond SMR's existing SSE contrac
 - Evidence: per-provider override injection snapshot; a log capture proving no key; the 5-provider console screenshot (both themes).
 
 ## 5. Implementation Summary
-_(fill on completion — list the three adapter files, their auth model, the deps added to `uv.lock`, and the env descriptors registered.)_
+
+### 572b — adoption/wiring (this pass, opus-4-8)
+
+**Gateway / admin API**
+- `apps/api/src/modules/ai-provider-connection/ai-provider-connection.controller.ts` — new `ProviderConnectionController` at `@Controller('admin/providers')` with `GET :service`, `GET :service/:provider`, `PUT :service/:provider`, `DELETE :service/:provider` (C3), `:service` validated against `PROVIDER_SERVICES` (unknown → 400). The former `AiProviderConnectionController` is kept as a thin **legacy alias** at `@Controller('admin/ai-providers')` hard-pinning `service='llm'` — so the frozen `ai-provider-connections.spec.ts` stays green untouched. Both delegate to the unified `IProviderConnectionService`.
+- `…/ai-provider-connection.module.ts` — registers both controllers.
+- `apps/api/src/modules/streaming/smr-proxy.controller.ts` — repointed to `resolveTenantCloudOverrides('llm', tenantId)` + `isCloudByoProvider('llm', provider)`; injection token switched to `IProviderConnectionService`. This was the **last production caller** of the deprecated 1-arg shims.
+
+**Seed**
+- `packages/database/src/prisma/db_main/seed/ai-models/shared.ts` — `AI_MODEL_PROVIDERS` gains `anthropic`, `vertex` (`openai` was already present). The `_llmProviderCoverage` guard in `17-ai-provider-connection.ts` (569-owned) already seeds their llm rows, so coverage holds. Companion test fix in `seed/__tests__/config-plane-seed.test.ts` (dropped the now-redundant manual `+ anthropic/vertex` append).
+
+**Env descriptors + turbo.json**
+- Secrets (`vault-kv`) in `platform-secrets.descriptors.ts`: `smrOpenai.apiKey` → `SMR_OPENAI_API_KEY`, `smrAnthropic.apiKey` → `SMR_ANTHROPIC_API_KEY` (mirrors `smrAzure.apiKey`). Vertex authenticates by service-account JSON / ADC, so it has no API-key env secret.
+- New `env`-tier file `smr-provider-connections.descriptors.ts` (registered in `registry.ts`): `SMR_OPENAI_BASE_URL`, `SMR_OPENAI_ORGANIZATION`, `SMR_OPENAI_DEFAULT_MODEL`, `SMR_ANTHROPIC_BASE_URL`, `SMR_ANTHROPIC_DEFAULT_MODEL`, `SMR_VERTEX_PROJECT`, `SMR_VERTEX_LOCATION`, `SMR_VERTEX_DEFAULT_MODEL` — defaults transcribed verbatim from `apps/smr/src/smr/core/config.py`. Companion parity-map additions in `fail-mode.governance.test.ts`.
+- `turbo.json#globalEnv` regenerated via `pnpm env:sync` (never hand-edited); `env:sync --check` is clean.
+
+**Console**
+- `providers-types.ts` — `CLOUD_BYO_PROVIDERS` gains openai/anthropic/vertex; `UpsertProviderConnectionRequest` gains `extraJson` (Vertex `project`).
+- `byo-credential-card.tsx` — `CLOUD_PROVIDERS` gains three cards: **OpenAI** (key + Base URL?), **Anthropic** (key + Base URL?), **Vertex** (service-account-JSON key + Project + Location). Vertex `location` → `region` column; `project` → `extraJson` (new `store: 'extra'` field support).
+- `providers-client.ts` — `BASE` cut over to `admin/providers/llm` (alias-safe).
+
+### Deviations / cross-boundary seams (owner attention)
+1. **Vertex runtime injection is BLOCKED on a 569-owned change.** `vertex.py` reads `override.project`/`override.location` (and OpenAI/Anthropic optionally read `override.model`), but the gateway resolver `resolveTenantCloudOverrides` (569-owned `ai-provider-connection.service.ts`) + the TS `ProviderOverrideEntry` type emit only `base_url/region/api_version/deployment_name` — **not** `project/location/model`. OpenAI + Anthropic work end-to-end today (their `base_url` flows). Vertex credential CRUD + console capture work, but its project/location will not reach SMR until that emitter is extended. Out of my file boundary (569 owns the service + interface + constants).
+2. **The deprecated 1-arg overloads remain** on `IProviderConnectionService.resolveTenantCloudOverrides` / `isCloudByoProvider` (569-owned interface/constants/service) and are still exercised by 569-owned tests; I removed the last production *usage* (smr-proxy) but dropping the signatures is 569/cleanup's.
+3. **`turbo.json#globalEnv` budget cap.** The `env-sync.test.ts` cap was at exactly 134 pre-ticket; the 10 new keys (2 mandatory secrets alone already bust it) push the declared surface to 144, so `expect(declared.size).toBeLessThanOrEqual(134)` fails. `env:sync --check` (the CI drift gate) is clean. Per the task directive I left the cap untouched and report it — the file's own convention is a reviewed bump (134→144) for owner ratification.
+4. **Not run (needs live stack):** new e2e `apps/api/tests/e2e/admin-providers.spec.ts` (authored, lint-clean); the frozen `ai-provider-connections.spec.ts` — note its `toHaveLength(8)` is already stale from the 567/569 seed additions (now 11 llm SYSTEM rows), a seed-data concern owned by 569/574, not a routing regression from this change.
 
 ## 6. Change History
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-28 | platform review | Ticket authored (Wave 0/1 LLM expansion + adoption). |
+| 2026-07-28 | opus-4-8 (572b) | Adoption/wiring: unified `admin/providers` controller + legacy alias; smr-proxy repoint; `AI_MODEL_PROVIDERS` += anthropic/vertex; env descriptors + turbo regen; console openai/anthropic/vertex cards. Gates: applications build/test(7131)/lint/typecheck green; database test(873) green; api unit(2213)+typecheck green; console ai-task-defaults tests + axe green. Seams reported in §5. |
