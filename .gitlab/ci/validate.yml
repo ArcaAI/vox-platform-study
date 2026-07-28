@@ -121,7 +121,7 @@ generate-factory-check:
 # `pnpm env:sync` regenerates every managed artifact from ONE declared surface:
 # the settings-registry descriptors plus each TypeScript deployable's own config
 # module. `--check` regenerates in memory and fails, printing the first differing
-# hunk, when the committed root `.env.example` / per-app `.env.sample` files,
+# hunk, when the committed `.env.sample` files (root consolidated + per-app),
 # `turbo.json#globalEnv`, or the generated docs table disagree. Reconcile with
 # `pnpm env:sync` and commit.
 #

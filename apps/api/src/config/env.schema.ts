@@ -191,7 +191,7 @@ export function parseApiEnv(raw: Record<string, string | undefined>): ApiEnv {
     throw new Error(
       `Invalid API gateway environment — ${problems.length} problem(s):\n` +
         problems.map((p) => `  • ${p}`).join('\n') +
-        '\nDeclared surface: .env.example (bootstrap floor) + apps/api/.env.sample. Regenerate with `pnpm env:sync`.',
+        '\nDeclared surface: .env.sample §1 (bootstrap floor) + apps/api/.env.sample. Regenerate with `pnpm env:sync`.',
     );
   }
 

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { NextConfig } from 'next';
 import { config as loadDotenv } from 'dotenv';
 
-// Repo env convention (.env.example header): local development loads the
+// Repo env convention (.env.sample header): local development loads the
 // monorepo-root .env.dev; CI and production load NO env file (host env only).
 // Host environment variables keep priority (dotenv never overrides set keys).
 if (process.env.NODE_ENV === 'development' && !process.env.CI) {

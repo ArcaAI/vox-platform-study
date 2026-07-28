@@ -4,7 +4,7 @@
 
 Generated from the settings registry plus each TypeScript deployable’s own
 schema. `pnpm env:sync --check` (CI job `env-drift-check`) fails when this file,
-the root `.env.example` / per-app `.env.sample` files, or `turbo.json#globalEnv`
+the `.env.sample` files (root consolidated / per-app), or `turbo.json#globalEnv`
 disagree with those declarations.
 
 ## Summary
