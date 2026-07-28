@@ -65,6 +65,7 @@ function makeService(opts: { roles?: string[]; clsTenantId?: string | null; with
       : {
           encrypt: vi.fn(async () => 'vault:v3:cipher'),
           decrypt: vi.fn(async () => Buffer.from('plaintext-key', 'utf8')),
+          supportsTransit: vi.fn(() => true),
         };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any);
   return { svc, repo, emitter, cls, secrets };
@@ -163,6 +164,19 @@ describe('AiProviderConnectionService — secret containment (§5 test 3)', () =
   it('refuses to write a key when Vault is not configured (no plaintext-at-rest fallback)', async () => {
     const { svc } = makeService({ withVault: false });
     await expect(svc.upsertRow('llm', 'azure', { enabled: true, apiKey: 'sk-live' }, TENANT)).rejects.toThrow(/Vault/i);
+  });
+
+  it('refuses with 400 (not 503) when SecretsService IS injected but the configured provider has no Transit support (SECRETS_PROVIDER=env/aws/azure/in-memory)', async () => {
+    // The realistic non-vault shape: SecretsService is unconditionally provided
+    // by the module (unlike `withVault: false` above, which models the
+    // theoretical "no DI provider at all" case), but `supportsTransit()`
+    // reports false because the configured provider has no Transit engine.
+    // Regression for a bug where this fell through to `.encrypt()`'s
+    // capability-guard `Error` and was misreported as a transient 503.
+    const { svc, secrets } = makeService();
+    (secrets!.supportsTransit as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    await expect(svc.upsertRow('llm', 'azure', { enabled: true, apiKey: 'sk-live' }, TENANT)).rejects.toThrow(/Vault/i);
+    expect(secrets!.encrypt).not.toHaveBeenCalled();
   });
 
   // ── Precondition verdicts come BEFORE any Vault call ────

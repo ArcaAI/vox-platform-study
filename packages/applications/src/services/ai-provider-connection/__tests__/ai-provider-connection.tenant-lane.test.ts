@@ -75,6 +75,7 @@ function makeService(opts: { rows?: unknown[]; withVault?: boolean; decrypt?: ()
       : {
           encrypt: vi.fn(async () => 'vault:v3:cipher'),
           decrypt: vi.fn(opts.decrypt ?? (async () => Buffer.from('plaintext-key', 'utf8'))),
+          supportsTransit: vi.fn(() => true),
         };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any);
   const warn = vi.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);

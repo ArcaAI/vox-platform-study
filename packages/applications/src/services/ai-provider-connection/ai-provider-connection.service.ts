@@ -375,7 +375,17 @@ export class AiProviderConnectionService extends BaseService implements IProvide
   }
 
   private async encryptKey(plaintext: string): Promise<{ ciphertext: Buffer; keyVersion: number }> {
-    if (!this.secretsService) {
+    // Two DISTINCT "no Vault" shapes, and only one of them is a transient
+    // outage: `!this.secretsService` is the theoretical case where the module
+    // never provided SecretsService at all, but in this app it is always
+    // injected — SECRETS_PROVIDER=env/aws/azure/in-memory still constructs a
+    // real instance whose `.encrypt()` throws a capability-guard `Error` (see
+    // `SecretsService.encrypt`). Without this `supportsTransit()` check that
+    // guard error fell into the generic catch below and was misreported as a
+    // 503 "temporarily unavailable, retry" — but a non-vault provider is a
+    // permanent configuration state, not a transient Transit outage. The 400
+    // branch below is the one path a caller can't fix by retrying.
+    if (!this.secretsService || !this.secretsService.supportsTransit()) {
       throw new BadRequestException(
         'Provider API keys require the Vault secrets provider (SECRETS_PROVIDER=vault). ' + 'There is no plaintext-at-rest fallback.',
       );
@@ -383,7 +393,7 @@ export class AiProviderConnectionService extends BaseService implements IProvide
     try {
       return await encryptSecretField(this.secretsService, plaintext);
     } catch (err) {
-      // A Transit failure (Vault down / provider without Transit support) is a
+      // A genuine Transit call failure (Vault sealed/unreachable) IS a
       // dependency outage, not an internal fault: map to 503 so the client
       // retries rather than filing a 500. Never log or echo the plaintext.
       this.logger.warn(`Transit encryption unavailable for provider-key write: ${err instanceof Error ? err.message : String(err)}`);
