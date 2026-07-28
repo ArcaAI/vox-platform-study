@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
 import { parse } from 'yaml';
@@ -12,14 +12,11 @@ import {
   TenantSttConfigEntity,
   TenantSttConfigFactory,
   TenantSttConfigRepository,
-  TenantSttProviderCredentialEntity,
-  TenantSttProviderCredentialFactory,
-  TenantSttProviderCredentialRepository,
 } from '@arcaai/domains';
 import { BaseService } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
+import { AiProviderConnectionResponse, IProviderConnectionService, UpsertAiProviderConnectionRequest } from '../ai-provider-connection';
 import { PipelineResponse, PipelineService } from '../stt/pipeline';
-import { decryptSecretField, encryptSecretField, SecretsService } from '../baseServices/_meta/secrets';
 import { ITenantSttConfigService } from './ITenantSttConfigService';
 import { TenantSttConfigDtoMapper } from './tenant-stt-config.dto.mapper';
 import {
@@ -38,22 +35,29 @@ import {
   SttSpecInput,
 } from './platform-limits';
 
+/** The capability discriminator this service resolves credentials under (C1/C2/C5). */
+const STT_SERVICE = 'stt' as const;
+
 @Injectable()
 export class TenantSttConfigService extends BaseService implements ITenantSttConfigService {
   private readonly logger = new Logger(TenantSttConfigService.name);
 
   constructor(
     private readonly configRepository: TenantSttConfigRepository,
-    private readonly credentialRepository: TenantSttProviderCredentialRepository,
     // Resolves the fallback pipeline's ASR model slug → cloud/local verdict.
     private readonly aiModelRepository: AiModelRepository,
     // Fallback-pipeline existence / tenant-visibility / status validation.
     private readonly pipelineService: PipelineService,
     protected override readonly eventEmitter: EventEmitter2,
     protected override readonly clsService: ClsService<IActiveUserContext>,
-    // BYO-key encryption. Optional so non-Vault deploys still run the fallback
-    // spec; credential writes then reject (no plaintext-at-rest fallback).
-    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // BYO credential storage — delegated to the UNIFIED provider-connection
+    // plane (`service='stt'`, TASK-571). `AiProviderConnectionService` owns
+    // Vault encryption/decryption, masking, OCC, and the
+    // ResourceCreated/Updated/Deleted sys-event broadcasts for every credential
+    // mutation; this service no longer touches Vault or a credential
+    // repository/table directly — `TenantSttProviderCredential` is no longer
+    // written (retired in favor of `AiProviderConnection`; TASK-576 drops it).
+    @Inject(IProviderConnectionService) private readonly providerConnectionService: IProviderConnectionService,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantSttConfig);
   }
@@ -259,18 +263,29 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
     return value as Record<string, unknown>;
   }
 
-  // ─────────────────────── BYO credentials ───────────────────────
+  // ─────────────────────── BYO credentials (unified plane, TASK-571) ───────────────────────
 
   /** Masked list of a tenant's BYO credentials (never the key). */
   async getCredentials(tenantId: string): Promise<SttCredentialResponse[]> {
-    const rows = await this.credentialRepository.findByTenantId(tenantId);
-    return rows.map((row) => this.maskCredential(row));
+    const rows = await this.providerConnectionService.list(STT_SERVICE, tenantId);
+    return rows.map((row) => this.toCredentialResponse(row));
   }
 
   /**
-   * Set or rotate a tenant's BYO key for a provider (encrypted at rest). OCC via
-   * `updateWithVersion` — `expectedVersion: 0` creates, `>0` compare-and-sets
-   * (TASK-526 credential-OCC divergence from the TTS precedent).
+   * Set or rotate a tenant's BYO key for a provider. Encryption, masking, OCC
+   * (`expectedVersion: 0` creates, `>0` compare-and-sets — TASK-526
+   * credential-OCC divergence from the TTS precedent), and the
+   * ResourceCreated/ResourceUpdated sys-event broadcast are all owned by
+   * `IProviderConnectionService.upsertRow('stt', ...)` now — this method only
+   * translates the STT-shaped request/response.
+   *
+   * `enabled` needs a pre-read: the unified plane's own create default is
+   * `false` (a fresh row starts disabled until explicitly turned on), but the
+   * pre-unification STT default was `true` on CREATE while an omitted
+   * `enabled` on an UPDATE (rotate) left the row's current flag untouched. A
+   * lightweight `getRow` (masked, non-secret) tells create from update apart so
+   * that default is reproduced exactly; the write remains a single
+   * `upsertRow` call.
    */
   async setCredential(tenantId: string, provider: string, dto: SetSttCredentialRequest): Promise<SttCredentialResponse> {
     if (!tenantId) {
@@ -279,131 +294,85 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
     if (!(BYO_STT_PROVIDERS as readonly string[]).includes(provider)) {
       throw new BadRequestException(`Unsupported BYO provider '${provider}'. Expected: ${BYO_STT_PROVIDERS.join(', ')}`);
     }
-    if (!this.secretsService) {
-      throw new BadRequestException('BYO provider keys require the Vault secrets provider (SECRETS_PROVIDER=vault).');
-    }
 
-    const existing = await this.credentialRepository.findByTenantAndProvider(tenantId, provider);
+    const existing = await this.providerConnectionService.getRow(STT_SERVICE, provider, tenantId);
+    const isCreate = existing.version === 0;
 
-    if (!existing) {
-      if (dto.expectedVersion !== 0) {
-        throw new OptimisticConcurrencyException('TenantSttProviderCredential', `${tenantId}:${provider}`, {
-          expectedVersion: dto.expectedVersion,
-          currentVersion: 0,
-        });
-      }
-      // Encrypt AFTER the precondition verdict (a stale-If-Match with Vault down
-      // must surface as 412, not a 500 from the Transit call).
-      const { ciphertext: encryptedApiKey, keyVersion } = await encryptSecretField(this.secretsService, dto.apiKey);
-      const entity = TenantSttProviderCredentialFactory.CreateTenantSttProviderCredential({
-        tenantId,
-        provider,
-        region: dto.region ?? null,
-        endpoint: dto.endpoint ?? null,
-        encryptedApiKey,
-        keyVersion,
-        enabled: dto.enabled ?? true,
-        extraJson: dto.model ? { model: dto.model } : null,
-        createdBy: this.requestUserId ?? undefined,
-      });
-      const saved = await this.credentialRepository.create(entity);
-      this.broadcastSysEvent(SysEventType.ResourceCreated, {
-        resourceId: saved.id,
-        data: { provider, action: 'credential-set' },
-      });
-      return this.maskCredential(saved);
-    }
-
-    // CAS fast-fail against the row just read, BEFORE the Vault call.
-    if (dto.expectedVersion !== existing.version) {
-      throw new OptimisticConcurrencyException('TenantSttProviderCredential', existing.id, {
-        expectedVersion: dto.expectedVersion,
-        currentVersion: existing.version,
-      });
-    }
-
-    const { ciphertext: encryptedApiKey, keyVersion } = await encryptSecretField(this.secretsService, dto.apiKey);
-    const changes: Record<string, unknown> = { encryptedApiKey, keyVersion };
-    if (dto.region !== undefined) changes.region = dto.region;
-    if (dto.endpoint !== undefined) changes.endpoint = dto.endpoint;
-    if (dto.enabled !== undefined) changes.enabled = dto.enabled;
-    if (dto.model !== undefined) changes.extraJson = { ...(existing.extraJson ?? {}), model: dto.model };
-
-    await this.updateEntity(existing, changes);
-    const previousVersion = existing.version;
-    const saved = await this.credentialRepository.updateWithVersion(existing.id, existing, dto.expectedVersion);
-    this.broadcastSysEvent(SysEventType.ResourceUpdated, {
-      resourceId: saved.id,
-      data: { provider, previousVersion, newVersion: saved.version, action: 'credential-rotated' },
-    });
-    return this.maskCredential(saved);
+    const upsertDto: UpsertAiProviderConnectionRequest = {
+      baseUrl: dto.endpoint,
+      region: dto.region,
+      apiKey: dto.apiKey,
+      enabled: dto.enabled ?? (isCreate ? true : undefined),
+      extraJson: dto.model !== undefined ? { model: dto.model } : undefined,
+    };
+    const saved = await this.providerConnectionService.upsertRow(STT_SERVICE, provider, upsertDto, tenantId, dto.expectedVersion);
+    return this.toCredentialResponse(saved);
   }
 
-  /** Remove a tenant's BYO credential for a provider (soft delete). */
+  /**
+   * Remove a tenant's BYO credential for a provider (soft delete via the
+   * unified plane). `deleteRow` already 404s an absent row — same class the
+   * pre-unification direct-repository check threw.
+   */
   async removeCredential(tenantId: string, provider: string): Promise<void> {
-    const existing = await this.credentialRepository.findByTenantAndProvider(tenantId, provider);
-    if (!existing) {
-      throw new NotFoundException(`No ${provider} credential for this tenant`);
-    }
-    await this.credentialRepository.softDelete(existing.id);
-    this.broadcastSysEvent(SysEventType.ResourceDeleted, {
-      resourceId: existing.id,
-      data: { provider },
-    });
+    await this.providerConnectionService.deleteRow(STT_SERVICE, provider, tenantId);
   }
 
   /**
    * Decrypt a tenant's enabled BYO credentials into the injectable overrides map
-   * (gateway-only — never exposed by a read API). Fails OPEN per credential: a
-   * decrypt error (or no Vault) skips it, so apps/stt falls back to platform
-   * env creds. On a decrypt error a NON-SECRET warn is logged with ONLY
-   * `{tenantId, provider, keyVersion}` — the deliberate improvement over the TTS
-   * silent catch (§3.3).
+   * (gateway-only — never exposed by a read API). Decryption, the no-Vault `{}`
+   * short-circuit, and the fail-OPEN-per-credential non-secret warn
+   * (`{tenantId, service, provider, keyVersion}`) are all owned by
+   * `resolveTenantCloudOverrides('stt', tenantId)` now.
+   *
+   * The unified entry shape (`api_key`, `base_url?`, `region?`, `api_version?`,
+   * `deployment_name?`) has no `model` field — STT-only (Foundry/Sarvam/OpenAI
+   * model id). It is folded in here from the same rows' masked `extraJson` (a
+   * second, non-secret `list()` call), so the injectable shape this method
+   * returns is unchanged: `{api_key, region?, base_url?, model?}`.
    */
   async resolveProviderOverrides(tenantId: string): Promise<SttProviderOverrides> {
-    if (!this.secretsService) {
+    const overrides = await this.providerConnectionService.resolveTenantCloudOverrides(STT_SERVICE, tenantId);
+    const providers = Object.keys(overrides);
+    if (providers.length === 0) {
       return {};
     }
-    const rows = await this.credentialRepository.findByTenantId(tenantId);
+
+    const rows = await this.providerConnectionService.list(STT_SERVICE, tenantId);
+    const modelByProvider = new Map(rows.map((row) => [row.provider, this.extractModel(row.extraJson)]));
+
     const out: SttProviderOverrides = {};
-    for (const row of rows) {
-      if (!row.enabled || !row.encryptedApiKey) {
-        continue;
-      }
-      try {
-        const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
-        const entry: SttProviderOverrides[string] = { api_key: apiKey };
-        if (row.region) entry.region = row.region;
-        if (row.endpoint) entry.base_url = row.endpoint;
-        const model = row.extraJson?.['model'] ?? row.extraJson?.['foundryModel'];
-        if (typeof model === 'string' && model.length > 0) entry.model = model;
-        out[row.provider] = entry;
-      } catch {
-        // Non-secret warn only — never the key or ciphertext.
-        this.logger.warn({
-          message: 'stt.byo.decrypt_failed',
-          tenantId,
-          provider: row.provider,
-          keyVersion: row.keyVersion ?? null,
-        });
-        continue;
-      }
+    for (const provider of providers) {
+      const entry = overrides[provider];
+      const model = modelByProvider.get(provider);
+      out[provider] = {
+        api_key: entry.api_key,
+        ...(entry.region ? { region: entry.region } : {}),
+        ...(entry.base_url ? { base_url: entry.base_url } : {}),
+        ...(model ? { model } : {}),
+      };
     }
     return out;
   }
 
-  private maskCredential(entity: TenantSttProviderCredentialEntity): SttCredentialResponse {
-    const model = entity.extraJson?.['model'] ?? entity.extraJson?.['foundryModel'];
+  /** Unified masked response → the STT-shaped credential DTO. */
+  private toCredentialResponse(row: AiProviderConnectionResponse): SttCredentialResponse {
     return {
-      provider: entity.provider,
-      region: entity.region ?? null,
-      endpoint: entity.endpoint ?? null,
-      model: typeof model === 'string' ? model : null,
-      enabled: entity.enabled,
-      hasKey: entity.encryptedApiKey != null && entity.encryptedApiKey.length > 0,
-      keyVersion: entity.keyVersion ?? null,
-      version: entity.version,
-      updatedAt: entity.updatedAt?.toISOString(),
+      provider: row.provider,
+      region: row.region,
+      endpoint: row.baseUrl,
+      model: this.extractModel(row.extraJson),
+      enabled: row.enabled,
+      hasKey: row.hasKey,
+      keyVersion: row.keyVersion,
+      version: row.version,
+      updatedAt: row.updatedAt,
     };
+  }
+
+  /** `extraJson.model`, tolerating the pre-unification `foundryModel` key. */
+  private extractModel(extraJson: Record<string, unknown> | null): string | null {
+    const model = extraJson?.['model'] ?? extraJson?.['foundryModel'];
+    return typeof model === 'string' && model.length > 0 ? model : null;
   }
 }
