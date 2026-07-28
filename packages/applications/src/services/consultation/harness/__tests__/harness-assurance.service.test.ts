@@ -36,10 +36,7 @@ function buildDeps(opts: { snapshot?: string | null } = {}) {
     unsubscribeFromChannel: vi.fn(),
   };
 
-  const service = new HarnessAssuranceService(
-    cacheService as any,
-    redisSubscriber as any,
-  );
+  const service = new HarnessAssuranceService(cacheService as any, redisSubscriber as any);
 
   return { service, cacheService, redisSubscriber, channelMessages$ };
 }
@@ -200,7 +197,9 @@ describe('HarnessAssuranceService', () => {
       expect(events[0]).toBe(snapshot); // snapshot replayed first
 
       channelMessages$.next(JSON.stringify({ consultationId: CID, claims: [], updatedAt: '2026-06-13T00:00:01.000Z', closed: false }));
-      channelMessages$.next(JSON.stringify({ consultationId: CID, claims: [], gateDecision: 'PASS', updatedAt: '2026-06-13T00:00:02.000Z', closed: true }));
+      channelMessages$.next(
+        JSON.stringify({ consultationId: CID, claims: [], gateDecision: 'PASS', updatedAt: '2026-06-13T00:00:02.000Z', closed: true }),
+      );
       await new Promise((r) => setTimeout(r, 10));
 
       expect(completed).toBe(true);

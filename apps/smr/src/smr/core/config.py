@@ -345,7 +345,9 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("HOST", "V2_HOST"))
     port: int = Field(default=8862, validation_alias=AliasChoices("PORT", "V2_PORT"))
     debug: bool = Field(default=False, validation_alias=AliasChoices("DEBUG", "V2_DEBUG"))
-    log_level: str = Field(default="info", validation_alias=AliasChoices("LOG_LEVEL", "V2_LOG_LEVEL"))
+    log_level: str = Field(
+        default="info", validation_alias=AliasChoices("LOG_LEVEL", "V2_LOG_LEVEL")
+    )
     cors_origins: list[str] = Field(
         default_factory=list, validation_alias=AliasChoices("CORS_ORIGINS", "V2_CORS_ORIGINS")
     )
@@ -369,7 +371,8 @@ class Settings(BaseSettings):
 
     # Connection pooling
     httpx_max_connections: int = Field(
-        default=200, validation_alias=AliasChoices("HTTPX_MAX_CONNECTIONS", "V2_HTTPX_MAX_CONNECTIONS")
+        default=200,
+        validation_alias=AliasChoices("HTTPX_MAX_CONNECTIONS", "V2_HTTPX_MAX_CONNECTIONS"),
     )
     httpx_max_keepalive: int = Field(
         default=100, validation_alias=AliasChoices("HTTPX_MAX_KEEPALIVE", "V2_HTTPX_MAX_KEEPALIVE")

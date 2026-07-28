@@ -150,9 +150,7 @@ async function main(): Promise<void> {
   console.log('vault-db-smoke: disconnected cleanly');
 }
 
-const isCli =
-  typeof import.meta.url === 'string' &&
-  import.meta.url === `file://${process.argv[1]}`;
+const isCli = typeof import.meta.url === 'string' && import.meta.url === `file://${process.argv[1]}`;
 if (isCli) {
   main().catch((e) => {
     console.error(`vault-db-smoke: ${(e as Error).message}`);

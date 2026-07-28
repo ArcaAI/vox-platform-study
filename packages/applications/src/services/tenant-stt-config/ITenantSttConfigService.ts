@@ -1,11 +1,5 @@
 import { PipelineResponse } from '../stt/pipeline';
-import {
-  EffectiveSttConfigResponse,
-  SetSttCredentialRequest,
-  SetSttFallbackRequest,
-  SttCredentialResponse,
-  TenantSttConfigResponse,
-} from './dto';
+import { EffectiveSttConfigResponse, SetSttCredentialRequest, SetSttFallbackRequest, SttCredentialResponse, TenantSttConfigResponse } from './dto';
 import { SttProviderOverrides } from './platform-limits';
 
 /**

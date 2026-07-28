@@ -30,45 +30,45 @@ const TAB_VALUES = ['guardrail', 'nlp', 'instructions'] as const;
  * cross-tenant.
  */
 export function AiServicesScreen() {
-    const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('guardrail'));
-    const tab = (TAB_VALUES as readonly string[]).includes(tabParam) ? tabParam : 'guardrail';
+  const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('guardrail'));
+  const tab = (TAB_VALUES as readonly string[]).includes(tabParam) ? tabParam : 'guardrail';
 
-    return (
-        <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'guardrail' ? null : next)}>
-            <ScreenTemplate
-                header={
-                    <PageHeader
-                        title="AI services"
-                        meta={<span>Read-only status and configuration for the guardrail, NLP and agentic instruction planes</span>}
-                    />
-                }
-                tabs={
-                    <TabsList variant="line">
-                        <TabsTrigger value="guardrail">Guardrail</TabsTrigger>
-                        <TabsTrigger value="nlp">NLP</TabsTrigger>
-                        <TabsTrigger value="instructions">Instructions</TabsTrigger>
-                    </TabsList>
-                }
-                footer={
-                    <StatusFooter
-                        end={
-                            <span aria-hidden className="font-mono">
-                                GET /admin/ai-services/* &middot; GET /admin/agentic/instructions
-                            </span>
-                        }
-                    />
-                }
-            >
-                <TabsContent value="guardrail">
-                    <GuardrailPanel />
-                </TabsContent>
-                <TabsContent value="nlp">
-                    <NlpPanel />
-                </TabsContent>
-                <TabsContent value="instructions">
-                    <InstructionsPanel />
-                </TabsContent>
-            </ScreenTemplate>
-        </Tabs>
-    );
+  return (
+    <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'guardrail' ? null : next)}>
+      <ScreenTemplate
+        header={
+          <PageHeader
+            title="AI services"
+            meta={<span>Read-only status and configuration for the guardrail, NLP and agentic instruction planes</span>}
+          />
+        }
+        tabs={
+          <TabsList variant="line">
+            <TabsTrigger value="guardrail">Guardrail</TabsTrigger>
+            <TabsTrigger value="nlp">NLP</TabsTrigger>
+            <TabsTrigger value="instructions">Instructions</TabsTrigger>
+          </TabsList>
+        }
+        footer={
+          <StatusFooter
+            end={
+              <span aria-hidden className="font-mono">
+                GET /admin/ai-services/* &middot; GET /admin/agentic/instructions
+              </span>
+            }
+          />
+        }
+      >
+        <TabsContent value="guardrail">
+          <GuardrailPanel />
+        </TabsContent>
+        <TabsContent value="nlp">
+          <NlpPanel />
+        </TabsContent>
+        <TabsContent value="instructions">
+          <InstructionsPanel />
+        </TabsContent>
+      </ScreenTemplate>
+    </Tabs>
+  );
 }

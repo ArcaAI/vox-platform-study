@@ -56,9 +56,7 @@ const mockImageThumbnailService = {
   generateWebpThumbnail: vi.fn(),
 };
 
-const createMockBucketResponse = (
-  overrides: Partial<{ id: string; tenantId: string; name: string; slug: string; createdAt: string }> = {},
-) => ({
+const createMockBucketResponse = (overrides: Partial<{ id: string; tenantId: string; name: string; slug: string; createdAt: string }> = {}) => ({
   id: overrides.id ?? 'bucket-1',
   tenantId: overrides.tenantId ?? 'tenant-1',
   name: overrides.name ?? 'arcaai-audio-recordings',
@@ -142,26 +140,20 @@ describe('StorageController tenant scoping & traversal hardening', () => {
       expect(mockTenantBucketService.getBucketBySlug).not.toHaveBeenCalled();
       expect(result.key).toBe('note.txt');
       expect(result.mediaId).toBe('media-123');
-      expect(mockMediaService.create).toHaveBeenCalledWith(
-        expect.objectContaining({ uri: 's3://arcaai-custom-bucket/note.txt' }),
-      );
+      expect(mockMediaService.create).toHaveBeenCalledWith(expect.objectContaining({ uri: 's3://arcaai-custom-bucket/note.txt' }));
     });
 
     it('throws NotFoundException when the bucket record is absent (no raw fallback)', async () => {
       mockTenantBucketService.getBucketByName.mockResolvedValue(null);
 
-      await expect(controller.uploadFile('ghost-bucket', createMockFile(), 'note.txt')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(controller.uploadFile('ghost-bucket', createMockFile(), 'note.txt')).rejects.toBeInstanceOf(NotFoundException);
 
       expect(mockBlobStorage.putObject).not.toHaveBeenCalled();
       expect(mockTenantBucketService.getBucketBySlug).not.toHaveBeenCalled();
     });
 
     it('still rejects a traversal file key', async () => {
-      await expect(controller.uploadFile('arcaai-bucket', createMockFile(), '../escape.txt')).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(controller.uploadFile('arcaai-bucket', createMockFile(), '../escape.txt')).rejects.toBeInstanceOf(BadRequestException);
       expect(mockBlobStorage.putObject).not.toHaveBeenCalled();
     });
   });

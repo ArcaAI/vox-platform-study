@@ -26,10 +26,7 @@ import { expect, test } from '@playwright/test';
 import { SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 // TASK-563 — validate LIVE 200 responses against the frozen v1 schema lock
 // (§5.4/§5.5). Hermetic when SMR is down (status ≠ 200 → shape check skipped).
-import {
-  PreSummaryResponseSchema,
-  SummaryResponseSchema,
-} from '../../../../tests/contracts/smr-compat.schemas';
+import { PreSummaryResponseSchema, SummaryResponseSchema } from '../../../../tests/contracts/smr-compat.schemas';
 
 const SUMMARY_SYNC_PATH = '/api/smr/api/v1/summary/sync';
 const PRESUMMARY_PATH = '/api/smr/api/v1/presummary';

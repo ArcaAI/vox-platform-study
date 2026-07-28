@@ -93,7 +93,9 @@ class StreamSession:
             result_stream_expire_s if result_stream_expire_s is not None else _default_stream_ttl
         )
         self._session_metadata_expire_s = (
-            session_metadata_expire_s if session_metadata_expire_s is not None else _default_meta_ttl
+            session_metadata_expire_s
+            if session_metadata_expire_s is not None
+            else _default_meta_ttl
         )
         self._max_audio_buffer_bytes: int = _default_max_audio
         self._audio_buffer_warned: bool = False
@@ -349,9 +351,7 @@ class StreamSession:
             Space-joined transcript text (empty string when no final segments).
         """
         return " ".join(
-            r.text.strip()
-            for r in self.results
-            if r.is_final and r.text and r.text.strip()
+            r.text.strip() for r in self.results if r.is_final and r.text and r.text.strip()
         )
 
     def build_transcript_segments(self) -> list[dict[str, Any]]:

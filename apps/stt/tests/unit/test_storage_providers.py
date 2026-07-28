@@ -224,12 +224,22 @@ class TestDescriptorParsing:
     def test_different_credentials_are_not_cached_together(self):
         with patch("minio.Minio") as mock_minio:
             build_provider(
-                {"provider": "minio", "bucket": "b", "endpoint": "http://x:9000",
-                 "access_key_id": "ak1", "secret_access_key": "sk1"}
+                {
+                    "provider": "minio",
+                    "bucket": "b",
+                    "endpoint": "http://x:9000",
+                    "access_key_id": "ak1",
+                    "secret_access_key": "sk1",
+                }
             )
             build_provider(
-                {"provider": "minio", "bucket": "b", "endpoint": "http://x:9000",
-                 "access_key_id": "ak2", "secret_access_key": "sk2"}
+                {
+                    "provider": "minio",
+                    "bucket": "b",
+                    "endpoint": "http://x:9000",
+                    "access_key_id": "ak2",
+                    "secret_access_key": "sk2",
+                }
             )
 
         assert mock_minio.call_count == 2

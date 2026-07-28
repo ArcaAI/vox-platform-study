@@ -17,17 +17,12 @@
  * covered by spying on the module rather than running NestJS lifecycle.
  */
 
-import {
-  setTenantContextProvider,
-  type TenantContextProvider,
-} from '@arcaai/database';
+import { setTenantContextProvider, type TenantContextProvider } from '@arcaai/database';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClsTenantContextProvider } from '../tenant-context.provider';
 
 vi.mock('@arcaai/database', async () => {
-  const actual = await vi.importActual<typeof import('@arcaai/database')>(
-    '@arcaai/database',
-  );
+  const actual = await vi.importActual<typeof import('@arcaai/database')>('@arcaai/database');
   return {
     ...actual,
     setTenantContextProvider: vi.fn(),
@@ -60,25 +55,19 @@ describe('ClsTenantContextProvider', () => {
   });
 
   it('outside CLS — tenantId undefined and isSuperAdmin true (pass-through)', () => {
-    const provider = new ClsTenantContextProvider(
-      makeCls({ active: false, store: {} }),
-    );
+    const provider = new ClsTenantContextProvider(makeCls({ active: false, store: {} }));
     expect(provider.getTenantId()).toBeUndefined();
     expect(provider.isSuperAdmin()).toBe(true);
   });
 
   it('inside CLS, no claims — tenantId undefined and isSuperAdmin false (forces extension throw)', () => {
-    const provider = new ClsTenantContextProvider(
-      makeCls({ active: true, store: {} }),
-    );
+    const provider = new ClsTenantContextProvider(makeCls({ active: true, store: {} }));
     expect(provider.getTenantId()).toBeUndefined();
     expect(provider.isSuperAdmin()).toBe(false);
   });
 
   it('reads tenantId from the CLS store directly when present', () => {
-    const provider = new ClsTenantContextProvider(
-      makeCls({ active: true, store: { tenantId: 'tenant-A' } }),
-    );
+    const provider = new ClsTenantContextProvider(makeCls({ active: true, store: { tenantId: 'tenant-A' } }));
     expect(provider.getTenantId()).toBe('tenant-A');
   });
 
@@ -117,13 +106,9 @@ describe('ClsTenantContextProvider', () => {
   });
 
   it('onApplicationBootstrap registers the provider; shutdown clears it', () => {
-    const provider = new ClsTenantContextProvider(
-      makeCls({ active: false, store: {} }),
-    );
+    const provider = new ClsTenantContextProvider(makeCls({ active: false, store: {} }));
     provider.onApplicationBootstrap();
-    expect(setTenantContextProvider).toHaveBeenCalledWith(
-      provider satisfies TenantContextProvider,
-    );
+    expect(setTenantContextProvider).toHaveBeenCalledWith(provider satisfies TenantContextProvider);
 
     provider.onApplicationShutdown();
     expect(setTenantContextProvider).toHaveBeenLastCalledWith(null);

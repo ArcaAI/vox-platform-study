@@ -74,9 +74,7 @@ class IndicF5Provider:
         generate = await asyncio.to_thread(builder)
 
         TTS_MODEL_LOADED.labels(model="indic_f5").set(1)
-        logger.info(
-            "tts.indic_f5_loaded", device=self._config.device, model=self._config.hf_model
-        )
+        logger.info("tts.indic_f5_loaded", device=self._config.device, model=self._config.hf_model)
         return generate
 
     def _unload_generate(self, _key: str, _generate: object) -> None:

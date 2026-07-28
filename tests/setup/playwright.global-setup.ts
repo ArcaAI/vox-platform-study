@@ -57,10 +57,7 @@ import { execSync } from 'child_process';
 import { verifySeededData } from '../helpers';
 
 if (process.env.NODE_ENV !== 'test') {
-  console.warn(
-    'WARNING: NODE_ENV is not "test". E2E tests should be run with dotenv-cli:\n' +
-    '  pnpm test:e2e (which uses dotenv -e .env.test)'
-  );
+  console.warn('WARNING: NODE_ENV is not "test". E2E tests should be run with dotenv-cli:\n' + '  pnpm test:e2e (which uses dotenv -e .env.test)');
   process.env.NODE_ENV = 'test';
 }
 
@@ -101,15 +98,11 @@ function getServiceConfigs(): ServiceConfig[] {
 async function globalSetup(config: FullConfig): Promise<void> {
   console.log('\n🎭 Playwright E2E Test Setup\n');
 
-  const baseURL =
-    config.projects[0]?.use?.baseURL ||
-    process.env.API_URL ||
-    'http://localhost:8968';
+  const baseURL = config.projects[0]?.use?.baseURL || process.env.API_URL || 'http://localhost:8968';
 
   const isCI = process.env.CI === 'true';
   const waitForServices = process.env.E2E_WAIT_SERVICES === 'true';
-  const skipDbPrecheck =
-    process.env.SKIP_DB_PRECHECK === 'true' || process.env.SKIP_DB_PRECHECK === '1';
+  const skipDbPrecheck = process.env.SKIP_DB_PRECHECK === 'true' || process.env.SKIP_DB_PRECHECK === '1';
 
   if (isCI) {
     console.log('📦 CI Environment detected');
@@ -125,7 +118,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
   if (skipDbPrecheck) {
     console.warn(
       '[playwright global-setup] SKIP_DB_PRECHECK=true — skipping pg_isready probe ' +
-        'and the test:db:reset step. HTTP-only specs may proceed against an already-up API.'
+        'and the test:db:reset step. HTTP-only specs may proceed against an already-up API.',
     );
   } else {
     console.log('\n🔍 Step 1: Checking database connection...');
@@ -165,7 +158,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
         console.error(
           '\n   Most common cause: the generated Prisma client is missing after a `clean`/`nuke`\n' +
             '   (the `tsx` seed imports packages/database/src/generated/core-prisma-client).\n' +
-            '   Fix:  pnpm db:generate   then re-run  pnpm test:e2e\n'
+            '   Fix:  pnpm db:generate   then re-run  pnpm test:e2e\n',
         );
         throw new Error('test:db:reset failed during Playwright globalSetup — see output above');
       }
@@ -198,7 +191,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
         console.error(`❌ Seeded-data check failed: ${message}`);
         console.error(
           '   The API is up but seeded logins fail — the DB is empty/unseeded.\n' +
-            '   Fix:  pnpm db:generate && pnpm test:db:seed   (or run with RESET_DB unset)\n'
+            '   Fix:  pnpm db:generate && pnpm test:db:seed   (or run with RESET_DB unset)\n',
         );
         throw new Error(`Seeded-data verification failed: ${message}`);
       }
@@ -216,7 +209,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
       services.map(async (svc) => {
         const ready = await waitForService(svc.name, svc.url, svc.healthPath, 30);
         return { ...svc, ready };
-      })
+      }),
     );
 
     for (const result of results) {
@@ -240,12 +233,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
 /**
  * Wait for a service to respond on its health endpoint
  */
-async function waitForService(
-  name: string,
-  baseURL: string,
-  healthPath: string,
-  maxRetries = 60
-): Promise<boolean> {
+async function waitForService(name: string, baseURL: string, healthPath: string, maxRetries = 60): Promise<boolean> {
   const healthUrl = `${baseURL}${healthPath}`;
 
   for (let i = 0; i < maxRetries; i++) {

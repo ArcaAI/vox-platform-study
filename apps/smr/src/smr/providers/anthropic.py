@@ -307,7 +307,9 @@ class AnthropicProvider:
         # cloud configs carry no compiled-in vendor model) — never advertise an
         # empty-named model.
         models: list[ModelInfo] = (
-            [ModelInfo(name=self._default_model, supports_streaming=True)] if self._default_model else []
+            [ModelInfo(name=self._default_model, supports_streaming=True)]
+            if self._default_model
+            else []
         )
         status = "available"
         try:

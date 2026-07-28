@@ -93,7 +93,9 @@ describe('SSE Streaming E2E Behavior', () => {
           const parsed = JSON.parse(data);
           const text = parsed.content || parsed.text || parsed.delta?.content || '';
           if (text) accumulated += text;
-        } catch { /* skip non-JSON */ }
+        } catch {
+          /* skip non-JSON */
+        }
       }
 
       expect(accumulated).toBe('Patient has chest pain');
@@ -179,10 +181,7 @@ describe('SSE Streaming E2E Behavior', () => {
     });
 
     it('should handle SSE error chunks gracefully', () => {
-      const sseLines = [
-        'data: {"content":"partial text"}',
-        'data: {"type":"error","data":{"error":"provider timeout"}}',
-      ];
+      const sseLines = ['data: {"content":"partial text"}', 'data: {"type":"error","data":{"error":"provider timeout"}}'];
 
       let accumulated = '';
       let error: string | null = null;
@@ -196,7 +195,9 @@ describe('SSE Streaming E2E Behavior', () => {
             break;
           }
           accumulated += parsed.content || '';
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
 
       expect(accumulated).toBe('partial text');

@@ -11,15 +11,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  RolePermissionEntity,
-  IRolePermissionEntity,
-} from '../generated/core/RolePermissionEntity';
+import { RolePermissionEntity, IRolePermissionEntity } from '../generated/core/RolePermissionEntity';
 import { ResourceStatusType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<IRolePermissionEntity> = {},
-): IRolePermissionEntity {
+function createValidInit(overrides: Partial<IRolePermissionEntity> = {}): IRolePermissionEntity {
   return {
     id: 'rp-test-id',
     roleId: 'role-1',
@@ -56,45 +51,29 @@ describe('RolePermissionEntity.validate()', () => {
 
   describe('roleId', () => {
     it('should throw when roleId is empty', () => {
-      const entity = new RolePermissionEntity(
-        createValidInit({ roleId: '' }),
-      );
+      const entity = new RolePermissionEntity(createValidInit({ roleId: '' }));
 
-      expect(() => entity.validate()).toThrow(
-        'RolePermission roleId is required',
-      );
+      expect(() => entity.validate()).toThrow('RolePermission roleId is required');
     });
 
     it('should throw when roleId is whitespace only', () => {
-      const entity = new RolePermissionEntity(
-        createValidInit({ roleId: '   ' }),
-      );
+      const entity = new RolePermissionEntity(createValidInit({ roleId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'RolePermission roleId is required',
-      );
+      expect(() => entity.validate()).toThrow('RolePermission roleId is required');
     });
   });
 
   describe('permissionId', () => {
     it('should throw when permissionId is empty', () => {
-      const entity = new RolePermissionEntity(
-        createValidInit({ permissionId: '' }),
-      );
+      const entity = new RolePermissionEntity(createValidInit({ permissionId: '' }));
 
-      expect(() => entity.validate()).toThrow(
-        'RolePermission permissionId is required',
-      );
+      expect(() => entity.validate()).toThrow('RolePermission permissionId is required');
     });
 
     it('should throw when permissionId is whitespace only', () => {
-      const entity = new RolePermissionEntity(
-        createValidInit({ permissionId: '   ' }),
-      );
+      const entity = new RolePermissionEntity(createValidInit({ permissionId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'RolePermission permissionId is required',
-      );
+      expect(() => entity.validate()).toThrow('RolePermission permissionId is required');
     });
   });
 });

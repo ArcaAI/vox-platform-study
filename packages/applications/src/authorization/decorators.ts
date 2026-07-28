@@ -60,11 +60,7 @@ export function Authorize(...permissions: [string, string][]) {
     subject,
   }));
 
-  return applyDecorators(
-    SetMetadata(REQUIRED_PERMISSIONS_KEY, required),
-    SetMetadata(PERMISSION_MODE_KEY, 'AND' as PermissionMode),
-    ApiBearerAuth(),
-  );
+  return applyDecorators(SetMetadata(REQUIRED_PERMISSIONS_KEY, required), SetMetadata(PERMISSION_MODE_KEY, 'AND' as PermissionMode), ApiBearerAuth());
 }
 
 /**
@@ -89,11 +85,7 @@ export function AuthorizeAny(...permissions: [string, string][]) {
     subject,
   }));
 
-  return applyDecorators(
-    SetMetadata(REQUIRED_PERMISSIONS_KEY, required),
-    SetMetadata(PERMISSION_MODE_KEY, 'OR' as PermissionMode),
-    ApiBearerAuth(),
-  );
+  return applyDecorators(SetMetadata(REQUIRED_PERMISSIONS_KEY, required), SetMetadata(PERMISSION_MODE_KEY, 'OR' as PermissionMode), ApiBearerAuth());
 }
 
 /**

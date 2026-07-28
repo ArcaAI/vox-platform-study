@@ -22,10 +22,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: {
-          args: [
-            '--enable-features=SharedArrayBuffer',
-            '--disable-web-security',
-          ],
+          args: ['--enable-features=SharedArrayBuffer', '--disable-web-security'],
         },
       },
     },

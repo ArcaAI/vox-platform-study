@@ -111,9 +111,7 @@ class TestMcpWorkflowIntegration:
     @pytest.mark.asyncio
     async def test_mcp_enabled_calls_terminology_tool(self):
         recorder = StubRecorder()
-        config = StubConfig(
-            verdicts=["PASS"], inferential_verdicts=["SAFE"], policy=_term_policy()
-        )
+        config = StubConfig(verdicts=["PASS"], inferential_verdicts=["SAFE"], policy=_term_policy())
         result = await _run(config, recorder)
         assert result.decision == "PASS"
         assert recorder.calls["call_mcp_tool"] == 1
@@ -125,7 +123,9 @@ class TestMcpWorkflowIntegration:
         # The extracted transcript terms are sent for validation.
         assert "hypertension" in call.args["terms"]
         # It runs BEFORE retrieval / prompt assembly (right after the transcript NER).
-        assert recorder.call_order[:1] == ["call_mcp_tool"] or "call_mcp_tool" in recorder.call_order
+        assert (
+            recorder.call_order[:1] == ["call_mcp_tool"] or "call_mcp_tool" in recorder.call_order
+        )
 
     @pytest.mark.asyncio
     async def test_mcp_no_matching_server_skips_call(self):
@@ -134,7 +134,10 @@ class TestMcpWorkflowIntegration:
         policy = _term_policy(
             mcp_servers=[
                 McpServerConfig(
-                    id="s2", name="other", base_url="http://x", tool_allowlist=["something_else"],
+                    id="s2",
+                    name="other",
+                    base_url="http://x",
+                    tool_allowlist=["something_else"],
                     enabled=True,
                 )
             ]

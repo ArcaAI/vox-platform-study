@@ -224,15 +224,7 @@ describe('useSTT hook interface', () => {
 
   describe('Language locale validation', () => {
     it('should accept valid language locale codes', () => {
-      const validLocales = [
-        'en-US',
-        'en-GB',
-        'es-ES',
-        'fr-FR',
-        'de-DE',
-        'zh-CN',
-        'ja-JP',
-      ];
+      const validLocales = ['en-US', 'en-GB', 'es-ES', 'fr-FR', 'de-DE', 'zh-CN', 'ja-JP'];
 
       validLocales.forEach((locale) => {
         expect(typeof locale).toBe('string');

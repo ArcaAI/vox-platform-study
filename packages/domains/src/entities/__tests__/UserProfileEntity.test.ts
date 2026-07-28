@@ -12,15 +12,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  UserProfileEntity,
-  IUserProfileEntity,
-} from '../generated/core/UserProfileEntity';
+import { UserProfileEntity, IUserProfileEntity } from '../generated/core/UserProfileEntity';
 import { ResourceStatusType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<IUserProfileEntity> = {},
-): IUserProfileEntity {
+function createValidInit(overrides: Partial<IUserProfileEntity> = {}): IUserProfileEntity {
   return {
     id: 'up-test-id',
     firstName: 'Ada',
@@ -88,19 +83,13 @@ describe('UserProfileEntity.validate()', () => {
 
   describe('firstName', () => {
     it('should throw when firstName exceeds 255 characters', () => {
-      const entity = new UserProfileEntity(
-        createValidInit({ firstName: 'x'.repeat(256) }),
-      );
+      const entity = new UserProfileEntity(createValidInit({ firstName: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User profile firstName must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User profile firstName must not exceed 255 characters');
     });
 
     it('should accept firstName exactly 255 characters', () => {
-      const entity = new UserProfileEntity(
-        createValidInit({ firstName: 'x'.repeat(255) }),
-      );
+      const entity = new UserProfileEntity(createValidInit({ firstName: 'x'.repeat(255) }));
 
       expect(() => entity.validate()).not.toThrow();
     });
@@ -108,58 +97,40 @@ describe('UserProfileEntity.validate()', () => {
 
   describe('lastName', () => {
     it('should throw when lastName exceeds 255 characters', () => {
-      const entity = new UserProfileEntity(
-        createValidInit({ lastName: 'x'.repeat(256) }),
-      );
+      const entity = new UserProfileEntity(createValidInit({ lastName: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User profile lastName must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User profile lastName must not exceed 255 characters');
     });
   });
 
   describe('email', () => {
     it('should throw when email exceeds 255 characters', () => {
-      const entity = new UserProfileEntity(
-        createValidInit({ email: `${'x'.repeat(251)}@a.io` }),
-      );
+      const entity = new UserProfileEntity(createValidInit({ email: `${'x'.repeat(251)}@a.io` }));
 
-      expect(() => entity.validate()).toThrow(
-        'User profile email must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User profile email must not exceed 255 characters');
     });
   });
 
   describe('phone', () => {
     it('should throw when phone exceeds 255 characters', () => {
-      const entity = new UserProfileEntity(
-        createValidInit({ phone: '1'.repeat(256) }),
-      );
+      const entity = new UserProfileEntity(createValidInit({ phone: '1'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User profile phone must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User profile phone must not exceed 255 characters');
     });
   });
 
   describe('avatarId', () => {
     it('should throw when avatarId exceeds 255 characters', () => {
-      const entity = new UserProfileEntity(
-        createValidInit({ avatarId: 'x'.repeat(256) }),
-      );
+      const entity = new UserProfileEntity(createValidInit({ avatarId: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User profile avatarId must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User profile avatarId must not exceed 255 characters');
     });
   });
 
   // Backend preferred prompt template soft reference.
   describe('preferredPromptTemplateId', () => {
     it('should carry preferredPromptTemplateId through the constructor', () => {
-      const entity = new UserProfileEntity(
-        createValidInit({ preferredPromptTemplateId: 'tpl-123' }),
-      );
+      const entity = new UserProfileEntity(createValidInit({ preferredPromptTemplateId: 'tpl-123' }));
 
       expect(entity.preferredPromptTemplateId).toBe('tpl-123');
     });
@@ -174,13 +145,9 @@ describe('UserProfileEntity.validate()', () => {
     });
 
     it('should throw when preferredPromptTemplateId exceeds 255 characters', () => {
-      const entity = new UserProfileEntity(
-        createValidInit({ preferredPromptTemplateId: 'x'.repeat(256) }),
-      );
+      const entity = new UserProfileEntity(createValidInit({ preferredPromptTemplateId: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User profile preferredPromptTemplateId must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User profile preferredPromptTemplateId must not exceed 255 characters');
     });
   });
 });

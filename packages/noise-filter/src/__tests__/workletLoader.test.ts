@@ -7,10 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  WORKLET_PROCESSOR_NAME,
-  cleanupWorkletResources,
-} from '../worklets/worklet-loader.js';
+import { WORKLET_PROCESSOR_NAME, cleanupWorkletResources } from '../worklets/worklet-loader.js';
 import { NoiseFilterError, NoiseFilterErrorCode } from '../types/index.js';
 
 describe('worklet-loader constants', () => {
@@ -76,9 +73,7 @@ describe('worklet-loader with mocked AudioContext', () => {
 
       const contextWithoutWorklet = {} as AudioContext;
 
-      await expect(
-        registerRNNoiseWorklet(contextWithoutWorklet)
-      ).rejects.toThrow(NoiseFilterError);
+      await expect(registerRNNoiseWorklet(contextWithoutWorklet)).rejects.toThrow(NoiseFilterError);
     });
   });
 
@@ -106,9 +101,7 @@ describe('worklet-loader with mocked AudioContext', () => {
         },
       } as unknown as AudioContext;
 
-      expect(() => createRNNoiseWorkletNode(unregisteredContext)).toThrow(
-        NoiseFilterError
-      );
+      expect(() => createRNNoiseWorkletNode(unregisteredContext)).toThrow(NoiseFilterError);
     });
 
     it('should throw with correct error code', async () => {
@@ -125,9 +118,7 @@ describe('worklet-loader with mocked AudioContext', () => {
         expect.fail('Should have thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(NoiseFilterError);
-        expect((error as NoiseFilterError).code).toBe(
-          NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED
-        );
+        expect((error as NoiseFilterError).code).toBe(NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED);
       }
     });
 
@@ -141,9 +132,7 @@ describe('worklet-loader with mocked AudioContext', () => {
         expect.fail('Should have thrown');
       } catch (error) {
         expect(error).toBeInstanceOf(NoiseFilterError);
-        expect((error as NoiseFilterError).message).toContain(
-          'registerRNNoiseWorklet'
-        );
+        expect((error as NoiseFilterError).message).toContain('registerRNNoiseWorklet');
       }
     });
   });
@@ -184,9 +173,7 @@ describe('worklet registration flow', () => {
       },
     } as unknown as AudioContext;
 
-    await expect(registerRNNoiseWorklet(failingContext)).rejects.toThrow(
-      NoiseFilterError
-    );
+    await expect(registerRNNoiseWorklet(failingContext)).rejects.toThrow(NoiseFilterError);
   });
 
   it('should include original error in thrown error', async () => {
@@ -217,9 +204,7 @@ describe('edge cases', () => {
       audioWorklet: null,
     } as unknown as AudioContext;
 
-    await expect(
-      registerRNNoiseWorklet(contextWithNullWorklet)
-    ).rejects.toThrow(NoiseFilterError);
+    await expect(registerRNNoiseWorklet(contextWithNullWorklet)).rejects.toThrow(NoiseFilterError);
   });
 
   it('should handle undefined audioWorklet', async () => {
@@ -227,8 +212,6 @@ describe('edge cases', () => {
 
     const contextWithUndefinedWorklet = {} as AudioContext;
 
-    await expect(
-      registerRNNoiseWorklet(contextWithUndefinedWorklet)
-    ).rejects.toThrow(NoiseFilterError);
+    await expect(registerRNNoiseWorklet(contextWithUndefinedWorklet)).rejects.toThrow(NoiseFilterError);
   });
 });

@@ -210,4 +210,3 @@ export interface DiarizationInitOptions {
   /** Progress callback for model download */
   onDownloadProgress?: (progress: number) => void;
 }
-

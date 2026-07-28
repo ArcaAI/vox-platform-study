@@ -40,17 +40,13 @@ describe('PgBouncer txn-mode — RLS GUC leak (Task 1.8)', () => {
     // Inside the txn — must observe the tag.
     const inside = await prisma.$transaction(async (tx) => {
       await tx.$queryRawUnsafe(`SELECT set_config('app.tenant_id', '${tag}', true)`);
-      const rows = await tx.$queryRawUnsafe<{ v: string }[]>(
-        `SELECT current_setting('app.tenant_id', true) AS v`,
-      );
+      const rows = await tx.$queryRawUnsafe<{ v: string }[]>(`SELECT current_setting('app.tenant_id', true) AS v`);
       return rows[0]?.v;
     });
     expect(inside).toBe(tag);
 
     // After the txn — must be cleared (empty string per current_setting(..., true) when missing-OK).
-    const after = await prisma.$queryRawUnsafe<{ v: string }[]>(
-      `SELECT current_setting('app.tenant_id', true) AS v`,
-    );
+    const after = await prisma.$queryRawUnsafe<{ v: string }[]>(`SELECT current_setting('app.tenant_id', true) AS v`);
     expect(after[0]?.v ?? '').toBe('');
   });
 
@@ -67,9 +63,7 @@ describe('PgBouncer txn-mode — RLS GUC leak (Task 1.8)', () => {
     // firing, at least one of these will see `tag` instead of ''.
     const observed = new Set<string>();
     for (let i = 0; i < 20; i++) {
-      const rows = await prisma.$queryRawUnsafe<{ v: string }[]>(
-        `SELECT current_setting('app.tenant_id', true) AS v`,
-      );
+      const rows = await prisma.$queryRawUnsafe<{ v: string }[]>(`SELECT current_setting('app.tenant_id', true) AS v`);
       observed.add(rows[0]?.v ?? '');
     }
     expect(observed.has(tag)).toBe(false);
@@ -80,13 +74,9 @@ describe('PgBouncer txn-mode — RLS GUC leak (Task 1.8)', () => {
     for (let i = 0; i < 30; i++) {
       const tag = `tenant-rls3-${i}`;
       const result = await prisma.$transaction(async (tx) => {
-        const before = await tx.$queryRawUnsafe<{ v: string }[]>(
-          `SELECT current_setting('app.tenant_id', true) AS v`,
-        );
+        const before = await tx.$queryRawUnsafe<{ v: string }[]>(`SELECT current_setting('app.tenant_id', true) AS v`);
         await tx.$queryRawUnsafe(`SELECT set_config('app.tenant_id', '${tag}', true)`);
-        const after = await tx.$queryRawUnsafe<{ v: string }[]>(
-          `SELECT current_setting('app.tenant_id', true) AS v`,
-        );
+        const after = await tx.$queryRawUnsafe<{ v: string }[]>(`SELECT current_setting('app.tenant_id', true) AS v`);
         return { before: before[0]?.v ?? '', after: after[0]?.v ?? '' };
       });
       // The "before" check is the critical anti-leak assertion: any backend

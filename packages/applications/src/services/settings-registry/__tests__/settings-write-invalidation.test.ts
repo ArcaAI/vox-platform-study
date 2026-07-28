@@ -79,14 +79,7 @@ describe('settings write → cross-instance eviction (no TTL wait)', () => {
 
     // ── instance A (the writer) ────────────────────────────────────────────
     const emitterA = new EventEmitter2();
-    const appSettingsA = new AppSettingsService(
-      repoA as never,
-      emitterA as never,
-      cls as never,
-      scheduler as never,
-      bus.cache as never,
-      undefined,
-    );
+    const appSettingsA = new AppSettingsService(repoA as never, emitterA as never, cls as never, scheduler as never, bus.cache as never, undefined);
     // Stand in for Nest's @OnEvent binding.
     emitterA.on(SysEventType.ResourceUpdated, (event: SysEvent) => appSettingsA.handleGlobalSettingUpdated(event));
     await appSettingsA.cacheAppSettings();

@@ -354,9 +354,7 @@ def _resolve_flag(policy_value: bool | None, *, env_default: bool) -> bool:
     return env_default if policy_value is None else policy_value
 
 
-def _build_runtime_judge(
-    *, provider: str | None = None, model: str | None = None
-) -> JudgeClient:
+def _build_runtime_judge(*, provider: str | None = None, model: str | None = None) -> JudgeClient:
     """Build the calibrated runtime judge from the DB-selected provider/model.
 
     the SELECTION (provider + model) comes from the SYSTEM
@@ -687,7 +685,9 @@ async def extract_entities(payload: ExtractEntitiesInput) -> EntitiesResult:
     batch = _TrajectoryBatch(settings, payload.trajectory)
     # the policy override (when non-null) wins over the env
     # kill-switch; None falls through to ``HARNESS_NER_PRIORS_ENABLED``.
-    ner_priors_enabled = _resolve_flag(payload.ner_priors_enabled, env_default=settings.ner_priors_enabled)
+    ner_priors_enabled = _resolve_flag(
+        payload.ner_priors_enabled, env_default=settings.ner_priors_enabled
+    )
     if payload.reuse_priors and ner_priors_enabled:
         priors = await _load_coded_priors(settings, payload)
         if priors:
@@ -810,7 +810,9 @@ async def call_mcp_tool(payload: CallMcpToolInput) -> McpToolCallResult:
         )
     except McpClientError as exc:
         error_code = (
-            "server_error" if exc.is_server_error else "timeout" if exc.is_timeout else "client_error"
+            "server_error"
+            if exc.is_server_error
+            else "timeout" if exc.is_timeout else "client_error"
         )
         activity.logger.warning(
             "harness.mcp.call_failed",
@@ -1083,8 +1085,10 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     # history; on offload the inline ``content`` is emptied and the workflow threads
     # ``content_ref`` to the consumers (note-NER / sensors / persist) that resolve it.
     content_inline, content_ref = await _offload_text(settings, result.content)
-    out = result if content_ref is None else result.model_copy(
-        update={"content": content_inline, "content_ref": content_ref}
+    out = (
+        result
+        if content_ref is None
+        else result.model_copy(update={"content": content_inline, "content_ref": content_ref})
     )
 
     # LLM_CALL step embeds the ``stats`` verbatim;
@@ -1138,7 +1142,9 @@ async def retrieve_context(payload: RetrieveContextInput) -> RetrievedContext:
     batch = _TrajectoryBatch(settings, payload.trajectory)
     # the policy override (when non-null) wins over the env
     # kill-switch; None falls through to ``HARNESS_RETRIEVAL_ENABLED``.
-    retrieval_enabled = _resolve_flag(payload.retrieval_enabled, env_default=settings.retrieval.enabled)
+    retrieval_enabled = _resolve_flag(
+        payload.retrieval_enabled, env_default=settings.retrieval.enabled
+    )
     if not retrieval_enabled:
         batch.record(
             step_type=STEP_RETRIEVAL,
@@ -1184,7 +1190,9 @@ async def run_sensors(payload: RunSensorsInput) -> SensorRunOutput:
     settings = get_settings()
     started = _now()
     note_text = await _resolve_ref(settings, payload.note_text, payload.note_text_ref)
-    transcript_text = await _resolve_ref(settings, payload.transcript_text, payload.transcript_text_ref)
+    transcript_text = await _resolve_ref(
+        settings, payload.transcript_text, payload.transcript_text_ref
+    )
     output = run_computational_sensors(
         note_text=note_text,
         transcript_text=transcript_text,
@@ -1389,7 +1397,11 @@ def _build_assurance_publisher(
         except Exception as exc:  # noqa: BLE001 — live feed is fire-and-forget
             activity.logger.warning(
                 "harness.assurance_event.failed",
-                extra={"consultation_id": consultation_id, "claim_id": claim_ref, "error": str(exc)},
+                extra={
+                    "consultation_id": consultation_id,
+                    "claim_id": claim_ref,
+                    "error": str(exc),
+                },
             )
 
     return _publish
@@ -1607,9 +1619,7 @@ async def run_inferential_sensors(payload: RunInferentialSensorsInput) -> Infere
         # the policy override (when non-null) wins over the env
         # kill-switch; None falls through to ``HARNESS_ATOMIC_FACT_ENABLED``.
         if _resolve_flag(payload.atomic_fact_enabled, env_default=settings.atomic_fact_enabled):
-            tasks.append(
-                _run_atomic_fact_sensor(settings, ctx, thresholds.atomic_fact_threshold)
-            )
+            tasks.append(_run_atomic_fact_sensor(settings, ctx, thresholds.atomic_fact_threshold))
         results = list(await asyncio.gather(*tasks))
         return await _emit(_assemble_inferential_output(results, verdict_cache))
     finally:
@@ -2023,7 +2033,9 @@ async def escalate_gate(payload: EscalateInput) -> EscalateResult:
             job_id=payload.job_id,
             idempotency_key=_idempotency_key(),
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort: an escalation record must never fail the gate
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 — best-effort: an escalation record must never fail the gate
         activity.logger.warning(
             "harness.gate.escalation_record_failed",
             extra={

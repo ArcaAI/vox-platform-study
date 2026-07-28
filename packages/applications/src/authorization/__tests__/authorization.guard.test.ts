@@ -7,33 +7,30 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import {
-  AuthorizationGuard,
-  REQUIRED_PERMISSIONS_KEY,
-  SKIP_AUTH_KEY,
-  PERMISSION_MODE_KEY,
-  RequiredPermission,
-} from '../authorization.guard';
+import { AuthorizationGuard, REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY, RequiredPermission } from '../authorization.guard';
 import { PolicyEngine, AppAbility } from '../policy.engine';
 
 // Mock CASL ability
-const createMockAbility = (permissions: Record<string, boolean>): AppAbility => ({
-  can: vi.fn((action: string, subject: string) => {
-    const key = `${action}:${subject}`;
-    return permissions[key] ?? false;
-  }),
-  cannot: vi.fn((action: string, subject: string) => {
-    const key = `${action}:${subject}`;
-    return !(permissions[key] ?? false);
-  }),
-  relevantRuleFor: vi.fn(),
-} as unknown as AppAbility);
+const createMockAbility = (permissions: Record<string, boolean>): AppAbility =>
+  ({
+    can: vi.fn((action: string, subject: string) => {
+      const key = `${action}:${subject}`;
+      return permissions[key] ?? false;
+    }),
+    cannot: vi.fn((action: string, subject: string) => {
+      const key = `${action}:${subject}`;
+      return !(permissions[key] ?? false);
+    }),
+    relevantRuleFor: vi.fn(),
+  }) as unknown as AppAbility;
 
 // Mock ExecutionContext
-const createMockContext = (options: {
-  user?: { id: string; tenantId?: string };
-  params?: Record<string, string>;
-} = {}): ExecutionContext => {
+const createMockContext = (
+  options: {
+    user?: { id: string; tenantId?: string };
+    params?: Record<string, string>;
+  } = {},
+): ExecutionContext => {
   const request = {
     params: options.params || {},
     ability: null,
@@ -271,9 +268,7 @@ describe('AuthorizationGuard', () => {
         (policyEngine.buildAbility as any).mockResolvedValue(mockAbility);
 
         await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
-        await expect(guard.canActivate(context)).rejects.toThrow(
-          'Requires at least one of: manage:User, read:AuditLog'
-        );
+        await expect(guard.canActivate(context)).rejects.toThrow('Requires at least one of: manage:User, read:AuditLog');
       });
     });
 

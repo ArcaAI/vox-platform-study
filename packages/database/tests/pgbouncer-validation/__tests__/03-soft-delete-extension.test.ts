@@ -15,10 +15,7 @@
 //              honours the explicit override
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  createExtendedPooledPrisma,
-  createPooledPrisma,
-} from '../_helpers/clients.ts';
+import { createExtendedPooledPrisma, createPooledPrisma } from '../_helpers/clients.ts';
 
 const base = createPooledPrisma();
 const ext = createExtendedPooledPrisma();
@@ -70,10 +67,7 @@ describe('PgBouncer txn-mode — soft-delete extension (Task 1.9)', () => {
       where: { key: { startsWith: fixtureKey } },
       orderBy: { key: 'asc' },
     });
-    expect(rows.map((r) => r.key)).toEqual([
-      `${fixtureKey}-alive-1`,
-      `${fixtureKey}-alive-2`,
-    ]);
+    expect(rows.map((r) => r.key)).toEqual([`${fixtureKey}-alive-1`, `${fixtureKey}-alive-2`]);
   });
 
   it('extended findFirst hides DELETED rows through the pooler', async () => {
@@ -88,11 +82,7 @@ describe('PgBouncer txn-mode — soft-delete extension (Task 1.9)', () => {
       where: { key: { startsWith: fixtureKey } },
       orderBy: { key: 'asc' },
     });
-    expect(rows.map((r) => r.key)).toEqual([
-      `${fixtureKey}-alive-1`,
-      `${fixtureKey}-alive-2`,
-      `${fixtureKey}-dead`,
-    ]);
+    expect(rows.map((r) => r.key)).toEqual([`${fixtureKey}-alive-1`, `${fixtureKey}-alive-2`, `${fixtureKey}-dead`]);
   });
 
   it('extended findMany honours explicit resourceStatus override', async () => {

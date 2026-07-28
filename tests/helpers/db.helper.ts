@@ -188,10 +188,7 @@ export async function isDatabaseHealthy(): Promise<boolean> {
 /**
  * Wait for the database to be ready
  */
-export async function waitForDatabase(
-  maxRetries = 30,
-  retryInterval = 1000
-): Promise<void> {
+export async function waitForDatabase(maxRetries = 30, retryInterval = 1000): Promise<void> {
   for (let i = 0; i < maxRetries; i++) {
     if (await isDatabaseHealthy()) {
       return;
@@ -214,18 +211,14 @@ export async function executeRawQuery<T = unknown>(query: string): Promise<T> {
  */
 export async function getTableCount(tableName: string): Promise<number> {
   const client = await getPrismaClient();
-  const result = await client.$queryRawUnsafe<Array<{ count: bigint }>>(
-    `SELECT COUNT(*) as count FROM "${tableName}"`
-  );
+  const result = await client.$queryRawUnsafe<Array<{ count: bigint }>>(`SELECT COUNT(*) as count FROM "${tableName}"`);
   return Number(result[0]?.count || 0);
 }
 
 /**
  * Create a transaction wrapper for tests
  */
-export async function withTransaction<T>(
-  fn: (tx: any) => Promise<T>
-): Promise<T> {
+export async function withTransaction<T>(fn: (tx: any) => Promise<T>): Promise<T> {
   const client = await getPrismaClient();
   return client.$transaction(fn as any);
 }
@@ -249,27 +242,43 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
     healthPath: '/api/v1/health',
     debugEnvVar: 'DEBUG_API',
   },
-  'stt': {
+  stt: {
     name: 'STT',
     command: [
-      'conda', 'run', '-n', 'arcaenv', '--no-capture-output',
-      'uvicorn', 'stt.main:app',
-      '--host', '0.0.0.0',
-      '--port', process.env.STT_PORT || '8861',
-      '--app-dir', 'apps/stt/src',
+      'conda',
+      'run',
+      '-n',
+      'arcaenv',
+      '--no-capture-output',
+      'uvicorn',
+      'stt.main:app',
+      '--host',
+      '0.0.0.0',
+      '--port',
+      process.env.STT_PORT || '8861',
+      '--app-dir',
+      'apps/stt/src',
     ],
     baseUrl: process.env.STT_URL || 'http://localhost:8861',
     healthPath: '/api/v1/health',
     debugEnvVar: 'DEBUG_STT',
   },
-  'smr': {
+  smr: {
     name: 'SMR',
     command: [
-      'conda', 'run', '-n', 'arcaenv', '--no-capture-output',
-      'uvicorn', 'smr.main:app',
-      '--host', '0.0.0.0',
-      '--port', process.env.SMR_PORT || '8862',
-      '--app-dir', 'apps/smr/src',
+      'conda',
+      'run',
+      '-n',
+      'arcaenv',
+      '--no-capture-output',
+      'uvicorn',
+      'smr.main:app',
+      '--host',
+      '0.0.0.0',
+      '--port',
+      process.env.SMR_PORT || '8862',
+      '--app-dir',
+      'apps/smr/src',
     ],
     baseUrl: process.env.SMR_URL || 'http://localhost:8862',
     healthPath: '/api/v1/health',
@@ -278,11 +287,20 @@ const SERVICE_CONFIGS: Record<string, TestServiceConfig> = {
   nlp: {
     name: 'NLP',
     command: [
-      'conda', 'run', '-n', 'arcaenv', '--no-capture-output',
-      'uvicorn', '--factory', 'nlp.app:get_app',
-      '--host', '0.0.0.0',
-      '--port', process.env.NLP_PORT || '8864',
-      '--app-dir', 'apps/nlp/src',
+      'conda',
+      'run',
+      '-n',
+      'arcaenv',
+      '--no-capture-output',
+      'uvicorn',
+      '--factory',
+      'nlp.app:get_app',
+      '--host',
+      '0.0.0.0',
+      '--port',
+      process.env.NLP_PORT || '8864',
+      '--app-dir',
+      'apps/nlp/src',
     ],
     baseUrl: process.env.NLP_URL || 'http://localhost:8864',
     healthPath: '/api/v1/health',
@@ -341,13 +359,7 @@ export function startApiServer(): ChildProcess {
 /**
  * Wait for a service to become healthy by polling its health endpoint.
  */
-export async function waitForService(
-  name: string,
-  baseUrl: string,
-  healthPath: string,
-  maxRetries = 60,
-  retryInterval = 1000
-): Promise<void> {
+export async function waitForService(name: string, baseUrl: string, healthPath: string, maxRetries = 60, retryInterval = 1000): Promise<void> {
   const healthUrl = `${baseUrl}${healthPath}`;
 
   for (let i = 0; i < maxRetries; i++) {
@@ -378,7 +390,7 @@ export async function waitForService(
 export async function waitForApi(
   baseUrl: string = process.env.API_URL || 'http://localhost:8968',
   maxRetries = 60,
-  retryInterval = 1000
+  retryInterval = 1000,
 ): Promise<void> {
   return waitForService('API', baseUrl, '/api/v1/health', maxRetries, retryInterval);
 }
@@ -386,11 +398,7 @@ export async function waitForApi(
 /**
  * Wait for a Python microservice to be ready by service key.
  */
-export async function waitForMicroservice(
-  serviceKey: 'stt' | 'smr' | 'nlp',
-  maxRetries = 60,
-  retryInterval = 1000
-): Promise<void> {
+export async function waitForMicroservice(serviceKey: 'stt' | 'smr' | 'nlp', maxRetries = 60, retryInterval = 1000): Promise<void> {
   const config = SERVICE_CONFIGS[serviceKey];
   if (!config) {
     throw new Error(`Unknown service: ${serviceKey}`);

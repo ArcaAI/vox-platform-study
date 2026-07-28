@@ -89,10 +89,7 @@ export function CompatConsultation() {
   // `onProviderSwitched` fires for BOTH the user button below AND a backend
   // auto-switch on an outage, so this one banner covers both.
   const provider = useArcaSttProvider({
-    onProviderSwitched: (info) =>
-      setSwitchBanner(
-        `Transcription switched to ${info.toPipeline.name ?? info.toPipeline.id} (${info.reason})`,
-      ),
+    onProviderSwitched: (info) => setSwitchBanner(`Transcription switched to ${info.toPipeline.name ?? info.toPipeline.id} (${info.reason})`),
     onSwitchFailed: (err) => setSwitchBanner(`Provider switch failed: ${err.message}`),
   });
 
@@ -130,16 +127,13 @@ export function CompatConsultation() {
   };
 
   const enhanced =
-    summary && (summary.summary as Partial<EnhancedMedicalSummary>).encounter_summary
-      ? (summary.summary as EnhancedMedicalSummary)
-      : null;
+    summary && (summary.summary as Partial<EnhancedMedicalSummary>).encounter_summary ? (summary.summary as EnhancedMedicalSummary) : null;
 
   return (
     <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 720, margin: '2rem auto', padding: '0 1rem' }}>
       <h1>HOPE v2 compat — consultation</h1>
       <p style={{ color: '#666' }}>
-        Session: <strong>{mgr.session?.id ?? '—'}</strong> · status:{' '}
-        <strong>{mgr.session?.status ?? 'none'}</strong>
+        Session: <strong>{mgr.session?.id ?? '—'}</strong> · status: <strong>{mgr.session?.status ?? 'none'}</strong>
         {mgr.isLoading ? ' · working…' : ''}
       </p>
 
@@ -200,8 +194,7 @@ export function CompatConsultation() {
               {/* device_id / chunk_id are what you tagged; speaker_id is derived
                   from diarization (the only post-mix source signal — §4/E3). */}
               <small style={{ color: '#888', marginLeft: '0.5rem' }}>
-                [{String(l.meta?.device_id ?? '—')} · {String(l.meta?.chunk_id ?? '—')} ·{' '}
-                {String(l.meta?.speaker_id ?? '—')}]
+                [{String(l.meta?.device_id ?? '—')} · {String(l.meta?.chunk_id ?? '—')} · {String(l.meta?.speaker_id ?? '—')}]
               </small>
             </li>
           ))}

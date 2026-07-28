@@ -74,7 +74,10 @@ export class EntitlementCapabilitiesResponse {
   @ApiProperty({ description: 'Global enforcement kill-switch state (entitlements.enabled). Ships OFF by default.' })
   enforcementEnabled: boolean;
 
-  @ApiProperty({ description: 'Quantity capabilities C1–C6 (users, departments, prompt templates, ASR pipelines, API keys, storage bytes)', type: [CapabilityUsageRow] })
+  @ApiProperty({
+    description: 'Quantity capabilities C1–C6 (users, departments, prompt templates, ASR pipelines, API keys, storage bytes)',
+    type: [CapabilityUsageRow],
+  })
   quantities: CapabilityUsageRow[];
 
   @ApiProperty({ description: 'Rolling-monthly meters M1–M3', type: [CapabilityUsageRow] })

@@ -70,9 +70,7 @@ describe('ConfigResolver.resolvePipelineToggles', () => {
   });
 
   it('uses the SYSTEM default as the platform default below an absent tenant row', async () => {
-    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(
-      systemRow({ autoSummaryEnabled: true, autoNerEnabled: true, harnessEnabled: true }),
-    );
+    pipelinePolicyRepository.findSystemDefault.mockResolvedValue(systemRow({ autoSummaryEnabled: true, autoNerEnabled: true, harnessEnabled: true }));
 
     const r = await resolver.resolvePipelineToggles({ tenantId: TENANT });
 
@@ -94,10 +92,7 @@ describe('ConfigResolver.resolvePipelineToggles', () => {
   });
 
   it('lets a department row override the tenant row', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
-      tenantRow({ autoSummaryEnabled: true }),
-      deptRow({ autoSummaryEnabled: false }),
-    ]);
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ autoSummaryEnabled: true }), deptRow({ autoSummaryEnabled: false })]);
 
     const r = await resolver.resolvePipelineToggles({ tenantId: TENANT, departmentId: DEPT });
 
@@ -106,10 +101,7 @@ describe('ConfigResolver.resolvePipelineToggles', () => {
   });
 
   it('lets a doctor row override the department row for a DOCTOR-max setting', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
-      deptRow({ autoSummaryEnabled: true }),
-      doctorRow({ autoSummaryEnabled: false }),
-    ]);
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([deptRow({ autoSummaryEnabled: true }), doctorRow({ autoSummaryEnabled: false })]);
 
     const r = await resolver.resolvePipelineToggles({ tenantId: TENANT, departmentId: DEPT, doctorId: DOCTOR });
 
@@ -131,10 +123,7 @@ describe('ConfigResolver.resolvePipelineToggles', () => {
   });
 
   it('allows a department row to set harnessEnabled (within max scope)', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
-      tenantRow({ harnessEnabled: false }),
-      deptRow({ harnessEnabled: true }),
-    ]);
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ harnessEnabled: false }), deptRow({ harnessEnabled: true })]);
 
     const r = await resolver.resolvePipelineToggles({ tenantId: TENANT, departmentId: DEPT });
 
@@ -234,10 +223,7 @@ describe('ConfigResolver.resolveEffectiveDnaStyleEnabled', () => {
   });
 
   it('doctor opt-OUT under an enabled tenant ⇒ effective false', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
-      tenantRow({ dnaStyleEnabled: true }),
-      doctorRow({ dnaStyleEnabled: false }),
-    ]);
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaStyleEnabled: true }), doctorRow({ dnaStyleEnabled: false })]);
 
     const r = await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
 
@@ -247,10 +233,7 @@ describe('ConfigResolver.resolveEffectiveDnaStyleEnabled', () => {
   });
 
   it('doctor cannot opt IN when the tenant flag is off ⇒ effective false', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
-      tenantRow({ dnaStyleEnabled: false }),
-      doctorRow({ dnaStyleEnabled: true }),
-    ]);
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaStyleEnabled: false }), doctorRow({ dnaStyleEnabled: true })]);
 
     const r = await resolver.resolveEffectiveDnaStyleEnabled({ tenantId: TENANT, doctorId: DOCTOR });
 
@@ -295,10 +278,7 @@ describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled (TASK-551 double-ga
   });
 
   it('tenant OFF ⇒ effective OFF even when the doctor has DNA on', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
-      tenantRow({ dnaRedactionEnabled: false }),
-      doctorRow({ dnaStyleEnabled: true }),
-    ]);
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: false }), doctorRow({ dnaStyleEnabled: true })]);
 
     const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
 
@@ -307,10 +287,7 @@ describe('ConfigResolver.resolveEffectiveDnaRedactionEnabled (TASK-551 double-ga
   });
 
   it('doctor DNA opt-OUT under an enabled tenant ⇒ effective OFF', async () => {
-    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([
-      tenantRow({ dnaRedactionEnabled: true }),
-      doctorRow({ dnaStyleEnabled: false }),
-    ]);
+    pipelinePolicyRepository.findCascadeRows.mockResolvedValue([tenantRow({ dnaRedactionEnabled: true }), doctorRow({ dnaStyleEnabled: false })]);
 
     const r = await resolver.resolveEffectiveDnaRedactionEnabled({ tenantId: TENANT, doctorId: DOCTOR });
 

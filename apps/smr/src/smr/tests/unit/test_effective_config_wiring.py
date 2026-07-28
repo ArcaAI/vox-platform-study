@@ -100,7 +100,9 @@ class TestRefreshRuntimeLimits:
     async def test_pulls_and_applies_in_one_step(self) -> None:
         payload = {
             "service": "smr",
-            "runtimeProfiles": [{"provider": "ollama", "modelSlug": "", "maxConcurrent": 7, "timeoutS": 30}],
+            "runtimeProfiles": [
+                {"provider": "ollama", "modelSlug": "", "maxConcurrent": 7, "timeoutS": 30}
+            ],
         }
         client = EffectiveConfigClient(
             base_url="http://gateway.test/api/v1",
@@ -120,7 +122,9 @@ class TestRefreshRuntimeLimits:
         assert state.provider_timeouts["ollama"] == 30
 
     async def test_is_a_no_op_when_no_client_is_wired(self) -> None:
-        state = SimpleNamespace(provider_semaphores={"ollama": ResizableSemaphore(4)}, provider_timeouts={})
+        state = SimpleNamespace(
+            provider_semaphores={"ollama": ResizableSemaphore(4)}, provider_timeouts={}
+        )
 
         await refresh_runtime_limits(state)  # must not raise
 
@@ -154,15 +158,24 @@ class TestStatelessGatewayContract:
         semaphores = {"ollama": ResizableSemaphore(4)}
         timeouts: dict[str, int] = {}
         rogue = snapshot(
-            [profile("ollama", maxConcurrent=8, defaultModel="llama3:8b", model="mistral", selectedProvider="vllm")]
+            [
+                profile(
+                    "ollama",
+                    maxConcurrent=8,
+                    defaultModel="llama3:8b",
+                    model="mistral",
+                    selectedProvider="vllm",
+                )
+            ]
         )
 
         apply_provider_limits(rogue, semaphores, timeouts)
 
         state = {"semaphores": {k: v.limit for k, v in semaphores.items()}, "timeouts": timeouts}
-        assert state == {"semaphores": {"ollama": 8}, "timeouts": {}}, (
-            "only capacity/timeout may be applied; selection fields must be inert"
-        )
+        assert state == {
+            "semaphores": {"ollama": 8},
+            "timeouts": {},
+        }, "only capacity/timeout may be applied; selection fields must be inert"
 
     def test_config_module_docstring_still_declares_the_contract(self) -> None:
         import smr.core.config as config_module

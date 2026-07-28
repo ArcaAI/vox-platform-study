@@ -4,14 +4,14 @@ import { getJson } from '@/shared/api';
 import type { ConsumptionRollup, OpenSockets, PlatformMetrics } from './types';
 
 export function getPlatformMetrics(): Promise<PlatformMetrics> {
-    return getJson('admin/platform/metrics');
+  return getJson('admin/platform/metrics');
 }
 
 export function getOpenSockets(): Promise<OpenSockets> {
-    return getJson('admin/platform/sockets');
+  return getJson('admin/platform/sockets');
 }
 
 /** Platform-wide when tenantId is omitted; per-tenant rollup otherwise. */
 export function getConsumption(tenantId?: string): Promise<ConsumptionRollup> {
-    return getJson('admin/platform/consumption', { tenantId });
+  return getJson('admin/platform/consumption', { tenantId });
 }

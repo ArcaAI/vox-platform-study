@@ -14,17 +14,17 @@ const AI_SERVICES_BASE = 'admin/ai-services';
 
 /** Guardrail health, proxied verbatim from the service's own `/api/health`. */
 export function getGuardrailStatus(): Promise<GuardrailStatus> {
-    return getJson(`${AI_SERVICES_BASE}/guardrail/status`);
+  return getJson(`${AI_SERVICES_BASE}/guardrail/status`);
 }
 
 /** Guardrail read-only config: medical-validation settings + analysis types. */
 export function getGuardrailConfig(): Promise<GuardrailConfig> {
-    return getJson(`${AI_SERVICES_BASE}/guardrail/config`);
+  return getJson(`${AI_SERVICES_BASE}/guardrail/config`);
 }
 
 /** NLP health, proxied verbatim: per-model component checks with load status. */
 export function getNlpStatus(): Promise<NlpStatus> {
-    return getJson(`${AI_SERVICES_BASE}/nlp/status`);
+  return getJson(`${AI_SERVICES_BASE}/nlp/status`);
 }
 
 /**
@@ -33,5 +33,5 @@ export function getNlpStatus(): Promise<NlpStatus> {
  * pinned server-side and a foreign id is 404 (no existence leak).
  */
 export function getAgenticInstructions(params: AgenticInstructionsParams = {}): Promise<AgenticInstructions> {
-    return getJson('admin/agentic/instructions', { ...params });
+  return getJson('admin/agentic/instructions', { ...params });
 }

@@ -65,7 +65,9 @@ class KokoroProvider:
         else:
             from kokoro import KPipeline  # lazy, heavy [local] dep
 
-            pipeline = await asyncio.to_thread(lambda: KPipeline(lang_code="a"))  # 'a' = American English
+            pipeline = await asyncio.to_thread(
+                lambda: KPipeline(lang_code="a")
+            )  # 'a' = American English
 
         TTS_MODEL_LOADED.labels(model="kokoro").set(1)
         logger.info("tts.kokoro_loaded", device=self._config.device)
@@ -106,7 +108,9 @@ class KokoroProvider:
 
         if req.fmt == AudioFormat.PCM:
             for audio in segments:
-                yield AudioChunk(encode_pcm(np.asarray(audio, dtype=np.float32), _SAMPLE_RATE, req.sample_rate))
+                yield AudioChunk(
+                    encode_pcm(np.asarray(audio, dtype=np.float32), _SAMPLE_RATE, req.sample_rate)
+                )
             return
 
         pcm = b"".join(

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { TreeProvider, TreeView, TreeNode, TreeNodeTrigger, TreeLabel } from '../../../registries/kibo-ui/tree'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { TreeProvider, TreeView, TreeNode, TreeNodeTrigger, TreeLabel } from '../../../registries/kibo-ui/tree';
 
 describe('Tree', () => {
   it('renders without crashing', () => {
@@ -13,8 +13,8 @@ describe('Tree', () => {
             </TreeNodeTrigger>
           </TreeNode>
         </TreeView>
-      </TreeProvider>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </TreeProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

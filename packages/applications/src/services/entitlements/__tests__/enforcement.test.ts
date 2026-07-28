@@ -44,11 +44,7 @@ describe('selectResourcesToDisable (newest-first soft-disable)', () => {
   });
 
   it('keeps the oldest `limit` and disables the newest overflow', () => {
-    const rows = [
-      r('newest', '2026-03-01'),
-      r('oldest', '2026-01-01'),
-      r('middle', '2026-02-01'),
-    ];
+    const rows = [r('newest', '2026-03-01'), r('oldest', '2026-01-01'), r('middle', '2026-02-01')];
     // limit 1 → keep oldest, disable the two newest.
     expect(selectResourcesToDisable(rows, 1)).toEqual(['middle', 'newest']);
     // limit 2 → keep two oldest, disable only the newest.

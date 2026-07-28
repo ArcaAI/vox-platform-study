@@ -7,7 +7,11 @@ import type { TenantConfig } from '../../api/tenants';
 // ---------------------------------------------------------------------------
 
 vi.mock('@arcaai/ui/badge', () => ({
-  Badge: ({ children, ...props }: any) => <span data-testid="badge" {...props}>{children}</span>,
+  Badge: ({ children, ...props }: any) => (
+    <span data-testid="badge" {...props}>
+      {children}
+    </span>
+  ),
 }));
 
 vi.mock('@arcaai/ui/button', () => ({
@@ -103,9 +107,33 @@ const PROVIDERS = [
 
 function guardrailConfigs(): TenantConfig[] {
   return [
-    { id: 'g-provider', key: 'default-guardrail-provider', name: 'Default Guardrail Provider', value: 'lm-studio', dataType: 'String', namespace: 'guardrail', version: 3 },
-    { id: 'g-model', key: 'default-guardrail-model', name: 'Default Guardrail Model', value: 'granite-guardian-4.1-8b', dataType: 'String', namespace: 'guardrail', version: 4 },
-    { id: 'g-azure', key: 'guardrail-azure-deployment', name: 'Guardrail Azure Deployment', value: '', dataType: 'String', namespace: 'guardrail', version: 2 },
+    {
+      id: 'g-provider',
+      key: 'default-guardrail-provider',
+      name: 'Default Guardrail Provider',
+      value: 'lm-studio',
+      dataType: 'String',
+      namespace: 'guardrail',
+      version: 3,
+    },
+    {
+      id: 'g-model',
+      key: 'default-guardrail-model',
+      name: 'Default Guardrail Model',
+      value: 'granite-guardian-4.1-8b',
+      dataType: 'String',
+      namespace: 'guardrail',
+      version: 4,
+    },
+    {
+      id: 'g-azure',
+      key: 'guardrail-azure-deployment',
+      name: 'Guardrail Azure Deployment',
+      value: '',
+      dataType: 'String',
+      namespace: 'guardrail',
+      version: 2,
+    },
   ];
 }
 

@@ -101,7 +101,10 @@ describe('getPrismaClientWithVault (Phase 5 Task 5.5)', () => {
 
     const secrets = {
       requestDbCredential: vi.fn(async () => ({
-        username: 'u', password: 'p', leaseId: 'lid', ttlSec: 60,
+        username: 'u',
+        password: 'p',
+        leaseId: 'lid',
+        ttlSec: 60,
       })),
     };
 
@@ -127,7 +130,10 @@ describe('getPrismaClientWithVault (Phase 5 Task 5.5)', () => {
 
     const secrets = {
       requestDbCredential: vi.fn(async () => ({
-        username: 'u', password: 'p', leaseId: 'lid', ttlSec: 60,
+        username: 'u',
+        password: 'p',
+        leaseId: 'lid',
+        ttlSec: 60,
       })),
     };
 
@@ -145,7 +151,10 @@ describe('getPrismaClientWithVault (Phase 5 Task 5.5)', () => {
 
     const secrets = {
       requestDbCredential: vi.fn(async () => ({
-        username: 'u', password: 'p', leaseId: 'lid', ttlSec: 60,
+        username: 'u',
+        password: 'p',
+        leaseId: 'lid',
+        ttlSec: 60,
       })),
     };
 
@@ -159,7 +168,10 @@ describe('getPrismaClientWithVault (Phase 5 Task 5.5)', () => {
   it('forwards the constructed adapter into PrismaClient', async () => {
     const secrets = {
       requestDbCredential: vi.fn(async () => ({
-        username: 'u', password: 'p', leaseId: 'lid', ttlSec: 60,
+        username: 'u',
+        password: 'p',
+        leaseId: 'lid',
+        ttlSec: 60,
       })),
     };
 
@@ -180,7 +192,10 @@ describe('VaultPrismaClient class API (Phase 5 Task 5.5)', () => {
   it('exposes the current PrismaClient via `.client`', async () => {
     const secrets = {
       requestDbCredential: vi.fn(async () => ({
-        username: 'u', password: 'p', leaseId: 'lid', ttlSec: 60,
+        username: 'u',
+        password: 'p',
+        leaseId: 'lid',
+        ttlSec: 60,
       })),
     };
 
@@ -229,7 +244,10 @@ describe('VaultPrismaClient class API (Phase 5 Task 5.5)', () => {
   it('disconnect() drains the current client and prevents further use', async () => {
     const secrets = {
       requestDbCredential: vi.fn(async () => ({
-        username: 'u', password: 'p', leaseId: 'lid', ttlSec: 60,
+        username: 'u',
+        password: 'p',
+        leaseId: 'lid',
+        ttlSec: 60,
       })),
     };
 
@@ -245,7 +263,10 @@ describe('VaultPrismaClient class API (Phase 5 Task 5.5)', () => {
   it('disconnect() is idempotent', async () => {
     const secrets = {
       requestDbCredential: vi.fn(async () => ({
-        username: 'u', password: 'p', leaseId: 'lid', ttlSec: 60,
+        username: 'u',
+        password: 'p',
+        leaseId: 'lid',
+        ttlSec: 60,
       })),
     };
 
@@ -280,11 +301,7 @@ describe('VaultPrismaClient — credential residency Gate 5', () => {
     await wrapper.swap();
     await wrapper.disconnect();
 
-    const calls = [
-      ...logSpy.mock.calls.flat(),
-      ...warnSpy.mock.calls.flat(),
-      ...errorSpy.mock.calls.flat(),
-    ];
+    const calls = [...logSpy.mock.calls.flat(), ...warnSpy.mock.calls.flat(), ...errorSpy.mock.calls.flat()];
     for (const call of calls) {
       const text = typeof call === 'string' ? call : JSON.stringify(call);
       expect(text).not.toContain(secret);

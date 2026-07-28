@@ -69,7 +69,9 @@ class TestAzureOpenAIConfig:
         assert cfg.adaptive_limits is True
 
     def test_override(self):
-        cfg = AzureOpenAIConfig(api_key="sk-test", endpoint="https://my.openai.azure.com", deployment_name="gpt-4o")
+        cfg = AzureOpenAIConfig(
+            api_key="sk-test", endpoint="https://my.openai.azure.com", deployment_name="gpt-4o"
+        )
         assert cfg.api_key.get_secret_value() == "sk-test"
         assert cfg.deployment_name == "gpt-4o"
 

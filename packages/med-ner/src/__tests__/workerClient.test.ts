@@ -106,10 +106,7 @@ describe('MedNERWorkerClient', () => {
 
   it('forwards progress events to the init() onProgress callback before "ready"', async () => {
     const onProgress = vi.fn();
-    const initPromise = client.init(
-      { modelId: 'foo/bar', device: 'wasm', maxTokens: 384, stride: 64 },
-      onProgress,
-    );
+    const initPromise = client.init({ modelId: 'foo/bar', device: 'wasm', maxTokens: 384, stride: 64 }, onProgress);
     const { id } = worker.postMessage.mock.calls[0][0] as { id: string };
 
     worker.emitMessage({ type: 'progress', id, payload: { status: 'downloading', progress: 0.5 } });

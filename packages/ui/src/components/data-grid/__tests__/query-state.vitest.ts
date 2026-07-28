@@ -23,7 +23,14 @@ describe('toPaginatedQuery — pagination / search / sort (unchanged contract)',
   });
 
   it('serializes sort as a comma-joined field:dir list (NOT bracket grammar)', () => {
-    const out = toPaginatedQuery(baseState([], { sorting: [{ id: 'name', desc: false }, { id: 'createdAt', desc: true }] }));
+    const out = toPaginatedQuery(
+      baseState([], {
+        sorting: [
+          { id: 'name', desc: false },
+          { id: 'createdAt', desc: true },
+        ],
+      }),
+    );
     expect(out.sort).toBe('name:asc,createdAt:desc');
   });
 });
@@ -55,15 +62,17 @@ describe('filterRuleToTokens — bracket grammar per operator/variant', () => {
   });
 
   it('date isBetween → gte/lte with ISO values', () => {
-    expect(
-      filterRuleToTokens({ id: 'createdAt', operator: 'isBetween', value: ['2026-01-01', '2026-01-31'], variant: 'dateRange' }),
-    ).toEqual(['createdAt[gte]:2026-01-01', 'createdAt[lte]:2026-01-31']);
+    expect(filterRuleToTokens({ id: 'createdAt', operator: 'isBetween', value: ['2026-01-01', '2026-01-31'], variant: 'dateRange' })).toEqual([
+      'createdAt[gte]:2026-01-01',
+      'createdAt[lte]:2026-01-31',
+    ]);
   });
 
   it('isRelativeToToday resolves to a gte/lte pair (value already resolved to [start,end])', () => {
-    expect(
-      filterRuleToTokens({ id: 'createdAt', operator: 'isRelativeToToday', value: ['2026-06-29', '2026-07-06'], variant: 'date' }),
-    ).toEqual(['createdAt[gte]:2026-06-29', 'createdAt[lte]:2026-07-06']);
+    expect(filterRuleToTokens({ id: 'createdAt', operator: 'isRelativeToToday', value: ['2026-06-29', '2026-07-06'], variant: 'date' })).toEqual([
+      'createdAt[gte]:2026-06-29',
+      'createdAt[lte]:2026-07-06',
+    ]);
   });
 
   it('range with only one bound emits a single token (omit the blank bound)', () => {

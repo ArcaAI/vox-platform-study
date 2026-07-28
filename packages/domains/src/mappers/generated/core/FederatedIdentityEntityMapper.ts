@@ -2,10 +2,7 @@ import { AutoClassMapper, AutoEntityChangeMapper, BaseMapper, createMapperHandle
 import * as Entities from '../../../entities';
 import * as Models from '../../../models';
 
-export class FederatedIdentityEntityMapper extends BaseMapper<
-  Entities.FederatedIdentityEntity,
-  Models.FederatedIdentity
-> {
+export class FederatedIdentityEntityMapper extends BaseMapper<Entities.FederatedIdentityEntity, Models.FederatedIdentity> {
   constructor() {
     super();
   }
@@ -15,26 +12,15 @@ export class FederatedIdentityEntityMapper extends BaseMapper<
   }
 
   public toPersistenceChanges(entity: Entities.FederatedIdentityEntity): Partial<Models.FederatedIdentity> {
-    return AutoEntityChangeMapper(
-      entity,
-      Models.FederatedIdentity,
-      FederatedIdentityEntityMapperHandlers.$toPersistence,
-    );
+    return AutoEntityChangeMapper(entity, Models.FederatedIdentity, FederatedIdentityEntityMapperHandlers.$toPersistence);
   }
 
   public toDomainEntity(dataModel: Models.FederatedIdentity): Entities.FederatedIdentityEntity {
-    return AutoClassMapper(
-      dataModel,
-      Entities.FederatedIdentityEntity,
-      FederatedIdentityEntityMapperHandlers.$toDomain,
-    );
+    return AutoClassMapper(dataModel, Entities.FederatedIdentityEntity, FederatedIdentityEntityMapperHandlers.$toDomain);
   }
 }
 
-export const FederatedIdentityEntityMapperHandlers = createMapperHandlers<
-  Entities.FederatedIdentityEntity,
-  Models.FederatedIdentity
->({
+export const FederatedIdentityEntityMapperHandlers = createMapperHandlers<Entities.FederatedIdentityEntity, Models.FederatedIdentity>({
   $toPersistence: {},
   $toDomain: {},
 });

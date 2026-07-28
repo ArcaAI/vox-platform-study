@@ -37,7 +37,13 @@ vi.mock('@arcaai/ui/dialog', () => ({
   DialogClose: ({ children }: any) => <div>{children}</div>,
 }));
 vi.mock('@arcaai/ui/input', () => ({ Input: (props: any) => <input {...props} /> }));
-vi.mock('@arcaai/ui/button', () => ({ Button: ({ children, onClick, disabled }: any) => <button onClick={onClick} disabled={disabled}>{children}</button> }));
+vi.mock('@arcaai/ui/button', () => ({
+  Button: ({ children, onClick, disabled }: any) => (
+    <button onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  ),
+}));
 vi.mock('@arcaai/ui/select', () => ({
   Select: ({ value, onValueChange, children }: any) => (
     <select value={value} onChange={(e) => onValueChange(e.target.value)}>
@@ -67,12 +73,27 @@ vi.mock('@arcaai/ui/multi-column-layout', () => ({
 }));
 
 vi.mock('../../api/tenants', () => ({
-  useTenantsInfinite: () => ({ data: undefined, hasNextPage: false, fetchNextPage: vi.fn(), isFetchingNextPage: false, isRefetching: false, refetch: vi.fn() }),
+  useTenantsInfinite: () => ({
+    data: undefined,
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
+    isRefetching: false,
+    refetch: vi.fn(),
+  }),
 }));
 vi.mock('../../api/prompts', () => ({
   usePromptTemplatesInfinite: (tenantId: string, params: any) => {
     infinite.calls.push({ tenantId, params });
-    return { data: undefined, isLoading: false, hasNextPage: false, fetchNextPage: vi.fn(), isFetchingNextPage: false, isRefetching: false, refetch: vi.fn() };
+    return {
+      data: undefined,
+      isLoading: false,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
+      isFetchingNextPage: false,
+      isRefetching: false,
+      refetch: vi.fn(),
+    };
   },
   usePromptVersions: () => ({ data: [], isLoading: false, isRefetching: false, refetch: vi.fn() }),
   usePromptTemplate: () => ({ data: undefined, isLoading: false }),

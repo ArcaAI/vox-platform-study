@@ -21,10 +21,7 @@ export class KnowledgeDocumentEntityMapper extends BaseMapper<Entities.Knowledge
   }
 }
 
-export const KnowledgeDocumentEntityMapperHandlers = createMapperHandlers<
-  Entities.KnowledgeDocumentEntity,
-  Models.KnowledgeDocument
->({
+export const KnowledgeDocumentEntityMapperHandlers = createMapperHandlers<Entities.KnowledgeDocumentEntity, Models.KnowledgeDocument>({
   $toPersistence: {},
   $toDomain: {},
 });

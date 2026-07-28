@@ -73,9 +73,7 @@ def resolve_override_key(
 
 def wav_bytes_from_samples(samples: np.ndarray, sample_rate: int) -> bytes:
     """Encode float32 [-1, 1] mono samples as 16-bit PCM WAV bytes."""
-    pcm_int16 = (np.asarray(samples, dtype=np.float32) * 32767).clip(-32768, 32767).astype(
-        np.int16
-    )
+    pcm_int16 = (np.asarray(samples, dtype=np.float32) * 32767).clip(-32768, 32767).astype(np.int16)
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wf:
         wf.setnchannels(1)
@@ -101,9 +99,7 @@ def raise_for_cloud_status(provider: str, status_code: int, detail: str) -> None
     if status_code == 429:
         STT_CLOUD_ASR_ERRORS_TOTAL.labels(provider=provider, **{"class": "quota"}).inc()
         raise CloudASRQuotaError(f"{provider} quota error (HTTP {status_code}): {detail}")
-    STT_CLOUD_ASR_ERRORS_TOTAL.labels(
-        provider=provider, **{"class": "transcription"}
-    ).inc()
+    STT_CLOUD_ASR_ERRORS_TOTAL.labels(provider=provider, **{"class": "transcription"}).inc()
     raise CloudASRTranscriptionError(
         f"{provider} transcription error (HTTP {status_code}): {detail}"
     )
@@ -112,7 +108,5 @@ def raise_for_cloud_status(provider: str, status_code: int, detail: str) -> None
 def raise_for_cloud_transport(provider: str, detail: str) -> None:
     """Map a transport-level failure (timeout, connection error) to a
     retryable ``CloudASRTranscriptionError`` and count it."""
-    STT_CLOUD_ASR_ERRORS_TOTAL.labels(
-        provider=provider, **{"class": "transcription"}
-    ).inc()
+    STT_CLOUD_ASR_ERRORS_TOTAL.labels(provider=provider, **{"class": "transcription"}).inc()
     raise CloudASRTranscriptionError(f"{provider} transport error: {detail}")

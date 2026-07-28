@@ -10,14 +10,14 @@
 import { deleteJson, getJson, getWithEtag, postJson, putJson, putWithEtag, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type {
-    CreateTenantIdpConfigRequest,
-    DepartmentOption,
-    DirectoryCredentials,
-    RoleOption,
-    SyncDirectoryResult,
-    TenantIdpConfig,
-    TestConnectionResult,
-    UpdateTenantIdpConfigRequest,
+  CreateTenantIdpConfigRequest,
+  DepartmentOption,
+  DirectoryCredentials,
+  RoleOption,
+  SyncDirectoryResult,
+  TenantIdpConfig,
+  TestConnectionResult,
+  UpdateTenantIdpConfigRequest,
 } from './types';
 
 const BASE = 'admin/tenant-idp-config';
@@ -25,54 +25,54 @@ const BASE = 'admin/tenant-idp-config';
 const providerPath = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
 export function listProviders(): Promise<TenantIdpConfig[]> {
-    return getJson(BASE);
+  return getJson(BASE);
 }
 
 export function createProvider(body: CreateTenantIdpConfigRequest): Promise<TenantIdpConfig> {
-    return postJson(BASE, body);
+  return postJson(BASE, body);
 }
 
 /** Detail read keeping the ETag the later PUT must present as If-Match. */
 export function getProvider(id: string): Promise<WithEtag<TenantIdpConfig>> {
-    return getWithEtag(providerPath(id));
+  return getWithEtag(providerPath(id));
 }
 
 /** OCC PUT: If-Match header + body expectedVersion derived from the ETag. */
 export function updateProvider(
-    id: string,
-    patch: Omit<UpdateTenantIdpConfigRequest, 'expectedVersion'>,
-    etag: string,
+  id: string,
+  patch: Omit<UpdateTenantIdpConfigRequest, 'expectedVersion'>,
+  etag: string,
 ): Promise<WithEtag<TenantIdpConfig>> {
-    return putWithEtag(providerPath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+  return putWithEtag(providerPath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
 /** Soft delete (the platform never hard-deletes). */
 export function deleteProvider(id: string): Promise<void> {
-    return deleteJson(providerPath(id));
+  return deleteJson(providerPath(id));
 }
 
 /** Vault-seals a directory-API credential bundle (shape matches config.directoryProvider). No OCC — a narrow secret rotation, mirrors the client secret rotation on updateProvider. */
 export function setDirectoryCredentials(id: string, credentials: DirectoryCredentials): Promise<TenantIdpConfig> {
-    return putJson(`${providerPath(id)}/directory-credentials`, { credentials });
+  return putJson(`${providerPath(id)}/directory-credentials`, { credentials });
 }
 
 /** Discovery + client-construction probe. A successful call flips DRAFT -> ENABLED server-side. */
 export function testConnection(id: string): Promise<TestConnectionResult> {
-    return postJson(`${providerPath(id)}/test`);
+  return postJson(`${providerPath(id)}/test`);
 }
 
 /** Enqueues an admin-triggered directory pull (MS Graph / Google). */
 export function syncDirectory(id: string): Promise<SyncDirectoryResult> {
-    return postJson(`${providerPath(id)}/sync`);
+  return postJson(`${providerPath(id)}/sync`);
 }
 
 /** Department directory for the default-department picker (mirrors the local duplicate in the `agents` feature — features never import each other). */
 export function listDepartments(): Promise<DepartmentOption[]> {
-    return getJson('admin/departments');
+  return getJson('admin/departments');
 }
 
 /** Role directory for the default-role picker + group->role mapping editor. */
 export async function listRoles(): Promise<RoleOption[]> {
-    const page = await getJson<{ data: RoleOption[] }>('admin/rbac/roles', { limit: 200 });
-    return page.data;
+  const page = await getJson<{ data: RoleOption[] }>('admin/rbac/roles', { limit: 200 });
+  return page.data;
 }

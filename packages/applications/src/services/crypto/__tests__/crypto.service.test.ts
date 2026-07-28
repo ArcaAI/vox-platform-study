@@ -18,541 +18,541 @@ import * as nodeCrypto from 'crypto';
 // Mock bcryptjs (external library boundary)
 // We mock bcryptjs because it's an external dependency with slow operations
 vi.mock('bcryptjs', () => ({
-    hash: vi.fn(),
-    compare: vi.fn(),
+  hash: vi.fn(),
+  compare: vi.fn(),
 }));
 
 // Mock AppSettingsService (dependency injection boundary)
 const mockAppSettingsService = {
-    getValueWithDefault: vi.fn(),
+  getValueWithDefault: vi.fn(),
 };
 
 vi.mock('@nestjs/common', async () => {
-    const actual = await vi.importActual('@nestjs/common');
-    return {
-        ...actual,
-        Logger: class MockLogger {
-            log = vi.fn();
-            debug = vi.fn();
-            warn = vi.fn();
-            error = vi.fn();
-        },
-    };
+  const actual = await vi.importActual('@nestjs/common');
+  return {
+    ...actual,
+    Logger: class MockLogger {
+      log = vi.fn();
+      debug = vi.fn();
+      warn = vi.fn();
+      error = vi.fn();
+    },
+  };
 });
 
 describe('CryptoService', () => {
-    let service: CryptoService;
+  let service: CryptoService;
 
-    beforeEach(async () => {
-        vi.clearAllMocks();
+  beforeEach(async () => {
+    vi.clearAllMocks();
 
-        // Default settings
-        mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
-            switch (key) {
-                case 'crypto.saltRounds':
-                    return 10;
-                case 'crypto.algorithm':
-                    return 'aes-256-cbc';
-                case 'crypto.ivLength':
-                    return 16;
-                default:
-                    return defaultValue;
-            }
-        });
-
-        // Create service instance with mocks
-        service = new CryptoService(mockAppSettingsService as any);
-
-        // Call onModuleInit to load settings
-        await service.onModuleInit();
+    // Default settings
+    mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
+      switch (key) {
+        case 'crypto.saltRounds':
+          return 10;
+        case 'crypto.algorithm':
+          return 'aes-256-cbc';
+        case 'crypto.ivLength':
+          return 16;
+        default:
+          return defaultValue;
+      }
     });
 
-    afterEach(() => {
-        vi.clearAllMocks();
+    // Create service instance with mocks
+    service = new CryptoService(mockAppSettingsService as any);
+
+    // Call onModuleInit to load settings
+    await service.onModuleInit();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('onModuleInit', () => {
+    it('should load settings on initialization', async () => {
+      const newService = new CryptoService(mockAppSettingsService as any);
+      await newService.onModuleInit();
+
+      expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.saltRounds', 10);
+      // The cipher is now fixed to AES-256-GCM; the old
+      // operator-selectable algorithm/ivLength knobs were removed.
     });
 
-    describe('onModuleInit', () => {
-        it('should load settings on initialization', async () => {
-            const newService = new CryptoService(mockAppSettingsService as any);
-            await newService.onModuleInit();
+    it('should use default values when settings not available', async () => {
+      mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => defaultValue);
 
-            expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.saltRounds', 10);
-            // The cipher is now fixed to AES-256-GCM; the old
-            // operator-selectable algorithm/ivLength knobs were removed.
-        });
+      const newService = new CryptoService(mockAppSettingsService as any);
+      await newService.onModuleInit();
 
-        it('should use default values when settings not available', async () => {
-            mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => defaultValue);
+      // Service should work with defaults
+      expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalled();
+    });
+  });
 
-            const newService = new CryptoService(mockAppSettingsService as any);
-            await newService.onModuleInit();
+  describe('hash', () => {
+    it('should hash a password using bcrypt', async () => {
+      const password = 'testPassword123';
+      const hashedPassword = '$2b$10$hashedPasswordValue';
+      vi.mocked(bcrypt.hash).mockResolvedValue(hashedPassword as never);
 
-            // Service should work with defaults
-            expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalled();
-        });
+      const result = await service.hash(password);
+
+      expect(result).toBe(hashedPassword);
+      expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
     });
 
-    describe('hash', () => {
-        it('should hash a password using bcrypt', async () => {
-            const password = 'testPassword123';
-            const hashedPassword = '$2b$10$hashedPasswordValue';
-            vi.mocked(bcrypt.hash).mockResolvedValue(hashedPassword as never);
+    it('should use configured salt rounds', async () => {
+      mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
+        if (key === 'crypto.saltRounds') return 12;
+        return defaultValue;
+      });
 
-            const result = await service.hash(password);
+      const newService = new CryptoService(mockAppSettingsService as any);
+      await newService.onModuleInit();
 
-            expect(result).toBe(hashedPassword);
-            expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
-        });
+      const password = 'testPassword123';
+      vi.mocked(bcrypt.hash).mockResolvedValue('$2b$12$hashed' as never);
 
-        it('should use configured salt rounds', async () => {
-            mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
-                if (key === 'crypto.saltRounds') return 12;
-                return defaultValue;
-            });
+      await newService.hash(password);
 
-            const newService = new CryptoService(mockAppSettingsService as any);
-            await newService.onModuleInit();
-
-            const password = 'testPassword123';
-            vi.mocked(bcrypt.hash).mockResolvedValue('$2b$12$hashed' as never);
-
-            await newService.hash(password);
-
-            expect(bcrypt.hash).toHaveBeenCalledWith(password, 12);
-        });
-
-        it('should handle empty password', async () => {
-            vi.mocked(bcrypt.hash).mockResolvedValue('$2b$10$emptyHash' as never);
-
-            const result = await service.hash('');
-
-            expect(result).toBe('$2b$10$emptyHash');
-            expect(bcrypt.hash).toHaveBeenCalledWith('', 10);
-        });
-
-        it('should handle special characters in password', async () => {
-            const password = 'p@$$w0rd!#$%^&*()';
-            vi.mocked(bcrypt.hash).mockResolvedValue('$2b$10$specialHash' as never);
-
-            const result = await service.hash(password);
-
-            expect(result).toBe('$2b$10$specialHash');
-            expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
-        });
-
-        it('should handle unicode characters in password', async () => {
-            const password = 'пароль密码🔐';
-            vi.mocked(bcrypt.hash).mockResolvedValue('$2b$10$unicodeHash' as never);
-
-            const result = await service.hash(password);
-
-            expect(result).toBe('$2b$10$unicodeHash');
-            expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
-        });
+      expect(bcrypt.hash).toHaveBeenCalledWith(password, 12);
     });
 
-    describe('verify', () => {
-        it('should return true for correct password', async () => {
-            const password = 'testPassword123';
-            const hash = '$2b$10$hashedPasswordValue';
-            vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
+    it('should handle empty password', async () => {
+      vi.mocked(bcrypt.hash).mockResolvedValue('$2b$10$emptyHash' as never);
 
-            const result = await service.verify(password, hash);
+      const result = await service.hash('');
 
-            expect(result).toBe(true);
-            expect(bcrypt.compare).toHaveBeenCalledWith(password, hash);
-        });
-
-        it('should return false for incorrect password', async () => {
-            const password = 'wrongPassword';
-            const hash = '$2b$10$hashedPasswordValue';
-            vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
-
-            const result = await service.verify(password, hash);
-
-            expect(result).toBe(false);
-            expect(bcrypt.compare).toHaveBeenCalledWith(password, hash);
-        });
-
-        it('should handle empty password verification', async () => {
-            vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
-
-            const result = await service.verify('', '$2b$10$hash');
-
-            expect(result).toBe(false);
-        });
-
-        it('should handle special characters in verification', async () => {
-            const password = 'p@$$w0rd!#$%^&*()';
-            vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
-
-            const result = await service.verify(password, '$2b$10$hash');
-
-            expect(result).toBe(true);
-            expect(bcrypt.compare).toHaveBeenCalledWith(password, '$2b$10$hash');
-        });
+      expect(result).toBe('$2b$10$emptyHash');
+      expect(bcrypt.hash).toHaveBeenCalledWith('', 10);
     });
 
-    // New ciphertext is authenticated AES-256-GCM:
-    //   gcm:v1:<ivHex(24)>:<authTagHex(32)>:<ciphertextHex>
-    const GCM_FORMAT = /^gcm:v1:[a-f0-9]{24}:[a-f0-9]{32}:[a-f0-9]*$/;
+    it('should handle special characters in password', async () => {
+      const password = 'p@$$w0rd!#$%^&*()';
+      vi.mocked(bcrypt.hash).mockResolvedValue('$2b$10$specialHash' as never);
 
-    describe('encrypt', () => {
-        it('should encrypt data and return the authenticated gcm:v1 format', async () => {
-            const data = 'sensitive data';
-            const key = '12345678901234567890123456789012'; // 32 bytes for AES-256
+      const result = await service.hash(password);
 
-            const result = await service.encrypt(data, key);
-
-            expect(result).toMatch(GCM_FORMAT);
-            const parts = result.split(':');
-            expect(parts[0]).toBe('gcm');
-            expect(parts[1]).toBe('v1');
-            expect(parts[2]).toHaveLength(24); // 12-byte GCM nonce = 24 hex chars
-            expect(parts[3]).toHaveLength(32); // 16-byte auth tag = 32 hex chars
-            expect(parts[4].length).toBeGreaterThan(0);
-        });
-
-        it('should produce different output for same input (due to random IV)', async () => {
-            const data = 'sensitive data';
-            const key = '12345678901234567890123456789012';
-
-            const result1 = await service.encrypt(data, key);
-            const result2 = await service.encrypt(data, key);
-
-            // IVs (3rd colon-separated segment) should be different
-            const iv1 = result1.split(':')[2];
-            const iv2 = result2.split(':')[2];
-            expect(iv1).not.toBe(iv2);
-        });
-
-        it('should handle empty data', async () => {
-            const key = '12345678901234567890123456789012';
-
-            const result = await service.encrypt('', key);
-
-            expect(result).toMatch(GCM_FORMAT);
-        });
-
-        it('should handle special characters in data', async () => {
-            const data = 'data with special chars: !@#$%^&*(){}[]';
-            const key = '12345678901234567890123456789012';
-
-            const result = await service.encrypt(data, key);
-
-            expect(result).toMatch(GCM_FORMAT);
-        });
-
-        it('should handle unicode data', async () => {
-            const data = 'данные 数据 🔐';
-            const key = '12345678901234567890123456789012';
-
-            const result = await service.encrypt(data, key);
-
-            expect(result).toMatch(GCM_FORMAT);
-        });
-
-        it('should handle long data', async () => {
-            const data = 'a'.repeat(10000);
-            const key = '12345678901234567890123456789012';
-
-            const result = await service.encrypt(data, key);
-
-            expect(result).toMatch(GCM_FORMAT);
-        });
+      expect(result).toBe('$2b$10$specialHash');
+      expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
     });
 
-    describe('decrypt', () => {
-        it('should decrypt data correctly', async () => {
-            const originalData = 'sensitive data';
-            const key = '12345678901234567890123456789012';
+    it('should handle unicode characters in password', async () => {
+      const password = 'пароль密码🔐';
+      vi.mocked(bcrypt.hash).mockResolvedValue('$2b$10$unicodeHash' as never);
 
-            const encrypted = await service.encrypt(originalData, key);
-            const decrypted = await service.decrypt(encrypted, key);
+      const result = await service.hash(password);
 
-            expect(decrypted).toBe(originalData);
-        });
+      expect(result).toBe('$2b$10$unicodeHash');
+      expect(bcrypt.hash).toHaveBeenCalledWith(password, 10);
+    });
+  });
 
-        it('should decrypt empty data', async () => {
-            const key = '12345678901234567890123456789012';
+  describe('verify', () => {
+    it('should return true for correct password', async () => {
+      const password = 'testPassword123';
+      const hash = '$2b$10$hashedPasswordValue';
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
 
-            const encrypted = await service.encrypt('', key);
-            const decrypted = await service.decrypt(encrypted, key);
+      const result = await service.verify(password, hash);
 
-            expect(decrypted).toBe('');
-        });
-
-        it('should decrypt special characters', async () => {
-            const originalData = 'data with special chars: !@#$%^&*(){}[]';
-            const key = '12345678901234567890123456789012';
-
-            const encrypted = await service.encrypt(originalData, key);
-            const decrypted = await service.decrypt(encrypted, key);
-
-            expect(decrypted).toBe(originalData);
-        });
-
-        it('should decrypt unicode data', async () => {
-            const originalData = 'данные 数据 🔐';
-            const key = '12345678901234567890123456789012';
-
-            const encrypted = await service.encrypt(originalData, key);
-            const decrypted = await service.decrypt(encrypted, key);
-
-            expect(decrypted).toBe(originalData);
-        });
-
-        it('should decrypt long data', async () => {
-            const originalData = 'a'.repeat(10000);
-            const key = '12345678901234567890123456789012';
-
-            const encrypted = await service.encrypt(originalData, key);
-            const decrypted = await service.decrypt(encrypted, key);
-
-            expect(decrypted).toBe(originalData);
-        });
-
-        it('should throw error for invalid encrypted format', async () => {
-            const key = '12345678901234567890123456789012';
-
-            await expect(service.decrypt('invalid-format', key)).rejects.toThrow();
-        });
-
-        it('should throw error for wrong key', async () => {
-            const originalData = 'sensitive data';
-            const key1 = '12345678901234567890123456789012';
-            const key2 = 'abcdefghijklmnopqrstuvwxyz123456';
-
-            const encrypted = await service.encrypt(originalData, key1);
-
-            await expect(service.decrypt(encrypted, key2)).rejects.toThrow();
-        });
-
-        it('should throw error for corrupted encrypted data', async () => {
-            const key = '12345678901234567890123456789012';
-            const corruptedData = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:corrupted';
-
-            await expect(service.decrypt(corruptedData, key)).rejects.toThrow();
-        });
-
-        // Backward compatibility: ciphertext written by the
-        // old AES-256-CBC implementation (format `<ivHex>:<dataHex>`, no prefix)
-        // must still decrypt so any persisted legacy values remain readable.
-        it('should decrypt legacy AES-256-CBC ciphertext (no gcm: prefix)', async () => {
-            const key = '12345678901234567890123456789012';
-            const originalData = 'legacy secret payload';
-
-            // Reproduce the OLD CBC output format exactly.
-            const iv = nodeCrypto.randomBytes(16);
-            const cipher = nodeCrypto.createCipheriv('aes-256-cbc', Buffer.from(key), iv);
-            const enc = Buffer.concat([cipher.update(originalData), cipher.final()]);
-            const legacyCiphertext = iv.toString('hex') + ':' + enc.toString('hex');
-
-            const decrypted = await service.decrypt(legacyCiphertext, key);
-            expect(decrypted).toBe(originalData);
-        });
-
-        // Authentication: tampering with GCM ciphertext (or
-        // its auth tag) must be detected and rejected (CBC could not do this).
-        it('should reject tampered GCM ciphertext (auth tag mismatch)', async () => {
-            const key = '12345678901234567890123456789012';
-            const encrypted = await service.encrypt('integrity matters', key);
-
-            const parts = encrypted.split(':'); // gcm:v1:iv:tag:data
-            // Flip the last hex char of the ciphertext segment.
-            const data = parts[4];
-            const flipped = data.slice(0, -1) + (data.slice(-1) === 'a' ? 'b' : 'a');
-            const tampered = ['gcm', 'v1', parts[2], parts[3], flipped].join(':');
-
-            await expect(service.decrypt(tampered, key)).rejects.toThrow();
-        });
+      expect(result).toBe(true);
+      expect(bcrypt.compare).toHaveBeenCalledWith(password, hash);
     });
 
-    describe('encrypt/decrypt integration', () => {
-        it('should successfully encrypt and decrypt multiple times', async () => {
-            const key = '12345678901234567890123456789012';
-            const testCases = [
-                'simple text',
-                'text with numbers 12345',
-                'special !@#$%^&*()',
-                'unicode: 日本語 한국어 العربية',
-                JSON.stringify({ key: 'value', nested: { data: true } }),
-            ];
+    it('should return false for incorrect password', async () => {
+      const password = 'wrongPassword';
+      const hash = '$2b$10$hashedPasswordValue';
+      vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
 
-            for (const originalData of testCases) {
-                const encrypted = await service.encrypt(originalData, key);
-                const decrypted = await service.decrypt(encrypted, key);
-                expect(decrypted).toBe(originalData);
-            }
-        });
+      const result = await service.verify(password, hash);
 
-        it('should handle JSON data encryption/decryption', async () => {
-            const key = '12345678901234567890123456789012';
-            const jsonData = JSON.stringify({
-                userId: 'user-123',
-                email: 'test@example.com',
-                roles: ['admin', 'user'],
-                metadata: {
-                    createdAt: '2026-01-30T10:00:00Z',
-                    isActive: true,
-                },
-            });
-
-            const encrypted = await service.encrypt(jsonData, key);
-            const decrypted = await service.decrypt(encrypted, key);
-
-            expect(JSON.parse(decrypted)).toEqual(JSON.parse(jsonData));
-        });
+      expect(result).toBe(false);
+      expect(bcrypt.compare).toHaveBeenCalledWith(password, hash);
     });
 
-    describe('Settings Update Event', () => {
-        it('should reload settings when AppSettings are updated', async () => {
-            // Clear previous calls
-            mockAppSettingsService.getValueWithDefault.mockClear();
+    it('should handle empty password verification', async () => {
+      vi.mocked(bcrypt.compare).mockResolvedValue(false as never);
 
-            // Update settings
-            mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
-                if (key === 'crypto.saltRounds') return 14;
-                return defaultValue;
-            });
+      const result = await service.verify('', '$2b$10$hash');
 
-            // Trigger settings update (accessing private method via any)
-            await (service as any).handleSettingsUpdate();
-
-            // Verify settings were reloaded
-            expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.saltRounds', 10);
-        });
+      expect(result).toBe(false);
     });
 
-    describe('Configuration', () => {
-        it('should use custom salt rounds from settings', async () => {
-            mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
-                if (key === 'crypto.saltRounds') return 15;
-                return defaultValue;
-            });
+    it('should handle special characters in verification', async () => {
+      const password = 'p@$$w0rd!#$%^&*()';
+      vi.mocked(bcrypt.compare).mockResolvedValue(true as never);
 
-            const newService = new CryptoService(mockAppSettingsService as any);
-            await newService.onModuleInit();
+      const result = await service.verify(password, '$2b$10$hash');
 
-            vi.mocked(bcrypt.hash).mockResolvedValue('$2b$15$hash' as never);
-            await newService.hash('password');
+      expect(result).toBe(true);
+      expect(bcrypt.compare).toHaveBeenCalledWith(password, '$2b$10$hash');
+    });
+  });
 
-            expect(bcrypt.hash).toHaveBeenCalledWith('password', 15);
-        });
+  // New ciphertext is authenticated AES-256-GCM:
+  //   gcm:v1:<ivHex(24)>:<authTagHex(32)>:<ciphertextHex>
+  const GCM_FORMAT = /^gcm:v1:[a-f0-9]{24}:[a-f0-9]{32}:[a-f0-9]*$/;
 
-        it('uses a fixed AES-256-GCM cipher (algorithm/ivLength are no longer settings)', async () => {
-            // The cipher is hardcoded to authenticated
-            // AES-256-GCM, so the service must NOT read the removed knobs.
-            const newService = new CryptoService(mockAppSettingsService as any);
-            await newService.onModuleInit();
+  describe('encrypt', () => {
+    it('should encrypt data and return the authenticated gcm:v1 format', async () => {
+      const data = 'sensitive data';
+      const key = '12345678901234567890123456789012'; // 32 bytes for AES-256
 
-            expect(mockAppSettingsService.getValueWithDefault).not.toHaveBeenCalledWith('crypto.algorithm', expect.anything());
-            expect(mockAppSettingsService.getValueWithDefault).not.toHaveBeenCalledWith('crypto.ivLength', expect.anything());
+      const result = await service.encrypt(data, key);
 
-            // And new ciphertext is GCM-formatted.
-            const out = await newService.encrypt('x', '12345678901234567890123456789012');
-            expect(out.startsWith('gcm:v1:')).toBe(true);
-        });
+      expect(result).toMatch(GCM_FORMAT);
+      const parts = result.split(':');
+      expect(parts[0]).toBe('gcm');
+      expect(parts[1]).toBe('v1');
+      expect(parts[2]).toHaveLength(24); // 12-byte GCM nonce = 24 hex chars
+      expect(parts[3]).toHaveLength(32); // 16-byte auth tag = 32 hex chars
+      expect(parts[4].length).toBeGreaterThan(0);
     });
 
-    describe('Security Properties', () => {
-        it('should produce different hashes for same password (salt uniqueness)', async () => {
-            // This tests that bcrypt is called correctly - actual salt uniqueness is bcrypt's responsibility
-            vi.mocked(bcrypt.hash)
-                .mockResolvedValueOnce('$2b$10$uniqueHash1' as never)
-                .mockResolvedValueOnce('$2b$10$uniqueHash2' as never);
+    it('should produce different output for same input (due to random IV)', async () => {
+      const data = 'sensitive data';
+      const key = '12345678901234567890123456789012';
 
-            const hash1 = await service.hash('samePassword');
-            const hash2 = await service.hash('samePassword');
+      const result1 = await service.encrypt(data, key);
+      const result2 = await service.encrypt(data, key);
 
-            // Hashes should be different due to unique salts
-            expect(hash1).not.toBe(hash2);
-        });
-
-        it('should produce different encrypted output for same plaintext (IV uniqueness)', async () => {
-            const key = '12345678901234567890123456789012';
-            const plaintext = 'sensitive data';
-
-            const encrypted1 = await service.encrypt(plaintext, key);
-            const encrypted2 = await service.encrypt(plaintext, key);
-
-            // Encrypted outputs should differ due to random IV
-            expect(encrypted1).not.toBe(encrypted2);
-
-            // But both should decrypt to the same value
-            const decrypted1 = await service.decrypt(encrypted1, key);
-            const decrypted2 = await service.decrypt(encrypted2, key);
-            expect(decrypted1).toBe(plaintext);
-            expect(decrypted2).toBe(plaintext);
-        });
-
-        it('should not leak plaintext in encrypted output', async () => {
-            const key = '12345678901234567890123456789012';
-            const plaintext = 'SENSITIVE_SECRET_DATA';
-
-            const encrypted = await service.encrypt(plaintext, key);
-
-            // Encrypted output should not contain the plaintext
-            expect(encrypted).not.toContain(plaintext);
-            expect(encrypted).not.toContain('SENSITIVE');
-            expect(encrypted).not.toContain('SECRET');
-        });
+      // IVs (3rd colon-separated segment) should be different
+      const iv1 = result1.split(':')[2];
+      const iv2 = result2.split(':')[2];
+      expect(iv1).not.toBe(iv2);
     });
 
-    describe('Error Messages', () => {
-        it('should throw meaningful error for malformed encrypted data', async () => {
-            const key = '12345678901234567890123456789012';
+    it('should handle empty data', async () => {
+      const key = '12345678901234567890123456789012';
 
-            // Missing colon separator
-            await expect(service.decrypt('nocolonseparator', key)).rejects.toThrow();
-        });
+      const result = await service.encrypt('', key);
 
-        it('should throw error when IV is invalid hex', async () => {
-            const key = '12345678901234567890123456789012';
-
-            // Invalid hex in IV portion
-            await expect(service.decrypt('ZZZZ:abcd1234', key)).rejects.toThrow();
-        });
-
-        it('should throw error for key length mismatch', async () => {
-            const shortKey = '12345'; // Too short for AES-256
-            const plaintext = 'test data';
-
-            await expect(service.encrypt(plaintext, shortKey)).rejects.toThrow();
-        });
+      expect(result).toMatch(GCM_FORMAT);
     });
 
-    describe('Boundary Conditions', () => {
-        it('should handle maximum reasonable data size', async () => {
-            const key = '12345678901234567890123456789012';
-            // 1MB of data
-            const largeData = 'x'.repeat(1024 * 1024);
+    it('should handle special characters in data', async () => {
+      const data = 'data with special chars: !@#$%^&*(){}[]';
+      const key = '12345678901234567890123456789012';
 
-            const encrypted = await service.encrypt(largeData, key);
-            const decrypted = await service.decrypt(encrypted, key);
+      const result = await service.encrypt(data, key);
 
-            expect(decrypted).toBe(largeData);
-        });
-
-        it('should handle binary-like string data', async () => {
-            const key = '12345678901234567890123456789012';
-            // String with null characters and control characters
-            const binaryLike = 'data\x00with\x01control\x02chars';
-
-            const encrypted = await service.encrypt(binaryLike, key);
-            const decrypted = await service.decrypt(encrypted, key);
-
-            expect(decrypted).toBe(binaryLike);
-        });
-
-        it('should handle newlines and whitespace correctly', async () => {
-            const key = '12345678901234567890123456789012';
-            const dataWithWhitespace = '  line1\n\tline2\r\n  line3  ';
-
-            const encrypted = await service.encrypt(dataWithWhitespace, key);
-            const decrypted = await service.decrypt(encrypted, key);
-
-            expect(decrypted).toBe(dataWithWhitespace);
-        });
+      expect(result).toMatch(GCM_FORMAT);
     });
+
+    it('should handle unicode data', async () => {
+      const data = 'данные 数据 🔐';
+      const key = '12345678901234567890123456789012';
+
+      const result = await service.encrypt(data, key);
+
+      expect(result).toMatch(GCM_FORMAT);
+    });
+
+    it('should handle long data', async () => {
+      const data = 'a'.repeat(10000);
+      const key = '12345678901234567890123456789012';
+
+      const result = await service.encrypt(data, key);
+
+      expect(result).toMatch(GCM_FORMAT);
+    });
+  });
+
+  describe('decrypt', () => {
+    it('should decrypt data correctly', async () => {
+      const originalData = 'sensitive data';
+      const key = '12345678901234567890123456789012';
+
+      const encrypted = await service.encrypt(originalData, key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(decrypted).toBe(originalData);
+    });
+
+    it('should decrypt empty data', async () => {
+      const key = '12345678901234567890123456789012';
+
+      const encrypted = await service.encrypt('', key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(decrypted).toBe('');
+    });
+
+    it('should decrypt special characters', async () => {
+      const originalData = 'data with special chars: !@#$%^&*(){}[]';
+      const key = '12345678901234567890123456789012';
+
+      const encrypted = await service.encrypt(originalData, key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(decrypted).toBe(originalData);
+    });
+
+    it('should decrypt unicode data', async () => {
+      const originalData = 'данные 数据 🔐';
+      const key = '12345678901234567890123456789012';
+
+      const encrypted = await service.encrypt(originalData, key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(decrypted).toBe(originalData);
+    });
+
+    it('should decrypt long data', async () => {
+      const originalData = 'a'.repeat(10000);
+      const key = '12345678901234567890123456789012';
+
+      const encrypted = await service.encrypt(originalData, key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(decrypted).toBe(originalData);
+    });
+
+    it('should throw error for invalid encrypted format', async () => {
+      const key = '12345678901234567890123456789012';
+
+      await expect(service.decrypt('invalid-format', key)).rejects.toThrow();
+    });
+
+    it('should throw error for wrong key', async () => {
+      const originalData = 'sensitive data';
+      const key1 = '12345678901234567890123456789012';
+      const key2 = 'abcdefghijklmnopqrstuvwxyz123456';
+
+      const encrypted = await service.encrypt(originalData, key1);
+
+      await expect(service.decrypt(encrypted, key2)).rejects.toThrow();
+    });
+
+    it('should throw error for corrupted encrypted data', async () => {
+      const key = '12345678901234567890123456789012';
+      const corruptedData = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:corrupted';
+
+      await expect(service.decrypt(corruptedData, key)).rejects.toThrow();
+    });
+
+    // Backward compatibility: ciphertext written by the
+    // old AES-256-CBC implementation (format `<ivHex>:<dataHex>`, no prefix)
+    // must still decrypt so any persisted legacy values remain readable.
+    it('should decrypt legacy AES-256-CBC ciphertext (no gcm: prefix)', async () => {
+      const key = '12345678901234567890123456789012';
+      const originalData = 'legacy secret payload';
+
+      // Reproduce the OLD CBC output format exactly.
+      const iv = nodeCrypto.randomBytes(16);
+      const cipher = nodeCrypto.createCipheriv('aes-256-cbc', Buffer.from(key), iv);
+      const enc = Buffer.concat([cipher.update(originalData), cipher.final()]);
+      const legacyCiphertext = iv.toString('hex') + ':' + enc.toString('hex');
+
+      const decrypted = await service.decrypt(legacyCiphertext, key);
+      expect(decrypted).toBe(originalData);
+    });
+
+    // Authentication: tampering with GCM ciphertext (or
+    // its auth tag) must be detected and rejected (CBC could not do this).
+    it('should reject tampered GCM ciphertext (auth tag mismatch)', async () => {
+      const key = '12345678901234567890123456789012';
+      const encrypted = await service.encrypt('integrity matters', key);
+
+      const parts = encrypted.split(':'); // gcm:v1:iv:tag:data
+      // Flip the last hex char of the ciphertext segment.
+      const data = parts[4];
+      const flipped = data.slice(0, -1) + (data.slice(-1) === 'a' ? 'b' : 'a');
+      const tampered = ['gcm', 'v1', parts[2], parts[3], flipped].join(':');
+
+      await expect(service.decrypt(tampered, key)).rejects.toThrow();
+    });
+  });
+
+  describe('encrypt/decrypt integration', () => {
+    it('should successfully encrypt and decrypt multiple times', async () => {
+      const key = '12345678901234567890123456789012';
+      const testCases = [
+        'simple text',
+        'text with numbers 12345',
+        'special !@#$%^&*()',
+        'unicode: 日本語 한국어 العربية',
+        JSON.stringify({ key: 'value', nested: { data: true } }),
+      ];
+
+      for (const originalData of testCases) {
+        const encrypted = await service.encrypt(originalData, key);
+        const decrypted = await service.decrypt(encrypted, key);
+        expect(decrypted).toBe(originalData);
+      }
+    });
+
+    it('should handle JSON data encryption/decryption', async () => {
+      const key = '12345678901234567890123456789012';
+      const jsonData = JSON.stringify({
+        userId: 'user-123',
+        email: 'test@example.com',
+        roles: ['admin', 'user'],
+        metadata: {
+          createdAt: '2026-01-30T10:00:00Z',
+          isActive: true,
+        },
+      });
+
+      const encrypted = await service.encrypt(jsonData, key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(JSON.parse(decrypted)).toEqual(JSON.parse(jsonData));
+    });
+  });
+
+  describe('Settings Update Event', () => {
+    it('should reload settings when AppSettings are updated', async () => {
+      // Clear previous calls
+      mockAppSettingsService.getValueWithDefault.mockClear();
+
+      // Update settings
+      mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
+        if (key === 'crypto.saltRounds') return 14;
+        return defaultValue;
+      });
+
+      // Trigger settings update (accessing private method via any)
+      await (service as any).handleSettingsUpdate();
+
+      // Verify settings were reloaded
+      expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('crypto.saltRounds', 10);
+    });
+  });
+
+  describe('Configuration', () => {
+    it('should use custom salt rounds from settings', async () => {
+      mockAppSettingsService.getValueWithDefault.mockImplementation((key: string, defaultValue: any) => {
+        if (key === 'crypto.saltRounds') return 15;
+        return defaultValue;
+      });
+
+      const newService = new CryptoService(mockAppSettingsService as any);
+      await newService.onModuleInit();
+
+      vi.mocked(bcrypt.hash).mockResolvedValue('$2b$15$hash' as never);
+      await newService.hash('password');
+
+      expect(bcrypt.hash).toHaveBeenCalledWith('password', 15);
+    });
+
+    it('uses a fixed AES-256-GCM cipher (algorithm/ivLength are no longer settings)', async () => {
+      // The cipher is hardcoded to authenticated
+      // AES-256-GCM, so the service must NOT read the removed knobs.
+      const newService = new CryptoService(mockAppSettingsService as any);
+      await newService.onModuleInit();
+
+      expect(mockAppSettingsService.getValueWithDefault).not.toHaveBeenCalledWith('crypto.algorithm', expect.anything());
+      expect(mockAppSettingsService.getValueWithDefault).not.toHaveBeenCalledWith('crypto.ivLength', expect.anything());
+
+      // And new ciphertext is GCM-formatted.
+      const out = await newService.encrypt('x', '12345678901234567890123456789012');
+      expect(out.startsWith('gcm:v1:')).toBe(true);
+    });
+  });
+
+  describe('Security Properties', () => {
+    it('should produce different hashes for same password (salt uniqueness)', async () => {
+      // This tests that bcrypt is called correctly - actual salt uniqueness is bcrypt's responsibility
+      vi.mocked(bcrypt.hash)
+        .mockResolvedValueOnce('$2b$10$uniqueHash1' as never)
+        .mockResolvedValueOnce('$2b$10$uniqueHash2' as never);
+
+      const hash1 = await service.hash('samePassword');
+      const hash2 = await service.hash('samePassword');
+
+      // Hashes should be different due to unique salts
+      expect(hash1).not.toBe(hash2);
+    });
+
+    it('should produce different encrypted output for same plaintext (IV uniqueness)', async () => {
+      const key = '12345678901234567890123456789012';
+      const plaintext = 'sensitive data';
+
+      const encrypted1 = await service.encrypt(plaintext, key);
+      const encrypted2 = await service.encrypt(plaintext, key);
+
+      // Encrypted outputs should differ due to random IV
+      expect(encrypted1).not.toBe(encrypted2);
+
+      // But both should decrypt to the same value
+      const decrypted1 = await service.decrypt(encrypted1, key);
+      const decrypted2 = await service.decrypt(encrypted2, key);
+      expect(decrypted1).toBe(plaintext);
+      expect(decrypted2).toBe(plaintext);
+    });
+
+    it('should not leak plaintext in encrypted output', async () => {
+      const key = '12345678901234567890123456789012';
+      const plaintext = 'SENSITIVE_SECRET_DATA';
+
+      const encrypted = await service.encrypt(plaintext, key);
+
+      // Encrypted output should not contain the plaintext
+      expect(encrypted).not.toContain(plaintext);
+      expect(encrypted).not.toContain('SENSITIVE');
+      expect(encrypted).not.toContain('SECRET');
+    });
+  });
+
+  describe('Error Messages', () => {
+    it('should throw meaningful error for malformed encrypted data', async () => {
+      const key = '12345678901234567890123456789012';
+
+      // Missing colon separator
+      await expect(service.decrypt('nocolonseparator', key)).rejects.toThrow();
+    });
+
+    it('should throw error when IV is invalid hex', async () => {
+      const key = '12345678901234567890123456789012';
+
+      // Invalid hex in IV portion
+      await expect(service.decrypt('ZZZZ:abcd1234', key)).rejects.toThrow();
+    });
+
+    it('should throw error for key length mismatch', async () => {
+      const shortKey = '12345'; // Too short for AES-256
+      const plaintext = 'test data';
+
+      await expect(service.encrypt(plaintext, shortKey)).rejects.toThrow();
+    });
+  });
+
+  describe('Boundary Conditions', () => {
+    it('should handle maximum reasonable data size', async () => {
+      const key = '12345678901234567890123456789012';
+      // 1MB of data
+      const largeData = 'x'.repeat(1024 * 1024);
+
+      const encrypted = await service.encrypt(largeData, key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(decrypted).toBe(largeData);
+    });
+
+    it('should handle binary-like string data', async () => {
+      const key = '12345678901234567890123456789012';
+      // String with null characters and control characters
+      const binaryLike = 'data\x00with\x01control\x02chars';
+
+      const encrypted = await service.encrypt(binaryLike, key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(decrypted).toBe(binaryLike);
+    });
+
+    it('should handle newlines and whitespace correctly', async () => {
+      const key = '12345678901234567890123456789012';
+      const dataWithWhitespace = '  line1\n\tline2\r\n  line3  ';
+
+      const encrypted = await service.encrypt(dataWithWhitespace, key);
+      const decrypted = await service.decrypt(encrypted, key);
+
+      expect(decrypted).toBe(dataWithWhitespace);
+    });
+  });
 });

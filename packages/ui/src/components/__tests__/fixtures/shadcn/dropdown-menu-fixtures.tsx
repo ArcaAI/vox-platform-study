@@ -9,8 +9,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
-} from '../../../shadcn/dropdown-menu'
-import { Button } from '../../../shadcn/button'
+} from '../../../shadcn/dropdown-menu';
+import { Button } from '../../../shadcn/button';
 
 export function BasicDropdownMenu() {
   return (
@@ -27,12 +27,10 @@ export function BasicDropdownMenu() {
         </DropdownMenuItem>
         <DropdownMenuItem>Settings</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuCheckboxItem checked>
-          Show Toolbar
-        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem checked>Show Toolbar</DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 }

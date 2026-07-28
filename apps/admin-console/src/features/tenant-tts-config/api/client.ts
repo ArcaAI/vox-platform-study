@@ -7,7 +7,15 @@
 
 import { deleteJson, getJson, getWithEtag, putJson, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
-import type { EffectiveTtsConfig, SetTtsCredentialRequest, TtsConfigRow, TtsCredential, TtsPlatformCatalog, TtsProvider, UpdateTtsConfigRequest } from './types';
+import type {
+  EffectiveTtsConfig,
+  SetTtsCredentialRequest,
+  TtsConfigRow,
+  TtsCredential,
+  TtsPlatformCatalog,
+  TtsProvider,
+  UpdateTtsConfigRequest,
+} from './types';
 
 const BASE = 'admin/tts-config';
 

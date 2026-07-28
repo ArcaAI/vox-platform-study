@@ -68,7 +68,11 @@ class SpeakerTracker:
             if self._max_speakers > 0 and len(self._embedding_windows) >= self._max_speakers:
                 return None
 
-            sid = speaker_id if speaker_id and speaker_id.strip() else f"Speaker {self._next_speaker_num}"
+            sid = (
+                speaker_id
+                if speaker_id and speaker_id.strip()
+                else f"Speaker {self._next_speaker_num}"
+            )
             window: collections.deque[np.ndarray] = collections.deque(
                 maxlen=self._max_embeddings,
             )

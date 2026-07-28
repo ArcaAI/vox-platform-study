@@ -27,13 +27,17 @@ function ttsModelRow(over: { slug?: string; name?: string; provider?: string | n
     // Catalog voices carry PROVIDER voice identifiers (what voiceBindings bind to).
     metaData:
       over.metaData === undefined
-        ? { voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }, { id: 'ml-IN-SobhanaNeural', locale: 'ml-IN' }] }
+        ? {
+            voices: [
+              { id: 'en-IN-NeerjaNeural', locale: 'en-IN' },
+              { id: 'ml-IN-SobhanaNeural', locale: 'ml-IN' },
+            ],
+          }
         : over.metaData,
   };
 }
 
-const existingRow = () =>
-  TenantTtsConfigFactory.CreateTenantTtsConfig({ tenantId: TENANT, defaultSpeed: 1.0, defaultVoiceEn: 'en-female-1' });
+const existingRow = () => TenantTtsConfigFactory.CreateTenantTtsConfig({ tenantId: TENANT, defaultSpeed: 1.0, defaultVoiceEn: 'en-female-1' });
 
 describe('TenantTtsConfigService', () => {
   let ctx: ReturnType<typeof makeService>;
@@ -71,9 +75,7 @@ describe('TenantTtsConfigService', () => {
 
   it('upsert create with a non-zero expectedVersion is a concurrency conflict', async () => {
     ctx.repo.findByTenantId.mockResolvedValue(null);
-    await expect(ctx.svc.upsertRow(TENANT, { defaultSpeed: 2.0, expectedVersion: 5 })).rejects.toBeInstanceOf(
-      OptimisticConcurrencyException,
-    );
+    await expect(ctx.svc.upsertRow(TENANT, { defaultSpeed: 2.0, expectedVersion: 5 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
   });
 
   it('upsert updates via compare-and-set + broadcasts ResourceUpdated when a row exists', async () => {
@@ -99,7 +101,12 @@ describe('TenantTtsConfigService — platform catalog from the AiModel registry'
     const ctx = makeService();
     ctx.modelRepo.findByTaskType.mockResolvedValue([
       ttsModelRow(),
-      ttsModelRow({ slug: 'kokoro', name: 'Kokoro', provider: 'built-in', metaData: { ttsProvider: 'kokoro', voices: [{ id: 'af_heart', locale: 'en-US' }] } }),
+      ttsModelRow({
+        slug: 'kokoro',
+        name: 'Kokoro',
+        provider: 'built-in',
+        metaData: { ttsProvider: 'kokoro', voices: [{ id: 'af_heart', locale: 'en-US' }] },
+      }),
     ]);
 
     const catalog = await ctx.svc.getPlatformCatalog();
@@ -148,12 +155,8 @@ describe('TenantTtsConfigService — provider-universe validation on upsert', ()
     ctx.modelRepo.findByTaskType.mockResolvedValue([ttsModelRow()]); // universe = ['azure']
     ctx.repo.findByTenantId.mockResolvedValue(null);
 
-    await expect(ctx.svc.upsertRow(TENANT, { routingEn: ['azure', 'kokoro'], expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
-    await expect(ctx.svc.upsertRow(TENANT, { allowedProviders: ['polly'], expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
+    await expect(ctx.svc.upsertRow(TENANT, { routingEn: ['azure', 'kokoro'], expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(ctx.svc.upsertRow(TENANT, { allowedProviders: ['polly'], expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('accepts entries inside the catalog-derived universe', async () => {
@@ -179,9 +182,7 @@ describe('TenantTtsConfigService — provider-universe validation on upsert', ()
     const res = await ctx.svc.upsertRow(TENANT, { routingMl: ['indic_parler'], expectedVersion: 0 });
     expect(res.routingMl).toEqual(['indic_parler']);
 
-    await expect(ctx.svc.upsertRow(TENANT, { routingMl: ['polly'], expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
+    await expect(ctx.svc.upsertRow(TENANT, { routingMl: ['polly'], expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 });
 
@@ -206,9 +207,9 @@ describe('TenantTtsConfigService — voice bindings', () => {
     ctx.modelRepo.findByTaskType.mockResolvedValue([ttsModelRow()]); // universe = ['azure']
     ctx.repo.findByTenantId.mockResolvedValue(null);
 
-    await expect(
-      ctx.svc.upsertRow(TENANT, { voiceBindings: { 'en-female-1': { polly: 'Joanna' } }, expectedVersion: 0 }),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(ctx.svc.upsertRow(TENANT, { voiceBindings: { 'en-female-1': { polly: 'Joanna' } }, expectedVersion: 0 })).rejects.toBeInstanceOf(
+      ArgumentInvalidException,
+    );
   });
 
   it('rejects a bound voice name missing from the provider catalog voices', async () => {
@@ -218,16 +219,14 @@ describe('TenantTtsConfigService — voice bindings', () => {
     ]);
     ctx.repo.findByTenantId.mockResolvedValue(null);
 
-    await expect(
-      ctx.svc.upsertRow(TENANT, { voiceBindings: { 'en-female-1': { azure: 'nope-voice' } }, expectedVersion: 0 }),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(ctx.svc.upsertRow(TENANT, { voiceBindings: { 'en-female-1': { azure: 'nope-voice' } }, expectedVersion: 0 })).rejects.toBeInstanceOf(
+      ArgumentInvalidException,
+    );
   });
 
   it('accepts a bound voice name declared in the provider catalog (by name or id)', async () => {
     const ctx = makeService();
-    ctx.modelRepo.findByTaskType.mockResolvedValue([
-      ttsModelRow({ metaData: { voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }] } }),
-    ]);
+    ctx.modelRepo.findByTaskType.mockResolvedValue([ttsModelRow({ metaData: { voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }] } })]);
     ctx.repo.findByTenantId.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
@@ -334,7 +333,7 @@ describe('TenantTtsConfigService — registry-driven provider universe in getEff
     expect(eff.allowedProviders).toEqual(['elevenlabs', 'kokoro']);
   });
 
-  it('EMPTY registry catalog → code-constant universe (today\'s behaviour byte-for-byte)', async () => {
+  it("EMPTY registry catalog → code-constant universe (today's behaviour byte-for-byte)", async () => {
     const ctx = makeService();
     ctx.repo.findByTenantId.mockResolvedValue(null);
     ctx.modelRepo.findByTaskType.mockResolvedValue([]); // pre-seed
@@ -343,9 +342,7 @@ describe('TenantTtsConfigService — registry-driven provider universe in getEff
 
     expect(eff.routingEn).toEqual([...PLATFORM_TTS_LIMITS.codeDefaults.routingEn]);
     expect(eff.routingMl).toEqual(['azure', 'indic_parler']); // sarvam PHI-stripped
-    expect(eff.allowedProviders).toEqual(
-      PLATFORM_TTS_LIMITS.providerUniverse.filter((p) => p !== 'sarvam'),
-    );
+    expect(eff.allowedProviders).toEqual(PLATFORM_TTS_LIMITS.providerUniverse.filter((p) => p !== 'sarvam'));
   });
 
   it('caches the catalog read across getEffective calls (hot-path TTL cache)', async () => {

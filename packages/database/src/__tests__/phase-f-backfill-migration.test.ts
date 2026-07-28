@@ -24,13 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
-const MIGRATIONS_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'prisma',
-  'db_main',
-  'migrations',
-);
+const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'prisma', 'db_main', 'migrations');
 
 const MIGRATION_SUFFIX = '_task_305_phase_f_backfill_user_department';
 
@@ -105,9 +99,7 @@ describe('Phase F back-fill migration', () => {
     it('guards the UserDepartment INSERT on its tenant/user/department unique key', () => {
       const code = stripSqlComments(readMigrationSql());
       expect(code).toMatch(/INSERT\s+INTO\s+core\."UserDepartment"/i);
-      expect(code).toMatch(
-        /ON\s+CONFLICT\s*\(\s*"tenantId"\s*,\s*"userId"\s*,\s*"departmentId"\s*\)\s*DO\s+NOTHING/i,
-      );
+      expect(code).toMatch(/ON\s+CONFLICT\s*\(\s*"tenantId"\s*,\s*"userId"\s*,\s*"departmentId"\s*\)\s*DO\s+NOTHING/i);
     });
 
     it('excludes already-fixed members via NOT EXISTS on an ENABLED UserDepartment', () => {

@@ -38,7 +38,10 @@ describe('HARNESS_SERVICE_TOKEN dev provisioning', () => {
   it('dev-init.sh seeds secret/hope/HARNESS_SERVICE_TOKEN with a non-empty value', () => {
     const sh = readFileSync(DEV_INIT_SH, 'utf8');
     const seeded = sh.match(/vault kv put\s+secret\/hope\/HARNESS_SERVICE_TOKEN\s+value="([^"]+)"/);
-    expect(seeded, 'dev-init.sh must seed secret/hope/HARNESS_SERVICE_TOKEN (else apps/api sends an empty X-Service-Token → harness 401)').not.toBeNull();
+    expect(
+      seeded,
+      'dev-init.sh must seed secret/hope/HARNESS_SERVICE_TOKEN (else apps/api sends an empty X-Service-Token → harness 401)',
+    ).not.toBeNull();
     expect(seeded?.[1]).toBeTruthy();
   });
 

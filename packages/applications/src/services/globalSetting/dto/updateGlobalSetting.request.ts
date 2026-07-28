@@ -71,7 +71,8 @@ export class UpdateGlobalSettingRequest extends BaseRequest {
    * service-to-service callers still pass it in the body.
    */
   @ApiPropertyOptional({
-    description: 'Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted. Optional in the body when the `If-Match` header is supplied.',
+    description:
+      'Current version of the row (from the prior GET). The PATCH fails with 412 if the version drifted. Optional in the body when the `If-Match` header is supplied.',
     example: 7,
   })
   @IsOptional()

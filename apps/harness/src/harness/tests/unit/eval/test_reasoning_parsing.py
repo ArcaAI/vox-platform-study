@@ -65,9 +65,8 @@ class TestReasoningLeakParsing:
 
     def test_dangling_unclosed_think_truncated_reasoning(self):
         # truncated reasoning: an open <think> with no close, then the JSON.
-        raw = (
-            "<think>\nReasoning was cut off mid-sentence and never closed\n"
-            + pdsqi_score_json(useful=3)
+        raw = "<think>\nReasoning was cut off mid-sentence and never closed\n" + pdsqi_score_json(
+            useful=3
         )
         score = _judge().parse(raw)
         assert score.useful == 3

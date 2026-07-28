@@ -89,26 +89,26 @@ WHERE key = 'JWT_SECRET_KEY';
 
 1. **Add JWT and OIDC settings to database**:
 
-    ```sql
-    -- JWT settings
-    INSERT INTO global_settings (key, value, description) VALUES
-    ('JWT_SECRET_KEY', 'your-jwt-secret-key', 'JWT signing secret key'),
-    ('JWT_EXPIRES_IN', '24h', 'JWT token expiration time');
+   ```sql
+   -- JWT settings
+   INSERT INTO global_settings (key, value, description) VALUES
+   ('JWT_SECRET_KEY', 'your-jwt-secret-key', 'JWT signing secret key'),
+   ('JWT_EXPIRES_IN', '24h', 'JWT token expiration time');
 
-    -- OIDC settings
-    INSERT INTO global_settings (key, value, description) VALUES
-    ('OIDC_DISCOVERY_URL', 'https://your-oidc-provider.com/.well-known/openid_configuration', 'OIDC discovery URL'),
-    ('OIDC_CLIENT_ID', 'your-oidc-client-id', 'OIDC client ID'),
-    ('OIDC_CLIENT_SECRET', 'your-oidc-client-secret', 'OIDC client secret'),
-    ('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback', 'OIDC callback URL'),
-    ('OIDC_SCOPES', 'openid profile email', 'OIDC scopes to request');
-    ```
+   -- OIDC settings
+   INSERT INTO global_settings (key, value, description) VALUES
+   ('OIDC_DISCOVERY_URL', 'https://your-oidc-provider.com/.well-known/openid_configuration', 'OIDC discovery URL'),
+   ('OIDC_CLIENT_ID', 'your-oidc-client-id', 'OIDC client ID'),
+   ('OIDC_CLIENT_SECRET', 'your-oidc-client-secret', 'OIDC client secret'),
+   ('OIDC_CALLBACK_URL', 'http://localhost:8001/auth/callback', 'OIDC callback URL'),
+   ('OIDC_SCOPES', 'openid profile email', 'OIDC scopes to request');
+   ```
 
 2. **Verify settings are loaded**:
-    ```typescript
-    const jwtSecret = appSettingsService.getValueFromCache('JWT_SECRET_KEY');
-    console.log('JWT Secret loaded:', jwtSecret ? 'Yes' : 'No');
-    ```
+   ```typescript
+   const jwtSecret = appSettingsService.getValueFromCache('JWT_SECRET_KEY');
+   console.log('JWT Secret loaded:', jwtSecret ? 'Yes' : 'No');
+   ```
 
 ### 2. Environment Variables (Optional)
 
@@ -126,15 +126,15 @@ Ensure that any modules using JWT authentication import `AppSettingsModule`:
 
 ```typescript
 @Module({
-    imports: [
-        AppSettingsModule.forRoot(), // Required for JWT configuration
-        // ... other imports
-    ],
-    providers: [
-        OidcStrategy,
-        JwtStrategy,
-        // ... other providers
-    ],
+  imports: [
+    AppSettingsModule.forRoot(), // Required for JWT configuration
+    // ... other imports
+  ],
+  providers: [
+    OidcStrategy,
+    JwtStrategy,
+    // ... other providers
+  ],
 })
 export class AuthModule {}
 ```
@@ -182,39 +182,39 @@ Update your unit tests to mock AppSettingsService:
 
 ```typescript
 describe('OidcStrategy', () => {
-    let strategy: OidcStrategy;
-    let mockAppSettingsService: jest.Mocked<IAppSettingsService>;
+  let strategy: OidcStrategy;
+  let mockAppSettingsService: jest.Mocked<IAppSettingsService>;
 
-    beforeEach(async () => {
-        mockAppSettingsService = {
-            getValueWithDefault: jest.fn(),
-            // ... other methods
-        };
+  beforeEach(async () => {
+    mockAppSettingsService = {
+      getValueWithDefault: jest.fn(),
+      // ... other methods
+    };
 
-        // Mock JWT configuration
-        mockAppSettingsService.getValueWithDefault
-            .mockReturnValueOnce('test-jwt-secret') // JWT_SECRET_KEY
-            .mockReturnValueOnce('1h'); // JWT_EXPIRES_IN
+    // Mock JWT configuration
+    mockAppSettingsService.getValueWithDefault
+      .mockReturnValueOnce('test-jwt-secret') // JWT_SECRET_KEY
+      .mockReturnValueOnce('1h'); // JWT_EXPIRES_IN
 
-        const module = await Test.createTestingModule({
-            providers: [
-                OidcStrategy,
-                {
-                    provide: IAppSettingsService,
-                    useValue: mockAppSettingsService,
-                },
-                // ... other providers
-            ],
-        }).compile();
+    const module = await Test.createTestingModule({
+      providers: [
+        OidcStrategy,
+        {
+          provide: IAppSettingsService,
+          useValue: mockAppSettingsService,
+        },
+        // ... other providers
+      ],
+    }).compile();
 
-        strategy = module.get<OidcStrategy>(OidcStrategy);
-    });
+    strategy = module.get<OidcStrategy>(OidcStrategy);
+  });
 
-    it('should create JWT token with database configuration', async () => {
-        // Test JWT token creation
-        expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('JWT_SECRET_KEY', expect.any(String));
-        expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('JWT_EXPIRES_IN', expect.any(String));
-    });
+  it('should create JWT token with database configuration', async () => {
+    // Test JWT token creation
+    expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('JWT_SECRET_KEY', expect.any(String));
+    expect(mockAppSettingsService.getValueWithDefault).toHaveBeenCalledWith('JWT_EXPIRES_IN', expect.any(String));
+  });
 });
 ```
 
@@ -224,24 +224,24 @@ Test the complete flow with database configuration:
 
 ```typescript
 describe('JWT Authentication Integration', () => {
-    it('should authenticate with database-configured JWT settings', async () => {
-        // Setup database configuration
-        await globalSettingRepository.save([
-            { key: 'JWT_SECRET_KEY', value: 'test-secret-key' },
-            { key: 'JWT_EXPIRES_IN', value: '1h' },
-        ]);
+  it('should authenticate with database-configured JWT settings', async () => {
+    // Setup database configuration
+    await globalSettingRepository.save([
+      { key: 'JWT_SECRET_KEY', value: 'test-secret-key' },
+      { key: 'JWT_EXPIRES_IN', value: '1h' },
+    ]);
 
-        // Refresh app settings cache
-        await appSettingsService.refreshCache();
+    // Refresh app settings cache
+    await appSettingsService.refreshCache();
 
-        // Test authentication flow
-        const token = await authService.login(userCredentials);
-        expect(token).toBeDefined();
+    // Test authentication flow
+    const token = await authService.login(userCredentials);
+    expect(token).toBeDefined();
 
-        // Verify token can be validated
-        const decoded = await authService.validateToken(token);
-        expect(decoded).toBeDefined();
-    });
+    // Verify token can be validated
+    const decoded = await authService.validateToken(token);
+    expect(decoded).toBeDefined();
+  });
 });
 ```
 
@@ -254,36 +254,36 @@ Monitor JWT configuration status:
 ```typescript
 @Injectable()
 export class JwtHealthIndicator {
-    constructor(@Inject(IAppSettingsService) private appSettingsService: IAppSettingsService) {}
+  constructor(@Inject(IAppSettingsService) private appSettingsService: IAppSettingsService) {}
 
-    async checkJwtConfiguration(): Promise<{
-        status: 'healthy' | 'unhealthy';
-        details: any;
-    }> {
-        try {
-            const jwtSecret = this.appSettingsService.getValueFromCache('JWT_SECRET_KEY');
-            const jwtExpiresIn = this.appSettingsService.getValueFromCache('JWT_EXPIRES_IN');
+  async checkJwtConfiguration(): Promise<{
+    status: 'healthy' | 'unhealthy';
+    details: any;
+  }> {
+    try {
+      const jwtSecret = this.appSettingsService.getValueFromCache('JWT_SECRET_KEY');
+      const jwtExpiresIn = this.appSettingsService.getValueFromCache('JWT_EXPIRES_IN');
 
-            const isHealthy = !!(jwtSecret && jwtExpiresIn);
+      const isHealthy = !!(jwtSecret && jwtExpiresIn);
 
-            return {
-                status: isHealthy ? 'healthy' : 'unhealthy',
-                details: {
-                    secretConfigured: !!jwtSecret,
-                    expirationConfigured: !!jwtExpiresIn,
-                    secretLength: jwtSecret ? jwtSecret.length : 0,
-                    expiration: jwtExpiresIn,
-                },
-            };
-        } catch (error) {
-            return {
-                status: 'unhealthy',
-                details: {
-                    error: error instanceof Error ? error.message : String(error),
-                },
-            };
-        }
+      return {
+        status: isHealthy ? 'healthy' : 'unhealthy',
+        details: {
+          secretConfigured: !!jwtSecret,
+          expirationConfigured: !!jwtExpiresIn,
+          secretLength: jwtSecret ? jwtSecret.length : 0,
+          expiration: jwtExpiresIn,
+        },
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
     }
+  }
 }
 ```
 
@@ -293,49 +293,49 @@ export class JwtHealthIndicator {
 
 1. **JWT Secret Not Found**
 
-    ```
-    Error: JWT secret not configured
-    ```
+   ```
+   Error: JWT secret not configured
+   ```
 
-    **Solution**: Ensure `JWT_SECRET_KEY` is set in global_settings table
+   **Solution**: Ensure `JWT_SECRET_KEY` is set in global_settings table
 
 2. **Invalid JWT Expiration**
 
-    ```
-    Error: Invalid expiration time format
-    ```
+   ```
+   Error: Invalid expiration time format
+   ```
 
-    **Solution**: Use valid time format (e.g., '1h', '24h', '7d')
+   **Solution**: Use valid time format (e.g., '1h', '24h', '7d')
 
 3. **AppSettingsService Not Available**
-    ```
-    Error: Cannot read property 'getValueWithDefault' of undefined
-    ```
-    **Solution**: Ensure AppSettingsModule is imported before auth modules
+   ```
+   Error: Cannot read property 'getValueWithDefault' of undefined
+   ```
+   **Solution**: Ensure AppSettingsModule is imported before auth modules
 
 ### Debug Steps
 
 1. **Check database configuration**:
 
-    ```sql
-    SELECT * FROM global_settings WHERE key IN ('JWT_SECRET_KEY', 'JWT_EXPIRES_IN');
-    ```
+   ```sql
+   SELECT * FROM global_settings WHERE key IN ('JWT_SECRET_KEY', 'JWT_EXPIRES_IN');
+   ```
 
 2. **Verify cache loading**:
 
-    ```typescript
-    const stats = appSettingsService.getCacheStats();
-    console.log('Cache initialized:', stats.isInitialized);
-    console.log('Settings count:', stats.settingsCount);
-    ```
+   ```typescript
+   const stats = appSettingsService.getCacheStats();
+   console.log('Cache initialized:', stats.isInitialized);
+   console.log('Settings count:', stats.settingsCount);
+   ```
 
 3. **Test JWT configuration**:
-    ```typescript
-    const jwtSecret = appSettingsService.getValueFromCache('JWT_SECRET_KEY');
-    const jwtExpiresIn = appSettingsService.getValueFromCache('JWT_EXPIRES_IN');
-    console.log('JWT Secret:', jwtSecret ? 'Configured' : 'Missing');
-    console.log('JWT Expiration:', jwtExpiresIn);
-    ```
+   ```typescript
+   const jwtSecret = appSettingsService.getValueFromCache('JWT_SECRET_KEY');
+   const jwtExpiresIn = appSettingsService.getValueFromCache('JWT_EXPIRES_IN');
+   console.log('JWT Secret:', jwtSecret ? 'Configured' : 'Missing');
+   console.log('JWT Expiration:', jwtExpiresIn);
+   ```
 
 ## Security Considerations
 

@@ -1,13 +1,7 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import {
-  AgentStepType,
-  AgentTrajectoryStepEntity,
-  AgentTrajectoryStepFactory,
-  AgentTrajectoryStepRepository,
-  ResourceType,
-} from '@arcaai/domains';
+import { AgentStepType, AgentTrajectoryStepEntity, AgentTrajectoryStepFactory, AgentTrajectoryStepRepository, ResourceType } from '@arcaai/domains';
 import { BaseService, assertEqualTenants } from '../../common';
 import { clampCursorLimit, decodeCursor, toCursorPage } from '../../common/cursorPagination';
 import { IActiveUserContext } from '../../interfaces';
@@ -164,11 +158,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     return { items: all.slice(start, start + limit), total };
   }
 
-  async listSteps(
-    tenantId: string,
-    sessionId: string,
-    options: ListTrajectoryStepsOptions = {},
-  ): Promise<AgentTrajectoryStepsPageResponse> {
+  async listSteps(tenantId: string, sessionId: string, options: ListTrajectoryStepsOptions = {}): Promise<AgentTrajectoryStepsPageResponse> {
     const cursor = options.cursor ? decodeCursor(options.cursor) : null;
     if (options.cursor && !cursor) {
       throw new BadRequestException('Invalid trajectory cursor');
@@ -186,10 +176,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     if (cursor) {
       const seqValue = Number(cursor.k);
       where = {
-        AND: [
-          baseWhere,
-          { OR: [{ seq: { gt: seqValue } }, { AND: [{ seq: seqValue }, { id: { gt: cursor.id } }] }] },
-        ],
+        AND: [baseWhere, { OR: [{ seq: { gt: seqValue } }, { AND: [{ seq: seqValue }, { id: { gt: cursor.id } }] }] }],
       };
     }
 
@@ -211,10 +198,7 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     };
   }
 
-  async aggregateGenerationStats(
-    tenantId: string,
-    filters: AggregateGenerationStatsFilters = {},
-  ): Promise<GenerationMetricsAggregateResponse> {
+  async aggregateGenerationStats(tenantId: string, filters: AggregateGenerationStatsFilters = {}): Promise<GenerationMetricsAggregateResponse> {
     const createdAt = resolveMetricsCreatedAtRange(filters.from, filters.to);
     const where: Record<string, unknown> = {
       tenantId,
@@ -472,9 +456,11 @@ function parseGenerationStats(raw: unknown): ParsedGenerationStats | null {
   // verbatim onto every LLM_CALL step, and this parser simply never looked. Read
   // both the flat and the nested `usage` shape (the SMR wire uses both).
   const usage = (obj.usage && typeof obj.usage === 'object' ? (obj.usage as Record<string, unknown>) : {}) as Record<string, unknown>;
-  const promptTokens = pickNumber(obj, 'prompt_tokens', 'promptTokens', 'input_tokens', 'inputTokens') ?? pickNumber(usage, 'prompt_tokens', 'promptTokens');
+  const promptTokens =
+    pickNumber(obj, 'prompt_tokens', 'promptTokens', 'input_tokens', 'inputTokens') ?? pickNumber(usage, 'prompt_tokens', 'promptTokens');
   const completionTokens =
-    pickNumber(obj, 'completion_tokens', 'completionTokens', 'output_tokens', 'outputTokens') ?? pickNumber(usage, 'completion_tokens', 'completionTokens');
+    pickNumber(obj, 'completion_tokens', 'completionTokens', 'output_tokens', 'outputTokens') ??
+    pickNumber(usage, 'completion_tokens', 'completionTokens');
   const model = pickString(obj, 'model', 'modelName') ?? undefined;
   // A sample counts when at least one headline field is present. Tokens now
   // qualify: a stats block carrying only token counts used to parse to null, so

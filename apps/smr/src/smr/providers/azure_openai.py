@@ -105,7 +105,10 @@ class AzureOpenAIProvider:
                 "stream": False,
             }
 
-            if request.response_format is not None and request.response_format.type == "json_schema":
+            if (
+                request.response_format is not None
+                and request.response_format.type == "json_schema"
+            ):
                 schema = request.response_format.json_schema or {}
                 kwargs["response_format"] = {
                     "type": "json_schema",
@@ -133,7 +136,11 @@ class AzureOpenAIProvider:
 
             message = response.choices[0].message
             content = message.content or ""
-            reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
+            reasoning = (
+                getattr(message, "reasoning_content", None)
+                or getattr(message, "reasoning", None)
+                or ""
+            )
             finish_reason = response.choices[0].finish_reason
             usage_obj = getattr(response, "usage", None)
             usage = {
@@ -218,7 +225,9 @@ class AzureOpenAIProvider:
                 delta = chunk.choices[0].delta
                 if chunk.choices[0].finish_reason:
                     finish_reason = chunk.choices[0].finish_reason
-                reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                reasoning = getattr(delta, "reasoning_content", None) or getattr(
+                    delta, "reasoning", None
+                )
                 if isinstance(reasoning, str) and reasoning:
                     if ttft_ms is None:
                         ttft_ms = int((time.monotonic() - start) * 1000)
@@ -261,7 +270,9 @@ class AzureOpenAIProvider:
         # cloud configs carry no compiled-in vendor model) — never advertise an
         # empty-named model.
         models: list[ModelInfo] = (
-            [ModelInfo(name=self._default_model, supports_streaming=True)] if self._default_model else []
+            [ModelInfo(name=self._default_model, supports_streaming=True)]
+            if self._default_model
+            else []
         )
         status = "available"
         try:

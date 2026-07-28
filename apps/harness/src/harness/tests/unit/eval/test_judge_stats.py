@@ -57,8 +57,11 @@ class TestOpenAICompatStats:
         client = OpenAICompatJudgeClient(JudgeConfig())
         captured: dict = {}
         client._client.chat.completions.create = _fake_create(
-            captured, content='{"x": 1}', finish_reason="length",
-            usage=_usage(30, 10, 40), model="gemma",
+            captured,
+            content='{"x": 1}',
+            finish_reason="length",
+            usage=_usage(30, 10, 40),
+            model="gemma",
         )
         await client.complete([{"role": "user", "content": "hi"}])
         stats = client.last_stats
@@ -78,7 +81,10 @@ class TestOpenAICompatStats:
         captured: dict = {}
         # No usage / finish_reason on the response (older / minimal engine).
         client._client.chat.completions.create = _fake_create(
-            captured, content='{"x": 1}', finish_reason=None, usage=None,
+            captured,
+            content='{"x": 1}',
+            finish_reason=None,
+            usage=None,
         )
         await client.complete([{"role": "user", "content": "hi"}])
         stats = client.last_stats
@@ -96,8 +102,11 @@ class TestAzureStats:
         client = _azure()
         captured: dict = {}
         client._client.chat.completions.create = _fake_create(
-            captured, content='{"x": 1}', finish_reason="content_filter",
-            usage=_usage(12, 4, 16), model="gpt-4o",
+            captured,
+            content='{"x": 1}',
+            finish_reason="content_filter",
+            usage=_usage(12, 4, 16),
+            model="gpt-4o",
         )
         await client.complete([{"role": "user", "content": "hi"}])
         stats = client.last_stats
@@ -111,7 +120,9 @@ class TestAzureStats:
 class TestBedrockStats:
     @pytest.mark.asyncio
     async def test_captures_usage_and_stop_reason(self):
-        client = BedrockJudgeClient(JudgeConfig(provider=JudgeProvider.BEDROCK, model="anthropic.x"))
+        client = BedrockJudgeClient(
+            JudgeConfig(provider=JudgeProvider.BEDROCK, model="anthropic.x")
+        )
 
         class _Runtime:
             def converse(self, **kwargs):  # noqa: ANN003

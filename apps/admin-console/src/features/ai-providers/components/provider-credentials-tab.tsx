@@ -22,8 +22,8 @@ export function ProviderCredentialsTab({ service }: { service: ProviderService }
   return (
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">
-        {SERVICE_COPY[service]} <span className="font-mono text-xs">PUT /admin/providers/{service}/:provider</span> — write-only, masked on
-        read, OCC If-Match.
+        {SERVICE_COPY[service]} <span className="font-mono text-xs">PUT /admin/providers/{service}/:provider</span> — write-only, masked on read, OCC
+        If-Match.
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
         {providers.map((meta) => (

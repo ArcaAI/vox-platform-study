@@ -49,6 +49,10 @@ describe('tokenizeJson', () => {
 
   it('round-trips: concatenating token values reproduces the source verbatim', () => {
     const source = '{\n  "a": [1, true, null],\n  "b": "x"\n}';
-    expect(tokenizeJson(source).map((t) => t.value).join('')).toBe(source);
+    expect(
+      tokenizeJson(source)
+        .map((t) => t.value)
+        .join(''),
+    ).toBe(source);
   });
 });

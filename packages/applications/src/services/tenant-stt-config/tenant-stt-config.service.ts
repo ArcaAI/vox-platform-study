@@ -19,13 +19,7 @@ import { AiProviderConnectionResponse, IProviderConnectionService, UpsertAiProvi
 import { PipelineResponse, PipelineService } from '../stt/pipeline';
 import { ITenantSttConfigService } from './ITenantSttConfigService';
 import { TenantSttConfigDtoMapper } from './tenant-stt-config.dto.mapper';
-import {
-  EffectiveSttConfigResponse,
-  SetSttCredentialRequest,
-  SetSttFallbackRequest,
-  SttCredentialResponse,
-  TenantSttConfigResponse,
-} from './dto';
+import { EffectiveSttConfigResponse, SetSttCredentialRequest, SetSttFallbackRequest, SttCredentialResponse, TenantSttConfigResponse } from './dto';
 import {
   BYO_STT_PROVIDERS,
   CLOUD_STT_FORMATS,
@@ -101,9 +95,7 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
         tenantId,
         fallbackPipelineId: dto.fallbackPipelineId ?? null,
         ...(dto.autoSwitchEnabled !== undefined ? { autoSwitchEnabled: dto.autoSwitchEnabled } : {}),
-        ...(dto.consecutiveFailureThreshold !== undefined
-          ? { configJson: { consecutiveFailureThreshold: dto.consecutiveFailureThreshold } }
-          : {}),
+        ...(dto.consecutiveFailureThreshold !== undefined ? { configJson: { consecutiveFailureThreshold: dto.consecutiveFailureThreshold } } : {}),
         createdBy: this.requestUserId ?? undefined,
       });
       const saved = await this.configRepository.create(entity);
@@ -178,9 +170,7 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
       return;
     }
     // Slug reference — resolve the AiModel (tenant copy, else SYSTEM catalog).
-    const model =
-      (await this.aiModelRepository.findBySlug(tenantId, asrRef)) ??
-      (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, asrRef));
+    const model = (await this.aiModelRepository.findBySlug(tenantId, asrRef)) ?? (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, asrRef));
     if (!model) {
       throw new BadRequestException(`Cannot resolve ASR model '${asrRef}' to verify pipeline '${pipeline.slug}' is cloud-backed`);
     }
@@ -206,9 +196,7 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
       const provider = asrRef.split('::')[0].trim().toLowerCase();
       return CLOUD_STT_PROVIDERS.has(provider);
     }
-    const model =
-      (await this.aiModelRepository.findBySlug(tenantId, asrRef)) ??
-      (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, asrRef));
+    const model = (await this.aiModelRepository.findBySlug(tenantId, asrRef)) ?? (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, asrRef));
     if (!model) {
       return false;
     }

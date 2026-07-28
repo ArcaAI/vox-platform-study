@@ -448,11 +448,7 @@ test.describe('@arcaai/pipeline E2E Tests', () => {
     test('should expose PipelineError class', async ({ page }) => {
       const hasError = await page.evaluate(() => {
         try {
-          const err = new window.PipelineError(
-            window.PipelineErrorCode.STAGE_FAILED,
-            'Test error',
-            { stage: 'test-stage' }
-          );
+          const err = new window.PipelineError(window.PipelineErrorCode.STAGE_FAILED, 'Test error', { stage: 'test-stage' });
           return {
             hasCode: err.code === 'STAGE_FAILED',
             hasMessage: err.message === 'Test error',

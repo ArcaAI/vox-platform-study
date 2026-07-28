@@ -40,9 +40,7 @@ EXEMPT_PATHS: frozenset[str] = frozenset(
 class ServiceAuthMiddleware(BaseHTTPMiddleware):
     """Require a valid X-Service-Token for non-exempt endpoints."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         service_token: str = settings.service.service_token.get_secret_value()
 
         if not service_token:

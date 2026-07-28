@@ -33,12 +33,7 @@ describe('SUM-01: async summary job types', () => {
   });
 
   it('should define SummaryJobStatus enum/type', async () => {
-    const statuses: import('../summary').SummaryJobStatus[] = [
-      'pending',
-      'processing',
-      'completed',
-      'failed',
-    ];
+    const statuses: import('../summary').SummaryJobStatus[] = ['pending', 'processing', 'completed', 'failed'];
     expect(statuses).toHaveLength(4);
     expect(statuses).toContain('pending');
     expect(statuses).toContain('processing');

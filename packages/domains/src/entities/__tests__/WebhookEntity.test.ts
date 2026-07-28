@@ -57,15 +57,14 @@ describe('WebhookEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it.each([
-      'http://localhost:3000/hook',
-      'https://example.com/path?query=1',
-      'https://sub.domain.example.com/deep/path',
-    ])('should accept valid url %s', (url) => {
-      const entity = new WebhookEntity(createValidInit({ url }));
+    it.each(['http://localhost:3000/hook', 'https://example.com/path?query=1', 'https://sub.domain.example.com/deep/path'])(
+      'should accept valid url %s',
+      (url) => {
+        const entity = new WebhookEntity(createValidInit({ url }));
 
-      expect(() => entity.validate()).not.toThrow();
-    });
+        expect(() => entity.validate()).not.toThrow();
+      },
+    );
   });
 
   describe('name', () => {
@@ -133,13 +132,9 @@ describe('WebhookEntity.validate()', () => {
     });
 
     it('should throw when resourceTypeName exceeds 100 characters', () => {
-      const entity = new WebhookEntity(
-        createValidInit({ resourceTypeName: 'x'.repeat(101) }),
-      );
+      const entity = new WebhookEntity(createValidInit({ resourceTypeName: 'x'.repeat(101) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Webhook resourceTypeName must not exceed 100 characters',
-      );
+      expect(() => entity.validate()).toThrow('Webhook resourceTypeName must not exceed 100 characters');
     });
   });
 
@@ -151,13 +146,9 @@ describe('WebhookEntity.validate()', () => {
     });
 
     it('should throw when hashedSecret exceeds 255 characters', () => {
-      const entity = new WebhookEntity(
-        createValidInit({ hashedSecret: 'x'.repeat(256) }),
-      );
+      const entity = new WebhookEntity(createValidInit({ hashedSecret: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Webhook hashedSecret must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('Webhook hashedSecret must not exceed 255 characters');
     });
   });
 

@@ -48,12 +48,12 @@ src/
 BaseEntity → BaseAggregate → BaseTenantEntity → BaseTaggedEntity
 ```
 
-| Base class | Adds | Use for |
-|---|---|---|
-| `BaseEntity` | id, audit fields, `resourceStatus`, change tracking, lifecycle methods, `version` (OCC) | System-level entities without tenancy |
-| `BaseAggregate` | domain events (`addEvent`, `publishEvents`) | Aggregates emitting events |
-| `BaseTenantEntity` | `tenantId` (validated non-empty) | Tenant-scoped entities |
-| `BaseTaggedEntity` | `tags: string[]` | Tenant-scoped entities with tagging |
+| Base class         | Adds                                                                                    | Use for                               |
+| ------------------ | --------------------------------------------------------------------------------------- | ------------------------------------- |
+| `BaseEntity`       | id, audit fields, `resourceStatus`, change tracking, lifecycle methods, `version` (OCC) | System-level entities without tenancy |
+| `BaseAggregate`    | domain events (`addEvent`, `publishEvents`)                                             | Aggregates emitting events            |
+| `BaseTenantEntity` | `tenantId` (validated non-empty)                                                        | Tenant-scoped entities                |
+| `BaseTaggedEntity` | `tags: string[]`                                                                        | Tenant-scoped entities with tagging   |
 
 Entity setters route through `setProperty()`, which records modified fields in `entity.changes`. `Repository.update()` persists only those changes (via `mapper.toPersistenceChanges`), so always mutate through setters. Lifecycle methods — `enable()`, `disable()`, `archive()`, `delete()`, `recoverFromDelete()`, `reinstate()`, `toggleEnabledDisabled()` — set `resourceStatus` plus its audit fields; every entity implements `validate()`.
 
@@ -87,27 +87,22 @@ The mapper (`DepartmentEntityMapper extends BaseMapper`) implements `toPersisten
 
 ### Repository API
 
-| Method | Behavior |
-|---|---|
-| `create(entity, tx?)` / `createMany(entities)` | Insert via mapper; optional transaction client |
-| `findById(id)` / `findFirst(props)` / `findAll(props)` / `count(props)` | Read with filters/sort/pagination; throw `DataNotFoundException` on misses (`findAll` returns `[]`) |
-| `update(id, entity)` | Persist only `entity.changes` |
-| `updateWithVersion(id, entity, expectedVersion, tx?)` | Optimistic-concurrency compare-and-set on `_version`; throws `OptimisticConcurrencyException` on drift |
-| `softDelete(id, updatedBy?)` / `restore(id, updatedBy?)` | Set `resourceStatus` DELETED/ENABLED and bump version; throw if the model has no `resourceStatus` |
-| `delete(id)` | Hard delete — avoid outside tests/admin tooling |
-| `$()` / `query()` | Fluent `QueryBuilder` |
+| Method                                                                  | Behavior                                                                                               |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `create(entity, tx?)` / `createMany(entities)`                          | Insert via mapper; optional transaction client                                                         |
+| `findById(id)` / `findFirst(props)` / `findAll(props)` / `count(props)` | Read with filters/sort/pagination; throw `DataNotFoundException` on misses (`findAll` returns `[]`)    |
+| `update(id, entity)`                                                    | Persist only `entity.changes`                                                                          |
+| `updateWithVersion(id, entity, expectedVersion, tx?)`                   | Optimistic-concurrency compare-and-set on `_version`; throws `OptimisticConcurrencyException` on drift |
+| `softDelete(id, updatedBy?)` / `restore(id, updatedBy?)`                | Set `resourceStatus` DELETED/ENABLED and bump version; throw if the model has no `resourceStatus`      |
+| `delete(id)`                                                            | Hard delete — avoid outside tests/admin tooling                                                        |
+| `$()` / `query()`                                                       | Fluent `QueryBuilder`                                                                                  |
 
 Reads are automatically decrypt-on-read for registered encrypted PHI columns when a secrets service is wired (`common/phi-read-decrypt.ts`); in env-mode dev and unit tests this is a pass-through.
 
 Query builder example:
 
 ```typescript
-const rows = await departmentRepository
-  .$()
-  .Where({ resourceStatus: 'ENABLED' })
-  .OrderBy(['createdAt'], 'desc')
-  .Take(20)
-  .ToList();
+const rows = await departmentRepository.$().Where({ resourceStatus: 'ENABLED' }).OrderBy(['createdAt'], 'desc').Take(20).ToList();
 ```
 
 `QueryBuilder` supports `Where` / `WhereOr` / `WhereNot`, `Select`, `OrderBy`, `Take` / `Skip`, `Include`, `CountRelation`, `Build`, `ToList`, and nested relation paths (`{ path: 'Parent.$Children', query: {...} }`).
@@ -135,13 +130,13 @@ Define an event extending `DomainEvent<TProps>`, emit from an aggregate with `th
 
 ## Commands
 
-| Command | package.json script | From repo root |
-|---|---|---|
-| Build | `tsc` | `pnpm --filter @arcaai/domains build` |
-| Watch | `tsc --watch` | `pnpm --filter @arcaai/domains dev` |
-| Test | `vitest run` | `pnpm --filter @arcaai/domains test` |
-| Typecheck | `tsc --noEmit` | `pnpm --filter @arcaai/domains typecheck` |
-| Lint | `eslint .` | `pnpm --filter @arcaai/domains lint` |
+| Command   | package.json script | From repo root                            |
+| --------- | ------------------- | ----------------------------------------- |
+| Build     | `tsc`               | `pnpm --filter @arcaai/domains build`     |
+| Watch     | `tsc --watch`       | `pnpm --filter @arcaai/domains dev`       |
+| Test      | `vitest run`        | `pnpm --filter @arcaai/domains test`      |
+| Typecheck | `tsc --noEmit`      | `pnpm --filter @arcaai/domains typecheck` |
+| Lint      | `eslint .`          | `pnpm --filter @arcaai/domains lint`      |
 
 Unit tests live in `__tests__/` folders next to the code; `src/integration/` holds suites that need a live Postgres and is excluded from the standalone `test` run (see `vitest.config.ts`).
 

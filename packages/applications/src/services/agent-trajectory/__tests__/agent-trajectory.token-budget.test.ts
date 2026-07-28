@@ -26,11 +26,7 @@ const cls = {
 };
 
 function buildService() {
-  return new AgentTrajectoryService(
-    stepRepository as never,
-    { emit: vi.fn() } as never,
-    cls as never,
-  );
+  return new AgentTrajectoryService(stepRepository as never, { emit: vi.fn() } as never, cls as never);
 }
 
 /** An LLM_CALL step whose stats carry the SMR usage block. */
@@ -87,9 +83,7 @@ describe('AgentTrajectoryService — token accounting', () => {
   });
 
   it('computes $-cost from AiModel.metaData.pricing when a price book is supplied', async () => {
-    stepRepository.findAll.mockResolvedValue([
-      llmStep({ model: 'medgemma-27b', prompt_tokens: 1000, completion_tokens: 500 }),
-    ]);
+    stepRepository.findAll.mockResolvedValue([llmStep({ model: 'medgemma-27b', prompt_tokens: 1000, completion_tokens: 500 })]);
 
     const metrics = await buildService().aggregateGenerationStats(TENANT, {
       pricing: { 'medgemma-27b': { inputPer1k: 0.002, outputPer1k: 0.006, currency: 'USD' } },
@@ -101,9 +95,7 @@ describe('AgentTrajectoryService — token accounting', () => {
   });
 
   it('leaves cost null when the model has no price-book entry (never guesses)', async () => {
-    stepRepository.findAll.mockResolvedValue([
-      llmStep({ model: 'unpriced-model', prompt_tokens: 1000, completion_tokens: 500 }),
-    ]);
+    stepRepository.findAll.mockResolvedValue([llmStep({ model: 'unpriced-model', prompt_tokens: 1000, completion_tokens: 500 })]);
 
     const metrics = await buildService().aggregateGenerationStats(TENANT, {
       pricing: { 'other-model': { inputPer1k: 1, outputPer1k: 1, currency: 'USD' } },

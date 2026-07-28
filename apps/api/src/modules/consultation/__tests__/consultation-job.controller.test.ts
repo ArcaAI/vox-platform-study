@@ -11,10 +11,7 @@ import { PATH_METADATA, METHOD_METADATA, SSE_METADATA } from '@nestjs/common/con
 import { RequestMethod } from '@nestjs/common';
 import { of } from 'rxjs';
 import { ConsultationJobController } from '../consultation-job.controller';
-import {
-  TENANT_OWNED_RESOURCE_KEY,
-  type TenantOwnedResourceOptions,
-} from '../../../common/tenant-owned-resource.decorator';
+import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../../../common/tenant-owned-resource.decorator';
 
 type MockJobService = {
   getJobStatus: ReturnType<typeof vi.fn>;
@@ -147,10 +144,7 @@ describe('ConsultationJobController', () => {
   // ---------------------------------------------------------------------------
   describe('@TenantOwnedResource metadata', () => {
     const meta = (m: keyof ConsultationJobController): TenantOwnedResourceOptions | undefined =>
-      Reflect.getMetadata(
-        TENANT_OWNED_RESOURCE_KEY,
-        ConsultationJobController.prototype[m] as object,
-      ) as TenantOwnedResourceOptions | undefined;
+      Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, ConsultationJobController.prototype[m] as object) as TenantOwnedResourceOptions | undefined;
 
     it('getJob is annotated with modelName ConsultationJob + paramName jobId (tenant-only)', () => {
       // Read routes keep tenant-only scope — shared-room reads from peer

@@ -30,11 +30,7 @@ export class PipelinePolicyRepository extends Repository<PipelinePolicyEntity, P
    * that tier has no override yet. `scopeId` is normalized to null for the
    * TENANT tier so the `scopeId IS NULL` predicate matches the default row.
    */
-  async findForScope(
-    tenantId: string,
-    scope: PipelinePolicyScope,
-    scopeId: string | null = null,
-  ): Promise<PipelinePolicyEntity | null> {
+  async findForScope(tenantId: string, scope: PipelinePolicyScope, scopeId: string | null = null): Promise<PipelinePolicyEntity | null> {
     try {
       return await this.findFirst({
         filters: { tenantId, scope, scopeId: scope === PipelinePolicyScope.TENANT ? null : scopeId },
@@ -62,15 +58,9 @@ export class PipelinePolicyRepository extends Repository<PipelinePolicyEntity, P
    * `ConfigResolver` walks the returned rows DOCTOR → DEPARTMENT → TENANT and
    * then falls through to the system default + code default per setting.
    */
-  async findCascadeRows(params: {
-    tenantId: string;
-    departmentId?: string | null;
-    doctorId?: string | null;
-  }): Promise<PipelinePolicyEntity[]> {
+  async findCascadeRows(params: { tenantId: string; departmentId?: string | null; doctorId?: string | null }): Promise<PipelinePolicyEntity[]> {
     const { tenantId, departmentId, doctorId } = params;
-    const or: Array<{ scope: PipelinePolicyScope; scopeId: string | null }> = [
-      { scope: PipelinePolicyScope.TENANT, scopeId: null },
-    ];
+    const or: Array<{ scope: PipelinePolicyScope; scopeId: string | null }> = [{ scope: PipelinePolicyScope.TENANT, scopeId: null }];
     if (departmentId) {
       or.push({ scope: PipelinePolicyScope.DEPARTMENT, scopeId: departmentId });
     }

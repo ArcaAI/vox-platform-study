@@ -99,14 +99,14 @@ qdrant:
     - hope-network
   restart: unless-stopped
   ports:
-    - '6333:6333'  # HTTP API
-    - '6334:6334'  # gRPC API
+    - '6333:6333' # HTTP API
+    - '6334:6334' # gRPC API
   volumes:
     - qdrant-data:/qdrant/storage
   environment:
     QDRANT__SERVICE__GRPC_PORT: 6334
     QDRANT__SERVICE__HTTP_PORT: 6333
-    QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}  # Optional
+    QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-} # Optional
   healthcheck:
     test: ['CMD', 'curl', '-f', 'http://localhost:6333/health']
     interval: 30s
@@ -149,6 +149,7 @@ DISTANCE_METRIC = Distance.COSINE
 ### Collection: `stt_speaker_embeddings`
 
 **Vector Configuration**:
+
 - **Size**: 512 dimensions (Pyannote embedding)
 - **Distance Metric**: Cosine similarity
 - **Index**: HNSW (Hierarchical Navigable Small World)
@@ -157,13 +158,14 @@ DISTANCE_METRIC = Distance.COSINE
 
 ```json
 {
-  "speaker_code": "string",           // Unique speaker identifier
-  "speaker_name": "string",           // Human-readable name (optional)
-  "tenant_id": "uuid",                // Multi-tenant isolation
-  "organization_id": "uuid",          // Organization identifier
-  "created_at": "timestamp",          // When embedding was created
-  "updated_at": "timestamp",          // Last update time
-  "metadata": {                       // Additional metadata
+  "speaker_code": "string", // Unique speaker identifier
+  "speaker_name": "string", // Human-readable name (optional)
+  "tenant_id": "uuid", // Multi-tenant isolation
+  "organization_id": "uuid", // Organization identifier
+  "created_at": "timestamp", // When embedding was created
+  "updated_at": "timestamp", // Last update time
+  "metadata": {
+    // Additional metadata
     "audio_quality": "high|medium|low",
     "sample_rate": 16000,
     "duration_seconds": 5.0
@@ -174,11 +176,13 @@ DISTANCE_METRIC = Distance.COSINE
 ### Point ID Format
 
 Point IDs follow this pattern:
+
 ```
 {tenant_id}_{speaker_code}_{timestamp}
 ```
 
 Example:
+
 ```
 123e4567-e89b-12d3-a456-426614174000_SPEAKER_001_1704902400
 ```
@@ -188,27 +192,32 @@ Example:
 ## 🔌 API Endpoints
 
 ### Base URL
+
 - **HTTP**: `http://localhost:6333`
 - **gRPC**: `http://localhost:6334`
 
 ### Key Endpoints
 
 #### 1. Health Check
+
 ```bash
 curl http://localhost:6333/health
 ```
 
 #### 2. List Collections
+
 ```bash
 curl http://localhost:6333/collections
 ```
 
 #### 3. Get Collection Info
+
 ```bash
 curl http://localhost:6333/collections/stt_speaker_embeddings
 ```
 
 #### 4. Insert/Update Points
+
 ```bash
 curl -X PUT http://localhost:6333/collections/stt_speaker_embeddings/points \
   -H 'Content-Type: application/json' \
@@ -228,6 +237,7 @@ curl -X PUT http://localhost:6333/collections/stt_speaker_embeddings/points \
 ```
 
 #### 5. Search Similar Vectors
+
 ```bash
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/search \
   -H 'Content-Type: application/json' \
@@ -249,6 +259,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/sea
 ```
 
 #### 6. Delete Points
+
 ```bash
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/delete \
   -H 'Content-Type: application/json' \
@@ -474,16 +485,19 @@ curl -X PUT http://localhost:6333/collections/stt_speaker_embeddings/snapshots/r
 ### Issue: Qdrant Container Won't Start
 
 **Check logs**:
+
 ```bash
 docker logs hope-qdrant
 ```
 
 **Common causes**:
+
 - Port 6333 or 6334 already in use
 - Insufficient memory (minimum 2GB recommended)
 - Volume permission issues
 
 **Solution**:
+
 ```bash
 # Check port availability
 lsof -i :6333
@@ -499,11 +513,13 @@ docker-compose -f docker-compose.stt-dev.yml restart qdrant
 ### Issue: Collection Initialization Failed
 
 **Check init logs**:
+
 ```bash
 docker logs hope-qdrant-init
 ```
 
 **Solution**:
+
 ```bash
 # Manually run initialization
 docker-compose -f docker-compose.stt-dev.yml up qdrant-init
@@ -515,12 +531,14 @@ python scripts/init-qdrant-collections.py
 ### Issue: Search Returns No Results
 
 **Causes**:
+
 - Empty collection
 - Incorrect tenant_id filter
 - Vector dimension mismatch
 - Wrong distance metric
 
 **Debug**:
+
 ```bash
 # Check collection stats
 curl http://localhost:6333/collections/stt_speaker_embeddings
@@ -542,20 +560,23 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/sea
 ### Issue: High Memory Usage
 
 **Check current usage**:
+
 ```bash
 docker stats hope-qdrant
 ```
 
 **Optimize**:
+
 ```yaml
 # In docker-compose.stt-dev.yml, adjust limits
 deploy:
   resources:
     limits:
-      memory: 2G  # Reduce if needed
+      memory: 2G # Reduce if needed
 ```
 
 **Clear old data**:
+
 ```bash
 # Delete old points
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/delete \
@@ -626,11 +647,13 @@ deploy:
 ## 🔐 Security Considerations
 
 ### Development
+
 - ✅ No API key required
 - ✅ Access restricted to Docker network
 - ✅ Data stored in named volume
 
 ### Production Checklist
+
 - [ ] Enable API key authentication
 - [ ] Use TLS/SSL for connections
 - [ ] Implement network policies
@@ -658,16 +681,19 @@ client = QdrantClient(
 ## 📚 Additional Resources
 
 ### Official Documentation
+
 - [Qdrant Documentation](https://qdrant.tech/documentation/)
 - [Python Client API](https://qdrant.tech/documentation/clients/python/)
 - [REST API Reference](https://qdrant.tech/documentation/api-reference/)
 
 ### Related Documentation
+
 - [STT Recognition Service](../../apps/arcaai-stt-recognition/README.md)
 - [Pyannote Embedding Model](https://huggingface.co/pyannote/embedding)
 - [STT Orchestra Architecture](../../docs/implementation/STT-001-Speech-to-Text-Orchestra/architecture.md)
 
 ### Useful Links
+
 - [Qdrant GitHub](https://github.com/qdrant/qdrant)
 - [Docker Hub - Qdrant](https://hub.docker.com/r/qdrant/qdrant)
 - [Qdrant Discord Community](https://discord.gg/qdrant)
@@ -693,6 +719,7 @@ client = QdrantClient(
 **Status**: ✅ **PRODUCTION READY**
 
 **Next Steps**:
+
 1. Start Qdrant service: `docker-compose -f docker-compose.stt-dev.yml up -d qdrant`
 2. Verify health: `curl http://localhost:6333/health`
 3. Integrate with STT Recognition Service
@@ -703,4 +730,3 @@ client = QdrantClient(
 **Last Updated**: 2025-01-10
 **Maintainer**: DevOps Team (Member 4)
 **Version**: 1.0.0
-

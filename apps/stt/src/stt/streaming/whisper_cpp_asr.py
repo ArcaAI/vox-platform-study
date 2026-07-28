@@ -74,7 +74,9 @@ class WhisperCppAsrAdapter:
             if not word:
                 continue
             probability = seg.probability
-            confidence = 1.0 if probability is None or math.isnan(probability) else float(probability)
+            confidence = (
+                1.0 if probability is None or math.isnan(probability) else float(probability)
+            )
             word_timestamps.append(
                 {
                     "word": word,
@@ -94,7 +96,5 @@ class WhisperCppAsrAdapter:
             "text": text,
             "language": self._language,
             "word_timestamps": word_timestamps,
-            "segments": (
-                [{"text": text, "start": start, "end": end}] if text else []
-            ),
+            "segments": ([{"text": text, "start": start, "end": end}] if text else []),
         }

@@ -56,7 +56,9 @@ class MockEventSource {
       this.listeners[type] = this.listeners[type].filter((l) => l !== listener);
     }
   }
-  close(): void { this.readyState = MockEventSource.CLOSED; }
+  close(): void {
+    this.readyState = MockEventSource.CLOSED;
+  }
   simulateOpen(): void {
     this.readyState = MockEventSource.OPEN;
     this.onopen?.(new Event('open'));
@@ -186,11 +188,7 @@ describe('SSEClient ticket-based auth', () => {
   it('fetches a FRESH ticket on every reconnect (never reuses)', async () => {
     vi.useFakeTimers();
     try {
-      const apiClient = makeApiClient([
-        { ticket: 'TKT-1' },
-        { ticket: 'TKT-2' },
-        { ticket: 'TKT-3' },
-      ]);
+      const apiClient = makeApiClient([{ ticket: 'TKT-1' }, { ticket: 'TKT-2' }, { ticket: 'TKT-3' }]);
       const client = new SSEClient('jobs', apiClient as never, createMockLogger());
 
       client.connect('https://api.example.com/stream', {

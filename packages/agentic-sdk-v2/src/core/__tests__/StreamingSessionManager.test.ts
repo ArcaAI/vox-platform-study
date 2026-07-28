@@ -10,10 +10,7 @@ import { StreamingSessionManager } from '../StreamingSessionManager';
 import { createMockLogger, mockFetch, createMockResponse, createMockErrorResponse } from '../../__tests__/setup';
 import { AgenticClient } from '../AgenticClient';
 import { STT_ENDPOINTS } from '../constants';
-import type {
-  CreateStreamingSessionRequest,
-  StreamingSessionResponse,
-} from '../../types/stt';
+import type { CreateStreamingSessionRequest, StreamingSessionResponse } from '../../types/stt';
 
 describe('StreamingSessionManager', () => {
   let manager: StreamingSessionManager;
@@ -28,7 +25,7 @@ describe('StreamingSessionManager', () => {
         apiKey: 'test-key',
         wsUrl: 'wss://api.example.com',
       },
-      mockLogger
+      mockLogger,
     );
     manager = new StreamingSessionManager(apiClient, mockLogger);
   });
@@ -133,19 +130,13 @@ describe('StreamingSessionManager', () => {
     });
 
     it('should throw on API error', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(500, 'Internal Server Error')
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Internal Server Error'));
 
-      await expect(
-        manager.createSession({ pipelineId: 'default' })
-      ).rejects.toThrow();
+      await expect(manager.createSession({ pipelineId: 'default' })).rejects.toThrow();
     });
 
     it('should set status to error on failure', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(500, 'Internal Server Error')
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Internal Server Error'));
 
       try {
         await manager.createSession({ pipelineId: 'default' });
@@ -159,9 +150,7 @@ describe('StreamingSessionManager', () => {
     it('should handle network errors (fetch rejection)', async () => {
       mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
-      await expect(
-        manager.createSession({ pipelineId: 'default' })
-      ).rejects.toThrow();
+      await expect(manager.createSession({ pipelineId: 'default' })).rejects.toThrow();
       expect(manager.getStatus()).toBe('error');
     });
 
@@ -169,9 +158,7 @@ describe('StreamingSessionManager', () => {
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
       await manager.createSession({ pipelineId: 'default' });
 
-      await expect(
-        manager.createSession({ pipelineId: 'other' })
-      ).rejects.toThrow(/session already exists/i);
+      await expect(manager.createSession({ pipelineId: 'other' })).rejects.toThrow(/session already exists/i);
     });
 
     it('should fire onError callback on duplicate session attempt', async () => {
@@ -187,9 +174,11 @@ describe('StreamingSessionManager', () => {
         // expected
       }
 
-      expect(onError).toHaveBeenCalledWith(expect.objectContaining({
-        message: expect.stringMatching(/session already exists/i),
-      }));
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringMatching(/session already exists/i),
+        }),
+      );
     });
 
     it('should have status creating during the async API call', async () => {
@@ -245,10 +234,7 @@ describe('StreamingSessionManager', () => {
     });
 
     it('should convert http:// base to ws:// in WebSocket URL', async () => {
-      const httpClient = new AgenticClient(
-        { baseUrl: 'http://localhost:8868/api/v1', apiKey: 'key' },
-        mockLogger,
-      );
+      const httpClient = new AgenticClient({ baseUrl: 'http://localhost:8868/api/v1', apiKey: 'key' }, mockLogger);
       const httpManager = new StreamingSessionManager(httpClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
       await httpManager.createSession({ pipelineId: 'default' });
@@ -267,10 +253,7 @@ describe('StreamingSessionManager', () => {
     // -------------------------------------------------------------------
 
     it('uses the ApiConfig.wsUrl origin when it differs from baseUrl (BFF REST + direct gateway WS)', async () => {
-      const bffClient = new AgenticClient(
-        { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'http://localhost:8868' },
-        mockLogger,
-      );
+      const bffClient = new AgenticClient({ baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'http://localhost:8868' }, mockLogger);
       const bffManager = new StreamingSessionManager(bffClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
       await bffManager.createSession({ pipelineId: 'default' });
@@ -283,19 +266,13 @@ describe('StreamingSessionManager', () => {
     });
 
     it('normalizes an https wsUrl to wss and keeps an explicit wss wsUrl as-is', async () => {
-      const httpsClient = new AgenticClient(
-        { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'https://gateway.example.com' },
-        mockLogger,
-      );
+      const httpsClient = new AgenticClient({ baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'https://gateway.example.com' }, mockLogger);
       const httpsManager = new StreamingSessionManager(httpsClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
       await httpsManager.createSession({ pipelineId: 'default' });
       expect(httpsManager.getWebSocketUrl()).toMatch(/^wss:\/\/gateway\.example\.com\/ws\/stt\/stream/);
 
-      const wssClient = new AgenticClient(
-        { baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'wss://gateway.example.com' },
-        mockLogger,
-      );
+      const wssClient = new AgenticClient({ baseUrl: 'http://localhost:5176/api/hope', wsUrl: 'wss://gateway.example.com' }, mockLogger);
       const wssManager = new StreamingSessionManager(wssClient, mockLogger);
       mockFetch.mockResolvedValueOnce(createMockResponse(mockSessionResponse));
       await wssManager.createSession({ pipelineId: 'default' });
@@ -481,9 +458,7 @@ describe('StreamingSessionManager', () => {
     });
 
     it('should register and call onError callback', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(500, 'Server Error')
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Server Error'));
 
       const onError = vi.fn();
       manager.onError(onError);
@@ -625,10 +600,12 @@ describe('StreamingSessionManager', () => {
       manager.onSessionCreated(listener1);
       manager.onSessionCreated(listener2);
 
-      mockFetch.mockResolvedValueOnce(createMockResponse({
-        sessionId: 'sess-multi',
-        wsUrl: 'wss://api.example.com/ws/stream?sessionId=sess-multi',
-      }));
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          sessionId: 'sess-multi',
+          wsUrl: 'wss://api.example.com/ws/stream?sessionId=sess-multi',
+        }),
+      );
 
       await manager.createSession({
         pipelineId: 'default',
@@ -649,10 +626,12 @@ describe('StreamingSessionManager', () => {
 
       unsub();
 
-      mockFetch.mockResolvedValueOnce(createMockResponse({
-        sessionId: 'sess-unsub',
-        wsUrl: 'wss://api.example.com/ws/stream?sessionId=sess-unsub',
-      }));
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          sessionId: 'sess-unsub',
+          wsUrl: 'wss://api.example.com/ws/stream?sessionId=sess-unsub',
+        }),
+      );
 
       await manager.createSession({
         pipelineId: 'default',
@@ -669,7 +648,9 @@ describe('StreamingSessionManager', () => {
 
   describe('switchToFallback', () => {
     async function createSession(): Promise<void> {
-      mockFetch.mockResolvedValueOnce(createMockResponse({ sessionId: 'sess-switch', wsUrl: '/ws/stt/stream', status: 'active', maxConcurrent: 5, currentActive: 1 }));
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({ sessionId: 'sess-switch', wsUrl: '/ws/stt/stream', status: 'active', maxConcurrent: 5, currentActive: 1 }),
+      );
       await manager.createSession({ pipelineId: 'primary' });
     }
 

@@ -41,9 +41,7 @@ describe('ROLE_ENDPOINTS user-self surface', () => {
 
   it('USER_ROLES(userId) encodes special characters in user id', () => {
     const dangerous = 'id/with?special#chars&more=true';
-    expect(ROLE_ENDPOINTS.USER_ROLES(dangerous)).toBe(
-      '/users/' + encodeURIComponent(dangerous) + '/roles',
-    );
+    expect(ROLE_ENDPOINTS.USER_ROLES(dangerous)).toBe('/users/' + encodeURIComponent(dangerous) + '/roles');
   });
 
   it('USER_ROLE(userId, assignmentId) encodes special characters in both ids', () => {
@@ -75,17 +73,10 @@ describe('ADMIN_USER_ROLES_ENDPOINTS admin RBAC surface', () => {
   it('encodes special characters in both userId and assignmentId for every helper', () => {
     const userId = 'u/with?chars';
     const assignmentId = 'a&with=chars';
-    expect(ADMIN_USER_ROLES_ENDPOINTS.LIST(userId)).toBe(
-      '/admin/users/' + encodeURIComponent(userId) + '/roles',
-    );
-    expect(ADMIN_USER_ROLES_ENDPOINTS.ASSIGN(userId)).toBe(
-      '/admin/users/' + encodeURIComponent(userId) + '/roles',
-    );
+    expect(ADMIN_USER_ROLES_ENDPOINTS.LIST(userId)).toBe('/admin/users/' + encodeURIComponent(userId) + '/roles');
+    expect(ADMIN_USER_ROLES_ENDPOINTS.ASSIGN(userId)).toBe('/admin/users/' + encodeURIComponent(userId) + '/roles');
     expect(ADMIN_USER_ROLES_ENDPOINTS.REMOVE(userId, assignmentId)).toBe(
-      '/admin/users/' +
-        encodeURIComponent(userId) +
-        '/roles/' +
-        encodeURIComponent(assignmentId),
+      '/admin/users/' + encodeURIComponent(userId) + '/roles/' + encodeURIComponent(assignmentId),
     );
   });
 

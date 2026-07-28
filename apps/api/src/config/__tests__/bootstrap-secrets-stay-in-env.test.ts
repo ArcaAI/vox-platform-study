@@ -53,7 +53,10 @@ describe('the Vault-reaching credentials stay in env, permanently (plan §13.1)'
           walk(fullPath);
           continue;
         }
-        const relativePath = fullPath.slice(REPO_ROOT.length + 1).split(sep).join('/');
+        const relativePath = fullPath
+          .slice(REPO_ROOT.length + 1)
+          .split(sep)
+          .join('/');
         if (!relativePath.endsWith('.ts') || relativePath.endsWith('.d.ts')) continue;
         if (relativePath.includes('/__tests__/') || relativePath.endsWith('.test.ts')) continue;
         readFileSync(fullPath, 'utf8')

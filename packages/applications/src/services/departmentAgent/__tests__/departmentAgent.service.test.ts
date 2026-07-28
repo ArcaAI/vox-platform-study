@@ -122,16 +122,14 @@ describe('DepartmentAgentService', () => {
 
     it('rejects a duplicate slug within the department (400)', async () => {
       mockAgentRepository.isSlugUnique.mockResolvedValue(false);
-      await expect(
-        service.create({ departmentId: 'dept-1', name: 'X', slug: 'dupe', promptTemplateId: 'tpl-1' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.create({ departmentId: 'dept-1', name: 'X', slug: 'dupe', promptTemplateId: 'tpl-1' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('rejects a promptTemplateId not visible to the tenant (400)', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue({ id: 'tpl-x', tenantId: 'other-tenant', status: 'APPROVED' });
-      await expect(
-        service.create({ departmentId: 'dept-1', name: 'X', slug: 'x', promptTemplateId: 'tpl-x' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.create({ departmentId: 'dept-1', name: 'X', slug: 'x', promptTemplateId: 'tpl-x' })).rejects.toThrow(BadRequestException);
     });
 
     it('rejects a harnessOverrides global-admin-only key (400)', async () => {
@@ -266,8 +264,13 @@ describe('DepartmentAgentService', () => {
         const agent = mockAgent({ goldenSetId: 'set-1' });
         mockAgentRepository.findById.mockResolvedValue(agent);
         mockGate.evaluatePromotion.mockResolvedValue({
-          mode: 'block', evaluated: true, passed: false, blocked: true,
-          failures: ['pdsqi_accurate=2.0000 < 4.0'], runIds: ['run-1'], aggregates: { pdsqi_accurate: 2.0 },
+          mode: 'block',
+          evaluated: true,
+          passed: false,
+          blocked: true,
+          failures: ['pdsqi_accurate=2.0000 < 4.0'],
+          runIds: ['run-1'],
+          aggregates: { pdsqi_accurate: 2.0 },
         });
 
         await expect(gatedService().pin('agent-1', 3)).rejects.toThrow(ConflictException);
@@ -282,7 +285,13 @@ describe('DepartmentAgentService', () => {
         mockAgentRepository.findById.mockResolvedValue(agent);
         mockAgentRepository.updateWithVersion.mockResolvedValue({ ...agent, version: 2, pinnedVersionNumber: 3 });
         mockGate.evaluatePromotion.mockResolvedValue({
-          mode: 'block', evaluated: true, passed: true, blocked: false, failures: [], runIds: ['run-1'], aggregates: {},
+          mode: 'block',
+          evaluated: true,
+          passed: true,
+          blocked: false,
+          failures: [],
+          runIds: ['run-1'],
+          aggregates: {},
         });
 
         const res = await gatedService().pin('agent-1', 3);

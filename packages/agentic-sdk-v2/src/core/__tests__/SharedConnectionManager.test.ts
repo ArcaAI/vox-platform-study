@@ -162,8 +162,7 @@ describe('SharedConnectionManager', () => {
 
     beforeEach(() => {
       capturedUrls = [];
-      originalSharedWorker = (globalThis as { SharedWorker?: typeof globalThis.SharedWorker })
-        .SharedWorker;
+      originalSharedWorker = (globalThis as { SharedWorker?: typeof globalThis.SharedWorker }).SharedWorker;
 
       class MockSharedWorker {
         port: {
@@ -184,16 +183,14 @@ describe('SharedConnectionManager', () => {
         }
       }
 
-      (globalThis as unknown as { SharedWorker: typeof MockSharedWorker }).SharedWorker =
-        MockSharedWorker;
+      (globalThis as unknown as { SharedWorker: typeof MockSharedWorker }).SharedWorker = MockSharedWorker;
     });
 
     afterEach(() => {
       if (originalSharedWorker === undefined) {
         delete (globalThis as { SharedWorker?: typeof globalThis.SharedWorker }).SharedWorker;
       } else {
-        (globalThis as { SharedWorker?: typeof globalThis.SharedWorker }).SharedWorker =
-          originalSharedWorker;
+        (globalThis as { SharedWorker?: typeof globalThis.SharedWorker }).SharedWorker = originalSharedWorker;
       }
     });
 
@@ -241,9 +238,7 @@ describe('SharedConnectionManager', () => {
         ticket: 'st_2a4f',
       });
 
-      expect(createdEventSources[0].url).toBe(
-        'https://api.example.com/jobs/1/stream?ticket=st_2a4f',
-      );
+      expect(createdEventSources[0].url).toBe('https://api.example.com/jobs/1/stream?ticket=st_2a4f');
       manager.dispose();
     });
 
@@ -255,9 +250,7 @@ describe('SharedConnectionManager', () => {
         ticket: 'st_2a4f',
       });
 
-      expect(createdEventSources[0].url).toBe(
-        'https://api.example.com/jobs/1/stream?format=json&ticket=st_2a4f',
-      );
+      expect(createdEventSources[0].url).toBe('https://api.example.com/jobs/1/stream?format=json&ticket=st_2a4f');
       manager.dispose();
     });
 
@@ -283,9 +276,13 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
       const onEvent = vi.fn();
 
-      manager.subscribeSSE('job-1', {
-        url: 'https://api.example.com/jobs/1/stream',
-      }, { onEvent });
+      manager.subscribeSSE(
+        'job-1',
+        {
+          url: 'https://api.example.com/jobs/1/stream',
+        },
+        { onEvent },
+      );
 
       await vi.waitFor(() => expect(createdEventSources).toHaveLength(1));
 
@@ -300,9 +297,13 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
       const onOpen = vi.fn();
 
-      manager.subscribeSSE('job-1', {
-        url: 'https://api.example.com/jobs/1/stream',
-      }, { onOpen });
+      manager.subscribeSSE(
+        'job-1',
+        {
+          url: 'https://api.example.com/jobs/1/stream',
+        },
+        { onOpen },
+      );
 
       await vi.advanceTimersByTimeAsync(10);
 
@@ -315,9 +316,13 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
       const onError = vi.fn();
 
-      manager.subscribeSSE('job-1', {
-        url: 'https://api.example.com/jobs/1/stream',
-      }, { onError });
+      manager.subscribeSSE(
+        'job-1',
+        {
+          url: 'https://api.example.com/jobs/1/stream',
+        },
+        { onError },
+      );
 
       createdEventSources[0].simulateError();
 
@@ -367,9 +372,13 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
       const onMessage = vi.fn();
 
-      manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt/stream',
-      }, { onMessage });
+      manager.subscribeWS(
+        'stream-1',
+        {
+          url: 'wss://api.example.com/ws/stt/stream',
+        },
+        { onMessage },
+      );
 
       createdWebSockets[0].simulateMessage('{"type":"transcript","text":"Hello"}');
 
@@ -416,9 +425,13 @@ describe('SharedConnectionManager', () => {
       const manager = new SharedConnectionManager(undefined, mockLogger);
       const onClose = vi.fn();
 
-      manager.subscribeWS('stream-1', {
-        url: 'wss://api.example.com/ws/stt/stream',
-      }, { onClose });
+      manager.subscribeWS(
+        'stream-1',
+        {
+          url: 'wss://api.example.com/ws/stt/stream',
+        },
+        { onClose },
+      );
 
       createdWebSockets[0].close(1000, 'Normal closure');
 

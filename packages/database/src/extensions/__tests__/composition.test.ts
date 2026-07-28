@@ -96,8 +96,7 @@ describe('Soft-delete + tenant-scope composition', () => {
 
     // Build the inner (soft-delete) handler bound to the engine.
     const softDeleteFindMany = softDeleteConfig.query.$allModels.findMany;
-    const innerQuery = (args: unknown) =>
-      softDeleteFindMany({ model: 'Department', args, query: engineQuery });
+    const innerQuery = (args: unknown) => softDeleteFindMany({ model: 'Department', args, query: engineQuery });
 
     // Build the outer (tenant-scope) handler that calls into the inner.
     const tenantFindMany = tenantConfig.query.$allModels.findMany;
@@ -136,8 +135,7 @@ describe('Soft-delete + tenant-scope composition', () => {
     });
 
     const softFindMany = softDeleteConfig.query.$allModels.findMany;
-    const innerQuery = (args: unknown) =>
-      softFindMany({ model: 'Department', args, query: engineQuery });
+    const innerQuery = (args: unknown) => softFindMany({ model: 'Department', args, query: engineQuery });
 
     const tenantFindMany = tenantConfig.query.$allModels.findMany;
     await tenantFindMany({
@@ -171,8 +169,7 @@ describe('Soft-delete + tenant-scope composition', () => {
     });
 
     const softFindMany = softDeleteConfig.query.$allModels.findMany;
-    const innerQuery = (args: unknown) =>
-      softFindMany({ model: 'Tenant', args, query: engineQuery });
+    const innerQuery = (args: unknown) => softFindMany({ model: 'Tenant', args, query: engineQuery });
 
     const tenantFindMany = tenantConfig.query.$allModels.findMany;
     await tenantFindMany({

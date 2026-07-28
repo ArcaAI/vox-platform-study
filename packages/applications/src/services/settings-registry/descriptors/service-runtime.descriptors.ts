@@ -112,18 +112,9 @@ const RETENTION_META: Partial<Record<ServiceRuntimeKey, KeyMeta>> = Object.fromE
   MODEL_CACHE_SERVICES.flatMap((service) => {
     const label = SERVICE_LABEL[service];
     return [
-      [
-        `${service}.modelCache.ttlSeconds`,
-        { label: `${label} model cache idle TTL (s)`, description: TTL_DESCRIPTION(label) },
-      ],
-      [
-        `${service}.modelCache.maxModels`,
-        { label: `${label} model cache size`, description: MAX_MODELS_DESCRIPTION(label) },
-      ],
-      [
-        `${service}.modelCache.vramBudgetMb`,
-        { label: `${label} VRAM budget (MB)`, description: VRAM_DESCRIPTION(label) },
-      ],
+      [`${service}.modelCache.ttlSeconds`, { label: `${label} model cache idle TTL (s)`, description: TTL_DESCRIPTION(label) }],
+      [`${service}.modelCache.maxModels`, { label: `${label} model cache size`, description: MAX_MODELS_DESCRIPTION(label) }],
+      [`${service}.modelCache.vramBudgetMb`, { label: `${label} VRAM budget (MB)`, description: VRAM_DESCRIPTION(label) }],
     ];
   }),
 ) as Partial<Record<ServiceRuntimeKey, KeyMeta>>;

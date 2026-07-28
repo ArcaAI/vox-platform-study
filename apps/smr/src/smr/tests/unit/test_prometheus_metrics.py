@@ -186,7 +186,12 @@ class TestGenerateMetricsIntegration:
         )
         await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
+            json={
+                "prompt": "Hello world",
+                "provider": "ollama",
+                "model": "test-model",
+                "stream": False,
+            },
         )
         after = _get_sample_value(
             "smr_generation_total",
@@ -203,7 +208,12 @@ class TestGenerateMetricsIntegration:
         )
         await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
+            json={
+                "prompt": "Hello world",
+                "provider": "ollama",
+                "model": "test-model",
+                "stream": False,
+            },
         )
         after = _get_sample_value(
             "smr_generation_latency_seconds_count",
@@ -224,7 +234,12 @@ class TestGenerateMetricsIntegration:
         )
         await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
+            json={
+                "prompt": "Hello world",
+                "provider": "ollama",
+                "model": "test-model",
+                "stream": False,
+            },
         )
         after_input = _get_sample_value(
             "smr_tokens_total",
@@ -246,7 +261,12 @@ class TestGenerateMetricsIntegration:
         )
         resp = await failing_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
+            json={
+                "prompt": "Hello world",
+                "provider": "ollama",
+                "model": "test-model",
+                "stream": False,
+            },
         )
         assert resp.status_code == 502
         after = _get_sample_value(
@@ -264,7 +284,12 @@ class TestGenerateMetricsIntegration:
         )
         await failing_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
+            json={
+                "prompt": "Hello world",
+                "provider": "ollama",
+                "model": "test-model",
+                "stream": False,
+            },
         )
         after = _get_sample_value(
             "smr_generation_total",
@@ -281,7 +306,12 @@ class TestGenerateMetricsIntegration:
         )
         await client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
+            json={
+                "prompt": "Hello world",
+                "provider": "ollama",
+                "model": "test-model",
+                "stream": False,
+            },
         )
         gauge_after = _get_sample_value(
             "smr_active_generations",
@@ -298,7 +328,12 @@ class TestGenerateMetricsIntegration:
         )
         await failing_client.post(
             "/api/v1/generate",
-            json={"prompt": "Hello world", "provider": "ollama", "model": "test-model", "stream": False},
+            json={
+                "prompt": "Hello world",
+                "provider": "ollama",
+                "model": "test-model",
+                "stream": False,
+            },
         )
         gauge_after = _get_sample_value(
             "smr_active_generations",

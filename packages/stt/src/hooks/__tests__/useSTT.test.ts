@@ -82,15 +82,21 @@ describe('useSTT hook integration', () => {
             sttSocket: 'wss://test.example.com/ws/stt',
             features: { provider: 'remote', modelId },
           }),
-        { initialProps: { modelId: 'whisper-tiny' } }
+        { initialProps: { modelId: 'whisper-tiny' } },
       );
 
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(processorInstances).toHaveLength(1);
       const firstProcessor = processorInstances[0];
 
-      await act(async () => { rerender({ modelId: 'whisper-base' }); });
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        rerender({ modelId: 'whisper-base' });
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
 
       expect(processorInstances).toHaveLength(2);
       expect(firstProcessor.destroy).toHaveBeenCalled();
@@ -108,15 +114,21 @@ describe('useSTT hook integration', () => {
             features: { provider: 'remote', modelId: 'whisper-tiny' },
             audio: { language },
           }),
-        { initialProps: { language: 'en-US' } }
+        { initialProps: { language: 'en-US' } },
       );
 
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(processorInstances).toHaveLength(1);
       const firstProcessor = processorInstances[0];
 
-      await act(async () => { rerender({ language: 'hi-IN' }); });
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        rerender({ language: 'hi-IN' });
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
 
       expect(processorInstances).toHaveLength(2);
       expect(firstProcessor.destroy).toHaveBeenCalled();
@@ -133,15 +145,21 @@ describe('useSTT hook integration', () => {
             sttSocket: 'wss://test.example.com/ws/stt',
             features: { provider, modelId: 'whisper-tiny' },
           }),
-        { initialProps: { provider: 'remote' } }
+        { initialProps: { provider: 'remote' } },
       );
 
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(processorInstances).toHaveLength(1);
       const firstProcessor = processorInstances[0];
 
-      await act(async () => { rerender({ provider: 'local' }); });
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        rerender({ provider: 'local' });
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
 
       expect(processorInstances).toHaveLength(2);
       expect(firstProcessor.destroy).toHaveBeenCalled();
@@ -165,12 +183,18 @@ describe('useSTT hook integration', () => {
         { initialProps: { task: 'transcribe' as 'transcribe' | 'translate' } },
       );
 
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(processorInstances).toHaveLength(1);
       const firstProcessor = processorInstances[0];
 
-      await act(async () => { rerender({ task: 'translate' }); });
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        rerender({ task: 'translate' });
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
 
       expect(processorInstances).toHaveLength(2);
       expect(firstProcessor.destroy).toHaveBeenCalled();
@@ -191,14 +215,20 @@ describe('useSTT hook integration', () => {
             features: { provider: 'remote', modelId: 'whisper-tiny' },
             onTranscription,
           }),
-        { initialProps: { onTranscription: onTranscription1 } }
+        { initialProps: { onTranscription: onTranscription1 } },
       );
 
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(processorInstances).toHaveLength(1);
 
-      await act(async () => { rerender({ onTranscription: onTranscription2 }); });
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        rerender({ onTranscription: onTranscription2 });
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
 
       expect(processorInstances).toHaveLength(1);
     });
@@ -212,15 +242,19 @@ describe('useSTT hook integration', () => {
           autoAttach: false,
           sttSocket: 'wss://test.example.com/ws/stt',
           features: { provider: 'remote', modelId: 'whisper-tiny' },
-        })
+        }),
       );
 
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        await Promise.resolve();
+      });
       expect(processorInstances).toHaveLength(1);
       const processor = processorInstances[0];
 
       unmount();
-      await act(async () => { await Promise.resolve(); });
+      await act(async () => {
+        await Promise.resolve();
+      });
 
       expect(processor.destroy).toHaveBeenCalled();
     });
@@ -231,7 +265,7 @@ describe('useSTT hook integration', () => {
   // ===========================================================================
 
   describe('Post-A8 STTProcessor API alignment', () => {
-    it("subscribes to ProcessorEvent.Data and ProcessorEvent.Error on the processor", async () => {
+    it('subscribes to ProcessorEvent.Data and ProcessorEvent.Error on the processor', async () => {
       renderHook(() =>
         useSTT({
           track: null,

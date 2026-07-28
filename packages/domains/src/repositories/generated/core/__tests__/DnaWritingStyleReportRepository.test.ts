@@ -62,9 +62,7 @@ describe('DnaWritingStyleReportRepository — findPaginated', () => {
     const where = { tenantId: 'tenant-1' };
     const result = await repo.findPaginated(where, 2, 2);
 
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where, orderBy: [{ createdAt: 'desc' }], skip: 2, take: 2 }),
-    );
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where, orderBy: [{ createdAt: 'desc' }], skip: 2, take: 2 }));
     expect(count).toHaveBeenCalledWith({ where });
     expect(result.count).toBe(7);
     expect(result.data).toHaveLength(2);

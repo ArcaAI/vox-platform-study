@@ -43,14 +43,14 @@ function stripComments(src: string): string {
  * WASM-facing code: unify the exports accessor name and drop TS-only tokens.
  */
 function normalizeForAbi(src: string): string {
-  return stripComments(src).replace(/\bwasmExports\b/g, 'exports').replace(/\bthis\./g, '');
+  return stripComments(src)
+    .replace(/\bwasmExports\b/g, 'exports')
+    .replace(/\bthis\./g, '');
 }
 
 /** Extract the inline worklet blob returned by `generateWorkletSource()`. */
 function extractInlineWorkletSource(loaderSrc: string): string {
-  const match = loaderSrc.match(
-    /function generateWorkletSource\(\)\s*:\s*string\s*\{\s*return\s*`([\s\S]*?)`;/,
-  );
+  const match = loaderSrc.match(/function generateWorkletSource\(\)\s*:\s*string\s*\{\s*return\s*`([\s\S]*?)`;/);
   if (!match) throw new Error('Could not locate generateWorkletSource() template literal');
   return match[1];
 }
@@ -83,27 +83,12 @@ function extractAbi(normalizedSrc: string): AbiMap {
   return {
     memory: first([/memory\s*(?::\s*[\w.]+)?\s*=\s*exports\.([a-j])\b/], 'memory'),
     callCtors: first([/refreshViews\(\)\s*;\s*exports\.([a-j])\(\)/], 'callCtors'),
-    create: first(
-      [/denoiseState\s*=\s*exports\.([a-j])\(\)/, /rnnoise_create:\s*\(\)\s*=>\s*exports\.([a-j])\(/],
-      'create',
-    ),
-    malloc: first(
-      [/(?:input|output)Ptr\s*=\s*exports\.([a-j])\(/, /malloc:\s*\(size\)\s*=>\s*exports\.([a-j])\(/],
-      'malloc',
-    ),
-    destroy: first(
-      [/exports\.([a-j])\(denoiseState\)/, /rnnoise_destroy:\s*\(state\)\s*=>\s*exports\.([a-j])\(/],
-      'destroy',
-    ),
-    free: first(
-      [/exports\.([a-j])\((?:input|output)Ptr\)/, /free:\s*\(ptr\)\s*=>\s*exports\.([a-j])\(/],
-      'free',
-    ),
+    create: first([/denoiseState\s*=\s*exports\.([a-j])\(\)/, /rnnoise_create:\s*\(\)\s*=>\s*exports\.([a-j])\(/], 'create'),
+    malloc: first([/(?:input|output)Ptr\s*=\s*exports\.([a-j])\(/, /malloc:\s*\(size\)\s*=>\s*exports\.([a-j])\(/], 'malloc'),
+    destroy: first([/exports\.([a-j])\(denoiseState\)/, /rnnoise_destroy:\s*\(state\)\s*=>\s*exports\.([a-j])\(/], 'destroy'),
+    free: first([/exports\.([a-j])\((?:input|output)Ptr\)/, /free:\s*\(ptr\)\s*=>\s*exports\.([a-j])\(/], 'free'),
     processFrame: first(
-      [
-        /exports\.([a-j])\(denoiseState,\s*outputPtr,\s*inputPtr\)/,
-        /rnnoise_process_frame:\s*\([^)]*\)\s*=>\s*exports\.([a-j])\(/,
-      ],
+      [/exports\.([a-j])\(denoiseState,\s*outputPtr,\s*inputPtr\)/, /rnnoise_process_frame:\s*\([^)]*\)\s*=>\s*exports\.([a-j])\(/],
       'processFrame',
     ),
   };

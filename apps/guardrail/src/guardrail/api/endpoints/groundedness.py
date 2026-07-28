@@ -43,7 +43,8 @@ class GroundednessSegmentModel(BaseModel):
     text: str = Field(..., description="The segment text (a stripped substring of `summary`)")
     verdict: str = Field(..., description="grounded | ungrounded | unverified")
     grounded: bool = Field(
-        ..., description="STRICT: true only for a verified-grounded verdict — never on a degrade path"
+        ...,
+        description="STRICT: true only for a verified-grounded verdict — never on a degrade path",
     )
     score: float | None = Field(None, description="Entailment score (0.0-1.0) when the model ran")
     start: int = Field(..., description="Character offset start within `summary`")
@@ -121,8 +122,7 @@ async def ground_summary(
                 spans = split_segments(request.summary)
                 result = GroundednessResult(
                     segments=[
-                        SegmentVerdict(text, UNVERIFIED, start, end)
-                        for text, start, end in spans
+                        SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans
                     ],
                     checked=False,
                     reason=REASON_ERROR,
@@ -148,7 +148,9 @@ async def ground_summary(
             )
             for segment in result.segments
         ],
-        flagged_spans=[FlaggedSpanModel(start=start, end=end) for start, end in result.flagged_spans],
+        flagged_spans=[
+            FlaggedSpanModel(start=start, end=end) for start, end in result.flagged_spans
+        ],
         checked=result.checked,
         reason=result.reason,
         model_id=result.model_id,

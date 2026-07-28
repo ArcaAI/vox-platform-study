@@ -106,10 +106,7 @@ describe('PolicyService', () => {
       const service = buildService(makeMocks());
       const result = service.validateRules([{ subject: 'User' } as never, { action: 'read' } as never]);
       expect(result.valid).toBe(false);
-      expect(result.errors).toEqual([
-        "Rule 1: 'action' is required",
-        "Rule 2: 'subject' is required",
-      ]);
+      expect(result.errors).toEqual(["Rule 1: 'action' is required", "Rule 2: 'subject' is required"]);
     });
 
     it('warns on unknown actions while still being valid', () => {
@@ -121,13 +118,9 @@ describe('PolicyService', () => {
 
     it('warns when conditions reference unknown template variables', () => {
       const service = buildService(makeMocks());
-      const result = service.validateRules([
-        { action: 'read', subject: 'User', conditions: { id: '${user.bogusField}' } },
-      ]);
+      const result = service.validateRules([{ action: 'read', subject: 'User', conditions: { id: '${user.bogusField}' } }]);
       expect(result.valid).toBe(true);
-      expect(result.warnings).toEqual([
-        "Rule 1: Unknown variable 'user.bogusField' at conditions.id",
-      ]);
+      expect(result.warnings).toEqual(["Rule 1: Unknown variable 'user.bogusField' at conditions.id"]);
     });
   });
 
@@ -144,10 +137,7 @@ describe('PolicyService', () => {
       expect(mocks.policyRepo.findMany).toHaveBeenCalledWith({
         where: {
           resourceStatus: ResourceStatusType.ENABLED,
-          OR: [
-            { name: { contains: 'team', mode: 'insensitive' } },
-            { description: { contains: 'team', mode: 'insensitive' } },
-          ],
+          OR: [{ name: { contains: 'team', mode: 'insensitive' } }, { description: { contains: 'team', mode: 'insensitive' } }],
           scope: 'TENANT',
         },
         skip: 10,
@@ -157,10 +147,7 @@ describe('PolicyService', () => {
       expect(mocks.policyRepo.count).toHaveBeenCalledWith({
         where: {
           resourceStatus: ResourceStatusType.ENABLED,
-          OR: [
-            { name: { contains: 'team', mode: 'insensitive' } },
-            { description: { contains: 'team', mode: 'insensitive' } },
-          ],
+          OR: [{ name: { contains: 'team', mode: 'insensitive' } }, { description: { contains: 'team', mode: 'insensitive' } }],
           scope: 'TENANT',
         },
       });

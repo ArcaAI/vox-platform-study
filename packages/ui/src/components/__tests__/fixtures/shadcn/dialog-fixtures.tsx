@@ -7,16 +7,10 @@ import {
   DialogTitle,
   DialogDescription,
   DialogClose,
-} from '../../../shadcn/dialog'
-import { Button } from '../../../shadcn/button'
+} from '../../../shadcn/dialog';
+import { Button } from '../../../shadcn/button';
 
-export function ControlledDialog({
-  defaultOpen = false,
-  showCloseButton = true,
-}: {
-  defaultOpen?: boolean
-  showCloseButton?: boolean
-}) {
+export function ControlledDialog({ defaultOpen = false, showCloseButton = true }: { defaultOpen?: boolean; showCloseButton?: boolean }) {
   return (
     <Dialog defaultOpen={defaultOpen}>
       <DialogTrigger asChild>
@@ -36,14 +30,10 @@ export function ControlledDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
-export function DialogWithCallbacks({
-  onOpenChange,
-}: {
-  onOpenChange?: (open: boolean) => void
-}) {
+export function DialogWithCallbacks({ onOpenChange }: { onOpenChange?: (open: boolean) => void }) {
   return (
     <Dialog onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
@@ -54,7 +44,7 @@ export function DialogWithCallbacks({
         <DialogDescription>Test description</DialogDescription>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 export function DialogWithFooterClose() {
@@ -68,5 +58,5 @@ export function DialogWithFooterClose() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

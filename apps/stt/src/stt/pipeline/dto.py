@@ -435,9 +435,7 @@ class ModelRef:
                         + ", ".join(sorted(cls._PROVIDER_ALIASES))
                     )
                 if not model_id:
-                    raise ValueError(
-                        f"'{value}' is missing the model id after '::'"
-                    )
+                    raise ValueError(f"'{value}' is missing the model id after '::'")
                 return cls.from_value(
                     {
                         "hf_model_id": model_id,

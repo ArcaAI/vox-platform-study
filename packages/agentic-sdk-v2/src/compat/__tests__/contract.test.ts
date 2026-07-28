@@ -109,9 +109,7 @@ describe('audio + STT hook shapes (TASK-560 §5.3)', () => {
     expectTypeOf<UseArcaSpeechToTextReturn['startTranscription']>().returns.resolves.toBeVoid();
     expectTypeOf<UseArcaSpeechToTextReturn['stopTranscription']>().returns.resolves.toBeVoid();
     // sendAudioData is the metadata sink — still (ArrayBuffer, metadata?) => void.
-    expectTypeOf<UseArcaSpeechToTextReturn['sendAudioData']>().parameters.toMatchTypeOf<
-      [ArrayBuffer, (Record<string, unknown> | undefined)?]
-    >();
+    expectTypeOf<UseArcaSpeechToTextReturn['sendAudioData']>().parameters.toMatchTypeOf<[ArrayBuffer, (Record<string, unknown> | undefined)?]>();
     expectTypeOf<UseArcaSpeechToTextReturn['sendAudioData']>().returns.toBeVoid();
   });
 });
@@ -173,8 +171,8 @@ describe('useSMR response pass-through (TASK-560 §5.4)', () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
-    (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      (selector: (s: { apiClient: unknown }) => unknown) => selector({ apiClient: mockClient }),
+    (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (s: { apiClient: unknown }) => unknown) =>
+      selector({ apiClient: mockClient }),
     );
     global.fetch = fetchMock as unknown as typeof fetch;
     fetchMock.mockReset();

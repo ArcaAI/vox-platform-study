@@ -153,7 +153,12 @@ describe('PipelinePolicyService', () => {
     });
 
     it('returns a department override row (source=department)', async () => {
-      const row = PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.DEPARTMENT, scopeId: DEPT, autoNerEnabled: false });
+      const row = PipelinePolicyFactory.CreatePipelinePolicy({
+        tenantId: TENANT,
+        scope: PipelinePolicyScope.DEPARTMENT,
+        scopeId: DEPT,
+        autoNerEnabled: false,
+      });
       policyRepository.findForScope.mockResolvedValue(row);
 
       const result = await service.getRow({ tenantId: TENANT, scope: PipelinePolicyScope.DEPARTMENT, scopeId: DEPT });
@@ -319,18 +324,15 @@ describe('PipelinePolicyService', () => {
       policyRepository.create.mockImplementation(async (entity) => entity);
     });
 
-    it.each(['harnessEnabled', 'autoNerEnabled'] as const)(
-      'rejects a non-elevated %s write with 403 before any DB read or write',
-      async (key) => {
-        await expect(
-          service.upsertRow({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, dto: { [key]: false } }),
-        ).rejects.toBeInstanceOf(ForbiddenException);
+    it.each(['harnessEnabled', 'autoNerEnabled'] as const)('rejects a non-elevated %s write with 403 before any DB read or write', async (key) => {
+      await expect(service.upsertRow({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, dto: { [key]: false } })).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
 
-        expect(policyRepository.findForScope).not.toHaveBeenCalled();
-        expect(policyRepository.create).not.toHaveBeenCalled();
-        expect(policyChangeRepository.create).not.toHaveBeenCalled();
-      },
-    );
+      expect(policyRepository.findForScope).not.toHaveBeenCalled();
+      expect(policyRepository.create).not.toHaveBeenCalled();
+      expect(policyChangeRepository.create).not.toHaveBeenCalled();
+    });
 
     it.each(['harnessEnabled', 'autoNerEnabled'] as const)('allows an elevated %s write', async (key) => {
       const result = await makeElevatedService().upsertRow({
@@ -373,9 +375,7 @@ describe('PipelinePolicyService', () => {
         return descriptor;
       });
 
-      await expect(
-        service.upsertRow({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, dto: { harnessEnabled: false } }),
-      ).resolves.toBeDefined();
+      await expect(service.upsertRow({ tenantId: TENANT, scope: PipelinePolicyScope.TENANT, dto: { harnessEnabled: false } })).resolves.toBeDefined();
 
       expect(spy).toHaveBeenCalledWith('pipeline.harnessEnabled');
       spy.mockRestore();
@@ -385,7 +385,12 @@ describe('PipelinePolicyService', () => {
   // ─── per-doctor DNA toggle (DOCTOR-scope write) ────
   describe('getDnaSettings', () => {
     it('delegates to ConfigResolver.resolveEffectiveDnaStyleEnabled and returns the DOCTOR-row OCC version', async () => {
-      const row = PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.DOCTOR, scopeId: DOCTOR, dnaStyleEnabled: false });
+      const row = PipelinePolicyFactory.CreatePipelinePolicy({
+        tenantId: TENANT,
+        scope: PipelinePolicyScope.DOCTOR,
+        scopeId: DOCTOR,
+        dnaStyleEnabled: false,
+      });
       policyRepository.findForScope.mockResolvedValue(row);
       configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false });
 
@@ -443,12 +448,23 @@ describe('PipelinePolicyService', () => {
     });
 
     it('CAS-updates an existing DOCTOR row to opt-out (false) with a before/after WORM change', async () => {
-      const row = PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.DOCTOR, scopeId: DOCTOR, dnaStyleEnabled: true });
+      const row = PipelinePolicyFactory.CreatePipelinePolicy({
+        tenantId: TENANT,
+        scope: PipelinePolicyScope.DOCTOR,
+        scopeId: DOCTOR,
+        dnaStyleEnabled: true,
+      });
       policyRepository.findForScope.mockResolvedValue(row);
       policyRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
       configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false });
 
-      const result = await service.setDnaStyleForDoctor({ tenantId: TENANT, doctorId: DOCTOR, enabled: false, reason: 'opt out', expectedVersion: 1 });
+      const result = await service.setDnaStyleForDoctor({
+        tenantId: TENANT,
+        doctorId: DOCTOR,
+        enabled: false,
+        reason: 'opt out',
+        expectedVersion: 1,
+      });
 
       expect(policyRepository.updateWithVersion).toHaveBeenCalledWith(row.id, row, 1, expect.anything());
       const change = policyChangeRepository.create.mock.calls[0][0] as {
@@ -463,7 +479,12 @@ describe('PipelinePolicyService', () => {
     });
 
     it('is an idempotent no-op when the toggle is unchanged (no update, no change row)', async () => {
-      const row = PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.DOCTOR, scopeId: DOCTOR, dnaStyleEnabled: true });
+      const row = PipelinePolicyFactory.CreatePipelinePolicy({
+        tenantId: TENANT,
+        scope: PipelinePolicyScope.DOCTOR,
+        scopeId: DOCTOR,
+        dnaStyleEnabled: true,
+      });
       policyRepository.findForScope.mockResolvedValue(row);
       configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true });
 

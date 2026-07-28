@@ -23,54 +23,54 @@ const STUDIO_SRC = '/api/hope/admin/pstudio';
 const SURFACE_CLASS = 'min-h-0 w-full flex-1 rounded-md border';
 
 function StudioSurface() {
-    return (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                    <Badge>Enabled</Badge>
-                    <span className="text-muted-foreground font-mono text-xs">{STUDIO_SRC}</span>
-                </div>
-                <Button variant="outline" size="sm" asChild>
-                    <a href={STUDIO_SRC} target="_blank" rel="noopener noreferrer">
-                        <IconExternalLink aria-hidden />
-                        Open in new tab
-                    </a>
-                </Button>
-            </div>
-            {/* The console only provides the guarded shell — the studio renders inside. */}
-            <iframe title="Database Studio" src={STUDIO_SRC} sandbox="allow-scripts allow-same-origin allow-forms" className={`${SURFACE_CLASS} bg-card`} />
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Badge>Enabled</Badge>
+          <span className="text-muted-foreground font-mono text-xs">{STUDIO_SRC}</span>
         </div>
-    );
+        <Button variant="outline" size="sm" asChild>
+          <a href={STUDIO_SRC} target="_blank" rel="noopener noreferrer">
+            <IconExternalLink aria-hidden />
+            Open in new tab
+          </a>
+        </Button>
+      </div>
+      {/* The console only provides the guarded shell — the studio renders inside. */}
+      <iframe title="Database Studio" src={STUDIO_SRC} sandbox="allow-scripts allow-same-origin allow-forms" className={`${SURFACE_CLASS} bg-card`} />
+    </div>
+  );
 }
 
 function DisabledCard() {
-    return (
-        <Card className="min-h-0 w-full flex-1 justify-center">
-            <EmptyState
-                icon={IconDatabaseOff}
-                title="Database Studio is disabled"
-                description={
-                    <>
-                        The studio shell is off in this environment (fail-closed). The gateway enables it only when the operator sets{' '}
-                        <code className="font-mono">ENABLE_PRISMA_STUDIO=true</code>; access additionally requires the dedicated{' '}
-                        <code className="font-mono">manage:PrismaStudio</code> permission (TASK-419). No broken iframe is shown.
-                    </>
-                }
-            />
-        </Card>
-    );
+  return (
+    <Card className="min-h-0 w-full flex-1 justify-center">
+      <EmptyState
+        icon={IconDatabaseOff}
+        title="Database Studio is disabled"
+        description={
+          <>
+            The studio shell is off in this environment (fail-closed). The gateway enables it only when the operator sets{' '}
+            <code className="font-mono">ENABLE_PRISMA_STUDIO=true</code>; access additionally requires the dedicated{' '}
+            <code className="font-mono">manage:PrismaStudio</code> permission (TASK-419). No broken iframe is shown.
+          </>
+        }
+      />
+    </Card>
+  );
 }
 
 function LoadingSurface() {
-    return (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-            <div className="flex items-center justify-between">
-                <Skeleton className="h-6 w-40" />
-                <Skeleton className="h-8 w-36" />
-            </div>
-            <Skeleton className={SURFACE_CLASS} />
-        </div>
-    );
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-6 w-40" />
+        <Skeleton className="h-8 w-36" />
+      </div>
+      <Skeleton className={SURFACE_CLASS} />
+    </div>
+  );
 }
 
 /**
@@ -86,54 +86,52 @@ function LoadingSurface() {
  * intentional, not drift.
  */
 export function DbStudioScreen() {
-    const statusQuery = useDbStudioStatus();
+  const statusQuery = useDbStudioStatus();
 
-    return (
-        <ScreenTemplate
-            contentMode="fill"
-            header={
-                <PageHeader
-                    title="Database Studio"
-                    meta={
-                        <>
-                            <span>Embedded database browser</span>
-                            <span aria-hidden>&middot;</span>
-                            <span>GlobalAdmin only</span>
-                        </>
-                    }
-                />
-            }
-            statusBanner={
-                <Alert>
-                    <IconAlertTriangle aria-hidden />
-                    <AlertTitle>Production data</AlertTitle>
-                    <AlertDescription>
-                        Every write here bypasses domain rules and is audit-logged. Prefer admin screens for routine edits.
-                    </AlertDescription>
-                </Alert>
-            }
-            footer={
-                <StatusFooter
-                    start={<span>{statusQuery.data?.enabled ? 'Studio enabled' : 'Studio disabled'}</span>}
-                    end={
-                        <span aria-hidden className="font-mono">
-                            {STUDIO_SRC}
-                        </span>
-                    }
-                />
-            }
-        >
-            {statusQuery.isLoading ? (
-                <LoadingSurface />
-            ) : statusQuery.error ? (
-                <div className="flex min-h-0 flex-1 flex-col justify-center">
-                    <ErrorState error={statusQuery.error} onRetry={() => void statusQuery.refetch()} />
-                </div>
-            ) : statusQuery.data?.enabled ? (
-                <StudioSurface />
-            ) : (
-                <DisabledCard />
-            )}
-        </ScreenTemplate>
-    );
+  return (
+    <ScreenTemplate
+      contentMode="fill"
+      header={
+        <PageHeader
+          title="Database Studio"
+          meta={
+            <>
+              <span>Embedded database browser</span>
+              <span aria-hidden>&middot;</span>
+              <span>GlobalAdmin only</span>
+            </>
+          }
+        />
+      }
+      statusBanner={
+        <Alert>
+          <IconAlertTriangle aria-hidden />
+          <AlertTitle>Production data</AlertTitle>
+          <AlertDescription>Every write here bypasses domain rules and is audit-logged. Prefer admin screens for routine edits.</AlertDescription>
+        </Alert>
+      }
+      footer={
+        <StatusFooter
+          start={<span>{statusQuery.data?.enabled ? 'Studio enabled' : 'Studio disabled'}</span>}
+          end={
+            <span aria-hidden className="font-mono">
+              {STUDIO_SRC}
+            </span>
+          }
+        />
+      }
+    >
+      {statusQuery.isLoading ? (
+        <LoadingSurface />
+      ) : statusQuery.error ? (
+        <div className="flex min-h-0 flex-1 flex-col justify-center">
+          <ErrorState error={statusQuery.error} onRetry={() => void statusQuery.refetch()} />
+        </div>
+      ) : statusQuery.data?.enabled ? (
+        <StudioSurface />
+      ) : (
+        <DisabledCard />
+      )}
+    </ScreenTemplate>
+  );
 }

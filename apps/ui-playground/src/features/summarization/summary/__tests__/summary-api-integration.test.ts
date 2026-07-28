@@ -77,9 +77,7 @@ describe('Summary Page API Integration', () => {
       ];
 
       const selectedDeptId = 'dept-card';
-      const filtered = allTemplates.filter(
-        (t) => t.departmentId === selectedDeptId || t.departmentId === null,
-      );
+      const filtered = allTemplates.filter((t) => t.departmentId === selectedDeptId || t.departmentId === null);
 
       expect(filtered).toHaveLength(2);
       expect(filtered.map((t) => t.id)).toEqual(['pt-1', 'pt-2']);
@@ -92,9 +90,7 @@ describe('Summary Page API Integration', () => {
       ];
 
       const selectedDeptId = '';
-      const filtered = selectedDeptId
-        ? allTemplates.filter((t) => t.departmentId === selectedDeptId || t.departmentId === null)
-        : allTemplates;
+      const filtered = selectedDeptId ? allTemplates.filter((t) => t.departmentId === selectedDeptId || t.departmentId === null) : allTemplates;
 
       expect(filtered).toHaveLength(2);
     });
@@ -126,9 +122,7 @@ describe('Summary Page API Integration', () => {
         updatedAt: '2026-02-20T14:30:00Z',
       };
 
-      expect(dnaReport.styleText).toBe(
-        'Use formal medical language. Keep sentences concise. Use standard abbreviations.',
-      );
+      expect(dnaReport.styleText).toBe('Use formal medical language. Keep sentences concise. Use standard abbreviations.');
       expect(dnaReport.reportData.tone).toBe('formal');
       expect(dnaReport.currentVersionNumber).toBe(3);
     });

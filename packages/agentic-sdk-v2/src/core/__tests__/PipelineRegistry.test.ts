@@ -12,9 +12,7 @@ import { PipelineRegistry } from '../PipelineRegistry';
 import { createMockLogger, mockFetch, createMockResponse, createMockErrorResponse } from '../../__tests__/setup';
 import { AgenticClient } from '../AgenticClient';
 import { PIPELINE_ENDPOINTS } from '../constants';
-import type {
-  AsrPipelineResponse,
-} from '../../types/stt';
+import type { AsrPipelineResponse } from '../../types/stt';
 import { ResourceStatus } from '../../types/stt';
 
 // ===========================================================================
@@ -48,10 +46,7 @@ describe('PipelineRegistry', () => {
 
   beforeEach(() => {
     mockLogger = createMockLogger();
-    apiClient = new AgenticClient(
-      { baseUrl: 'https://api.example.com', apiKey: 'test-key' },
-      mockLogger,
-    );
+    apiClient = new AgenticClient({ baseUrl: 'https://api.example.com', apiKey: 'test-key' }, mockLogger);
     registry = new PipelineRegistry(apiClient, mockLogger);
   });
 
@@ -79,10 +74,7 @@ describe('PipelineRegistry', () => {
 
   describe('loadPipelines', () => {
     it('should fetch pipelines from backend', async () => {
-      const pipelines = [
-        createMockPipeline({ id: 'p1', name: 'Pipeline 1' }),
-        createMockPipeline({ id: 'p2', name: 'Pipeline 2' }),
-      ];
+      const pipelines = [createMockPipeline({ id: 'p1', name: 'Pipeline 1' }), createMockPipeline({ id: 'p2', name: 'Pipeline 2' })];
       mockFetch.mockResolvedValueOnce(createMockResponse(pipelines));
 
       await registry.loadPipelines();
@@ -105,11 +97,7 @@ describe('PipelineRegistry', () => {
       await registry.loadPipelines();
       expect(registry.getPipelines()).toHaveLength(1);
 
-      const newPipelines = [
-        createMockPipeline({ id: 'p-new-1' }),
-        createMockPipeline({ id: 'p-new-2' }),
-        createMockPipeline({ id: 'p-new-3' }),
-      ];
+      const newPipelines = [createMockPipeline({ id: 'p-new-1' }), createMockPipeline({ id: 'p-new-2' }), createMockPipeline({ id: 'p-new-3' })];
       mockFetch.mockResolvedValueOnce(createMockResponse(newPipelines));
       await registry.loadPipelines();
       expect(registry.getPipelines()).toHaveLength(3);
@@ -123,9 +111,7 @@ describe('PipelineRegistry', () => {
     });
 
     it('should preserve existing cache when reload fails', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse([createMockPipeline({ id: 'cached-pipe' })])
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse([createMockPipeline({ id: 'cached-pipe' })]));
       await registry.loadPipelines();
       expect(registry.getPipelines()).toHaveLength(1);
 
@@ -137,9 +123,7 @@ describe('PipelineRegistry', () => {
     });
 
     it('should handle non-array response gracefully', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse({ pipelines: [] })
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse({ pipelines: [] }));
 
       await expect(registry.loadPipelines()).resolves.not.toThrow();
       expect(registry.getPipelines()).toEqual([]);
@@ -160,9 +144,7 @@ describe('PipelineRegistry', () => {
 
   describe('getPipelineById', () => {
     it('should return a pipeline by ID from cache', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse([createMockPipeline({ id: 'p-abc' })])
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse([createMockPipeline({ id: 'p-abc' })]));
       await registry.loadPipelines();
 
       const pipeline = registry.getPipelineById('p-abc');
@@ -181,9 +163,7 @@ describe('PipelineRegistry', () => {
 
   describe('getPipelineBySlug', () => {
     it('should return a pipeline by slug from cache', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse([createMockPipeline({ slug: 'my-pipe' })])
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse([createMockPipeline({ slug: 'my-pipe' })]));
       await registry.loadPipelines();
 
       const pipeline = registry.getPipelineBySlug('my-pipe');
@@ -202,9 +182,7 @@ describe('PipelineRegistry', () => {
 
   describe('getPipelines returns a copy', () => {
     it('should return a new array each call (not a mutable reference)', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse([createMockPipeline()])
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse([createMockPipeline()]));
       await registry.loadPipelines();
 
       const first = registry.getPipelines();
@@ -467,9 +445,7 @@ describe('PipelineRegistry', () => {
       const p1 = [createMockPipeline({ id: 'batch-1-pipe', name: 'Batch 1' })];
       const p2 = [createMockPipeline({ id: 'batch-2-pipe', name: 'Batch 2' })];
 
-      mockFetch
-        .mockResolvedValueOnce(createMockResponse(p1))
-        .mockResolvedValueOnce(createMockResponse(p2));
+      mockFetch.mockResolvedValueOnce(createMockResponse(p1)).mockResolvedValueOnce(createMockResponse(p2));
 
       await Promise.all([registry.loadPipelines(), registry.loadPipelines()]);
 

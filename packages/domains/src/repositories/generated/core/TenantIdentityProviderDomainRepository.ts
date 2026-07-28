@@ -8,10 +8,7 @@ import { TenantIdentityProviderDomainEntityMapper } from '../../../mappers';
 import { TenantIdentityProviderDomain } from '../../../models';
 
 @Injectable()
-export class TenantIdentityProviderDomainRepository extends Repository<
-  TenantIdentityProviderDomainEntity,
-  TenantIdentityProviderDomain
-> {
+export class TenantIdentityProviderDomainRepository extends Repository<TenantIdentityProviderDomainEntity, TenantIdentityProviderDomain> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'tenantIdentityProviderDomain', TenantIdentityProviderDomainEntityMapper.getInstance());
   }

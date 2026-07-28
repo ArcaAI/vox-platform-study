@@ -92,10 +92,13 @@ describe('HighlightTransport', () => {
   describe('initialize', () => {
     it('should initialize highlight SDK', async () => {
       await initTransport(transport);
-      expect(spies.init).toHaveBeenCalledWith('test-project-id', expect.objectContaining({
-        serviceName: 'test-service',
-        environment: 'test',
-      }));
+      expect(spies.init).toHaveBeenCalledWith(
+        'test-project-id',
+        expect.objectContaining({
+          serviceName: 'test-service',
+          environment: 'test',
+        }),
+      );
     });
 
     it('should flush pending logs after initialization', async () => {
@@ -162,7 +165,8 @@ describe('HighlightTransport', () => {
       });
       transport.log(entry);
       expect(spies.log).toHaveBeenCalledWith(
-        'Test message', 'info',
+        'Test message',
+        'info',
         expect.objectContaining({
           context: 'Ctx',
           correlationId: 'c1',
@@ -175,7 +179,7 @@ describe('HighlightTransport', () => {
           tags: 't1,t2',
           service: 'svc',
           version: '1.0',
-        })
+        }),
       );
     });
 
@@ -203,11 +207,14 @@ describe('HighlightTransport', () => {
         user: { userId: 'u1' },
       });
       transport.log(entry);
-      expect(spies.track).toHaveBeenCalledWith('operation.createCons', expect.objectContaining({
-        component: 'Client',
-        durationMs: 150,
-        success: true,
-      }));
+      expect(spies.track).toHaveBeenCalledWith(
+        'operation.createCons',
+        expect.objectContaining({
+          component: 'Client',
+          durationMs: 150,
+          success: true,
+        }),
+      );
     });
 
     it('should not track when durationMs is missing', () => {

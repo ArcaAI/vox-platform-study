@@ -60,13 +60,10 @@ class AzureFoundryLoader(BaseModelLoader):
             or settings.azure_foundry_endpoint
             or ""
         ).rstrip("/")
-        api_key = (
-            (override.get("api_key") if override else None)
-            or (
-                settings.azure_foundry_api_key.get_secret_value()
-                if settings.azure_foundry_api_key
-                else None
-            )
+        api_key = (override.get("api_key") if override else None) or (
+            settings.azure_foundry_api_key.get_secret_value()
+            if settings.azure_foundry_api_key
+            else None
         )
         if not endpoint or not api_key:
             raise CloudASRAuthError(

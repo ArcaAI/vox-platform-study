@@ -97,9 +97,7 @@ async def test_retryable_cloud_error_redispatches_on_fallback():
     fallback_result = _make_result(text="fallback text", pipeline_id="p-fallback")
     batch = AsyncMock()
     # First (primary) raises retryable; second (fallback) succeeds.
-    batch.transcribe = AsyncMock(
-        side_effect=[CloudASRTranscriptionError("5xx"), fallback_result]
-    )
+    batch.transcribe = AsyncMock(side_effect=[CloudASRTranscriptionError("5xx"), fallback_result])
 
     p1, p2, p3, p4, p5, p6, p7, api, _batch = _harness(reader=reader, batch=batch)
     with p1, p2, p3, p4, p5, p6, p7:

@@ -17,10 +17,7 @@ const require_ = createRequire(import.meta.url);
  */
 function syncWasmAsset(): void {
   const upstream = require_.resolve('@jitsi/rnnoise-wasm/dist/rnnoise.wasm');
-  const targets = [
-    resolve(here, 'assets/rnnoise.wasm'),
-    resolve(here, 'dist/assets/rnnoise.wasm'),
-  ];
+  const targets = [resolve(here, 'assets/rnnoise.wasm'), resolve(here, 'dist/assets/rnnoise.wasm')];
   for (const target of targets) {
     mkdirSync(dirname(target), { recursive: true });
     copyFileSync(upstream, target);

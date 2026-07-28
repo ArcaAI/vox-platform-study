@@ -23,7 +23,6 @@ import type { ProviderConnection } from '../../api/providers-types';
 import { CLOUD_PROVIDERS } from '../byo-credential-card';
 import { TenantAiConfigurationScreen } from '../tenant-ai-configuration-screen';
 
-
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 beforeAll(() => {

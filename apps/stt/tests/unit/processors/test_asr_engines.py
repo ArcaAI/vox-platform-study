@@ -118,10 +118,17 @@ class TestBindingResolution:
 
         assert payload["platform"] == "cpu"
         assert set(payload["asr_engines"]) == {
-            "safetensor", "onnx", "onnx_optimum", "nemo",
-            "faster_whisper", "azure_speech",
-            "parakeet_cpp", "azure_foundry", "whisper_cpp",
-            "sarvam", "openai",
+            "safetensor",
+            "onnx",
+            "onnx_optimum",
+            "nemo",
+            "faster_whisper",
+            "azure_speech",
+            "parakeet_cpp",
+            "azure_foundry",
+            "whisper_cpp",
+            "sarvam",
+            "openai",
         }
         assert payload["asr_engines"]["onnx"]["streaming"] == "unsupported"
         assert payload["asr_engines"]["safetensor"]["batch"]["device"] == "cpu"
@@ -136,8 +143,12 @@ class TestP1ReviewFixes:
         from stt.processors.binding import resolve_engine_binding
 
         binding = resolve_engine_binding(
-            "asr", "nemo", mode="streaming", platform="cuda",
-            compute_pref=["float16"], warn=False,
+            "asr",
+            "nemo",
+            mode="streaming",
+            platform="cuda",
+            compute_pref=["float16"],
+            warn=False,
         )
         assert binding is not None
         assert (binding.device, binding.compute) == ("cuda", "float32")
@@ -146,8 +157,12 @@ class TestP1ReviewFixes:
         from stt.processors.binding import resolve_engine_binding
 
         binding = resolve_engine_binding(
-            "asr", "azure_speech", mode="batch", platform="cuda",
-            compute_pref=["float16"], warn=False,
+            "asr",
+            "azure_speech",
+            mode="batch",
+            platform="cuda",
+            compute_pref=["float16"],
+            warn=False,
         )
         assert binding is not None
         assert binding.compute is None
@@ -173,8 +188,13 @@ class TestP1ReviewFixes:
         engine = FasterWhisperEngine()
 
         await engine.run_batch(
-            service, None, 16000, MagicMock(), MagicMock(),
-            prompt="composed rolling prompt", initial_prompt="bare initial",
+            service,
+            None,
+            16000,
+            MagicMock(),
+            MagicMock(),
+            prompt="composed rolling prompt",
+            initial_prompt="bare initial",
         )
 
         kwargs = service._run_faster_whisper_inference.call_args.kwargs
@@ -198,9 +218,7 @@ class TestP3NewEngines:
     def test_provider_shorthand_for_new_engines(self):
         from stt.pipeline.dto import ModelRef
 
-        ref = ModelRef.from_value(
-            "parakeet.cpp :: nvidia/nemotron-3.5-asr-streaming-0.6b"
-        )
+        ref = ModelRef.from_value("parakeet.cpp :: nvidia/nemotron-3.5-asr-streaming-0.6b")
         assert ref.inline.engine == AiModelFormat.PARAKEET_CPP
         assert ref.inline.hf_model_id == "nvidia/nemotron-3.5-asr-streaming-0.6b"
 
@@ -219,9 +237,7 @@ class TestP3NewEngines:
         assert not any(c.streaming for c in spec.capabilities)
 
         with pytest.raises(RuntimeError, match="batch-only"):
-            AzureFoundryEngine().make_streaming_callable(
-                MagicMock(), MagicMock(), MagicMock()
-            )
+            AzureFoundryEngine().make_streaming_callable(MagicMock(), MagicMock(), MagicMock())
 
     @pytest.mark.asyncio
     async def test_azure_foundry_disabled_by_default(self):
@@ -232,9 +248,7 @@ class TestP3NewEngines:
         from stt.models.azure_foundry_loader import AzureFoundryLoader
 
         settings = MagicMock(azure_foundry_enabled=False)
-        with patch(
-            "stt.models.azure_foundry_loader.get_settings", return_value=settings
-        ):
+        with patch("stt.models.azure_foundry_loader.get_settings", return_value=settings):
             with pytest.raises(CloudASRAuthError, match="disabled"):
                 await AzureFoundryLoader().load(MagicMock())
 
@@ -296,7 +310,11 @@ class TestP3NewEngines:
 
         service = BatchTranscriptionService()
         model = MagicMock()
-        model.model = {"endpoint": "https://r.cognitiveservices.azure.com", "api_key": "k", "model": "mai-transcribe-1.5"}
+        model.model = {
+            "endpoint": "https://r.cognitiveservices.azure.com",
+            "api_key": "k",
+            "model": "mai-transcribe-1.5",
+        }
 
         response = MagicMock()
         response.status_code = 200
@@ -326,7 +344,10 @@ class TestP3NewEngines:
 
         with patch("httpx.AsyncClient", return_value=client):
             raw = await service._run_azure_foundry_inference(
-                np.zeros(16000, dtype=np.float32), 16000, model, MagicMock(language="en"),
+                np.zeros(16000, dtype=np.float32),
+                16000,
+                model,
+                MagicMock(language="en"),
             )
 
         assert raw.text == "severe chest pain"
@@ -359,7 +380,10 @@ class TestP3NewEngines:
             with patch("httpx.AsyncClient", return_value=client):
                 with pytest.raises(exc_type):
                     await service._run_azure_foundry_inference(
-                        np.zeros(160, dtype=np.float32), 16000, model, MagicMock(language=None),
+                        np.zeros(160, dtype=np.float32),
+                        16000,
+                        model,
+                        MagicMock(language=None),
                     )
 
 
@@ -375,9 +399,7 @@ class TestP507WhisperCppEngine:
     def test_provider_shorthand(self):
         from stt.pipeline.dto import ModelRef
 
-        ref = ModelRef.from_value(
-            "whisper.cpp :: oxide-lab/whisper-large-v3-turbo-GGUF"
-        )
+        ref = ModelRef.from_value("whisper.cpp :: oxide-lab/whisper-large-v3-turbo-GGUF")
         assert ref.inline.engine == AiModelFormat.WHISPER_CPP
         assert ref.inline.hf_model_id == "oxide-lab/whisper-large-v3-turbo-GGUF"
 
@@ -430,7 +452,10 @@ class TestP507WhisperCppEngine:
         assert out["text"] == "hello world"
         assert len(out["word_timestamps"]) == 2
         assert out["word_timestamps"][0] == {
-            "word": "hello", "start": 0.0, "end": 0.4, "confidence": 1.0,
+            "word": "hello",
+            "start": 0.0,
+            "end": 0.4,
+            "confidence": 1.0,
         }
         assert out["word_timestamps"][1]["start"] == 0.4
         assert out["segments"][0]["end"] == 0.9
@@ -440,7 +465,9 @@ class TestP507WhisperCppEngine:
         from stt.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
 
         loaded = LoadedModel(
-            model_id="m", model_slug="s", model=object(),
+            model_id="m",
+            model_slug="s",
+            model=object(),
             format=AiModelFormat.FASTER_WHISPER,
         )
         with pytest.raises(ValueError, match="WHISPER_CPP"):
@@ -457,9 +484,7 @@ class TestP4EmbeddingDim:
 
         settings = MagicMock(voice_profile_embedding_dim=192)
         with patch.object(es, "EXPECTED_EMBEDDING_DIM", 256):
-            with patch(
-                "stt.core.config.settings.get_settings", return_value=settings
-            ):
+            with patch("stt.core.config.settings.get_settings", return_value=settings):
                 svc = es.ExtractionService(
                     embedding_service=MagicMock(),
                     vad_service=MagicMock(),

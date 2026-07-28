@@ -132,17 +132,13 @@ class TestMakeAsrCallableMultimodalLLM:
         mgr = _make_manager()
         loaded = _mock_multimodal_model()
         custom_prompt = "Transcribe medical speech verbatim."
-        fn = mgr._make_asr_callable(
-            loaded, _mock_inference_config(), initial_prompt=custom_prompt
-        )
+        fn = mgr._make_asr_callable(loaded, _mock_inference_config(), initial_prompt=custom_prompt)
         await fn(np.zeros(16000, dtype=np.float32), 16000)
 
         call_args = loaded.processor.apply_chat_template.call_args
         messages = call_args[0][0]
         text_content = next(
-            item["text"]
-            for item in messages[0]["content"]
-            if item.get("type") == "text"
+            item["text"] for item in messages[0]["content"] if item.get("type") == "text"
         )
         assert custom_prompt in text_content
 

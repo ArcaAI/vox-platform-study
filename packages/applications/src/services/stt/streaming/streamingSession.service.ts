@@ -164,9 +164,7 @@ export class StreamingSessionService implements IStreamingSessionService {
    * switched) are surfaced to the caller.
    */
   async switchToFallback(sessionId: string): Promise<void> {
-    await firstValueFrom(
-      this.httpService.post(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}/switch`, {}, { timeout: 5000 }),
-    );
+    await firstValueFrom(this.httpService.post(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}/switch`, {}, { timeout: 5000 }));
     this.logger.log({ message: 'Streaming session switch-to-fallback requested', sessionId });
   }
 

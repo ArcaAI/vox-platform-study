@@ -166,9 +166,7 @@ export class ChainSummaryService extends BaseService {
     // before persistence — the plaintext `content` column was dropped by the
     // PHI field-encryption migration, so an unencrypted create silently loses
     // the clinical text at rest (mirrors context.service.ts `encryptContent`).
-    await this.encryptBestEffort('ContextItem content', () =>
-      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
-    );
+    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     const savedContext = await this.contextItemRepository.create(contextItem);
 
@@ -181,9 +179,7 @@ export class ChainSummaryService extends BaseService {
       inputTokens: smrResponse.inputTokens,
       outputTokens: smrResponse.outputTokens,
     });
-    await this.encryptBestEffort('SummaryMeta', () =>
-      this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
-    );
+    await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
     await this.summaryMetaRepository.create(summaryMeta);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -515,23 +511,21 @@ export class ChainSummaryService extends BaseService {
   /**
    * Call the SMR service for comprehensive summary generation.
    */
-  private async callSmrService(
-    payload: {
-      assembledPrompt: {
-        userPrompt: string;
-        systemPrompt: string;
-        hyperparameters: Record<string, number>;
-        responseFormat: {
-          type: string;
-          json_schema: Record<string, unknown>;
-          strict: boolean;
-        } | null;
-        resolvedFrom: PromptResolutionTier;
-      };
-      options?: Record<string, unknown>;
-      context: Record<string, unknown>;
-    },
-  ): Promise<{
+  private async callSmrService(payload: {
+    assembledPrompt: {
+      userPrompt: string;
+      systemPrompt: string;
+      hyperparameters: Record<string, number>;
+      responseFormat: {
+        type: string;
+        json_schema: Record<string, unknown>;
+        strict: boolean;
+      } | null;
+      resolvedFrom: PromptResolutionTier;
+    };
+    options?: Record<string, unknown>;
+    context: Record<string, unknown>;
+  }): Promise<{
     summary: string;
     llmProvider?: string;
     modelName?: string;

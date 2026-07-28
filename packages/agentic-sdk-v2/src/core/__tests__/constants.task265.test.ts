@@ -10,13 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  PIPELINE_ENDPOINTS,
-  USER_ROLES,
-  USER_SETTINGS_ENDPOINTS,
-  VOICE_EMBEDDING_ENDPOINTS,
-  type UserRole,
-} from '../constants';
+import { PIPELINE_ENDPOINTS, USER_ROLES, USER_SETTINGS_ENDPOINTS, VOICE_EMBEDDING_ENDPOINTS, type UserRole } from '../constants';
 
 // ---------------------------------------------------------------------------
 // W0-7 / GAP-02 — voice-profile (D2)
@@ -27,7 +21,7 @@ describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', () => {
     expect(VOICE_EMBEDDING_ENDPOINTS.enroll).toBe('/voice-profile/enroll');
   });
 
-  it('exposes static `list` path for the current user\'s profiles', () => {
+  it("exposes static `list` path for the current user's profiles", () => {
     expect(VOICE_EMBEDDING_ENDPOINTS.list).toBe('/voice-profile');
   });
 
@@ -37,17 +31,11 @@ describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', () => {
 
   it('encodes special characters in profile id', () => {
     const dangerous = 'id/with?special#chars&more=true';
-    expect(VOICE_EMBEDDING_ENDPOINTS.delete(dangerous)).toBe(
-      '/voice-profile/' + encodeURIComponent(dangerous),
-    );
+    expect(VOICE_EMBEDDING_ENDPOINTS.delete(dangerous)).toBe('/voice-profile/' + encodeURIComponent(dangerous));
   });
 
   it('does not expose the deprecated /users/:userId/voice-embedding paths', () => {
-    const all = [
-      VOICE_EMBEDDING_ENDPOINTS.enroll,
-      VOICE_EMBEDDING_ENDPOINTS.list,
-      VOICE_EMBEDDING_ENDPOINTS.delete('p-1'),
-    ];
+    const all = [VOICE_EMBEDDING_ENDPOINTS.enroll, VOICE_EMBEDDING_ENDPOINTS.list, VOICE_EMBEDDING_ENDPOINTS.delete('p-1')];
     for (const ep of all) {
       expect(ep).not.toContain('/voice-embedding');
       expect(ep).not.toMatch(/^\/users\//);
@@ -56,13 +44,7 @@ describe('VOICE_EMBEDDING_ENDPOINTS targets /voice-profile API', () => {
 
   it('keys are exactly {enroll, list, delete, activate, deactivate}', () => {
     // Extended with activate/deactivate for SDK control surface.
-    expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual([
-      'activate',
-      'deactivate',
-      'delete',
-      'enroll',
-      'list',
-    ]);
+    expect(Object.keys(VOICE_EMBEDDING_ENDPOINTS).sort()).toEqual(['activate', 'deactivate', 'delete', 'enroll', 'list']);
   });
 });
 
@@ -76,17 +58,13 @@ describe('USER_SETTINGS_ENDPOINTS reduced to list + updateByKey', () => {
   });
 
   it('exposes `updateByKey(namespace, key)` builder', () => {
-    expect(USER_SETTINGS_ENDPOINTS.updateByKey('display', 'theme')).toBe(
-      '/user/me/settings/display/theme',
-    );
+    expect(USER_SETTINGS_ENDPOINTS.updateByKey('display', 'theme')).toBe('/user/me/settings/display/theme');
   });
 
   it('encodes special characters in namespace and key', () => {
     const ns = 'a/ns?with#chars';
     const k = 'k=with&chars';
-    expect(USER_SETTINGS_ENDPOINTS.updateByKey(ns, k)).toBe(
-      '/user/me/settings/' + encodeURIComponent(ns) + '/' + encodeURIComponent(k),
-    );
+    expect(USER_SETTINGS_ENDPOINTS.updateByKey(ns, k)).toBe('/user/me/settings/' + encodeURIComponent(ns) + '/' + encodeURIComponent(k));
   });
 
   it('keys are exactly {list, updateByKey} (no GET, CREATE, UPDATE-by-id, MY_SETTINGS)', () => {

@@ -103,16 +103,7 @@ export function getPhiReadSecrets(): SecretsServiceLike | undefined {
 // transient plaintext off the returned entity, e.g. addContext → response DTO).
 // createMany/updateMany/deleteMany/count/aggregate/groupBy return non-row shapes
 // and intentionally pass through untouched.
-const DECRYPT_METHODS = new Set([
-  'findUnique',
-  'findUniqueOrThrow',
-  'findFirst',
-  'findFirstOrThrow',
-  'findMany',
-  'create',
-  'update',
-  'upsert',
-]);
+const DECRYPT_METHODS = new Set(['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'create', 'update', 'upsert']);
 
 /**
  * Wrap a Prisma model delegate so row-returning reads and single-row write
@@ -144,8 +135,7 @@ interface DecryptJob {
   apply: (plaintext: string) => void;
 }
 
-const SKIP_RECURSE = (v: unknown): boolean =>
-  v instanceof Uint8Array || v instanceof Date || Buffer.isBuffer(v);
+const SKIP_RECURSE = (v: unknown): boolean => v instanceof Uint8Array || v instanceof Date || Buffer.isBuffer(v);
 
 /**
  * Recursively walk a Prisma row graph, collecting ciphertext→setter jobs for

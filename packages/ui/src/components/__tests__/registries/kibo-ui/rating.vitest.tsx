@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { Rating, RatingButton } from '../../../registries/kibo-ui/rating'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Rating, RatingButton } from '../../../registries/kibo-ui/rating';
 
 describe('Rating', () => {
   it('renders without crashing', () => {
@@ -11,8 +11,8 @@ describe('Rating', () => {
         <RatingButton />
         <RatingButton />
         <RatingButton />
-      </Rating>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </Rating>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

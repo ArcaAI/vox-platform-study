@@ -243,8 +243,7 @@ export class ContextItemResponse {
   dnaWritingStyleId?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Free-form JSON metadata. Convention: lab/exam ATTACHMENTs carry `{ "subType": "LAB_RESULT" }` (Clinical Workflow Playground WS5).',
+    description: 'Free-form JSON metadata. Convention: lab/exam ATTACHMENTs carry `{ "subType": "LAB_RESULT" }` (Clinical Workflow Playground WS5).',
   })
   metadata?: Record<string, unknown>;
 

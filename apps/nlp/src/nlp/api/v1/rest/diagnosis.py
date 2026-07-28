@@ -25,7 +25,9 @@ async def get_diagnosis_suggestions(
     try:
         async with pinned_medical_suggester(request.model_name, request.model_path) as service:
             if not service.is_initialized:
-                raise HTTPException(status_code=503, detail="Medical suggester service not available")
+                raise HTTPException(
+                    status_code=503, detail="Medical suggester service not available"
+                )
 
             # Bound concurrent inference.
             async with inference_bound:
@@ -34,7 +36,9 @@ async def get_diagnosis_suggestions(
             return response
     except ModelUnavailableError as e:
         logger.error(f"Medical suggester model load failed: {str(e)}")
-        raise HTTPException(status_code=503, detail="Medical suggester service not available") from e
+        raise HTTPException(
+            status_code=503, detail="Medical suggester service not available"
+        ) from e
     except HTTPException:
         raise
     except Exception as e:

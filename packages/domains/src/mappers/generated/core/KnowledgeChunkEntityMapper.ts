@@ -21,15 +21,13 @@ export class KnowledgeChunkEntityMapper extends BaseMapper<Entities.KnowledgeChu
   }
 }
 
-export const KnowledgeChunkEntityMapperHandlers = createMapperHandlers<Entities.KnowledgeChunkEntity, Models.KnowledgeChunk>(
-  {
-    $toPersistence: {
-      // Return the raw ciphertext Buffer directly so the
-      // generic auto-mapper does not destructure the typed array.
-      encryptedText: (entity) => entity.encryptedText ?? null,
-    },
-    $toDomain: {
-      encryptedText: (model) => model.encryptedText ?? null,
-    },
+export const KnowledgeChunkEntityMapperHandlers = createMapperHandlers<Entities.KnowledgeChunkEntity, Models.KnowledgeChunk>({
+  $toPersistence: {
+    // Return the raw ciphertext Buffer directly so the
+    // generic auto-mapper does not destructure the typed array.
+    encryptedText: (entity) => entity.encryptedText ?? null,
   },
-);
+  $toDomain: {
+    encryptedText: (model) => model.encryptedText ?? null,
+  },
+});

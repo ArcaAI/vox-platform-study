@@ -6,11 +6,11 @@ Enables browser-level noise suppression on the microphone input. Background nois
 
 ### Levels
 
-| Level | Description |
-|-------|-------------|
-| **Low** | Light filtering, preserves more ambient sound |
-| **Medium** | Balanced noise reduction |
-| **High** | Aggressive filtering, removes most background noise |
+| Level      | Description                                         |
+| ---------- | --------------------------------------------------- |
+| **Low**    | Light filtering, preserves more ambient sound       |
+| **Medium** | Balanced noise reduction                            |
+| **High**   | Aggressive filtering, removes most background noise |
 
 <!-- @example -->
 

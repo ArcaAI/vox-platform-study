@@ -6,15 +6,15 @@ import { aiServicesKeys } from './keys';
 import type { AgenticInstructionsParams } from './types';
 
 export function useGuardrailStatus() {
-    return useQuery({ queryKey: aiServicesKeys.guardrailStatus(), queryFn: getGuardrailStatus });
+  return useQuery({ queryKey: aiServicesKeys.guardrailStatus(), queryFn: getGuardrailStatus });
 }
 
 export function useGuardrailConfig() {
-    return useQuery({ queryKey: aiServicesKeys.guardrailConfig(), queryFn: getGuardrailConfig });
+  return useQuery({ queryKey: aiServicesKeys.guardrailConfig(), queryFn: getGuardrailConfig });
 }
 
 export function useNlpStatus() {
-    return useQuery({ queryKey: aiServicesKeys.nlpStatus(), queryFn: getNlpStatus });
+  return useQuery({ queryKey: aiServicesKeys.nlpStatus(), queryFn: getNlpStatus });
 }
 
 /**
@@ -23,9 +23,9 @@ export function useNlpStatus() {
  * elevated session without one never fires a request that can only 400.
  */
 export function useAgenticInstructions(params: AgenticInstructionsParams, enabled: boolean) {
-    return useQuery({
-        queryKey: aiServicesKeys.instructions(params),
-        queryFn: () => getAgenticInstructions(params),
-        enabled,
-    });
+  return useQuery({
+    queryKey: aiServicesKeys.instructions(params),
+    queryFn: () => getAgenticInstructions(params),
+    enabled,
+  });
 }

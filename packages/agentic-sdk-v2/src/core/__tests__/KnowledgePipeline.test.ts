@@ -15,9 +15,7 @@ const mockMedNERProcessor = {
   init: vi.fn().mockResolvedValue(undefined),
   extract: vi.fn().mockResolvedValue({
     text: 'test text',
-    entities: [
-      { text: 'diabetes', type: 'CONDITION', score: 0.95, start: 0, end: 8 },
-    ],
+    entities: [{ text: 'diabetes', type: 'CONDITION', score: 0.95, start: 0, end: 8 }],
     processingTime: 100,
     timestamp: Date.now(),
   }),
@@ -44,9 +42,7 @@ describe('KnowledgePipeline', () => {
     mockMedNERProcessor.init.mockResolvedValue(undefined);
     mockMedNERProcessor.extract.mockResolvedValue({
       text: 'test text',
-      entities: [
-        { text: 'diabetes', type: 'CONDITION', score: 0.95, start: 0, end: 8 },
-      ],
+      entities: [{ text: 'diabetes', type: 'CONDITION', score: 0.95, start: 0, end: 8 }],
       processingTime: 100,
       timestamp: Date.now(),
     });
@@ -93,7 +89,7 @@ describe('KnowledgePipeline', () => {
       const pipeline = createKnowledgePipeline(
         { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       expect(pipeline).toBeInstanceOf(KnowledgePipeline);
@@ -103,28 +99,17 @@ describe('KnowledgePipeline', () => {
 
   describe('init', () => {
     it('should initialize browser-based NER processor', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
 
       await pipeline.init();
 
       expect(pipeline.state.isReady).toBe(true);
       expect(createMedNER).toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        'KnowledgePipeline initialized',
-        expect.any(Object)
-      );
+      expect(mockLogger.info).toHaveBeenCalledWith('KnowledgePipeline initialized', expect.any(Object));
     });
 
     it('should skip NER init if disabled', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: false, location: 'disabled', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: false, location: 'disabled', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
 
@@ -136,7 +121,7 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'backend', triggerMode: 'auto' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.init();
@@ -148,11 +133,7 @@ describe('KnowledgePipeline', () => {
 
   describe('process', () => {
     it('should process text through auto stages', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
 
       await pipeline.init();
       const result = await pipeline.process({ text: 'Patient has diabetes' });
@@ -170,26 +151,19 @@ describe('KnowledgePipeline', () => {
           summarization: { enabled: true, location: 'backend', triggerMode: 'manual' },
         },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.init();
       const result = await pipeline.process({ text: 'Patient has diabetes' });
 
       // Summarization is manual, so it shouldn't have been called
-      expect(mockApiClient.post).not.toHaveBeenCalledWith(
-        expect.stringContaining('/summaries'),
-        expect.any(Object)
-      );
+      expect(mockApiClient.post).not.toHaveBeenCalledWith(expect.stringContaining('/summaries'), expect.any(Object));
       expect(result.summary).toBeUndefined();
     });
 
     it('should emit nerComplete event', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
 
       const nerHandler = vi.fn();
       pipeline.on('nerComplete', nerHandler);
@@ -197,20 +171,14 @@ describe('KnowledgePipeline', () => {
       await pipeline.init();
       await pipeline.process({ text: 'Patient has diabetes' });
 
-      expect(nerHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ entities: expect.any(Array) })
-      );
+      expect(nerHandler).toHaveBeenCalledWith(expect.objectContaining({ entities: expect.any(Array) }));
     });
 
     it('should handle process errors', async () => {
       // Set up a mock that rejects on extract
       mockMedNERProcessor.extract.mockRejectedValueOnce(new Error('NER failed'));
 
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
 
       const errorHandler = vi.fn();
       pipeline.on('error', errorHandler);
@@ -226,11 +194,7 @@ describe('KnowledgePipeline', () => {
     // random UUID per extraction means the store dedup (which keys on `id`)
     // never matches, so the same clinical entity accumulates duplicate rows.
     it('mints a STABLE content/offset-derived entity id so re-extractions dedup (C5-05)', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
       await pipeline.init();
 
       // The mock extractor is deterministic (one 'diabetes' CONDITION at [0,8]),
@@ -251,11 +215,7 @@ describe('KnowledgePipeline', () => {
     });
 
     it('gives genuinely distinct entities distinct ids — no over-collapse (C5-05)', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
       await pipeline.init();
 
       // Two different entities in one extraction must NOT collapse to one id.
@@ -277,11 +237,7 @@ describe('KnowledgePipeline', () => {
 
   describe('triggerNER', () => {
     it('should manually trigger NER extraction', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
       const entities = await pipeline.triggerNER('Patient has hypertension');
@@ -292,11 +248,7 @@ describe('KnowledgePipeline', () => {
     });
 
     it('should use last input text if not provided', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
 
@@ -310,11 +262,7 @@ describe('KnowledgePipeline', () => {
     });
 
     it('should throw if no text provided', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await expect(pipeline.triggerNER()).rejects.toThrow('No text provided for NER extraction');
     });
@@ -323,14 +271,12 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.init();
 
-      await expect(pipeline.triggerNER('Patient has diabetes')).rejects.toThrow(
-        'Backend NER is not yet wired in this SDK',
-      );
+      await expect(pipeline.triggerNER('Patient has diabetes')).rejects.toThrow('Backend NER is not yet wired in this SDK');
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
   });
@@ -340,12 +286,10 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { spellCheck: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
-      await expect(pipeline.triggerSpellCheck('Pateint has diabets')).rejects.toThrow(
-        'Backend spell check is not supported via the API gateway',
-      );
+      await expect(pipeline.triggerSpellCheck('Pateint has diabets')).rejects.toThrow('Backend spell check is not supported via the API gateway');
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
 
@@ -353,7 +297,7 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { spellCheck: { enabled: false, location: 'disabled', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       // Process to set last input
@@ -367,7 +311,7 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { spellCheck: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await expect(pipeline.triggerSpellCheck()).rejects.toThrow('No text provided for spell check');
@@ -383,28 +327,19 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       const summary = await pipeline.triggerSummarization('consultation-123');
 
       expect(summary).toBe('Patient presented with symptoms...');
-      expect(mockApiClient.post).toHaveBeenCalledWith(
-        '/consultations/consultation-123/summary',
-        expect.any(Object)
-      );
+      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/consultation-123/summary', expect.any(Object));
     });
 
     it('should throw if API client not available', async () => {
-      const pipeline = new KnowledgePipeline(
-        { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } }, undefined, mockLogger);
 
-      await expect(pipeline.triggerSummarization('consultation-123')).rejects.toThrow(
-        'API client required for summarization'
-      );
+      await expect(pipeline.triggerSummarization('consultation-123')).rejects.toThrow('API client required for summarization');
     });
 
     it('should emit summaryComplete event', async () => {
@@ -415,7 +350,7 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       const summaryHandler = vi.fn();
@@ -429,11 +364,7 @@ describe('KnowledgePipeline', () => {
 
   describe('getStageResult', () => {
     it('should return cached result', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
 
       await pipeline.init();
       await pipeline.process({ text: 'test' });
@@ -451,11 +382,7 @@ describe('KnowledgePipeline', () => {
 
   describe('updateConfig', () => {
     it('should update configuration', () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
 
       pipeline.updateConfig({
         ner: { enabled: true, location: 'browser', triggerMode: 'manual' },
@@ -470,11 +397,7 @@ describe('KnowledgePipeline', () => {
 
   describe('destroy', () => {
     it('should destroy pipeline and clear resources', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
 
       await pipeline.init();
       await pipeline.process({ text: 'test' });
@@ -486,11 +409,7 @@ describe('KnowledgePipeline', () => {
     });
 
     it('should emit final stateChange before removing listeners', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'auto' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'auto' } }, undefined, mockLogger);
 
       await pipeline.init();
 
@@ -501,9 +420,7 @@ describe('KnowledgePipeline', () => {
 
       await pipeline.destroy();
 
-      const finalChange = stateChanges.find(
-        (s) => s.status === 'IDLE' && s.isReady === false
-      );
+      const finalChange = stateChanges.find((s) => s.status === 'IDLE' && s.isReady === false);
       expect(finalChange).toBeDefined();
     });
   });
@@ -517,13 +434,11 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.init();
-      await expect(pipeline.triggerNER('Patient has diabetes')).rejects.toThrow(
-        'Backend NER is not yet wired in this SDK',
-      );
+      await expect(pipeline.triggerNER('Patient has diabetes')).rejects.toThrow('Backend NER is not yet wired in this SDK');
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
 
@@ -535,31 +450,24 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.init();
-      await expect(pipeline.triggerNER('test text')).rejects.toThrow(
-        'Backend NER is not yet wired in this SDK',
-      );
+      await expect(pipeline.triggerNER('test text')).rejects.toThrow('Backend NER is not yet wired in this SDK');
 
-      expect(mockApiClient.post).not.toHaveBeenCalledWith(
-        '/api/ner/extract',
-        expect.any(Object)
-      );
+      expect(mockApiClient.post).not.toHaveBeenCalledWith('/api/ner/extract', expect.any(Object));
     });
 
     it('should return empty array when backend returns no entities', async () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.init();
-      await expect(pipeline.triggerNER('no entities here')).rejects.toThrow(
-        'Backend NER is not yet wired in this SDK',
-      );
+      await expect(pipeline.triggerNER('no entities here')).rejects.toThrow('Backend NER is not yet wired in this SDK');
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
 
@@ -567,42 +475,32 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { ner: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       const errorHandler = vi.fn();
       pipeline.on('error', errorHandler);
 
       await pipeline.init();
-      await expect(pipeline.triggerNER('test')).rejects.toThrow(
-        'Backend NER is not yet wired in this SDK',
-      );
+      await expect(pipeline.triggerNER('test')).rejects.toThrow('Backend NER is not yet wired in this SDK');
       expect(errorHandler).not.toHaveBeenCalled();
     });
 
     it('should throw when backend NER is used without API client', async () => {
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'backend', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'backend', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
-      await expect(pipeline.triggerNER('test')).rejects.toThrow(
-        'Backend NER is not yet wired in this SDK'
-      );
+      await expect(pipeline.triggerNER('test')).rejects.toThrow('Backend NER is not yet wired in this SDK');
     });
 
     it('should fail fast for backend spell check', async () => {
       const pipeline = new KnowledgePipeline(
         { spellCheck: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
-      await expect(pipeline.triggerSpellCheck('Pateint has diabets')).rejects.toThrow(
-        'Backend spell check is not supported via the API gateway',
-      );
+      await expect(pipeline.triggerSpellCheck('Pateint has diabets')).rejects.toThrow('Backend spell check is not supported via the API gateway');
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
 
@@ -614,45 +512,32 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { spellCheck: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
-      await expect(pipeline.triggerSpellCheck('broken text')).rejects.toThrow(
-        'Backend spell check is not supported via the API gateway'
-      );
+      await expect(pipeline.triggerSpellCheck('broken text')).rejects.toThrow('Backend spell check is not supported via the API gateway');
 
-      expect(mockApiClient.post).not.toHaveBeenCalledWith(
-        '/api/spellcheck',
-        expect.any(Object)
-      );
+      expect(mockApiClient.post).not.toHaveBeenCalledWith('/api/spellcheck', expect.any(Object));
     });
 
     it('should propagate backend spell check API errors and emit error event', async () => {
       const pipeline = new KnowledgePipeline(
         { spellCheck: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       const errorHandler = vi.fn();
       pipeline.on('error', errorHandler);
 
-      await expect(pipeline.triggerSpellCheck('broken text')).rejects.toThrow(
-        'Backend spell check is not supported via the API gateway'
-      );
+      await expect(pipeline.triggerSpellCheck('broken text')).rejects.toThrow('Backend spell check is not supported via the API gateway');
       expect(errorHandler).not.toHaveBeenCalled();
     });
 
     it('should throw when backend spell check is used without API client', async () => {
-      const pipeline = new KnowledgePipeline(
-        { spellCheck: { enabled: true, location: 'backend', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ spellCheck: { enabled: true, location: 'backend', triggerMode: 'manual' } }, undefined, mockLogger);
 
-      await expect(pipeline.triggerSpellCheck('broken text')).rejects.toThrow(
-        'Backend spell check is not supported via the API gateway'
-      );
+      await expect(pipeline.triggerSpellCheck('broken text')).rejects.toThrow('Backend spell check is not supported via the API gateway');
     });
   });
 
@@ -660,18 +545,12 @@ describe('KnowledgePipeline', () => {
     it('should map NER output "type" to MedicalEntity "entityType"', async () => {
       mockMedNERProcessor.extract.mockResolvedValueOnce({
         text: 'Patient has diabetes',
-        entities: [
-          { text: 'diabetes', type: 'DISEASE', score: 0.95, start: 16, end: 24 },
-        ],
+        entities: [{ text: 'diabetes', type: 'DISEASE', score: 0.95, start: 16, end: 24 }],
         processingTime: 50,
         timestamp: Date.now(),
       });
 
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
       const entities = await pipeline.triggerNER('Patient has diabetes');
@@ -684,18 +563,12 @@ describe('KnowledgePipeline', () => {
     it('should map NER output "score" to MedicalEntity "confidence"', async () => {
       mockMedNERProcessor.extract.mockResolvedValueOnce({
         text: 'test',
-        entities: [
-          { text: 'aspirin', type: 'MEDICATION', score: 0.88, start: 0, end: 7 },
-        ],
+        entities: [{ text: 'aspirin', type: 'MEDICATION', score: 0.88, start: 0, end: 7 }],
         processingTime: 30,
         timestamp: Date.now(),
       });
 
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
       const entities = await pipeline.triggerNER('aspirin');
@@ -707,18 +580,12 @@ describe('KnowledgePipeline', () => {
     it('should map NER output "start"/"end" to "startOffset"/"endOffset"', async () => {
       mockMedNERProcessor.extract.mockResolvedValueOnce({
         text: 'Patient has headache',
-        entities: [
-          { text: 'headache', type: 'SYMPTOM', score: 0.92, start: 12, end: 20 },
-        ],
+        entities: [{ text: 'headache', type: 'SYMPTOM', score: 0.92, start: 12, end: 20 }],
         processingTime: 25,
         timestamp: Date.now(),
       });
 
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
       const entities = await pipeline.triggerNER('Patient has headache');
@@ -732,18 +599,12 @@ describe('KnowledgePipeline', () => {
     it('should include all MedicalEntity required fields', async () => {
       mockMedNERProcessor.extract.mockResolvedValueOnce({
         text: 'diabetes',
-        entities: [
-          { text: 'diabetes', type: 'DISEASE', score: 0.95, start: 0, end: 8 },
-        ],
+        entities: [{ text: 'diabetes', type: 'DISEASE', score: 0.95, start: 0, end: 8 }],
         processingTime: 20,
         timestamp: Date.now(),
       });
 
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
       const entities = await pipeline.triggerNER('diabetes');
@@ -768,11 +629,7 @@ describe('KnowledgePipeline', () => {
         timestamp: Date.now(),
       });
 
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
       const entities = await pipeline.triggerNER('Patient takes aspirin for headache');
@@ -808,11 +665,7 @@ describe('KnowledgePipeline', () => {
         timestamp: Date.now(),
       });
 
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
       const entities = await pipeline.triggerNER('aspirin headache fever');
@@ -835,11 +688,7 @@ describe('KnowledgePipeline', () => {
         timestamp: Date.now(),
       });
 
-      const pipeline = new KnowledgePipeline(
-        { ner: { enabled: true, location: 'browser', triggerMode: 'manual' } },
-        undefined,
-        mockLogger
-      );
+      const pipeline = new KnowledgePipeline({ ner: { enabled: true, location: 'browser', triggerMode: 'manual' } }, undefined, mockLogger);
 
       await pipeline.init();
       const entities = await pipeline.triggerNER('Hello world');
@@ -857,15 +706,12 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.triggerSummarization('consultation-123');
 
-      expect(mockApiClient.post).toHaveBeenCalledWith(
-        '/consultations/consultation-123/summary',
-        expect.any(Object)
-      );
+      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/consultation-123/summary', expect.any(Object));
     });
 
     it('should NOT call the old /api/consultations/.../summaries endpoint', async () => {
@@ -876,15 +722,12 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.triggerSummarization('consultation-123');
 
-      expect(mockApiClient.post).not.toHaveBeenCalledWith(
-        '/api/consultations/consultation-123/summaries',
-        expect.any(Object)
-      );
+      expect(mockApiClient.post).not.toHaveBeenCalledWith('/api/consultations/consultation-123/summaries', expect.any(Object));
     });
 
     it('should correctly interpolate contextId with special characters into the URL', async () => {
@@ -895,44 +738,35 @@ describe('KnowledgePipeline', () => {
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.triggerSummarization('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
 
-      expect(mockApiClient.post).toHaveBeenCalledWith(
-        '/consultations/a1b2c3d4-e5f6-7890-abcd-ef1234567890/summary',
-        expect.any(Object)
-      );
+      expect(mockApiClient.post).toHaveBeenCalledWith('/consultations/a1b2c3d4-e5f6-7890-abcd-ef1234567890/summary', expect.any(Object));
     });
 
     it('should propagate summarization API errors and emit error event', async () => {
-      (mockApiClient.post as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-        new Error('Summary service timeout')
-      );
+      (mockApiClient.post as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Summary service timeout'));
 
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: true, location: 'backend', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       const errorHandler = vi.fn();
       pipeline.on('error', errorHandler);
 
-      await expect(pipeline.triggerSummarization('consultation-123')).rejects.toThrow(
-        'Summary service timeout'
-      );
-      expect(errorHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ stage: 'summarization' })
-      );
+      await expect(pipeline.triggerSummarization('consultation-123')).rejects.toThrow('Summary service timeout');
+      expect(errorHandler).toHaveBeenCalledWith(expect.objectContaining({ stage: 'summarization' }));
     });
 
     it('should return empty string when summarization is disabled', async () => {
       const pipeline = new KnowledgePipeline(
         { summarization: { enabled: false, location: 'disabled', triggerMode: 'manual' } },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       const result = await pipeline.triggerSummarization('consultation-123');
@@ -953,7 +787,7 @@ describe('KnowledgePipeline', () => {
           ner: { enabled: true, location: 'browser', triggerMode: 'manual', model: 'test-model' },
         },
         mockApiClient as AgenticClient,
-        mockLogger
+        mockLogger,
       );
 
       const mockExtract = vi.fn().mockResolvedValue({

@@ -2,5 +2,5 @@ import { UserDetailSkeleton } from '@/features/users/components/user-detail-scre
 
 /** Skeleton mirroring the user detail: avatar header, action row, tabs, panel. */
 export default function UserDetailLoading() {
-    return <UserDetailSkeleton />;
+  return <UserDetailSkeleton />;
 }

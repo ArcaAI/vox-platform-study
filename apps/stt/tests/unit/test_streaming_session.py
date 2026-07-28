@@ -60,9 +60,11 @@ class TestResultsBufferCap:
 
     def test_warns_once_when_finals_exceed_warn_threshold(self):
         session = _make_session()
-        with patch.object(session_module, "_RESULTS_WARN_THRESHOLD", 3), patch.object(
-            session_module, "_RESULTS_HARD_CAP", 100
-        ), patch.object(session_module, "logger") as mock_logger:
+        with (
+            patch.object(session_module, "_RESULTS_WARN_THRESHOLD", 3),
+            patch.object(session_module, "_RESULTS_HARD_CAP", 100),
+            patch.object(session_module, "logger") as mock_logger,
+        ):
             for _ in range(6):
                 session.add_result(_make_result(is_final=True))
 
@@ -73,9 +75,11 @@ class TestResultsBufferCap:
 
     def test_does_not_warn_below_threshold(self):
         session = _make_session()
-        with patch.object(session_module, "_RESULTS_WARN_THRESHOLD", 10), patch.object(
-            session_module, "_RESULTS_HARD_CAP", 100
-        ), patch.object(session_module, "logger") as mock_logger:
+        with (
+            patch.object(session_module, "_RESULTS_WARN_THRESHOLD", 10),
+            patch.object(session_module, "_RESULTS_HARD_CAP", 100),
+            patch.object(session_module, "logger") as mock_logger,
+        ):
             for _ in range(5):
                 session.add_result(_make_result(is_final=True))
 
@@ -84,9 +88,11 @@ class TestResultsBufferCap:
 
     def test_refuses_append_past_hard_cap_with_error_log(self):
         session = _make_session()
-        with patch.object(session_module, "_RESULTS_WARN_THRESHOLD", 2), patch.object(
-            session_module, "_RESULTS_HARD_CAP", 5
-        ), patch.object(session_module, "logger") as mock_logger:
+        with (
+            patch.object(session_module, "_RESULTS_WARN_THRESHOLD", 2),
+            patch.object(session_module, "_RESULTS_HARD_CAP", 5),
+            patch.object(session_module, "logger") as mock_logger,
+        ):
             for _ in range(8):
                 session.add_result(_make_result(is_final=True))
 
@@ -96,9 +102,11 @@ class TestResultsBufferCap:
 
     def test_partials_never_count_toward_cap(self):
         session = _make_session()
-        with patch.object(session_module, "_RESULTS_WARN_THRESHOLD", 2), patch.object(
-            session_module, "_RESULTS_HARD_CAP", 3
-        ), patch.object(session_module, "logger"):
+        with (
+            patch.object(session_module, "_RESULTS_WARN_THRESHOLD", 2),
+            patch.object(session_module, "_RESULTS_HARD_CAP", 3),
+            patch.object(session_module, "logger"),
+        ):
             for _ in range(10):
                 session.add_result(_make_result(is_final=False))
 

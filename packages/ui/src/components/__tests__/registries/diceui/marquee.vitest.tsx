@@ -1,10 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  Marquee,
-  MarqueeContent,
-  MarqueeItem,
-} from '@/components/registries/diceui/marquee'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Marquee, MarqueeContent, MarqueeItem } from '@/components/registries/diceui/marquee';
 
 describe('Marquee', () => {
   it('renders without crashing', () => {
@@ -14,7 +10,7 @@ describe('Marquee', () => {
           <MarqueeItem>Item</MarqueeItem>
         </MarqueeContent>
       </Marquee>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

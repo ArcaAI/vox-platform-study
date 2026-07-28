@@ -39,7 +39,9 @@ def _cfg(**overrides) -> SafetyGuardConfig:
 
 
 def _openai_response(verdict: str, *, usage=None, finish_reason="stop") -> httpx.Response:
-    choice: dict[str, Any] = {"message": {"role": "assistant", "content": f"<score>{verdict}</score>"}}
+    choice: dict[str, Any] = {
+        "message": {"role": "assistant", "content": f"<score>{verdict}</score>"}
+    }
     if finish_reason is not None:
         choice["finish_reason"] = finish_reason
     body: dict[str, Any] = {"choices": [choice]}

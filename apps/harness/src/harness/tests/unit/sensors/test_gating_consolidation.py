@@ -274,13 +274,17 @@ class TestT2RegenScopingReusesCache:
 
         # Pass 1: empty cache -> one judge call per claim, cache populated.
         j1 = _CountingJudge()
-        r1 = await GroundednessSensor(threshold=0.8).arun(_ctx(claims), judge=j1, verdict_cache=cache)
+        r1 = await GroundednessSensor(threshold=0.8).arun(
+            _ctx(claims), judge=j1, verdict_cache=cache
+        )
         assert len(j1.calls) == 2
         assert cache, "the cache must be populated after the first pass"
 
         # Pass 2: identical claims -> ALL cache hits -> ZERO new judge calls, identical verdict.
         j2 = _CountingJudge()
-        r2 = await GroundednessSensor(threshold=0.8).arun(_ctx(claims), judge=j2, verdict_cache=cache)
+        r2 = await GroundednessSensor(threshold=0.8).arun(
+            _ctx(claims), judge=j2, verdict_cache=cache
+        )
         assert len(j2.calls) == 0, "unchanged claims must reuse cached verdicts (AC-1)"
         assert (r2.passed, r2.score, r2.claims_flagged) == (r1.passed, r1.score, r1.claims_flagged)
 
@@ -430,7 +434,9 @@ class TestT5CitationVerifyCacheSeparableNoMerge:
         j2 = _CountingJudge(unsupported=("contradicted",))
         g2 = await GroundednessSensor(threshold=0.8).arun(ctx, judge=j2, verdict_cache=cache)
         c2 = await CitationVerifySensor(threshold=0.8).arun(ctx, judge=j2, verdict_cache=cache)
-        assert len(j2.calls) == 0, "unchanged dually-checked claim reuses cache for BOTH sensors (AC-1)"
+        assert (
+            len(j2.calls) == 0
+        ), "unchanged dually-checked claim reuses cache for BOTH sensors (AC-1)"
         assert (g2.passed, g2.score, g2.claims_flagged) == (g0.passed, g0.score, g0.claims_flagged)
         assert (c2.passed, c2.score, c2.claims_flagged) == (c0.passed, c0.score, c0.claims_flagged)
 
@@ -464,7 +470,9 @@ class TestT7SafetyFlagInvariants:
             claims_flagged=["c-x"],
             details={"sections": ["P"]},
         )
-        verdict = aggregate([*_all_computational_pass(), grounded_regen, safety], regens_remaining=2)
+        verdict = aggregate(
+            [*_all_computational_pass(), grounded_regen, safety], regens_remaining=2
+        )
         assert verdict.decision is GateDecision.FLAG
         assert verdict.sections_to_regen == []  # unsafe content is never auto-regenerated
 

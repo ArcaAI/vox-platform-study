@@ -55,18 +55,10 @@ import { defineConfig, type Options } from 'tsup';
 // "Invalid URL", and the `workers/`/`assets/` files never land in the SDK
 // `dist/`. Keeping them external preserves `import.meta.url` and the
 // co-located worker/wasm assets in each sub-package's own dist.
-const bundledDependencies = [
-  '@arcaai/room',
-  '@arcaai/vad',
-  'zustand',
-  'eventemitter3',
-];
+const bundledDependencies = ['@arcaai/room', '@arcaai/vad', 'zustand', 'eventemitter3'];
 
 // Core-only bundled dependencies (no plugin packages)
-const coreBundledDependencies = [
-  'zustand',
-  'eventemitter3',
-];
+const coreBundledDependencies = ['zustand', 'eventemitter3'];
 
 // Packages that consumers must install separately (true peer dependencies)
 const externalDependencies = [
@@ -116,12 +108,7 @@ const externalDependencies = [
 ];
 
 // Plugin packages - external for core build, bundled for plugins build
-const pluginPackages = [
-  '@arcaai/room',
-  '@arcaai/vad',
-  '@arcaai/stt',
-  '@arcaai/noise-filter',
-];
+const pluginPackages = ['@arcaai/room', '@arcaai/vad', '@arcaai/stt', '@arcaai/noise-filter'];
 
 // Shared build options
 const sharedOptions: Partial<Options> = {

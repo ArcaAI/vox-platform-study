@@ -92,9 +92,7 @@ describe('boot-time route permission audit (widened to ALL routes)', () => {
         }
       }
       const app = await buildAppFromControllers([AdminOrphan]);
-      expect(() => auditAdminRoutePermissions(app)).toThrow(
-        /admin\/orphans.*has neither @Public\(\) nor REQUIRED_PERMISSIONS_KEY/,
-      );
+      expect(() => auditAdminRoutePermissions(app)).toThrow(/admin\/orphans.*has neither @Public\(\) nor REQUIRED_PERMISSIONS_KEY/);
     });
   });
 
@@ -108,9 +106,7 @@ describe('boot-time route permission audit (widened to ALL routes)', () => {
         }
       }
       const app = await buildAppFromControllers([ConsultationsOrphan]);
-      expect(() => auditAdminRoutePermissions(app)).toThrow(
-        /ConsultationsOrphan\.list.*has neither @Public\(\) nor REQUIRED_PERMISSIONS_KEY/,
-      );
+      expect(() => auditAdminRoutePermissions(app)).toThrow(/ConsultationsOrphan\.list.*has neither @Public\(\) nor REQUIRED_PERMISSIONS_KEY/);
     });
 
     it('throws when an auth route (login) has no decorator at all', async () => {
@@ -180,9 +176,7 @@ describe('boot-time route permission audit (widened to ALL routes)', () => {
         }
       }
       const app = await buildAppFromControllers([AdminEmptyAuthorize]);
-      expect(() => auditAdminRoutePermissions(app)).toThrow(
-        /admin\/reports.*empty @Authorize\(\)/,
-      );
+      expect(() => auditAdminRoutePermissions(app)).toThrow(/admin\/reports.*empty @Authorize\(\)/);
     });
 
     it('passes when an /admin route declares a concrete permission via @CanManage', async () => {

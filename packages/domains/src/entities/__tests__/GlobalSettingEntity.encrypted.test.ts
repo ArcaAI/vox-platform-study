@@ -5,9 +5,7 @@ import { GlobalSettingEntity } from '../generated/core/GlobalSettingEntity';
 import { ValueType } from '../../enums';
 
 describe('GlobalSettingEntity — Vault envelope-encryption fields', () => {
-  function makeEntity(
-    overrides: Partial<ConstructorParameters<typeof GlobalSettingEntity>[0]> = {},
-  ): GlobalSettingEntity {
+  function makeEntity(overrides: Partial<ConstructorParameters<typeof GlobalSettingEntity>[0]> = {}): GlobalSettingEntity {
     return new GlobalSettingEntity({
       id: 'b0000000-0000-0000-0000-000000000001',
       createdAt: new Date('2026-01-01T00:00:00Z'),

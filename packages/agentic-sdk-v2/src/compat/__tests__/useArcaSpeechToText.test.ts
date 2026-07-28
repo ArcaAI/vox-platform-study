@@ -26,9 +26,7 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
 type MockState = { transcriptSegments: unknown[]; currentTranscript: string };
 
 function installStore(state: MockState) {
-  (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (s: MockState) => unknown) =>
-    selector(state),
-  );
+  (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (s: MockState) => unknown) => selector(state));
 }
 
 const audioMock = {
@@ -213,9 +211,7 @@ describe('useArcaSpeechToText', () => {
     const state: MockState = { transcriptSegments: [], currentTranscript: '' };
     installStore(state);
 
-    const { rerender } = renderHook(() =>
-      useArcaSpeechToText({ ...baseProps, onTranscript, transcriptTemplate: '{speaker_id}: {text}' }),
-    );
+    const { rerender } = renderHook(() => useArcaSpeechToText({ ...baseProps, onTranscript, transcriptTemplate: '{speaker_id}: {text}' }));
 
     state.transcriptSegments = [{ text: 'hello', isFinal: true, startTime: 0, endTime: 1, speakerLabel: 'Nurse' }];
     act(() => rerender());
@@ -232,9 +228,7 @@ describe('useArcaSpeechToText', () => {
 
     act(() => result.current.sendAudioData(new ArrayBuffer(8), { speaker_id: 'app-x', confidence: 0.1, chunk_id: 'c1' }));
 
-    state.transcriptSegments = [
-      { text: 'x', isFinal: true, startTime: 1, endTime: 2, speakerLabel: 'Doctor', confidence: 0.9, language: 'en' },
-    ];
+    state.transcriptSegments = [{ text: 'x', isFinal: true, startTime: 1, endTime: 2, speakerLabel: 'Doctor', confidence: 0.9, language: 'en' }];
     act(() => rerender());
 
     const meta = onTranscript.mock.calls[onTranscript.mock.calls.length - 1][2] as Record<string, unknown>;
@@ -357,9 +351,7 @@ describe('useArcaSpeechToText', () => {
     installStore({ transcriptSegments: [], currentTranscript: '' });
     const { result } = renderHook(() => useArcaSpeechToText(baseProps));
 
-    expect(() => result.current.sendAudioData(new ArrayBuffer(8), { blob: 'x'.repeat(9000) })).toThrow(
-      'Audio frame metadata exceeds 8192 bytes',
-    );
+    expect(() => result.current.sendAudioData(new ArrayBuffer(8), { blob: 'x'.repeat(9000) })).toThrow('Audio frame metadata exceeds 8192 bytes');
     expect(() => result.current.sendAudioData(new ArrayBuffer(8), { blob: 'x'.repeat(100) })).not.toThrow();
   });
 

@@ -41,7 +41,15 @@ const mockLogger = {
 };
 
 const mockStore = {
-  consultation: null as { id: string; patientId: string; doctorId: string; appointmentDate: string; createdAt: string; updatedAt: string; contextItems?: unknown[] } | null,
+  consultation: null as {
+    id: string;
+    patientId: string;
+    doctorId: string;
+    appointmentDate: string;
+    createdAt: string;
+    updatedAt: string;
+    contextItems?: unknown[];
+  } | null,
   relatedConsultations: [],
   sessionLoading: false,
   sessionError: null,
@@ -61,7 +69,15 @@ const mockStore = {
   sharedContext: [],
   contextLoading: false,
   contextError: null,
-  summaries: [] as Array<{ id: string; contextItemId: string; content: string; type: string; llmProvider: string; modelName: string; createdAt: string }>,
+  summaries: [] as Array<{
+    id: string;
+    contextItemId: string;
+    content: string;
+    type: string;
+    llmProvider: string;
+    modelName: string;
+    createdAt: string;
+  }>,
   dnaStyle: null,
   summaryGenerating: false,
   summaryError: null,
@@ -152,10 +168,7 @@ describe('SUM-01: async summary generation', () => {
       response = await result.current.summary.generateSummaryAsync();
     });
 
-    expect(mockApiClient.post).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.GENERATE_ASYNC('consult-1'),
-      {}
-    );
+    expect(mockApiClient.post).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('consult-1'), {});
     expect(response).toEqual(jobResponse);
   });
 
@@ -176,10 +189,7 @@ describe('SUM-01: async summary generation', () => {
       });
     });
 
-    expect(mockApiClient.post).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.GENERATE_ASYNC('consult-1'),
-      { dnaStyleId: 'dna-42', includeNER: true }
-    );
+    expect(mockApiClient.post).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('consult-1'), { dnaStyleId: 'dna-42', includeNER: true });
   });
 
   it('should call PRE_SUMMARY_ASYNC endpoint with empty object when no options', async () => {
@@ -196,10 +206,7 @@ describe('SUM-01: async summary generation', () => {
       await result.current.summary.generatePreSummaryAsync();
     });
 
-    expect(mockApiClient.post).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('consult-1'),
-      {}
-    );
+    expect(mockApiClient.post).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('consult-1'), {});
   });
 
   it('should forward options (dnaStyleId) to PRE_SUMMARY_ASYNC endpoint', async () => {
@@ -216,10 +223,7 @@ describe('SUM-01: async summary generation', () => {
       await result.current.summary.generatePreSummaryAsync({ dnaStyleId: 'dna-99' });
     });
 
-    expect(mockApiClient.post).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('consult-1'),
-      { dnaStyleId: 'dna-99' }
-    );
+    expect(mockApiClient.post).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('consult-1'), { dnaStyleId: 'dna-99' });
   });
 
   it('should throw when no active consultation (generateSummaryAsync)', async () => {
@@ -228,7 +232,7 @@ describe('SUM-01: async summary generation', () => {
     await expect(
       act(async () => {
         await result.current.summary.generateSummaryAsync();
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
@@ -238,13 +242,16 @@ describe('SUM-01: async summary generation', () => {
     await expect(
       act(async () => {
         await result.current.summary.generatePreSummaryAsync();
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('should set summaryGenerating true then false on generateSummaryAsync', async () => {
     mockApiClient.post.mockResolvedValueOnce({
-      jobId: 'j-1', status: 'pending', consultationId: 'consult-1', createdAt: '2026-02-17T00:00:00Z',
+      jobId: 'j-1',
+      status: 'pending',
+      consultationId: 'consult-1',
+      createdAt: '2026-02-17T00:00:00Z',
     });
     const { result } = renderHook(() => useArca());
     await act(async () => {
@@ -264,7 +271,7 @@ describe('SUM-01: async summary generation', () => {
     await expect(
       act(async () => {
         await result.current.summary.generateSummaryAsync();
-      })
+      }),
     ).rejects.toThrow('Network error');
 
     expect(mockStore.setSummaryError).toHaveBeenCalledWith(apiError);
@@ -279,7 +286,7 @@ describe('SUM-01: async summary generation', () => {
     await expect(
       act(async () => {
         await result.current.summary.generatePreSummaryAsync();
-      })
+      }),
     ).rejects.toThrow('Server error');
 
     expect(mockStore.setSummaryError).toHaveBeenCalledWith(apiError);
@@ -312,10 +319,7 @@ describe('SUM-02: comprehensive summary', () => {
       res = await result.current.summary.generateComprehensiveSummary();
     });
 
-    expect(mockApiClient.post).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.COMPREHENSIVE('consult-1'),
-      {}
-    );
+    expect(mockApiClient.post).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.COMPREHENSIVE('consult-1'), {});
     expect(res).toEqual(response);
   });
 
@@ -336,10 +340,7 @@ describe('SUM-02: comprehensive summary', () => {
       });
     });
 
-    expect(mockApiClient.post).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.COMPREHENSIVE('consult-1'),
-      { dnaStyleId: 'dna-7', includeNER: true }
-    );
+    expect(mockApiClient.post).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.COMPREHENSIVE('consult-1'), { dnaStyleId: 'dna-7', includeNER: true });
   });
 
   it('should throw when no active consultation', async () => {
@@ -348,7 +349,7 @@ describe('SUM-02: comprehensive summary', () => {
     await expect(
       act(async () => {
         await result.current.summary.generateComprehensiveSummary();
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
@@ -360,7 +361,7 @@ describe('SUM-02: comprehensive summary', () => {
     await expect(
       act(async () => {
         await result.current.summary.generateComprehensiveSummary();
-      })
+      }),
     ).rejects.toThrow('Comprehensive failed');
 
     expect(mockStore.setSummaryError).toHaveBeenCalledWith(apiError);
@@ -396,9 +397,7 @@ describe('SUM-03: getLatestPreSummary', () => {
       res = await result.current.summary.getLatestPreSummary();
     });
 
-    expect(mockApiClient.get).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY('consult-1')
-    );
+    expect(mockApiClient.get).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY('consult-1'));
     expect(res).toEqual(preSummary);
   });
 
@@ -408,7 +407,7 @@ describe('SUM-03: getLatestPreSummary', () => {
     await expect(
       act(async () => {
         await result.current.summary.getLatestPreSummary();
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
@@ -419,7 +418,7 @@ describe('SUM-03: getLatestPreSummary', () => {
     await expect(
       act(async () => {
         await result.current.summary.getLatestPreSummary();
-      })
+      }),
     ).rejects.toThrow('Not found');
   });
 });
@@ -436,8 +435,24 @@ describe('SUM-04: load summaries on consultation open', () => {
 
   it('should call LIST endpoint and populate store', async () => {
     const summaries = [
-      { id: 's-1', contextItemId: 'ctx-1', content: 'Summary 1', type: 'summary', llmProvider: 'openai', modelName: 'gpt-4', createdAt: '2026-02-17' },
-      { id: 's-2', contextItemId: 'ctx-2', content: 'Pre-summary', type: 'pre_summary', llmProvider: 'openai', modelName: 'gpt-4', createdAt: '2026-02-17' },
+      {
+        id: 's-1',
+        contextItemId: 'ctx-1',
+        content: 'Summary 1',
+        type: 'summary',
+        llmProvider: 'openai',
+        modelName: 'gpt-4',
+        createdAt: '2026-02-17',
+      },
+      {
+        id: 's-2',
+        contextItemId: 'ctx-2',
+        content: 'Pre-summary',
+        type: 'pre_summary',
+        llmProvider: 'openai',
+        modelName: 'gpt-4',
+        createdAt: '2026-02-17',
+      },
     ];
     mockApiClient.get.mockResolvedValueOnce(summaries);
 
@@ -446,9 +461,7 @@ describe('SUM-04: load summaries on consultation open', () => {
       await result.current.summary.loadSummaries();
     });
 
-    expect(mockApiClient.get).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.LIST('consult-1')
-    );
+    expect(mockApiClient.get).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.LIST('consult-1'));
     expect(mockStore.setSummaries).toHaveBeenCalledWith(summaries);
   });
 
@@ -471,7 +484,7 @@ describe('SUM-04: load summaries on consultation open', () => {
     await expect(
       act(async () => {
         await result.current.summary.loadSummaries();
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
@@ -482,7 +495,7 @@ describe('SUM-04: load summaries on consultation open', () => {
     await expect(
       act(async () => {
         await result.current.summary.loadSummaries();
-      })
+      }),
     ).rejects.toThrow('Fetch failed');
   });
 
@@ -534,9 +547,7 @@ describe('SES-04: getTimeline', () => {
       await result.current.session.getTimeline('chain');
     });
 
-    expect(mockApiClient.get).toHaveBeenCalledWith(
-      CONSULTATION_ENDPOINTS.TIMELINE('consult-1') + '?scope=chain'
-    );
+    expect(mockApiClient.get).toHaveBeenCalledWith(CONSULTATION_ENDPOINTS.TIMELINE('consult-1') + '?scope=chain');
   });
 
   it('should pass scope=single query parameter', async () => {
@@ -547,9 +558,7 @@ describe('SES-04: getTimeline', () => {
       await result.current.session.getTimeline('single');
     });
 
-    expect(mockApiClient.get).toHaveBeenCalledWith(
-      CONSULTATION_ENDPOINTS.TIMELINE('consult-1') + '?scope=single'
-    );
+    expect(mockApiClient.get).toHaveBeenCalledWith(CONSULTATION_ENDPOINTS.TIMELINE('consult-1') + '?scope=single');
   });
 
   it('should throw when no active consultation', async () => {
@@ -558,7 +567,7 @@ describe('SES-04: getTimeline', () => {
     await expect(
       act(async () => {
         await result.current.session.getTimeline();
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
@@ -569,7 +578,7 @@ describe('SES-04: getTimeline', () => {
     await expect(
       act(async () => {
         await result.current.session.getTimeline();
-      })
+      }),
     ).rejects.toThrow('Timeline failed');
   });
 });
@@ -597,9 +606,7 @@ describe('SES-05: getContextVersions', () => {
       res = await result.current.context.getContextVersions('ctx-1');
     });
 
-    expect(mockApiClient.get).toHaveBeenCalledWith(
-      CONTEXT_ENDPOINTS.VERSIONS('consult-1', 'ctx-1')
-    );
+    expect(mockApiClient.get).toHaveBeenCalledWith(CONTEXT_ENDPOINTS.VERSIONS('consult-1', 'ctx-1'));
     expect(res).toEqual(versions);
   });
 
@@ -609,7 +616,7 @@ describe('SES-05: getContextVersions', () => {
     await expect(
       act(async () => {
         await result.current.context.getContextVersions('ctx-1');
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
@@ -620,7 +627,7 @@ describe('SES-05: getContextVersions', () => {
     await expect(
       act(async () => {
         await result.current.context.getContextVersions('ctx-1');
-      })
+      }),
     ).rejects.toThrow('Versions unavailable');
   });
 
@@ -740,10 +747,7 @@ describe('NER-R-03: triggerEntityExtraction', () => {
       await result.current.context.triggerEntityExtraction('ctx-1');
     });
 
-    expect(mockApiClient.post).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.EXTRACT_ENTITIES('consult-1', 'ctx-1'),
-      {}
-    );
+    expect(mockApiClient.post).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.EXTRACT_ENTITIES('consult-1', 'ctx-1'), {});
   });
 
   it('should throw without consultation', async () => {
@@ -752,7 +756,7 @@ describe('NER-R-03: triggerEntityExtraction', () => {
     await expect(
       act(async () => {
         await result.current.context.triggerEntityExtraction('ctx-1');
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
@@ -763,7 +767,7 @@ describe('NER-R-03: triggerEntityExtraction', () => {
     await expect(
       act(async () => {
         await result.current.context.triggerEntityExtraction('ctx-1');
-      })
+      }),
     ).rejects.toThrow('Extraction failed');
   });
 });

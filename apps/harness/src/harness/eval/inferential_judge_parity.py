@@ -132,7 +132,12 @@ def diff_verdicts(
                 kind=kind,
             )
         )
-    return {"n_claims": n, "agree": agree, "unsafe_flips": unsafe, "safe_flips": safe}, disagreements
+    return {
+        "n_claims": n,
+        "agree": agree,
+        "unsafe_flips": unsafe,
+        "safe_flips": safe,
+    }, disagreements
 
 
 async def _timed_groundedness(
@@ -206,7 +211,9 @@ def summarize_parity(results: list[ParityCaseResult]) -> dict[str, Any]:
     safe_total = sum(r.safe_flips for r in results)
     agree_total = sum(r.agree for r in results)
     compared = sum(r.n_claims for r in results)
-    unsafe_dis = [d.model_dump() for r in results for d in r.disagreements if d.kind == "unsafe_flip"]
+    unsafe_dis = [
+        d.model_dump() for r in results for d in r.disagreements if d.kind == "unsafe_flip"
+    ]
     safe_dis = [d.model_dump() for r in results for d in r.disagreements if d.kind == "safe_flip"]
     return {
         "n_cases": len(results),
@@ -240,7 +247,11 @@ async def run_parity(
             case, incumbent=incumbent, candidate=candidate, threshold=threshold
         )
         results.append(res)
-        flag = "DEGRADED" if (res.incumbent_degraded or res.candidate_degraded) else f"unsafe={res.unsafe_flips} safe={res.safe_flips} agree={res.agree}"
+        flag = (
+            "DEGRADED"
+            if (res.incumbent_degraded or res.candidate_degraded)
+            else f"unsafe={res.unsafe_flips} safe={res.safe_flips} agree={res.agree}"
+        )
         print(
             f"  - {res.case_id} [{res.role}] claims={res.n_claims} {flag} "
             f"(inc {res.incumbent_elapsed_s}s / cand {res.candidate_elapsed_s}s)",
@@ -288,7 +299,11 @@ def _run(argv: list[str] | None = None) -> int:
     print(json.dumps({k: v for k, v in agg.items() if not k.endswith("disagreements")}, indent=2))
 
     unsafe = agg["unsafe_flip_disagreements"]
-    verdict = "PASS ✅ (zero unsafe flips)" if agg["passed"] else f"FAIL ❌ ({len(unsafe)} unsafe flip(s) — adjudicate before any swap)"
+    verdict = (
+        "PASS ✅ (zero unsafe flips)"
+        if agg["passed"]
+        else f"FAIL ❌ ({len(unsafe)} unsafe flip(s) — adjudicate before any swap)"
+    )
     print(f"\n[inferential-judge-parity] R-8 gate: {verdict}")
     for d in unsafe:
         print(

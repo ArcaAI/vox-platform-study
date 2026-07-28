@@ -78,7 +78,11 @@ describe('HarnessOpsClient', () => {
 
   it('passes through the upstream status on an axios error response', async () => {
     const { client, axiosRef } = makeClient();
-    axiosRef.get.mockRejectedValue({ isAxiosError: true, response: { status: 404, data: { message: 'no such workflow' } }, message: 'Request failed' });
+    axiosRef.get.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 404, data: { message: 'no such workflow' } },
+      message: 'Request failed',
+    });
 
     await expect(client.describeWorkflow('missing')).rejects.toMatchObject({ status: 404 });
     await expect(client.describeWorkflow('missing')).rejects.toBeInstanceOf(HttpException);

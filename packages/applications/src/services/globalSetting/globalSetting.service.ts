@@ -148,7 +148,10 @@ export class GlobalSettingService extends BaseService implements IGlobalSettingS
    * The fragment is always wrapped in `AND: [...]` because the repository's
    * `formatFindAllProps` merges a bare top-level `OR` lossily with filters.
    */
-  private static resolveListWhere(secretsOnly: boolean | undefined, ...extraClauses: Record<string, unknown>[]): { AND: Record<string, unknown>[] } | undefined {
+  private static resolveListWhere(
+    secretsOnly: boolean | undefined,
+    ...extraClauses: Record<string, unknown>[]
+  ): { AND: Record<string, unknown>[] } | undefined {
     if (secretsOnly === undefined) return undefined;
     const secretClause = secretsOnly ? buildSecretSettingFilter() : { NOT: buildSecretSettingFilter() };
     return { AND: [...extraClauses, secretClause] };

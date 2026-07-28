@@ -14,34 +14,34 @@ const requestSelfServiceReset = vi.fn();
 const controller = () => new ForgotPasswordController({ requestSelfServiceReset } as never);
 
 describe('ForgotPasswordController', () => {
-    beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.clearAllMocks());
 
-    it('delegates to the service and returns the generic accepted body', async () => {
-        requestSelfServiceReset.mockResolvedValue(undefined);
+  it('delegates to the service and returns the generic accepted body', async () => {
+    requestSelfServiceReset.mockResolvedValue(undefined);
 
-        const result = await controller().request({ email: 'doc@example.com' } as never);
+    const result = await controller().request({ email: 'doc@example.com' } as never);
 
-        expect(requestSelfServiceReset).toHaveBeenCalledWith({ email: 'doc@example.com' });
-        expect(result).toEqual({
-            success: true,
-            message: 'If an account exists for that email, a password reset link has been sent.',
-        });
+    expect(requestSelfServiceReset).toHaveBeenCalledWith({ email: 'doc@example.com' });
+    expect(result).toEqual({
+      success: true,
+      message: 'If an account exists for that email, a password reset link has been sent.',
     });
+  });
 
-    it('returns the IDENTICAL body even when the service throws (no enumeration, no 5xx)', async () => {
-        requestSelfServiceReset.mockRejectedValue(new Error('db down'));
+  it('returns the IDENTICAL body even when the service throws (no enumeration, no 5xx)', async () => {
+    requestSelfServiceReset.mockRejectedValue(new Error('db down'));
 
-        const result = await controller().request({ email: 'ghost@example.com' } as never);
+    const result = await controller().request({ email: 'ghost@example.com' } as never);
 
-        expect(result).toEqual({
-            success: true,
-            message: 'If an account exists for that email, a password reset link has been sent.',
-        });
+    expect(result).toEqual({
+      success: true,
+      message: 'If an account exists for that email, a password reset link has been sent.',
     });
+  });
 
-    it('never includes token material in the response payload', async () => {
-        requestSelfServiceReset.mockResolvedValue(undefined);
-        const result = await controller().request({ email: 'doc@example.com' } as never);
-        expect(JSON.stringify(result)).not.toMatch(/token|reset-password\?/i);
-    });
+  it('never includes token material in the response payload', async () => {
+    requestSelfServiceReset.mockResolvedValue(undefined);
+    const result = await controller().request({ email: 'doc@example.com' } as never);
+    expect(JSON.stringify(result)).not.toMatch(/token|reset-password\?/i);
+  });
 });

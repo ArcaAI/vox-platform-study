@@ -64,8 +64,7 @@ export const STREAM_SAMPLE_RATE = 16000;
  * `best-practice-realtime` and one that is cached on the offline test volume.
  * Override with `STREAM_E2E_PIPELINE_ID`.
  */
-export const DEFAULT_STREAM_PIPELINE_ID =
-  process.env.STREAM_E2E_PIPELINE_ID?.trim() || '81000000-0000-0000-0001-000000000402';
+export const DEFAULT_STREAM_PIPELINE_ID = process.env.STREAM_E2E_PIPELINE_ID?.trim() || '81000000-0000-0000-0001-000000000402';
 
 /**
  * Committed 16 kHz mono PCM16 fixture (≈107 s real Malayalam speech). Override
@@ -73,8 +72,7 @@ export const DEFAULT_STREAM_PIPELINE_ID =
  * regardless of the Playwright working directory.
  */
 export const STREAM_FIXTURE_WAV =
-  process.env.STREAM_E2E_WAV?.trim() ||
-  resolve(__dirname, '../../apps/stt/tests/e2e/fixtures/20260205_52886591770282917_ml.wav');
+  process.env.STREAM_E2E_WAV?.trim() || resolve(__dirname, '../../apps/stt/tests/e2e/fixtures/20260205_52886591770282917_ml.wav');
 
 const WAV_HEADER_BYTES = 44;
 
@@ -113,9 +111,7 @@ export interface StreamSessionInfo {
   status: string;
 }
 
-export type CreateStreamResult =
-  | { ok: true; session: StreamSessionInfo }
-  | { ok: false; status: number; reason: string };
+export type CreateStreamResult = { ok: true; session: StreamSessionInfo } | { ok: false; status: number; reason: string };
 
 /**
  * Derive the `ws://host` origin from the HTTP API base URL. The WS gateway is
@@ -144,9 +140,7 @@ export async function loginStreamUser(
   const tenantKey = opts.tenantKey ?? DEFAULT_TENANT_KEY;
   const result = await loginUser(request, username, password, tenantKey);
   if (!result?.token) {
-    throw new Error(
-      `loginStreamUser: login failed for ${username}/${tenantKey}. Is the test DB seeded (pnpm test:db:seed)?`,
-    );
+    throw new Error(`loginStreamUser: login failed for ${username}/${tenantKey}. Is the test DB seeded (pnpm test:db:seed)?`);
   }
   return result.token;
 }
@@ -219,10 +213,9 @@ export async function refreshStreamTicket(
   token: string,
   sessionId: string,
 ): Promise<{ status: number; ticket?: string; ticketExpiresAt?: number }> {
-  const response = await request.post(
-    `/api/v1/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/refresh-ticket`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
+  const response = await request.post(`/api/v1/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/refresh-ticket`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   const status = response.status();
   if (status !== 200) return { status };
   const body = (await response.json()) as { ticket: string; ticketExpiresAt: number };
@@ -230,11 +223,7 @@ export async function refreshStreamTicket(
 }
 
 /** Best-effort session teardown (the binding TTL reclaims it regardless). */
-export async function closeStreamSession(
-  request: APIRequestContext,
-  token: string,
-  sessionId: string,
-): Promise<void> {
+export async function closeStreamSession(request: APIRequestContext, token: string, sessionId: string): Promise<void> {
   await request
     .delete(`/api/v1/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -384,10 +373,7 @@ export class StreamSocket {
    * Resolve once a server message matching `predicate` arrives (scanning both
    * already-captured and future messages), or `null` on timeout.
    */
-  waitForMessage(
-    predicate: (raw: Record<string, unknown>) => boolean,
-    timeoutMs = 15000,
-  ): Promise<Record<string, unknown> | null> {
+  waitForMessage(predicate: (raw: Record<string, unknown>) => boolean, timeoutMs = 15000): Promise<Record<string, unknown> | null> {
     const existing = this.messages.find((m) => predicate(m.raw));
     if (existing) return Promise.resolve(existing.raw);
     return new Promise((res) => {
@@ -416,10 +402,7 @@ export class StreamSocket {
   }
 
   waitForClosedStatus(timeoutMs = 20000): Promise<Record<string, unknown> | null> {
-    return this.waitForMessage(
-      (raw) => raw.type === 'status' && (raw.status === 'closed' || raw.status === 'cancelled'),
-      timeoutMs,
-    );
+    return this.waitForMessage((raw) => raw.type === 'status' && (raw.status === 'closed' || raw.status === 'cancelled'), timeoutMs);
   }
 }
 
@@ -491,8 +474,7 @@ export async function openStreamSocket(
   WebSocketCtor: StreamWsCtor,
   opts: { wsOrigin?: string; sessionId: string; ticket: string; wsFullUrl?: string; timeoutMs?: number },
 ): Promise<StreamSocket> {
-  const url =
-    opts.wsFullUrl ?? streamWsUrl(opts.wsOrigin ?? wsOriginFromApiUrl(), opts.sessionId, opts.ticket);
+  const url = opts.wsFullUrl ?? streamWsUrl(opts.wsOrigin ?? wsOriginFromApiUrl(), opts.sessionId, opts.ticket);
   const raw = new WebSocketCtor(url);
   const socket = new StreamSocket(raw, WebSocketCtor);
   await socket.waitOpen(opts.timeoutMs);

@@ -120,7 +120,11 @@ describe('SMR proxy — runtime-profile injection', () => {
   });
 
   it('is FAIL-OPEN — a throwing resolver still forwards the request', async () => {
-    const resolver = { resolveProfile: vi.fn(async () => { throw new Error('db-down'); }) };
+    const resolver = {
+      resolveProfile: vi.fn(async () => {
+        throw new Error('db-down');
+      }),
+    };
     const { ctrl, http } = build(resolver);
 
     await expect(ctrl.generate({ prompt: 'p', stream: false } as any)).resolves.toBeDefined();

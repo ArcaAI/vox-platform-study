@@ -36,7 +36,7 @@ async function callTestHelper(page: Page, fn: string, ...args: unknown[]): Promi
       const helpers = (window as unknown as { sttTestHelpers: Record<string, (...args: unknown[]) => Promise<unknown>> }).sttTestHelpers;
       return helpers[fn](...args);
     },
-    { fn, args }
+    { fn, args },
   );
 }
 
@@ -165,10 +165,7 @@ test.describe('@arcaai/stt E2E Tests', () => {
       await page.click('#btn-init-local');
 
       // Wait for initialization (with longer timeout for model loading)
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.initialized,
-        { timeout: 60000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.initialized, { timeout: 60000 });
 
       const afterInit = await getTestResults(page);
       expect(afterInit.initialized).toBe(true);
@@ -314,16 +311,11 @@ test.describe('@arcaai/stt E2E Tests', () => {
 
       // Initialize
       await page.click('#btn-init-local');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.initialized,
-        { timeout: 60000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.initialized, { timeout: 60000 });
 
       // Destroy
       await page.click('#btn-destroy');
-      await page.waitForFunction(
-        () => !(window as unknown as { testResults: TestResults }).testResults.initialized
-      );
+      await page.waitForFunction(() => !(window as unknown as { testResults: TestResults }).testResults.initialized);
 
       const results = await getTestResults(page);
       expect(results.initialized).toBe(false);

@@ -27,14 +27,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/integration/**',
-      '**/*.integration.ts',
-      '**/pgbouncer-validation/**',
-      '**/*.postgres.test.ts',
-    ],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/integration/**', '**/*.integration.ts', '**/pgbouncer-validation/**', '**/*.postgres.test.ts'],
     // The shared root setup (`tests/setup/vitest.setup.ts`) only registers
     // browser-API mocks + a `testUtils` global that no `@arcaai/database` suite
     // uses; running standalone must not inherit that path (mirrors the

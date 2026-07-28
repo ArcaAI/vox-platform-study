@@ -62,7 +62,9 @@ class EffectiveConfigSnapshot:
             "ttl_seconds": group.get("ttlSeconds"),
             "max_models": group.get("maxModels"),
         }
-        return {key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None}
+        return {
+            key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None
+        }
 
 
 def _positive_int(value: Any) -> int | None:
@@ -153,7 +155,9 @@ class EffectiveConfigClient:
                 transport=self._transport,
                 headers={self._header_name: self._token},
             ) as client:
-                response = await client.get("/internal/effective-config", params={"service": self._service})
+                response = await client.get(
+                    "/internal/effective-config", params={"service": self._service}
+                )
                 response.raise_for_status()
                 payload = response.json()
 

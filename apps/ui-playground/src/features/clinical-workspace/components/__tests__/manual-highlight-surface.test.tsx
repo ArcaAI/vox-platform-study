@@ -51,7 +51,13 @@ describe('ManualHighlightSurface — color picker', () => {
 
   it('creates a highlight with the default color when the doctor picks none', () => {
     render(
-      <ManualHighlightSurface consultationId="c1" targetKind="CASE_NOTE" sourceContextItemId="ctx-1" text="reports chest pain today" data-testid="surface" />,
+      <ManualHighlightSurface
+        consultationId="c1"
+        targetKind="CASE_NOTE"
+        sourceContextItemId="ctx-1"
+        text="reports chest pain today"
+        data-testid="surface"
+      />,
     );
 
     selectTextOnSurface();

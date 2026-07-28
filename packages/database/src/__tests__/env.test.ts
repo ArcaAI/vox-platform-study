@@ -38,14 +38,7 @@ vi.mock('fs', () => ({
 }));
 
 // Import the actual functions from env.ts
-import {
-  ENV_FILE_MAP,
-  isCI,
-  getNodeEnv,
-  findMonorepoRoot,
-  loadDatabaseEnv,
-  type Environment,
-} from '../env';
+import { ENV_FILE_MAP, isCI, getNodeEnv, findMonorepoRoot, loadDatabaseEnv, type Environment } from '../env';
 
 describe('Environment Loading Utility', () => {
   const originalEnv = { ...process.env };
@@ -258,9 +251,7 @@ describe('Environment Loading Utility', () => {
       const result = loadDatabaseEnv();
 
       expect(result.loaded).toBe(true);
-      expect(mockDotenv.config).toHaveBeenCalledWith(
-        expect.objectContaining({ override: false }),
-      );
+      expect(mockDotenv.config).toHaveBeenCalledWith(expect.objectContaining({ override: false }));
     });
 
     it('does not fall back to the root .env when .env.dev is missing', () => {
@@ -270,9 +261,7 @@ describe('Environment Loading Utility', () => {
       delete process.env.CI;
 
       // Root detected, a legacy root `.env` exists, but `.env.dev` does not.
-      mockFs.existsSync.mockImplementation(
-        ((p: string) => p.endsWith('package.json') || p.endsWith('/.env')) as never,
-      );
+      mockFs.existsSync.mockImplementation(((p: string) => p.endsWith('package.json') || p.endsWith('/.env')) as never);
       mockFs.readFileSync.mockReturnValue(JSON.stringify({ name: 'hope-monorepo' }) as never);
 
       const result = loadDatabaseEnv();

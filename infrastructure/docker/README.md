@@ -2,13 +2,13 @@
 
 This directory holds the local-dev Docker Compose stacks for HOPE.
 
-| File | Purpose |
-|---|---|
-| `docker-compose.yml` | Core services always required for local dev (Postgres, Redis, MinIO). |
-| `docker-compose.dev.yml` | Optional extensions (Vault, Qdrant) — opt-in via Compose profiles. |
-| `configs/vault/` | Vault dev-mode bootstrap (Phase 1A, TASK-302 Stream B). |
-| `python-base/`, `scripts/` | Service-specific assets. |
-| `README-STT-ORCHESTRA.md`, `QDRANT-SETUP.md`, `QDRANT-QUICK-REFERENCE.md` | Per-service runbooks. |
+| File                                                                      | Purpose                                                               |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `docker-compose.yml`                                                      | Core services always required for local dev (Postgres, Redis, MinIO). |
+| `docker-compose.dev.yml`                                                  | Optional extensions (Vault, Qdrant) — opt-in via Compose profiles.    |
+| `configs/vault/`                                                          | Vault dev-mode bootstrap (Phase 1A, TASK-302 Stream B).               |
+| `python-base/`, `scripts/`                                                | Service-specific assets.                                              |
+| `README-STT-ORCHESTRA.md`, `QDRANT-SETUP.md`, `QDRANT-QUICK-REFERENCE.md` | Per-service runbooks.                                                 |
 
 ---
 
@@ -43,14 +43,14 @@ pnpm api:dev
 idempotent — safe to re-run. It orchestrates three helper scripts you can also
 run individually:
 
-| Script | Does | Re-run when |
-|---|---|---|
+| Script                           | Does                                                                                                                                                                                           | Re-run when                                                                                        |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `scripts/refresh-vault-creds.sh` | Reads the current `role_id` and mints a fresh **raw, reusable** `secret_id`, writing `VAULT_ROLE_ID` + `VAULT_SECRET_ID` in `.env.dev` (and blanking the prod-only `VAULT_WRAPPED_SECRET_ID`). | After `docker compose down -v` or recreating the Vault container. **Not** per restart (see below). |
-| `scripts/setup-dev-vault-db.sh` | Creates the `vault_admin` + `hope_app_template` PG roles (via `vault-admin-bootstrap.sql`), (re-)points Vault's DB engine at the real dev DB (`hope`), and smoke-tests credential issuance. | After a Docker volume reset, or whenever migrations recreate the schema. |
-| `pnpm db:all` | Prisma migrations + seed (creates the `hope` DB + `core` schema the DB engine grants against). | Standard migration workflow. |
+| `scripts/setup-dev-vault-db.sh`  | Creates the `vault_admin` + `hope_app_template` PG roles (via `vault-admin-bootstrap.sql`), (re-)points Vault's DB engine at the real dev DB (`hope`), and smoke-tests credential issuance.    | After a Docker volume reset, or whenever migrations recreate the schema.                           |
+| `pnpm db:all`                    | Prisma migrations + seed (creates the `hope` DB + `core` schema the DB engine grants against).                                                                                                 | Standard migration workflow.                                                                       |
 
 > **`pnpm db:all` RESETS the database.** It runs `prisma db push --force-reset
-> --accept-data-loss`, which **drops and recreates** the schema (and trips
+--accept-data-loss`, which **drops and recreates** the schema (and trips
 > Prisma's built-in agent guard that refuses the reset without explicit
 > consent). That's the intended behaviour for a fresh/empty DB. On a DB whose
 > data you want to keep, use the **non-destructive** push instead:
@@ -73,7 +73,7 @@ is in-memory) or once the 30-day TTL lapses.
 > **Dev vs. prod credential shape.** A response-wrapped `secret_id`
 > (`VAULT_WRAPPED_SECRET_ID`) is **single-use** — `VaultSecretsProvider.boot()`
 > unwraps it on every process start, so the second boot fails with `wrapping
-> token is not valid`. That's the right shape for **production** (a fresh
+token is not valid`. That's the right shape for **production** (a fresh
 > wrapped token is injected per pod), but it breaks the watch loop in dev.
 > Local dev therefore uses the raw, reusable `secret_id`. If both vars are set,
 > the provider prefers the wrapped one — so dev keeps `VAULT_WRAPPED_SECRET_ID`
@@ -108,13 +108,13 @@ surface in boot order — fixing one reveals the next — so the fastest path is
 just `pnpm setup:dev`, which performs every step idempotently. To debug a
 single stage:
 
-| Symptom in the boot log | Root cause | Fix |
-|---|---|---|
-| `SecretsModule: VAULT_ROLE_ID (or VAULT_ROLE_ID_FILE) is required when SECRETS_PROVIDER=vault` | `.env.dev` defaults to `SECRETS_PROVIDER=vault` but `VAULT_ROLE_ID` / `VAULT_SECRET_ID` are blank (fresh clone, or the Vault container was recreated). | `./scripts/refresh-vault-creds.sh` (needs the `hope-vault` container up). |
-| `CoreDatabaseService … failed to find entry for connection with name: "hope-main"` | Vault's `database` engine has the `hope-app-role` role but **no** `database/config/hope-main` connection — `setup-dev-vault-db.sh` hasn't run (or ran before migrations existed). | `./scripts/setup-dev-vault-db.sh`. |
-| `setup-dev-vault-db.sh` → `ERROR: schema 'core' not found in database 'hope'` | The dev DB was never migrated/seeded. | `pnpm gen:prisma push --all && pnpm db:seed`, then re-run `setup-dev-vault-db.sh`. |
-| `Starting inspector on 127.0.0.1:9229 failed: address already in use`, or the API can't bind `8868` | A stale `nest start --watch` from a previous session is still holding the port — watch-mode children outlive the shell that started them. | `lsof -nP -iTCP:8868 -iTCP:9229 -sTCP:LISTEN` → `kill -9 <pid>` (or `pkill -9 -f 'hope-v2/apps/api'`), then retry. |
-| `wrapping token is not valid` on the **2nd** boot (first `--watch` reload) | `VAULT_WRAPPED_SECRET_ID` (the single-use prod shape) is set in dev. | Blank it and use the raw, reusable `VAULT_SECRET_ID`: re-run `refresh-vault-creds.sh`. |
+| Symptom in the boot log                                                                             | Root cause                                                                                                                                                                        | Fix                                                                                                                |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `SecretsModule: VAULT_ROLE_ID (or VAULT_ROLE_ID_FILE) is required when SECRETS_PROVIDER=vault`      | `.env.dev` defaults to `SECRETS_PROVIDER=vault` but `VAULT_ROLE_ID` / `VAULT_SECRET_ID` are blank (fresh clone, or the Vault container was recreated).                            | `./scripts/refresh-vault-creds.sh` (needs the `hope-vault` container up).                                          |
+| `CoreDatabaseService … failed to find entry for connection with name: "hope-main"`                  | Vault's `database` engine has the `hope-app-role` role but **no** `database/config/hope-main` connection — `setup-dev-vault-db.sh` hasn't run (or ran before migrations existed). | `./scripts/setup-dev-vault-db.sh`.                                                                                 |
+| `setup-dev-vault-db.sh` → `ERROR: schema 'core' not found in database 'hope'`                       | The dev DB was never migrated/seeded.                                                                                                                                             | `pnpm gen:prisma push --all && pnpm db:seed`, then re-run `setup-dev-vault-db.sh`.                                 |
+| `Starting inspector on 127.0.0.1:9229 failed: address already in use`, or the API can't bind `8868` | A stale `nest start --watch` from a previous session is still holding the port — watch-mode children outlive the shell that started them.                                         | `lsof -nP -iTCP:8868 -iTCP:9229 -sTCP:LISTEN` → `kill -9 <pid>` (or `pkill -9 -f 'hope-v2/apps/api'`), then retry. |
+| `wrapping token is not valid` on the **2nd** boot (first `--watch` reload)                          | `VAULT_WRAPPED_SECRET_ID` (the single-use prod shape) is set in dev.                                                                                                              | Blank it and use the raw, reusable `VAULT_SECRET_ID`: re-run `refresh-vault-creds.sh`.                             |
 
 A clean boot ends with:
 
@@ -176,11 +176,11 @@ Without it the Admin Console metrics tiles render em-dashes **by design** (TASK-
 
 Per-service master switches — all default **OFF**:
 
-| Service | To enable export |
-|---|---|
-| API gateway | Set `OTEL_EXPORTER_OTLP_ENDPOINT` (only read by `pnpm start` / `start:prod` / Docker — never `pnpm dev`). Kill-switch: `OTEL_SDK_DISABLED=true`. |
-| NLP | `NLP_OTEL_ENABLED=true` **and** `OTEL_EXPORTER_OTLP_ENDPOINT`. |
-| STT / SMR / Guardrail / Harness | Their existing `*_OTEL_ENABLED` flags (`OTEL_ENABLED`, `SMR_OTEL_ENABLED`, `GUARDRAIL_V2_OTEL_ENABLED`, `HARNESS_OTEL_ENABLED`). |
+| Service                         | To enable export                                                                                                                                 |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| API gateway                     | Set `OTEL_EXPORTER_OTLP_ENDPOINT` (only read by `pnpm start` / `start:prod` / Docker — never `pnpm dev`). Kill-switch: `OTEL_SDK_DISABLED=true`. |
+| NLP                             | `NLP_OTEL_ENABLED=true` **and** `OTEL_EXPORTER_OTLP_ENDPOINT`.                                                                                   |
+| STT / SMR / Guardrail / Harness | Their existing `*_OTEL_ENABLED` flags (`OTEL_ENABLED`, `SMR_OTEL_ENABLED`, `GUARDRAIL_V2_OTEL_ENABLED`, `HARNESS_OTEL_ENABLED`).                 |
 
 See TASK-411 (this invariant + the opt-in gates) and TASK-397 (dev `prometheus` profile).
 
@@ -201,7 +201,7 @@ image guarantees the binary is present, and how to verify it.
 The runtime stage is **`node:22-slim`** (Debian Bookworm, **glibc 2.36**), not
 Alpine/musl. `sharp@0.35.2`'s default prebuilt (`@img/sharp-linux-{x64,arm64}`
 plus the bundled `@img/sharp-libvips-*`) loads out of the box — libvips 8.18.3
-ships *inside* the prebuilt, so no `apt-get install … libvips`/build deps are
+ships _inside_ the prebuilt, so no `apt-get install … libvips`/build deps are
 required. Verified directly on both deploy arches:
 
 ```bash
@@ -282,12 +282,12 @@ the binary survives the prune and ships in the final image.
 > now builds end-to-end (real `--target production` build, native arm64).
 >
 > **Root cause (not a build-graph ordering bug).** `@arcaai/types`' build is
-> `tsc --build` (incremental). Turbo *does* already schedule `@arcaai/types#build`
+> `tsc --build` (incremental). Turbo _does_ already schedule `@arcaai/types#build`
 > ahead of `@arcaai/applications#build` — verified with
 > `turbo run build --filter=@arcaai/applications... --dry-run` — so `^build`
 > ordering was never the problem. The build **no-op'd**: `tsconfig.tsbuildinfo` is
 > gitignored (`*.tsbuildinfo`) but was **not** `.dockerignore`d, so
-> `COPY packages/ ./packages/` carried a *host-stale* buildinfo into the container
+> `COPY packages/ ./packages/` carried a _host-stale_ buildinfo into the container
 > while `**/dist` was excluded. `tsc --build` trusts that buildinfo, declares the
 > project "up to date", and **skips emit even though `dist` is absent** (confirmed
 > empirically). With `packages/types/dist` never created, `@arcaai/applications`'

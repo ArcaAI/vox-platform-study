@@ -66,11 +66,7 @@ describe('AgentTrajectoryStepRepository', () => {
   });
 
   it('findBySession lists steps ordered by seq ascending, scoped to the tenant', async () => {
-    findMany.mockResolvedValue([
-      row({ seq: 0, name: 'init' }),
-      row({ seq: 1, name: 'generate' }),
-      row({ seq: 2, name: 'run_sensors' }),
-    ]);
+    findMany.mockResolvedValue([row({ seq: 0, name: 'init' }), row({ seq: 1, name: 'generate' }), row({ seq: 2, name: 'run_sensors' })]);
     const repo = new AgentTrajectoryStepRepository(makeUow({ findMany }) as never);
 
     const result = await repo.findBySession('tenant-1', 'wf-1');

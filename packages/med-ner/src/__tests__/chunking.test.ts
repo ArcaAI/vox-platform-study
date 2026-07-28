@@ -34,12 +34,7 @@ describe('segmentSentences', () => {
   it('splits on `. `, `? `, and `! `', () => {
     const text = 'First sentence. Second sentence? Third one! Last.';
     const result = segmentSentences(text);
-    expect(result.map((s) => s.text.trim())).toEqual([
-      'First sentence.',
-      'Second sentence?',
-      'Third one!',
-      'Last.',
-    ]);
+    expect(result.map((s) => s.text.trim())).toEqual(['First sentence.', 'Second sentence?', 'Third one!', 'Last.']);
   });
 
   it('preserves character offsets that round-trip into the original text', () => {
@@ -68,12 +63,7 @@ describe('chunkByTokens', () => {
 
   it('splits at sentence boundaries when the budget is exceeded', () => {
     // Each sentence is 3 tokens; budget 6 ⇒ two sentences per chunk.
-    const text = [
-      'Patient has hypertension.',
-      'Prescribed lisinopril today.',
-      'Follow up next week.',
-      'Repeat labs then.',
-    ].join(' ');
+    const text = ['Patient has hypertension.', 'Prescribed lisinopril today.', 'Follow up next week.', 'Repeat labs then.'].join(' ');
     const chunks = chunkByTokens(text, wordTokenizer, { maxTokens: 6, stride: 0 });
 
     expect(chunks.length).toBeGreaterThanOrEqual(2);
@@ -94,9 +84,9 @@ describe('chunkByTokens', () => {
 
   it('applies the stride overlap by re-including trailing sentences', () => {
     const text = [
-      'Sentence one a.',  // 3 tokens
-      'Sentence two b.',  // 3 tokens
-      'Sentence three c.',// 3 tokens
+      'Sentence one a.', // 3 tokens
+      'Sentence two b.', // 3 tokens
+      'Sentence three c.', // 3 tokens
       'Sentence four d.', // 3 tokens
     ].join(' ');
     // With maxTokens=6 (two sentences) and stride=3 (one sentence),
@@ -156,13 +146,14 @@ describe('chunkByTokens', () => {
 });
 
 describe('mergeChunkEntities', () => {
-  const mk = (
-    text: string,
-    type: MedicalEntityType,
-    start: number,
-    end: number,
-    score: number,
-  ): EntitySpan => ({ text, type, start, end, score, rawLabel: type });
+  const mk = (text: string, type: MedicalEntityType, start: number, end: number, score: number): EntitySpan => ({
+    text,
+    type,
+    start,
+    end,
+    score,
+    rawLabel: type,
+  });
 
   it('deduplicates an entity discovered in two overlapping chunks', () => {
     const chunkA: TokenChunk = { text: 'Patient has Type 2 Diabetes today.', offset: 0, tokenCount: 6 };
@@ -173,12 +164,10 @@ describe('mergeChunkEntities', () => {
     const entitiesA = [mk('Type 2 Diabetes', MedicalEntityType.DISEASE, 12, 27, 0.93)];
     const entitiesB = [mk('Type 2 Diabetes', MedicalEntityType.DISEASE, 12, 27, 0.95)];
 
-    const merged = mergeChunkEntities(
-      [
-        { chunk: chunkA, entities: entitiesA },
-        { chunk: chunkB, entities: entitiesB },
-      ],
-    );
+    const merged = mergeChunkEntities([
+      { chunk: chunkA, entities: entitiesA },
+      { chunk: chunkB, entities: entitiesB },
+    ]);
 
     expect(merged).toHaveLength(1);
     // The higher-confidence detection wins.
@@ -194,12 +183,10 @@ describe('mergeChunkEntities', () => {
     const entitiesA = [mk('A', MedicalEntityType.DISEASE, 0, 1, 0.9)];
     const entitiesB = [mk('C', MedicalEntityType.MEDICATION, 6, 7, 0.9)];
 
-    const merged = mergeChunkEntities(
-      [
-        { chunk: chunkA, entities: entitiesA },
-        { chunk: chunkB, entities: entitiesB },
-      ],
-    );
+    const merged = mergeChunkEntities([
+      { chunk: chunkA, entities: entitiesA },
+      { chunk: chunkB, entities: entitiesB },
+    ]);
 
     expect(merged).toHaveLength(2);
     expect(merged.map((e) => e.text)).toEqual(['A', 'C']);

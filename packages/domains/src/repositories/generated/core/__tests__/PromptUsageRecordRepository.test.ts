@@ -33,9 +33,7 @@ describe('PromptUsageRecordRepository — usage analytics', () => {
 
       const result = await repo.groupByDepartment('tenant-1');
 
-      expect(groupBy).toHaveBeenCalledWith(
-        expect.objectContaining({ by: ['departmentId'], where: { tenantId: 'tenant-1' } }),
-      );
+      expect(groupBy).toHaveBeenCalledWith(expect.objectContaining({ by: ['departmentId'], where: { tenantId: 'tenant-1' } }));
       expect(result).toEqual([
         { departmentId: 'dept-1', count: 4 },
         { departmentId: null, count: 1 },
@@ -47,9 +45,7 @@ describe('PromptUsageRecordRepository — usage analytics', () => {
 
       await repo.groupByDepartment('tenant-1', 'tpl-9');
 
-      expect(groupBy).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: 'tenant-1', promptTemplateId: 'tpl-9' } }),
-      );
+      expect(groupBy).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1', promptTemplateId: 'tpl-9' } }));
     });
   });
 
@@ -59,9 +55,7 @@ describe('PromptUsageRecordRepository — usage analytics', () => {
 
       const result = await repo.groupByDoctor('tenant-1');
 
-      expect(groupBy).toHaveBeenCalledWith(
-        expect.objectContaining({ by: ['doctorId'], where: { tenantId: 'tenant-1' } }),
-      );
+      expect(groupBy).toHaveBeenCalledWith(expect.objectContaining({ by: ['doctorId'], where: { tenantId: 'tenant-1' } }));
       expect(result).toEqual([{ doctorId: 'doc-1', count: 5 }]);
     });
   });
@@ -76,9 +70,7 @@ describe('PromptUsageRecordRepository — usage analytics', () => {
 
       const result = await repo.groupByDay('tenant-1');
 
-      expect(findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: 'tenant-1' }, select: { createdAt: true } }),
-      );
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1' }, select: { createdAt: true } }));
       expect(result).toEqual([
         { day: '2026-06-01', count: 2 },
         { day: '2026-06-02', count: 1 },
@@ -90,9 +82,7 @@ describe('PromptUsageRecordRepository — usage analytics', () => {
 
       await repo.groupByDay('tenant-1', 'tpl-9');
 
-      expect(findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: 'tenant-1', promptTemplateId: 'tpl-9' } }),
-      );
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1', promptTemplateId: 'tpl-9' } }));
     });
   });
 });

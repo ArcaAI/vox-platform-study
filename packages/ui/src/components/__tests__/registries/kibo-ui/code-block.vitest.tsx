@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { CodeBlock, CodeBlockBody, CodeBlockItem, CodeBlockContent } from '../../../registries/kibo-ui/code-block'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { CodeBlock, CodeBlockBody, CodeBlockItem, CodeBlockContent } from '../../../registries/kibo-ui/code-block';
 
 describe('CodeBlock', () => {
   it('renders without crashing', () => {
-    const data = [{ language: 'ts', filename: 'test.ts', code: 'const x = 1;' }]
+    const data = [{ language: 'ts', filename: 'test.ts', code: 'const x = 1;' }];
     const { container } = render(
       <CodeBlock data={data} defaultValue="ts">
         <CodeBlockBody>
@@ -14,8 +14,8 @@ describe('CodeBlock', () => {
             </CodeBlockItem>
           )}
         </CodeBlockBody>
-      </CodeBlock>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </CodeBlock>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

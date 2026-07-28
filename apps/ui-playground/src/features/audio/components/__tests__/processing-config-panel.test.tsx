@@ -12,116 +12,119 @@ import type { ProcessingMethod, NoiseCancellationLevel } from '@/store/audio-sto
 // ── shadcn/ui mocks ────────────────────────────────────────────────
 
 vi.mock('@arcaai/ui/card', () => ({
-    Card: ({ children, ...props }: any) => <div data-testid="card" {...props}>{children}</div>,
-    CardContent: ({ children, ...props }: any) => <div data-testid="card-content" {...props}>{children}</div>,
-    CardHeader: ({ children, ...props }: any) => <div data-testid="card-header" {...props}>{children}</div>,
-    CardTitle: ({ children, ...props }: any) => <h3 data-testid="card-title" {...props}>{children}</h3>,
+  Card: ({ children, ...props }: any) => (
+    <div data-testid="card" {...props}>
+      {children}
+    </div>
+  ),
+  CardContent: ({ children, ...props }: any) => (
+    <div data-testid="card-content" {...props}>
+      {children}
+    </div>
+  ),
+  CardHeader: ({ children, ...props }: any) => (
+    <div data-testid="card-header" {...props}>
+      {children}
+    </div>
+  ),
+  CardTitle: ({ children, ...props }: any) => (
+    <h3 data-testid="card-title" {...props}>
+      {children}
+    </h3>
+  ),
 }));
 
 vi.mock('@arcaai/ui/badge', () => ({
-    Badge: ({ children, onClick, onKeyDown, variant, ...props }: any) => (
-        <span
-            data-testid="badge"
-            data-variant={variant}
-            role="button"
-            tabIndex={0}
-            onClick={onClick}
-            onKeyDown={onKeyDown}
-            {...props}
-        >
-            {children}
-        </span>
-    ),
+  Badge: ({ children, onClick, onKeyDown, variant, ...props }: any) => (
+    <span data-testid="badge" data-variant={variant} role="button" tabIndex={0} onClick={onClick} onKeyDown={onKeyDown} {...props}>
+      {children}
+    </span>
+  ),
 }));
 
 vi.mock('@arcaai/ui/label', () => ({
-    Label: ({ children, ...props }: any) => <label {...props}>{children}</label>,
+  Label: ({ children, ...props }: any) => <label {...props}>{children}</label>,
 }));
 
 vi.mock('@arcaai/ui/separator', () => ({
-    Separator: () => <hr data-testid="separator" />,
+  Separator: () => <hr data-testid="separator" />,
 }));
 
 vi.mock('@arcaai/ui/slider', () => ({
-    Slider: ({ value, onValueChange, disabled, ...props }: any) => (
-        <input
-            type="range"
-            data-testid="slider"
-            value={value?.[0] ?? 0}
-            disabled={disabled}
-            onChange={(e) => onValueChange?.([Number(e.target.value)])}
-            {...props}
-        />
-    ),
+  Slider: ({ value, onValueChange, disabled, ...props }: any) => (
+    <input
+      type="range"
+      data-testid="slider"
+      value={value?.[0] ?? 0}
+      disabled={disabled}
+      onChange={(e) => onValueChange?.([Number(e.target.value)])}
+      {...props}
+    />
+  ),
 }));
 
 vi.mock('@arcaai/ui/switch', () => ({
-    Switch: ({ checked, onCheckedChange, disabled, ...props }: any) => (
-        <button
-            role="switch"
-            aria-checked={!!checked}
-            data-testid="switch"
-            disabled={disabled}
-            onClick={() => !disabled && onCheckedChange?.(!checked)}
-            {...props}
-        />
-    ),
+  Switch: ({ checked, onCheckedChange, disabled, ...props }: any) => (
+    <button
+      role="switch"
+      aria-checked={!!checked}
+      data-testid="switch"
+      disabled={disabled}
+      onClick={() => !disabled && onCheckedChange?.(!checked)}
+      {...props}
+    />
+  ),
 }));
 
 const SelectContext = React.createContext<{ onValueChange?: (v: string) => void }>({});
 
 vi.mock('@arcaai/ui/select', () => ({
-    Select: ({ children, value, onValueChange, disabled }: any) => (
-        <SelectContext.Provider value={{ onValueChange }}>
-            <div data-testid="select-root" data-value={value} data-disabled={disabled || undefined}>
-                {children}
-            </div>
-        </SelectContext.Provider>
-    ),
-    SelectTrigger: ({ children, ...props }: any) => (
-        <button data-testid="select-trigger" {...props}>{children}</button>
-    ),
-    SelectContent: ({ children }: any) => (
-        <div data-testid="select-content">{children}</div>
-    ),
-    SelectItem: ({ children, value, ...props }: any) => {
-        const { onValueChange } = React.useContext(SelectContext);
-        return (
-            <div
-                data-testid="select-item"
-                data-value={value}
-                onClick={() => onValueChange?.(value)}
-                {...props}
-            >
-                {children}
-            </div>
-        );
-    },
-    SelectValue: () => <span data-testid="select-value" />,
+  Select: ({ children, value, onValueChange, disabled }: any) => (
+    <SelectContext.Provider value={{ onValueChange }}>
+      <div data-testid="select-root" data-value={value} data-disabled={disabled || undefined}>
+        {children}
+      </div>
+    </SelectContext.Provider>
+  ),
+  SelectTrigger: ({ children, ...props }: any) => (
+    <button data-testid="select-trigger" {...props}>
+      {children}
+    </button>
+  ),
+  SelectContent: ({ children }: any) => <div data-testid="select-content">{children}</div>,
+  SelectItem: ({ children, value, ...props }: any) => {
+    const { onValueChange } = React.useContext(SelectContext);
+    return (
+      <div data-testid="select-item" data-value={value} onClick={() => onValueChange?.(value)} {...props}>
+        {children}
+      </div>
+    );
+  },
+  SelectValue: () => <span data-testid="select-value" />,
 }));
 
 vi.mock('@arcaai/ui/tooltip', () => ({
-    Tooltip: ({ children }: any) => <>{children}</>,
-    TooltipContent: ({ children }: any) => <div data-testid="tooltip-content">{children}</div>,
-    TooltipProvider: ({ children }: any) => <>{children}</>,
-    TooltipTrigger: ({ children, asChild }: any) => (asChild ? children : <span>{children}</span>),
+  Tooltip: ({ children }: any) => <>{children}</>,
+  TooltipContent: ({ children }: any) => <div data-testid="tooltip-content">{children}</div>,
+  TooltipProvider: ({ children }: any) => <>{children}</>,
+  TooltipTrigger: ({ children, asChild }: any) => (asChild ? children : <span>{children}</span>),
 }));
 
 // ── lucide-react mocks ─────────────────────────────────────────────
 
 vi.mock('lucide-react', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('lucide-react')>();
-    return {
-        ...actual,
-        AlertCircle: () => <svg data-testid="icon-alert-circle" />,
-        Languages: () => <svg data-testid="icon-languages" />,
-        Settings: () => <svg data-testid="icon-settings" />,
-        Volume2: () => <svg data-testid="icon-volume" />,
-        Brain: () => <svg data-testid="icon-brain" />,
-        Server: () => <svg data-testid="icon-server" />,
-        Repeat: () => <svg data-testid="icon-repeat" />,
-        Lock: (props: any) => <svg data-testid="icon-lock" {...props} />,
-    };
+  const actual = await importOriginal<typeof import('lucide-react')>();
+  return {
+    ...actual,
+    AlertCircle: () => <svg data-testid="icon-alert-circle" />,
+    Languages: () => <svg data-testid="icon-languages" />,
+    Settings: () => <svg data-testid="icon-settings" />,
+    Volume2: () => <svg data-testid="icon-volume" />,
+    Brain: () => <svg data-testid="icon-brain" />,
+    Server: () => <svg data-testid="icon-server" />,
+    Repeat: () => <svg data-testid="icon-repeat" />,
+    Lock: (props: any) => <svg data-testid="icon-lock" {...props} />,
+  };
 });
 
 // ── @arcaai/vox mock ───────────────────────────────────────────────
@@ -134,35 +137,35 @@ const mockSelectSttTask = vi.fn<(task: string) => void>();
 
 const mockListPipelines = vi.fn<() => Promise<any[]>>().mockResolvedValue([]);
 const mockUsePipelinesReturn = {
-    pipelines: [
-        { id: 'pipe-1', name: 'Pipeline Alpha', slug: 'pipeline-alpha', description: 'First pipeline' },
-        { id: 'pipe-2', name: 'Pipeline Beta', slug: 'pipeline-beta', description: null },
-    ],
-    selectedPipeline: null,
-    isLoading: false,
-    error: null as Error | null,
-    list: mockListPipelines,
-    get: vi.fn(),
-    getBySlug: vi.fn(),
-    select: vi.fn(),
-    createPipeline: vi.fn(),
-    updatePipeline: vi.fn(),
-    deletePipeline: vi.fn(),
-    validateConfig: vi.fn(),
-    assignToTenant: vi.fn(),
+  pipelines: [
+    { id: 'pipe-1', name: 'Pipeline Alpha', slug: 'pipeline-alpha', description: 'First pipeline' },
+    { id: 'pipe-2', name: 'Pipeline Beta', slug: 'pipeline-beta', description: null },
+  ],
+  selectedPipeline: null,
+  isLoading: false,
+  error: null as Error | null,
+  list: mockListPipelines,
+  get: vi.fn(),
+  getBySlug: vi.fn(),
+  select: vi.fn(),
+  createPipeline: vi.fn(),
+  updatePipeline: vi.fn(),
+  deletePipeline: vi.fn(),
+  validateConfig: vi.fn(),
+  assignToTenant: vi.fn(),
 };
 
 let pipelinesOverrides: Partial<typeof mockUsePipelinesReturn> = {};
 
 vi.mock('@arcaai/vox', () => ({
-    useArcaConfig: () => ({
-        isLocked: mockIsLocked,
-        setUserPreference: mockSetUserPreference,
-        selectModel: mockSelectModel,
-        selectSttTask: mockSelectSttTask,
-        models: { stt: [], vad: [], ner: [], selected: {} },
-    }),
-    usePipelines: () => ({ ...mockUsePipelinesReturn, ...pipelinesOverrides }),
+  useArcaConfig: () => ({
+    isLocked: mockIsLocked,
+    setUserPreference: mockSetUserPreference,
+    selectModel: mockSelectModel,
+    selectSttTask: mockSelectSttTask,
+    models: { stt: [], vad: [], ner: [], selected: {} },
+  }),
+  usePipelines: () => ({ ...mockUsePipelinesReturn, ...pipelinesOverrides }),
 }));
 
 // ── audio store mock ───────────────────────────────────────────────
@@ -180,44 +183,44 @@ const mockSetSelectedPipelineId = vi.fn();
 const mockSetSttTask = vi.fn();
 
 const defaultStoreState = {
-    // TASK-321 F — annotate with the store's union types (not `as const`) so
-    // `renderPanel({ processingMethod: 'local_ai' })` / `noiseFilterLevel: 'high'`
-    // overrides type-check instead of being narrowed to a single literal.
-    processingMethod: 'backend_socket' as ProcessingMethod,
-    noiseFilterEnabled: false,
-    noiseFilterLevel: 'medium' as NoiseCancellationLevel,
-    vadEnabled: false,
-    vadThreshold: 0.5,
-    diarizationEnabled: false,
-    codeSwitchingEnabled: false,
-    whisperModel: 'whisper-tiny',
-    availableAsrModels: [
-        { id: 'whisper-tiny', name: 'Whisper Tiny', size: '~75 MB' },
-        { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
-        { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
-    ],
-    sttTask: 'transcribe' as 'transcribe' | 'translate',
-    language: 'en',
-    isCapturing: false,
-    configReady: true,
-    selectedPipelineId: null as string | null,
-    setProcessingMethod: mockSetProcessingMethod,
-    toggleNoiseFilter: mockToggleNoiseFilter,
-    setNoiseFilterLevel: mockSetNoiseFilterLevel,
-    toggleVAD: mockToggleVAD,
-    setVADThreshold: mockSetVADThreshold,
-    toggleDiarization: mockToggleDiarization,
-    toggleCodeSwitching: mockToggleCodeSwitching,
-    setWhisperModel: mockSetWhisperModel,
-    setLanguage: mockSetLanguage,
-    setSelectedPipelineId: mockSetSelectedPipelineId,
-    setSttTask: mockSetSttTask,
+  // TASK-321 F — annotate with the store's union types (not `as const`) so
+  // `renderPanel({ processingMethod: 'local_ai' })` / `noiseFilterLevel: 'high'`
+  // overrides type-check instead of being narrowed to a single literal.
+  processingMethod: 'backend_socket' as ProcessingMethod,
+  noiseFilterEnabled: false,
+  noiseFilterLevel: 'medium' as NoiseCancellationLevel,
+  vadEnabled: false,
+  vadThreshold: 0.5,
+  diarizationEnabled: false,
+  codeSwitchingEnabled: false,
+  whisperModel: 'whisper-tiny',
+  availableAsrModels: [
+    { id: 'whisper-tiny', name: 'Whisper Tiny', size: '~75 MB' },
+    { id: 'whisper-base', name: 'Whisper Base', size: '~150 MB' },
+    { id: 'whisper-small', name: 'Whisper Small', size: '~500 MB' },
+  ],
+  sttTask: 'transcribe' as 'transcribe' | 'translate',
+  language: 'en',
+  isCapturing: false,
+  configReady: true,
+  selectedPipelineId: null as string | null,
+  setProcessingMethod: mockSetProcessingMethod,
+  toggleNoiseFilter: mockToggleNoiseFilter,
+  setNoiseFilterLevel: mockSetNoiseFilterLevel,
+  toggleVAD: mockToggleVAD,
+  setVADThreshold: mockSetVADThreshold,
+  toggleDiarization: mockToggleDiarization,
+  toggleCodeSwitching: mockToggleCodeSwitching,
+  setWhisperModel: mockSetWhisperModel,
+  setLanguage: mockSetLanguage,
+  setSelectedPipelineId: mockSetSelectedPipelineId,
+  setSttTask: mockSetSttTask,
 };
 
 let storeOverrides: Partial<typeof defaultStoreState> = {};
 
 vi.mock('@/store/audio-store', () => ({
-    useAudioStore: () => ({ ...defaultStoreState, ...storeOverrides }),
+  useAudioStore: () => ({ ...defaultStoreState, ...storeOverrides }),
 }));
 
 // ── import component under test ────────────────────────────────────
@@ -227,758 +230,745 @@ import { ProcessingConfigPanel } from '../processing-config-panel';
 // ── helpers ────────────────────────────────────────────────────────
 
 function renderPanel(overrides: Partial<typeof defaultStoreState> = {}) {
-    storeOverrides = overrides;
-    return render(<ProcessingConfigPanel />);
+  storeOverrides = overrides;
+  return render(<ProcessingConfigPanel />);
 }
 
 function getSwitch(label: RegExp) {
-    const labelEl = screen.getByText(label);
-    // Walk up to the flex row that contains both label and switch
-    let container = labelEl.parentElement;
-    while (container && !container.querySelector('[role="switch"]')) {
-        container = container.parentElement;
-    }
-    const switchEl = container?.querySelector('[role="switch"]');
-    if (!switchEl) throw new Error(`No switch found near label "${label}"`);
-    return switchEl as HTMLElement;
+  const labelEl = screen.getByText(label);
+  // Walk up to the flex row that contains both label and switch
+  let container = labelEl.parentElement;
+  while (container && !container.querySelector('[role="switch"]')) {
+    container = container.parentElement;
+  }
+  const switchEl = container?.querySelector('[role="switch"]');
+  if (!switchEl) throw new Error(`No switch found near label "${label}"`);
+  return switchEl as HTMLElement;
 }
 
 function getSwitches() {
-    return screen.getAllByRole('switch');
+  return screen.getAllByRole('switch');
 }
 
 // ── tests ──────────────────────────────────────────────────────────
 
 describe('ProcessingConfigPanel', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        storeOverrides = {};
-        pipelinesOverrides = {};
-        mockIsLocked.mockReturnValue(false);
-        mockSetUserPreference.mockReturnValue(true);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    storeOverrides = {};
+    pipelinesOverrides = {};
+    mockIsLocked.mockReturnValue(false);
+    mockSetUserPreference.mockReturnValue(true);
+  });
+
+  // ── 1. Processing method rendering ─────────────────────────────
+
+  describe('processing method selection', () => {
+    it('should render Local AI and Backend WebSocket options', () => {
+      renderPanel();
+
+      expect(screen.getByText('Local AI')).toBeInTheDocument();
+      expect(screen.getByText('Backend (WebSocket)')).toBeInTheDocument();
     });
 
-    // ── 1. Processing method rendering ─────────────────────────────
+    it('should highlight the active processing method with an indicator dot', () => {
+      renderPanel({ processingMethod: 'local_ai' });
 
-    describe('processing method selection', () => {
-        it('should render Local AI and Backend WebSocket options', () => {
-            renderPanel();
+      const localBtn = screen.getByText('Local AI').closest('button')!;
+      const dotInLocal = localBtn.querySelector('.rounded-full');
+      expect(dotInLocal).toBeTruthy();
 
-            expect(screen.getByText('Local AI')).toBeInTheDocument();
-            expect(screen.getByText('Backend (WebSocket)')).toBeInTheDocument();
-        });
-
-        it('should highlight the active processing method with an indicator dot', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const localBtn = screen.getByText('Local AI').closest('button')!;
-            const dotInLocal = localBtn.querySelector('.rounded-full');
-            expect(dotInLocal).toBeTruthy();
-
-            const backendBtn = screen.getByText('Backend (WebSocket)').closest('button')!;
-            const dotInBackend = backendBtn.querySelector('.rounded-full');
-            expect(dotInBackend).toBeFalsy();
-        });
-
-        it('should call setProcessingMethod when clicking a method', () => {
-            renderPanel();
-
-            fireEvent.click(screen.getByText('Local AI').closest('button')!);
-            expect(mockSetProcessingMethod).toHaveBeenCalledWith('local_ai');
-        });
-
-        it('should disable method buttons when isCapturing is true', () => {
-            renderPanel({ isCapturing: true });
-
-            const localBtn = screen.getByText('Local AI').closest('button')!;
-            expect(localBtn).toBeDisabled();
-
-            const backendBtn = screen.getByText('Backend (WebSocket)').closest('button')!;
-            expect(backendBtn).toBeDisabled();
-        });
+      const backendBtn = screen.getByText('Backend (WebSocket)').closest('button')!;
+      const dotInBackend = backendBtn.querySelector('.rounded-full');
+      expect(dotInBackend).toBeFalsy();
     });
 
-    // ── 2. Config-ready gate ───────────────────────────────────────
+    it('should call setProcessingMethod when clicking a method', () => {
+      renderPanel();
 
-    describe('config-ready gate', () => {
-        it('should disable Select-based controls when configReady is false', () => {
-            renderPanel({ configReady: false, processingMethod: 'local_ai' });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            const modelSelect = within(modelCard).getByTestId('select-root');
-            expect(modelSelect.dataset.disabled).toBeDefined();
-        });
-
-        it('should disable switches when isCapturing is true', () => {
-            renderPanel({ processingMethod: 'local_ai', isCapturing: true, noiseFilterEnabled: true, vadEnabled: true });
-
-            const switches = getSwitches();
-            for (const sw of switches) {
-                expect(sw).toBeDisabled();
-            }
-        });
-
-        it('should enable switches when configReady is true and isCapturing is false', () => {
-            renderPanel({ processingMethod: 'local_ai', configReady: true, isCapturing: false });
-
-            const switches = getSwitches();
-            for (const sw of switches) {
-                expect(sw).not.toBeDisabled();
-            }
-        });
+      fireEvent.click(screen.getByText('Local AI').closest('button')!);
+      expect(mockSetProcessingMethod).toHaveBeenCalledWith('local_ai');
     });
 
-    // ── 3. Locked fields ───────────────────────────────────────────
+    it('should disable method buttons when isCapturing is true', () => {
+      renderPanel({ isCapturing: true });
 
-    describe('locked fields', () => {
-        it('should show lock indicator on language when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'stt.language');
-            renderPanel({ processingMethod: 'local_ai' });
+      const localBtn = screen.getByText('Local AI').closest('button')!;
+      expect(localBtn).toBeDisabled();
 
-            const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
-            const lockIcon = within(languageCard).queryByTestId('icon-lock');
-            expect(lockIcon).toBeInTheDocument();
-        });
+      const backendBtn = screen.getByText('Backend (WebSocket)').closest('button')!;
+      expect(backendBtn).toBeDisabled();
+    });
+  });
 
-        it('should show lock indicator on noise cancellation when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.noiseSuppression');
-            renderPanel({ processingMethod: 'local_ai' });
+  // ── 2. Config-ready gate ───────────────────────────────────────
 
-            const lockIcons = screen.getAllByTestId('icon-lock');
-            expect(lockIcons.length).toBeGreaterThanOrEqual(1);
-        });
+  describe('config-ready gate', () => {
+    it('should disable Select-based controls when configReady is false', () => {
+      renderPanel({ configReady: false, processingMethod: 'local_ai' });
 
-        it('should show lock indicator on VAD when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.vadEnabled');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const lockIcons = screen.getAllByTestId('icon-lock');
-            expect(lockIcons.length).toBeGreaterThanOrEqual(1);
-        });
-
-        it('should show lock indicator on diarization when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.diarization');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const lockIcons = screen.getAllByTestId('icon-lock');
-            expect(lockIcons.length).toBeGreaterThanOrEqual(1);
-        });
-
-        it('should show lock indicator on code-switching when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.codeSwitching');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const lockIcons = screen.getAllByTestId('icon-lock');
-            expect(lockIcons.length).toBeGreaterThanOrEqual(1);
-        });
-
-        it('should show lock indicator on default model when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'stt.defaultModel');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            const lockIcon = within(modelCard).queryByTestId('icon-lock');
-            expect(lockIcon).toBeInTheDocument();
-        });
-
-        it('should disable language select when language is locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'stt.language');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
-            const selectRoot = within(languageCard).getByTestId('select-root');
-            expect(selectRoot.dataset.disabled).toBeDefined();
-        });
-
-        it('should disable noise cancellation switch when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.noiseSuppression');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Noise Cancellation/);
-            expect(sw).toBeDisabled();
-        });
-
-        it('should disable VAD switch when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.vadEnabled');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Voice Activity Detection/);
-            expect(sw).toBeDisabled();
-        });
-
-        it('should disable diarization switch when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.diarization');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Speaker Diarization/);
-            expect(sw).toBeDisabled();
-        });
-
-        it('should disable code-switching switch when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.codeSwitching');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Code-Switching/);
-            expect(sw).toBeDisabled();
-        });
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      const modelSelect = within(modelCard).getByTestId('select-root');
+      expect(modelSelect.dataset.disabled).toBeDefined();
     });
 
-    // ── 4. Local AI Model card visibility ──────────────────────────
+    it('should disable switches when isCapturing is true', () => {
+      renderPanel({ processingMethod: 'local_ai', isCapturing: true, noiseFilterEnabled: true, vadEnabled: true });
 
-    describe('Local AI Model card', () => {
-        it('should show Local AI Model card when processingMethod is local_ai', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            expect(screen.getByText('Local AI Model')).toBeInTheDocument();
-        });
-
-        it('should hide Local AI Model card when processingMethod is backend_socket', () => {
-            renderPanel({ processingMethod: 'backend_socket' });
-
-            expect(screen.queryByText('Local AI Model')).not.toBeInTheDocument();
-        });
-
-        it('should display available model options', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            const selectItems = within(modelCard).getAllByTestId('select-item');
-            const labels = selectItems.map((el) => el.textContent?.trim());
-            expect(labels).toEqual(
-                expect.arrayContaining([
-                    expect.stringContaining('Whisper Tiny'),
-                    expect.stringContaining('Whisper Base'),
-                    expect.stringContaining('Whisper Small'),
-                ]),
-            );
-        });
-
-        it('should display model size info', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            expect(screen.getByText('(~75 MB)')).toBeInTheDocument();
-            expect(screen.getByText('(~150 MB)')).toBeInTheDocument();
-            expect(screen.getByText('(~500 MB)')).toBeInTheDocument();
-        });
-
-        it('should disable model select when locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'stt.defaultModel');
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            const selectRoot = within(modelCard).getByTestId('select-root');
-            expect(selectRoot.dataset.disabled).toBeDefined();
-        });
+      const switches = getSwitches();
+      for (const sw of switches) {
+        expect(sw).toBeDisabled();
+      }
     });
 
-    // ── 5. Language selector ───────────────────────────────────────
+    it('should enable switches when configReady is true and isCapturing is false', () => {
+      renderPanel({ processingMethod: 'local_ai', configReady: true, isCapturing: false });
 
-    describe('language selector', () => {
-        it('should display supported languages', () => {
-            renderPanel({ processingMethod: 'local_ai' });
+      const switches = getSwitches();
+      for (const sw of switches) {
+        expect(sw).not.toBeDisabled();
+      }
+    });
+  });
 
-            expect(screen.getByText('English')).toBeInTheDocument();
-            expect(screen.getByText('Vietnamese')).toBeInTheDocument();
-            expect(screen.getByText('Malayalam')).toBeInTheDocument();
-            expect(screen.getByText('Hindi')).toBeInTheDocument();
-            expect(screen.getByText('Tamil')).toBeInTheDocument();
-        });
+  // ── 3. Locked fields ───────────────────────────────────────────
 
-        it('should call setUserPreference and setLanguage on language change', () => {
-            renderPanel({ processingMethod: 'local_ai' });
+  describe('locked fields', () => {
+    it('should show lock indicator on language when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'stt.language');
+      renderPanel({ processingMethod: 'local_ai' });
 
-            const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
-            const vietnameseItem = within(languageCard).getByText('Vietnamese');
-            fireEvent.click(vietnameseItem);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('stt.language', 'vi');
-            expect(mockSetLanguage).toHaveBeenCalledWith('vi');
-        });
-
-        it('should NOT call setLanguage when setUserPreference returns false', () => {
-            mockSetUserPreference.mockReturnValue(false);
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
-            const vietnameseItem = within(languageCard).getByText('Vietnamese');
-            fireEvent.click(vietnameseItem);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('stt.language', 'vi');
-            expect(mockSetLanguage).not.toHaveBeenCalled();
-        });
+      const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
+      const lockIcon = within(languageCard).queryByTestId('icon-lock');
+      expect(lockIcon).toBeInTheDocument();
     });
 
-    // ── 6. Audio processing toggles ────────────────────────────────
+    it('should show lock indicator on noise cancellation when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.noiseSuppression');
+      renderPanel({ processingMethod: 'local_ai' });
 
-    describe('audio processing toggles', () => {
-        it('should call setUserPreference and toggleNoiseFilter on noise toggle', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Noise Cancellation/);
-            fireEvent.click(sw);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.noiseSuppression', true);
-            expect(mockToggleNoiseFilter).toHaveBeenCalledTimes(1);
-        });
-
-        it('should NOT call toggleNoiseFilter when setUserPreference returns false', () => {
-            mockSetUserPreference.mockReturnValue(false);
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Noise Cancellation/);
-            fireEvent.click(sw);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.noiseSuppression', true);
-            expect(mockToggleNoiseFilter).not.toHaveBeenCalled();
-        });
-
-        it('should call setUserPreference and toggleVAD on VAD toggle', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Voice Activity Detection/);
-            fireEvent.click(sw);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.vadEnabled', true);
-            expect(mockToggleVAD).toHaveBeenCalledTimes(1);
-        });
-
-        it('should NOT call toggleVAD when setUserPreference returns false', () => {
-            mockSetUserPreference.mockReturnValue(false);
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Voice Activity Detection/);
-            fireEvent.click(sw);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.vadEnabled', true);
-            expect(mockToggleVAD).not.toHaveBeenCalled();
-        });
-
-        it('should call setUserPreference and toggleDiarization on diarization toggle', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Speaker Diarization/);
-            fireEvent.click(sw);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.diarization', true);
-            expect(mockToggleDiarization).toHaveBeenCalledTimes(1);
-        });
-
-        it('should NOT call toggleDiarization when setUserPreference returns false', () => {
-            mockSetUserPreference.mockReturnValue(false);
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Speaker Diarization/);
-            fireEvent.click(sw);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.diarization', true);
-            expect(mockToggleDiarization).not.toHaveBeenCalled();
-        });
-
-        it('should call setUserPreference and toggleCodeSwitching on code-switching toggle', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Code-Switching/);
-            fireEvent.click(sw);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.codeSwitching', true);
-            expect(mockToggleCodeSwitching).toHaveBeenCalledTimes(1);
-        });
-
-        it('should NOT call toggleCodeSwitching when setUserPreference returns false', () => {
-            mockSetUserPreference.mockReturnValue(false);
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const sw = getSwitch(/Code-Switching/);
-            fireEvent.click(sw);
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.codeSwitching', true);
-            expect(mockToggleCodeSwitching).not.toHaveBeenCalled();
-        });
-
-        it('should reflect checked state for noise cancellation', () => {
-            renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true });
-
-            const sw = getSwitch(/Noise Cancellation/);
-            expect(sw.getAttribute('aria-checked')).toBe('true');
-        });
-
-        it('should reflect checked state for VAD', () => {
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: true });
-
-            const sw = getSwitch(/Voice Activity Detection/);
-            expect(sw.getAttribute('aria-checked')).toBe('true');
-        });
-
-        it('should reflect checked state for diarization', () => {
-            renderPanel({ processingMethod: 'local_ai', diarizationEnabled: true });
-
-            const sw = getSwitch(/Speaker Diarization/);
-            expect(sw.getAttribute('aria-checked')).toBe('true');
-        });
-
-        it('should reflect checked state for code-switching', () => {
-            renderPanel({ processingMethod: 'local_ai', codeSwitchingEnabled: true });
-
-            const sw = getSwitch(/Code-Switching/);
-            expect(sw.getAttribute('aria-checked')).toBe('true');
-        });
+      const lockIcons = screen.getAllByTestId('icon-lock');
+      expect(lockIcons.length).toBeGreaterThanOrEqual(1);
     });
 
-    // ── 7. Noise filter level badges ───────────────────────────────
+    it('should show lock indicator on VAD when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.vadEnabled');
+      renderPanel({ processingMethod: 'local_ai' });
 
-    describe('noise filter level badges', () => {
-        it('should render level badges when noise filter is enabled', () => {
-            renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true });
-
-            expect(screen.getByText('low')).toBeInTheDocument();
-            expect(screen.getByText('medium')).toBeInTheDocument();
-            expect(screen.getByText('high')).toBeInTheDocument();
-        });
-
-        it('should NOT render level badges when noise filter is disabled', () => {
-            renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: false });
-
-            expect(screen.queryByText('low')).not.toBeInTheDocument();
-            expect(screen.queryByText('medium')).not.toBeInTheDocument();
-            expect(screen.queryByText('high')).not.toBeInTheDocument();
-        });
-
-        it('should mark the active level badge with default variant', () => {
-            renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true, noiseFilterLevel: 'high' });
-
-            const highBadge = screen.getByText('high').closest<HTMLElement>('[data-testid="badge"]')!;
-            expect(highBadge.dataset.variant).toBe('default');
-
-            const lowBadge = screen.getByText('low').closest<HTMLElement>('[data-testid="badge"]')!;
-            expect(lowBadge.dataset.variant).toBe('outline');
-        });
-
-        it('should call setUserPreference and setNoiseFilterLevel on badge click', () => {
-            renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true, noiseFilterLevel: 'medium' });
-
-            fireEvent.click(screen.getByText('high'));
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.noiseFilterLevel', 'high');
-            expect(mockSetNoiseFilterLevel).toHaveBeenCalledWith('high');
-        });
-
-        it('should NOT change level when isCapturing is true', () => {
-            renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true, isCapturing: true });
-
-            fireEvent.click(screen.getByText('high'));
-
-            expect(mockSetUserPreference).not.toHaveBeenCalledWith('audio.noiseFilterLevel', expect.anything());
-            expect(mockSetNoiseFilterLevel).not.toHaveBeenCalled();
-        });
-
-        it('should NOT change level when noiseFilterLevel is locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.noiseFilterLevel');
-            renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true });
-
-            fireEvent.click(screen.getByText('high'));
-
-            expect(mockSetUserPreference).not.toHaveBeenCalledWith('audio.noiseFilterLevel', expect.anything());
-            expect(mockSetNoiseFilterLevel).not.toHaveBeenCalled();
-        });
+      const lockIcons = screen.getAllByTestId('icon-lock');
+      expect(lockIcons.length).toBeGreaterThanOrEqual(1);
     });
 
-    // ── 8. VAD threshold slider ────────────────────────────────────
+    it('should show lock indicator on diarization when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.diarization');
+      renderPanel({ processingMethod: 'local_ai' });
 
-    describe('VAD threshold slider', () => {
-        it('should render slider when VAD is enabled', () => {
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: true });
-
-            expect(screen.getByTestId('slider')).toBeInTheDocument();
-            expect(screen.getByText('VAD Sensitivity')).toBeInTheDocument();
-        });
-
-        it('should NOT render slider when VAD is disabled', () => {
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: false });
-
-            expect(screen.queryByTestId('slider')).not.toBeInTheDocument();
-            expect(screen.queryByText('VAD Sensitivity')).not.toBeInTheDocument();
-        });
-
-        it('should display current threshold percentage', () => {
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: true, vadThreshold: 0.7 });
-
-            expect(screen.getByText('70%')).toBeInTheDocument();
-        });
-
-        it('should call setUserPreference and setVADThreshold on slider change', () => {
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: true, vadThreshold: 0.5 });
-
-            const slider = screen.getByTestId('slider');
-            fireEvent.change(slider, { target: { value: '75' } });
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.vadThreshold', 0.75);
-            expect(mockSetVADThreshold).toHaveBeenCalledWith(0.75);
-        });
-
-        it('should NOT call setVADThreshold when setUserPreference returns false', () => {
-            mockSetUserPreference.mockReturnValue(false);
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: true, vadThreshold: 0.5 });
-
-            const slider = screen.getByTestId('slider');
-            fireEvent.change(slider, { target: { value: '75' } });
-
-            expect(mockSetUserPreference).toHaveBeenCalledWith('audio.vadThreshold', 0.75);
-            expect(mockSetVADThreshold).not.toHaveBeenCalled();
-        });
-
-        it('should disable slider when isCapturing is true', () => {
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: true, isCapturing: true });
-
-            expect(screen.getByTestId('slider')).toBeDisabled();
-        });
-
-        it('should disable slider when vadThreshold is locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.vadThreshold');
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: true });
-
-            expect(screen.getByTestId('slider')).toBeDisabled();
-        });
-
-        it('should show lock indicator for VAD sensitivity when vadThreshold is locked', () => {
-            mockIsLocked.mockImplementation((path) => path === 'audio.vadThreshold');
-            renderPanel({ processingMethod: 'local_ai', vadEnabled: true });
-
-            const lockIcons = screen.getAllByTestId('icon-lock');
-            expect(lockIcons.length).toBeGreaterThanOrEqual(1);
-        });
+      const lockIcons = screen.getAllByTestId('icon-lock');
+      expect(lockIcons.length).toBeGreaterThanOrEqual(1);
     });
 
-    // ── 9. Code-switching info text ────────────────────────────────
+    it('should show lock indicator on code-switching when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.codeSwitching');
+      renderPanel({ processingMethod: 'local_ai' });
 
-    describe('code-switching info text', () => {
-        it('should show info text when code-switching is enabled', () => {
-            renderPanel({ processingMethod: 'local_ai', codeSwitchingEnabled: true });
-
-            expect(
-                screen.getByText('Enables multi-language detection within a single audio stream.'),
-            ).toBeInTheDocument();
-        });
-
-        it('should NOT show info text when code-switching is disabled', () => {
-            renderPanel({ processingMethod: 'local_ai', codeSwitchingEnabled: false });
-
-            expect(
-                screen.queryByText('Enables multi-language detection within a single audio stream.'),
-            ).not.toBeInTheDocument();
-        });
+      const lockIcons = screen.getAllByTestId('icon-lock');
+      expect(lockIcons.length).toBeGreaterThanOrEqual(1);
     });
 
-    // ── 10. Card structure ─────────────────────────────────────────
+    it('should show lock indicator on default model when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'stt.defaultModel');
+      renderPanel({ processingMethod: 'local_ai' });
 
-    describe('card structure', () => {
-        it('should render Processing Method card', () => {
-            renderPanel();
-            expect(screen.getByText('Processing Method')).toBeInTheDocument();
-        });
-
-        it('should render Language card', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-            expect(screen.getByText('Language')).toBeInTheDocument();
-        });
-
-        it('should render Audio Processing card', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-            expect(screen.getByText('Audio Processing')).toBeInTheDocument();
-        });
-
-        it('should render 3 cards by default (no local_ai)', () => {
-            renderPanel({ processingMethod: 'backend_socket' });
-
-            const titles = screen.getAllByTestId('card-title').map((t) => t.textContent);
-            expect(titles).toEqual(
-                expect.arrayContaining(['Processing Method', 'Audio Pipeline']),
-            );
-            expect(titles).not.toContain('Local AI Model');
-        });
-
-        it('should render 4 cards when processingMethod is local_ai', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const titles = screen.getAllByTestId('card-title').map((t) => t.textContent);
-            expect(titles).toEqual(
-                expect.arrayContaining(['Processing Method', 'Local AI Model', 'Language', 'Audio Processing']),
-            );
-            expect(titles).not.toContain('Audio Pipeline');
-        });
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      const lockIcon = within(modelCard).queryByTestId('icon-lock');
+      expect(lockIcon).toBeInTheDocument();
     });
 
-    // ── 11. Audio Pipeline selection ──────────────────────────────────
+    it('should disable language select when language is locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'stt.language');
+      renderPanel({ processingMethod: 'local_ai' });
 
-    describe('Audio Pipeline selection', () => {
-        it('should render the Audio Pipeline card when processing method is backend_socket', () => {
-            renderPanel({ processingMethod: 'backend_socket' });
-            expect(screen.getByText('Audio Pipeline')).toBeInTheDocument();
-        });
-
-        it('should NOT render Audio Pipeline card when processing method is local_ai', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-            expect(screen.queryByText('Audio Pipeline')).not.toBeInTheDocument();
-        });
-
-        it('should display available pipelines in the dropdown', () => {
-            renderPanel();
-
-            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
-            const selectItems = within(pipelineCard).getAllByTestId('select-item');
-            const labels = selectItems.map((el) => el.textContent?.trim());
-            expect(labels).toEqual(
-                expect.arrayContaining([
-                    expect.stringContaining('Pipeline Alpha'),
-                    expect.stringContaining('Pipeline Beta'),
-                ]),
-            );
-        });
-
-        it('should enable pipeline select when processingMethod is backend_socket', () => {
-            renderPanel({ processingMethod: 'backend_socket' });
-
-            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
-            const selectRoot = within(pipelineCard).getByTestId('select-root');
-            expect(selectRoot.dataset.disabled).toBeUndefined();
-        });
-
-        it('should hide pipeline select when processingMethod is local_ai', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            expect(screen.queryByText('Audio Pipeline')).not.toBeInTheDocument();
-            // The pipeline select is gone in local_ai mode; only the model + language selects remain.
-            expect(screen.getAllByTestId('select-root')).toHaveLength(2);
-        });
-
-        it('should disable pipeline select when isCapturing is true', () => {
-            renderPanel({ processingMethod: 'backend_socket', isCapturing: true });
-
-            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
-            const selectRoot = within(pipelineCard).getByTestId('select-root');
-            expect(selectRoot.dataset.disabled).toBeDefined();
-        });
-
-        it('should call setSelectedPipelineId when a pipeline is selected', () => {
-            renderPanel({ processingMethod: 'backend_socket' });
-
-            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
-            const item = within(pipelineCard).getByText('Pipeline Beta').closest<HTMLElement>('[data-testid="select-item"]')!;
-            fireEvent.click(item);
-
-            expect(mockSetSelectedPipelineId).toHaveBeenCalledWith('pipe-2');
-        });
-
-        it('should show loading skeleton when pipelines are loading', () => {
-            pipelinesOverrides = { isLoading: true };
-            renderPanel();
-
-            const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
-            const skeleton = pipelineCard.querySelector('.animate-pulse');
-            expect(skeleton).toBeTruthy();
-        });
-
-        it('should show error state when pipeline fetch fails', () => {
-            pipelinesOverrides = { error: new Error('Network error'), pipelines: [] };
-            renderPanel();
-
-            expect(screen.getByText('Failed to load pipelines')).toBeInTheDocument();
-        });
-
-        it('should auto-select first pipeline when backend_socket and no selection', () => {
-            renderPanel({ processingMethod: 'backend_socket', selectedPipelineId: null });
-
-            expect(mockSetSelectedPipelineId).toHaveBeenCalledWith('pipe-1');
-        });
-
-        it('should not auto-select when processingMethod is local_ai', () => {
-            renderPanel({ processingMethod: 'local_ai', selectedPipelineId: null });
-
-            expect(mockSetSelectedPipelineId).not.toHaveBeenCalled();
-        });
-
-        it('should not auto-select when a valid pipeline is already selected', () => {
-            renderPanel({ processingMethod: 'backend_socket', selectedPipelineId: 'pipe-2' });
-
-            expect(mockSetSelectedPipelineId).not.toHaveBeenCalled();
-        });
-
-        it('should auto-select first pipeline when selected pipeline no longer exists', () => {
-            renderPanel({ processingMethod: 'backend_socket', selectedPipelineId: 'deleted-pipe' });
-
-            expect(mockSetSelectedPipelineId).toHaveBeenCalledWith('pipe-1');
-        });
-
-        it('should show pipeline description when available', () => {
-            renderPanel();
-
-            expect(screen.getByText('(First pipeline)')).toBeInTheDocument();
-        });
-
-        it('should call listPipelines on mount', () => {
-            renderPanel();
-
-            expect(mockListPipelines).toHaveBeenCalled();
-        });
+      const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
+      const selectRoot = within(languageCard).getByTestId('select-root');
+      expect(selectRoot.dataset.disabled).toBeDefined();
     });
 
-    // ── 12. TASK-329 P3 — local model + task selection ────────────────
+    it('should disable noise cancellation switch when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.noiseSuppression');
+      renderPanel({ processingMethod: 'local_ai' });
 
-    describe('local model + task selection (TASK-329 P3)', () => {
-        it('persists the model via the SDK registry AND updates runtime state on model change', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            const baseItem = within(modelCard).getByText('Whisper Base').closest<HTMLElement>('[data-testid="select-item"]')!;
-            fireEvent.click(baseItem);
-
-            expect(mockSelectModel).toHaveBeenCalledWith('stt', 'whisper-base');
-            expect(mockSetWhisperModel).toHaveBeenCalledWith('whisper-base');
-        });
-
-        it('renders Transcribe and Translate task options in the Local AI Model card', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            expect(within(modelCard).getByText('Transcribe')).toBeInTheDocument();
-            expect(within(modelCard).getByText('Translate')).toBeInTheDocument();
-        });
-
-        it('persists the task via the SDK registry AND updates runtime state on task change', () => {
-            renderPanel({ processingMethod: 'local_ai', sttTask: 'transcribe' });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            fireEvent.click(within(modelCard).getByText('Translate'));
-
-            expect(mockSelectSttTask).toHaveBeenCalledWith('translate');
-            expect(mockSetSttTask).toHaveBeenCalledWith('translate');
-        });
-
-        it('marks the active task badge with the default variant', () => {
-            renderPanel({ processingMethod: 'local_ai', sttTask: 'translate' });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            const translateBadge = within(modelCard).getByText('Translate').closest<HTMLElement>('[data-testid="badge"]')!;
-            expect(translateBadge.dataset.variant).toBe('default');
-
-            const transcribeBadge = within(modelCard).getByText('Transcribe').closest<HTMLElement>('[data-testid="badge"]')!;
-            expect(transcribeBadge.dataset.variant).toBe('outline');
-        });
-
-        it('does not change the task when isCapturing is true', () => {
-            renderPanel({ processingMethod: 'local_ai', sttTask: 'transcribe', isCapturing: true });
-
-            const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
-            fireEvent.click(within(modelCard).getByText('Translate'));
-
-            expect(mockSelectSttTask).not.toHaveBeenCalled();
-            expect(mockSetSttTask).not.toHaveBeenCalled();
-        });
-
-        it('keeps exactly two Select controls in local AI mode (task is a badge group, not a Select)', () => {
-            renderPanel({ processingMethod: 'local_ai' });
-
-            // model Select + language Select; the task control is a badge group
-            expect(screen.getAllByTestId('select-root')).toHaveLength(2);
-        });
+      const sw = getSwitch(/Noise Cancellation/);
+      expect(sw).toBeDisabled();
     });
+
+    it('should disable VAD switch when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.vadEnabled');
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Voice Activity Detection/);
+      expect(sw).toBeDisabled();
+    });
+
+    it('should disable diarization switch when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.diarization');
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Speaker Diarization/);
+      expect(sw).toBeDisabled();
+    });
+
+    it('should disable code-switching switch when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.codeSwitching');
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Code-Switching/);
+      expect(sw).toBeDisabled();
+    });
+  });
+
+  // ── 4. Local AI Model card visibility ──────────────────────────
+
+  describe('Local AI Model card', () => {
+    it('should show Local AI Model card when processingMethod is local_ai', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      expect(screen.getByText('Local AI Model')).toBeInTheDocument();
+    });
+
+    it('should hide Local AI Model card when processingMethod is backend_socket', () => {
+      renderPanel({ processingMethod: 'backend_socket' });
+
+      expect(screen.queryByText('Local AI Model')).not.toBeInTheDocument();
+    });
+
+    it('should display available model options', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      const selectItems = within(modelCard).getAllByTestId('select-item');
+      const labels = selectItems.map((el) => el.textContent?.trim());
+      expect(labels).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining('Whisper Tiny'),
+          expect.stringContaining('Whisper Base'),
+          expect.stringContaining('Whisper Small'),
+        ]),
+      );
+    });
+
+    it('should display model size info', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      expect(screen.getByText('(~75 MB)')).toBeInTheDocument();
+      expect(screen.getByText('(~150 MB)')).toBeInTheDocument();
+      expect(screen.getByText('(~500 MB)')).toBeInTheDocument();
+    });
+
+    it('should disable model select when locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'stt.defaultModel');
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      const selectRoot = within(modelCard).getByTestId('select-root');
+      expect(selectRoot.dataset.disabled).toBeDefined();
+    });
+  });
+
+  // ── 5. Language selector ───────────────────────────────────────
+
+  describe('language selector', () => {
+    it('should display supported languages', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      expect(screen.getByText('English')).toBeInTheDocument();
+      expect(screen.getByText('Vietnamese')).toBeInTheDocument();
+      expect(screen.getByText('Malayalam')).toBeInTheDocument();
+      expect(screen.getByText('Hindi')).toBeInTheDocument();
+      expect(screen.getByText('Tamil')).toBeInTheDocument();
+    });
+
+    it('should call setUserPreference and setLanguage on language change', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
+      const vietnameseItem = within(languageCard).getByText('Vietnamese');
+      fireEvent.click(vietnameseItem);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('stt.language', 'vi');
+      expect(mockSetLanguage).toHaveBeenCalledWith('vi');
+    });
+
+    it('should NOT call setLanguage when setUserPreference returns false', () => {
+      mockSetUserPreference.mockReturnValue(false);
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const languageCard = screen.getByText('Language').closest<HTMLElement>('[data-testid="card"]')!;
+      const vietnameseItem = within(languageCard).getByText('Vietnamese');
+      fireEvent.click(vietnameseItem);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('stt.language', 'vi');
+      expect(mockSetLanguage).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 6. Audio processing toggles ────────────────────────────────
+
+  describe('audio processing toggles', () => {
+    it('should call setUserPreference and toggleNoiseFilter on noise toggle', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Noise Cancellation/);
+      fireEvent.click(sw);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.noiseSuppression', true);
+      expect(mockToggleNoiseFilter).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT call toggleNoiseFilter when setUserPreference returns false', () => {
+      mockSetUserPreference.mockReturnValue(false);
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Noise Cancellation/);
+      fireEvent.click(sw);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.noiseSuppression', true);
+      expect(mockToggleNoiseFilter).not.toHaveBeenCalled();
+    });
+
+    it('should call setUserPreference and toggleVAD on VAD toggle', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Voice Activity Detection/);
+      fireEvent.click(sw);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.vadEnabled', true);
+      expect(mockToggleVAD).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT call toggleVAD when setUserPreference returns false', () => {
+      mockSetUserPreference.mockReturnValue(false);
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Voice Activity Detection/);
+      fireEvent.click(sw);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.vadEnabled', true);
+      expect(mockToggleVAD).not.toHaveBeenCalled();
+    });
+
+    it('should call setUserPreference and toggleDiarization on diarization toggle', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Speaker Diarization/);
+      fireEvent.click(sw);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.diarization', true);
+      expect(mockToggleDiarization).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT call toggleDiarization when setUserPreference returns false', () => {
+      mockSetUserPreference.mockReturnValue(false);
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Speaker Diarization/);
+      fireEvent.click(sw);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.diarization', true);
+      expect(mockToggleDiarization).not.toHaveBeenCalled();
+    });
+
+    it('should call setUserPreference and toggleCodeSwitching on code-switching toggle', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Code-Switching/);
+      fireEvent.click(sw);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.codeSwitching', true);
+      expect(mockToggleCodeSwitching).toHaveBeenCalledTimes(1);
+    });
+
+    it('should NOT call toggleCodeSwitching when setUserPreference returns false', () => {
+      mockSetUserPreference.mockReturnValue(false);
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const sw = getSwitch(/Code-Switching/);
+      fireEvent.click(sw);
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.codeSwitching', true);
+      expect(mockToggleCodeSwitching).not.toHaveBeenCalled();
+    });
+
+    it('should reflect checked state for noise cancellation', () => {
+      renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true });
+
+      const sw = getSwitch(/Noise Cancellation/);
+      expect(sw.getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('should reflect checked state for VAD', () => {
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: true });
+
+      const sw = getSwitch(/Voice Activity Detection/);
+      expect(sw.getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('should reflect checked state for diarization', () => {
+      renderPanel({ processingMethod: 'local_ai', diarizationEnabled: true });
+
+      const sw = getSwitch(/Speaker Diarization/);
+      expect(sw.getAttribute('aria-checked')).toBe('true');
+    });
+
+    it('should reflect checked state for code-switching', () => {
+      renderPanel({ processingMethod: 'local_ai', codeSwitchingEnabled: true });
+
+      const sw = getSwitch(/Code-Switching/);
+      expect(sw.getAttribute('aria-checked')).toBe('true');
+    });
+  });
+
+  // ── 7. Noise filter level badges ───────────────────────────────
+
+  describe('noise filter level badges', () => {
+    it('should render level badges when noise filter is enabled', () => {
+      renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true });
+
+      expect(screen.getByText('low')).toBeInTheDocument();
+      expect(screen.getByText('medium')).toBeInTheDocument();
+      expect(screen.getByText('high')).toBeInTheDocument();
+    });
+
+    it('should NOT render level badges when noise filter is disabled', () => {
+      renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: false });
+
+      expect(screen.queryByText('low')).not.toBeInTheDocument();
+      expect(screen.queryByText('medium')).not.toBeInTheDocument();
+      expect(screen.queryByText('high')).not.toBeInTheDocument();
+    });
+
+    it('should mark the active level badge with default variant', () => {
+      renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true, noiseFilterLevel: 'high' });
+
+      const highBadge = screen.getByText('high').closest<HTMLElement>('[data-testid="badge"]')!;
+      expect(highBadge.dataset.variant).toBe('default');
+
+      const lowBadge = screen.getByText('low').closest<HTMLElement>('[data-testid="badge"]')!;
+      expect(lowBadge.dataset.variant).toBe('outline');
+    });
+
+    it('should call setUserPreference and setNoiseFilterLevel on badge click', () => {
+      renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true, noiseFilterLevel: 'medium' });
+
+      fireEvent.click(screen.getByText('high'));
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.noiseFilterLevel', 'high');
+      expect(mockSetNoiseFilterLevel).toHaveBeenCalledWith('high');
+    });
+
+    it('should NOT change level when isCapturing is true', () => {
+      renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true, isCapturing: true });
+
+      fireEvent.click(screen.getByText('high'));
+
+      expect(mockSetUserPreference).not.toHaveBeenCalledWith('audio.noiseFilterLevel', expect.anything());
+      expect(mockSetNoiseFilterLevel).not.toHaveBeenCalled();
+    });
+
+    it('should NOT change level when noiseFilterLevel is locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.noiseFilterLevel');
+      renderPanel({ processingMethod: 'local_ai', noiseFilterEnabled: true });
+
+      fireEvent.click(screen.getByText('high'));
+
+      expect(mockSetUserPreference).not.toHaveBeenCalledWith('audio.noiseFilterLevel', expect.anything());
+      expect(mockSetNoiseFilterLevel).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── 8. VAD threshold slider ────────────────────────────────────
+
+  describe('VAD threshold slider', () => {
+    it('should render slider when VAD is enabled', () => {
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: true });
+
+      expect(screen.getByTestId('slider')).toBeInTheDocument();
+      expect(screen.getByText('VAD Sensitivity')).toBeInTheDocument();
+    });
+
+    it('should NOT render slider when VAD is disabled', () => {
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: false });
+
+      expect(screen.queryByTestId('slider')).not.toBeInTheDocument();
+      expect(screen.queryByText('VAD Sensitivity')).not.toBeInTheDocument();
+    });
+
+    it('should display current threshold percentage', () => {
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: true, vadThreshold: 0.7 });
+
+      expect(screen.getByText('70%')).toBeInTheDocument();
+    });
+
+    it('should call setUserPreference and setVADThreshold on slider change', () => {
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: true, vadThreshold: 0.5 });
+
+      const slider = screen.getByTestId('slider');
+      fireEvent.change(slider, { target: { value: '75' } });
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.vadThreshold', 0.75);
+      expect(mockSetVADThreshold).toHaveBeenCalledWith(0.75);
+    });
+
+    it('should NOT call setVADThreshold when setUserPreference returns false', () => {
+      mockSetUserPreference.mockReturnValue(false);
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: true, vadThreshold: 0.5 });
+
+      const slider = screen.getByTestId('slider');
+      fireEvent.change(slider, { target: { value: '75' } });
+
+      expect(mockSetUserPreference).toHaveBeenCalledWith('audio.vadThreshold', 0.75);
+      expect(mockSetVADThreshold).not.toHaveBeenCalled();
+    });
+
+    it('should disable slider when isCapturing is true', () => {
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: true, isCapturing: true });
+
+      expect(screen.getByTestId('slider')).toBeDisabled();
+    });
+
+    it('should disable slider when vadThreshold is locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.vadThreshold');
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: true });
+
+      expect(screen.getByTestId('slider')).toBeDisabled();
+    });
+
+    it('should show lock indicator for VAD sensitivity when vadThreshold is locked', () => {
+      mockIsLocked.mockImplementation((path) => path === 'audio.vadThreshold');
+      renderPanel({ processingMethod: 'local_ai', vadEnabled: true });
+
+      const lockIcons = screen.getAllByTestId('icon-lock');
+      expect(lockIcons.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  // ── 9. Code-switching info text ────────────────────────────────
+
+  describe('code-switching info text', () => {
+    it('should show info text when code-switching is enabled', () => {
+      renderPanel({ processingMethod: 'local_ai', codeSwitchingEnabled: true });
+
+      expect(screen.getByText('Enables multi-language detection within a single audio stream.')).toBeInTheDocument();
+    });
+
+    it('should NOT show info text when code-switching is disabled', () => {
+      renderPanel({ processingMethod: 'local_ai', codeSwitchingEnabled: false });
+
+      expect(screen.queryByText('Enables multi-language detection within a single audio stream.')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── 10. Card structure ─────────────────────────────────────────
+
+  describe('card structure', () => {
+    it('should render Processing Method card', () => {
+      renderPanel();
+      expect(screen.getByText('Processing Method')).toBeInTheDocument();
+    });
+
+    it('should render Language card', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+      expect(screen.getByText('Language')).toBeInTheDocument();
+    });
+
+    it('should render Audio Processing card', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+      expect(screen.getByText('Audio Processing')).toBeInTheDocument();
+    });
+
+    it('should render 3 cards by default (no local_ai)', () => {
+      renderPanel({ processingMethod: 'backend_socket' });
+
+      const titles = screen.getAllByTestId('card-title').map((t) => t.textContent);
+      expect(titles).toEqual(expect.arrayContaining(['Processing Method', 'Audio Pipeline']));
+      expect(titles).not.toContain('Local AI Model');
+    });
+
+    it('should render 4 cards when processingMethod is local_ai', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const titles = screen.getAllByTestId('card-title').map((t) => t.textContent);
+      expect(titles).toEqual(expect.arrayContaining(['Processing Method', 'Local AI Model', 'Language', 'Audio Processing']));
+      expect(titles).not.toContain('Audio Pipeline');
+    });
+  });
+
+  // ── 11. Audio Pipeline selection ──────────────────────────────────
+
+  describe('Audio Pipeline selection', () => {
+    it('should render the Audio Pipeline card when processing method is backend_socket', () => {
+      renderPanel({ processingMethod: 'backend_socket' });
+      expect(screen.getByText('Audio Pipeline')).toBeInTheDocument();
+    });
+
+    it('should NOT render Audio Pipeline card when processing method is local_ai', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+      expect(screen.queryByText('Audio Pipeline')).not.toBeInTheDocument();
+    });
+
+    it('should display available pipelines in the dropdown', () => {
+      renderPanel();
+
+      const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
+      const selectItems = within(pipelineCard).getAllByTestId('select-item');
+      const labels = selectItems.map((el) => el.textContent?.trim());
+      expect(labels).toEqual(expect.arrayContaining([expect.stringContaining('Pipeline Alpha'), expect.stringContaining('Pipeline Beta')]));
+    });
+
+    it('should enable pipeline select when processingMethod is backend_socket', () => {
+      renderPanel({ processingMethod: 'backend_socket' });
+
+      const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
+      const selectRoot = within(pipelineCard).getByTestId('select-root');
+      expect(selectRoot.dataset.disabled).toBeUndefined();
+    });
+
+    it('should hide pipeline select when processingMethod is local_ai', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      expect(screen.queryByText('Audio Pipeline')).not.toBeInTheDocument();
+      // The pipeline select is gone in local_ai mode; only the model + language selects remain.
+      expect(screen.getAllByTestId('select-root')).toHaveLength(2);
+    });
+
+    it('should disable pipeline select when isCapturing is true', () => {
+      renderPanel({ processingMethod: 'backend_socket', isCapturing: true });
+
+      const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
+      const selectRoot = within(pipelineCard).getByTestId('select-root');
+      expect(selectRoot.dataset.disabled).toBeDefined();
+    });
+
+    it('should call setSelectedPipelineId when a pipeline is selected', () => {
+      renderPanel({ processingMethod: 'backend_socket' });
+
+      const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
+      const item = within(pipelineCard).getByText('Pipeline Beta').closest<HTMLElement>('[data-testid="select-item"]')!;
+      fireEvent.click(item);
+
+      expect(mockSetSelectedPipelineId).toHaveBeenCalledWith('pipe-2');
+    });
+
+    it('should show loading skeleton when pipelines are loading', () => {
+      pipelinesOverrides = { isLoading: true };
+      renderPanel();
+
+      const pipelineCard = screen.getByText('Audio Pipeline').closest<HTMLElement>('[data-testid="card"]')!;
+      const skeleton = pipelineCard.querySelector('.animate-pulse');
+      expect(skeleton).toBeTruthy();
+    });
+
+    it('should show error state when pipeline fetch fails', () => {
+      pipelinesOverrides = { error: new Error('Network error'), pipelines: [] };
+      renderPanel();
+
+      expect(screen.getByText('Failed to load pipelines')).toBeInTheDocument();
+    });
+
+    it('should auto-select first pipeline when backend_socket and no selection', () => {
+      renderPanel({ processingMethod: 'backend_socket', selectedPipelineId: null });
+
+      expect(mockSetSelectedPipelineId).toHaveBeenCalledWith('pipe-1');
+    });
+
+    it('should not auto-select when processingMethod is local_ai', () => {
+      renderPanel({ processingMethod: 'local_ai', selectedPipelineId: null });
+
+      expect(mockSetSelectedPipelineId).not.toHaveBeenCalled();
+    });
+
+    it('should not auto-select when a valid pipeline is already selected', () => {
+      renderPanel({ processingMethod: 'backend_socket', selectedPipelineId: 'pipe-2' });
+
+      expect(mockSetSelectedPipelineId).not.toHaveBeenCalled();
+    });
+
+    it('should auto-select first pipeline when selected pipeline no longer exists', () => {
+      renderPanel({ processingMethod: 'backend_socket', selectedPipelineId: 'deleted-pipe' });
+
+      expect(mockSetSelectedPipelineId).toHaveBeenCalledWith('pipe-1');
+    });
+
+    it('should show pipeline description when available', () => {
+      renderPanel();
+
+      expect(screen.getByText('(First pipeline)')).toBeInTheDocument();
+    });
+
+    it('should call listPipelines on mount', () => {
+      renderPanel();
+
+      expect(mockListPipelines).toHaveBeenCalled();
+    });
+  });
+
+  // ── 12. TASK-329 P3 — local model + task selection ────────────────
+
+  describe('local model + task selection (TASK-329 P3)', () => {
+    it('persists the model via the SDK registry AND updates runtime state on model change', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      const baseItem = within(modelCard).getByText('Whisper Base').closest<HTMLElement>('[data-testid="select-item"]')!;
+      fireEvent.click(baseItem);
+
+      expect(mockSelectModel).toHaveBeenCalledWith('stt', 'whisper-base');
+      expect(mockSetWhisperModel).toHaveBeenCalledWith('whisper-base');
+    });
+
+    it('renders Transcribe and Translate task options in the Local AI Model card', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      expect(within(modelCard).getByText('Transcribe')).toBeInTheDocument();
+      expect(within(modelCard).getByText('Translate')).toBeInTheDocument();
+    });
+
+    it('persists the task via the SDK registry AND updates runtime state on task change', () => {
+      renderPanel({ processingMethod: 'local_ai', sttTask: 'transcribe' });
+
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      fireEvent.click(within(modelCard).getByText('Translate'));
+
+      expect(mockSelectSttTask).toHaveBeenCalledWith('translate');
+      expect(mockSetSttTask).toHaveBeenCalledWith('translate');
+    });
+
+    it('marks the active task badge with the default variant', () => {
+      renderPanel({ processingMethod: 'local_ai', sttTask: 'translate' });
+
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      const translateBadge = within(modelCard).getByText('Translate').closest<HTMLElement>('[data-testid="badge"]')!;
+      expect(translateBadge.dataset.variant).toBe('default');
+
+      const transcribeBadge = within(modelCard).getByText('Transcribe').closest<HTMLElement>('[data-testid="badge"]')!;
+      expect(transcribeBadge.dataset.variant).toBe('outline');
+    });
+
+    it('does not change the task when isCapturing is true', () => {
+      renderPanel({ processingMethod: 'local_ai', sttTask: 'transcribe', isCapturing: true });
+
+      const modelCard = screen.getByText('Local AI Model').closest<HTMLElement>('[data-testid="card"]')!;
+      fireEvent.click(within(modelCard).getByText('Translate'));
+
+      expect(mockSelectSttTask).not.toHaveBeenCalled();
+      expect(mockSetSttTask).not.toHaveBeenCalled();
+    });
+
+    it('keeps exactly two Select controls in local AI mode (task is a badge group, not a Select)', () => {
+      renderPanel({ processingMethod: 'local_ai' });
+
+      // model Select + language Select; the task control is a badge group
+      expect(screen.getAllByTestId('select-root')).toHaveLength(2);
+    });
+  });
 });

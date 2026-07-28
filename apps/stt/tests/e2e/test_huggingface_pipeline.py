@@ -310,9 +310,9 @@ class TestDtypeCastingFix:
         source = inspect.getsource(HuggingFaceLoader.load)
         # The fix changed: _get_device(model_config.compute_type or "auto")
         # to: _get_device(requested_device) where requested_device = model_config.device or "auto"
-        assert '_get_device(requested_device)' in source or '_get_device("auto")' in source, (
-            "HuggingFaceLoader.load() should call _get_device with device (not compute_type)"
-        )
+        assert (
+            "_get_device(requested_device)" in source or '_get_device("auto")' in source
+        ), "HuggingFaceLoader.load() should call _get_device with device (not compute_type)"
 
     def test_onnx_loader_uses_auto_device(self):
         """ONNXLoader._load_with_optimum() should call _get_device('auto')."""
@@ -435,9 +435,9 @@ class TestDtypeCastingFix:
         assert (
             "asr_model.float()" in source or "asr_model = asr_model.float()" in source
         ), "_run_transformers_inference must cast fp16 model to float32"
-        assert '"cpu"' in source and '"mps"' in source, (
-            "_run_transformers_inference must guard against fp16 on both CPU and MPS"
-        )
+        assert (
+            '"cpu"' in source and '"mps"' in source
+        ), "_run_transformers_inference must guard against fp16 on both CPU and MPS"
 
 
 # ============================================================================

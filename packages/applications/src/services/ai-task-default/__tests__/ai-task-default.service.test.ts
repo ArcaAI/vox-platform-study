@@ -168,9 +168,7 @@ describe('AiTaskDefaultService — upsertRow validation', () => {
     const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(null);
 
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'ghost-model', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
+    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'ghost-model', expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('rejects a slug whose taskType does not match the task key', async () => {
@@ -178,9 +176,9 @@ describe('AiTaskDefaultService — upsertRow validation', () => {
     // nlp.ner requires TOKEN_CLASSIFICATION; hand it a TEXT_GENERATION model.
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
 
-    await expect(
-      ctx.svc.upsertRow('nlp.ner', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 }),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 })).rejects.toBeInstanceOf(
+      ArgumentInvalidException,
+    );
   });
 });
 
@@ -189,9 +187,9 @@ describe('AiTaskDefaultService — GLOBAL_ADMIN-only governance', () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ taskType: ModelTaskType.GUARDRAIL }));
 
-    await expect(
-      ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(ctx.svc.upsertRow('guardrail.validate', { modelSlug: 'granite-guardian-4.1-8b', expectedVersion: 0 })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(ctx.repo.create).not.toHaveBeenCalled();
   });
 
@@ -229,9 +227,9 @@ describe('AiTaskDefaultService — GLOBAL_ADMIN-only governance', () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
 
-    await expect(
-      ctx.svc.upsertRow('smr.live', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(ctx.svc.upsertRow('smr.live', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 });
 
@@ -264,9 +262,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
 
   it('updates via compare-and-set + broadcasts ResourceUpdated when a row exists', async () => {
     const ctx = makeService({ roles: ['GLOBAL_ADMIN'] });
-    ctx.modelRepo.findBySlug.mockResolvedValue(
-      makeModel({ slug: 'symps-disease-bert-v3-c41', taskType: ModelTaskType.TEXT_CLASSIFICATION }),
-    );
+    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'symps-disease-bert-v3-c41', taskType: ModelTaskType.TEXT_CLASSIFICATION }));
     const row = makeRow({ taskKey: 'nlp.classification', modelSlug: 'old-slug' });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
     ctx.repo.updateWithVersion.mockImplementation(async () => row);
@@ -283,7 +279,9 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'medical-ner', taskType: ModelTaskType.TOKEN_CLASSIFICATION }));
     const row = makeRow({ modelSlug: 'old-slug' });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
-    ctx.repo.updateWithVersion.mockRejectedValue(new OptimisticConcurrencyException('AiTaskDefault', row.id, { expectedVersion: 1, currentVersion: 2 }));
+    ctx.repo.updateWithVersion.mockRejectedValue(
+      new OptimisticConcurrencyException('AiTaskDefault', row.id, { expectedVersion: 1, currentVersion: 2 }),
+    );
 
     await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 })).rejects.toBeInstanceOf(
       OptimisticConcurrencyException,
@@ -297,9 +295,7 @@ describe('AiTaskDefaultService — upsertRow OCC + sys-events', () => {
     const row = AiTaskDefaultFactory.CreateAiTaskDefault({ tenantId: TENANT, taskKey: 'nlp.ner', modelSlug: 'medical-ner', updatedBy: 'u1' });
     ctx.repo.findByTenantAndTaskKey.mockResolvedValue(row);
 
-    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
+    await expect(ctx.svc.upsertRow('nlp.ner', { modelSlug: 'medical-ner', expectedVersion: 1 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('honors an explicit tenantId override (global admin acting on another tenant)', async () => {

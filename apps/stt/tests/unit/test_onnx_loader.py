@@ -41,6 +41,7 @@ def _stub_onnxruntime():
     finally:
         sys.modules.pop("onnxruntime", None)
 
+
 @pytest.fixture(autouse=True)
 def _stub_huggingface_hub():
     """Ensure ``huggingface_hub`` is importable for every test.
@@ -62,6 +63,7 @@ def _stub_huggingface_hub():
         yield
     finally:
         sys.modules.pop("huggingface_hub", None)
+
 
 # =============================================================================
 # Standard ONNX Loader — _get_providers()

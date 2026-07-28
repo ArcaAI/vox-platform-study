@@ -33,10 +33,7 @@ import { AiProviderConnection } from '../../../models';
  * but NO read DTO may ever surface it — see `AiProviderConnectionDtoMapper`.
  */
 @Injectable()
-export class AiProviderConnectionRepository extends Repository<
-  AiProviderConnectionEntity,
-  AiProviderConnection
-> {
+export class AiProviderConnectionRepository extends Repository<AiProviderConnectionEntity, AiProviderConnection> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'aiProviderConnection', AiProviderConnectionEntityMapper.getInstance());
   }
@@ -111,11 +108,7 @@ export class AiProviderConnectionRepository extends Repository<
    * BYO resolution). Filtering by `service` keeps an `llm` resolver from ever
    * seeing an `stt`/`tts` row and vice-versa.
    */
-  async findByTenantIdAndService(
-    service: string,
-    tenantId: string,
-    tx?: Prisma.TransactionClient | any,
-  ): Promise<AiProviderConnectionEntity[]> {
+  async findByTenantIdAndService(service: string, tenantId: string, tx?: Prisma.TransactionClient | any): Promise<AiProviderConnectionEntity[]> {
     const where = { tenantId, service, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
@@ -133,11 +126,7 @@ export class AiProviderConnectionRepository extends Repository<
   // ===== Deprecated pre-unification wrappers (removed by the adoption lanes) =
 
   /** @deprecated Use `findByTenantServiceProvider('llm', provider, tenantId, tx)`. */
-  async findByTenantAndProvider(
-    tenantId: string,
-    provider: string,
-    tx?: Prisma.TransactionClient | any,
-  ): Promise<AiProviderConnectionEntity | null> {
+  async findByTenantAndProvider(tenantId: string, provider: string, tx?: Prisma.TransactionClient | any): Promise<AiProviderConnectionEntity | null> {
     return this.findByTenantServiceProvider('llm', provider, tenantId, tx);
   }
 
@@ -151,10 +140,7 @@ export class AiProviderConnectionRepository extends Repository<
   }
 
   /** @deprecated Use `findByTenantIdAndService('llm', tenantId, tx)`. */
-  async findByTenantId(
-    tenantId: string,
-    tx?: Prisma.TransactionClient | any,
-  ): Promise<AiProviderConnectionEntity[]> {
+  async findByTenantId(tenantId: string, tx?: Prisma.TransactionClient | any): Promise<AiProviderConnectionEntity[]> {
     return this.findByTenantIdAndService('llm', tenantId, tx);
   }
 }

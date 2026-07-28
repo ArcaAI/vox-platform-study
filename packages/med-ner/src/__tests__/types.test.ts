@@ -4,14 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  MedicalEntityType,
-  LABEL_TO_ENTITY_TYPE,
-  MODEL_MAP,
-  DEFAULT_MED_NER_OPTIONS,
-  MedNERError,
-  MedNERErrorCode,
-} from '../types/index.js';
+import { MedicalEntityType, LABEL_TO_ENTITY_TYPE, MODEL_MAP, DEFAULT_MED_NER_OPTIONS, MedNERError, MedNERErrorCode } from '../types/index.js';
 
 describe('MedicalEntityType', () => {
   it('should have all expected entity types', () => {
@@ -122,10 +115,7 @@ describe('DEFAULT_MED_NER_OPTIONS', () => {
 
 describe('MedNERError', () => {
   it('should create error with code and message', () => {
-    const error = new MedNERError(
-      MedNERErrorCode.MODEL_LOAD_FAILED,
-      'Failed to load model'
-    );
+    const error = new MedNERError(MedNERErrorCode.MODEL_LOAD_FAILED, 'Failed to load model');
 
     expect(error.code).toBe(MedNERErrorCode.MODEL_LOAD_FAILED);
     expect(error.message).toBe('Failed to load model');
@@ -135,11 +125,7 @@ describe('MedNERError', () => {
 
   it('should create error with cause', () => {
     const cause = new Error('Network error');
-    const error = new MedNERError(
-      MedNERErrorCode.NETWORK_ERROR,
-      'Failed to download model',
-      cause
-    );
+    const error = new MedNERError(MedNERErrorCode.NETWORK_ERROR, 'Failed to download model', cause);
 
     expect(error.code).toBe(MedNERErrorCode.NETWORK_ERROR);
     expect(error.message).toBe('Failed to download model');

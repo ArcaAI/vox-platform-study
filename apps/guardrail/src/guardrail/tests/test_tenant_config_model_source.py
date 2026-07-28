@@ -87,11 +87,7 @@ def _resolver(rows_ref: dict, clock=None, ttl: int = 60) -> TenantConfigResolver
 
 @pytest.mark.asyncio
 async def test_load_from_db_returns_local_path_and_checksum() -> None:
-    rows_ref = {
-        "rows": [
-            _row(local_path="/opt/hope/models/minicheck", checksum="a" * 64)
-        ]
-    }
+    rows_ref = {"rows": [_row(local_path="/opt/hope/models/minicheck", checksum="a" * 64)]}
 
     cfg = await _resolver(rows_ref).resolve(TENANT_A, "guardrail.groundedness")
 

@@ -11,114 +11,114 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Paginated } from '@/shared/api';
 import {
-    activateVersion,
-    approveTemplate,
-    assignDepartment,
-    createDepartmentAgent,
-    createTemplate,
-    deleteDepartmentAgent,
-    deleteTemplate,
-    diffVersions,
-    getDepartmentAgent,
-    getTemplate,
-    getUsageAnalytics,
-    getUsageStats,
-    listAgentEvalRuns,
-    listDepartmentAgents,
-    listDepartments,
-    listEvalGoldenSets,
-    listTemplates,
-    listUsageRecords,
-    listVersions,
-    pinDepartmentAgent,
-    runGoldenSetEval,
-    setDefaultDepartmentAgent,
-    testTemplate,
-    updateDepartmentAgent,
-    updateTemplate,
+  activateVersion,
+  approveTemplate,
+  assignDepartment,
+  createDepartmentAgent,
+  createTemplate,
+  deleteDepartmentAgent,
+  deleteTemplate,
+  diffVersions,
+  getDepartmentAgent,
+  getTemplate,
+  getUsageAnalytics,
+  getUsageStats,
+  listAgentEvalRuns,
+  listDepartmentAgents,
+  listDepartments,
+  listEvalGoldenSets,
+  listTemplates,
+  listUsageRecords,
+  listVersions,
+  pinDepartmentAgent,
+  runGoldenSetEval,
+  setDefaultDepartmentAgent,
+  testTemplate,
+  updateDepartmentAgent,
+  updateTemplate,
 } from './client';
 import { agentEvalKeys, agentKeys, departmentAgentKeys } from './keys';
 import type {
-    AssignDepartmentRequest,
-    CreateDepartmentAgentRequest,
-    CreateTemplateRequest,
-    DepartmentAgent,
-    ListDepartmentAgentsParams,
-    ListEvalGoldenSetsParams,
-    ListTemplatesParams,
-    ListUsageRecordsParams,
-    TestTemplateRequest,
-    UpdateDepartmentAgentRequest,
-    UpdateTemplateRequest,
+  AssignDepartmentRequest,
+  CreateDepartmentAgentRequest,
+  CreateTemplateRequest,
+  DepartmentAgent,
+  ListDepartmentAgentsParams,
+  ListEvalGoldenSetsParams,
+  ListTemplatesParams,
+  ListUsageRecordsParams,
+  TestTemplateRequest,
+  UpdateDepartmentAgentRequest,
+  UpdateTemplateRequest,
 } from './types';
 
 export function useTemplates(params?: ListTemplatesParams) {
-    return useQuery({ queryKey: agentKeys.list(params), queryFn: () => listTemplates(params), placeholderData: keepPreviousData });
+  return useQuery({ queryKey: agentKeys.list(params), queryFn: () => listTemplates(params), placeholderData: keepPreviousData });
 }
 
 /** Detail read: `data.data` is the template, `data.etag` feeds PATCH/test. */
 export function useTemplate(id: string) {
-    return useQuery({ queryKey: agentKeys.detail(id), queryFn: () => getTemplate(id), enabled: !!id });
+  return useQuery({ queryKey: agentKeys.detail(id), queryFn: () => getTemplate(id), enabled: !!id });
 }
 
 export function useVersions(id: string) {
-    return useQuery({ queryKey: agentKeys.versions(id), queryFn: () => listVersions(id), enabled: !!id });
+  return useQuery({ queryKey: agentKeys.versions(id), queryFn: () => listVersions(id), enabled: !!id });
 }
 
 /** Diff of two picked versions; held off until both sides differ. */
 export function useVersionDiff(id: string, from: number | null, to: number | null) {
-    return useQuery({
-        queryKey: agentKeys.diff(id, from ?? 0, to ?? 0),
-        queryFn: () => diffVersions(id, from as number, to as number),
-        enabled: !!id && from !== null && to !== null && from !== to,
-    });
+  return useQuery({
+    queryKey: agentKeys.diff(id, from ?? 0, to ?? 0),
+    queryFn: () => diffVersions(id, from as number, to as number),
+    enabled: !!id && from !== null && to !== null && from !== to,
+  });
 }
 
 export function useUsageStats(id: string) {
-    return useQuery({ queryKey: agentKeys.usage(id), queryFn: () => getUsageStats(id), enabled: !!id });
+  return useQuery({ queryKey: agentKeys.usage(id), queryFn: () => getUsageStats(id), enabled: !!id });
 }
 
 export function useUsageAnalytics(promptTemplateId?: string) {
-    return useQuery({ queryKey: agentKeys.analytics(promptTemplateId), queryFn: () => getUsageAnalytics(promptTemplateId) });
+  return useQuery({ queryKey: agentKeys.analytics(promptTemplateId), queryFn: () => getUsageAnalytics(promptTemplateId) });
 }
 
 export function useUsageRecords(params?: ListUsageRecordsParams) {
-    return useQuery({ queryKey: agentKeys.usageRecords(params), queryFn: () => listUsageRecords(params), placeholderData: keepPreviousData });
+  return useQuery({ queryKey: agentKeys.usageRecords(params), queryFn: () => listUsageRecords(params), placeholderData: keepPreviousData });
 }
 
 export function useDepartments() {
-    return useQuery({ queryKey: agentKeys.departments(), queryFn: listDepartments });
+  return useQuery({ queryKey: agentKeys.departments(), queryFn: listDepartments });
 }
 
 function useInvalidateAgents() {
-    const queryClient = useQueryClient();
-    return () => queryClient.invalidateQueries({ queryKey: agentKeys.root });
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: agentKeys.root });
 }
 
 export function useCreateTemplate() {
-    const invalidate = useInvalidateAgents();
-    return useMutation({ mutationFn: (body: CreateTemplateRequest) => createTemplate(body), onSuccess: invalidate });
+  const invalidate = useInvalidateAgents();
+  return useMutation({ mutationFn: (body: CreateTemplateRequest) => createTemplate(body), onSuccess: invalidate });
 }
 
 export function useUpdateTemplate() {
-    const invalidate = useInvalidateAgents();
-    return useMutation({
-        mutationFn: ({ id, patch, etag }: { id: string; patch: UpdateTemplateRequest; etag: string }) => updateTemplate(id, patch, etag),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateAgents();
+  return useMutation({
+    mutationFn: ({ id, patch, etag }: { id: string; patch: UpdateTemplateRequest; etag: string }) => updateTemplate(id, patch, etag),
+    onSuccess: invalidate,
+  });
 }
 
 export function useDeleteTemplate() {
-    const invalidate = useInvalidateAgents();
-    return useMutation({ mutationFn: (id: string) => deleteTemplate(id), onSuccess: invalidate });
+  const invalidate = useInvalidateAgents();
+  return useMutation({ mutationFn: (id: string) => deleteTemplate(id), onSuccess: invalidate });
 }
 
 export function useActivateVersion() {
-    const invalidate = useInvalidateAgents();
-    return useMutation({
-        mutationFn: ({ id, versionNumber }: { id: string; versionNumber: number }) => activateVersion(id, versionNumber),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateAgents();
+  return useMutation({
+    mutationFn: ({ id, versionNumber }: { id: string; versionNumber: number }) => activateVersion(id, versionNumber),
+    onSuccess: invalidate,
+  });
 }
 
 /**
@@ -127,23 +127,23 @@ export function useActivateVersion() {
  * pins a new PromptVersion, so list, detail and versions all go stale.
  */
 export function useApproveTemplate() {
-    const invalidate = useInvalidateAgents();
-    return useMutation({
-        mutationFn: ({ id, reason, etag }: { id: string; reason?: string; etag: string }) => approveTemplate(id, reason, etag),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateAgents();
+  return useMutation({
+    mutationFn: ({ id, reason, etag }: { id: string; reason?: string; etag: string }) => approveTemplate(id, reason, etag),
+    onSuccess: invalidate,
+  });
 }
 
 /** Dry-run tool: deliberately NO cache invalidation (see module doc). */
 export function useTestTemplate() {
-    return useMutation({
-        mutationFn: ({ id, body, etag }: { id: string; body: TestTemplateRequest; etag: string }) => testTemplate(id, body, etag),
-    });
+  return useMutation({
+    mutationFn: ({ id, body, etag }: { id: string; body: TestTemplateRequest; etag: string }) => testTemplate(id, body, etag),
+  });
 }
 
 export function useAssignDepartment() {
-    const invalidate = useInvalidateAgents();
-    return useMutation({ mutationFn: (body: AssignDepartmentRequest) => assignDepartment(body), onSuccess: invalidate });
+  const invalidate = useInvalidateAgents();
+  return useMutation({ mutationFn: (body: AssignDepartmentRequest) => assignDepartment(body), onSuccess: invalidate });
 }
 
 // ---------------------------------------------------------------------------
@@ -153,39 +153,39 @@ export function useAssignDepartment() {
 // ---------------------------------------------------------------------------
 
 export function useDepartmentAgents(params?: ListDepartmentAgentsParams) {
-    return useQuery({
-        queryKey: departmentAgentKeys.list(params),
-        queryFn: () => listDepartmentAgents(params),
-        placeholderData: keepPreviousData,
-    });
+  return useQuery({
+    queryKey: departmentAgentKeys.list(params),
+    queryFn: () => listDepartmentAgents(params),
+    placeholderData: keepPreviousData,
+  });
 }
 
 /** Detail read: `data.data` is the agent, `data.etag` feeds the Settings-tab PATCH. */
 export function useDepartmentAgent(id: string) {
-    return useQuery({ queryKey: departmentAgentKeys.detail(id), queryFn: () => getDepartmentAgent(id), enabled: !!id });
+  return useQuery({ queryKey: departmentAgentKeys.detail(id), queryFn: () => getDepartmentAgent(id), enabled: !!id });
 }
 
 function useInvalidateDepartmentAgents() {
-    const queryClient = useQueryClient();
-    return () => queryClient.invalidateQueries({ queryKey: departmentAgentKeys.root });
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: departmentAgentKeys.root });
 }
 
 export function useCreateDepartmentAgent() {
-    const invalidate = useInvalidateDepartmentAgents();
-    return useMutation({ mutationFn: (body: CreateDepartmentAgentRequest) => createDepartmentAgent(body), onSuccess: invalidate });
+  const invalidate = useInvalidateDepartmentAgents();
+  return useMutation({ mutationFn: (body: CreateDepartmentAgentRequest) => createDepartmentAgent(body), onSuccess: invalidate });
 }
 
 export function useUpdateDepartmentAgent() {
-    const invalidate = useInvalidateDepartmentAgents();
-    return useMutation({
-        mutationFn: ({ id, patch, etag }: { id: string; patch: UpdateDepartmentAgentRequest; etag: string }) => updateDepartmentAgent(id, patch, etag),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateDepartmentAgents();
+  return useMutation({
+    mutationFn: ({ id, patch, etag }: { id: string; patch: UpdateDepartmentAgentRequest; etag: string }) => updateDepartmentAgent(id, patch, etag),
+    onSuccess: invalidate,
+  });
 }
 
 export function useDeleteDepartmentAgent() {
-    const invalidate = useInvalidateDepartmentAgents();
-    return useMutation({ mutationFn: (id: string) => deleteDepartmentAgent(id), onSuccess: invalidate });
+  const invalidate = useInvalidateDepartmentAgents();
+  return useMutation({ mutationFn: (id: string) => deleteDepartmentAgent(id), onSuccess: invalidate });
 }
 
 /**
@@ -195,40 +195,40 @@ export function useDeleteDepartmentAgent() {
  * back on error, and always reconciles with a background invalidate.
  */
 export function useSetDefaultDepartmentAgent() {
-    const queryClient = useQueryClient();
-    // Scoped to the LIST queries only (`[...root, 'list']`) — the broader
-    // `root` prefix also matches the detail query, whose cached shape is
-    // `WithEtag<DepartmentAgent>` (a single row), not `Paginated<DepartmentAgent>`;
-    // running the list updater against it would throw inside onMutate and
-    // silently swallow the mutation before the POST ever fires.
-    const listQueryKey = [...departmentAgentKeys.root, 'list'] as const;
-    return useMutation({
-        mutationFn: (id: string) => setDefaultDepartmentAgent(id),
-        onMutate: async (id: string) => {
-            await queryClient.cancelQueries({ queryKey: listQueryKey });
-            const previous = queryClient.getQueriesData<Paginated<DepartmentAgent>>({ queryKey: listQueryKey });
-            queryClient.setQueriesData<Paginated<DepartmentAgent>>({ queryKey: listQueryKey }, (data) => {
-                if (!data) return data;
-                const target = data.data.find((row) => row.id === id);
-                if (!target) return data;
-                return { ...data, data: data.data.map((row) => (row.departmentId === target.departmentId ? { ...row, isDefault: row.id === id } : row)) };
-            });
-            return { previous };
-        },
-        onError: (_error, _id, context) => {
-            context?.previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
-        },
-        onSettled: () => void queryClient.invalidateQueries({ queryKey: departmentAgentKeys.root }),
-    });
+  const queryClient = useQueryClient();
+  // Scoped to the LIST queries only (`[...root, 'list']`) — the broader
+  // `root` prefix also matches the detail query, whose cached shape is
+  // `WithEtag<DepartmentAgent>` (a single row), not `Paginated<DepartmentAgent>`;
+  // running the list updater against it would throw inside onMutate and
+  // silently swallow the mutation before the POST ever fires.
+  const listQueryKey = [...departmentAgentKeys.root, 'list'] as const;
+  return useMutation({
+    mutationFn: (id: string) => setDefaultDepartmentAgent(id),
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: listQueryKey });
+      const previous = queryClient.getQueriesData<Paginated<DepartmentAgent>>({ queryKey: listQueryKey });
+      queryClient.setQueriesData<Paginated<DepartmentAgent>>({ queryKey: listQueryKey }, (data) => {
+        if (!data) return data;
+        const target = data.data.find((row) => row.id === id);
+        if (!target) return data;
+        return { ...data, data: data.data.map((row) => (row.departmentId === target.departmentId ? { ...row, isDefault: row.id === id } : row)) };
+      });
+      return { previous };
+    },
+    onError: (_error, _id, context) => {
+      context?.previous.forEach(([key, data]) => queryClient.setQueryData(key, data));
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: departmentAgentKeys.root }),
+  });
 }
 
 /** Pin to a specific PromptVersion, or `null` to track the latest APPROVED. */
 export function usePinDepartmentAgent() {
-    const invalidate = useInvalidateDepartmentAgents();
-    return useMutation({
-        mutationFn: ({ id, versionNumber }: { id: string; versionNumber: number | null }) => pinDepartmentAgent(id, versionNumber),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateDepartmentAgents();
+  return useMutation({
+    mutationFn: ({ id, versionNumber }: { id: string; versionNumber: number | null }) => pinDepartmentAgent(id, versionNumber),
+    onSuccess: invalidate,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +239,7 @@ export function usePinDepartmentAgent() {
 
 /** Golden sets for the Settings-tab picker and the Eval panel's name lookup. */
 export function useEvalGoldenSets(params?: ListEvalGoldenSetsParams) {
-    return useQuery({ queryKey: agentEvalKeys.goldenSets(params), queryFn: () => listEvalGoldenSets(params) });
+  return useQuery({ queryKey: agentEvalKeys.goldenSets(params), queryFn: () => listEvalGoldenSets(params) });
 }
 
 /**
@@ -247,19 +247,19 @@ export function useEvalGoldenSets(params?: ListEvalGoldenSetsParams) {
  * until an agent with an attached golden set is selected.
  */
 export function useAgentEvalRuns(goldenSetId: string | null, limit = 5) {
-    const params = { goldenSetId: goldenSetId ?? undefined, limit };
-    return useQuery({
-        queryKey: agentEvalKeys.evalRuns(params),
-        queryFn: () => listAgentEvalRuns(params),
-        enabled: !!goldenSetId,
-    });
+  const params = { goldenSetId: goldenSetId ?? undefined, limit };
+  return useQuery({
+    queryKey: agentEvalKeys.evalRuns(params),
+    queryFn: () => listAgentEvalRuns(params),
+    enabled: !!goldenSetId,
+  });
 }
 
 /** Synchronous manual run-now — invalidates the eval-gated-promotion root so the "last runs" list refetches. */
 export function useRunGoldenSetEval() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: (goldenSetId: string) => runGoldenSetEval(goldenSetId),
-        onSuccess: () => void queryClient.invalidateQueries({ queryKey: agentEvalKeys.root }),
-    });
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (goldenSetId: string) => runGoldenSetEval(goldenSetId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: agentEvalKeys.root }),
+  });
 }

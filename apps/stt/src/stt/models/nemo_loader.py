@@ -102,9 +102,7 @@ class NeMoLoader(BaseModelLoader):
                 "pip install 'nemo_toolkit[asr]>=2.0.0,<3.0.0'"
             ) from e
         except Exception as e:
-            raise ModelLoadError(
-                f"Failed to load NeMo model {model_config.slug}: {e}"
-            ) from e
+            raise ModelLoadError(f"Failed to load NeMo model {model_config.slug}: {e}") from e
 
     async def unload(self, loaded_model: LoadedModel) -> None:
         try:

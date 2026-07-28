@@ -72,13 +72,13 @@ Then open http://localhost:8089 and configure users/spawn rate.
 
 ## Expected Behavior
 
-| Feature        | Trigger                         | Expected Response                         |
-|----------------|----------------------------------|-------------------------------------------|
-| **Rate limiter** | TPM/RPM limits exceeded          | 429 with `Retry-After` header             |
-| **Circuit breaker** | 5 consecutive failures          | 503 with `Retry-After: 30`                |
-| **Semaphore**  | `max_concurrent` requests exceeded | 503 with `Retry-After: 5`                 |
-| **Queue**      | Rate-limited + queue full or timeout | 429                                      |
-| **Graceful shutdown** | New requests during shutdown   | 503                                       |
+| Feature               | Trigger                              | Expected Response             |
+| --------------------- | ------------------------------------ | ----------------------------- |
+| **Rate limiter**      | TPM/RPM limits exceeded              | 429 with `Retry-After` header |
+| **Circuit breaker**   | 5 consecutive failures               | 503 with `Retry-After: 30`    |
+| **Semaphore**         | `max_concurrent` requests exceeded   | 503 with `Retry-After: 5`     |
+| **Queue**             | Rate-limited + queue full or timeout | 429                           |
+| **Graceful shutdown** | New requests during shutdown         | 503                           |
 
 ## Interpreting Results
 
@@ -98,12 +98,12 @@ SMR exposes Prometheus metrics at `GET /metrics`. Correlate load test runs with:
 
 ## User Classes
 
-| Class            | Weight | Tag          | Purpose                                  |
-|-----------------|--------|--------------|------------------------------------------|
-| BaselineUser    | 3      | baseline     | Sync generate, health, providers          |
-| RateLimitUser   | 2      | rate-limit   | Rapid-fire to trigger 429                |
-| ConcurrencyUser | 2      | concurrency  | Longer prompts to saturate semaphore     |
-| StreamingUser   | 1      | streaming    | Streaming flow (202 + task poll)         |
+| Class           | Weight | Tag         | Purpose                              |
+| --------------- | ------ | ----------- | ------------------------------------ |
+| BaselineUser    | 3      | baseline    | Sync generate, health, providers     |
+| RateLimitUser   | 2      | rate-limit  | Rapid-fire to trigger 429            |
+| ConcurrencyUser | 2      | concurrency | Longer prompts to saturate semaphore |
+| StreamingUser   | 1      | streaming   | Streaming flow (202 + task poll)     |
 
 ## Auth
 

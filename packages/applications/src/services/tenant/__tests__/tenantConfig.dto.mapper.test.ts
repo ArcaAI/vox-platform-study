@@ -72,8 +72,7 @@ function makeEntity(overrides: Partial<GlobalSettingEntityShape> = {}): GlobalSe
   };
 }
 
-const toResponse = (entity: GlobalSettingEntityShape): TenantConfigResponse =>
-  TenantConfigDtoMapper.ToResponse(entity as any);
+const toResponse = (entity: GlobalSettingEntityShape): TenantConfigResponse => TenantConfigDtoMapper.ToResponse(entity as any);
 
 describe('TenantConfigDtoMapper', () => {
   describe('ToResponse — shape', () => {
@@ -173,7 +172,15 @@ describe('TenantConfigDtoMapper', () => {
     const rows = [
       makeEntity({ id: 'cfg-1', key: 'audio.stt.default_model', value: 'whisper-large-v3', locked: true, version: 3 }),
       makeEntity({ id: 'cfg-2', key: 'default-language', value: 'en', namespace: 'general', dataType: ValueType.String, locked: false, version: 1 }),
-      makeEntity({ id: 'cfg-3', key: 'features.code-switching', value: 'true', namespace: 'feature-flags', dataType: ValueType.Boolean, defaultValue: 'false', version: 9 }),
+      makeEntity({
+        id: 'cfg-3',
+        key: 'features.code-switching',
+        value: 'true',
+        namespace: 'feature-flags',
+        dataType: ValueType.Boolean,
+        defaultValue: 'false',
+        version: 9,
+      }),
     ];
 
     it('maps each row and preserves pagination metadata', () => {

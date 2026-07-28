@@ -114,23 +114,17 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
 
   it('rejects a non-existent / cross-tenant fallback target with 404 (never 403)', async () => {
     ctx.pipelineService.getById.mockResolvedValue(null);
-    await expect(ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'ghost', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'ghost', expectedVersion: 0 })).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('rejects a disabled fallback pipeline', async () => {
     ctx.pipelineService.getById.mockResolvedValue(cloudPipeline({ resourceStatus: ResourceStatusType.DISABLED }));
-    await expect(ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-1', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-1', expectedVersion: 0 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects a non-cloud (local GPU) fallback pipeline', async () => {
     ctx.aiModelRepo.findBySlug.mockResolvedValue({ computeType: 'gpu', format: 'FASTER_WHISPER' });
-    await expect(ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-1', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-1', expectedVersion: 0 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('accepts a valid cloud-backed fallback and creates the row + broadcasts ResourceCreated', async () => {
@@ -144,9 +138,9 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
 
   it('create with a non-zero expectedVersion is a concurrency conflict', async () => {
     ctx.configRepo.findByTenantId.mockResolvedValue(null);
-    await expect(
-      ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-fallback-1', expectedVersion: 5 }),
-    ).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+    await expect(ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-fallback-1', expectedVersion: 5 })).rejects.toBeInstanceOf(
+      OptimisticConcurrencyException,
+    );
   });
 
   it('accepts the cloud provider::model shorthand without an AiModel lookup', async () => {
@@ -227,24 +221,18 @@ describe('TenantSttConfigService — BYO credentials (delegated to IProviderConn
     ctx.providerConnectionService.upsertRow.mockRejectedValue(
       new OptimisticConcurrencyException('AiProviderConnection', 'x', { expectedVersion: 3, currentVersion: 0 }),
     );
-    await expect(ctx.svc.setCredential(TENANT, 'openai', { apiKey: 'x', expectedVersion: 3 })).rejects.toBeInstanceOf(
-      OptimisticConcurrencyException,
-    );
+    await expect(ctx.svc.setCredential(TENANT, 'openai', { apiKey: 'x', expectedVersion: 3 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
   });
 
   it('setCredential propagates a rejection (e.g. no Vault secrets provider) from the unified plane unchanged', async () => {
     ctx.providerConnectionService.upsertRow.mockRejectedValue(
       new BadRequestException('Provider API keys require the Vault secrets provider (SECRETS_PROVIDER=vault).'),
     );
-    await expect(ctx.svc.setCredential(TENANT, 'azure-speech', { apiKey: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(ctx.svc.setCredential(TENANT, 'azure-speech', { apiKey: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('setCredential rejects an unsupported provider WITHOUT calling the unified plane', async () => {
-    await expect(ctx.svc.setCredential(TENANT, 'whisper', { apiKey: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(ctx.svc.setCredential(TENANT, 'whisper', { apiKey: 'x', expectedVersion: 0 })).rejects.toBeInstanceOf(BadRequestException);
     expect(ctx.providerConnectionService.getRow).not.toHaveBeenCalled();
     expect(ctx.providerConnectionService.upsertRow).not.toHaveBeenCalled();
   });

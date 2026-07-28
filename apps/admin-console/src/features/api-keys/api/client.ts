@@ -8,39 +8,39 @@ const BASE = 'admin/api-keys';
 
 /** Scope catalog grouped by category — feeds the scope picker + validation. */
 export function getScopes(): Promise<ApiKeyScopeCatalog> {
-    return getJson(`${BASE}/scopes`);
+  return getJson(`${BASE}/scopes`);
 }
 
 export function listApiKeys(params?: ListParams): Promise<Paginated<ApiKey>> {
-    return getJson(BASE, params);
+  return getJson(BASE, params);
 }
 
 export function getApiKey(id: string): Promise<ApiKey> {
-    return getJson(`${BASE}/${encodeURIComponent(id)}`);
+  return getJson(`${BASE}/${encodeURIComponent(id)}`);
 }
 
 /** The rawKey in the result is displayed exactly once — never stored. */
 export function createApiKey(body: CreateApiKeyRequest): Promise<CreateApiKeyResult> {
-    return postJson(BASE, body);
+  return postJson(BASE, body);
 }
 
 export function updateApiKey(id: string, body: UpdateApiKeyRequest): Promise<ApiKey> {
-    return patchJson(`${BASE}/${encodeURIComponent(id)}`, body);
+  return patchJson(`${BASE}/${encodeURIComponent(id)}`, body);
 }
 
 export function revokeApiKey(id: string): Promise<ApiKey> {
-    return postJson(`${BASE}/${encodeURIComponent(id)}/revoke`);
+  return postJson(`${BASE}/${encodeURIComponent(id)}/revoke`);
 }
 
 /** Revokes the old secret and returns a fresh one-time rawKey. */
 export function rotateApiKey(id: string): Promise<CreateApiKeyResult> {
-    return postJson(`${BASE}/${encodeURIComponent(id)}/rotate`);
+  return postJson(`${BASE}/${encodeURIComponent(id)}/rotate`);
 }
 
 export function getApiKeyUsage(id: string): Promise<ApiKeyUsage> {
-    return getJson(`${BASE}/${encodeURIComponent(id)}/usage`);
+  return getJson(`${BASE}/${encodeURIComponent(id)}/usage`);
 }
 
 export function deleteApiKey(id: string): Promise<ApiKey> {
-    return deleteJson(`${BASE}/${encodeURIComponent(id)}`);
+  return deleteJson(`${BASE}/${encodeURIComponent(id)}`);
 }

@@ -79,7 +79,11 @@ describe('useSMR', () => {
   });
 
   it('preSummarize POSTs to /api/smr/api/v1/presummary', async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ pre_summary: 'x', structured_data: { title: '', sections: [] }, created_at: 'now' }) });
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ pre_summary: 'x', structured_data: { title: '', sections: [] }, created_at: 'now' }),
+    });
     const { result } = renderHook(() => useSMR());
     await act(async () => {
       await result.current.preSummarize({ current_department: 'Cardiology', visit_type: 'Follow Up' });

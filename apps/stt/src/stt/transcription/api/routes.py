@@ -72,7 +72,8 @@ async def transcribe_audio(
     tenant_id: str = Form(..., description="Tenant identifier"),
     consultation_id: str | None = Form(None, description="Optional consultation ID"),
     language: str | None = Form(
-        None, description="Override pipeline language (ISO 639-1/639-3 code, e.g. 'en', 'vi', 'auto')"
+        None,
+        description="Override pipeline language (ISO 639-1/639-3 code, e.g. 'en', 'vi', 'auto')",
     ),
 ) -> TranscriptionResponse:
     """Transcribe an uploaded audio file through the batch pipeline."""
@@ -300,7 +301,6 @@ async def validate_pipeline_yaml(
     return PipelineValidateResponse(
         valid=result.valid,
         errors=[
-            PipelineValidationErrorItem(field=e.field, message=e.message)
-            for e in result.errors
+            PipelineValidationErrorItem(field=e.field, message=e.message) for e in result.errors
         ],
     )

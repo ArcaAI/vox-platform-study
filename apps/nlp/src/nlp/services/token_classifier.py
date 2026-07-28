@@ -67,7 +67,9 @@ class TransformerTokenClassifier(TokenClassifier):
         # deterministic ConText/NegEx assertion classifier. Runs after
         # linking to label each span's polarity (PRESENT/ABSENT/…). The injected
         # AssertionModel is the model-swap seam for a future learned model.
-        self.assertion_classifier = assertion_classifier if assertion_classifier is not None else NegExAssertionClassifier()
+        self.assertion_classifier = (
+            assertion_classifier if assertion_classifier is not None else NegExAssertionClassifier()
+        )
 
     async def initialize(self) -> None:
         """Load transformer token classification model"""

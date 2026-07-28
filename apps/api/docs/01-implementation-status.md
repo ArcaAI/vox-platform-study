@@ -10,15 +10,15 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 
 ## Implementation Summary
 
-| Category | Completed | In Progress | Planned | Total |
-|----------|-----------|-------------|---------|-------|
-| **Core Infrastructure** | 9 | 0 | 1 | 10 |
-| **Authentication** | 3 | 0 | 1 | 4 |
-| **Controllers** | 15 | 0 | 2 | 17 |
-| **Services** | 4 | 0 | 3 | 7 |
-| **Monitoring** | 3 | 1 | 1 | 5 |
-| **Documentation** | 4 | 0 | 0 | 4 |
-| **Total** | **38** | **1** | **8** | **47** |
+| Category                | Completed | In Progress | Planned | Total  |
+| ----------------------- | --------- | ----------- | ------- | ------ |
+| **Core Infrastructure** | 9         | 0           | 1       | 10     |
+| **Authentication**      | 3         | 0           | 1       | 4      |
+| **Controllers**         | 15        | 0           | 2       | 17     |
+| **Services**            | 4         | 0           | 3       | 7      |
+| **Monitoring**          | 3         | 1           | 1       | 5      |
+| **Documentation**       | 4         | 0           | 0       | 4      |
+| **Total**               | **38**    | **1**       | **8**   | **47** |
 
 **Overall Completion**: 80.9%
 
@@ -29,6 +29,7 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 ### ✅ Completed
 
 #### Application Bootstrap
+
 - [x] **NestJS Application Setup** (main.ts)
   - Multi-environment configuration (dev, staging, production)
   - CORS configuration with environment-specific rules
@@ -41,6 +42,7 @@ This document tracks the implementation status of the HOPE API Gateway, providin
   - WebSocket adapter configuration
 
 #### Module Architecture
+
 - [x] **Root Module** (app.module.ts)
   - Modular domain-driven structure
   - Dependency injection setup
@@ -51,18 +53,22 @@ This document tracks the implementation status of the HOPE API Gateway, providin
   - CLS (Continuation Local Storage) for request context
 
 #### Interceptors
+
 - [x] **ContextInterceptor**: Request context management with correlation IDs
 - [x] **ExceptionInterceptor**: Centralized exception handling and formatting
 - [x] **MaintenanceInterceptor**: Maintenance mode support with graceful responses
 
 #### Filters
+
 - [x] **PrismaFilter**: Database error handling and user-friendly error messages
 
 #### Configuration Management
+
 - [x] **Environment Configuration**: Multi-environment support with validation
 - [x] **Service Discovery**: Dynamic service URL configuration for microservices
 
 #### Route Standardization (TASK-210)
+
 - [x] **Global Prefix**: Changed from `api` to `api/v1` with internal route exclusion
 - [x] **BaseProxyController**: Shared abstract proxy base class in `src/shared/` (the live `SmrProxyController` is hand-written and does not extend it; there is no NLP proxy controller)
 - [x] **STT v1 Removal**: Removed legacy STT v1 module (controller, gateway, module)
@@ -80,15 +86,18 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 ### ✅ Completed
 
 #### Authentication Guards
+
 - [x] **JwtAuthGuard**: JWT token validation with user extraction
 - [x] **OidcAuthGuard**: OpenID Connect integration for enterprise SSO
 - [x] **ApiKeyGuard**: API key validation for service-to-service authentication
 
 #### Authorization Guards
+
 - [x] **RolesGuard**: Role-based access control (RBAC)
 - [x] **GroupsGuard**: Group-based authorization
 
 #### Decorators
+
 - [x] **@Public()**: Mark endpoints as public (skip authentication)
 - [x] **@ApiKeyProtected()**: Require API key authentication
 - [x] **@UseRoles()**: Specify required roles for endpoint access
@@ -107,12 +116,14 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 ### ✅ Completed
 
 #### Health Monitoring
+
 - [x] **HealthModule**: Health check endpoints
   - `GET /health` - Basic health check
   - `GET /health/ready` - Readiness probe (checks dependencies)
   - `GET /health/live` - Liveness probe
 
 #### Session Management
+
 - [x] **SessionController**: Medical session lifecycle management
   - `POST /api/v1/sessions` - Create session
   - `GET /api/v1/sessions` - List sessions (paginated)
@@ -126,11 +137,13 @@ This document tracks the implementation status of the HOPE API Gateway, providin
   - Kafka event publishing for session lifecycle
 
 #### Tenant Management
+
 - [x] **TenantController**: Multi-tenant organization management
   - Tenant creation and configuration
   - Tenant-specific settings management
 
 #### STT Service (Audio) — Port 8861
+
 - [x] **TranscriptionJobController**: Transcription job management (`/api/v1/audio/transcription-jobs`)
 - [x] **TranscriptionStreamController**: Streaming transcription (`/api/v1/audio/transcription-jobs`)
 - [x] **PipelineController**: Pipeline management (`/api/v1/audio/pipelines`)
@@ -142,12 +155,15 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 > **Note**: The legacy TTS (`apps/tts`, port 8863) and FedL (`apps/fedl`, port 8865) services and their gateway proxy controllers/gateways have been removed. Port 8863 is now Guardrail and the Clinical Documentation Harness owns 8866.
 
 #### SMR Service (Text) — Port 8862
+
 - [x] **SmrProxyController** (in `streaming` module): Proxy to SMR service at `/api/v1/text`
 
 #### NLP Service — Port 8864
+
 - NLP is a downstream Python service (`:8864`); the gateway has **no** NLP proxy controller or WebSocket gateway. It is health-monitored via `/api/v1/health/services`.
 
 #### Admin Endpoints
+
 - [x] **GlobalSettingsController**: Global settings management (`/api/v1/admin/settings`)
 - [x] **TenantController**: Tenant management (`/api/v1/admin/tenants`)
 - [x] **ApiKeyController**: API key management (`/api/v1/admin/api-keys`)
@@ -157,6 +173,7 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 - [x] **PstudioController**: Prisma Studio (`/api/v1/admin/pstudio`)
 
 #### User Self-Service Endpoints
+
 - [x] **UserPreferencesController**: User preferences (`/api/v1/user/me`)
 - [x] **UserSettingsController**: User settings (`/api/v1/user/me/settings`)
 
@@ -173,6 +190,7 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 ### ✅ Completed
 
 #### Core Services (from @arcaai/applications)
+
 - [x] **SessionService**: Medical session business logic
   - Session creation and validation
   - Session state management
@@ -196,6 +214,7 @@ This document tracks the implementation status of the HOPE API Gateway, providin
   - Event-driven architecture support
 
 #### Infrastructure Services
+
 - [x] **HealthCheckService**: Dependency health monitoring
 - [x] **ConfigService**: Configuration management
 - [x] **RedisService**: Caching and session storage
@@ -214,16 +233,19 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 ### ✅ Completed
 
 #### Database
+
 - [x] **Prisma ORM Integration**: Type-safe database access
 - [x] **Multi-Tenant Schema**: Tenant isolation at data level
 - [x] **Session Management**: Medical session data models
 - [x] **Audit Logging**: Comprehensive audit trail
 
 #### Caching
+
 - [x] **Redis Integration**: Session storage and caching
 - [x] **BullMQ**: Background job queue management
 
 #### Storage
+
 - [x] **MinIO Integration**: S3-compatible object storage for audio files
 
 ---
@@ -346,12 +368,15 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 ## Known Issues
 
 ### High Priority
+
 - None currently identified
 
 ### Medium Priority
+
 - None currently identified
 
 ### Low Priority
+
 - None currently identified
 
 ---
@@ -359,18 +384,21 @@ This document tracks the implementation status of the HOPE API Gateway, providin
 ## Roadmap
 
 ### Q1 2025
+
 - [ ] Complete unit and integration test coverage
 - [ ] Implement GraphQL API
 - [ ] Add user management controller
 - [ ] Enhance monitoring with custom dashboards
 
 ### Q2 2025
+
 - [ ] Implement OAuth2 provider
 - [ ] Add report management controller
 - [ ] Implement federated learning integration
 - [ ] Add multi-language support
 
 ### Q3 2025
+
 - [ ] Advanced analytics and insights
 - [ ] Mobile-optimized API endpoints
 - [ ] Enhanced security features
@@ -391,4 +419,3 @@ To update this document:
 ---
 
 **Document Maintenance**: This document should be reviewed and updated monthly or whenever significant features are implemented.
-

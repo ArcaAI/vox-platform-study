@@ -67,9 +67,7 @@ class TestTranscribeFileWorker:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch(
-                "stt.transcription.workers.transcribe_file.get_pipeline_reader"
-            ) as mock_reader,
+            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 
@@ -132,9 +130,7 @@ class TestTranscribeFileWorker:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch(
-                "stt.transcription.workers.transcribe_file.get_pipeline_reader"
-            ) as mock_reader,
+            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
         ):
 
             mock_api_client = AsyncMock()
@@ -226,9 +222,7 @@ class TestTranscribeFileErrorHandling:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch(
-                "stt.transcription.workers.transcribe_file.get_pipeline_reader"
-            ) as mock_reader,
+            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 
@@ -273,9 +267,7 @@ class TestTranscribeFileErrorHandling:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch(
-                "stt.transcription.workers.transcribe_file.get_pipeline_reader"
-            ) as mock_reader,
+            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
         ):
 
             mock_api_client = AsyncMock()
@@ -317,9 +309,7 @@ class TestTranscribeFileErrorHandling:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch(
-                "stt.transcription.workers.transcribe_file.get_pipeline_reader"
-            ) as mock_reader,
+            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 
@@ -370,9 +360,7 @@ class TestTranscribeFileErrorHandling:
         with (
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch(
-                "stt.transcription.workers.transcribe_file.get_pipeline_reader"
-            ) as mock_reader,
+            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 
@@ -454,9 +442,7 @@ class TestPipelineConfigUsedDirectly:
             ) as mock_pub_cls,
             patch("stt.transcription.workers.transcribe_file.get_api_client") as mock_api,
             patch("stt.transcription.workers.transcribe_file.get_blob_service") as mock_blob,
-            patch(
-                "stt.transcription.workers.transcribe_file.get_pipeline_reader"
-            ) as mock_reader,
+            patch("stt.transcription.workers.transcribe_file.get_pipeline_reader") as mock_reader,
             patch("stt.transcription.workers.transcribe_file.get_batch_service") as mock_batch,
         ):
 

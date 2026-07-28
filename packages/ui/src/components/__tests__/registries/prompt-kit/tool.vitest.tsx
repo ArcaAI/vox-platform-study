@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { Tool } from '../../../registries/prompt-kit/tool'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Tool } from '../../../registries/prompt-kit/tool';
 
 describe('Tool', () => {
   it('renders without crashing', () => {
@@ -13,7 +13,7 @@ describe('Tool', () => {
           output: { results: [] },
         }}
       />,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

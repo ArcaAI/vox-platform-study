@@ -9,12 +9,7 @@
 //                                    virtual `pgbouncer` admin database
 //                                    (for SHOW POOLS / SHOW STATS / SHOW CONFIG)
 
-import {
-  createNewExtendedPrismaClient,
-  createNewPrismaClient,
-  type CorePrismaClient,
-  type ExtendedCorePrismaClient,
-} from '@arcaai/database';
+import { createNewExtendedPrismaClient, createNewPrismaClient, type CorePrismaClient, type ExtendedCorePrismaClient } from '@arcaai/database';
 import { Pool, type PoolConfig } from 'pg';
 
 function requireEnv(name: string): string {
@@ -33,9 +28,7 @@ export function createPooledPrisma(): CorePrismaClient {
   // Sanity: ensure DATABASE_URL points at the pooler port.
   const url = requireEnv('DATABASE_URL');
   if (!url.includes(':6532')) {
-    throw new Error(
-      `[pgbouncer-validation] DATABASE_URL must point at port 6532 (pooler); got ${url}`,
-    );
+    throw new Error(`[pgbouncer-validation] DATABASE_URL must point at port 6532 (pooler); got ${url}`);
   }
   return createNewPrismaClient();
 }
@@ -43,9 +36,7 @@ export function createPooledPrisma(): CorePrismaClient {
 export function createExtendedPooledPrisma(): ExtendedCorePrismaClient {
   const url = requireEnv('DATABASE_URL');
   if (!url.includes(':6532')) {
-    throw new Error(
-      `[pgbouncer-validation] DATABASE_URL must point at port 6532 (pooler); got ${url}`,
-    );
+    throw new Error(`[pgbouncer-validation] DATABASE_URL must point at port 6532 (pooler); got ${url}`);
   }
   return createNewExtendedPrismaClient();
 }

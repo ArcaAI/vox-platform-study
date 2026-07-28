@@ -159,9 +159,7 @@ export class EvalService {
       createdBy: input.createdBy ?? null,
     });
 
-    await this.encryptBestEffort('GoldenCase', () =>
-      this.goldenCaseRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
-    );
+    await this.encryptBestEffort('GoldenCase', () => this.goldenCaseRepository.encryptFieldsIntoEntity(entity, this.secretsService!));
 
     const created = await this.goldenCaseRepository.create(entity);
     if (!created) {
@@ -189,9 +187,7 @@ export class EvalService {
       createdBy: input.createdBy ?? null,
     });
 
-    await this.encryptBestEffort('EvalRun', () =>
-      this.evalRunRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
-    );
+    await this.encryptBestEffort('EvalRun', () => this.evalRunRepository.encryptFieldsIntoEntity(entity, this.secretsService!));
 
     const created = await this.evalRunRepository.create(entity);
     if (!created) {
@@ -214,9 +210,7 @@ export class EvalService {
       createdBy: input.createdBy ?? null,
     });
 
-    await this.encryptBestEffort('EvalScore', () =>
-      this.evalScoreRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
-    );
+    await this.encryptBestEffort('EvalScore', () => this.evalScoreRepository.encryptFieldsIntoEntity(entity, this.secretsService!));
 
     const created = await this.evalScoreRepository.create(entity);
     if (!created) {

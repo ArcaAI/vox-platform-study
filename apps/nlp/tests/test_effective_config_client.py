@@ -113,7 +113,10 @@ class TestFailSafe:
         assert calls["n"] == 2
 
     async def test_a_null_bound_is_not_coerced_to_a_number(self) -> None:
-        payload = {"service": "nlp", "concurrency": {"maxConcurrent": None, "source": "env-fallback"}}
+        payload = {
+            "service": "nlp",
+            "concurrency": {"maxConcurrent": None, "source": "env-fallback"},
+        }
         client, _ = make_client(FakeClock(), lambda _r: httpx.Response(200, json=payload))
 
         assert (await client.get()).max_concurrent() is None

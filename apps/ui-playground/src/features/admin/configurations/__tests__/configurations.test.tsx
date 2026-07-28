@@ -9,14 +9,14 @@ import type { TenantConfig } from '../../api/tenants';
 
 vi.mock('@arcaai/ui/badge', () => ({
   Badge: ({ children, ...props }: any) => (
-    <span data-testid="badge" {...props}>{children}</span>
+    <span data-testid="badge" {...props}>
+      {children}
+    </span>
   ),
 }));
 
 vi.mock('@arcaai/ui/button', () => ({
-  Button: ({ children, ...props }: any) => (
-    <button {...props}>{children}</button>
-  ),
+  Button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
 }));
 
 vi.mock('@arcaai/ui/input', () => ({
@@ -24,13 +24,7 @@ vi.mock('@arcaai/ui/input', () => ({
 }));
 
 vi.mock('@arcaai/ui/multi-column-layout', () => ({
-  MultiColumnLayout: ({
-    columns,
-    columnStates,
-  }: {
-    columns: any[];
-    columnStates: any[];
-  }) => {
+  MultiColumnLayout: ({ columns, columnStates }: { columns: any[]; columnStates: any[] }) => {
     // TASK-335 — the in-page tenant picker column was removed, so the layout
     // now receives only [configColumn, detailColumn]. Locate the config
     // column by id (rather than a fixed index) and render its items plus the
@@ -41,22 +35,26 @@ vi.mock('@arcaai/ui/multi-column-layout', () => ({
     const renderContentFn = columns.find((c: any) => c.renderContent)?.renderContent ?? null;
     const columnLoadingStates = columnStates.map((s: any) => s.isLoading);
 
-    return createElement('div', { 'data-testid': 'multi-column-layout' },
-      columnLoadingStates.some(Boolean)
-        ? createElement('div', { 'data-testid': 'loading-indicator' }, 'Loading...')
-        : null,
-      createElement('div', { 'data-testid': 'column-configs' },
+    return createElement(
+      'div',
+      { 'data-testid': 'multi-column-layout' },
+      columnLoadingStates.some(Boolean) ? createElement('div', { 'data-testid': 'loading-indicator' }, 'Loading...') : null,
+      createElement(
+        'div',
+        { 'data-testid': 'column-configs' },
         ...((configState?.data ?? []) as any[]).map((item: any) =>
-          createElement('div', {
-            key: item.id,
-            'data-testid': `config-item-${item.id}`,
-            onClick: () => configState?.onSelect?.(item.id),
-          }, configCol?.renderItem?.(item)),
+          createElement(
+            'div',
+            {
+              key: item.id,
+              'data-testid': `config-item-${item.id}`,
+              onClick: () => configState?.onSelect?.(item.id),
+            },
+            configCol?.renderItem?.(item),
+          ),
         ),
       ),
-      renderContentFn
-        ? createElement('div', { 'data-testid': 'column-detail' }, renderContentFn())
-        : null,
+      renderContentFn ? createElement('div', { 'data-testid': 'column-detail' }, renderContentFn()) : null,
     );
   },
 }));
@@ -134,12 +132,7 @@ vi.mock('../../api/tenants', async () => {
   };
 });
 
-import {
-  useTenantConfigs,
-  useMyTenantConfigs,
-  useUpdateTenantConfigs,
-  useUpdateMyTenantConfigs,
-} from '../../api/tenants';
+import { useTenantConfigs, useMyTenantConfigs, useUpdateTenantConfigs, useUpdateMyTenantConfigs } from '../../api/tenants';
 
 // TASK-338 — the Guardrail engine section is a self-contained component with
 // its own data hooks + component tests (see guardrail-section.test.tsx). Mock
@@ -174,7 +167,9 @@ vi.mock('@/store/auth-store', () => ({
 
 vi.mock('@/components/layout/main', () => ({
   Main: ({ children, ...props }: any) => (
-    <main data-testid="main-layout" {...props}>{children}</main>
+    <main data-testid="main-layout" {...props}>
+      {children}
+    </main>
   ),
 }));
 
@@ -188,11 +183,7 @@ function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    createElement(QueryClientProvider, { client: queryClient },
-      createElement(ConfigurationManagementPage),
-    ),
-  );
+  return render(createElement(QueryClientProvider, { client: queryClient }, createElement(ConfigurationManagementPage)));
 }
 
 // ---------------------------------------------------------------------------
@@ -211,16 +202,12 @@ describe('ConfigurationManagementPage', () => {
   describe('rendering', () => {
     it('should render page title "Configuration Management"', () => {
       renderPage();
-      expect(
-        screen.getByRole('heading', { name: /configuration management/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /configuration management/i })).toBeInTheDocument();
     });
 
     it('should render page subtitle', () => {
       renderPage();
-      expect(
-        screen.getByText(/manage tenant settings/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/manage tenant settings/i)).toBeInTheDocument();
     });
 
     it('should render the multi-column layout', () => {
@@ -304,9 +291,7 @@ describe('ConfigurationManagementPage', () => {
   describe('config editing', () => {
     it('should show detail placeholder when no config is selected', () => {
       renderPage();
-      expect(
-        screen.getByText(/select a configuration to view/i),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/select a configuration to view/i)).toBeInTheDocument();
     });
 
     it('should show editor when a config is selected', () => {
@@ -376,9 +361,7 @@ describe('ConfigurationManagementPage', () => {
       const saveBtn = screen.getByRole('button', { name: /save/i });
       expect(saveBtn).toBeDisabled();
 
-      const input = screen.getAllByTestId('input').find(
-        (el) => (el as HTMLInputElement).value === 'en',
-      );
+      const input = screen.getAllByTestId('input').find((el) => (el as HTMLInputElement).value === 'en');
       if (input) {
         fireEvent.change(input, { target: { value: 'fr' } });
       }
@@ -390,9 +373,7 @@ describe('ConfigurationManagementPage', () => {
       renderPage();
       fireEvent.click(screen.getByTestId('config-item-cfg-01'));
 
-      const input = screen.getAllByTestId('input').find(
-        (el) => (el as HTMLInputElement).value === 'en',
-      );
+      const input = screen.getAllByTestId('input').find((el) => (el as HTMLInputElement).value === 'en');
       if (input) {
         fireEvent.change(input, { target: { value: 'de' } });
       }
@@ -408,9 +389,7 @@ describe('ConfigurationManagementPage', () => {
           // per-row expectedVersion for the CAS body. Both derived
           // from `selectedConfig.version`.
           ifMatch: '"1"',
-          configs: expect.arrayContaining([
-            expect.objectContaining({ id: 'cfg-01', value: 'de', expectedVersion: 1 }),
-          ]),
+          configs: expect.arrayContaining([expect.objectContaining({ id: 'cfg-01', value: 'de', expectedVersion: 1 })]),
         }),
       );
     });
@@ -455,9 +434,7 @@ describe('ConfigurationManagementPage', () => {
       renderPage();
       fireEvent.click(screen.getByTestId('config-item-cfg-01'));
 
-      const input = screen.getAllByTestId('input').find(
-        (el) => (el as HTMLInputElement).value === 'en',
-      );
+      const input = screen.getAllByTestId('input').find((el) => (el as HTMLInputElement).value === 'en');
       if (input) {
         fireEvent.change(input, { target: { value: 'ja' } });
       }
@@ -468,9 +445,7 @@ describe('ConfigurationManagementPage', () => {
       expect(mockMutateMyTenantConfigs).toHaveBeenCalledWith(
         expect.objectContaining({
           ifMatch: '"1"',
-          configs: expect.arrayContaining([
-            expect.objectContaining({ id: 'cfg-01', value: 'ja', expectedVersion: 1 }),
-          ]),
+          configs: expect.arrayContaining([expect.objectContaining({ id: 'cfg-01', value: 'ja', expectedVersion: 1 })]),
         }),
       );
       expect(mockMutateTenantConfigs).not.toHaveBeenCalled();
@@ -485,9 +460,7 @@ describe('ConfigurationManagementPage', () => {
       renderPage();
       fireEvent.click(screen.getByTestId('config-item-cfg-01'));
 
-      const input = screen.getAllByTestId('input').find(
-        (el) => (el as HTMLInputElement).value === 'en',
-      );
+      const input = screen.getAllByTestId('input').find((el) => (el as HTMLInputElement).value === 'en');
       if (input) {
         fireEvent.change(input, { target: { value: 'changed' } });
       }
@@ -516,9 +489,7 @@ describe('ConfigurationManagementPage', () => {
       expect(mockMutateTenantConfigs).toHaveBeenCalledWith(
         expect.objectContaining({
           ifMatch: '"1"',
-          configs: expect.arrayContaining([
-            expect.objectContaining({ id: 'cfg-02', value: 'false', expectedVersion: 1 }),
-          ]),
+          configs: expect.arrayContaining([expect.objectContaining({ id: 'cfg-02', value: 'false', expectedVersion: 1 })]),
         }),
       );
     });
@@ -535,19 +506,13 @@ describe('ConfigurationManagementPage', () => {
     it('should scope useTenantConfigs to the header store tenantId for GLOBAL_ADMIN', () => {
       mockAuthState.user.roles = ['GLOBAL_ADMIN'];
       renderPage();
-      expect(useTenantConfigs).toHaveBeenCalledWith(
-        TENANT_ID,
-        expect.any(Object),
-        expect.objectContaining({ enabled: true }),
-      );
+      expect(useTenantConfigs).toHaveBeenCalledWith(TENANT_ID, expect.any(Object), expect.objectContaining({ enabled: true }));
     });
 
     it('should use useMyTenantConfigs for TENANT_ADMIN', () => {
       mockAuthState.user.roles = ['TENANT_ADMIN'];
       renderPage();
-      expect(useMyTenantConfigs).toHaveBeenCalledWith(
-        expect.objectContaining({ enabled: true }),
-      );
+      expect(useMyTenantConfigs).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
     });
   });
 });

@@ -20,10 +20,7 @@ export const BYO_STT_PROVIDERS = ['azure-speech', 'sarvam', 'openai'] as const;
  * Python wire shape (§3.3). Never persisted, never logged, never returned by a
  * read API.
  */
-export type SttProviderOverrides = Record<
-  string,
-  { api_key: string; region?: string; base_url?: string; endpoint?: string; model?: string }
->;
+export type SttProviderOverrides = Record<string, { api_key: string; region?: string; base_url?: string; endpoint?: string; model?: string }>;
 
 /** Code defaults for the fallback spec (last fallback in the cascade). */
 export const STT_FALLBACK_DEFAULTS = {
@@ -37,13 +34,7 @@ export const STT_FALLBACK_DEFAULTS = {
  * cloud AiModel formats. A fallback pipeline must be backed by one of these —
  * a local GPU pipeline is not a meaningful outage escape (§3.2).
  */
-export const CLOUD_STT_PROVIDERS: ReadonlySet<string> = new Set([
-  'azure',
-  'azure-speech',
-  'azure-foundry',
-  'sarvam',
-  'openai',
-]);
+export const CLOUD_STT_PROVIDERS: ReadonlySet<string> = new Set(['azure', 'azure-speech', 'azure-foundry', 'sarvam', 'openai']);
 
 export const CLOUD_STT_FORMATS: ReadonlySet<string> = new Set<string>([
   AiModelFormat.AZURE_SPEECH,

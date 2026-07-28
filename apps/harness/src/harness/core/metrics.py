@@ -22,7 +22,23 @@ STEP_DURATION_SECONDS = Histogram(
     "harness_step_duration_seconds",
     "Per-trajectory-step wall-clock duration in seconds, by step type and name.",
     ["step_type", "name"],
-    buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 300.0, 900.0],
+    buckets=[
+        0.001,
+        0.005,
+        0.01,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
+        30.0,
+        60.0,
+        300.0,
+        900.0,
+    ],
 )
 
 # Bounded-regen counter — incremented once per regeneration iteration (the loop's

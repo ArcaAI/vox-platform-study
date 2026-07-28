@@ -1,13 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  Timeline,
-  TimelineItem,
-  TimelineHeader,
-  TimelineDot,
-  TimelineContent,
-  TimelineTitle,
-} from '@/components/registries/diceui/timeline'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Timeline, TimelineItem, TimelineHeader, TimelineDot, TimelineContent, TimelineTitle } from '@/components/registries/diceui/timeline';
 
 describe('Timeline', () => {
   it('renders without crashing', () => {
@@ -22,7 +15,7 @@ describe('Timeline', () => {
           </TimelineContent>
         </TimelineItem>
       </Timeline>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

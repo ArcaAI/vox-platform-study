@@ -15,37 +15,30 @@
  */
 import { describe, it, expect } from 'vitest';
 import { StorageController } from '../storage.controller';
-import {
-    TENANT_OWNED_RESOURCE_KEY,
-    type TenantOwnedResourceOptions,
-} from '../../../common/tenant-owned-resource.decorator';
+import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../../../common/tenant-owned-resource.decorator';
 
 describe('@TenantOwnedResource metadata on StorageController', () => {
-    const meta = (m: keyof StorageController): TenantOwnedResourceOptions | undefined =>
-        Reflect.getMetadata(
-            TENANT_OWNED_RESOURCE_KEY,
-            StorageController.prototype[m] as object,
-        ) as TenantOwnedResourceOptions | undefined;
+  const meta = (m: keyof StorageController): TenantOwnedResourceOptions | undefined =>
+    Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, StorageController.prototype[m] as object) as TenantOwnedResourceOptions | undefined;
 
-    const expected = { modelName: 'TenantBucket', paramName: 'name', lookup: 'name' };
+  const expected = { modelName: 'TenantBucket', paramName: 'name', lookup: 'name' };
 
-    it.each([
-        ['getBucket'] as const,
-        ['deleteBucket'] as const,
-        ['updateBucket'] as const,
-        ['listFiles'] as const,
-        ['uploadFile'] as const,
-        ['getFileInfo'] as const,
-        ['deleteFile'] as const,
-    ])('handler %s is annotated with lookup=name', (handler) => {
-        expect(meta(handler)).toEqual(expected);
-    });
+  it.each([
+    ['getBucket'] as const,
+    ['deleteBucket'] as const,
+    ['updateBucket'] as const,
+    ['listFiles'] as const,
+    ['uploadFile'] as const,
+    ['getFileInfo'] as const,
+    ['deleteFile'] as const,
+  ])('handler %s is annotated with lookup=name', (handler) => {
+    expect(meta(handler)).toEqual(expected);
+  });
 
-    it.each([
-        ['listBuckets'] as const,
-        ['createBucket'] as const,
-        ['checkHealth'] as const,
-    ])('handler %s is NOT annotated (no :name route param)', (handler) => {
-        expect(meta(handler)).toBeUndefined();
-    });
+  it.each([['listBuckets'] as const, ['createBucket'] as const, ['checkHealth'] as const])(
+    'handler %s is NOT annotated (no :name route param)',
+    (handler) => {
+      expect(meta(handler)).toBeUndefined();
+    },
+  );
 });

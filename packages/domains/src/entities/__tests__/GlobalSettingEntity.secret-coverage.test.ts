@@ -64,14 +64,9 @@ describe('GlobalSettingEntity @Secret coverage (Phase 0 Item 4 / R4)', () => {
 
   it('every entity field is either @Secret or explicitly non-secret', () => {
     const proto = GlobalSettingEntity.prototype;
-    const props = Object.getOwnPropertyNames(proto).filter(
-      (p) => p !== 'constructor' && !p.startsWith('_'),
-    );
+    const props = Object.getOwnPropertyNames(proto).filter((p) => p !== 'constructor' && !p.startsWith('_'));
     const secrets = new Set(getSecretFields(proto));
     const uncovered = props.filter((p) => !secrets.has(p) && !NON_SECRET_ALLOWLIST.has(p));
-    expect(
-      uncovered,
-      `Add to NON_SECRET_ALLOWLIST or annotate @Secret: ${uncovered.join(', ')}`,
-    ).toEqual([]);
+    expect(uncovered, `Add to NON_SECRET_ALLOWLIST or annotate @Secret: ${uncovered.join(', ')}`).toEqual([]);
   });
 });

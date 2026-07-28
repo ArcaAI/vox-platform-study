@@ -110,9 +110,7 @@ describe('Pipeline Integration', () => {
       }
 
       expect(errorHandler).toHaveBeenCalledWith(expect.any(Error));
-      expect(errorHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Stage processing failed' })
-      );
+      expect(errorHandler).toHaveBeenCalledWith(expect.objectContaining({ message: 'Stage processing failed' }));
     });
   });
 
@@ -317,7 +315,7 @@ describe('Pipeline Integration', () => {
         expect.objectContaining({
           source: 'stt',
           recoverable: true,
-        })
+        }),
       );
     });
   });

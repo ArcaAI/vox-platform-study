@@ -6,10 +6,10 @@ Selects where your audio gets transcribed: on your device using a local Whisper 
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
+| Option       | Description                                                                                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Local AI** | Runs Whisper in-browser via WASM. Audio stays on-device. Supports VAD, noise cancellation, diarization, and code-switching. Requires a one-time model download. |
-| **Backend** | Streams audio to the backend over WebSocket. Server handles transcription and returns results in real-time. Lighter on device resources. |
+| **Backend**  | Streams audio to the backend over WebSocket. Server handles transcription and returns results in real-time. Lighter on device resources.                        |
 
 <!-- @example -->
 
@@ -36,13 +36,13 @@ await realtime.start({ pipelineId: '81000000-0000-0000-0001-000000000001' });
 
 ### When to Choose
 
-| Scenario | Recommended |
-|----------|-------------|
-| Privacy-sensitive use | Local AI |
-| Low-power or older device | Backend |
-| No internet available | Local AI |
-| Multi-mic mixing with server processing | Backend |
-| VAD-gated transcription | Local AI |
+| Scenario                                | Recommended |
+| --------------------------------------- | ----------- |
+| Privacy-sensitive use                   | Local AI    |
+| Low-power or older device               | Backend     |
+| No internet available                   | Local AI    |
+| Multi-mic mixing with server processing | Backend     |
+| VAD-gated transcription                 | Local AI    |
 
 ### Behavior
 

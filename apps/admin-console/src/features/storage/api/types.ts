@@ -7,118 +7,118 @@ export type StorageTopologyType = 'SHARED' | 'DEDICATED';
 
 /** GET /admin/tenants/storage/buckets rows (TenantBucketResponse). */
 export interface TenantBucket {
-    id: string;
-    tenantId: string;
-    name: string;
-    slug: string;
-    description?: string;
-    bucketType: TenantBucketType;
-    purpose: TenantBucketPurpose;
-    pathPattern: string;
-    isSystemBucket: boolean;
-    quotaBytes?: number | null;
-    resourceStatus?: ResourceStatus;
-    createdAt: string;
-    updatedAt: string;
+  id: string;
+  tenantId: string;
+  name: string;
+  slug: string;
+  description?: string;
+  bucketType: TenantBucketType;
+  purpose: TenantBucketPurpose;
+  pathPattern: string;
+  isSystemBucket: boolean;
+  quotaBytes?: number | null;
+  resourceStatus?: ResourceStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateBucketRequest {
-    slug: string;
-    description?: string;
-    pathPattern?: string;
+  slug: string;
+  description?: string;
+  pathPattern?: string;
 }
 
 /** GET/PUT .../buckets/defaults. */
 export interface BucketDefaults {
-    audio: TenantBucket | null;
-    attachments: TenantBucket | null;
-    misc: TenantBucket | null;
+  audio: TenantBucket | null;
+  attachments: TenantBucket | null;
+  misc: TenantBucket | null;
 }
 
 export interface SetBucketDefaultsRequest {
-    audioBucketId?: string;
-    attachmentsBucketId?: string;
-    miscBucketId?: string;
+  audioBucketId?: string;
+  attachmentsBucketId?: string;
+  miscBucketId?: string;
 }
 
 export interface BucketObject {
-    key: string;
-    size: number;
-    lastModified?: string;
+  key: string;
+  size: number;
+  lastModified?: string;
 }
 
 export interface BucketTree {
-    bucketId: string;
-    bucketName: string;
-    rootPath: string;
-    nodes: BucketTreeNode[];
+  bucketId: string;
+  bucketName: string;
+  rootPath: string;
+  nodes: BucketTreeNode[];
 }
 
 export interface BucketTreeNode {
-    id: string;
-    name: string;
-    type: 'folder' | 'file';
-    path: string;
-    size?: number;
-    lastModified?: string;
-    children?: BucketTreeNode[];
+  id: string;
+  name: string;
+  type: 'folder' | 'file';
+  path: string;
+  size?: number;
+  lastModified?: string;
+  children?: BucketTreeNode[];
 }
 
 /** GET/PUT /admin/tenants/storage/config rows (TenantStorageConfigResponse). */
 export interface TenantStorageConfig {
-    id: string;
-    tenantId: string;
-    bucketId?: string | null;
-    provider: StorageProviderType;
-    topology: StorageTopologyType;
-    endpoint?: string | null;
-    region?: string | null;
-    forcePathStyle?: boolean | null;
-    accountName?: string | null;
-    endpointSuffix?: string | null;
-    containerPrefix?: string | null;
-    credentialsRef?: string | null;
-    resourceStatus?: ResourceStatus;
-    createdAt: string;
-    updatedAt: string;
+  id: string;
+  tenantId: string;
+  bucketId?: string | null;
+  provider: StorageProviderType;
+  topology: StorageTopologyType;
+  endpoint?: string | null;
+  region?: string | null;
+  forcePathStyle?: boolean | null;
+  accountName?: string | null;
+  endpointSuffix?: string | null;
+  containerPrefix?: string | null;
+  credentialsRef?: string | null;
+  resourceStatus?: ResourceStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface UpsertStorageConfigRequest {
-    bucketId?: string | null;
-    provider: StorageProviderType;
-    topology?: StorageTopologyType;
-    endpoint?: string | null;
-    region?: string | null;
-    forcePathStyle?: boolean | null;
-    accountName?: string | null;
-    endpointSuffix?: string | null;
-    containerPrefix?: string | null;
-    credentialsRef?: string | null;
+  bucketId?: string | null;
+  provider: StorageProviderType;
+  topology?: StorageTopologyType;
+  endpoint?: string | null;
+  region?: string | null;
+  forcePathStyle?: boolean | null;
+  accountName?: string | null;
+  endpointSuffix?: string | null;
+  containerPrefix?: string | null;
+  credentialsRef?: string | null;
 }
 
 /** GET /admin/tenants/storage/keys rows (StorageAccessKeyResponse). */
 export interface StorageAccessKey {
-    id: string;
-    tenantId: string;
-    name: string;
-    description?: string;
-    accessKeyId: string;
-    permissions: string[];
-    bucketIds: string[];
-    expiresAt?: string;
-    lastUsedAt?: string;
-    createdAt: string;
+  id: string;
+  tenantId: string;
+  name: string;
+  description?: string;
+  accessKeyId: string;
+  permissions: string[];
+  bucketIds: string[];
+  expiresAt?: string;
+  lastUsedAt?: string;
+  createdAt: string;
 }
 
 /** POST create returns the secret exactly once. */
 export interface StorageAccessKeyWithSecret extends StorageAccessKey {
-    secretAccessKey: string;
+  secretAccessKey: string;
 }
 
 export interface CreateAccessKeyRequest {
-    name: string;
-    description?: string;
-    permissions?: string[];
-    bucketIds?: string[];
-    expiresAt?: string;
+  name: string;
+  description?: string;
+  permissions?: string[];
+  bucketIds?: string[];
+  expiresAt?: string;
 }

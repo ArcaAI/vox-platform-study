@@ -69,10 +69,7 @@ function createMockPluginManager(overrides: Record<string, any> = {}) {
 
 function setupStore(overrides: Record<string, any> = {}) {
   mockLogger = createMockLogger();
-  apiClient = new AgenticClient(
-    { baseUrl: 'http://test', apiKey: 'test-key' },
-    mockLogger,
-  );
+  apiClient = new AgenticClient({ baseUrl: 'http://test', apiKey: 'test-key' }, mockLogger);
 
   mockStoreData = {
     apiClient,
@@ -178,10 +175,7 @@ afterEach(() => {
 
 describe('useArca — session load with contextItems', () => {
   it('should iterate consultation.contextItems when present', async () => {
-    const items = [
-      createMockContextItem({ id: 'ci-1' }),
-      createMockContextItem({ id: 'ci-2' }),
-    ];
+    const items = [createMockContextItem({ id: 'ci-1' }), createMockContextItem({ id: 'ci-2' })];
     const consultation = createMockConsultation({ id: 'loaded-ctx', contextItems: items });
     mockFetch.mockResolvedValueOnce(createMockResponse(consultation));
 
@@ -202,7 +196,9 @@ describe('useArca — session load with contextItems', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.session.load('bad-id'); }),
+      act(async () => {
+        await result.current.session.load('bad-id');
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setSessionError).toHaveBeenCalled();
@@ -216,7 +212,9 @@ describe('useArca — session findByPatientDate', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.session.findByPatientDate('p1', '2026-02-19'); }),
+      act(async () => {
+        await result.current.session.findByPatientDate('p1', '2026-02-19');
+      }),
     ).rejects.toThrow('SDK not initialized');
   });
 });
@@ -228,7 +226,9 @@ describe('useArca — session getPatientHistory', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.session.getPatientHistory('p1'); }),
+      act(async () => {
+        await result.current.session.getPatientHistory('p1');
+      }),
     ).rejects.toThrow('SDK not initialized');
   });
 });
@@ -240,7 +240,9 @@ describe('useArca — session getTimeline error path', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.session.getTimeline(); }),
+      act(async () => {
+        await result.current.session.getTimeline();
+      }),
     ).rejects.toThrow();
   });
 });
@@ -260,7 +262,12 @@ describe('useArca — audio actions', () => {
           getUserMedia: vi.fn().mockResolvedValue(mockStream),
         },
       });
-      vi.stubGlobal('AudioContext', class { sampleRate = 48000; });
+      vi.stubGlobal(
+        'AudioContext',
+        class {
+          sampleRate = 48000;
+        },
+      );
 
       const pluginManager = createMockPluginManager();
       setupStore({ pluginManager });
@@ -292,7 +299,9 @@ describe('useArca — audio actions', () => {
       const { result } = renderHook(() => useArca());
 
       await expect(
-        act(async () => { await result.current.audio.start(); }),
+        act(async () => {
+          await result.current.audio.start();
+        }),
       ).rejects.toThrow('Mic denied');
 
       expect(mockStoreData.setAudioError).toHaveBeenCalled();
@@ -304,7 +313,9 @@ describe('useArca — audio actions', () => {
       const { result } = renderHook(() => useArca());
 
       await expect(
-        act(async () => { await result.current.audio.start(); }),
+        act(async () => {
+          await result.current.audio.start();
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
@@ -318,13 +329,20 @@ describe('useArca — audio actions', () => {
         vi.stubGlobal('navigator', {
           mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(mockStream) },
         });
-        vi.stubGlobal('AudioContext', class { sampleRate = 44100; });
+        vi.stubGlobal(
+          'AudioContext',
+          class {
+            sampleRate = 44100;
+          },
+        );
 
         pluginManager = createMockPluginManager();
         setupStore({ pluginManager });
 
         const { result } = renderHook(() => useArca());
-        await act(async () => { await result.current.audio.start(); });
+        await act(async () => {
+          await result.current.audio.start();
+        });
 
         const cbArgs = pluginManager.setCallbacks.mock.calls[0][0];
         onTranscriptionCb = cbArgs.onTranscription;
@@ -463,13 +481,20 @@ describe('useArca — audio actions', () => {
         vi.stubGlobal('navigator', {
           mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getAudioTracks: () => [mockTrack] }) },
         });
-        vi.stubGlobal('AudioContext', class { sampleRate = 44100; });
+        vi.stubGlobal(
+          'AudioContext',
+          class {
+            sampleRate = 44100;
+          },
+        );
 
         const pluginManager = createMockPluginManager();
         setupStore({ pluginManager });
 
         const { result } = renderHook(() => useArca());
-        await act(async () => { await result.current.audio.start(); });
+        await act(async () => {
+          await result.current.audio.start();
+        });
 
         const cbArgs = pluginManager.setCallbacks.mock.calls[0][0];
         cbArgs.onVADEvent({ type: 'speech-start' });
@@ -482,13 +507,20 @@ describe('useArca — audio actions', () => {
         vi.stubGlobal('navigator', {
           mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getAudioTracks: () => [mockTrack] }) },
         });
-        vi.stubGlobal('AudioContext', class { sampleRate = 44100; });
+        vi.stubGlobal(
+          'AudioContext',
+          class {
+            sampleRate = 44100;
+          },
+        );
 
         const pluginManager = createMockPluginManager();
         setupStore({ pluginManager });
 
         const { result } = renderHook(() => useArca());
-        await act(async () => { await result.current.audio.start(); });
+        await act(async () => {
+          await result.current.audio.start();
+        });
 
         const cbArgs = pluginManager.setCallbacks.mock.calls[0][0];
         cbArgs.onVADEvent({ type: 'speech-end' });
@@ -503,13 +535,20 @@ describe('useArca — audio actions', () => {
         vi.stubGlobal('navigator', {
           mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getAudioTracks: () => [mockTrack] }) },
         });
-        vi.stubGlobal('AudioContext', class { sampleRate = 44100; });
+        vi.stubGlobal(
+          'AudioContext',
+          class {
+            sampleRate = 44100;
+          },
+        );
 
         const pluginManager = createMockPluginManager();
         setupStore({ pluginManager });
 
         const { result } = renderHook(() => useArca());
-        await act(async () => { await result.current.audio.start(); });
+        await act(async () => {
+          await result.current.audio.start();
+        });
 
         const cbArgs = pluginManager.setCallbacks.mock.calls[0][0];
         const pluginError = new Error('VAD crashed');
@@ -757,7 +796,9 @@ describe('useArca — pipeline actions', () => {
       const { result } = renderHook(() => useArca());
 
       await expect(
-        act(async () => { await result.current.pipelines.triggerNER(); }),
+        act(async () => {
+          await result.current.pipelines.triggerNER();
+        }),
       ).rejects.toThrow('Knowledge pipeline not initialized');
     });
 
@@ -773,7 +814,9 @@ describe('useArca — pipeline actions', () => {
       const { result } = renderHook(() => useArca());
 
       await expect(
-        act(async () => { await result.current.pipelines.triggerNER('test'); }),
+        act(async () => {
+          await result.current.pipelines.triggerNER('test');
+        }),
       ).rejects.toThrow('NER engine crashed');
     });
   });
@@ -806,7 +849,9 @@ describe('useArca — pipeline actions', () => {
       const { result } = renderHook(() => useArca());
 
       await expect(
-        act(async () => { await result.current.pipelines.triggerSummarization(); }),
+        act(async () => {
+          await result.current.pipelines.triggerSummarization();
+        }),
       ).rejects.toThrow('No active consultation');
     });
 
@@ -819,7 +864,9 @@ describe('useArca — pipeline actions', () => {
       const { result } = renderHook(() => useArca());
 
       await expect(
-        act(async () => { await result.current.pipelines.triggerSummarization(); }),
+        act(async () => {
+          await result.current.pipelines.triggerSummarization();
+        }),
       ).rejects.toThrow('Knowledge pipeline not initialized');
     });
 
@@ -835,7 +882,9 @@ describe('useArca — pipeline actions', () => {
       const { result } = renderHook(() => useArca());
 
       await expect(
-        act(async () => { await result.current.pipelines.triggerSummarization(); }),
+        act(async () => {
+          await result.current.pipelines.triggerSummarization();
+        }),
       ).rejects.toThrow('SMR service down');
     });
   });
@@ -856,7 +905,9 @@ describe('useArca — context error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.context.addCaseNote('note'); }),
+      act(async () => {
+        await result.current.context.addCaseNote('note');
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setContextError).toHaveBeenCalled();
@@ -868,7 +919,9 @@ describe('useArca — context error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.context.addTranscription('text'); }),
+      act(async () => {
+        await result.current.context.addTranscription('text');
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setContextError).toHaveBeenCalled();
@@ -880,7 +933,9 @@ describe('useArca — context error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.context.updateItem('id', 'content'); }),
+      act(async () => {
+        await result.current.context.updateItem('id', 'content');
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setContextError).toHaveBeenCalled();
@@ -892,7 +947,9 @@ describe('useArca — context error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.context.loadSharedContext(); }),
+      act(async () => {
+        await result.current.context.loadSharedContext();
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setContextError).toHaveBeenCalled();
@@ -904,7 +961,9 @@ describe('useArca — context error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.context.extractEntities(); }),
+      act(async () => {
+        await result.current.context.extractEntities();
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setContextError).toHaveBeenCalled();
@@ -916,7 +975,9 @@ describe('useArca — context error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.context.getContextVersions('id'); }),
+      act(async () => {
+        await result.current.context.getContextVersions('id');
+      }),
     ).rejects.toThrow();
   });
 
@@ -926,7 +987,9 @@ describe('useArca — context error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.context.triggerEntityExtraction('id'); }),
+      act(async () => {
+        await result.current.context.triggerEntityExtraction('id');
+      }),
     ).rejects.toThrow();
   });
 });
@@ -946,7 +1009,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.generatePreSummary(); }),
+      act(async () => {
+        await result.current.summary.generatePreSummary();
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setSummaryError).toHaveBeenCalled();
@@ -958,7 +1023,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.generateSummary(); }),
+      act(async () => {
+        await result.current.summary.generateSummary();
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setSummaryError).toHaveBeenCalled();
@@ -970,7 +1037,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.updateSummary('id', 'content'); }),
+      act(async () => {
+        await result.current.summary.updateSummary('id', 'content');
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setSummaryError).toHaveBeenCalled();
@@ -982,7 +1051,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.generateSummaryAsync(); }),
+      act(async () => {
+        await result.current.summary.generateSummaryAsync();
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setSummaryError).toHaveBeenCalled();
@@ -994,7 +1065,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.generatePreSummaryAsync(); }),
+      act(async () => {
+        await result.current.summary.generatePreSummaryAsync();
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setSummaryError).toHaveBeenCalled();
@@ -1006,7 +1079,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.generateComprehensiveSummary(); }),
+      act(async () => {
+        await result.current.summary.generateComprehensiveSummary();
+      }),
     ).rejects.toThrow();
 
     expect(mockStoreData.setSummaryError).toHaveBeenCalled();
@@ -1018,7 +1093,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.getLatestPreSummary(); }),
+      act(async () => {
+        await result.current.summary.getLatestPreSummary();
+      }),
     ).rejects.toThrow();
   });
 
@@ -1028,7 +1105,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.getSummaryHistory('id'); }),
+      act(async () => {
+        await result.current.summary.getSummaryHistory('id');
+      }),
     ).rejects.toThrow();
   });
 
@@ -1038,7 +1117,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.compareSummaryVersions('ctx', 1, 2); }),
+      act(async () => {
+        await result.current.summary.compareSummaryVersions('ctx', 1, 2);
+      }),
     ).rejects.toThrow();
   });
 
@@ -1048,7 +1129,9 @@ describe('useArca — summary error paths', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.loadSummaries(); }),
+      act(async () => {
+        await result.current.summary.loadSummaries();
+      }),
     ).rejects.toThrow();
   });
 });
@@ -1103,7 +1186,9 @@ describe('useArca — analyzeDNA', () => {
     const { result } = renderHook(() => useArca());
 
     await expect(
-      act(async () => { await result.current.summary.analyzeDNA(['text']); }),
+      act(async () => {
+        await result.current.summary.analyzeDNA(['text']);
+      }),
     ).rejects.toThrow('DNA analysis is not supported');
   });
 });

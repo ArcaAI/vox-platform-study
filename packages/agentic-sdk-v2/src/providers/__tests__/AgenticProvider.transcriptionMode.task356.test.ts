@@ -86,18 +86,15 @@ async function renderProvider(configOverride: Record<string, unknown> = {}) {
     return null;
   };
 
-  const element = React.createElement(
-    AgenticProvider,
-    {
-      config: {
-        api: { baseUrl: 'https://api.example.com', apiKey: 'k', accessToken: 'access', tenantId: 'tenant-1' },
-        audio: undefined,
-        personalization: { storage: 'backend' },
-        ...configOverride,
-      },
-      children: React.createElement(Capture),
-    } as never,
-  ) as React.ReactElement;
+  const element = React.createElement(AgenticProvider, {
+    config: {
+      api: { baseUrl: 'https://api.example.com', apiKey: 'k', accessToken: 'access', tenantId: 'tenant-1' },
+      audio: undefined,
+      personalization: { storage: 'backend' },
+      ...configOverride,
+    },
+    children: React.createElement(Capture),
+  } as never) as React.ReactElement;
   render(element);
   if (!captured.api) throw new Error('AgenticProvider store API was not captured');
   return captured.api;
@@ -112,9 +109,7 @@ function handlerWithMode(transcriptionMode?: 'LOCAL' | 'BACKEND'): FetchHandler 
       return Promise.resolve(jsonResponse({ defaultSttModel: 'whisper-base', features: {} }));
     }
     if (url.includes('/user/me/preferences')) {
-      return Promise.resolve(
-        jsonResponse(transcriptionMode ? { transcriptionMode, transcriptionModeLocked: true } : {}),
-      );
+      return Promise.resolve(jsonResponse(transcriptionMode ? { transcriptionMode, transcriptionModeLocked: true } : {}));
     }
     return Promise.resolve(jsonResponse({}));
   };

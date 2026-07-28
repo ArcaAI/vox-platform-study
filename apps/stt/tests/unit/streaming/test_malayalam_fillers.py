@@ -98,9 +98,7 @@ class TestConfigurableExtraFillerPatterns:
     def _make_worker(extra: str) -> StreamingInferenceWorker:
         settings = MagicMock()
         settings.streaming_extra_filler_patterns = extra
-        with patch(
-            "stt.core.config.settings.get_settings", return_value=settings
-        ):
+        with patch("stt.core.config.settings.get_settings", return_value=settings):
             return StreamingInferenceWorker()
 
     def test_extra_patterns_from_settings_are_applied(self):

@@ -36,8 +36,6 @@ async def test_sweep_once_never_raises_into_the_worker(
     def boom() -> int:
         raise RuntimeError("nvml gone")
 
-    monkeypatch.setattr(
-        "harness.sensors.inferential.minicheck_entailer.sweep_entailer_cache", boom
-    )
+    monkeypatch.setattr("harness.sensors.inferential.minicheck_entailer.sweep_entailer_cache", boom)
 
     assert await worker_module._sweep_model_caches_once() == 0

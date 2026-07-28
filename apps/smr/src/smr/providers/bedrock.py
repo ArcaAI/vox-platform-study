@@ -121,13 +121,15 @@ class BedrockProvider:
         if request.response_format is not None and request.response_format.type == "json_schema":
             schema = request.response_format.json_schema or {}
             params["toolConfig"] = {
-                "tools": [{
-                    "toolSpec": {
-                        "name": schema.get("title", "output"),
-                        "description": "Structured output schema",
-                        "inputSchema": {"json": schema},
+                "tools": [
+                    {
+                        "toolSpec": {
+                            "name": schema.get("title", "output"),
+                            "description": "Structured output schema",
+                            "inputSchema": {"json": schema},
+                        }
                     }
-                }],
+                ],
                 "toolChoice": {"tool": {"name": schema.get("title", "output")}},
             }
 
@@ -266,7 +268,11 @@ class BedrockProvider:
                 stop_reason=stop_reason,
                 total_ms=total_ms,
                 ttft_ms=ttft_ms,
-                engine_native={"usage": raw_usage, "stopReason": stop_reason} if raw_usage or stop_reason else None,
+                engine_native=(
+                    {"usage": raw_usage, "stopReason": stop_reason}
+                    if raw_usage or stop_reason
+                    else None
+                ),
             )
             if raw_usage:
                 span.set_attribute("gen_ai.usage.input_tokens", raw_usage.get("inputTokens", 0))

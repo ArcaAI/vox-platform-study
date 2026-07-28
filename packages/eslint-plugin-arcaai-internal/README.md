@@ -28,10 +28,10 @@ Forbids reading the downstream Python service URL keys from `process.env`, in bo
 Why: downstream URLs must be resolved through the typed `IConfigService.getConfigValue(...)` accessor so env loading and validation happen once at bootstrap instead of ad hoc per request (TASK-310 E-5 / AC-5).
 
 ```typescript
-const url = process.env.SMR_URL || 'http://localhost:8862';        // ERROR
-const url = process.env['STT_URL'];                                // ERROR
-const url = process.env['STT_V2_URL'];                             // ERROR (dual-read window)
-const url = this.configService.getConfigValue('SMR_URL');          // OK
+const url = process.env.SMR_URL || 'http://localhost:8862'; // ERROR
+const url = process.env['STT_URL']; // ERROR
+const url = process.env['STT_V2_URL']; // ERROR (dual-read window)
+const url = this.configService.getConfigValue('SMR_URL'); // OK
 ```
 
 ## How It Is Wired (verified)

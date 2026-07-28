@@ -5,13 +5,13 @@
  * a catalog loads or when the caller cannot resolve the name.
  */
 export function NameWithId({ name, id, showId = true }: { name?: string | null; id: string; showId?: boolean }) {
-    if (!name || name === id) {
-        return <span className="font-mono text-xs break-all">{id}</span>;
-    }
-    return (
-        <span className="flex flex-col gap-0.5">
-            <span className="font-medium">{name}</span>
-            {showId ? <span className="text-muted-foreground font-mono text-[10px] leading-tight break-all">{id}</span> : null}
-        </span>
-    );
+  if (!name || name === id) {
+    return <span className="font-mono text-xs break-all">{id}</span>;
+  }
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="font-medium">{name}</span>
+      {showId ? <span className="text-muted-foreground font-mono text-[10px] leading-tight break-all">{id}</span> : null}
+    </span>
+  );
 }

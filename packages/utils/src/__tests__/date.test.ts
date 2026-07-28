@@ -5,15 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  formatDuration,
-  formatDate,
-  formatTime,
-  formatDateTime,
-  getRelativeTime,
-  isToday,
-  now,
-} from '../date.js';
+import { formatDuration, formatDate, formatTime, formatDateTime, getRelativeTime, isToday, now } from '../date.js';
 
 describe('date utilities', () => {
   describe('formatDuration', () => {

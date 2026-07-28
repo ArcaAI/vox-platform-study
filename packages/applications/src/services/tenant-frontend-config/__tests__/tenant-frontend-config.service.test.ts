@@ -33,12 +33,7 @@ const mockConfigRepository = {
 const mockAppSettings = { getValueWithDefault: vi.fn() };
 
 function makeService(): TenantFrontendConfigService {
-  return new TenantFrontendConfigService(
-    mockConfigRepository as any,
-    mockEventEmitter as any,
-    mockClsService as any,
-    mockAppSettings as any,
-  );
+  return new TenantFrontendConfigService(mockConfigRepository as any, mockEventEmitter as any, mockClsService as any, mockAppSettings as any);
 }
 
 /** Default CLS: a tenant admin pinned to tenant-1. */
@@ -331,7 +326,12 @@ describe('TenantFrontendConfigService', () => {
       mockConfigRepository.findByTenant.mockResolvedValue(existing);
       mockConfigRepository.updateWithVersion.mockImplementation(async (_id: string, entity: any) => entity);
 
-      await service.upsert({ transcriptionMode: TranscriptionMode.LOCAL, transcriptionModeLocked: true, captureMode: CaptureMode.NONE, expectedVersion: 1 });
+      await service.upsert({
+        transcriptionMode: TranscriptionMode.LOCAL,
+        transcriptionModeLocked: true,
+        captureMode: CaptureMode.NONE,
+        expectedVersion: 1,
+      });
 
       expect(existing.transcriptionMode).toBe(TranscriptionMode.LOCAL);
       expect(existing.transcriptionModeLocked).toBe(true);

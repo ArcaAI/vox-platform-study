@@ -86,10 +86,7 @@ async function setupVADWithTranscription() {
 
         // The audio from VAD is already at 16kHz
         try {
-          const text = await mockTranscriptionService.transcribe(
-            audio,
-            VAD_SAMPLE_RATE
-          );
+          const text = await mockTranscriptionService.transcribe(audio, VAD_SAMPLE_RATE);
 
           transcripts.push({
             timestamp: startTime,
@@ -147,18 +144,12 @@ async function setupVADWithTranscription() {
 /**
  * Example: Processing audio buffer with VAD.
  */
-async function processAudioBuffer(
-  audioBuffer: Float32Array,
-  inputSampleRate: number
-): Promise<void> {
+async function processAudioBuffer(audioBuffer: Float32Array, inputSampleRate: number): Promise<void> {
   console.log('[Process] Processing audio buffer...');
   console.log(`[Process] Input: ${audioBuffer.length} samples at ${inputSampleRate}Hz`);
 
   // Resample to 16kHz if needed
-  const resampledAudio =
-    inputSampleRate === VAD_SAMPLE_RATE
-      ? audioBuffer
-      : downsampleTo16kHz(audioBuffer, inputSampleRate);
+  const resampledAudio = inputSampleRate === VAD_SAMPLE_RATE ? audioBuffer : downsampleTo16kHz(audioBuffer, inputSampleRate);
 
   console.log(`[Process] Resampled: ${resampledAudio.length} samples at 16kHz`);
 

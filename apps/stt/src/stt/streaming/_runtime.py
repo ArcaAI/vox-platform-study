@@ -130,7 +130,10 @@ async def initialize_streaming() -> None:
     from stt.core.runtime_limits import resolve_streaming_max_concurrent
 
     served_max_concurrent = await resolve_streaming_max_concurrent(0)
-    if served_max_concurrent > 0 and served_max_concurrent != _execution_profile.max_concurrent_streams:
+    if (
+        served_max_concurrent > 0
+        and served_max_concurrent != _execution_profile.max_concurrent_streams
+    ):
         logger.info(
             "Execution profile max_concurrent_streams overridden by control plane",
             detected=_execution_profile.max_concurrent_streams,

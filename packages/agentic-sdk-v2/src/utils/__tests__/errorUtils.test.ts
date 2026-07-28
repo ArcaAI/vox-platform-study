@@ -209,9 +209,7 @@ describe('errorUtils', () => {
 
     it('should return the result after retrying a retriable error', async () => {
       const networkErr = new AgenticError('NETWORK_ERROR', 'Network failed');
-      const fn = vi.fn()
-        .mockRejectedValueOnce(networkErr)
-        .mockResolvedValueOnce('recovered');
+      const fn = vi.fn().mockRejectedValueOnce(networkErr).mockResolvedValueOnce('recovered');
 
       const result = await withRetry(fn, { maxRetries: 3, delayMs: 0 });
 
@@ -259,10 +257,7 @@ describe('errorUtils', () => {
       const err1 = new AgenticError('NETWORK_ERROR', 'First failure');
       const err2 = new AgenticError('NETWORK_ERROR', 'Second failure');
       const err3 = new AgenticError('NETWORK_ERROR', 'Third failure');
-      const fn = vi.fn()
-        .mockRejectedValueOnce(err1)
-        .mockRejectedValueOnce(err2)
-        .mockRejectedValueOnce(err3);
+      const fn = vi.fn().mockRejectedValueOnce(err1).mockRejectedValueOnce(err2).mockRejectedValueOnce(err3);
 
       await expect(withRetry(fn, { maxRetries: 2, delayMs: 0 })).rejects.toThrow('Third failure');
     });
@@ -297,10 +292,7 @@ describe('errorUtils', () => {
 
     it('should call onRetry before each retry attempt', async () => {
       const networkErr = new AgenticError('NETWORK_ERROR', 'Fail');
-      const fn = vi.fn()
-        .mockRejectedValueOnce(networkErr)
-        .mockRejectedValueOnce(networkErr)
-        .mockResolvedValueOnce('ok');
+      const fn = vi.fn().mockRejectedValueOnce(networkErr).mockRejectedValueOnce(networkErr).mockResolvedValueOnce('ok');
 
       const onRetry = vi.fn();
       const result = await withRetry(fn, { maxRetries: 3, delayMs: 0, onRetry });
@@ -350,9 +342,7 @@ describe('errorUtils', () => {
 
     it('should retry immediately when delayMs is 0', async () => {
       const networkErr = new AgenticError('NETWORK_ERROR', 'Fail');
-      const fn = vi.fn()
-        .mockRejectedValueOnce(networkErr)
-        .mockResolvedValueOnce('ok');
+      const fn = vi.fn().mockRejectedValueOnce(networkErr).mockResolvedValueOnce('ok');
 
       const result = await withRetry(fn, { maxRetries: 1, delayMs: 0 });
 
@@ -364,9 +354,7 @@ describe('errorUtils', () => {
 
     it('should retry TypeError (treated as network error)', async () => {
       const typeErr = new TypeError('Failed to fetch');
-      const fn = vi.fn()
-        .mockRejectedValueOnce(typeErr)
-        .mockResolvedValueOnce('recovered');
+      const fn = vi.fn().mockRejectedValueOnce(typeErr).mockResolvedValueOnce('recovered');
 
       const result = await withRetry(fn, { maxRetries: 2, delayMs: 0 });
 
@@ -402,7 +390,8 @@ describe('errorUtils', () => {
     // --- Edge: interleaved error types during retries ---
 
     it('should stop retrying if a retriable error is followed by a non-retriable one', async () => {
-      const fn = vi.fn()
+      const fn = vi
+        .fn()
         .mockRejectedValueOnce(new AgenticError('API_ERROR', 'Retriable'))
         .mockRejectedValueOnce(new AgenticError('AUTHENTICATION_ERROR', 'Non-retriable'));
 
@@ -414,18 +403,16 @@ describe('errorUtils', () => {
 
     it('should propagate error when onRetry callback throws (fail-fast)', async () => {
       const networkErr = new AgenticError('NETWORK_ERROR', 'Fail');
-      const fn = vi.fn()
-        .mockRejectedValueOnce(networkErr)
-        .mockResolvedValueOnce('recovered');
+      const fn = vi.fn().mockRejectedValueOnce(networkErr).mockResolvedValueOnce('recovered');
 
-      const badOnRetry = vi.fn(() => { throw new Error('onRetry bug'); });
+      const badOnRetry = vi.fn(() => {
+        throw new Error('onRetry bug');
+      });
 
       // onRetry is called before the delay — if it throws, the error propagates
       // and the retry loop is aborted. This is intentional: callers should not
       // pass buggy callbacks.
-      await expect(
-        withRetry(fn, { maxRetries: 2, delayMs: 0, onRetry: badOnRetry })
-      ).rejects.toThrow('onRetry bug');
+      await expect(withRetry(fn, { maxRetries: 2, delayMs: 0, onRetry: badOnRetry })).rejects.toThrow('onRetry bug');
 
       // fn was called once (initial attempt), then onRetry threw before retry
       expect(fn).toHaveBeenCalledTimes(1);
@@ -436,10 +423,7 @@ describe('errorUtils', () => {
 
     it('should return result when fn succeeds on the last possible attempt', async () => {
       const apiErr = new AgenticError('API_ERROR', 'Fail');
-      const fn = vi.fn()
-        .mockRejectedValueOnce(apiErr)
-        .mockRejectedValueOnce(apiErr)
-        .mockResolvedValueOnce('last-attempt-success');
+      const fn = vi.fn().mockRejectedValueOnce(apiErr).mockRejectedValueOnce(apiErr).mockResolvedValueOnce('last-attempt-success');
 
       const result = await withRetry(fn, { maxRetries: 2, delayMs: 0 });
 

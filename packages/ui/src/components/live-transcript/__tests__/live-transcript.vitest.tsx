@@ -24,7 +24,12 @@ beforeAll(() => {
   Element.prototype.getBoundingClientRect = function () {
     return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
   };
-  for (const [prop, value] of [['clientHeight', 600], ['clientWidth', 800], ['offsetHeight', 600], ['offsetWidth', 800]] as const) {
+  for (const [prop, value] of [
+    ['clientHeight', 600],
+    ['clientWidth', 800],
+    ['offsetHeight', 600],
+    ['offsetWidth', 800],
+  ] as const) {
     Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value });
   }
 });
@@ -44,10 +49,7 @@ const WORDS = [
 
 describe('useLiveTranscript (headless controller)', () => {
   it('merges code-switching glosses into their final (no duplicate row)', () => {
-    const segments = [
-      seg({ id: 'f1', text: 'hola', utteranceIndex: 0 }),
-      seg({ id: 'g1', text: 'hello', utteranceIndex: 0, resultType: 'gloss' }),
-    ];
+    const segments = [seg({ id: 'f1', text: 'hola', utteranceIndex: 0 }), seg({ id: 'g1', text: 'hello', utteranceIndex: 0, resultType: 'gloss' })];
     const { result } = renderHook(() => useLiveTranscript({ segments }));
     expect(result.current.segments).toHaveLength(1);
     expect(result.current.segments[0].id).toBe('f1');
@@ -56,9 +58,12 @@ describe('useLiveTranscript (headless controller)', () => {
 
   it('derives the active word from audioController.currentTime', () => {
     const segments = [seg({ id: 's1', text: 'hello world', wordTimestamps: WORDS })];
-    const { result, rerender } = renderHook((time: number) => useLiveTranscript({ segments, showWords: true, audioController: { seek: vi.fn(), currentTime: time } }), {
-      initialProps: 1.6,
-    });
+    const { result, rerender } = renderHook(
+      (time: number) => useLiveTranscript({ segments, showWords: true, audioController: { seek: vi.fn(), currentTime: time } }),
+      {
+        initialProps: 1.6,
+      },
+    );
     expect(result.current.activeWord).toEqual({ segmentId: 's1', index: 0 });
     rerender(2.3);
     expect(result.current.activeWord).toEqual({ segmentId: 's1', index: 1 });

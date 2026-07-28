@@ -53,8 +53,6 @@ export class AuthService implements IAuthService {
     return AuthDtoMapper.ToResponse(user);
   }
 
-
-
   /**
    * Track successful authentication for audit purposes.
    *

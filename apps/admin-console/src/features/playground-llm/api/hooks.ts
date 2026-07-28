@@ -7,11 +7,11 @@ import { playgroundLlmKeys } from './keys';
 import type { AssembledGenerateRequest, GenerateTextRequest, GuardrailType } from './types';
 
 export function useSmrProviders(tenantKey?: string) {
-    return useQuery({ queryKey: playgroundLlmKeys.providers(tenantKey), queryFn: () => listProviders(tenantKey) });
+  return useQuery({ queryKey: playgroundLlmKeys.providers(tenantKey), queryFn: () => listProviders(tenantKey) });
 }
 
 export function useSmrGuardrailProviders(tenantKey?: string) {
-    return useQuery({ queryKey: playgroundLlmKeys.guardrailProviders(tenantKey), queryFn: () => listGuardrailProviders(tenantKey) });
+  return useQuery({ queryKey: playgroundLlmKeys.guardrailProviders(tenantKey), queryFn: () => listGuardrailProviders(tenantKey) });
 }
 
 const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
@@ -23,36 +23,36 @@ const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
  * full content once the task completes server-side.
  */
 export function useSmrTask(taskId: string | null, enabled: boolean) {
-    return useQuery({
-        queryKey: playgroundLlmKeys.task(taskId ?? 'none'),
-        queryFn: () => getTask(taskId as string),
-        enabled: enabled && !!taskId,
-        refetchInterval: (query) => {
-            const status = query.state.data?.status;
-            if (!status || TERMINAL_TASK_STATUSES.has(status)) return false;
-            return 2000;
-        },
-    });
+  return useQuery({
+    queryKey: playgroundLlmKeys.task(taskId ?? 'none'),
+    queryFn: () => getTask(taskId as string),
+    enabled: enabled && !!taskId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (!status || TERMINAL_TASK_STATUSES.has(status)) return false;
+      return 2000;
+    },
+  });
 }
 
 export function useGenerateText() {
-    return useMutation({ mutationFn: (body: GenerateTextRequest) => generateText(body) });
+  return useMutation({ mutationFn: (body: GenerateTextRequest) => generateText(body) });
 }
 
 export function useGenerateAssembled() {
-    return useMutation({ mutationFn: (body: AssembledGenerateRequest) => generateAssembled(body) });
+  return useMutation({ mutationFn: (body: AssembledGenerateRequest) => generateAssembled(body) });
 }
 
 export function useCancelTask() {
-    return useMutation({ mutationFn: (taskId: string) => cancelTask(taskId) });
+  return useMutation({ mutationFn: (taskId: string) => cancelTask(taskId) });
 }
 
 /** Guardrails tab: content-safety / PII / prompt-injection analysis. */
 export function useAnalyzeGuardrail() {
-    return useMutation({ mutationFn: (body: { text: string; guardrailType?: GuardrailType }) => analyzeGuardrail(body) });
+  return useMutation({ mutationFn: (body: { text: string; guardrailType?: GuardrailType }) => analyzeGuardrail(body) });
 }
 
 /** NER tab: medical entity extraction (token classification). */
 export function useExtractEntities() {
-    return useMutation({ mutationFn: (body: { text: string; aggregationStrategy?: string; language?: string }) => extractEntities(body) });
+  return useMutation({ mutationFn: (body: { text: string; aggregationStrategy?: string; language?: string }) => extractEntities(body) });
 }

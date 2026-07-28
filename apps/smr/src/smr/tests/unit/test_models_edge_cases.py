@@ -100,7 +100,14 @@ class TestTaskStateEdgeCases:
             assert d["status"] == status.value
 
     def test_roundtrip_json(self):
-        state = TaskState(task_id="t", status=TaskStatus.RUNNING, provider="p", model="m", retry_count=2, error="oops")
+        state = TaskState(
+            task_id="t",
+            status=TaskStatus.RUNNING,
+            provider="p",
+            model="m",
+            retry_count=2,
+            error="oops",
+        )
         j = state.model_dump_json()
         restored = TaskState.model_validate_json(j)
         assert restored.task_id == "t"
@@ -163,7 +170,13 @@ class TestRateLimitStateEdgeCases:
         assert s.retry_after_seconds is None
 
     def test_serialization_roundtrip(self):
-        s = RateLimitState(provider="azure", rpm_limit=100, tpm_limit=50000, is_rate_limited=True, retry_after_seconds=30.0)
+        s = RateLimitState(
+            provider="azure",
+            rpm_limit=100,
+            tpm_limit=50000,
+            is_rate_limited=True,
+            retry_after_seconds=30.0,
+        )
         j = s.model_dump_json()
         restored = RateLimitState.model_validate_json(j)
         assert restored.is_rate_limited is True
@@ -177,15 +190,21 @@ class TestGenerateResponseEdgeCases:
 
     def test_with_usage(self):
         r = GenerateResponse(
-            task_id="t", status="completed", content="hi", provider="p", model="m",
-            usage=TokenUsage(prompt_tokens=5, completion_tokens=1, total_tokens=6)
+            task_id="t",
+            status="completed",
+            content="hi",
+            provider="p",
+            model="m",
+            usage=TokenUsage(prompt_tokens=5, completion_tokens=1, total_tokens=6),
         )
         assert r.usage.total_tokens == 6
 
 
 class TestTaskResponseEdgeCases:
     def test_with_content_and_error(self):
-        r = TaskResponse(task_id="t", status="failed", provider="p", model="m", error="boom", content="partial")
+        r = TaskResponse(
+            task_id="t", status="failed", provider="p", model="m", error="boom", content="partial"
+        )
         assert r.error == "boom"
         assert r.content == "partial"
 

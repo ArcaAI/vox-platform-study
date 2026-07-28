@@ -41,11 +41,7 @@ describe('PgBouncer txn-mode — basic SELECT (Task 1.7)', () => {
   it('20 consecutive queries reuse pooled server connections (no leak)', async () => {
     // 20 short queries should round-trip the same handful of server
     // connections — the pool of size 10 must absorb them without erroring.
-    const results = await Promise.all(
-      Array.from({ length: 20 }, (_, idx) =>
-        prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT ${idx}::int AS n`),
-      ),
-    );
+    const results = await Promise.all(Array.from({ length: 20 }, (_, idx) => prisma.$queryRawUnsafe<{ n: number }[]>(`SELECT ${idx}::int AS n`)));
     expect(results).toHaveLength(20);
     results.forEach((rows, idx) => {
       expect(rows[0]?.n).toBe(idx);

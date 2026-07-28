@@ -86,7 +86,11 @@ class SafetensorEngine(AsrEngine):
         initial_prompt: str | None = None,
     ) -> Any:
         return await service._run_transformers_inference(
-            samples, sample_rate, model, config, progress_callback,
+            samples,
+            sample_rate,
+            model,
+            config,
+            progress_callback,
             prompt=prompt,
             initial_prompt=initial_prompt,
         )
@@ -101,7 +105,10 @@ class SafetensorEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_transformers_callable(
-            loaded_model, inference_config, initial_prompt=initial_prompt, task=task,
+            loaded_model,
+            inference_config,
+            initial_prompt=initial_prompt,
+            task=task,
         )
 
 
@@ -127,7 +134,11 @@ class OnnxEngine(AsrEngine):
     ) -> Any:
         if model.extra.get("optimum") or model.processor is not None:
             return await service._run_optimum_onnx_inference(
-                samples, sample_rate, model, config, progress_callback,
+                samples,
+                sample_rate,
+                model,
+                config,
+                progress_callback,
                 chunk_callback=chunk_callback,
                 first_word_hook=first_word_hook,
                 prompt=prompt,
@@ -146,7 +157,10 @@ class OnnxEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_transformers_callable(
-            loaded_model, inference_config, initial_prompt=initial_prompt, task=task,
+            loaded_model,
+            inference_config,
+            initial_prompt=initial_prompt,
+            task=task,
         )
 
 
@@ -179,7 +193,9 @@ class NemoEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_nemo_callable(
-            loaded_model, inference_config, initial_prompt=initial_prompt,
+            loaded_model,
+            inference_config,
+            initial_prompt=initial_prompt,
         )
 
 
@@ -203,7 +219,11 @@ class FasterWhisperEngine(AsrEngine):
         # that already contains initial_prompt; preferring the bare
         # initial_prompt silently discarded the rolling segment context.
         return await service._run_faster_whisper_inference(
-            samples, sample_rate, model, config, progress_callback,
+            samples,
+            sample_rate,
+            model,
+            config,
+            progress_callback,
             initial_prompt=prompt or initial_prompt,
         )
 
@@ -217,7 +237,9 @@ class FasterWhisperEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_faster_whisper_callable(
-            loaded_model, inference_config, task=task,
+            loaded_model,
+            inference_config,
+            task=task,
         )
 
 
@@ -390,7 +412,11 @@ class WhisperCppEngine(AsrEngine):
         initial_prompt: str | None = None,
     ) -> Any:
         return await service._run_whisper_cpp_inference(
-            samples, sample_rate, model, config, progress_callback,
+            samples,
+            sample_rate,
+            model,
+            config,
+            progress_callback,
             prompt=prompt or initial_prompt,
         )
 

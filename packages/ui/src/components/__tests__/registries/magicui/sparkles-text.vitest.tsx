@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
-import { SparklesText } from '../../../registries/magicui/sparkles-text'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render } from '@testing-library/react';
+import { SparklesText } from '../../../registries/magicui/sparkles-text';
 
 describe('SparklesText', () => {
   beforeEach(() => {
@@ -30,11 +30,11 @@ describe('SparklesText', () => {
       rect: vi.fn(),
       clip: vi.fn(),
       canvas: { width: 800, height: 600 },
-    }) as unknown as typeof HTMLCanvasElement.prototype.getContext
-  })
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
 
   it('renders without crashing', () => {
-    const { container } = render(<SparklesText>Test</SparklesText>)
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    const { container } = render(<SparklesText>Test</SparklesText>);
+    expect(container.firstChild).toBeTruthy();
+  });
+});

@@ -58,8 +58,7 @@ describe('ImpersonationGuard component contract', () => {
 
   describe('custom featureDescription', () => {
     it('should use custom featureDescription as body text', () => {
-      const customDesc =
-        'Consultations are doctor-scoped. You need to impersonate a doctor to view and manage consultations.';
+      const customDesc = 'Consultations are doctor-scoped. You need to impersonate a doctor to view and manage consultations.';
       const text = getBodyText({
         roles: ['GLOBAL_ADMIN'],
         featureDescription: customDesc,

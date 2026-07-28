@@ -130,10 +130,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('factory function', () => {
     it('should create pipeline using factory', () => {
-      const pipeline = createTranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = createTranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       expect(pipeline).toBeInstanceOf(TranscriptionPipeline);
       expect(pipeline.name).toBe('transcription-pipeline');
@@ -148,7 +145,7 @@ describe('TranscriptionPipeline', () => {
           vad: { enabled: true, location: 'browser' },
           stt: { enabled: true, location: 'browser' },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -170,7 +167,7 @@ describe('TranscriptionPipeline', () => {
           vad: { enabled: false, location: 'browser' },
           stt: { enabled: false, location: 'skip' },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -181,26 +178,17 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should not reinitialize if already running', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
       expect(mockNoiseFilter.init).toHaveBeenCalledTimes(1);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        'TranscriptionPipeline already running',
-        expect.any(Object)
-      );
+      expect(mockLogger.warn).toHaveBeenCalledWith('TranscriptionPipeline already running', expect.any(Object));
     });
 
     it('should emit stateChange events during initialization', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       const stateChanges: Array<{ status: string }> = [];
       pipeline.on('stateChange', (state) => {
@@ -215,22 +203,15 @@ describe('TranscriptionPipeline', () => {
     it('should handle initialization errors', async () => {
       mockNoiseFilter.init.mockRejectedValueOnce(new Error('Init failed'));
 
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       const errorHandler = vi.fn();
       pipeline.on('error', errorHandler);
 
-      await expect(
-        pipeline.start({ track: mockTrack, audioContext: mockAudioContext })
-      ).rejects.toThrow('Init failed');
+      await expect(pipeline.start({ track: mockTrack, audioContext: mockAudioContext })).rejects.toThrow('Init failed');
 
       expect(pipeline.state.status).toBe('ERROR');
-      expect(errorHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.any(Error) })
-      );
+      expect(errorHandler).toHaveBeenCalledWith(expect.objectContaining({ error: expect.any(Error) }));
     });
 
     it('should map VAD sensitivity and timing options correctly', async () => {
@@ -246,7 +227,7 @@ describe('TranscriptionPipeline', () => {
           },
           stt: { enabled: false, location: 'skip' },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -274,7 +255,7 @@ describe('TranscriptionPipeline', () => {
             numSpeakers: 3,
           },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -290,7 +271,7 @@ describe('TranscriptionPipeline', () => {
             returnTimestamps: 'word',
             codeSwitching: false,
           }),
-        })
+        }),
       );
     });
 
@@ -306,7 +287,7 @@ describe('TranscriptionPipeline', () => {
             language: 'en-US',
           },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -317,7 +298,7 @@ describe('TranscriptionPipeline', () => {
             provider: 'local',
             modelId: 'tiny',
           }),
-        })
+        }),
       );
     });
 
@@ -339,7 +320,7 @@ describe('TranscriptionPipeline', () => {
             streamingTransport: transport,
           },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -347,7 +328,7 @@ describe('TranscriptionPipeline', () => {
       expect(createSTT).toHaveBeenCalledWith(
         expect.objectContaining({
           features: expect.objectContaining({ provider: 'remote' }),
-        })
+        }),
       );
       expect(mockSTT.setStreamingTransport).toHaveBeenCalledWith(transport);
     });
@@ -363,12 +344,12 @@ describe('TranscriptionPipeline', () => {
             provider: 'backend',
           },
         },
-        mockLogger
+        mockLogger,
       );
 
-      await expect(
-        pipeline.start({ track: mockTrack, audioContext: mockAudioContext })
-      ).rejects.toThrow('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
+      await expect(pipeline.start({ track: mockTrack, audioContext: mockAudioContext })).rejects.toThrow(
+        'stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote',
+      );
     });
 
     // The server-resolved transcriptionMode is authoritative
@@ -385,12 +366,12 @@ describe('TranscriptionPipeline', () => {
             transcriptionMode: 'BACKEND',
           },
         },
-        mockLogger
+        mockLogger,
       );
 
-      await expect(
-        pipeline.start({ track: mockTrack, audioContext: mockAudioContext })
-      ).rejects.toThrow('stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote');
+      await expect(pipeline.start({ track: mockTrack, audioContext: mockAudioContext })).rejects.toThrow(
+        'stt.sttSocket or stt.streamingTransport is required when STT provider resolves to backend/remote',
+      );
     });
 
     it('honors transcriptionMode=LOCAL over provider=backend (resolves local → builds the local STT stage)', async () => {
@@ -405,7 +386,7 @@ describe('TranscriptionPipeline', () => {
             transcriptionMode: 'LOCAL',
           },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -423,7 +404,7 @@ describe('TranscriptionPipeline', () => {
           noiseFilter: { enabled: true, location: 'browser' },
           vad: { enabled: true, location: 'browser' },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -438,10 +419,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should do nothing if already stopped', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.stop();
 
@@ -456,7 +434,7 @@ describe('TranscriptionPipeline', () => {
           noiseFilter: { enabled: true, location: 'browser' },
           vad: { enabled: true, location: 'browser' },
         },
-        mockLogger
+        mockLogger,
       );
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
@@ -468,10 +446,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should resume the pipeline', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.pause();
@@ -482,10 +457,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should not pause if not running', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       pipeline.pause();
 
@@ -493,10 +465,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should not resume if not paused', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       pipeline.resume();
@@ -508,10 +477,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('updateConfig', () => {
     it('should update configuration', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       pipeline.updateConfig({
         vad: { enabled: true, sensitivity: 0.8, location: 'browser' },
@@ -527,7 +493,7 @@ describe('TranscriptionPipeline', () => {
         {
           noiseFilter: { enabled: true, level: 'low', location: 'browser' },
         },
-        mockLogger
+        mockLogger,
       );
 
       pipeline.updateConfig({
@@ -542,10 +508,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('toggleStage', () => {
     it('should toggle stage enabled state', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.toggleStage('noiseFilter', false);
@@ -557,10 +520,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should enable stage after being disabled', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: false, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: false, location: 'browser' } }, mockLogger);
 
       await pipeline.toggleStage('noiseFilter', true);
 
@@ -571,10 +531,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('getProcessor', () => {
     it('should return processor by name', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
@@ -591,10 +548,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('getProcessedTrack', () => {
     it('should return original track when no processing', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
@@ -606,10 +560,7 @@ describe('TranscriptionPipeline', () => {
       const processedTrack = {} as MediaStreamTrack;
       mockNoiseFilter.processedTrack = processedTrack;
 
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
@@ -623,10 +574,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('event handling', () => {
     it('should emit transcription events', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { stt: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ stt: { enabled: true, location: 'browser' } }, mockLogger);
 
       const transcriptionHandler = vi.fn();
       pipeline.on('transcription', transcriptionHandler);
@@ -634,9 +582,7 @@ describe('TranscriptionPipeline', () => {
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
       // Get the data handler registered with the STT processor
-      const dataHandler = mockSTT.on.mock.calls.find(
-        (call) => call[0] === 'data'
-      )?.[1] as (payload: unknown) => void;
+      const dataHandler = mockSTT.on.mock.calls.find((call) => call[0] === 'data')?.[1] as (payload: unknown) => void;
 
       // Simulate STT transcription event
       dataHandler?.({
@@ -645,25 +591,18 @@ describe('TranscriptionPipeline', () => {
         timestamp: Date.now(),
       });
 
-      expect(transcriptionHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ text: 'Hello world', isFinal: true })
-      );
+      expect(transcriptionHandler).toHaveBeenCalledWith(expect.objectContaining({ text: 'Hello world', isFinal: true }));
     });
 
     it('should emit partialTranscription events', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { stt: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ stt: { enabled: true, location: 'browser' } }, mockLogger);
 
       const partialHandler = vi.fn();
       pipeline.on('partialTranscription', partialHandler);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
-      const dataHandler = mockSTT.on.mock.calls.find(
-        (call) => call[0] === 'data'
-      )?.[1] as (payload: unknown) => void;
+      const dataHandler = mockSTT.on.mock.calls.find((call) => call[0] === 'data')?.[1] as (payload: unknown) => void;
 
       dataHandler?.({
         type: 'stt-transcription',
@@ -671,25 +610,18 @@ describe('TranscriptionPipeline', () => {
         timestamp: Date.now(),
       });
 
-      expect(partialHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ text: 'Hello', isFinal: false })
-      );
+      expect(partialHandler).toHaveBeenCalledWith(expect.objectContaining({ text: 'Hello', isFinal: false }));
     });
 
     it('should emit partialTranscription for stt-partial events', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { stt: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ stt: { enabled: true, location: 'browser' } }, mockLogger);
 
       const partialHandler = vi.fn();
       pipeline.on('partialTranscription', partialHandler);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
-      const dataHandler = mockSTT.on.mock.calls.find(
-        (call) => call[0] === 'data'
-      )?.[1] as (payload: unknown) => void;
+      const dataHandler = mockSTT.on.mock.calls.find((call) => call[0] === 'data')?.[1] as (payload: unknown) => void;
 
       dataHandler?.({
         type: 'stt-partial',
@@ -697,25 +629,18 @@ describe('TranscriptionPipeline', () => {
         timestamp: Date.now(),
       });
 
-      expect(partialHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ text: 'Hello from partial event', isFinal: false })
-      );
+      expect(partialHandler).toHaveBeenCalledWith(expect.objectContaining({ text: 'Hello from partial event', isFinal: false }));
     });
 
     it('should emit VAD events', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { vad: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ vad: { enabled: true, location: 'browser' } }, mockLogger);
 
       const vadHandler = vi.fn();
       pipeline.on('vadEvent', vadHandler);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
-      const dataHandler = mockVAD.on.mock.calls.find(
-        (call) => call[0] === 'data'
-      )?.[1] as (payload: unknown) => void;
+      const dataHandler = mockVAD.on.mock.calls.find((call) => call[0] === 'data')?.[1] as (payload: unknown) => void;
 
       dataHandler?.({
         type: 'vad-speech-start',
@@ -723,9 +648,7 @@ describe('TranscriptionPipeline', () => {
         timestamp: Date.now(),
       });
 
-      expect(vadHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'speech-start' })
-      );
+      expect(vadHandler).toHaveBeenCalledWith(expect.objectContaining({ type: 'speech-start' }));
     });
 
     it('should transcribe VAD speech-end segments when local STT is VAD-gated', async () => {
@@ -734,7 +657,7 @@ describe('TranscriptionPipeline', () => {
           vad: { enabled: true, location: 'browser' },
           stt: { enabled: true, location: 'browser', provider: 'local' },
         },
-        mockLogger
+        mockLogger,
       );
 
       const transcriptionHandler = vi.fn();
@@ -742,9 +665,7 @@ describe('TranscriptionPipeline', () => {
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
-      const dataHandler = mockVAD.on.mock.calls.find(
-        (call) => call[0] === 'data'
-      )?.[1] as (payload: unknown) => void;
+      const dataHandler = mockVAD.on.mock.calls.find((call) => call[0] === 'data')?.[1] as (payload: unknown) => void;
 
       const speechAudio = new Float32Array([0.2, -0.1, 0.4]);
       dataHandler?.({
@@ -756,18 +677,13 @@ describe('TranscriptionPipeline', () => {
       await Promise.resolve();
 
       expect(mockSTT.transcribeSegment).toHaveBeenCalledWith(speechAudio);
-      expect(transcriptionHandler).toHaveBeenCalledWith(
-        expect.objectContaining({ text: 'speech segment', isFinal: true })
-      );
+      expect(transcriptionHandler).toHaveBeenCalledWith(expect.objectContaining({ text: 'speech segment', isFinal: true }));
     });
   });
 
   describe('destroy', () => {
     it('should destroy pipeline and clear resources', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.destroy();
@@ -783,10 +699,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('stop should release audio resources', () => {
     it('should stop all MediaStream tracks when stopping', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       const mockStop = vi.fn();
       const trackWithStop = { ...mockTrack, stop: mockStop };
@@ -803,7 +716,7 @@ describe('TranscriptionPipeline', () => {
           noiseFilter: { enabled: true, location: 'browser' },
           contextOwnership: 'owned',
         },
-        mockLogger
+        mockLogger,
       );
 
       const mockClose = vi.fn().mockResolvedValue(undefined);
@@ -816,10 +729,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('should NOT close AudioContext when contextOwnership is borrowed (default)', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       const mockClose = vi.fn().mockResolvedValue(undefined);
       const ctxWithClose = { ...mockAudioContext, close: mockClose, state: 'running' };
@@ -836,7 +746,7 @@ describe('TranscriptionPipeline', () => {
           noiseFilter: { enabled: true, location: 'browser' },
           contextOwnership: 'owned',
         },
-        mockLogger
+        mockLogger,
       );
 
       const mockClose = vi.fn().mockResolvedValue(undefined);
@@ -855,10 +765,7 @@ describe('TranscriptionPipeline', () => {
 
   describe('pause/resume should await processor operations', () => {
     it('pause() should return a Promise', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
 
@@ -868,10 +775,7 @@ describe('TranscriptionPipeline', () => {
     });
 
     it('resume() should return a Promise', async () => {
-      const pipeline = new TranscriptionPipeline(
-        { noiseFilter: { enabled: true, location: 'browser' } },
-        mockLogger
-      );
+      const pipeline = new TranscriptionPipeline({ noiseFilter: { enabled: true, location: 'browser' } }, mockLogger);
 
       await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
       await pipeline.pause();

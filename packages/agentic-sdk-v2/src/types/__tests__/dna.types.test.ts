@@ -9,14 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import type {
-  DnaReport,
-  DnaReportData,
-  DnaStyleVersion,
-  DnaGenerateInput,
-  DnaUpdateInput,
-  DnaReportWithFallback,
-} from '../dna';
+import type { DnaReport, DnaReportData, DnaStyleVersion, DnaGenerateInput, DnaUpdateInput, DnaReportWithFallback } from '../dna';
 
 import type { DNAStyle, DNAStyleData } from '../summary';
 

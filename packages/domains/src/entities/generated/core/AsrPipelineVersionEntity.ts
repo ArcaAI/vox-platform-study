@@ -89,5 +89,4 @@ export class AsrPipelineVersionEntity extends BaseTenantEntity {
   set changedBy(value: IAsrPipelineVersionEntity['changedBy']) {
     this.setProperty('changedBy', value);
   }
-
 }

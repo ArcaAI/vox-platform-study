@@ -147,4 +147,3 @@ export interface AudioCaptureEvent {
   data?: AudioBuffer;
   error?: Error;
 }
-

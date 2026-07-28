@@ -49,7 +49,11 @@ export class TenantFrontendConfigResponse {
   @ApiProperty({ description: 'Whether the transcription mode is locked (doctors cannot override it)' })
   transcriptionModeLocked: boolean;
 
-  @ApiPropertyOptional({ description: 'Tenant audio capture mode (null = no tenant override; legacy captureRawAudio applies)', enum: CaptureMode, nullable: true })
+  @ApiPropertyOptional({
+    description: 'Tenant audio capture mode (null = no tenant override; legacy captureRawAudio applies)',
+    enum: CaptureMode,
+    nullable: true,
+  })
   captureMode?: CaptureMode | null;
 
   @ApiPropertyOptional({ description: 'Typed advanced configuration (see FrontendPipelineConfigJson)' })

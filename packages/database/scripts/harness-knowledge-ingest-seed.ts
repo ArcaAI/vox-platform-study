@@ -165,20 +165,22 @@ async function main() {
         tokenCount: true,
       },
     });
-    console.log(JSON.stringify(
-      {
-        docId: d.id,
-        tenantId: d.tenantId,
-        title: d.title,
-        doc_status: doc?.status,
-        doc_ingestedAt: doc?.ingestedAt,
-        doc_chunkCount: doc?.chunkCount,
-        persisted_chunk_rows: chunks.length,
-        chunks,
-      },
-      null,
-      2,
-    ));
+    console.log(
+      JSON.stringify(
+        {
+          docId: d.id,
+          tenantId: d.tenantId,
+          title: d.title,
+          doc_status: doc?.status,
+          doc_ingestedAt: doc?.ingestedAt,
+          doc_chunkCount: doc?.chunkCount,
+          persisted_chunk_rows: chunks.length,
+          chunks,
+        },
+        null,
+        2,
+      ),
+    );
   }
 
   await queue.close();

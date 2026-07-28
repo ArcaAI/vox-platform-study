@@ -30,12 +30,19 @@ function buildService(trajectoryOverride?: { recordSteps: ReturnType<typeof vi.f
     create: vi.fn(),
     update: vi.fn(),
   };
-  const consultationRepository = { findById: vi.fn().mockResolvedValue({ id: CID, tenantId: TENANT, departmentId: null, doctorId: null }), update: vi.fn() };
+  const consultationRepository = {
+    findById: vi.fn().mockResolvedValue({ id: CID, tenantId: TENANT, departmentId: null, doctorId: null }),
+    update: vi.fn(),
+  };
   const summaryMetaRepository = { create: vi.fn().mockResolvedValue({ id: 'meta-1' }), findByContextItem: vi.fn().mockResolvedValue(null) };
   const namedEntityRepository = { create: vi.fn() };
   const contextItemVersionRepository = { create: vi.fn().mockResolvedValue({ id: 'v-1' }), getVersionsByChangeReason: vi.fn().mockResolvedValue([]) };
-  const httpService = { axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'S', modelName: 'm', processingTimeMs: 77, stats: STATS } }) } };
-  const configService = { get: vi.fn().mockImplementation((k: string) => (k === 'SMR_URL' ? 'http://smr' : k === 'NLP_URL' ? 'http://nlp' : undefined)) };
+  const httpService = {
+    axiosRef: { post: vi.fn().mockResolvedValue({ data: { summary: 'S', modelName: 'm', processingTimeMs: 77, stats: STATS } }) },
+  };
+  const configService = {
+    get: vi.fn().mockImplementation((k: string) => (k === 'SMR_URL' ? 'http://smr' : k === 'NLP_URL' ? 'http://nlp' : undefined)),
+  };
   const promptAssemblyService = {
     assemble: vi.fn().mockResolvedValue({ userPrompt: 'p', systemPrompt: '', hyperparameters: {}, responseFormat: null, resolvedFrom: 'default' }),
   };

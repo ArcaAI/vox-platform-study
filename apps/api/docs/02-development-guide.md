@@ -25,14 +25,14 @@
 
 ### Required Software
 
-| Software | Version | Installation |
-|----------|---------|--------------|
-| **Node.js** | 18+ (recommended 20.x) | https://nodejs.org/ |
-| **pnpm** | 10.6.5+ | `npm install -g pnpm` |
-| **PostgreSQL** | 14+ | https://www.postgresql.org/ |
-| **Redis** | 7+ | https://redis.io/ |
-| **Docker** | Latest | https://www.docker.com/ |
-| **Git** | Latest | https://git-scm.com/ |
+| Software       | Version                | Installation                |
+| -------------- | ---------------------- | --------------------------- |
+| **Node.js**    | 18+ (recommended 20.x) | https://nodejs.org/         |
+| **pnpm**       | 10.6.5+                | `npm install -g pnpm`       |
+| **PostgreSQL** | 14+                    | https://www.postgresql.org/ |
+| **Redis**      | 7+                     | https://redis.io/           |
+| **Docker**     | Latest                 | https://www.docker.com/     |
+| **Git**        | Latest                 | https://git-scm.com/        |
 
 ### Optional Tools
 
@@ -144,6 +144,7 @@ docker-compose -f docker-compose.dev.yml ps
 #### Option B: Manual Setup
 
 **PostgreSQL:**
+
 ```bash
 # Install PostgreSQL
 # macOS
@@ -155,6 +156,7 @@ createdb hope_dev
 ```
 
 **Redis:**
+
 ```bash
 # Install Redis
 # macOS
@@ -361,25 +363,8 @@ export class ExampleResponseDto {
 
 ```typescript
 // example.controller.ts
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  Param,
-  Query,
-  UseGuards,
-  HttpCode,
-  HttpStatus,
-} from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-} from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiKeyGuard } from '../../guards';
 import { CreateExampleDto, ExampleResponseDto } from './dto';
 
@@ -402,9 +387,7 @@ export class ExampleController {
     status: 400,
     description: 'Invalid input data',
   })
-  async create(
-    @Body() createDto: CreateExampleDto,
-  ): Promise<ExampleResponseDto> {
+  async create(@Body() createDto: CreateExampleDto): Promise<ExampleResponseDto> {
     // Implementation here
     return {
       id: 'example-id',
@@ -450,10 +433,7 @@ export class ExampleController {
 
   @Put(':id')
   @ApiOperation({ summary: 'Update example' })
-  async update(
-    @Param('id') id: string,
-    @Body() updateDto: CreateExampleDto,
-  ): Promise<ExampleResponseDto> {
+  async update(@Param('id') id: string, @Body() updateDto: CreateExampleDto): Promise<ExampleResponseDto> {
     // Implementation here
     return {
       id,
@@ -817,11 +797,7 @@ pnpm dev:debug
 ### Error Handling
 
 ```typescript
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 
 @Injectable()
 export class ExampleService {
@@ -878,16 +854,19 @@ export class CreateUserDto {
 ### Adding a New Environment Variable
 
 1. Add to `env.example`:
+
 ```bash
 NEW_VARIABLE=default_value
 ```
 
 2. Add to your `.env`:
+
 ```bash
 NEW_VARIABLE=actual_value
 ```
 
 3. Access in code:
+
 ```typescript
 const value = process.env.NEW_VARIABLE;
 ```
@@ -916,18 +895,11 @@ async getCustom(@CustomDecorator() customData: any) {
 
 ```typescript
 // example.gateway.ts
-import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
-} from '@nestjs/websockets';
+import { WebSocketGateway, WebSocketServer, SubscribeMessage, OnGatewayConnection, OnGatewayDisconnect } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
 @WebSocketGateway({ namespace: '/example' })
-export class ExampleGateway
-  implements OnGatewayConnection, OnGatewayDisconnect {
+export class ExampleGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
@@ -1026,4 +998,3 @@ After completing this guide:
 ---
 
 **Happy Coding! 🚀**
-

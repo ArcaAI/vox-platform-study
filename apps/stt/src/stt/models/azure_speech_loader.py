@@ -108,9 +108,7 @@ class AzureSpeechLoader(BaseModelLoader):
                 override = entry
 
         override_key = override.get("api_key") if override else None
-        override_region = (
-            (override.get("region") or override.get("endpoint")) if override else None
-        )
+        override_region = (override.get("region") or override.get("endpoint")) if override else None
 
         # Resolve credentials: per-tenant override > inline config > env settings
         speech_key = (
@@ -124,9 +122,7 @@ class AzureSpeechLoader(BaseModelLoader):
         )
 
         speech_region = (
-            override_region
-            or self._resolve_region(model_config)
-            or settings.azure_speech_region
+            override_region or self._resolve_region(model_config) or settings.azure_speech_region
         )
 
         if not speech_key or not speech_region:

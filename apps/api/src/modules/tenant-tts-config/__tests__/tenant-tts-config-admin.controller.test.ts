@@ -85,7 +85,11 @@ describe('TenantTtsConfigAdminController — platform catalog', () => {
 
   it('GET catalog delegates to getPlatformCatalog (tenant-agnostic — no tenant scoping)', async () => {
     const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    const catalog = { providers: [{ provider: 'azure', slug: 'azure-neural-voices', name: 'Azure Neural Voices', voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }] }] };
+    const catalog = {
+      providers: [
+        { provider: 'azure', slug: 'azure-neural-voices', name: 'Azure Neural Voices', voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }] },
+      ],
+    };
     service.getPlatformCatalog.mockResolvedValue(catalog);
 
     await expect(controller.getCatalog()).resolves.toBe(catalog);
@@ -115,25 +119,33 @@ describe('TenantTtsConfigAdminController — BYO credentials (facade over IProvi
   it('setCredential creates (expectedVersion 0) when no row exists yet, mapping endpoint to region for azure', async () => {
     const { controller, providerConnectionService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     providerConnectionService.getRow.mockResolvedValue({ version: 0 });
-    providerConnectionService.upsertRow.mockResolvedValue({ provider: 'azure', region: 'eastus', baseUrl: null, hasKey: true, keyVersion: 1, enabled: true });
+    providerConnectionService.upsertRow.mockResolvedValue({
+      provider: 'azure',
+      region: 'eastus',
+      baseUrl: null,
+      hasKey: true,
+      keyVersion: 1,
+      enabled: true,
+    });
 
     const res = await controller.setCredential('azure', { apiKey: 'k', endpoint: 'eastus' }, undefined);
 
     expect(providerConnectionService.getRow).toHaveBeenCalledWith('tts', 'azure', 't1');
-    expect(providerConnectionService.upsertRow).toHaveBeenCalledWith(
-      'tts',
-      'azure',
-      { apiKey: 'k', enabled: true, region: 'eastus' },
-      't1',
-      0,
-    );
+    expect(providerConnectionService.upsertRow).toHaveBeenCalledWith('tts', 'azure', { apiKey: 'k', enabled: true, region: 'eastus' }, 't1', 0);
     expect(res).toEqual({ provider: 'azure', endpoint: 'eastus', enabled: true, hasKey: true, keyVersion: 1 });
   });
 
   it('setCredential rotates (CAS on the current version) when a row already exists, mapping endpoint to baseUrl for sarvam', async () => {
     const { controller, providerConnectionService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     providerConnectionService.getRow.mockResolvedValue({ version: 3 });
-    providerConnectionService.upsertRow.mockResolvedValue({ provider: 'sarvam', region: null, baseUrl: 'https://vpc.sarvam', hasKey: true, keyVersion: 2, enabled: true });
+    providerConnectionService.upsertRow.mockResolvedValue({
+      provider: 'sarvam',
+      region: null,
+      baseUrl: 'https://vpc.sarvam',
+      hasKey: true,
+      keyVersion: 2,
+      enabled: true,
+    });
 
     const res = await controller.setCredential('sarvam', { apiKey: 'rotated', endpoint: 'https://vpc.sarvam' }, undefined);
 
@@ -150,7 +162,14 @@ describe('TenantTtsConfigAdminController — BYO credentials (facade over IProvi
   it('setCredential defaults enabled to true and never surfaces the key on the response', async () => {
     const { controller, providerConnectionService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     providerConnectionService.getRow.mockResolvedValue({ version: 0 });
-    providerConnectionService.upsertRow.mockResolvedValue({ provider: 'azure', region: null, baseUrl: null, hasKey: true, keyVersion: 1, enabled: true });
+    providerConnectionService.upsertRow.mockResolvedValue({
+      provider: 'azure',
+      region: null,
+      baseUrl: null,
+      hasKey: true,
+      keyVersion: 1,
+      enabled: true,
+    });
 
     const res = await controller.setCredential('azure', { apiKey: 'super-secret' }, undefined);
 

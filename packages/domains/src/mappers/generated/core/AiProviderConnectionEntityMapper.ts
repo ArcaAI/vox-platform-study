@@ -17,47 +17,27 @@ function stripNonWritableFields<T extends object>(model: T, fields: string[]): T
   return model;
 }
 
-export class AiProviderConnectionEntityMapper extends BaseMapper<
-  Entities.AiProviderConnectionEntity,
-  Models.AiProviderConnection
-> {
+export class AiProviderConnectionEntityMapper extends BaseMapper<Entities.AiProviderConnectionEntity, Models.AiProviderConnection> {
   constructor() {
     super();
   }
 
   public toPersistence(entity: Entities.AiProviderConnectionEntity): Models.AiProviderConnection {
-    const result = AutoClassMapper(
-      entity,
-      Models.AiProviderConnection,
-      AiProviderConnectionEntityMapperHandlers.$toPersistence,
-    );
+    const result = AutoClassMapper(entity, Models.AiProviderConnection, AiProviderConnectionEntityMapperHandlers.$toPersistence);
     return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
-  public toPersistenceChanges(
-    entity: Entities.AiProviderConnectionEntity,
-  ): Partial<Models.AiProviderConnection> {
-    const result = AutoEntityChangeMapper(
-      entity,
-      Models.AiProviderConnection,
-      AiProviderConnectionEntityMapperHandlers.$toPersistence,
-    );
+  public toPersistenceChanges(entity: Entities.AiProviderConnectionEntity): Partial<Models.AiProviderConnection> {
+    const result = AutoEntityChangeMapper(entity, Models.AiProviderConnection, AiProviderConnectionEntityMapperHandlers.$toPersistence);
     return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
   public toDomainEntity(dataModel: Models.AiProviderConnection): Entities.AiProviderConnectionEntity {
-    return AutoClassMapper(
-      dataModel,
-      Entities.AiProviderConnectionEntity,
-      AiProviderConnectionEntityMapperHandlers.$toDomain,
-    );
+    return AutoClassMapper(dataModel, Entities.AiProviderConnectionEntity, AiProviderConnectionEntityMapperHandlers.$toDomain);
   }
 }
 
-export const AiProviderConnectionEntityMapperHandlers = createMapperHandlers<
-  Entities.AiProviderConnectionEntity,
-  Models.AiProviderConnection
->({
+export const AiProviderConnectionEntityMapperHandlers = createMapperHandlers<Entities.AiProviderConnectionEntity, Models.AiProviderConnection>({
   $toPersistence: {},
   $toDomain: {},
 });

@@ -1,10 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  ColorPicker,
-  ColorPickerContent,
-  ColorPickerArea,
-} from '@/components/registries/diceui/color-picker'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { ColorPicker, ColorPickerContent, ColorPickerArea } from '@/components/registries/diceui/color-picker';
 
 describe('ColorPicker', () => {
   it('renders without crashing', () => {
@@ -14,7 +10,7 @@ describe('ColorPicker', () => {
           <ColorPickerArea />
         </ColorPickerContent>
       </ColorPicker>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

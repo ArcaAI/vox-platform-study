@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Transcription Jobs' };
 
 /** Frame 35 — Transcription jobs ops surface (tier 30–49). */
 export default function TranscriptionJobsPage() {
-    return <TranscriptionJobsScreen />;
+  return <TranscriptionJobsScreen />;
 }

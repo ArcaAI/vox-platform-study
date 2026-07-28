@@ -204,9 +204,7 @@ describe('useArcaAudio — F3 dual-mic mixing (secondaryDeviceId)', () => {
   it('start({ secondaryDeviceId }) mixes both inputs and initializes the pipeline with the mixed track', async () => {
     const primary = makeStream('primary');
     const secondary = makeStream('secondary');
-    (navigator.mediaDevices.getUserMedia as any)
-      .mockResolvedValueOnce(primary)
-      .mockResolvedValueOnce(secondary);
+    (navigator.mediaDevices.getUserMedia as any).mockResolvedValueOnce(primary).mockResolvedValueOnce(secondary);
 
     const pluginManager = createMockPluginManager();
     setupStore({ pluginManager });
@@ -266,9 +264,7 @@ describe('useArcaAudio — F3/Q5 startFromPreferences()', () => {
     // Device derived from prefs.custom.
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'mic-A' } } });
     // Backend STT provider chosen → pipelineId forwarded to the plugin manager.
-    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(
-      expect.objectContaining({ pipelineId: 'pipe-xyz', language: 'th' }),
-    );
+    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipe-xyz', language: 'th' }));
   });
 
   it('omits the backend pipeline when workflow is local (local STT provider)', async () => {
@@ -288,9 +284,7 @@ describe('useArcaAudio — F3/Q5 startFromPreferences()', () => {
       await result.current.startFromPreferences();
     });
 
-    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(
-      expect.objectContaining({ pipelineId: undefined }),
-    );
+    expect(pluginManager.setRuntimeOptions).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: undefined }));
   });
 });
 

@@ -79,20 +79,12 @@ describe('Doctor Context Resolution', () => {
 
   describe('Effective user resolution', () => {
     it('should return auth user when not impersonating', () => {
-      const result = resolveEffectiveUser(
-        { id: 'doctor-001', roles: ['DOCTOR'] },
-        null,
-        false,
-      );
+      const result = resolveEffectiveUser({ id: 'doctor-001', roles: ['DOCTOR'] }, null, false);
       expect(result).toEqual({ userId: 'doctor-001', isImpersonated: false });
     });
 
     it('should return impersonated user when impersonating', () => {
-      const result = resolveEffectiveUser(
-        { id: 'admin-001', roles: ['GLOBAL_ADMIN'] },
-        { id: 'doctor-002', roles: ['DOCTOR'] },
-        true,
-      );
+      const result = resolveEffectiveUser({ id: 'admin-001', roles: ['GLOBAL_ADMIN'] }, { id: 'doctor-002', roles: ['DOCTOR'] }, true);
       expect(result).toEqual({ userId: 'doctor-002', isImpersonated: true });
     });
 
@@ -142,9 +134,7 @@ describe('Doctor Context Resolution', () => {
 
     it('should filter templates by user department + global templates', () => {
       const userDeptId = 'dept-card';
-      const filtered = templates.filter(
-        (t) => t.departmentId === userDeptId || !t.departmentId,
-      );
+      const filtered = templates.filter((t) => t.departmentId === userDeptId || !t.departmentId);
       expect(filtered).toHaveLength(3);
       expect(filtered.map((t) => t.id)).toEqual(['pt-1', 'pt-2', 'pt-4']);
     });
@@ -161,20 +151,12 @@ describe('Doctor Context Resolution', () => {
 
   describe('DNA writing style per doctor user', () => {
     it('should use effective userId to fetch DNA style', () => {
-      const effectiveUser = resolveEffectiveUser(
-        { id: 'admin-001', roles: ['GLOBAL_ADMIN'] },
-        { id: 'doctor-002', roles: ['DOCTOR'] },
-        true,
-      );
+      const effectiveUser = resolveEffectiveUser({ id: 'admin-001', roles: ['GLOBAL_ADMIN'] }, { id: 'doctor-002', roles: ['DOCTOR'] }, true);
       expect(effectiveUser?.userId).toBe('doctor-002');
     });
 
     it('should use own userId when not impersonating', () => {
-      const effectiveUser = resolveEffectiveUser(
-        { id: 'doctor-001', roles: ['DOCTOR'] },
-        null,
-        false,
-      );
+      const effectiveUser = resolveEffectiveUser({ id: 'doctor-001', roles: ['DOCTOR'] }, null, false);
       expect(effectiveUser?.userId).toBe('doctor-001');
     });
   });
@@ -188,33 +170,23 @@ describe('Doctor Context Resolution', () => {
     ];
 
     it('should filter templates by pre-summary tag', () => {
-      const preSummaryTagged = systemTemplates.filter(
-        (t) => t.tags?.some((tag) => tag.toLowerCase().includes('pre-summary')),
-      );
+      const preSummaryTagged = systemTemplates.filter((t) => t.tags?.some((tag) => tag.toLowerCase().includes('pre-summary')));
       expect(preSummaryTagged).toHaveLength(2);
       expect(preSummaryTagged.map((t) => t.id)).toEqual(['ps-1', 'ps-2']);
     });
 
     it('should prioritize department preSummaryPromptId', () => {
       const deptPreSummaryId = 'ps-1';
-      const preSummaryTagged = systemTemplates.filter(
-        (t) => t.tags?.some((tag) => tag.toLowerCase().includes('pre-summary')),
-      );
+      const preSummaryTagged = systemTemplates.filter((t) => t.tags?.some((tag) => tag.toLowerCase().includes('pre-summary')));
       const deptTemplate = systemTemplates.find((t) => t.id === deptPreSummaryId);
-      const result = deptTemplate && !preSummaryTagged.some((t) => t.id === deptTemplate.id)
-        ? [deptTemplate, ...preSummaryTagged]
-        : preSummaryTagged;
+      const result = deptTemplate && !preSummaryTagged.some((t) => t.id === deptTemplate.id) ? [deptTemplate, ...preSummaryTagged] : preSummaryTagged;
       expect(result[0].id).toBe('ps-1');
     });
 
     it('should fall back to all system templates when no pre-summary tags found', () => {
       const noTagTemplates = systemTemplates.map((t) => ({ ...t, tags: ['system'] }));
-      const preSummaryTagged = noTagTemplates.filter(
-        (t) => t.tags?.some((tag) => tag.toLowerCase().includes('pre-summary')),
-      );
-      const fallback = preSummaryTagged.length > 0
-        ? preSummaryTagged
-        : noTagTemplates.filter((t) => !t.departmentId);
+      const preSummaryTagged = noTagTemplates.filter((t) => t.tags?.some((tag) => tag.toLowerCase().includes('pre-summary')));
+      const fallback = preSummaryTagged.length > 0 ? preSummaryTagged : noTagTemplates.filter((t) => !t.departmentId);
       expect(fallback).toHaveLength(4);
     });
   });

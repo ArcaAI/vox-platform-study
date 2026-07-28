@@ -74,7 +74,13 @@ def test_to_entities_merges_multi_subword_medication_into_one_unprefixed_entity(
     # HF with aggregation_strategy != "none" merges the ``am ##lo ##di ##pine``
     # subwords into ONE span keyed by ``entity_group`` (BIO prefix stripped).
     aggregated = [
-        {"entity_group": "MEDICATION", "score": 0.97, "word": "amlodipine", "start": start, "end": end},
+        {
+            "entity_group": "MEDICATION",
+            "score": 0.97,
+            "word": "amlodipine",
+            "start": start,
+            "end": end,
+        },
     ]
 
     entities = classifier._to_entities(aggregated)

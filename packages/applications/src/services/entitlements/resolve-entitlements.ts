@@ -161,7 +161,7 @@ export function resolveEntitlements(
     featureDnaReports: pick(planRow?.featureDnaReports, seeded.featureDnaReports),
     featureVoiceEnrollment: pick(planRow?.featureVoiceEnrollment, seeded.featureVoiceEnrollment),
     featureMonitoringAccess: pick(planRow?.featureMonitoringAccess, seeded.featureMonitoringAccess),
-    modelTier: (pick(planRow?.modelTier, seeded.modelTier) as ModelTier),
+    modelTier: pick(planRow?.modelTier, seeded.modelTier) as ModelTier,
     rateLimitTier: pick(planRow?.rateLimitTier, seeded.rateLimitTier),
   };
 
@@ -186,7 +186,7 @@ export function resolveEntitlements(
       voiceEnrollment: pick(override?.featureVoiceEnrollment, base.featureVoiceEnrollment),
       monitoringAccess: pick(override?.featureMonitoringAccess, base.featureMonitoringAccess),
     },
-    modelTier: (pick(override?.modelTier, base.modelTier) as ModelTier),
+    modelTier: pick(override?.modelTier, base.modelTier) as ModelTier,
     rateLimitTier: pick(override?.rateLimitTier, base.rateLimitTier),
     rateLimitPerMinute: toNum(override?.rateLimitPerMinute),
   };

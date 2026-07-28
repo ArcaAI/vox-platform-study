@@ -68,29 +68,23 @@ describe('Repository.updateWithVersion', () => {
     harness.db.updateMany.mockResolvedValueOnce({ count: 0 });
     harness.db.findUnique.mockResolvedValueOnce({ id: 'e-1', version: 9 });
 
-    await expect(
-      harness.repo.updateWithVersion('e-1', { changes: { value: 'new' } } as any, 7),
-    ).rejects.toBeInstanceOf(OptimisticConcurrencyException);
+    await expect(harness.repo.updateWithVersion('e-1', { changes: { value: 'new' } } as any, 7)).rejects.toBeInstanceOf(
+      OptimisticConcurrencyException,
+    );
   });
 
   it('throws DataNotFoundException when count === 0 and row is gone', async () => {
     harness.db.updateMany.mockResolvedValueOnce({ count: 0 });
     harness.db.findUnique.mockResolvedValueOnce(null);
 
-    await expect(
-      harness.repo.updateWithVersion('e-1', { changes: { value: 'new' } } as any, 7),
-    ).rejects.toBeInstanceOf(DataNotFoundException);
+    await expect(harness.repo.updateWithVersion('e-1', { changes: { value: 'new' } } as any, 7)).rejects.toBeInstanceOf(DataNotFoundException);
   });
 
   it('strips `version` from changes payload even if present (defense in depth)', async () => {
     harness.db.updateMany.mockResolvedValueOnce({ count: 1 });
     harness.db.findUnique.mockResolvedValueOnce({ id: 'e-1', version: 8 });
 
-    await harness.repo.updateWithVersion(
-      'e-1',
-      { changes: { value: 'new', version: 999 } } as any,
-      7,
-    );
+    await harness.repo.updateWithVersion('e-1', { changes: { value: 'new', version: 999 } } as any, 7);
 
     expect(harness.db.updateMany).toHaveBeenCalledWith({
       where: { id: 'e-1', version: 7 },

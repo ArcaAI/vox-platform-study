@@ -6,28 +6,28 @@ Last updated: 2026-07-04
 
 ## Package Facts
 
-| | |
-|---|---|
-| Package name | `@arcaai/ui` (private, `workspace:*`) |
-| React | 19 (peer dependency, together with `react-dom`) |
-| Optional peer | `react-hook-form` (only needed for the `Form` component) |
-| Styling | Tailwind CSS v4 (CSS-first, no JS config), `tw-animate-css` |
-| Variants | `class-variance-authority` (cva) + `cn()` (clsx + tailwind-merge) |
-| Build | tsup (CJS + ESM + d.ts, `"use client"` banner) + Tailwind CLI for `dist/styles.css` |
-| Tests | Vitest (unit) + Playwright component tests + Storybook 10 |
+|               |                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------- |
+| Package name  | `@arcaai/ui` (private, `workspace:*`)                                               |
+| React         | 19 (peer dependency, together with `react-dom`)                                     |
+| Optional peer | `react-hook-form` (only needed for the `Form` component)                            |
+| Styling       | Tailwind CSS v4 (CSS-first, no JS config), `tw-animate-css`                         |
+| Variants      | `class-variance-authority` (cva) + `cn()` (clsx + tailwind-merge)                   |
+| Build         | tsup (CJS + ESM + d.ts, `"use client"` banner) + Tailwind CLI for `dist/styles.css` |
+| Tests         | Vitest (unit) + Playwright component tests + Storybook 10                           |
 
 ## Entry Points
 
 Defined in [package.json](./package.json) `exports`:
 
-| Import | Resolves to |
-|---|---|
-| `@arcaai/ui` | `dist/index.js` / `dist/index.mjs` (root barrel) |
-| `@arcaai/ui/styles.css` | `dist/styles.css` (prebuilt theme + utilities) |
-| `@arcaai/ui/components/shared` | `dist/components/shared/*` (`StatusBadge`, `DensityProvider`) |
-| `@arcaai/ui/components/metrics` | `dist/components/metrics/*` (metrics primitives) |
-| `@arcaai/ui/hooks/use-mobile` | `src/hooks/use-mobile.ts` (source, compiled by the consumer) |
-| `@arcaai/ui/*` | `src/*.tsx` (any source component by path, e.g. `@arcaai/ui/components/registries/basecn/button`, `@arcaai/ui/sortable`) |
+| Import                          | Resolves to                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `@arcaai/ui`                    | `dist/index.js` / `dist/index.mjs` (root barrel)                                                                         |
+| `@arcaai/ui/styles.css`         | `dist/styles.css` (prebuilt theme + utilities)                                                                           |
+| `@arcaai/ui/components/shared`  | `dist/components/shared/*` (`StatusBadge`, `DensityProvider`)                                                            |
+| `@arcaai/ui/components/metrics` | `dist/components/metrics/*` (metrics primitives)                                                                         |
+| `@arcaai/ui/hooks/use-mobile`   | `src/hooks/use-mobile.ts` (source, compiled by the consumer)                                                             |
+| `@arcaai/ui/*`                  | `src/*.tsx` (any source component by path, e.g. `@arcaai/ui/components/registries/basecn/button`, `@arcaai/ui/sortable`) |
 
 ## Component Inventory
 
@@ -41,17 +41,17 @@ All are exported from the root barrel.
 
 ### HOPE domain components
 
-| Group | Path | Contents |
-|---|---|---|
-| Custom | `src/components/custom/` | `AsyncJobTracker`, `AudioMeter`, `CodeExample`, `DeptPromptSelector`, `DnaStyleSelector`, `ModelSelector`, `MultiColumnLayout`, `ThemeToggle`, `WorkflowToggle` |
-| Live transcript | `src/components/live-transcript/` | `LiveTranscript` (canonical realtime transcript), `useLiveTranscript`, `JumpToLive`, `ListeningPulse` |
-| Data grid | `src/components/data-grid/` | `VirtualizedDataGrid` (canonical data grid), column header / faceted filter / pagination / toolbar / skeleton, `useDataGrid` |
-| Timeline | `src/components/timeline/` | `HistoryTimelineList`, `ScrollSpyTimeline`, `useTimeline`, `useScrollSpy`, content renderers (Markdown, PDF, image grid, audio, file, mixed) |
-| Collection | `src/components/collection/` | `CardGrid`, `EntityCard`, `ItemList` |
-| Metrics | `src/components/metrics/` | `StatusDot`, `StatCard`, `MetricChart`, `ServiceStatusBar`, `DateRangeSelector`, `TenantFilter`, `MetricTable`, `RunningTasksList`, `ModelsList` |
-| Shared | `src/components/shared/` | `StatusBadge`, `DensityProvider` / `useDensity` |
-| ElevenLabs audio/voice | `src/components/elevenlabs/` | `AudioPlayer`, `BarVisualizer`, `Conversation`, `ConversationBar`, `LiveWaveform`, `Matrix`, `Message`, `MicSelector`, `Orb`, `Response`, `ScrubBar`, `ShimmeringText`, `SpeechInput`, `TranscriptViewer`, `VoiceButton`, `VoicePicker`, `Waveform` |
-| Editor | `src/components/editor/`, `src/components/blocks/editor-00/` | Lexical rich-text editor internals and the `editor-00` block used by the `@shadcn-editor` registry |
+| Group                  | Path                                                         | Contents                                                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Custom                 | `src/components/custom/`                                     | `AsyncJobTracker`, `AudioMeter`, `CodeExample`, `DeptPromptSelector`, `DnaStyleSelector`, `ModelSelector`, `MultiColumnLayout`, `ThemeToggle`, `WorkflowToggle`                                                                                     |
+| Live transcript        | `src/components/live-transcript/`                            | `LiveTranscript` (canonical realtime transcript), `useLiveTranscript`, `JumpToLive`, `ListeningPulse`                                                                                                                                               |
+| Data grid              | `src/components/data-grid/`                                  | `VirtualizedDataGrid` (canonical data grid), column header / faceted filter / pagination / toolbar / skeleton, `useDataGrid`                                                                                                                        |
+| Timeline               | `src/components/timeline/`                                   | `HistoryTimelineList`, `ScrollSpyTimeline`, `useTimeline`, `useScrollSpy`, content renderers (Markdown, PDF, image grid, audio, file, mixed)                                                                                                        |
+| Collection             | `src/components/collection/`                                 | `CardGrid`, `EntityCard`, `ItemList`                                                                                                                                                                                                                |
+| Metrics                | `src/components/metrics/`                                    | `StatusDot`, `StatCard`, `MetricChart`, `ServiceStatusBar`, `DateRangeSelector`, `TenantFilter`, `MetricTable`, `RunningTasksList`, `ModelsList`                                                                                                    |
+| Shared                 | `src/components/shared/`                                     | `StatusBadge`, `DensityProvider` / `useDensity`                                                                                                                                                                                                     |
+| ElevenLabs audio/voice | `src/components/elevenlabs/`                                 | `AudioPlayer`, `BarVisualizer`, `Conversation`, `ConversationBar`, `LiveWaveform`, `Matrix`, `Message`, `MicSelector`, `Orb`, `Response`, `ScrubBar`, `ShimmeringText`, `SpeechInput`, `TranscriptViewer`, `VoiceButton`, `VoicePicker`, `Waveform` |
+| Editor                 | `src/components/editor/`, `src/components/blocks/editor-00/` | Lexical rich-text editor internals and the `editor-00` block used by the `@shadcn-editor` registry                                                                                                                                                  |
 
 ### Third-party registries (`src/components/registries/`, 16 collections)
 
@@ -67,14 +67,14 @@ Registry sources are declared in [components.json](./components.json) (`@prompt-
 
 ## Hooks and Utilities
 
-| Export | Source | Notes |
-|---|---|---|
-| `useIsMobile` | `src/hooks/use-mobile.ts` | Also exposed as the `./hooks/use-mobile` subpath |
-| `useScribe` | `src/hooks/use-scribe.ts` | Streaming STT hook (`ScribeStatus`, `CommitStrategy`, ...) |
-| `useTranscriptViewer` | `src/hooks/use-transcript-viewer.ts` | Segment composition for transcript UIs |
-| Hook collection | `src/hooks/registries/` | `use-boolean`, `use-clipboard`, `use-debounce`, `use-element-size`, etc. (exported via barrel) |
-| `cn(...inputs)` | `src/lib/utils.ts` | clsx + tailwind-merge class merging — the only util on the root barrel |
-| Shared contracts | `src/lib/shared/` | Pagination / query-state / async-collection / surface prop types |
+| Export                | Source                               | Notes                                                                                          |
+| --------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `useIsMobile`         | `src/hooks/use-mobile.ts`            | Also exposed as the `./hooks/use-mobile` subpath                                               |
+| `useScribe`           | `src/hooks/use-scribe.ts`            | Streaming STT hook (`ScribeStatus`, `CommitStrategy`, ...)                                     |
+| `useTranscriptViewer` | `src/hooks/use-transcript-viewer.ts` | Segment composition for transcript UIs                                                         |
+| Hook collection       | `src/hooks/registries/`              | `use-boolean`, `use-clipboard`, `use-debounce`, `use-element-size`, etc. (exported via barrel) |
+| `cn(...inputs)`       | `src/lib/utils.ts`                   | clsx + tailwind-merge class merging — the only util on the root barrel                         |
+| Shared contracts      | `src/lib/shared/`                    | Pagination / query-state / async-collection / surface prop types                               |
 
 ## Theming and Tailwind v4
 
@@ -90,26 +90,28 @@ Tailwind v4 is configured CSS-first; there is no `tailwind.config.js` in this pa
 Teal is the default accent with **no attribute** — zero visual change without opt-in. Setting `data-accent` on `<html>` remaps only the accent-derived semantic tokens (`--primary`, `--accent`, `--ring`, `--sidebar-*`, `--chart-1`) from the existing raw ramps; no component is restyled.
 
 ```html
-<html data-accent="indigo">   <!-- also: "green", "amber" (maps to the saffron ramp) -->
+<html data-accent="indigo">
+  <!-- also: "green", "amber" (maps to the saffron ramp) -->
+</html>
 ```
 
 Both light (`:root[data-accent=…]`) and dark (`.dark[data-accent=…]`) blocks are defined; primary-on-background clears WCAG AA in both themes for every accent. See the `Foundation/Accent Themes` Storybook story. There is intentionally no console wiring by default — the mechanism is for tenant/brand theming (a follow-up consumer).
 
-The **code editor surface** (`CodeEditor`) is a *fixed* dark surface in both themes (artboard 5c) via the `--code-editor-*` tokens, defined only in `:root` so `.dark` never remaps them.
+The **code editor surface** (`CodeEditor`) is a _fixed_ dark surface in both themes (artboard 5c) via the `--code-editor-*` tokens, defined only in `:root` so `.dark` never remaps them.
 
 Consumers wire styles in one of two ways (both verified in-repo):
 
 1. Prebuilt CSS — import the compiled sheet, which already contains the tokens and all utilities used by this package:
 
 ```css
-@import "@arcaai/ui/styles.css";
+@import '@arcaai/ui/styles.css';
 ```
 
 2. Source scanning (what `apps/ui-playground` does in `src/index.css`) — run Tailwind v4 in the app and point `@source` at this package so utilities used by `@arcaai/ui` components are generated in the app's own sheet:
 
 ```css
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @source "../../../packages/ui/src";
 ```
@@ -148,8 +150,7 @@ const buttonVariants = cva('inline-flex items-center justify-center ...', {
 
 function Button({ className, variant = 'default', size = 'default', asChild = false, ...props }) {
   const Comp = asChild ? Slot.Root : 'button';
-  return <Comp data-slot="button" data-variant={variant} data-size={size}
-    className={cn(buttonVariants({ variant, size, className }))} {...props} />;
+  return <Comp data-slot="button" data-variant={variant} data-size={size} className={cn(buttonVariants({ variant, size, className }))} {...props} />;
 }
 
 export { Button, buttonVariants };
@@ -174,16 +175,16 @@ pnpm --filter @arcaai/ui build-storybook
 
 All scripts from [package.json](./package.json), runnable from the repo root with `pnpm --filter @arcaai/ui <script>`:
 
-| Script | Command |
-|---|---|
-| `build` | `tsup && tailwindcss -i ./src/styles/globals.css -o ./dist/styles.css` |
-| `dev` | tsup watch + Tailwind rebuild on success |
-| `check-types` | `tsc --noEmit` |
-| `lint` | `eslint src --max-warnings 0` |
-| `test` / `test:watch` / `test:coverage` | Vitest unit tests |
-| `test:ct` / `test:ct:ui` / `test:ct:debug` / `test:ct:report` | Playwright component tests (`playwright-ct.config.ts`) |
-| `test:all` | Vitest + Playwright CT |
-| `storybook` / `build-storybook` | Storybook dev (port 6006) / static build |
+| Script                                                        | Command                                                                |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `build`                                                       | `tsup && tailwindcss -i ./src/styles/globals.css -o ./dist/styles.css` |
+| `dev`                                                         | tsup watch + Tailwind rebuild on success                               |
+| `check-types`                                                 | `tsc --noEmit`                                                         |
+| `lint`                                                        | `eslint src --max-warnings 0`                                          |
+| `test` / `test:watch` / `test:coverage`                       | Vitest unit tests                                                      |
+| `test:ct` / `test:ct:ui` / `test:ct:debug` / `test:ct:report` | Playwright component tests (`playwright-ct.config.ts`)                 |
+| `test:all`                                                    | Vitest + Playwright CT                                                 |
+| `storybook` / `build-storybook`                               | Storybook dev (port 6006) / static build                               |
 
 The build externalizes `react`, `react-dom`, `react-hook-form`, `react-pdf`, and `pdfjs-dist` (see [tsup.config.ts](./tsup.config.ts)).
 
@@ -191,9 +192,9 @@ The build externalizes `react`, `react-dom`, `react-hook-form`, `react-pdf`, and
 
 Verified by grep on 2026-07-04:
 
-| Consumer | Status |
-|---|---|
+| Consumer             | Status                                                              |
+| -------------------- | ------------------------------------------------------------------- |
 | `apps/ui-playground` | Only app consumer (deprecated — no development or maintenance plan) |
-| In-package Storybook | Primary browsing surface for components |
+| In-package Storybook | Primary browsing surface for components                             |
 
 The former `apps/admin` consumer was removed; a new admin app is planned and is expected to consume this package.

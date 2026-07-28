@@ -14,10 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useArca } from '../useArca';
-import {
-  CONSULTATION_ENDPOINTS,
-  CONTEXT_ENDPOINTS,
-} from '../../core/constants';
+import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS } from '../../core/constants';
 
 // =============================================================================
 // Store mock (follows the pattern from useArca.dx.test.ts)
@@ -109,16 +106,12 @@ describe('SES-01: endpoint constants existence', () => {
 
   it('should have PATIENT_HISTORY endpoint as a function', () => {
     expect(typeof CONSULTATION_ENDPOINTS.PATIENT_HISTORY).toBe('function');
-    expect(CONSULTATION_ENDPOINTS.PATIENT_HISTORY('p1')).toBe(
-      '/consultations/patient/p1/history'
-    );
+    expect(CONSULTATION_ENDPOINTS.PATIENT_HISTORY('p1')).toBe('/consultations/patient/p1/history');
   });
 
   it('should have PATIENT_DATE endpoint as a function', () => {
     expect(typeof CONSULTATION_ENDPOINTS.PATIENT_DATE).toBe('function');
-    expect(CONSULTATION_ENDPOINTS.PATIENT_DATE('p1', '2026-02-17')).toBe(
-      '/consultations/patient/p1/date/2026-02-17'
-    );
+    expect(CONSULTATION_ENDPOINTS.PATIENT_DATE('p1', '2026-02-17')).toBe('/consultations/patient/p1/date/2026-02-17');
   });
 
   it('should have TIMELINE endpoint (SES-04)', () => {
@@ -138,9 +131,7 @@ describe('SES-01: endpoint constants existence', () => {
 
   it('should have CONTEXT_ENDPOINTS.UPDATE (SES-03 — fixed in Layer 0)', () => {
     expect(typeof CONTEXT_ENDPOINTS.UPDATE).toBe('function');
-    expect(CONTEXT_ENDPOINTS.UPDATE('c1', 'ctx1')).toBe(
-      '/consultations/c1/context/ctx1'
-    );
+    expect(CONTEXT_ENDPOINTS.UPDATE('c1', 'ctx1')).toBe('/consultations/c1/context/ctx1');
   });
 });
 
@@ -245,10 +236,7 @@ describe('HOOK-01: session.open() behavior', () => {
       consultation = await result.current.session.open({ patientId: 'p-123' });
     });
 
-    expect(mockPost).toHaveBeenCalledWith(
-      CONSULTATION_ENDPOINTS.OPEN,
-      { patientId: 'p-123' }
-    );
+    expect(mockPost).toHaveBeenCalledWith(CONSULTATION_ENDPOINTS.OPEN, { patientId: 'p-123' });
     expect(consultation).toEqual(mockConsultation);
   });
 
@@ -282,8 +270,12 @@ describe('HOOK-01: session.open() behavior', () => {
   it('should load contextItems from consultation when present', async () => {
     const contextItem = { id: 'ctx-1', type: 'CASE_NOTE', content: 'note', source: 'USER' };
     mockPost.mockResolvedValue({
-      id: 'c-001', patientId: 'p-123', doctorId: 'd-456', appointmentDate: '2026-02-17',
-      createdAt: '', updatedAt: '',
+      id: 'c-001',
+      patientId: 'p-123',
+      doctorId: 'd-456',
+      appointmentDate: '2026-02-17',
+      createdAt: '',
+      updatedAt: '',
       contextItems: [contextItem],
     });
 
@@ -305,7 +297,7 @@ describe('HOOK-01: session.open() behavior', () => {
     await expect(
       act(async () => {
         await result.current.session.open({ patientId: 'p-123' });
-      })
+      }),
     ).rejects.toThrow('Network error');
 
     expect(currentMockStore.setSessionError).toHaveBeenCalledWith(apiError);
@@ -319,7 +311,7 @@ describe('HOOK-01: session.open() behavior', () => {
     await expect(
       act(async () => {
         await result.current.session.open({ patientId: 'p-123' });
-      })
+      }),
     ).rejects.toThrow('SDK not initialized');
   });
 });
@@ -366,7 +358,7 @@ describe('session.load() behavior', () => {
     await expect(
       act(async () => {
         await result.current.session.load('c-001');
-      })
+      }),
     ).rejects.toThrow('SDK not initialized');
   });
 });
@@ -396,9 +388,7 @@ describe('session.findByPatientDate() behavior', () => {
       await result.current.session.findByPatientDate('p-123', '2026-02-17');
     });
 
-    expect(mockGet).toHaveBeenCalledWith(
-      CONSULTATION_ENDPOINTS.PATIENT_DATE('p-123', '2026-02-17')
-    );
+    expect(mockGet).toHaveBeenCalledWith(CONSULTATION_ENDPOINTS.PATIENT_DATE('p-123', '2026-02-17'));
   });
 
   it('should return the list of consultations', async () => {
@@ -444,9 +434,7 @@ describe('session.getPatientHistory() behavior', () => {
       await result.current.session.getPatientHistory('p-123');
     });
 
-    expect(mockGet).toHaveBeenCalledWith(
-      CONSULTATION_ENDPOINTS.PATIENT_HISTORY('p-123')
-    );
+    expect(mockGet).toHaveBeenCalledWith(CONSULTATION_ENDPOINTS.PATIENT_HISTORY('p-123'));
   });
 
   it('should append pagination query params when provided', async () => {
@@ -458,9 +446,7 @@ describe('session.getPatientHistory() behavior', () => {
       await result.current.session.getPatientHistory('p-123', { page: 2, limit: 10 });
     });
 
-    expect(mockGet).toHaveBeenCalledWith(
-      expect.stringContaining(CONSULTATION_ENDPOINTS.PATIENT_HISTORY('p-123'))
-    );
+    expect(mockGet).toHaveBeenCalledWith(expect.stringContaining(CONSULTATION_ENDPOINTS.PATIENT_HISTORY('p-123')));
     const calledUrl = mockGet.mock.calls[0][0] as string;
     expect(calledUrl).toContain('page=2');
     expect(calledUrl).toContain('limit=10');
@@ -507,9 +493,7 @@ describe('session.getTimeline() behavior (SES-04)', () => {
       await result.current.session.getTimeline();
     });
 
-    expect(mockGet).toHaveBeenCalledWith(
-      CONSULTATION_ENDPOINTS.TIMELINE('c-001')
-    );
+    expect(mockGet).toHaveBeenCalledWith(CONSULTATION_ENDPOINTS.TIMELINE('c-001'));
   });
 
   it('should append ?scope=chain when scope is "chain"', async () => {
@@ -521,9 +505,7 @@ describe('session.getTimeline() behavior (SES-04)', () => {
       await result.current.session.getTimeline('chain');
     });
 
-    expect(mockGet).toHaveBeenCalledWith(
-      `${CONSULTATION_ENDPOINTS.TIMELINE('c-001')}?scope=chain`
-    );
+    expect(mockGet).toHaveBeenCalledWith(`${CONSULTATION_ENDPOINTS.TIMELINE('c-001')}?scope=chain`);
   });
 
   it('should throw "No active consultation" when consultation is null', async () => {
@@ -534,7 +516,7 @@ describe('session.getTimeline() behavior (SES-04)', () => {
     await expect(
       act(async () => {
         await result.current.session.getTimeline();
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 });

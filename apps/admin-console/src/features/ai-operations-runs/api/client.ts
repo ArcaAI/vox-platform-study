@@ -8,46 +8,46 @@
 
 import { getJson, postJson } from '@/shared/api';
 import type {
-    GateQueue,
-    ListSessionsParams,
-    ListStepsParams,
-    SignalWorkflowBody,
-    TrajectorySessionsList,
-    TrajectoryStepsPage,
-    WorkflowActionBody,
-    WorkflowActionResult,
+  GateQueue,
+  ListSessionsParams,
+  ListStepsParams,
+  SignalWorkflowBody,
+  TrajectorySessionsList,
+  TrajectoryStepsPage,
+  WorkflowActionBody,
+  WorkflowActionResult,
 } from './types';
 
 const TRAJECTORY = 'admin/agent-trajectory';
 const HARNESS = 'admin/harness';
 
 export function listSessions(params?: ListSessionsParams): Promise<TrajectorySessionsList> {
-    return getJson(`${TRAJECTORY}/sessions`, params);
+  return getJson(`${TRAJECTORY}/sessions`, params);
 }
 
 /** Keyset page of ordered steps (seq asc) for a session. */
 export function listSteps(sessionId: string, params?: ListStepsParams): Promise<TrajectoryStepsPage> {
-    return getJson(`${TRAJECTORY}/sessions/${encodeURIComponent(sessionId)}/steps`, params);
+  return getJson(`${TRAJECTORY}/sessions/${encodeURIComponent(sessionId)}/steps`, params);
 }
 
 export function getGateQueue(): Promise<GateQueue> {
-    return getJson(`${HARNESS}/gate-queue`);
+  return getJson(`${HARNESS}/gate-queue`);
 }
 
 /** Graceful cancel of a harness Temporal workflow (sessionId == workflowId for HARNESS_DOC). */
 export function cancelWorkflow(workflowId: string, body: WorkflowActionBody): Promise<WorkflowActionResult> {
-    return postJson(`${HARNESS}/workflows/${encodeURIComponent(workflowId)}/cancel`, body);
+  return postJson(`${HARNESS}/workflows/${encodeURIComponent(workflowId)}/cancel`, body);
 }
 
 export function signalWorkflow(workflowId: string, body: SignalWorkflowBody): Promise<WorkflowActionResult> {
-    return postJson(`${HARNESS}/workflows/${encodeURIComponent(workflowId)}/signal`, body);
+  return postJson(`${HARNESS}/workflows/${encodeURIComponent(workflowId)}/signal`, body);
 }
 
 /** SSE relative path (no leading slash) for the shared ticket-authed stream hook. */
 export function trajectoryStreamPath(consultationId: string): string {
-    return `consultations/${encodeURIComponent(consultationId)}/trajectory/stream`;
+  return `consultations/${encodeURIComponent(consultationId)}/trajectory/stream`;
 }
 
 export function trajectoryStreamScope(consultationId: string): string {
-    return `consultation_trajectory:${consultationId}`;
+  return `consultation_trajectory:${consultationId}`;
 }

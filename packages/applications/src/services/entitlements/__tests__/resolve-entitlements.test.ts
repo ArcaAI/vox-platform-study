@@ -83,11 +83,7 @@ describe('resolveEntitlements', () => {
     });
 
     it('a null override field inherits the plan default (does not zero it out)', () => {
-      const r = resolveEntitlements(
-        TenantPlan.PRO,
-        null,
-        { maxUsers: null, featureVoiceEnrollment: null, modelTier: null },
-      );
+      const r = resolveEntitlements(TenantPlan.PRO, null, { maxUsers: null, featureVoiceEnrollment: null, modelTier: null });
       expect(r.limits.maxUsers).toBe(25);
       expect(r.features.voiceEnrollment).toBe(true);
       expect(r.modelTier).toBe('full');
@@ -125,20 +121,13 @@ describe('resolveEntitlements', () => {
 
   describe('bigint storage normalization (Prisma returns BigInt)', () => {
     it('normalizes a bigint storageQuotaBytes to a number', () => {
-      const r = resolveEntitlements(
-        TenantPlan.ENTERPRISE,
-        { storageQuotaBytes: BigInt(2_000) * BigInt(GIB) },
-      );
+      const r = resolveEntitlements(TenantPlan.ENTERPRISE, { storageQuotaBytes: BigInt(2_000) * BigInt(GIB) });
       expect(typeof r.limits.storageQuotaBytes).toBe('number');
       expect(r.limits.storageQuotaBytes).toBe(2_000 * GIB);
     });
 
     it('normalizes a bigint override too', () => {
-      const r = resolveEntitlements(
-        TenantPlan.STARTER,
-        null,
-        { storageQuotaBytes: BigInt(10 * GIB) },
-      );
+      const r = resolveEntitlements(TenantPlan.STARTER, null, { storageQuotaBytes: BigInt(10 * GIB) });
       expect(r.limits.storageQuotaBytes).toBe(10 * GIB);
     });
   });
