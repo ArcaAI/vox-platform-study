@@ -107,6 +107,8 @@ export interface EnvVar {
     required: boolean;
     secret: boolean;
     default?: unknown;
+    /** Template-only local-dev value for `.env.sample` — see `SettingDescriptor.sampleValue`. */
+    sampleValue?: unknown;
     category: string;
     label: string;
     description: string;
@@ -144,6 +146,7 @@ function fromDescriptor(descriptor: SettingDescriptor, owner?: string): EnvVar {
         required: descriptor.failMode === 'closed',
         secret: descriptor.sensitivity === 'secret',
         default: descriptor.default,
+        sampleValue: descriptor.sampleValue,
         category: descriptor.category,
         label: descriptor.label ?? name,
         description: descriptor.description ?? '',
@@ -220,12 +223,17 @@ const BANNER = (source: string) =>
 
 /**
  * The value written for a variable: never a real secret (plan §9.1 D3).
- *   secret            → `<CHANGE_ME>`
+ *   secret                    → `<CHANGE_ME>` (wins even over `sampleValue` —
+ *                                belt-and-suspenders alongside the registry's
+ *                                own assembly-time throw, see `settings-registry.ts`)
+ *   sampleValue declared      → that value (template-only, TASK-585 follow-up —
+ *                                never fed back into a runtime fallback, unlike `default`)
  *   required, no code default → `<CHANGE_ME>` (the operator MUST supply one)
- *   otherwise         → the declared default, or empty for "unset by default"
+ *   otherwise                 → the declared default, or empty for "unset by default"
  */
 function exampleValue(v: EnvVar): string {
     if (v.secret) return '<CHANGE_ME>';
+    if (v.sampleValue !== undefined) return String(v.sampleValue);
     if (v.default !== undefined) return String(v.default);
     return v.required ? '<CHANGE_ME>' : '';
 }
