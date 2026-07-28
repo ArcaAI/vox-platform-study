@@ -137,6 +137,28 @@ describe('env:sync — committed files carry placeholders only (plan §9.1 D3)',
       }
     }
   });
+
+  // TASK-585 follow-up: `sampleValue` (a ready-to-use local-dev value, distinct
+  // from `default` — see registry.types.ts) renders into `.env.sample`, but a
+  // secret's `<CHANGE_ME>` redaction still wins even if one were mistakenly set
+  // (the registry itself refuses to assemble that combination — belt-and-suspenders).
+  it('never lets a sampleValue override a secret redaction', () => {
+    for (const v of declaredSurface) {
+      if (v.secret) expect(v.sampleValue, v.name).toBeUndefined();
+    }
+  });
+
+  it('renders a fixed local-dev sampleValue where one is declared', () => {
+    const sampled = declaredSurface.filter((v) => !v.secret && v.sampleValue !== undefined);
+    expect(sampled.length, 'no sampleValue-bearing keys found — guards a vacuous pass').toBeGreaterThan(0);
+    for (const v of sampled) {
+      const found = GENERATED_ENV_ARTIFACTS.map((path) => [path, artifact(path)] as const).find(([, content]) => new RegExp(`^${v.name}=`, 'm').test(content));
+      expect(found, `${v.name} not rendered in any generated artifact`).toBeDefined();
+      const [path, content] = found!;
+      const match = new RegExp(`^${v.name}=(.*)$`, 'm').exec(content);
+      expect(match?.[1], `${path}: ${v.name}`).toBe(String(v.sampleValue));
+    }
+  });
 });
 
 describe('env:sync — one ACTIVE declaration per key per file (plan §9.1 D8)', () => {

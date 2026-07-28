@@ -32,6 +32,13 @@ export class SettingsRegistry {
           'a value the caller never authenticated against.',
       );
     }
+    if (descriptor.sensitivity === 'secret' && descriptor.sampleValue !== undefined) {
+      throw new Error(
+        `SettingsRegistry: secret setting '${descriptor.key}' must not declare 'sampleValue' — ` +
+          'that field exists to put a real-looking value into a COMMITTED template file, which is ' +
+          'exactly what a secret must never carry.',
+      );
+    }
     this.byKey.set(descriptor.key, descriptor);
     return this;
   }

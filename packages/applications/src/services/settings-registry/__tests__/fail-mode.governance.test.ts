@@ -50,6 +50,27 @@ describe('SettingsRegistry — secret ⇒ fail-closed (assembly invariant)', () 
     ]);
     expect(r.secrets().map((d) => d.key)).toEqual(['b']);
   });
+
+  // TASK-585 follow-up: `sampleValue` puts a ready-to-use value into a
+  // COMMITTED template file (`.env.sample`) — it must never coexist with
+  // `sensitivity: 'secret'`, or a "sample" becomes a real leaked credential.
+  it('rejects a secret-sensitivity descriptor that declares a sampleValue', () => {
+    const r = new SettingsRegistry();
+    expect(() =>
+      r.register(desc({ key: 'bad.secret.sample', sensitivity: 'secret', dataType: 'secret', failMode: 'closed', sampleValue: 'not-a-secret-honest' })),
+    ).toThrow(/secret.*sampleValue/i);
+  });
+
+  it('accepts a non-secret descriptor that declares a sampleValue', () => {
+    const r = new SettingsRegistry();
+    expect(() => r.register(desc({ key: 'ok.sample', sampleValue: 'redis://localhost:6379' }))).not.toThrow();
+  });
+
+  it('no registered secret declares a sampleValue', () => {
+    for (const d of HOPE_SETTINGS_REGISTRY.secrets()) {
+      expect(d.sampleValue, d.key).toBeUndefined();
+    }
+  });
 });
 
 describe('HOPE_SETTINGS_REGISTRY — failMode governance', () => {
