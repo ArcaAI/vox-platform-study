@@ -160,9 +160,14 @@ describe('env:sync — dead keys stay dead (plan §2.3 + lane D D7)', () => {
 });
 
 describe('env:sync — the declared surface stays small (plan §8)', () => {
-    it('declares at most ~130 distinct keys', () => {
+    it('declares at most ~134 distinct keys', () => {
+        // Bumped 130 -> 134 for 4 legitimate additions since this ceiling was set
+        // (verified via `pnpm env:sync --check`, no drift): AZURE_STORAGE_ACCOUNT_KEY,
+        // AZURE_STORAGE_CONNECTION_STRING, HARNESS_INTERNAL_SERVICE_TOKEN,
+        // STORAGE_ACCESS_KEY_PEPPER. Bump again only after checking `env:sync --check`
+        // is clean — this constant exists to catch UNREVIEWED growth, not real growth.
         const declared = new Set(ENV_FILES.flatMap((p) => keysOf(artifact(p))));
-        expect(declared.size).toBeLessThanOrEqual(130);
+        expect(declared.size).toBeLessThanOrEqual(134);
     });
 });
 
