@@ -198,7 +198,7 @@ TEXT_CLASSIFIER_USE_GPU=false
 TOKEN_CLASSIFIER_USE_GPU=false
 ```
 
-**Production (.env.production):**
+**Production (.env.prod):**
 ```bash
 NLP_ENVIRONMENT=production
 NLP_DEBUG=false
@@ -225,7 +225,7 @@ docker run -d \
 
 ```bash
 docker run -d \
-  --env-file .env.production \
+  --env-file .env.prod \
   --gpus all \
   hope-nlp:latest
 ```
@@ -243,7 +243,7 @@ services:
       - TEXT_CLASSIFIER_USE_GPU=true
       - TOKEN_CLASSIFIER_USE_GPU=true
     env_file:
-      - .env.production
+      - .env.prod
     deploy:
       resources:
         reservations:

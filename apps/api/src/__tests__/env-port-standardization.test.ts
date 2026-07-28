@@ -19,14 +19,17 @@
  *  3. Lane B retired the root `.env` (compose now gets a generated
  *     `infrastructure/docker/.env`), and lane D regenerated the example files —
  *     the root `.env.example` is now the BOOTSTRAP FLOOR only, so the service
- *     topology lives in `apps/api/.env.example`.
+ *     topology lives in `apps/api/.env.sample` (TASK-584: renamed from
+ *     `apps/api/.env.example` for naming consistency with the other
+ *     per-service `.env.sample` files).
  *
  * ── WHAT IT CHECKS NOW ───────────────────────────────────────────────────────
  *  • The DEV port map is not restated here — it is READ from the setting
  *    descriptors (`apps/api/src/config`), so a port change in the declaration
  *    cannot leave this test asserting the old number.
  *  • `.env.test` = DEV + 100 for every application port.
- *  • `.env.production` addresses services by hostname, not localhost.
+ *  • `apps/api/.env.prod` addresses services by hostname, not localhost
+ *    (TASK-584: relocated from the monorepo-root `.env.production`).
  *  • The source-level defaults (`ConfigService`, `IAppConfig`) still match.
  *  • Retired services (`FEDL_*`) and stale ports (5002/5004/5006/8001…) stay gone.
  */
@@ -123,10 +126,10 @@ describe('Port topology: the declared DEV ports', () => {
     });
 });
 
-// ─── 2. apps/api/.env.example — the generated topology document ──────────────
+// ─── 2. apps/api/.env.sample — the generated topology document ───────────────
 
-describe('Port topology: apps/api/.env.example matches the declarations', () => {
-    const content = readEnvFile('apps/api/.env.example');
+describe('Port topology: apps/api/.env.sample matches the declarations', () => {
+    const content = readEnvFile('apps/api/.env.sample');
 
     for (const name of PORT_VARS) {
         // PORT itself belongs to the bootstrap floor (root .env.example).
@@ -140,7 +143,7 @@ describe('Port topology: apps/api/.env.example matches the declarations', () => 
         if (urlVar === 'API_URL') continue; // the gateway does not declare its own URL
         it(`${urlVar} points at the ${portVar} port`, () => {
             const url = getEnvValue(content, urlVar);
-            expect(url, `${urlVar} missing from apps/api/.env.example`).not.toBeNull();
+            expect(url, `${urlVar} missing from apps/api/.env.sample`).not.toBeNull();
             expect(new URL(url!).port).toBe(String(declaredPort(portVar)));
         });
     }
@@ -155,7 +158,7 @@ describe('Port topology: root .env.example carries the bootstrap floor only', ()
         expect(getEnvValue(content, 'PORT')).toBe(String(declaredPort('PORT')));
     });
 
-    it('declares no downstream service URL — those live in apps/api/.env.example', () => {
+    it('declares no downstream service URL — those live in apps/api/.env.sample', () => {
         for (const [urlVar] of URL_TO_PORT_VAR) {
             if (urlVar === 'API_URL') continue;
             expect(envVarExists(content, urlVar), urlVar).toBe(false);
@@ -185,7 +188,7 @@ describe('Port topology: .env.test is DEV + 100 (TASK-557)', () => {
     }
 
     it('uses a distinct node inspector endpoint so a test gateway can debug beside a dev one', () => {
-        expect(getEnvValue(content, 'API_INSPECT_HOSTPORT')).not.toBe(getEnvValue(readEnvFile('apps/api/.env.example'), 'API_INSPECT_HOSTPORT'));
+        expect(getEnvValue(content, 'API_INSPECT_HOSTPORT')).not.toBe(getEnvValue(readEnvFile('apps/api/.env.sample'), 'API_INSPECT_HOSTPORT'));
     });
 
     it('isolates the admin console port too', () => {
@@ -219,10 +222,12 @@ describe('Port topology: .env.dev, when a developer has one, uses the DEV ports'
     });
 });
 
-// ─── 6. .env.production addresses services by hostname ───────────────────────
+// ─── 6. apps/api/.env.prod addresses services by hostname ────────────────────
+// TASK-584: relocated from the monorepo-root `.env.production` — production
+// reference templates now live per-service, not at the monorepo root.
 
-describe('Port topology: .env.production uses service hostnames, not localhost', () => {
-    const content = readEnvFile('.env.production');
+describe('Port topology: apps/api/.env.prod uses service hostnames, not localhost', () => {
+    const content = readEnvFile('apps/api/.env.prod');
     const expectedHost: ReadonlyArray<readonly [string, string]> = [
         ['API_URL', 'api'],
         ['GUARDRAIL_URL', 'guardrail'],
@@ -234,7 +239,7 @@ describe('Port topology: .env.production uses service hostnames, not localhost',
     for (const [urlVar, host] of expectedHost) {
         it(`${urlVar} resolves to the "${host}" service`, () => {
             const url = getEnvValue(content, urlVar);
-            expect(url, `${urlVar} missing from .env.production`).not.toBeNull();
+            expect(url, `${urlVar} missing from apps/api/.env.prod`).not.toBeNull();
             expect(new URL(url!).hostname).toBe(host);
         });
     }
@@ -252,7 +257,7 @@ describe('Port topology: .env.production uses service hostnames, not localhost',
 // ─── 7. Retired services and stale ports stay gone ───────────────────────────
 
 describe('Port topology: retired services and stale ports', () => {
-    const envFiles = ['.env.example', '.env.production', '.env.test', 'apps/api/.env.example', 'apps/api/.env.production'].filter(envFileExists);
+    const envFiles = ['.env.example', '.env.test', 'apps/api/.env.sample', 'apps/api/.env.prod'].filter(envFileExists);
 
     // apps/fedl and the legacy apps/tts (which owned 8863) were removed; 8863 is
     // Guardrail and 8866 is the Clinical Documentation Harness.

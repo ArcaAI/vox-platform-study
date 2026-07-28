@@ -261,7 +261,7 @@ docker run -d --name api-gateway \
   -e DB_CONNECTION_STRING=postgresql://hope:password@postgres:5432/hope \
   -e REDIS_HOST=redis \
   -e REDIS_PASS=your-redis-password \
-  --env-file .env.production \
+  --env-file .env.prod \
   hope-api:latest
 ```
 
@@ -355,7 +355,7 @@ Type=simple
 User=hope
 Group=hope
 WorkingDirectory=/opt/hope/api/apps/api
-EnvironmentFile=/opt/hope/api/apps/api/.env.production
+EnvironmentFile=/opt/hope/api/apps/api/.env.prod
 ExecStart=/usr/bin/node dist/main.js
 Restart=always
 RestartSec=10

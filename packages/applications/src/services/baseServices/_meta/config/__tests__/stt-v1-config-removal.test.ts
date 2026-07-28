@@ -85,10 +85,9 @@ describe('STT config naming (TASK-556)', () => {
     describe('Environment files should not contain removed variables', () => {
         const projectRoot = path.resolve(__dirname, '..', '..', '..', '..', '..', '..', '..', '..');
         const envFiles = [
-            '.env.production',
             '.env.test',
-            'apps/api/.env.example',
-            'apps/api/.env.production',
+            'apps/api/.env.sample',
+            'apps/api/.env.prod',
         ];
 
         // STT_PORT is a valid TASK-556 gateway key (with STT_URL); do not

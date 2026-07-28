@@ -38,7 +38,7 @@ docker run -d \
   -e NLP_ENVIRONMENT=production \
   -e TEXT_CLASSIFIER_USE_GPU=true \
   -e TOKEN_CLASSIFIER_USE_GPU=true \
-  --env-file .env.production \
+  --env-file .env.prod \
   --gpus all \
   --restart unless-stopped \
   --memory="4g" \
@@ -62,7 +62,7 @@ services:
       - TEXT_CLASSIFIER_USE_GPU=true
       - TOKEN_CLASSIFIER_USE_GPU=true
     env_file:
-      - .env.production
+      - .env.prod
     volumes:
       - huggingface-cache:/root/.cache/huggingface
     deploy:
@@ -176,12 +176,12 @@ Requires=docker.service
 Type=simple
 User=hope
 WorkingDirectory=/opt/hope/nlp
-EnvironmentFile=/opt/hope/nlp/.env.production
+EnvironmentFile=/opt/hope/nlp/.env.prod
 ExecStartPre=-/usr/bin/docker stop hope-nlp
 ExecStartPre=-/usr/bin/docker rm hope-nlp
 ExecStart=/usr/bin/docker run --name hope-nlp \
   -p 8864:8864 \
-  --env-file /opt/hope/nlp/.env.production \
+  --env-file /opt/hope/nlp/.env.prod \
   --gpus all \
   hope-nlp:1.0.0
 ExecStop=/usr/bin/docker stop hope-nlp
@@ -306,7 +306,7 @@ tar -xzf huggingface-cache-backup.tar.gz -C ~/
 
 ```bash
 # Backup configuration
-cp .env.production .env.production.backup
+cp .env.prod .env.prod.backup
 
 # Backup dictionaries
 tar -czf dictionaries-backup.tar.gz data/dictionaries/

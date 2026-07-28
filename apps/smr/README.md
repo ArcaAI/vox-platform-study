@@ -902,7 +902,7 @@ docker build -t hope-smr:1.0.0 -f Dockerfile.prod .
 docker run -d \
   --name hope-smr \
   -p 5006:5006 \
-  --env-file .env.production \
+  --env-file .env.prod \
   hope-smr:latest
 ```
 
@@ -922,7 +922,7 @@ See [08-deployment-guide.md](docs/08-deployment-guide.md) for detailed Kubernete
 
 ### Production Checklist
 
-- [ ] Update `.env.production` with production values
+- [ ] Update `.env.prod` with production values
 - [ ] Set `NODE_ENV=production`
 - [ ] Configure proper database credentials
 - [ ] Set up Redis cluster for high availability

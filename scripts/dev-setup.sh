@@ -6,6 +6,7 @@
 # `pnpm api:dev` boots cleanly against Vault with dynamic Postgres creds.
 #
 # Sequence:
+#   0. Create .env.dev from .env.sample if it doesn't already exist (TASK-583)
 #   1. Start infrastructure (core + vault + temporal + rag; optional -o/-e)
 #   2. Wait for Postgres + Vault (and the vault-init AppRole bootstrap)
 #   3. Apply Prisma migrations + seed         (pnpm db:all)
@@ -61,6 +62,11 @@ for f in "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"; do
     --inference) TIER_LABEL="$TIER_LABEL + inference" ;;
   esac
 done
+
+bold "── Step 0/5: ensuring .env.dev exists ────────────────────────────────"
+# shellcheck source=./generate-env-file.sh
+source "$SCRIPT_DIR/generate-env-file.sh"
+ensure_env_file "$REPO_ROOT/.env.dev" dev
 
 ROOT_TOKEN="$(read_env VAULT_DEV_ROOT_TOKEN root)"
 PG_SUPERUSER="$(read_env POSTGRES_USER postgres)"

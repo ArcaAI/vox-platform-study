@@ -63,7 +63,7 @@ Bump deliberately: Raft on-disk format + seal migration are version-sensitive.
 
 HOPE's API authenticates to Vault with **AppRole**, reading its `role_id` and a
 one-shot **wrapped `secret_id`** from **files** (`VAULT_ROLE_ID_FILE` /
-`VAULT_WRAPPED_SECRET_ID_FILE`, shipped in `apps/api/.env.production` — TASK-312
+`VAULT_WRAPPED_SECRET_ID_FILE`, shipped in `apps/api/.env.prod` — TASK-312
 B.9/B.10). It then does its own login + token self-renewal (B.1–B.4).
 
 `bootstrap/configure-app-auth.sh` mints those creds into a k8s Secret
