@@ -78,6 +78,12 @@ export const AI_MODEL_PROVIDERS = [
   'built-in',
   'sarvam',
   'openai',
+  // Cloud tenant-BYO LLM providers (TASK-572). `openai` above already served
+  // the STT OpenAI ASR engine; these two are net-new. Governance lives in
+  // `CLOUD_BYO_PROVIDERS.llm` (@arcaai/applications); their SMR adapters are
+  // `apps/smr/src/smr/providers/{anthropic,vertex}.py`.
+  'anthropic',
+  'vertex',
   // production self-host
   // engines. OpenAI-compatible `/v1` wire; free-string
   // provider values, no Prisma enum migration (the column is a plain string).

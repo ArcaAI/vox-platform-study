@@ -3,11 +3,11 @@ import {
   Authorize,
   HarnessPolicyService,
   IActiveUserContext,
-  IAiProviderConnectionService,
   IAiRuntimeProfileService,
   IAiTaskDefaultService,
   IBlobStorageService,
   IConfigService,
+  IProviderConnectionService,
   ITenantService,
   ModelResponse,
   isCloudByoProvider,
@@ -180,8 +180,8 @@ export class SmrProxyController {
     // outgoing provider. @Optional so existing positional test fixtures (and
     // graphs that never proxy to SMR) keep compiling.
     @Optional()
-    @Inject(IAiProviderConnectionService)
-    private readonly aiProviderConnectionService?: IAiProviderConnectionService,
+    @Inject(IProviderConnectionService)
+    private readonly aiProviderConnectionService?: IProviderConnectionService,
   ) {}
 
   /**
@@ -227,14 +227,16 @@ export class SmrProxyController {
    */
   private async applyTenantProviderOverrides<T extends { provider?: string }>(target: T): Promise<T> {
     const provider = target.provider;
-    if (!this.aiProviderConnectionService || !provider || !isCloudByoProvider(provider)) {
+    // SMR is the LLM capability, so the service discriminator is always `llm`
+    // (C2/C5). The 1-arg TASK-569 transition shims are retired here.
+    if (!this.aiProviderConnectionService || !provider || !isCloudByoProvider('llm', provider)) {
       return target;
     }
     const tenantId = this.clsService.get('tenantId');
     if (!tenantId) return target;
 
     try {
-      const overrides = await this.aiProviderConnectionService.resolveTenantCloudOverrides(tenantId);
+      const overrides = await this.aiProviderConnectionService.resolveTenantCloudOverrides('llm', tenantId);
       const entry = overrides[provider];
       if (entry) {
         (target as Record<string, unknown>).provider_overrides = { [provider]: entry };
