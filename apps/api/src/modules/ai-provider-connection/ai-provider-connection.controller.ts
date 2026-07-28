@@ -59,7 +59,7 @@ export class AiProviderConnectionController {
   @ApiQuery({ name: 'tenantId', required: false, description: 'Platform admins scope with this; tenant admins are pinned.' })
   @ApiResponse({ status: 200, type: [AiProviderConnectionResponse] })
   async list(@Query('tenantId') tenantId?: string): Promise<AiProviderConnectionResponse[]> {
-    return this.connectionService.list(this.resolveTenantId(tenantId));
+    return this.connectionService.list('llm', this.resolveTenantId(tenantId));
   }
 
   @Get(':provider')
@@ -70,7 +70,7 @@ export class AiProviderConnectionController {
   @ApiResponse({ status: 200, type: AiProviderConnectionResponse })
   @ApiResponse({ status: 404, description: 'Not found — including a row owned by another tenant.' })
   async getOne(@Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<AiProviderConnectionResponse> {
-    return this.connectionService.getRow(provider, this.resolveTenantId(tenantId));
+    return this.connectionService.getRow('llm', provider, this.resolveTenantId(tenantId));
   }
 
   @Put(':provider')
@@ -109,7 +109,7 @@ export class AiProviderConnectionController {
     // the header too: `If-Match: "0"` parses to 0 (create-intent)
     // and the service CAS decides create-vs-412.
     const dto = { ...request, expectedVersion: expectedFromHeader ?? request.expectedVersion };
-    return this.connectionService.upsertRow(provider, dto, this.resolveTenantId(tenantId));
+    return this.connectionService.upsertRow('llm', provider, dto, this.resolveTenantId(tenantId));
   }
 
   @Delete(':provider')
@@ -120,7 +120,7 @@ export class AiProviderConnectionController {
   @ApiResponse({ status: 200, description: 'Deleted.' })
   @ApiResponse({ status: 403, description: 'Self-hosted provider on a tenant row, or a SYSTEM row without global admin.' })
   async remove(@Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<void> {
-    return this.connectionService.deleteRow(provider, this.resolveTenantId(tenantId));
+    return this.connectionService.deleteRow('llm', provider, this.resolveTenantId(tenantId));
   }
 
   private resolveTenantId(queryTenantId?: string): string {
