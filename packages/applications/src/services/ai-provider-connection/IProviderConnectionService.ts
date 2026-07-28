@@ -30,6 +30,15 @@ export interface ProviderOverrideEntry {
   region?: string;
   api_version?: string;
   deployment_name?: string;
+  /**
+   * Providers whose per-request model/target lives in no dedicated column carry
+   * it in the connection row's `extraJson` (the console writes it there): an
+   * OpenAI/Anthropic/STT `model` override, and Vertex's GCP `project`/`location`.
+   * Forwarded verbatim so the Python adapter can target the tenant's resource.
+   */
+  model?: string;
+  project?: string;
+  location?: string;
 }
 
 /** `provider → override`, keyed by the serving provider identifier. */

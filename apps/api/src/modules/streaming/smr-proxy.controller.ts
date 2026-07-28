@@ -73,7 +73,10 @@ interface SmrGenerateRequest {
    * undeclared fields on the request DTOs, and this interface describes the
    * body as FORWARDED, after `applyTenantProviderOverrides` populates it.
    */
-  provider_overrides?: Record<string, { api_key: string; base_url?: string; region?: string; api_version?: string; deployment_name?: string }>;
+  provider_overrides?: Record<
+    string,
+    { api_key: string; base_url?: string; region?: string; api_version?: string; deployment_name?: string; model?: string; project?: string; location?: string }
+  >;
 }
 
 type VisitType = 'new_visit' | 'referral';
