@@ -1,10 +1,10 @@
 # TASK-577 — TTS Default Routing: Seed SYSTEM `TenantTtsConfig` + Fail-Closed Router
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: bugfix + infrastructure (seed)
 - **Tier**: opus-4-8-high (cross-layer; changes a fail-mode on a serving path)
 - **Program**: [Provider-Plane Day-1 Defaults](../SOTA-Track/2026-07-28-provider-plane-day1-defaults-followups.md) — finding **F1** (the one clear criterion-1 violation)
-- **Owner gate**: **OD-2** (Day-1 built-in-first provider order) must be confirmed before merge.
+- **Owner gate**: **OD-2 CONFIRMED 2026-07-28** — built-in-first: `routingEn=["kokoro"]`, `routingMl=["indic_parler"]` (both local; confirm provider ids against `router.py`).
 
 ## Requirement Analysis
 
@@ -65,8 +65,46 @@ Goal: make the Day-1 TTS default **DB-sourced and built-in-first**, and make the
 
 ## Implementation Summary
 
-_(fill on completion — files changed, seed row, command output, runtime proof)_
+**Status: Review — implemented via strict TDD (Red→Green per phase). Nothing committed (owner-gated); all work staged.**
+
+### What changed
+
+**Phase A — Seed SYSTEM `TenantTtsConfig` (built-in-first, OD-2)**
+- `packages/database/src/prisma/db_main/seed/19-tenant-tts-config.ts` (NEW) — exports `seedTenantTtsConfig(client)` + the `SYSTEM_TENANT_TTS_CONFIG` row constant + `SYSTEM_TENANT_TTS_CONFIG_ID` (`00000000-0000-0000-0006-000000000001`) + `PLATFORM_TTS_PROVIDER_UNIVERSE`. CREATE-ONLY (mirrors `seedPlatformStorageConfig`): `routingEn=['kokoro']`, `routingMl=['indic_parler']`, `allowedProviders=['kokoro','indic_parler','azure','sarvam']`, `createdBy = SYSTEM user`.
+- `packages/database/src/prisma/db_main/seed/index.ts` — import + `await seedTenantTtsConfig(client)` in Phase 2, after `seedAiRuntimeProfile`, before Phase 3.
+- `packages/database/src/prisma/db_main/seed/__tests__/tenant-tts-config-seed.test.ts` (NEW, 7 tests) — static invariants over the exported row (built-in-first, no cloud vendor first, universe-bounded). *(This suite is static-only — `vitest run`, no DB, matching `config-plane-seed.test.ts`; the live row-existence + idempotency proof is the psql SELECT below.)*
+
+**Phase B — Router fail-closed + remove the config vendor default (F1)**
+- `apps/tts/src/tts/routing/router.py` — new `TtsRoutingUnconfiguredError(AllProvidersUnavailableError)`; `resolve_chain` now takes the chain ONLY from the injected `routing_en`/`routing_ml` and raises `TtsRoutingUnconfiguredError` on an empty/absent chain (removed both `self._settings.routing_*` fallbacks). Subclassing `AllProvidersUnavailableError` means the endpoints' existing 503 (HTTP `speech.py`) / `provider_unavailable` (WS `stream_ws.py`) handlers already surface it — no endpoint edits, no vendor substitution.
+- `apps/tts/src/tts/core/config.py` — DELETED the `routing_en` / `routing_ml` fields (the Azure-first `["azure","kokoro"]` / `["azure","sarvam","indic_parler"]` code default) and dropped them from the CSV validator. Env (`TTS_ROUTING_EN/ML`) can no longer bake a provider order.
+- Router/config test suites updated to inject the routing chain the gateway supplies in production (owned by this ticket, `apps/tts/**/tests/**`): `test_router.py` (+`TestFailClosedRouting`), `test_config.py`, `test_sarvam_provider.py`, `test_indic_f5_provider.py`, `test_voice_bindings_override.py`, `test_speech_endpoint.py`, `test_stream_ws.py`, `test_local_e2e.py`, `test_azure_provider.py`, `test_stream_adapter.py`.
+
+**Phase C — Gateway resolution guarantee (decision recorded)**
+- No gateway edit. `TenantTtsConfigService.getEffective` already cascades SYSTEM→tenant (`tenant-tts-config.service.ts:62`) and `resolveEffectiveTtsConfig` (`platform-limits.ts`) picks the SYSTEM row's non-empty `routingEn` (`['kokoro']`) for a tenant with no row of its own — so the gateway (`tts-ws.gateway.ts` / `speech-proxy.controller.ts`) always injects the built-in chain. The gateway's **fail-open-on-error** is kept as-is: a transient DB-lookup error leaves routing unset → the router now 503s (fail-closed) instead of substituting a vendor. That is CONSISTENT with fail-closed selection and reintroduces no code vendor default, so the fail-open-on-error tightening was deliberately NOT taken (§5 gateway files untouched).
+
+### Evidence (actual output)
+
+- `pnpm --filter @arcaai/database test` → **880 passed (27 files)** (7 new).
+- tts pytest (`apps/tts/src/tts/tests/`) → **183 passed, 2 deselected** (shipped TTS BYOK/routing suite green + new fail-closed tests).
+- `ruff check apps/tts/src/` → **All checks passed!**
+- `mypy apps/tts/src/` → **17 errors in 7 files — pre-existing baseline, 0 new** (proven by stashing only the router/config edits: baseline also reports 17; all are `aclosing` type-var + missing third-party stubs on untouched code, none on TASK-577 lines).
+- Grep-clean: no selectable `routing_en`/`routing_ml` vendor default remains — the only mention in `config.py` is the explanatory NOTE; `router.py` no longer reads `self._settings.routing`.
+- **psql proof (test DB `hope_test` @ 5433, after reseed):**
+  ```
+  id=00000000-0000-0000-0006-000000000001 | tenantId=00000000-…-000000000000 |
+  routingEn={kokoro} | routingMl={indic_parler} |
+  allowedProviders={kokoro,indic_parler,azure,sarvam} | createdBy=60000000-…-000000000000 |
+  resourceStatus=ENABLED | _version=1 | system_row_count=1
+  ```
+  Idempotency: second reseed → `SYSTEM TTS config already present … left untouched`; `system_rows=1, version=1` unchanged.
+- Runtime proof (built-in, not azure): `test_local_e2e.py::test_english_voice_routes_to_kokoro` (routing `['kokoro']`) and `::test_malayalam_voice_routes_to_parler_with_resample` (routing `['indic_parler']`) synthesize via the local engines; `test_router.py::test_injected_builtin_chain_synthesizes_via_kokoro_not_azure` asserts kokoro serves and azure is never touched.
+
+### Open / owner tails
+- Nothing committed (owner-gated). Work is staged.
+- No schema/migration (all `TenantTtsConfig` fields already existed).
+- The `apps/tts` mypy/black baselines are pre-existing red on unrelated files (missing third-party stubs, `aclosing` type-var); this ticket adds no new violations to either.
 
 ## Change History
 
 - 2026-07-28 — Ticket created from the Provider-Plane Day-1 Defaults audit (finding F1). Status Pending.
+- 2026-07-28 — Implemented (TDD). Phase A: seeded SYSTEM `TenantTtsConfig` (built-in-first `kokoro`/`indic_parler`, CREATE-ONLY) + static seed test, wired into `seed/index.ts`. Phase B: router fails closed (`TtsRoutingUnconfiguredError`) and `core/config.py` no longer carries a `routing_en`/`routing_ml` vendor default; router/config test suites inject the gateway-supplied chain. Phase C: gateway left fail-open-on-error (decision recorded — a resolve failure 503s rather than substituting a vendor). Gates: database 880 pass, tts 183 pass, ruff clean, mypy 0 new (17 pre-existing), grep-clean, psql-proven SYSTEM row (idempotent). Status → Review. Not committed.

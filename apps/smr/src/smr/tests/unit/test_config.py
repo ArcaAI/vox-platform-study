@@ -7,13 +7,16 @@ import os
 import pytest
 
 from smr.core.config import (
+    AnthropicConfig,
     AzureOpenAIConfig,
     BedrockConfig,
     CircuitBreakerConfig,
     OllamaConfig,
+    OpenAIConfig,
     QueueConfig,
     RedisConfig,
     Settings,
+    VertexConfig,
     get_settings,
 )
 
@@ -58,7 +61,9 @@ class TestAzureOpenAIConfig:
         cfg = AzureOpenAIConfig()
         assert cfg.api_key.get_secret_value() == ""
         assert cfg.endpoint == ""
-        assert cfg.default_model == "gpt-5-mini"
+        # TASK-579: cloud providers carry no compiled-in vendor model default —
+        # provider/model SELECTION is failMode=closed (informational-only field).
+        assert cfg.default_model == ""
         assert cfg.tpm_limit == 80_000
         assert cfg.rpm_limit == 480
         assert cfg.adaptive_limits is True
@@ -83,6 +88,8 @@ class TestBedrockConfig:
         assert cfg.max_pool_connections == 150
         assert cfg.tpm_limit == 100_000
         assert cfg.rpm_limit == 100
+        # TASK-579: no compiled-in vendor model default (informational-only field).
+        assert cfg.default_model == ""
 
     def test_override(self):
         cfg = BedrockConfig(region="eu-west-1", default_model="amazon.titan-text-express-v1")
@@ -92,6 +99,35 @@ class TestBedrockConfig:
         monkeypatch.setenv("SMR_BEDROCK_REGION", "ap-southeast-1")
         cfg = BedrockConfig()
         assert cfg.region == "ap-southeast-1"
+
+
+class TestOpenAIConfig:
+    """TASK-579: no compiled-in vendor model default (informational-only field)."""
+
+    def test_defaults(self, monkeypatch):
+        _clear_smr_env(monkeypatch)
+        cfg = OpenAIConfig()
+        assert cfg.default_model == ""
+        assert cfg.base_url == "https://api.openai.com/v1"
+
+
+class TestAnthropicConfig:
+    """TASK-579: no compiled-in vendor model default (informational-only field)."""
+
+    def test_defaults(self, monkeypatch):
+        _clear_smr_env(monkeypatch)
+        cfg = AnthropicConfig()
+        assert cfg.default_model == ""
+
+
+class TestVertexConfig:
+    """TASK-579: no compiled-in vendor model default (informational-only field)."""
+
+    def test_defaults(self, monkeypatch):
+        _clear_smr_env(monkeypatch)
+        cfg = VertexConfig()
+        assert cfg.default_model == ""
+        assert cfg.location == "us-central1"
 
 
 class TestRedisConfig:

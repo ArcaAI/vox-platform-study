@@ -233,7 +233,9 @@ class TestBedrockEdgeCases:
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            content, _reasoning, usage = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
+            content, _reasoning, usage = await provider.generate(
+                GenerateRequest(prompt="hi", provider="bedrock", model="anthropic.claude-3-sonnet-20240229-v1:0")
+            )
         assert content == "Hello world"
 
     @pytest.mark.asyncio
@@ -247,7 +249,14 @@ class TestBedrockEdgeCases:
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            await provider.generate(GenerateRequest(prompt="hi", system_prompt="Be helpful", provider="bedrock"))
+            await provider.generate(
+                GenerateRequest(
+                    prompt="hi",
+                    system_prompt="Be helpful",
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
+            )
         call_kw = mock_client.converse.call_args.kwargs
         assert "system" in call_kw
         assert call_kw["system"][0]["text"] == "Be helpful"
@@ -264,7 +273,17 @@ class TestBedrockEdgeCases:
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            chunks = [c async for c in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, provider="bedrock"))]
+            chunks = [
+                c
+                async for c in provider.generate_stream(
+                    GenerateRequest(
+                        prompt="hi",
+                        stream=True,
+                        provider="bedrock",
+                        model="anthropic.claude-3-sonnet-20240229-v1:0",
+                    )
+                )
+            ]
         usage = [c for c in chunks if c.type == "usage"]
         assert len(usage) == 1
         assert usage[0].data["total_tokens"] == 15
@@ -281,7 +300,17 @@ class TestBedrockEdgeCases:
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            chunks = [c async for c in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, provider="bedrock"))]
+            chunks = [
+                c
+                async for c in provider.generate_stream(
+                    GenerateRequest(
+                        prompt="hi",
+                        stream=True,
+                        provider="bedrock",
+                        model="anthropic.claude-3-sonnet-20240229-v1:0",
+                    )
+                )
+            ]
         text = [c for c in chunks if c.type == "chunk"]
         assert len(text) == 1
         assert text[0].content == "hello"
@@ -309,7 +338,16 @@ class TestBedrockEdgeCases:
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            await provider.generate(GenerateRequest(prompt="hi", temperature=0.1, max_tokens=200, top_p=0.5, provider="bedrock"))
+            await provider.generate(
+                GenerateRequest(
+                    prompt="hi",
+                    temperature=0.1,
+                    max_tokens=200,
+                    top_p=0.5,
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
+            )
         call_kw = mock_client.converse.call_args.kwargs
         ic = call_kw["inferenceConfig"]
         assert ic["temperature"] == 0.1

@@ -1,6 +1,6 @@
 # TASK-579 — SMR Cloud `default_model`: Align to `failMode=closed`
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: bugfix (config hardening)
 - **Tier**: sonnet-5-xhigh (scoped to `apps/smr` config + resolution)
 - **Program**: [Provider-Plane Day-1 Defaults](../SOTA-Track/2026-07-28-provider-plane-day1-defaults-followups.md) — finding **F3** (borderline)
@@ -45,8 +45,48 @@ This is **borderline, not a clear breach** (it is per-provider, not a single glo
 
 ## Implementation Summary
 
-_(fill on completion)_
+Decision A implemented. Code-verified before this ticket: of the five cloud providers only **`VertexProvider._resolve_model`** actually substituted a vendor model (`request.model or self._default_model`) — Azure/Bedrock/OpenAI/Anthropic already forwarded `request.model` verbatim into `generate()`/`generate_stream()` (the pre-existing D7 contract, `test_no_model_default_d7.py`), but relied on the *downstream SDK* to fail on `model=None` rather than a controlled, typed error. This ticket closes both: the one real substitution (Vertex) and the missing explicit guard (all five).
+
+**Config (`apps/smr/src/smr/core/config.py`)**: the five cloud sub-configs' `default_model` field default changed from a compiled-in vendor string to `""` (informational-only, matching the existing `VllmConfig`/`LlamaCppConfig` convention):
+- `AzureOpenAIConfig.default_model`: `"gpt-5-mini"` → `""`
+- `BedrockConfig.default_model`: `"anthropic.claude-3-5-haiku-20241022-v1:0"` → `""`
+- `OpenAIConfig.default_model`: `"gpt-4o-mini"` → `""`
+- `AnthropicConfig.default_model`: `"claude-3-5-haiku-20241022"` → `""`
+- `VertexConfig.default_model`: `"gemini-2.0-flash"` → `""`
+
+Local built-in engines (`OllamaConfig`, `OpenAICompatConfig`, `VllmConfig`, `LlamaCppConfig`) are untouched.
+
+**Shared guard (`apps/smr/src/smr/providers/base.py`)**: new `require_model(model, *, provider) -> str` — raises `ModelNotSelectedError` (new, in `core/exceptions.py`, subclasses `InputValidationError` → 422 via the existing `_STATUS_MAP` isinstance lookup in `core/exception_handlers.py`, no handler change needed) when the resolved model is `None`/blank/whitespace-only; otherwise returns it unchanged.
+
+**Provider adapters** (`azure_openai.py`, `bedrock.py`, `openai.py`, `anthropic.py`, `vertex.py`): each `generate()`/`generate_stream()` now computes `resolved_model = require_model(self._resolve_model(request), provider="<name>")` as the first statement (before the OTel span / any client call), reusing that single guarded value everywhere the model was previously re-derived (removes several redundant `self._resolve_model(request)` re-calls and now-dead `or ""` fallbacks). `VertexProvider._resolve_model` no longer falls back to `self._default_model` — it now matches the other four (`override.model or request.model`, i.e. `None` when the caller omits a model). `get_info()` on azure/openai/anthropic/vertex now guards the informational `default_model` seed entry (`[ModelInfo(...)] if self._default_model else []`, matching the pre-existing `llama_cpp.py` pattern) so an unconfigured deployment never advertises an empty-named model on `/providers`. Bedrock's `get_info()` needed no change (already starts `models=[]`).
+
+**Note on the endpoint-level guard**: `POST /generate` (`api/endpoints/generate.py`) already rejects a missing/blank `model` with 422 for EVERY provider (prior TASK, `test_no_model_default_d7.py`). This ticket adds the equivalent guard one layer down, in the provider adapters themselves — defense-in-depth for any caller that invokes a provider directly (tests, a future internal caller) rather than only through that endpoint.
+
+**Tests**: new `apps/smr/src/smr/tests/unit/test_cloud_model_task579.py` — parametrized over all 5 cloud providers: `_resolve_model()` never falls back to the configured default (locks the Vertex fix); `generate()`/`generate_stream()` raise `ModelNotSelectedError` on a missing OR blank/whitespace model; a caller-supplied model still succeeds; local engines (Ollama, LM Studio) are confirmed unaffected; a grep-style assertion that every cloud config's `default_model` field default is `""`. Extended `test_config.py` (per-cloud-config default assertions) and `test_exception_hierarchy.py` (added `ModelNotSelectedError` to the parametrized exception-inheritance/error-code suite + a dedicated 422 handler-mapping test).
+
+**Regression fixes** (pre-existing tests that constructed a `GenerateRequest` with no `model` against a cloud provider purely to exercise unrelated behavior — guardrail logging, async-stream bridging, OTel spans, token-usage mapping — now pass an explicit `model=` so they keep testing what they intended): `test_provider_guardrails.py` (1), `test_bedrock_async_stream.py` (8, single `replace_all`), `test_bedrock_provider.py` (4), `test_providers_e1.py` (2, Bedrock-only), `test_provider_edge_cases.py` (5, Bedrock-only), `test_telemetry.py` (3, Bedrock-only — the Azure telemetry tests were already safe because their fixture sets `deployment_name="gpt-4"`, which wins over `request.model` regardless of this change).
+
+### Verification (actual output)
+
+```
+$ pnpm smr:test:unit
+================= 989 passed, 8 warnings in 603.21s (0:10:03) ==================
+
+$ pnpm smr:lint
+All checks passed!
+
+$ pnpm smr:typecheck
+apps/smr/src/smr/providers/bedrock.py:98: error: "Session" has no attribute "_components"; maybe "get_component"?  [attr-defined]
+Found 1 error in 1 file (checked 55 source files)
+```
+
+The one `smr:typecheck` finding is **pre-existing and out of scope**: `session._components.register_component(...)` in `BedrockProvider._client_for` (the tenant-BYO bearer-token override path, TASK-572a) is untouched by this ticket's diff and identical in the pre-ticket committed `HEAD` (`git show HEAD:apps/smr/src/smr/providers/bedrock.py`) — it calls a private/undocumented botocore attribute mypy's stubs don't know about. Confirmed zero NEW mypy errors from this ticket's changes.
+
+`uv lock` not re-run — no dependency changes.
+
+**Grep proof (no cloud `default_model` silently substitutes)**: `grep -n "default_model" apps/smr/src/smr/core/config.py apps/smr/src/smr/providers/*.py` shows `self._default_model` is read only in `__init__` (storage) and `get_info()` (informational `ProviderInfo`/`ModelInfo` display, now empty-guarded) across all five cloud adapters — never in `generate()`/`generate_stream()`/`_resolve_model()`.
 
 ## Change History
 
 - 2026-07-28 — Ticket created from the Provider-Plane Day-1 Defaults audit (finding F3). Status Pending.
+- 2026-07-28 — Implemented Decision A (fail-closed). `default_model` zeroed on the five cloud configs; `ModelNotSelectedError` + shared `require_model()` guard added; `VertexProvider._resolve_model`'s real substitution bug fixed; regression tests updated; new TDD suite added. `pnpm smr:test:unit` 989/989 green, `smr:lint` clean, `smr:typecheck` clean except one pre-existing, out-of-scope finding in `bedrock.py:98` (untouched by this diff). Status → Review. Staged, not committed.

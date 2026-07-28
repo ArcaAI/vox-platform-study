@@ -43,6 +43,23 @@ class InputValidationError(SmrError):
         super().__init__(message, error_code="VALIDATION_ERROR")
 
 
+class ModelNotSelectedError(InputValidationError):
+    """No model resolved for a cloud-provider generation request.
+
+    SMR is a stateless gateway (see ``core/config.py``): the gateway resolves
+    the tenant/task model (``AiTaskDefault``) and injects it on every request.
+    Provider/model SELECTION is ``failMode=closed`` (Configuration Tiers,
+    ``09-infrastructure-devops.md``) — a cloud provider adapter must never
+    substitute an env-configured vendor model when the caller omits one, so a
+    missing model raises here instead of silently picking e.g. ``gpt-4o-mini``.
+    """
+
+    def __init__(self, message: str, *, provider: str = "unknown"):
+        self.provider = provider
+        super().__init__(message)
+        self.error_code = "MODEL_NOT_SELECTED"
+
+
 class CircuitOpenError(SmrError):
     """Circuit breaker is open for the requested provider."""
 

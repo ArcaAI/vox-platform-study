@@ -12,6 +12,16 @@ bootstrap fallbacks — their runtime values come from the control plane via
 ``core/effective_config.py`` and are applied by ``services/runtime_limits.py``.
 The selection contract above is UNCHANGED: effective-config carries capacity and
 timeouts only, never a provider or model choice.
+
+TASK-579: the five CLOUD sub-configs (``AzureOpenAIConfig``, ``BedrockConfig``,
+``OpenAIConfig``, ``AnthropicConfig``, ``VertexConfig``) carry no compiled-in
+vendor ``default_model`` — the field defaults to ``""`` and is retained ONLY
+as informational metadata for the ``/providers`` listing. Provider/model
+SELECTION is ``failMode=closed``: a cloud generate request that resolves no
+model raises ``ModelNotSelectedError`` (``providers/base.py`` ``require_model``)
+instead of silently substituting a vendor model. Local/built-in engines
+(``OllamaConfig``, ``OpenAICompatConfig``, ``VllmConfig``, ``LlamaCppConfig``)
+are unaffected — their model default is acceptable built-in topology.
 """
 
 from __future__ import annotations
@@ -58,7 +68,12 @@ class AzureOpenAIConfig(BaseSettings):
     endpoint: str = ""
     api_version: str = "2024-12-01-preview"
     deployment_name: str = ""
-    default_model: str = "gpt-5-mini"
+    # TASK-579: no compiled-in vendor model — provider/model SELECTION is
+    # failMode=closed (09-infrastructure-devops.md §Configuration Tiers).
+    # Informational only (providers listing); never substituted into a
+    # generation request — a missing model raises (see `providers/base.py`
+    # `require_model`).
+    default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
@@ -77,7 +92,8 @@ class BedrockConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SMR_BEDROCK_")
 
     region: str = "us-east-1"
-    default_model: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
+    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
@@ -169,7 +185,8 @@ class OpenAIConfig(BaseSettings):
 
     api_key: SecretStr = SecretStr("")
     base_url: str = "https://api.openai.com/v1"
-    default_model: str = "gpt-4o-mini"
+    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    default_model: str = ""
     organization: str | None = None
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
@@ -194,7 +211,8 @@ class AnthropicConfig(BaseSettings):
 
     api_key: SecretStr = SecretStr("")
     base_url: str = ""
-    default_model: str = "claude-3-5-haiku-20241022"
+    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
@@ -220,7 +238,8 @@ class VertexConfig(BaseSettings):
 
     project: str = ""
     location: str = "us-central1"
-    default_model: str = "gemini-2.0-flash"
+    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10

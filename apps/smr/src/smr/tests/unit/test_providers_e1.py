@@ -341,7 +341,9 @@ class TestBedrockTokenUsage:
             "usage": {"inputTokens": 25, "outputTokens": 50},
         }
 
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(
+            GenerateRequest(prompt="hello", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        )
         assert content == "Summary"
         assert stats.prompt_tokens == 25
         assert stats.predicted_tokens == 50
@@ -354,7 +356,9 @@ class TestBedrockTokenUsage:
             "output": {"message": {"content": [{"text": "Hi"}]}},
         }
 
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(
+            GenerateRequest(prompt="hello", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        )
         assert content == "Hi"
         assert stats.prompt_tokens == 0
         assert stats.predicted_tokens == 0

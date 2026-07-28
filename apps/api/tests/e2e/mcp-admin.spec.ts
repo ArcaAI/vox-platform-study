@@ -30,6 +30,15 @@
 import { test, expect } from '@playwright/test';
 import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 
+// These tests share mutable state (`serverId`, the tokens) set up once in
+// `beforeAll` and consumed by every test in the file. Under the root config's
+// `fullyParallel: true`, Playwright may run this describe block's tests across
+// more than one worker, each getting its own `beforeAll` pass — two workers'
+// `Date.now()`-based unique names can collide, and the second create then
+// genuinely 400s on "already exists" (see `ai-model-discovery.spec.ts` for the
+// same fix for the same reason). Run this file's tests strictly in order.
+test.describe.configure({ mode: 'serial' });
+
 const BASE = '/api/v1/admin/mcp-servers';
 
 /** uuidv7-shaped server id no tenant has ever registered — its 404 mirrors the cross-tenant 404. */

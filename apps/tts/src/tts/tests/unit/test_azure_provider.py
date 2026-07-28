@@ -288,7 +288,8 @@ class TestEndToEndThroughApp:
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             resp = await c.post(
-                "/api/v1/audio/speech", json={"input": "Hi.", "voice": "en-female-1"}
+                "/api/v1/audio/speech",
+                json={"input": "Hi.", "voice": "en-female-1", "routing_en": ["azure", "kokoro"]},
             )
         assert resp.status_code == 200
         assert resp.content == b"AABB"

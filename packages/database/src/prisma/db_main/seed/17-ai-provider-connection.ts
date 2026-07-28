@@ -9,20 +9,22 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * the platform-default catalog entry recording WHERE a provider lives and (once
  * an admin sets one) HOW to authenticate to it.
  *
- * SILENT-CHANGE GUARD (wiring a dead field must
- * not flip a live default). Every row seeds:
+ * SEED-AUTHORITATIVE Day-1 posture (TASK-578, OD-1). The SYSTEM rows — not env —
+ * are the authoritative default source. Two classes of row:
  *
- *   - `enabled: false`   → `resolveConnection` skips it and falls through to
- *                          the consuming service's existing env configuration,
- *                          so runtime behaviour is byte-identical to today.
- *   - no `encryptedApiKey` / `keyVersion` → no key material is ever seeded.
+ *   - BUILT-IN-LOCAL llm engines (`ollama`, `lm-studio`, `built-in`, `vllm`,
+ *     `llama-cpp`) seed `enabled: true`, so `resolveConnection('llm', …)` returns
+ *     the SYSTEM row Day-1 and env is a pure fallback. Their `baseUrl` is the
+ *     platform-run engine's connection identity (env-tier per
+ *     `09-infrastructure-devops.md`), carried here as the DECLARED source of
+ *     truth — not a placeholder.
+ *   - CLOUD-BYO providers (llm `azure`/`bedrock`/`openai`/`anthropic`/`vertex`/
+ *     `sarvam`, plus all stt/tts cloud rows) stay `enabled: false`: a cloud
+ *     provider needs a tenant-supplied key, so an enabled-but-keyless cloud row
+ *     must never serve. A tenant enables one by bringing its own credential.
  *
- * The `baseUrl` / `region` / `apiVersion` values below are PLACEHOLDER DATA
- * transcribed from the current `.env.dev` / `.env.production` reference values
- * so a global admin has a sane starting point in the console. They are inert
- * while `enabled: false`, and each such row is flagged `metaData.placeholder`
- * so the admin surface can render them as suggestions rather than
- * as configured values.
+ * In all cases: no `encryptedApiKey` / `keyVersion` is ever seeded — no key
+ * material lives in a seed.
  *
  * CREATE-ONLY: an existing (tenantId, service, provider) row is NEVER
  * overwritten — the connection is admin-tunable at runtime and a re-seed must
@@ -67,8 +69,8 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
-    enabled: false,
-    metaData: { placeholder: true, note: 'Reference value from SMR_OLLAMA_BASE_URL.' },
+    enabled: true,
+    metaData: { note: 'Base URL from SMR_OLLAMA_BASE_URL (env-tier connection identity).' },
   },
   {
     // LM Studio — the default local OpenAI-compatible engine
@@ -83,8 +85,8 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
-    enabled: false,
-    metaData: { placeholder: true, note: 'Reference value from SMR_OPENAI_COMPAT_BASE_URL.' },
+    enabled: true,
+    metaData: { note: 'Base URL from SMR_OPENAI_COMPAT_BASE_URL (env-tier connection identity).' },
   },
   {
     // Azure OpenAI — endpoint/apiVersion/deployment are per-deployment and
@@ -129,7 +131,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
-    enabled: false,
+    enabled: true,
     metaData: null,
   },
   {
@@ -178,8 +180,8 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
-    enabled: false,
-    metaData: { placeholder: true, note: 'Reference value from SMR_VLLM_BASE_URL (k3s Service).' },
+    enabled: true,
+    metaData: { note: 'Base URL from SMR_VLLM_BASE_URL (k3s Service; env-tier connection identity).' },
   },
   {
     // llama.cpp production self-host engine (`SMR_LLAMA_CPP_BASE_URL`).
@@ -193,8 +195,8 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     deploymentName: null,
     encryptedApiKey: null,
     keyVersion: null,
-    enabled: false,
-    metaData: { placeholder: true, note: 'Reference value from SMR_LLAMA_CPP_BASE_URL (k3s Service).' },
+    enabled: true,
+    metaData: { note: 'Base URL from SMR_LLAMA_CPP_BASE_URL (k3s Service; env-tier connection identity).' },
   },
 
   // ── New LLM cloud providers (TASK-569 freeze; functional in TASK-572) ──────
@@ -341,7 +343,7 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
       continue;
     }
 
-    console.log(`  Creating AiProviderConnection "${row.service}:${row.provider}" (disabled)`);
+    console.log(`  Creating AiProviderConnection "${row.service}:${row.provider}" (${row.enabled ? 'enabled' : 'disabled'})`);
     await client.aiProviderConnection.create({
       data: {
         id: row.id,

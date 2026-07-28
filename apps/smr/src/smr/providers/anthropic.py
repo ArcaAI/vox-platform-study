@@ -24,6 +24,7 @@ from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
 from smr.models.stats import GenerationStats, build_generation_stats
 from smr.models.stream import StreamChunk
+from smr.providers.base import require_model
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -185,12 +186,12 @@ class AnthropicProvider:
 
     async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
         resolved = resolve_request_defaults(request)
-        resolved_model = self._resolve_model(request)
+        resolved_model = require_model(self._resolve_model(request), provider=_PROVIDER_NAME)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate",
             attributes={
                 "gen_ai.system": _PROVIDER_NAME,
-                "gen_ai.request.model": resolved_model or "",
+                "gen_ai.request.model": resolved_model,
                 "gen_ai.operation.name": "generate",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
@@ -210,7 +211,7 @@ class AnthropicProvider:
             raw_stop = getattr(message, "stop_reason", None)
 
             stats = self._build_stats(
-                model=resolved_model or "",
+                model=resolved_model,
                 raw_stop_reason=raw_stop,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -223,12 +224,12 @@ class AnthropicProvider:
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
-        resolved_model = self._resolve_model(request)
+        resolved_model = require_model(self._resolve_model(request), provider=_PROVIDER_NAME)
         with _get_tracer().start_as_current_span(
             "gen_ai.generate_stream",
             attributes={
                 "gen_ai.system": _PROVIDER_NAME,
-                "gen_ai.request.model": resolved_model or "",
+                "gen_ai.request.model": resolved_model,
                 "gen_ai.operation.name": "generate_stream",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
@@ -276,7 +277,7 @@ class AnthropicProvider:
 
             total_ms = int((time.monotonic() - start) * 1000)
             stats = self._build_stats(
-                model=resolved_model or "",
+                model=resolved_model,
                 raw_stop_reason=raw_stop,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -302,7 +303,12 @@ class AnthropicProvider:
             return False
 
     async def get_info(self) -> ProviderInfo:
-        models: list[ModelInfo] = [ModelInfo(name=self._default_model, supports_streaming=True)]
+        # TASK-579: default_model is informational-only (may be unset now that
+        # cloud configs carry no compiled-in vendor model) — never advertise an
+        # empty-named model.
+        models: list[ModelInfo] = (
+            [ModelInfo(name=self._default_model, supports_streaming=True)] if self._default_model else []
+        )
         status = "available"
         try:
             listing = await self._client.models.list(limit=100)
