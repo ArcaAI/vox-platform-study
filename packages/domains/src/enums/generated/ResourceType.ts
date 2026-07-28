@@ -59,4 +59,8 @@ export enum ResourceType {
   // Eval run (TASK-549): the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun. Parity with audit.prisma.
   EvalRun = 'EvalRun',
+  // Per-tenant STT fallback config + BYO provider credentials (TASK-567).
+  // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
+  TenantSttConfig = 'TenantSttConfig',
+  TenantSttProviderCredential = 'TenantSttProviderCredential',
 }

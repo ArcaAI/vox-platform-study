@@ -49,6 +49,10 @@ export type { UseArcaSpeechToTextProps, UseArcaSpeechToTextReturn } from './comp
 export { useSMR } from './compat/useSMR';
 export type { UseSMROptions, UseSMRReturn } from './compat/useSMR';
 
+// STT provider switching — the one compat import with NO v1 ancestor (TASK-568).
+export { useArcaSttProvider } from './compat/useArcaSttProvider';
+export type { UseArcaSttProviderProps, UseArcaSttProviderReturn } from './compat/useArcaSttProvider';
+
 // v1 type surface (TASK-560 §5)
 export type {
   V1SdkConfig,
@@ -75,4 +79,5 @@ export type {
   StructuredPreSummary,
   PreSummarySection,
   PreSummarySectionItem,
+  ProviderSwitchInfo,
 } from './compat/types';

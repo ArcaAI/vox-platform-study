@@ -559,6 +559,25 @@ export class TranscriptionPipeline {
   }
 
   /**
+   * The streaming session manager backing the STT stage, or `null` for local
+   * STT / no streaming transport. `useArcaAudio` reaches it to read the live
+   * session id and drive an on-the-fly provider switch (TASK-567 R4). Duck-typed
+   * (the concrete `StreamingSessionManager` lives in vox; the stage processor is
+   * `@arcaai/stt`) and guarded so a processor/mock without the getter is a no-op.
+   */
+  getStreamingSessionManager(): {
+    getSessionId(): string | null;
+    switchToFallback?(): Promise<void>;
+  } | null {
+    const sttProcessor = this.stages.get('stt')?.processor as unknown as
+      | {
+          getStreamingSessionManager?: () => { getSessionId(): string | null; switchToFallback?(): Promise<void> } | null;
+        }
+      | undefined;
+    return sttProcessor?.getStreamingSessionManager?.() ?? null;
+  }
+
+  /**
    * Get the current configuration.
    */
   getConfig(): TranscriptionPipelineConfig {

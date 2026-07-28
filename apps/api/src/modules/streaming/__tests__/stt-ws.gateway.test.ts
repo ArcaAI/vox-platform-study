@@ -818,6 +818,42 @@ describe('SttWsGateway', () => {
             expect(second.seq).toBe(2);
         });
 
+        // TASK-567: apps/stt publishes a `status`/`provider_switched` result on
+        // the session's result stream when the ASR engine is swapped to the
+        // fallback (auto or user-triggered). The gateway relays non-transcript
+        // results verbatim (no seq tag), so the switch notification reaches the
+        // client on the existing `status` frame — zero WS protocol change.
+        it('forwards a provider_switched status result to the client verbatim (no seq tag)', async () => {
+            const resultSubject = new Subject();
+            mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+            const client = createMockSocket();
+            setValidTicketFor('sess-switch');
+            await gateway.handleConnection(client as any, buildReq('sess-switch') as any);
+            // Drop the readiness ack so we assert the status message alone.
+            (client.send as any).mockClear();
+
+            resultSubject.next({
+                type: 'status',
+                status: 'provider_switched',
+                from_pipeline: 'azure_speech_transcription',
+                to_pipeline: 'sarvam_transcription',
+                reason: 'auto',
+                utterance_index: 4,
+            });
+
+            expect(client.send).toHaveBeenCalledTimes(1);
+            const sent = JSON.parse((client.send as any).mock.calls[0][0]);
+            expect(sent.type).toBe('status');
+            expect(sent.status).toBe('provider_switched');
+            expect(sent.from_pipeline).toBe('azure_speech_transcription');
+            expect(sent.to_pipeline).toBe('sarvam_transcription');
+            expect(sent.reason).toBe('auto');
+            expect(sent.utterance_index).toBe(4);
+            // Status frames are not transcript results, so they carry no server seq.
+            expect('seq' in sent).toBe(false);
+        });
+
         // stableChars (committed-prefix length) is an
         // additive bridge field; the gateway must forward it untouched on
         // the WS transcript message and omit it when absent.

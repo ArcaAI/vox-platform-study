@@ -77,6 +77,7 @@ export const AI_MODEL_PROVIDERS = [
   'bedrock',
   'built-in',
   'sarvam',
+  'openai',
   // production self-host
   // engines. OpenAI-compatible `/v1` wire; free-string
   // provider values, no Prisma enum migration (the column is a plain string).

@@ -1242,7 +1242,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     try {
       session.sttSubscription = this.audioBridge.subscribeToResults(sessionId).subscribe({
         next: (msg) => {
-          if (msg?.isFinal && msg.text?.trim()) {
+          // The result stream now also carries non-transcript status frames
+          // (provider_switched, TASK-567); narrow to transcripts before reading
+          // transcript-only fields.
+          if (msg?.type === 'transcript' && msg.isFinal && msg.text?.trim()) {
             this.ingestSegment(session.consultationId, { text: msg.text, isFinal: true });
           }
         },

@@ -478,6 +478,31 @@ describe('SttWebSocketClient', () => {
 
       expect(onStatus).toHaveBeenCalledWith(msg);
     });
+
+    // TASK-567: the backend publishes an ASR-engine swap as a `status`/
+    // `provider_switched` result that carries typed fields but NO human
+    // `message`. The validator must not drop it, and the typed fields pass
+    // through to onStatus.
+    it('forwards a provider_switched status frame without a message', async () => {
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      const onStatus = vi.fn();
+      client.onStatus(onStatus);
+
+      const msg = {
+        type: 'status',
+        status: 'provider_switched',
+        from_pipeline: 'azure_speech_transcription',
+        to_pipeline: 'sarvam_transcription',
+        reason: 'auto',
+        utterance_index: 4,
+      };
+      lastMockWs!.simulateMessage(JSON.stringify(msg));
+
+      expect(onStatus).toHaveBeenCalledWith(msg);
+    });
   });
 
   describe('onWsError', () => {

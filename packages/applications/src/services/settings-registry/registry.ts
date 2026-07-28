@@ -20,6 +20,7 @@ import { PLATFORM_OPS_SETTINGS } from './descriptors/platform-ops.descriptors';
 import { PLATFORM_SECRET_SETTINGS } from './descriptors/platform-secrets.descriptors';
 import { SERVICE_RUNTIME_SETTINGS } from './descriptors/service-runtime.descriptors';
 import { STORAGE_SETTINGS } from './descriptors/storage.descriptors';
+import { STT_FALLBACK_SETTINGS } from './descriptors/stt-fallback.descriptors';
 import { TTS_SETTINGS } from './descriptors/tts.descriptors';
 import { SettingsRegistry } from './settings-registry';
 
@@ -28,6 +29,8 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // Platform storage default: SYSTEM TenantStorageConfig row + Vault kv-v2 (lane E).
   ...STORAGE_SETTINGS,
   ...TTS_SETTINGS,
+  // Per-tenant STT fallback pipeline pointer + BYO provider credentials (TASK-567).
+  ...STT_FALLBACK_SETTINGS,
   ...ENTITLEMENT_SETTINGS,
   // AI task-model defaults (guardrail/NLP/SMR).
   ...MODEL_DEFAULT_SETTINGS,

@@ -300,6 +300,24 @@ export function useArcaAudio() {
             store.markAudioLost();
             store.incrementDroppedFrames();
           },
+          // Streaming connection-health transitions from the STT client's
+          // reconnect callbacks (TASK-567 Phase F). `switched_fallback` is set by
+          // onProviderSwitched below, not here, so a post-switch reconnect that
+          // reports `connected` never erases the durable `activePipeline.isFallback`.
+          onSttConnectionState: (state) => {
+            store.setSttConnectionState(state);
+          },
+          // The backend swapped the session's ASR engine to the tenant fallback.
+          // Mark the momentary switch + the durable active-pipeline fallback flag.
+          onProviderSwitched: (info) => {
+            store.setSttConnectionState('switched_fallback');
+            store.setActivePipeline({ id: info.toPipeline, name: info.toPipeline, isFallback: true });
+            logger?.info('Streaming provider switched to fallback', {
+              operation: 'onProviderSwitched',
+              component: 'useArcaAudio',
+              attributes: { from: info.fromPipeline, to: info.toPipeline, reason: info.reason },
+            });
+          },
         });
 
         // Initialize plugins
@@ -308,6 +326,12 @@ export function useArcaAudio() {
         store.setIsCapturing(true);
         store.setAudioPlugins(pluginManager.getStates());
         store.setAudioError(null);
+
+        // Reset the streaming STT connection signal for the new session and
+        // record the active pipeline (backend workflow only — local STT has no
+        // pipeline). `isFallback` starts false; a later provider_switched flips it.
+        store.setSttConnectionState('connected');
+        store.setActivePipeline(options?.pipelineId ? { id: options.pipelineId, name: options.pipelineId, isFallback: false } : null);
 
         // Uplink-bitrate poll — the streaming STT stage exists after initialize().
         // Sample cumulative bytes-sent each second; publish the delta as bits/sec.
@@ -481,6 +505,9 @@ export function useArcaAudio() {
     // Session ended; clear the audio-drop signal (start/stop are the
     // ONLY reset points — the latch deliberately survives reconnect).
     store.resetAudioDropped();
+    // Session ended; clear the streaming STT connection/pipeline signal.
+    store.setSttConnectionState('connected');
+    store.setActivePipeline(null);
 
     logger?.info('Audio capture stopped', {
       operation: 'stopAudio',
@@ -488,6 +515,63 @@ export function useArcaAudio() {
       success: true,
     });
   }, [store, getLogger]);
+
+  /**
+   * Switch the live streaming session to the tenant fallback pipeline (R4).
+   *
+   * Primary path: POST the in-place-switch route via the streaming session
+   * manager; the backend swaps the ASR engine while the WebSocket/session
+   * survive, and the client learns the new pipeline from the `provider_switched`
+   * status frame (which updates `activePipeline` / `sttConnectionState`).
+   *
+   * Degraded path: on a backend without the route (404), if the caller supplies
+   * `fallbackPipelineId` the session is rebuilt on it (destroy/recreate) — a
+   * reconnect-shaped fallback surfaced honestly as `reconnecting`. Without an id
+   * to rebuild on, the NOT_FOUND error propagates.
+   */
+  const switchToFallback = useCallback(
+    async (fallbackPipelineId?: string): Promise<void> => {
+      const { pluginManager } = store;
+      const logger = getLogger();
+      if (!pluginManager) throw new Error('SDK not initialized');
+
+      const sessionManager = pluginManager.getTranscriptionPipeline?.()?.getStreamingSessionManager?.();
+      const sessionId = sessionManager?.getSessionId?.() ?? null;
+      if (!sessionManager || !sessionId) {
+        throw new Error('No active streaming session to switch to fallback');
+      }
+
+      logger?.info('Switching streaming session to fallback', {
+        operation: 'switchToFallback',
+        component: 'useArcaAudio',
+        attributes: { sessionId },
+      });
+
+      try {
+        await sessionManager.switchToFallback?.();
+        // Success is confirmed asynchronously by the backend `provider_switched`
+        // status frame; nothing to set optimistically here.
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if (code === 'NOT_FOUND' && fallbackPipelineId) {
+          logger?.warn('Seamless switch unsupported by backend — rebuilding on the fallback pipeline', {
+            operation: 'switchToFallback',
+            component: 'useArcaAudio',
+            attributes: { fallbackPipelineId },
+          });
+          store.setSttConnectionState('reconnecting');
+          await stopAudio();
+          await startAudio({ pipelineId: fallbackPipelineId, language: store.audioLanguage });
+          store.setSttConnectionState('switched_fallback');
+          store.setActivePipeline({ id: fallbackPipelineId, name: fallbackPipelineId, isFallback: true });
+          return;
+        }
+        store.setSttConnectionState('error');
+        throw err;
+      }
+    },
+    [store, getLogger, stopAudio, startAudio],
+  );
 
   const muteAudio = useCallback(() => {
     const logger = getLogger();
@@ -605,9 +689,13 @@ export function useArcaAudio() {
       audioLostThisSession: store.audioLostThisSession,
       // Live outbound uplink bitrate (bits/sec) over the last ~1s; 0 when not streaming.
       uplinkBitrate: store.audioUplinkBitrate,
+      // Streaming STT connection health + active pipeline (TASK-567 Phase F).
+      sttConnectionState: store.sttConnectionState,
+      activePipeline: store.activePipeline,
       start: startAudio,
       startFromPreferences,
       stop: stopAudio,
+      switchToFallback,
       mute: muteAudio,
       unmute: unmuteAudio,
       toggleNoiseFilter,
@@ -627,9 +715,12 @@ export function useArcaAudio() {
       store.audioDroppedFrameCount,
       store.audioLostThisSession,
       store.audioUplinkBitrate,
+      store.sttConnectionState,
+      store.activePipeline,
       startAudio,
       startFromPreferences,
       stopAudio,
+      switchToFallback,
       muteAudio,
       unmuteAudio,
       toggleNoiseFilter,

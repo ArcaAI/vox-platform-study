@@ -410,3 +410,26 @@ export interface PreSummaryResponse {
   structured_data: StructuredPreSummary;
   created_at: string;
 }
+
+// =============================================================================
+// STT provider switching (TASK-568 — compat-NATIVE, no v1 ancestor)
+// =============================================================================
+
+/**
+ * Info delivered to `useArcaSttProvider().onProviderSwitched` on every STT
+ * provider switch (auto outage-driven OR user-initiated).
+ *
+ * Compat-NATIVE and APPEND-ONLY: v1 had no provider-switch concept, so this
+ * shape has no frozen v1 ancestor — it is a new addition that leaves every
+ * frozen type above byte-identical. Distinct from the v2 `ProviderSwitchInfo`
+ * in `../types/audio` (which carries the raw pipeline ids straight off the
+ * wire); this is the v1-app-facing shape — structured pipelines plus a
+ * capture-relative timestamp.
+ */
+export interface ProviderSwitchInfo {
+  fromPipeline: { id: string; name?: string };
+  toPipeline: { id: string; name?: string };
+  reason: 'auto' | 'user';
+  /** Capture-relative ms — same base as the metadata timeline. */
+  atMs: number;
+}

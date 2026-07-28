@@ -327,6 +327,15 @@ function ScribeWorkspace() {
         }
     }
 
+    async function handleSwitchToFallback() {
+        try {
+            await audio.switchToFallback();
+            toast.success('Switching to the fallback transcription provider');
+        } catch (error) {
+            toast.error(errorMessage(error, 'Could not switch to the fallback provider'));
+        }
+    }
+
     function handleGenerate() {
         if (!consultation) return;
         summarySync.mutate(
@@ -406,6 +415,9 @@ function ScribeWorkspace() {
                             onStop={handleStop}
                             reviewTranscriptText={transcriptText}
                             reviewHighlight={reviewHighlight}
+                            sttConnectionState={audio.sttConnectionState}
+                            onFallback={audio.activePipeline?.isFallback ?? false}
+                            onSwitchToFallback={handleSwitchToFallback}
                         />
                     </ResizablePanel>
                     <ResizableHandle withHandle />

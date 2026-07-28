@@ -151,6 +151,8 @@ function setupStore(overrides: Record<string, any> = {}) {
     setAudioError: vi.fn(),
     setActiveStream: vi.fn(),
     setActiveAudioContext: vi.fn(),
+    setSttConnectionState: vi.fn(),
+    setActivePipeline: vi.fn(),
     addTranscriptSegment: vi.fn(),
     addContextItem: vi.fn(),
     addEntities: vi.fn(),

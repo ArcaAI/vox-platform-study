@@ -52,6 +52,8 @@ export * from './TenantFrontendConfigFactory';
 export * from './TenantIdentityProviderFactory';
 export * from './TenantIdentityProviderDomainFactory';
 export * from './TenantStorageConfigFactory';
+export * from './TenantSttConfigFactory';
+export * from './TenantSttProviderCredentialFactory';
 export * from './TenantTtsConfigFactory';
 export * from './TenantTtsProviderCredentialFactory';
 export * from './TenantFactory';

@@ -233,6 +233,7 @@ Key mechanics:
 - The gateway keeps a 200-message resume buffer per session for reconnect replay, and applies egress backpressure (drops partials, queues finals) above a 512 KiB WS buffer watermark.
 - `LiveDocumentationService` (TASK-339/340) debounces final segments (default: 3 segments or 5 s idle), calls SMR for a bounded running note and NLP for entities, and republishes over the consultation live-summary SSE stream. Kill switch: `LIVE_DOC_ENABLED`.
 - STT calls back into the gateway's internal surface (`/api/v1/internal/stt/*`: transcripts, job lifecycle, audio-records, media) authenticated by service token.
+- Per-tenant STT fallback (TASK-567): the session-create request carries an optional `provider_overrides` (BYOK) + `fallback_pipeline_id`; on a classified ASR outage (or a user-triggered `POST stream/session/:sessionId/switch-to-fallback`), `SessionManager`'s `EngineSwitchController` swaps the session's ASR engine one-way and publishes a `status`/`provider_switched` result over `stt:result:{sessionId}` — the gateway relays it on the existing WS `status` frame with zero protocol change. Batch jobs re-dispatch once on the fallback within the same Dramatiq attempt.
 
 ### 3.2 Batch transcription
 
@@ -382,6 +383,7 @@ HOPE resolves *which model runs a task, where its provider lives, how it is auth
 | Model lifecycle / retention | load-on-first-request, idle-TTL eviction (default 600 s, pinned models never evicted), set via `global-kv` settings, served over `internal/effective-config` (~60 s apply) |
 | Pipeline governance | `AsrPipeline` template lineage — SYSTEM templates cloned per tenant; locked copies are read-only (clone to customize); resync fast-forwards pristine copies |
 | Per-tenant TTS / identity / tools | `TenantTtsConfig` (+ BYO credential), `TenantIdentityProvider` (OIDC federation), `McpServer` (harness external-tool registry, Vault-path auth only) |
+| Per-tenant STT fallback / BYOK | `TenantSttConfig` (`fallbackPipelineId`, `autoSwitchEnabled`) + `TenantSttProviderCredential` (`azure-speech`/`sarvam`/`openai`, Vault-Transit ciphertext); streaming credentials injected at session-create, batch credentials pulled by the worker via `GET /internal/stt/provider-overrides` (TASK-567) |
 
 Runtime services stay stateless with respect to this plane: the config plane degrades safely — an unreachable control plane leaves each service on its own env/bootstrap defaults.
 

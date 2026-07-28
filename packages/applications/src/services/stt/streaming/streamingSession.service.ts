@@ -81,6 +81,10 @@ export class StreamingSessionService implements IStreamingSessionService {
             // Per-tenant storage descriptor (DEDICATED tenants only; null/omitted
             // for SHARED). snake_case keys already match the Python worker schema.
             storage: dto.storage ?? null,
+            // Per-tenant BYO provider credentials + fallback pointer (TASK-567).
+            // Held by the session runtime in memory only; NEVER logged.
+            provider_overrides: dto.providerOverrides ?? null,
+            fallback_pipeline_id: dto.fallbackPipelineId ?? null,
           },
           { timeout: 15000 },
         ),
@@ -149,6 +153,21 @@ export class StreamingSessionService implements IStreamingSessionService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Trigger a mid-session switch to the tenant's fallback pipeline (TASK-567 R4).
+   * POSTs to the apps/stt internal switch route, which XADDs a
+   * `SWITCH_TO_FALLBACK` control message onto the session's control stream; the
+   * in-session `EngineSwitchController` performs the seamless engine swap. Idempotent
+   * from the gateway's view — 404 (unknown session) and 409 (no fallback / already
+   * switched) are surfaced to the caller.
+   */
+  async switchToFallback(sessionId: string): Promise<void> {
+    await firstValueFrom(
+      this.httpService.post(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}/switch`, {}, { timeout: 5000 }),
+    );
+    this.logger.log({ message: 'Streaming session switch-to-fallback requested', sessionId });
   }
 
   /**

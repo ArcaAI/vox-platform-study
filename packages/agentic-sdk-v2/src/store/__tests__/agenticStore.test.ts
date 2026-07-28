@@ -1209,6 +1209,41 @@ describe('agenticStore', () => {
     // erases the "audio was lost" signal exactly when loss happened.
     // =========================================================================
 
+    describe('streaming STT connection state (TASK-567)', () => {
+        it('starts nominal with no active pipeline', () => {
+            const state = useAgenticStore.getState();
+            expect(state.sttConnectionState).toBe('connected');
+            expect(state.activePipeline).toBeNull();
+        });
+
+        it('setSttConnectionState updates the connection health', () => {
+            useAgenticStore.getState().setSttConnectionState('reconnecting');
+            expect(useAgenticStore.getState().sttConnectionState).toBe('reconnecting');
+
+            useAgenticStore.getState().setSttConnectionState('switched_fallback');
+            expect(useAgenticStore.getState().sttConnectionState).toBe('switched_fallback');
+        });
+
+        it('setActivePipeline sets and clears the active pipeline descriptor', () => {
+            useAgenticStore.getState().setActivePipeline({ id: 'fallback', name: 'Fallback', isFallback: true });
+            expect(useAgenticStore.getState().activePipeline).toEqual({ id: 'fallback', name: 'Fallback', isFallback: true });
+
+            useAgenticStore.getState().setActivePipeline(null);
+            expect(useAgenticStore.getState().activePipeline).toBeNull();
+        });
+
+        it('clearTenantSessionData resets the connection state and active pipeline', () => {
+            useAgenticStore.getState().setSttConnectionState('switched_fallback');
+            useAgenticStore.getState().setActivePipeline({ id: 'x', name: 'x', isFallback: true });
+
+            useAgenticStore.getState().clearTenantSessionData();
+
+            const state = useAgenticStore.getState();
+            expect(state.sttConnectionState).toBe('connected');
+            expect(state.activePipeline).toBeNull();
+        });
+    });
+
     describe('audio-drop state', () => {
         it('starts with a zero drop count and an un-set loss latch', () => {
             const state = useAgenticStore.getState();

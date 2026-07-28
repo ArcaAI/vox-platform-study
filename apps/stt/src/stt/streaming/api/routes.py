@@ -83,6 +83,8 @@ async def create_streaming_session(
             user_id=request.user_id,
             language=request.language,
             storage=request.storage,
+            provider_overrides=request.provider_overrides,
+            fallback_pipeline_id=request.fallback_pipeline_id,
         )
     except Exception as exc:
         logger.error(
@@ -226,6 +228,42 @@ async def end_active_streaming_session(session_id: str) -> dict[str, Any]:
         "status": "ok",
         "session_id": session_id,
     }
+
+
+# -------------------------------------------------------------------------
+# POST /internal/streaming/sessions/{session_id}/switch — Manual fallback switch
+# -------------------------------------------------------------------------
+
+
+@router.post(
+    "/sessions/{session_id}/switch",
+    status_code=200,
+    responses={
+        200: {"description": "Switch-to-fallback requested"},
+        404: {"description": "Session not found"},
+        409: {"description": "No fallback configured or already switched"},
+        503: {"description": "Streaming not initialized"},
+    },
+)
+async def switch_streaming_session_to_fallback(session_id: str) -> dict[str, Any]:
+    """Request a mid-session switch to the tenant's fallback pipeline (TASK-567 R4).
+
+    Called by the API Gateway's ``switch-to-fallback`` endpoint. XADDs a
+    ``SWITCH_TO_FALLBACK`` control message onto the session's control stream; the
+    in-session ``EngineSwitchController`` performs the seamless engine swap.
+    """
+    mgr = _require_session_manager()
+
+    try:
+        await mgr.request_switch_to_fallback(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Session not found") from exc
+    except ValueError as exc:
+        # no_fallback_configured / already_switched
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    logger.info("Switch-to-fallback requested via API", session_id=session_id)
+    return {"status": "ok", "session_id": session_id}
 
 
 # -------------------------------------------------------------------------

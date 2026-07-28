@@ -27,6 +27,9 @@ class TestSessionManagerDenoiserWiring:
         mgr._inference_workers = {}
         mgr._dual_capture = {}
         mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -110,6 +113,9 @@ class TestSessionManagerDenoiserWiring:
         mgr._inference_workers = {}
         mgr._dual_capture = {}
         mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -192,6 +198,9 @@ class TestSessionManagerDenoiserWiring:
         mgr._inference_workers = {}
         mgr._dual_capture = {}
         mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -267,6 +276,9 @@ class TestSessionManagerDenoiserWiring:
         mgr._inference_workers = {}
         mgr._dual_capture = {}
         mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True

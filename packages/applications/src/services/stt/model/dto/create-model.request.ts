@@ -11,7 +11,7 @@ import { ModelCategory, ModelTaskType, ModelType, AiModelSource, AiModelFormat }
  * could not be written through the API at all. Pinned by
  * `tests/contracts/ai-model-providers.contract.test.ts`.
  */
-export const AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'vllm', 'llama-cpp'] as const;
+export const AI_MODEL_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'openai', 'vllm', 'llama-cpp'] as const;
 
 /**
  * The subset of providers whose models live on a server we can

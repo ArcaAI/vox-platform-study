@@ -7,11 +7,13 @@ import {
   IBlobStorageService,
   IEntitlementsService,
   ITenantBucketService,
+  ITenantSttConfigService,
   PipelineService,
   StreamingSessionService,
   TranscriptionJobService,
   TranscriptionRealtimeService,
 } from '@arcaai/applications';
+import type { SttProviderOverrides } from '@arcaai/applications';
 import { TenantBucketPurpose } from '@arcaai/domains';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../auth/stream-ticket.service';
@@ -19,6 +21,7 @@ import type { MessageEvent } from '@nestjs/common';
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -28,6 +31,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
   Param,
   Post,
   Query,
@@ -95,6 +99,10 @@ export class TranscriptionJobController {
     // while the entitlements kill-switch is OFF).
     @Inject(IEntitlementsService)
     private readonly entitlements: IEntitlementsService,
+    // Resolves the caller tenant's STT fallback spec + BYO provider overrides
+    // (TASK-567). Optional so positional test construction still works and a
+    // stack without the module degrades gracefully; injection is fail-open.
+    @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
   ) {}
 
   private getTenantId(): string {
@@ -129,6 +137,33 @@ export class TranscriptionJobController {
     const pipeline = await this.pipelineService.getById(pipelineId);
     if (!pipeline) {
       throw new NotFoundException(`Pipeline ${pipelineId} not found`);
+    }
+  }
+
+  /**
+   * Resolve the tenant's effective fallback pipeline + decrypted BYO provider
+   * overrides for a new streaming session (TASK-567). FAIL-OPEN: any resolve or
+   * decrypt error (or an unwired config service) yields no overrides and no
+   * fallback so the session is still created on platform env creds — a broken
+   * BYO key must never block transcription. The decrypted overrides are handed
+   * straight to the session payload and NEVER logged here.
+   */
+  private async resolveSttFallbackConfig(tenantId: string): Promise<{ providerOverrides?: SttProviderOverrides; fallbackPipelineId?: string }> {
+    if (!this.sttConfig) {
+      return {};
+    }
+    try {
+      const [effective, overrides] = await Promise.all([this.sttConfig.getEffective(tenantId), this.sttConfig.resolveProviderOverrides(tenantId)]);
+      return {
+        providerOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
+        fallbackPipelineId: effective.fallbackPipelineId ?? undefined,
+      };
+    } catch (err) {
+      this.logger.warn({
+        message: 'Tenant STT config resolve failed; creating session without fallback/overrides',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return {};
     }
   }
 
@@ -352,6 +387,12 @@ export class TranscriptionJobController {
 
     const [, { audioBucketName, storage }] = await Promise.all([this.assertPipelineOwnership(body.pipelineId), resolveAudioBucket()]);
 
+    // Resolve the tenant's STT fallback pointer + decrypted BYO provider
+    // overrides and forward both to the session runtime (TASK-567 D-3). Fails
+    // OPEN: a config/decrypt error creates the session WITHOUT overrides or a
+    // fallback (transcription proceeds on platform env creds) — never a 500.
+    const { providerOverrides, fallbackPipelineId } = await this.resolveSttFallbackConfig(tenantId);
+
     const sessionPayload = {
       sessionId,
       tenantId,
@@ -362,6 +403,8 @@ export class TranscriptionJobController {
       userId: user?.id,
       audioBucketName,
       storage,
+      ...(providerOverrides ? { providerOverrides } : {}),
+      ...(fallbackPipelineId ? { fallbackPipelineId } : {}),
     } as Parameters<StreamingSessionService['createSession']>[0];
 
     const result = await this.sessionService.createSession(sessionPayload);
@@ -469,6 +512,51 @@ export class TranscriptionJobController {
     });
 
     return { ticket: issued.ticket, ticketExpiresAt: issued.expiresAt };
+  }
+
+  /**
+   * Manual mid-session switch to the tenant's fallback pipeline (TASK-567 R4) —
+   * the end-user "I don't want this provider" affordance. Guarded exactly like
+   * `closeStreamSession` (`@TenantOwnedResource` 404s cross-tenant probes with no
+   * existence leak). Fail-CLOSED on selection: a tenant with no fallback
+   * configured gets a 409 (never a silent no-op). The seamless swap itself runs
+   * in apps/stt's `EngineSwitchController`; a 409 from there (already on
+   * fallback) is surfaced as a 409, a 404 (unknown session) as a 404.
+   */
+  @Post('stream/session/:sessionId/switch-to-fallback')
+  @HttpCode(200)
+  @TenantOwnedResource({ modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' })
+  @ApiOperation({ summary: 'Switch a live streaming session to the tenant fallback pipeline' })
+  @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
+  @ApiResponse({ status: 200, description: 'Switch requested; the session continues on the fallback engine.' })
+  @ApiResponse({ status: 409, description: 'No fallback configured for the tenant, or the session is already on the fallback.' })
+  async switchStreamSessionToFallback(@Param('sessionId') sessionId: string): Promise<{ switched: true }> {
+    if (!sessionId?.trim()) {
+      throw new BadRequestException('sessionId is required');
+    }
+    const tenantId = this.getTenantId();
+
+    // Fail-closed selection guard: the tenant must have a fallback configured.
+    if (this.sttConfig) {
+      const effective = await this.sttConfig.getEffective(tenantId);
+      if (!effective.fallbackPipelineId) {
+        throw new ConflictException('No fallback pipeline configured for this tenant');
+      }
+    }
+
+    try {
+      await this.sessionService.switchToFallback(sessionId);
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        throw new ConflictException('Session is already on the fallback pipeline, or no fallback is available');
+      }
+      if (status === 404) {
+        throw new NotFoundException(`Streaming session ${sessionId} not found`);
+      }
+      throw err;
+    }
+    return { switched: true };
   }
 
   @Get(':id')

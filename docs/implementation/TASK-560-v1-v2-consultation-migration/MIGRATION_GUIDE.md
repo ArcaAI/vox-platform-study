@@ -301,6 +301,62 @@ the import specifier, and dropping the now-unused `options`/`onAudioData` props.
 
 ---
 
+## Provider switching (no v1 ancestor)
+
+v1 had **no** STT-provider concept, so this is the one import a migrated app adds
+that has no v1 equivalent: **`useArcaSttProvider`** (TASK-568). It lets you build
+the "switch transcription provider" control flow (a clinician moving the live
+session to the tenant's configured fallback engine on the fly) using only
+`@arcaai/vox/compat` — no v2 store, no `useArcaAudio`, no WebSocket awareness.
+
+It exposes provider state plus one action:
+
+```tsx
+import { useArcaSttProvider } from '@arcaai/vox/compat';
+
+function ProviderSwitch() {
+  const [banner, setBanner] = useState<string | null>(null);
+  const provider = useArcaSttProvider({
+    // Fires for BOTH a user switch AND a backend auto-switch on an outage.
+    onProviderSwitched: (info) =>
+      setBanner(`Transcription now on ${info.toPipeline.name ?? info.toPipeline.id} (${info.reason})`),
+    onSwitchFailed: (err) => setBanner(`Switch failed: ${err.message}`),
+  });
+
+  return (
+    <>
+      {banner ? <div role="status">{banner}</div> : null}
+      <span>Provider: {provider.activeProvider?.name ?? 'local'}{provider.isFallbackActive ? ' (fallback)' : ''}</span>
+      <button
+        onClick={() => void provider.switchToFallback().catch(() => undefined)}
+        disabled={!provider.fallbackAvailable || provider.switchStatus === 'switching'}
+      >
+        {provider.switchStatus === 'switching' ? 'Switching…' : 'Switch provider'}
+      </button>
+    </>
+  );
+}
+```
+
+- `activeProvider` — `{ pipelineId, name?, isFallback } | null` (null before capture / for local STT).
+- `fallbackAvailable` — `true` only when a live backend session can switch and is not already on the fallback. Deployments that predate TASK-567 leave it `false`; `switchToFallback()` then rejects with an `ErrorInfo` (code `FALLBACK_UNAVAILABLE`) — never crashes or silently resolves.
+- `switchStatus` — `'idle' | 'switching' | 'switched' | 'failed'`. A failed user switch is recoverable (retry allowed); a rejected v2 switch yields code `SWITCH_FAILED`.
+- `switchToFallback()` is idempotent — a call while already on the fallback resolves without a second backend call.
+
+**Auto-switch also rides your existing `onStatus`.** If your app already passed
+the v1 `onStatus` prop to `useArcaSpeechToText`, it now also receives
+`onStatus('provider_switched', { fromPipeline, toPipeline })` when the backend
+swaps engines, plus `onStatus('reconnecting')` / `onStatus('reconnected')` across
+a transport reconnect — transitions v1 never surfaced. The payload carries only
+the pipeline ids the v2 store exposes; the switch **reason** (`auto` vs `user`)
+lives on `useArcaSttProvider`'s richer `onProviderSwitched`. Apps that never
+passed `onStatus` are byte-for-byte unaffected.
+
+Non-goals (v2-native, not compat): listing/selecting arbitrary pipelines
+(`usePipelines()`), and switching *back* to primary mid-session.
+
+---
+
 ## What you must change vs. what stays
 
 | Stays the same | Must change |

@@ -136,6 +136,23 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     metaData: null,
   },
   {
+    // OpenAI (cloud) — speech-to-text (TASK-567) and OpenAI-compatible LLM
+    // endpoints. baseUrl blank; a global admin fills it in. NOTE: the public
+    // API is not PHI-safe — point at an Azure OpenAI / VPC host before enabling
+    // for patient data.
+    id: '87000000-0000-0000-0000-000000000009',
+    tenantId: SYSTEM_TENANT_ID,
+    provider: 'openai',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    enabled: false,
+    metaData: null,
+  },
+  {
     // vLLM production self-host engine (`SMR_VLLM_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000007',
     tenantId: SYSTEM_TENANT_ID,

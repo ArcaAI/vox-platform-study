@@ -249,6 +249,28 @@ export class StreamingSessionManager {
     }
   }
 
+  /**
+   * Request an in-place switch of the live session to the tenant fallback
+   * pipeline (TASK-567 R4). The backend swaps the ASR engine while the
+   * WebSocket, Redis streams, and session identity survive; the client is
+   * notified via the `provider_switched` status frame. The HTTP error
+   * (404 unknown-route / 409 no-fallback-or-already-switched) is preserved for
+   * the caller to classify.
+   *
+   * @throws if no session exists, or with the backend error on failure.
+   */
+  async switchToFallback(): Promise<void> {
+    if (!this.sessionId) {
+      throw new Error('No active streaming session — cannot switch to fallback.');
+    }
+    this.logger?.debug('Requesting streaming provider switch to fallback', {
+      operation: 'switchToFallback',
+      component: 'StreamingSessionManager',
+      attributes: { sessionId: this.sessionId },
+    });
+    await this.apiClient.post(STT_ENDPOINTS.SWITCH_TO_FALLBACK(this.sessionId), {});
+  }
+
   // ===========================================================================
   // Event registration
   // ===========================================================================

@@ -148,6 +148,8 @@ function setupStore(overrides: Record<string, any> = {}) {
     audioLanguage: 'en',
     setActiveStream: vi.fn(),
     setActiveAudioContext: vi.fn(),
+    setSttConnectionState: vi.fn(),
+    setActivePipeline: vi.fn(),
     addTranscriptSegment: vi.fn(),
     setAudioLanguage: vi.fn(),
     // Audio-drop actions the hook calls on start/stop and per drop.

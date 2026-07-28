@@ -121,6 +121,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // tenant-tts-config.prisma (2) — per-tenant TTS config + BYO creds.
   'TenantTtsConfig', // also a SYSTEM-shared read model (platform-default row, below)
   'TenantTtsProviderCredential', // per-(tenant,provider) BYO key; NOT SYSTEM-shared
+  // tenant-stt-config.prisma (2) — per-tenant STT fallback config + BYO creds.
+  'TenantSttConfig', // also a SYSTEM-shared read model (platform-default row, below)
+  'TenantSttProviderCredential', // per-(tenant,provider) BYO key; NOT SYSTEM-shared
   // ai-task-default.prisma (1) — per-tenant default model per AI task.
   'AiTaskDefault', // also a SYSTEM-shared read model (platform-default row, below)
   // ai-provider-connection.prisma (1) — config-plane core. WHERE a
@@ -243,6 +246,12 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // (only a platform admin mutates the SYSTEM default). Credentials are NEVER
   // shared — TenantTtsProviderCredential is intentionally absent here.
   'TenantTtsConfig',
+  // The per-tenant STT PLATFORM-DEFAULT row is owned by the SYSTEM
+  // tenant and read by every tenant's getEffective (tenant row merged over the
+  // SYSTEM default). READS widen to [caller, SYSTEM]; WRITES are NOT widened
+  // (only a platform admin mutates the SYSTEM default). Credentials are NEVER
+  // shared — TenantSttProviderCredential is intentionally absent here.
+  'TenantSttConfig',
   // Per-task default-model rows (guardrail.validate / nlp.*): the
   // SYSTEM tenant row is the platform default every tenant merges under its
   // own row (AiTaskDefaultService.getEffective). READS widen to

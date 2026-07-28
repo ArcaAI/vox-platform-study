@@ -129,6 +129,53 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     tags: ['cloud', 'azure-foundry', 'preview', 'multilingual'],
   },
   {
+    // TASK-567 — tenant BYOK fallback engine (cloud REST). Catalog metadata for
+    // the fallback-candidate picker; the pipeline YAML reaches the engine via
+    // the `sarvam :: model` shorthand (Python AiModelFormat.SARVAM, a superset
+    // of the Prisma enum), so this row's Prisma `format` is the generic
+    // CLOUD_API value (mirrors the sarvam-bulbul TTS catalog row).
+    id: '80000000-0000-0000-0001-000000000016',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'Sarvam Saaras v3 (STT)',
+    slug: 'sarvam-saaras-v3',
+    description:
+      'Sarvam AI speech-to-text (saaras:v3, code-switch capable, 10+ Indic languages + English). Cloud REST; per-tenant BYOK via the STT provider credential (TASK-567) or SARVAM_API_KEY.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.BASE_MODEL,
+    source: AiModelSource.LOCAL,
+    sourceUri: 'saaras:v3',
+    sourceRevision: 'main',
+    format: AiModelFormat.CLOUD_API,
+    provider: 'sarvam',
+    architecture: null,
+    memorySizeMb: 0,
+    computeType: 'cloud',
+    tags: ['cloud', 'sarvam', 'byok', 'multilingual'],
+  },
+  {
+    // TASK-567 — tenant BYOK fallback engine (cloud REST). See the sarvam row
+    // above; reached via the `openai :: model` shorthand at pipeline load.
+    id: '80000000-0000-0000-0001-000000000017',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'OpenAI GPT-4o Transcribe (STT)',
+    slug: 'openai-gpt4o-transcribe',
+    description:
+      'OpenAI speech-to-text (gpt-4o-transcribe). Cloud REST (POST /v1/audio/transcriptions); per-tenant BYOK via the STT provider credential (TASK-567) or OPENAI_API_KEY.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.BASE_MODEL,
+    source: AiModelSource.LOCAL,
+    sourceUri: 'gpt-4o-transcribe',
+    sourceRevision: 'main',
+    format: AiModelFormat.CLOUD_API,
+    provider: 'openai',
+    architecture: null,
+    memorySizeMb: 0,
+    computeType: 'cloud',
+    tags: ['cloud', 'openai', 'byok', 'multilingual'],
+  },
+  {
     id: '80000000-0000-0000-0001-000000000012',
     tenantId: SYSTEM_TENANT_ID,
     name: 'Nemotron 3.5 ASR Streaming 0.6B (parakeet.cpp)',

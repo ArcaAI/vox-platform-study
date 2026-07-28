@@ -604,6 +604,25 @@ one vocabulary.
 | `parakeet_cpp`          | ggml quantized            | ggml             | CPU/Metal/CUDA Parakeet (TASK-505 P3) |
 | `azure_speech`          | Azure Cloud API           | REST/WebSocket   | Cloud-hosted, no GPU              |
 | `azure_foundry`         | Azure AI Foundry (MAI)    | Cloud (batch)    | Cloud batch preview (TASK-505 P3) |
+| `sarvam`                | Sarvam Cloud API          | REST             | Indic languages + English, BYOK (TASK-567) |
+| `openai`                | OpenAI Cloud API          | REST             | `gpt-4o-transcribe` family, BYOK (TASK-567) |
+
+### Per-tenant BYOK + fallback (TASK-567)
+
+`azure_speech`, `sarvam`, and `openai` accept an optional per-tenant credential
+override (`provider_overrides`, keyed by `azure-speech`/`sarvam`/`openai`) instead
+of the env-only keys above — the gateway resolves a tenant's
+`TenantSttProviderCredential` rows and injects the decrypted override into the
+streaming session-create request (in-memory only, never persisted/logged) or the
+Dramatiq batch worker pulls it via `GET /internal/stt/provider-overrides`. A
+tenant may also configure a `fallbackPipelineId`: `SessionManager`'s
+`EngineSwitchController` swaps the live session's ASR engine to that pipeline
+one-way on a classified outage (auth/quota immediately, transient after N
+consecutive failures) or on a manual `POST
+/internal/streaming/sessions/{id}/switch`, publishing a `status`/
+`provider_switched` result on the session's result stream; `transcribe_file`
+re-dispatches once on the fallback within the same Dramatiq attempt for batch
+jobs. See `docs/implementation/TASK-567-Tenant-STT-Fallback-Provider-BYOK/README.md`.
 
 ## Documentation
 

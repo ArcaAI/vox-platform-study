@@ -89,7 +89,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // read pre-auth by the API-key authentication lookup, so it can never
     // carry a CLS tenant. (The drift guard below is the durable check; this
     // count stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(57);
+    expect(TENANT_SCOPED_MODELS.size).toBe(59);
   });
 
   it('includes every PHI-bearing model', () => {
@@ -310,6 +310,10 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'PipelinePolicy',
         'GlobalSetting',
         'TenantTtsConfig',
+        // TenantSttConfig's SYSTEM-tenant row is the per-tenant STT platform
+        // default every tenant's getEffective merges over (credentials are NEVER
+        // shared, so TenantSttProviderCredential is intentionally absent).
+        'TenantSttConfig',
         'AiTaskDefault',
         'McpServer',
         'AiProviderConnection',
