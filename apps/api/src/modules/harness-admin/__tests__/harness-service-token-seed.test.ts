@@ -10,10 +10,10 @@
  * which apps/harness's `require_service_token` rejects with 401.
  *
  * These assertions fail closed if the dev seed ever drops the harness token, or
- * if `apps/api/.env.example` stops DECLARING the variable.
+ * if `apps/api/.env.sample` stops DECLARING the variable.
  *
  * TASK-558 lane D — the second assertion used to compare the seeded value with a
- * literal token committed in `apps/api/.env.example`. That file is now generated
+ * literal token committed in `apps/api/.env.sample`. That file is now generated
  * and carries placeholders only (plan §9.1 D3: "committed files contain no
  * secrets"), so the contract moved: `dev-init.sh` is the single source of the dev
  * token value, and the example file's job is to declare the KEY. Pinning a real
@@ -25,7 +25,7 @@ import { resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '../../../../../..');
 const DEV_INIT_SH = resolve(REPO_ROOT, 'infrastructure/docker/configs/vault/dev-init.sh');
-const API_ENV_EXAMPLE = resolve(REPO_ROOT, 'apps/api/.env.example');
+const API_ENV_EXAMPLE = resolve(REPO_ROOT, 'apps/api/.env.sample');
 
 /** Pull the value of an `X=...`-style assignment from an env(.example) file. */
 function readEnvExampleValue(file: string, key: string): string | undefined {
@@ -42,9 +42,9 @@ describe('HARNESS_SERVICE_TOKEN dev provisioning', () => {
     expect(seeded?.[1]).toBeTruthy();
   });
 
-  it('apps/api/.env.example declares HARNESS_SERVICE_TOKEN as a placeholder, never a real token', () => {
+  it('apps/api/.env.sample declares HARNESS_SERVICE_TOKEN as a placeholder, never a real token', () => {
     const documented = readEnvExampleValue(API_ENV_EXAMPLE, 'HARNESS_SERVICE_TOKEN');
-    expect(documented, 'apps/api/.env.example must document HARNESS_SERVICE_TOKEN — run `pnpm env:sync`').toBeTruthy();
+    expect(documented, 'apps/api/.env.sample must document HARNESS_SERVICE_TOKEN — run `pnpm env:sync`').toBeTruthy();
     expect(documented, 'a committed example file must never carry a real service token').toBe('<CHANGE_ME>');
   });
 

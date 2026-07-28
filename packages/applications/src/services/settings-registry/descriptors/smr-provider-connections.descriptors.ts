@@ -59,8 +59,8 @@ export const SMR_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   smrProviderEnv(
     'smrOpenai.defaultModel',
     'SMR OpenAI default model',
-    'Model SMR’s OpenAI provider uses when a request pins no model (`OpenAIConfig.default_model`). WHICH model actually runs for a task is normally decided by the AiTaskDefault / HarnessPolicy cascade; this is the provider’s own last-resort default.',
-    'gpt-4o-mini',
+    'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `OpenAIConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',
+    '',
   ),
 
   // ── Anthropic (SMR_ANTHROPIC_) ────────────────────────────────────────────
@@ -73,8 +73,8 @@ export const SMR_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   smrProviderEnv(
     'smrAnthropic.defaultModel',
     'SMR Anthropic default model',
-    'Model SMR’s Anthropic provider uses when a request pins no model (`AnthropicConfig.default_model`).',
-    'claude-3-5-haiku-20241022',
+    'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `AnthropicConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',
+    '',
   ),
 
   // ── Google Vertex AI (SMR_VERTEX_) ────────────────────────────────────────
@@ -93,7 +93,7 @@ export const SMR_PROVIDER_CONNECTION_SETTINGS: SettingDescriptor[] = [
   smrProviderEnv(
     'smrVertex.defaultModel',
     'SMR Vertex default model',
-    'Model SMR’s Vertex provider uses when a request pins no model (`VertexConfig.default_model`).',
-    'gemini-2.0-flash',
+    'Empty by design (TASK-579): provider/model SELECTION is fail-closed — `VertexConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing).',
+    '',
   ),
 ];

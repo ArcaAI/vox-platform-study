@@ -239,9 +239,7 @@ class SessionManager:
             self._inference_drain_timeout_s = float(
                 _settings.streaming_inference_drain_timeout_s
             )
-            self._inference_stop_timeout_s = float(
-                getattr(_settings, "streaming_inference_stop_timeout_s", 30.0)
-            )
+            self._inference_stop_timeout_s = float(_settings.streaming_inference_stop_timeout_s)
             self._transcript_persist_max_attempts = max(
                 1, int(_settings.streaming_transcript_persist_max_attempts)
             )

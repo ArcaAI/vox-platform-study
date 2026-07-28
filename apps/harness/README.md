@@ -82,7 +82,7 @@ apps/harness/
 ├── eval/                          # non-Python eval assets (promptfoo) — see eval/README.md
 ├── Dockerfile                     # multi-stage on hope-python-base; built from the REPO ROOT context
 ├── pyproject.toml                 # PEP 621 + uv; opt-in extras: eval, guardrails, rag, atomic-fact
-└── .env.example
+└── .env.sample
 ```
 
 ---
@@ -255,7 +255,7 @@ start (from `HarnessPolicy` or the code default) so enforcement is deterministic
 
 Every setting is env-driven (`pydantic-settings`, prefix `HARNESS_`; the Temporal substrate shares
 `TEMPORAL_*` with the rest of the platform). Selected knobs — see
-[`core/config.py`](./src/harness/core/config.py) and [`.env.example`](./.env.example) for the full,
+[`core/config.py`](./src/harness/core/config.py) and [`.env.sample`](./.env.sample) for the full,
 authoritative list (safety/PHI/retrieval/claim-check each have their own sub-prefix):
 
 | Variable | Default | Description |

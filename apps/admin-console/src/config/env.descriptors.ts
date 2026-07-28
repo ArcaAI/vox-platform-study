@@ -5,7 +5,7 @@
 //   * `env.ts`              builds the zod schema for the SERVER-scoped vars.
 //   * `public-env.ts`       reads the CLIENT-scoped var by literal member access
 //                           (required so Next.js can inline it into the bundle).
-//   * `scripts/env-sync.ts` generates `apps/admin-console/.env.example` and the
+//   * `scripts/env-sync.ts` generates `apps/admin-console/.env.sample` and the
 //                           `turbo.json#globalEnv` entries.
 //
 // WHY A LOCAL SHAPE INSTEAD OF `SettingDescriptor` FROM `@arcaai/applications`:

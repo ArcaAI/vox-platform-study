@@ -38,17 +38,17 @@ function keysOf(content: string): string[] {
         .filter((name): name is string => Boolean(name));
 }
 
-const ENV_FILES = ['.env.example', 'apps/api/.env.example', 'apps/admin-console/.env.example', 'packages/tools/.env.example'];
+const ENV_FILES = ['.env.example', 'apps/api/.env.sample', 'apps/admin-console/.env.sample', 'packages/tools/.env.sample'];
 
 describe('env:sync — managed artifacts', () => {
     it('generates exactly the artifacts its header declares', () => {
         expect(artifacts.map((a) => a.path).sort()).toEqual(
             [
                 '.env.example',
-                'apps/admin-console/.env.example',
-                'apps/api/.env.example',
+                'apps/admin-console/.env.sample',
+                'apps/api/.env.sample',
                 'docs/implementation/TASK-558-Environment-Configuration-Refactor/env-surface.generated.md',
-                'packages/tools/.env.example',
+                'packages/tools/.env.sample',
                 'turbo.json',
             ].sort(),
         );

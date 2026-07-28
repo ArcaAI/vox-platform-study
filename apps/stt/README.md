@@ -207,11 +207,7 @@ pip install -e ".[dev,test]"
 
 ### Configuration
 
-Copy the example environment file from the monorepo root:
-
-```bash
-cp .env.example .env.dev
-```
+`pnpm setup:dev` creates `.env.dev` for you (from the consolidated `.env.sample` at the repo root — TASK-583), only if it doesn't already exist. Manually: `cp .env.sample .env.dev`.
 
 #### Core Service Configuration
 

@@ -10,8 +10,10 @@
 #   Status:   docker compose -f infrastructure/docker/docker-compose.yml ps
 #
 # ENVIRONMENT:
-#   This file automatically loads variables from the root .env file.
-#   Copy .env.example to .env and update values as needed.
+#   Compose interpolation reads infrastructure/docker/.env — a GENERATED file
+#   (scripts/dev-infra.sh writes it from .env.dev on every `pnpm infra:dev:up`;
+#   never hand-edit it). `.env.dev` itself is created by `pnpm setup:dev` from
+#   the consolidated .env.sample at the repo root.
 # ============================================================================
 
 name: hope-infra

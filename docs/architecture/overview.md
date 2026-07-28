@@ -396,7 +396,7 @@ Infrastructure in containers; application services run on the host (Node via pnp
 - Base: `infrastructure/docker/docker-compose.yml` — `hope-postgres` (TimescaleDB pg18 image), `hope-minio` (+ bucket setup), `hope-redis`.
 - Dev overlay: `infrastructure/docker/docker-compose.dev.yml` — profile tiers (TASK-555): base `vault` (+`vault-init`) + `temporal` (+`temporal-ui`) + `rag` (`hope-reranker` TEI); `-o` adds `prometheus`/`observability` (Prometheus + Grafana); `-e` adds `inference` (vLLM / llama.cpp / TEI embed). Qdrant (+collection init) starts unprofiled with core.
 - Entry points: `pnpm setup:dev` / `dev:setup-o` / `dev:setup-e` (bootstrap tiers), `pnpm infra:dev:up` (`-- -o` / `-- -e`), `pnpm stack:dev` / `dev:stack-o` / `dev:stack-e` (ensure infra then spawn api/stt/smr/guardrail/nlp/harness/worker/admin), `pnpm stack:dev:doctor` (health checks). The admin console runs as its own Next.js dev server (`apps/admin-console`, `next dev -p 5176`); tts runs via `pnpm tts:dev`.
-- Env files: `.env.dev` (dev), `.env.test` (isolated test infra: PG 5433, Redis 6380, MinIO 9002), `.env.example` (canonical template). Host env always wins; production loads host env only.
+- Env files: `.env.dev` (dev, gitignored, generated), `.env.test` (isolated test infra: PG 5433, Redis 6380, MinIO 9002; gitignored, generated), `.env.sample` (consolidated tracked template both are created from — `pnpm setup:dev`/`pnpm setup:test`), root `.env.example` (bootstrap floor only). Host env always wins; production loads host env only (per-service `.env.prod` files are ops reference, not loaded).
 
 ### 7.2 Cluster (k3s + ArgoCD) — primary deployment target
 

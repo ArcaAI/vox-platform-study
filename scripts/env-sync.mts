@@ -24,14 +24,19 @@
  *
  * ─── MANAGED OUTPUTS ─────────────────────────────────────────────────────────
  *   • `.env.example`                       the BOOTSTRAP FLOOR only (plan §3.3)
- *   • `apps/api/.env.example`              the platform contract beyond the floor
- *   • `apps/admin-console/.env.example`     the console's own contract
- *   • `packages/tools/.env.example`         the generator knob
+ *   • `apps/api/.env.sample`               the platform contract beyond the floor
+ *   • `apps/admin-console/.env.sample`     the console's own contract
+ *   • `packages/tools/.env.sample`         the generator knob
  *   • `turbo.json#globalEnv`                declared surface ∪ real TS reads
  *   • `docs/implementation/TASK-558-Environment-Configuration-Refactor/env-surface.generated.md`
  *
+ * (TASK-584: per-app generated targets renamed `.env.example` → `.env.sample`
+ * for naming consistency with the hand-maintained Python examples and the
+ * root consolidated `.env.sample`, TASK-583. Only the root bootstrap-floor
+ * file keeps the `.env.example` name — it isn't itself "a service".)
+ *
  * ─── DELIBERATELY *NOT* MANAGED (declared boundary, not an oversight) ────────
- *   • `apps/{stt,smr,guardrail,nlp,harness,tts}/.env.example` — their schema is
+ *   • `apps/{stt,smr,guardrail,nlp,harness,tts}/.env.sample` — their schema is
  *     pydantic-settings, which the drift gate cannot import (CI has no Python
  *     service environment), and whose FULL field surface is ~500 keys against
  *     the plan's ~120-key target (§8). Their operator documentation therefore
@@ -39,9 +44,11 @@
  *     appear in the generated docs table with an explicit owner column.
  *   • `apps/example`, `apps/ui-playground` — Vite demos whose vars are
  *     `import.meta.env.VITE_*`, not process env.
- *   • `.env.test`, `.env.production`, per-app `.env.production` — environment
- *     TEMPLATES with deliberately environment-specific values (`.env.test` runs
- *     the DEV+100 port scheme of commit d84f538e), not declarations.
+ *   • `.env.test`, per-app `.env.prod` — environment TEMPLATES with
+ *     deliberately environment-specific values (`.env.test` runs the DEV+100
+ *     port scheme of commit d84f538e), not declarations. Neither is loaded
+ *     directly by any application (TASK-583/584) — `.env.test` is generated
+ *     at setup time, and `.env.prod` files are ops reference only.
  */
 
 import { execSync } from 'node:child_process';
@@ -292,13 +299,13 @@ function renderRootExample(): string {
         '# AUTHENTICATE to Vault (plan §3.2). Everything else lives in the database or',
         '# in Vault, or in the deployable-specific example file next to it.',
         '#',
-        '# To build a working local `.env.dev`, concatenate this file with the example',
-        '# of every app you run — since TASK-558 lane C, the TypeScript gateway AND all',
-        '# six Python services read that ONE file:',
-        '#',
-        '#   cat .env.example apps/api/.env.example apps/admin-console/.env.example > .env.dev',
-        '#',
-        '# `.env.dev` is gitignored. CI and production load NO file — host env only.',
+        '# `.env.dev` is gitignored and CI/production load no file at all — host env',
+        '# only. Locally, `pnpm setup:dev` creates `.env.dev` for you (only if it',
+        '# does not already exist) from the consolidated `.env.sample` at the repo',
+        '# root (TASK-583) — since TASK-558 lane C, the TypeScript gateway AND all',
+        '# six Python services read that ONE resulting file. See',
+        '# docs/architecture/environment-configuration-reference.md for the full',
+        '# variable reference.',
         ...renderCompact(bootstrapFloor),
         '',
     ].join('\n');
@@ -412,8 +419,8 @@ function renderDocsTable(globalEnv: string[]): string {
         '',
         'Generated from the settings registry plus each TypeScript deployable’s own',
         'schema. `pnpm env:sync --check` (CI job `env-drift-check`) fails when this file,',
-        'the `.env.example` files or `turbo.json#globalEnv` disagree with those',
-        'declarations.',
+        'the root `.env.example` / per-app `.env.sample` files, or `turbo.json#globalEnv`',
+        'disagree with those declarations.',
         '',
         '## Summary',
         '',
@@ -452,9 +459,9 @@ export function buildArtifacts(): Artifact[] {
     const globalEnv = computeGlobalEnv();
     return [
         { path: '.env.example', content: renderRootExample() },
-        { path: 'apps/api/.env.example', content: renderApiExample() },
-        { path: 'apps/admin-console/.env.example', content: renderAdminConsoleExample() },
-        { path: 'packages/tools/.env.example', content: renderToolsExample() },
+        { path: 'apps/api/.env.sample', content: renderApiExample() },
+        { path: 'apps/admin-console/.env.sample', content: renderAdminConsoleExample() },
+        { path: 'packages/tools/.env.sample', content: renderToolsExample() },
         { path: 'turbo.json', content: renderTurboJson(globalEnv) },
         { path: `${TICKET_DOC}/env-surface.generated.md`, content: renderDocsTable(globalEnv) },
     ];

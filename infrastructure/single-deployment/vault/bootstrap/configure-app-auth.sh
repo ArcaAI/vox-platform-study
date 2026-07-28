@@ -4,7 +4,7 @@
 # =============================================================================
 # Idempotent. Configures everything the NestJS API needs and delivers AppRole
 # creds in the FILE shape the app already expects (VAULT_ROLE_ID_FILE /
-# VAULT_WRAPPED_SECRET_ID_FILE — apps/api/.env.production, B.9/B.10):
+# VAULT_WRAPPED_SECRET_ID_FILE — apps/api/.env.prod, B.9/B.10):
 #   - kv-v2 at secret/        (warmup secrets: JWT_SECRET_KEY, …)
 #   - transit/ + hope-globalsetting key (GlobalSetting rows) + hope-phi key (PHI fields)
 #   - approle auth + hope-app policy + hope-app role

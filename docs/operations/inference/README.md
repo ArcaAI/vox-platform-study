@@ -62,17 +62,17 @@ in-region GPU instances — "cloud" without a policy change.
 
 ## 3. Wiring SMR to the engines
 
-SMR loads every provider config at startup; enable the engine and point its
-`base_url` at the running server (see `.env.example` "Production inference engines").
+SMR loads every provider config at startup; point its `base_url` at the running
+server to make the engine available (see `apps/smr/.env.prod`, TASK-584 —
+SMR gates a provider by the PRESENCE of its connection config, not an
+`enabled` flag, so there is no `SMR_VLLM_ENABLED`/`SMR_LLAMA_CPP_ENABLED`).
 
 ```bash
 # vLLM (OpenAI wire; base_url INCLUDES /v1; /health + /metrics at the root)
-SMR_VLLM_ENABLED=true
 SMR_VLLM_BASE_URL=http://localhost:8000/v1     # cluster: http://hope-vllm:8000/v1
 SMR_VLLM_USE_GUIDED_JSON=false                 # vLLM < 0.8 only
 
 # llama.cpp (native /completion; GGUF tier)
-SMR_LLAMA_CPP_ENABLED=true
 SMR_LLAMA_CPP_BASE_URL=http://localhost:8080   # cluster: http://hope-llama-cpp:8080
 ```
 

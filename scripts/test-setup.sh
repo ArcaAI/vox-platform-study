@@ -16,6 +16,7 @@
 # (hope-vault); the test infra does not run its own Vault.
 #
 # Sequence:
+#   0. Create .env.test from .env.sample if it doesn't already exist (TASK-583)
 #   1. Start isolated test infrastructure (Postgres:5433, Redis:6380, MinIO:9002,
 #      Qdrant:6335) and wait for health
 #   2. Provision Vault AppRole creds + config in .env.test (needs hope-vault up)
@@ -55,11 +56,10 @@ vault_exec() {
     "export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=${ROOT_TOKEN}; $*"
 }
 
-if [ ! -f "$ENV_FILE" ]; then
-  red "ERROR: .env.test not found at $ENV_FILE"
-  echo "The test environment requires .env.test. Create it before running this script."
-  exit 1
-fi
+bold "── Step 0/5: ensuring .env.test exists ──────────────────────────────"
+# shellcheck source=./generate-env-file.sh
+source "$SCRIPT_DIR/generate-env-file.sh"
+ensure_env_file "$ENV_FILE" test
 
 bold "── Step 1/5: starting + validating test infrastructure ─────────────"
 # start-test-infra.sh runs 'up -d --wait' and a health validation pass.

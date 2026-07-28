@@ -29,10 +29,13 @@ on an idle TTL (TASK-529 lazy lifecycle — see `docs/operations/inference/model
 | AI4Bharat Indic Parler-TTS | `indic_parler` | self-hosted | ml | Loads from an ungated local mirror in prod (TASK-495) |
 | AI4Bharat IndicF5 | `indic_f5` | self-hosted (voice-clone) | ml | **EXPERIMENTAL, gated OFF** — prod/commercial enablement is NO-GO pending license review (CC-BY-NC base weights; TASK-494). Never set `TTS_INDICF5_ENABLED=true` in production without written clearance |
 
-Routing: per-locale ordered fallback chains, first healthy wins
-(`TTS_ROUTING_EN`, default `azure,kokoro`; `TTS_ROUTING_ML`, default
-`azure,sarvam,indic_parler`). The gateway can override the chains, provider
-whitelist, per-tenant BYO credentials, and voice bindings per request.
+Routing: per-locale ordered fallback chains, first healthy wins. As of TASK-577
+there is no env-configured default chain — `routing_en`/`routing_ml` are
+DB-sourced (the SYSTEM `TenantTtsConfig` default, built-in-first: `kokoro` /
+`indic_parler`), resolved by the gateway and injected per request; the router
+fails CLOSED (503, `TtsRoutingUnconfiguredError`) if the gateway injects no
+chain. The gateway can also override the provider whitelist, per-tenant BYO
+credentials, and voice bindings per request.
 
 ## Endpoints
 
@@ -83,8 +86,7 @@ Azure credential falls back to the shared `AZURE_SPEECH_KEY` /
 | `TTS_SERVICE_TOKEN` | Inter-service auth (empty = auth disabled for local dev) | — |
 | `TTS_MAX_INPUT_CHARS` | Max synthesis input length | `4096` |
 | `TTS_SAMPLE_RATE` | PCM sample rate | `24000` |
-| `TTS_ROUTING_EN` / `TTS_ROUTING_ML` | Per-locale provider fallback chains (CSV) | `azure,kokoro` / `azure,sarvam,indic_parler` |
-| `TTS_<PROVIDER>_ENABLED` | Per-provider enable flag | `false` |
+| `TTS_<PROVIDER>_ENABLED` | Per-provider enable flag (makes the provider AVAILABLE — does not select it; see Routing above) | `false` |
 | `TTS_WARMUP_ENABLED` | Load local-engine weights at boot instead of first request (fail-at-boot) | `false` |
 | `TTS_GATEWAY_URL` | Control-plane bootstrap transport for retention config (TASK-535) | `http://localhost:8868/api/v1` |
 | `TTS_MODEL_CACHE_TTL_SECONDS` | Idle TTL for local-engine weights (bootstrap fallback; runtime value comes from the control plane) | `600` |

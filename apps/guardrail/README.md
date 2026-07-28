@@ -53,7 +53,7 @@ pip install -e ".[dev,test,lint]"
 Copy the example environment file:
 
 ```bash
-cp .env.example .env
+cp .env.sample .env
 ```
 
 Edit `.env` to configure your settings:
@@ -317,7 +317,7 @@ blocked on TASK-302 Phase 4D).
 
 ## Configuration Options
 
-See `.env.example` for all available configuration options.
+See `.env.sample` for all available configuration options.
 
 ## Model Configuration
 

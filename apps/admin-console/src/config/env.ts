@@ -7,7 +7,7 @@ import { ADMIN_CONSOLE_ENV_SETTINGS, type AdminConsoleEnvVar } from './env.descr
  * client bundle.
  *
  * TASK-558 lane D — the shape is BUILT from `env.descriptors.ts`, so the schema,
- * `apps/admin-console/.env.example` and `turbo.json#globalEnv` all derive from
+ * `apps/admin-console/.env.sample` and `turbo.json#globalEnv` all derive from
  * ONE declaration and cannot drift. `pnpm env:sync --check` is the gate.
  */
 const SERVER_DESCRIPTORS = ADMIN_CONSOLE_ENV_SETTINGS.filter((d) => d.scope === 'server');

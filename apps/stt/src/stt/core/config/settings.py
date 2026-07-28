@@ -603,6 +603,14 @@ class Settings(BaseSettings):
             "streaming_inference_drain_timeout_s bound and is unaffected."
         ),
     )
+    streaming_inference_stop_timeout_s: float = Field(
+        default=30.0,
+        description=(
+            "Seconds to wait for a session's inference worker task to "
+            "drain/stop before giving up (used both on graceful session "
+            "removal and when force-finalizing on session-end)."
+        ),
+    )
     streaming_worker_heartbeat_s: int = Field(
         default=10,
         description="Interval (seconds) between worker heartbeat extensions in Redis.",

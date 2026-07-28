@@ -19,7 +19,7 @@ owned by other workstreams and are intentionally not duplicated here.
 | **At rest — Redis** | Persistence off, or LUKS volume | `docker-compose.yml` (comment) | at-rest runbook §0/§4 |
 | **At rest — backups** | pgBackRest AES-256-CBC (client-side) | [`pgbackrest.conf`](../docs/research/configs/postgres-ha/pgbackrest/pgbackrest.conf) | at-rest runbook §6 |
 | **In transit — Postgres** | TLS (`sslmode=require`→`verify-full`) | env files (see §2) | this guide §2 |
-| **In transit — MinIO** | HTTPS (`MINIO_USE_SSL=true`) | `.env.production` | this guide §2 |
+| **In transit — MinIO** | HTTPS (`MINIO_USE_SSL=true`) | `apps/api/.env.prod` | this guide §2 |
 | **Field-level PHI** | Vault Transit key `hope-phi` | app (CryptoService) | [vault-transit-key-rotation.md](../docs/research/deployments/vault-transit-key-rotation.md) |
 | **Key mgmt / DR** | Vault Shamir unseal + escrow | Vault VMs 430–432 | [dr-break-glass-runbook.md](../docs/research/deployments/dr-break-glass-runbook.md) |
 | **Monitoring** | Prometheus alerts | [`vault-transit-alerts.yml`](../docs/research/configs/postgres-ha/prometheus/vault-transit-alerts.yml) | DR runbook §2 |
@@ -34,11 +34,11 @@ plaintext (loopback, no cert); production/staging examples enforce TLS.
 
 | File | Change |
 |---|---|
-| `.env.production` | `DATABASE_URL` MUST carry `sslmode=require` (target `verify-full` + `sslrootcert`); `MINIO_USE_SSL=true` confirmed |
+| `apps/api/.env.prod` | `DATABASE_URL` MUST carry `sslmode=require` (target `verify-full` + `sslrootcert`); `MINIO_USE_SSL=true` confirmed (TASK-584: relocated from the monorepo-root `.env.production`) |
 | `.env.dev` / `.env.test` | Commented: dev/test intentionally no-TLS; HA examples show `sslmode=require` |
-| `apps/api/.env.example` | `DATABASE_URL` + `DIRECT_URL` TLS guidance (`verify-full` target) |
-| `apps/stt/.env.production` | `DATABASE_URL=...?ssl=require` (asyncpg), `MINIO_SECURE=true` |
-| `apps/guardrail/.env.example` | `GUARDRAIL_DATABASE_URL` `?ssl=require` guidance (asyncpg) |
+| `apps/api/.env.sample` | `DATABASE_URL` + `DIRECT_URL` TLS guidance (`verify-full` target) |
+| `apps/stt/.env.prod` | `DATABASE_URL=...?ssl=require` (asyncpg), `MINIO_SECURE=true` |
+| `apps/guardrail/.env.sample` | `GUARDRAIL_DATABASE_URL` `?ssl=require` guidance (asyncpg) |
 
 > `apps/smr/**` and `apps/harness/**` env files carry **no** Postgres/MinIO
 > connection strings (SMR's DB URL is unset in its env; harness talks HTTP +
