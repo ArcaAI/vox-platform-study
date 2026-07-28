@@ -77,11 +77,32 @@ copies fast-forwarded; customized/unlocked rows never touched).
 | Console | `apps/admin-console` feature `audio-pipelines` template-governance surface (`template-governance`) under route `/audio/pipelines` |
 | Tests | unit(app): `stt/pipeline/__tests__/{pipeline.service.task531,pipeline-template-resync.service,pipeline-template-resync.cron.service}.test.ts`; unit(api): `pipeline/__tests__/audio-pipeline.task531.controller.test.ts`; unit(console): `audio-pipelines/components/__tests__/template-governance.test.tsx`; e2e: `pipeline-clone-resync-cross-tenant.spec.ts`, `pipeline-template-governance.spec.ts` |
 
+### R6 — Tenant STT fallback pipeline + BYOK, in-session provider switch (TASK-567) — NEW (post-2026-07-06)
+
+A tenant-level fallback pipeline pointer + optional bring-your-own credentials for
+`azure-speech`/`sarvam`/`openai`; streaming credentials are injected into the session-create
+request (in-memory only), batch credentials are pulled by the Dramatiq worker. On a
+classified ASR outage (or a user-triggered manual switch), `SessionManager`'s
+`EngineSwitchController` swaps the live session's ASR engine to the fallback one-way and
+publishes a `status`/`provider_switched` result — the gateway relays it on the existing WS
+`status` frame (zero protocol change). Batch jobs re-dispatch once on the fallback within
+the same Dramatiq attempt.
+
+| Field | Value |
+|---|---|
+| App / service | `apps/api` + `apps/stt` |
+| Key modules | `apps/api/src/modules/tenant-stt-config` (`tenant-stt-config-admin.controller.ts`); `apps/api/src/modules/streaming` (`transcription-job.controller.ts` `switchStreamSessionToFallback`, `streamingSession.service.ts` `switchToFallback`); `apps/api/src/modules/internal` (`stt-internal.controller.ts` `getProviderOverrides`); `packages/applications/src/services/tenant-stt-config` (`tenant-stt-config.service.ts`, DTO mapper, `platform-limits.ts`); `apps/stt/src/stt/streaming/engine_switch.py` (`EngineSwitchController`); `apps/stt/src/stt/streaming/session_manager.py` (create-time/auto/manual triggers); `apps/stt/src/stt/transcription/workers/transcribe_file.py` (batch fallback re-dispatch); `apps/stt/src/stt/core/effective_config.py` (`get_provider_overrides` pull); `apps/stt/src/stt/models/{sarvam_loader,openai_loader,cloud_asr}.py`, `apps/stt/src/stt/streaming/{sarvam_asr,openai_asr}.py` (new cloud engines) |
+| Prisma models | `TenantSttConfig` (`fallbackPipelineId`, `autoSwitchEnabled`), `TenantSttProviderCredential` (`(tenantId, provider)`, `encryptedApiKey`/`keyVersion`) — `db_main/tenant-stt-config.prisma` |
+| Key API endpoints | `@Controller('admin/stt-config')`: `GET ''` (effective), `GET/PUT 'row'` (If-Match OCC), `GET 'fallback-candidates'`, `GET 'credentials'`, `PUT/DELETE 'credentials/:provider'` (If-Match OCC; unknown provider → 400; masked reads only, no reveal route); `POST /audio/transcription-jobs/stream/session/:sessionId/switch-to-fallback` (`@TenantOwnedResource`; 409 no-fallback/already-switched); internal `GET /internal/stt/provider-overrides?tenantId=` (service-token gated, batch pull); STT internal `POST /internal/streaming/sessions/{id}/switch` |
+| Console | `apps/admin-console` feature `tenant-stt-config` (`tenant-stt-config-screen`, `stt-fallback-form`, `stt-credentials-tab`); route `/stt-config` (tier 30–49, tenant-scoped) — **rule-12 design gate OPEN** (no approved Figma frame / recorded owner waiver): omitted from `nav-config.ts`, reachable only by direct URL, both the screen and route carry a `⚠️ DESIGN GATE OPEN` header; must not ship until the gate is satisfied |
+| Tests | unit(app): `tenant-stt-config/__tests__/tenant-stt-config.service.test.ts`; unit(api): `tenant-stt-config/__tests__/tenant-stt-config-admin.controller.test.ts`, `streaming/__tests__/transcription-job.stt-fallback.controller.test.ts`, `internal/__tests__/stt-internal.controller.test.ts` (provider-overrides pull); unit(dom): `TenantSttConfigEntity.test.ts`, `{TenantSttConfig,TenantSttProviderCredential}EntityMapper.test.ts`; unit(console): `tenant-stt-config-screen.test.tsx` (incl. axe, both themes); py(stt): `unit/streaming/test_engine_switch.py`, `unit/test_transcribe_file_fallback_task567.py`, `unit/models/{test_sarvam_loader,test_openai_loader}.py`, `unit/streaming/test_cloud_rest_asr.py`, `unit/test_provider_shorthand_task567.py`; e2e: `stt-fallback-cross-tenant.spec.ts` (authored, run when a live stack is available — not part of the `pnpm test:unit` gate) |
+
 ## Honest notes / gaps
 
 - **The `AiModel` half of legacy row 26 is NOT here.** The model registry / discovery / task-defaults live in [`ai-models-providers.md`](./ai-models-providers.md); only `AsrPipeline`/`AsrPipelineVersion` and `modules/pipeline` are recorded in this domain.
 - **`TranscriptSegment` (`db_main/consultation.prisma`) is a transcription-owned model on the consultation schema file.** It is populated by the streaming/batch path here, not by the consultation service.
 - **Nightly resync is off by default.** The `PipelineTemplateResyncCronService` sweep is disabled so a human stays in the loop; `POST /admin/tenants/:id/pipelines/resync` is the primary (admin-triggered) path.
 - **No dedicated live-DB streaming e2e for the WS bridge.** R1 has unit + contract + cross-tenant-job coverage; the full browser-WS live-transcription round-trip is env-gated (playground manual pass), not an `apps/api/tests/e2e` spec.
+- **R6 discovered a real drift, not yet fixed here (Phase H is docs-only)**: TASK-567's seed change added `openai` to `packages/database/src/prisma/db_main/seed/ai-models/shared.ts`'s `AI_MODEL_PROVIDERS` without the matching addition to the DTO allow-list `AI_MODEL_PROVIDERS` in `packages/applications/src/services/stt/model/dto/create-model.request.ts` — `tests/contracts/ai-model-providers.contract.test.ts` fails as a result (`@IsIn` on the admin `AiModel` create/update routes would reject `provider: 'openai'` today). Confirmed via `git stash` bisection that this is caused by TASK-567's changes (passes on the pre-TASK-567 tree), not pre-existing drift.
 
 Last verified: 2026-07-22

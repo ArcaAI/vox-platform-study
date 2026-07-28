@@ -33,6 +33,23 @@ class CreateStreamingSessionRequest(BaseModel):
             "'audio_bucket_name' are used."
         ),
     )
+    provider_overrides: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Optional per-tenant BYO cloud-provider credential map (TASK-567), "
+            "gateway-injected: {provider: {api_key, region?, base_url?, model?}}. "
+            "Held by the session runtime IN MEMORY ONLY — never persisted, never "
+            "logged. Preferred over env creds by the cloud ASR loaders."
+        ),
+    )
+    fallback_pipeline_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional tenant fallback pipeline (TASK-567). When set, the session "
+            "can swap its live ASR engine to it on create-time load failure, "
+            "classified outage, or a user-initiated switch."
+        ),
+    )
 
 
 class StreamingSessionResponse(BaseModel):

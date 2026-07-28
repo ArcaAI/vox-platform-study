@@ -59,6 +59,8 @@ import { TenantIdentityProviderRepository } from '../../../repositories/generate
 import { TenantIdentityProviderDomainRepository } from '../../../repositories/generated/core/TenantIdentityProviderDomainRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
+import { TenantSttConfigRepository } from '../../../repositories/generated/core/TenantSttConfigRepository';
+import { TenantSttProviderCredentialRepository } from '../../../repositories/generated/core/TenantSttProviderCredentialRepository';
 import { TenantTtsConfigRepository } from '../../../repositories/generated/core/TenantTtsConfigRepository';
 import { TenantTtsProviderCredentialRepository } from '../../../repositories/generated/core/TenantTtsProviderCredentialRepository';
 import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
@@ -164,6 +166,9 @@ const repositories = [
   TenantStorageConfigRepository,
   // Voice profile domain
   UserVoiceProfileRepository,
+  // Per-tenant STT configuration + BYOK
+  TenantSttConfigRepository,
+  TenantSttProviderCredentialRepository,
   // Per-tenant TTS configuration
   TenantTtsConfigRepository,
   TenantTtsProviderCredentialRepository,

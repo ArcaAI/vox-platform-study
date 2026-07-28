@@ -49,7 +49,7 @@ from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
 from ..models.whisper_kwargs import build_whisper_generate_kwargs
 from ..pipeline.config_reader import get_model_reader
-from ..pipeline.dto import InferenceConfig, ModelTaskType, PipelineConfig
+from ..pipeline.dto import AiModelFormat, InferenceConfig, ModelTaskType, PipelineConfig
 from .dto import (
     AudioSegment,
     ChunkTranscriptionResult,
@@ -62,6 +62,18 @@ from .dto import (
 from .preprocessing import get_preprocessor
 
 logger = logging.getLogger(__name__)
+
+# Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
+# dict (TASK-567 BYOK). For these the batch ASR load bypasses the shared by-slug
+# cache when an override is present. Mirrors the streaming set in session_manager.
+_CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
+    {
+        AiModelFormat.AZURE_SPEECH,
+        AiModelFormat.AZURE_FOUNDRY,
+        AiModelFormat.SARVAM,
+        AiModelFormat.OPENAI,
+    }
+)
 
 
 class BatchTranscriptionService:
@@ -145,6 +157,7 @@ class BatchTranscriptionService:
         blob_service: Any = None,
         audio_filename: str | None = None,
         user_id: str | None = None,
+        provider_overrides: dict[str, Any] | None = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio file with optional speaker diarization.
@@ -187,7 +200,9 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             logger.info(f"[{job_id}] Loading models...")
             model_start = time.time()
-            models = await self._load_models(pipeline_config)
+            models = await self._load_models(
+                pipeline_config, provider_overrides=provider_overrides
+            )
             timing.model_loading_seconds = time.time() - model_start
 
             asr_model = models.get("asr")
@@ -779,11 +794,21 @@ class BatchTranscriptionService:
                 if best_confidence is not None:
                     per_seg["speaker_confidence"] = round(best_confidence, 4)
 
-    async def _load_models(self, pipeline: PipelineConfig) -> dict[str, LoadedModel | None]:
+    async def _load_models(
+        self,
+        pipeline: PipelineConfig,
+        provider_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, LoadedModel | None]:
         """
         Load all models required by pipeline.
 
         Handles both slug references (from database) and inline model definitions.
+
+        ``provider_overrides`` (TASK-567) carries per-tenant BYO cloud creds; for
+        a cloud ASR engine WITH overrides the ASR load bypasses the shared
+        by-slug cache and calls the loader directly (a tenant key must never be
+        cached under a slug and served to another tenant). Env-only keeps the
+        existing cache path byte-identical.
         """
         cache = get_model_cache()
         model_reader = get_model_reader()
@@ -814,7 +839,36 @@ class BatchTranscriptionService:
                 resolve_engine_binding("asr", _engine_name, mode="batch")
         except Exception:  # noqa: BLE001 — advisory only, never block loading
             logger.debug("Batch engine capability check skipped", exc_info=True)
-        if asr_ref.is_inline and asr_ref.inline:
+        # TASK-567 — cloud BYOK: which format does this ASR ref bind?
+        _asr_format = (
+            asr_ref.inline.engine if asr_ref.is_inline and asr_ref.inline else None
+        )
+        if _asr_format is None and asr_ref.slug and asr_ref.slug in model_configs:
+            _asr_format = getattr(model_configs[asr_ref.slug], "format", None)
+        _asr_cloud_byok = bool(provider_overrides) and _asr_format in _CLOUD_ASR_OVERRIDE_FORMATS
+
+        if _asr_cloud_byok:
+            # Bypass the by-slug cache so the injected key reaches the loader.
+            if asr_ref.is_inline and asr_ref.inline:
+                _asr_config = asr_ref.inline.to_ai_model_config(
+                    ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
+                )
+            elif asr_ref.slug and asr_ref.slug in model_configs:
+                _asr_config = model_configs[asr_ref.slug]
+            else:
+                raise TranscriptionError("ASR model is required but not specified")
+            # Typed Any: the cloud loaders accept ``provider_overrides`` (the base
+            # ``load`` abstractmethod does not declare it — a superset param).
+            _loader: Any = cache._get_loader(_asr_config.format)
+            if _loader is None:
+                raise TranscriptionError(
+                    f"No loader available for cloud ASR format {_asr_config.format}"
+                )
+            logger.info(f"Loading cloud ASR model (BYOK, uncached): {_asr_config.slug}")
+            models["asr"] = await _loader.load(
+                _asr_config, provider_overrides=provider_overrides
+            )
+        elif asr_ref.is_inline and asr_ref.inline:
             # Inline model definition
             logger.info(f"Loading inline ASR model: {asr_ref.inline.hf_model_id}")
             models["asr"] = await cache.get_or_load_inline(
@@ -1798,6 +1852,59 @@ class BatchTranscriptionService:
 
         finally:
             os.unlink(tmp.name)
+
+    async def _run_sarvam_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> RawTranscription:
+        """Run whole-audio inference via the Sarvam speech-to-text REST API.
+
+        ``model.model`` is a ``CloudRestConfig`` (from ``SarvamLoader``). Errors
+        are already mapped to the ``CloudASR*`` taxonomy by the recognize helper.
+        """
+        from ..streaming.sarvam_asr import sarvam_recognize_utterance
+
+        language = getattr(config, "language", None)
+        result = await sarvam_recognize_utterance(
+            model.model, samples, sample_rate, language
+        )
+        if progress_callback:
+            progress_callback(1.0)
+        return RawTranscription(
+            text=result.get("text", ""),
+            language=language,
+            word_timestamps=result.get("word_timestamps", []),
+        )
+
+    async def _run_openai_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> RawTranscription:
+        """Run whole-audio inference via the OpenAI speech-to-text REST API.
+
+        ``model.model`` is a ``CloudRestConfig`` (from ``OpenAILoader``).
+        """
+        from ..streaming.openai_asr import openai_recognize_utterance
+
+        language = getattr(config, "language", None)
+        result = await openai_recognize_utterance(
+            model.model, samples, sample_rate, language
+        )
+        if progress_callback:
+            progress_callback(1.0)
+        return RawTranscription(
+            text=result.get("text", ""),
+            language=language,
+            word_timestamps=result.get("word_timestamps", []),
+        )
 
     async def _run_transformers_inference(
         self,

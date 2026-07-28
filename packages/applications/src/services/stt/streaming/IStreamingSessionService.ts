@@ -29,6 +29,13 @@ export interface IStreamingSessionService {
   getSessionStatus(sessionId: string): Promise<StreamingSessionStatus | null>;
 
   /**
+   * Trigger a mid-session switch to the tenant's fallback pipeline (TASK-567).
+   *
+   * @param sessionId - The session identifier
+   */
+  switchToFallback(sessionId: string): Promise<void>;
+
+  /**
    * Finalize and remove a streaming session.
    *
    * @param sessionId - The session identifier

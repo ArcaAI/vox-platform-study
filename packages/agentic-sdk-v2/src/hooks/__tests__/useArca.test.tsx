@@ -60,6 +60,9 @@ vi.mock('../../store', () => {
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),
+    // Streaming STT connection/pipeline actions (TASK-567 Phase F).
+    setSttConnectionState: vi.fn(),
+    setActivePipeline: vi.fn(),
     setContextLoading: vi.fn(),
     setContextError: vi.fn(),
     addContextItem: vi.fn(),

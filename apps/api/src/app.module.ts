@@ -67,6 +67,8 @@ import { McpAdminModule } from './modules/mcp-admin/mcp-admin.module';
 // realtime-pipeline toggle cascade admin (/admin/harness/pipeline-policy).
 import { PipelinePolicyAdminModule } from './modules/pipeline-policy-admin/pipeline-policy-admin.module';
 import { TenantTtsConfigModule } from './modules/tenant-tts-config/tenant-tts-config.module';
+// tenant-scoped STT fallback + BYOK admin surface (/admin/stt-config).
+import { TenantSttConfigModule } from './modules/tenant-stt-config/tenant-stt-config.module';
 // tenant-scoped external identity provider (OIDC) admin surface.
 import { TenantIdpConfigModule } from './modules/tenant-idp-config/tenant-idp-config.module';
 import { HealthModule } from './modules/health/health.module';
@@ -315,6 +317,7 @@ const featureModules: any[] = [
   PipelinePolicyAdminModule,
   // /admin/tts-config (per-tenant TTS spec + BYO provider credentials).
   TenantTtsConfigModule,
+  TenantSttConfigModule,
   // /admin/tenant-idp-config (tenant-scoped external OIDC identity provider).
   TenantIdpConfigModule,
   QueueAdminModule,

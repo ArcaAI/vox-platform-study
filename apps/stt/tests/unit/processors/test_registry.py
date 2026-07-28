@@ -195,6 +195,8 @@ class TestManifestContents:
         "faster_whisper",
         "azure_speech",
         "parakeet_cpp",
+        "sarvam",
+        "openai",
         "azure_foundry",
         "whisper_cpp",
     }

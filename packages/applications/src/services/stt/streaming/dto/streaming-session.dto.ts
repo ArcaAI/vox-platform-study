@@ -36,6 +36,19 @@ export interface CreateStreamingSessionRequest {
    * tenants — the worker uses its env-default client + `audioBucketName`.
    */
   storage?: StorageDescriptor | null;
+  /**
+   * Decrypted per-tenant BYO provider credentials (TASK-567). Held by the
+   * apps/stt session runtime IN MEMORY ONLY — never persisted, never logged.
+   * snake_case entries match the Python wire shape:
+   * `{[provider]: {api_key, region?, base_url?, endpoint?, model?}}`.
+   */
+  providerOverrides?: Record<string, { api_key: string; region?: string; base_url?: string; endpoint?: string; model?: string }>;
+  /**
+   * Tenant-level default fallback pipeline id (TASK-567). Forwarded so the
+   * session runtime can lazily resolve + swap to the fallback ASR engine on a
+   * classified outage without tearing the WebSocket.
+   */
+  fallbackPipelineId?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,10 +160,26 @@ export interface StreamingTranscriptMessage {
 
 export interface StreamingStatusMessage {
   type: 'status';
-  /** Session status */
+  /** Session status (e.g. 'finalizing', 'closed', 'provider_switched') */
   status: string;
-  /** Human-readable message */
-  message: string;
+  /**
+   * Human-readable message. Optional: structured status results (the
+   * `provider_switched` ASR-engine swap, TASK-567) carry typed fields below
+   * instead of prose.
+   */
+  message?: string;
+  // ---- provider_switched passthrough (TASK-567 §3.4) ----
+  // apps/stt publishes an in-session engine swap as a `status` result; the
+  // bridge relays these snake_case fields verbatim (the wire contract the SDK
+  // client reads). Present only when `status === 'provider_switched'`.
+  /** Pipeline the session switched away from. */
+  from_pipeline?: string;
+  /** Pipeline the session is now transcribing on (the fallback). */
+  to_pipeline?: string;
+  /** Switch trigger: 'auto' (outage/exception) or 'user' (clinician-initiated). */
+  reason?: string;
+  /** Utterance ordinal at which the swap happened. */
+  utterance_index?: number;
 }
 
 export interface StreamingErrorMessage {

@@ -35,6 +35,10 @@ const audioMock = {
   isCapturing: false,
   start: vi.fn().mockResolvedValue(undefined),
   stop: vi.fn().mockResolvedValue(undefined),
+  // Streaming STT connection / active-pipeline surface (TASK-567 Phase F) that
+  // the onStatus wiring (TASK-568 D-2) observes. Reset in beforeEach.
+  sttConnectionState: 'connected' as string,
+  activePipeline: null as { id: string; name?: string; isFallback: boolean } | null,
 };
 
 const baseProps = {
@@ -145,6 +149,8 @@ describe('pickMetadataForFinal — capture-relative timeline base', () => {
 describe('useArcaSpeechToText', () => {
   beforeEach(() => {
     audioMock.isCapturing = false;
+    audioMock.sttConnectionState = 'connected';
+    audioMock.activePipeline = null;
     audioMock.start.mockClear().mockResolvedValue(undefined);
     audioMock.stop.mockClear().mockResolvedValue(undefined);
     (useArcaAudio as unknown as ReturnType<typeof vi.fn>).mockReturnValue(audioMock);
@@ -372,5 +378,102 @@ describe('useArcaSpeechToText', () => {
     });
     expect(audioMock.start).not.toHaveBeenCalled();
     audioMock.isCapturing = false;
+  });
+
+  // TASK-567 §2.4: v1 accepted the backend ASR pipeline via `options`; the
+  // compat hook previously dropped it, always falling back to the default
+  // pipeline. It must now forward `options.pipelineId` to audio.start(...).
+  it('forwards options.pipelineId to audio.start (fixes the §2.4 drop)', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    audioMock.start.mockClear();
+    const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'azure_speech_transcription' } }));
+    await act(async () => {
+      await result.current.startTranscription();
+    });
+    expect(audioMock.start).toHaveBeenCalledWith({ language: 'en', pipelineId: 'azure_speech_transcription' });
+  });
+
+  it('omits pipelineId when options has none (backwards compatible)', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    audioMock.start.mockClear();
+    const { result } = renderHook(() => useArcaSpeechToText(baseProps));
+    await act(async () => {
+      await result.current.startTranscription();
+    });
+    expect(audioMock.start).toHaveBeenCalledWith({ language: 'en' });
+  });
+
+  // TASK-568 D-2: the already-frozen-but-unwired `onStatus` prop now surfaces the
+  // v2 provider_switched + reconnect transitions. Zero signature change.
+  it('fires onStatus("provider_switched", {fromPipeline,toPipeline}) when the active pipeline flips to fallback', () => {
+    const onStatus = vi.fn();
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    audioMock.activePipeline = { id: 'primary', isFallback: false };
+
+    const { rerender } = renderHook(() => useArcaSpeechToText({ ...baseProps, onStatus }));
+
+    audioMock.activePipeline = { id: 'fallback', isFallback: true };
+    audioMock.sttConnectionState = 'switched_fallback';
+    act(() => rerender());
+
+    expect(onStatus).toHaveBeenCalledWith('provider_switched', { fromPipeline: 'primary', toPipeline: 'fallback' });
+  });
+
+  it('fires onStatus("reconnecting") then onStatus("reconnected") across a reconnect', () => {
+    const onStatus = vi.fn();
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+
+    const { rerender } = renderHook(() => useArcaSpeechToText({ ...baseProps, onStatus }));
+
+    audioMock.sttConnectionState = 'reconnecting';
+    act(() => rerender());
+    expect(onStatus).toHaveBeenCalledWith('reconnecting');
+
+    audioMock.sttConnectionState = 'connected';
+    act(() => rerender());
+    expect(onStatus).toHaveBeenCalledWith('reconnected');
+  });
+
+  it('apps that never pass onStatus are unaffected by a provider switch (no throw)', () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    audioMock.activePipeline = { id: 'primary', isFallback: false };
+
+    const { rerender } = renderHook(() => useArcaSpeechToText(baseProps));
+
+    audioMock.activePipeline = { id: 'fallback', isFallback: true };
+    expect(() => act(() => rerender())).not.toThrow();
+  });
+
+  // TASK-568 §5.6: a provider switch must NOT disturb the metadata timeline —
+  // capture never stops, so entries recorded before the switch still correlate
+  // to finals after it (extends the TASK-565 timeline tests).
+  it('metadata timeline survives a provider switch (caller metadata still correlates to post-switch finals)', async () => {
+    const onTranscript = vi.fn();
+    const state: MockState = { transcriptSegments: [], currentTranscript: '' };
+    installStore(state);
+    const now = vi.spyOn(Date, 'now');
+    audioMock.activePipeline = { id: 'primary', isFallback: false };
+
+    const { result, rerender } = renderHook(() => useArcaSpeechToText({ ...baseProps, onTranscript }));
+
+    now.mockReturnValue(1000); // captureStartMs = 1000
+    await act(async () => {
+      await result.current.startTranscription();
+    });
+
+    now.mockReturnValue(1100); // atMs = 100
+    act(() => result.current.sendAudioData(new ArrayBuffer(8), { role: 'clinician', chunk_id: 'c1' }));
+
+    // Provider switches mid-session (capture keeps running).
+    audioMock.activePipeline = { id: 'fallback', isFallback: true };
+    act(() => rerender());
+
+    // A final in the pre-switch window still carries the caller metadata.
+    state.transcriptSegments = [{ text: 'chest pain', isFinal: true, startTime: 1, endTime: 2 }];
+    act(() => rerender());
+
+    const meta = onTranscript.mock.calls[onTranscript.mock.calls.length - 1][2] as Record<string, unknown>;
+    expect(meta.role).toBe('clinician');
+    expect(meta.chunk_id).toBe('c1');
   });
 });

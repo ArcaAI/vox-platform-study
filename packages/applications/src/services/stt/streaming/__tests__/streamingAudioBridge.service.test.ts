@@ -492,6 +492,31 @@ describe('StreamingAudioBridgeService', () => {
             });
         });
 
+        it('should emit a provider_switched status result (non-terminal) so the swap reaches the client', async () => {
+            // apps/stt publishes an ASR-engine swap as a `status`/`provider_switched`
+            // result (TASK-567). Previously the bridge swallowed every non-terminal
+            // status; it must now relay this one on the existing status frame.
+            mockXreadgroup
+                .mockResolvedValueOnce([
+                    ['stt:result:s-1', [
+                        ['1-0', ['type', 'status', 'status', 'provider_switched', 'from_pipeline', 'azure_speech_transcription', 'to_pipeline', 'sarvam_transcription', 'reason', 'auto', 'utterance_index', '4']],
+                    ]],
+                ])
+                .mockResolvedValue(null);
+
+            const obs = service.subscribeToResults('s-1');
+            const result = await firstValueFrom(obs.pipe(take(1)));
+
+            expect(result).toEqual({
+                type: 'status',
+                status: 'provider_switched',
+                from_pipeline: 'azure_speech_transcription',
+                to_pipeline: 'sarvam_transcription',
+                reason: 'auto',
+                utterance_index: 4,
+            });
+        });
+
         it('should map speaker metadata AND derive a canonical speakerLabel when present', async () => {
             mockXreadgroup
                 .mockResolvedValueOnce([

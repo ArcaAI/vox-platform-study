@@ -127,6 +127,9 @@ interface MockStore {
   resetAudioDropped: ReturnType<typeof vi.fn>;
   markAudioLost: ReturnType<typeof vi.fn>;
   incrementDroppedFrames: ReturnType<typeof vi.fn>;
+  // Streaming STT connection/pipeline actions (TASK-567 Phase F).
+  setSttConnectionState: ReturnType<typeof vi.fn>;
+  setActivePipeline: ReturnType<typeof vi.fn>;
 }
 
 let mockStore: MockStore;
@@ -214,6 +217,9 @@ function buildMockStore(): MockStore {
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),
+    // Streaming STT connection/pipeline actions (TASK-567 Phase F).
+    setSttConnectionState: vi.fn(),
+    setActivePipeline: vi.fn(),
   };
   return store;
 }

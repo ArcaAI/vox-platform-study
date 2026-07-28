@@ -60,6 +60,8 @@ export * from './TenantIdentityProviderDomainModel';
 export * from './TenantIdentityProviderModel';
 export * from './TenantModel';
 export * from './TenantStorageConfigModel';
+export * from './TenantSttConfigModel';
+export * from './TenantSttProviderCredentialModel';
 export * from './TenantTtsConfigModel';
 export * from './TenantTtsProviderCredentialModel';
 export * from './TenantUsageMeterModel';

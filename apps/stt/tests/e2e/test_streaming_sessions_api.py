@@ -135,6 +135,8 @@ def _make_mock_session_manager(
         user_id: str | None = None,
         language: str | None = None,
         storage: dict | None = None,
+        provider_overrides: dict | None = None,
+        fallback_pipeline_id: str | None = None,
     ) -> _FakeStreamSession | None:
         acquired = await guard.try_acquire(session_id)
         if not acquired:

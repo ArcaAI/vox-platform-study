@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { IconMicrophone, IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
+import { IconArrowsExchange, IconMicrophone, IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react';
 import { LiveTranscript, type LiveTranscriptSegment } from '@arcaai/ui';
 import { Waveform } from '@arcaai/ui/components/elevenlabs/waveform';
 import { Button } from '@arcaai/ui/components/shadcn/button';
@@ -125,6 +125,12 @@ export interface LiveSessionColumnProps {
     reviewTranscriptText?: string | null;
     /** The cited span to highlight + scroll to within `reviewTranscriptText`. */
     reviewHighlight?: TranscriptReviewHighlight | null;
+    /** SDK `audio.sttConnectionState` — drives the reconnecting/error/switch banner (TASK-567). */
+    sttConnectionState?: 'connected' | 'reconnecting' | 'switched_fallback' | 'error';
+    /** True once the live session has switched to the tenant fallback pipeline (SDK `audio.activePipeline.isFallback`). */
+    onFallback?: boolean;
+    /** Request an on-the-fly switch to the tenant fallback pipeline (SDK `audio.switchToFallback`). */
+    onSwitchToFallback?: () => void;
 }
 
 export function LiveSessionColumn({
@@ -140,6 +146,9 @@ export function LiveSessionColumn({
     onStop,
     reviewTranscriptText = null,
     reviewHighlight = null,
+    sttConnectionState = 'connected',
+    onFallback = false,
+    onSwitchToFallback,
 }: LiveSessionColumnProps) {
     // Rolling amplitude buffer + elapsed seconds. State is written ONLY inside
     // the interval callbacks (never synchronously in the effect body, and no
@@ -190,6 +199,13 @@ export function LiveSessionColumn({
                 <div aria-hidden className="text-primary min-w-0 flex-1">
                     <Waveform data={displayWave} active={isCapturing} height={40} />
                 </div>
+                {/* On-the-fly switch to the tenant fallback pipeline (TASK-567 R4). */}
+                {isCapturing && onSwitchToFallback && !onFallback ? (
+                    <Button variant="outline" onClick={onSwitchToFallback} disabled={captureBusy} className="shrink-0">
+                        <IconArrowsExchange aria-hidden />
+                        Use fallback
+                    </Button>
+                ) : null}
                 {isRecording ? (
                     <Button variant="outline" onClick={onStop} disabled={captureBusy} className="border-destructive text-destructive shrink-0">
                         {captureBusy ? <Spinner aria-hidden /> : <IconPlayerStop aria-hidden />}
@@ -202,6 +218,24 @@ export function LiveSessionColumn({
                     </Button>
                 )}
             </div>
+            {/* Switch / connection banner (TASK-567): shown only off the nominal state. */}
+            {onFallback || sttConnectionState === 'reconnecting' || sttConnectionState === 'error' ? (
+                <div
+                    role="status"
+                    className={cn(
+                        'mx-3 mb-1 shrink-0 rounded-lg border px-3 py-1.5 text-sm font-medium',
+                        sttConnectionState === 'error'
+                            ? 'border-destructive/35 bg-destructive/10 text-destructive'
+                            : 'border-warning/35 bg-warning/10 text-warning-foreground',
+                    )}
+                >
+                    {sttConnectionState === 'error'
+                        ? 'Transcription connection lost — the session could not be recovered.'
+                        : sttConnectionState === 'reconnecting'
+                          ? 'Reconnecting transcription…'
+                          : 'Switched to the fallback transcription provider.'}
+                </div>
+            ) : null}
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
                 {!hasConsultation ? (

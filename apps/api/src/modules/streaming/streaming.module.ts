@@ -10,6 +10,7 @@ import {
   StreamingSessionServiceModule,
   TenantBucketServiceModule,
   TenantServiceModule,
+  TenantSttConfigServiceModule,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
 } from '@arcaai/applications';
@@ -57,6 +58,9 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Exposes `StreamSessionTenantBindingService`
     // to `TranscriptionJobController` so it can bind on create / clear on close.
     TenantOwnedResourceModule,
+    // Resolves the caller tenant's STT fallback pointer + BYO provider
+    // overrides for `createStreamSession` injection + `switch-to-fallback`.
+    TenantSttConfigServiceModule,
   ],
   controllers: [TranscriptionJobController, AdminTranscriptionJobController, SmrProxyController],
   // SessionRemovalRetryService resolves

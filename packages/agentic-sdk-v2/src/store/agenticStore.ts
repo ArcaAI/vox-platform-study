@@ -20,7 +20,7 @@ import type {
   PipelineStateInfo,
   TenantAudioConfig,
 } from '../types';
-import type { TranscriptSegment } from '../types/audio';
+import type { TranscriptSegment, SttConnectionState, ActivePipelineInfo } from '../types/audio';
 import { DEFAULT_AUDIO_PLUGIN_STATES } from '../types';
 import type { AgenticClient } from '../core/AgenticClient';
 import type { PluginManager } from '../core/PluginManager';
@@ -95,6 +95,19 @@ export interface AgenticState {
    * sampled from the streaming STT transport. 0 when not streaming.
    */
   audioUplinkBitrate: number;
+  /**
+   * Live connection health of the streaming STT session (TASK-567 Phase F).
+   * Driven by the streaming client's reconnect callbacks and the backend
+   * `provider_switched` status. `connected` is the nominal value (also the
+   * pre-capture default); the UI renders a banner only when it is not.
+   */
+  sttConnectionState: SttConnectionState;
+  /**
+   * The ASR pipeline the streaming session is currently transcribing on, with
+   * a durable `isFallback` flag set once the session switches to the tenant
+   * fallback. `null` before any streaming session starts.
+   */
+  activePipeline: ActivePipelineInfo | null;
 
   // Summary state
   summaries: SummaryResponse[];
@@ -199,6 +212,10 @@ export interface AgenticActions {
   setAudioUplinkBitrate: (bitrate: number) => void;
   /** Clear both the count and the latch — called on capture start/stop only. */
   resetAudioDropped: () => void;
+  /** Set the streaming STT connection state (reconnect callbacks / provider switch). */
+  setSttConnectionState: (state: SttConnectionState) => void;
+  /** Set (or clear with `null`) the active streaming ASR pipeline descriptor. */
+  setActivePipeline: (pipeline: ActivePipelineInfo | null) => void;
 
   // Summary actions
   setSummaries: (summaries: SummaryResponse[]) => void;
@@ -325,6 +342,9 @@ const initialState: AgenticState = {
   audioDroppedFrameCount: 0,
   audioLostThisSession: false,
   audioUplinkBitrate: 0,
+  // Streaming STT connection state starts nominal; no active pipeline yet.
+  sttConnectionState: 'connected',
+  activePipeline: null,
 
   // Summary state
   summaries: [],
@@ -484,6 +504,8 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   markAudioLost: () => set({ audioLostThisSession: true }),
   resetAudioDropped: () => set({ audioDroppedFrameCount: 0, audioLostThisSession: false, audioUplinkBitrate: 0 }),
   setAudioUplinkBitrate: (bitrate) => set({ audioUplinkBitrate: bitrate }),
+  setSttConnectionState: (sttConnectionState) => set({ sttConnectionState }),
+  setActivePipeline: (activePipeline) => set({ activePipeline }),
 
   // Summary actions
   setSummaries: (summaries) => set({ summaries }),
@@ -545,6 +567,10 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       audioDroppedFrameCount: 0,
       audioLostThisSession: false,
       audioUplinkBitrate: 0,
+      // A tenant switch ends any streaming session — reset the STT connection
+      // signal so the outgoing tenant's fallback/reconnect state can't bleed in.
+      sttConnectionState: 'connected',
+      activePipeline: null,
       // TTS playback state resets on tenant switch (mirrors activeStream).
       ttsIsPlaying: false,
       ttsIsLoading: false,

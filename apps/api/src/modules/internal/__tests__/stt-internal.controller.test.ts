@@ -10,7 +10,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 
 import { SttInternalController } from '../stt-internal.controller';
 
@@ -93,5 +93,40 @@ describe('SttInternalController.ensureInternalApiKey', () => {
       expect(result).toEqual({ id: 'media-1' });
       expect(sttInternalService.createMedia).toHaveBeenCalledWith(dto);
     });
+  });
+});
+
+// TASK-567 §5 item 8: the batch-worker BYO override PULL route.
+describe('SttInternalController.getProviderOverrides', () => {
+  let sttInternalService: any;
+  let sttConfig: any;
+  let cls: any;
+  let controller: SttInternalController;
+
+  beforeEach(() => {
+    sttInternalService = { createTranscript: vi.fn() };
+    sttConfig = { resolveProviderOverrides: vi.fn().mockResolvedValue({ sarvam: { api_key: 'k' } }) };
+    // Minimal CLS: `run` invokes the callback synchronously, `set` records the tenant.
+    cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
+    controller = new SttInternalController(sttInternalService, sttConfig, cls);
+  });
+
+  it('rejects when the internal API key is absent (service-to-service gate)', async () => {
+    await expect(controller.getProviderOverrides({} as any, 't-1')).rejects.toThrow(UnauthorizedException);
+    expect(sttConfig.resolveProviderOverrides).not.toHaveBeenCalled();
+  });
+
+  it('400s when tenantId is missing', async () => {
+    const request = { apiKey: { id: 'key-1' } } as any;
+    await expect(controller.getProviderOverrides(request, undefined)).rejects.toThrow(BadRequestException);
+    expect(sttConfig.resolveProviderOverrides).not.toHaveBeenCalled();
+  });
+
+  it('resolves overrides within a tenant-pinned CLS context when authorized', async () => {
+    const request = { apiKey: { id: 'key-1' } } as any;
+    const result = await controller.getProviderOverrides(request, 't-1');
+    expect(result).toEqual({ sarvam: { api_key: 'k' } });
+    expect(cls.set).toHaveBeenCalledWith('tenantId', 't-1');
+    expect(sttConfig.resolveProviderOverrides).toHaveBeenCalledWith('t-1');
   });
 });

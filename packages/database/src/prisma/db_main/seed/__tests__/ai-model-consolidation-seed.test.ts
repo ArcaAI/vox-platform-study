@@ -120,6 +120,11 @@ const TASK_524_NEW_SLUGS = [
     'wespeaker-voxceleb-resnet34',
 ] as const;
 
+// TASK-567 — tenant BYOK STT fallback engines (cloud REST catalog metadata for
+// the fallback-candidate picker; the pipeline YAML reaches them via the
+// `provider :: model` shorthand, so their Prisma `format` is CLOUD_API).
+const TASK_567_NEW_SLUGS = ['sarvam-saaras-v3', 'openai-gpt4o-transcribe'] as const;
+
 const EXPECTED_CATALOG_SLUGS = [
     ...KEEPER_SLUGS,
     ...NEW_LLM_SLUGS,
@@ -128,6 +133,7 @@ const EXPECTED_CATALOG_SLUGS = [
     ...TASK_507_NEW_SLUGS,
 ...TASK_515_NEW_SLUGS,
 ...TASK_524_NEW_SLUGS,
+...TASK_567_NEW_SLUGS,
 ] as const;
 
 // The 50 slugs that must be RETIRED (previous 60 minus the 10 keepers).
@@ -194,7 +200,7 @@ const EXPECTED_RETIRED_SLUGS = [
     'whisper-small-en',
 ] as const;
 
-const ALLOWED_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'vllm', 'llama-cpp'];
+const ALLOWED_PROVIDERS = ['ollama', 'lm-studio', 'azure', 'bedrock', 'built-in', 'sarvam', 'openai', 'vllm', 'llama-cpp'];
 
 // The 8 slugs referenced by seeded pipeline `models:` blocks (regression lock).
 const PIPELINE_REFERENCED_SLUGS = [
@@ -226,7 +232,7 @@ describe('consolidated AI model catalog (26 rows) + extensions', () => {
     it('is exactly the 37 expected slugs (26 + 2 + 9 extensions)', () => {
         const slugs = catalog.map((m) => m.slug).sort();
         expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-        expect(catalog.length).toBe(37);
+        expect(catalog.length).toBe(39);
     });
 
     it('has unique ids and unique slugs', () => {

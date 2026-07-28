@@ -53,6 +53,8 @@ export * from './TenantFrontendConfigEntityMapper';
 export * from './TenantIdentityProviderEntityMapper';
 export * from './TenantIdentityProviderDomainEntityMapper';
 export * from './TenantStorageConfigEntityMapper';
+export * from './TenantSttConfigEntityMapper';
+export * from './TenantSttProviderCredentialEntityMapper';
 export * from './TenantTtsConfigEntityMapper';
 export * from './TenantTtsProviderCredentialEntityMapper';
 export * from './TenantEntityMapper';

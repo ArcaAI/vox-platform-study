@@ -12,7 +12,9 @@ from stt.processors.asr_engines import (
     FasterWhisperEngine,
     NemoEngine,
     OnnxEngine,
+    OpenAIEngine,
     SafetensorEngine,
+    SarvamEngine,
     resolve_asr_engine,
 )
 
@@ -41,6 +43,8 @@ class TestResolve:
             (AiModelFormat.NEMO, NemoEngine),
             (AiModelFormat.FASTER_WHISPER, FasterWhisperEngine),
             (AiModelFormat.AZURE_SPEECH, AzureSpeechEngine),
+            (AiModelFormat.SARVAM, SarvamEngine),
+            (AiModelFormat.OPENAI, OpenAIEngine),
         ],
     )
     def test_resolves_expected_adapter(self, fmt, cls):
@@ -117,6 +121,7 @@ class TestBindingResolution:
             "safetensor", "onnx", "onnx_optimum", "nemo",
             "faster_whisper", "azure_speech",
             "parakeet_cpp", "azure_foundry", "whisper_cpp",
+            "sarvam", "openai",
         }
         assert payload["asr_engines"]["onnx"]["streaming"] == "unsupported"
         assert payload["asr_engines"]["safetensor"]["batch"]["device"] == "cpu"

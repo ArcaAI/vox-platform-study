@@ -297,6 +297,9 @@ async def test_create_session_wires_sortformer_diarizer():
     mgr._inference_workers = {}
     mgr._dual_capture = {}
     mgr._commit_policies = {}
+    mgr._switch_controllers = {}
+    mgr._provider_overrides = {}
+    mgr._fallback_pipeline_ids = {}
 
     pipeline_config = MagicMock()
     pipeline_config.preprocessing.vad.enabled = True
@@ -450,6 +453,9 @@ async def test_recovery_reconstructs_sortformer_diarizer():
     mgr._inference_workers = {}
     mgr._dual_capture = {}
     mgr._commit_policies = {}
+    mgr._switch_controllers = {}
+    mgr._provider_overrides = {}
+    mgr._fallback_pipeline_ids = {}
     mgr._worker_id = "test-worker"
 
     meta = MagicMock()

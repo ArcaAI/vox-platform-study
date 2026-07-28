@@ -190,6 +190,11 @@ enum ResourceType {
   // Eval run (TASK-549): the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun.
   EvalRun
+  // Per-tenant STT fallback config + BYO provider credentials (TASK-567).
+  // Emitted as audit `resourceType` by TenantSttConfigService.broadcastSysEvent
+  // for both the config row and credential mutations.
+  TenantSttConfig
+  TenantSttProviderCredential
 
   @@schema("core")
 }

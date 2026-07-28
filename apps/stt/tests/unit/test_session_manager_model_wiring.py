@@ -738,7 +738,9 @@ class TestCreateSessionModelWiring:
         captured_args = {}
         original_load = AsyncMock(return_value=(None, None))
 
-        async def spy_load_asr(pipeline_config, session_id, tenant_id=None):
+        async def spy_load_asr(
+            pipeline_config, session_id, tenant_id=None, provider_overrides=None
+        ):
             captured_args["pipeline_config"] = pipeline_config
             captured_args["session_id"] = session_id
             return await original_load(pipeline_config, session_id)

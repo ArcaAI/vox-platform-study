@@ -21,6 +21,7 @@ import {
   useArcaSessionManager,
   useAudioCapture,
   useArcaSpeechToText,
+  useArcaSttProvider,
   useSMR,
   type EnhancedMedicalSummary,
   type SummaryResponse,
@@ -37,6 +38,8 @@ export function CompatConsultation() {
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [interim, setInterim] = useState('');
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  // Transient banner for STT provider switches (auto OR user).
+  const [switchBanner, setSwitchBanner] = useState<string | null>(null);
 
   // 1. Session — createSession + startSession collapse onto one idempotent open().
   //    doctorId is preserved in metadata.legacyDoctorId (server derives the doctor).
@@ -80,6 +83,18 @@ export function CompatConsultation() {
       consultationId: mgr.session?.id ?? 'unknown',
     });
   };
+
+  // Provider switching — the ONE compat import with no v1 ancestor (TASK-568).
+  // It answers "which STT provider am I on?" and drives the user switch flow.
+  // `onProviderSwitched` fires for BOTH the user button below AND a backend
+  // auto-switch on an outage, so this one banner covers both.
+  const provider = useArcaSttProvider({
+    onProviderSwitched: (info) =>
+      setSwitchBanner(
+        `Transcription switched to ${info.toPipeline.name ?? info.toPipeline.id} (${info.reason})`,
+      ),
+    onSwitchFailed: (err) => setSwitchBanner(`Provider switch failed: ${err.message}`),
+  });
 
   // 4. Summary — same path + x-api-key as v1; sends real per-turn segments.
   const smr = useSMR({ sessionId: mgr.session?.id });
@@ -130,6 +145,14 @@ export function CompatConsultation() {
 
       {mgr.error ? <p style={{ color: '#b00' }}>Session error: {mgr.error.message}</p> : null}
       {stt.error ? <p style={{ color: '#b00' }}>STT error: {stt.error.message}</p> : null}
+      {switchBanner ? (
+        <p style={{ background: '#eef6ff', border: '1px solid #b6d4fe', padding: '0.5rem 0.75rem', borderRadius: 4 }}>
+          {switchBanner}{' '}
+          <button style={{ marginLeft: '0.5rem' }} onClick={() => setSwitchBanner(null)}>
+            dismiss
+          </button>
+        </p>
+      ) : null}
 
       <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0' }}>
         <button onClick={start} disabled={capture.isRecording}>
@@ -141,7 +164,20 @@ export function CompatConsultation() {
         <button onClick={summarize} disabled={capture.isRecording || lines.length === 0 || smr.loading}>
           {smr.loading ? 'Summarizing…' : 'Generate summary'}
         </button>
+        {/* User provider-switch control flow (TASK-567 R4): enabled only while a
+            live backend session can switch and isn't already on the fallback. */}
+        <button
+          onClick={() => void provider.switchToFallback().catch(() => undefined)}
+          disabled={!provider.fallbackAvailable || provider.switchStatus === 'switching'}
+        >
+          {provider.switchStatus === 'switching' ? 'Switching…' : 'Switch provider'}
+        </button>
       </div>
+
+      <p style={{ color: '#666', fontSize: '0.85rem' }}>
+        STT provider: <strong>{provider.activeProvider?.name ?? provider.activeProvider?.pipelineId ?? 'local'}</strong>
+        {provider.isFallbackActive ? ' (fallback)' : ''}
+      </p>
 
       {/* Metadata tagging — tag the CURRENT turn; it round-trips onto the next
           transcript line (TASK-564). Only enabled while recording. */}

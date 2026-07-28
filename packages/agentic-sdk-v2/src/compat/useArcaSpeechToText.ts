@@ -80,8 +80,15 @@ function toErrorInfo(err: unknown): ErrorInfo {
 }
 
 export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpeechToTextReturn {
-  const { language, transcriptTemplate, onTranscript, onError } = props;
+  const { language, transcriptTemplate, onTranscript, onError, onStatus, options } = props;
   const audio = useArcaAudio();
+
+  // v1 accepted the backend ASR pipeline via the `options` bag; v2 needs it on
+  // `audio.start(...)` to build the streaming transport. Forwarding it here fixes
+  // the drop found in TASK-567 §2.4 (the pipeline id was silently discarded, so
+  // the compat surface always fell back to the default pipeline). Does NOT touch
+  // the TASK-564/565 metadata timeline.
+  const pipelineId = typeof options?.pipelineId === 'string' ? options.pipelineId : undefined;
 
   const segments = useAgenticStore(selectTranscriptSegments);
   const currentTranscript = useAgenticStore(selectCurrentTranscript);
@@ -91,6 +98,40 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   // Keep callbacks fresh without re-subscribing the diff effects.
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
+
+  // Connection-health / provider-switch surfacing on the already-frozen-but-
+  // unwired v1 `onStatus` prop (TASK-568 D-2). This is a BEHAVIOR addition on an
+  // existing optional prop — zero signature change; apps that never pass
+  // `onStatus` are unaffected. Reads ONLY the public v2 surface (useArcaAudio),
+  // so the compat invariant holds. v1 apps could never see these transitions;
+  // TASK-567 Phase F wires the underlying reconnect / provider_switched callbacks.
+  const prevConnRef = useRef(audio.sttConnectionState);
+  const prevIsFallbackRef = useRef<boolean>(audio.activePipeline?.isFallback ?? false);
+  const prevPipelineIdRef = useRef<string | undefined>(audio.activePipeline?.id);
+  useEffect(() => {
+    const conn = audio.sttConnectionState;
+    const pipelineId = audio.activePipeline?.id;
+    const isFallback = audio.activePipeline?.isFallback ?? false;
+    const emit = onStatusRef.current;
+    if (emit) {
+      // Reconnect transitions.
+      if (conn === 'reconnecting' && prevConnRef.current !== 'reconnecting') emit('reconnecting');
+      if (conn === 'connected' && prevConnRef.current === 'reconnecting') emit('reconnected');
+      // Provider switch — the active pipeline flipped to the tenant fallback.
+      // Payload carries only what the public v2 store surfaces (from/to pipeline
+      // ids); the reason ('auto' vs 'user') is not on the store, so it is not
+      // fabricated here — the richer `useArcaSttProvider.onProviderSwitched`
+      // carries it. See the migration guide.
+      if (isFallback && !prevIsFallbackRef.current) {
+        emit('provider_switched', { fromPipeline: prevPipelineIdRef.current, toPipeline: pipelineId });
+      }
+    }
+    prevConnRef.current = conn;
+    prevIsFallbackRef.current = isFallback;
+    prevPipelineIdRef.current = pipelineId;
+  }, [audio.sttConnectionState, audio.activePipeline]);
 
   // Capture-relative metadata TIMELINE (E2). Replaces the single sticky bag:
   // each sendAudioData appends {atMs, metadata}; finals correlate by startTime,
@@ -135,14 +176,14 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
       setError(null);
       // Anchor the capture-relative timeline base at capture start.
       if (captureStartMsRef.current === undefined) captureStartMsRef.current = Date.now();
-      await audio.start({ language });
+      await audio.start({ language, ...(pipelineId ? { pipelineId } : {}) });
     } catch (err) {
       const info = toErrorInfo(err);
       setError(info);
       onError?.(info);
       throw err;
     }
-  }, [audio, language, onError]);
+  }, [audio, language, pipelineId, onError]);
 
   const stopTranscription = useCallback(async (): Promise<void> => {
     if (!audio.isCapturing) return;

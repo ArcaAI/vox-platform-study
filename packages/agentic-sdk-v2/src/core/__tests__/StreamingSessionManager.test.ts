@@ -662,4 +662,39 @@ describe('StreamingSessionManager', () => {
       expect(listener).not.toHaveBeenCalled();
     });
   });
+
+  // ===========================================================================
+  // switchToFallback (TASK-567 R4)
+  // ===========================================================================
+
+  describe('switchToFallback', () => {
+    async function createSession(): Promise<void> {
+      mockFetch.mockResolvedValueOnce(createMockResponse({ sessionId: 'sess-switch', wsUrl: '/ws/stt/stream', status: 'active', maxConcurrent: 5, currentActive: 1 }));
+      await manager.createSession({ pipelineId: 'primary' });
+    }
+
+    it('POSTs the switch-to-fallback endpoint for the live session', async () => {
+      await createSession();
+      mockFetch.mockClear();
+      mockFetch.mockResolvedValueOnce(createMockResponse({ switched: true }));
+
+      await manager.switchToFallback();
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain(STT_ENDPOINTS.SWITCH_TO_FALLBACK('sess-switch'));
+    });
+
+    it('throws when there is no active session', async () => {
+      await expect(manager.switchToFallback()).rejects.toThrow(/no active streaming session/i);
+    });
+
+    it('propagates a 404 so the caller can classify it (degraded path)', async () => {
+      await createSession();
+      mockFetch.mockClear();
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(404, 'Not Found'));
+
+      await expect(manager.switchToFallback()).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    });
+  });
 });
