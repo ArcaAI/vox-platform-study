@@ -5,19 +5,23 @@ import { BusinessException } from '@arcaai/exceptions';
 import { BaseTenantEntity, IBaseTenantEntity } from '../../../common';
 
 // WHERE a serving provider lives and HOW to authenticate: one row
-// per (tenant, provider); the reserved SYSTEM tenant row is the platform
-// default. Generalizes TenantTtsProviderCredential to all LLM providers.
+// per (tenant, SERVICE, provider); the reserved SYSTEM tenant row is the
+// platform default. The UNIFIED provider-connection plane for all three AI
+// capabilities (llm | stt | tts) — unifies the former
+// TenantTtsProviderCredential / TenantSttProviderCredential tables (TASK-569).
 //
 // `encryptedApiKey` is Vault-Transit ciphertext produced by
 // `encryptSecretField` — the entity NEVER sees plaintext and no read DTO ever
 // carries the bytes (`hasKey: boolean` only).
 //
-// The provider vocabulary check (AI_MODEL_PROVIDERS), the cloud-only tenant-row
-// rule (azure/bedrock → 403 otherwise), and the resolution cascade
-// (tenant row → SYSTEM row → service env) all live in the application service
-// (`AiProviderConnectionService`); this entity carries only structural
-// invariants.
+// The `service` discriminator resolves the provider-name collision across
+// capabilities (`azure` = Azure OpenAI under llm, Azure Speech under stt). The
+// per-service cloud-only tenant-row rule and the resolution cascade
+// (tenant row → SYSTEM row → service env, filtered by service) live in the
+// application service (`ProviderConnectionService`); this entity carries only
+// structural invariants.
 export interface IAiProviderConnectionEntity extends IBaseTenantEntity {
+  service: string;
   provider: string;
   baseUrl?: string | null;
   region?: string | null;
@@ -30,6 +34,7 @@ export interface IAiProviderConnectionEntity extends IBaseTenantEntity {
 }
 
 export class AiProviderConnectionEntity extends BaseTenantEntity {
+  private _service: IAiProviderConnectionEntity['service'];
   private _provider: IAiProviderConnectionEntity['provider'];
   private _baseUrl?: IAiProviderConnectionEntity['baseUrl'];
   private _region?: IAiProviderConnectionEntity['region'];
@@ -42,6 +47,7 @@ export class AiProviderConnectionEntity extends BaseTenantEntity {
 
   constructor(init: IAiProviderConnectionEntity) {
     super(init);
+    this._service = init.service;
     this._provider = init.provider;
     this._baseUrl = init.baseUrl;
     this._region = init.region;
@@ -51,6 +57,14 @@ export class AiProviderConnectionEntity extends BaseTenantEntity {
     this._keyVersion = init.keyVersion;
     this._enabled = init.enabled;
     this._extraJson = init.extraJson;
+  }
+
+  get service(): IAiProviderConnectionEntity['service'] {
+    return this._service;
+  }
+
+  set service(value: IAiProviderConnectionEntity['service']) {
+    this.setProperty('service', value);
   }
 
   get provider(): IAiProviderConnectionEntity['provider'] {
@@ -132,6 +146,9 @@ export class AiProviderConnectionEntity extends BaseTenantEntity {
 
   public override validate(): void {
     super.validate();
+    if (!this._service || this._service.trim().length === 0) {
+      throw new BusinessException('Service is required');
+    }
     if (!this._provider || this._provider.trim().length === 0) {
       throw new BusinessException('Provider is required');
     }

@@ -24,14 +24,21 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * so the admin surface can render them as suggestions rather than
  * as configured values.
  *
- * CREATE-ONLY: an existing (tenantId, provider) row is NEVER overwritten — the
- * connection is admin-tunable at runtime and a re-seed must not clobber an
- * admin's endpoint or key.
+ * CREATE-ONLY: an existing (tenantId, service, provider) row is NEVER
+ * overwritten — the connection is admin-tunable at runtime and a re-seed must
+ * not clobber an admin's endpoint or key.
+ *
+ * UNIFIED PLANE (TASK-569): rows now carry a `service` discriminator. The `llm`
+ * service seeds every canonical serving provider (AI_MODEL_PROVIDERS + the new
+ * cloud providers anthropic/vertex); `stt` and `tts` seed only their CLOUD
+ * providers (self-host STT/TTS engines are not credential-bearing here).
  */
 
 export interface AiProviderConnectionSeed {
   id: string;
   tenantId: string;
+  /** Capability discriminator (llm | stt | tts). */
+  service: string;
   provider: string;
   baseUrl: string | null;
   region: string | null;
@@ -52,6 +59,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // Local/self-host Ollama engine (`SMR_OLLAMA_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000001',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'ollama',
     baseUrl: 'http://localhost:11434',
     region: null,
@@ -67,6 +75,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // (`SMR_OPENAI_COMPAT_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000002',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'lm-studio',
     baseUrl: 'http://localhost:1234/v1',
     region: null,
@@ -82,6 +91,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // blank in `.env.production`; a global admin fills them in.
     id: '87000000-0000-0000-0000-000000000003',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'azure',
     baseUrl: null,
     region: null,
@@ -96,6 +106,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // AWS Bedrock — region is deployment-specific; no placeholder invented.
     id: '87000000-0000-0000-0000-000000000004',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'bedrock',
     baseUrl: null,
     region: null,
@@ -110,6 +121,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // `built-in` = in-process/bundled models (no remote endpoint at all).
     id: '87000000-0000-0000-0000-000000000005',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'built-in',
     baseUrl: null,
     region: null,
@@ -125,6 +137,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // VPC/on-prem host before enabling for patient data.
     id: '87000000-0000-0000-0000-000000000006',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'sarvam',
     baseUrl: null,
     region: null,
@@ -142,6 +155,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // for patient data.
     id: '87000000-0000-0000-0000-000000000009',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'openai',
     baseUrl: null,
     region: null,
@@ -156,6 +170,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // vLLM production self-host engine (`SMR_VLLM_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000007',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'vllm',
     baseUrl: 'http://hope-vllm:8000/v1',
     region: null,
@@ -170,6 +185,7 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     // llama.cpp production self-host engine (`SMR_LLAMA_CPP_BASE_URL`).
     id: '87000000-0000-0000-0000-000000000008',
     tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
     provider: 'llama-cpp',
     baseUrl: 'http://hope-llama-cpp:8080',
     region: null,
@@ -180,17 +196,133 @@ export const SYSTEM_AI_PROVIDER_CONNECTIONS: AiProviderConnectionSeed[] = [
     enabled: false,
     metaData: { placeholder: true, note: 'Reference value from SMR_LLAMA_CPP_BASE_URL (k3s Service).' },
   },
+
+  // ── New LLM cloud providers (TASK-569 freeze; functional in TASK-572) ──────
+  {
+    // Anthropic Messages API (cloud). Catalog-only until TASK-572 lands the SMR
+    // adapter. NOTE: the public API is not PHI-safe — route via a compliant
+    // endpoint before enabling for patient data.
+    id: '87000000-0000-0000-0000-00000000000a',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
+    provider: 'anthropic',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    enabled: false,
+    metaData: null,
+  },
+  {
+    // Google Vertex AI (cloud). Catalog-only until TASK-572 lands the SMR
+    // adapter. NOTE: the public API is not PHI-safe — use a compliant project.
+    id: '87000000-0000-0000-0000-00000000000b',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'llm',
+    provider: 'vertex',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    enabled: false,
+    metaData: null,
+  },
+
+  // ── STT cloud providers (unified from TenantSttProviderCredential) ─────────
+  {
+    // Azure Speech / Azure AI Foundry (cloud ASR).
+    id: '87000000-0000-0000-0000-0000000000c1',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'stt',
+    provider: 'azure-speech',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    enabled: false,
+    metaData: null,
+  },
+  {
+    // Sarvam ASR (cloud). NOTE: the public API is not PHI-safe.
+    id: '87000000-0000-0000-0000-0000000000c2',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'stt',
+    provider: 'sarvam',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    enabled: false,
+    metaData: null,
+  },
+  {
+    // OpenAI transcription (cloud). NOTE: the public API is not PHI-safe.
+    id: '87000000-0000-0000-0000-0000000000c3',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'stt',
+    provider: 'openai',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    enabled: false,
+    metaData: null,
+  },
+
+  // ── TTS cloud providers (unified from TenantTtsProviderCredential) ─────────
+  {
+    // Azure Speech (cloud TTS).
+    id: '87000000-0000-0000-0000-0000000000d1',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'tts',
+    provider: 'azure',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    enabled: false,
+    metaData: null,
+  },
+  {
+    // Sarvam TTS (cloud). NOTE: the public API is not PHI-safe.
+    id: '87000000-0000-0000-0000-0000000000d2',
+    tenantId: SYSTEM_TENANT_ID,
+    service: 'tts',
+    provider: 'sarvam',
+    baseUrl: null,
+    region: null,
+    apiVersion: null,
+    deploymentName: null,
+    encryptedApiKey: null,
+    keyVersion: null,
+    enabled: false,
+    metaData: null,
+  },
 ];
 
 /**
- * Compile-time guard: the seed must cover every canonical provider. Kept as a
- * type-level assertion so adding a provider to `AI_MODEL_PROVIDERS` without a
- * seed row fails the build, not just the test.
+ * Compile-time guard: the LLM service must cover every canonical serving
+ * provider. Scoped to `service === 'llm'` under the unified plane (TASK-569) —
+ * the STT/TTS catalog rows are cloud-only and additive. Kept as a type-level
+ * assertion so adding a provider to `AI_MODEL_PROVIDERS` without an `llm` seed
+ * row fails the build, not just the test.
  */
-const _providerCoverage: Record<(typeof AI_MODEL_PROVIDERS)[number], true> = Object.fromEntries(
-  SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => [c.provider, true]),
+const _llmProviderCoverage: Record<(typeof AI_MODEL_PROVIDERS)[number], true> = Object.fromEntries(
+  SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'llm').map((c) => [c.provider, true]),
 ) as Record<(typeof AI_MODEL_PROVIDERS)[number], true>;
-void _providerCoverage;
+void _llmProviderCoverage;
 
 export const seedAiProviderConnection = async (client: CorePrismaClient): Promise<{ success: true; created: number; skipped: number }> => {
   console.log('Seeding SYSTEM AiProviderConnection rows (TASK-524)...');
@@ -199,21 +331,22 @@ export const seedAiProviderConnection = async (client: CorePrismaClient): Promis
   let skipped = 0;
   for (const row of SYSTEM_AI_PROVIDER_CONNECTIONS) {
     const existing = await client.aiProviderConnection.findFirst({
-      where: { tenantId: row.tenantId, provider: row.provider },
+      where: { tenantId: row.tenantId, service: row.service, provider: row.provider },
     });
 
     if (existing) {
       // CREATE-ONLY — never clobber an admin-configured endpoint or key.
-      console.log(`  AiProviderConnection "${row.provider}" already exists, skipping`);
+      console.log(`  AiProviderConnection "${row.service}:${row.provider}" already exists, skipping`);
       skipped += 1;
       continue;
     }
 
-    console.log(`  Creating AiProviderConnection "${row.provider}" (disabled)`);
+    console.log(`  Creating AiProviderConnection "${row.service}:${row.provider}" (disabled)`);
     await client.aiProviderConnection.create({
       data: {
         id: row.id,
         tenantId: row.tenantId,
+        service: row.service,
         provider: row.provider,
         baseUrl: row.baseUrl,
         region: row.region,

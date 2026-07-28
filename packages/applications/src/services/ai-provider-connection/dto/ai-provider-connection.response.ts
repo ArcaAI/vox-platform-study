@@ -12,7 +12,10 @@ export class AiProviderConnectionResponse {
   @ApiProperty({ description: 'Owning tenant. The reserved SYSTEM tenant row is the platform default.' })
   tenantId!: string;
 
-  @ApiProperty({ description: 'Serving provider identifier.', example: 'azure' })
+  @ApiProperty({ description: 'Capability the connection serves.', example: 'llm', enum: ['llm', 'stt', 'tts'] })
+  service!: string;
+
+  @ApiProperty({ description: 'Capability-scoped serving provider identifier.', example: 'azure' })
   provider!: string;
 
   @ApiProperty({ description: 'Base URL of the serving endpoint.', nullable: true })
