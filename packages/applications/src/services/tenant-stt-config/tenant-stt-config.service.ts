@@ -55,8 +55,9 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
     // Vault encryption/decryption, masking, OCC, and the
     // ResourceCreated/Updated/Deleted sys-event broadcasts for every credential
     // mutation; this service no longer touches Vault or a credential
-    // repository/table directly — `TenantSttProviderCredential` is no longer
-    // written (retired in favor of `AiProviderConnection`; TASK-576 drops it).
+    // repository/table directly — the legacy `TenantSttProviderCredential`
+    // table and its domain trio were DROPPED by TASK-576 in favor of
+    // `AiProviderConnection`.
     @Inject(IProviderConnectionService) private readonly providerConnectionService: IProviderConnectionService,
   ) {
     super(eventEmitter, clsService, ResourceType.TenantSttConfig);

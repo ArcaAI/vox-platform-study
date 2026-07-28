@@ -59,8 +59,16 @@ export enum ResourceType {
   // Eval run (TASK-549): the eval-gated-promotion runner broadcasts
   // ResourceCreated per persisted EvalRun. Parity with audit.prisma.
   EvalRun = 'EvalRun',
-  // Per-tenant STT fallback config + BYO provider credentials (TASK-567).
+  // Per-tenant STT fallback config (TASK-567).
   // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
   TenantSttConfig = 'TenantSttConfig',
+  // HARMLESS-UNUSED (TASK-576): the `TenantSttProviderCredential` table and
+  // its domain trio were dropped — credential rows now live in the unified
+  // `AiProviderConnection` plane (service='stt'). Postgres cannot cheaply
+  // drop a value from an enum type already in use elsewhere in this column,
+  // so this member is kept, deliberately never emitted again, purely to keep
+  // this TS enum in parity with the `ResourceType` enum in audit.prisma (see
+  // resourceType.enum-parity.test.ts). Do not remove without also dropping
+  // it from audit.prisma via a reviewed enum-value migration.
   TenantSttProviderCredential = 'TenantSttProviderCredential',
 }

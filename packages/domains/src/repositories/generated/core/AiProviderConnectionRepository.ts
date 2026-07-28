@@ -13,7 +13,7 @@ import { AiProviderConnection } from '../../../models';
  * Provider-connection repository (config-plane core).
  *
  * HAND-AUTHORED — the `gen:repository` generator crashes pre-existingly; this
- * follows the `AiTaskDefaultRepository` / `TenantTtsProviderCredentialRepository`
+ * follows the `AiTaskDefaultRepository` / `TenantSttConfigRepository`
  * precedent in this folder.
  *
  * One row per (tenant, service, provider) — enforced by the

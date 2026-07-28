@@ -9,8 +9,7 @@ import * as Models from '../../../models';
 // `Repository.updateWithVersion`. Strip it from every write path here so the
 // auto-mappers cannot leak it into a Prisma update. Mirrors the
 // `DepartmentEntityMapper` / `AiTaskDefaultEntityMapper` treatment — this model
-// IS OCC-written (versioned PATCH routes), unlike
-// `TenantTtsProviderCredentialEntityMapper`, which omits the strip.
+// IS OCC-written (versioned PATCH routes).
 const FIELDS_NOT_WRITABLE: string[] = ['version'];
 
 function stripNonWritableFields<T extends object>(model: T, fields: string[]): T {

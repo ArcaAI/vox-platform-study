@@ -1,0 +1,65 @@
+-- TASK-576 — Legacy Credential-Table Cleanup (Wave 2, runs LAST)
+--
+-- DESTRUCTIVE. Drops the two legacy per-capability BYO provider-credential
+-- tables now that TASK-570 (TTS) and TASK-571 (STT) have repointed every
+-- reader/writer at the unified "core"."AiProviderConnection" plane
+-- (`service` discriminator: 'llm' | 'stt' | 'tts'). A grep of `packages/**`
+-- and `apps/**` at authoring time found zero remaining live reads/writes of
+-- either credential repository — only comments, generated dead code (removed
+-- alongside this migration), and historical migration SQL reference the two
+-- model names.
+--
+-- ┌─────────────────────────────── RESTORE PATH ───────────────────────────┐
+-- │ This migration is NOT reversible by re-creating the dropped tables with │
+-- │ live data — but no data is actually at risk. TASK-569                   │
+-- │ (20260728120000_task_569_provider_connection_service_discriminator)     │
+-- │ already COPIED (never moved) every row from both legacy tables into     │
+-- │ "core"."AiProviderConnection" (service='tts' / service='stt' rows,      │
+-- │ keyed by (tenantId, service, provider)). Every BYO credential this      │
+-- │ migration drops therefore already has a live twin in                   │
+-- │ AiProviderConnection. If a restore of the legacy SHAPE is ever needed   │
+-- │ (not the data — the data never left), re-run the `CREATE TABLE`         │
+-- │ statements from:                                                        │
+-- │   - 20260711120000_task_496_tenant_tts_config/migration.sql             │
+-- │     (TenantTtsProviderCredential)                                       │
+-- │   - 20260728000000_task_567_tenant_stt_fallback_config/migration.sql    │
+-- │     (TenantSttProviderCredential)                                       │
+-- │ then re-populate from AiProviderConnection with the inverse of the      │
+-- │ TASK-569 copy (filter service='tts'|'stt', map baseUrl→endpoint).       │
+-- └───────────────────────────────────────────────────────────────────────┘
+--
+-- `ResourceType` enum member handling: Postgres cannot cheaply DROP a VALUE
+-- from an existing enum type, and the domains-layer TS `ResourceType` enum
+-- must stay in parity with `"core"."ResourceType"` in audit.prisma (enforced
+-- by resourceType.enum-parity.test.ts). `TenantSttProviderCredential` is
+-- therefore LEFT as a harmless-unused member in BOTH enums — it is simply
+-- never emitted again. (`TenantTtsProviderCredential` was never a
+-- `ResourceType` member — TTS credential mutations broadcast under
+-- `ResourceType.TenantTtsConfig` — so there is nothing to leave for TTS.)
+-- No `ALTER TYPE ... DROP VALUE` statement is required or included here.
+--
+-- Neither table carries a FOREIGN KEY (tenantId is a plain, unconstrained
+-- column across this schema — see 02-database-prisma rules), so a plain
+-- DROP TABLE is safe with no dependent-constraint cleanup.
+--
+-- NOT applied by the authoring agent. Requires explicit owner approval
+-- before running against any shared/test database (rule 02: never DROP
+-- without approval).
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Drop the TTS legacy credential table (superseded by AiProviderConnection,
+-- service='tts'). Indexes/constraints ("TenantTtsProviderCredential_pkey",
+-- "TenantTtsProviderCredential_tenantId_idx",
+-- "TenantTtsProviderCredential_tenant_provider_unique") are dropped
+-- implicitly with the table.
+-- ────────────────────────────────────────────────────────────────────────────
+DROP TABLE IF EXISTS "core"."TenantTtsProviderCredential";
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Drop the STT legacy credential table (superseded by AiProviderConnection,
+-- service='stt'). Indexes/constraints ("TenantSttProviderCredential_pkey",
+-- "TenantSttProviderCredential_tenantId_idx",
+-- "TenantSttProviderCredential_tenant_provider_unique") are dropped
+-- implicitly with the table.
+-- ────────────────────────────────────────────────────────────────────────────
+DROP TABLE IF EXISTS "core"."TenantSttProviderCredential";
