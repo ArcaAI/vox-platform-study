@@ -284,6 +284,14 @@ export class AiProviderConnectionService extends BaseService implements IProvide
         if (row.region) entry.region = row.region;
         if (row.apiVersion) entry.api_version = row.apiVersion;
         if (row.deploymentName) entry.deployment_name = row.deploymentName;
+        // Columns cover azure/bedrock; the newer providers keep their per-request
+        // target in extraJson (console-written): `model` (openai/anthropic/stt),
+        // `project`/`location` (vertex). Without this, Vertex BYO never reaches
+        // the tenant's project and an LLM model override is silently dropped.
+        const extra = (row.extraJson ?? {}) as Record<string, unknown>;
+        if (typeof extra.model === 'string') entry.model = extra.model;
+        if (typeof extra.project === 'string') entry.project = extra.project;
+        if (typeof extra.location === 'string') entry.location = extra.location;
         out[row.provider] = entry;
       } catch {
         // FAIL OPEN for this one credential. The log carries the identifying

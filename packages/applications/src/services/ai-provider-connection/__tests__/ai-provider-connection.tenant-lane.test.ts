@@ -39,6 +39,7 @@ function makeRow(
     deploymentName?: string | null;
     encryptedApiKey?: Uint8Array | null;
     keyVersion?: number | null;
+    extraJson?: Record<string, unknown> | null;
   } = {},
 ) {
   return AiProviderConnectionFactory.CreateAiProviderConnection({
@@ -51,6 +52,7 @@ function makeRow(
     enabled: overrides.enabled ?? true,
     encryptedApiKey: overrides.encryptedApiKey === undefined ? Buffer.from('vault:v3:cipher', 'utf8') : overrides.encryptedApiKey,
     keyVersion: overrides.keyVersion === undefined ? 3 : overrides.keyVersion,
+    extraJson: overrides.extraJson ?? null,
   });
 }
 
@@ -82,6 +84,27 @@ function makeService(opts: { rows?: unknown[]; withVault?: boolean; decrypt?: ()
 beforeEach(() => vi.clearAllMocks());
 
 describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
+  it('folds model/project/location from extraJson into the wire entry (vertex/openai BYO)', async () => {
+    const { svc } = makeService({
+      rows: [
+        makeRow({
+          provider: 'vertex',
+          extraJson: { project: 'my-gcp-project', location: 'us-central1', model: 'gemini-2.0-flash' },
+        }),
+      ],
+    });
+    const out = await svc.resolveTenantCloudOverrides('llm', TENANT_A);
+    // The Python ProviderOverride carries project/location/model; the console
+    // stores them in extraJson (no dedicated column), so the gateway emitter
+    // MUST forward them or Vertex BYO never reaches the tenant's project.
+    expect(out.vertex).toMatchObject({
+      api_key: 'plaintext-key',
+      project: 'my-gcp-project',
+      location: 'us-central1',
+      model: 'gemini-2.0-flash',
+    });
+  });
+
   it('maps an enabled azure row to the snake_case wire shape', async () => {
     const { svc } = makeService({
       rows: [
