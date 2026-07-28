@@ -2,8 +2,9 @@
  * AI provider connections e2e.
  *
  * Live-stack requirement: the dev stack (`pnpm test:api:up`) plus a seeded
- * database (`pnpm db:seed`), which supplies the eight DISABLED SYSTEM
- * `AiProviderConnection` rows.
+ * database (`pnpm db:seed`), which supplies the nine DISABLED SYSTEM
+ * `AiProviderConnection` rows (ollama, lm-studio, azure, bedrock, built-in,
+ * sarvam, openai, vllm, llama-cpp — see seed/17-ai-provider-connection.ts).
  *
  * What these specs prove that unit tests cannot:
  *   1. The OCC chain really is wired end to end through the gateway —
@@ -31,12 +32,12 @@ test.describe('AI provider connections', () => {
 
   const auth = () => ({ Authorization: `Bearer ${globalAdminToken}` });
 
-  test('seeds eight SYSTEM connections, all disabled and all keyless', async ({ request }) => {
+  test('seeds nine SYSTEM connections, all disabled and all keyless', async ({ request }) => {
     const res = await request.get(`/api/v1/admin/ai-providers?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
     expect(res.status()).toBe(200);
 
     const rows = await res.json();
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(9);
     for (const row of rows) {
       expect(row.enabled, `${row.provider} must seed disabled`).toBe(false);
       expect(row.hasKey, `${row.provider} must seed keyless`).toBe(false);
