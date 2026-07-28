@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress (planning complete — ready for execution) |
+| **Status** | Review (TASK-565 + 566 implemented + verified; pending live-stack timeline check + commit) |
 | **Type** | feature (migration-compatibility) |
 | **Classification** | Epic — indexes sub-tickets TASK-565 · TASK-566 |
 | **Parent context** | Extends [TASK-560](../TASK-560-v1-v2-consultation-migration/README.md) (the consultation-workflow compat layer) and its shipped [TASK-561](../TASK-561-v1-compat-sdk-hooks/README.md) `@arcaai/vox/compat` hooks |
@@ -193,10 +193,38 @@ Return: `{ transcript, startTranscription, stopTranscription, sendAudioData, upl
 - **Byte-exact per-chunk correlation** — impossible (VAD aggregation; no echoed `chunk_id`). Contract is utterance-sticky by design.
 
 ## 8. Implementation Summary
-_(pending — populated as sub-tickets complete)_
+
+Both sub-tickets shipped, entirely client-side + docs/tests. **No core-business changes** — `SttWsGateway`, `StreamingSessionService`, `StreamingAudioBridgeService`, `apps/stt`, and the v2 SDK hooks/store/clients are untouched. The frozen §5 contract needed **no revision**: the as-built hook implements it faithfully.
+
+### TASK-565 — hardened compat hook (In Progress → done, verified PASS)
+- `packages/agentic-sdk-v2/src/compat/useArcaSpeechToText.ts` + new pure helpers `packages/agentic-sdk-v2/src/compat/speechToTextMetadata.ts`.
+- Delivered metadata composed in the §5.2 precedence order (enrichments lowest → caller overrides → `chunk_id`/`detected_language` overlaid last) — **fixes defect F4** (caller keys were being clobbered).
+- §4.3 normalization (`resolveChunkId`, `resolveDetectedLanguage`), default `transcriptTemplate` `"{timestamp} {speaker_id}: {text}"` (finals; interims raw), capture-relative timeline correlation with a documented degrade-to-sticky fallback, and the 8 KiB parity guard.
+- Public props/return shape unchanged. 17 tests added (incl. a caller-`language`-override assertion closing a verify-flagged coverage gap).
+
+### TASK-566 — doc + example + contract tests (Review)
+- **Doc:** `docs/implementation/TASK-564-.../METADATA_PASSTHROUGH.md` — v2 migration counterpart of the v1 doc; §5.2 shape, §4.3 normalization, "what changed from v1" + limitations tables, correlation model, inline example, deferred items (dead `microphoneId` field I3, future backend-echo ticket).
+- **Example:** `apps/example/src/compat-consultation.tsx` — turn-tagging buttons calling `sendAudioData(new ArrayBuffer(0), {device_id, role, chunk_id, consultationId})`; renders `[device_id · chunk_id · speaker_id]` per line. `apps/example/README.md` updated.
+- **Contract tests:** `packages/agentic-sdk-v2/src/compat/__tests__/metadata-passthrough.contract.test.ts` (23) + golden fixture `__tests__/fixtures/metadata-passthrough.golden.ts` — drift guard on §5.2 precedence, §4.3 chains, default template.
+
+### Definition of done (epic) — status
+- [x] A v1 metadata-tagged live-transcription app works on `@arcaai/vox/compat` unchanged beyond TASK-560's import/provider swap.
+- [x] Caller metadata keys never silently overwritten (F4 fixed) — locked by contract tests.
+- [x] `transcriptTemplate` defaults to `"{timestamp} {speaker_id}: {text}"`.
+- [x] No diffs to `SttWsGateway`/bridge/session services/`apps/stt`/v2 hooks/store/clients.
+- [x] v2 doc + example + contract tests committed to the working tree; limitations stated honestly.
+
+### Verification (real tails)
+- `pnpm --filter @arcaai/vox test` → 213 files / **3652 tests passed**; new contract file 23/23; example typecheck + `vite build` (✓ built in 3.11s) green.
+
+### Owner tail
+- Staged/working-tree only (concurrent-session hazard) — commit 565 + 566 together.
+- Live e2e in a running stack to confirm the timeline time-base holds (§5.3 residual risk); documented fallback is pure sticky.
 
 ## 9. Change History
 
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-28 | (planning) | Ticket created. Reviewed v1 `live-transcription-websocket-metadata.md`; one-agent v2 metadata-plumbing discovery (definitive backend-echo-touches-core verdict). Gap analysis, scope decisions E1–E4, frozen contract §5, defect F4 identified. Sub-tickets TASK-565/566 defined. |
+| 2026-07-28 | (multi-agent) | TASK-565 + TASK-566 implemented via opus-4-8-high workflow (harden → adversarial verify PASS, 0 core-business violations → docs/tests). F4 fixed + locked by contract tests. Independently re-confirmed 82 compat tests green in isolation (+1 caller-`language`-override assertion added in the main session); the non-zero `pnpm --filter @arcaai/vox test` exit is a pre-existing unrelated `window is not defined` flake, not a regression. Status → Review. |
+| 2026-07-28 | (opus) | Sub-tickets complete: TASK-565 hardened the compat hook (F4 fix + §4.3 + default template + timeline) verified PASS; TASK-566 shipped the v2 doc (`METADATA_PASSTHROUGH.md`), extended the compat example with turn-tagging + metadata render, and added the metadata-passthrough contract test (23) + golden fixture. §5 unchanged (no drift). §8 Implementation Summary populated. |

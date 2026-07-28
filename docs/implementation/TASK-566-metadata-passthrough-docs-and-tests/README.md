@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Pending |
+| **Status** | Review |
 | **Type** | docs + tests |
 | **Parent** | [TASK-564](../TASK-564-live-transcription-metadata-passthrough/README.md) |
 | **Depends on** | TASK-565 (as-built hook) |
@@ -65,9 +65,31 @@ Add metadata tagging to the live-transcription section: call `stt.sendAudioData(
 - Hermetic tests; no live stack required.
 
 ## 5. Implementation Summary
-_(pending)_
+
+Shipped all three deliverables, additive-only, against the as-built TASK-565 hook. The as-built hook (`useArcaSpeechToText.ts` + `speechToTextMetadata.ts`) implements TASK-564 §5 faithfully — **no divergence found**, so §5 was NOT modified.
+
+### Files
+- **Doc (new):** `docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md` — the v2 migration-facing counterpart of the v1 doc. Covers the §5.2 delivered shape, §4.3 normalization, why it is client-side (§3), an honest "what changed from v1" table + a limitations table (§4), the correlation model (§5), the inline example (§6), and the deferred items — the dead `microphoneId` wire field (I3) and a future backend-echo ticket (§7). References TASK-564 §5 as the single authority throughout; mirrors the v1 doc's §9 candor.
+- **Example (edited):** `apps/example/src/compat-consultation.tsx` — added **Tag turn: Clinician / Patient** buttons calling `stt.sendAudioData(new ArrayBuffer(0), { device_id, role, chunk_id, consultationId })` at turn boundaries; `onTranscript` now captures the 3rd `metadata` arg; each transcript line renders `[device_id · chunk_id · speaker_id]`. `apps/example/README.md` — added a "Per-chunk metadata passthrough" subsection linking `METADATA_PASSTHROUGH.md`.
+- **Contract tests (new):** `packages/agentic-sdk-v2/src/compat/__tests__/metadata-passthrough.contract.test.ts` (23 tests) — locks §5.2 precedence (enrichments lowest → caller overrides → `chunk_id`/`detected_language` overlaid last), the F4 drift guard (a caller `speaker_id`/`confidence`/`language`/`isFinal` is never clobbered — **closes the prior unasserted caller-`language`-override coverage gap**), the §4.3 chains, and the default template. Golden fixture: `packages/agentic-sdk-v2/src/compat/__tests__/fixtures/metadata-passthrough.golden.ts`.
+
+### Deviations / decisions
+- **Golden fixture co-located in the package** (`__tests__/fixtures/`) rather than repo-root `tests/fixtures/`. The verification command is `pnpm --filter @arcaai/vox test` (the package's own vitest), which only discovers files inside the package; a repo-root fixture would not be importable by that runner. Co-location keeps the run hermetic and self-contained — the drift-guard intent is unchanged.
+- The golden authoring caught a real subtlety (and the test caught my first draft): `detected_language` resolves from `detected_language → detectedLanguage → seg.language` ONLY — a caller `language` override does **not** feed it. Fixture + doc reflect this.
+
+### Verification (real tails)
+- `pnpm --filter @arcaai/vox test` → **Test Files 213 passed (213); Tests 3652 passed (3652)**; exit 0.
+- New contract file in isolation → **Tests 23 passed (23)**; exit 0.
+- `pnpm --filter live-transcription-example typecheck` → clean (exit 0).
+- `pnpm --filter live-transcription-example build` → `✓ built in 3.11s` (exit 0).
+- Lint: new test/fixture files are ignored by `eslint src` (all `__tests__` are), consistent with existing compat tests — 0 errors.
+
+### Follow-ups (owner)
+- Not committed — staged/working-tree only, per the repo concurrent-session hazard.
+- Live e2e in a running stack to confirm the timeline base holds (TASK-565 residual clock-offset risk); if it mis-attributes, the documented fallback is pure sticky.
 
 ## 6. Change History
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-28 | (planning) | Ticket created from TASK-564. |
+| 2026-07-28 | (opus) | Implemented all three deliverables (doc + example + contract tests). Verified against the as-built TASK-565 hook (no §5 drift). vox test 3652/3652, new contract 23/23, example typecheck + build green. Status → Review. |

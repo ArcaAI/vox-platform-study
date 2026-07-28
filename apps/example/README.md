@@ -79,6 +79,19 @@ pnpm --filter live-transcription-example build
 | `VITE_ARCA_API_KEY` | **Required** tenant SDK api key (`x-api-key` parity); no default is baked in |
 | `VITE_PIPELINE_ID` | Streaming STT pipeline id — enables live backend transcription |
 
+### Per-chunk metadata passthrough (TASK-564)
+
+The compat page also demonstrates the v1 *"tag each turn → read the tag back off
+the transcript"* feature. Use the **Tag turn: Clinician / Patient** buttons while
+recording — each calls `stt.sendAudioData(new ArrayBuffer(0), { device_id, role,
+chunk_id, consultationId })`. In v2 this is **client-side only** and PCM is
+ignored (the hook is a metadata sink), so the tag round-trips locally onto the
+next `onTranscript(text, isFinal, metadata)` call; the transcript list renders
+`[device_id · chunk_id · speaker_id]` beside each line (`device_id`/`chunk_id`
+are yours; `speaker_id` is derived from diarization). See
+[`METADATA_PASSTHROUGH.md`](../../docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md)
+for the full contract and its honest limitations.
+
 ## Running (raw-WebSocket demo)
 
 ```bash

@@ -16,7 +16,7 @@
  * See ../../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   useArcaSessionManager,
   useAudioCapture,
@@ -29,6 +29,8 @@ import {
 interface TranscriptLine {
   text: string;
   isFinal: boolean;
+  /** Delivered metadata off onTranscript (TASK-564 §5.2, normalized §4.3). */
+  meta?: Record<string, unknown>;
 }
 
 export function CompatConsultation() {
@@ -49,12 +51,16 @@ export function CompatConsultation() {
   const capture = useAudioCapture();
 
   // 2b. Live STT — onTranscript still fires (synthesized from v2 pull-state).
+  //     The third arg is the delivered metadata: caller keys you tagged via
+  //     sendAudioData (device_id/role/chunk_id), normalized with chunk_id /
+  //     detected_language, plus derived speaker_id (diarization). See
+  //     ../../docs/implementation/TASK-564-.../METADATA_PASSTHROUGH.md.
   const stt = useArcaSpeechToText({
     sessionId: mgr.session?.id ?? '',
     language: 'en',
-    onTranscript: (text, isFinal) => {
+    onTranscript: (text, isFinal, meta) => {
       if (isFinal) {
-        setLines((prev) => [...prev, { text, isFinal: true }]);
+        setLines((prev) => [...prev, { text, isFinal: true, meta }]);
         setInterim('');
       } else {
         setInterim(text);
@@ -62,12 +68,26 @@ export function CompatConsultation() {
     },
   });
 
+  // Per-chunk metadata tagging (TASK-564). PCM is ignored in v2 (the hook is a
+  // metadata sink), so pass an empty buffer and change the tag only at logical
+  // TURN boundaries — the tag round-trips onto the next transcript(s).
+  const chunkRef = useRef(0);
+  const tagTurn = (role: 'clinician' | 'patient') => {
+    stt.sendAudioData(new ArrayBuffer(0), {
+      device_id: role === 'clinician' ? 'mic-1' : 'mic-2',
+      role,
+      chunk_id: `chunk-${(chunkRef.current += 1)}`,
+      consultationId: mgr.session?.id ?? 'unknown',
+    });
+  };
+
   // 4. Summary — same path + x-api-key as v1; sends real per-turn segments.
   const smr = useSMR({ sessionId: mgr.session?.id });
 
   const start = async () => {
     setSummary(null);
     setLines([]);
+    chunkRef.current = 0;
     await mgr.createSession();
     await mgr.startSession();
     await capture.startRecording();
@@ -123,11 +143,31 @@ export function CompatConsultation() {
         </button>
       </div>
 
+      {/* Metadata tagging — tag the CURRENT turn; it round-trips onto the next
+          transcript line (TASK-564). Only enabled while recording. */}
+      <div style={{ display: 'flex', gap: '0.5rem', margin: '0 0 1rem', alignItems: 'center' }}>
+        <span style={{ color: '#666', fontSize: '0.85rem' }}>Tag turn:</span>
+        <button onClick={() => tagTurn('clinician')} disabled={!capture.isRecording}>
+          Clinician (mic-1)
+        </button>
+        <button onClick={() => tagTurn('patient')} disabled={!capture.isRecording}>
+          Patient (mic-2)
+        </button>
+      </div>
+
       <section>
         <h2>Live transcript</h2>
         <ul>
           {lines.map((l, i) => (
-            <li key={i}>{l.text}</li>
+            <li key={i}>
+              {l.text}
+              {/* device_id / chunk_id are what you tagged; speaker_id is derived
+                  from diarization (the only post-mix source signal — §4/E3). */}
+              <small style={{ color: '#888', marginLeft: '0.5rem' }}>
+                [{String(l.meta?.device_id ?? '—')} · {String(l.meta?.chunk_id ?? '—')} ·{' '}
+                {String(l.meta?.speaker_id ?? '—')}]
+              </small>
+            </li>
           ))}
           {interim ? <li style={{ opacity: 0.5 }}>{interim}</li> : null}
         </ul>
