@@ -42,7 +42,7 @@ class OllamaConfig(BaseSettings):
 
     # Guardrail-specific settings
     temperature: float = 0.1  # Low temperature for consistent guardrail results
-    max_tokens: int = 500    # Reasonable limit for guardrail responses
+    max_tokens: int = 500  # Reasonable limit for guardrail responses
 
     # Guardian-specific settings
     guardian_temperature: float = 0.05  # Even lower for medical validation
@@ -86,7 +86,7 @@ class OpenAICompatConfig(BaseSettings):
 
     # Guardrail-specific settings
     temperature: float = 0.1  # Low temperature for consistent guardrail results
-    max_tokens: int = 500    # Reasonable limit for guardrail responses
+    max_tokens: int = 500  # Reasonable limit for guardrail responses
 
     # Guardian-specific settings
     guardian_temperature: float = 0.05  # Even lower for medical validation

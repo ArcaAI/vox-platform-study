@@ -166,7 +166,9 @@ class VertexProvider:
             raw_stop_reason=raw_stop_reason,
             prompt_tokens=prompt_tokens,
             predicted_tokens=predicted_tokens,
-            total_tokens=total_tokens if total_tokens is not None else prompt_tokens + predicted_tokens,
+            total_tokens=(
+                total_tokens if total_tokens is not None else prompt_tokens + predicted_tokens
+            ),
             total_ms=total_ms,
             ttft_ms=ttft_ms,
             engine_native={
@@ -296,7 +298,9 @@ class VertexProvider:
         # cloud configs carry no compiled-in vendor model) — never advertise an
         # empty-named model.
         models: list[ModelInfo] = (
-            [ModelInfo(name=self._default_model, supports_streaming=True)] if self._default_model else []
+            [ModelInfo(name=self._default_model, supports_streaming=True)]
+            if self._default_model
+            else []
         )
         status = "available" if self._client is not None else "unavailable"
         return ProviderInfo(

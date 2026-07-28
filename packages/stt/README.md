@@ -6,11 +6,11 @@ Last updated: 2026-07-04
 
 ## Where it fits
 
-| Direction | Package | Relationship |
-|---|---|---|
-| Depends on | `@arcaai/room` (peer) | Extends `BaseProcessor`; attaches to an `AudioTrack` |
-| Depends on | `@huggingface/transformers`, `onnxruntime-web` | Whisper inference (bundled into the worker) |
-| Consumed by | `@arcaai/vox` | Final stage of `TranscriptionPipeline` (NoiseFilter → VAD → STT); vox injects an `STTStreamingTransport` for backend streaming |
+| Direction   | Package                                        | Relationship                                                                                                                   |
+| ----------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Depends on  | `@arcaai/room` (peer)                          | Extends `BaseProcessor`; attaches to an `AudioTrack`                                                                           |
+| Depends on  | `@huggingface/transformers`, `onnxruntime-web` | Whisper inference (bundled into the worker)                                                                                    |
+| Consumed by | `@arcaai/vox`                                  | Final stage of `TranscriptionPipeline` (NoiseFilter → VAD → STT); vox injects an `STTStreamingTransport` for backend streaming |
 
 `react` is an optional peer dependency (only needed for `useSTT`).
 
@@ -38,11 +38,11 @@ packages/stt/
 
 ## Provider modes
 
-| `features.provider` | Transport | When to use |
-|---|---|---|
-| `'local'` | None — Whisper runs in a Web Worker in the browser | Offline/on-device transcription; requires `features.modelId` |
-| `'remote'` (default) | `sttSocket` WebSocket URL managed by this package | Server-side ASR with a simple socket contract |
-| `'remote'` + `setStreamingTransport(...)` | Host-supplied `STTStreamingTransport` | Session-based streaming backends; this is how `@arcaai/vox` drives the STT service |
+| `features.provider`                       | Transport                                          | When to use                                                                        |
+| ----------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `'local'`                                 | None — Whisper runs in a Web Worker in the browser | Offline/on-device transcription; requires `features.modelId`                       |
+| `'remote'` (default)                      | `sttSocket` WebSocket URL managed by this package  | Server-side ASR with a simple socket contract                                      |
+| `'remote'` + `setStreamingTransport(...)` | Host-supplied `STTStreamingTransport`              | Session-based streaming backends; this is how `@arcaai/vox` drives the STT service |
 
 > **`@arcaai/vox` disables the `'local'` provider platform-wide (TASK-545).** This package's local Whisper provider is untouched — gated OFF, not deleted — via a kill switch in the CONSUMER: `LOCAL_TRANSCRIPTION_ENABLED` (`packages/agentic-sdk-v2/src/core/constants.ts`) makes `TranscriptionPipeline.resolveSTTRuntimeProvider()` never resolve to `'local'` while it reads `false`. Calling `createSTT({ features: { provider: 'local', ... } })` directly from this package (outside `@arcaai/vox`) is unaffected and still runs on-device inference.
 
@@ -70,12 +70,14 @@ function Transcriber() {
 
   return (
     <div>
-      <button onClick={isCapturing ? stopCapture : startCapture}>
-        {isCapturing ? 'Stop' : 'Start'}
-      </button>
+      <button onClick={isCapturing ? stopCapture : startCapture}>{isCapturing ? 'Stop' : 'Start'}</button>
       <div>{isProcessing ? 'Processing…' : 'Idle'}</div>
       <div>{currentTranscript}</div>
-      <ul>{finalTranscripts.map((t, i) => <li key={i}>{t.text}</li>)}</ul>
+      <ul>
+        {finalTranscripts.map((t, i) => (
+          <li key={i}>{t.text}</li>
+        ))}
+      </ul>
       {error && <div>{error.message}</div>}
     </div>
   );
@@ -93,8 +95,8 @@ const stt = new STTProcessor({
   audio: { language: 'en-US', chunkLengthS: 30, overlapLengthS: 5 },
   features: {
     provider: 'local',
-    modelId: 'tiny',          // 'tiny' | 'base' | 'small' | 'medium' | 'large' | HF model ID
-    device: 'auto',           // 'webgpu' | 'wasm' | 'auto'
+    modelId: 'tiny', // 'tiny' | 'base' | 'small' | 'medium' | 'large' | HF model ID
+    device: 'auto', // 'webgpu' | 'wasm' | 'auto'
     returnTimestamps: 'word', // true | 'word' | false
   },
   onModelProgress: (p) => console.log(`Model: ${(p.progress * 100).toFixed(0)}%`),
@@ -110,25 +112,25 @@ await audioTrack.setProcessor(stt);
 
 ### Options (`STTOptions`)
 
-| Option | Default | Description |
-|---|---|---|
-| `sttSocket` | — | WebSocket URL; required for `'remote'` unless a streaming transport is set |
-| `sessionId` | auto-generated | Session identifier (`generateSessionId()`) |
-| `audio.language` | `'en-US'` | ISO 639-1 + ISO 3166-1 locale |
-| `audio.sampleRate` / `channels` | `16000` / `1` | Whisper input format |
-| `audio.chunkLengthS` / `overlapLengthS` | `30` / `5` | Chunking for continuous transcription |
-| `features.provider` | `'remote'` | `'local' \| 'remote'` |
-| `features.modelId` | — | Required for local; Whisper size or HF model ID |
-| `features.diarization` / `numSpeakers` | `false` / `2` | Local speaker diarization (`LocalSpeakerDiarizer`, MFCC centroids) |
-| `features.returnTimestamps` | `true` | `true` (chunk), `'word'`, or `false` |
-| `features.task` | `'transcribe'` | `'translate'` requires a multilingual model; `.en` models reject it |
-| `features.codeSwitching` | `false` | Let Whisper auto-detect language per segment |
-| `features.vadGate` | `false` | Disable continuous feeding; call `transcribeSegment()` per VAD segment |
-| `features.device` / `quantized` | `'auto'` / `true` | Local inference device and quantization |
-| `prompt` | — | Initial prompt to bias transcription |
-| `voiceProfile` | — | `{ id?, reservedSpeakerId?, similarityThreshold? }` pins the enrolled speaker's diarization slot |
-| `debugMode` | `false` | Config dump + per-result transcript JSON, `[ARCAAI:DEBUG]` prefix |
-| `enableStats` / `statsInterval` | `false` / `1000` | Emit `stt-stats` events |
+| Option                                  | Default           | Description                                                                                      |
+| --------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------ |
+| `sttSocket`                             | —                 | WebSocket URL; required for `'remote'` unless a streaming transport is set                       |
+| `sessionId`                             | auto-generated    | Session identifier (`generateSessionId()`)                                                       |
+| `audio.language`                        | `'en-US'`         | ISO 639-1 + ISO 3166-1 locale                                                                    |
+| `audio.sampleRate` / `channels`         | `16000` / `1`     | Whisper input format                                                                             |
+| `audio.chunkLengthS` / `overlapLengthS` | `30` / `5`        | Chunking for continuous transcription                                                            |
+| `features.provider`                     | `'remote'`        | `'local' \| 'remote'`                                                                            |
+| `features.modelId`                      | —                 | Required for local; Whisper size or HF model ID                                                  |
+| `features.diarization` / `numSpeakers`  | `false` / `2`     | Local speaker diarization (`LocalSpeakerDiarizer`, MFCC centroids)                               |
+| `features.returnTimestamps`             | `true`            | `true` (chunk), `'word'`, or `false`                                                             |
+| `features.task`                         | `'transcribe'`    | `'translate'` requires a multilingual model; `.en` models reject it                              |
+| `features.codeSwitching`                | `false`           | Let Whisper auto-detect language per segment                                                     |
+| `features.vadGate`                      | `false`           | Disable continuous feeding; call `transcribeSegment()` per VAD segment                           |
+| `features.device` / `quantized`         | `'auto'` / `true` | Local inference device and quantization                                                          |
+| `prompt`                                | —                 | Initial prompt to bias transcription                                                             |
+| `voiceProfile`                          | —                 | `{ id?, reservedSpeakerId?, similarityThreshold? }` pins the enrolled speaker's diarization slot |
+| `debugMode`                             | `false`           | Config dump + per-result transcript JSON, `[ARCAAI:DEBUG]` prefix                                |
+| `enableStats` / `statsInterval`         | `false` / `1000`  | Emit `stt-stats` events                                                                          |
 
 Key `STTProcessor` methods: `transcribeSegment(audio)`, `setLanguage(locale)`, `setStreamingTransport(transport)` / `getStreamingTransport()`, `setReservedSpeakerId(id)`, `getProviderType()`, `getProvider()`, `getStats()`, `getOptions()`, `getSessionId()`, `getLanguage()`, `isSupported()`.
 
@@ -147,6 +149,7 @@ Data events: `stt-transcription` (final), `stt-partial`, `stt-model-loaded`, `st
   ```
 
   Without these headers it silently falls back to single-threaded inference. Verify with `window.crossOriginIsolated === true`.
+
 - **Audio capture**: prefers an AudioWorklet capture path (`stt-capture.worklet.ts`, coalesced frames) with a legacy fallback; probe with `isAudioWorkletUsable()`.
 - Browser-only; ships a `react-server` exports-condition stub. Microphone permission is handled by the `@arcaai/room` track.
 
@@ -172,14 +175,14 @@ This NoiseFilter → VAD → STT ordering is the same one `@arcaai/vox` builds i
 
 From this directory:
 
-| Command | Action |
-|---|---|
-| `pnpm build` / `pnpm dev` | tsup build (main bundle + worker bundle) / watch mode |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests |
-| `pnpm test:e2e` | Playwright browser tests; `:ui`, `:debug`, `:headed` variants exist |
-| `pnpm lint` | ESLint (`--max-warnings 0`) |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
+| Command                                                | Action                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------- |
+| `pnpm build` / `pnpm dev`                              | tsup build (main bundle + worker bundle) / watch mode               |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests                                                   |
+| `pnpm test:e2e`                                        | Playwright browser tests; `:ui`, `:debug`, `:headed` variants exist |
+| `pnpm lint`                                            | ESLint (`--max-warnings 0`)                                         |
+| `pnpm typecheck`                                       | `tsc --noEmit`                                                      |
+| `pnpm clean` / `pnpm clean:all`                        | Remove build output (nuke also removes `node_modules`)              |
 
 From the repo root: `pnpm --filter @arcaai/stt build` (same pattern for `test`, `lint`, etc.).
 

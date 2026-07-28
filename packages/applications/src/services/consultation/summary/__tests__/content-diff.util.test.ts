@@ -39,8 +39,26 @@ describe('diffContent', () => {
   });
 
   it('produces fieldChanges {section:{old,new}} for a changed SOAP section', () => {
-    const oldContent = ['Subjective:', 'Patient reports headache.', 'Objective:', 'BP 120/80.', 'Assessment:', 'Tension headache.', 'Plan:', 'Rest and fluids.'].join('\n');
-    const newContent = ['Subjective:', 'Patient reports severe headache.', 'Objective:', 'BP 120/80.', 'Assessment:', 'Tension headache.', 'Plan:', 'Rest and fluids.'].join('\n');
+    const oldContent = [
+      'Subjective:',
+      'Patient reports headache.',
+      'Objective:',
+      'BP 120/80.',
+      'Assessment:',
+      'Tension headache.',
+      'Plan:',
+      'Rest and fluids.',
+    ].join('\n');
+    const newContent = [
+      'Subjective:',
+      'Patient reports severe headache.',
+      'Objective:',
+      'BP 120/80.',
+      'Assessment:',
+      'Tension headache.',
+      'Plan:',
+      'Rest and fluids.',
+    ].join('\n');
 
     const delta = diffContent(oldContent, newContent);
 

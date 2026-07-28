@@ -44,7 +44,11 @@ def _make_mock_provider(*, healthy: bool = True):
     provider = AsyncMock()
     provider.health_check = AsyncMock(return_value=healthy)
     provider.generate = AsyncMock(
-        return_value=("Generated text!", "", {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15})
+        return_value=(
+            "Generated text!",
+            "",
+            {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
+        )
     )
     provider.get_info = AsyncMock(
         return_value=ProviderInfo(
@@ -151,7 +155,9 @@ async def degraded_client(settings, degraded_registry, mock_task_manager):
 
 @pytest_asyncio.fixture
 async def unhealthy_client(settings, all_unhealthy_registry, mock_task_manager):
-    app = _create_app(settings, provider_registry=all_unhealthy_registry, task_manager=mock_task_manager)
+    app = _create_app(
+        settings, provider_registry=all_unhealthy_registry, task_manager=mock_task_manager
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
@@ -167,7 +173,9 @@ async def empty_client(settings, empty_registry, mock_task_manager):
 
 @pytest_asyncio.fixture
 async def auth_client(auth_settings, healthy_registry, mock_task_manager):
-    app = _create_app(auth_settings, provider_registry=healthy_registry, task_manager=mock_task_manager)
+    app = _create_app(
+        auth_settings, provider_registry=healthy_registry, task_manager=mock_task_manager
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

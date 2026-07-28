@@ -69,26 +69,26 @@ UPDATE global_settings SET value = 'true' WHERE key = 'S3_REJECT_UNAUTHORIZED';
 ```yaml
 version: '3.8'
 services:
-    minio:
-        image: minio/minio:latest
-        container_name: minio
-        ports:
-            - '9000:9000'
-            - '9001:9001'
-        environment:
-            MINIO_ROOT_USER: minioadmin
-            MINIO_ROOT_PASSWORD: minioadmin
-        command: server /data --console-address ":9001"
-        volumes:
-            - minio_data:/data
-        healthcheck:
-            test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
-            interval: 30s
-            timeout: 20s
-            retries: 3
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
 volumes:
-    minio_data:
+  minio_data:
 ```
 
 ### Kubernetes Deployment
@@ -97,56 +97,56 @@ volumes:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-    name: minio
+  name: minio
 spec:
-    replicas: 1
-    selector:
-        matchLabels:
-            app: minio
-    template:
-        metadata:
-            labels:
-                app: minio
-        spec:
-            containers:
-                - name: minio
-                  image: minio/minio:latest
-                  ports:
-                      - containerPort: 9000
-                      - containerPort: 9001
-                  env:
-                      - name: MINIO_ROOT_USER
-                        value: 'minioadmin'
-                      - name: MINIO_ROOT_PASSWORD
-                        value: 'minioadmin'
-                  command:
-                      - /bin/bash
-                      - -c
-                  args:
-                      - minio server /data --console-address :9001
-                  volumeMounts:
-                      - name: storage
-                        mountPath: /data
-            volumes:
-                - name: storage
-                  persistentVolumeClaim:
-                      claimName: minio-pvc
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          env:
+            - name: MINIO_ROOT_USER
+              value: 'minioadmin'
+            - name: MINIO_ROOT_PASSWORD
+              value: 'minioadmin'
+          command:
+            - /bin/bash
+            - -c
+          args:
+            - minio server /data --console-address :9001
+          volumeMounts:
+            - name: storage
+              mountPath: /data
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: minio-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-    name: minio-service
+  name: minio-service
 spec:
-    selector:
-        app: minio
-    ports:
-        - name: api
-          port: 9000
-          targetPort: 9000
-        - name: console
-          port: 9001
-          targetPort: 9001
-    type: LoadBalancer
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001
+  type: LoadBalancer
 ```
 
 ## Usage Examples
@@ -159,42 +159,42 @@ import { IS3Service } from './path/to/IS3Service';
 
 @Injectable()
 export class MinIOService {
-    constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
+  constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
 
-    async initializeMinIO(): Promise<void> {
-        // Check if MinIO is configured
-        if (!this.s3Service.isMinIOConfigured()) {
-            throw new Error('MinIO is not configured');
-        }
-
-        // Get MinIO info
-        const minioInfo = this.s3Service.getMinIOInfo();
-        console.log('MinIO Configuration:', minioInfo);
-
-        // Test connection
-        const isConnected = await this.s3Service.testConnection();
-        if (!isConnected) {
-            throw new Error('Cannot connect to MinIO server');
-        }
-
-        console.log('MinIO connection successful');
+  async initializeMinIO(): Promise<void> {
+    // Check if MinIO is configured
+    if (!this.s3Service.isMinIOConfigured()) {
+      throw new Error('MinIO is not configured');
     }
 
-    async uploadToMinIO(file: Buffer, filename: string): Promise<void> {
-        const bucket = this.s3Service.getPublicBucketName();
-        await this.s3Service.putFile(bucket, filename, file, 'application/octet-stream');
-        console.log(`File uploaded to MinIO: ${bucket}/${filename}`);
+    // Get MinIO info
+    const minioInfo = this.s3Service.getMinIOInfo();
+    console.log('MinIO Configuration:', minioInfo);
+
+    // Test connection
+    const isConnected = await this.s3Service.testConnection();
+    if (!isConnected) {
+      throw new Error('Cannot connect to MinIO server');
     }
 
-    async downloadFromMinIO(filename: string): Promise<Buffer> {
-        const bucket = this.s3Service.getPublicBucketName();
-        return await this.s3Service.getFile(bucket, filename);
-    }
+    console.log('MinIO connection successful');
+  }
 
-    async generateMinIOUrl(filename: string): Promise<string> {
-        const bucket = this.s3Service.getPublicBucketName();
-        return await this.s3Service.signUrl(bucket, filename, 'get');
-    }
+  async uploadToMinIO(file: Buffer, filename: string): Promise<void> {
+    const bucket = this.s3Service.getPublicBucketName();
+    await this.s3Service.putFile(bucket, filename, file, 'application/octet-stream');
+    console.log(`File uploaded to MinIO: ${bucket}/${filename}`);
+  }
+
+  async downloadFromMinIO(filename: string): Promise<Buffer> {
+    const bucket = this.s3Service.getPublicBucketName();
+    return await this.s3Service.getFile(bucket, filename);
+  }
+
+  async generateMinIOUrl(filename: string): Promise<string> {
+    const bucket = this.s3Service.getPublicBucketName();
+    return await this.s3Service.signUrl(bucket, filename, 'get');
+  }
 }
 ```
 
@@ -203,40 +203,40 @@ export class MinIOService {
 ```typescript
 @Injectable()
 export class MinIOHealthService {
-    constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
+  constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
 
-    async checkMinIOHealth(): Promise<{
-        status: 'healthy' | 'unhealthy';
-        details: any;
-    }> {
-        try {
-            const isConfigured = await this.s3Service.isConfigured();
-            const isMinIO = this.s3Service.isMinIOConfigured();
-            const isConnected = await this.s3Service.testConnection();
-            const minioInfo = this.s3Service.getMinIOInfo();
+  async checkMinIOHealth(): Promise<{
+    status: 'healthy' | 'unhealthy';
+    details: any;
+  }> {
+    try {
+      const isConfigured = await this.s3Service.isConfigured();
+      const isMinIO = this.s3Service.isMinIOConfigured();
+      const isConnected = await this.s3Service.testConnection();
+      const minioInfo = this.s3Service.getMinIOInfo();
 
-            const status = isConfigured && isConnected ? 'healthy' : 'unhealthy';
+      const status = isConfigured && isConnected ? 'healthy' : 'unhealthy';
 
-            return {
-                status,
-                details: {
-                    configured: isConfigured,
-                    isMinIO,
-                    connected: isConnected,
-                    endpoint: minioInfo.endpoint,
-                    publicBucket: this.s3Service.getPublicBucketName(),
-                    privateBucket: this.s3Service.getPrivateBucketName(),
-                },
-            };
-        } catch (error) {
-            return {
-                status: 'unhealthy',
-                details: {
-                    error: error instanceof Error ? error.message : String(error),
-                },
-            };
-        }
+      return {
+        status,
+        details: {
+          configured: isConfigured,
+          isMinIO,
+          connected: isConnected,
+          endpoint: minioInfo.endpoint,
+          publicBucket: this.s3Service.getPublicBucketName(),
+          privateBucket: this.s3Service.getPrivateBucketName(),
+        },
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
     }
+  }
 }
 ```
 
@@ -262,17 +262,17 @@ For public buckets, you may want to set a public read policy:
 
 ```json
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Principal": {
-                "AWS": ["*"]
-            },
-            "Action": ["s3:GetObject"],
-            "Resource": ["arn:aws:s3:::public-files/*"]
-        }
-    ]
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": ["*"]
+      },
+      "Action": ["s3:GetObject"],
+      "Resource": ["arn:aws:s3:::public-files/*"]
+    }
+  ]
 }
 ```
 
@@ -416,25 +416,25 @@ Create a health check endpoint to monitor MinIO status:
 ```typescript
 @Controller('health')
 export class HealthController {
-    constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
+  constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
 
-    @Get('minio')
-    async checkMinIO() {
-        const isConfigured = await this.s3Service.isConfigured();
-        const isMinIO = this.s3Service.isMinIOConfigured();
-        const isConnected = await this.s3Service.testConnection();
-        const info = this.s3Service.getMinIOInfo();
+  @Get('minio')
+  async checkMinIO() {
+    const isConfigured = await this.s3Service.isConfigured();
+    const isMinIO = this.s3Service.isMinIOConfigured();
+    const isConnected = await this.s3Service.testConnection();
+    const info = this.s3Service.getMinIOInfo();
 
-        return {
-            status: isConfigured && isConnected ? 'ok' : 'error',
-            minio: {
-                configured: isConfigured,
-                detected: isMinIO,
-                connected: isConnected,
-                endpoint: info.endpoint,
-            },
-        };
-    }
+    return {
+      status: isConfigured && isConnected ? 'ok' : 'error',
+      minio: {
+        configured: isConfigured,
+        detected: isMinIO,
+        connected: isConnected,
+        endpoint: info.endpoint,
+      },
+    };
+  }
 }
 ```
 
@@ -522,36 +522,36 @@ Monitor S3 service operations:
 ```typescript
 @Injectable()
 export class MinIOMetricsService {
-    private metrics = {
-        uploads: 0,
-        downloads: 0,
-        errors: 0,
-        connectionTests: 0,
+  private metrics = {
+    uploads: 0,
+    downloads: 0,
+    errors: 0,
+    connectionTests: 0,
+  };
+
+  constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
+
+  async uploadWithMetrics(bucket: string, key: string, data: Buffer): Promise<void> {
+    try {
+      await this.s3Service.putFile(bucket, key, data);
+      this.metrics.uploads++;
+    } catch (error) {
+      this.metrics.errors++;
+      throw error;
+    }
+  }
+
+  async testConnectionWithMetrics(): Promise<boolean> {
+    this.metrics.connectionTests++;
+    return await this.s3Service.testConnection();
+  }
+
+  getMetrics() {
+    return {
+      ...this.metrics,
+      minioInfo: this.s3Service.getMinIOInfo(),
     };
-
-    constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
-
-    async uploadWithMetrics(bucket: string, key: string, data: Buffer): Promise<void> {
-        try {
-            await this.s3Service.putFile(bucket, key, data);
-            this.metrics.uploads++;
-        } catch (error) {
-            this.metrics.errors++;
-            throw error;
-        }
-    }
-
-    async testConnectionWithMetrics(): Promise<boolean> {
-        this.metrics.connectionTests++;
-        return await this.s3Service.testConnection();
-    }
-
-    getMetrics() {
-        return {
-            ...this.metrics,
-            minioInfo: this.s3Service.getMinIOInfo(),
-        };
-    }
+  }
 }
 ```
 

@@ -101,7 +101,9 @@ class TransformerTextClassifier(TextClassifier):
         try:
             pipeline_results = self.pipeline(request.text)
             top_prediction = max(pipeline_results, key=lambda x: x["score"])
-            probabilities = {score_item["label"]: float(score_item["score"]) for score_item in pipeline_results}
+            probabilities = {
+                score_item["label"]: float(score_item["score"]) for score_item in pipeline_results
+            }
 
             return TextClassificationResponse(
                 predicted_label=top_prediction["label"],

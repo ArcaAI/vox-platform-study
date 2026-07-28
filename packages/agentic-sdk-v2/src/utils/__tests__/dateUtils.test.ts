@@ -4,14 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  formatDate,
-  formatDateTime,
-  getToday,
-  isSameDay,
-  parseDate,
-  formatRelativeTime,
-} from '../dateUtils';
+import { formatDate, formatDateTime, getToday, isSameDay, parseDate, formatRelativeTime } from '../dateUtils';
 
 describe('dateUtils', () => {
   describe('formatDate', () => {

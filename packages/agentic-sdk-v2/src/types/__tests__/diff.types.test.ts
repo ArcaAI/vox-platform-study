@@ -8,12 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import type {
-  DiffChange,
-  DiffResult,
-  DiffStats,
-  DiffMode,
-} from '../diff';
+import type { DiffChange, DiffResult, DiffStats, DiffMode } from '../diff';
 
 // =============================================================================
 // DiffChange

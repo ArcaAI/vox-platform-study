@@ -13,7 +13,7 @@ async function waitForReady(page: Page, timeout = 60000) {
       const processor = (window as any).nerProcessor;
       return processor && processor.isInitialized();
     },
-    { timeout }
+    { timeout },
   );
 }
 
@@ -237,11 +237,7 @@ test.describe('Statistics', () => {
     test.skip(!supported, 'NER not supported in this browser');
 
     // Process multiple texts
-    const texts = [
-      'Patient has diabetes.',
-      'Taking Metformin daily.',
-      'Blood pressure elevated.',
-    ];
+    const texts = ['Patient has diabetes.', 'Taking Metformin daily.', 'Blood pressure elevated.'];
 
     for (const text of texts) {
       // Clear `window.lastResult` so the wait predicate has a
@@ -250,7 +246,9 @@ test.describe('Statistics', () => {
       // loop body races ahead while `#btn-extract` is still disabled
       // (HTML `<button disabled>` swallows the next click), which caused
       // only 2 of 3 extractions to fire.
-      await page.evaluate(() => { (window as any).lastResult = null; });
+      await page.evaluate(() => {
+        (window as any).lastResult = null;
+      });
       await page.fill('#input-text', text);
       await page.click('#btn-extract');
       await page.waitForFunction(() => (window as any).lastResult != null, { timeout: 30000 });
@@ -260,9 +258,7 @@ test.describe('Statistics', () => {
     // the DOM `#stat-texts` cell. The DOM cell is only updated when the
     // 1000 ms `ner-stats` `setInterval` fires, so a synchronous DOM read
     // can lag the in-memory counter. `getStats()` is authoritative.
-    const textsProcessed = await page.evaluate(
-      () => (window as any).nerProcessor.getStats().textsProcessed,
-    );
+    const textsProcessed = await page.evaluate(() => (window as any).nerProcessor.getStats().textsProcessed);
     expect(textsProcessed).toBe(3);
   });
 

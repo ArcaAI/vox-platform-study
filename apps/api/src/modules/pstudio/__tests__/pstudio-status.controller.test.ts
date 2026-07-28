@@ -55,8 +55,7 @@ describe('PrismaStudioStatusController', () => {
 
   it('is class-gated by @Authorize(["manage","PrismaStudio"]) (dedicated subject)', () => {
     const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PrismaStudioStatusController) as
-      | Array<{ action: string; subject: string }>
-      | undefined;
+      Array<{ action: string; subject: string }> | undefined;
     expect(meta).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
   });
 });

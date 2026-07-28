@@ -105,12 +105,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
   }
 
   async setEnforcementEnabled(enabled: boolean): Promise<boolean> {
-    await this.writeSetting(
-      entitlementsEnabledKey(),
-      String(Boolean(enabled)),
-      ValueType.Boolean,
-      'Entitlements enforcement global kill-switch',
-    );
+    await this.writeSetting(entitlementsEnabledKey(), String(Boolean(enabled)), ValueType.Boolean, 'Entitlements enforcement global kill-switch');
     return this.isEnforcementEnabled();
   }
 
@@ -179,12 +174,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
 
   // --- Enforcement primitive (Q9 gate + Q10 block-new) ------------------
 
-  async assertQuantityQuota(
-    tenantId: EntityId,
-    capability: EntitlementLimitKey,
-    currentCount: number,
-    increment = 1,
-  ): Promise<void> {
+  async assertQuantityQuota(tenantId: EntityId, capability: EntitlementLimitKey, currentCount: number, increment = 1): Promise<void> {
     // Q9 — enforcement ships OFF; every check is inert until the kill-switch is
     // flipped per-env. This is the single gate that makes a partial landing safe.
     if (!this.isEnforcementEnabled()) return;

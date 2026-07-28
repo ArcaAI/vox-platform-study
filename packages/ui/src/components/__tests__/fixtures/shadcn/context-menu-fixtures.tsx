@@ -7,7 +7,7 @@ import {
   ContextMenuSeparator,
   ContextMenuLabel,
   ContextMenuShortcut,
-} from '../../../shadcn/context-menu'
+} from '../../../shadcn/context-menu';
 
 export function BasicContextMenu() {
   return (
@@ -39,5 +39,5 @@ export function BasicContextMenu() {
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
-  )
+  );
 }

@@ -131,12 +131,7 @@ export class MediaEntity extends BaseTaggedEntity {
     if (this._mimeType.length > 255) {
       throw new BusinessException('Media mimeType must not exceed 255 characters.');
     }
-    if (
-      typeof this._size !== 'number' ||
-      !Number.isFinite(this._size) ||
-      !Number.isInteger(this._size) ||
-      this._size < 0
-    ) {
+    if (typeof this._size !== 'number' || !Number.isFinite(this._size) || !Number.isInteger(this._size) || this._size < 0) {
       throw new BusinessException('Media size must be a non-negative number.');
     }
     if (!this._hash || this._hash.trim().length === 0) {

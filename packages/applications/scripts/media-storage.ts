@@ -13,14 +13,7 @@
  * so it can import the package's own `ImageThumbnailService` source and the
  * `@aws-sdk/client-s3` / `sharp` deps that resolve here.
  */
-import {
-  CreateBucketCommand,
-  GetObjectCommand,
-  HeadBucketCommand,
-  HeadObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
+import { CreateBucketCommand, GetObjectCommand, HeadBucketCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 /**
  * Build an S3 client pointed at the dev MinIO. Reads `MINIO_ENDPOINT`,
@@ -80,13 +73,7 @@ export async function objectExists(s3: S3Client, bucket: string, key: string): P
 }
 
 /** Upload (overwrite) an object. PUT-by-key is idempotent. */
-export async function putObject(
-  s3: S3Client,
-  bucket: string,
-  key: string,
-  body: Buffer,
-  contentType: string,
-): Promise<void> {
+export async function putObject(s3: S3Client, bucket: string, key: string, body: Buffer, contentType: string): Promise<void> {
   await s3.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
 }
 

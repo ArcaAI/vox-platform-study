@@ -1,11 +1,10 @@
-import type { Config } from "tailwindcss";
+import type { Config } from 'tailwindcss';
 
-const sharedConfig: Omit<Config, "content"> = {
-    theme: {
-        extend: {
-        },
-    },
-    plugins: [],
+const sharedConfig: Omit<Config, 'content'> = {
+  theme: {
+    extend: {},
+  },
+  plugins: [],
 };
 
 export default sharedConfig;

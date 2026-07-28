@@ -116,23 +116,22 @@ class TestResolveBinding:
 
     def test_no_intersection_raises_with_matrix(self):
         with pytest.raises(CapabilityError, match="Declared: cuda"):
-            self._reg().resolve_binding(
-                "asr", "fw", devices=["mps"], compute_pref=["float16"]
-            )
+            self._reg().resolve_binding("asr", "fw", devices=["mps"], compute_pref=["float16"])
 
     def test_mode_filtering(self):
         reg = ProcessorRegistry()
         reg.register(
             _spec(
                 name="batchonly",
-                capabilities=(
-                    Capability(device="cpu", compute=("float32",), streaming=False),
-                ),
+                capabilities=(Capability(device="cpu", compute=("float32",), streaming=False),),
             )
         )
-        assert reg.resolve_binding(
-            "asr", "batchonly", devices=["cpu"], compute_pref=["float32"], mode="batch"
-        ).device == "cpu"
+        assert (
+            reg.resolve_binding(
+                "asr", "batchonly", devices=["cpu"], compute_pref=["float32"], mode="batch"
+            ).device
+            == "cpu"
+        )
         with pytest.raises(CapabilityError):
             reg.resolve_binding(
                 "asr", "batchonly", devices=["cpu"], compute_pref=["float32"], mode="streaming"
@@ -156,9 +155,7 @@ class TestResolveBinding:
         reg.register(
             _spec(name="nemoish", capabilities=(Capability(device="cuda", compute=("float32",)),))
         )
-        b = reg.resolve_binding(
-            "asr", "nemoish", devices=["cuda"], compute_pref=["float16"]
-        )
+        b = reg.resolve_binding("asr", "nemoish", devices=["cuda"], compute_pref=["float16"])
         assert (b.device, b.compute) == ("cuda", "float32")
 
     def test_compute_pref_order_beats_rank(self):
@@ -174,9 +171,7 @@ class TestResolveBinding:
                 ),
             )
         )
-        b = reg.resolve_binding(
-            "asr", "ranked", devices=["cuda"], compute_pref=["float16", "int8"]
-        )
+        b = reg.resolve_binding("asr", "ranked", devices=["cuda"], compute_pref=["float16", "int8"])
         assert b.compute == "float16"
 
 

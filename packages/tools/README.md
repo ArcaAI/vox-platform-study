@@ -8,18 +8,18 @@ Last updated: 2026-07-04
 
 Every tool is a script in [package.json](./package.json). Invoke them either through the root-level aliases or with `pnpm --filter`:
 
-| Root alias (from repo root) | Package script | Purpose |
-|---|---|---|
-| `pnpm gen:prisma` | `prisma-commander` | Prisma operations across schema domains |
-| `pnpm gen:model` | `generate-data-model` | Generate data models from Prisma schema |
-| `pnpm gen:entity` | `generate-data-entity` | Generate domain entities |
-| `pnpm gen:mapper` | `generate-mapper` | Generate entity/model mappers |
-| `pnpm gen:repository` | `generate-repository` | Generate repository classes |
-| `pnpm gen:factory` | `generate-factory` | Generate factory classes |
-| `pnpm gen:service` | `generate-service-module` | Generate application service modules |
-| `pnpm gen:controller` | `generate-controller` | Generate NestJS controllers |
-| `pnpm gen:token` | `gen-dev-token` | Generate a development JWT |
-| `pnpm gen:api-key` | `gen-api-key` (runs `create`) | Create a development API key |
+| Root alias (from repo root) | Package script                | Purpose                                 |
+| --------------------------- | ----------------------------- | --------------------------------------- |
+| `pnpm gen:prisma`           | `prisma-commander`            | Prisma operations across schema domains |
+| `pnpm gen:model`            | `generate-data-model`         | Generate data models from Prisma schema |
+| `pnpm gen:entity`           | `generate-data-entity`        | Generate domain entities                |
+| `pnpm gen:mapper`           | `generate-mapper`             | Generate entity/model mappers           |
+| `pnpm gen:repository`       | `generate-repository`         | Generate repository classes             |
+| `pnpm gen:factory`          | `generate-factory`            | Generate factory classes                |
+| `pnpm gen:service`          | `generate-service-module`     | Generate application service modules    |
+| `pnpm gen:controller`       | `generate-controller`         | Generate NestJS controllers             |
+| `pnpm gen:token`            | `gen-dev-token`               | Generate a development JWT              |
+| `pnpm gen:api-key`          | `gen-api-key` (runs `create`) | Create a development API key            |
 
 Package scripts without a root alias: `generate-prisma-index`, `generate-data-model:all|:check`, `generate-data-entity:all|:check`, `generate-factory:all|:check`, `typecheck`.
 
@@ -51,12 +51,12 @@ pnpm gen:prisma list:activities             # alias: la
 pnpm gen:prisma list:domains                # alias: ld
 ```
 
-| Option | Short | Applies to | Description |
-|---|---|---|---|
-| `--domain <names...>` | `-d` | generate, push, migrate, studio | Domain name(s) to process |
-| `--all` | `-a` | generate, push, migrate | Process all domains |
-| `--force` | `-f` | push | Force reset (`--force-reset --accept-data-loss`) |
-| `--name <name>` | `-n` | migrate | Migration name |
+| Option                | Short | Applies to                      | Description                                      |
+| --------------------- | ----- | ------------------------------- | ------------------------------------------------ |
+| `--domain <names...>` | `-d`  | generate, push, migrate, studio | Domain name(s) to process                        |
+| `--all`               | `-a`  | generate, push, migrate         | Process all domains                              |
+| `--force`             | `-f`  | push                            | Force reset (`--force-reset --accept-data-loss`) |
+| `--name <name>`       | `-n`  | migrate                         | Migration name                                   |
 
 ## Code Generators
 

@@ -113,6 +113,7 @@ def _build_sortformer_diarizer(diarization_config: Any) -> Any:
 
     return StreamingSortformerDiarizer(diarization_config)
 
+
 # Shared Redis Hash holding transcripts whose durable persist
 # exhausted its inline retries on a transient error. The reaper loop (any
 # worker) re-drives entries with an idempotency key; because it lives on shared
@@ -236,9 +237,7 @@ class SessionManager:
             self._heartbeat_interval_s = _settings.streaming_worker_heartbeat_s
             self._heartbeat_ttl_s = _settings.streaming_worker_heartbeat_ttl_s
             self._inference_queue_maxsize = int(_settings.streaming_inference_queue_maxsize)
-            self._inference_drain_timeout_s = float(
-                _settings.streaming_inference_drain_timeout_s
-            )
+            self._inference_drain_timeout_s = float(_settings.streaming_inference_drain_timeout_s)
             self._inference_stop_timeout_s = float(_settings.streaming_inference_stop_timeout_s)
             self._transcript_persist_max_attempts = max(
                 1, int(_settings.streaming_transcript_persist_max_attempts)
@@ -250,9 +249,7 @@ class SessionManager:
                 1, int(_settings.streaming_transcript_outbox_max_attempts)
             )
             self._snapshot_interval_s = _settings.streaming_snapshot_interval_s
-            self._partial_window_s = float(
-                getattr(_settings, "streaming_partial_window_s", 8.0)
-            )
+            self._partial_window_s = float(getattr(_settings, "streaming_partial_window_s", 8.0))
             # Lowered, configurable partial-emit cadence.
             self._partial_interval_s = float(
                 getattr(_settings, "streaming_partial_interval_s", 0.4)
@@ -413,11 +410,7 @@ class SessionManager:
         else:
             denoise_enabled = self._profile.denoise_enabled_default
         if denoise_enabled:
-            strength = (
-                pipeline_config.preprocessing.denoise.strength
-                if pipeline_config
-                else 1.0
-            )
+            strength = pipeline_config.preprocessing.denoise.strength if pipeline_config else 1.0
             denoise_engine_name = (
                 getattr(pipeline_config.preprocessing.denoise, "engine", "rnnoise")
                 if pipeline_config
@@ -432,11 +425,7 @@ class SessionManager:
             if not denoiser.initialize():
                 denoiser = None  # engine unavailable, degrade gracefully
 
-        normalize = (
-            pipeline_config.preprocessing.normalize
-            if pipeline_config
-            else False
-        )
+        normalize = pipeline_config.preprocessing.normalize if pipeline_config else False
 
         denoise_scope = (
             getattr(pipeline_config.preprocessing.denoise, "scope", "vad_only")
@@ -457,15 +446,15 @@ class SessionManager:
 
         # ASR + diarization
         asr_pipeline, initial_prompt = await self._load_asr_pipeline(
-            pipeline_config, session_id, tenant_id=tenant_id,
+            pipeline_config,
+            session_id,
+            tenant_id=tenant_id,
             provider_overrides=provider_overrides,
         )
 
         diarization_config = pipeline_config.diarization if pipeline_config else None
         effective_diarization = (
-            bool(getattr(diarization_config, "enabled", False))
-            if diarization_config
-            else False
+            bool(getattr(diarization_config, "enabled", False)) if diarization_config else False
         )
 
         # Sortformer sessions use the self-hosted
@@ -486,8 +475,8 @@ class SessionManager:
                     emb_model_id = emb_ref.inline.hf_model_id
             if emb_model_id:
                 try:
-                    pipeline_embedding_service = (
-                        await self._get_pipeline_embedding_service(emb_model_id)
+                    pipeline_embedding_service = await self._get_pipeline_embedding_service(
+                        emb_model_id
                     )
                 except Exception:
                     logger.warning(
@@ -528,10 +517,15 @@ class SessionManager:
                             seg_model_id = seg_ref.inline.hf_model_id
                     if seg_model_id:
                         from stt.diarization.segmentation_service import SegmentationService
+
                         seg_service = SegmentationService(hf_model_id=seg_model_id)
                         await seg_service.initialize()
                 except Exception:
-                    logger.warning("Failed to load segmentation model for session %s", session_id, exc_info=True)
+                    logger.warning(
+                        "Failed to load segmentation model for session %s",
+                        session_id,
+                        exc_info=True,
+                    )
 
             # The per-pipeline embedding service resolved above;
             # settings singleton is the fallback.
@@ -540,7 +534,9 @@ class SessionManager:
                 if emb_service is None:
                     emb_service = get_embedding_service()
             except Exception:
-                logger.warning("Failed to get embedding service for session %s", session_id, exc_info=True)
+                logger.warning(
+                    "Failed to get embedding service for session %s", session_id, exc_info=True
+                )
 
             speaker_identifier = SpeakerIdentifier(
                 tracker=speaker_tracker,
@@ -563,33 +559,21 @@ class SessionManager:
                 )
 
         # Inference worker (per-utterance ASR)
-        postprocessing_config = (
-            pipeline_config.postprocessing if pipeline_config else None
-        )
+        postprocessing_config = pipeline_config.postprocessing if pipeline_config else None
 
         inference_cfg = pipeline_config.inference if pipeline_config else None
-        prev_text_context_words = getattr(
-            inference_cfg, "prev_text_context_words", None
-        )
+        prev_text_context_words = getattr(inference_cfg, "prev_text_context_words", None)
         if inference_cfg and not getattr(inference_cfg, "enable_prev_text_context", True):
             prev_text_context_words = 0
-        max_words_per_second = getattr(
-            inference_cfg, "max_words_per_second", None
-        )
-        max_segment_text_chars = getattr(
-            inference_cfg, "max_segment_text_chars", None
-        )
-        hallucination_rms_threshold = getattr(
-            inference_cfg, "hallucination_rms_threshold", None
-        )
+        max_words_per_second = getattr(inference_cfg, "max_words_per_second", None)
+        max_segment_text_chars = getattr(inference_cfg, "max_segment_text_chars", None)
+        hallucination_rms_threshold = getattr(inference_cfg, "hallucination_rms_threshold", None)
         hallucination_short_word_count = getattr(
             inference_cfg, "hallucination_short_word_count", None
         )
 
         # Opt-in English gloss (None unless enabled)
-        gloss_pipeline = await self._load_gloss_pipeline(
-            pipeline_config, session_id
-        )
+        gloss_pipeline = await self._load_gloss_pipeline(pipeline_config, session_id)
 
         inference_worker = StreamingInferenceWorker(
             result_publisher=publisher,
@@ -717,22 +701,16 @@ class SessionManager:
 
         # Register worker heartbeat
         await self._register_worker()
-        self._heartbeat_task = asyncio.create_task(
-            self._heartbeat_loop(), name="worker-heartbeat"
-        )
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop(), name="worker-heartbeat")
 
         # Recover active sessions from Redis
         await self._recover_sessions()
 
         # Start background reaper
-        self._reaper_task = asyncio.create_task(
-            self._reaper_loop(), name="session-reaper"
-        )
+        self._reaper_task = asyncio.create_task(self._reaper_loop(), name="session-reaper")
 
         # Start audio snapshot loop
-        self._snapshot_task = asyncio.create_task(
-            self._snapshot_loop(), name="audio-snapshot"
-        )
+        self._snapshot_task = asyncio.create_task(self._snapshot_loop(), name="audio-snapshot")
 
         logger.info(
             "SessionManager started",
@@ -880,9 +858,7 @@ class SessionManager:
             # Load pipeline config for VAD and ASR model wiring.
             # Pass tenant_id so STT refuses to load
             # a pipeline owned by a different tenant (defense in depth).
-            pipeline_config = await self._load_pipeline_config(
-                pipeline_id, tenant_id=tenant_id
-            )
+            pipeline_config = await self._load_pipeline_config(pipeline_id, tenant_id=tenant_id)
 
             if language is not None and pipeline_config:
                 pipeline_config.inference.language = language
@@ -1121,9 +1097,7 @@ class SessionManager:
         """
         if not fallback_pipeline_id:
             raise RuntimeError("No fallback pipeline configured for this session")
-        fb_config = await self._load_pipeline_config(
-            fallback_pipeline_id, tenant_id=tenant_id
-        )
+        fb_config = await self._load_pipeline_config(fallback_pipeline_id, tenant_id=tenant_id)
         overrides = self._provider_overrides.get(session_id)
         asr_callable, _ = await self._load_asr_pipeline(
             fb_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
@@ -1144,6 +1118,7 @@ class SessionManager:
         user_id: str | None = None,
     ) -> None:
         from stt.diarization.preseed import preseed_speaker
+
         await preseed_speaker(
             tracker,
             consultation_id,
@@ -1291,9 +1266,7 @@ class SessionManager:
     # Model loading helpers (VAD + ASR pipeline wiring)
     # ------------------------------------------------------------------
 
-    async def _load_pipeline_config(
-        self, pipeline_id: str, tenant_id: str | None = None
-    ) -> Any:
+    async def _load_pipeline_config(self, pipeline_id: str, tenant_id: str | None = None) -> Any:
         """Load pipeline spec from the pipeline reader.
 
         Returns the ``PipelineSpec`` if found.
@@ -1412,7 +1385,9 @@ class SessionManager:
 
         await _load_optional(model_refs.vad, ModelTaskType.VOICE_ACTIVITY_DETECTION, "VAD")
         await _load_optional(model_refs.denoise, ModelTaskType.AUDIO_TO_AUDIO, "denoise")
-        await _load_optional(getattr(model_refs, "embedding", None), ModelTaskType.SPEAKER_EMBEDDING, "embedding")
+        await _load_optional(
+            getattr(model_refs, "embedding", None), ModelTaskType.SPEAKER_EMBEDDING, "embedding"
+        )
 
         # Prefer the cache's view of the ASR slug if inline.
         if not asr_slug:
@@ -1457,9 +1432,7 @@ class SessionManager:
         elif db_model_config is not None:
             model_config = db_model_config
         else:
-            raise RuntimeError(
-                "Cloud ASR ref has neither an inline definition nor a DB config"
-            )
+            raise RuntimeError("Cloud ASR ref has neither an inline definition nor a DB config")
 
         loader = model_cache._get_loader(model_config.format)
         if loader is None:
@@ -1494,9 +1467,7 @@ class SessionManager:
             If the ASR model cannot be loaded (missing DB config, bad credentials, etc.).
         """
         if pipeline_config is None:
-            raise RuntimeError(
-                "Cannot load ASR pipeline: pipeline config is None"
-            )
+            raise RuntimeError("Cannot load ASR pipeline: pipeline config is None")
 
         from stt.models import get_model_cache
         from stt.pipeline.dto import ModelTaskType
@@ -1513,9 +1484,7 @@ class SessionManager:
         if not (asr_ref.is_inline and asr_ref.inline) and asr_ref.slug:
             from stt.pipeline.config_reader import get_model_reader
 
-            db_model_config = await get_model_reader().get_model_by_slug(
-                asr_ref.slug, tenant_id
-            )
+            db_model_config = await get_model_reader().get_model_by_slug(asr_ref.slug, tenant_id)
 
         # TASK-567 — cloud BYOK: bypass the shared by-slug cache when a per-tenant
         # override is present for a cloud ASR engine (a tenant key must not be
@@ -1567,7 +1536,9 @@ class SessionManager:
 
         # Create the callable ASR pipeline
         asr_pipeline = self._make_asr_callable(
-            asr_model, inference_config, initial_prompt=initial_prompt,
+            asr_model,
+            inference_config,
+            initial_prompt=initial_prompt,
         )
 
         logger.info(
@@ -1641,8 +1612,7 @@ class SessionManager:
             AiModelFormat.PARAKEET_CPP,
         ):
             logger.warning(
-                "streaming_english_gloss is not supported for engine %s — "
-                "gloss disabled",
+                "streaming_english_gloss is not supported for engine %s — " "gloss disabled",
                 fmt,
             )
             return None
@@ -1740,9 +1710,7 @@ class SessionManager:
             *,
             prompt: str | None = None,  # noqa: ARG001 — ignored
         ) -> dict[str, Any]:
-            return await asyncio.to_thread(
-                nemo_adapter, samples, sample_rate
-            )
+            return await asyncio.to_thread(nemo_adapter, samples, sample_rate)
 
         return run_nemo_inference
 
@@ -1769,9 +1737,7 @@ class SessionManager:
             *,
             prompt: str | None = None,
         ) -> dict[str, Any]:
-            return await asyncio.to_thread(
-                fw_adapter, samples, sample_rate, prompt=prompt
-            )
+            return await asyncio.to_thread(fw_adapter, samples, sample_rate, prompt=prompt)
 
         return run_faster_whisper_inference
 
@@ -1843,14 +1809,16 @@ class SessionManager:
 
         # Warn about Whisper-specific params that don't apply
         for param in (
-            "beam_size", "temperature", "compression_ratio_threshold",
-            "logprob_threshold", "no_speech_threshold",
+            "beam_size",
+            "temperature",
+            "compression_ratio_threshold",
+            "logprob_threshold",
+            "no_speech_threshold",
             "condition_on_prev_tokens",
         ):
             if getattr(inference_config, param, None) is not None:
                 logger.warning(
-                    "Azure Speech streaming: ignoring Whisper-specific "
-                    "param %s",
+                    "Azure Speech streaming: ignoring Whisper-specific " "param %s",
                     param,
                 )
 
@@ -1893,9 +1861,7 @@ class SessionManager:
             *,
             prompt: str | None = None,  # noqa: ARG001 — not used by Sarvam REST
         ) -> dict[str, Any]:
-            return await sarvam_recognize_utterance(
-                config, samples, sample_rate, language
-            )
+            return await sarvam_recognize_utterance(config, samples, sample_rate, language)
 
         return run_sarvam_inference
 
@@ -1921,9 +1887,7 @@ class SessionManager:
             *,
             prompt: str | None = None,  # noqa: ARG001 — not used by OpenAI REST
         ) -> dict[str, Any]:
-            return await openai_recognize_utterance(
-                config, samples, sample_rate, language
-            )
+            return await openai_recognize_utterance(config, samples, sample_rate, language)
 
         return run_openai_inference
 
@@ -1949,7 +1913,9 @@ class SessionManager:
         extra = getattr(loaded_model, "extra", None)
         if isinstance(extra, dict) and extra.get("multimodal_lm") is True:
             return self._make_multimodal_lm_callable(
-                loaded_model, inference_config, initial_prompt=initial_prompt,
+                loaded_model,
+                inference_config,
+                initial_prompt=initial_prompt,
             )
 
         # One-time dtype safety: fp16/bf16 on CPU/MPS causes Whisper hallucinations
@@ -1987,12 +1953,8 @@ class SessionManager:
             processor_supports_attention_mask = True
         else:
             params = processor_signature.parameters
-            processor_supports_attention_mask = (
-                "return_attention_mask" in params
-                or any(
-                    p.kind is inspect.Parameter.VAR_KEYWORD
-                    for p in params.values()
-                )
+            processor_supports_attention_mask = "return_attention_mask" in params or any(
+                p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
             )
 
         # Shared decode-kwargs builder (was one of three
@@ -2078,7 +2040,8 @@ class SessionManager:
                         **generate_kwargs,
                     )
                     text = processor.batch_decode(
-                        outputs, skip_special_tokens=True,
+                        outputs,
+                        skip_special_tokens=True,
                     )[0].strip()
 
                     word_timestamps: list[dict[str, Any]] = []
@@ -2098,10 +2061,14 @@ class SessionManager:
                             e = e if e is not None else s
                             w = (entry.get("text", "") or "").strip()
                             if w:
-                                word_timestamps.append({
-                                    "word": w, "start": s,
-                                    "end": e, "confidence": 1.0,
-                                })
+                                word_timestamps.append(
+                                    {
+                                        "word": w,
+                                        "start": s,
+                                        "end": e,
+                                        "confidence": 1.0,
+                                    }
+                                )
                     except Exception:
                         pass
 
@@ -2115,7 +2082,6 @@ class SessionManager:
             return {"text": text, "word_timestamps": word_timestamps}
 
         return run_inference
-
 
     def _make_multimodal_lm_callable(
         self,
@@ -2195,9 +2161,7 @@ class SessionManager:
         gate = asyncio.Event()
         gate.set()  # no final in-flight initially
         self._final_published_gates[session.session_id] = gate
-        inference_task = self._start_inference_loop(
-            session, inference_worker, inference_queue
-        )
+        inference_task = self._start_inference_loop(session, inference_worker, inference_queue)
         self._inference_tasks[session.session_id] = inference_task
 
     def _start_inference_loop(
@@ -2219,9 +2183,7 @@ class SessionManager:
                     queue.task_done()
                     break
                 try:
-                    result = await inference_worker.process_utterance(
-                        session.session_id, utt
-                    )
+                    result = await inference_worker.process_utterance(session.session_id, utt)
                     if result.is_final:
                         session.add_result(result)
                         session.utterance_count = utt.utterance_index + 1
@@ -2278,9 +2240,7 @@ class SessionManager:
                         gate.set()
                     queue.task_done()
 
-        return asyncio.create_task(
-            _loop(), name=f"inference-{session.session_id}"
-        )
+        return asyncio.create_task(_loop(), name=f"inference-{session.session_id}")
 
     async def _drain_inference_queue(self, session_id: str) -> None:
         """Wait for all pending utterances in the inference queue to finish.
@@ -2485,9 +2445,7 @@ class SessionManager:
         async def _on_batch(last_id: str) -> None:
             session.metadata.last_stream_id = last_id
             try:
-                await self._redis.hset(
-                    session_meta_key(session_id), "last_stream_id", last_id
-                )
+                await self._redis.hset(session_meta_key(session_id), "last_stream_id", last_id)
             except Exception as exc:
                 logger.debug(
                     "Failed to persist last_stream_id (non-fatal)",
@@ -2581,7 +2539,10 @@ class SessionManager:
                                 )
                     else:
                         self._fire_partial(
-                            session.session_id, utt, inference_worker, publisher,
+                            session.session_id,
+                            utt,
+                            inference_worker,
+                            publisher,
                         )
 
             # Periodic Tier-1 persistence
@@ -2665,9 +2626,7 @@ class SessionManager:
                     )
                     return
                 try:
-                    await controller.switch_manual(
-                        utterance_index=session.utterance_count
-                    )
+                    await controller.switch_manual(utterance_index=session.utterance_count)
                 except Exception as exc:
                     logger.error(
                         "Manual engine switch failed; staying on primary",
@@ -2898,9 +2857,7 @@ class SessionManager:
                     hash="",
                     created_by=created_by,
                 )
-                raw_media_id = (raw_media or {}).get("id") or (raw_media or {}).get(
-                    "mediaId"
-                )
+                raw_media_id = (raw_media or {}).get("id") or (raw_media or {}).get("mediaId")
 
             if capture_processed:
                 processed_media = await gateway.create_media(
@@ -3063,11 +3020,7 @@ class SessionManager:
         """
         details = getattr(exc, "details", None)
         status = details.get("status_code") if isinstance(details, dict) else None
-        return (
-            isinstance(status, int)
-            and 400 <= status < 500
-            and status not in _RETRYABLE_4XX
-        )
+        return isinstance(status, int) and 400 <= status < 500 and status not in _RETRYABLE_4XX
 
     async def _enqueue_transcript_outbox(
         self,
@@ -3092,9 +3045,7 @@ class SessionManager:
             "segments": segments,
         }
         try:
-            await self._redis.hset(
-                TRANSCRIPT_OUTBOX_KEY, idempotency_key, json.dumps(payload)
-            )
+            await self._redis.hset(TRANSCRIPT_OUTBOX_KEY, idempotency_key, json.dumps(payload))
             logger.error(
                 "stt.transcript.outbox_enqueued — transcript persistence failed "
                 "after inline retries; enqueued to the durable outbox for reaper "
@@ -3140,8 +3091,7 @@ class SessionManager:
                 except (ValueError, TypeError):
                     await self._redis.hdel(TRANSCRIPT_OUTBOX_KEY, field_key)
                     logger.error(
-                        "stt.transcript.outbox_corrupt_drop — dropping unparseable "
-                        "outbox entry",
+                        "stt.transcript.outbox_corrupt_drop — dropping unparseable " "outbox entry",
                         idempotency_key=field_key,
                     )
                     continue
@@ -3173,9 +3123,7 @@ class SessionManager:
         payload["processing_by"] = self._worker_id
         payload["lease_expiry"] = now + OUTBOX_LEASE_TTL_S
         try:
-            await self._redis.hset(
-                TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload)
-            )
+            await self._redis.hset(TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload))
         except Exception as exc:
             logger.warning(
                 "stt.transcript.outbox_claim_failed — could not stamp outbox lease; "
@@ -3270,9 +3218,7 @@ class SessionManager:
         payload["lease_expiry"] = 0
         payload["processing_by"] = None
         try:
-            await self._redis.hset(
-                TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload)
-            )
+            await self._redis.hset(TRANSCRIPT_OUTBOX_KEY, field_key, json.dumps(payload))
             logger.warning(
                 "stt.transcript.outbox_retry_deferred — transient error; entry "
                 "retained for re-drive on the next reaper scan",
@@ -3437,9 +3383,7 @@ class SessionManager:
 
                 # Register dual-capture Media + AudioRecording when the
                 # pipeline opted in (self-guarded; never blocks finalization).
-                await self._register_dual_capture(
-                    session, raw_audio_uri, processed_audio_uri
-                )
+                await self._register_dual_capture(session, raw_audio_uri, processed_audio_uri)
 
                 # Persist the streaming
                 # transcript (no jobId) so the harness auto-drafts the SOAP.
@@ -3529,9 +3473,7 @@ class SessionManager:
                         continue
                     if meta.worker_id and meta.worker_id != self._worker_id:
                         # Check if the other worker is still alive
-                        other_alive = await self._redis.exists(
-                            worker_key(meta.worker_id)
-                        )
+                        other_alive = await self._redis.exists(worker_key(meta.worker_id))
                         if other_alive:
                             continue  # another worker owns this session
 
@@ -3597,9 +3539,7 @@ class SessionManager:
                     consumer = IngestionConsumer(
                         redis=self._redis,
                         session_id=meta.session_id,
-                        on_frame=self._make_frame_handler(
-                            session, preprocessor
-                        ),
+                        on_frame=self._make_frame_handler(session, preprocessor),
                         on_batch=self._make_batch_handler(session),
                         last_id=last_id,
                         consumer_name=self._worker_id,
@@ -3607,9 +3547,7 @@ class SessionManager:
                     control_listener = ControlListener(
                         redis=self._redis,
                         session_id=meta.session_id,
-                        on_control=self._make_control_handler(
-                            session, preprocessor
-                        ),
+                        on_control=self._make_control_handler(session, preprocessor),
                     )
 
                     self._sessions[meta.session_id] = session

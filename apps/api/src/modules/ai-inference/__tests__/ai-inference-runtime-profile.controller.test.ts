@@ -91,7 +91,11 @@ describe('AiInferenceController — runtime-profile injection', () => {
   });
 
   it('is FAIL-OPEN for profiles — a throwing resolver still forwards with model_name only', async () => {
-    const resolver = { resolveProfile: vi.fn(async () => { throw new Error('db-down'); }) };
+    const resolver = {
+      resolveProfile: vi.fn(async () => {
+        throw new Error('db-down');
+      }),
+    };
     const { controller, client } = build(resolver);
 
     await expect(controller.extractEntities({ text: 'chest pain' } as any)).resolves.toBeDefined();
@@ -108,9 +112,7 @@ describe('AiInferenceController — runtime-profile injection', () => {
     aiTaskDefaults.getEffective.mockRejectedValue(new Error('db-down'));
 
     const { ServiceUnavailableException } = await import('@nestjs/common');
-    await expect(controller.extractEntities({ text: 'chest pain' } as any)).rejects.toBeInstanceOf(
-      ServiceUnavailableException,
-    );
+    await expect(controller.extractEntities({ text: 'chest pain' } as any)).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.classifyTokens).not.toHaveBeenCalled();
   });
 

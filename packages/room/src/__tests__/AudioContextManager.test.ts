@@ -465,7 +465,12 @@ describe('AudioContextManager.resume timeout (W1-7)', () => {
   it('should throw a typed RoomResumeTimeoutError after the default 3000ms when resume() never resolves', async () => {
     vi.useFakeTimers();
     const stuckCtx = createMockAudioContext('running');
-    stuckCtx.resume = vi.fn().mockImplementation(() => new Promise<void>(() => {/* hangs forever */}));
+    stuckCtx.resume = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>(() => {
+          /* hangs forever */
+        }),
+    );
 
     const manager = AudioContextManager.getInstance({ audioContext: stuckCtx });
     // acquire while running (no resume needed); flip to suspended afterward.
@@ -580,9 +585,7 @@ describe('AudioContextManager.acquire sample-rate enforcement', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const manager = AudioContextManager.getInstance({ audioContext: ctx });
-    await expect(
-      manager.acquire({ requireSampleRate: 48000, allowMismatch: true }),
-    ).resolves.toBe(ctx);
+    await expect(manager.acquire({ requireSampleRate: 48000, allowMismatch: true })).resolves.toBe(ctx);
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0]![0]).toMatch(/sampleRate is 44100 Hz but the caller required 48000 Hz/);
 

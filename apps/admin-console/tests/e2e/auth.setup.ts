@@ -22,16 +22,16 @@ import { ADMIN_CREDENTIALS, apiAvailable, appAvailable } from './helpers/stack';
 export const ADMIN_STORAGE_STATE = 'test-results/.auth/admin.json';
 
 setup('authenticate as seeded global admin', async ({ page }) => {
-    mkdirSync(dirname(ADMIN_STORAGE_STATE), { recursive: true });
-    if (!(await appAvailable()) || !(await apiAvailable())) {
-        writeFileSync(ADMIN_STORAGE_STATE, JSON.stringify({ cookies: [], origins: [] }));
-        return;
-    }
-    await page.goto('/login');
-    await page.getByLabel('Username').fill(ADMIN_CREDENTIALS.username);
-    await page.getByLabel('Password', { exact: true }).fill(ADMIN_CREDENTIALS.password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.waitForURL('**/dashboard');
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await page.context().storageState({ path: ADMIN_STORAGE_STATE });
+  mkdirSync(dirname(ADMIN_STORAGE_STATE), { recursive: true });
+  if (!(await appAvailable()) || !(await apiAvailable())) {
+    writeFileSync(ADMIN_STORAGE_STATE, JSON.stringify({ cookies: [], origins: [] }));
+    return;
+  }
+  await page.goto('/login');
+  await page.getByLabel('Username').fill(ADMIN_CREDENTIALS.username);
+  await page.getByLabel('Password', { exact: true }).fill(ADMIN_CREDENTIALS.password);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.waitForURL('**/dashboard');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await page.context().storageState({ path: ADMIN_STORAGE_STATE });
 });

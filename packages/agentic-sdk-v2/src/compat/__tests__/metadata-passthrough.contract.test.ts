@@ -28,11 +28,7 @@ import {
   applyTemplate,
   DEFAULT_TRANSCRIPT_TEMPLATE,
 } from '../speechToTextMetadata';
-import {
-  COMPOSE_GOLDEN,
-  CHUNK_ID_GOLDEN,
-  DETECTED_LANGUAGE_GOLDEN,
-} from './fixtures/metadata-passthrough.golden';
+import { COMPOSE_GOLDEN, CHUNK_ID_GOLDEN, DETECTED_LANGUAGE_GOLDEN } from './fixtures/metadata-passthrough.golden';
 
 // ===========================================================================
 // Lock 1 — §5.2 delivered-metadata precedence (golden shape match).
@@ -115,9 +111,7 @@ describe('§5.2 default transcriptTemplate', () => {
   });
 
   it('applies the default when no template is passed (final formatting)', () => {
-    expect(applyTemplate(undefined, { text: 'chest pain', speakerId: 'Doctor', timestamp: '1' })).toBe(
-      '1 Doctor: chest pain',
-    );
+    expect(applyTemplate(undefined, { text: 'chest pain', speakerId: 'Doctor', timestamp: '1' })).toBe('1 Doctor: chest pain');
   });
 
   it('renders an empty slot (never the literal "undefined") for a missing speaker', () => {

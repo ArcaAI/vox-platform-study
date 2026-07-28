@@ -13,26 +13,26 @@ const SELECTED_JOB_POLL_MS = 5_000;
 
 /** `enabled: false` while a status filter swaps the list for GET status/:status. */
 export function useTranscriptionJobs(params?: { page?: number; limit?: number }, enabled = true) {
-    return useQuery({
-        queryKey: transcriptionJobKeys.list(params),
-        queryFn: () => listTranscriptionJobs(params),
-        enabled,
-        refetchInterval: REFRESH_MS,
-        placeholderData: keepPreviousData,
-    });
+  return useQuery({
+    queryKey: transcriptionJobKeys.list(params),
+    queryFn: () => listTranscriptionJobs(params),
+    enabled,
+    refetchInterval: REFRESH_MS,
+    placeholderData: keepPreviousData,
+  });
 }
 
 export function useTranscriptionJobStats() {
-    return useQuery({ queryKey: transcriptionJobKeys.stats(), queryFn: getTranscriptionJobStats, refetchInterval: REFRESH_MS });
+  return useQuery({ queryKey: transcriptionJobKeys.stats(), queryFn: getTranscriptionJobStats, refetchInterval: REFRESH_MS });
 }
 
 export function useTranscriptionJobsByStatus(status: TranscriptionJobStatus | null) {
-    return useQuery({
-        queryKey: transcriptionJobKeys.byStatus(status ?? 'QUEUED'),
-        queryFn: () => listTranscriptionJobsByStatus(status as TranscriptionJobStatus),
-        enabled: !!status,
-        refetchInterval: REFRESH_MS,
-    });
+  return useQuery({
+    queryKey: transcriptionJobKeys.byStatus(status ?? 'QUEUED'),
+    queryFn: () => listTranscriptionJobsByStatus(status as TranscriptionJobStatus),
+    enabled: !!status,
+    refetchInterval: REFRESH_MS,
+  });
 }
 
 /**
@@ -42,15 +42,15 @@ export function useTranscriptionJobsByStatus(status: TranscriptionJobStatus | nu
  * and the detail re-polls every 5 s until the job settles.
  */
 export function useTranscriptionJob(id: string | null, pollAsFallback = false) {
-    return useQuery({
-        queryKey: transcriptionJobKeys.detail(id ?? ''),
-        queryFn: () => getTranscriptionJob(id as string),
-        enabled: !!id,
-        refetchInterval: (query) => {
-            if (!pollAsFallback) return false;
-            const status = query.state.data?.status;
-            if (status && TERMINAL_JOB_STATUSES.includes(status)) return false;
-            return SELECTED_JOB_POLL_MS;
-        },
-    });
+  return useQuery({
+    queryKey: transcriptionJobKeys.detail(id ?? ''),
+    queryFn: () => getTranscriptionJob(id as string),
+    enabled: !!id,
+    refetchInterval: (query) => {
+      if (!pollAsFallback) return false;
+      const status = query.state.data?.status;
+      if (status && TERMINAL_JOB_STATUSES.includes(status)) return false;
+      return SELECTED_JOB_POLL_MS;
+    },
+  });
 }

@@ -27,13 +27,13 @@ npx --yes promptfoo@0.121.15 eval -c promptfooconfig.yaml --no-cache
 
 ## Files
 
-| File | Role |
-|---|---|
-| `promptfooconfig.yaml` | Eval config (prompt + provider + tests + assertions) |
-| `prompt.py` | Builds the PDSQI-9 judge prompt from each case |
-| `provider.py` | Mock judge (offline) / OpenAI-compatible call (real); stdlib only |
-| `tests.py` | Generates tests from the pinned golden-set fixture |
-| `assertions.py` | PDSQI-9 output-contract assertion (keys + ranges) |
+| File                   | Role                                                              |
+| ---------------------- | ----------------------------------------------------------------- |
+| `promptfooconfig.yaml` | Eval config (prompt + provider + tests + assertions)              |
+| `prompt.py`            | Builds the PDSQI-9 judge prompt from each case                    |
+| `provider.py`          | Mock judge (offline) / OpenAI-compatible call (real); stdlib only |
+| `tests.py`             | Generates tests from the pinned golden-set fixture                |
+| `assertions.py`        | PDSQI-9 output-contract assertion (keys + ranges)                 |
 
 Pin a different/real golden set with `HARNESS_GOLDEN_SET_PATH=/path/to/golden.json`.
 The authoritative instrument is the vendored Epic prompts in

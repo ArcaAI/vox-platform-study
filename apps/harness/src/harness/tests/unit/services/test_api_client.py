@@ -229,7 +229,10 @@ class TestPersistDraft:
         assert body["entityFaithfulnessScore"] == 1.0
         assert body["coverageScore"] == 0.9
         assert body["ragTriadScore"] == 0.92
-        assert body["guardrailDecisions"] == {"safety": {"verdict": "pass"}, "groundedness": {"score": 0.88}}
+        assert body["guardrailDecisions"] == {
+            "safety": {"verdict": "pass"},
+            "groundedness": {"score": 0.88},
+        }
         assert body["reducedAssurance"] is True
         assert body["gateDecision"] == "PASS"
         assert body["promptTemplateId"] == "tmpl-1"
@@ -275,7 +278,11 @@ class TestPersistDraft:
 
         body = json.loads(seen["request"].content)
         assert body["redactionApplied"] is True
-        assert body["redactionManifest"] == {"applied": True, "totalHits": 2, "hitsByRule": {"r1": 2}}
+        assert body["redactionManifest"] == {
+            "applied": True,
+            "totalHits": 2,
+            "hitsByRule": {"r1": 2},
+        }
 
 
 class TestRecordGateDecision:
@@ -483,7 +490,8 @@ class TestLoadEntityPriors:
         req = seen["request"]
         assert req.method == "GET"
         assert (
-            str(req.url) == "http://api:8868/internal/harness/consultations/c-1/entities?tenantId=t-1"
+            str(req.url)
+            == "http://api:8868/internal/harness/consultations/c-1/entities?tenantId=t-1"
         )
         assert req.headers["X-Service-Token"] == "svc-token"
         assert [(e.text, e.type, e.start, e.end) for e in priors] == [

@@ -19,13 +19,7 @@ import { dirname, join } from 'node:path';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { ASR_TEMPLATE_SLUGS } from '../prisma/db_main/seed/06-stt';
 
-const MIGRATIONS_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'prisma',
-  'db_main',
-  'migrations',
-);
+const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'prisma', 'db_main', 'migrations');
 
 const SCHEMA_SUFFIX = '_task_531_pipeline_template_lineage';
 const BACKFILL_SUFFIX = '_task_531_pipeline_template_lineage_backfill';
@@ -109,9 +103,7 @@ describe('pipeline template lineage — backfill migration', () => {
   it('never locks SYSTEM-owned rows (the templates themselves)', () => {
     const sql = stripSqlComments(readMigrationSql(BACKFILL_SUFFIX));
     // The SYSTEM tenant id is bound once and every candidate predicate excludes it.
-    expect(sql).toMatch(
-      /system_tenant\s+CONSTANT\s+TEXT\s*:=\s*'00000000-0000-0000-0000-000000000000'/i,
-    );
+    expect(sql).toMatch(/system_tenant\s+CONSTANT\s+TEXT\s*:=\s*'00000000-0000-0000-0000-000000000000'/i);
     const exclusions = sql.match(/"tenantId"\s*<>\s*system_tenant/gi) ?? [];
     // One per candidate scan: provenance, lock, ambiguous-report.
     expect(exclusions.length).toBeGreaterThanOrEqual(3);

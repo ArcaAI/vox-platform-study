@@ -17,13 +17,19 @@ const httpService = { axiosRef: { get: axiosGet } };
 const upstreamError = (status: number) => {
   const headers = new AxiosHeaders();
   const config = { headers };
-  return new AxiosError('upstream failed', 'ERR_BAD_RESPONSE', config as never, {}, {
-    status,
-    statusText: 'ERR',
-    headers,
-    config: config as never,
-    data: { detail: 'boom' },
-  });
+  return new AxiosError(
+    'upstream failed',
+    'ERR_BAD_RESPONSE',
+    config as never,
+    {},
+    {
+      status,
+      statusText: 'ERR',
+      headers,
+      config: config as never,
+      data: { detail: 'boom' },
+    },
+  );
 };
 
 describe('AiServiceProxyClient — URL resolution', () => {

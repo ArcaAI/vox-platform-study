@@ -206,10 +206,7 @@ describe('PolicyFactory', () => {
     });
 
     it('stamps resource-status fields when resourceStatus is provided', () => {
-      const input = PolicyFactory.buildUpdateInput(
-        { resourceStatus: 'DISABLED' },
-        'user-1',
-      );
+      const input = PolicyFactory.buildUpdateInput({ resourceStatus: 'DISABLED' }, 'user-1');
 
       expect(input.resourceStatus).toBe('DISABLED');
       expect(input.resourceStatusUpdatedAt).toBeInstanceOf(Date);

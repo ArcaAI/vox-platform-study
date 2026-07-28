@@ -107,9 +107,11 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
 
   it('builds a DEDICATED S3 provider from the tenant default + credentialsRef', async () => {
     const configRepo = {
-      findTenantDefault: vi.fn().mockResolvedValue(
-        cfg({ provider: StorageProviderType.AWS_S3, region: 'eu-west-1', endpoint: 'https://s3.example', credentialsRef: 'TENANT_1_S3' }),
-      ),
+      findTenantDefault: vi
+        .fn()
+        .mockResolvedValue(
+          cfg({ provider: StorageProviderType.AWS_S3, region: 'eu-west-1', endpoint: 'https://s3.example', credentialsRef: 'TENANT_1_S3' }),
+        ),
       findForBucket: vi.fn(),
       findSystemDefault: vi.fn().mockResolvedValue(null),
     };
@@ -134,9 +136,11 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
 
   it('builds a DEDICATED Azure provider from the tenant default', async () => {
     const configRepo = {
-      findTenantDefault: vi.fn().mockResolvedValue(
-        cfg({ provider: StorageProviderType.AZURE_BLOB, accountName: 'acct', endpointSuffix: 'core.windows.net', credentialsRef: 'TENANT_1_AZ' }),
-      ),
+      findTenantDefault: vi
+        .fn()
+        .mockResolvedValue(
+          cfg({ provider: StorageProviderType.AZURE_BLOB, accountName: 'acct', endpointSuffix: 'core.windows.net', credentialsRef: 'TENANT_1_AZ' }),
+        ),
       findForBucket: vi.fn(),
       findSystemDefault: vi.fn().mockResolvedValue(null),
     };
@@ -148,17 +152,13 @@ describe('BlobStorageProviderFactory — tenant resolution', () => {
     const provider = await factory.getProviderForBucket(TENANT);
 
     expect((provider as { __kind: string }).__kind).toBe('azure');
-    expect(h.AzureBlobProvider).toHaveBeenCalledWith(
-      expect.objectContaining({ accountName: 'acct', connectionString: 'cs', accountKey: 'key==' }),
-    );
+    expect(h.AzureBlobProvider).toHaveBeenCalledWith(expect.objectContaining({ accountName: 'acct', connectionString: 'cs', accountKey: 'key==' }));
   });
 
   it('prefers a per-bucket override over the tenant default', async () => {
     const bucketRepo = { findByName: vi.fn().mockResolvedValue({ id: 'bucket-1', tenantId: TENANT }) };
     const configRepo = {
-      findForBucket: vi.fn().mockResolvedValue(
-        cfg({ provider: StorageProviderType.AZURE_BLOB, accountName: 'override', credentialsRef: 'OV' }),
-      ),
+      findForBucket: vi.fn().mockResolvedValue(cfg({ provider: StorageProviderType.AZURE_BLOB, accountName: 'override', credentialsRef: 'OV' })),
       findTenantDefault: vi.fn().mockResolvedValue(cfg({ provider: StorageProviderType.AWS_S3, credentialsRef: 'DEF' })),
       findSystemDefault: vi.fn().mockResolvedValue(null),
     };

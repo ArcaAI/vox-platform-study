@@ -246,7 +246,9 @@ class IngestionConsumer:
                 error=str(exc),
             )
 
-    async def _reclaim_pending(self, stream_key: str, min_idle_ms: int, force: bool = False) -> None:
+    async def _reclaim_pending(
+        self, stream_key: str, min_idle_ms: int, force: bool = False
+    ) -> None:
         """Reclaim + process another consumer's idle pending entries via XAUTOCLAIM.
 
         On the first pass (``force``, ``min_idle_ms=0``) this also drains this

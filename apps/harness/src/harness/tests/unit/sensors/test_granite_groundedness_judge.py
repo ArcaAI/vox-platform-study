@@ -53,7 +53,9 @@ def _judge(handler, **overrides: Any) -> GraniteGroundednessJudge:
 def _score(verdict: str) -> httpx.Response:
     return httpx.Response(
         200,
-        json={"choices": [{"message": {"role": "assistant", "content": f"<score>{verdict}</score>"}}]},
+        json={
+            "choices": [{"message": {"role": "assistant", "content": f"<score>{verdict}</score>"}}]
+        },
     )
 
 
@@ -78,9 +80,7 @@ class TestVerdictMapping:
         def handler(_: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json={"choices": [{"message": {"content": "looks fine"}}]})
 
-        raw = await _judge(handler).complete(
-            _entailment_messages("p", "h"), json_mode=True
-        )
+        raw = await _judge(handler).complete(_entailment_messages("p", "h"), json_mode=True)
         assert _is_supported(raw) is False  # missing <score> -> ungrounded, not a crash
 
     @pytest.mark.asyncio
@@ -142,9 +142,9 @@ class TestRequestShape:
             seen.append(request)
             return httpx.Response(200, json={"message": {"content": "<score>no</score>"}})
 
-        raw = await _judge(
-            handler, provider="ollama", base_url="http://granite:11434"
-        ).complete(_entailment_messages("p", "h"))
+        raw = await _judge(handler, provider="ollama", base_url="http://granite:11434").complete(
+            _entailment_messages("p", "h")
+        )
         assert _is_supported(raw) is True
         assert str(seen[0].url) == "http://granite:11434/api/chat"
 

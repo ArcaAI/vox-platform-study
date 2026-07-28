@@ -62,10 +62,10 @@ The **HOPE Summarization Service (SMR)** is a microservice within the HOPE (Heal
 
 ### 🤖 Multiple LLM Providers
 
-| Provider | Success Rate | Features |
-|----------|--------------|----------|
-| **Azure OpenAI** | 99.9% | Strict schema, guaranteed JSON, GPT-4 support |
-| **Ollama** | 80-95% | Open-source models, multi-strategy parsing, JSON repair |
+| Provider         | Success Rate | Features                                                |
+| ---------------- | ------------ | ------------------------------------------------------- |
+| **Azure OpenAI** | 99.9%        | Strict schema, guaranteed JSON, GPT-4 support           |
+| **Ollama**       | 80-95%       | Open-source models, multi-strategy parsing, JSON repair |
 
 ### 🔄 Dual Processing Modes
 
@@ -91,6 +91,7 @@ The **HOPE Summarization Service (SMR)** is a microservice within the HOPE (Heal
 ### 🎛️ Department-Specific Templates
 
 Pre-configured templates for:
+
 - Breast Endocrine (New Referral, Follow-up)
 - Hematology (New Referral, Revisit)
 - Medicine (New Referral, Follow-up)
@@ -105,32 +106,32 @@ Pre-configured templates for:
 
 ### Core Technologies
 
-| Component | Technology | Version | Purpose |
-|-----------|-----------|---------|---------|
-| **Framework** | FastAPI | 0.104.0+ | High-performance async API |
-| **Language** | Python | 3.11+ | Service implementation |
-| **Package Manager** | pip/uv | Latest | Dependency management |
-| **Database** | PostgreSQL | 17 | Medical summary persistence |
-| **ORM** | SQLAlchemy | 2.0.0+ | Async database operations |
-| **Migrations** | Alembic | 1.13.0+ | Database schema versioning |
-| **Cache/Queue** | Redis | 8 | Job queue and caching |
-| **Task Queue** | Celery | 5.3.0+ | Background job processing |
+| Component           | Technology | Version  | Purpose                     |
+| ------------------- | ---------- | -------- | --------------------------- |
+| **Framework**       | FastAPI    | 0.104.0+ | High-performance async API  |
+| **Language**        | Python     | 3.11+    | Service implementation      |
+| **Package Manager** | pip/uv     | Latest   | Dependency management       |
+| **Database**        | PostgreSQL | 17       | Medical summary persistence |
+| **ORM**             | SQLAlchemy | 2.0.0+   | Async database operations   |
+| **Migrations**      | Alembic    | 1.13.0+  | Database schema versioning  |
+| **Cache/Queue**     | Redis      | 8        | Job queue and caching       |
+| **Task Queue**      | Celery     | 5.3.0+   | Background job processing   |
 
 ### LLM Integration
 
-| Provider | SDK | Models | Features |
-|----------|-----|--------|----------|
-| Azure OpenAI | `openai>=1.10.0` | GPT-4, GPT-4 Turbo | Structured outputs, guaranteed JSON |
-| Ollama | `ollama>=0.2.0` | Llama 2, Gemma, Custom | Local models, privacy-focused |
+| Provider     | SDK              | Models                 | Features                            |
+| ------------ | ---------------- | ---------------------- | ----------------------------------- |
+| Azure OpenAI | `openai>=1.10.0` | GPT-4, GPT-4 Turbo     | Structured outputs, guaranteed JSON |
+| Ollama       | `ollama>=0.2.0`  | Llama 2, Gemma, Custom | Local models, privacy-focused       |
 
 ### Observability Stack
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Logging** | structlog, python-json-logger | Structured JSON logging |
-| **Metrics** | Prometheus, prometheus-client | System and business metrics |
-| **Tracing** | OpenTelemetry | Distributed request tracing |
-| **Monitoring** | psutil | Resource usage tracking |
+| Component      | Technology                    | Purpose                     |
+| -------------- | ----------------------------- | --------------------------- |
+| **Logging**    | structlog, python-json-logger | Structured JSON logging     |
+| **Metrics**    | Prometheus, prometheus-client | System and business metrics |
+| **Tracing**    | OpenTelemetry                 | Distributed request tracing |
+| **Monitoring** | psutil                        | Resource usage tracking     |
 
 ### Development Tools
 
@@ -397,15 +398,15 @@ python run_celery_worker.py
 
 #### Application Settings
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SERVICE_NAME` | Service identifier | `hope-smr` |
-| `SERVICE_VERSION` | Service version | `1.0.0` |
-| `NODE_ENV` | Environment mode | `development` |
-| `SUMMARY_AGENT_HOST` | Server host | `0.0.0.0` |
-| `SUMMARY_AGENT_PORT` | Server port | `5006` |
-| `SUMMARY_AGENT_DEBUG` | Debug mode | `false` |
-| `SUMMARY_AGENT_LOG_LEVEL` | Logging level | `INFO` |
+| Variable                  | Description        | Default       |
+| ------------------------- | ------------------ | ------------- |
+| `SERVICE_NAME`            | Service identifier | `hope-smr`    |
+| `SERVICE_VERSION`         | Service version    | `1.0.0`       |
+| `NODE_ENV`                | Environment mode   | `development` |
+| `SUMMARY_AGENT_HOST`      | Server host        | `0.0.0.0`     |
+| `SUMMARY_AGENT_PORT`      | Server port        | `5006`        |
+| `SUMMARY_AGENT_DEBUG`     | Debug mode         | `false`       |
+| `SUMMARY_AGENT_LOG_LEVEL` | Logging level      | `INFO`        |
 
 #### LLM Provider Configuration
 
@@ -522,31 +523,31 @@ Create a medical summary and return immediate results.
 
 ```json
 {
-    "session_data": {
-        "session_id": "session_123",
-        "created_at": "2024-01-01T10:00:00Z",
-        "conversation_segments": [
-            {
-                "speaker": "patient",
+  "session_data": {
+    "session_id": "session_123",
+    "created_at": "2024-01-01T10:00:00Z",
+    "conversation_segments": [
+      {
+        "speaker": "patient",
         "text": "I've been having chest pain",
-                "timestamp": "2024-01-01T10:01:00Z"
-            },
-            {
-                "speaker": "doctor",
+        "timestamp": "2024-01-01T10:01:00Z"
+      },
+      {
+        "speaker": "doctor",
         "text": "Can you describe the pain?",
-                "timestamp": "2024-01-01T10:01:30Z"
-            }
-        ],
-        "patient_info": {
-            "age": 45,
-            "gender": "male",
-            "medical_history": "hypertension"
+        "timestamp": "2024-01-01T10:01:30Z"
+      }
+    ],
+    "patient_info": {
+      "age": 45,
+      "gender": "male",
+      "medical_history": "hypertension"
     },
     "session_metadata": {
       "department": "Cardiology",
       "visit_type": "New Referral",
       "language": "en"
-        }
+    }
   },
   "use_enhanced_format": true,
   "specialty": "cardiology",
@@ -558,8 +559,8 @@ Create a medical summary and return immediate results.
 
 ```json
 {
-    "session_id": "session_123",
-    "summary": {
+  "session_id": "session_123",
+  "summary": {
     "chief_complaint": "Chest pain",
     "symptoms": ["chest pain", "shortness of breath"],
     "medical_history": "Hypertension",
@@ -568,9 +569,9 @@ Create a medical summary and return immediate results.
     "treatment_plan": "ECG ordered, cardiology referral",
     "follow_up": "Follow-up in 1 week",
     "summary": "45-year-old male with chest pain"
-    },
-    "created_at": "2024-01-01T10:02:00Z",
-    "processing_time_ms": 2500,
+  },
+  "created_at": "2024-01-01T10:02:00Z",
+  "processing_time_ms": 2500,
   "token_usage": {
     "prompt_tokens": 350,
     "completion_tokens": 180,
@@ -595,9 +596,9 @@ Create a summary job for background processing.
 
 ```json
 {
-    "job_id": "job_456",
-    "status": "pending",
-    "created_at": "2024-01-01T10:00:00Z",
+  "job_id": "job_456",
+  "status": "pending",
+  "created_at": "2024-01-01T10:00:00Z",
   "websocket_url": "ws://localhost:5006/api/v1/ws/jobs/job_456",
   "sse_url": "http://localhost:5006/api/v1/sse/jobs/job_456"
 }
@@ -993,6 +994,7 @@ Structured JSON logging with correlation tracking:
 ### Tracing
 
 OpenTelemetry distributed tracing with automatic instrumentation for:
+
 - HTTP requests
 - Database queries
 - LLM API calls
@@ -1001,6 +1003,7 @@ OpenTelemetry distributed tracing with automatic instrumentation for:
 ### Alerting
 
 Monitored conditions:
+
 - High CPU usage (>80%)
 - High memory usage (>85%)
 - High error rate (>10%)

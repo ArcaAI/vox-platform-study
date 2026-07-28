@@ -49,14 +49,14 @@ const prisma = getExtendedPrismaClient();
 const users = await prisma.user.findMany();
 ```
 
-| Export | Purpose |
-|---|---|
-| `getExtendedPrismaClient()` | Default singleton. Composed `soft-delete + tenant-scope` client — use this everywhere |
-| `getPlatformAdminPrismaClient_Unscoped()` | Raw client that bypasses both extensions. ESLint-gated to an allow-list (seeds, scripts, `CoreDatabaseService`); see below |
-| `createNewPrismaClient()` / `createNewExtendedPrismaClient()` | Fresh instances with their own pools (test isolation) |
-| `getPrismaClientWithVault()` / `VaultPrismaClient` | Client backed by Vault-issued short-lived DB credentials |
-| `setTenantContextProvider(provider)` | Host registration hook for the tenant-scope extension (wired by `apps/api/src/database/tenant-context.provider.ts`) |
-| `Prisma`, generated model types, `PrismaClient*Error` | Re-exported from the generated client |
+| Export                                                        | Purpose                                                                                                                    |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `getExtendedPrismaClient()`                                   | Default singleton. Composed `soft-delete + tenant-scope` client — use this everywhere                                      |
+| `getPlatformAdminPrismaClient_Unscoped()`                     | Raw client that bypasses both extensions. ESLint-gated to an allow-list (seeds, scripts, `CoreDatabaseService`); see below |
+| `createNewPrismaClient()` / `createNewExtendedPrismaClient()` | Fresh instances with their own pools (test isolation)                                                                      |
+| `getPrismaClientWithVault()` / `VaultPrismaClient`            | Client backed by Vault-issued short-lived DB credentials                                                                   |
+| `setTenantContextProvider(provider)`                          | Host registration hook for the tenant-scope extension (wired by `apps/api/src/database/tenant-context.provider.ts`)        |
+| `Prisma`, generated model types, `PrismaClient*Error`         | Re-exported from the generated client                                                                                      |
 
 The subpath export `@arcaai/database/client` exposes the raw generated client module.
 
@@ -64,11 +64,11 @@ The subpath export `@arcaai/database/client` exposes the raw generated client mo
 
 In Prisma 7 the driver adapter (`@prisma/adapter-pg`) owns pool sizing — the legacy `connection_limit` URL parameter is ignored. `src/client.ts` reads:
 
-| Env var | Default | Purpose |
-|---|---|---|
-| `DATABASE_URL` | required | Runtime connection string (PgBouncer port 6432 in production) |
-| `DIRECT_URL` | unset | Un-pooled URL used by `prisma.config.ts` for migrations (advisory locks do not survive PgBouncer transaction pooling) |
-| `PRISMA_PG_MAX` | `5` | `max` connections per pool, per pod. Budget rule: `pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections` |
+| Env var         | Default  | Purpose                                                                                                               |
+| --------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`  | required | Runtime connection string (PgBouncer port 6432 in production)                                                         |
+| `DIRECT_URL`    | unset    | Un-pooled URL used by `prisma.config.ts` for migrations (advisory locks do not survive PgBouncer transaction pooling) |
+| `PRISMA_PG_MAX` | `5`      | `max` connections per pool, per pod. Budget rule: `pods × PRISMA_PG_MAX ≤ 0.7 × PG max_connections`                   |
 
 The pool pins `connectionTimeoutMillis = 5000` and `idleTimeoutMillis = 300000`. Full rationale: [docs/archive/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md](../../docs/archive/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).
 
@@ -112,20 +112,20 @@ Schema lives in `src/prisma/db_main/` as one `.prisma` file per domain (`consult
 
 Package scripts (run as `pnpm --filter @arcaai/database <script>`; most have root-level `pnpm db:*` aliases):
 
-| Script | Command | Notes |
-|---|---|---|
-| `db:generate` | `prisma generate` + regenerate the client index via `@arcaai/tools` | Run after every schema change |
-| `db:migrate` | `prisma migrate dev --skip-generate` | Create + apply a dev migration |
-| `db:migrate:create` | `prisma migrate dev --create-only` | Generate SQL for review without applying |
-| `db:migrate:deploy` | `prisma migrate deploy` | Production/CI migration deploy |
-| `db:migrate:status` | `prisma migrate status` | |
-| `db:migrate:reset` | `prisma migrate reset` | Destructive; requires explicit approval |
-| `db:push` / `db:push:force` | `prisma db push [--force-reset --accept-data-loss]` | Schema sync without migrations (dev/test only) |
-| `db:studio` | `prisma studio` | |
-| `seed` | `tsx src/index.ts` | Runs the phased seed suite (root alias `pnpm db:seed`) |
-| `decrypt:row` | `tsx scripts/decrypt-row.ts` | Read-only PHI decrypt CLI |
-| `build` | `tsc` | |
-| `test` | `vitest run` | Unit tests only (excludes `integration/**` and `*.postgres.test.ts`) |
+| Script                      | Command                                                             | Notes                                                                |
+| --------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `db:generate`               | `prisma generate` + regenerate the client index via `@arcaai/tools` | Run after every schema change                                        |
+| `db:migrate`                | `prisma migrate dev --skip-generate`                                | Create + apply a dev migration                                       |
+| `db:migrate:create`         | `prisma migrate dev --create-only`                                  | Generate SQL for review without applying                             |
+| `db:migrate:deploy`         | `prisma migrate deploy`                                             | Production/CI migration deploy                                       |
+| `db:migrate:status`         | `prisma migrate status`                                             |                                                                      |
+| `db:migrate:reset`          | `prisma migrate reset`                                              | Destructive; requires explicit approval                              |
+| `db:push` / `db:push:force` | `prisma db push [--force-reset --accept-data-loss]`                 | Schema sync without migrations (dev/test only)                       |
+| `db:studio`                 | `prisma studio`                                                     |                                                                      |
+| `seed`                      | `tsx src/index.ts`                                                  | Runs the phased seed suite (root alias `pnpm db:seed`)               |
+| `decrypt:row`               | `tsx scripts/decrypt-row.ts`                                        | Read-only PHI decrypt CLI                                            |
+| `build`                     | `tsc`                                                               |                                                                      |
+| `test`                      | `vitest run`                                                        | Unit tests only (excludes `integration/**` and `*.postgres.test.ts`) |
 
 Additional test entry points:
 

@@ -92,7 +92,8 @@ class TestSyncGenerateErrorSanitization:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
-                "/api/v1/generate", json={"prompt": "hello", "provider": "leaky", "model": "test-model"}
+                "/api/v1/generate",
+                json={"prompt": "hello", "provider": "leaky", "model": "test-model"},
             )
             yield resp, tm
 
@@ -115,9 +116,7 @@ class TestSyncGenerateErrorSanitization:
     async def test_task_manager_still_receives_full_error(self, setup):
         """Server-side task record should keep the full error for debugging."""
         _, tm = setup
-        update_calls = [
-            c for c in tm.update_task.call_args_list if c.kwargs.get("error")
-        ]
+        update_calls = [c for c in tm.update_task.call_args_list if c.kwargs.get("error")]
         assert len(update_calls) >= 1
         stored_error = update_calls[-1].kwargs["error"]
         assert "sk-secret123" in stored_error
@@ -146,9 +145,7 @@ class TestStreamingErrorSanitization:
         req = GenerateRequest(prompt="hi", stream=True)
         await _run_streaming_generation(tm, provider, "t-stream-1", req)
 
-        error_calls = [
-            c for c in tm.append_chunk.call_args_list if c.args[1].type == "error"
-        ]
+        error_calls = [c for c in tm.append_chunk.call_args_list if c.args[1].type == "error"]
         assert len(error_calls) == 1
         error_msg = error_calls[0].args[1].data["error"]
         for fragment in SENSITIVE_FRAGMENTS:
@@ -177,9 +174,7 @@ class TestStreamingErrorSanitization:
         await _run_streaming_generation(tm, provider, "t-stream-2", req)
 
         failed_calls = [
-            c
-            for c in tm.update_task.call_args_list
-            if c.kwargs.get("status") == TaskStatus.FAILED
+            c for c in tm.update_task.call_args_list if c.kwargs.get("status") == TaskStatus.FAILED
         ]
         assert len(failed_calls) == 1
         assert "sk-secret123" in failed_calls[0].kwargs["error"]
@@ -277,6 +272,6 @@ class TestProtocolContract:
         from smr.providers.base import LLMProvider
 
         hints = get_type_hints(LLMProvider.generate)
-        assert hints["return"] == tuple[str, str, GenerationStats], (
-            f"Expected tuple[str, str, GenerationStats], got {hints['return']}"
-        )
+        assert (
+            hints["return"] == tuple[str, str, GenerationStats]
+        ), f"Expected tuple[str, str, GenerationStats], got {hints['return']}"

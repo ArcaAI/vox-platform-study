@@ -44,11 +44,15 @@ class MockProvider:
             raise RuntimeError("Provider failed")
         if self._slow:
             await asyncio.sleep(0.5)
-        return self._content, "", {
-            "prompt_tokens": 10,
-            "completion_tokens": 5,
-            "total_tokens": 15,
-        }
+        return (
+            self._content,
+            "",
+            {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15,
+            },
+        )
 
     async def generate_stream(self, request):
         if self._fail:
@@ -122,17 +126,13 @@ def _wire_app(
 
     app.state.redis = redis
     app.state.provider_registry = registry
-    app.state.task_manager = TaskManager(
-        redis=redis, task_ttl=3600, stream_max_len=10_000
-    )
+    app.state.task_manager = TaskManager(redis=redis, task_ttl=3600, stream_max_len=10_000)
 
     return app, registry
 
 
 @pytest_asyncio.fixture
-async def integration_client(
-    integration_settings: Settings, redis_client
-) -> AsyncGenerator:
+async def integration_client(integration_settings: Settings, redis_client) -> AsyncGenerator:
     """Yield (AsyncClient, app) with healthy mock provider."""
     app, _ = _wire_app(integration_settings, redis_client)
     transport = ASGITransport(app=app)

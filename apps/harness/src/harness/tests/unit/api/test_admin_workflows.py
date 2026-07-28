@@ -119,7 +119,12 @@ class _FakeClient:
         self.raise_on_sa = False
 
     def list_workflows(
-        self, query: str = "", *, page_size: int = 1000, next_page_token: bytes | None = None, **kw: Any
+        self,
+        query: str = "",
+        *,
+        page_size: int = 1000,
+        next_page_token: bytes | None = None,
+        **kw: Any,
     ):
         self.list_queries.append(
             {"query": query, "page_size": page_size, "next_page_token": next_page_token}
@@ -245,7 +250,9 @@ class TestDescribeWorkflow:
     @pytest.mark.asyncio
     async def test_describe_without_phase_flag_does_not_query(self, admin_app):
         http, client = admin_app
-        client.descriptions["harness-doc-c-1"] = _FakeExecution(wid="harness-doc-c-1", sa_tenant="t-1")
+        client.descriptions["harness-doc-c-1"] = _FakeExecution(
+            wid="harness-doc-c-1", sa_tenant="t-1"
+        )
         client.phases["harness-doc-c-1"] = "GATE"
         resp = await http.get(f"{_BASE}/workflows/harness-doc-c-1")
         assert resp.status_code == 200
@@ -266,7 +273,8 @@ class TestWorkflowActions:
             wid="harness-doc-c-1", run_id="r-1", status=WorkflowExecutionStatus.CANCELED
         )
         resp = await http.post(
-            f"{_BASE}/workflows/harness-doc-c-1/cancel", json={"tenantId": "t-1", "reason": "mistake"}
+            f"{_BASE}/workflows/harness-doc-c-1/cancel",
+            json={"tenantId": "t-1", "reason": "mistake"},
         )
         assert resp.status_code == 200
         data = resp.json()

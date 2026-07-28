@@ -63,7 +63,9 @@ class OntologyCodes(BaseModel):
     @property
     def has_any(self) -> bool:
         """True when at least one ontology code is populated."""
-        return any((self.umls_cui, self.snomed_code, self.rxnorm_code, self.icd_code, self.loinc_code))
+        return any(
+            (self.umls_cui, self.snomed_code, self.rxnorm_code, self.icd_code, self.loinc_code)
+        )
 
 
 def _normalize(text: str) -> str:
@@ -107,7 +109,10 @@ _VOCABULARY_ENTRIES: tuple[tuple[tuple[str, ...], OntologyCodes], ...] = (
     (("furosemide",), OntologyCodes(rxnorm_code="4603", umls_cui="C0016860")),
     # ── Conditions (ICD-10 + SNOMED + UMLS) ──
     (("pneumonia",), OntologyCodes(icd_code="J18.9", snomed_code="233604007", umls_cui="C0032285")),
-    (("hypertension", "high blood pressure"), OntologyCodes(icd_code="I10", snomed_code="38341003", umls_cui="C0020538")),
+    (
+        ("hypertension", "high blood pressure"),
+        OntologyCodes(icd_code="I10", snomed_code="38341003", umls_cui="C0020538"),
+    ),
     (
         # Type-2-specific aliases ONLY. Bare "diabetes" / "diabetes mellitus" are
         # deliberately NOT mapped here — an unqualified mention may be Type 1,
@@ -118,14 +123,32 @@ _VOCABULARY_ENTRIES: tuple[tuple[tuple[str, ...], OntologyCodes], ...] = (
         OntologyCodes(icd_code="E11.9", snomed_code="44054006", umls_cui="C0011860"),
     ),
     (("asthma",), OntologyCodes(icd_code="J45.909", snomed_code="195967001", umls_cui="C0004096")),
-    (("copd", "chronic obstructive pulmonary disease"), OntologyCodes(icd_code="J44.9", snomed_code="13645005", umls_cui="C0024117")),
-    (("covid-19", "covid", "covid 19"), OntologyCodes(icd_code="U07.1", snomed_code="840539006", umls_cui="C5203670")),
-    (("myocardial infarction", "heart attack"), OntologyCodes(icd_code="I21.9", snomed_code="22298006", umls_cui="C0027051")),
+    (
+        ("copd", "chronic obstructive pulmonary disease"),
+        OntologyCodes(icd_code="J44.9", snomed_code="13645005", umls_cui="C0024117"),
+    ),
+    (
+        ("covid-19", "covid", "covid 19"),
+        OntologyCodes(icd_code="U07.1", snomed_code="840539006", umls_cui="C5203670"),
+    ),
+    (
+        ("myocardial infarction", "heart attack"),
+        OntologyCodes(icd_code="I21.9", snomed_code="22298006", umls_cui="C0027051"),
+    ),
     (("sepsis",), OntologyCodes(icd_code="A41.9", snomed_code="91302008", umls_cui="C0243026")),
-    (("anemia", "anaemia"), OntologyCodes(icd_code="D64.9", snomed_code="271737000", umls_cui="C0002871")),
+    (
+        ("anemia", "anaemia"),
+        OntologyCodes(icd_code="D64.9", snomed_code="271737000", umls_cui="C0002871"),
+    ),
     # ── Symptoms (SNOMED + UMLS + ICD-10) ──
-    (("headache", "cephalalgia"), OntologyCodes(icd_code="R51.9", snomed_code="25064002", umls_cui="C0018681")),
-    (("fever", "pyrexia"), OntologyCodes(icd_code="R50.9", snomed_code="386661006", umls_cui="C0015967")),
+    (
+        ("headache", "cephalalgia"),
+        OntologyCodes(icd_code="R51.9", snomed_code="25064002", umls_cui="C0018681"),
+    ),
+    (
+        ("fever", "pyrexia"),
+        OntologyCodes(icd_code="R50.9", snomed_code="386661006", umls_cui="C0015967"),
+    ),
     (("chest pain",), OntologyCodes(icd_code="R07.9", snomed_code="29857009", umls_cui="C0008031")),
     (("cough",), OntologyCodes(icd_code="R05.9", snomed_code="49727002", umls_cui="C0010200")),
     (("nausea",), OntologyCodes(icd_code="R11.0", snomed_code="422587007", umls_cui="C0027497")),
@@ -136,16 +159,28 @@ _VOCABULARY_ENTRIES: tuple[tuple[tuple[str, ...], OntologyCodes], ...] = (
     (("fatigue",), OntologyCodes(icd_code="R53.83", snomed_code="84229001", umls_cui="C0015672")),
     (("dizziness",), OntologyCodes(icd_code="R42", snomed_code="404640003", umls_cui="C0012833")),
     # ── Labs / analytes (LOINC + UMLS) ──
-    (("hemoglobin a1c", "hba1c", "a1c", "glycated hemoglobin"), OntologyCodes(loinc_code="4548-4", umls_cui="C0202054")),
+    (
+        ("hemoglobin a1c", "hba1c", "a1c", "glycated hemoglobin"),
+        OntologyCodes(loinc_code="4548-4", umls_cui="C0202054"),
+    ),
     (("glucose", "blood glucose"), OntologyCodes(loinc_code="2345-7", umls_cui="C0202041")),
     (("creatinine",), OntologyCodes(loinc_code="2160-0", umls_cui="C0201975")),
     (("hemoglobin", "haemoglobin", "hgb"), OntologyCodes(loinc_code="718-7", umls_cui="C0518015")),
     (("potassium",), OntologyCodes(loinc_code="2823-3", umls_cui="C0202194")),
     (("white blood cell count", "wbc"), OntologyCodes(loinc_code="6690-2", umls_cui="C0023508")),
     # ── Procedures (SNOMED + UMLS) ──
-    (("chest x-ray", "chest xray", "cxr"), OntologyCodes(snomed_code="399208008", umls_cui="C0039985")),
-    (("electrocardiogram", "ecg", "ekg"), OntologyCodes(snomed_code="29303009", umls_cui="C0013798")),
-    (("mri", "magnetic resonance imaging"), OntologyCodes(snomed_code="113091000", umls_cui="C0024485")),
+    (
+        ("chest x-ray", "chest xray", "cxr"),
+        OntologyCodes(snomed_code="399208008", umls_cui="C0039985"),
+    ),
+    (
+        ("electrocardiogram", "ecg", "ekg"),
+        OntologyCodes(snomed_code="29303009", umls_cui="C0013798"),
+    ),
+    (
+        ("mri", "magnetic resonance imaging"),
+        OntologyCodes(snomed_code="113091000", umls_cui="C0024485"),
+    ),
 )
 
 

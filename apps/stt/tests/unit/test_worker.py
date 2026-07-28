@@ -125,9 +125,7 @@ class TestWorkerNewServiceInitialization:
             mock_vad.initialize = AsyncMock()
 
             with (
-                patch(
-                    "stt.core.database.connection.initialize_database", new_callable=AsyncMock
-                ),
+                patch("stt.core.database.connection.initialize_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
                 patch("stt.vad.silero_service.get_vad_service", return_value=mock_vad),
             ):
@@ -148,9 +146,7 @@ class TestWorkerNewServiceInitialization:
             mock_embedding.initialize = AsyncMock()
 
             with (
-                patch(
-                    "stt.core.database.connection.initialize_database", new_callable=AsyncMock
-                ),
+                patch("stt.core.database.connection.initialize_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
                 patch("stt.vad.silero_service.get_vad_service", side_effect=Exception("skip")),
                 patch(
@@ -175,9 +171,7 @@ class TestWorkerNewServiceInitialization:
             mock_embedding.initialize = AsyncMock()
 
             with (
-                patch(
-                    "stt.core.database.connection.initialize_database", new_callable=AsyncMock
-                ),
+                patch("stt.core.database.connection.initialize_database", new_callable=AsyncMock),
                 patch("stt.core.storage.minio_client.initialize_minio", new_callable=AsyncMock),
                 patch(
                     "stt.vad.silero_service.get_vad_service",

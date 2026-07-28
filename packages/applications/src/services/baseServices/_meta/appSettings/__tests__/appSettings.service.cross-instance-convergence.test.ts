@@ -117,7 +117,14 @@ describe('AppSettingsService — cross-instance convergence via Redis pub/sub (F
     repo.findAll.mockResolvedValue([buildSetting('initial')]);
     const redisCache = buildRedisCache();
     const { mock: redisSubscriber, subject } = buildRedisSubscriber();
-    const svc = new AppSettingsService(repo as never, events as never, cls as never, scheduler as never, redisCache as never, redisSubscriber as never);
+    const svc = new AppSettingsService(
+      repo as never,
+      events as never,
+      cls as never,
+      scheduler as never,
+      redisCache as never,
+      redisSubscriber as never,
+    );
 
     await svc.onModuleInit();
 

@@ -6,16 +6,16 @@ Sets the transcription language for Local AI mode. Explicitly specifying the lan
 
 ### Supported Languages
 
-| Code | Language |
-|------|----------|
-| `en` | English |
-| `hi` | Hindi |
-| `ta` | Tamil |
+| Code | Language  |
+| ---- | --------- |
+| `en` | English   |
+| `hi` | Hindi     |
+| `ta` | Tamil     |
 | `ml` | Malayalam |
-| `es` | Spanish |
-| `fr` | French |
-| `de` | German |
-| `th` | Thai |
+| `es` | Spanish   |
+| `fr` | French    |
+| `de` | German    |
+| `th` | Thai      |
 
 <!-- @example -->
 

@@ -40,14 +40,10 @@ vi.mock('../../store', () => {
       if (typeof selector === 'function') return selector(mockStore);
       return mockStore;
     }),
-    selectTranscriptions: (s: { contextItems: { type?: string }[] }) =>
-      s.contextItems.filter((i) => i.type === 'transcription'),
-    selectCaseNotes: (s: { contextItems: { type?: string }[] }) =>
-      s.contextItems.filter((i) => i.type === 'case_note'),
-    selectWorknotes: (s: { contextItems: { type?: string }[] }) =>
-      s.contextItems.filter((i) => i.type === 'WORKNOTE'),
-    selectAttachments: (s: { contextItems: { type?: string }[] }) =>
-      s.contextItems.filter((i) => i.type === 'ATTACHMENT'),
+    selectTranscriptions: (s: { contextItems: { type?: string }[] }) => s.contextItems.filter((i) => i.type === 'transcription'),
+    selectCaseNotes: (s: { contextItems: { type?: string }[] }) => s.contextItems.filter((i) => i.type === 'case_note'),
+    selectWorknotes: (s: { contextItems: { type?: string }[] }) => s.contextItems.filter((i) => i.type === 'WORKNOTE'),
+    selectAttachments: (s: { contextItems: { type?: string }[] }) => s.contextItems.filter((i) => i.type === 'ATTACHMENT'),
     selectIsAudioSource: () => false,
     selectTranscriptionPipelineState: () => null,
     selectKnowledgePipelineState: () => null,

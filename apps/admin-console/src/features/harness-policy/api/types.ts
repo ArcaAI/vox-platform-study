@@ -14,27 +14,27 @@ export type HarnessPolicySource = 'tenant' | 'system-default' | 'code-default';
  * renders as `ETag: "<version>"` (0 = code-default placeholder, no ETag).
  */
 export interface HarnessPolicy {
-    id: string | null;
-    tenantId: string;
-    source: HarnessPolicySource;
-    entityFaithfulnessThreshold: number;
-    coverageThreshold: number;
-    citationPresenceThreshold: number;
-    numericDoseThreshold: number;
-    groundednessThreshold: number;
-    safetyEnabled: boolean;
-    phiEnabled: boolean;
-    phiFailClosed: boolean;
-    safetyProvider: string;
-    safetyModel: string;
-    smrProvider: string | null;
-    smrModel: string | null;
-    maxRegen: number;
-    gateSlaSeconds: number;
-    gateEscalationSeconds: number;
-    toolAllowlist: string[] | null;
-    updatedAt: string | null;
-    version: number;
+  id: string | null;
+  tenantId: string;
+  source: HarnessPolicySource;
+  entityFaithfulnessThreshold: number;
+  coverageThreshold: number;
+  citationPresenceThreshold: number;
+  numericDoseThreshold: number;
+  groundednessThreshold: number;
+  safetyEnabled: boolean;
+  phiEnabled: boolean;
+  phiFailClosed: boolean;
+  safetyProvider: string;
+  safetyModel: string;
+  smrProvider: string | null;
+  smrModel: string | null;
+  maxRegen: number;
+  gateSlaSeconds: number;
+  gateEscalationSeconds: number;
+  toolAllowlist: string[] | null;
+  updatedAt: string | null;
+  version: number;
 }
 
 /**
@@ -44,24 +44,24 @@ export interface HarnessPolicy {
  * folded from If-Match server-side; the client sends both.
  */
 export interface UpdateHarnessPolicyRequest {
-    entityFaithfulnessThreshold?: number;
-    coverageThreshold?: number;
-    citationPresenceThreshold?: number;
-    numericDoseThreshold?: number;
-    groundednessThreshold?: number;
-    safetyEnabled?: boolean;
-    phiEnabled?: boolean;
-    phiFailClosed?: boolean;
-    safetyProvider?: string;
-    safetyModel?: string;
-    smrProvider?: string | null;
-    smrModel?: string | null;
-    maxRegen?: number;
-    gateSlaSeconds?: number;
-    gateEscalationSeconds?: number;
-    toolAllowlist?: string[] | null;
-    reason?: string;
-    expectedVersion?: number;
+  entityFaithfulnessThreshold?: number;
+  coverageThreshold?: number;
+  citationPresenceThreshold?: number;
+  numericDoseThreshold?: number;
+  groundednessThreshold?: number;
+  safetyEnabled?: boolean;
+  phiEnabled?: boolean;
+  phiFailClosed?: boolean;
+  safetyProvider?: string;
+  safetyModel?: string;
+  smrProvider?: string | null;
+  smrModel?: string | null;
+  maxRegen?: number;
+  gateSlaSeconds?: number;
+  gateEscalationSeconds?: number;
+  toolAllowlist?: string[] | null;
+  reason?: string;
+  expectedVersion?: number;
 }
 
 /** Where the live-doc engine enabled flag was resolved from. */
@@ -69,15 +69,15 @@ export type LiveDocEngineConfigSource = 'env-default' | 'redis-override';
 
 /** GET/PATCH /admin/harness/live/config — the engine kill-switch (NOT versioned). */
 export interface LiveDocEngineConfig {
-    enabled: boolean;
-    envDefault: boolean;
-    source: LiveDocEngineConfigSource;
-    updatedAt?: string;
-    updatedBy?: string;
+  enabled: boolean;
+  envDefault: boolean;
+  source: LiveDocEngineConfigSource;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 /** PATCH body (UpdateLiveDocEngineConfigRequest) — plain PATCH, no If-Match. */
 export interface UpdateLiveDocEngineConfigRequest {
-    enabled: boolean;
-    reason?: string;
+  enabled: boolean;
+  reason?: string;
 }

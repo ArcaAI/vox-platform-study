@@ -31,10 +31,16 @@ const createMockPipelineService = () => ({
 const createMockStreamTicketService = () => ({
   issueTicket: vi.fn().mockResolvedValue({ ticket: 'ticket-1', expiresAt: Date.now() + 30_000 }),
 });
-const createMockBinding = () => ({ bind: vi.fn().mockResolvedValue(undefined), bindSessionMeta: vi.fn().mockResolvedValue(undefined), clear: vi.fn().mockResolvedValue(undefined) });
+const createMockBinding = () => ({
+  bind: vi.fn().mockResolvedValue(undefined),
+  bindSessionMeta: vi.fn().mockResolvedValue(undefined),
+  clear: vi.fn().mockResolvedValue(undefined),
+});
 const createMockEntitlements = () => ({ assertConcurrencyQuota: vi.fn().mockResolvedValue(undefined) });
 const createMockSttConfig = () => ({
-  getEffective: vi.fn().mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: 'fallback-pipe', autoSwitchEnabled: true, consecutiveFailureThreshold: 2 }),
+  getEffective: vi
+    .fn()
+    .mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: 'fallback-pipe', autoSwitchEnabled: true, consecutiveFailureThreshold: 2 }),
   resolveProviderOverrides: vi.fn().mockResolvedValue({ sarvam: { api_key: 'secret-key' } }),
 });
 
@@ -82,7 +88,12 @@ describe('TranscriptionJobController.createStreamSession — STT fallback inject
 
   it('omits overrides/fallback when the tenant has none configured', async () => {
     const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: null, autoSwitchEnabled: true, consecutiveFailureThreshold: 2 });
+    sttConfig.getEffective.mockResolvedValue({
+      tenantId: 'tenant-1',
+      fallbackPipelineId: null,
+      autoSwitchEnabled: true,
+      consecutiveFailureThreshold: 2,
+    });
     sttConfig.resolveProviderOverrides.mockResolvedValue({});
     const { controller, mocks } = build(sttConfig);
     await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
@@ -108,7 +119,12 @@ describe('TranscriptionJobController.switchStreamSessionToFallback', () => {
 
   it('409s when the tenant has no fallback configured (fail-closed selection)', async () => {
     const sttConfig = createMockSttConfig();
-    sttConfig.getEffective.mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: null, autoSwitchEnabled: true, consecutiveFailureThreshold: 2 });
+    sttConfig.getEffective.mockResolvedValue({
+      tenantId: 'tenant-1',
+      fallbackPipelineId: null,
+      autoSwitchEnabled: true,
+      consecutiveFailureThreshold: 2,
+    });
     const { controller, mocks } = build(sttConfig);
     await expect(controller.switchStreamSessionToFallback('sess-1')).rejects.toBeInstanceOf(ConflictException);
     expect(mocks.sessionService.switchToFallback).not.toHaveBeenCalled();

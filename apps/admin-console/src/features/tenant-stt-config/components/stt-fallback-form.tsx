@@ -91,10 +91,7 @@ export function SttFallbackForm({
           <Label htmlFor={`${uid}-fallback`} className="text-muted-foreground text-xs font-medium">
             Fallback pipeline
           </Label>
-          <Select
-            value={fallback ?? NONE_VALUE}
-            onValueChange={(next) => setFallback(next === NONE_VALUE ? null : next)}
-          >
+          <Select value={fallback ?? NONE_VALUE} onValueChange={(next) => setFallback(next === NONE_VALUE ? null : next)}>
             <SelectTrigger id={`${uid}-fallback`} className="h-8 font-mono text-xs">
               <SelectValue placeholder="No fallback" />
             </SelectTrigger>

@@ -56,9 +56,7 @@ async function main() {
 
   const cmap = (summary?.citationsMap ?? {}) as { claims?: any[] };
   const claims = Array.isArray(cmap.claims) ? cmap.claims : [];
-  const cited = claims.filter(
-    (c) => Array.isArray(c?.knowledgeChunkIds) && c.knowledgeChunkIds.length > 0,
-  );
+  const cited = claims.filter((c) => Array.isArray(c?.knowledgeChunkIds) && c.knowledgeChunkIds.length > 0);
   const targetClaims = cited.filter((c) => c.knowledgeChunkIds.includes(TARGET_CHUNK));
 
   console.log('===== Harness provenance proof =====');

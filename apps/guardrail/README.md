@@ -8,22 +8,26 @@ Guardian** (`granite-guardian-4.1-8b`). The engine is selectable via `GUARDRAIL_
 ## Features
 
 ### **Primary: Medical Context Validation (Guardian Model)**
+
 - **Medical Context Detection**: Validate if content is medical-related before processing
 - **Confidence Scoring**: Get confidence levels for medical context validation
 - **Context Classification**: Identify clinical, administrative, or general content
 - **Keyword Analysis**: Fallback keyword-based validation for reliability
 
 ### **Secondary: General Content Safety**
+
 - **Content Safety Analysis**: Detect harmful, inappropriate, or dangerous content
 - **PII Detection**: Identify personally identifiable information
 - **Prompt Injection Detection**: Detect attempts to manipulate system instructions
 - **Comprehensive Analysis**: All checks combined in a single call
 
 ### **Processing Modes**
+
 - **Real-time Processing**: Direct API calls for immediate results
 - **Async Processing**: Job queue for batch processing and load balancing
 
 ### **Monitoring & Health**
+
 - **Health Checks**: Comprehensive health checks for all services
 - **Metrics**: Prometheus metrics for monitoring
 - **Audit Logging**: Track all validation requests
@@ -103,6 +107,7 @@ curl -X POST "http://localhost:8863/api/medical/validate" \
 ```
 
 **Response:**
+
 ```json
 {
   "is_medical": true,
@@ -219,12 +224,12 @@ pre-commit install
 
 The service selects its LLM engine via `GUARDRAIL_V2_PROVIDER`:
 
-| Provider | Transport | Protocol | Notes |
-|---|---|---|---|
-| `lm-studio` (default) | `POST {base_url}/v1/chat/completions` | Granite Guardian `<guardian>`/`<score>` | `granite-guardian-4.1-8b` |
-| `ollama` | `POST {base_url}/api/generate` | Generic SAFE/UNSAFE prompts | optional, serves e.g. `gemma3` |
-| `azure` | OpenAI-compatible chat | Generic SAFE/UNSAFE fallback | requires a guardian-capable deployment |
-| `bedrock` | OpenAI-compatible gateway | Generic SAFE/UNSAFE fallback | requires a guardian-capable model |
+| Provider              | Transport                             | Protocol                                | Notes                                  |
+| --------------------- | ------------------------------------- | --------------------------------------- | -------------------------------------- |
+| `lm-studio` (default) | `POST {base_url}/v1/chat/completions` | Granite Guardian `<guardian>`/`<score>` | `granite-guardian-4.1-8b`              |
+| `ollama`              | `POST {base_url}/api/generate`        | Generic SAFE/UNSAFE prompts             | optional, serves e.g. `gemma3`         |
+| `azure`               | OpenAI-compatible chat                | Generic SAFE/UNSAFE fallback            | requires a guardian-capable deployment |
+| `bedrock`             | OpenAI-compatible gateway             | Generic SAFE/UNSAFE fallback            | requires a guardian-capable model      |
 
 **Granite Guardian protocol (BYOC):** criteria cannot be passed as API params over the
 OpenAI-compatible endpoint, so each guardrail task appends a `<guardian>` block (the
@@ -272,11 +277,11 @@ service never touches the DB and behaves exactly as the env-only configuration a
    `modelSlug` in the same scope (tenant task-default preferred over SYSTEM's; the
    tenant's own model copy preferred over the SYSTEM catalog row):
 
-   | resolved field | source column | meaning |
-   |---|---|---|
-   | provider | `AiModel."provider"` | `lm-studio` \| `ollama` \| `azure` \| `bedrock` (NULL → env provider retained) |
-   | model | `AiModel."sourceUri"` | the provider-native model id sent to the runtime (never the slug) |
-   | azure deployment | `AiModel."_metadata"->>'azureDeployment'` | non-secret Azure deployment name (may be absent) |
+   | resolved field   | source column                             | meaning                                                                        |
+   | ---------------- | ----------------------------------------- | ------------------------------------------------------------------------------ |
+   | provider         | `AiModel."provider"`                      | `lm-studio` \| `ollama` \| `azure` \| `bedrock` (NULL → env provider retained) |
+   | model            | `AiModel."sourceUri"`                     | the provider-native model id sent to the runtime (never the slug)              |
+   | azure deployment | `AiModel."_metadata"->>'azureDeployment'` | non-secret Azure deployment name (may be absent)                               |
 
 3. **Resolution order (tenant-level):** request tenant (widened to SYSTEM) →
    default/system tenant → env defaults (`settings.engine`).

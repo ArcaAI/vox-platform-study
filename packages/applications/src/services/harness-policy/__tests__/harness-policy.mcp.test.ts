@@ -115,18 +115,13 @@ describe('HarnessPolicyService — MCP policy plumbing', () => {
     it('is rejected on a tenant patch (403 — global-admin only)', async () => {
       policyRepository.findSystemDefault.mockResolvedValue(systemPolicy());
 
-      await expect(
-        makeService().updatePolicy({ mcpToolsEnabled: true } as never, 1),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(makeService().updatePolicy({ mcpToolsEnabled: true } as never, 1)).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('is accepted on the global default patch', async () => {
       policyRepository.findSystemDefault.mockResolvedValue(systemPolicy({ mcpToolsEnabled: null }));
 
-      const updated = await makeService(SYSTEM_TENANT_ID).updateGlobalDefault(
-        { mcpToolsEnabled: true } as never,
-        1,
-      );
+      const updated = await makeService(SYSTEM_TENANT_ID).updateGlobalDefault({ mcpToolsEnabled: true } as never, 1);
 
       expect(updated.mcpToolsEnabled).toBe(true);
     });

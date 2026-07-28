@@ -217,9 +217,7 @@ class GroundednessSensor:
             if not hypothesis:
                 return None  # empty claim asserts nothing -> aggregated as grounded
             premise = _premise(ctx, claim)
-            key = claim_verdict_key(
-                claim_text=hypothesis, premise=premise, judge_identity=identity
-            )
+            key = claim_verdict_key(claim_text=hypothesis, premise=premise, judge_identity=identity)
 
             async def _judge_once() -> bool:
                 raw = await judge.complete(
@@ -275,9 +273,7 @@ class GroundednessSensor:
             verdicts.update(verdict_map)
         return verdicts
 
-    def _aggregate(
-        self, claims: list[dict[str, Any]], verdicts: dict[str, bool]
-    ) -> SensorResult:
+    def _aggregate(self, claims: list[dict[str, Any]], verdicts: dict[str, bool]) -> SensorResult:
         """Fold per-claim verdicts (in claim order) into the RAG-triad result.
 
         A claim is grounded iff it has no hypothesis (asserts nothing) or its verdict

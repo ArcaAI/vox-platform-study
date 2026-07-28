@@ -47,10 +47,7 @@ function generateTestId(): string {
 /**
  * Create a test tenant in the database
  */
-export async function createTenantFixture(
-  options: CreateTenantOptions = {},
-  prisma?: PrismaClient
-): Promise<CreatedTenant> {
+export async function createTenantFixture(options: CreateTenantOptions = {}, prisma?: PrismaClient): Promise<CreatedTenant> {
   const client = prisma || getPrismaClient();
   const id = options.id || generateTestId();
   const name = options.name || `Test Tenant ${id}`;
@@ -78,11 +75,7 @@ export async function createTenantFixture(
 /**
  * Create multiple test tenants
  */
-export async function createTenantsFixture(
-  count: number,
-  options: CreateTenantOptions = {},
-  prisma?: PrismaClient
-): Promise<CreatedTenant[]> {
+export async function createTenantsFixture(count: number, options: CreateTenantOptions = {}, prisma?: PrismaClient): Promise<CreatedTenant[]> {
   const tenants: CreatedTenant[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -92,7 +85,7 @@ export async function createTenantsFixture(
         name: options.name ? `${options.name} ${i + 1}` : undefined,
         slug: options.slug ? `${options.slug}-${i + 1}` : undefined,
       },
-      prisma
+      prisma,
     );
     tenants.push(tenant);
   }
@@ -103,10 +96,7 @@ export async function createTenantsFixture(
 /**
  * Delete a test tenant from the database
  */
-export async function deleteTenantFixture(
-  tenantId: string,
-  prisma?: PrismaClient
-): Promise<void> {
+export async function deleteTenantFixture(tenantId: string, prisma?: PrismaClient): Promise<void> {
   const client = prisma || getPrismaClient();
 
   try {
@@ -121,10 +111,7 @@ export async function deleteTenantFixture(
 /**
  * Find a tenant by slug
  */
-export async function findTenantBySlug(
-  slug: string,
-  prisma?: PrismaClient
-): Promise<CreatedTenant | null> {
+export async function findTenantBySlug(slug: string, prisma?: PrismaClient): Promise<CreatedTenant | null> {
   const client = prisma || getPrismaClient();
 
   const tenant = await client.tenant.findUnique({
@@ -142,9 +129,7 @@ export async function findTenantBySlug(
 /**
  * Ensure the default test tenant exists
  */
-export async function ensureDefaultTenant(
-  prisma?: PrismaClient
-): Promise<CreatedTenant> {
+export async function ensureDefaultTenant(prisma?: PrismaClient): Promise<CreatedTenant> {
   const client = prisma || getPrismaClient();
 
   const existing = await client.tenant.findUnique({
@@ -166,23 +151,21 @@ export async function ensureDefaultTenant(
       name: 'Default Test Tenant',
       slug: 'default-test',
     },
-    prisma
+    prisma,
   );
 }
 
 /**
  * Create isolated tenants for multi-tenant testing
  */
-export async function createIsolatedTenants(
-  prisma?: PrismaClient
-): Promise<{ tenantA: CreatedTenant; tenantB: CreatedTenant }> {
+export async function createIsolatedTenants(prisma?: PrismaClient): Promise<{ tenantA: CreatedTenant; tenantB: CreatedTenant }> {
   const tenantA = await createTenantFixture(
     {
       id: TEST_TENANT_IDS.TENANT_A,
       name: 'Test Tenant A',
       slug: 'tenant-a',
     },
-    prisma
+    prisma,
   );
 
   const tenantB = await createTenantFixture(
@@ -191,7 +174,7 @@ export async function createIsolatedTenants(
       name: 'Test Tenant B',
       slug: 'tenant-b',
     },
-    prisma
+    prisma,
   );
 
   return { tenantA, tenantB };

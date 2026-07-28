@@ -25,7 +25,9 @@ async def extract_document(
     try:
         content = await file.read()
         result = service.extract(content, filename=file.filename, content_type=file.content_type)
-        return ExtractionResponse(text=result.text, page_count=result.page_count, ocr_used=result.ocr_used)
+        return ExtractionResponse(
+            text=result.text, page_count=result.page_count, ocr_used=result.ocr_used
+        )
     except Exception as exc:  # noqa: BLE001 — fail-soft: never 5xx on extraction
         logger.error(f"Document extraction endpoint error: {exc}")
         return ExtractionResponse(text="", page_count=0, ocr_used=False)

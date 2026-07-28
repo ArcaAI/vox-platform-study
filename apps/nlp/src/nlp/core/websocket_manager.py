@@ -49,7 +49,9 @@ class WebSocketManager:
             logger.error(f"Failed to initialize WebSocket service: {str(e)}")
             raise
 
-    async def handle_connection(self, websocket: WebSocket, session_id: str, process: Callable[..., Any]) -> None:
+    async def handle_connection(
+        self, websocket: WebSocket, session_id: str, process: Callable[..., Any]
+    ) -> None:
         """Handle a new WebSocket connection"""
         await websocket.accept()
 
@@ -62,7 +64,9 @@ class WebSocketManager:
         try:
             while session.is_active:
                 try:
-                    message_data = await asyncio.wait_for(websocket.receive_text(), timeout=self.WAIT_TIMEOUT)
+                    message_data = await asyncio.wait_for(
+                        websocket.receive_text(), timeout=self.WAIT_TIMEOUT
+                    )
 
                     result = await process(json.loads(message_data))
                     await self._send_message(
@@ -71,7 +75,7 @@ class WebSocketManager:
                             type=WebSocketMessageType.MESSAGE,
                             session_id=session_id,
                             data=result,
-                        )
+                        ),
                     )
 
                 except TimeoutError:
@@ -101,7 +105,9 @@ class WebSocketManager:
                         try:
                             await self._send_heartbeat(session)
                         except Exception as e:
-                            logger.warning(f"Heartbeat failed for session {session.session_id}: {str(e)}")
+                            logger.warning(
+                                f"Heartbeat failed for session {session.session_id}: {str(e)}"
+                            )
 
             except Exception as e:
                 logger.error(f"Heartbeat loop error: {str(e)}")
@@ -173,23 +179,27 @@ class WebSocketManager:
     async def _send_message(self, session: WebSocketSession, message: WebSocketMessage) -> None:
         try:
             # Use mode='json' to ensure datetime objects are serialized as ISO strings
-            message_dict = message.model_dump(mode='json')
+            message_dict = message.model_dump(mode="json")
             await session.websocket.send_json(message_dict)
 
-            logger.debug(f"Sent message to session {session.session_id}: {json.dumps(message_dict)}")
+            logger.debug(
+                f"Sent message to session {session.session_id}: {json.dumps(message_dict)}"
+            )
         except Exception as e:
             logger.error(f"Failed to send message to session {session.session_id}: {str(e)}")
             raise
 
-    async def _send_error(self, session: WebSocketSession, error_code: str, error_message: str, details: dict[str, Any] | None = None) -> None:
+    async def _send_error(
+        self,
+        session: WebSocketSession,
+        error_code: str,
+        error_message: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         error_msg = WebSocketMessage(
             type=WebSocketMessageType.ERROR,
             session_id=session.session_id,
-            data={
-                "error_code": error_code,
-                "error_message": error_message,
-                "details": details
-            }
+            data={"error_code": error_code, "error_message": error_message, "details": details},
         )
         await self._send_message(session, error_msg)
 
@@ -199,9 +209,7 @@ class WebSocketManager:
             heartbeat_msg = WebSocketMessage(
                 type=WebSocketMessageType.HEARTBEAT,
                 session_id=session.session_id,
-                data={
-                    "is_active": session.is_active
-                }
+                data={"is_active": session.is_active},
             )
 
             await self._send_message(session, heartbeat_msg)

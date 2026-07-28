@@ -20,50 +20,44 @@ import type { SafeSession } from '@/server/safe-user';
 const themeScriptProps = typeof window === 'undefined' ? undefined : ({ type: 'application/json' } as const);
 
 export function Providers({ children, session }: { children: ReactNode; session?: SafeSession }) {
-    // One client per browser session; useState keeps it stable across renders.
-    // Runs on the server render AND the client render, so seeding the cache
-    // here (rather than in an effect) makes both agree on the very first
-    // paint — see the F-035 seeding note below.
-    const [queryClient] = useState(() => {
-        const client = new QueryClient({
-            defaultOptions: {
-                queries: {
-                    staleTime: 30_000,
-                    // One retry for transient failures only — a 4xx is
-                    // deterministic and must not be replayed.
-                    retry: retryQuery,
-                    refetchOnWindowFocus: false,
-                },
-            },
-        });
-
-        // F-035: the console layout already decrypts the session server-side
-        // (`getSession()`); seed `['auth','session']` from it so the SSR pass
-        // and the first client render both read the same data instead of the
-        // server rendering a `session.data === undefined` gate branch while
-        // the client's `/api/auth/session` fetch races hydration. Also saves
-        // a redundant fetch per page load.
-        if (session) {
-            client.setQueryData(['auth', 'session'], session);
-        }
-
-        return client;
+  // One client per browser session; useState keeps it stable across renders.
+  // Runs on the server render AND the client render, so seeding the cache
+  // here (rather than in an effect) makes both agree on the very first
+  // paint — see the F-035 seeding note below.
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 30_000,
+          // One retry for transient failures only — a 4xx is
+          // deterministic and must not be replayed.
+          retry: retryQuery,
+          refetchOnWindowFocus: false,
+        },
+      },
     });
 
-    return (
-        <NuqsAdapter>
-            <QueryClientProvider client={queryClient}>
-                <ThemeProvider
-                    attribute="class"
-                    defaultTheme="system"
-                    enableSystem
-                    disableTransitionOnChange
-                    scriptProps={themeScriptProps}
-                >
-                    {children}
-                    <Toaster position="bottom-right" />
-                </ThemeProvider>
-            </QueryClientProvider>
-        </NuqsAdapter>
-    );
+    // F-035: the console layout already decrypts the session server-side
+    // (`getSession()`); seed `['auth','session']` from it so the SSR pass
+    // and the first client render both read the same data instead of the
+    // server rendering a `session.data === undefined` gate branch while
+    // the client's `/api/auth/session` fetch races hydration. Also saves
+    // a redundant fetch per page load.
+    if (session) {
+      client.setQueryData(['auth', 'session'], session);
+    }
+
+    return client;
+  });
+
+  return (
+    <NuqsAdapter>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange scriptProps={themeScriptProps}>
+          {children}
+          <Toaster position="bottom-right" />
+        </ThemeProvider>
+      </QueryClientProvider>
+    </NuqsAdapter>
+  );
 }

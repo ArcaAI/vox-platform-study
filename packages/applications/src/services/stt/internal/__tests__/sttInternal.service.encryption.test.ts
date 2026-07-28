@@ -68,9 +68,7 @@ describe('SttInternalService.completeJob — field encryption', () => {
     expect((job.complete as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]).toBeLessThan(
       jobRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0],
     );
-    expect(jobRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0]).toBeLessThan(
-      jobRepository.update.mock.invocationCallOrder[0],
-    );
+    expect(jobRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0]).toBeLessThan(jobRepository.update.mock.invocationCallOrder[0]);
     expect(res).not.toHaveProperty('encryptedResultText');
     expect(res).not.toHaveProperty('encryptedResultMetadata');
     expect(res).not.toHaveProperty('keyVersion');

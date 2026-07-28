@@ -211,13 +211,13 @@ Application creates internal JWT token:
 
 ```typescript
 const jwtToken = createJwt({
-    id: user.id,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
-    phone: user.phone,
-    jwtSecretKey: JWT_SECRET_KEY,
-    expiresIn: JWT_EXPIRES_IN,
+  id: user.id,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  email: user.email,
+  phone: user.phone,
+  jwtSecretKey: JWT_SECRET_KEY,
+  expiresIn: JWT_EXPIRES_IN,
 });
 ```
 
@@ -230,43 +230,43 @@ Create a health check to validate OIDC configuration:
 ```typescript
 @Injectable()
 export class OidcHealthIndicator {
-    constructor(@Inject(IAppSettingsService) private appSettingsService: IAppSettingsService) {}
+  constructor(@Inject(IAppSettingsService) private appSettingsService: IAppSettingsService) {}
 
-    async checkOidcConfiguration(): Promise<{
-        status: 'healthy' | 'unhealthy';
-        details: any;
-    }> {
-        try {
-            const discoveryUrl = this.appSettingsService.getValueFromCache('OIDC_DISCOVERY_URL');
-            const clientId = this.appSettingsService.getValueFromCache('OIDC_CLIENT_ID');
-            const clientSecret = this.appSettingsService.getValueFromCache('OIDC_CLIENT_SECRET');
-            const callbackUrl = this.appSettingsService.getValueFromCache('OIDC_CALLBACK_URL');
-            const scopes = this.appSettingsService.getValueFromCache('OIDC_SCOPES');
+  async checkOidcConfiguration(): Promise<{
+    status: 'healthy' | 'unhealthy';
+    details: any;
+  }> {
+    try {
+      const discoveryUrl = this.appSettingsService.getValueFromCache('OIDC_DISCOVERY_URL');
+      const clientId = this.appSettingsService.getValueFromCache('OIDC_CLIENT_ID');
+      const clientSecret = this.appSettingsService.getValueFromCache('OIDC_CLIENT_SECRET');
+      const callbackUrl = this.appSettingsService.getValueFromCache('OIDC_CALLBACK_URL');
+      const scopes = this.appSettingsService.getValueFromCache('OIDC_SCOPES');
 
-            const isHealthy = !!(discoveryUrl && clientId && clientSecret && callbackUrl && scopes);
+      const isHealthy = !!(discoveryUrl && clientId && clientSecret && callbackUrl && scopes);
 
-            return {
-                status: isHealthy ? 'healthy' : 'unhealthy',
-                details: {
-                    discoveryUrlConfigured: !!discoveryUrl,
-                    clientIdConfigured: !!clientId,
-                    clientSecretConfigured: !!clientSecret,
-                    callbackUrlConfigured: !!callbackUrl,
-                    scopesConfigured: !!scopes,
-                    discoveryUrl: discoveryUrl ? 'Configured' : 'Missing',
-                    callbackUrl,
-                    scopes,
-                },
-            };
-        } catch (error) {
-            return {
-                status: 'unhealthy',
-                details: {
-                    error: error instanceof Error ? error.message : String(error),
-                },
-            };
-        }
+      return {
+        status: isHealthy ? 'healthy' : 'unhealthy',
+        details: {
+          discoveryUrlConfigured: !!discoveryUrl,
+          clientIdConfigured: !!clientId,
+          clientSecretConfigured: !!clientSecret,
+          callbackUrlConfigured: !!callbackUrl,
+          scopesConfigured: !!scopes,
+          discoveryUrl: discoveryUrl ? 'Configured' : 'Missing',
+          callbackUrl,
+          scopes,
+        },
+      };
+    } catch (error) {
+      return {
+        status: 'unhealthy',
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
     }
+  }
 }
 ```
 
@@ -277,38 +277,38 @@ Test OIDC configuration programmatically:
 ```typescript
 @Injectable()
 export class OidcConfigurationService {
-    constructor(@Inject(IAppSettingsService) private appSettingsService: IAppSettingsService) {}
+  constructor(@Inject(IAppSettingsService) private appSettingsService: IAppSettingsService) {}
 
-    async testOidcConfiguration(): Promise<{
-        valid: boolean;
-        details: any;
-    }> {
-        try {
-            const discoveryUrl = this.appSettingsService.getValueFromCache('OIDC_DISCOVERY_URL');
+  async testOidcConfiguration(): Promise<{
+    valid: boolean;
+    details: any;
+  }> {
+    try {
+      const discoveryUrl = this.appSettingsService.getValueFromCache('OIDC_DISCOVERY_URL');
 
-            // Test discovery endpoint
-            const response = await fetch(discoveryUrl);
-            const discoveryDoc = await response.json();
+      // Test discovery endpoint
+      const response = await fetch(discoveryUrl);
+      const discoveryDoc = await response.json();
 
-            return {
-                valid: true,
-                details: {
-                    issuer: discoveryDoc.issuer,
-                    authorizationEndpoint: discoveryDoc.authorization_endpoint,
-                    tokenEndpoint: discoveryDoc.token_endpoint,
-                    userinfoEndpoint: discoveryDoc.userinfo_endpoint,
-                    supportedScopes: discoveryDoc.scopes_supported,
-                },
-            };
-        } catch (error) {
-            return {
-                valid: false,
-                details: {
-                    error: error instanceof Error ? error.message : String(error),
-                },
-            };
-        }
+      return {
+        valid: true,
+        details: {
+          issuer: discoveryDoc.issuer,
+          authorizationEndpoint: discoveryDoc.authorization_endpoint,
+          tokenEndpoint: discoveryDoc.token_endpoint,
+          userinfoEndpoint: discoveryDoc.userinfo_endpoint,
+          supportedScopes: discoveryDoc.scopes_supported,
+        },
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      };
     }
+  }
 }
 ```
 
@@ -457,39 +457,39 @@ If migrating from environment-based OIDC configuration:
 
 1. **Export current configuration**:
 
-    ```bash
-    echo "OIDC_DISCOVERY_URL=$OIDC_DISCOVERY_URL"
-    echo "OIDC_CLIENT_ID=$OIDC_CLIENT_ID"
-    echo "OIDC_CLIENT_SECRET=$OIDC_CLIENT_SECRET"
-    echo "OIDC_CALLBACK_URL=$OIDC_CALLBACK_URL"
-    echo "OIDC_SCOPES=$OIDC_SCOPES"
-    ```
+   ```bash
+   echo "OIDC_DISCOVERY_URL=$OIDC_DISCOVERY_URL"
+   echo "OIDC_CLIENT_ID=$OIDC_CLIENT_ID"
+   echo "OIDC_CLIENT_SECRET=$OIDC_CLIENT_SECRET"
+   echo "OIDC_CALLBACK_URL=$OIDC_CALLBACK_URL"
+   echo "OIDC_SCOPES=$OIDC_SCOPES"
+   ```
 
 2. **Insert into database**:
 
-    ```sql
-    INSERT INTO global_settings (key, value, description) VALUES
-    ('OIDC_DISCOVERY_URL', 'your-current-discovery-url', 'OIDC discovery URL'),
-    ('OIDC_CLIENT_ID', 'your-current-client-id', 'OIDC client ID'),
-    ('OIDC_CLIENT_SECRET', 'your-current-client-secret', 'OIDC client secret'),
-    ('OIDC_CALLBACK_URL', 'your-current-callback-url', 'OIDC callback URL'),
-    ('OIDC_SCOPES', 'your-current-scopes', 'OIDC scopes to request');
-    ```
+   ```sql
+   INSERT INTO global_settings (key, value, description) VALUES
+   ('OIDC_DISCOVERY_URL', 'your-current-discovery-url', 'OIDC discovery URL'),
+   ('OIDC_CLIENT_ID', 'your-current-client-id', 'OIDC client ID'),
+   ('OIDC_CLIENT_SECRET', 'your-current-client-secret', 'OIDC client secret'),
+   ('OIDC_CALLBACK_URL', 'your-current-callback-url', 'OIDC callback URL'),
+   ('OIDC_SCOPES', 'your-current-scopes', 'OIDC scopes to request');
+   ```
 
 3. **Remove from environment files**:
 
-    ```bash
-    # Remove these from .env files
-    # OIDC_DISCOVERY_URL=...
-    # OIDC_CLIENT_ID=...
-    # OIDC_CLIENT_SECRET=...
-    # OIDC_CALLBACK_URL=...
-    # OIDC_SCOPES=...
-    ```
+   ```bash
+   # Remove these from .env files
+   # OIDC_DISCOVERY_URL=...
+   # OIDC_CLIENT_ID=...
+   # OIDC_CLIENT_SECRET=...
+   # OIDC_CALLBACK_URL=...
+   # OIDC_SCOPES=...
+   ```
 
 4. **Test the migration**:
-    - Verify OIDC authentication still works
-    - Check configuration health endpoint
-    - Test runtime configuration updates
+   - Verify OIDC authentication still works
+   - Check configuration health endpoint
+   - Test runtime configuration updates
 
 This completes the OIDC configuration migration to AppSettingsService, providing better security, flexibility, and runtime configurability.

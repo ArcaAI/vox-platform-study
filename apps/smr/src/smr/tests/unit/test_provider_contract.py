@@ -64,6 +64,7 @@ async def _aiter(items: list[Any]) -> AsyncIterator[Any]:
 # OpenAI-wire fakes (LM Studio / generic openai_compat + Azure OpenAI)
 # ---------------------------------------------------------------------------
 
+
 def _openai_nonstream_response() -> MagicMock:
     resp = MagicMock()
     choice = MagicMock()
@@ -137,9 +138,7 @@ def _make_azure() -> Any:
 
 
 def _openai_set_nonstream(provider: Any) -> None:
-    provider._client.chat.completions.create = AsyncMock(
-        return_value=_openai_nonstream_response()
-    )
+    provider._client.chat.completions.create = AsyncMock(return_value=_openai_nonstream_response())
 
 
 def _openai_set_stream(provider: Any) -> None:
@@ -274,6 +273,7 @@ def _bedrock_captured_schema(provider: Any) -> Any:
 # engine identity ``provider="vllm"``).
 # ---------------------------------------------------------------------------
 
+
 def _make_vllm() -> Any:
     from smr.core.config import VllmConfig
     from smr.providers.vllm import VllmProvider
@@ -360,6 +360,7 @@ def _llama_cpp_captured_schema(provider: Any) -> Any:
 # ---------------------------------------------------------------------------
 # Adapter registry (add vllm / llama-cpp here /514 — must pass as-is)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ProviderAdapter:
@@ -454,7 +455,9 @@ class TestProviderContract:
         assert stats.provider  # non-empty engine identity
 
     @pytest.mark.asyncio
-    async def test_generate_stream_drains_chunk_then_usage_then_done(self, adapter: ProviderAdapter):
+    async def test_generate_stream_drains_chunk_then_usage_then_done(
+        self, adapter: ProviderAdapter
+    ):
         provider = adapter.make()
         adapter.set_stream(provider)
 
@@ -485,7 +488,9 @@ class TestProviderContract:
         adapter.set_nonstream(provider)
 
         await provider.generate(
-            _req(response_format=ResponseFormat(type="json_schema", json_schema=_SCHEMA, strict=True))
+            _req(
+                response_format=ResponseFormat(type="json_schema", json_schema=_SCHEMA, strict=True)
+            )
         )
         assert adapter.captured_schema(provider) == _SCHEMA
 
@@ -514,6 +519,7 @@ class TestProviderContract:
 # ``timings`` block is the source of truth for the owner-named metrics, so it
 # gets extra assertions the OpenAI-wire providers cannot make.
 # ---------------------------------------------------------------------------
+
 
 class TestLlamaCppReferenceEngine:
     @pytest.mark.asyncio
@@ -558,7 +564,9 @@ class TestLlamaCppReferenceEngine:
         _llama_cpp_set_nonstream(provider)
 
         await provider.generate(
-            _req(response_format=ResponseFormat(type="json_schema", json_schema=_SCHEMA, strict=True))
+            _req(
+                response_format=ResponseFormat(type="json_schema", json_schema=_SCHEMA, strict=True)
+            )
         )
         assert provider._http.post.call_args.kwargs["json"]["json_schema"] == _SCHEMA
 

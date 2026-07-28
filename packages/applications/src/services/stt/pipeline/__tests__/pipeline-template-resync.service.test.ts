@@ -81,9 +81,7 @@ describe('PipelineTemplateResyncService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockClsService.get.mockImplementation((key: string) =>
-      key === 'user' ? { id: 'admin-1' } : null,
-    );
+    mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-1' } : null));
     mockPipelineRepository.create.mockImplementation(async (e: unknown) => e);
     mockPipelineRepository.updateWithVersion.mockImplementation(async (_id: string, e: unknown) => e);
     mockVersionRepository.getNextVersionNumber.mockResolvedValue(1);
@@ -145,9 +143,7 @@ describe('PipelineTemplateResyncService', () => {
     });
     mockPipelineRepository.findAllForAdmin.mockResolvedValue([copy]);
     // Consistent with its own history: latest snapshot == current YAML.
-    mockVersionRepository.findByPipeline.mockResolvedValue([
-      { versionNumber: 1, configYaml: TEMPLATE_YAML_V1 },
-    ]);
+    mockVersionRepository.findByPipeline.mockResolvedValue([{ versionNumber: 1, configYaml: TEMPLATE_YAML_V1 }]);
     mockVersionRepository.getNextVersionNumber.mockResolvedValue(2);
 
     const summary = await service.resyncTenant(TARGET_TENANT);
@@ -159,10 +155,7 @@ describe('PipelineTemplateResyncService', () => {
     expect(copy.templateLocked).toBe(true);
     expect(mockVersionRepository.create).toHaveBeenCalledTimes(1);
     expect(mockVersionRepository.create.mock.calls[0][0].configYaml).toBe(TEMPLATE_YAML_V2);
-    expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-      SysEventType.ResourceUpdated,
-      expect.objectContaining({ resourceId: 'copy-1' }),
-    );
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceUpdated, expect.objectContaining({ resourceId: 'copy-1' }));
   });
 
   // (iii) — the customer's own work is untouchable
@@ -189,9 +182,7 @@ describe('PipelineTemplateResyncService', () => {
     mockPipelineRepository.findAllForAdmin.mockResolvedValue([
       pipeline({ id: 'copy-1', slug: 'prod', configYaml: CUSTOM_YAML, templateLocked: true, sourceTemplateSlug: 'prod' }),
     ]);
-    mockVersionRepository.findByPipeline.mockResolvedValue([
-      { versionNumber: 1, configYaml: TEMPLATE_YAML_V1 },
-    ]);
+    mockVersionRepository.findByPipeline.mockResolvedValue([{ versionNumber: 1, configYaml: TEMPLATE_YAML_V1 }]);
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 
@@ -206,9 +197,7 @@ describe('PipelineTemplateResyncService', () => {
     mockPipelineRepository.findAllForAdmin.mockResolvedValue([
       pipeline({ id: 'copy-1', slug: 'prod', configYaml: TEMPLATE_YAML_V2, templateLocked: true, sourceTemplateSlug: 'prod' }),
     ]);
-    mockVersionRepository.findByPipeline.mockResolvedValue([
-      { versionNumber: 2, configYaml: TEMPLATE_YAML_V2 },
-    ]);
+    mockVersionRepository.findByPipeline.mockResolvedValue([{ versionNumber: 2, configYaml: TEMPLATE_YAML_V2 }]);
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 
@@ -228,9 +217,7 @@ describe('PipelineTemplateResyncService', () => {
       pipeline({ id: 'sys-2', tenantId: SYSTEM_TENANT_ID, slug: 'fine' }),
     ]);
     mockPipelineRepository.findAllForAdmin.mockResolvedValue([]);
-    mockPipelineRepository.create
-      .mockRejectedValueOnce(new Error('constraint violation'))
-      .mockImplementationOnce(async (e: unknown) => e);
+    mockPipelineRepository.create.mockRejectedValueOnce(new Error('constraint violation')).mockImplementationOnce(async (e: unknown) => e);
 
     const summary = await service.resyncTenant(TARGET_TENANT);
 

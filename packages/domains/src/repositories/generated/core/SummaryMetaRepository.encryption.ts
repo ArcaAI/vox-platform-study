@@ -8,11 +8,7 @@
 
 import { SummaryMetaRepository } from './SummaryMetaRepository';
 import { SummaryMetaEntity } from '../../../entities';
-import {
-  type SecretsServiceLike,
-  encryptJsonToCiphertext,
-  decryptCiphertextToJson,
-} from '../../../common/field-encryption';
+import { type SecretsServiceLike, encryptJsonToCiphertext, decryptCiphertextToJson } from '../../../common/field-encryption';
 
 /** Plaintext view returned by {@link SummaryMetaRepository.decryptFieldsFromEntity}. */
 export interface SummaryMetaPlaintext {
@@ -29,18 +25,10 @@ declare module './SummaryMetaRepository' {
      * key version in the shared `keyVersion`. Mutates in place; no-op per field
      * when null. Only ciphertext persists (Phase 6).
      */
-    encryptFieldsIntoEntity(
-      this: SummaryMetaRepository,
-      entity: SummaryMetaEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: SummaryMetaRepository, entity: SummaryMetaEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /** Decrypt all ciphertext columns (ciphertext-only; plaintext dropped in Phase 6). */
-    decryptFieldsFromEntity(
-      this: SummaryMetaRepository,
-      entity: SummaryMetaEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<SummaryMetaPlaintext>;
+    decryptFieldsFromEntity(this: SummaryMetaRepository, entity: SummaryMetaEntity, secrets: SecretsServiceLike): Promise<SummaryMetaPlaintext>;
 
     /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
     findByIdWithDecryptedFields(

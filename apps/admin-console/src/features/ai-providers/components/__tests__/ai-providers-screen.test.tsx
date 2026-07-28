@@ -148,7 +148,9 @@ describe('AiProvidersScreen — credential cards', () => {
   it('renders a Configured card and a None card, and never exposes key material', async () => {
     stubFetch({
       connections: {
-        llm: { azure: connectionOf('llm', 'azure', { hasKey: true, keyVersion: 4, enabled: true, version: 3, baseUrl: 'https://acme.openai.azure.com' }) },
+        llm: {
+          azure: connectionOf('llm', 'azure', { hasKey: true, keyVersion: 4, enabled: true, version: 3, baseUrl: 'https://acme.openai.azure.com' }),
+        },
       },
     });
     renderWithProviders(<AiProvidersScreen />);

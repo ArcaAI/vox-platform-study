@@ -70,10 +70,7 @@ function generateTestId(): string {
 /**
  * Create a test role in the database
  */
-export async function createRoleFixture(
-  options: CreateRoleOptions = {},
-  prisma?: PrismaClient
-): Promise<CreatedRole> {
+export async function createRoleFixture(options: CreateRoleOptions = {}, prisma?: PrismaClient): Promise<CreatedRole> {
   const client = prisma || getPrismaClient();
   const id = options.id || generateTestId();
   const name = options.name || `test-role-${id}`;
@@ -99,10 +96,7 @@ export async function createRoleFixture(
 /**
  * Create a test policy in the database
  */
-export async function createPolicyFixture(
-  options: CreatePolicyOptions,
-  prisma?: PrismaClient
-): Promise<CreatedPolicy> {
+export async function createPolicyFixture(options: CreatePolicyOptions, prisma?: PrismaClient): Promise<CreatedPolicy> {
   const client = prisma || getPrismaClient();
   const id = options.id || generateTestId();
   const name = options.name || `test-policy-${id}`;
@@ -128,12 +122,7 @@ export async function createPolicyFixture(
 /**
  * Link a policy to a role
  */
-export async function linkPolicyToRole(
-  roleId: string,
-  policyId: string,
-  priority: number = 0,
-  prisma?: PrismaClient
-): Promise<void> {
+export async function linkPolicyToRole(roleId: string, policyId: string, priority: number = 0, prisma?: PrismaClient): Promise<void> {
   const client = prisma || getPrismaClient();
 
   await client.rolePolicy.create({
@@ -154,7 +143,7 @@ export async function assignRoleToUser(
   userId: string,
   roleId: string,
   tenantId: string = DEFAULT_TEST_TENANT_ID,
-  prisma?: PrismaClient
+  prisma?: PrismaClient,
 ): Promise<void> {
   const client = prisma || getPrismaClient();
 
@@ -176,7 +165,7 @@ export async function removeRoleFromUser(
   userId: string,
   roleId: string,
   tenantId: string = DEFAULT_TEST_TENANT_ID,
-  prisma?: PrismaClient
+  prisma?: PrismaClient,
 ): Promise<void> {
   const client = prisma || getPrismaClient();
 
@@ -195,7 +184,7 @@ export async function removeRoleFromUser(
 export async function createRoleWithPolicies(
   roleOptions: CreateRoleOptions,
   policies: CreatePolicyOptions[],
-  prisma?: PrismaClient
+  prisma?: PrismaClient,
 ): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
   const role = await createRoleFixture(roleOptions, prisma);
   const createdPolicies: CreatedPolicy[] = [];
@@ -212,10 +201,7 @@ export async function createRoleWithPolicies(
 /**
  * Delete a test role from the database
  */
-export async function deleteRoleFixture(
-  roleId: string,
-  prisma?: PrismaClient
-): Promise<void> {
+export async function deleteRoleFixture(roleId: string, prisma?: PrismaClient): Promise<void> {
   const client = prisma || getPrismaClient();
 
   try {
@@ -230,10 +216,7 @@ export async function deleteRoleFixture(
 /**
  * Delete a test policy from the database
  */
-export async function deletePolicyFixture(
-  policyId: string,
-  prisma?: PrismaClient
-): Promise<void> {
+export async function deletePolicyFixture(policyId: string, prisma?: PrismaClient): Promise<void> {
   const client = prisma || getPrismaClient();
 
   try {
@@ -252,9 +235,7 @@ export async function deletePolicyFixture(
 /**
  * Create a read-only user role
  */
-export async function createReadOnlyRole(
-  prisma?: PrismaClient
-): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
+export async function createReadOnlyRole(prisma?: PrismaClient): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
   return createRoleWithPolicies(
     { name: 'read-only-user', description: 'Can only read resources' },
     [
@@ -267,16 +248,14 @@ export async function createReadOnlyRole(
         ],
       },
     ],
-    prisma
+    prisma,
   );
 }
 
 /**
  * Create an admin role with full access
  */
-export async function createAdminRole(
-  prisma?: PrismaClient
-): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
+export async function createAdminRole(prisma?: PrismaClient): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
   return createRoleWithPolicies(
     { name: 'admin', description: 'Full administrative access' },
     [
@@ -286,16 +265,14 @@ export async function createAdminRole(
         rules: [{ action: 'manage', subject: 'all' }],
       },
     ],
-    prisma
+    prisma,
   );
 }
 
 /**
  * Create a user management role
  */
-export async function createUserManagerRole(
-  prisma?: PrismaClient
-): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
+export async function createUserManagerRole(prisma?: PrismaClient): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
   return createRoleWithPolicies(
     { name: 'user-manager', description: 'Can manage users' },
     [
@@ -310,16 +287,14 @@ export async function createUserManagerRole(
         ],
       },
     ],
-    prisma
+    prisma,
   );
 }
 
 /**
  * Create a tenant-scoped role (can only access own tenant's data)
  */
-export async function createTenantScopedRole(
-  prisma?: PrismaClient
-): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
+export async function createTenantScopedRole(prisma?: PrismaClient): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
   return createRoleWithPolicies(
     { name: 'tenant-user', description: 'Access limited to own tenant' },
     [
@@ -336,16 +311,14 @@ export async function createTenantScopedRole(
         scope: 'TENANT',
       },
     ],
-    prisma
+    prisma,
   );
 }
 
 /**
  * Create a self-only role (can only access own data)
  */
-export async function createSelfOnlyRole(
-  prisma?: PrismaClient
-): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
+export async function createSelfOnlyRole(prisma?: PrismaClient): Promise<{ role: CreatedRole; policies: CreatedPolicy[] }> {
   return createRoleWithPolicies(
     { name: 'self-only', description: 'Can only access own data' },
     [
@@ -362,6 +335,6 @@ export async function createSelfOnlyRole(
         scope: 'USER',
       },
     ],
-    prisma
+    prisma,
   );
 }

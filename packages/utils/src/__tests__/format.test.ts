@@ -5,14 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  formatFileSize,
-  formatNumber,
-  truncate,
-  formatPercentage,
-  formatTimecode,
-  formatTimecodeHours,
-} from '../format.js';
+import { formatFileSize, formatNumber, truncate, formatPercentage, formatTimecode, formatTimecodeHours } from '../format.js';
 
 describe('format utilities', () => {
   describe('formatFileSize', () => {

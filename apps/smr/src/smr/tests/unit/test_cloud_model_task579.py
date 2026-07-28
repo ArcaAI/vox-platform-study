@@ -42,9 +42,7 @@ def _azure():
     # (Azure routes by deployment name when one is configured — a separate,
     # unaffected contract covered by TestAzureDeploymentName).
     return AzureOpenAIProvider(
-        AzureOpenAIConfig(
-            api_key="k", endpoint="https://test.openai.azure.com", deployment_name=""
-        )
+        AzureOpenAIConfig(api_key="k", endpoint="https://test.openai.azure.com", deployment_name="")
     )
 
 

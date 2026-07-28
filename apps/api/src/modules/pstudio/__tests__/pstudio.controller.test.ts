@@ -10,17 +10,17 @@ import { PrismaStudioController } from '../pstudio.controller';
 // wildcard, but the dedicated subject makes studio access delegable.
 // -----------------------------------------------------------------------------
 describe('PrismaStudioController authorization metadata', () => {
-    it('is class-gated by manage:PrismaStudio', () => {
-        const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PrismaStudioController);
-        expect(meta).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
-    });
+  it('is class-gated by manage:PrismaStudio', () => {
+    const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, PrismaStudioController);
+    expect(meta).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
+  });
 
-    it('serveStudio and handleStudioRequest are method-gated by manage:PrismaStudio', () => {
-        for (const handler of [PrismaStudioController.prototype.serveStudio, PrismaStudioController.prototype.handleStudioRequest]) {
-            const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, handler);
-            expect(meta).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
-        }
-    });
+  it('serveStudio and handleStudioRequest are method-gated by manage:PrismaStudio', () => {
+    for (const handler of [PrismaStudioController.prototype.serveStudio, PrismaStudioController.prototype.handleStudioRequest]) {
+      const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, handler);
+      expect(meta).toEqual([{ action: 'manage', subject: 'PrismaStudio' }]);
+    }
+  });
 });
 
 // -----------------------------------------------------------------------------
@@ -30,92 +30,95 @@ describe('PrismaStudioController authorization metadata', () => {
 // `query` is the read path (READ), `sequence` is the write path (UPDATE).
 // -----------------------------------------------------------------------------
 const createMockStudioService = () => ({
-    executeQuery: vi.fn(),
-    executeSequence: vi.fn(),
+  executeQuery: vi.fn(),
+  executeSequence: vi.fn(),
 });
 
 const createMockAuditLogService = () => ({
-    recordSystemAction: vi.fn().mockResolvedValue(undefined),
-    // unused by the controller but part of the interface surface
-    fetchAll: vi.fn(),
-    fetchAllByResource: vi.fn(),
-    fetchAllCreatedByUser: vi.fn(),
-    fetchById: vi.fn(),
-    deleteById: vi.fn(),
-    handleUserAuthenticatedEvent: vi.fn(),
+  recordSystemAction: vi.fn().mockResolvedValue(undefined),
+  // unused by the controller but part of the interface surface
+  fetchAll: vi.fn(),
+  fetchAllByResource: vi.fn(),
+  fetchAllCreatedByUser: vi.fn(),
+  fetchById: vi.fn(),
+  deleteById: vi.fn(),
+  handleUserAuthenticatedEvent: vi.fn(),
 });
 
 describe('PrismaStudioController (audit)', () => {
-    let studio: ReturnType<typeof createMockStudioService>;
-    let audit: ReturnType<typeof createMockAuditLogService>;
-    let controller: PrismaStudioController;
+  let studio: ReturnType<typeof createMockStudioService>;
+  let audit: ReturnType<typeof createMockAuditLogService>;
+  let controller: PrismaStudioController;
 
-    beforeEach(() => {
-        vi.clearAllMocks();
-        studio = createMockStudioService();
-        audit = createMockAuditLogService();
-        controller = new PrismaStudioController(studio as never, audit as never);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    studio = createMockStudioService();
+    audit = createMockAuditLogService();
+    controller = new PrismaStudioController(studio as never, audit as never);
+  });
+
+  it('audits a read `query` as READ before executing it', async () => {
+    studio.executeQuery.mockResolvedValue([null, { rows: [] }]);
+
+    const result = await controller.handleStudioRequest({ query: { from: 'User', take: 5 } });
+
+    expect(audit.recordSystemAction).toHaveBeenCalledTimes(1);
+    expect(audit.recordSystemAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.READ,
+        eventType: 'PRISMA_STUDIO',
+        resourceType: ResourceType.AuditLog,
+        data: expect.objectContaining({ kind: 'query' }),
+      }),
+    );
+    expect(studio.executeQuery).toHaveBeenCalledWith({ from: 'User', take: 5 });
+    expect(result).toEqual([null, { rows: [] }]);
+  });
+
+  it('audits a `sequence` (write path) as UPDATE before executing it', async () => {
+    studio.executeSequence.mockResolvedValue([
+      [null, {}],
+      [null, {}],
+    ]);
+    const sequence = [{ create: 'X' }, { from: 'X' }];
+
+    await controller.handleStudioRequest({ procedure: 'sequence', sequence });
+
+    expect(audit.recordSystemAction).toHaveBeenCalledTimes(1);
+    expect(audit.recordSystemAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: AuditAction.UPDATE,
+        eventType: 'PRISMA_STUDIO',
+        resourceType: ResourceType.AuditLog,
+        data: expect.objectContaining({ kind: 'sequence', procedure: 'sequence' }),
+      }),
+    );
+    expect(studio.executeSequence).toHaveBeenCalledWith(sequence);
+  });
+
+  it('records the audit BEFORE delegating to the studio service', async () => {
+    const calls: string[] = [];
+    audit.recordSystemAction.mockImplementation(async () => {
+      calls.push('audit');
+    });
+    studio.executeQuery.mockImplementation(async () => {
+      calls.push('execute');
+      return [null, {}];
     });
 
-    it('audits a read `query` as READ before executing it', async () => {
-        studio.executeQuery.mockResolvedValue([null, { rows: [] }]);
+    await controller.handleStudioRequest({ query: { from: 'User' } });
 
-        const result = await controller.handleStudioRequest({ query: { from: 'User', take: 5 } });
+    expect(calls).toEqual(['audit', 'execute']);
+  });
 
-        expect(audit.recordSystemAction).toHaveBeenCalledTimes(1);
-        expect(audit.recordSystemAction).toHaveBeenCalledWith(
-            expect.objectContaining({
-                action: AuditAction.READ,
-                eventType: 'PRISMA_STUDIO',
-                resourceType: ResourceType.AuditLog,
-                data: expect.objectContaining({ kind: 'query' }),
-            }),
-        );
-        expect(studio.executeQuery).toHaveBeenCalledWith({ from: 'User', take: 5 });
-        expect(result).toEqual([null, { rows: [] }]);
-    });
+  it('does NOT audit and does NOT execute when neither query nor sequence is present', async () => {
+    const result = await controller.handleStudioRequest({});
 
-    it('audits a `sequence` (write path) as UPDATE before executing it', async () => {
-        studio.executeSequence.mockResolvedValue([[null, {}], [null, {}]]);
-        const sequence = [{ create: 'X' }, { from: 'X' }];
-
-        await controller.handleStudioRequest({ procedure: 'sequence', sequence });
-
-        expect(audit.recordSystemAction).toHaveBeenCalledTimes(1);
-        expect(audit.recordSystemAction).toHaveBeenCalledWith(
-            expect.objectContaining({
-                action: AuditAction.UPDATE,
-                eventType: 'PRISMA_STUDIO',
-                resourceType: ResourceType.AuditLog,
-                data: expect.objectContaining({ kind: 'sequence', procedure: 'sequence' }),
-            }),
-        );
-        expect(studio.executeSequence).toHaveBeenCalledWith(sequence);
-    });
-
-    it('records the audit BEFORE delegating to the studio service', async () => {
-        const calls: string[] = [];
-        audit.recordSystemAction.mockImplementation(async () => {
-            calls.push('audit');
-        });
-        studio.executeQuery.mockImplementation(async () => {
-            calls.push('execute');
-            return [null, {}];
-        });
-
-        await controller.handleStudioRequest({ query: { from: 'User' } });
-
-        expect(calls).toEqual(['audit', 'execute']);
-    });
-
-    it('does NOT audit and does NOT execute when neither query nor sequence is present', async () => {
-        const result = await controller.handleStudioRequest({});
-
-        expect(audit.recordSystemAction).not.toHaveBeenCalled();
-        expect(studio.executeQuery).not.toHaveBeenCalled();
-        expect(studio.executeSequence).not.toHaveBeenCalled();
-        expect(result).toEqual([{ message: 'Invalid request: missing query or sequence', name: 'BadRequest' }]);
-    });
+    expect(audit.recordSystemAction).not.toHaveBeenCalled();
+    expect(studio.executeQuery).not.toHaveBeenCalled();
+    expect(studio.executeSequence).not.toHaveBeenCalled();
+    expect(result).toEqual([{ message: 'Invalid request: missing query or sequence', name: 'BadRequest' }]);
+  });
 });
 
 // -----------------------------------------------------------------------------
@@ -133,55 +136,52 @@ describe('PrismaStudioController (audit)', () => {
 // instead post back to the SAME path that served it (window.location.pathname).
 // -----------------------------------------------------------------------------
 describe('PrismaStudioController.serveStudio', () => {
-    let controller: PrismaStudioController;
+  let controller: PrismaStudioController;
 
-    beforeEach(() => {
-        controller = new PrismaStudioController(
-            createMockStudioService() as never,
-            createMockAuditLogService() as never,
-        );
-    });
+  beforeEach(() => {
+    controller = new PrismaStudioController(createMockStudioService() as never, createMockAuditLogService() as never);
+  });
 
-    function mockRes() {
-        return {
-            type: vi.fn().mockReturnThis(),
-            send: vi.fn().mockReturnThis(),
-            status: vi.fn().mockReturnThis(),
-            setHeader: vi.fn(),
-        };
-    }
+  function mockRes() {
+    return {
+      type: vi.fn().mockReturnThis(),
+      send: vi.fn().mockReturnThis(),
+      status: vi.fn().mockReturnThis(),
+      setHeader: vi.fn(),
+    };
+  }
 
-    function servedHtml(res = mockRes()): string {
-        controller.serveStudio(res as never);
-        return (res.send.mock.calls[0]?.[0] ?? '') as string;
-    }
+  function servedHtml(res = mockRes()): string {
+    controller.serveStudio(res as never);
+    return (res.send.mock.calls[0]?.[0] ?? '') as string;
+  }
 
-    it('serves HTML with no bearer credential or Authorization plumbing (OB-11)', () => {
-        const res = mockRes();
-        const html = servedHtml(res);
+  it('serves HTML with no bearer credential or Authorization plumbing (OB-11)', () => {
+    const res = mockRes();
+    const html = servedHtml(res);
 
-        expect(res.type).toHaveBeenCalledWith('text/html');
-        expect(html).not.toContain('Authorization');
-        expect(html).not.toContain('Bearer');
-    });
+    expect(res.type).toHaveBeenCalledWith('text/html');
+    expect(html).not.toContain('Authorization');
+    expect(html).not.toContain('Bearer');
+  });
 
-    it('marks the studio shell as no-store', () => {
-        const res = mockRes();
-        servedHtml(res);
+  it('marks the studio shell as no-store', () => {
+    const res = mockRes();
+    servedHtml(res);
 
-        expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
-    });
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+  });
 
-    it('posts studio queries back to the path that served the shell', () => {
-        expect(servedHtml()).toContain('window.location.pathname');
-    });
+  it('posts studio queries back to the path that served the shell', () => {
+    expect(servedHtml()).toContain('window.location.pathname');
+  });
 
-    it('does not embed a Host-derived absolute BFF endpoint', () => {
-        expect(servedHtml()).not.toMatch(/createStudioBFFClient\(\{\s*url:\s*['"`]http/);
-        expect(servedHtml()).not.toContain('://${host}');
-    });
+  it('does not embed a Host-derived absolute BFF endpoint', () => {
+    expect(servedHtml()).not.toMatch(/createStudioBFFClient\(\{\s*url:\s*['"`]http/);
+    expect(servedHtml()).not.toContain('://${host}');
+  });
 
-    it('does not rely on a #token URL-fragment contract', () => {
-        expect(servedHtml()).not.toContain('#token');
-    });
+  it('does not rely on a #token URL-fragment contract', () => {
+    expect(servedHtml()).not.toContain('#token');
+  });
 });

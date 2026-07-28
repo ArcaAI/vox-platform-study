@@ -11,29 +11,29 @@
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, request, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
-    AgentEvalRunList,
-    AssignDepartmentRequest,
-    CreateDepartmentAgentRequest,
-    CreateTemplateRequest,
-    Department,
-    DepartmentAgent,
-    EvalGoldenSetList,
-    EvalRunTrigger,
-    ListAgentEvalRunsParams,
-    ListDepartmentAgentsParams,
-    ListEvalGoldenSetsParams,
-    ListTemplatesParams,
-    ListUsageRecordsParams,
-    PromptTemplate,
-    PromptTestResult,
-    PromptUsageAnalytics,
-    PromptUsageRecord,
-    PromptUsageStats,
-    PromptVersion,
-    PromptVersionDiff,
-    TestTemplateRequest,
-    UpdateDepartmentAgentRequest,
-    UpdateTemplateRequest,
+  AgentEvalRunList,
+  AssignDepartmentRequest,
+  CreateDepartmentAgentRequest,
+  CreateTemplateRequest,
+  Department,
+  DepartmentAgent,
+  EvalGoldenSetList,
+  EvalRunTrigger,
+  ListAgentEvalRunsParams,
+  ListDepartmentAgentsParams,
+  ListEvalGoldenSetsParams,
+  ListTemplatesParams,
+  ListUsageRecordsParams,
+  PromptTemplate,
+  PromptTestResult,
+  PromptUsageAnalytics,
+  PromptUsageRecord,
+  PromptUsageStats,
+  PromptVersion,
+  PromptVersionDiff,
+  TestTemplateRequest,
+  UpdateDepartmentAgentRequest,
+  UpdateTemplateRequest,
 } from './types';
 
 const BASE = 'admin/prompt-templates';
@@ -42,39 +42,39 @@ const templatePath = (id: string) => `${BASE}/${encodeURIComponent(id)}`;
 
 /** NOTE: `page` is ONE-based on this endpoint (`page || 1` server-side). */
 export function listTemplates(params?: ListTemplatesParams): Promise<Paginated<PromptTemplate>> {
-    return getJson(BASE, params);
+  return getJson(BASE, params);
 }
 
 export function createTemplate(body: CreateTemplateRequest): Promise<PromptTemplate> {
-    return postJson(BASE, body);
+  return postJson(BASE, body);
 }
 
 /** Detail read keeping the ETag for the later PATCH / test run. */
 export function getTemplate(id: string): Promise<WithEtag<PromptTemplate>> {
-    return getWithEtag(templatePath(id));
+  return getWithEtag(templatePath(id));
 }
 
 /** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */
 export function updateTemplate(id: string, patch: UpdateTemplateRequest, etag: string): Promise<WithEtag<PromptTemplate>> {
-    return patchWithEtag(templatePath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+  return patchWithEtag(templatePath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
 /** Soft delete (the platform never hard-deletes). */
 export function deleteTemplate(id: string): Promise<PromptTemplate> {
-    return deleteJson(templatePath(id));
+  return deleteJson(templatePath(id));
 }
 
 export function listVersions(id: string): Promise<PromptVersion[]> {
-    return getJson(`${templatePath(id)}/versions`);
+  return getJson(`${templatePath(id)}/versions`);
 }
 
 export function getVersion(id: string, versionNumber: number): Promise<PromptVersion> {
-    return getJson(`${templatePath(id)}/versions/${versionNumber}`);
+  return getJson(`${templatePath(id)}/versions/${versionNumber}`);
 }
 
 /** Server-side field-level diff between two version numbers. */
 export function diffVersions(id: string, from: number, to: number): Promise<PromptVersionDiff> {
-    return getJson(`${templatePath(id)}/versions/${from}/diff/${to}`);
+  return getJson(`${templatePath(id)}/versions/${from}/diff/${to}`);
 }
 
 /**
@@ -82,7 +82,7 @@ export function diffVersions(id: string, from: number, to: number): Promise<Prom
  * concurrent edit between read and CAS write still surfaces as 412.
  */
 export function activateVersion(id: string, versionNumber: number): Promise<PromptTemplate> {
-    return postJson(`${templatePath(id)}/versions/${versionNumber}/activate`);
+  return postJson(`${templatePath(id)}/versions/${versionNumber}/activate`);
 }
 
 /**
@@ -95,12 +95,12 @@ export function activateVersion(id: string, versionNumber: number): Promise<Prom
  * approving an already-approved row returns it unchanged.
  */
 export async function approveTemplate(id: string, reason: string | undefined, etag: string): Promise<PromptTemplate> {
-    const response = await request<PromptTemplate>(`${templatePath(id)}/approve`, {
-        method: 'POST',
-        body: { expectedVersion: versionFromEtag(etag), ...(reason ? { reason } : {}) },
-        etag,
-    });
-    return response.data;
+  const response = await request<PromptTemplate>(`${templatePath(id)}/approve`, {
+    method: 'POST',
+    body: { expectedVersion: versionFromEtag(etag), ...(reason ? { reason } : {}) },
+    etag,
+  });
+  return response.data;
 }
 
 /**
@@ -110,37 +110,37 @@ export async function approveTemplate(id: string, reason: string | undefined, et
  * re-fetch.
  */
 export async function testTemplate(id: string, body: TestTemplateRequest, etag: string): Promise<PromptTestResult> {
-    const response = await request<PromptTestResult>(`${templatePath(id)}/test`, {
-        method: 'POST',
-        body: { ...body, expectedVersion: versionFromEtag(etag) },
-        etag,
-    });
-    return response.data;
+  const response = await request<PromptTestResult>(`${templatePath(id)}/test`, {
+    method: 'POST',
+    body: { ...body, expectedVersion: versionFromEtag(etag) },
+    etag,
+  });
+  return response.data;
 }
 
 /** All-time per-template usage stats. */
 export function getUsageStats(id: string): Promise<PromptUsageStats> {
-    return getJson(`${templatePath(id)}/usage`);
+  return getJson(`${templatePath(id)}/usage`);
 }
 
 /** Tenant usage aggregates by department/doctor/day; optionally per template. */
 export function getUsageAnalytics(promptTemplateId?: string): Promise<PromptUsageAnalytics> {
-    return getJson(`${BASE}/analytics/usage`, { promptTemplateId });
+  return getJson(`${BASE}/analytics/usage`, { promptTemplateId });
 }
 
 /** Raw run rows, newest first. NOTE: `page` is ZERO-based here (default 0). */
 export function listUsageRecords(params?: ListUsageRecordsParams): Promise<Paginated<PromptUsageRecord>> {
-    return getJson(`${BASE}/usage-records`, params);
+  return getJson(`${BASE}/usage-records`, params);
 }
 
 /** Assigns templates to a department's prompt slots (manage:Department). */
 export function assignDepartment(body: AssignDepartmentRequest): Promise<Department> {
-    return postJson(`${BASE}/assign-department`, body);
+  return postJson(`${BASE}/assign-department`, body);
 }
 
 /** Department directory for the assign dialog + filter (plain array). */
 export function listDepartments(): Promise<Department[]> {
-    return getJson('admin/departments');
+  return getJson('admin/departments');
 }
 
 /**
@@ -154,31 +154,31 @@ const DEPARTMENT_AGENTS_BASE = 'admin/department-agents';
 const departmentAgentPath = (id: string) => `${DEPARTMENT_AGENTS_BASE}/${encodeURIComponent(id)}`;
 
 export function listDepartmentAgents(params?: ListDepartmentAgentsParams): Promise<Paginated<DepartmentAgent>> {
-    return getJson(DEPARTMENT_AGENTS_BASE, params);
+  return getJson(DEPARTMENT_AGENTS_BASE, params);
 }
 
 /** Detail read keeping the ETag for the later PATCH. */
 export function getDepartmentAgent(id: string): Promise<WithEtag<DepartmentAgent>> {
-    return getWithEtag(departmentAgentPath(id));
+  return getWithEtag(departmentAgentPath(id));
 }
 
 export function createDepartmentAgent(body: CreateDepartmentAgentRequest): Promise<DepartmentAgent> {
-    return postJson(DEPARTMENT_AGENTS_BASE, body);
+  return postJson(DEPARTMENT_AGENTS_BASE, body);
 }
 
 /** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */
 export function updateDepartmentAgent(id: string, patch: UpdateDepartmentAgentRequest, etag: string): Promise<WithEtag<DepartmentAgent>> {
-    return patchWithEtag(departmentAgentPath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+  return patchWithEtag(departmentAgentPath(id), { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
 /** Soft delete (the platform never hard-deletes). 403s on a locked template copy. */
 export function deleteDepartmentAgent(id: string): Promise<DepartmentAgent> {
-    return deleteJson(departmentAgentPath(id));
+  return deleteJson(departmentAgentPath(id));
 }
 
 /** Atomic default flip within the row's department — NOT If-Match gated. */
 export function setDefaultDepartmentAgent(id: string): Promise<DepartmentAgent> {
-    return postJson(`${departmentAgentPath(id)}/set-default`);
+  return postJson(`${departmentAgentPath(id)}/set-default`);
 }
 
 /**
@@ -187,7 +187,7 @@ export function setDefaultDepartmentAgent(id: string): Promise<DepartmentAgent> 
  * (400 if it isn't an existing APPROVED snapshot; 403 on a locked template).
  */
 export function pinDepartmentAgent(id: string, versionNumber: number | null): Promise<DepartmentAgent> {
-    return postJson(`${departmentAgentPath(id)}/pin`, { versionNumber });
+  return postJson(`${departmentAgentPath(id)}/pin`, { versionNumber });
 }
 
 // ---------------------------------------------------------------------------
@@ -201,15 +201,15 @@ const HARNESS_BASE = 'admin/harness';
 
 /** NOTE: `page` is ONE-based on this endpoint (unlike the platform's 0-based lists). */
 export function listEvalGoldenSets(params?: ListEvalGoldenSetsParams): Promise<EvalGoldenSetList> {
-    return getJson(`${HARNESS_BASE}/golden-sets`, params);
+  return getJson(`${HARNESS_BASE}/golden-sets`, params);
 }
 
 /** NOTE: `page` is ONE-based on this endpoint (unlike the platform's 0-based lists). */
 export function listAgentEvalRuns(params?: ListAgentEvalRunsParams): Promise<AgentEvalRunList> {
-    return getJson(`${HARNESS_BASE}/eval-runs`, params);
+  return getJson(`${HARNESS_BASE}/eval-runs`, params);
 }
 
 /** Synchronous run-now — tenant admins run their own sets; a SYSTEM set is global-admin-only. */
 export function runGoldenSetEval(goldenSetId: string): Promise<EvalRunTrigger> {
-    return postJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/run`);
+  return postJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/run`);
 }

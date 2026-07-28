@@ -44,10 +44,7 @@ export class PipelinePolicyChangeEntityMapper extends BaseMapper<Entities.Pipeli
   }
 }
 
-export const PipelinePolicyChangeEntityMapperHandlers = createMapperHandlers<
-  Entities.PipelinePolicyChangeEntity,
-  Models.PipelinePolicyChange
->({
+export const PipelinePolicyChangeEntityMapperHandlers = createMapperHandlers<Entities.PipelinePolicyChangeEntity, Models.PipelinePolicyChange>({
   $toPersistence: {
     // Preserve the raw Buffer for the Prisma Bytes write path
     // (the generic auto-mapper would destructure a typed array into a byte map).

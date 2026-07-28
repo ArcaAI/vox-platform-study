@@ -31,7 +31,8 @@ vi.mock('../../api/admin-client', () => ({
 }));
 
 vi.mock('@/store/auth-store', () => ({
-  useAuthStore: (selector: (s: { tenantId: string; isGlobalScope: () => boolean }) => unknown) => selector({ tenantId: 't1', isGlobalScope: () => false }),
+  useAuthStore: (selector: (s: { tenantId: string; isGlobalScope: () => boolean }) => unknown) =>
+    selector({ tenantId: 't1', isGlobalScope: () => false }),
 }));
 
 vi.mock('@arcaai/ui', () => {

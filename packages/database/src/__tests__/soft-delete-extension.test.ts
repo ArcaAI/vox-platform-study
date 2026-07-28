@@ -34,11 +34,7 @@ vi.mock('../generated/core-prisma-client/client.js', () => ({
 
 vi.mock('../env.js', () => ({}));
 
-import {
-  applySoftDeleteFilter,
-  modelHasSoftDelete,
-  MODELS_WITHOUT_SOFT_DELETE,
-} from '../client';
+import { applySoftDeleteFilter, modelHasSoftDelete, MODELS_WITHOUT_SOFT_DELETE } from '../client';
 
 // ---------------------------------------------------------------------------
 // applySoftDeleteFilter — pure function tests
@@ -135,10 +131,7 @@ describe('applySoftDeleteFilter', () => {
 
 describe('modelHasSoftDelete', () => {
   describe('returns true for models WITH resourceStatus', () => {
-    const modelsWithSoftDelete = [
-      'User', 'Consultation', 'ContextItem', 'Department', 'Tenant',
-      'ApiKey', 'AiModel', 'Role', 'Webhook', 'Media',
-    ];
+    const modelsWithSoftDelete = ['User', 'Consultation', 'ContextItem', 'Department', 'Tenant', 'ApiKey', 'AiModel', 'Role', 'Webhook', 'Media'];
 
     modelsWithSoftDelete.forEach((model) => {
       it(`${model} (PascalCase)`, () => {
@@ -230,11 +223,7 @@ describe('Extension handler contract', () => {
    * Simulates what the real extension handler does for a given operation.
    * Kept intentionally minimal so it's easy to compare with client.ts.
    */
-  function simulateExtensionHandler(
-    operation: string,
-    model: string,
-    args: { where?: Record<string, unknown> },
-  ) {
+  function simulateExtensionHandler(operation: string, model: string, args: { where?: Record<string, unknown> }) {
     if (operation !== 'findUnique' && modelHasSoftDelete(model)) {
       applySoftDeleteFilter(args);
     }

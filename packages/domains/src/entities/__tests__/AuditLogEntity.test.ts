@@ -22,9 +22,7 @@ import { describe, it, expect } from 'vitest';
 import { AuditLogEntity, IAuditLogEntity } from '../generated/core/AuditLogEntity';
 import { AuditAction, ResourceStatusType, ResourceType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<IAuditLogEntity> = {},
-): IAuditLogEntity {
+function createValidInit(overrides: Partial<IAuditLogEntity> = {}): IAuditLogEntity {
   return {
     id: 'audit-test-id',
     tenantId: '50000000-0000-0000-0000-000000000000',
@@ -75,23 +73,16 @@ describe('AuditLogEntity.validate()', () => {
       // audit log row to carry a concrete tenant (the platform-level
       // SYSTEM_TENANT_ID for things that used to be NULL). validate()
       // must therefore THROW for null tenantId rather than tolerate it.
-      const entity = new AuditLogEntity(
-        createValidInit({ tenantId: null as unknown as string }),
-      );
+      const entity = new AuditLogEntity(createValidInit({ tenantId: null as unknown as string }));
 
-      expect(() => entity.validate()).toThrow(
-        /AuditLogEntity is missing tenant context/,
-      );
+      expect(() => entity.validate()).toThrow(/AuditLogEntity is missing tenant context/);
     });
 
-    it.each(Object.values(AuditAction))(
-      'should accept action %s',
-      (action) => {
-        const entity = new AuditLogEntity(createValidInit({ action }));
+    it.each(Object.values(AuditAction))('should accept action %s', (action) => {
+      const entity = new AuditLogEntity(createValidInit({ action }));
 
-        expect(() => entity.validate()).not.toThrow();
-      },
-    );
+      expect(() => entity.validate()).not.toThrow();
+    });
 
     it('should not validate the structure of `data` / `previousData` / `metadata` (track-only)', () => {
       const entity = new AuditLogEntity(
@@ -108,17 +99,13 @@ describe('AuditLogEntity.validate()', () => {
 
   describe('action', () => {
     it('should throw when action is undefined', () => {
-      const entity = new AuditLogEntity(
-        createValidInit({ action: undefined as unknown as AuditAction }),
-      );
+      const entity = new AuditLogEntity(createValidInit({ action: undefined as unknown as AuditAction }));
 
       expect(() => entity.validate()).toThrow('AuditLog action is required');
     });
 
     it('should throw when action is not a member of AuditAction', () => {
-      const entity = new AuditLogEntity(
-        createValidInit({ action: 'NotAnAction' as unknown as AuditAction }),
-      );
+      const entity = new AuditLogEntity(createValidInit({ action: 'NotAnAction' as unknown as AuditAction }));
 
       expect(() => entity.validate()).toThrow('AuditLog action is invalid');
     });
@@ -148,21 +135,15 @@ describe('AuditLogEntity.validate()', () => {
 
   describe('responsibleUserId', () => {
     it('should accept null responsibleUserId', () => {
-      const entity = new AuditLogEntity(
-        createValidInit({ responsibleUserId: null }),
-      );
+      const entity = new AuditLogEntity(createValidInit({ responsibleUserId: null }));
 
       expect(() => entity.validate()).not.toThrow();
     });
 
     it('should throw when responsibleUserId is whitespace only (present-but-blank)', () => {
-      const entity = new AuditLogEntity(
-        createValidInit({ responsibleUserId: '   ' }),
-      );
+      const entity = new AuditLogEntity(createValidInit({ responsibleUserId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'AuditLog responsibleUserId must not be blank',
-      );
+      expect(() => entity.validate()).toThrow('AuditLog responsibleUserId must not be blank');
     });
   });
 
@@ -174,13 +155,9 @@ describe('AuditLogEntity.validate()', () => {
     });
 
     it('should throw when responsibleIp exceeds 45 characters', () => {
-      const entity = new AuditLogEntity(
-        createValidInit({ responsibleIp: 'x'.repeat(46) }),
-      );
+      const entity = new AuditLogEntity(createValidInit({ responsibleIp: 'x'.repeat(46) }));
 
-      expect(() => entity.validate()).toThrow(
-        'AuditLog responsibleIp must not exceed 45 characters',
-      );
+      expect(() => entity.validate()).toThrow('AuditLog responsibleIp must not exceed 45 characters');
     });
   });
 
@@ -188,9 +165,7 @@ describe('AuditLogEntity.validate()', () => {
     it('should throw when resourceId is whitespace only (present-but-blank)', () => {
       const entity = new AuditLogEntity(createValidInit({ resourceId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'AuditLog resourceId must not be blank',
-      );
+      expect(() => entity.validate()).toThrow('AuditLog resourceId must not be blank');
     });
   });
 
@@ -202,13 +177,9 @@ describe('AuditLogEntity.validate()', () => {
     });
 
     it('should throw when eventType exceeds 100 characters', () => {
-      const entity = new AuditLogEntity(
-        createValidInit({ eventType: 'x'.repeat(101) }),
-      );
+      const entity = new AuditLogEntity(createValidInit({ eventType: 'x'.repeat(101) }));
 
-      expect(() => entity.validate()).toThrow(
-        'AuditLog eventType must not exceed 100 characters',
-      );
+      expect(() => entity.validate()).toThrow('AuditLog eventType must not exceed 100 characters');
     });
   });
 });

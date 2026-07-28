@@ -53,7 +53,11 @@ def _bp(text: str) -> tuple[int | None, int | None]:
     for match in _BP_RE.finditer(text):
         systolic, diastolic = int(match.group(1)), int(match.group(2))
         # Systolic must exceed diastolic and both must be plausible.
-        if systolic > diastolic and _in(systolic, _SYSTOLIC_RANGE) and _in(diastolic, _DIASTOLIC_RANGE):
+        if (
+            systolic > diastolic
+            and _in(systolic, _SYSTOLIC_RANGE)
+            and _in(diastolic, _DIASTOLIC_RANGE)
+        ):
             return systolic, diastolic
     return None, None
 

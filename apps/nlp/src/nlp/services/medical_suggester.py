@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 
 
 class MedicalSuggester:
-    def __init__(self, config: MedicalSuggesterConfig | None = None, token_classifier: TokenClassifier | None = None):
+    def __init__(
+        self,
+        config: MedicalSuggesterConfig | None = None,
+        token_classifier: TokenClassifier | None = None,
+    ):
         if config is None:
             config = MedicalSuggesterConfig()
 
@@ -119,7 +123,9 @@ class MedicalSuggester:
             )
 
             # Filter entities based on confidence and relevance for disease prediction
-            relevant_entities = self._filter_relevant_entities(token_classification_result.entities, min_confidence)
+            relevant_entities = self._filter_relevant_entities(
+                token_classification_result.entities, min_confidence
+            )
 
             # Step 2: Create symptom text from entities for disease prediction
             symptom_text = self._create_symptom_text(relevant_entities)
@@ -144,7 +150,9 @@ class MedicalSuggester:
             logger.error(f"Failed to generate medical suggestions: {str(e)}")
             raise
 
-    def _filter_relevant_entities(self, entities: list[Entity], min_confidence: float) -> list[Entity]:
+    def _filter_relevant_entities(
+        self, entities: list[Entity], min_confidence: float
+    ) -> list[Entity]:
         """Filter entities that are relevant for disease prediction"""
         relevant_entity_types = {
             "B-SIGN_SYMPTOM",

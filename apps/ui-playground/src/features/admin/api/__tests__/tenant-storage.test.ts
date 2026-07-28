@@ -68,10 +68,9 @@ describe('Tenant storage admin API hooks (TASK-331 doc-03 F7)', () => {
       });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockGet).toHaveBeenCalledWith(
-        `/admin/tenants/storage/buckets/${BUCKET_ID}/objects?prefix=${encodeURIComponent('patients/2026/')}`,
-        { tenantId: TENANT_ID },
-      );
+      expect(mockGet).toHaveBeenCalledWith(`/admin/tenants/storage/buckets/${BUCKET_ID}/objects?prefix=${encodeURIComponent('patients/2026/')}`, {
+        tenantId: TENANT_ID,
+      });
     });
 
     it('does not fetch when the bucket id is empty', async () => {
@@ -114,10 +113,9 @@ describe('Tenant storage admin API hooks (TASK-331 doc-03 F7)', () => {
       result.current.mutate({ bucketId: BUCKET_ID, bucketName: 'hope-audio-arcaai', fileKey: '2026/a.wav' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockDelete).toHaveBeenCalledWith(
-        `/admin/tenants/storage/buckets/${BUCKET_ID}/objects?key=${encodeURIComponent('2026/a.wav')}`,
-        { tenantId: TENANT_ID },
-      );
+      expect(mockDelete).toHaveBeenCalledWith(`/admin/tenants/storage/buckets/${BUCKET_ID}/objects?key=${encodeURIComponent('2026/a.wav')}`, {
+        tenantId: TENANT_ID,
+      });
     });
   });
 });

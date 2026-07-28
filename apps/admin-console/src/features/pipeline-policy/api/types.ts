@@ -22,18 +22,18 @@ export type PipelineToggleKey = 'autoSummaryEnabled' | 'autoNerEnabled' | 'harne
  * `version` is the OCC token (0 = code-default placeholder, no ETag emitted).
  */
 export interface PipelinePolicyRow {
-    id: string | null;
-    tenantId: string;
-    scope: PipelinePolicyScope;
-    scopeId: string | null;
-    source: PipelinePolicySource;
-    autoSummaryEnabled: boolean | null;
-    autoNerEnabled: boolean | null;
-    harnessEnabled: boolean | null;
-    /** Doctor self-service storage — read-only on this admin surface. */
-    dnaStyleEnabled: boolean | null;
-    updatedAt: string | null;
-    version: number;
+  id: string | null;
+  tenantId: string;
+  scope: PipelinePolicyScope;
+  scopeId: string | null;
+  source: PipelinePolicySource;
+  autoSummaryEnabled: boolean | null;
+  autoNerEnabled: boolean | null;
+  harnessEnabled: boolean | null;
+  /** Doctor self-service storage — read-only on this admin surface. */
+  dnaStyleEnabled: boolean | null;
+  updatedAt: string | null;
+  version: number;
 }
 
 /**
@@ -42,21 +42,21 @@ export interface PipelinePolicyRow {
  * per toggle. Read-only (no version).
  */
 export interface PipelinePolicyEffective {
-    tenantId: string;
-    departmentId: string | null;
-    doctorId: string | null;
-    autoSummaryEnabled: boolean;
-    autoNerEnabled: boolean;
-    harnessEnabled: boolean;
-    dnaStyleEnabled: boolean;
-    trace: Record<string, PipelinePolicyTraceSource>;
+  tenantId: string;
+  departmentId: string | null;
+  doctorId: string | null;
+  autoSummaryEnabled: boolean;
+  autoNerEnabled: boolean;
+  harnessEnabled: boolean;
+  dnaStyleEnabled: boolean;
+  trace: Record<string, PipelinePolicyTraceSource>;
 }
 
 /** Optional context for the effective-cascade read. */
 export interface PipelinePolicyEffectiveParams {
-    departmentId?: string;
-    doctorId?: string;
-    [key: string]: string | number | boolean | undefined | null;
+  departmentId?: string;
+  doctorId?: string;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 /**
@@ -66,9 +66,9 @@ export interface PipelinePolicyEffectiveParams {
  * `reason` lands on the WORM PipelinePolicyChange row.
  */
 export interface UpdatePipelinePolicyRequest {
-    autoSummaryEnabled?: boolean | null;
-    autoNerEnabled?: boolean | null;
-    harnessEnabled?: boolean | null;
-    reason?: string;
-    expectedVersion?: number;
+  autoSummaryEnabled?: boolean | null;
+  autoNerEnabled?: boolean | null;
+  harnessEnabled?: boolean | null;
+  reason?: string;
+  expectedVersion?: number;
 }

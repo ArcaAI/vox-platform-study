@@ -17,7 +17,17 @@ import { EvalServiceModule } from '../eval/eval.service.module';
   // HarnessPolicyServiceModule supplies the SMR-selection resolver.
   // UserProfileServiceModule supplies the preferred-template write.
   // EntitlementsServiceModule supplies the maxPromptTemplates quota check.
-  imports: [CommonServiceModule, CoreDatabaseModule, DepartmentServiceModule, ConfigModule, HttpModule, HarnessPolicyServiceModule, UserProfileServiceModule, EntitlementsServiceModule, EvalServiceModule],
+  imports: [
+    CommonServiceModule,
+    CoreDatabaseModule,
+    DepartmentServiceModule,
+    ConfigModule,
+    HttpModule,
+    HarnessPolicyServiceModule,
+    UserProfileServiceModule,
+    EntitlementsServiceModule,
+    EvalServiceModule,
+  ],
   providers: [
     {
       provide: IPromptManagementService,

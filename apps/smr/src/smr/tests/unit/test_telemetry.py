@@ -32,9 +32,11 @@ from smr.models.requests import GenerateRequest
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _force_reset_otel():
     """Force-reset OTel global state so each test gets a clean provider."""
     import opentelemetry.trace as _trace_mod
+
     _trace_mod._TRACER_PROVIDER = None
     _trace_mod._TRACER_PROVIDER_SET_ONCE._done = False
     _trace_mod._PROXY_TRACER_PROVIDER._real_tracer_provider = None
@@ -90,6 +92,7 @@ def mock_http_client():
 # ---------------------------------------------------------------------------
 # Task 2.1 — telemetry.py: setup_telemetry / get_tracer
 # ---------------------------------------------------------------------------
+
 
 class TestSetupTelemetry:
     """Tests for the setup_telemetry function."""
@@ -151,16 +154,21 @@ class TestGetTracer:
 # Task 2.1 — otel_enabled flag integration in create_app
 # ---------------------------------------------------------------------------
 
+
 class TestOtelEnabledFlag:
     """Tests for the otel_enabled config flag in create_app."""
 
     def test_telemetry_not_setup_when_disabled(self):
         """When otel_enabled=False, tracer provider must remain NoOp."""
         settings = Settings(
-            host="127.0.0.1", port=5099, debug=True,
-            otel_enabled=False, metrics_enabled=False,
+            host="127.0.0.1",
+            port=5099,
+            debug=True,
+            otel_enabled=False,
+            metrics_enabled=False,
         )
         from smr.main import create_app
+
         create_app(settings_override=settings)
 
         provider = trace.get_tracer_provider()
@@ -169,11 +177,15 @@ class TestOtelEnabledFlag:
     def test_telemetry_setup_when_enabled(self):
         """When otel_enabled=True, create_app must call setup_opentelemetry."""
         settings = Settings(
-            host="127.0.0.1", port=5099, debug=True,
-            otel_enabled=True, metrics_enabled=False,
+            host="127.0.0.1",
+            port=5099,
+            debug=True,
+            otel_enabled=True,
+            metrics_enabled=False,
         )
         with patch("smr.core.observability.setup_opentelemetry") as mock_setup:
             from smr.main import create_app
+
             create_app(settings_override=settings)
             mock_setup.assert_called_once()
 
@@ -187,6 +199,7 @@ class TestOtelEnabledFlag:
 # ---------------------------------------------------------------------------
 # Task 2.2 — GenAI spans on providers
 # ---------------------------------------------------------------------------
+
 
 class TestOllamaGenAISpans:
     """Ollama provider must create GenAI-attributed spans."""
@@ -284,10 +297,14 @@ class TestOllamaGenAISpans:
 
         async def _aiter_lines():
             yield json.dumps({"response": "Hello", "done": False})
-            yield json.dumps({
-                "response": "", "done": True,
-                "prompt_eval_count": 8, "eval_count": 3,
-            })
+            yield json.dumps(
+                {
+                    "response": "",
+                    "done": True,
+                    "prompt_eval_count": 8,
+                    "eval_count": 3,
+                }
+            )
 
         mock_response.aiter_lines = _aiter_lines
 
@@ -313,9 +330,7 @@ class TestAzureGenAISpans:
     """Azure OpenAI provider must create GenAI-attributed spans."""
 
     @pytest.mark.asyncio
-    async def test_azure_generate_creates_span(
-        self, in_memory_exporter, azure_config
-    ):
+    async def test_azure_generate_creates_span(self, in_memory_exporter, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
 
         mock_usage = MagicMock()
@@ -345,9 +360,7 @@ class TestAzureGenAISpans:
         assert len(gen_spans) == 1
 
     @pytest.mark.asyncio
-    async def test_azure_span_has_usage_attributes(
-        self, in_memory_exporter, azure_config
-    ):
+    async def test_azure_span_has_usage_attributes(self, in_memory_exporter, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
 
         mock_usage = MagicMock()
@@ -379,9 +392,7 @@ class TestAzureGenAISpans:
         assert attrs["gen_ai.usage.output_tokens"] == 20
 
     @pytest.mark.asyncio
-    async def test_azure_streaming_creates_span(
-        self, in_memory_exporter, azure_config
-    ):
+    async def test_azure_streaming_creates_span(self, in_memory_exporter, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
 
         mock_delta = MagicMock()
@@ -404,9 +415,7 @@ class TestAzureGenAISpans:
             provider._client.chat.completions.create = AsyncMock(return_value=_aiter_chunks())
 
             chunks = []
-            async for chunk in provider.generate_stream(
-                GenerateRequest(prompt="hi", stream=True)
-            ):
+            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True)):
                 chunks.append(chunk)
 
         spans = in_memory_exporter.get_finished_spans()
@@ -420,9 +429,7 @@ class TestBedrockGenAISpans:
     """AWS Bedrock provider must create GenAI-attributed spans."""
 
     @pytest.mark.asyncio
-    async def test_bedrock_generate_creates_span(
-        self, in_memory_exporter, bedrock_config
-    ):
+    async def test_bedrock_generate_creates_span(self, in_memory_exporter, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
 
         mock_boto_response = {
@@ -451,9 +458,7 @@ class TestBedrockGenAISpans:
         assert len(gen_spans) == 1
 
     @pytest.mark.asyncio
-    async def test_bedrock_span_has_usage_attributes(
-        self, in_memory_exporter, bedrock_config
-    ):
+    async def test_bedrock_span_has_usage_attributes(self, in_memory_exporter, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
 
         mock_boto_response = {
@@ -484,9 +489,7 @@ class TestBedrockGenAISpans:
         assert attrs["gen_ai.usage.output_tokens"] == 8
 
     @pytest.mark.asyncio
-    async def test_bedrock_streaming_creates_span(
-        self, in_memory_exporter, bedrock_config
-    ):
+    async def test_bedrock_streaming_creates_span(self, in_memory_exporter, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
 
         events = [

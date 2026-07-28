@@ -12,5 +12,5 @@ export const metadata: Metadata = { title: 'STT Configuration' };
  * or records a waiver. See the ticket README (Phase G).
  */
 export default function SttConfigPage() {
-    return <TenantSttConfigScreen />;
+  return <TenantSttConfigScreen />;
 }

@@ -82,7 +82,13 @@ describe('HighlightableSurface', () => {
 
   it('invokes onRemove with the highlight id when the remove control is clicked', () => {
     const onRemove = vi.fn();
-    render(<HighlightableSurface text="cough and fever" highlights={[hl({ id: 'rm', exact: 'fever', startOffset: 10, endOffset: 15 })]} onRemove={onRemove} />);
+    render(
+      <HighlightableSurface
+        text="cough and fever"
+        highlights={[hl({ id: 'rm', exact: 'fever', startOffset: 10, endOffset: 15 })]}
+        onRemove={onRemove}
+      />,
+    );
 
     fireEvent.click(screen.getByTestId('remove-highlight-rm'));
     expect(onRemove).toHaveBeenCalledWith('rm');

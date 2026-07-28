@@ -71,12 +71,7 @@ declare module './AuditLogRepository' {
      * are encrypted as `null`/`{}` JSON faithfully (an audit row always carries
      * both columns), so the round-trip is lossless.
      */
-    encryptEnvelopeIntoEntity(
-      this: AuditLogRepository,
-      entity: AuditLogEntity,
-      crypto: EnvelopeCryptoLike,
-      dek: AuditLogDek,
-    ): Promise<void>;
+    encryptEnvelopeIntoEntity(this: AuditLogRepository, entity: AuditLogEntity, crypto: EnvelopeCryptoLike, dek: AuditLogDek): Promise<void>;
 
     /**
      * Decrypt `encryptedData`/`encryptedPreviousData` under the supplied (already

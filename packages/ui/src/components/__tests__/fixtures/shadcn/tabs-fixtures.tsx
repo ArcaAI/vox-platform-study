@@ -1,12 +1,6 @@
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../../shadcn/tabs'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../../shadcn/tabs';
 
-export function BasicTabs({
-  defaultValue = 'tab1',
-  orientation = 'horizontal',
-}: {
-  defaultValue?: string
-  orientation?: 'horizontal' | 'vertical'
-}) {
+export function BasicTabs({ defaultValue = 'tab1', orientation = 'horizontal' }: { defaultValue?: string; orientation?: 'horizontal' | 'vertical' }) {
   return (
     <Tabs defaultValue={defaultValue} orientation={orientation}>
       <TabsList>
@@ -18,7 +12,7 @@ export function BasicTabs({
       <TabsContent value="tab2">Content 2</TabsContent>
       <TabsContent value="tab3">Content 3</TabsContent>
     </Tabs>
-  )
+  );
 }
 
 export function LineTabs() {
@@ -31,7 +25,7 @@ export function LineTabs() {
       <TabsContent value="tab1">Content 1</TabsContent>
       <TabsContent value="tab2">Content 2</TabsContent>
     </Tabs>
-  )
+  );
 }
 
 export function TabsWithDisabled() {
@@ -48,5 +42,5 @@ export function TabsWithDisabled() {
       <TabsContent value="tab2">Content 2</TabsContent>
       <TabsContent value="tab3">Content 3</TabsContent>
     </Tabs>
-  )
+  );
 }

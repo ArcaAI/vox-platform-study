@@ -75,7 +75,10 @@ export class LiveDocEngineConfigResponse {
   @ApiProperty({ description: 'The `LIVE_DOC_ENABLED` env default baked in at boot' })
   envDefault: boolean;
 
-  @ApiProperty({ description: 'Whether the effective value comes from the env default or a runtime Redis override', enum: ['env-default', 'redis-override'] })
+  @ApiProperty({
+    description: 'Whether the effective value comes from the env default or a runtime Redis override',
+    enum: ['env-default', 'redis-override'],
+  })
   source: LiveDocEngineConfigSource;
 
   @ApiPropertyOptional({ description: 'ISO-8601 timestamp of the last runtime override' })

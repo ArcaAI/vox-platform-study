@@ -77,7 +77,7 @@ export class AgentTrajectoryStepRepository extends Repository<AgentTrajectorySte
   }
 
   /**
- * Distinct sessions for a tenant, aggregated in the DB.
+   * Distinct sessions for a tenant, aggregated in the DB.
    *
    * Groups by `(sessionKind, sessionId, runId)` via Prisma `groupBy`:
    *   - `stepCount` ← `_count._all`
@@ -90,10 +90,7 @@ export class AgentTrajectoryStepRepository extends Repository<AgentTrajectorySte
    * Filtering (consultation / kind / createdAt range) is pushed into the
    * `where` clause so the DB never materializes unmatched step rows.
    */
-  async listSessionSummaries(
-    tenantId: string,
-    filters: ListSessionSummariesFilters = {},
-  ): Promise<AgentTrajectorySessionSummary[]> {
+  async listSessionSummaries(tenantId: string, filters: ListSessionSummariesFilters = {}): Promise<AgentTrajectorySessionSummary[]> {
     const where: Record<string, unknown> = { tenantId };
     if (filters.consultationId) where.consultationId = filters.consultationId;
     if (filters.sessionKind) where.sessionKind = filters.sessionKind;
@@ -111,8 +108,7 @@ export class AgentTrajectoryStepRepository extends Repository<AgentTrajectorySte
       const firstStepAt = toDate(r._min.startedAt);
       const maxStarted = toDate(r._max.startedAt);
       const maxEnded = r._max.endedAt ? toDate(r._max.endedAt) : null;
-      const lastStepAt =
-        maxEnded && maxEnded.getTime() > maxStarted.getTime() ? maxEnded : maxStarted;
+      const lastStepAt = maxEnded && maxEnded.getTime() > maxStarted.getTime() ? maxEnded : maxStarted;
       return {
         sessionId: r.sessionId as string,
         runId: (r.runId ?? '') as string,

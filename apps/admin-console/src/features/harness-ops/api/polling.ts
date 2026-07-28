@@ -17,12 +17,12 @@ export const WORKFLOW_POLL_INTERVAL_MS = 5000;
 
 /** True only for the single non-terminal Temporal status (`RUNNING`). */
 export function isNonTerminal(status: HarnessWorkflowStatus | string | null | undefined): boolean {
-    return typeof status === 'string' && status.toUpperCase() === 'RUNNING';
+  return typeof status === 'string' && status.toUpperCase() === 'RUNNING';
 }
 
 /** The tab is foreground (or there is no `document`, e.g. SSR). */
 function isForeground(): boolean {
-    return typeof document === 'undefined' || document.visibilityState !== 'hidden';
+  return typeof document === 'undefined' || document.visibilityState !== 'hidden';
 }
 
 /**
@@ -30,8 +30,8 @@ function isForeground(): boolean {
  * the tab is foreground, otherwise `false` (stop polling).
  */
 export function workflowsRefetchInterval(rows: Pick<HarnessWorkflowSummary, 'status'>[] | undefined): number | false {
-    if (!isForeground()) return false;
-    return (rows ?? []).some((row) => isNonTerminal(row.status)) ? WORKFLOW_POLL_INTERVAL_MS : false;
+  if (!isForeground()) return false;
+  return (rows ?? []).some((row) => isNonTerminal(row.status)) ? WORKFLOW_POLL_INTERVAL_MS : false;
 }
 
 /**
@@ -39,6 +39,6 @@ export function workflowsRefetchInterval(rows: Pick<HarnessWorkflowSummary, 'sta
  * and the tab is foreground, otherwise `false`.
  */
 export function workflowRefetchInterval(status: HarnessWorkflowStatus | string | null | undefined): number | false {
-    if (!isForeground()) return false;
-    return isNonTerminal(status) ? WORKFLOW_POLL_INTERVAL_MS : false;
+  if (!isForeground()) return false;
+  return isNonTerminal(status) ? WORKFLOW_POLL_INTERVAL_MS : false;
 }

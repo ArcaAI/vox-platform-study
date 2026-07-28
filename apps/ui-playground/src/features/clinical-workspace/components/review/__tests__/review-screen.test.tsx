@@ -35,7 +35,9 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // manual-highlight surface (when no claim is selected). Stub it so this screen
 // test stays focused on claim→evidence wiring and doesn't pull the query hooks.
 vi.mock('../../highlightable-surface', () => ({
-  ManualHighlightSurface: (props: any) => <div data-testid="manual-surface" data-target-kind={props.targetKind} data-source-id={props.sourceContextItemId} />,
+  ManualHighlightSurface: (props: any) => (
+    <div data-testid="manual-surface" data-target-kind={props.targetKind} data-source-id={props.sourceContextItemId} />
+  ),
 }));
 
 vi.mock('@arcaai/vox', () => ({
@@ -213,7 +215,11 @@ describe('ReviewScreen — approve & sign', () => {
 describe('ReviewScreen — assurance pending + safety flag (TASK-355 Phase D)', () => {
   it('shows the pending banner with a live N-of-M counter and keeps sign enabled (Q5/Q2a)', () => {
     render(
-      <ReviewScreen data={data} onApprove={vi.fn().mockResolvedValue(approvalResult)} assurance={{ pending: true, resolved: 1, total: 3, safetyFlag: false }} />,
+      <ReviewScreen
+        data={data}
+        onApprove={vi.fn().mockResolvedValue(approvalResult)}
+        assurance={{ pending: true, resolved: 1, total: 3, safetyFlag: false }}
+      />,
     );
 
     expect(screen.getByTestId('assurance-pending-banner')).toBeInTheDocument();

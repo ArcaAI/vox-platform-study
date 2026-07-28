@@ -187,7 +187,9 @@ def test_model_unavailable_degrades_to_unverified_never_grounded() -> None:
 
 def test_scorer_error_fails_closed_to_unverified() -> None:
     """A scorer error mid-verify → the WHOLE result degrades to ``unverified``."""
-    result = _verifier(ExplodingScorer()).verify(f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", TRANSCRIPT)
+    result = _verifier(ExplodingScorer()).verify(
+        f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", TRANSCRIPT
+    )
 
     assert result.checked is False
     assert result.reason == "nli_error"
@@ -197,7 +199,9 @@ def test_scorer_error_fails_closed_to_unverified() -> None:
 
 def test_mismatched_scorer_output_fails_closed() -> None:
     """A malformed (wrong-count) scorer response is an error, not a silent zip-truncate."""
-    result = _verifier(MismatchedScorer()).verify(f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", TRANSCRIPT)
+    result = _verifier(MismatchedScorer()).verify(
+        f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", TRANSCRIPT
+    )
 
     assert result.checked is False
     assert result.reason == "nli_error"

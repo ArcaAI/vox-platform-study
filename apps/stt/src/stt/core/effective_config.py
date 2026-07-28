@@ -68,7 +68,9 @@ class EffectiveConfigSnapshot:
             "max_models": group.get("maxModels"),
             "max_memory_mb": group.get("maxMemoryMb"),
         }
-        return {key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None}
+        return {
+            key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None
+        }
 
     def worker_concurrency(self) -> int | None:
         """Dramatiq worker-thread ceiling, or None to keep the env value."""
@@ -222,7 +224,9 @@ class EffectiveConfigClient:
                 transport=self._transport,
                 headers={"X-Internal-Service-Key": self._api_key},
             ) as client:
-                response = await client.get("/internal/effective-config", params={"service": self._service})
+                response = await client.get(
+                    "/internal/effective-config", params={"service": self._service}
+                )
                 response.raise_for_status()
                 payload = response.json()
 

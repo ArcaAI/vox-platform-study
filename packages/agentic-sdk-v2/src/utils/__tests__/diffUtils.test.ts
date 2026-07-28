@@ -7,12 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  computeDiff,
-  computePromptDiff,
-  computeSummaryDiff,
-  createUnifiedPatch,
-} from '../diffUtils';
+import { computeDiff, computePromptDiff, computeSummaryDiff, createUnifiedPatch } from '../diffUtils';
 
 // =============================================================================
 // computeDiff
@@ -30,13 +25,13 @@ describe('diffUtils', () => {
     it('should detect word additions', () => {
       const result = computeDiff('hello', 'hello world', 'words');
       expect(result.stats.additions).toBeGreaterThan(0);
-      expect(result.changes.some(c => c.added)).toBe(true);
+      expect(result.changes.some((c) => c.added)).toBe(true);
     });
 
     it('should detect word deletions', () => {
       const result = computeDiff('hello world', 'hello', 'words');
       expect(result.stats.deletions).toBeGreaterThan(0);
-      expect(result.changes.some(c => c.removed)).toBe(true);
+      expect(result.changes.some((c) => c.removed)).toBe(true);
     });
 
     it('should detect line changes', () => {
@@ -127,13 +122,9 @@ describe('diffUtils', () => {
     });
 
     it('should handle words mode with punctuation', () => {
-      const result = computeDiff(
-        'Patient has fever, cough.',
-        'Patient has fever, cough, and headache.',
-        'words',
-      );
+      const result = computeDiff('Patient has fever, cough.', 'Patient has fever, cough, and headache.', 'words');
       expect(result.stats.additions).toBeGreaterThan(0);
-      expect(result.changes.some(c => c.added)).toBe(true);
+      expect(result.changes.some((c) => c.added)).toBe(true);
     });
 
     it('should handle very long single line', () => {
@@ -171,19 +162,13 @@ describe('diffUtils', () => {
     });
 
     it('should handle complete prompt replacement', () => {
-      const result = computePromptDiff(
-        'Old prompt line 1\nOld prompt line 2',
-        'Completely new prompt\nWith different structure',
-      );
+      const result = computePromptDiff('Old prompt line 1\nOld prompt line 2', 'Completely new prompt\nWith different structure');
       expect(result.stats.additions).toBeGreaterThan(0);
       expect(result.stats.deletions).toBeGreaterThan(0);
     });
 
     it('should detect variable placeholder changes', () => {
-      const result = computePromptDiff(
-        'Hello {{patient_name}}, your summary is ready.',
-        'Hello {{patient_name}}, your detailed summary is ready.',
-      );
+      const result = computePromptDiff('Hello {{patient_name}}, your summary is ready.', 'Hello {{patient_name}}, your detailed summary is ready.');
       expect(result.stats.additions).toBeGreaterThan(0);
     });
   });
@@ -198,7 +183,7 @@ describe('diffUtils', () => {
       const newContent = 'Patient presents with severe chest pain.';
       const result = computeSummaryDiff(oldContent, newContent);
       expect(result.stats.additions).toBeGreaterThan(0);
-      expect(result.changes.some(c => c.added && c.value.includes('severe'))).toBe(true);
+      expect(result.changes.some((c) => c.added && c.value.includes('severe'))).toBe(true);
     });
 
     it('should detect word-level deletions', () => {
@@ -264,11 +249,7 @@ describe('diffUtils', () => {
     });
 
     it('should handle multiline patch', () => {
-      const patch = createUnifiedPatch(
-        'multi.txt',
-        'line1\nline2\nline3\n',
-        'line1\nmodified\nline3\n',
-      );
+      const patch = createUnifiedPatch('multi.txt', 'line1\nline2\nline3\n', 'line1\nmodified\nline3\n');
       expect(patch).toContain('-line2');
       expect(patch).toContain('+modified');
     });

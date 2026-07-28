@@ -104,13 +104,20 @@ class TestRetryHandler:
         """No retry needed when first attempt succeeds."""
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(
-            return_value=("Success!", "", {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15})
+            return_value=(
+                "Success!",
+                "",
+                {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15},
+            )
         )
         app = _app_factory(mock_provider)
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-        })
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["content"] == "Success!"
         assert mock_provider.generate.call_count == 1
@@ -126,11 +133,15 @@ class TestRetryHandler:
             ]
         )
         app = _app_factory(mock_provider)
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 3, "retry_on": ["provider_error"]},
-        }, patch_sleep=True)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 3, "retry_on": ["provider_error"]},
+            },
+            patch_sleep=True,
+        )
         assert resp.status_code == 200
         assert resp.json()["content"] == "Recovered!"
         assert mock_provider.generate.call_count == 2
@@ -141,11 +152,15 @@ class TestRetryHandler:
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(side_effect=RuntimeError("always fails"))
         app = _app_factory(mock_provider)
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 2, "retry_on": ["provider_error"]},
-        }, patch_sleep=True)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 2, "retry_on": ["provider_error"]},
+            },
+            patch_sleep=True,
+        )
         assert resp.status_code == 502
         # 1 initial + 2 retries = 3 total calls
         assert mock_provider.generate.call_count == 3
@@ -156,11 +171,14 @@ class TestRetryHandler:
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(side_effect=RuntimeError("fail once"))
         app = _app_factory(mock_provider)
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 0, "retry_on": ["provider_error"]},
-        })
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 0, "retry_on": ["provider_error"]},
+            },
+        )
         assert resp.status_code == 502
         assert mock_provider.generate.call_count == 1
 
@@ -171,15 +189,23 @@ class TestRetryHandler:
         mock_provider.generate = AsyncMock(
             side_effect=[
                 RuntimeError("transient"),
-                ("Second try!", "", {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}),
+                (
+                    "Second try!",
+                    "",
+                    {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
+                ),
             ]
         )
         app = _app_factory(mock_provider)
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 3, "retry_on": ["provider_error"]},
-        }, patch_sleep=True)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 3, "retry_on": ["provider_error"]},
+            },
+            patch_sleep=True,
+        )
         assert resp.status_code == 200
         assert resp.json()["content"] == "Second try!"
         assert mock_provider.generate.call_count == 2
@@ -190,11 +216,14 @@ class TestRetryHandler:
         mock_provider = AsyncMock()
         mock_provider.generate = AsyncMock(side_effect=RuntimeError("provider down"))
         app = _app_factory(mock_provider)
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 3, "retry_on": ["timeout"]},
-        })
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 3, "retry_on": ["timeout"]},
+            },
+        )
         assert resp.status_code == 502
         # "provider_error" not in retry_on=["timeout"], so no retry — only 1 call
         assert mock_provider.generate.call_count == 1
@@ -219,11 +248,14 @@ class TestPerRequestTimeout:
         mock_provider.generate = AsyncMock(side_effect=slow_generate)
         app = _app_factory(mock_provider)
         app.state.settings = settings
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 0, "retry_on": []},
-        })
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 0, "retry_on": []},
+            },
+        )
         assert resp.status_code == 502
         assert "timed out" in resp.json()["detail"].lower()
 
@@ -244,11 +276,14 @@ class TestPerRequestTimeout:
         mock_provider.generate = AsyncMock(side_effect=barely_slow)
         app = _app_factory(mock_provider)
         app.state.settings = settings
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 0, "retry_on": []},
-        })
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 0, "retry_on": []},
+            },
+        )
         assert resp.status_code == 502
         assert call_count == 1
 
@@ -267,11 +302,15 @@ class TestPerRequestTimeout:
 
         app = _app_factory(mock_provider)
         app.state.settings = settings
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 2, "retry_on": ["timeout"]},
-        }, patch_sleep=True)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 2, "retry_on": ["timeout"]},
+            },
+            patch_sleep=True,
+        )
         assert resp.status_code == 200
         assert resp.json()["content"] == "Fast!"
         assert mock_provider.generate.call_count == 2
@@ -289,11 +328,14 @@ class TestPerRequestTimeout:
         mock_provider.generate = AsyncMock(side_effect=always_slow)
         app = _app_factory(mock_provider)
         app.state.settings = settings
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 0, "retry_on": []},
-        })
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 0, "retry_on": []},
+            },
+        )
         assert resp.status_code == 502
         detail = resp.json()["detail"]
         assert "timed out" in detail.lower()
@@ -320,11 +362,15 @@ class TestRetryWithTimeout:
         )
         app = _app_factory(mock_provider)
         app.state.settings = settings
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 3, "retry_on": ["timeout"]},
-        }, patch_sleep=True)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 3, "retry_on": ["timeout"]},
+            },
+            patch_sleep=True,
+        )
         assert resp.status_code == 200
         assert resp.json()["content"] == "Finally!"
         assert mock_provider.generate.call_count == 3
@@ -335,16 +381,18 @@ class TestRetryWithTimeout:
         settings.ollama.timeout_s = 1
 
         mock_provider = AsyncMock()
-        mock_provider.generate = AsyncMock(
-            side_effect=TimeoutError("always times out")
-        )
+        mock_provider.generate = AsyncMock(side_effect=TimeoutError("always times out"))
         app = _app_factory(mock_provider)
         app.state.settings = settings
-        resp = await _post_generate(app, {
-            "prompt": "Hello",
-            "provider": "ollama",
-            "retry_config": {"max_retries": 2, "retry_on": ["timeout"]},
-        }, patch_sleep=True)
+        resp = await _post_generate(
+            app,
+            {
+                "prompt": "Hello",
+                "provider": "ollama",
+                "retry_config": {"max_retries": 2, "retry_on": ["timeout"]},
+            },
+            patch_sleep=True,
+        )
         assert resp.status_code == 502
         assert "timed out" in resp.json()["detail"].lower()
         # 1 initial + 2 retries = 3 total calls

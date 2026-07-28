@@ -81,28 +81,28 @@ import { IConfigService } from './path/to/IConfigService';
 
 @Injectable()
 export class MyService {
-    constructor(@Inject(IConfigService) private configService: IConfigService) {}
+  constructor(@Inject(IConfigService) private configService: IConfigService) {}
 
-    async someMethod() {
-        // Get complete configuration
-        const config = this.configService.getConfiguration();
+  async someMethod() {
+    // Get complete configuration
+    const config = this.configService.getConfiguration();
 
-        // Get specific configuration value with type safety
-        const jwtSecret = this.configService.getConfigValue('JWT_SECRET_KEY');
+    // Get specific configuration value with type safety
+    const jwtSecret = this.configService.getConfigValue('JWT_SECRET_KEY');
 
-        // Check environment
-        if (this.configService.isDevelopment()) {
-            console.log('Running in development mode');
-        }
-
-        // Check if debug is enabled
-        if (this.configService.isDebugEnabled()) {
-            console.log('Debug mode enabled');
-        }
-
-        // Reload configuration (useful for testing)
-        await this.configService.reloadConfiguration();
+    // Check environment
+    if (this.configService.isDevelopment()) {
+      console.log('Running in development mode');
     }
+
+    // Check if debug is enabled
+    if (this.configService.isDebugEnabled()) {
+      console.log('Debug mode enabled');
+    }
+
+    // Reload configuration (useful for testing)
+    await this.configService.reloadConfiguration();
+  }
 }
 ```
 
@@ -156,33 +156,33 @@ import { IAppSettingsService } from './path/to/IAppSettingsService';
 
 @Injectable()
 export class MyService {
-    constructor(@Inject(IAppSettingsService) private appSettings: IAppSettingsService) {}
+  constructor(@Inject(IAppSettingsService) private appSettings: IAppSettingsService) {}
 
-    async someMethod() {
-        // Get a setting value with default
-        const maxFileSize = this.appSettings.getValueWithDefault('MAX_FILE_SIZE', 10485760);
+  async someMethod() {
+    // Get a setting value with default
+    const maxFileSize = this.appSettings.getValueWithDefault('MAX_FILE_SIZE', 10485760);
 
-        // Get raw setting entity
-        const setting = this.appSettings.getFromCache('FEATURE_FLAG_NEW_UI');
+    // Get raw setting entity
+    const setting = this.appSettings.getFromCache('FEATURE_FLAG_NEW_UI');
 
-        // Check if setting exists
-        if (this.appSettings.hasSetting('MAINTENANCE_MODE')) {
-            const isMaintenanceMode = this.appSettings.getValueFromCache('MAINTENANCE_MODE');
-        }
-
-        // Get all setting keys
-        const allKeys = this.appSettings.getAllKeys();
-
-        // Force cache refresh
-        await this.appSettings.refreshCache();
-
-        // Get cache statistics
-        const stats = this.appSettings.getCacheStats();
-        console.log(`Cache has ${stats.settingsCount} settings, last refresh: ${stats.lastRefresh}`);
-
-        // Validate setting value
-        const isValid = this.appSettings.validateSettingValue('TIMEOUT_MS', 5000, 'number');
+    // Check if setting exists
+    if (this.appSettings.hasSetting('MAINTENANCE_MODE')) {
+      const isMaintenanceMode = this.appSettings.getValueFromCache('MAINTENANCE_MODE');
     }
+
+    // Get all setting keys
+    const allKeys = this.appSettings.getAllKeys();
+
+    // Force cache refresh
+    await this.appSettings.refreshCache();
+
+    // Get cache statistics
+    const stats = this.appSettings.getCacheStats();
+    console.log(`Cache has ${stats.settingsCount} settings, last refresh: ${stats.lastRefresh}`);
+
+    // Validate setting value
+    const isValid = this.appSettings.validateSettingValue('TIMEOUT_MS', 5000, 'number');
+  }
 }
 ```
 
@@ -202,14 +202,14 @@ The service emits the following events:
 ```typescript
 // Cache successfully refreshed
 this.eventEmitter.emit('app-settings.cache-refreshed', {
-    settingsCount: number,
-    timestamp: Date,
+  settingsCount: number,
+  timestamp: Date,
 });
 
 // Cache refresh failed
 this.eventEmitter.emit('app-settings.cache-error', {
-    error: string,
-    timestamp: Date,
+  error: string,
+  timestamp: Date,
 });
 ```
 
@@ -252,27 +252,27 @@ The service supports automatic parsing of different value types:
 ```typescript
 @Injectable()
 export class ExampleService {
-    constructor(
-        @Inject(IConfigService) private config: IConfigService,
-        @Inject(IAppSettingsService) private appSettings: IAppSettingsService,
-    ) {}
+  constructor(
+    @Inject(IConfigService) private config: IConfigService,
+    @Inject(IAppSettingsService) private appSettings: IAppSettingsService,
+  ) {}
 
-    getUploadLimit(): number {
-        // 1. Check database setting first (runtime configurable)
-        const dbLimit = this.appSettings.getValueFromCache('UPLOAD_LIMIT_MB');
-        if (dbLimit !== null) {
-            return dbLimit * 1024 * 1024; // Convert MB to bytes
-        }
-
-        // 2. Fall back to environment configuration
-        const envLimit = process.env.UPLOAD_LIMIT_MB;
-        if (envLimit) {
-            return parseInt(envLimit) * 1024 * 1024;
-        }
-
-        // 3. Use default value
-        return 10 * 1024 * 1024; // 10MB default
+  getUploadLimit(): number {
+    // 1. Check database setting first (runtime configurable)
+    const dbLimit = this.appSettings.getValueFromCache('UPLOAD_LIMIT_MB');
+    if (dbLimit !== null) {
+      return dbLimit * 1024 * 1024; // Convert MB to bytes
     }
+
+    // 2. Fall back to environment configuration
+    const envLimit = process.env.UPLOAD_LIMIT_MB;
+    if (envLimit) {
+      return parseInt(envLimit) * 1024 * 1024;
+    }
+
+    // 3. Use default value
+    return 10 * 1024 * 1024; // 10MB default
+  }
 }
 ```
 
@@ -338,14 +338,14 @@ UPDATE global_settings SET value = 'true' WHERE key = 'S3_REJECT_UNAUTHORIZED';
 import { ConfigModule } from './path/to/config.module';
 
 @Module({
-    imports: [
-        ConfigModule.forRoot({
-            envFilePath: '.env',
-            initialValues: {
-                DEBUG: true, // Override for testing
-            },
-        }),
-    ],
+  imports: [
+    ConfigModule.forRoot({
+      envFilePath: '.env',
+      initialValues: {
+        DEBUG: true, // Override for testing
+      },
+    }),
+  ],
 })
 export class AppModule {}
 ```
@@ -356,7 +356,7 @@ export class AppModule {}
 import { AppSettingsModule } from './path/to/appSettings.module';
 
 @Module({
-    imports: [AppSettingsModule.forRoot()],
+  imports: [AppSettingsModule.forRoot()],
 })
 export class AppModule {}
 ```
@@ -379,11 +379,11 @@ Monitor AppSettingsService cache health:
 ```typescript
 const stats = appSettingsService.getCacheStats();
 console.log({
-    isInitialized: stats.isInitialized,
-    settingsCount: stats.settingsCount,
-    refreshCount: stats.refreshCount,
-    errorCount: stats.errorCount,
-    lastRefresh: stats.lastRefresh,
+  isInitialized: stats.isInitialized,
+  settingsCount: stats.settingsCount,
+  refreshCount: stats.refreshCount,
+  errorCount: stats.errorCount,
+  lastRefresh: stats.lastRefresh,
 });
 ```
 
@@ -417,32 +417,32 @@ NEST_DEBUG=true
 
 ```typescript
 describe('ConfigService', () => {
-    let configService: ConfigService;
-    let mockVaultService: jest.Mocked<IVaultService>;
+  let configService: ConfigService;
+  let mockVaultService: jest.Mocked<IVaultService>;
 
-    beforeEach(async () => {
-        const module = await Test.createTestingModule({
-            providers: [
-                ConfigService,
-                {
-                    provide: IVaultService,
-                    useValue: mockVaultService,
-                },
-                {
-                    provide: 'CONFIG_OPTIONS',
-                    useValue: { initialValues: { DEBUG: true } },
-                },
-            ],
-        }).compile();
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        ConfigService,
+        {
+          provide: IVaultService,
+          useValue: mockVaultService,
+        },
+        {
+          provide: 'CONFIG_OPTIONS',
+          useValue: { initialValues: { DEBUG: true } },
+        },
+      ],
+    }).compile();
 
-        configService = module.get<ConfigService>(ConfigService);
-    });
+    configService = module.get<ConfigService>(ConfigService);
+  });
 
-    it('should load configuration with defaults', () => {
-        const config = configService.getConfiguration();
-        expect(config.DEBUG).toBe(true);
-        expect(config.NODE_ENV).toBe('development');
-    });
+  it('should load configuration with defaults', () => {
+    const config = configService.getConfiguration();
+    expect(config.DEBUG).toBe(true);
+    expect(config.NODE_ENV).toBe('development');
+  });
 });
 ```
 
@@ -450,14 +450,14 @@ describe('ConfigService', () => {
 
 ```typescript
 describe('Configuration Integration', () => {
-    it('should load both static and dynamic configuration', async () => {
-        // Test that both services work together
-        const staticConfig = configService.getConfiguration();
-        const dynamicSetting = appSettingsService.getValueFromCache('TEST_SETTING');
+  it('should load both static and dynamic configuration', async () => {
+    // Test that both services work together
+    const staticConfig = configService.getConfiguration();
+    const dynamicSetting = appSettingsService.getValueFromCache('TEST_SETTING');
 
-        expect(staticConfig).toBeDefined();
-        expect(dynamicSetting).toBeDefined();
-    });
+    expect(staticConfig).toBeDefined();
+    expect(dynamicSetting).toBeDefined();
+  });
 });
 ```
 
@@ -484,14 +484,14 @@ describe('Configuration Integration', () => {
 
 1. **For static configuration**:
 
-    - Add property to `IAppConfig` interface
-    - Update `ConfigService.loadBaseConfig()` method
-    - Add environment variable documentation
+   - Add property to `IAppConfig` interface
+   - Update `ConfigService.loadBaseConfig()` method
+   - Add environment variable documentation
 
 2. **For dynamic configuration**:
-    - Create `GlobalSettingEntity` record in database
-    - Use `AppSettingsService` to access the value
-    - Document the setting purpose and format
+   - Create `GlobalSettingEntity` record in database
+   - Use `AppSettingsService` to access the value
+   - Document the setting purpose and format
 
 ### Deprecating Configuration
 

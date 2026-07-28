@@ -25,6 +25,7 @@ curl http://localhost:6333/health
 ## 📊 Collection Management
 
 ### Check Collection Status
+
 ```bash
 # List all collections
 curl http://localhost:6333/collections | jq
@@ -38,6 +39,7 @@ curl http://localhost:6333/collections/stt_speaker_embeddings | \
 ```
 
 ### Collection Info
+
 ```bash
 # Full collection info
 curl http://localhost:6333/collections/stt_speaker_embeddings | jq '.result'
@@ -52,6 +54,7 @@ curl http://localhost:6333/collections/stt_speaker_embeddings | \
 ## ➕ Insert/Update Operations
 
 ### Insert Single Point
+
 ```bash
 curl -X PUT http://localhost:6333/collections/stt_speaker_embeddings/points \
   -H 'Content-Type: application/json' \
@@ -72,6 +75,7 @@ curl -X PUT http://localhost:6333/collections/stt_speaker_embeddings/points \
 ```
 
 ### Insert Multiple Points (Python)
+
 ```python
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
@@ -100,6 +104,7 @@ print(f"Inserted {len(points)} points")
 ## 🔍 Search Operations
 
 ### Basic Search
+
 ```bash
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/search \
   -H 'Content-Type: application/json' \
@@ -111,6 +116,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/sea
 ```
 
 ### Search with Tenant Filter
+
 ```bash
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/search \
   -H 'Content-Type: application/json' \
@@ -132,6 +138,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/sea
 ```
 
 ### Search with Multiple Filters (Python)
+
 ```python
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
@@ -159,6 +166,7 @@ for result in results:
 ```
 
 ### Search with Score Threshold
+
 ```python
 # Only return results with similarity > 0.7
 results = client.search(
@@ -174,6 +182,7 @@ results = client.search(
 ## 📖 Read Operations
 
 ### Get Point by ID
+
 ```bash
 # Single point
 curl -X GET http://localhost:6333/collections/stt_speaker_embeddings/points/tenant_speaker_001_1704902400 | jq
@@ -190,6 +199,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points \
 ```
 
 ### Scroll Through All Points
+
 ```bash
 # Get first 10 points
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/scroll \
@@ -215,6 +225,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/scr
 ```
 
 ### Count Points
+
 ```bash
 # Total points
 curl http://localhost:6333/collections/stt_speaker_embeddings | \
@@ -243,6 +254,7 @@ EOF
 ## 🗑️ Delete Operations
 
 ### Delete by Point IDs
+
 ```bash
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/delete \
   -H 'Content-Type: application/json' \
@@ -255,6 +267,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/del
 ```
 
 ### Delete by Filter
+
 ```bash
 # Delete all test points
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/delete \
@@ -272,6 +285,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/del
 ```
 
 ### Delete All Points in Tenant (Python)
+
 ```python
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
@@ -297,6 +311,7 @@ client.delete(
 ## 🔄 Update Operations
 
 ### Update Point Payload
+
 ```bash
 # Set/update specific fields
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/payload \
@@ -311,6 +326,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/pay
 ```
 
 ### Delete Payload Keys
+
 ```bash
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/payload/delete \
   -H 'Content-Type: application/json' \
@@ -325,16 +341,19 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/pay
 ## 📈 Monitoring & Metrics
 
 ### Health Check
+
 ```bash
 curl http://localhost:6333/health
 ```
 
 ### Prometheus Metrics
+
 ```bash
 curl http://localhost:6333/metrics
 ```
 
 ### Collection Metrics
+
 ```bash
 curl http://localhost:6333/collections/stt_speaker_embeddings | \
   jq '{
@@ -351,6 +370,7 @@ curl http://localhost:6333/collections/stt_speaker_embeddings | \
 ## 🔧 Maintenance Operations
 
 ### Create Snapshot
+
 ```bash
 # Create collection snapshot
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/snapshots | jq
@@ -365,11 +385,13 @@ curl http://localhost:6333/collections/stt_speaker_embeddings/snapshots/$SNAPSHO
 ```
 
 ### Optimize Collection
+
 ```bash
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/optimize | jq
 ```
 
 ### Clear Collection (Delete All Points)
+
 ```bash
 curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/delete \
   -H 'Content-Type: application/json' \
@@ -377,6 +399,7 @@ curl -X POST http://localhost:6333/collections/stt_speaker_embeddings/points/del
 ```
 
 ### Delete and Recreate Collection
+
 ```bash
 # Delete collection
 curl -X DELETE http://localhost:6333/collections/stt_speaker_embeddings | jq
@@ -390,6 +413,7 @@ docker-compose -f docker-compose.stt-dev.yml up qdrant-init
 ## 🐍 Python Integration Examples
 
 ### Basic Connection
+
 ```python
 from qdrant_client import QdrantClient
 
@@ -402,6 +426,7 @@ print(f"Available collections: {[c.name for c in collections.collections]}")
 ```
 
 ### Complete Speaker Recognition Example
+
 ```python
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
@@ -504,16 +529,19 @@ print(f"Updated {updated} points")
 ## 🐛 Debugging
 
 ### View Container Logs
+
 ```bash
 docker logs hope-qdrant -f
 ```
 
 ### Check Resource Usage
+
 ```bash
 docker stats hope-qdrant
 ```
 
 ### Test with Python
+
 ```python
 # Quick connection test
 from qdrant_client import QdrantClient
@@ -545,7 +573,7 @@ except Exception as e:
 ---
 
 **Quick Links**:
+
 - [Full Setup Guide](./QDRANT-SETUP.md)
 - [Test Script](./scripts/test-qdrant-setup.sh)
 - [STT Orchestra README](./README-STT-ORCHESTRA.md)
-

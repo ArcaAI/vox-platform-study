@@ -170,8 +170,7 @@ class TestApplyPunctuationEnabled:
     @patch("stt.punctuation.service.punctuate")
     async def test_keeps_danda_for_devanagari_text(self, mock_punctuate):
         mock_punctuate.return_value = (
-            "\u0928\u092e\u0938\u094d\u0924\u0947 "
-            "\u0926\u0941\u0928\u093f\u092f\u093e\u0964"
+            "\u0928\u092e\u0938\u094d\u0924\u0947 " "\u0926\u0941\u0928\u093f\u092f\u093e\u0964"
         )
         cfg = MagicMock()
         cfg.enabled = True
@@ -181,8 +180,7 @@ class TestApplyPunctuationEnabled:
         result = await worker._apply_punctuation("hello")
 
         assert result == (
-            "\u0928\u092e\u0938\u094d\u0924\u0947 "
-            "\u0926\u0941\u0928\u093f\u092f\u093e\u0964"
+            "\u0928\u092e\u0938\u094d\u0924\u0947 " "\u0926\u0941\u0928\u093f\u092f\u093e\u0964"
         )
 
     @patch("stt.punctuation.service.punctuate")
@@ -272,9 +270,7 @@ class TestCadenceFastFinalsOnly:
         result = await worker._apply_punctuation("hello world", is_final=True)
 
         assert result == "Hello world."
-        mock_punctuate.assert_awaited_once_with(
-            "hello world", model_name="cadence-fast"
-        )
+        mock_punctuate.assert_awaited_once_with("hello world", model_name="cadence-fast")
 
     @patch("stt.punctuation.service.punctuate")
     async def test_global_default_model_selects_cadence_fast(self, mock_punctuate):
@@ -286,9 +282,7 @@ class TestCadenceFastFinalsOnly:
         settings.punctuation_model_name = "cadence-fast"
         settings.streaming_extra_filler_patterns = ""
 
-        with patch(
-            "stt.core.config.settings.get_settings", return_value=settings
-        ):
+        with patch("stt.core.config.settings.get_settings", return_value=settings):
             worker = _make_worker(punctuation_config=cfg)
 
         result = await worker._apply_punctuation("hello world", is_final=False)
@@ -297,9 +291,7 @@ class TestCadenceFastFinalsOnly:
         mock_punctuate.assert_not_called()
 
     @patch("stt.punctuation.service.punctuate")
-    async def test_wrapper_model_name_keeps_legacy_partial_behavior(
-        self, mock_punctuate
-    ):
+    async def test_wrapper_model_name_keeps_legacy_partial_behavior(self, mock_punctuate):
         """'Cadence-Fast' (wrapper spelling) must NOT trip the finals-only path."""
         mock_punctuate.return_value = "Hello world."
         cfg = MagicMock()
@@ -310,9 +302,7 @@ class TestCadenceFastFinalsOnly:
         result = await worker._apply_punctuation("hello world", is_final=False)
 
         assert result == "Hello world."
-        mock_punctuate.assert_awaited_once_with(
-            "hello world", model_name="Cadence-Fast"
-        )
+        mock_punctuate.assert_awaited_once_with("hello world", model_name="Cadence-Fast")
 
     @patch("stt.punctuation.service.punctuate")
     async def test_disabled_config_is_zero_behavior_change(self, mock_punctuate):
@@ -354,9 +344,7 @@ class TestCadenceFastTimeoutFallback:
         "stt.punctuation.service.punctuate",
         side_effect=RuntimeError("model crash"),
     )
-    async def test_fallback_warns_once_per_session_then_debug(
-        self, mock_punctuate, mock_logger
-    ):
+    async def test_fallback_warns_once_per_session_then_debug(self, mock_punctuate, mock_logger):
         worker = _make_worker(punctuation_config=_cadence_fast_cfg())
 
         first = await worker._apply_punctuation("hello", is_final=True)
@@ -384,9 +372,7 @@ class TestCadenceFastTimeoutSetting:
         settings.streaming_punctuation_timeout_s = 0.35
         settings.streaming_extra_filler_patterns = ""
 
-        with patch(
-            "stt.core.config.settings.get_settings", return_value=settings
-        ):
+        with patch("stt.core.config.settings.get_settings", return_value=settings):
             worker = _make_worker(punctuation_config=_cadence_fast_cfg())
 
         assert worker._punctuation_timeout_s == 0.35
@@ -405,9 +391,7 @@ class TestCadenceFastTimeoutSetting:
         settings.streaming_punctuation_timeout_s = -1.0
         settings.streaming_extra_filler_patterns = ""
 
-        with patch(
-            "stt.core.config.settings.get_settings", return_value=settings
-        ):
+        with patch("stt.core.config.settings.get_settings", return_value=settings):
             worker = _make_worker(punctuation_config=_cadence_fast_cfg())
 
         assert worker._punctuation_timeout_s == 0.4
@@ -431,9 +415,7 @@ class TestCadenceFastDandaBehavior:
         assert result == punctuated
 
     @patch("stt.punctuation.service.punctuate")
-    async def test_spurious_danda_on_malayalam_normalized_to_period(
-        self, mock_punctuate
-    ):
+    async def test_spurious_danda_on_malayalam_normalized_to_period(self, mock_punctuate):
         mock_punctuate.return_value = (
             "\u0d30\u0d4b\u0d17\u0d3f\u0d15\u0d4d\u0d15\u0d4d "
             "\u0d2a\u0d28\u0d3f\u0d2f\u0d41\u0d23\u0d4d\u0d1f\u0d4d\u0964"
@@ -465,9 +447,7 @@ class TestCadenceFastProcessUtterance:
         mock_punctuate.assert_not_called()
 
     @patch("stt.punctuation.service.punctuate")
-    async def test_final_utterance_punctuated_before_gloss_snapshot(
-        self, mock_punctuate
-    ):
+    async def test_final_utterance_punctuated_before_gloss_snapshot(self, mock_punctuate):
         """The gloss task must snapshot the punctuated text."""
         mock_punctuate.return_value = "Hello world."
         publisher = AsyncMock()

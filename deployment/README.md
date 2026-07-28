@@ -23,8 +23,8 @@
 
 ## Contents
 
-| Path | What it is |
-|---|---|
+| Path           | What it is                                                                                                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `vault-agent/` | The **pod-level contract** for delivering platform secrets with Vault Agent injection instead of Kubernetes `Secret` objects (TASK-558 §13.2 P1/P2/P7, §9.2 L7). A reference Deployment, the per-service secret table, and the equivalent Helm `podAnnotations` snippet. |
 
 Vault **server-side** configuration (auth methods, roles, policies) is not here —

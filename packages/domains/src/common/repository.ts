@@ -328,4 +328,3 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
     return this.query();
   }
 }
-

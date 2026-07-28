@@ -103,7 +103,11 @@ class TestMultimodalLMInferenceBranching:
             return_value=RawTranscription(text="test"),
         ) as mock_multimodal:
             result = await service._run_transformers_inference(
-                samples, 16000, model, config, prompt="transcribe this",
+                samples,
+                16000,
+                model,
+                config,
+                prompt="transcribe this",
             )
 
         mock_multimodal.assert_called_once()
@@ -127,7 +131,10 @@ class TestMultimodalLMInferenceBranching:
         ) as mock_multimodal:
             try:
                 await service._run_transformers_inference(
-                    samples, 16000, model, config,
+                    samples,
+                    16000,
+                    model,
+                    config,
                 )
             except Exception:
                 pass
@@ -150,7 +157,10 @@ class TestMultimodalLMInference:
         config.language = None
 
         result = await service._run_multimodal_lm_inference(
-            np.array([], dtype=np.float32), 16000, model, config,
+            np.array([], dtype=np.float32),
+            16000,
+            model,
+            config,
         )
 
         assert isinstance(result, RawTranscription)
@@ -166,7 +176,10 @@ class TestMultimodalLMInference:
         _setup_generate_mocks(model, decode_return="Hello world")
 
         result = await service._run_multimodal_lm_inference(
-            np.random.randn(80000).astype(np.float32), 16000, model, config,
+            np.random.randn(80000).astype(np.float32),
+            16000,
+            model,
+            config,
         )
 
         assert isinstance(result, RawTranscription)
@@ -185,7 +198,10 @@ class TestMultimodalLMInference:
         )
 
         result = await service._run_multimodal_lm_inference(
-            np.random.randn(960000).astype(np.float32), 16000, model, config,
+            np.random.randn(960000).astype(np.float32),
+            16000,
+            model,
+            config,
         )
 
         assert model.processor.apply_chat_template.call_count == 3
@@ -201,7 +217,10 @@ class TestMultimodalLMInference:
         _setup_generate_mocks(model, decode_return="Some text")
 
         result = await service._run_multimodal_lm_inference(
-            np.random.randn(16000).astype(np.float32), 16000, model, config,
+            np.random.randn(16000).astype(np.float32),
+            16000,
+            model,
+            config,
         )
 
         assert result.word_timestamps == []
@@ -216,7 +235,10 @@ class TestMultimodalLMInference:
 
         progress_values = []
         await service._run_multimodal_lm_inference(
-            np.random.randn(960000).astype(np.float32), 16000, model, config,
+            np.random.randn(960000).astype(np.float32),
+            16000,
+            model,
+            config,
             progress_callback=lambda v: progress_values.append(v),
         )
 
@@ -232,7 +254,10 @@ class TestMultimodalLMInference:
         _setup_generate_mocks(model, decode_return="transcription")
 
         await service._run_multimodal_lm_inference(
-            np.random.randn(16000).astype(np.float32), 16000, model, config,
+            np.random.randn(16000).astype(np.float32),
+            16000,
+            model,
+            config,
         )
 
         call_args = model.processor.apply_chat_template.call_args
@@ -251,16 +276,16 @@ class TestMultimodalLMInference:
 
         custom_prompt = "Transcribe this medical audio verbatim."
         await service._run_multimodal_lm_inference(
-            np.random.randn(16000).astype(np.float32), 16000, model, config,
+            np.random.randn(16000).astype(np.float32),
+            16000,
+            model,
+            config,
             prompt=custom_prompt,
         )
 
         call_args = model.processor.apply_chat_template.call_args
         messages = call_args[0][0]
         text_content = next(
-            item["text"]
-            for item in messages[0]["content"]
-            if item.get("type") == "text"
+            item["text"] for item in messages[0]["content"] if item.get("type") == "text"
         )
         assert custom_prompt in text_content
-

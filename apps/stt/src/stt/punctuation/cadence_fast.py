@@ -47,8 +47,7 @@ class CadenceFastModel:
         self._tokenizer = tokenizer
         self._model = model
         self._id2label = {
-            int(label_id): str(label)
-            for label_id, label in model.config.id2label.items()
+            int(label_id): str(label) for label_id, label in model.config.id2label.items()
         }
         self._infer_lock = threading.Lock()
 
@@ -62,9 +61,7 @@ class CadenceFastModel:
         """Token-classification decode, mirroring the spike's verified pattern."""
         import torch
 
-        inputs = self._tokenizer(
-            text, return_tensors="pt", padding=True, truncation=True
-        )
+        inputs = self._tokenizer(text, return_tensors="pt", padding=True, truncation=True)
         with torch.inference_mode():
             logits = self._model(**inputs).logits
         pred_ids = torch.argmax(logits, dim=-1)[0].tolist()
@@ -73,9 +70,7 @@ class CadenceFastModel:
         special_ids = set(self._tokenizer.all_special_ids)
 
         pieces: list[str] = []
-        for token_id, attended, pred_id in zip(
-            input_ids, attention_mask, pred_ids, strict=True
-        ):
+        for token_id, attended, pred_id in zip(input_ids, attention_mask, pred_ids, strict=True):
             if not attended or token_id in special_ids:
                 continue
             pieces.append(self._tokenizer.convert_ids_to_tokens([token_id])[0])

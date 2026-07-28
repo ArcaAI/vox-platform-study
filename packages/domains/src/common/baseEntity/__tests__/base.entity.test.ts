@@ -710,10 +710,7 @@ describe('BaseEntity', () => {
 
     it('does not expose a public setter (DB-owned)', () => {
       const entity = createTestEntity();
-      const descriptor = Object.getOwnPropertyDescriptor(
-        Object.getPrototypeOf(entity),
-        'version',
-      );
+      const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(entity), 'version');
       expect(descriptor?.set).toBeUndefined();
     });
 

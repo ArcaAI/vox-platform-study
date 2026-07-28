@@ -31,9 +31,7 @@ describe('SMR_SERVICE_TOKEN migration (Phase 3 Task 3.4)', () => {
       it('reads SMR_SERVICE_TOKEN via SecretsService', () => {
         // Allow optional chaining (?.) for sites that fall back when the
         // SecretsService is not provided in tests.
-        expect(src).toMatch(
-          /secretsService\??\.(getSecretOptional|getSecret|getSecretSync)\(['"]SMR_SERVICE_TOKEN['"]/,
-        );
+        expect(src).toMatch(/secretsService\??\.(getSecretOptional|getSecret|getSecretSync)\(['"]SMR_SERVICE_TOKEN['"]/);
       });
     });
   }

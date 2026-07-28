@@ -51,12 +51,12 @@ department/
 
 All services extend `BaseService` (`src/common/base.service.ts`), which provides:
 
-| Member | Purpose |
-|---|---|
-| `broadcastSysEvent(type, data)` | Emits a `SysEvent` for audit logging, user-activity tracking, and webhooks. `tenantId` is always taken from CLS and cannot be overridden by the payload; impersonation provenance (`impersonatedBy`) is threaded into `metaData` automatically |
-| `updateEntity(entity, changes, customHandlers?)` | Sets `updatedBy` from the request context and applies DTO fields through entity setters via `applyChangesToEntity` (triggers change tracking; supports custom field handlers, e.g. password hashing) |
-| `requestUser`, `requestUserId`, `requestUserName`, `requestUserEmail` | Current session from CLS |
-| `tenantId`, `tenantCode`, `correlationId`, `requestIp` | Request context from CLS |
+| Member                                                                | Purpose                                                                                                                                                                                                                                        |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `broadcastSysEvent(type, data)`                                       | Emits a `SysEvent` for audit logging, user-activity tracking, and webhooks. `tenantId` is always taken from CLS and cannot be overridden by the payload; impersonation provenance (`impersonatedBy`) is threaded into `metaData` automatically |
+| `updateEntity(entity, changes, customHandlers?)`                      | Sets `updatedBy` from the request context and applies DTO fields through entity setters via `applyChangesToEntity` (triggers change tracking; supports custom field handlers, e.g. password hashing)                                           |
+| `requestUser`, `requestUserId`, `requestUserName`, `requestUserEmail` | Current session from CLS                                                                                                                                                                                                                       |
+| `tenantId`, `tenantCode`, `correlationId`, `requestIp`                | Request context from CLS                                                                                                                                                                                                                       |
 
 ### CRUD flow with events (real pattern from `DepartmentService`)
 
@@ -119,13 +119,13 @@ Cross-aggregate isolation checks that the database tenant-scope extension cannot
 
 ## Commands
 
-| Command | package.json script | From repo root |
-|---|---|---|
-| Build | `rimraf dist tsconfig.tsbuildinfo && tsc` | `pnpm --filter @arcaai/applications build` (or `pnpm build:core`) |
-| Watch | `tsc --watch` | `pnpm --filter @arcaai/applications dev` |
-| Test | `vitest run --passWithNoTests` | `pnpm --filter @arcaai/applications test` |
-| Typecheck | `tsc --noEmit` | `pnpm --filter @arcaai/applications typecheck` |
-| Lint | `eslint .` | `pnpm --filter @arcaai/applications lint` |
+| Command   | package.json script                       | From repo root                                                    |
+| --------- | ----------------------------------------- | ----------------------------------------------------------------- |
+| Build     | `rimraf dist tsconfig.tsbuildinfo && tsc` | `pnpm --filter @arcaai/applications build` (or `pnpm build:core`) |
+| Watch     | `tsc --watch`                             | `pnpm --filter @arcaai/applications dev`                          |
+| Test      | `vitest run --passWithNoTests`            | `pnpm --filter @arcaai/applications test`                         |
+| Typecheck | `tsc --noEmit`                            | `pnpm --filter @arcaai/applications typecheck`                    |
+| Lint      | `eslint .`                                | `pnpm --filter @arcaai/applications lint`                         |
 
 Unit tests live in `__tests__/` folders beside each service and mock repositories, `EventEmitter2`, and `ClsService`; they verify factory usage, change tracking, and `broadcastSysEvent` calls. `scripts/` holds operational one-offs (media seed/backfill used by root `pnpm test:db:seed`).
 

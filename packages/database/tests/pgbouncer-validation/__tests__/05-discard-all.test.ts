@@ -51,9 +51,7 @@ describe('PgBouncer txn-mode — DISCARD ALL between transactions (Task 1.11)', 
     // Hammer 20 follow-up txns; if DISCARD ALL didn't fire, at least one
     // backend reuse will surface the marker.
     for (let i = 0; i < 20; i++) {
-      const rows = await prisma.$queryRawUnsafe<{ v: string }[]>(
-        `SELECT current_setting('app.da_marker', true) AS v`,
-      );
+      const rows = await prisma.$queryRawUnsafe<{ v: string }[]>(`SELECT current_setting('app.da_marker', true) AS v`);
       expect(rows[0]?.v ?? '').toBe('');
     }
   });

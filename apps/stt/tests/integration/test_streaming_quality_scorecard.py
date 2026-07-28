@@ -302,7 +302,8 @@ def test_quality_metric_functions_are_correct() -> None:
     churned_report = regression_report(churned, thresholds)
     assert churned_report["passed"] is False
     assert any(
-        c["metric"] == "committed_revision_rate" and not c["passed"] for c in churned_report["checks"]
+        c["metric"] == "committed_revision_rate" and not c["passed"]
+        for c in churned_report["checks"]
     )
 
     # (e) a metric-less scorecard must NOT pass vacuously (`all([])` is True)
@@ -387,9 +388,9 @@ def test_clinical_fixtures_are_wellformed() -> None:
         kt_path = _CLINICAL_DIR / f"{stem}.keyterms.json"
         assert kt_path.is_file(), f"missing keyterms file for {stem}"
         data = json.loads(kt_path.read_text(encoding="utf-8"))
-        assert isinstance(data.get("keyterms"), list) and data["keyterms"], (
-            f"{kt_path.name} must have a non-empty 'keyterms' list"
-        )
+        assert (
+            isinstance(data.get("keyterms"), list) and data["keyterms"]
+        ), f"{kt_path.name} must have a non-empty 'keyterms' list"
         assert isinstance(data.get("keyphrases", []), list)
         curated = [*data["keyterms"], *data.get("keyphrases", [])]
 
@@ -401,9 +402,9 @@ def test_clinical_fixtures_are_wellformed() -> None:
         # Every curated keyterm/keyphrase must actually appear in its reference —
         # a mislabeled fixture would silently deflate recall.
         for term in curated:
-            assert keyphrase_recall([term], reference)["recall"] == 1.0, (
-                f"keyterm {term!r} is not present in {gt.name} — fixture mismatch"
-            )
+            assert (
+                keyphrase_recall([term], reference)["recall"] == 1.0
+            ), f"keyterm {term!r} is not present in {gt.name} — fixture mismatch"
 
 
 # ===========================================================================

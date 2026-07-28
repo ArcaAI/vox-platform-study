@@ -25,15 +25,12 @@ describe('GlobalSettingEntity — Phase 0 Item 2 immutable fields', () => {
       locked: false,
     });
 
-  it.each(['key', 'tenantId', 'locked', 'defaultValue'] as const)(
-    'throws when setting %s post-construction',
-    (field) => {
-      const entity = build();
-      expect(() => {
-        (entity as any)[field] = field === 'locked' ? true : 'attacker';
-      }).toThrow(/immutable|cannot be modified/i);
-    },
-  );
+  it.each(['key', 'tenantId', 'locked', 'defaultValue'] as const)('throws when setting %s post-construction', (field) => {
+    const entity = build();
+    expect(() => {
+      (entity as any)[field] = field === 'locked' ? true : 'attacker';
+    }).toThrow(/immutable|cannot be modified/i);
+  });
 
   it('allows mutating value and description post-construction', () => {
     const entity = build();

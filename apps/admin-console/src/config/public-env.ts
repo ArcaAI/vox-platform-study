@@ -4,10 +4,10 @@
  * inline the value into the client bundle.
  */
 export const publicEnv = {
-    /**
-     * Gateway origin for DIRECT browser connections — SSE/WS streams
-     * authenticate with single-use tickets minted via /api/auth/stream-ticket
-     * and connect to the gateway without passing through the BFF proxy.
-     */
-    apiHost: process.env.NEXT_PUBLIC_API_HOST ?? 'http://localhost:8868',
+  /**
+   * Gateway origin for DIRECT browser connections — SSE/WS streams
+   * authenticate with single-use tickets minted via /api/auth/stream-ticket
+   * and connect to the gateway without passing through the BFF proxy.
+   */
+  apiHost: process.env.NEXT_PUBLIC_API_HOST ?? 'http://localhost:8868',
 } as const;

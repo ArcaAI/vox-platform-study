@@ -16,15 +16,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  UserRoleAssignmentEntity,
-  IUserRoleAssignmentEntity,
-} from '../generated/core/UserRoleAssignmentEntity';
+import { UserRoleAssignmentEntity, IUserRoleAssignmentEntity } from '../generated/core/UserRoleAssignmentEntity';
 import { ResourceStatusType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<IUserRoleAssignmentEntity> = {},
-): IUserRoleAssignmentEntity {
+function createValidInit(overrides: Partial<IUserRoleAssignmentEntity> = {}): IUserRoleAssignmentEntity {
   return {
     id: 'ura-test-id',
     tenantId: '50000000-0000-0000-0000-000000000000',
@@ -65,67 +60,43 @@ describe('UserRoleAssignmentEntity.validate()', () => {
       // role assignments may omit tenantId"). The new contract
       // requires every role assignment row to carry a concrete tenant
       // (SYSTEM_TENANT_ID for platform-wide roles like GLOBAL_ADMIN).
-      const entity = new UserRoleAssignmentEntity(
-        createValidInit({ tenantId: null as unknown as string }),
-      );
+      const entity = new UserRoleAssignmentEntity(createValidInit({ tenantId: null as unknown as string }));
 
-      expect(() => entity.validate()).toThrow(
-        /UserRoleAssignmentEntity is missing tenant context/,
-      );
+      expect(() => entity.validate()).toThrow(/UserRoleAssignmentEntity is missing tenant context/);
     });
 
     it('should reject undefined tenantId (same rationale as null)', () => {
-      const entity = new UserRoleAssignmentEntity(
-        createValidInit({ tenantId: undefined as unknown as string }),
-      );
+      const entity = new UserRoleAssignmentEntity(createValidInit({ tenantId: undefined as unknown as string }));
 
-      expect(() => entity.validate()).toThrow(
-        /UserRoleAssignmentEntity is missing tenant context/,
-      );
+      expect(() => entity.validate()).toThrow(/UserRoleAssignmentEntity is missing tenant context/);
     });
   });
 
   describe('userId', () => {
     it('should throw when userId is empty', () => {
-      const entity = new UserRoleAssignmentEntity(
-        createValidInit({ userId: '' }),
-      );
+      const entity = new UserRoleAssignmentEntity(createValidInit({ userId: '' }));
 
-      expect(() => entity.validate()).toThrow(
-        'UserRoleAssignment userId is required',
-      );
+      expect(() => entity.validate()).toThrow('UserRoleAssignment userId is required');
     });
 
     it('should throw when userId is whitespace only', () => {
-      const entity = new UserRoleAssignmentEntity(
-        createValidInit({ userId: '   ' }),
-      );
+      const entity = new UserRoleAssignmentEntity(createValidInit({ userId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'UserRoleAssignment userId is required',
-      );
+      expect(() => entity.validate()).toThrow('UserRoleAssignment userId is required');
     });
   });
 
   describe('roleId', () => {
     it('should throw when roleId is empty', () => {
-      const entity = new UserRoleAssignmentEntity(
-        createValidInit({ roleId: '' }),
-      );
+      const entity = new UserRoleAssignmentEntity(createValidInit({ roleId: '' }));
 
-      expect(() => entity.validate()).toThrow(
-        'UserRoleAssignment roleId is required',
-      );
+      expect(() => entity.validate()).toThrow('UserRoleAssignment roleId is required');
     });
 
     it('should throw when roleId is whitespace only', () => {
-      const entity = new UserRoleAssignmentEntity(
-        createValidInit({ roleId: '   ' }),
-      );
+      const entity = new UserRoleAssignmentEntity(createValidInit({ roleId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'UserRoleAssignment roleId is required',
-      );
+      expect(() => entity.validate()).toThrow('UserRoleAssignment roleId is required');
     });
   });
 });

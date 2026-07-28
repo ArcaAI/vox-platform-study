@@ -13,7 +13,7 @@ vi.mock('@huggingface/transformers', () => ({
       { word: '2', entity: 'I-Disease', score: 0.92, index: 2, start: 5, end: 6 },
       { word: 'Diabetes', entity: 'I-Disease', score: 0.98, index: 3, start: 7, end: 15 },
       { word: 'Metformin', entity: 'B-Drug', score: 0.89, index: 4, start: 30, end: 39 },
-    ])
+    ]),
   ),
   env: {
     allowLocalModels: false,
@@ -22,11 +22,7 @@ vi.mock('@huggingface/transformers', () => ({
 }));
 
 import { MedNERProcessor, createMedNER } from '../processors/MedNERProcessor.js';
-import {
-  MedicalEntityType,
-  MedNERErrorCode,
-  DEFAULT_MED_NER_OPTIONS,
-} from '../types/index.js';
+import { MedicalEntityType, MedNERErrorCode, DEFAULT_MED_NER_OPTIONS } from '../types/index.js';
 
 // Mock pipeline results for reference in tests
 const mockPipelineResults = [

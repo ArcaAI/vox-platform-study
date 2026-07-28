@@ -72,7 +72,9 @@ class TestDeepFilterNet3StreamingDenoiserBlockProcessing:
             result = denoiser.process(frame)
 
             mock_enhance.assert_called_once()
-            np.testing.assert_array_almost_equal(result, np.full(block_size, 0.42, dtype=np.float32))
+            np.testing.assert_array_almost_equal(
+                result, np.full(block_size, 0.42, dtype=np.float32)
+            )
 
     def test_strength_zero_passthrough(self):
         from stt.streaming.deepfilternet_denoiser import DeepFilterNet3StreamingDenoiser

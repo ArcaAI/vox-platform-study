@@ -6,10 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-  PipelineOrchestrator,
-  OrchestratorEvent,
-} from '../core/PipelineOrchestrator.js';
+import { PipelineOrchestrator, OrchestratorEvent } from '../core/PipelineOrchestrator.js';
 import { SequentialPipeline } from '../core/SequentialPipeline.js';
 import { ParallelPipeline } from '../core/ParallelPipeline.js';
 import { PipelineStage } from '../core/PipelineStage.js';
@@ -117,7 +114,7 @@ describe('PipelineOrchestrator', () => {
         expect.objectContaining({
           pipelineName: 'test',
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -134,10 +131,7 @@ describe('PipelineOrchestrator', () => {
       const pipeline = new SequentialPipeline<number, number>('test');
       orchestrator.register('test', pipeline);
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining("'test' registered"),
-        expect.any(Object)
-      );
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("'test' registered"), expect.any(Object));
     });
   });
 
@@ -163,7 +157,7 @@ describe('PipelineOrchestrator', () => {
         expect.objectContaining({
           pipelineName: 'test',
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -254,7 +248,7 @@ describe('PipelineOrchestrator', () => {
       expect(handler).toHaveBeenCalledWith(
         expect.objectContaining({
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -485,7 +479,7 @@ describe('PipelineOrchestrator', () => {
           error: expect.any(Error),
           pipeline: 'test',
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -525,7 +519,7 @@ describe('PipelineOrchestrator', () => {
           targetPipeline: 'target',
           dataType: 'completion',
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
   });
@@ -650,9 +644,7 @@ describe('PipelineOrchestrator', () => {
       orchestrator.register('b', p2);
 
       const total = (p: SequentialPipeline<number, number>): number =>
-        p.listenerCount(PipelineEvent.StateChange) +
-        p.listenerCount(PipelineEvent.Completed) +
-        p.listenerCount(PipelineEvent.Error);
+        p.listenerCount(PipelineEvent.StateChange) + p.listenerCount(PipelineEvent.Completed) + p.listenerCount(PipelineEvent.Error);
 
       expect(total(p1)).toBeGreaterThan(0);
       expect(total(p2)).toBeGreaterThan(0);

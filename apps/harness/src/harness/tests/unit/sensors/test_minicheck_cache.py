@@ -164,9 +164,7 @@ def test_entailer_evicted_after_ttl_and_reloaded(
     assert len(builds) == 2
 
 
-def test_unload_releases_llama_handle(
-    monkeypatch: pytest.MonkeyPatch, clock: FakeClock
-) -> None:
+def test_unload_releases_llama_handle(monkeypatch: pytest.MonkeyPatch, clock: FakeClock) -> None:
     """An eviction that frees nothing is not an eviction.
 
     The llama handle is reachable ONLY through the entailer's logit closure, so
@@ -255,9 +253,7 @@ def test_failed_load_is_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(MiniCheckCalibrationError):
         load_minicheck_entailer(model_path=MODEL_PATH)
 
-    assert isinstance(
-        load_minicheck_entailer(model_path=MODEL_PATH), LlamaCppMiniCheckEntailer
-    )
+    assert isinstance(load_minicheck_entailer(model_path=MODEL_PATH), LlamaCppMiniCheckEntailer)
     assert len(builds) == 2
 
 

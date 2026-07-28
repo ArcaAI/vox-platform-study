@@ -470,9 +470,7 @@ class TestPunctuate:
         result = await service.punctuate("hello world how are you")
 
         assert result == "Hello world, how are you?"
-        mock_model.punctuate.assert_called_once_with(
-            ["hello world how are you"], batch_size=1
-        )
+        mock_model.punctuate.assert_called_once_with(["hello world how are you"], batch_size=1)
 
     @pytest.mark.asyncio
     async def test_punctuate_with_specific_model(self):
@@ -506,9 +504,7 @@ class TestPunctuateBatch:
         result = await service.punctuate_batch(["hello", "world"])
 
         assert result == ["Hello.", "World."]
-        mock_model.punctuate.assert_called_once_with(
-            ["hello", "world"], batch_size=8
-        )
+        mock_model.punctuate.assert_called_once_with(["hello", "world"], batch_size=8)
 
     @pytest.mark.asyncio
     async def test_punctuate_batch_with_model_name(self):

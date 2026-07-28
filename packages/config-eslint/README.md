@@ -6,14 +6,14 @@ Last updated: 2026-07-05
 
 ## Exported Configs
 
-| File | Purpose | Current consumers (verified) |
-|---|---|---|
-| `flat/core.js` | Shared foundation (not an entry point): typescript-eslint v8 recommended, prettier-as-a-rule, turbo, `arcaai-internal` architecture rules, house conventions | spread by the surface presets below |
-| `flat/library.js` | core + `eslint-plugin-only-warn` (violations surface as warnings) — for TypeScript library packages | `packages/agentic-sdk-v2`, `applications`, `domains`, `exceptions`, `logger`, `med-ner`, `noise-filter`, `pipeline`, `room`, `stt`, `ui`, `vad`, `apps/ui-playground` (deprecated) |
-| `flat/nestjs.js` | core with NO only-warn — architecture rules are HARD ERRORS | `apps/api` |
-| `flat/next.js` | Self-contained Next.js preset (tseslint v8, @next/eslint-plugin-next, react, react-hooks, prettier-compat). Formerly `next-flat.js` | `apps/admin-console` |
-| `flat/react-library.js` | React-library surface (currently identical to `flat/library.js`; own entry point for future divergence) | none currently |
-| `prettier-base.js` | Shared Prettier options (single quotes, printWidth 150, trailing commas) | root `.prettierrc.js` |
+| File                    | Purpose                                                                                                                                                      | Current consumers (verified)                                                                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `flat/core.js`          | Shared foundation (not an entry point): typescript-eslint v8 recommended, prettier-as-a-rule, turbo, `arcaai-internal` architecture rules, house conventions | spread by the surface presets below                                                                                                                                                |
+| `flat/library.js`       | core + `eslint-plugin-only-warn` (violations surface as warnings) — for TypeScript library packages                                                          | `packages/agentic-sdk-v2`, `applications`, `domains`, `exceptions`, `logger`, `med-ner`, `noise-filter`, `pipeline`, `room`, `stt`, `ui`, `vad`, `apps/ui-playground` (deprecated) |
+| `flat/nestjs.js`        | core with NO only-warn — architecture rules are HARD ERRORS                                                                                                  | `apps/api`                                                                                                                                                                         |
+| `flat/next.js`          | Self-contained Next.js preset (tseslint v8, @next/eslint-plugin-next, react, react-hooks, prettier-compat). Formerly `next-flat.js`                          | `apps/admin-console`                                                                                                                                                               |
+| `flat/react-library.js` | React-library surface (currently identical to `flat/library.js`; own entry point for future divergence)                                                      | none currently                                                                                                                                                                     |
+| `prettier-base.js`      | Shared Prettier options (single quotes, printWidth 150, trailing commas)                                                                                     | root `.prettierrc.js`                                                                                                                                                              |
 
 ## Architectural Guard Rules in flat/core.js
 
@@ -39,16 +39,16 @@ Consumers create an `eslint.config.mjs` that spreads a surface preset and append
 import library from '@arcaai/config-eslint/flat/library.js';
 
 export default [
-    ...library,
-    {
-        ignores: ['src/__tests__/**', 'src/integration/**', '**/generated/**', '**/__tests__/**', 'vitest.config.ts'],
+  ...library,
+  {
+    ignores: ['src/__tests__/**', 'src/integration/**', '**/generated/**', '**/__tests__/**', 'vitest.config.ts'],
+  },
+  {
+    files: ['src/common/repository.ts', 'src/common/databaseServices/**/*.ts', 'src/common/autoMappers/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
-    {
-        files: ['src/common/repository.ts', 'src/common/databaseServices/**/*.ts', 'src/common/autoMappers/**/*.ts'],
-        rules: {
-            '@typescript-eslint/no-explicit-any': 'off',
-        },
-    },
+  },
 ];
 ```
 
@@ -66,8 +66,8 @@ The shared Prettier options are consumed by the root `.prettierrc.js`:
 
 ```javascript
 module.exports = {
-    ...require('@arcaai/config-eslint/prettier-base'),
-    tabWidth: 2,
+  ...require('@arcaai/config-eslint/prettier-base'),
+  tabWidth: 2,
 };
 ```
 

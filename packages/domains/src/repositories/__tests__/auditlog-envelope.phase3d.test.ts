@@ -51,9 +51,7 @@ describe('AuditLogRepository envelope encryption (Phase 3D)', () => {
     await repo.encryptEnvelopeIntoEntity(entity, crypto, dek);
 
     expect(entity.encryptedData?.toString('utf8')).toBe(`gcm:${dek.dekKey}:${Buffer.from(JSON.stringify(data)).toString('base64')}`);
-    expect(entity.encryptedPreviousData?.toString('utf8')).toBe(
-      `gcm:${dek.dekKey}:${Buffer.from(JSON.stringify(previousData)).toString('base64')}`,
-    );
+    expect(entity.encryptedPreviousData?.toString('utf8')).toBe(`gcm:${dek.dekKey}:${Buffer.from(JSON.stringify(previousData)).toString('base64')}`);
     expect(entity.dekWrapped).toBe('vault:v3:WRAPPED');
     expect(entity.dekKeyVersion).toBe(3);
     // Dual-read soak: plaintext columns are NOT cleared.

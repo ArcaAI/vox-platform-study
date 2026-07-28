@@ -235,13 +235,7 @@ describe('useNoiseFilter hook interface', () => {
 
   describe('Error handling', () => {
     it('should handle various error codes', () => {
-      const errorCodes = [
-        'WASM_LOAD_FAILED',
-        'WORKLET_REGISTRATION_FAILED',
-        'PROCESSING_ERROR',
-        'NOT_SUPPORTED',
-        'INVALID_CONFIG',
-      ];
+      const errorCodes = ['WASM_LOAD_FAILED', 'WORKLET_REGISTRATION_FAILED', 'PROCESSING_ERROR', 'NOT_SUPPORTED', 'INVALID_CONFIG'];
 
       errorCodes.forEach((code) => {
         expect(typeof code).toBe('string');

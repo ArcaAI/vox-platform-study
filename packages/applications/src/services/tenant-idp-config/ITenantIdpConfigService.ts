@@ -39,9 +39,5 @@ export abstract class ITenantIdpConfigService {
    * Directory) into `directoryCredentialsRef`. Write-only; required before
    * `DirectorySyncService.enqueueSync` will accept a sync trigger for this row.
    */
-  abstract setDirectoryCredentials(
-    tenantId: string,
-    id: string,
-    dto: SetDirectoryCredentialsRequest,
-  ): Promise<TenantIdpConfigResponse>;
+  abstract setDirectoryCredentials(tenantId: string, id: string, dto: SetDirectoryCredentialsRequest): Promise<TenantIdpConfigResponse>;
 }

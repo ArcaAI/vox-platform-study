@@ -10,11 +10,7 @@
 
 import { EvalRunRepository } from './EvalRunRepository';
 import { EvalRunEntity } from '../../../entities';
-import {
-  type SecretsServiceLike,
-  encryptStringToCiphertext,
-  decryptCiphertextToString,
-} from '../../../common/field-encryption';
+import { type SecretsServiceLike, encryptStringToCiphertext, decryptCiphertextToString } from '../../../common/field-encryption';
 
 /** Plaintext view returned by {@link EvalRunRepository.decryptFieldsFromEntity}. */
 export interface EvalRunPlaintext {
@@ -31,21 +27,13 @@ declare module './EvalRunRepository' {
      * it is safe to call unconditionally on a partial row. The transient
      * plaintext stays in memory for the request; only ciphertext persists.
      */
-    encryptFieldsIntoEntity(
-      this: EvalRunRepository,
-      entity: EvalRunEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: EvalRunRepository, entity: EvalRunEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**
      * Decrypt all ciphertext columns (ciphertext-only; the plaintext columns
      * were dropped in Phase 6).
      */
-    decryptFieldsFromEntity(
-      this: EvalRunRepository,
-      entity: EvalRunEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<EvalRunPlaintext>;
+    decryptFieldsFromEntity(this: EvalRunRepository, entity: EvalRunEntity, secrets: SecretsServiceLike): Promise<EvalRunPlaintext>;
 
     /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
     findByIdWithDecryptedFields(

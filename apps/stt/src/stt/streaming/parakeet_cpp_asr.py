@@ -50,9 +50,7 @@ class ParakeetCppAsrAdapter:
             )
         self._loaded = loaded_model
         self._handle = handle
-        self._num_threads = int(
-            (loaded_model.extra or {}).get("num_threads", 4) or 4
-        )
+        self._num_threads = int((loaded_model.extra or {}).get("num_threads", 4) or 4)
         lang = getattr(inference_config, "language", None)
         self._language: str | None = lang.split("-")[0].lower() if lang else None
 
@@ -95,7 +93,5 @@ class ParakeetCppAsrAdapter:
             "text": text,
             "language": result.get("language") or self._language,
             "word_timestamps": word_timestamps,
-            "segments": (
-                [{"text": text, "start": 0.0, "end": duration}] if text else []
-            ),
+            "segments": ([{"text": text, "start": 0.0, "end": duration}] if text else []),
         }

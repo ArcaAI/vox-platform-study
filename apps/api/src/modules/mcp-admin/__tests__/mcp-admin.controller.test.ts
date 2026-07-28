@@ -38,10 +38,8 @@ function makeController(ctx: Ctx) {
  */
 describe('McpAdminController — authorization subjects', () => {
   const permsFor = (handler?: string) =>
-    Reflect.getMetadata(
-      REQUIRED_PERMISSIONS_KEY,
-      handler ? (McpAdminController.prototype as never)[handler] : McpAdminController,
-    ) as { action: string; subject: string }[] | undefined;
+    Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, handler ? (McpAdminController.prototype as never)[handler] : McpAdminController) as
+      { action: string; subject: string }[] | undefined;
 
   it.each(['list', 'get'])('read route %s is gated by @CanRead(McpServer)', (handler) => {
     expect(permsFor(handler)).toEqual([{ action: 'read', subject: 'McpServer' }]);
@@ -53,7 +51,10 @@ describe('McpAdminController — authorization subjects', () => {
 
   it('no route borrows the HarnessPolicy subject any more', () => {
     for (const handler of ['list', 'get', 'create', 'update', 'remove']) {
-      expect(permsFor(handler)?.some((p) => p.subject === 'HarnessPolicy'), handler).toBe(false);
+      expect(
+        permsFor(handler)?.some((p) => p.subject === 'HarnessPolicy'),
+        handler,
+      ).toBe(false);
     }
   });
 });

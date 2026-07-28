@@ -77,11 +77,7 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
       localConfig: { stt: { modelId: 'whisper-tiny' } },
     });
 
-    const manager = new PersonalizationManager(
-      { storage: 'local', defaults: { language: 'en' } },
-      mockApiClient,
-      mockLogger
-    );
+    const manager = new PersonalizationManager({ storage: 'local', defaults: { language: 'en' } }, mockApiClient, mockLogger);
 
     expect(manager.getPreferences()).toEqual({ language: 'en' });
 
@@ -94,11 +90,7 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
   });
 
   it('hydrate() ignores legacy localStorage data (user choice: ignore-old-data)', async () => {
-    const manager = new PersonalizationManager(
-      { storage: 'local', defaults: { language: 'en' } },
-      mockApiClient,
-      mockLogger
-    );
+    const manager = new PersonalizationManager({ storage: 'local', defaults: { language: 'en' } }, mockApiClient, mockLogger);
 
     await manager.hydrate();
 
@@ -107,11 +99,7 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
   });
 
   it('updatePreferences() writes the merged snapshot to the personalization IDB store', async () => {
-    const manager = new PersonalizationManager(
-      { storage: 'local', defaults: { language: 'en' } },
-      mockApiClient,
-      mockLogger
-    );
+    const manager = new PersonalizationManager({ storage: 'local', defaults: { language: 'en' } }, mockApiClient, mockLogger);
     await manager.hydrate();
 
     await manager.updatePreferences({ language: 'th' });
@@ -123,17 +111,13 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
     const cfgDB = await import('../configDB.js');
     vi.mocked(cfgDB.configDBGet).mockRejectedValueOnce(new Error('IDB closed'));
 
-    const manager = new PersonalizationManager(
-      { storage: 'local', defaults: { language: 'en' } },
-      mockApiClient,
-      mockLogger
-    );
+    const manager = new PersonalizationManager({ storage: 'local', defaults: { language: 'en' } }, mockApiClient, mockLogger);
 
     await expect(manager.hydrate()).resolves.toBeUndefined();
     expect(manager.getPreferences()).toEqual({ language: 'en' });
     expect(mockLogger.warn).toHaveBeenCalledWith(
       'Failed to hydrate preferences from cache',
-      expect.objectContaining({ component: 'PersonalizationManager' })
+      expect.objectContaining({ component: 'PersonalizationManager' }),
     );
   });
 
@@ -141,11 +125,7 @@ describe('PersonalizationManager · IDB cache (Wave 2D)', () => {
     const cfgDB = await import('../configDB.js');
     vi.mocked(cfgDB.configDBSet).mockRejectedValueOnce(new Error('quota exceeded'));
 
-    const manager = new PersonalizationManager(
-      { storage: 'local', defaults: { language: 'en' } },
-      mockApiClient,
-      mockLogger
-    );
+    const manager = new PersonalizationManager({ storage: 'local', defaults: { language: 'en' } }, mockApiClient, mockLogger);
     await manager.hydrate();
 
     await expect(manager.updatePreferences({ language: 'th' })).resolves.toBeUndefined();

@@ -44,13 +44,9 @@ def _make_hyp(
     hyp.text = text
     ts: dict = {}
     if words is not None:
-        ts["word"] = [
-            {"word": w, "start": s, "end": e} for (w, s, e) in words
-        ]
+        ts["word"] = [{"word": w, "start": s, "end": e} for (w, s, e) in words]
     if segments is not None:
-        ts["segment"] = [
-            {"segment": t, "start": s, "end": e} for (t, s, e) in segments
-        ]
+        ts["segment"] = [{"segment": t, "start": s, "end": e} for (t, s, e) in segments]
     hyp.timestamp = ts or None
     hyp.language = None
     return hyp
@@ -78,9 +74,7 @@ class TestNemoAsrAdapter:
             {"word": "hello", "start": 0.0, "end": 0.5, "confidence": 1.0},
             {"word": "world", "start": 0.5, "end": 1.0, "confidence": 1.0},
         ]
-        assert out["segments"] == [
-            {"text": "hello world", "start": 0.0, "end": 1.0}
-        ]
+        assert out["segments"] == [{"text": "hello world", "start": 0.0, "end": 1.0}]
         # Verify transcribe called with timestamps=True and a list batch
         _args, kwargs = nemo_model.transcribe.call_args
         assert kwargs.get("timestamps") is True

@@ -74,9 +74,7 @@ describe('STTProcessor — streaming-transport wiring', () => {
 
       const provider = processor.getProvider();
       expect(provider).toBeInstanceOf(StreamingBackendSTTProvider);
-      expect(session.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ pipelineId: 'pipeline-test' }),
-      );
+      expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipeline-test' }));
       expect(wsClient.connect).toHaveBeenCalled();
     });
 
@@ -131,9 +129,7 @@ describe('STTProcessor — streaming-transport wiring', () => {
         features: { provider: 'remote' },
       });
 
-      expect(() => (processor as unknown as { validateConfig(): void }).validateConfig()).toThrow(
-        /sttSocket is required/i,
-      );
+      expect(() => (processor as unknown as { validateConfig(): void }).validateConfig()).toThrow(/sttSocket is required/i);
     });
   });
 

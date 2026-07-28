@@ -32,10 +32,7 @@ const DEFAULT_BASE_URL = process.env.API_URL || 'http://localhost:8968';
 /**
  * Create an authenticated API client
  */
-export async function createApiClient(
-  user?: TestUser,
-  baseURL?: string
-): Promise<ApiClient> {
+export async function createApiClient(user?: TestUser, baseURL?: string): Promise<ApiClient> {
   const testUser = user || createTestUser();
   const token = generateTestToken(testUser);
 
@@ -58,9 +55,7 @@ export async function createApiClient(
 /**
  * Create an unauthenticated API client
  */
-export async function createUnauthenticatedClient(
-  baseURL?: string
-): Promise<APIRequestContext> {
+export async function createUnauthenticatedClient(baseURL?: string): Promise<APIRequestContext> {
   return request.newContext({
     baseURL: baseURL || DEFAULT_BASE_URL,
     extraHTTPHeaders: {
@@ -73,10 +68,7 @@ export async function createUnauthenticatedClient(
 /**
  * Create an API client with a specific API key
  */
-export async function createApiKeyClient(
-  apiKey: string,
-  baseURL?: string
-): Promise<APIRequestContext> {
+export async function createApiKeyClient(apiKey: string, baseURL?: string): Promise<APIRequestContext> {
   return request.newContext({
     baseURL: baseURL || DEFAULT_BASE_URL,
     extraHTTPHeaders: {
@@ -90,9 +82,7 @@ export async function createApiKeyClient(
 /**
  * Parse API response with typed body
  */
-export async function parseResponse<T = unknown>(
-  response: APIResponse
-): Promise<TypedApiResponse<T>> {
+export async function parseResponse<T = unknown>(response: APIResponse): Promise<TypedApiResponse<T>> {
   let body: T;
 
   try {
@@ -128,10 +118,7 @@ export function expectSuccess(response: APIResponse | TypedApiResponse): void {
 /**
  * Assert that a response has a specific status code
  */
-export function expectStatus(
-  response: APIResponse | TypedApiResponse,
-  expectedStatus: number
-): void {
+export function expectStatus(response: APIResponse | TypedApiResponse, expectedStatus: number): void {
   const status = 'status' in response ? response.status : response.status();
   if (status !== expectedStatus) {
     throw new Error(`Expected status ${expectedStatus}, got ${status}`);
@@ -141,10 +128,7 @@ export function expectStatus(
 /**
  * Assert that a response is an error with specific status
  */
-export function expectError(
-  response: APIResponse | TypedApiResponse,
-  expectedStatus: number
-): void {
+export function expectError(response: APIResponse | TypedApiResponse, expectedStatus: number): void {
   expectStatus(response, expectedStatus);
 }
 
@@ -179,9 +163,7 @@ export function expectBadRequest(response: APIResponse | TypedApiResponse): void
 /**
  * Assert validation error response (422)
  */
-export function expectValidationError(
-  response: APIResponse | TypedApiResponse
-): void {
+export function expectValidationError(response: APIResponse | TypedApiResponse): void {
   expectStatus(response, 422);
 }
 
@@ -191,7 +173,7 @@ export function expectValidationError(
 export async function get<T = unknown>(
   client: ApiClient | APIRequestContext,
   path: string,
-  options?: { params?: Record<string, string> }
+  options?: { params?: Record<string, string> },
 ): Promise<TypedApiResponse<T>> {
   const req = 'request' in client ? client.request : client;
   const response = await req.get(path, { params: options?.params });
@@ -201,11 +183,7 @@ export async function get<T = unknown>(
 /**
  * Make a POST request with the API client
  */
-export async function post<T = unknown>(
-  client: ApiClient | APIRequestContext,
-  path: string,
-  data?: unknown
-): Promise<TypedApiResponse<T>> {
+export async function post<T = unknown>(client: ApiClient | APIRequestContext, path: string, data?: unknown): Promise<TypedApiResponse<T>> {
   const req = 'request' in client ? client.request : client;
   const response = await req.post(path, { data });
   return parseResponse<T>(response);
@@ -214,11 +192,7 @@ export async function post<T = unknown>(
 /**
  * Make a PUT request with the API client
  */
-export async function put<T = unknown>(
-  client: ApiClient | APIRequestContext,
-  path: string,
-  data?: unknown
-): Promise<TypedApiResponse<T>> {
+export async function put<T = unknown>(client: ApiClient | APIRequestContext, path: string, data?: unknown): Promise<TypedApiResponse<T>> {
   const req = 'request' in client ? client.request : client;
   const response = await req.put(path, { data });
   return parseResponse<T>(response);
@@ -227,11 +201,7 @@ export async function put<T = unknown>(
 /**
  * Make a PATCH request with the API client
  */
-export async function patch<T = unknown>(
-  client: ApiClient | APIRequestContext,
-  path: string,
-  data?: unknown
-): Promise<TypedApiResponse<T>> {
+export async function patch<T = unknown>(client: ApiClient | APIRequestContext, path: string, data?: unknown): Promise<TypedApiResponse<T>> {
   const req = 'request' in client ? client.request : client;
   const response = await req.patch(path, { data });
   return parseResponse<T>(response);
@@ -240,10 +210,7 @@ export async function patch<T = unknown>(
 /**
  * Make a DELETE request with the API client
  */
-export async function del<T = unknown>(
-  client: ApiClient | APIRequestContext,
-  path: string
-): Promise<TypedApiResponse<T>> {
+export async function del<T = unknown>(client: ApiClient | APIRequestContext, path: string): Promise<TypedApiResponse<T>> {
   const req = 'request' in client ? client.request : client;
   const response = await req.delete(path);
   return parseResponse<T>(response);
@@ -252,9 +219,7 @@ export async function del<T = unknown>(
 /**
  * Dispose of an API client
  */
-export async function disposeClient(
-  client: ApiClient | APIRequestContext
-): Promise<void> {
+export async function disposeClient(client: ApiClient | APIRequestContext): Promise<void> {
   const req = 'request' in client ? client.request : client;
   await req.dispose();
 }

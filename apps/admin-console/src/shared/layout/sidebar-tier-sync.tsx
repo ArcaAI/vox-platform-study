@@ -12,24 +12,24 @@ import { useViewportTier } from './use-viewport-tier';
  * sheet, not the rail). Rendered inside `SidebarProvider`; renders nothing.
  */
 export function SidebarTierSync() {
-    const tier = useViewportTier();
-    const { open, setOpen, isMobile } = useSidebar();
-    const autoValue = useRef<boolean | null>(null);
-    const userOverrode = useRef(false);
+  const tier = useViewportTier();
+  const { open, setOpen, isMobile } = useSidebar();
+  const autoValue = useRef<boolean | null>(null);
+  const userOverrode = useRef(false);
 
-    // A change to `open` we didn't drive is a manual toggle → stop syncing.
-    useEffect(() => {
-        if (autoValue.current !== null && open !== autoValue.current) {
-            userOverrode.current = true;
-        }
-    }, [open]);
+  // A change to `open` we didn't drive is a manual toggle → stop syncing.
+  useEffect(() => {
+    if (autoValue.current !== null && open !== autoValue.current) {
+      userOverrode.current = true;
+    }
+  }, [open]);
 
-    useEffect(() => {
-        if (userOverrode.current || isMobile) return;
-        const next = tier !== 'tablet'; // collapse on tablet, expand otherwise
-        autoValue.current = next;
-        if (open !== next) setOpen(next);
-    }, [tier, isMobile, open, setOpen]);
+  useEffect(() => {
+    if (userOverrode.current || isMobile) return;
+    const next = tier !== 'tablet'; // collapse on tablet, expand otherwise
+    autoValue.current = next;
+    if (open !== next) setOpen(next);
+  }, [tier, isMobile, open, setOpen]);
 
-    return null;
+  return null;
 }

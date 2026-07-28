@@ -1,11 +1,6 @@
-import {
-  SpeechInput,
-  SpeechInputRecordButton,
-  SpeechInputPreview,
-  SpeechInputCancelButton,
-} from '../../../elevenlabs/speech-input'
+import { SpeechInput, SpeechInputRecordButton, SpeechInputPreview, SpeechInputCancelButton } from '../../../elevenlabs/speech-input';
 
-const mockGetToken = async () => 'mock-token'
+const mockGetToken = async () => 'mock-token';
 
 export function BasicSpeechInput() {
   return (
@@ -14,7 +9,7 @@ export function BasicSpeechInput() {
       <SpeechInputPreview data-testid="preview" />
       <SpeechInputCancelButton data-testid="cancel-button" />
     </SpeechInput>
-  )
+  );
 }
 
 export function RecordOnlySpeechInput() {
@@ -22,7 +17,7 @@ export function RecordOnlySpeechInput() {
     <SpeechInput getToken={mockGetToken}>
       <SpeechInputRecordButton data-testid="record-button" />
     </SpeechInput>
-  )
+  );
 }
 
 export function SmallSpeechInput() {
@@ -30,7 +25,7 @@ export function SmallSpeechInput() {
     <SpeechInput getToken={mockGetToken} size="sm">
       <SpeechInputRecordButton />
     </SpeechInput>
-  )
+  );
 }
 
 export function LargeSpeechInput() {
@@ -38,5 +33,5 @@ export function LargeSpeechInput() {
     <SpeechInput getToken={mockGetToken} size="lg">
       <SpeechInputRecordButton />
     </SpeechInput>
-  )
+  );
 }

@@ -56,8 +56,21 @@ describe('coerceCitationsMap', () => {
   it('drops malformed claims and evidence rather than trusting them', () => {
     const map = coerceCitationsMap({
       claims: [
-        { id: 'ok', text: 'fine', section: 'S', status: 'flagged', confidence: 0.1, evidence: [{ transcriptContextItemId: 't1', startOffset: 0, endOffset: 3 }] },
-        { id: 'bad-evidence', text: 't', section: 'A', status: 'verified', evidence: [{ transcriptContextItemId: 't1', startOffset: 5, endOffset: 2 }] },
+        {
+          id: 'ok',
+          text: 'fine',
+          section: 'S',
+          status: 'flagged',
+          confidence: 0.1,
+          evidence: [{ transcriptContextItemId: 't1', startOffset: 0, endOffset: 3 }],
+        },
+        {
+          id: 'bad-evidence',
+          text: 't',
+          section: 'A',
+          status: 'verified',
+          evidence: [{ transcriptContextItemId: 't1', startOffset: 5, endOffset: 2 }],
+        },
         { text: 'missing id' },
         null,
       ],

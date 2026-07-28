@@ -93,9 +93,7 @@ def test_get_voice_profile_metadata_exists_with_tenant_id_param():
 @pytest.mark.asyncio
 async def test_get_voice_embedding_with_tenant_id_does_not_raise():
     with patch.object(voice_profile_model, "get_session", _fake_session_factory):
-        result = await voice_profile_model.get_voice_embedding(
-            "user-1", tenant_id="tenant-1"
-        )
+        result = await voice_profile_model.get_voice_embedding("user-1", tenant_id="tenant-1")
     assert result is None
 
 
@@ -117,9 +115,7 @@ async def test_get_voice_profile_metadata_with_tenant_id_does_not_raise():
 async def test_get_voice_embedding_sql_filters_by_tenant():
     """The embedding lookup binds tenant_id and filters on "tenantId"."""
     captured: dict = {}
-    with patch.object(
-        voice_profile_model, "get_session", _capturing_session_factory(captured)
-    ):
+    with patch.object(voice_profile_model, "get_session", _capturing_session_factory(captured)):
         await voice_profile_model.get_voice_embedding("user-1", tenant_id="tenant-a")
 
     assert '"tenantId" = :tenant_id' in captured["sql"]
@@ -131,12 +127,8 @@ async def test_get_voice_embedding_sql_filters_by_tenant():
 async def test_get_voice_profile_metadata_sql_filters_by_tenant():
     """The metadata lookup binds tenant_id and filters on "tenantId"."""
     captured: dict = {}
-    with patch.object(
-        voice_profile_model, "get_session", _capturing_session_factory(captured)
-    ):
-        await voice_profile_model.get_voice_profile_metadata(
-            "user-1", tenant_id="tenant-a"
-        )
+    with patch.object(voice_profile_model, "get_session", _capturing_session_factory(captured)):
+        await voice_profile_model.get_voice_profile_metadata("user-1", tenant_id="tenant-a")
 
     assert '"tenantId" = :tenant_id' in captured["sql"]
     assert captured["params"]["tenant_id"] == "tenant-a"
@@ -152,12 +144,8 @@ async def test_get_voice_embedding_cross_tenant_returns_none():
         "get_session",
         _tenant_scoped_session_factory(rows, entered),
     ):
-        same_tenant = await voice_profile_model.get_voice_embedding(
-            "user-1", tenant_id="tenant-a"
-        )
-        cross_tenant = await voice_profile_model.get_voice_embedding(
-            "user-1", tenant_id="tenant-b"
-        )
+        same_tenant = await voice_profile_model.get_voice_embedding("user-1", tenant_id="tenant-a")
+        cross_tenant = await voice_profile_model.get_voice_embedding("user-1", tenant_id="tenant-b")
 
     assert same_tenant == [0.5, 0.25]
     assert cross_tenant is None
@@ -229,9 +217,7 @@ async def test_lookup_failure_logs_contain_no_raw_identifiers(caplog):
         patch.object(voice_profile_model, "get_session", _exploding_session_factory),
         caplog.at_level(logging.DEBUG, logger="stt.core.database.voice_profile_model"),
     ):
-        result = await voice_profile_model.get_voice_embedding(
-            raw_user_id, tenant_id="tenant-a"
-        )
+        result = await voice_profile_model.get_voice_embedding(raw_user_id, tenant_id="tenant-a")
 
     assert result is None
     assert len(caplog.records) > 0  # the failure IS logged...

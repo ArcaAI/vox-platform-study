@@ -65,9 +65,5 @@ export abstract class IPromptManagementService {
   abstract testPromptTemplate(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestResultResponse>;
   abstract getUsageAnalytics(filters?: { promptTemplateId?: string }): Promise<PromptUsageAnalyticsResponse>;
   // Tenant-scoped raw run listing for the Agent Jobs surface.
-  abstract listUsageRecords(filters?: {
-    page?: number;
-    limit?: number;
-    promptTemplateId?: string;
-  }): Promise<Paginated<PromptUsageRecordResponse>>;
+  abstract listUsageRecords(filters?: { page?: number; limit?: number; promptTemplateId?: string }): Promise<Paginated<PromptUsageRecordResponse>>;
 }

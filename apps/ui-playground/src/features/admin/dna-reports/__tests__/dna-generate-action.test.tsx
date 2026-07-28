@@ -85,7 +85,9 @@ vi.mock('@arcaai/ui/form', () => ({
 }));
 vi.mock('@arcaai/ui/button', () => ({
   Button: ({ children, onClick, disabled, type }: any) => (
-    <button type={type ?? 'button'} onClick={onClick} disabled={disabled}>{children}</button>
+    <button type={type ?? 'button'} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
   ),
 }));
 vi.mock('@arcaai/ui/input', () => ({ Input: (props: any) => <input {...props} /> }));

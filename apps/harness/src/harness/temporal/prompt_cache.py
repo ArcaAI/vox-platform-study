@@ -51,9 +51,7 @@ _EXPECTED_FIX: dict[str, str] = {
     "coverage_omission": (
         "Include the clinically salient facts from the transcript that were omitted."
     ),
-    "schema_validity": (
-        "Return a single valid JSON object matching the required schema exactly."
-    ),
+    "schema_validity": ("Return a single valid JSON object matching the required schema exactly."),
     "citation_verify": (
         "Ensure each claim is supported by its cited evidence; drop unsupported claims."
     ),

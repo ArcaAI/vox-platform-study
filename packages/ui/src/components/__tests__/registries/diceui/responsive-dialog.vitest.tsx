@@ -1,9 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  ResponsiveDialog,
-  ResponsiveDialogTrigger,
-} from '@/components/registries/diceui/responsive-dialog'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { ResponsiveDialog, ResponsiveDialogTrigger } from '@/components/registries/diceui/responsive-dialog';
 
 describe('ResponsiveDialog', () => {
   it('renders without crashing', () => {
@@ -11,7 +8,7 @@ describe('ResponsiveDialog', () => {
       <ResponsiveDialog>
         <ResponsiveDialogTrigger>Open</ResponsiveDialogTrigger>
       </ResponsiveDialog>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

@@ -72,17 +72,17 @@ pnpm --filter live-transcription-example typecheck
 pnpm --filter live-transcription-example build
 ```
 
-| Var | Purpose (compat example) |
-|---|---|
-| `VITE_API_BASE_URL` | REST origin of the v2 gateway (e.g. `http://localhost:8868`) |
-| `VITE_WS_BASE_URL` | WebSocket origin (e.g. `ws://localhost:8868`) |
+| Var                 | Purpose (compat example)                                                     |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `VITE_API_BASE_URL` | REST origin of the v2 gateway (e.g. `http://localhost:8868`)                 |
+| `VITE_WS_BASE_URL`  | WebSocket origin (e.g. `ws://localhost:8868`)                                |
 | `VITE_ARCA_API_KEY` | **Required** tenant SDK api key (`x-api-key` parity); no default is baked in |
-| `VITE_PIPELINE_ID` | Streaming STT pipeline id — enables live backend transcription |
+| `VITE_PIPELINE_ID`  | Streaming STT pipeline id — enables live backend transcription               |
 
 ### Per-chunk metadata passthrough (TASK-564)
 
-The compat page also demonstrates the v1 *"tag each turn → read the tag back off
-the transcript"* feature. Use the **Tag turn: Clinician / Patient** buttons while
+The compat page also demonstrates the v1 _"tag each turn → read the tag back off
+the transcript"_ feature. Use the **Tag turn: Clinician / Patient** buttons while
 recording — each calls `stt.sendAudioData(new ArrayBuffer(0), { device_id, role,
 chunk_id, consultationId })`. In v2 this is **client-side only** and PCM is
 ignored (the hook is a metadata sink), so the tag round-trips locally onto the
@@ -102,9 +102,9 @@ pnpm --filter live-transcription-example preview  # preview the build
 
 Configure via Vite env vars (e.g. an `.env.local` in this folder):
 
-| Var | Purpose |
-|---|---|
+| Var                 | Purpose                                                   |
+| ------------------- | --------------------------------------------------------- |
 | `VITE_API_BASE_URL` | Base URL of the HOPE API (e.g. `https://api.example.com`) |
-| `VITE_PIPELINE_ID` | Streaming transcription pipeline id |
-| `VITE_AUTH_TOKEN` | Bearer token sent as `Authorization` |
-| `VITE_TENANT_ID` | Tenant id sent as `X-Tenant-ID` |
+| `VITE_PIPELINE_ID`  | Streaming transcription pipeline id                       |
+| `VITE_AUTH_TOKEN`   | Bearer token sent as `Authorization`                      |
+| `VITE_TENANT_ID`    | Tenant id sent as `X-Tenant-ID`                           |

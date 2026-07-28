@@ -9,5 +9,5 @@ const BASE = 'admin/harness';
 
 /** The signed note + its transcripts + the claim/evidence map for one encounter. */
 export function getConsultationReview(consultationId: string): Promise<ConsultationReview> {
-    return getJson(`${BASE}/consultations/${encodeURIComponent(consultationId)}/review`);
+  return getJson(`${BASE}/consultations/${encodeURIComponent(consultationId)}/review`);
 }

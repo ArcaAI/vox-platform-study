@@ -18,227 +18,215 @@ import { OpenTelemetryService } from '../otel.service';
  * Returns objects with the methods that would be called on real metrics.
  */
 const mockMeter = {
-    createCounter: vi.fn().mockReturnValue({ add: vi.fn() }),
-    createGauge: vi.fn().mockReturnValue({ record: vi.fn() }),
-    createHistogram: vi.fn().mockReturnValue({ record: vi.fn() }),
+  createCounter: vi.fn().mockReturnValue({ add: vi.fn() }),
+  createGauge: vi.fn().mockReturnValue({ record: vi.fn() }),
+  createHistogram: vi.fn().mockReturnValue({ record: vi.fn() }),
 };
 
 /**
  * Complete mock tracer matching OpenTelemetry Tracer interface.
  */
 const mockTracer = {
-    startSpan: vi.fn(),
+  startSpan: vi.fn(),
 };
 
 vi.mock('@opentelemetry/api', () => ({
-    metrics: {
-        getMeter: vi.fn(() => mockMeter),
-    },
-    trace: {
-        getTracer: vi.fn(() => mockTracer),
-    },
+  metrics: {
+    getMeter: vi.fn(() => mockMeter),
+  },
+  trace: {
+    getTracer: vi.fn(() => mockTracer),
+  },
 }));
 
 import { metrics, trace } from '@opentelemetry/api';
 
 describe('OpenTelemetryService', () => {
-    let service: OpenTelemetryService;
+  let service: OpenTelemetryService;
 
-    beforeEach(() => {
-        // Reset call counts but keep return values
-        vi.mocked(metrics.getMeter).mockClear();
-        vi.mocked(trace.getTracer).mockClear();
-        mockMeter.createCounter.mockClear();
-        mockMeter.createGauge.mockClear();
-        mockMeter.createHistogram.mockClear();
+  beforeEach(() => {
+    // Reset call counts but keep return values
+    vi.mocked(metrics.getMeter).mockClear();
+    vi.mocked(trace.getTracer).mockClear();
+    mockMeter.createCounter.mockClear();
+    mockMeter.createGauge.mockClear();
+    mockMeter.createHistogram.mockClear();
 
-        // Set default env vars for tests
-        process.env.OTEL_SERVICE_NAME = 'test-service';
-        process.env.OTEL_SERVICE_VERSION = '1.0.0';
-        process.env.NODE_ENV = 'test';
-        process.env.OTEL_METRICS_ENABLED = 'false';
-        process.env.OTEL_TRACES_ENABLED = 'false';
+    // Set default env vars for tests
+    process.env.OTEL_SERVICE_NAME = 'test-service';
+    process.env.OTEL_SERVICE_VERSION = '1.0.0';
+    process.env.NODE_ENV = 'test';
+    process.env.OTEL_METRICS_ENABLED = 'false';
+    process.env.OTEL_TRACES_ENABLED = 'false';
+  });
+
+  afterEach(() => {
+    // Don't restore mocks as we need them for all tests
+  });
+
+  describe('constructor', () => {
+    it('should create service with default configuration', () => {
+      service = new OpenTelemetryService();
+      expect(service).toBeDefined();
     });
 
-    afterEach(() => {
-        // Don't restore mocks as we need them for all tests
+    it('should read configuration from environment variables', () => {
+      process.env.OTEL_SERVICE_NAME = 'my-service';
+      process.env.OTEL_SERVICE_VERSION = '2.0.0';
+
+      service = new OpenTelemetryService();
+      expect(service).toBeDefined();
     });
 
-    describe('constructor', () => {
-        it('should create service with default configuration', () => {
-            service = new OpenTelemetryService();
-            expect(service).toBeDefined();
-        });
+    it('should use default values when env vars are not set', () => {
+      delete process.env.OTEL_SERVICE_NAME;
+      delete process.env.OTEL_SERVICE_VERSION;
 
-        it('should read configuration from environment variables', () => {
-            process.env.OTEL_SERVICE_NAME = 'my-service';
-            process.env.OTEL_SERVICE_VERSION = '2.0.0';
+      service = new OpenTelemetryService();
+      expect(service).toBeDefined();
+    });
+  });
 
-            service = new OpenTelemetryService();
-            expect(service).toBeDefined();
-        });
+  describe('onModuleInit', () => {
+    it('should initialize metrics when enabled', async () => {
+      process.env.OTEL_METRICS_ENABLED = 'true';
+      service = new OpenTelemetryService();
 
-        it('should use default values when env vars are not set', () => {
-            delete process.env.OTEL_SERVICE_NAME;
-            delete process.env.OTEL_SERVICE_VERSION;
+      await service.onModuleInit();
 
-            service = new OpenTelemetryService();
-            expect(service).toBeDefined();
-        });
+      expect(metrics.getMeter).toHaveBeenCalledWith('test-service', '1.0.0');
     });
 
-    describe('onModuleInit', () => {
-        it('should initialize metrics when enabled', async () => {
-            process.env.OTEL_METRICS_ENABLED = 'true';
-            service = new OpenTelemetryService();
+    it('should not initialize metrics when disabled', async () => {
+      process.env.OTEL_METRICS_ENABLED = 'false';
+      service = new OpenTelemetryService();
 
-            await service.onModuleInit();
+      await service.onModuleInit();
 
-            expect(metrics.getMeter).toHaveBeenCalledWith(
-                'test-service',
-                '1.0.0'
-            );
-        });
-
-        it('should not initialize metrics when disabled', async () => {
-            process.env.OTEL_METRICS_ENABLED = 'false';
-            service = new OpenTelemetryService();
-
-            await service.onModuleInit();
-
-            expect(metrics.getMeter).not.toHaveBeenCalled();
-        });
-
-        it('should initialize tracing when enabled', async () => {
-            process.env.OTEL_TRACES_ENABLED = 'true';
-            service = new OpenTelemetryService();
-
-            await service.onModuleInit();
-
-            expect(trace.getTracer).toHaveBeenCalledWith(
-                'test-service',
-                '1.0.0'
-            );
-        });
-
-        it('should not initialize tracing when disabled', async () => {
-            process.env.OTEL_TRACES_ENABLED = 'false';
-            service = new OpenTelemetryService();
-
-            await service.onModuleInit();
-
-            expect(trace.getTracer).not.toHaveBeenCalled();
-        });
-
-        it('should handle initialization errors gracefully', async () => {
-            process.env.OTEL_METRICS_ENABLED = 'true';
-            (metrics.getMeter as any).mockImplementation(() => {
-                throw new Error('Initialization failed');
-            });
-
-            service = new OpenTelemetryService();
-
-            // Should not throw
-            await expect(service.onModuleInit()).resolves.not.toThrow();
-        });
+      expect(metrics.getMeter).not.toHaveBeenCalled();
     });
 
-    describe('onModuleDestroy', () => {
-        it('should shutdown gracefully', async () => {
-            service = new OpenTelemetryService();
-            await service.onModuleInit();
+    it('should initialize tracing when enabled', async () => {
+      process.env.OTEL_TRACES_ENABLED = 'true';
+      service = new OpenTelemetryService();
 
-            await expect(service.onModuleDestroy()).resolves.not.toThrow();
-        });
+      await service.onModuleInit();
+
+      expect(trace.getTracer).toHaveBeenCalledWith('test-service', '1.0.0');
     });
 
-    describe('getMeter', () => {
-        it('should return undefined when metrics are disabled', async () => {
-            // metrics disabled by default in beforeEach
-            const svc = new OpenTelemetryService();
-            await svc.onModuleInit();
+    it('should not initialize tracing when disabled', async () => {
+      process.env.OTEL_TRACES_ENABLED = 'false';
+      service = new OpenTelemetryService();
 
-            const meter = svc.getMeter();
-            expect(meter).toBeUndefined();
-        });
+      await service.onModuleInit();
+
+      expect(trace.getTracer).not.toHaveBeenCalled();
     });
 
-    describe('getTracer', () => {
-        it('should return tracer when tracing is enabled', async () => {
-            process.env.OTEL_TRACES_ENABLED = 'true';
-            const svc = new OpenTelemetryService();
-            await svc.onModuleInit();
+    it('should handle initialization errors gracefully', async () => {
+      process.env.OTEL_METRICS_ENABLED = 'true';
+      (metrics.getMeter as any).mockImplementation(() => {
+        throw new Error('Initialization failed');
+      });
 
-            const tracer = svc.getTracer();
-            expect(tracer).toBeDefined();
-        });
+      service = new OpenTelemetryService();
 
-        it('should return undefined when tracing is disabled', async () => {
-            process.env.OTEL_TRACES_ENABLED = 'false';
-            const svc = new OpenTelemetryService();
-            await svc.onModuleInit();
+      // Should not throw
+      await expect(service.onModuleInit()).resolves.not.toThrow();
+    });
+  });
 
-            const tracer = svc.getTracer();
-            expect(tracer).toBeUndefined();
-        });
+  describe('onModuleDestroy', () => {
+    it('should shutdown gracefully', async () => {
+      service = new OpenTelemetryService();
+      await service.onModuleInit();
+
+      await expect(service.onModuleDestroy()).resolves.not.toThrow();
+    });
+  });
+
+  describe('getMeter', () => {
+    it('should return undefined when metrics are disabled', async () => {
+      // metrics disabled by default in beforeEach
+      const svc = new OpenTelemetryService();
+      await svc.onModuleInit();
+
+      const meter = svc.getMeter();
+      expect(meter).toBeUndefined();
+    });
+  });
+
+  describe('getTracer', () => {
+    it('should return tracer when tracing is enabled', async () => {
+      process.env.OTEL_TRACES_ENABLED = 'true';
+      const svc = new OpenTelemetryService();
+      await svc.onModuleInit();
+
+      const tracer = svc.getTracer();
+      expect(tracer).toBeDefined();
     });
 
-    describe('metric creation', () => {
-        it('should throw error for createCounter when meter is not initialized', async () => {
-            // metrics disabled by default in beforeEach
-            const svc = new OpenTelemetryService();
-            await svc.onModuleInit();
+    it('should return undefined when tracing is disabled', async () => {
+      process.env.OTEL_TRACES_ENABLED = 'false';
+      const svc = new OpenTelemetryService();
+      await svc.onModuleInit();
 
-            expect(() => svc.createCounter('test_counter')).toThrow(
-                'Metrics not enabled or meter not initialized'
-            );
-        });
+      const tracer = svc.getTracer();
+      expect(tracer).toBeUndefined();
+    });
+  });
 
-        it('should throw error for createGauge when meter is not initialized', async () => {
-            const svc = new OpenTelemetryService();
-            await svc.onModuleInit();
+  describe('metric creation', () => {
+    it('should throw error for createCounter when meter is not initialized', async () => {
+      // metrics disabled by default in beforeEach
+      const svc = new OpenTelemetryService();
+      await svc.onModuleInit();
 
-            expect(() => svc.createGauge('test_gauge')).toThrow(
-                'Metrics not enabled or meter not initialized'
-            );
-        });
-
-        it('should throw error for createHistogram when meter is not initialized', async () => {
-            const svc = new OpenTelemetryService();
-            await svc.onModuleInit();
-
-            expect(() => svc.createHistogram('test_histogram')).toThrow(
-                'Metrics not enabled or meter not initialized'
-            );
-        });
+      expect(() => svc.createCounter('test_counter')).toThrow('Metrics not enabled or meter not initialized');
     });
 
-    describe('configuration', () => {
-        it('should use default service name', () => {
-            delete process.env.OTEL_SERVICE_NAME;
-            process.env.OTEL_METRICS_ENABLED = 'true';
+    it('should throw error for createGauge when meter is not initialized', async () => {
+      const svc = new OpenTelemetryService();
+      await svc.onModuleInit();
 
-            service = new OpenTelemetryService();
-
-            // Service should be created with default name
-            expect(service).toBeDefined();
-        });
-
-        it('should use default service version', () => {
-            delete process.env.OTEL_SERVICE_VERSION;
-            process.env.OTEL_METRICS_ENABLED = 'true';
-
-            service = new OpenTelemetryService();
-
-            expect(service).toBeDefined();
-        });
-
-        it('should use default environment', () => {
-            delete process.env.NODE_ENV;
-
-            service = new OpenTelemetryService();
-
-            expect(service).toBeDefined();
-        });
+      expect(() => svc.createGauge('test_gauge')).toThrow('Metrics not enabled or meter not initialized');
     });
+
+    it('should throw error for createHistogram when meter is not initialized', async () => {
+      const svc = new OpenTelemetryService();
+      await svc.onModuleInit();
+
+      expect(() => svc.createHistogram('test_histogram')).toThrow('Metrics not enabled or meter not initialized');
+    });
+  });
+
+  describe('configuration', () => {
+    it('should use default service name', () => {
+      delete process.env.OTEL_SERVICE_NAME;
+      process.env.OTEL_METRICS_ENABLED = 'true';
+
+      service = new OpenTelemetryService();
+
+      // Service should be created with default name
+      expect(service).toBeDefined();
+    });
+
+    it('should use default service version', () => {
+      delete process.env.OTEL_SERVICE_VERSION;
+      process.env.OTEL_METRICS_ENABLED = 'true';
+
+      service = new OpenTelemetryService();
+
+      expect(service).toBeDefined();
+    });
+
+    it('should use default environment', () => {
+      delete process.env.NODE_ENV;
+
+      service = new OpenTelemetryService();
+
+      expect(service).toBeDefined();
+    });
+  });
 });

@@ -8,7 +8,6 @@ import { describe, it, expect } from 'vitest';
 import { ROLE_ENDPOINTS, POLICY_ENDPOINTS, AUDIT_LOG_ENDPOINTS } from '../constants';
 
 describe('QA-003: RBAC Constants Enhancements', () => {
-
   describe('AUDIT_LOG_ENDPOINTS', () => {
     it('should have LIST endpoint', () => {
       expect(AUDIT_LOG_ENDPOINTS.LIST).toBe('/admin/audit-logs');
@@ -23,9 +22,7 @@ describe('QA-003: RBAC Constants Enhancements', () => {
     });
 
     it('should expose exactly the expected endpoint keys (guard)', () => {
-      expect(Object.keys(AUDIT_LOG_ENDPOINTS).sort()).toEqual(
-        ['BY_RESOURCE', 'BY_USER', 'CURSOR', 'EXPORT', 'GET', 'LIST'].sort(),
-      );
+      expect(Object.keys(AUDIT_LOG_ENDPOINTS).sort()).toEqual(['BY_RESOURCE', 'BY_USER', 'CURSOR', 'EXPORT', 'GET', 'LIST'].sort());
     });
 
     it('should have GET endpoint with id', () => {

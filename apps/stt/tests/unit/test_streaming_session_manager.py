@@ -122,9 +122,7 @@ class TestFirePartial:
     async def test_partial_cleanup_on_remove_session(self, session_manager):
         """remove_session should clean up partial tasks."""
         worker = AsyncMock(spec=StreamingInferenceWorker)
-        worker.process_partial = AsyncMock(
-            return_value=_make_segment_result(is_final=False)
-        )
+        worker.process_partial = AsyncMock(return_value=_make_segment_result(is_final=False))
         publisher = AsyncMock(spec=ResultPublisher)
 
         session_manager._fire_partial("sess-1", _make_utterance(), worker, publisher)
@@ -211,8 +209,13 @@ class TestFirePartialCommitPolicy:
 
         handler = session_manager._make_frame_handler(session, preprocessor)
         frame = AudioFrame(
-            seq=1, sr=16000, enc=AudioEncoding.PCM_S16LE, ch=1,
-            data=b"\x00" * 320, final=False, ts=0.0,
+            seq=1,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=b"\x00" * 320,
+            final=False,
+            ts=0.0,
         )
         await handler(frame)
 
@@ -233,13 +236,9 @@ class TestSteadyStateEnqueueDrop:
 
         # Keep the test fast: shrink the bounded wait instead of actually
         # waiting out the production 1.0s timeout.
-        monkeypatch.setattr(
-            session_manager_module, "_STEADY_STATE_ENQUEUE_TIMEOUT_S", 0.01
-        )
+        monkeypatch.setattr(session_manager_module, "_STEADY_STATE_ENQUEUE_TIMEOUT_S", 0.01)
         dropped = MagicMock()
-        monkeypatch.setattr(
-            session_manager_module, "streaming_inference_queue_dropped", dropped
-        )
+        monkeypatch.setattr(session_manager_module, "streaming_inference_queue_dropped", dropped)
 
         session = MagicMock()
         session.session_id = "sess-full"
@@ -258,8 +257,13 @@ class TestSteadyStateEnqueueDrop:
 
         handler = session_manager._make_frame_handler(session, preprocessor)
         frame = AudioFrame(
-            seq=1, sr=16000, enc=AudioEncoding.PCM_S16LE, ch=1,
-            data=b"\x00" * 320, final=False, ts=0.0,
+            seq=1,
+            sr=16000,
+            enc=AudioEncoding.PCM_S16LE,
+            ch=1,
+            data=b"\x00" * 320,
+            final=False,
+            ts=0.0,
         )
         await handler(frame)
 

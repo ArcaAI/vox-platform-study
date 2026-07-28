@@ -1,10 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  Sortable,
-  SortableContent,
-  SortableItem,
-} from '@/components/registries/diceui/sortable'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Sortable, SortableContent, SortableItem } from '@/components/registries/diceui/sortable';
 
 describe('Sortable', () => {
   it('renders without crashing', () => {
@@ -19,7 +15,7 @@ describe('Sortable', () => {
           </SortableItem>
         </SortableContent>
       </Sortable>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

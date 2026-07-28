@@ -119,10 +119,7 @@ describe('PolicyEngine — UserGroup Removal Verification', () => {
       mockCacheService.isConnected.mockReturnValue(true);
       mockCacheService.keys.mockResolvedValue([]);
 
-      mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
-        { userId: 'user-1' },
-        { userId: 'user-2' },
-      ]);
+      mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
 
       await policyEngine.invalidateRole('role-123');
 

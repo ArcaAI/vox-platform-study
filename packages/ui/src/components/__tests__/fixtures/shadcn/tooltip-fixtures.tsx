@@ -1,10 +1,5 @@
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipProvider,
-} from '../../../shadcn/tooltip'
-import { Button } from '../../../shadcn/button'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../../../shadcn/tooltip';
+import { Button } from '../../../shadcn/button';
 
 export function BasicTooltip() {
   return (
@@ -16,7 +11,7 @@ export function BasicTooltip() {
         <TooltipContent>Tooltip content</TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  )
+  );
 }
 
 export function TooltipWithDelay({ delay = 500 }: { delay?: number }) {
@@ -29,7 +24,7 @@ export function TooltipWithDelay({ delay = 500 }: { delay?: number }) {
         <TooltipContent>Delayed tooltip</TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  )
+  );
 }
 
 export function OpenTooltip() {
@@ -42,5 +37,5 @@ export function OpenTooltip() {
         <TooltipContent>Open tooltip</TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  )
+  );
 }

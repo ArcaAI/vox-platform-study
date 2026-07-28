@@ -52,11 +52,7 @@ class MockAudioWorkletNode {
   connect = vi.fn();
   disconnect = vi.fn();
 
-  constructor(
-    _context: AudioContext,
-    _name: string,
-    _options?: AudioWorkletNodeOptions
-  ) {}
+  constructor(_context: AudioContext, _name: string, _options?: AudioWorkletNodeOptions) {}
 }
 
 // Mock MediaStreamTrack
@@ -146,11 +142,4 @@ if (typeof Blob === 'undefined') {
 }
 
 // Export mocks for use in tests
-export {
-  MockAudioContext,
-  MockAudioWorkletNode,
-  MockMediaStreamTrack,
-  MockMediaStream,
-  mockCreateObjectURL,
-  mockRevokeObjectURL,
-};
+export { MockAudioContext, MockAudioWorkletNode, MockMediaStreamTrack, MockMediaStream, mockCreateObjectURL, mockRevokeObjectURL };

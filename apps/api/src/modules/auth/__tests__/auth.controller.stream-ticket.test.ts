@@ -11,30 +11,30 @@ import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants';
 import { RequestMethod } from '@nestjs/common';
 import { AuthController } from '../auth.controller';
 
-function buildController(opts: {
-  cls?: { get: (key: string) => unknown };
-  streamTicketService?: {
-    issueTicket: ReturnType<typeof vi.fn>;
-    consumeTicket: ReturnType<typeof vi.fn>;
-  };
-  jwtRevocationService?: {
-    revoke: ReturnType<typeof vi.fn>;
-    isRevoked: ReturnType<typeof vi.fn>;
-  };
-  consultationRepository?: { findById: ReturnType<typeof vi.fn> };
-  streamSessionTenantBinding?: { lookup: ReturnType<typeof vi.fn> };
-} = {}) {
+function buildController(
+  opts: {
+    cls?: { get: (key: string) => unknown };
+    streamTicketService?: {
+      issueTicket: ReturnType<typeof vi.fn>;
+      consumeTicket: ReturnType<typeof vi.fn>;
+    };
+    jwtRevocationService?: {
+      revoke: ReturnType<typeof vi.fn>;
+      isRevoked: ReturnType<typeof vi.fn>;
+    };
+    consultationRepository?: { findById: ReturnType<typeof vi.fn> };
+    streamSessionTenantBinding?: { lookup: ReturnType<typeof vi.fn> };
+  } = {},
+) {
   const cls = opts.cls ?? { get: () => null };
-  const streamTicketService =
-    opts.streamTicketService ?? {
-      issueTicket: vi.fn(),
-      consumeTicket: vi.fn(),
-    };
-  const jwtRevocationService =
-    opts.jwtRevocationService ?? {
-      revoke: vi.fn(),
-      isRevoked: vi.fn().mockResolvedValue(false),
-    };
+  const streamTicketService = opts.streamTicketService ?? {
+    issueTicket: vi.fn(),
+    consumeTicket: vi.fn(),
+  };
+  const jwtRevocationService = opts.jwtRevocationService ?? {
+    revoke: vi.fn(),
+    isRevoked: vi.fn().mockResolvedValue(false),
+  };
   const consultationRepository = opts.consultationRepository ?? { findById: vi.fn() };
   // Default fail-closed: no binding bound for any session.
   const streamSessionTenantBinding = opts.streamSessionTenantBinding ?? { lookup: vi.fn().mockResolvedValue(null) };
@@ -124,10 +124,7 @@ describe('AuthController.issueStreamTicket', () => {
     const issueTicket = vi.fn(async () => ({ ticket: 't', expiresAt: 1, scope: 's' }));
     const { controller } = buildController({
       cls: {
-        get: (key: string) =>
-          key === 'user'
-            ? { id: 'doctor-001', tenantId: 'tenant-acme', impersonatedBy: 'admin-007' }
-            : null,
+        get: (key: string) => (key === 'user' ? { id: 'doctor-001', tenantId: 'tenant-acme', impersonatedBy: 'admin-007' } : null),
       },
       streamTicketService: { issueTicket, consumeTicket: vi.fn() },
     });
@@ -147,9 +144,7 @@ describe('AuthController.issueStreamTicket', () => {
       cls: { get: () => null },
     });
 
-    await expect(
-      controller.issueStreamTicket({ scope: 'consultation_job:job-1' }),
-    ).rejects.toThrow(UnauthorizedException);
+    await expect(controller.issueStreamTicket({ scope: 'consultation_job:job-1' })).rejects.toThrow(UnauthorizedException);
   });
 
   it('handler is bound to HTTP POST on path "stream-ticket"', () => {
@@ -265,9 +260,7 @@ describe('AuthController.issueStreamTicket', () => {
       await controller.issueStreamTicket({ scope: 'consultation_harness_progress:c-1' });
 
       expect(findById).toHaveBeenCalledWith('c-1');
-      expect(issueTicket).toHaveBeenCalledWith(
-        expect.objectContaining({ scope: 'consultation_harness_progress:c-1', tenantId: 'tenant-1' }),
-      );
+      expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ scope: 'consultation_harness_progress:c-1', tenantId: 'tenant-1' }));
     });
 
     it("throws NotFoundException and never mints a harness-progress ticket for another tenant's consultation", async () => {
@@ -346,9 +339,7 @@ describe('AuthController.issueStreamTicket', () => {
       await controller.issueStreamTicket({ scope: 'stt_session:sess-1' });
 
       expect(lookup).toHaveBeenCalledWith('sess-1');
-      expect(issueTicket).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'user-1', tenantId: 'tenant-1', scope: 'stt_session:sess-1' }),
-      );
+      expect(issueTicket).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', tenantId: 'tenant-1', scope: 'stt_session:sess-1' }));
     });
 
     it("throws NotFoundException (no existence leak) and never mints for another tenant's session", async () => {

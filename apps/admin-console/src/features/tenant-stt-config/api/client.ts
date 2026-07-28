@@ -61,7 +61,11 @@ export function getSttCredentials(): Promise<SttCredential[]> {
 }
 
 /** Set or rotate a provider's write-only BYO key under OCC (0 = create). */
-export function setSttCredential(provider: SttProvider, body: Omit<SetSttCredentialRequest, 'expectedVersion'>, version: number): Promise<SttCredential> {
+export function setSttCredential(
+  provider: SttProvider,
+  body: Omit<SetSttCredentialRequest, 'expectedVersion'>,
+  version: number,
+): Promise<SttCredential> {
   return request<SttCredential>(`${BASE}/credentials/${provider}`, {
     method: 'PUT',
     body: { ...body, expectedVersion: version },

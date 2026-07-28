@@ -7,39 +7,39 @@
 
 /** GET /storage/buckets rows (BucketInfoResponse) — a plain array, not paginated. */
 export interface StorageBucket {
-    name: string;
-    creationDate?: string;
+  name: string;
+  creationDate?: string;
 }
 
 /** POST /storage/buckets body (CreateBucketRequest). */
 export interface CreateBucketRequest {
-    name: string;
-    type?: string;
+  name: string;
+  type?: string;
 }
 
 /** POST /storage/buckets response (CreateBucketResponse). */
 export interface CreateBucketResult {
-    name: string;
-    created: boolean;
+  name: string;
+  created: boolean;
 }
 
 /** PATCH /storage/buckets/:name body (UpdateBucketRequest — S3 metadata tags). */
 export interface UpdateBucketRequest {
-    description?: string;
-    resourceStatus?: string;
+  description?: string;
+  resourceStatus?: string;
 }
 
 /** PATCH /storage/buckets/:name response (UpdateBucketResponse). */
 export interface UpdateBucketResult {
-    name: string;
-    description?: string;
-    resourceStatus?: string;
+  name: string;
+  description?: string;
+  resourceStatus?: string;
 }
 
 /** DELETE /storage/buckets/:name response (DeleteBucketResponse). */
 export interface DeleteBucketResult {
-    name: string;
-    deleted: boolean;
+  name: string;
+  deleted: boolean;
 }
 
 /**
@@ -48,45 +48,45 @@ export interface DeleteBucketResult {
  * pagination params (prefix is the only filter), so paging is client-side.
  */
 export interface StorageObject {
-    key: string;
-    size: number;
-    lastModified?: string;
+  key: string;
+  size: number;
+  lastModified?: string;
 }
 
 /** GET /storage/buckets/:name response (BucketWithFilesResponse). */
 export interface BucketWithFiles {
-    name: string;
-    files: StorageObject[];
+  name: string;
+  files: StorageObject[];
 }
 
 /** POST /storage/buckets/:name/files response (FileUploadResponse). */
 export interface FileUploadResult {
-    key: string;
-    size: number;
-    contentType: string;
-    mediaId?: string;
+  key: string;
+  size: number;
+  contentType: string;
+  mediaId?: string;
 }
 
 /** GET /storage/buckets/:name/files/:key response — presigned URL JSON, not bytes. */
 export interface FileInfoResult {
-    key: string;
-    url: string;
+  key: string;
+  url: string;
 }
 
 /** DELETE /storage/buckets/:name/files/:key response (DeleteFileResponse). */
 export interface DeleteFileResult {
-    deleted: boolean;
-    key: string;
+  deleted: boolean;
+  key: string;
 }
 
 /** GET /storage/health response (S3HealthService projection). */
 export interface StorageHealth {
-    status: 'healthy' | 'unhealthy' | 'not-configured';
-    connected: boolean;
-    isMinIO: boolean;
-    configured?: boolean;
-    endpoint?: string;
-    publicBucket?: string;
-    privateBucket?: string;
-    error?: string;
+  status: 'healthy' | 'unhealthy' | 'not-configured';
+  connected: boolean;
+  isMinIO: boolean;
+  configured?: boolean;
+  endpoint?: string;
+  publicBucket?: string;
+  privateBucket?: string;
+  error?: string;
 }

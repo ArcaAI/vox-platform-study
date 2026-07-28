@@ -9,15 +9,15 @@
 import { getJson, getWithEtag, patchJson, patchWithEtag, postJson, putJson, request, versionFromEtag } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type {
-    DnaJob,
-    DnaJobStatus,
-    DnaReport,
-    DnaSettings,
-    DnaVersion,
-    GenerateDnaStyleRequest,
-    RedactionRuleSet,
-    UpdateDnaSettingsRequest,
-    UpdateMyReportRequest,
+  DnaJob,
+  DnaJobStatus,
+  DnaReport,
+  DnaSettings,
+  DnaVersion,
+  GenerateDnaStyleRequest,
+  RedactionRuleSet,
+  UpdateDnaSettingsRequest,
+  UpdateMyReportRequest,
 } from './types';
 
 const BASE = 'dna-writing-styles';
@@ -27,12 +27,12 @@ const BASE = 'dna-writing-styles';
  * 404 = no style yet — the DESIGNED empty state, not an error.
  */
 export function getMyStyle(): Promise<WithEtag<DnaReport>> {
-    return getWithEtag(`${BASE}/my-style`);
+  return getWithEtag(`${BASE}/my-style`);
 }
 
 /** Owner-scoped report history backing the report list + set-default picker. */
 export function listMyReports(): Promise<DnaReport[]> {
-    return getJson(`${BASE}/mine`);
+  return getJson(`${BASE}/mine`);
 }
 
 /**
@@ -41,21 +41,21 @@ export function listMyReports(): Promise<DnaReport[]> {
  * `updateMyReport` (the report PATCH `redactionRules` field), not here.
  */
 export function getMyRedactionRules(): Promise<RedactionRuleSet> {
-    return getJson(`${BASE}/my-style/redaction-rules`);
+  return getJson(`${BASE}/my-style/redaction-rules`);
 }
 
 /** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */
 export async function updateMyReport(reportId: string, patch: UpdateMyReportRequest, etag: string): Promise<WithEtag<DnaReport>> {
-    return patchWithEtag(`${BASE}/${encodeURIComponent(reportId)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+  return patchWithEtag(`${BASE}/${encodeURIComponent(reportId)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
 /** Promotes one of the caller's reports to the active/default (no If-Match). */
 export function setDefaultReport(reportId: string): Promise<DnaReport> {
-    return patchJson(`${BASE}/${encodeURIComponent(reportId)}/default`);
+  return patchJson(`${BASE}/${encodeURIComponent(reportId)}/default`);
 }
 
 export function listMyVersions(reportId: string): Promise<DnaVersion[]> {
-    return getJson(`${BASE}/${encodeURIComponent(reportId)}/versions`);
+  return getJson(`${BASE}/${encodeURIComponent(reportId)}/versions`);
 }
 
 /**
@@ -64,11 +64,11 @@ export function listMyVersions(reportId: string): Promise<DnaVersion[]> {
  * clinical user nor impersonating one — a designed gate state.
  */
 export function generateMyStyle(body: GenerateDnaStyleRequest = {}): Promise<DnaJob> {
-    return postJson(`${BASE}/generate`, body);
+  return postJson(`${BASE}/generate`, body);
 }
 
 export function getDnaSettings(): Promise<DnaSettings> {
-    return getJson(`${BASE}/settings`);
+  return getJson(`${BASE}/settings`);
 }
 
 /**
@@ -80,22 +80,22 @@ export function getDnaSettings(): Promise<DnaSettings> {
  * precondition. Also 403-gated by `assertActingAsDoctor`.
  */
 export async function updateDnaSettings(body: UpdateDnaSettingsRequest, currentVersion?: number): Promise<DnaSettings> {
-    if (currentVersion !== undefined && currentVersion >= 1) {
-        const response = await request<DnaSettings>(`${BASE}/settings`, {
-            method: 'PUT',
-            body: { ...body, expectedVersion: currentVersion },
-            etag: `"${currentVersion}"`,
-        });
-        return response.data;
-    }
-    return putJson(`${BASE}/settings`, body);
+  if (currentVersion !== undefined && currentVersion >= 1) {
+    const response = await request<DnaSettings>(`${BASE}/settings`, {
+      method: 'PUT',
+      body: { ...body, expectedVersion: currentVersion },
+      etag: `"${currentVersion}"`,
+    });
+    return response.data;
+  }
+  return putJson(`${BASE}/settings`, body);
 }
 
 export function getDnaJobStatus(jobId: string): Promise<DnaJobStatus> {
-    return getJson(`${BASE}/jobs/${encodeURIComponent(jobId)}`);
+  return getJson(`${BASE}/jobs/${encodeURIComponent(jobId)}`);
 }
 
 /** Gateway-relative SSE path for a job — pair with scope `dna_job:<jobId>`. */
 export function dnaJobStreamPath(jobId: string): string {
-    return `${BASE}/jobs/${encodeURIComponent(jobId)}/stream`;
+  return `${BASE}/jobs/${encodeURIComponent(jobId)}/stream`;
 }

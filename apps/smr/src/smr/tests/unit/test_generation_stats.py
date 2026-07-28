@@ -22,6 +22,7 @@ from smr.models.stream import StreamChunk
 # GenerationStats model + AD-1 field shape
 # ---------------------------------------------------------------------------
 
+
 class TestGenerationStatsShape:
     def test_ad1_fields_exist_with_expected_types(self):
         from smr.models.stats import GenerationStats
@@ -73,6 +74,7 @@ class TestGenerationStatsShape:
 # OpenAI-wire (LM Studio / vLLM / Azure) mapping
 # ---------------------------------------------------------------------------
 
+
 class TestOpenAiCompatMapping:
     def test_openai_compat_maps_usage_and_finish_reason(self):
         from smr.models.stats import stats_from_openai_usage
@@ -122,9 +124,7 @@ class TestOpenAiCompatMapping:
             for c in _chunks:
                 yield c
 
-        provider = OpenAICompatProvider(
-            OpenAICompatConfig(default_model="m")
-        )
+        provider = OpenAICompatProvider(OpenAICompatConfig(default_model="m"))
         provider._client = MagicMock()
         provider._client.chat.completions.create = AsyncMock(
             return_value=_stream([content_chunk, usage_chunk])
@@ -154,6 +154,7 @@ class TestOpenAiCompatMapping:
 # ---------------------------------------------------------------------------
 # Ollama mapping (durations → tok/s)
 # ---------------------------------------------------------------------------
+
 
 class TestOllamaMapping:
     def test_ollama_maps_eval_counts_and_done_reason(self):
@@ -185,6 +186,7 @@ class TestOllamaMapping:
 # Bedrock mapping
 # ---------------------------------------------------------------------------
 
+
 class TestBedrockMapping:
     def test_bedrock_maps_stop_reason_and_usage(self):
         from smr.models.stats import stats_from_bedrock
@@ -215,6 +217,7 @@ class TestBedrockMapping:
 # Azure content-filter
 # ---------------------------------------------------------------------------
 
+
 class TestAzureMapping:
     def test_azure_content_filter_maps_to_content_filter(self):
         from smr.models.stats import normalize_stop_reason, stats_from_openai_usage
@@ -234,6 +237,7 @@ class TestAzureMapping:
 # ---------------------------------------------------------------------------
 # Client-side fallback / null-safety
 # ---------------------------------------------------------------------------
+
 
 class TestClientSideFallback:
     def test_client_side_fallback_when_engine_omits_usage(self):
@@ -280,6 +284,7 @@ class TestClientSideFallback:
 # Normalized stop-reason table covers all providers
 # ---------------------------------------------------------------------------
 
+
 class TestNormalizeStopReason:
     @pytest.mark.parametrize(
         "provider,raw,expected",
@@ -320,6 +325,7 @@ class TestNormalizeStopReason:
 # Observability helper
 # ---------------------------------------------------------------------------
 
+
 class TestObservabilityGenAiSpan:
     def test_set_generation_span_attributes(self):
         from smr.core.observability import set_generation_span_attributes
@@ -344,6 +350,7 @@ class TestObservabilityGenAiSpan:
 # ---------------------------------------------------------------------------
 # Endpoint threading + never-fail-generation resilience
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_provider():

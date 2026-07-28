@@ -107,9 +107,7 @@ def test_stats_from_openai_response_populates_and_normalizes() -> None:
 def test_stats_from_openai_response_null_safe_without_usage() -> None:
     body = _granite_body("<score>no</score>")  # no usage, no finish_reason
 
-    stats = stats_from_openai_response(
-        provider="openai_compat", model="m", data=body, total_ms=0
-    )
+    stats = stats_from_openai_response(provider="openai_compat", model="m", data=body, total_ms=0)
 
     assert stats.stop_reason == "other"
     assert stats.stop_reason_raw == ""

@@ -44,11 +44,7 @@ declare module './GlobalSettingRepository' {
      * in the row as the readback fallback during the Phase 4D window;
      * the actual DELETE is gated on user approval (workspace policy).
      */
-    encryptValueIntoEntity(
-      this: GlobalSettingRepository,
-      entity: GlobalSettingEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptValueIntoEntity(this: GlobalSettingRepository, entity: GlobalSettingEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**
      * Decrypt `encryptedValue` and return the plaintext string. Falls
@@ -58,11 +54,7 @@ declare module './GlobalSettingRepository' {
      * Does NOT write back to `entity.value`. Callers that want
      * decrypted material in memory must accept it as a return value.
      */
-    decryptValueFromEntity(
-      this: GlobalSettingRepository,
-      entity: GlobalSettingEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<string>;
+    decryptValueFromEntity(this: GlobalSettingRepository, entity: GlobalSettingEntity, secrets: SecretsServiceLike): Promise<string>;
 
     /**
      * Read-path helper for explicit decrypted access. Wraps findById
@@ -117,9 +109,7 @@ GlobalSettingRepository.prototype.decryptValueFromEntity = async function (
   if (typeof entity.value === 'string') {
     return entity.value;
   }
-  throw new Error(
-    `GlobalSettingRepository.decryptValueFromEntity: entity ${entity.id} has neither encryptedValue nor a legacy value`,
-  );
+  throw new Error(`GlobalSettingRepository.decryptValueFromEntity: entity ${entity.id} has neither encryptedValue nor a legacy value`);
 };
 
 GlobalSettingRepository.prototype.findByIdWithDecryptedValue = async function (

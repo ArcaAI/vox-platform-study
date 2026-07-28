@@ -1,15 +1,15 @@
-import type { StorybookConfig } from '@storybook/react-vite'
-import { dirname, resolve } from 'path'
-import { fileURLToPath } from 'url'
+import type { StorybookConfig } from '@storybook/react-vite';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * This function is used to resolve the absolute path of a package.
  * It is needed in projects that use Yarn PnP or are set up within a monorepo.
  */
 function getAbsolutePath(value: string) {
-  return dirname(fileURLToPath(import.meta.resolve(`${value}/package.json`)))
+  return dirname(fileURLToPath(import.meta.resolve(`${value}/package.json`)));
 }
 
 const config: StorybookConfig = {
@@ -24,14 +24,14 @@ const config: StorybookConfig = {
   framework: getAbsolutePath('@storybook/react-vite'),
   viteFinal: async (config) => {
     // Mirror the tsconfig path aliases (order matters: most specific first)
-    config.resolve = config.resolve || {}
+    config.resolve = config.resolve || {};
     config.resolve.alias = {
       ...config.resolve.alias,
       '@/components/ui': resolve(__dirname, '../src/components/shadcn'),
       '@': resolve(__dirname, '../src'),
-    }
-    return config
+    };
+    return config;
   },
-}
+};
 
-export default config
+export default config;

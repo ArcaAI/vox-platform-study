@@ -10,31 +10,31 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const redirect = vi.fn((url: string) => {
-    // next/navigation's redirect throws to unwind rendering; mimic that so a
-    // page that keeps executing after redirecting would fail this test.
-    throw new Error(`NEXT_REDIRECT:${url}`);
+  // next/navigation's redirect throws to unwind rendering; mimic that so a
+  // page that keeps executing after redirecting would fail this test.
+  throw new Error(`NEXT_REDIRECT:${url}`);
 });
 
 vi.mock('next/navigation', () => ({ redirect }));
 
 async function renderPage(path: string): Promise<string> {
-    const page = await import(path);
-    try {
-        page.default();
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.startsWith('NEXT_REDIRECT:')) return message.slice('NEXT_REDIRECT:'.length);
-        throw error;
-    }
-    throw new Error('page returned without redirecting');
+  const page = await import(path);
+  try {
+    page.default();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith('NEXT_REDIRECT:')) return message.slice('NEXT_REDIRECT:'.length);
+    throw error;
+  }
+  throw new Error('page returned without redirecting');
 }
 
 describe('retired route redirects', () => {
-    it('sends /prompt-studio to the /agents Governance tab', async () => {
-        expect(await renderPage('../prompt-studio/page')).toBe('/agents?tab=governance');
-    });
+  it('sends /prompt-studio to the /agents Governance tab', async () => {
+    expect(await renderPage('../prompt-studio/page')).toBe('/agents?tab=governance');
+  });
 
-    it('sends /pstudio to /db-studio', async () => {
-        expect(await renderPage('../pstudio/page')).toBe('/db-studio');
-    });
+  it('sends /pstudio to /db-studio', async () => {
+    expect(await renderPage('../pstudio/page')).toBe('/db-studio');
+  });
 });

@@ -49,11 +49,7 @@ describe('KnowledgeIngestClient', () => {
   });
 
   const build = (harnessUrl?: string, token?: string, secrets = createMockSecretsService(token)) =>
-    new KnowledgeIngestClient(
-      mockHttpService as any,
-      createMockConfigService(harnessUrl) as any,
-      secrets as any,
-    );
+    new KnowledgeIngestClient(mockHttpService as any, createMockConfigService(harnessUrl) as any, secrets as any);
 
   it('POSTs to the harness /api/v1/internal/knowledge/ingest route (matches the FastAPI mount)', async () => {
     const client = build('http://harness:8866', 'ingest-token-xyz');
@@ -97,11 +93,7 @@ describe('KnowledgeIngestClient', () => {
   });
 
   it('tolerates a missing SecretsService (optional dependency)', async () => {
-    const client = new KnowledgeIngestClient(
-      mockHttpService as any,
-      createMockConfigService('http://harness:8866') as any,
-      undefined,
-    );
+    const client = new KnowledgeIngestClient(mockHttpService as any, createMockConfigService('http://harness:8866') as any, undefined);
 
     await client.ingest(REQUEST);
 

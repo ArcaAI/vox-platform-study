@@ -65,9 +65,7 @@ describe('Factory tenantId is structurally required', () => {
       });
 
       expect(() => consultation.validate()).toThrow(BadRequestException);
-      expect(() => consultation.validate()).toThrow(
-        /ConsultationEntity is missing tenant context/,
-      );
+      expect(() => consultation.validate()).toThrow(/ConsultationEntity is missing tenant context/);
     });
 
     it('validate() throws when tenantId is null (runtime backstop)', () => {
@@ -125,9 +123,7 @@ describe('Factory tenantId is structurally required', () => {
       });
 
       expect(() => auditLog.validate()).toThrow(BadRequestException);
-      expect(() => auditLog.validate()).toThrow(
-        /AuditLogEntity is missing tenant context/,
-      );
+      expect(() => auditLog.validate()).toThrow(/AuditLogEntity is missing tenant context/);
     });
   });
 });

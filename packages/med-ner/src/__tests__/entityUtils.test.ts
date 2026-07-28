@@ -26,13 +26,7 @@ import {
 import { MedicalEntityType, type EntitySpan } from '../types/index.js';
 
 // Test fixtures
-const createEntity = (
-  text: string,
-  type: MedicalEntityType,
-  start: number,
-  end: number,
-  score: number
-): EntitySpan => ({
+const createEntity = (text: string, type: MedicalEntityType, start: number, end: number, score: number): EntitySpan => ({
   text,
   type,
   start,
@@ -75,10 +69,7 @@ describe('Entity Utilities', () => {
     });
 
     it('should filter by multiple types', () => {
-      const result = filterEntitiesByType(sampleEntities, [
-        MedicalEntityType.DISEASE,
-        MedicalEntityType.MEDICATION,
-      ]);
+      const result = filterEntitiesByType(sampleEntities, [MedicalEntityType.DISEASE, MedicalEntityType.MEDICATION]);
       expect(result).toHaveLength(2);
     });
 
@@ -157,10 +148,7 @@ describe('Entity Utilities', () => {
       // count-aware weighted average must not change the equal-weight
       // case.
       const text = 'abcd efghijklmnop';
-      const entities = [
-        createEntity('abcd', MedicalEntityType.DISEASE, 0, 4, 0.9),
-        createEntity('efgh', MedicalEntityType.DISEASE, 5, 9, 0.7),
-      ];
+      const entities = [createEntity('abcd', MedicalEntityType.DISEASE, 0, 4, 0.9), createEntity('efgh', MedicalEntityType.DISEASE, 5, 9, 0.7)];
 
       const result = mergeAdjacentEntities(entities, text);
 
@@ -196,10 +184,7 @@ describe('Entity Utilities', () => {
       // Weighted mean = (0.9*2 + 0.5*10) / 12 = 6.8 / 12 ≈ 0.5667.
       // Old buggy impl returned the simple mean 0.7.
       const text = 'ab cdefghijkl trailing context';
-      const entities = [
-        createEntity('ab', MedicalEntityType.DISEASE, 0, 2, 0.9),
-        createEntity('cdefghijkl', MedicalEntityType.DISEASE, 3, 13, 0.5),
-      ];
+      const entities = [createEntity('ab', MedicalEntityType.DISEASE, 0, 2, 0.9), createEntity('cdefghijkl', MedicalEntityType.DISEASE, 3, 13, 0.5)];
 
       const result = mergeAdjacentEntities(entities, text);
 
@@ -284,10 +269,7 @@ describe('Entity Utilities', () => {
 
   describe('getUniqueEntitiesByType', () => {
     it('should return unique texts by type', () => {
-      const entities = [
-        ...sampleEntities,
-        createEntity('diabetes', MedicalEntityType.DISEASE, 60, 68, 0.8),
-      ];
+      const entities = [...sampleEntities, createEntity('diabetes', MedicalEntityType.DISEASE, 60, 68, 0.8)];
       const unique = getUniqueEntitiesByType(entities);
 
       expect(unique.get(MedicalEntityType.DISEASE)).toHaveLength(1);
@@ -447,10 +429,7 @@ describe('Entity Utilities', () => {
     });
 
     it('should keep different types as separate', () => {
-      const entities = [
-        createEntity('test', MedicalEntityType.DISEASE, 0, 4, 0.9),
-        createEntity('test', MedicalEntityType.MEDICATION, 10, 14, 0.8),
-      ];
+      const entities = [createEntity('test', MedicalEntityType.DISEASE, 0, 4, 0.9), createEntity('test', MedicalEntityType.MEDICATION, 10, 14, 0.8)];
 
       const result = deduplicateEntities(entities);
       expect(result).toHaveLength(2);

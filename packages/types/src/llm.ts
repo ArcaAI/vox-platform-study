@@ -98,4 +98,3 @@ export interface SummaryOptions {
   includeSentiment?: boolean;
   customPrompt?: string;
 }
-

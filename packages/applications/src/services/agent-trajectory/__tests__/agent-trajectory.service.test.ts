@@ -10,13 +10,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import {
-  AgentSessionKind,
-  AgentStepStatus,
-  AgentStepType,
-  AgentTrajectoryStepEntity,
-  AgentTrajectoryStepFactory,
-} from '@arcaai/domains';
+import { AgentSessionKind, AgentStepStatus, AgentStepType, AgentTrajectoryStepEntity, AgentTrajectoryStepFactory } from '@arcaai/domains';
 import { AgentTrajectoryService } from '../agent-trajectory.service';
 import { CreateAgentTrajectoryStepInput } from '../dto';
 
@@ -38,12 +32,7 @@ function buildDeps(opts: { clsTenant?: string | null } = {}) {
   };
   const cacheService = { publish: vi.fn().mockResolvedValue(undefined) };
 
-  const service = new AgentTrajectoryService(
-    repository as never,
-    eventEmitter as never,
-    clsService as never,
-    cacheService as never,
-  );
+  const service = new AgentTrajectoryService(repository as never, eventEmitter as never, clsService as never, cacheService as never);
   return { service, repository, eventEmitter, clsService, cacheService };
 }
 
@@ -263,9 +252,7 @@ describe('AgentTrajectoryService', () => {
         const deleted = await service.pruneOlderThan(30);
 
         const cutoff = new Date('2026-06-19T00:00:00.000Z'); // 30 days before the faked now
-        expect(repository.findAll).toHaveBeenCalledWith(
-          expect.objectContaining({ where: { createdAt: { lt: cutoff } } }),
-        );
+        expect(repository.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { createdAt: { lt: cutoff } } }));
         // Deletes each aged row (AgentTrajectoryStep repo only — the sole hard-delete path).
         expect(repository.delete).toHaveBeenCalledTimes(2);
         expect(deleted).toBe(2);

@@ -301,10 +301,7 @@ describe('SummaryMeta — encrypts provenance JSONB before create (Phase 3C)', (
     await service.addRawSummary('consultation-1', { content: 'AI generated summary' } as never);
 
     expect(mockSummaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
-    expect(mockSummaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'sm' }),
-      mockSecretsService,
-    );
+    expect(mockSummaryMetaRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(expect.objectContaining({ id: 'sm' }), mockSecretsService);
     const encOrder = mockSummaryMetaRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
     const createOrder = mockSummaryMetaRepository.create.mock.invocationCallOrder[0];
     expect(encOrder).toBeLessThan(createOrder);

@@ -155,7 +155,11 @@ describe('useArcaAudio — provider switch + connection state (TASK-567)', () =>
     });
 
     expect(mockStoreData.setSttConnectionState).toHaveBeenCalledWith('connected');
-    expect(mockStoreData.setActivePipeline).toHaveBeenCalledWith({ id: 'azure_speech_transcription', name: 'azure_speech_transcription', isFallback: false });
+    expect(mockStoreData.setActivePipeline).toHaveBeenCalledWith({
+      id: 'azure_speech_transcription',
+      name: 'azure_speech_transcription',
+      isFallback: false,
+    });
   });
 
   it('clears the active pipeline on start with no backend pipeline (local STT)', async () => {

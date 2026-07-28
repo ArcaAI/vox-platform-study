@@ -53,35 +53,35 @@ export function VoiceBindingsEditor({
                 // A bound voice name missing from the catalog stays selectable (registry drift).
                 const orphan = value !== '' && !provider.voices.some((voice) => voice.id === value) ? value : null;
                 return (
-                    <div key={provider.provider} className="flex flex-col gap-1.5">
-                      <Label htmlFor={id} className="text-muted-foreground font-mono text-xs font-medium">
-                        {provider.provider}
-                      </Label>
-                      <Select
-                        value={value === '' ? INHERIT : value}
-                        onValueChange={(next) => onDraftChange(voiceId, provider.provider, next === INHERIT ? '' : next)}
-                      >
-                        <SelectTrigger id={id} className="h-8 font-mono text-xs" aria-label={`${provider.provider} voice for ${voiceId}`}>
-                          <SelectValue placeholder="inherit" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={INHERIT} className="text-xs">
-                            inherit
+                  <div key={provider.provider} className="flex flex-col gap-1.5">
+                    <Label htmlFor={id} className="text-muted-foreground font-mono text-xs font-medium">
+                      {provider.provider}
+                    </Label>
+                    <Select
+                      value={value === '' ? INHERIT : value}
+                      onValueChange={(next) => onDraftChange(voiceId, provider.provider, next === INHERIT ? '' : next)}
+                    >
+                      <SelectTrigger id={id} className="h-8 font-mono text-xs" aria-label={`${provider.provider} voice for ${voiceId}`}>
+                        <SelectValue placeholder="inherit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={INHERIT} className="text-xs">
+                          inherit
+                        </SelectItem>
+                        {orphan ? (
+                          <SelectItem value={orphan} className="font-mono text-xs">
+                            {orphan}
                           </SelectItem>
-                          {orphan ? (
-                            <SelectItem value={orphan} className="font-mono text-xs">
-                              {orphan}
-                            </SelectItem>
-                          ) : null}
-                          {provider.voices.map((voice) => (
-                            <SelectItem key={voice.id} value={voice.id} className="font-mono text-xs">
-                              {voice.id}
-                              <span className="text-muted-foreground text-xs">({voice.locale})</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                        ) : null}
+                        {provider.voices.map((voice) => (
+                          <SelectItem key={voice.id} value={voice.id} className="font-mono text-xs">
+                            {voice.id}
+                            <span className="text-muted-foreground text-xs">({voice.locale})</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 );
               })}
             </div>

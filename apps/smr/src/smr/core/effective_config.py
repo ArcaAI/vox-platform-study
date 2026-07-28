@@ -202,7 +202,9 @@ class EffectiveConfigClient:
                 transport=self._transport,
                 headers={self._header_name: self._token},
             ) as client:
-                response = await client.get("/internal/effective-config", params={"service": self._service})
+                response = await client.get(
+                    "/internal/effective-config", params={"service": self._service}
+                )
                 response.raise_for_status()
                 payload = response.json()
 

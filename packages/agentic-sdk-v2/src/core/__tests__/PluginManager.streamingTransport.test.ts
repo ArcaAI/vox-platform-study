@@ -52,29 +52,18 @@ describe('PluginManager.buildStreamingTransport', () => {
   });
 
   it('returns undefined when apiClient is missing even with a pipelineId', () => {
-    const noClient = new PluginManager(
-      { stt: { enabled: true, provider: 'backend' } },
-      createMockLogger(),
-      undefined,
-      false,
-    );
+    const noClient = new PluginManager({ stt: { enabled: true, provider: 'backend' } }, createMockLogger(), undefined, false);
     const transport = noClient.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-1');
     expect(transport).toBeUndefined();
   });
 
   it('returns undefined for local providers regardless of pipelineId', () => {
-    const transport = manager.buildStreamingTransport(
-      { enabled: true, provider: 'local', modelId: 'whisper-tiny' },
-      'pipe-1',
-    );
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'local', modelId: 'whisper-tiny' }, 'pipe-1');
     expect(transport).toBeUndefined();
   });
 
   it('builds a transport with a sessionManager, wsClient and the pipelineId', () => {
-    const transport = manager.buildStreamingTransport(
-      { enabled: true, provider: 'backend' },
-      'pipe-1',
-    ) as {
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-1') as {
       sessionManager: unknown;
       wsClient: unknown;
       pipelineId: string;
@@ -90,10 +79,10 @@ describe('PluginManager.buildStreamingTransport', () => {
 
   it('forwards consultationId from runtime options when set', () => {
     manager.setRuntimeOptions({ pipelineId: 'pipe-A', consultationId: 'cons-7' });
-    const transport = manager.buildStreamingTransport(
-      { enabled: true, provider: 'backend' },
-      'pipe-A',
-    ) as { pipelineId: string; consultationId?: string };
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-A') as {
+      pipelineId: string;
+      consultationId?: string;
+    };
 
     expect(transport.consultationId).toBe('cons-7');
   });
@@ -165,12 +154,7 @@ describe('PluginManager — transcriptionMode passthrough', () => {
   });
 
   it('leaves transcriptionMode undefined when the resolved config has none (back-compat)', () => {
-    const manager = new PluginManager(
-      { stt: { enabled: true, provider: 'backend' } },
-      createMockLogger(),
-      makeApiClient(),
-      false,
-    );
+    const manager = new PluginManager({ stt: { enabled: true, provider: 'backend' } }, createMockLogger(), makeApiClient(), false);
 
     const cfg = manager.getTranscriptionPipelineConfig();
 

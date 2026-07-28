@@ -366,7 +366,9 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         # On the claim-check fixture, return the prompts OFFLOADED (inline
         # emptied + refs) so the captured history threads the ref shape.
         user_prompt, user_ref = ("", _stub_ref("uprompt")) if config.claim_check else ("U", None)
-        system_prompt, system_ref = ("", _stub_ref("sprompt")) if config.claim_check else ("S", None)
+        system_prompt, system_ref = (
+            ("", _stub_ref("sprompt")) if config.claim_check else ("S", None)
+        )
         return AssembleResponse(
             user_prompt=user_prompt,
             user_prompt_ref=user_ref,
@@ -405,7 +407,9 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
             raise ApplicationError("smr unavailable", non_retryable=True)
         # On the claim-check fixture, return the note OFFLOADED (content emptied
         # + ref) so the captured history threads content_ref to the downstream activities.
-        content, content_ref = ("", _stub_ref("note")) if config.claim_check else (config.note_content, None)
+        content, content_ref = (
+            ("", _stub_ref("note")) if config.claim_check else (config.note_content, None)
+        )
         return SmrGenerationResult(
             content=content,
             content_ref=content_ref,
@@ -464,9 +468,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
         recorder.call_order.append("apply_redaction")
         recorder.apply_redaction_inputs.append(payload)
         if config.redaction_failed_closed:
-            return ApplyRedactionResult(
-                text=payload.note_text, changed=False, failed_closed=True
-            )
+            return ApplyRedactionResult(text=payload.note_text, changed=False, failed_closed=True)
         if config.redaction_text is not None:
             # A CHANGED transform carries a non-empty audit manifest (rule ids +
             # span counts, never PHI) so the audit-era marker threaded to persist is
@@ -474,9 +476,7 @@ def make_stub_activities(config: StubConfig, recorder: StubRecorder) -> list:
             return ApplyRedactionResult(
                 text=config.redaction_text,
                 changed=True,
-                manifest=RedactionManifest(
-                    applied=True, total_hits=1, hits_by_rule={"r1": 1}
-                ),
+                manifest=RedactionManifest(applied=True, total_hits=1, hits_by_rule={"r1": 1}),
             )
         return ApplyRedactionResult(text=payload.note_text, changed=False)
 

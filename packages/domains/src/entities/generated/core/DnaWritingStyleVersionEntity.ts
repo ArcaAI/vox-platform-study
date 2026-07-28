@@ -160,5 +160,4 @@ export class DnaWritingStyleVersionEntity extends BaseTenantEntity {
   set DnaWritingStyleReport(value: IDnaWritingStyleVersionEntity['DnaWritingStyleReport']) {
     this.setProperty('DnaWritingStyleReport', value);
   }
-
 }

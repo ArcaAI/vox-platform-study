@@ -279,9 +279,7 @@ class TestOpenAIProviderOverrideConsumption:
         override_client = AsyncMock()
         override_client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        with patch(
-            "smr.providers.openai.AsyncOpenAI", return_value=override_client
-        ) as mock_ctor:
+        with patch("smr.providers.openai.AsyncOpenAI", return_value=override_client) as mock_ctor:
             req = GenerateRequest(
                 prompt="hi",
                 provider="openai",

@@ -25,10 +25,7 @@ import { PolicyEngine } from '../policy.engine';
 // fails this test deterministically (no compiled-artifact indirection).
 import { DEFAULT_POLICIES } from '../../../../database/src/prisma/db_main/seed/01-policy';
 import { DEFAULT_ROLES } from '../../../../database/src/prisma/db_main/seed/03-role';
-import {
-  SEED_ROLE_IDS,
-  SEED_USER_IDS,
-} from '../../../../database/src/prisma/db_main/seed/00-constants';
+import { SEED_ROLE_IDS, SEED_USER_IDS } from '../../../../database/src/prisma/db_main/seed/00-constants';
 
 type SeedPolicy = (typeof DEFAULT_POLICIES)[number];
 
@@ -71,31 +68,26 @@ function buildPrismaRolePayload(roleName: string) {
   if (!role) {
     throw new Error(`Seed role '${roleName}' not found — seed regression`);
   }
-  const policiesByName = new Map<string, SeedPolicy>(
-    DEFAULT_POLICIES.map((p) => [p.name, p]),
-  );
-  const rolePolicies = role.policies
-    .map((policyName, idx) => {
-      const policy = policiesByName.get(policyName);
-      if (!policy) {
-        throw new Error(
-          `Seed policy '${policyName}' referenced by role '${roleName}' not found — seed regression`,
-        );
-      }
-      return {
-        id: `rp-${role.id}-${idx}`,
-        roleId: role.id,
-        policyId: policy.id,
-        priority: idx,
+  const policiesByName = new Map<string, SeedPolicy>(DEFAULT_POLICIES.map((p) => [p.name, p]));
+  const rolePolicies = role.policies.map((policyName, idx) => {
+    const policy = policiesByName.get(policyName);
+    if (!policy) {
+      throw new Error(`Seed policy '${policyName}' referenced by role '${roleName}' not found — seed regression`);
+    }
+    return {
+      id: `rp-${role.id}-${idx}`,
+      roleId: role.id,
+      policyId: policy.id,
+      priority: idx,
+      resourceStatus: 'ENABLED',
+      Policy: {
+        id: policy.id,
+        name: policy.name,
         resourceStatus: 'ENABLED',
-        Policy: {
-          id: policy.id,
-          name: policy.name,
-          resourceStatus: 'ENABLED',
-          rules: policy.rules,
-        },
-      };
-    });
+        rules: policy.rules,
+      },
+    };
+  });
   return {
     id: role.id,
     name: role.name,
@@ -113,10 +105,7 @@ describe('Tenant-ability regression — seeded GLOBAL_ADMIN policy linkage', () 
     mockCacheService.isConnected.mockReturnValue(false);
     mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([]);
     mockPrismaClient.role.findMany.mockResolvedValue([]);
-    policyEngine = new PolicyEngine(
-      mockDatabaseService as any,
-      mockCacheService as any,
-    );
+    policyEngine = new PolicyEngine(mockDatabaseService as any, mockCacheService as any);
   });
 
   describe('seed-data sanity', () => {
@@ -133,13 +122,9 @@ describe('Tenant-ability regression — seeded GLOBAL_ADMIN policy linkage', () 
     });
 
     it('system-full-access policy contains the manage:all wildcard rule', () => {
-      const policy = DEFAULT_POLICIES.find(
-        (p) => p.name === 'system-full-access',
-      );
+      const policy = DEFAULT_POLICIES.find((p) => p.name === 'system-full-access');
       expect(policy).toBeDefined();
-      expect(policy?.rules).toEqual(
-        expect.arrayContaining([{ action: 'manage', subject: 'all' }]),
-      );
+      expect(policy?.rules).toEqual(expect.arrayContaining([{ action: 'manage', subject: 'all' }]));
     });
 
     // The tenant-admin nav↔backend gap is closed by
@@ -147,9 +132,7 @@ describe('Tenant-ability regression — seeded GLOBAL_ADMIN policy linkage', () 
     // Departments and ASR pipelines. Lock the seed shape so a future edit
     // that drops either rule fails here before reaching production.
     it('tenant-full-access policy includes manage:Department and manage:AsrPipeline', () => {
-      const policy = DEFAULT_POLICIES.find(
-        (p) => p.name === 'tenant-full-access',
-      );
+      const policy = DEFAULT_POLICIES.find((p) => p.name === 'tenant-full-access');
       expect(policy).toBeDefined();
       expect(policy?.rules).toEqual(
         expect.arrayContaining([

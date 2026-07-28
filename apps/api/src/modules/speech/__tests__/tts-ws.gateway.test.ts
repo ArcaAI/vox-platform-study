@@ -169,7 +169,13 @@ describe('TtsWsGateway', () => {
     };
 
     it('injects voice_bindings into the first init frame when non-empty', async () => {
-      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig(BINDINGS) as never, makeProviderConnectionService() as never);
+      gateway = new TtsWsGateway(
+        ticketService as never,
+        config as never,
+        secrets as never,
+        makeTenantTtsConfig(BINDINGS) as never,
+        makeProviderConnectionService() as never,
+      );
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
@@ -184,7 +190,13 @@ describe('TtsWsGateway', () => {
     });
 
     it('omits voice_bindings when the resolved bindings map is empty', async () => {
-      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig({}) as never, makeProviderConnectionService() as never);
+      gateway = new TtsWsGateway(
+        ticketService as never,
+        config as never,
+        secrets as never,
+        makeTenantTtsConfig({}) as never,
+        makeProviderConnectionService() as never,
+      );
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
@@ -219,7 +231,13 @@ describe('TtsWsGateway', () => {
     it('injects provider_overrides into the first init frame via IProviderConnectionService', async () => {
       const OVERRIDES = { sarvam: { api_key: 'THE-KEY', base_url: 'https://vpc.sarvam' } };
       const providerConnectionService = makeProviderConnectionService(OVERRIDES);
-      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig({}) as never, providerConnectionService as never);
+      gateway = new TtsWsGateway(
+        ticketService as never,
+        config as never,
+        secrets as never,
+        makeTenantTtsConfig({}) as never,
+        providerConnectionService as never,
+      );
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
@@ -233,7 +251,13 @@ describe('TtsWsGateway', () => {
     });
 
     it('omits provider_overrides when the resolved map is empty', async () => {
-      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never, makeTenantTtsConfig({}) as never, makeProviderConnectionService({}) as never);
+      gateway = new TtsWsGateway(
+        ticketService as never,
+        config as never,
+        secrets as never,
+        makeTenantTtsConfig({}) as never,
+        makeProviderConnectionService({}) as never,
+      );
       gateway.createUpstreamSocket = vi.fn(() => upstream as never);
       const client = makeSocket();
       await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));

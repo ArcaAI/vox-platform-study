@@ -13,28 +13,28 @@ const BASE = 'admin/mcp-servers';
 
 /** Strong ETag from a list-row version (for DELETE OCC without a prior getWithEtag). */
 export function etagFromVersion(version: number): string {
-    return `"${version}"`;
+  return `"${version}"`;
 }
 
 /** SYSTEM registry list (global-admin; omit tenantId → service defaults to SYSTEM). */
 export function listMcpServers(): Promise<McpServerListResponse> {
-    return getJson(BASE);
+  return getJson(BASE);
 }
 
 export function getMcpServer(id: string): Promise<WithEtag<McpServer>> {
-    return getWithEtag(`${BASE}/${encodeURIComponent(id)}`);
+  return getWithEtag(`${BASE}/${encodeURIComponent(id)}`);
 }
 
 export function createMcpServer(body: CreateMcpServerRequest): Promise<McpServer> {
-    return postJson(BASE, body);
+  return postJson(BASE, body);
 }
 
 /** OCC PATCH: If-Match + body expectedVersion folded from the read ETag. */
 export function updateMcpServer(id: string, patch: UpdateMcpServerRequest, etag: string): Promise<WithEtag<McpServer>> {
-    return patchWithEtag(`${BASE}/${encodeURIComponent(id)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+  return patchWithEtag(`${BASE}/${encodeURIComponent(id)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
 /** OCC soft-delete: If-Match required (412 on drift, 428 when missing). */
 export function deleteMcpServer(id: string, etag: string): Promise<McpServer> {
-    return request<McpServer>(`${BASE}/${encodeURIComponent(id)}`, { method: 'DELETE', etag }).then((result) => result.data);
+  return request<McpServer>(`${BASE}/${encodeURIComponent(id)}`, { method: 'DELETE', etag }).then((result) => result.data);
 }

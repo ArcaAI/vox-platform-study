@@ -34,9 +34,7 @@ describe('SttInternalController.ensureInternalApiKey', () => {
 
   it('throws UnauthorizedException when `apiKey` is undefined on the request', async () => {
     const request = {} as any;
-    await expect(
-      controller.createTranscript(request, {} as any),
-    ).rejects.toThrow(UnauthorizedException);
+    await expect(controller.createTranscript(request, {} as any)).rejects.toThrow(UnauthorizedException);
     expect(sttInternalService.createTranscript).not.toHaveBeenCalled();
   });
 
@@ -70,9 +68,7 @@ describe('SttInternalController.ensureInternalApiKey', () => {
     // typed `RequestWithAuth` interface enforces this at compile-time;
     // this test makes the runtime expectation explicit too.
     const request = { aip_key: { id: 'typo-key' } } as any;
-    await expect(
-      controller.createTranscript(request, {} as any),
-    ).rejects.toThrow(UnauthorizedException);
+    await expect(controller.createTranscript(request, {} as any)).rejects.toThrow(UnauthorizedException);
   });
 
   // POST internal/stt/media: register a storage object as Media.

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../../registries/basecn/tabs'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../../../registries/basecn/tabs';
 
 describe('Tabs', () => {
   it('renders without crashing', () => {
@@ -12,8 +12,8 @@ describe('Tabs', () => {
         </TabsList>
         <TabsContent value="tab1">Content 1</TabsContent>
         <TabsContent value="tab2">Content 2</TabsContent>
-      </Tabs>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </Tabs>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

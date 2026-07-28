@@ -28,11 +28,7 @@ export class TenantSttConfigEntityMapper extends BaseMapper<Entities.TenantSttCo
   }
 
   public toPersistenceChanges(entity: Entities.TenantSttConfigEntity): Partial<Models.TenantSttConfig> {
-    const result = AutoEntityChangeMapper(
-      entity,
-      Models.TenantSttConfig,
-      TenantSttConfigEntityMapperHandlers.$toPersistence,
-    );
+    const result = AutoEntityChangeMapper(entity, Models.TenantSttConfig, TenantSttConfigEntityMapperHandlers.$toPersistence);
     return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
@@ -41,10 +37,7 @@ export class TenantSttConfigEntityMapper extends BaseMapper<Entities.TenantSttCo
   }
 }
 
-export const TenantSttConfigEntityMapperHandlers = createMapperHandlers<
-  Entities.TenantSttConfigEntity,
-  Models.TenantSttConfig
->({
+export const TenantSttConfigEntityMapperHandlers = createMapperHandlers<Entities.TenantSttConfigEntity, Models.TenantSttConfig>({
   $toPersistence: {},
   $toDomain: {},
 });

@@ -43,22 +43,12 @@ describe('isNeedsAttention', () => {
 
 describe('sortClaimsByAttention', () => {
   it('floats flagged first, then unverified, then verified', () => {
-    const input = [
-      claim('a', 'S', 'verified'),
-      claim('b', 'O', 'unverified'),
-      claim('c', 'A', 'flagged'),
-      claim('d', 'P', 'verified'),
-    ];
+    const input = [claim('a', 'S', 'verified'), claim('b', 'O', 'unverified'), claim('c', 'A', 'flagged'), claim('d', 'P', 'verified')];
     expect(sortClaimsByAttention(input).map((c) => c.id)).toEqual(['c', 'b', 'a', 'd']);
   });
 
   it('is stable within a status group (preserves source order)', () => {
-    const input = [
-      claim('v1', 'S', 'verified'),
-      claim('u1', 'S', 'unverified'),
-      claim('u2', 'O', 'unverified'),
-      claim('v2', 'A', 'verified'),
-    ];
+    const input = [claim('v1', 'S', 'verified'), claim('u1', 'S', 'unverified'), claim('u2', 'O', 'unverified'), claim('v2', 'A', 'verified')];
     expect(sortClaimsByAttention(input).map((c) => c.id)).toEqual(['u1', 'u2', 'v1', 'v2']);
   });
 
@@ -72,11 +62,7 @@ describe('sortClaimsByAttention', () => {
 
 describe('selectClaimsNeedingAttention', () => {
   it('drops verified claims and floats flagged above unverified', () => {
-    const input = [
-      claim('v', 'S', 'verified'),
-      claim('u', 'O', 'unverified'),
-      claim('f', 'A', 'flagged'),
-    ];
+    const input = [claim('v', 'S', 'verified'), claim('u', 'O', 'unverified'), claim('f', 'A', 'flagged')];
     const out = selectClaimsNeedingAttention(input);
     expect(out.map((c) => c.id)).toEqual(['f', 'u']);
   });
@@ -88,12 +74,7 @@ describe('selectClaimsNeedingAttention', () => {
 
 describe('groupClaimsBySection', () => {
   it('returns the four SOAP sections in order with their claims and labels', () => {
-    const input = [
-      claim('p1', 'P', 'verified'),
-      claim('s1', 'S', 'unverified'),
-      claim('a1', 'A', 'flagged'),
-      claim('s2', 'S', 'verified'),
-    ];
+    const input = [claim('p1', 'P', 'verified'), claim('s1', 'S', 'unverified'), claim('a1', 'A', 'flagged'), claim('s2', 'S', 'verified')];
     const groups = groupClaimsBySection(input);
     expect(groups.map((g) => g.section)).toEqual(['S', 'O', 'A', 'P']);
     expect(groups.map((g) => g.label)).toEqual(['Subjective', 'Objective', 'Assessment', 'Plan']);

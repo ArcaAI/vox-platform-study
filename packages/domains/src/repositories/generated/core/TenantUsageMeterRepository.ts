@@ -19,11 +19,7 @@ export class TenantUsageMeterRepository extends Repository<TenantUsageMeterEntit
    * row. Returns `null` when the window has not been opened yet, so the
    * metering service can branch into "create" on first increment.
    */
-  async findWindow(
-    tenantId: string,
-    metric: UsageMeterMetric,
-    periodStart: Date,
-  ): Promise<TenantUsageMeterEntity | null> {
+  async findWindow(tenantId: string, metric: UsageMeterMetric, periodStart: Date): Promise<TenantUsageMeterEntity | null> {
     try {
       return await this.findFirst({ filters: { tenantId, metric, periodStart } });
     } catch {

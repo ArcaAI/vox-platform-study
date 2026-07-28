@@ -19,12 +19,19 @@ def ollama_config():
 
 @pytest.fixture
 def azure_config():
-    return AzureOpenAIConfig(api_key="k", endpoint="https://test.openai.azure.com", deployment_name="gpt-4", default_model="gpt-4")
+    return AzureOpenAIConfig(
+        api_key="k",
+        endpoint="https://test.openai.azure.com",
+        deployment_name="gpt-4",
+        default_model="gpt-4",
+    )
 
 
 @pytest.fixture
 def bedrock_config():
-    return BedrockConfig(region="us-east-1", default_model="anthropic.claude-3-sonnet-20240229-v1:0")
+    return BedrockConfig(
+        region="us-east-1", default_model="anthropic.claude-3-sonnet-20240229-v1:0"
+    )
 
 
 @pytest.fixture
@@ -39,6 +46,7 @@ class TestOllamaEdgeCases:
     @pytest.mark.asyncio
     async def test_generate_empty_response_field(self, ollama_config, mock_http):
         from smr.providers.ollama import OllamaProvider
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"response": "", "done": True}
@@ -51,6 +59,7 @@ class TestOllamaEdgeCases:
     @pytest.mark.asyncio
     async def test_generate_missing_response_key(self, ollama_config, mock_http):
         from smr.providers.ollama import OllamaProvider
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"done": True}
@@ -63,6 +72,7 @@ class TestOllamaEdgeCases:
     @pytest.mark.asyncio
     async def test_generate_with_system_prompt(self, ollama_config, mock_http):
         from smr.providers.ollama import OllamaProvider
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"response": "ok", "done": True}
@@ -76,13 +86,16 @@ class TestOllamaEdgeCases:
     @pytest.mark.asyncio
     async def test_generate_sends_options(self, ollama_config, mock_http):
         from smr.providers.ollama import OllamaProvider
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"response": "ok", "done": True}
         mock_resp.raise_for_status = MagicMock()
         mock_http.post.return_value = mock_resp
         provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        await provider.generate(GenerateRequest(prompt="hi", temperature=0.3, max_tokens=500, top_p=0.9))
+        await provider.generate(
+            GenerateRequest(prompt="hi", temperature=0.3, max_tokens=500, top_p=0.9)
+        )
         body = mock_http.post.call_args.kwargs["json"]
         assert body["options"]["temperature"] == 0.3
         assert body["options"]["num_predict"] == 500
@@ -94,6 +107,7 @@ class TestOllamaEdgeCases:
         # model is used verbatim (the provider's informational ``default_model``
         # is NOT substituted into the generation payload).
         from smr.providers.ollama import OllamaProvider
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {"response": "ok", "done": True}
@@ -107,6 +121,7 @@ class TestOllamaEdgeCases:
     @pytest.mark.asyncio
     async def test_get_info_when_api_fails(self, ollama_config, mock_http):
         from smr.providers.ollama import OllamaProvider
+
         mock_http.get.side_effect = httpx.ConnectError("refused")
         provider = OllamaProvider(config=ollama_config, http_client=mock_http)
         info = await provider.get_info()
@@ -126,12 +141,14 @@ class TestOllamaEdgeCases:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.raise_for_status = MagicMock()
-        mock_resp.aiter_lines = lambda: _async_iter([
-            "",
-            json.dumps({"response": "hi", "done": False}),
-            "",
-            json.dumps({"response": "", "done": True}),
-        ])
+        mock_resp.aiter_lines = lambda: _async_iter(
+            [
+                "",
+                json.dumps({"response": "hi", "done": False}),
+                "",
+                json.dumps({"response": "", "done": True}),
+            ]
+        )
 
         @asynccontextmanager
         async def _stream(*a, **kw):
@@ -139,7 +156,9 @@ class TestOllamaEdgeCases:
 
         mock_http.stream = _stream
         provider = OllamaProvider(config=ollama_config, http_client=mock_http)
-        chunks = [c async for c in provider.generate_stream(GenerateRequest(prompt="hi", stream=True))]
+        chunks = [
+            c async for c in provider.generate_stream(GenerateRequest(prompt="hi", stream=True))
+        ]
         text_chunks = [c for c in chunks if c.type == "chunk"]
         assert len(text_chunks) == 1
         assert text_chunks[0].content == "hi"
@@ -152,6 +171,7 @@ class TestAzureEdgeCases:
     @pytest.mark.asyncio
     async def test_generate_empty_content(self, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         mock_choice = MagicMock()
         mock_choice.message.content = None
         mock_choice.finish_reason = "stop"
@@ -161,12 +181,15 @@ class TestAzureEdgeCases:
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
-        content, _reasoning, _stats = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
+        content, _reasoning, _stats = await provider.generate(
+            GenerateRequest(prompt="hi", provider="azure_openai")
+        )
         assert content == ""
 
     @pytest.mark.asyncio
     async def test_generate_passes_all_params(self, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         mock_choice = MagicMock()
         mock_choice.message.content = "ok"
         mock_choice.finish_reason = "stop"
@@ -176,7 +199,11 @@ class TestAzureEdgeCases:
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
-        await provider.generate(GenerateRequest(prompt="hi", temperature=0.2, max_tokens=100, top_p=0.8, provider="azure_openai"))
+        await provider.generate(
+            GenerateRequest(
+                prompt="hi", temperature=0.2, max_tokens=100, top_p=0.8, provider="azure_openai"
+            )
+        )
         call_kw = provider._client.chat.completions.create.call_args.kwargs
         assert call_kw["temperature"] == 0.2
         assert call_kw["max_tokens"] == 100
@@ -204,13 +231,19 @@ class TestAzureEdgeCases:
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=_stream())
-        chunks = [c async for c in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, provider="azure_openai"))]
+        chunks = [
+            c
+            async for c in provider.generate_stream(
+                GenerateRequest(prompt="hi", stream=True, provider="azure_openai")
+            )
+        ]
         text = [c for c in chunks if c.type == "chunk"]
         assert len(text) == 1
 
     @pytest.mark.asyncio
     async def test_get_info_when_unavailable(self, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.models.list = AsyncMock(side_effect=Exception("auth failed"))
@@ -225,6 +258,7 @@ class TestBedrockEdgeCases:
     @pytest.mark.asyncio
     async def test_generate_multiple_content_blocks(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
         mock_client.converse.return_value = {
             "output": {"message": {"content": [{"text": "Hello "}, {"text": "world"}]}},
@@ -234,13 +268,16 @@ class TestBedrockEdgeCases:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             content, _reasoning, usage = await provider.generate(
-                GenerateRequest(prompt="hi", provider="bedrock", model="anthropic.claude-3-sonnet-20240229-v1:0")
+                GenerateRequest(
+                    prompt="hi", provider="bedrock", model="anthropic.claude-3-sonnet-20240229-v1:0"
+                )
             )
         assert content == "Hello world"
 
     @pytest.mark.asyncio
     async def test_generate_with_system_prompt(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
         mock_client.converse.return_value = {
             "output": {"message": {"content": [{"text": "ok"}]}},
@@ -264,12 +301,17 @@ class TestBedrockEdgeCases:
     @pytest.mark.asyncio
     async def test_stream_usage_event(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
-        mock_client.converse_stream.return_value = {"stream": iter([
-            {"contentBlockDelta": {"delta": {"text": "hi"}}},
-            {"messageStop": {"stopReason": "end_turn"}},
-            {"metadata": {"usage": {"inputTokens": 5, "outputTokens": 10}}},
-        ])}
+        mock_client.converse_stream.return_value = {
+            "stream": iter(
+                [
+                    {"contentBlockDelta": {"delta": {"text": "hi"}}},
+                    {"messageStop": {"stopReason": "end_turn"}},
+                    {"metadata": {"usage": {"inputTokens": 5, "outputTokens": 10}}},
+                ]
+            )
+        }
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
@@ -291,12 +333,17 @@ class TestBedrockEdgeCases:
     @pytest.mark.asyncio
     async def test_stream_empty_text_skipped(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
-        mock_client.converse_stream.return_value = {"stream": iter([
-            {"contentBlockDelta": {"delta": {"text": ""}}},
-            {"contentBlockDelta": {"delta": {"text": "hello"}}},
-            {"messageStop": {"stopReason": "end_turn"}},
-        ])}
+        mock_client.converse_stream.return_value = {
+            "stream": iter(
+                [
+                    {"contentBlockDelta": {"delta": {"text": ""}}},
+                    {"contentBlockDelta": {"delta": {"text": "hello"}}},
+                    {"messageStop": {"stopReason": "end_turn"}},
+                ]
+            )
+        }
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
@@ -318,6 +365,7 @@ class TestBedrockEdgeCases:
     @pytest.mark.asyncio
     async def test_get_info_when_unavailable(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
         mock_client.list_foundation_models.side_effect = Exception("no creds")
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
@@ -330,6 +378,7 @@ class TestBedrockEdgeCases:
     @pytest.mark.asyncio
     async def test_generate_passes_inference_config(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
         mock_client.converse.return_value = {
             "output": {"message": {"content": [{"text": "ok"}]}},

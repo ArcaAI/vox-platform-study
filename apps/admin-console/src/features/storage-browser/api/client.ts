@@ -6,18 +6,18 @@
 
 import { deleteJson, getJson, patchJson, postJson, request } from '@/shared/api';
 import type {
-    BucketWithFiles,
-    CreateBucketRequest,
-    CreateBucketResult,
-    DeleteBucketResult,
-    DeleteFileResult,
-    FileInfoResult,
-    FileUploadResult,
-    StorageBucket,
-    StorageHealth,
-    StorageObject,
-    UpdateBucketRequest,
-    UpdateBucketResult,
+  BucketWithFiles,
+  CreateBucketRequest,
+  CreateBucketResult,
+  DeleteBucketResult,
+  DeleteFileResult,
+  FileInfoResult,
+  FileUploadResult,
+  StorageBucket,
+  StorageHealth,
+  StorageObject,
+  UpdateBucketRequest,
+  UpdateBucketResult,
 } from './types';
 
 const BUCKETS = 'storage/buckets';
@@ -33,28 +33,28 @@ const bucketPath = (name: string) => `${BUCKETS}/${encodeURIComponent(name)}`;
 const filePath = (bucketName: string, key: string) => `${bucketPath(bucketName)}/files/${encodeURIComponent(key)}`;
 
 export function listBuckets(): Promise<StorageBucket[]> {
-    return getJson(BUCKETS);
+  return getJson(BUCKETS);
 }
 
 export function createBucket(body: CreateBucketRequest): Promise<CreateBucketResult> {
-    return postJson(BUCKETS, body);
+  return postJson(BUCKETS, body);
 }
 
 export function getBucket(name: string): Promise<BucketWithFiles> {
-    return getJson(bucketPath(name));
+  return getJson(bucketPath(name));
 }
 
 export function updateBucket(name: string, body: UpdateBucketRequest): Promise<UpdateBucketResult> {
-    return patchJson(bucketPath(name), body);
+  return patchJson(bucketPath(name), body);
 }
 
 export function deleteBucket(name: string): Promise<DeleteBucketResult> {
-    return deleteJson(bucketPath(name));
+  return deleteJson(bucketPath(name));
 }
 
 /** Plain-array listing; `prefix` is the only server-side filter (no pagination). */
 export function listObjects(bucketName: string, prefix?: string): Promise<StorageObject[]> {
-    return getJson(`${bucketPath(bucketName)}/files`, { prefix: prefix || undefined });
+  return getJson(`${bucketPath(bucketName)}/files`, { prefix: prefix || undefined });
 }
 
 /**
@@ -64,20 +64,20 @@ export function listObjects(bucketName: string, prefix?: string): Promise<Storag
  * the file's original name). Limits: 100 MB, audio/video/application/text/image.
  */
 export async function uploadFile(bucketName: string, file: File, key?: string): Promise<FileUploadResult> {
-    const form = new FormData();
-    form.set('file', file, file.name);
-    return (await request<FileUploadResult>(`${bucketPath(bucketName)}/files`, { method: 'POST', body: form, params: { key } })).data;
+  const form = new FormData();
+  form.set('file', file, file.name);
+  return (await request<FileUploadResult>(`${bucketPath(bucketName)}/files`, { method: 'POST', body: form, params: { key } })).data;
 }
 
 /** Presigned download: returns `{ key, url }` JSON (1 h expiry), never bytes. */
 export function getFileInfo(bucketName: string, key: string): Promise<FileInfoResult> {
-    return getJson(filePath(bucketName, key));
+  return getJson(filePath(bucketName, key));
 }
 
 export function deleteFile(bucketName: string, key: string): Promise<DeleteFileResult> {
-    return deleteJson(filePath(bucketName, key));
+  return deleteJson(filePath(bucketName, key));
 }
 
 export function getStorageHealth(): Promise<StorageHealth> {
-    return getJson('storage/health');
+  return getJson('storage/health');
 }

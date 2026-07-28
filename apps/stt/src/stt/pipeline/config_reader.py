@@ -34,9 +34,7 @@ class PipelineConfigReader:
         self._session = session
         self._parser = get_yaml_parser()
 
-    async def get_pipeline(
-        self, pipeline_id: str, tenant_id: str | None = None
-    ) -> PipelineConfig:
+    async def get_pipeline(self, pipeline_id: str, tenant_id: str | None = None) -> PipelineConfig:
         """
         Fetch pipeline by ID from database.
 

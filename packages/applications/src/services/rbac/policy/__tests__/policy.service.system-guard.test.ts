@@ -45,7 +45,14 @@ const RBAC_SYSTEM_MANAGE = row({
 function makeMocks() {
   const cls = { get: vi.fn((k: string) => (k === 'user' ? ADMIN_USER : k === 'tenantId' ? 'tenant-1' : null)), set: vi.fn() };
   const eventEmitter = { emit: vi.fn() };
-  const policyRepo = { findMany: vi.fn(), count: vi.fn(), findById: vi.fn(), create: vi.fn(), update: vi.fn(), softDelete: vi.fn().mockResolvedValue(undefined) };
+  const policyRepo = {
+    findMany: vi.fn(),
+    count: vi.fn(),
+    findById: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    softDelete: vi.fn().mockResolvedValue(undefined),
+  };
   const engine = { invalidatePolicy: vi.fn().mockResolvedValue(undefined) };
   // Break-glass dependencies (the delete path verifies password +
   // confirmation name; these mocks accept any password so the guard
@@ -146,7 +153,12 @@ describe('PolicyService system-lockout guard', () => {
     it('allows a rules edit that RETAINS the load-bearing rule', async () => {
       mocks.policyRepo.findById.mockResolvedValue(SYSTEM_FULL_ACCESS);
       mocks.policyRepo.update.mockResolvedValue(SYSTEM_FULL_ACCESS);
-      await service.update('sfa', { rules: [{ action: 'manage', subject: 'all' }, { action: 'read', subject: 'AuditLog' }] });
+      await service.update('sfa', {
+        rules: [
+          { action: 'manage', subject: 'all' },
+          { action: 'read', subject: 'AuditLog' },
+        ],
+      });
       expect(mocks.policyRepo.update).toHaveBeenCalledTimes(1);
     });
 

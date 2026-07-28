@@ -28,13 +28,7 @@ function renderGrid(props: Partial<React.ComponentProps<typeof CardGrid<Dept>>> 
       getItemId={(d) => d.id}
       aria-label="Departments"
       renderCard={(d, { selected }) => (
-        <EntityCard
-          title={d.name}
-          icon={Stethoscope}
-          meta={d.code}
-          status={{ label: 'Enabled', colorRole: 'success' }}
-          selected={selected}
-        />
+        <EntityCard title={d.name} icon={Stethoscope} meta={d.code} status={{ label: 'Enabled', colorRole: 'success' }} selected={selected} />
       )}
       {...props}
     />,

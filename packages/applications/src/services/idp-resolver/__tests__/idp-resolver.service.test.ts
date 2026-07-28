@@ -136,17 +136,13 @@ describe('IdpResolverService.resolveForTenant (repository read, NOT AppSettingsS
   it('throws when no enabled provider is configured for the tenant', async () => {
     const { svc, repo } = makeService();
     repo.findEnabledByTenantAndProtocol.mockResolvedValue(null);
-    await expect(svc.resolveForTenant(TENANT, IdpProtocol.OIDC, REDIRECT_URI)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(svc.resolveForTenant(TENANT, IdpProtocol.OIDC, REDIRECT_URI)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('throws when Vault is unavailable (no sealed-secret unseal path)', async () => {
     const { svc, repo } = makeService({ withVault: false });
     repo.findEnabledByTenantAndProtocol.mockResolvedValue(enabledProvider());
-    await expect(svc.resolveForTenant(TENANT, IdpProtocol.OIDC, REDIRECT_URI)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(svc.resolveForTenant(TENANT, IdpProtocol.OIDC, REDIRECT_URI)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('decrypts the sealed secret and builds a client from the persisted config', async () => {

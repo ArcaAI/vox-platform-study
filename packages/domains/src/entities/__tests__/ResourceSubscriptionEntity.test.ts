@@ -14,15 +14,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  ResourceSubscriptionEntity,
-  IResourceSubscriptionEntity,
-} from '../generated/core/ResourceSubscriptionEntity';
+import { ResourceSubscriptionEntity, IResourceSubscriptionEntity } from '../generated/core/ResourceSubscriptionEntity';
 import { ResourceStatusType, ResourceSubscriptionType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<IResourceSubscriptionEntity> = {},
-): IResourceSubscriptionEntity {
+function createValidInit(overrides: Partial<IResourceSubscriptionEntity> = {}): IResourceSubscriptionEntity {
   return {
     id: 'rs-test-id',
     tenantId: '50000000-0000-0000-0000-000000000000',
@@ -62,16 +57,11 @@ describe('ResourceSubscriptionEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it.each(Object.values(ResourceSubscriptionType))(
-      'should accept subscriptionType %s',
-      (subscriptionType) => {
-        const entity = new ResourceSubscriptionEntity(
-          createValidInit({ subscriptionType }),
-        );
+    it.each(Object.values(ResourceSubscriptionType))('should accept subscriptionType %s', (subscriptionType) => {
+      const entity = new ResourceSubscriptionEntity(createValidInit({ subscriptionType }));
 
-        expect(() => entity.validate()).not.toThrow();
-      },
-    );
+      expect(() => entity.validate()).not.toThrow();
+    });
 
     it('should accept null/undefined optional resourceId, resourceTypeName, subscriptionMetadata', () => {
       const entity = new ResourceSubscriptionEntity(
@@ -94,9 +84,7 @@ describe('ResourceSubscriptionEntity.validate()', () => {
         }),
       );
 
-      expect(() => entity.validate()).toThrow(
-        'Resource subscription subscriptionType is required',
-      );
+      expect(() => entity.validate()).toThrow('Resource subscription subscriptionType is required');
     });
 
     it('should throw when subscriptionType is not a member of ResourceSubscriptionType', () => {
@@ -106,61 +94,41 @@ describe('ResourceSubscriptionEntity.validate()', () => {
         }),
       );
 
-      expect(() => entity.validate()).toThrow(
-        'Resource subscription subscriptionType is invalid',
-      );
+      expect(() => entity.validate()).toThrow('Resource subscription subscriptionType is invalid');
     });
   });
 
   describe('targetUserId', () => {
     it('should throw when targetUserId is empty', () => {
-      const entity = new ResourceSubscriptionEntity(
-        createValidInit({ targetUserId: '' }),
-      );
+      const entity = new ResourceSubscriptionEntity(createValidInit({ targetUserId: '' }));
 
-      expect(() => entity.validate()).toThrow(
-        'Resource subscription targetUserId is required',
-      );
+      expect(() => entity.validate()).toThrow('Resource subscription targetUserId is required');
     });
 
     it('should throw when targetUserId is whitespace only', () => {
-      const entity = new ResourceSubscriptionEntity(
-        createValidInit({ targetUserId: '   ' }),
-      );
+      const entity = new ResourceSubscriptionEntity(createValidInit({ targetUserId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'Resource subscription targetUserId is required',
-      );
+      expect(() => entity.validate()).toThrow('Resource subscription targetUserId is required');
     });
   });
 
   describe('resourceId', () => {
     it('should throw when resourceId is whitespace only', () => {
-      const entity = new ResourceSubscriptionEntity(
-        createValidInit({ resourceId: '   ' }),
-      );
+      const entity = new ResourceSubscriptionEntity(createValidInit({ resourceId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'Resource subscription resourceId must not be empty when provided',
-      );
+      expect(() => entity.validate()).toThrow('Resource subscription resourceId must not be empty when provided');
     });
   });
 
   describe('resourceTypeName', () => {
     it('should throw when resourceTypeName exceeds 255 characters', () => {
-      const entity = new ResourceSubscriptionEntity(
-        createValidInit({ resourceTypeName: 'x'.repeat(256) }),
-      );
+      const entity = new ResourceSubscriptionEntity(createValidInit({ resourceTypeName: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Resource subscription resourceTypeName must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('Resource subscription resourceTypeName must not exceed 255 characters');
     });
 
     it('should accept resourceTypeName exactly 255 characters', () => {
-      const entity = new ResourceSubscriptionEntity(
-        createValidInit({ resourceTypeName: 'x'.repeat(255) }),
-      );
+      const entity = new ResourceSubscriptionEntity(createValidInit({ resourceTypeName: 'x'.repeat(255) }));
 
       expect(() => entity.validate()).not.toThrow();
     });

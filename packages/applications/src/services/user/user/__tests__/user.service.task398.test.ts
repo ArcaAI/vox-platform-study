@@ -36,7 +36,7 @@ const mockDatabaseService = {
 };
 // Constructor now takes crypto + appSettings (unused by enrichment).
 const mockCryptoService = { hash: vi.fn(), verify: vi.fn() };
-const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultValue: T): T => defaultValue) };
+const mockAppSettings = { getValueWithDefault: vi.fn(<T>(_key: string, defaultValue: T): T => defaultValue) };
 
 function buildService() {
   return new UserService(
@@ -102,9 +102,7 @@ describe('UserService — getExportEnrichment', () => {
   it('scopes membership rows to the supplied tenant (tenant-scoped export)', async () => {
     await buildService().getExportEnrichment(['u-1'], 't-A');
 
-    expect(departmentFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ tenantId: 't-A' }) }),
-    );
+    expect(departmentFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: 't-A' }) }));
   });
 
   it('applies NO tenant filter when none is supplied (cross-tenant super-admin export)', async () => {

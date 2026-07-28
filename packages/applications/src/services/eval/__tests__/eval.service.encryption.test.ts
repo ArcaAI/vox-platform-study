@@ -119,13 +119,10 @@ describe('EvalService — field encryption', () => {
   describe('recordEvalRunWithScores', () => {
     it('encrypts the run and every score before persisting', async () => {
       const service = buildService(true);
-      await service.recordEvalRunWithScores(
-        { tenantId: 'tenant-1', goldenSetId: 'set-1', modelName: 'gpt-x', notes: 'n' },
-        [
-          { goldenCaseId: 'case-1', metric: 'faithfulness', score: 0.9, rationale: 'r1' },
-          { goldenCaseId: 'case-2', metric: 'coverage', score: 0.8, rationale: 'r2' },
-        ],
-      );
+      await service.recordEvalRunWithScores({ tenantId: 'tenant-1', goldenSetId: 'set-1', modelName: 'gpt-x', notes: 'n' }, [
+        { goldenCaseId: 'case-1', metric: 'faithfulness', score: 0.9, rationale: 'r1' },
+        { goldenCaseId: 'case-2', metric: 'coverage', score: 0.8, rationale: 'r2' },
+      ]);
 
       expect(mockEvalRunRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
       expect(mockEvalScoreRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(2);

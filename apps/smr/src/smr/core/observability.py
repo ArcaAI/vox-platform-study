@@ -69,13 +69,15 @@ def setup_opentelemetry(
     Stores ``tracer_provider`` and ``logger_provider`` on ``app.state``
     for graceful shutdown in the lifespan teardown.
     """
-    resource = Resource.create({
-        "service.name": service_name,
-        "service.version": _TRACER_VERSION,
-        "service.namespace": service_namespace,
-        "deployment.environment": deployment_environment,
-        "telemetry.sdk.language": "python",
-    })
+    resource = Resource.create(
+        {
+            "service.name": service_name,
+            "service.version": _TRACER_VERSION,
+            "service.namespace": service_namespace,
+            "deployment.environment": deployment_environment,
+            "telemetry.sdk.language": "python",
+        }
+    )
 
     # --- Traces ---
     tracer_provider = TracerProvider(resource=resource)
@@ -114,7 +116,9 @@ def setup_opentelemetry(
 
     logging.getLogger(__name__).info(
         "OpenTelemetry initialised: traces=True logs=%s endpoint=%s service=%s",
-        logs_enabled, endpoint, service_name,
+        logs_enabled,
+        endpoint,
+        service_name,
     )
 
 

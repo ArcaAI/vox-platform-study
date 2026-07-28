@@ -39,8 +39,9 @@ class JobProcessor:
         redis: aioredis.Redis,
         gliner_provider: GlinerProvider | None = None,
         max_concurrent: int = 4,
-        gliner_provider_resolver: Callable[[], AbstractAsyncContextManager[GlinerProvider]]
-        | None = None,
+        gliner_provider_resolver: (
+            Callable[[], AbstractAsyncContextManager[GlinerProvider]] | None
+        ) = None,
     ) -> None:
         self.redis: Any = redis
         self.gliner_provider = gliner_provider
@@ -141,7 +142,7 @@ class JobProcessor:
         keys.sort()
 
         jobs = []
-        for key in keys[offset:offset + limit]:
+        for key in keys[offset : offset + limit]:
             job_data = await self.redis.hgetall(key)
             if job_data:
                 if status is None or job_data.get("status") == status:

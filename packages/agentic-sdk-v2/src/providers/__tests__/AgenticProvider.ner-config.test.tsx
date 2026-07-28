@@ -60,24 +60,21 @@ describe('AgenticProvider NER config placement', () => {
       },
     };
 
-    const initKnowledgeSpy = vi.spyOn(PluginManager.prototype, 'initializeKnowledgePipeline')
-      .mockResolvedValueOnce(undefined);
+    const initKnowledgeSpy = vi.spyOn(PluginManager.prototype, 'initializeKnowledgePipeline').mockResolvedValueOnce(undefined);
     const setNERConfigSpy = vi.spyOn(PluginManager.prototype, 'setNERConfig');
 
     render(
       <AgenticProvider config={configWithPluginsNer}>
         <StoreProbe />
         <div>Test</div>
-      </AgenticProvider>
+      </AgenticProvider>,
     );
 
     await waitFor(() => {
       expect(capturedStore!.getState().initialized).toBe(true);
     });
 
-    expect(setNERConfigSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ enabled: true, model: 'biomedical' })
-    );
+    expect(setNERConfigSpy).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, model: 'biomedical' }));
     expect(initKnowledgeSpy).toHaveBeenCalled();
 
     initKnowledgeSpy.mockRestore();
@@ -91,7 +88,7 @@ describe('AgenticProvider NER config placement', () => {
       <AgenticProvider config={baseConfig}>
         <StoreProbe />
         <div>Test</div>
-      </AgenticProvider>
+      </AgenticProvider>,
     );
 
     await waitFor(() => {
@@ -116,7 +113,7 @@ describe('AgenticProvider NER config placement', () => {
       <AgenticProvider config={configWithDisabledNer}>
         <StoreProbe />
         <div>Test</div>
-      </AgenticProvider>
+      </AgenticProvider>,
     );
 
     await waitFor(() => {

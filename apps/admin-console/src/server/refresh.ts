@@ -3,8 +3,8 @@ import { gatewayUrl } from '@/server/gateway';
 import { clearSession, getSession, setSession, type SessionPayload } from '@/server/session';
 
 interface RefreshTokenResponse {
-    token: string;
-    refreshToken: string;
+  token: string;
+  refreshToken: string;
 }
 
 /**
@@ -15,35 +15,35 @@ interface RefreshTokenResponse {
 let inFlight: Promise<SessionPayload | null> | null = null;
 
 async function rotate(session: SessionPayload): Promise<SessionPayload | null> {
-    const response = await fetch(gatewayUrl('auth/refresh'), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ refreshToken: session.refreshToken }),
-        cache: 'no-store',
-        redirect: 'manual',
-    });
+  const response = await fetch(gatewayUrl('auth/refresh'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ refreshToken: session.refreshToken }),
+    cache: 'no-store',
+    redirect: 'manual',
+  });
 
-    if (!response.ok) {
-        await clearSession();
-        return null;
-    }
+  if (!response.ok) {
+    await clearSession();
+    return null;
+  }
 
-    const data = (await response.json()) as RefreshTokenResponse;
-    // Re-read the cookie in case another request mutated non-token state
-    // (e.g. workingTenantId) while the rotation was in flight.
-    const current = (await getSession()) ?? session;
-    const updated: SessionPayload = {
-        ...current,
-        accessToken: data.token,
-        refreshToken: data.refreshToken,
-        // Keep the impersonation snapshot of the original tokens in sync so
-        // revoke-impersonation restores tokens that are still valid.
-        impersonation: current.impersonation
-            ? { ...current.impersonation, originalAccessToken: data.token, originalRefreshToken: data.refreshToken }
-            : undefined,
-    };
-    await setSession(updated);
-    return updated;
+  const data = (await response.json()) as RefreshTokenResponse;
+  // Re-read the cookie in case another request mutated non-token state
+  // (e.g. workingTenantId) while the rotation was in flight.
+  const current = (await getSession()) ?? session;
+  const updated: SessionPayload = {
+    ...current,
+    accessToken: data.token,
+    refreshToken: data.refreshToken,
+    // Keep the impersonation snapshot of the original tokens in sync so
+    // revoke-impersonation restores tokens that are still valid.
+    impersonation: current.impersonation
+      ? { ...current.impersonation, originalAccessToken: data.token, originalRefreshToken: data.refreshToken }
+      : undefined,
+  };
+  await setSession(updated);
+  return updated;
 }
 
 /**
@@ -52,8 +52,8 @@ async function rotate(session: SessionPayload): Promise<SessionPayload | null> {
  * gateway rejects the rotation.
  */
 export async function refreshSession(session: SessionPayload): Promise<SessionPayload | null> {
-    inFlight ??= rotate(session).finally(() => {
-        inFlight = null;
-    });
-    return inFlight;
+  inFlight ??= rotate(session).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
 }

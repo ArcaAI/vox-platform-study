@@ -1,9 +1,6 @@
 // Scheduled rotation policy.
 import { describe, it, expect } from 'vitest';
-import {
-  policyDueKeys,
-  type RotationPolicy,
-} from '../scheduled-rotation.policy';
+import { policyDueKeys, type RotationPolicy } from '../scheduled-rotation.policy';
 
 const policies: RotationPolicy[] = [
   { key: 'API_KEY_PEPPER', maxAgeDays: 180 },
@@ -32,17 +29,13 @@ describe('policyDueKeys (Phase 6 Task 6.6)', () => {
       // 100 days old → due (policy = 90)
       JWT_SECRET_KEY: now - 100 * 86400_000,
     };
-    expect(policyDueKeys(now, policies, lastRotated).sort()).toEqual(
-      ['API_KEY_PEPPER', 'JWT_SECRET_KEY'].sort(),
-    );
+    expect(policyDueKeys(now, policies, lastRotated).sort()).toEqual(['API_KEY_PEPPER', 'JWT_SECRET_KEY'].sort());
   });
 
   it('treats missing lastRotated entries as "rotate immediately"', () => {
     const now = new Date('2026-05-25T00:00:00Z').getTime();
     // No lastRotated info at all → every policy key is due.
-    expect(policyDueKeys(now, policies, {}).sort()).toEqual(
-      ['API_KEY_PEPPER', 'OIDC_CLIENT_SECRET', 'JWT_SECRET_KEY'].sort(),
-    );
+    expect(policyDueKeys(now, policies, {}).sort()).toEqual(['API_KEY_PEPPER', 'OIDC_CLIENT_SECRET', 'JWT_SECRET_KEY'].sort());
   });
 
   it('boundary: exactly maxAgeDays old is NOT yet due (strictly older required)', () => {
@@ -60,9 +53,7 @@ describe('policyDueKeys (Phase 6 Task 6.6)', () => {
     const lastRotated = {
       API_KEY_PEPPER: now - 180 * 86400_000 - 1,
     };
-    expect(policyDueKeys(now, [policies[0]], lastRotated)).toEqual([
-      'API_KEY_PEPPER',
-    ]);
+    expect(policyDueKeys(now, [policies[0]], lastRotated)).toEqual(['API_KEY_PEPPER']);
   });
 
   it('ignores keys not present in the policy list', () => {
@@ -70,8 +61,6 @@ describe('policyDueKeys (Phase 6 Task 6.6)', () => {
     const lastRotated = {
       ROGUE_UNTRACKED_KEY: now - 365 * 86400_000,
     };
-    expect(
-      policyDueKeys(now, [{ key: 'API_KEY_PEPPER', maxAgeDays: 180 }], lastRotated),
-    ).toEqual(['API_KEY_PEPPER']); // ROGUE_UNTRACKED_KEY ignored, API_KEY_PEPPER due (no lastRotated)
+    expect(policyDueKeys(now, [{ key: 'API_KEY_PEPPER', maxAgeDays: 180 }], lastRotated)).toEqual(['API_KEY_PEPPER']); // ROGUE_UNTRACKED_KEY ignored, API_KEY_PEPPER due (no lastRotated)
   });
 });

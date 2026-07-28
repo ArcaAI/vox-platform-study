@@ -92,11 +92,7 @@ describe('AppSettingsService — soft-DELETED rows are invisible to invariant + 
   });
 
   it('two DELETED rows + one ENABLED row for the same key is still fine (repeated delete/recreate cycles)', async () => {
-    repo.findAll.mockResolvedValue([
-      buildSetting(KEY, 'gen1', true),
-      buildSetting(KEY, 'gen2', true),
-      buildSetting(KEY, 'gen3'),
-    ]);
+    repo.findAll.mockResolvedValue([buildSetting(KEY, 'gen1', true), buildSetting(KEY, 'gen2', true), buildSetting(KEY, 'gen3')]);
     const svc = buildService();
 
     await expect(svc.cacheAppSettings()).resolves.toBeUndefined();

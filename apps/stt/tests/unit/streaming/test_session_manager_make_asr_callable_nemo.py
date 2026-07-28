@@ -52,9 +52,7 @@ def _hyp(text, words=None):
     h = MagicMock(spec=["text", "timestamp", "language"])
     h.text = text
     h.timestamp = (
-        {"word": [{"word": w, "start": s, "end": e} for (w, s, e) in words]}
-        if words
-        else None
+        {"word": [{"word": w, "start": s, "end": e} for (w, s, e) in words]} if words else None
     )
     h.language = None
     return h

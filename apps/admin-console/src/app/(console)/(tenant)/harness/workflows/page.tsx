@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Harness Workflows' };
 
 /** Frame 38 — Harness workflows (tier 30-49). */
 export default function HarnessWorkflowsPage() {
-    return <HarnessWorkflowsScreen />;
+  return <HarnessWorkflowsScreen />;
 }

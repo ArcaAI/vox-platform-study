@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  applyChangesToEntity,
-  ChangeFieldHandlers,
-  CustomChangeFieldHandlerProps,
-} from './applyChangesToEntity';
+import { applyChangesToEntity, ChangeFieldHandlers, CustomChangeFieldHandlerProps } from './applyChangesToEntity';
 import { BaseEntity, IBaseEntity, ResourceStatusType } from '@arcaai/domains';
 
 // Test entity implementation
@@ -18,9 +14,7 @@ class TestEntity extends BaseEntity {
   private _value: number;
   private _tags: string[];
 
-  constructor(
-    init: IBaseEntity & { name: string; value: number; tags?: string[] }
-  ) {
+  constructor(init: IBaseEntity & { name: string; value: number; tags?: string[] }) {
     super(init);
     this._name = init.name;
     this._value = init.value;
@@ -55,9 +49,7 @@ class TestEntity extends BaseEntity {
 }
 
 // Factory function for test entities
-function createTestEntity(
-  overrides: Partial<{ name: string; value: number; tags: string[] }> = {}
-): TestEntity {
+function createTestEntity(overrides: Partial<{ name: string; value: number; tags: string[] }> = {}): TestEntity {
   return new TestEntity({
     id: 'test-id',
     createdBy: 'creator',

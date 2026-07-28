@@ -249,5 +249,4 @@ export class PromptTemplateEntity extends BaseTaggedEntity {
     const current = this._currentVersionNumber ?? 0;
     this.setProperty('currentVersionNumber', current + 1);
   }
-
 }

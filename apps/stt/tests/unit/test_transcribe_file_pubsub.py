@@ -119,9 +119,7 @@ def _patch_worker_deps(
         patch(
             "stt.transcription.workers.transcribe_file.get_pipeline_reader", return_value=_reader
         ),
-        patch(
-            "stt.transcription.workers.transcribe_file.get_batch_service", return_value=_batch
-        ),
+        patch("stt.transcription.workers.transcribe_file.get_batch_service", return_value=_batch),
         patch(
             "stt.transcription.workers.transcribe_file.get_settings", return_value=_mock_settings
         ),
@@ -966,7 +964,5 @@ class TestWorkerStorageDescriptor:
                 audio_bucket_name="hope-audio-acme",
             )
 
-        blob._resolver.set_tenant_bucket.assert_called_once_with(
-            "t-1", "audio", "hope-audio-acme"
-        )
+        blob._resolver.set_tenant_bucket.assert_called_once_with("t-1", "audio", "hope-audio-acme")
         blob._resolver.set_tenant_storage.assert_not_called()

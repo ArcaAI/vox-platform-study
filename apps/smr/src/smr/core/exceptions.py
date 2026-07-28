@@ -63,7 +63,9 @@ class ModelNotSelectedError(InputValidationError):
 class CircuitOpenError(SmrError):
     """Circuit breaker is open for the requested provider."""
 
-    def __init__(self, message: str = "Service temporarily unavailable", *, provider: str = "unknown"):
+    def __init__(
+        self, message: str = "Service temporarily unavailable", *, provider: str = "unknown"
+    ):
         self.provider = provider
         super().__init__(message, error_code="CIRCUIT_OPEN")
 

@@ -21,17 +21,9 @@ describe('stt browserSupport utilities', () => {
     it('should match Safari user agent pattern', () => {
       const safariPattern = /^((?!chrome|android).)*safari/i;
 
-      expect(
-        safariPattern.test(
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.4 Safari/605.1.15'
-        )
-      ).toBe(true);
+      expect(safariPattern.test('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.4 Safari/605.1.15')).toBe(true);
 
-      expect(
-        safariPattern.test(
-          'Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36'
-        )
-      ).toBe(false);
+      expect(safariPattern.test('Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36')).toBe(false);
     });
   });
 

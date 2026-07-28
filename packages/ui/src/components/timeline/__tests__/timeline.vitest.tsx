@@ -42,7 +42,12 @@ beforeAll(() => {
   Element.prototype.getBoundingClientRect = function () {
     return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
   };
-  for (const [prop, value] of [['clientHeight', 600], ['clientWidth', 800], ['offsetHeight', 600], ['offsetWidth', 800]] as const) {
+  for (const [prop, value] of [
+    ['clientHeight', 600],
+    ['clientWidth', 800],
+    ['offsetHeight', 600],
+    ['offsetWidth', 800],
+  ] as const) {
     Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value });
   }
   // native <dialog> isn't implemented in happy-dom.
@@ -75,10 +80,19 @@ function audioItem(withWords: boolean): TimelineItemModel {
       type: 'audio',
       src: '/rec.mp3',
       transcript: withWords
-        ? { segments: [{ id: 's1', text: 'hello world', speakerLabel: 'Doctor', words: [
-            { word: 'hello', start: 1.5, end: 2 },
-            { word: 'world', start: 2, end: 2.6 },
-          ] }] }
+        ? {
+            segments: [
+              {
+                id: 's1',
+                text: 'hello world',
+                speakerLabel: 'Doctor',
+                words: [
+                  { word: 'hello', start: 1.5, end: 2 },
+                  { word: 'world', start: 2, end: 2.6 },
+                ],
+              },
+            ],
+          }
         : undefined,
     },
   };
@@ -107,9 +121,12 @@ describe('useTimeline (headless controller)', () => {
   it('calls fetchNextPage on onEndReached only while hasNextPage', () => {
     const fetchNextPage = vi.fn();
     const collection: AsyncCollection<TimelineItemModel> = { data: items, isLoading: false, error: null, hasNextPage: true, fetchNextPage };
-    const { result, rerender } = renderHook((props: { hasNextPage: boolean }) => useTimeline({ items, collection: { ...collection, hasNextPage: props.hasNextPage } }), {
-      initialProps: { hasNextPage: true },
-    });
+    const { result, rerender } = renderHook(
+      (props: { hasNextPage: boolean }) => useTimeline({ items, collection: { ...collection, hasNextPage: props.hasNextPage } }),
+      {
+        initialProps: { hasNextPage: true },
+      },
+    );
     act(() => result.current.onEndReached());
     expect(fetchNextPage).toHaveBeenCalledTimes(1);
     rerender({ hasNextPage: false });
@@ -152,7 +169,13 @@ describe('HistoryTimelineList (shell)', () => {
 
   it('selects the renderer by variant and falls back for unknown variants', () => {
     const items: TimelineItemModel[] = [
-      { id: 'f', timestamp: '2025-01-02', variant: 'file', content: { type: 'file', url: '/x.zip', name: 'x.zip', size: 2048 }, defaultExpanded: true },
+      {
+        id: 'f',
+        timestamp: '2025-01-02',
+        variant: 'file',
+        content: { type: 'file', url: '/x.zip', name: 'x.zip', size: 2048 },
+        defaultExpanded: true,
+      },
       { id: 'u', timestamp: '2025-01-01', variant: 'weird' as never, content: { type: 'custom', render: () => null }, defaultExpanded: true },
     ];
     render(<HistoryTimelineList items={items} />);
@@ -166,7 +189,13 @@ describe('HistoryTimelineList (shell)', () => {
     render(
       <HistoryTimelineList
         items={raw}
-        mapItem={(r) => ({ id: r.when, timestamp: r.when, variant: 'markdown', content: { type: 'markdown', markdown: r.body }, defaultExpanded: true })}
+        mapItem={(r) => ({
+          id: r.when,
+          timestamp: r.when,
+          variant: 'markdown',
+          content: { type: 'markdown', markdown: r.body },
+          defaultExpanded: true,
+        })}
       />,
     );
     expect(screen.getByText('Mapped body')).toBeInTheDocument();
@@ -178,10 +207,13 @@ describe('HistoryTimelineList (shell)', () => {
       id: 'img',
       timestamp: '2025-01-01',
       variant: 'image',
-      content: { type: 'image', images: [
-        { id: 'i0', src: 'https://ex.com/0.jpg', alt: 'First scan', width: 100, height: 100 },
-        { id: 'i1', src: 'https://ex.com/1.jpg', alt: 'Second scan', width: 100, height: 100 },
-      ] },
+      content: {
+        type: 'image',
+        images: [
+          { id: 'i0', src: 'https://ex.com/0.jpg', alt: 'First scan', width: 100, height: 100 },
+          { id: 'i1', src: 'https://ex.com/1.jpg', alt: 'Second scan', width: 100, height: 100 },
+        ],
+      },
       defaultExpanded: true,
     };
     render(<HistoryTimelineList items={[item]} onMediaOpen={onMediaOpen} />);
@@ -320,7 +352,12 @@ describe('Timeline renderers', () => {
   });
 
   it('pdf renderer shows a download fallback when the document fails to load', async () => {
-    const item: TimelineItemModel = { id: 'p', timestamp: '2025-01-01', variant: 'pdf', content: { type: 'pdf', url: '/broken.pdf', name: 'broken.pdf' } };
+    const item: TimelineItemModel = {
+      id: 'p',
+      timestamp: '2025-01-01',
+      variant: 'pdf',
+      content: { type: 'pdf', url: '/broken.pdf', name: 'broken.pdf' },
+    };
     render(<PdfRenderer {...base} expanded item={item} content={item.content} />);
     expect(await screen.findByRole('link', { name: /download/i })).toBeInTheDocument();
   });

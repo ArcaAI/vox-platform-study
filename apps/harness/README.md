@@ -19,7 +19,7 @@ What the loop actually does today, end to end:
   in once the computational verdict settles.
 - **Two delivery shapes** — the legacy single-phase path (inferential pass inside the regen loop,
   one persist straight to `PENDING_REVIEW`) and the newer **optimistic two-phase** path (deliver a
-  readable draft immediately, run inferential assurance *after* delivery, retract-or-finalize based
+  readable draft immediately, run inferential assurance _after_ delivery, retract-or-finalize based
   on what assurance finds).
 - **Institutional RAG** (flag-gated) — hybrid dense+sparse retrieval over a tenant knowledge corpus,
   degrade-safe, feeding a StrictCitations block into the prompt.
@@ -37,12 +37,12 @@ What the loop actually does today, end to end:
 
 ## Architecture (Temporal mapping)
 
-| Loop element | Temporal construct |
-|---|---|
-| policy fetch / transcript NER / retrieval / generate / sensors / persist / finalize | Activity (idempotent, retryable; all I/O + model calls live here) |
-| bounded regen loop, optimistic assurance loop | deterministic loop in the Workflow body |
-| clinician sign-off gate | `workflow.wait_condition()` on an `approval` Signal raced against a durable SLA timer |
-| clinician edit (optimistic path only) | `edit` Signal — re-binds + re-runs the assurance pass |
+| Loop element                                                                        | Temporal construct                                                                    |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| policy fetch / transcript NER / retrieval / generate / sensors / persist / finalize | Activity (idempotent, retryable; all I/O + model calls live here)                     |
+| bounded regen loop, optimistic assurance loop                                       | deterministic loop in the Workflow body                                               |
+| clinician sign-off gate                                                             | `workflow.wait_condition()` on an `approval` Signal raced against a durable SLA timer |
+| clinician edit (optimistic path only)                                               | `edit` Signal — re-binds + re-runs the assurance pass                                 |
 
 ```
 apps/harness/
@@ -96,7 +96,7 @@ One workflow instance per consultation, id `harness-doc-{consultationId}` (deter
 1. **Policy** — `fetch_policy` reads the tenant's `HarnessPolicy` from apps/api once. Success
    overrides the gate budget/SLA, sensor thresholds, guard toggles, and model selection; a fetch
    failure degrades to the code defaults and flags `reduced_assurance` (an unreachable policy
-   endpoint must never silently *relax* a stricter tenant policy).
+   endpoint must never silently _relax_ a stricter tenant policy).
 2. **Transcript NER** — `extract_entities` runs medical NER over the transcript via NLP. When
    `HARNESS_NER_PRIORS_ENABLED` is on, it first tries to reuse already-persisted, ontology-coded
    `NamedEntity` rows instead of a cold pass. An NLP outage degrades (forces human review) rather
@@ -110,7 +110,7 @@ One workflow instance per consultation, id `harness-doc-{consultationId}` (deter
    loops back to `assemble_prompt`; otherwise the loop proceeds.
 5. **Delivery — two shapes, chosen by `optimistic_delivery_enabled` (policy/settings kill-switch)
    and a Temporal patch marker**:
-   - **Legacy (default)** — `run_inferential_sensors` runs *inside* the loop and its verdict is
+   - **Legacy (default)** — `run_inferential_sensors` runs _inside_ the loop and its verdict is
      folded into the same `aggregate()` call as the computational sensors (another `REGEN` loops
      back). Once settled, `persist_draft` writes the full-scored draft straight to
      `PENDING_REVIEW`.
@@ -146,7 +146,7 @@ transition; a `phase()` query exposes the current stage for ops/tests.
 Replay safety: every behavior added after the original loop shape (progress reporting, the
 optimistic delivery split, the gate terminal-abandon bound, edit-rerun caps, retraction) is gated
 behind a `workflow.patched(...)` marker so an in-flight execution recorded before that change keeps
-replaying its original command sequence. Changing the *sequence* of activity calls always needs a
+replaying its original command sequence. Changing the _sequence_ of activity calls always needs a
 new patch marker + a captured replay fixture (`src/harness/tests/unit/temporal/test_replay_compat.py`)
 — adding a data-only field to an existing activity input does not.
 
@@ -160,17 +160,17 @@ Two tiers, both instantiated fresh per run and folded by the same pure `aggregat
 straight away); a **regen-fixable** failure loops back to generation while budget remains, then
 escalates to `FLAG`.
 
-| Sensor | Tier | Failure class | What it checks |
-|---|---|---|---|
-| `entity_faithfulness` | computational | highest-harm | Every clinically-material entity in the note traces back to the transcript (no fabricated findings) |
-| `numeric_dose` | computational | highest-harm | Dosage/numeric values in the note match the transcript |
-| `schema_validity` | computational | regen-fixable | The note conforms to the expected SOAP/response-format shape |
-| `coverage_omission` | computational | regen-fixable | No clinically-significant transcript content was silently dropped |
-| `citation_presence` | computational | regen-fixable | Claims that should carry a knowledge-chunk citation actually have one |
-| `groundedness` | inferential | regen-fixable | Per-claim LLM-judge entailment of the note against the transcript + cited evidence; feeds `ragTriadScore` |
-| `citation_verify` | inferential | regen-fixable | Per-claim LLM-judge entailment of each `[[kb:<id>]]` citation against its cited chunk |
-| `atomic_fact` | inferential | regen-fixable | Deterministic, judge-free NLI entailment gate (self-hosted; default hermetic `DeterministicOverlapEntailer`, optionally a staged MiniCheck-Flan-T5 GGUF via `HARNESS_ATOMIC_FACT_MODEL_PATH`); opt-in via `HARNESS_ATOMIC_FACT_ENABLED` |
-| `safety` | inferential | highest-harm | IBM Granite Guardian content-safety screen (harm/bias/jailbreak/violence/profanity/sexual-content/unethical-behavior) over a selectable engine (LM Studio default; Ollama/Azure/Bedrock) |
+| Sensor                | Tier          | Failure class | What it checks                                                                                                                                                                                                                          |
+| --------------------- | ------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_faithfulness` | computational | highest-harm  | Every clinically-material entity in the note traces back to the transcript (no fabricated findings)                                                                                                                                     |
+| `numeric_dose`        | computational | highest-harm  | Dosage/numeric values in the note match the transcript                                                                                                                                                                                  |
+| `schema_validity`     | computational | regen-fixable | The note conforms to the expected SOAP/response-format shape                                                                                                                                                                            |
+| `coverage_omission`   | computational | regen-fixable | No clinically-significant transcript content was silently dropped                                                                                                                                                                       |
+| `citation_presence`   | computational | regen-fixable | Claims that should carry a knowledge-chunk citation actually have one                                                                                                                                                                   |
+| `groundedness`        | inferential   | regen-fixable | Per-claim LLM-judge entailment of the note against the transcript + cited evidence; feeds `ragTriadScore`                                                                                                                               |
+| `citation_verify`     | inferential   | regen-fixable | Per-claim LLM-judge entailment of each `[[kb:<id>]]` citation against its cited chunk                                                                                                                                                   |
+| `atomic_fact`         | inferential   | regen-fixable | Deterministic, judge-free NLI entailment gate (self-hosted; default hermetic `DeterministicOverlapEntailer`, optionally a staged MiniCheck-Flan-T5 GGUF via `HARNESS_ATOMIC_FACT_MODEL_PATH`); opt-in via `HARNESS_ATOMIC_FACT_ENABLED` |
+| `safety`              | inferential   | highest-harm  | IBM Granite Guardian content-safety screen (harm/bias/jailbreak/violence/profanity/sexual-content/unethical-behavior) over a selectable engine (LM Studio default; Ollama/Azure/Bedrock)                                                |
 
 The inferential pass (`run_inferential_sensors`) runs the applicable sensors **concurrently**
 (`asyncio.gather`) against one calibrated judge client + one Granite Guardian client built once per
@@ -202,7 +202,7 @@ hallucinated citation can never reach `citationsMap` or the citation-verify sens
 
 **Degrade-safe is the load-bearing invariant**: an outage of the embeddings client, Qdrant, or the
 reranker yields an empty context (`degraded=True`) and flags reduced assurance — it never raises
-into the durable loop. An empty *result set* from healthy backends (nothing relevant to cite) is
+into the durable loop. An empty _result set_ from healthy backends (nothing relevant to cite) is
 not a degrade.
 
 `POST /api/v1/internal/knowledge/ingest` (`api/endpoints/knowledge.py`) is the write side: chunks
@@ -258,22 +258,22 @@ Every setting is env-driven (`pydantic-settings`, prefix `HARNESS_`; the Tempora
 [`core/config.py`](./src/harness/core/config.py) and [`.env.sample`](./.env.sample) for the full,
 authoritative list (safety/PHI/retrieval/claim-check each have their own sub-prefix):
 
-| Variable | Default | Description |
-|---|---|---|
-| `HARNESS_HOST` / `HARNESS_PORT` | `0.0.0.0` / `8866` | Bind |
-| `HARNESS_SERVICE_TOKEN` | *(empty)* | Shared `X-Service-Token` — guards inbound internal/admin routes AND authenticates outbound calls to apps/api. Empty disables the guard (local dev only) |
-| `HARNESS_MAX_REGEN` | `2` | Regen budget per draft |
-| `HARNESS_GATE_SLA_SECONDS` / `HARNESS_GATE_ESCALATION_SECONDS` | `86400` / `43200` | Clinician-gate SLA + re-escalation cadence |
-| `HARNESS_OPTIMISTIC_DELIVERY_ENABLED` | `false` | Two-phase optimistic delivery kill-switch |
-| `HARNESS_NER_PRIORS_ENABLED` | `false` | Reuse persisted, ontology-coded NER priors instead of a cold transcript pass |
-| `HARNESS_RETRIEVAL_ENABLED` | `false` | Institutional RAG retrieval |
-| `HARNESS_ATOMIC_FACT_ENABLED` | `false` | Deterministic reference-free atomic-fact sensor |
-| `HARNESS_MODEL_CACHE_TTL_SECONDS` / `HARNESS_MODEL_CACHE_MAX_MODELS` | `600` / `1` | Idle TTL + residency bound for the MiniCheck entailer. **Bootstrap fallbacks only** — the runtime values come from the control plane (`harness.modelCache.*`); the TTL is clamped to `[60, 3600]` |
-| `HARNESS_SAFETY_PROVIDER` / `HARNESS_SAFETY_MODEL` | `lm-studio` / `granite-guardian-4.1-8b` | Safety-screen engine + model |
-| `HARNESS_PHI_ENABLED` / `HARNESS_PHI_FAIL_CLOSED` | `true` / `true` | PHI egress guard toggle + fail-closed posture |
-| `HARNESS_CLAIM_CHECK_ENABLED` / `HARNESS_CLAIM_CHECK_STORE` | `true` / `memory` | Claim-check toggle + backend (`memory` \| `s3`) |
-| `HARNESS_JUDGE_*` | see `eval/README.md` | The runtime judge (groundedness/citation-verify) reuses the eval harness's judge config verbatim |
-| `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` / `TEMPORAL_TASK_QUEUE` | `localhost:7233` / `default` / `harness-task-queue` | Temporal frontend |
+| Variable                                                             | Default                                             | Description                                                                                                                                                                                       |
+| -------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_HOST` / `HARNESS_PORT`                                      | `0.0.0.0` / `8866`                                  | Bind                                                                                                                                                                                              |
+| `HARNESS_SERVICE_TOKEN`                                              | _(empty)_                                           | Shared `X-Service-Token` — guards inbound internal/admin routes AND authenticates outbound calls to apps/api. Empty disables the guard (local dev only)                                           |
+| `HARNESS_MAX_REGEN`                                                  | `2`                                                 | Regen budget per draft                                                                                                                                                                            |
+| `HARNESS_GATE_SLA_SECONDS` / `HARNESS_GATE_ESCALATION_SECONDS`       | `86400` / `43200`                                   | Clinician-gate SLA + re-escalation cadence                                                                                                                                                        |
+| `HARNESS_OPTIMISTIC_DELIVERY_ENABLED`                                | `false`                                             | Two-phase optimistic delivery kill-switch                                                                                                                                                         |
+| `HARNESS_NER_PRIORS_ENABLED`                                         | `false`                                             | Reuse persisted, ontology-coded NER priors instead of a cold transcript pass                                                                                                                      |
+| `HARNESS_RETRIEVAL_ENABLED`                                          | `false`                                             | Institutional RAG retrieval                                                                                                                                                                       |
+| `HARNESS_ATOMIC_FACT_ENABLED`                                        | `false`                                             | Deterministic reference-free atomic-fact sensor                                                                                                                                                   |
+| `HARNESS_MODEL_CACHE_TTL_SECONDS` / `HARNESS_MODEL_CACHE_MAX_MODELS` | `600` / `1`                                         | Idle TTL + residency bound for the MiniCheck entailer. **Bootstrap fallbacks only** — the runtime values come from the control plane (`harness.modelCache.*`); the TTL is clamped to `[60, 3600]` |
+| `HARNESS_SAFETY_PROVIDER` / `HARNESS_SAFETY_MODEL`                   | `lm-studio` / `granite-guardian-4.1-8b`             | Safety-screen engine + model                                                                                                                                                                      |
+| `HARNESS_PHI_ENABLED` / `HARNESS_PHI_FAIL_CLOSED`                    | `true` / `true`                                     | PHI egress guard toggle + fail-closed posture                                                                                                                                                     |
+| `HARNESS_CLAIM_CHECK_ENABLED` / `HARNESS_CLAIM_CHECK_STORE`          | `true` / `memory`                                   | Claim-check toggle + backend (`memory` \| `s3`)                                                                                                                                                   |
+| `HARNESS_JUDGE_*`                                                    | see `eval/README.md`                                | The runtime judge (groundedness/citation-verify) reuses the eval harness's judge config verbatim                                                                                                  |
+| `TEMPORAL_ADDRESS` / `TEMPORAL_NAMESPACE` / `TEMPORAL_TASK_QUEUE`    | `localhost:7233` / `default` / `harness-task-queue` | Temporal frontend                                                                                                                                                                                 |
 
 ---
 
@@ -297,32 +297,31 @@ Two facts an operator needs:
   shared cache. Policy, metrics and reason labels are identical to the asyncio one.
 
 A build or calibration failure still falls back to the safe `DeterministicOverlapEntailer`
-(never an auto-PASS) — including when a *reload* fails, not just a first load.
+(never an auto-PASS) — including when a _reload_ fails, not just a first load.
 
 Operator runbook: [`docs/operations/inference/model-retention.md`](../../docs/operations/inference/model-retention.md).
 
-
 ## API endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/v1/health` | Detailed health; echoes the configured Temporal substrate (no dialing) |
-| GET | `/api/v1/health/live` | Liveness — always 200 if the process is up |
-| GET | `/api/v1/health/ready` | Readiness — 503 unless the Temporal frontend actually responds |
-| GET | `/metrics` | Prometheus metrics |
-| GET | `/api/v1/docs` | Swagger UI |
+| Method | Path                   | Description                                                            |
+| ------ | ---------------------- | ---------------------------------------------------------------------- |
+| GET    | `/api/v1/health`       | Detailed health; echoes the configured Temporal substrate (no dialing) |
+| GET    | `/api/v1/health/live`  | Liveness — always 200 if the process is up                             |
+| GET    | `/api/v1/health/ready` | Readiness — 503 unless the Temporal frontend actually responds         |
+| GET    | `/metrics`             | Prometheus metrics                                                     |
+| GET    | `/api/v1/docs`         | Swagger UI                                                             |
 
 ### Internal (service-to-service, `X-Service-Token`)
 
 apps/api is the only caller; the Temporal SDK stays isolated in the harness. Mounted under
 `/api/v1/internal`:
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/internal/consultations/{id}/document:start` | Start the document loop (idempotent on `harness-doc-{id}`) |
-| POST | `/internal/workflows/{id}/signal/approve` | Forward a clinician sign-off to the `approval` signal |
-| POST | `/internal/workflows/{id}/signal/edit` | Forward a clinician edit of the optimistically-delivered draft to the `edit` signal |
-| POST | `/internal/knowledge/ingest` | Chunk → embed → Qdrant upsert one institutional-knowledge document |
+| Method | Path                                          | Description                                                                         |
+| ------ | --------------------------------------------- | ----------------------------------------------------------------------------------- |
+| POST   | `/internal/consultations/{id}/document:start` | Start the document loop (idempotent on `harness-doc-{id}`)                          |
+| POST   | `/internal/workflows/{id}/signal/approve`     | Forward a clinician sign-off to the `approval` signal                               |
+| POST   | `/internal/workflows/{id}/signal/edit`        | Forward a clinician edit of the optimistically-delivered draft to the `edit` signal |
+| POST   | `/internal/knowledge/ingest`                  | Chunk → embed → Qdrant upsert one institutional-knowledge document                  |
 
 ### Admin workflow-ops (`/api/v1/internal/harness`, `X-Service-Token`)
 
@@ -330,13 +329,13 @@ Wraps the Temporal client so apps/api's `HarnessOpsClient` can observe/operate t
 workflows; a missing/closed workflow returns 404, a search-attribute outage degrades to a memo +
 client-side tenant filter (never a 500).
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/workflows?tenantId&status&consultationId&limit&pageToken` | List (visibility query; cursor-paged) |
-| GET | `/workflows/{id}?phase=true` | Describe (adds `historyLength`, `pendingActivities`, `memo`, `result`; `phase=true` also queries the loop phase) |
-| POST | `/workflows/{id}/cancel` | Request cooperative cancellation |
-| POST | `/workflows/{id}/terminate` | Terminate immediately (body `{ reason? }`) |
-| POST | `/workflows/{id}/signal` | Forward an arbitrary signal (body `{ signalName, payload? }`) |
+| Method | Path                                                        | Description                                                                                                      |
+| ------ | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| GET    | `/workflows?tenantId&status&consultationId&limit&pageToken` | List (visibility query; cursor-paged)                                                                            |
+| GET    | `/workflows/{id}?phase=true`                                | Describe (adds `historyLength`, `pendingActivities`, `memo`, `result`; `phase=true` also queries the loop phase) |
+| POST   | `/workflows/{id}/cancel`                                    | Request cooperative cancellation                                                                                 |
+| POST   | `/workflows/{id}/terminate`                                 | Terminate immediately (body `{ reason? }`)                                                                       |
+| POST   | `/workflows/{id}/signal`                                    | Forward an arbitrary signal (body `{ signalName, payload? }`)                                                    |
 
 #### One-time setup: the `HarnessTenantId` search attribute
 
@@ -409,8 +408,9 @@ suite runs Qdrant in its `qdrant-client` in-memory mode. The GitLab CI job (`tes
 required at collection time even though `HARNESS_RETRIEVAL_ENABLED` defaults off, because the
 retrieval tests import `qdrant_client` directly. A separate, `allow_failure: true`
 `harness-eval-gate` CI job wires the release-blocking eval commands (`python -m harness.eval.ci`
-+ the promptfoo output-contract check, see `eval/README.md`) — it is diagnostic-only until a
-CI-reachable judge backend and the real clinician golden set land.
+
+- the promptfoo output-contract check, see `eval/README.md`) — it is diagnostic-only until a
+  CI-reachable judge backend and the real clinician golden set land.
 
 Workflow **replay-compat** tests (`tests/unit/temporal/test_replay_compat.py`) capture fixture
 histories for every `workflow.patched(...)` gate and re-run them against the current workflow

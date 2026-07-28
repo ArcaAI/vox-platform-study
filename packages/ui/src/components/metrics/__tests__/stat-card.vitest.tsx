@@ -96,7 +96,14 @@ describe('StatCard (§3.2)', () => {
 
   it('has no axe violations', async () => {
     const { container } = render(
-      <StatCard label="Error rate" value="0.42%" delta={{ value: 6, direction: 'up', label: 'vs 1h' }} deltaIntent="negative" accent="warning" icon={Activity} />,
+      <StatCard
+        label="Error rate"
+        value="0.42%"
+        delta={{ value: 6, direction: 'up', label: 'vs 1h' }}
+        deltaIntent="negative"
+        accent="warning"
+        icon={Activity}
+      />,
     );
     const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results).toHaveNoViolations();

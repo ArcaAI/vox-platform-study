@@ -78,5 +78,7 @@ class TestAssembleGenerationPromptRegen:
         assert "numeric_dose" in with_fb
 
     def test_no_feedback_is_byte_identical_to_before(self):
-        assert assemble_generation_prompt("U", "B") == assemble_generation_prompt("U", "B", regen_feedback=None)
+        assert assemble_generation_prompt("U", "B") == assemble_generation_prompt(
+            "U", "B", regen_feedback=None
+        )
         assert assemble_generation_prompt("U", None) == "U"

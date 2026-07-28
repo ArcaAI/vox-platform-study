@@ -76,7 +76,16 @@ interface SmrGenerateRequest {
    */
   provider_overrides?: Record<
     string,
-    { api_key: string; base_url?: string; region?: string; api_version?: string; deployment_name?: string; model?: string; project?: string; location?: string }
+    {
+      api_key: string;
+      base_url?: string;
+      region?: string;
+      api_version?: string;
+      deployment_name?: string;
+      model?: string;
+      project?: string;
+      location?: string;
+    }
   >;
 }
 

@@ -65,7 +65,7 @@ pipeline.addStage(nerStage, { required: true, triggerMode: 'auto' });
 pipeline.addStage(spellCheckStage, { required: false, triggerMode: 'manual' });
 
 const result = await pipeline.execute(inputText); // runs auto stages
-await pipeline.triggerStage('spell-check');       // run an optional stage on demand
+await pipeline.triggerStage('spell-check'); // run an optional stage on demand
 const spellOutput = pipeline.getStageResult('spell-check');
 ```
 
@@ -106,12 +106,12 @@ pipeline.on(PipelineEvent.Error, ({ error, stage }) => console.error(stage, erro
 
 ### Method summary
 
-| Class | Key methods |
-|---|---|
-| `PipelineStage<TIn, TOut>` | `init()`, `execute(input, context)`, `destroy()`, `enabled` / `initialized` getters; override `onInit` / `onExecute` / `onDestroy` |
-| `SequentialPipeline<TIn, TOut>` | `addStage(stage, config?)`, `removeStage(name)`, `getStage(name)`, `execute(input, context?)`, `pause()`, `resume()`, `cancel()`, `reset()`, `init()`, `destroy()`, `getState()` |
-| `ParallelPipeline<TIn, TOut>` | Same lifecycle plus `addStage(stage, { required, triggerMode, ... })`, `triggerStage(name)`, `getStageResult(name)` |
-| `PipelineOrchestrator` | `register(name, pipeline)`, `unregister(name)`, `connect(source, target, options?)`, `disconnect(source, target)`, `execute(name, input, context?)`, `init()`, `destroy()`, `pauseAll()`, `resumeAll()`, `cancelAll()`, `getState()`, `canClose()` |
+| Class                           | Key methods                                                                                                                                                                                                                                        |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PipelineStage<TIn, TOut>`      | `init()`, `execute(input, context)`, `destroy()`, `enabled` / `initialized` getters; override `onInit` / `onExecute` / `onDestroy`                                                                                                                 |
+| `SequentialPipeline<TIn, TOut>` | `addStage(stage, config?)`, `removeStage(name)`, `getStage(name)`, `execute(input, context?)`, `pause()`, `resume()`, `cancel()`, `reset()`, `init()`, `destroy()`, `getState()`                                                                   |
+| `ParallelPipeline<TIn, TOut>`   | Same lifecycle plus `addStage(stage, { required, triggerMode, ... })`, `triggerStage(name)`, `getStageResult(name)`                                                                                                                                |
+| `PipelineOrchestrator`          | `register(name, pipeline)`, `unregister(name)`, `connect(source, target, options?)`, `disconnect(source, target)`, `execute(name, input, context?)`, `init()`, `destroy()`, `pauseAll()`, `resumeAll()`, `cancelAll()`, `getState()`, `canClose()` |
 
 Execution context: every run receives a `PipelineContext` (`runId`, `pipelineName`, `startTime`, `metadata`, optional `abortSignal` and `logger`) that flows through all stages.
 
@@ -123,14 +123,14 @@ None beyond a modern JavaScript runtime. Works in browsers and Node.js; no worke
 
 From this directory:
 
-| Command | Action |
-|---|---|
-| `pnpm build` | tsup build |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests |
-| `pnpm test:e2e` | Playwright tests; `:ui`, `:headed`, `:chromium` variants exist |
-| `pnpm lint` | ESLint (`--max-warnings 0`) |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
+| Command                                                | Action                                                         |
+| ------------------------------------------------------ | -------------------------------------------------------------- |
+| `pnpm build`                                           | tsup build                                                     |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests                                              |
+| `pnpm test:e2e`                                        | Playwright tests; `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint`                                            | ESLint (`--max-warnings 0`)                                    |
+| `pnpm typecheck`                                       | `tsc --noEmit`                                                 |
+| `pnpm clean` / `pnpm clean:all`                        | Remove build output (nuke also removes `node_modules`)         |
 
 From the repo root: `pnpm --filter @arcaai/pipeline build` (same pattern for `test`, `lint`, etc.).
 

@@ -86,9 +86,7 @@ class TestSarvamLoaderLoad:
             gs.return_value = _settings(SecretStr("env-key"))
             result = await loader.load(
                 _config(),
-                provider_overrides={
-                    "sarvam": {"api_key": "byok-key", "model": "saaras:v2"}
-                },
+                provider_overrides={"sarvam": {"api_key": "byok-key", "model": "saaras:v2"}},
             )
         cfg = result.model
         assert cfg.api_key.get_secret_value() == "byok-key"

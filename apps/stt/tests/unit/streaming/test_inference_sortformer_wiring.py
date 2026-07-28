@@ -119,9 +119,7 @@ async def test_finals_attach_dominant_speaker_label():
     stub = _StubBackend(_TWO_SPEAKER_ACT)
     diarizer = StreamingSortformerDiarizer(_sortformer_config(), backend=stub)
     worker = _make_worker(sortformer_diarizer=diarizer)
-    worker._run_inference = AsyncMock(
-        return_value=_InferenceResult(text="hello world")
-    )
+    worker._run_inference = AsyncMock(return_value=_InferenceResult(text="hello world"))
     worker._extract_embedding = AsyncMock(return_value=None)
 
     result = await worker.process_utterance("sess", _make_utterance(is_final=True))
@@ -141,9 +139,7 @@ async def test_partials_run_sortformer_diarization():
     stub = _StubBackend(_TWO_SPEAKER_ACT)
     diarizer = StreamingSortformerDiarizer(_sortformer_config(), backend=stub)
     worker = _make_worker(sortformer_diarizer=diarizer)
-    worker._run_inference = AsyncMock(
-        return_value=_InferenceResult(text="hello world")
-    )
+    worker._run_inference = AsyncMock(return_value=_InferenceResult(text="hello world"))
 
     result = await worker.process_partial("sess", _make_utterance(is_final=False))
 
@@ -175,9 +171,7 @@ async def test_partials_no_label_without_sortformer():
         diarization_config=DiarizationConfig(enabled=True, backend="embedding"),
         speaker_identifier=MagicMock(),
     )
-    worker._run_inference = AsyncMock(
-        return_value=_InferenceResult(text="hello world")
-    )
+    worker._run_inference = AsyncMock(return_value=_InferenceResult(text="hello world"))
 
     result = await worker.process_partial("sess", _make_utterance(is_final=False))
 
@@ -191,13 +185,9 @@ async def test_partials_no_label_without_sortformer():
 
 @pytest.mark.asyncio
 async def test_failsafe_backend_error_no_label():
-    diarizer = StreamingSortformerDiarizer(
-        _sortformer_config(), backend=_RaisingBackend()
-    )
+    diarizer = StreamingSortformerDiarizer(_sortformer_config(), backend=_RaisingBackend())
     worker = _make_worker(sortformer_diarizer=diarizer)
-    worker._run_inference = AsyncMock(
-        return_value=_InferenceResult(text="hello world")
-    )
+    worker._run_inference = AsyncMock(return_value=_InferenceResult(text="hello world"))
     worker._extract_embedding = AsyncMock(return_value=None)
 
     res_final = await worker.process_utterance("sess", _make_utterance(is_final=True))
@@ -212,13 +202,9 @@ async def test_failsafe_model_unavailable_no_label():
     def _unavailable(_cfg):
         raise SortformerModelUnavailableError("weights not staged")
 
-    diarizer = StreamingSortformerDiarizer(
-        _sortformer_config(), backend_factory=_unavailable
-    )
+    diarizer = StreamingSortformerDiarizer(_sortformer_config(), backend_factory=_unavailable)
     worker = _make_worker(sortformer_diarizer=diarizer)
-    worker._run_inference = AsyncMock(
-        return_value=_InferenceResult(text="hello world")
-    )
+    worker._run_inference = AsyncMock(return_value=_InferenceResult(text="hello world"))
     worker._extract_embedding = AsyncMock(return_value=None)
 
     result = await worker.process_utterance("sess", _make_utterance(is_final=True))
@@ -238,9 +224,7 @@ async def test_embedding_path_unchanged_without_sortformer():
         diarization_config=DiarizationConfig(enabled=True, backend="embedding"),
         speaker_identifier=MagicMock(),
     )
-    worker._run_inference = AsyncMock(
-        return_value=_InferenceResult(text="hello world")
-    )
+    worker._run_inference = AsyncMock(return_value=_InferenceResult(text="hello world"))
     worker._extract_embedding = AsyncMock(return_value=object())
     worker._identify_speaker = AsyncMock(return_value=("spk-1", 0.88))
 
@@ -259,22 +243,12 @@ async def test_embedding_path_unchanged_without_sortformer():
 def test_build_sortformer_diarizer_helper():
     from stt.streaming.session_manager import _build_sortformer_diarizer
 
-    sf = _build_sortformer_diarizer(
-        DiarizationConfig(enabled=True, backend="sortformer")
-    )
+    sf = _build_sortformer_diarizer(DiarizationConfig(enabled=True, backend="sortformer"))
     assert isinstance(sf, StreamingSortformerDiarizer)
 
+    assert _build_sortformer_diarizer(DiarizationConfig(enabled=True, backend="embedding")) is None
     assert (
-        _build_sortformer_diarizer(
-            DiarizationConfig(enabled=True, backend="embedding")
-        )
-        is None
-    )
-    assert (
-        _build_sortformer_diarizer(
-            DiarizationConfig(enabled=False, backend="sortformer")
-        )
-        is None
+        _build_sortformer_diarizer(DiarizationConfig(enabled=False, backend="sortformer")) is None
     )
     assert _build_sortformer_diarizer(None) is None
 
@@ -320,9 +294,7 @@ async def test_create_session_wires_sortformer_diarizer():
         patch("stt.streaming.session_manager.StreamSession", return_value=mock_session),
         patch("stt.streaming.session_manager.ResultPublisher"),
         patch("stt.streaming.session_manager.StreamingPreprocessor"),
-        patch(
-            "stt.streaming.session_manager.StreamingInferenceWorker"
-        ) as worker_cls,
+        patch("stt.streaming.session_manager.StreamingInferenceWorker") as worker_cls,
         patch("stt.streaming.session_manager.IngestionConsumer") as mock_ic,
         patch("stt.streaming.session_manager.ControlListener") as mock_cl,
     ):
@@ -336,8 +308,8 @@ async def test_create_session_wires_sortformer_diarizer():
         mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
         # Bind the REAL shared assembly (session wiring moved out of
         # create/recover into _assemble_session_runtime).
-        mgr._assemble_session_runtime = (
-            lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+        mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(
+            mgr, **kw
         )
         mgr._load_gloss_pipeline = AsyncMock(return_value=None)
         mgr._preseed_speaker = AsyncMock()
@@ -493,9 +465,7 @@ async def test_recovery_reconstructs_sortformer_diarizer():
     mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
     # Bind the REAL shared assembly (session wiring moved out of
     # create/recover into _assemble_session_runtime).
-    mgr._assemble_session_runtime = (
-        lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
-    )
+    mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
     mgr._load_gloss_pipeline = AsyncMock(return_value=None)
     mgr._register_inference_runtime = MagicMock()
     mgr._make_frame_handler = MagicMock(return_value=lambda x: None)
@@ -510,9 +480,7 @@ async def test_recovery_reconstructs_sortformer_diarizer():
         patch("stt.streaming.session_manager.SessionMetadata") as mock_meta_cls,
         patch("stt.streaming.session_manager.ResultPublisher"),
         patch("stt.streaming.session_manager.StreamingPreprocessor"),
-        patch(
-            "stt.streaming.session_manager.StreamingInferenceWorker"
-        ) as worker_cls,
+        patch("stt.streaming.session_manager.StreamingInferenceWorker") as worker_cls,
         patch("stt.streaming.session_manager.IngestionConsumer") as mock_ic,
         patch("stt.streaming.session_manager.ControlListener") as mock_cl,
     ):

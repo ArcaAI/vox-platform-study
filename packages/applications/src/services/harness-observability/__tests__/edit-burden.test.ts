@@ -11,12 +11,7 @@
  * (only scalars), no capture, no workflow change.
  */
 import { describe, expect, it } from 'vitest';
-import {
-  computeEditBurden,
-  deferralRate,
-  timeToSignSeconds,
-  wordLevelEditDistance,
-} from '../edit-burden';
+import { computeEditBurden, deferralRate, timeToSignSeconds, wordLevelEditDistance } from '../edit-burden';
 
 describe('wordLevelEditDistance', () => {
   it('is zero for identical text', () => {

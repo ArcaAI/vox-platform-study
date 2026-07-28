@@ -82,7 +82,9 @@ class NLPMetrics:
             self.inference_duration.record(duration_ms, attrs)
             self.active_inferences.add(-1, attrs)
 
-    def record_entities(self, entity_count: int, entity_type: str, model: str = "token_classifier") -> None:
+    def record_entities(
+        self, entity_count: int, entity_type: str, model: str = "token_classifier"
+    ) -> None:
         self.entity_count.add(entity_count, {"entity_type": entity_type, "model": model})
 
     def record_confidence(self, score: float, model: str, label: str = "") -> None:
@@ -125,8 +127,21 @@ MODEL_INFERENCE_LATENCY = Histogram(
     "Per-inference wall-clock latency in seconds, by service and model.",
     ["service", "model"],
     buckets=[
-        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0,
-        2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
+        30.0,
+        60.0,
+        120.0,
+        300.0,
     ],
 )
 

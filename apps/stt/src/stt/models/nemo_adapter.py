@@ -17,16 +17,13 @@ class NemoAsrAdapter:
     def __init__(self, loaded_model: LoadedModel, inference_config: Any) -> None:
         if loaded_model.format != AiModelFormat.NEMO:
             raise ValueError(
-                f"NemoAsrAdapter requires a NEMO LoadedModel, got "
-                f"{loaded_model.format}"
+                f"NemoAsrAdapter requires a NEMO LoadedModel, got " f"{loaded_model.format}"
             )
         self._loaded = loaded_model
         self._inference_config = inference_config
         extra = loaded_model.extra or {}
         self._target_lang: str | None = extra.get("target_lang")
-        self._supports_word_ts: bool = bool(
-            extra.get("supports_word_timestamps", True)
-        )
+        self._supports_word_ts: bool = bool(extra.get("supports_word_timestamps", True))
 
     def __call__(
         self,
@@ -69,9 +66,7 @@ class NemoAsrAdapter:
         hyp = hypotheses[0]
         text = (getattr(hyp, "text", "") or "").strip()
         timestamp = getattr(hyp, "timestamp", None) or {}
-        language = (
-            getattr(hyp, "language", None) or self._target_lang
-        )
+        language = getattr(hyp, "language", None) or self._target_lang
 
         word_timestamps: list[dict[str, Any]] = []
         if self._supports_word_ts:

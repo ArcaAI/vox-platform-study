@@ -62,9 +62,7 @@ function row(overrides: Partial<SttConfigRow> = {}): SttConfigRow {
   };
 }
 
-const CREDENTIALS: SttCredential[] = [
-  { provider: 'azure-speech', region: 'eastus', enabled: true, hasKey: true, keyVersion: 1, version: 3 },
-];
+const CREDENTIALS: SttCredential[] = [{ provider: 'azure-speech', region: 'eastus', enabled: true, hasKey: true, keyVersion: 1, version: 3 }];
 
 const SESSION = {
   user: { id: 'u-1', username: 'tenant_admin', email: 'admin@arca.ai', roles: ['TENANT_ADMIN'] },

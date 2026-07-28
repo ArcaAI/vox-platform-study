@@ -167,9 +167,13 @@ export class HarnessGatewayService {
   async signalApproval(consultationId: string, payload: HarnessApprovalSignal): Promise<unknown> {
     const url = `${this.harnessUrl}/api/v1/internal/workflows/${consultationId}/signal/approve`;
 
-    const response = await this.httpService.axiosRef.post(url, { ...payload }, {
-      headers: await this.buildHeaders(),
-    });
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { ...payload },
+      {
+        headers: await this.buildHeaders(),
+      },
+    );
 
     this.logger.log({ message: 'Harness approval signal sent', consultationId });
     return response.data;
@@ -184,9 +188,13 @@ export class HarnessGatewayService {
   async signalEdit(consultationId: string, payload: HarnessEditSignal): Promise<unknown> {
     const url = `${this.harnessUrl}/api/v1/internal/workflows/${consultationId}/signal/edit`;
 
-    const response = await this.httpService.axiosRef.post(url, { ...payload }, {
-      headers: await this.buildHeaders(),
-    });
+    const response = await this.httpService.axiosRef.post(
+      url,
+      { ...payload },
+      {
+        headers: await this.buildHeaders(),
+      },
+    );
 
     this.logger.log({ message: 'Harness edit signal sent', consultationId });
     return response.data;

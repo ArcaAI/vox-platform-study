@@ -6,8 +6,6 @@ Tests:
 - Diarization skipped => embedding step skipped
 """
 
-
-
 from stt.transcription.batch_service import BatchTranscriptionService
 from stt.transcription.dto import AudioSegment
 

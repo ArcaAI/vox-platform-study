@@ -7,5 +7,5 @@ import type { ReactNode } from 'react';
  * Screens scope to the working tenant via the BFF proxy's X-Tenant-Id.
  */
 export default function SharedTierLayout({ children }: { children: ReactNode }) {
-    return children;
+  return children;
 }

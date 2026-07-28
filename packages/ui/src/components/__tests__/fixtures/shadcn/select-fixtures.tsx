@@ -1,22 +1,13 @@
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-  SelectGroup,
-  SelectLabel,
-  SelectSeparator,
-} from '../../../shadcn/select'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem, SelectGroup, SelectLabel, SelectSeparator } from '../../../shadcn/select';
 
 export function BasicSelect({
   defaultValue,
   disabled = false,
   placeholder = 'Select an option',
 }: {
-  defaultValue?: string
-  disabled?: boolean
-  placeholder?: string
+  defaultValue?: string;
+  disabled?: boolean;
+  placeholder?: string;
 }) {
   return (
     <Select defaultValue={defaultValue} disabled={disabled}>
@@ -29,7 +20,7 @@ export function BasicSelect({
         <SelectItem value="cherry">Cherry</SelectItem>
       </SelectContent>
     </Select>
-  )
+  );
 }
 
 export function GroupedSelect() {
@@ -52,7 +43,7 @@ export function GroupedSelect() {
         </SelectGroup>
       </SelectContent>
     </Select>
-  )
+  );
 }
 
 export function SelectWithDisabledItems() {
@@ -69,5 +60,5 @@ export function SelectWithDisabledItems() {
         <SelectItem value="another">Another</SelectItem>
       </SelectContent>
     </Select>
-  )
+  );
 }

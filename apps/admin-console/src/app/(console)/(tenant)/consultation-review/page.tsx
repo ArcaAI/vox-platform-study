@@ -14,6 +14,6 @@ export const metadata: Metadata = { title: 'Consultation Review' };
  * browsable index of consultations to hang a nested route off yet.
  */
 export default async function ConsultationReviewPage({ searchParams }: { searchParams: Promise<{ consultationId?: string }> }) {
-    const { consultationId } = await searchParams;
-    return <ConsultationReviewScreen consultationId={consultationId ?? ''} />;
+  const { consultationId } = await searchParams;
+  return <ConsultationReviewScreen consultationId={consultationId ?? ''} />;
 }

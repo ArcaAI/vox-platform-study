@@ -204,11 +204,7 @@ export class NotificationEntity extends BaseTaggedEntity {
     if (!this._targetUserId || this._targetUserId.trim().length === 0) {
       throw new BusinessException('Notification targetUserId is required.');
     }
-    if (
-      this._resourceSubscriptionId !== null &&
-      this._resourceSubscriptionId !== undefined &&
-      this._resourceSubscriptionId.trim().length === 0
-    ) {
+    if (this._resourceSubscriptionId !== null && this._resourceSubscriptionId !== undefined && this._resourceSubscriptionId.trim().length === 0) {
       throw new BusinessException('Notification resourceSubscriptionId must not be empty when provided.');
     }
   }

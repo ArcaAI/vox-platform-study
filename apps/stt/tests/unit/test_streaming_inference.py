@@ -217,9 +217,7 @@ class TestProcessUtterance:
         with patch(
             "stt.diarization.embedding_service.get_embedding_service",
         ) as mock_emb_svc:
-            mock_emb_svc.return_value.extract_from_samples = AsyncMock(
-                return_value=mock_embedding
-            )
+            mock_emb_svc.return_value.extract_from_samples = AsyncMock(return_value=mock_embedding)
             result = await worker.process_utterance("sess-1", utt)
 
         assert result.speaker_id == "speaker-abc"
@@ -682,9 +680,7 @@ class TestProcessPartial:
         )
         utt = _make_utterance(is_final=True)
 
-        with patch.object(
-            worker, "_extract_embedding", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(worker, "_extract_embedding", new_callable=AsyncMock, return_value=None):
             await worker.process_utterance("sess-1", utt)
 
         assert worker._previous_text == ""
@@ -698,9 +694,7 @@ class TestProcessPartial:
         )
         utt = _make_utterance(is_final=True)
 
-        with patch.object(
-            worker, "_extract_embedding", new_callable=AsyncMock, return_value=None
-        ):
+        with patch.object(worker, "_extract_embedding", new_callable=AsyncMock, return_value=None):
             await worker.process_utterance("sess-1", utt)
 
         assert worker._previous_text == "four five"
