@@ -40,11 +40,13 @@ export class SetSttCredentialRequest {
   @IsBoolean()
   enabled?: boolean;
 
-  @ApiProperty({
-    description: 'OCC token. 0 = create (no row yet); >0 = compare-and-set against the current version (412 on drift).',
+  @ApiPropertyOptional({
+    description:
+      'OCC token. 0 = create (no row yet); >0 = compare-and-set against the current version (412 on drift). Browser clients drive OCC through the If-Match header (which overrides this field when present); this is the service-to-service fallback for non-header callers.',
     example: 0,
   })
+  @IsOptional()
   @IsInt()
   @Min(0)
-  expectedVersion!: number;
+  expectedVersion?: number;
 }
