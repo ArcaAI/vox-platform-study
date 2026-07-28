@@ -1,6 +1,6 @@
 # TASK-569 — Unified Provider-Connection Plane (Foundation)
 
-- **Status**: Pending
+- **Status**: Review
 - **Type**: refactor / feature (foundation)
 - **Program**: [Unified Provider-Connection Plane](../SOTA-Track/2026-07-28-unified-provider-plane-program.md) — Wave 0, the foundation every adoption lane builds on
 - **Branch of record**: `thuynh/2607`
@@ -90,9 +90,42 @@ Do **not** edit `smr-proxy.controller.ts` (owned by TASK-572). To keep it compil
 - Contracts C1–C5 marked "published" in the program doc.
 
 ## 5. Implementation Summary
-_(fill on completion — paste command output, list files changed, migration name, interface diff, and the exact `CLOUD_BYO_PROVIDERS` map shipped.)_
+
+**Status: Implemented (Review). Migration authored, NOT applied** — the worktree has no `.env.dev`/DB credentials, so the DB is unreachable; applying via `prisma migrate dev` against the shared dev DB would also be unsafe during concurrent work. Row-count + decrypt round-trip evidence is deferred to a live-stack run (TASK-574 harness). All static + unit gates are green.
+
+### Files changed (worktree-relative)
+- **DB**: `packages/database/src/prisma/db_main/ai-provider-connection.prisma` (add `service`, re-key, rebuild indexes); `.../seed/17-ai-provider-connection.ts` (service on every row, +anthropic/vertex llm, +stt/tts cloud rows, llm-scoped coverage guard); `.../seed/__tests__/config-plane-seed.test.ts` (per-service shape tests).
+- **Migration (new)**: `packages/database/src/prisma/db_main/migrations/20260728120000_task_569_provider_connection_service_discriminator/migration.sql`.
+- **Domain**: `AiProviderConnection{Entity,Factory,Model,Repository}.ts` under `packages/domains/src/*/generated/core/` (Model via `gen:model`; entity/factory/repository hand-authored; mapper unchanged — OCC strip intact, `gen:mapper` NOT run).
+- **App service**: `packages/applications/src/services/ai-provider-connection/**` — new `IProviderConnectionService.ts` (interface + token; old `IAiProviderConnectionService.ts` now a re-export shim, symbol aliased), service made service-first, `constants.ts` (C5 map + per-service `isCloudByoProvider` with a deprecated 1-arg shim), DTOs (+`service`), dto-mapper, module, index; tests migrated + new `ai-provider-connection.service-discriminator.test.ts`.
+
+### Migration statements (additive + reversible, idempotent)
+1. `ALTER TABLE ... ADD COLUMN "service" TEXT NOT NULL DEFAULT 'llm'` — backfills existing rows (R5).
+2. Drop `AiProviderConnection_tenant_provider_unique`; create `AiProviderConnection_tenant_service_provider_unique` on `(tenantId, service, provider)`.
+3. Drop `AiProviderConnection_tenantId_idx`; create `AiProviderConnection_tenantId_service_idx` + `AiProviderConnection_service_provider_idx` (keeps `_provider_idx`).
+4a/4b. `INSERT ... SELECT ... ON CONFLICT (tenantId, service, provider) DO NOTHING` COPYING `TenantTtsProviderCredential`→`service='tts'` (endpoint→baseUrl) and `TenantSttProviderCredential`→`service='stt'` (endpoint→baseUrl, region, extraJson), preserving ciphertext/keyVersion/enabled/status/audit, fresh `uuidv7()` id + `_version=1`. Legacy tables left intact (TASK-576 drops them).
+
+### Interface diff (C2 published)
+Token/interface renamed `IAiProviderConnectionService` → `IProviderConnectionService` (old symbol kept as a `@deprecated` alias to the SAME value → smr-proxy `@Inject` still resolves). `type ProviderService = 'llm'|'stt'|'tts'`. Every method is service-first: `list(service, tenantId?)`, `getRow(service, provider, tenantId?)`, `upsertRow(service, provider, dto, tenantId?, expectedVersion?)`, `deleteRow(service, provider, tenantId?, expectedVersion?)`, `resolveConnection(service, provider, tenantId)`, `findRow(service, provider, tenantId)`, `resolveTenantCloudOverrides(service, tenantId)`. Transition shims kept for one release (TASK-572 removes): 1-arg `resolveTenantCloudOverrides(tenantId)` and 1-arg `isCloudByoProvider(provider)` both assume `service='llm'`. `expectedVersion` prefers the explicit param, falling back to `dto.expectedVersion`.
+
+### `CLOUD_BYO_PROVIDERS` shipped (C5)
+```ts
+export const CLOUD_BYO_PROVIDERS: Record<ProviderService, readonly string[]> = {
+  llm: ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'],
+  stt: ['azure-speech', 'sarvam', 'openai'],
+  tts: ['azure', 'sarvam'],
+};
+```
+
+### Gate evidence (run with `NODE_ENV=test`, inside the worktree)
+- `gen:model:check` — no drift (125 files); `gen:entity:check` — no drift (74) + Schema coverage OK; `gen:factory:check` — no drift (74) + Schema coverage OK.
+- `@arcaai/database test` — **873 passed**.
+- `@arcaai/domains build` — Done; `test` — **1408 passed, 2 skipped, 9 todo**.
+- `@arcaai/applications build` — Done; `test` — **7139 passed, 4 skipped**; `typecheck` — clean; `lint` — 0 errors (owned files 0 warnings; ~331 pre-existing warnings elsewhere unchanged).
+- Existing LLM BYOK unit suites (`ai-provider-connection.service.test.ts`, `.tenant-lane.test.ts`) pass after the signature migration (call-sites updated to pass `service='llm'`). E2E deferred to a live stack (TASK-574 harness).
 
 ## 6. Change History
 | Date | Author | Change |
 |---|---|---|
 | 2026-07-28 | platform review | Ticket authored (program Wave 0 foundation). |
+| 2026-07-28 | opus-4-8 (impl) | Implemented: `service` discriminator + additive/reversible migration (backfill `llm`, copy TTS/STT creds idempotently), hand-authored domain updates, service-first `IProviderConnectionService` publishing C2/C5, deprecated 1-arg shims for smr-proxy. All static + unit gates green; migration authored-not-applied (no DB creds in worktree). |

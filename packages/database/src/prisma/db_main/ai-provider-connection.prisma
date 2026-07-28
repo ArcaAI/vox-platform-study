@@ -1,21 +1,31 @@
 // ============================================================================
-// AI Provider Connections (config-plane core)
+// AI Provider Connections (config-plane core — UNIFIED provider-connection plane)
 //
 // WHERE a serving provider lives and HOW to authenticate. One row per
-// (tenant, provider); the reserved SYSTEM tenant row is the platform default.
-// Generalizes TenantTtsProviderCredential to all LLM providers.
-// `provider` is a validated string (AI_MODEL_PROVIDERS — no Prisma enum, per
-// the AiModel.provider convention). Tenant rows are allowed ONLY for cloud API
-// providers (azure, bedrock — service-layer 403 otherwise, mirroring
+// (tenant, SERVICE, provider); the reserved SYSTEM tenant row is the platform
+// default. This is the ONE credential/connection store for all three AI
+// capabilities — LLM (SMR), STT and TTS — unifying the former
+// TenantTtsProviderCredential / TenantSttProviderCredential tables (TASK-569).
+//
+// `service` is the capability discriminator (`llm` | `stt` | `tts`) — a
+// validated string (no Prisma enum, per the AiModel.provider convention). It
+// resolves the provider-NAME collision across capabilities: `azure` means Azure
+// OpenAI under `service='llm'` but Azure Speech under `service='stt'`, and
+// `(llm,azure)` / `(stt,azure)` are now distinct rows.
+//
+// `provider` is a capability-scoped provider id (see CLOUD_BYO_PROVIDERS in the
+// application service). Tenant rows are allowed ONLY for the cloud API providers
+// listed for their service (service-layer 403 otherwise, mirroring
 // GLOBAL_ADMIN_ONLY_TASK_PREFIXES); self-host engines are SYSTEM-only.
 // `encryptedApiKey` is Vault-Transit ciphertext via secret-field.util —
 // NEVER returned by any read DTO (hasKey boolean only).
-// Resolution: tenant row (enabled) → SYSTEM row → service env fallback.
+// Resolution: tenant row (enabled) → SYSTEM row → service env fallback,
+// filtered by `service`.
 //
 // Data class 2 (per-tenant secret as Vault-Transit ciphertext in a DB column).
-// Unlike TenantTtsProviderCredential this model IS a SYSTEM-shared read model —
-// the SYSTEM row is the catalog entry every tenant's resolver must read. The
-// widening is [caller, SYSTEM] only and never exposes another tenant's BYO row.
+// This model IS a SYSTEM-shared read model — the SYSTEM row is the catalog entry
+// every tenant's resolver must read. The widening is [caller, SYSTEM] only and
+// never exposes another tenant's BYO row.
 // ============================================================================
 
 model AiProviderConnection {
@@ -28,9 +38,10 @@ model AiProviderConnection {
   tenantId String
 
   // core fields
-  provider        String // ollama | lm-studio | azure | bedrock | built-in | sarvam | vllm | llama-cpp
-  baseUrl         String? // ollama/lm-studio/vllm/llama-cpp/azure endpoint
-  region          String? // bedrock
+  service         String  @default("llm") // llm | stt | tts — capability discriminator; backfills existing rows to 'llm'
+  provider        String // capability-scoped provider id (e.g. llm:azure/bedrock, stt:azure-speech/sarvam/openai, tts:azure/sarvam)
+  baseUrl         String? // endpoint (ollama/lm-studio/vllm/llama-cpp/azure LLM; STT/TTS endpoint migrated from `endpoint`)
+  region          String? // bedrock; classic Azure Speech
   apiVersion      String? // azure
   deploymentName  String? // azure
   encryptedApiKey Bytes? // Vault-Transit ciphertext (secret-field.util); plaintext never stored
@@ -49,9 +60,10 @@ model AiProviderConnection {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // indexing — one connection per (tenant, provider)
-  @@unique([tenantId, provider], name: "AiProviderConnection_tenant_provider_unique")
-  @@index([tenantId], name: "AiProviderConnection_tenantId_idx")
+  // indexing — one connection per (tenant, service, provider)
+  @@unique([tenantId, service, provider], name: "AiProviderConnection_tenant_service_provider_unique")
+  @@index([tenantId, service], name: "AiProviderConnection_tenantId_service_idx")
+  @@index([service, provider], name: "AiProviderConnection_service_provider_idx")
   @@index([provider], name: "AiProviderConnection_provider_idx")
   @@schema("core")
 }

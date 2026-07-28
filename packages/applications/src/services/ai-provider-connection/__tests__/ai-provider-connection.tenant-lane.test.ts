@@ -56,8 +56,8 @@ function makeRow(
 
 function makeService(opts: { rows?: unknown[]; withVault?: boolean; decrypt?: () => Promise<Buffer> } = {}) {
   const repo = {
-    findByTenantAndProvider: vi.fn().mockResolvedValue(null),
-    findByTenantId: vi.fn().mockResolvedValue(opts.rows ?? []),
+    findByTenantServiceProvider: vi.fn().mockResolvedValue(null),
+    findByTenantIdAndService: vi.fn().mockResolvedValue(opts.rows ?? []),
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
@@ -139,8 +139,10 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
   it('is tenant-isolated: tenant B resolves nothing from tenant A rows', async () => {
     const { svc, repo } = makeService({ rows: [] });
     await expect(svc.resolveTenantCloudOverrides(TENANT_B)).resolves.toEqual({});
-    // The lookup is pinned to the requested tenant — never widened.
-    expect(repo.findByTenantId.mock.calls[0][0]).toBe(TENANT_B);
+    // The lookup is pinned to the requested tenant — never widened. Service-first
+    // signature: findByTenantIdAndService(service, tenantId, tx) → tenantId is arg 1.
+    expect(repo.findByTenantIdAndService.mock.calls[0][1]).toBe(TENANT_B);
+    expect(repo.findByTenantIdAndService.mock.calls[0][0]).toBe('llm');
   });
 
   describe('fail-open per credential ON DECRYPT ERROR ONLY', () => {
@@ -166,11 +168,12 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
 
       expect(warn).toHaveBeenCalledTimes(1);
       const arg = warn.mock.calls[0][0] as Record<string, unknown>;
-      expect(arg).toMatchObject({ tenantId: TENANT_A, provider: 'azure', keyVersion: 7 });
+      // The 1-arg resolver form resolves the llm lane, so the warn carries service='llm'.
+      expect(arg).toMatchObject({ tenantId: TENANT_A, service: 'llm', provider: 'azure', keyVersion: 7 });
 
-      // Nothing beyond the four allow-listed fields may be logged, and no
-      // serialized value may contain key material or ciphertext.
-      expect(Object.keys(arg).sort()).toEqual(['keyVersion', 'message', 'provider', 'tenantId']);
+      // Nothing beyond the allow-listed fields may be logged, and no serialized
+      // value may contain key material or ciphertext.
+      expect(Object.keys(arg).sort()).toEqual(['keyVersion', 'message', 'provider', 'service', 'tenantId']);
       const serialized = JSON.stringify(arg);
       expect(serialized).not.toContain('vault:');
       expect(serialized).not.toContain('plaintext-key');

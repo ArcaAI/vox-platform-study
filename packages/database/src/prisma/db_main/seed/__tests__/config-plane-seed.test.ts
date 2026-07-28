@@ -33,10 +33,27 @@ import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 // =============================================================================
 
 describe('AiProviderConnection SYSTEM seed rows', () => {
-    it('seeds exactly one row per canonical provider', () => {
-        const providers = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => c.provider).sort();
-        expect(providers).toEqual([...AI_MODEL_PROVIDERS].sort());
-        expect(SYSTEM_AI_PROVIDER_CONNECTIONS.length).toBe(AI_MODEL_PROVIDERS.length);
+    it('seeds one llm row per canonical serving provider (+ the new cloud llm providers)', () => {
+        const llmProviders = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'llm')
+            .map((c) => c.provider)
+            .sort();
+        expect(llmProviders).toEqual([...AI_MODEL_PROVIDERS, 'anthropic', 'vertex'].sort());
+    });
+
+    it('seeds the STT cloud catalog rows', () => {
+        const stt = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'stt').map((c) => c.provider).sort();
+        expect(stt).toEqual(['azure-speech', 'openai', 'sarvam']);
+    });
+
+    it('seeds the TTS cloud catalog rows', () => {
+        const tts = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'tts').map((c) => c.provider).sort();
+        expect(tts).toEqual(['azure', 'sarvam']);
+    });
+
+    it('carries a valid service discriminator on every row', () => {
+        SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
+            expect(['llm', 'stt', 'tts'], `service for ${c.provider}`).toContain(c.service);
+        });
     });
 
     it('keeps every row on the SYSTEM tenant', () => {
@@ -62,11 +79,11 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
         });
     });
 
-    it('has unique ids and one row per (tenant, provider)', () => {
+    it('has unique ids and one row per (tenant, service, provider)', () => {
         const ids = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => c.id);
-        const pairs = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.provider}`);
+        const triples = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${c.provider}`);
         expect(new Set(ids).size).toBe(ids.length);
-        expect(new Set(pairs).size).toBe(pairs.length);
+        expect(new Set(triples).size).toBe(triples.length);
     });
 });
 
