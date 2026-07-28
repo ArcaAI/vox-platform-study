@@ -32,6 +32,7 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  HttpCode,
   HttpException,
   HttpStatus,
   Inject,
@@ -521,6 +522,7 @@ export class SmrProxyController {
   }
 
   @Post('generate')
+  @HttpCode(HttpStatus.OK)
   @Authorize()
   @ApiExcludeEndpoint()
   @ApiOperation({ summary: 'Generate text via SMR (sync or streaming)' })
