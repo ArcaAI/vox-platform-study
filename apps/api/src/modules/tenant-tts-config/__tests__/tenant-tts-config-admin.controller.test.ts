@@ -19,14 +19,19 @@ function makeController(ctx: Ctx) {
     getEffective: vi.fn(),
     getRow: vi.fn(),
     upsertRow: vi.fn(),
-    getCredentials: vi.fn(),
-    setCredential: vi.fn(),
-    removeCredential: vi.fn(),
     getPlatformCatalog: vi.fn(),
   };
+  // Unified provider-connection plane (`service='tts'`, TASK-570) — backs the
+  // credential facade routes.
+  const providerConnectionService = {
+    list: vi.fn(),
+    getRow: vi.fn(),
+    upsertRow: vi.fn(),
+    deleteRow: vi.fn(),
+  };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
-  const controller = new TenantTtsConfigAdminController(service as never, cls as never);
-  return { controller, service };
+  const controller = new TenantTtsConfigAdminController(service as never, providerConnectionService as never, cls as never);
+  return { controller, service, providerConnectionService };
 }
 
 describe('TenantTtsConfigAdminController — scoping', () => {
@@ -88,21 +93,76 @@ describe('TenantTtsConfigAdminController — platform catalog', () => {
   });
 });
 
-describe('TenantTtsConfigAdminController — BYO credentials', () => {
+describe('TenantTtsConfigAdminController — BYO credentials (facade over IProviderConnectionService)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('setCredential delegates provider + body scoped to the caller tenant', async () => {
-    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    service.setCredential.mockResolvedValue({ provider: 'azure', hasKey: true });
-    await controller.setCredential('azure', { apiKey: 'k', endpoint: 'eastus' }, undefined);
-    expect(service.setCredential).toHaveBeenCalledWith('t1', 'azure', { apiKey: 'k', endpoint: 'eastus' });
+  it('getCredentials lists tts connections for the caller tenant, masked, endpoint from region/baseUrl per provider', async () => {
+    const { controller, providerConnectionService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    providerConnectionService.list.mockResolvedValue([
+      { provider: 'azure', region: 'eastus', baseUrl: null, hasKey: true, keyVersion: 2, enabled: true, updatedAt: '2026-07-28T00:00:00.000Z' },
+      { provider: 'sarvam', region: null, baseUrl: 'https://vpc.sarvam', hasKey: false, keyVersion: null, enabled: false },
+    ]);
+
+    const res = await controller.getCredentials(undefined);
+
+    expect(providerConnectionService.list).toHaveBeenCalledWith('tts', 't1');
+    expect(res).toEqual([
+      { provider: 'azure', endpoint: 'eastus', enabled: true, hasKey: true, keyVersion: 2, updatedAt: '2026-07-28T00:00:00.000Z' },
+      { provider: 'sarvam', endpoint: 'https://vpc.sarvam', enabled: false, hasKey: false, keyVersion: null },
+    ]);
+  });
+
+  it('setCredential creates (expectedVersion 0) when no row exists yet, mapping endpoint to region for azure', async () => {
+    const { controller, providerConnectionService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    providerConnectionService.getRow.mockResolvedValue({ version: 0 });
+    providerConnectionService.upsertRow.mockResolvedValue({ provider: 'azure', region: 'eastus', baseUrl: null, hasKey: true, keyVersion: 1, enabled: true });
+
+    const res = await controller.setCredential('azure', { apiKey: 'k', endpoint: 'eastus' }, undefined);
+
+    expect(providerConnectionService.getRow).toHaveBeenCalledWith('tts', 'azure', 't1');
+    expect(providerConnectionService.upsertRow).toHaveBeenCalledWith(
+      'tts',
+      'azure',
+      { apiKey: 'k', enabled: true, region: 'eastus' },
+      't1',
+      0,
+    );
+    expect(res).toEqual({ provider: 'azure', endpoint: 'eastus', enabled: true, hasKey: true, keyVersion: 1 });
+  });
+
+  it('setCredential rotates (CAS on the current version) when a row already exists, mapping endpoint to baseUrl for sarvam', async () => {
+    const { controller, providerConnectionService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    providerConnectionService.getRow.mockResolvedValue({ version: 3 });
+    providerConnectionService.upsertRow.mockResolvedValue({ provider: 'sarvam', region: null, baseUrl: 'https://vpc.sarvam', hasKey: true, keyVersion: 2, enabled: true });
+
+    const res = await controller.setCredential('sarvam', { apiKey: 'rotated', endpoint: 'https://vpc.sarvam' }, undefined);
+
+    expect(providerConnectionService.upsertRow).toHaveBeenCalledWith(
+      'tts',
+      'sarvam',
+      { apiKey: 'rotated', enabled: true, baseUrl: 'https://vpc.sarvam' },
+      't1',
+      3,
+    );
+    expect(res).toMatchObject({ provider: 'sarvam', hasKey: true });
+  });
+
+  it('setCredential defaults enabled to true and never surfaces the key on the response', async () => {
+    const { controller, providerConnectionService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    providerConnectionService.getRow.mockResolvedValue({ version: 0 });
+    providerConnectionService.upsertRow.mockResolvedValue({ provider: 'azure', region: null, baseUrl: null, hasKey: true, keyVersion: 1, enabled: true });
+
+    const res = await controller.setCredential('azure', { apiKey: 'super-secret' }, undefined);
+
+    expect(providerConnectionService.upsertRow).toHaveBeenCalledWith('tts', 'azure', { apiKey: 'super-secret', enabled: true }, 't1', 0);
+    expect(JSON.stringify(res)).not.toContain('super-secret');
   });
 
   it('removeCredential delegates scoped to the caller tenant', async () => {
-    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
-    service.removeCredential.mockResolvedValue(undefined);
+    const { controller, providerConnectionService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    providerConnectionService.deleteRow.mockResolvedValue(undefined);
     await controller.removeCredential('sarvam', undefined);
-    expect(service.removeCredential).toHaveBeenCalledWith('t1', 'sarvam');
+    expect(providerConnectionService.deleteRow).toHaveBeenCalledWith('tts', 'sarvam', 't1');
   });
 
   it('rejects a tenant admin managing credentials for another tenant', async () => {
