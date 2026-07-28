@@ -46,11 +46,12 @@ yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
 # fall back to DEFAULT. Avoids `source`-ing the whole file (which would choke
 # on values containing spaces / special characters).
 read_env() {
-  local key="$1" def="${2:-}" line
+  local key="$1" def="${2:-}" line value
   if [ -f "$ENV_FILE" ]; then
     line=$(grep -E "^${key}=" "$ENV_FILE" | tail -n1 || true)
   fi
-  if [ -z "${line:-}" ]; then printf '%s' "$def"; else printf '%s' "${line#*=}" | tr -d '\r'; fi
+  value="$(printf '%s' "${line#*=}" | tr -d '\r')"
+  if [ -z "$value" ]; then printf '%s' "$def"; else printf '%s' "$value"; fi
 }
 
 ROOT_TOKEN="$(read_env VAULT_DEV_ROOT_TOKEN root)"
