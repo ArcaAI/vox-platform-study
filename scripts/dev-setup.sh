@@ -34,11 +34,12 @@ yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
 bold()   { printf "\033[1m%s\033[0m\n" "$*"; }
 
 read_env() {
-  local key="$1" def="${2:-}" line
+  local key="$1" def="${2:-}" line value
   if [ -f "$REPO_ROOT/.env.dev" ]; then
     line=$(grep -E "^${key}=" "$REPO_ROOT/.env.dev" | tail -n1 || true)
   fi
-  if [ -z "${line:-}" ]; then printf '%s' "$def"; else printf '%s' "${line#*=}" | tr -d '\r'; fi
+  value="$(printf '%s' "${line#*=}" | tr -d '\r')"
+  if [ -z "$value" ]; then printf '%s' "$def"; else printf '%s' "$value"; fi
 }
 
 # Profile flags for dev-infra.sh (TASK-555).
