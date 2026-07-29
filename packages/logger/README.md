@@ -24,15 +24,15 @@ src/
 
 ### Exports
 
-| Export | Kind | Purpose |
-|---|---|---|
-| `default` | `Logger` instance | Pre-configured logger (console transport, INFO level) |
-| `Logger` | class | Configurable logger wrapping a `winston.Logger` |
-| `createLogger(options?)` | factory | `new Logger(options)` shorthand |
-| `LogLevel` | enum | `ERROR`, `WARN`, `INFO`, `HTTP`, `DEBUG`, `VERBOSE`, `SILLY` |
-| `LoggerOptions` | type | Constructor options (level, service, transports, format) |
-| `S3Config` | type | Configuration shape for an S3/MinIO transport |
-| `log(msg, meta?)` | function | Legacy helper; logs at INFO via the default logger |
+| Export                   | Kind              | Purpose                                                      |
+| ------------------------ | ----------------- | ------------------------------------------------------------ |
+| `default`                | `Logger` instance | Pre-configured logger (console transport, INFO level)        |
+| `Logger`                 | class             | Configurable logger wrapping a `winston.Logger`              |
+| `createLogger(options?)` | factory           | `new Logger(options)` shorthand                              |
+| `LogLevel`               | enum              | `ERROR`, `WARN`, `INFO`, `HTTP`, `DEBUG`, `VERBOSE`, `SILLY` |
+| `LoggerOptions`          | type              | Constructor options (level, service, transports, format)     |
+| `S3Config`               | type              | Configuration shape for an S3/MinIO transport                |
+| `log(msg, meta?)`        | function          | Legacy helper; logs at INFO via the default logger           |
 
 ### Basic usage
 
@@ -64,12 +64,12 @@ logger.debug('Detailed debug information');
 
 ### Transports
 
-| Transport | Enabled via | Implementation |
-|---|---|---|
-| Console | `transports.console: true` | `winston.transports.Console` |
-| File | `transports.file.enabled` | `winston.transports.File` (`filename`, `dirname`, `maxSize`, `maxFiles`) |
-| Rotating file | `transports.rotate.enabled` | `winston-daily-rotate-file` (`datePattern`, `maxSize`, `maxFiles`) |
-| S3 / MinIO | `logger.addTransport(...)` | Not constructed by the factory; consumers instantiate `winston-s3-transport` themselves and attach it |
+| Transport     | Enabled via                 | Implementation                                                                                        |
+| ------------- | --------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Console       | `transports.console: true`  | `winston.transports.Console`                                                                          |
+| File          | `transports.file.enabled`   | `winston.transports.File` (`filename`, `dirname`, `maxSize`, `maxFiles`)                              |
+| Rotating file | `transports.rotate.enabled` | `winston-daily-rotate-file` (`datePattern`, `maxSize`, `maxFiles`)                                    |
+| S3 / MinIO    | `logger.addTransport(...)`  | Not constructed by the factory; consumers instantiate `winston-s3-transport` themselves and attach it |
 
 The `Logger` constructor only builds console, file, and rotate transports. The `transports.s3` option block and the `S3Config` type describe the configuration shape, but the S3 transport itself must be added by the consumer:
 
@@ -78,7 +78,7 @@ import { createLogger } from '@arcaai/logger';
 import S3Transport from 'winston-s3-transport';
 
 const logger = createLogger({ service: 'api-service', format: { json: true } });
-logger.addTransport(new S3Transport({ /* bucket, credentials, ... */ }));
+logger.addTransport(new S3Transport({/* bucket, credentials, ... */}));
 ```
 
 ### Formatting
@@ -87,14 +87,14 @@ logger.addTransport(new S3Transport({ /* bucket, credentials, ... */ }));
 
 ## Commands
 
-| Command | package.json script | From repo root |
-|---|---|---|
-| Build | `tsc` | `pnpm --filter @arcaai/logger build` |
-| Watch | `tsc -w` | `pnpm --filter @arcaai/logger dev` |
-| Test | `vitest run` | `pnpm --filter @arcaai/logger test` |
-| Test (watch) | `vitest --watch` | `pnpm --filter @arcaai/logger test:watch` |
-| Lint | `eslint "src/**/*.ts*" --max-warnings 0` | `pnpm --filter @arcaai/logger lint` |
-| Clean | `rimraf dist tsconfig.tsbuildinfo` | `pnpm --filter @arcaai/logger clean` |
+| Command      | package.json script                      | From repo root                            |
+| ------------ | ---------------------------------------- | ----------------------------------------- |
+| Build        | `tsc`                                    | `pnpm --filter @arcaai/logger build`      |
+| Watch        | `tsc -w`                                 | `pnpm --filter @arcaai/logger dev`        |
+| Test         | `vitest run`                             | `pnpm --filter @arcaai/logger test`       |
+| Test (watch) | `vitest --watch`                         | `pnpm --filter @arcaai/logger test:watch` |
+| Lint         | `eslint "src/**/*.ts*" --max-warnings 0` | `pnpm --filter @arcaai/logger lint`       |
+| Clean        | `rimraf dist tsconfig.tsbuildinfo`       | `pnpm --filter @arcaai/logger clean`      |
 
 ## Dependencies
 

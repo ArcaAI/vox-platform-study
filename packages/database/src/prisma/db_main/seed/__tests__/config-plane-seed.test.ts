@@ -4,14 +4,19 @@
  * Static assertions over the EXPORTED seed data (no live DB), following the
  * conventions of `ai-model-consolidation-seed.test.ts` in this directory.
  *
- * The load-bearing rule these tests encode is the SILENT-CHANGE
- * guard: with the shipped seeds, every request path must resolve exactly
- * today's effective values. Concretely —
+ * SEED-AUTHORITATIVE Day-1 posture (TASK-578, OD-1). The seed is now the
+ * authoritative source of the built-in-local connection defaults —
+ * NOT env. Concretely —
  *
- *   1. Every seeded `AiProviderConnection` is `enabled: false` and carries NO
- *      key material, so `resolveConnection` falls through to the service env
- *      fallback exactly as it does today.
- *   2. `AiRuntimeProfile` seeds are EMPTY. Absence of a profile row means "no
+ *   1. The five built-in-local `llm` rows (`ollama`, `lm-studio`, `built-in`,
+ *      `vllm`, `llama-cpp`) seed `enabled: true`, so `resolveConnection('llm', …)`
+ *      returns the SYSTEM row Day-1 and env becomes a pure fallback.
+ *   2. Every CLOUD-BYO row (all services — e.g. llm `azure`/`bedrock`/`openai`/
+ *      `anthropic`/`vertex`/`sarvam`, and all stt/tts cloud rows) stays
+ *      `enabled: false`: a cloud provider needs a tenant key, so an
+ *      enabled-but-keyless cloud row must never serve.
+ *   3. NO row ever carries key material.
+ *   4. `AiRuntimeProfile` seeds are EMPTY. Absence of a profile row means "no
  *      opinion" — the injection cascade falls through to the service's own
  *      pydantic/env default, so forwarded requests stay byte-identical.
  *
@@ -32,42 +37,89 @@ import { SYSTEM_AI_RUNTIME_PROFILES } from '../18-ai-runtime-profile';
 // 1. AiProviderConnection seed shape
 // =============================================================================
 
+/**
+ * The built-in-local `llm` engines the platform runs itself — these are the ONLY
+ * rows enabled Day-1 (TASK-578). `sarvam`/`azure`/`bedrock`/`openai`/`anthropic`/
+ * `vertex` are cloud providers and stay disabled (they need a tenant key).
+ */
+const BUILT_IN_LOCAL_LLM_PROVIDERS = ['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp'] as const;
+
+/** True iff the row is one of the enabled-Day-1 built-in-local llm engines. */
+const isBuiltInLocalLlm = (c: { service: string; provider: string }): boolean =>
+  c.service === 'llm' && (BUILT_IN_LOCAL_LLM_PROVIDERS as readonly string[]).includes(c.provider);
+
 describe('AiProviderConnection SYSTEM seed rows', () => {
-    it('seeds exactly one row per canonical provider', () => {
-        const providers = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => c.provider).sort();
-        expect(providers).toEqual([...AI_MODEL_PROVIDERS].sort());
-        expect(SYSTEM_AI_PROVIDER_CONNECTIONS.length).toBe(AI_MODEL_PROVIDERS.length);
-    });
+  it('seeds one llm row per canonical serving provider', () => {
+    // `anthropic` / `vertex` are now first-class members of AI_MODEL_PROVIDERS
+    // (TASK-572), so the llm seed rows must equal it exactly — no manual append.
+    const llmProviders = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'llm')
+      .map((c) => c.provider)
+      .sort();
+    expect(llmProviders).toEqual([...AI_MODEL_PROVIDERS].sort());
+  });
 
-    it('keeps every row on the SYSTEM tenant', () => {
-        SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => expect(c.tenantId).toBe(SYSTEM_TENANT_ID));
-    });
+  it('seeds the STT cloud catalog rows', () => {
+    const stt = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'stt')
+      .map((c) => c.provider)
+      .sort();
+    expect(stt).toEqual(['azure-speech', 'openai', 'sarvam']);
+  });
 
-    it('seeds every connection DISABLED so resolution falls through to env (silent-change guard)', () => {
-        SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
-            expect(c.enabled, `connection ${c.provider} must seed disabled`).toBe(false);
-        });
-    });
+  it('seeds the TTS cloud catalog rows', () => {
+    const tts = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.service === 'tts')
+      .map((c) => c.provider)
+      .sort();
+    expect(tts).toEqual(['azure', 'sarvam']);
+  });
 
-    it('never seeds key material', () => {
-        SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
-            expect(c.encryptedApiKey ?? null, `connection ${c.provider} must have no ciphertext`).toBeNull();
-            expect(c.keyVersion ?? null, `connection ${c.provider} must have no key version`).toBeNull();
-        });
+  it('carries a valid service discriminator on every row', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
+      expect(['llm', 'stt', 'tts'], `service for ${c.provider}`).toContain(c.service);
     });
+  });
 
-    it('marks every seeded endpoint value as a placeholder in metaData', () => {
-        SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.baseUrl || c.region).forEach((c) => {
-            expect(c.metaData?.placeholder, `connection ${c.provider} endpoint must be marked placeholder`).toBe(true);
-        });
-    });
+  it('keeps every row on the SYSTEM tenant', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => expect(c.tenantId).toBe(SYSTEM_TENANT_ID));
+  });
 
-    it('has unique ids and one row per (tenant, provider)', () => {
-        const ids = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => c.id);
-        const pairs = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.provider}`);
-        expect(new Set(ids).size).toBe(ids.length);
-        expect(new Set(pairs).size).toBe(pairs.length);
+  it('enables exactly the five built-in-local llm rows Day-1 (seed-authoritative)', () => {
+    const enabled = SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => c.enabled)
+      .map((c) => `${c.service}:${c.provider}`)
+      .sort();
+    expect(enabled).toEqual(['llm:built-in', 'llm:llama-cpp', 'llm:lm-studio', 'llm:ollama', 'llm:vllm']);
+  });
+
+  it('enables every built-in-local llm engine', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.filter(isBuiltInLocalLlm).forEach((c) => {
+      expect(c.enabled, `built-in-local ${c.provider} must seed enabled`).toBe(true);
     });
+  });
+
+  it('keeps every cloud-BYO / non-built-in row disabled (no keyless cloud row serves)', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.filter((c) => !isBuiltInLocalLlm(c)).forEach((c) => {
+      expect(c.enabled, `cloud/non-built-in ${c.service}:${c.provider} must seed disabled`).toBe(false);
+    });
+  });
+
+  it('never seeds key material', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.forEach((c) => {
+      expect(c.encryptedApiKey ?? null, `connection ${c.provider} must have no ciphertext`).toBeNull();
+      expect(c.keyVersion ?? null, `connection ${c.provider} must have no key version`).toBeNull();
+    });
+  });
+
+  it('marks no built-in-local row as a placeholder (they are active connections, not suggestions)', () => {
+    SYSTEM_AI_PROVIDER_CONNECTIONS.filter(isBuiltInLocalLlm).forEach((c) => {
+      expect(c.metaData?.placeholder ?? false, `active connection ${c.provider} must not be a placeholder`).toBe(false);
+    });
+  });
+
+  it('has unique ids and one row per (tenant, service, provider)', () => {
+    const ids = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => c.id);
+    const triples = SYSTEM_AI_PROVIDER_CONNECTIONS.map((c) => `${c.tenantId}::${c.service}::${c.provider}`);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(triples).size).toBe(triples.length);
+  });
 });
 
 // =============================================================================
@@ -75,9 +127,9 @@ describe('AiProviderConnection SYSTEM seed rows', () => {
 // =============================================================================
 
 describe('AiRuntimeProfile seed', () => {
-    it('seeds NO profile rows (absence = env defaults; silent-change guard)', () => {
-        expect(SYSTEM_AI_RUNTIME_PROFILES).toEqual([]);
-    });
+  it('seeds NO profile rows (absence = env defaults; silent-change guard)', () => {
+    expect(SYSTEM_AI_RUNTIME_PROFILES).toEqual([]);
+  });
 });
 
 // =============================================================================
@@ -85,15 +137,15 @@ describe('AiRuntimeProfile seed', () => {
 // =============================================================================
 
 describe('client extension allow-lists', () => {
-    it.each(['AiProviderConnection', 'AiRuntimeProfile'])('registers %s as tenant-scoped', (model) => {
-        expect(TENANT_SCOPED_MODELS.has(model)).toBe(true);
-    });
+  it.each(['AiProviderConnection', 'AiRuntimeProfile'])('registers %s as tenant-scoped', (model) => {
+    expect(TENANT_SCOPED_MODELS.has(model)).toBe(true);
+  });
 
-    it.each(['AiProviderConnection', 'AiRuntimeProfile'])('registers %s as a SYSTEM-shared read model', (model) => {
-        expect(SYSTEM_SHARED_READ_MODELS.has(model)).toBe(true);
-    });
+  it.each(['AiProviderConnection', 'AiRuntimeProfile'])('registers %s as a SYSTEM-shared read model', (model) => {
+    expect(SYSTEM_SHARED_READ_MODELS.has(model)).toBe(true);
+  });
 
-    it.each(['AiProviderConnection', 'AiRuntimeProfile'])('keeps %s soft-deleting', (model) => {
-        expect(MODELS_WITHOUT_SOFT_DELETE.has(model)).toBe(false);
-    });
+  it.each(['AiProviderConnection', 'AiRuntimeProfile'])('keeps %s soft-deleting', (model) => {
+    expect(MODELS_WITHOUT_SOFT_DELETE.has(model)).toBe(false);
+  });
 });

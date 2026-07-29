@@ -213,6 +213,18 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
     'AI Providers',
   ),
   platformSecret(
+    'smrOpenai.apiKey',
+    'SMR OpenAI key',
+    "SMR's PLATFORM-level OpenAI credential (`SMR_OPENAI_` pydantic prefix, typed `SecretStr`) — the fallback when a tenant has no enabled `(llm, openai)` BYO connection. A TENANT-supplied OpenAI key is a different data class (`db-secret`, Vault-Transit ciphertext in `AiProviderConnection`).",
+    'AI Providers',
+  ),
+  platformSecret(
+    'smrAnthropic.apiKey',
+    'SMR Anthropic key',
+    "SMR's PLATFORM-level Anthropic credential (`SMR_ANTHROPIC_` pydantic prefix, typed `SecretStr`) — the fallback when a tenant has no enabled `(llm, anthropic)` BYO connection.",
+    'AI Providers',
+  ),
+  platformSecret(
     'ttsSarvam.apiKey',
     'Sarvam TTS key (platform)',
     'PLATFORM-level Sarvam credential (`TTS_SARVAM_` prefix). A TENANT-supplied Sarvam key is a different data class entirely — `tts.credential.sarvam`, tier `db-secret` — and must never be stored here.',

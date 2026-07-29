@@ -34,9 +34,7 @@ describe('transcript-segments (pure helpers)', () => {
     });
 
     it('honors explicit offsets over a text search', () => {
-      const resolved = computeSegmentOffsets('anything', [
-        { text: 'x', charStart: 3, charEnd: 8, speaker: 'p' },
-      ]);
+      const resolved = computeSegmentOffsets('anything', [{ text: 'x', charStart: 3, charEnd: 8, speaker: 'p' }]);
       expect(resolved[0]).toMatchObject({ charStart: 3, charEnd: 8 });
     });
 
@@ -162,7 +160,15 @@ describe('transcript-segments (pure helpers)', () => {
     it('merges both shapes, deduped, segmentCitedIds first then claim evidence in encounter order', () => {
       const citationsMap = {
         segmentCitedIds: ['seg-1', 'seg-2'],
-        claims: [{ id: 'c1', evidence: [{ startOffset: 0, segmentId: 'seg-2' }, { startOffset: 10, segmentId: 'seg-5' }] }],
+        claims: [
+          {
+            id: 'c1',
+            evidence: [
+              { startOffset: 0, segmentId: 'seg-2' },
+              { startOffset: 10, segmentId: 'seg-5' },
+            ],
+          },
+        ],
       };
       expect(collectCitedSegmentIds(citationsMap)).toEqual(['seg-1', 'seg-2', 'seg-5']);
     });

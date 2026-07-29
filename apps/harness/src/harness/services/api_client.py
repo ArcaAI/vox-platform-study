@@ -364,9 +364,7 @@ class ApiClient:
             entity_ids=list(data.get("entityIds", [])),
         )
 
-    async def load_entity_priors(
-        self, consultation_id: str, *, tenant_id: str
-    ) -> list[NEREntity]:
+    async def load_entity_priors(self, consultation_id: str, *, tenant_id: str) -> list[NEREntity]:
         """Read the persisted ``NamedEntity`` rows for a consultation as NER priors.
 
         The read counterpart of :meth:`persist_entities`: the harness

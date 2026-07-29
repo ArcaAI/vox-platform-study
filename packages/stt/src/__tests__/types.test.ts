@@ -32,10 +32,7 @@ import {
 describe('STTError', () => {
   describe('constructor', () => {
     it('should create error with code and message', () => {
-      const error = new STTError(
-        STTErrorCode.MODEL_LOAD_FAILED,
-        'Failed to load model'
-      );
+      const error = new STTError(STTErrorCode.MODEL_LOAD_FAILED, 'Failed to load model');
 
       expect(error).toBeInstanceOf(Error);
       expect(error).toBeInstanceOf(STTError);
@@ -47,21 +44,14 @@ describe('STTError', () => {
 
     it('should create error with cause', () => {
       const originalError = new Error('Network error');
-      const error = new STTError(
-        STTErrorCode.WEBSOCKET_ERROR,
-        'WebSocket connection failed',
-        originalError
-      );
+      const error = new STTError(STTErrorCode.WEBSOCKET_ERROR, 'WebSocket connection failed', originalError);
 
       expect(error.cause).toBe(originalError);
     });
 
     it('should be throwable and catchable', () => {
       const throwError = () => {
-        throw new STTError(
-          STTErrorCode.NOT_SUPPORTED,
-          'Browser not supported'
-        );
+        throw new STTError(STTErrorCode.NOT_SUPPORTED, 'Browser not supported');
       };
 
       expect(throwError).toThrow(STTError);

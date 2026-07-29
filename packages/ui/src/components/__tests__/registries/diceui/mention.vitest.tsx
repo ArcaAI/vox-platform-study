@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { Mention, MentionInput } from '@/components/registries/diceui/mention'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Mention, MentionInput } from '@/components/registries/diceui/mention';
 
 describe('Mention', () => {
   it('renders without crashing', () => {
@@ -8,7 +8,7 @@ describe('Mention', () => {
       <Mention>
         <MentionInput placeholder="Type..." />
       </Mention>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

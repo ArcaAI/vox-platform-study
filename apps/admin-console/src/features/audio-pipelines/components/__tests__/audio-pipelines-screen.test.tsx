@@ -13,288 +13,293 @@ import type { Pipeline, PipelineVersion } from '../../api/types';
 import { AudioPipelinesScreen } from '../audio-pipelines-screen';
 
 vi.mock('sonner', () => ({
-    toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 function pipeline(overrides: Partial<Pipeline> = {}): Pipeline {
-    return {
-        id: 'p-1',
-        name: 'Fast Clinical VI',
-        slug: 'fast-clin-vi',
-        description: null,
-        configYaml: 'models:\n  asr: whisper-large-v4\n',
-        resourceStatus: 'ENABLED',
-        isDefault: true,
-        // Hand-created pipeline by default; the template-copy cases
-        // opt in explicitly.
-        sourceTemplateSlug: null,
-        templateLocked: false,
-        tags: [],
-        tenantId: 'tnt-1',
-        createdAt: '2026-06-01T10:00:00.000Z',
-        updatedAt: '2026-07-01T10:00:00.000Z',
-        createdBy: null,
-        updatedBy: null,
-        version: 3,
-        ...overrides,
-    };
+  return {
+    id: 'p-1',
+    name: 'Fast Clinical VI',
+    slug: 'fast-clin-vi',
+    description: null,
+    configYaml: 'models:\n  asr: whisper-large-v4\n',
+    resourceStatus: 'ENABLED',
+    isDefault: true,
+    // Hand-created pipeline by default; the template-copy cases
+    // opt in explicitly.
+    sourceTemplateSlug: null,
+    templateLocked: false,
+    tags: [],
+    tenantId: 'tnt-1',
+    createdAt: '2026-06-01T10:00:00.000Z',
+    updatedAt: '2026-07-01T10:00:00.000Z',
+    createdBy: null,
+    updatedBy: null,
+    version: 3,
+    ...overrides,
+  };
 }
 
 const PIPELINES: Pipeline[] = [
-    pipeline(),
-    pipeline({
-        id: 'p-2',
-        name: 'Legacy Batch',
-        slug: 'legacy-batch',
-        configYaml: 'models:\n  asr: whisper-base\n',
-        resourceStatus: 'DISABLED',
-        isDefault: false,
-        version: 1,
-    }),
+  pipeline(),
+  pipeline({
+    id: 'p-2',
+    name: 'Legacy Batch',
+    slug: 'legacy-batch',
+    configYaml: 'models:\n  asr: whisper-base\n',
+    resourceStatus: 'DISABLED',
+    isDefault: false,
+    version: 1,
+  }),
 ];
 
 const VERSIONS: PipelineVersion[] = [
-    {
-        id: 'v-12',
-        asrPipelineId: 'p-1',
-        versionNumber: 12,
-        configYaml: 'models:\n  asr: whisper-large-v4\n',
-        name: 'Fast Clinical VI',
-        description: null,
-        changeReason: 'Switched ASR model',
-        changedBy: 'u-1',
-        createdAt: '2026-07-01T10:00:00.000Z',
-    },
+  {
+    id: 'v-12',
+    asrPipelineId: 'p-1',
+    versionNumber: 12,
+    configYaml: 'models:\n  asr: whisper-large-v4\n',
+    name: 'Fast Clinical VI',
+    description: null,
+    changeReason: 'Switched ASR model',
+    changedBy: 'u-1',
+    createdAt: '2026-07-01T10:00:00.000Z',
+  },
 ];
 
 interface RecordedCall {
-    url: string;
-    method: string;
-    body: unknown;
-    ifMatch: string | null;
+  url: string;
+  method: string;
+  body: unknown;
+  ifMatch: string | null;
 }
 
 type FetchHandler = (call: RecordedCall) => Response | undefined;
 
 function stubFetch(handler: FetchHandler): RecordedCall[] {
-    const calls: RecordedCall[] = [];
-    vi.stubGlobal(
-        'fetch',
-        vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-            const headers = new Headers(init?.headers);
-            const call: RecordedCall = {
-                url: String(input),
-                method: init?.method ?? 'GET',
-                body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
-                ifMatch: headers.get('if-match'),
-            };
-            calls.push(call);
-            const response = handler(call);
-            if (!response) throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
-            return response;
-        }),
-    );
-    return calls;
+  const calls: RecordedCall[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      const call: RecordedCall = {
+        url: String(input),
+        method: init?.method ?? 'GET',
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+        ifMatch: headers.get('if-match'),
+      };
+      calls.push(call);
+      const response = handler(call);
+      if (!response) throw new Error(`Unhandled fetch: ${call.method} ${call.url}`);
+      return response;
+    }),
+  );
+  return calls;
 }
 
 function session(overrides: Partial<{ isElevated: boolean; workingTenantId: string | null }> = {}) {
-    const base = {
-        user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'] },
-        isElevated: true,
-        workingTenantId: 'tnt-1',
-        workingTenantName: 'Sunrise Medical Group',
-        impersonatingUserId: null,
-        impersonatingUsername: null,
-        ...overrides,
-    };
-    // WorkingTenantGate now reads the effective identity; mirror the
-    // (possibly overridden) operator fields since these fixtures never impersonate.
-    return { ...base, effectiveUser: { ...base.user, tenantId: null, departmentId: null }, effectiveIsElevated: base.isElevated, effectiveTenantId: base.workingTenantId };
+  const base = {
+    user: { id: 'u-1', username: 'root', email: 'root@hope.local', roles: ['GLOBAL_ADMIN'] },
+    isElevated: true,
+    workingTenantId: 'tnt-1',
+    workingTenantName: 'Sunrise Medical Group',
+    impersonatingUserId: null,
+    impersonatingUsername: null,
+    ...overrides,
+  };
+  // WorkingTenantGate now reads the effective identity; mirror the
+  // (possibly overridden) operator fields since these fixtures never impersonate.
+  return {
+    ...base,
+    effectiveUser: { ...base.user, tenantId: null, departmentId: null },
+    effectiveIsElevated: base.isElevated,
+    effectiveTenantId: base.workingTenantId,
+  };
 }
 
 function defaultHandler(call: RecordedCall): Response | undefined {
-    if (call.method !== 'GET') return undefined;
-    const path = new URL(call.url, 'http://test.local').pathname;
-    if (path === '/api/auth/session') return Response.json(session());
-    if (path === '/api/hope/admin/audio/pipelines') return Response.json(PIPELINES);
-    if (path === '/api/hope/admin/audio/pipelines/p-1') return Response.json(PIPELINES[0], { headers: { etag: '"3"' } });
-    if (path === '/api/hope/admin/audio/pipelines/p-2') return Response.json(PIPELINES[1], { headers: { etag: '"1"' } });
-    if (path.endsWith('/versions')) return Response.json(VERSIONS);
-    return undefined;
+  if (call.method !== 'GET') return undefined;
+  const path = new URL(call.url, 'http://test.local').pathname;
+  if (path === '/api/auth/session') return Response.json(session());
+  if (path === '/api/hope/admin/audio/pipelines') return Response.json(PIPELINES);
+  if (path === '/api/hope/admin/audio/pipelines/p-1') return Response.json(PIPELINES[0], { headers: { etag: '"3"' } });
+  if (path === '/api/hope/admin/audio/pipelines/p-2') return Response.json(PIPELINES[1], { headers: { etag: '"1"' } });
+  if (path.endsWith('/versions')) return Response.json(VERSIONS);
+  return undefined;
 }
 
 /** Best-effort per-user grid-layout persistence (`user/me/settings`) — no saved layout in tests. */
 function settingsResponse(call: RecordedCall): Response | undefined {
-    if (!call.url.includes('/user/me/settings')) return undefined;
-    return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
+  if (!call.url.includes('/user/me/settings')) return undefined;
+  return call.method === 'GET' ? Response.json([]) : Response.json({ ok: true });
 }
 
 function stubPipelines(custom: FetchHandler = () => undefined): RecordedCall[] {
-    return stubFetch((call) => settingsResponse(call) ?? custom(call) ?? defaultHandler(call));
+  return stubFetch((call) => settingsResponse(call) ?? custom(call) ?? defaultHandler(call));
 }
 
 const pathOf = (call: RecordedCall) => new URL(call.url, 'http://test.local').pathname;
 
 /** Open the detail drawer for a grid row and wait for its detail read to land. */
 async function openRow(name: string) {
-    fireEvent.click(await screen.findByText(name));
-    return screen.findByRole('dialog');
+  fireEvent.click(await screen.findByText(name));
+  return screen.findByRole('dialog');
 }
 
 afterEach(() => {
-    vi.unstubAllGlobals();
-    cleanup();
+  vi.unstubAllGlobals();
+  cleanup();
 });
 
 describe('AudioPipelinesScreen', () => {
-    it('asks an elevated session without a working tenant to pick one (no data queries fired)', async () => {
-        const calls = stubPipelines((call) => {
-            if (pathOf(call) === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
-            return undefined;
-        });
-        renderWithProviders(<AudioPipelinesScreen />);
-
-        expect(await screen.findByText('Select a working tenant')).toBeDefined();
-        expect(calls.every((call) => !call.url.includes('/admin/audio/pipelines'))).toBe(true);
+  it('asks an elevated session without a working tenant to pick one (no data queries fired)', async () => {
+    const calls = stubPipelines((call) => {
+      if (pathOf(call) === '/api/auth/session') return Response.json(session({ workingTenantId: null }));
+      return undefined;
     });
+    renderWithProviders(<AudioPipelinesScreen />);
 
-    it('renders the fill-height pipeline grid with slug, default star and paired status badges', async () => {
-        stubPipelines();
-        renderWithProviders(<AudioPipelinesScreen />);
+    expect(await screen.findByText('Select a working tenant')).toBeDefined();
+    expect(calls.every((call) => !call.url.includes('/admin/audio/pipelines'))).toBe(true);
+  });
 
-        expect(await screen.findByText('Fast Clinical VI')).toBeDefined();
-        expect(screen.getByText('Legacy Batch')).toBeDefined();
-        expect(screen.getByText('fast-clin-vi')).toBeDefined();
-        expect(screen.getByText('On')).toBeDefined();
-        expect(screen.getByText('Off')).toBeDefined();
-        expect(screen.getByText('Tenant default')).toBeDefined();
-        expect(screen.getByText(/2 pipelines/)).toBeDefined();
-        // No detail slide-over until a row is selected.
-        expect(screen.queryByRole('dialog')).toBeNull();
+  it('renders the fill-height pipeline grid with slug, default star and paired status badges', async () => {
+    stubPipelines();
+    renderWithProviders(<AudioPipelinesScreen />);
+
+    expect(await screen.findByText('Fast Clinical VI')).toBeDefined();
+    expect(screen.getByText('Legacy Batch')).toBeDefined();
+    expect(screen.getByText('fast-clin-vi')).toBeDefined();
+    expect(screen.getByText('On')).toBeDefined();
+    expect(screen.getByText('Off')).toBeDefined();
+    expect(screen.getByText('Tenant default')).toBeDefined();
+    expect(screen.getByText(/2 pipelines/)).toBeDefined();
+    // No detail slide-over until a row is selected.
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('narrows the grid client-side from the Status faceted filter carried in the `f` URL param', async () => {
+    // Status "Off" -> f tuple [id, operator, variant, value]; the body maps it
+    // to resourceStatus === DISABLED over the loaded list (no server param).
+    const f = encodeURIComponent(JSON.stringify([['resourceStatus', 'eq', 'select', 'DISABLED']]));
+    stubPipelines();
+    renderWithProviders(<AudioPipelinesScreen />, { searchParams: `?f=${f}` });
+
+    expect(await screen.findByText('Legacy Batch')).toBeDefined();
+    expect(screen.queryByText('Fast Clinical VI')).toBeNull();
+  });
+
+  it('opens the detail slide-over on the clicked row (Config tab seeds the YAML editor)', async () => {
+    stubPipelines();
+    renderWithProviders(<AudioPipelinesScreen />);
+
+    const dialog = await openRow('Fast Clinical VI');
+    const editor = (await within(dialog).findByRole('textbox')) as HTMLTextAreaElement;
+    expect(editor.value).toContain('whisper-large-v4');
+  });
+
+  it('runs the validate preflight over the selected config and shows the verdict inline', async () => {
+    const calls = stubPipelines((call) => {
+      if (call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/validate')) return Response.json({ valid: true });
+      return undefined;
     });
+    renderWithProviders(<AudioPipelinesScreen />);
 
-    it('narrows the grid client-side from the Status faceted filter carried in the `f` URL param', async () => {
-        // Status "Off" -> f tuple [id, operator, variant, value]; the body maps it
-        // to resourceStatus === DISABLED over the loaded list (no server param).
-        const f = encodeURIComponent(JSON.stringify([['resourceStatus', 'eq', 'select', 'DISABLED']]));
-        stubPipelines();
-        renderWithProviders(<AudioPipelinesScreen />, { searchParams: `?f=${f}` });
+    await openRow('Fast Clinical VI');
+    const validateButton = await screen.findByRole('button', { name: /validate/i });
+    fireEvent.click(validateButton);
 
-        expect(await screen.findByText('Legacy Batch')).toBeDefined();
-        expect(screen.queryByText('Fast Clinical VI')).toBeNull();
+    await waitFor(() => {
+      const post = calls.find((call) => call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/validate'));
+      expect(post?.body).toEqual({ configYaml: PIPELINES[0].configYaml });
     });
+    expect(await screen.findByText('Config is valid')).toBeDefined();
+  });
 
-    it('opens the detail slide-over on the clicked row (Config tab seeds the YAML editor)', async () => {
-        stubPipelines();
-        renderWithProviders(<AudioPipelinesScreen />);
+  it('lists config versions in the drawer Versions tab', async () => {
+    // Land on the Versions tab directly — Radix tab activation is unreliable
+    // under fireEvent.click in jsdom, so selection + tab come from the URL.
+    const calls = stubPipelines();
+    renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-1&ptab=versions' });
 
-        const dialog = await openRow('Fast Clinical VI');
-        const editor = (await within(dialog).findByRole('textbox')) as HTMLTextAreaElement;
-        expect(editor.value).toContain('whisper-large-v4');
+    const list = await screen.findByLabelText('Config versions');
+    expect(within(list).getByText('v12')).toBeDefined();
+    await waitFor(() => expect(calls.some((call) => pathOf(call) === '/api/hope/admin/audio/pipelines/p-1/versions')).toBe(true));
+  });
+
+  it('toggles the selected pipeline from the Lifecycle tab with If-Match and an { enabled } body', async () => {
+    const calls = stubPipelines((call) => {
+      if (call.method === 'PATCH' && call.url.endsWith('/admin/audio/pipelines/p-1/toggle')) {
+        return Response.json({ ...PIPELINES[0], resourceStatus: 'DISABLED' }, { headers: { etag: '"4"' } });
+      }
+      return undefined;
     });
+    renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-1&ptab=lifecycle' });
 
-    it('runs the validate preflight over the selected config and shows the verdict inline', async () => {
-        const calls = stubPipelines((call) => {
-            if (call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/validate')) return Response.json({ valid: true });
-            return undefined;
-        });
-        renderWithProviders(<AudioPipelinesScreen />);
+    const toggleButton = await screen.findByRole('button', { name: /disable/i });
+    await waitFor(() => expect((toggleButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(toggleButton);
 
-        await openRow('Fast Clinical VI');
-        const validateButton = await screen.findByRole('button', { name: /validate/i });
-        fireEvent.click(validateButton);
-
-        await waitFor(() => {
-            const post = calls.find((call) => call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/validate'));
-            expect(post?.body).toEqual({ configYaml: PIPELINES[0].configYaml });
-        });
-        expect(await screen.findByText('Config is valid')).toBeDefined();
+    await waitFor(() => {
+      const patch = calls.find((call) => call.method === 'PATCH' && call.url.endsWith('/admin/audio/pipelines/p-1/toggle'));
+      expect(patch?.body).toEqual({ enabled: false });
+      expect(patch?.ifMatch).toBe('"3"');
     });
+  });
 
-    it('lists config versions in the drawer Versions tab', async () => {
-        // Land on the Versions tab directly — Radix tab activation is unreliable
-        // under fireEvent.click in jsdom, so selection + tab come from the URL.
-        const calls = stubPipelines();
-        renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-1&ptab=versions' });
-
-        const list = await screen.findByLabelText('Config versions');
-        expect(within(list).getByText('v12')).toBeDefined();
-        await waitFor(() => expect(calls.some((call) => pathOf(call) === '/api/hope/admin/audio/pipelines/p-1/versions')).toBe(true));
+  it('sets a non-default pipeline as the tenant default from the Lifecycle tab behind a confirm', async () => {
+    const calls = stubPipelines((call) => {
+      if (call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/p-2/set-default')) {
+        return Response.json({ ...PIPELINES[1], isDefault: true });
+      }
+      return undefined;
     });
+    renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-2&ptab=lifecycle' });
 
-    it('toggles the selected pipeline from the Lifecycle tab with If-Match and an { enabled } body', async () => {
-        const calls = stubPipelines((call) => {
-            if (call.method === 'PATCH' && call.url.endsWith('/admin/audio/pipelines/p-1/toggle')) {
-                return Response.json({ ...PIPELINES[0], resourceStatus: 'DISABLED' }, { headers: { etag: '"4"' } });
-            }
-            return undefined;
-        });
-        renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-1&ptab=lifecycle' });
+    const setDefaultButton = await screen.findByRole('button', { name: /set default/i });
+    await waitFor(() => expect((setDefaultButton as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(setDefaultButton);
 
-        const toggleButton = await screen.findByRole('button', { name: /disable/i });
-        await waitFor(() => expect((toggleButton as HTMLButtonElement).disabled).toBe(false));
-        fireEvent.click(toggleButton);
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /set default/i }));
 
-        await waitFor(() => {
-            const patch = calls.find((call) => call.method === 'PATCH' && call.url.endsWith('/admin/audio/pipelines/p-1/toggle'));
-            expect(patch?.body).toEqual({ enabled: false });
-            expect(patch?.ifMatch).toBe('"3"');
-        });
+    await waitFor(() =>
+      expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/p-2/set-default'))).toBe(true),
+    );
+  });
+
+  it('creates a pipeline from the drawer create mode (no modal)', async () => {
+    const calls = stubPipelines((call) => {
+      if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/audio/pipelines') {
+        return Response.json(pipeline({ id: 'p-9', name: 'Nephrology ASR', slug: 'nephro-asr' }));
+      }
+      return undefined;
     });
+    renderWithProviders(<AudioPipelinesScreen />);
 
-    it('sets a non-default pipeline as the tenant default from the Lifecycle tab behind a confirm', async () => {
-        const calls = stubPipelines((call) => {
-            if (call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/p-2/set-default')) {
-                return Response.json({ ...PIPELINES[1], isDefault: true });
-            }
-            return undefined;
-        });
-        renderWithProviders(<AudioPipelinesScreen />, { searchParams: '?pipeline=p-2&ptab=lifecycle' });
+    fireEvent.click(await screen.findByRole('button', { name: 'New pipeline' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology ASR' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Slug' }), { target: { value: 'nephro-asr' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /Config YAML/ }), { target: { value: 'models:\n  asr: whisper-base\n' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create pipeline' }));
 
-        const setDefaultButton = await screen.findByRole('button', { name: /set default/i });
-        await waitFor(() => expect((setDefaultButton as HTMLButtonElement).disabled).toBe(false));
-        fireEvent.click(setDefaultButton);
-
-        const dialog = await screen.findByRole('alertdialog');
-        fireEvent.click(within(dialog).getByRole('button', { name: /set default/i }));
-
-        await waitFor(() =>
-            expect(calls.some((call) => call.method === 'POST' && call.url.endsWith('/admin/audio/pipelines/p-2/set-default'))).toBe(true),
-        );
+    await waitFor(() => {
+      const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/audio/pipelines');
+      expect(post?.body).toMatchObject({ name: 'Nephrology ASR', slug: 'nephro-asr' });
     });
+  });
 
-    it('creates a pipeline from the drawer create mode (no modal)', async () => {
-        const calls = stubPipelines((call) => {
-            if (call.method === 'POST' && pathOf(call) === '/api/hope/admin/audio/pipelines') {
-                return Response.json(pipeline({ id: 'p-9', name: 'Nephrology ASR', slug: 'nephro-asr' }));
-            }
-            return undefined;
-        });
-        renderWithProviders(<AudioPipelinesScreen />);
-
-        fireEvent.click(await screen.findByRole('button', { name: 'New pipeline' }));
-        const dialog = await screen.findByRole('dialog');
-        fireEvent.change(await within(dialog).findByRole('textbox', { name: 'Name' }), { target: { value: 'Nephrology ASR' } });
-        fireEvent.change(within(dialog).getByRole('textbox', { name: 'Slug' }), { target: { value: 'nephro-asr' } });
-        fireEvent.change(within(dialog).getByRole('textbox', { name: /Config YAML/ }), { target: { value: 'models:\n  asr: whisper-base\n' } });
-        fireEvent.click(within(dialog).getByRole('button', { name: 'Create pipeline' }));
-
-        await waitFor(() => {
-            const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/audio/pipelines');
-            expect(post?.body).toMatchObject({ name: 'Nephrology ASR', slug: 'nephro-asr' });
-        });
+  it('renders the block error state when the pipelines read fails', async () => {
+    stubPipelines((call) => {
+      if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/audio/pipelines') {
+        return Response.json({ message: 'Service unavailable' }, { status: 503 });
+      }
+      return undefined;
     });
+    renderWithProviders(<AudioPipelinesScreen />);
 
-    it('renders the block error state when the pipelines read fails', async () => {
-        stubPipelines((call) => {
-            if (call.method === 'GET' && pathOf(call) === '/api/hope/admin/audio/pipelines') {
-                return Response.json({ message: 'Service unavailable' }, { status: 503 });
-            }
-            return undefined;
-        });
-        renderWithProviders(<AudioPipelinesScreen />);
-
-        expect(await screen.findByRole('alert')).toBeDefined();
-        expect(screen.getByText(/service unavailable/i)).toBeDefined();
-    });
+    expect(await screen.findByRole('alert')).toBeDefined();
+    expect(screen.getByText(/service unavailable/i)).toBeDefined();
+  });
 });

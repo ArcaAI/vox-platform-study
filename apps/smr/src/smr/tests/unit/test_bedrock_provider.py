@@ -25,6 +25,7 @@ def bedrock_config():
 class TestBedrockProviderInit:
     def test_creates_with_config(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = MagicMock()
             provider = BedrockProvider(config=bedrock_config)
@@ -48,7 +49,13 @@ class TestBedrockGenerate:
             provider = BedrockProvider(config=bedrock_config)
             from smr.models.stats import GenerationStats
 
-            content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
+            content, _reasoning, stats = await provider.generate(
+                GenerateRequest(
+                    prompt="hi",
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
+            )
             assert content == "Bedrock says hi!"
             assert isinstance(stats, GenerationStats)
 
@@ -66,11 +73,14 @@ class TestBedrockGenerate:
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
-            await provider.generate(GenerateRequest(
-                prompt="explain AI",
-                system_prompt="You are helpful",
-                provider="bedrock",
-            ))
+            await provider.generate(
+                GenerateRequest(
+                    prompt="explain AI",
+                    system_prompt="You are helpful",
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
+            )
 
             call_kwargs = mock_client.converse.call_args.kwargs
             assert call_kwargs["messages"][0]["role"] == "user"
@@ -87,7 +97,13 @@ class TestBedrockGenerate:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             with pytest.raises(Exception, match="Bedrock error"):
-                await provider.generate(GenerateRequest(prompt="hi", provider="bedrock"))
+                await provider.generate(
+                    GenerateRequest(
+                        prompt="hi",
+                        provider="bedrock",
+                        model="anthropic.claude-3-sonnet-20240229-v1:0",
+                    )
+                )
 
 
 class TestBedrockGenerateStream:
@@ -109,7 +125,14 @@ class TestBedrockGenerateStream:
             mock_boto3.client.return_value = mock_client
             provider = BedrockProvider(config=bedrock_config)
             chunks = []
-            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, provider="bedrock")):
+            async for chunk in provider.generate_stream(
+                GenerateRequest(
+                    prompt="hi",
+                    stream=True,
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
+            ):
                 chunks.append(chunk)
 
             text_chunks = [c for c in chunks if c.type == "chunk"]
@@ -124,6 +147,7 @@ class TestBedrockHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_true(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
         mock_client.list_foundation_models.return_value = {"modelSummaries": []}
 
@@ -135,6 +159,7 @@ class TestBedrockHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_false_on_error(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
         mock_client.list_foundation_models.side_effect = Exception("down")
 
@@ -148,6 +173,7 @@ class TestBedrockGetInfo:
     @pytest.mark.asyncio
     async def test_get_info(self, bedrock_config):
         from smr.providers.bedrock import BedrockProvider
+
         mock_client = MagicMock()
         mock_client.list_foundation_models.return_value = {
             "modelSummaries": [{"modelId": "anthropic.claude-3-sonnet-20240229-v1:0"}]

@@ -100,7 +100,17 @@ describe('AiModelsPage (TASK-356 Phase 1)', () => {
     useAiModelsMock.mockReset();
     useAiModelsMock.mockReturnValue({
       data: [
-        { id: 'm1', name: 'Whisper Large V3', slug: 'whisper-large-v3', category: 'AUDIO', taskType: 'AUTOMATIC_SPEECH_RECOGNITION', format: 'ONNX', resourceStatus: 'ENABLED', tags: [], version: 3 },
+        {
+          id: 'm1',
+          name: 'Whisper Large V3',
+          slug: 'whisper-large-v3',
+          category: 'AUDIO',
+          taskType: 'AUTOMATIC_SPEECH_RECOGNITION',
+          format: 'ONNX',
+          resourceStatus: 'ENABLED',
+          tags: [],
+          version: 3,
+        },
       ],
       isLoading: false,
       isRefetching: false,

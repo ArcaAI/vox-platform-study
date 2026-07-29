@@ -50,6 +50,25 @@ class AllProvidersUnavailableError(RuntimeError):
         self.voice_id = voice_id
 
 
+class TtsRoutingUnconfiguredError(AllProvidersUnavailableError):
+    """No routing chain was injected for this locale — FAIL CLOSED.
+
+    The router carries NO code/env vendor default (TASK-577 / F1): the per-locale
+    provider order is DB-sourced (the SYSTEM ``TenantTtsConfig`` default, resolved
+    by the gateway and injected per request). When nothing is injected we raise
+    rather than substitute a vendor. Subclasses ``AllProvidersUnavailableError``
+    so the endpoints' existing 503 (HTTP) / provider-unavailable (WS) handlers
+    already surface it as an unavailable-provider condition — never as a silent
+    vendor fallback.
+    """
+
+    def __init__(self, locale: str) -> None:
+        # Bypass the parent voice-oriented message; this is a routing gap.
+        RuntimeError.__init__(self, f"no TTS routing configured for locale '{locale}'")
+        self.voice_id = ""
+        self.locale = locale
+
+
 # Per-tenant BYO credentials the gateway decrypts + injects:
 # ``{"azure": {"api_key": ..., "region": ...}, "sarvam": {"api_key": ..., "base_url": ...}}``.
 ProviderOverrides = dict[str, dict[str, str]]
@@ -91,7 +110,9 @@ def _override_cache_key(name: str, override: dict[str, str]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _build_override_engine(settings: Settings, name: str, override: dict[str, str]) -> TTSEngine | None:
+def _build_override_engine(
+    settings: Settings, name: str, override: dict[str, str]
+) -> TTSEngine | None:
     """Build a per-tenant provider from injected BYO credentials.
 
     Clones the platform base config with the tenant's key/endpoint. Returns None
@@ -153,14 +174,16 @@ class TTSRouter:
     ) -> list[str]:
         """Locale → ordered provider chain. Code-switch ``ml-en`` → ml chain.
 
-        Per-request ``routing_en``/``routing_ml`` (injected by the gateway from a
-        tenant's resolved config) override the static settings chains.
+        The chain comes ONLY from the per-request ``routing_en``/``routing_ml``
+        the gateway injects from the tenant's resolved config (SYSTEM
+        ``TenantTtsConfig`` default → tenant overrides). There is NO code/env
+        vendor fallback (TASK-577 / F1): an empty/absent chain FAILS CLOSED with
+        ``TtsRoutingUnconfiguredError`` rather than substituting a provider order.
         """
         base = locale.split("-")[0]
-        if base == "ml":
-            chain = routing_ml if routing_ml else self._settings.routing_ml
-        else:
-            chain = routing_en if routing_en else self._settings.routing_en
+        chain = routing_ml if base == "ml" else routing_en
+        if not chain:
+            raise TtsRoutingUnconfiguredError(locale)
         return list(chain)
 
     def candidates(
@@ -355,9 +378,7 @@ class TTSRouter:
             request_id=request_id,
             provider_overrides=provider_overrides,
         )
-        return SentenceAdapter(
-            synth, locale=voice.locale, max_chars=self._settings.max_input_chars
-        )
+        return SentenceAdapter(synth, locale=voice.locale, max_chars=self._settings.max_input_chars)
 
     async def _sentence_adapter(
         self, engine: TTSEngine, req: SynthesisRequest

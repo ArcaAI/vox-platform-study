@@ -34,12 +34,7 @@ import type {
   AiModelResponse,
 } from '../stt';
 
-import {
-  TranscriptionJobType,
-  TranscriptionJobStatus,
-  AiModelDownloadStatus,
-  ResourceStatus,
-} from '../stt';
+import { TranscriptionJobType, TranscriptionJobStatus, AiModelDownloadStatus, ResourceStatus } from '../stt';
 
 // =============================================================================
 // Streaming Session Types
@@ -111,9 +106,7 @@ describe('STT types', () => {
 
   describe('StreamingSessionStatus', () => {
     it('should accept all valid status values', () => {
-      const statuses: StreamingSessionStatus[] = [
-        'active', 'finalizing', 'closed', 'rejected',
-      ];
+      const statuses: StreamingSessionStatus[] = ['active', 'finalizing', 'closed', 'rejected'];
       expect(statuses).toHaveLength(4);
     });
   });
@@ -156,11 +149,7 @@ describe('STT types', () => {
     });
 
     it('should support WsClientMessage union type', () => {
-      const messages: WsClientMessage[] = [
-        { type: 'audio', seq: 1, data: 'data' },
-        { type: 'stop' },
-        { type: 'close' },
-      ];
+      const messages: WsClientMessage[] = [{ type: 'audio', seq: 1, data: 'data' }, { type: 'stop' }, { type: 'close' }];
       expect(messages).toHaveLength(3);
     });
   });
@@ -478,25 +467,19 @@ describe('STT types', () => {
     it('TranscriptionJobStatus should have exactly 6 members', () => {
       const members = Object.values(TranscriptionJobStatus);
       expect(members).toHaveLength(6);
-      expect(members).toEqual(
-        expect.arrayContaining(['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'DEAD'])
-      );
+      expect(members).toEqual(expect.arrayContaining(['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'DEAD']));
     });
 
     it('AiModelDownloadStatus should have exactly 4 members', () => {
       const members = Object.values(AiModelDownloadStatus);
       expect(members).toHaveLength(4);
-      expect(members).toEqual(
-        expect.arrayContaining(['NOT_DOWNLOADED', 'DOWNLOADING', 'DOWNLOADED', 'DOWNLOAD_FAILED'])
-      );
+      expect(members).toEqual(expect.arrayContaining(['NOT_DOWNLOADED', 'DOWNLOADING', 'DOWNLOADED', 'DOWNLOAD_FAILED']));
     });
 
     it('ResourceStatus should have exactly 4 members', () => {
       const members = Object.values(ResourceStatus);
       expect(members).toHaveLength(4);
-      expect(members).toEqual(
-        expect.arrayContaining(['ENABLED', 'DISABLED', 'ARCHIVED', 'DELETED'])
-      );
+      expect(members).toEqual(expect.arrayContaining(['ENABLED', 'DISABLED', 'ARCHIVED', 'DELETED']));
     });
   });
 

@@ -1,14 +1,8 @@
-import { useState, useCallback } from 'react'
-import { AsyncJobTracker, type AsyncJob } from '../../../custom/async-job-tracker'
+import { useState, useCallback } from 'react';
+import { AsyncJobTracker, type AsyncJob } from '../../../custom/async-job-tracker';
 
 export function PendingTracker() {
-  return (
-    <AsyncJobTracker
-      jobId="job-pending"
-      pollFn={async (id) => ({ jobId: id, status: 'pending' })}
-      pollIntervalMs={60000}
-    />
-  )
+  return <AsyncJobTracker jobId="job-pending" pollFn={async (id) => ({ jobId: id, status: 'pending' })} pollIntervalMs={60000} />;
 }
 
 export function ProcessingTracker() {
@@ -23,7 +17,7 @@ export function ProcessingTracker() {
       })}
       pollIntervalMs={60000}
     />
-  )
+  );
 }
 
 export function CompletedTracker() {
@@ -38,7 +32,7 @@ export function CompletedTracker() {
       })}
       pollIntervalMs={60000}
     />
-  )
+  );
 }
 
 export function FailedTracker() {
@@ -52,25 +46,14 @@ export function FailedTracker() {
       })}
       pollIntervalMs={60000}
     />
-  )
+  );
 }
 
 export function NullJobTracker() {
-  return (
-    <AsyncJobTracker
-      jobId={null}
-      pollFn={async (id) => ({ jobId: id, status: 'pending' })}
-    />
-  )
+  return <AsyncJobTracker jobId={null} pollFn={async (id) => ({ jobId: id, status: 'pending' })} />;
 }
 
-export function CallbackTracker({
-  onComplete,
-  onError,
-}: {
-  onComplete?: (result: unknown) => void
-  onError?: (error: string) => void
-}) {
+export function CallbackTracker({ onComplete, onError }: { onComplete?: (result: unknown) => void; onError?: (error: string) => void }) {
   const pollFn = useCallback(
     async (id: string): Promise<AsyncJob> => ({
       jobId: id,
@@ -78,21 +61,13 @@ export function CallbackTracker({
       result: { data: 'test-result' },
     }),
     [],
-  )
+  );
 
-  return (
-    <AsyncJobTracker
-      jobId="job-callback"
-      pollFn={pollFn}
-      pollIntervalMs={500}
-      onComplete={onComplete}
-      onError={onError}
-    />
-  )
+  return <AsyncJobTracker jobId="job-callback" pollFn={pollFn} pollIntervalMs={500} onComplete={onComplete} onError={onError} />;
 }
 
 export function StartStopTracker() {
-  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null);
 
   return (
     <div>
@@ -112,5 +87,5 @@ export function StartStopTracker() {
         pollIntervalMs={60000}
       />
     </div>
-  )
+  );
 }

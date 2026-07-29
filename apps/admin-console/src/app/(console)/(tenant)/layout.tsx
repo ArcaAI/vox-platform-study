@@ -11,9 +11,9 @@ import { getSession, isElevated } from '@/server/session';
  * posture.
  */
 export default async function TenantTierLayout({ children }: { children: ReactNode }) {
-    const session = await getSession();
-    if (!isElevated(session?.user) && !session?.user.roles.includes('TENANT_ADMIN')) {
-        notFound();
-    }
-    return children;
+  const session = await getSession();
+  if (!isElevated(session?.user) && !session?.user.roles.includes('TENANT_ADMIN')) {
+    notFound();
+  }
+  return children;
 }

@@ -891,9 +891,7 @@ describe('Audio Pipeline E2E Tests', () => {
       expect(dataHandler).toHaveBeenCalled();
 
       // Check that VAD frame events are emitted
-      const frameCalls = dataHandler.mock.calls.filter(
-        (call) => call[0].type === 'vad-frame'
-      );
+      const frameCalls = dataHandler.mock.calls.filter((call) => call[0].type === 'vad-frame');
       expect(frameCalls.length).toBeGreaterThan(0);
 
       await track.stop();
@@ -915,9 +913,7 @@ describe('Audio Pipeline E2E Tests', () => {
       // Wait for stats emission
       await vi.advanceTimersByTimeAsync(100);
 
-      const statsCalls = dataHandler.mock.calls.filter(
-        (call) => call[0].type === 'vad-stats'
-      );
+      const statsCalls = dataHandler.mock.calls.filter((call) => call[0].type === 'vad-stats');
       expect(statsCalls.length).toBeGreaterThan(0);
 
       await track.stop();
@@ -1046,9 +1042,7 @@ describe('Audio Pipeline E2E Tests', () => {
 
       await vi.advanceTimersByTimeAsync(100);
 
-      const statsCalls = dataHandler.mock.calls.filter(
-        (call) => call[0].type === 'noise-stats'
-      );
+      const statsCalls = dataHandler.mock.calls.filter((call) => call[0].type === 'noise-stats');
       expect(statsCalls.length).toBeGreaterThan(0);
 
       await track.stop();

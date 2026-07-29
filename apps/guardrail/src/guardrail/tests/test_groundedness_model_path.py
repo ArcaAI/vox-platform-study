@@ -33,9 +33,7 @@ class _StubResolver:
 
 
 def _config(tmp_path: Path) -> ModelSourceConfig:
-    return ModelSourceConfig(
-        cache_dir=str(tmp_path / "cache"), hf_cache_dir=str(tmp_path / "hf")
-    )
+    return ModelSourceConfig(cache_dir=str(tmp_path / "cache"), hf_cache_dir=str(tmp_path / "hf"))
 
 
 @pytest.mark.asyncio

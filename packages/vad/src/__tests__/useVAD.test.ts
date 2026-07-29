@@ -21,10 +21,7 @@ describe('useVAD hook interface', () => {
         onSpeechStart: () => {},
         onSpeechEnd: (_audio: Float32Array) => {},
         onVADMisfire: () => {},
-        onFrameProcessed: (
-          _probabilities: { isSpeech: number; notSpeech: number },
-          _frame: Float32Array
-        ) => {},
+        onFrameProcessed: (_probabilities: { isSpeech: number; notSpeech: number }, _frame: Float32Array) => {},
         // VAD options
         model: 'v5' as const,
         positiveSpeechThreshold: 0.5,
@@ -132,10 +129,7 @@ describe('useVAD hook interface', () => {
     });
 
     it('onFrameProcessed should accept probabilities and frame', () => {
-      const callback = (
-        probabilities: { isSpeech: number; notSpeech: number },
-        frame: Float32Array
-      ) => {
+      const callback = (probabilities: { isSpeech: number; notSpeech: number }, frame: Float32Array) => {
         expect(typeof probabilities.isSpeech).toBe('number');
         expect(typeof probabilities.notSpeech).toBe('number');
         expect(frame).toBeInstanceOf(Float32Array);

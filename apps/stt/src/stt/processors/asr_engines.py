@@ -32,6 +32,8 @@ ASR_FORMAT_TO_NAME: dict[AiModelFormat, str] = {
     AiModelFormat.AZURE_FOUNDRY: "azure_foundry",
     AiModelFormat.PARAKEET_CPP: "parakeet_cpp",
     AiModelFormat.WHISPER_CPP: "whisper_cpp",
+    AiModelFormat.SARVAM: "sarvam",
+    AiModelFormat.OPENAI: "openai",
 }
 
 
@@ -84,7 +86,11 @@ class SafetensorEngine(AsrEngine):
         initial_prompt: str | None = None,
     ) -> Any:
         return await service._run_transformers_inference(
-            samples, sample_rate, model, config, progress_callback,
+            samples,
+            sample_rate,
+            model,
+            config,
+            progress_callback,
             prompt=prompt,
             initial_prompt=initial_prompt,
         )
@@ -99,7 +105,10 @@ class SafetensorEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_transformers_callable(
-            loaded_model, inference_config, initial_prompt=initial_prompt, task=task,
+            loaded_model,
+            inference_config,
+            initial_prompt=initial_prompt,
+            task=task,
         )
 
 
@@ -125,7 +134,11 @@ class OnnxEngine(AsrEngine):
     ) -> Any:
         if model.extra.get("optimum") or model.processor is not None:
             return await service._run_optimum_onnx_inference(
-                samples, sample_rate, model, config, progress_callback,
+                samples,
+                sample_rate,
+                model,
+                config,
+                progress_callback,
                 chunk_callback=chunk_callback,
                 first_word_hook=first_word_hook,
                 prompt=prompt,
@@ -144,7 +157,10 @@ class OnnxEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_transformers_callable(
-            loaded_model, inference_config, initial_prompt=initial_prompt, task=task,
+            loaded_model,
+            inference_config,
+            initial_prompt=initial_prompt,
+            task=task,
         )
 
 
@@ -177,7 +193,9 @@ class NemoEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_nemo_callable(
-            loaded_model, inference_config, initial_prompt=initial_prompt,
+            loaded_model,
+            inference_config,
+            initial_prompt=initial_prompt,
         )
 
 
@@ -201,7 +219,11 @@ class FasterWhisperEngine(AsrEngine):
         # that already contains initial_prompt; preferring the bare
         # initial_prompt silently discarded the rolling segment context.
         return await service._run_faster_whisper_inference(
-            samples, sample_rate, model, config, progress_callback,
+            samples,
+            sample_rate,
+            model,
+            config,
+            progress_callback,
             initial_prompt=prompt or initial_prompt,
         )
 
@@ -215,7 +237,9 @@ class FasterWhisperEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_faster_whisper_callable(
-            loaded_model, inference_config, task=task,
+            loaded_model,
+            inference_config,
+            task=task,
         )
 
 
@@ -248,6 +272,74 @@ class AzureSpeechEngine(AsrEngine):
         task: str = "transcribe",
     ) -> Any:
         return manager._make_azure_callable(loaded_model, inference_config)
+
+
+class SarvamEngine(AsrEngine):
+    """Sarvam AI speech-to-text (cloud REST). Per-utterance streaming + whole-
+    audio batch via the same async recognize helper (TASK-567)."""
+
+    async def run_batch(
+        self,
+        service: Any,
+        samples: Any,
+        sample_rate: int,
+        model: Any,
+        config: Any,
+        progress_callback: Any = None,
+        *,
+        chunk_callback: Any = None,
+        first_word_hook: Any = None,
+        prompt: str | None = None,
+        initial_prompt: str | None = None,
+    ) -> Any:
+        return await service._run_sarvam_inference(
+            samples, sample_rate, model, config, progress_callback
+        )
+
+    def make_streaming_callable(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        initial_prompt: str | None = None,
+        task: str = "transcribe",
+    ) -> Any:
+        return manager._make_sarvam_callable(loaded_model, inference_config)
+
+
+class OpenAIEngine(AsrEngine):
+    """OpenAI speech-to-text (cloud REST). Per-utterance streaming (REST in v1)
+    + whole-audio batch via the same async recognize helper (TASK-567)."""
+
+    async def run_batch(
+        self,
+        service: Any,
+        samples: Any,
+        sample_rate: int,
+        model: Any,
+        config: Any,
+        progress_callback: Any = None,
+        *,
+        chunk_callback: Any = None,
+        first_word_hook: Any = None,
+        prompt: str | None = None,
+        initial_prompt: str | None = None,
+    ) -> Any:
+        return await service._run_openai_inference(
+            samples, sample_rate, model, config, progress_callback
+        )
+
+    def make_streaming_callable(
+        self,
+        manager: Any,
+        loaded_model: Any,
+        inference_config: Any,
+        *,
+        initial_prompt: str | None = None,
+        task: str = "transcribe",
+    ) -> Any:
+        return manager._make_openai_callable(loaded_model, inference_config)
 
 
 def resolve_asr_engine(model_format: Any) -> AsrEngine:
@@ -320,7 +412,11 @@ class WhisperCppEngine(AsrEngine):
         initial_prompt: str | None = None,
     ) -> Any:
         return await service._run_whisper_cpp_inference(
-            samples, sample_rate, model, config, progress_callback,
+            samples,
+            sample_rate,
+            model,
+            config,
+            progress_callback,
             prompt=prompt or initial_prompt,
         )
 

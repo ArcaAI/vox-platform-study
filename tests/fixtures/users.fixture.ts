@@ -49,10 +49,7 @@ function generateTestId(): string {
 /**
  * Create a single test user in the database
  */
-export async function createUserFixture(
-  options: CreateUserOptions = {},
-  prisma?: PrismaClient
-): Promise<CreatedUser> {
+export async function createUserFixture(options: CreateUserOptions = {}, prisma?: PrismaClient): Promise<CreatedUser> {
   const client = prisma || getPrismaClient();
   const id = options.id || generateTestId();
   const email = options.email || `test-${id}@example.com`;
@@ -87,11 +84,7 @@ export async function createUserFixture(
 /**
  * Create multiple test users in the database
  */
-export async function createUsersFixture(
-  count: number,
-  options: CreateUserOptions = {},
-  prisma?: PrismaClient
-): Promise<CreatedUser[]> {
+export async function createUsersFixture(count: number, options: CreateUserOptions = {}, prisma?: PrismaClient): Promise<CreatedUser[]> {
   const users: CreatedUser[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -101,7 +94,7 @@ export async function createUsersFixture(
         email: options.email ? `${i}-${options.email}` : undefined,
         name: options.name ? `${options.name} ${i + 1}` : `Test User ${i + 1}`,
       },
-      prisma
+      prisma,
     );
     users.push(user);
   }
@@ -112,16 +105,13 @@ export async function createUsersFixture(
 /**
  * Create an admin user with admin role assigned
  */
-export async function createAdminUserFixture(
-  options: CreateUserOptions = {},
-  prisma?: PrismaClient
-): Promise<CreatedUser> {
+export async function createAdminUserFixture(options: CreateUserOptions = {}, prisma?: PrismaClient): Promise<CreatedUser> {
   const user = await createUserFixture(
     {
       ...options,
       name: options.name || 'Admin User',
     },
-    prisma
+    prisma,
   );
 
   // Note: Role assignment should be done separately using roles.fixture.ts
@@ -131,10 +121,7 @@ export async function createAdminUserFixture(
 /**
  * Delete a test user from the database
  */
-export async function deleteUserFixture(
-  userId: string,
-  prisma?: PrismaClient
-): Promise<void> {
+export async function deleteUserFixture(userId: string, prisma?: PrismaClient): Promise<void> {
   const client = prisma || getPrismaClient();
 
   try {
@@ -150,10 +137,7 @@ export async function deleteUserFixture(
 /**
  * Delete multiple test users from the database
  */
-export async function deleteUsersFixture(
-  userIds: string[],
-  prisma?: PrismaClient
-): Promise<void> {
+export async function deleteUsersFixture(userIds: string[], prisma?: PrismaClient): Promise<void> {
   for (const userId of userIds) {
     await deleteUserFixture(userId, prisma);
   }
@@ -162,10 +146,7 @@ export async function deleteUsersFixture(
 /**
  * Find a user by email
  */
-export async function findUserByEmail(
-  email: string,
-  prisma?: PrismaClient
-): Promise<{ id: string; email: string; name: string } | null> {
+export async function findUserByEmail(email: string, prisma?: PrismaClient): Promise<{ id: string; email: string; name: string } | null> {
   const client = prisma || getPrismaClient();
 
   return client.user.findUnique({
@@ -181,11 +162,7 @@ export async function findUserByEmail(
 /**
  * Update a test user
  */
-export async function updateUserFixture(
-  userId: string,
-  data: Partial<CreateUserOptions>,
-  prisma?: PrismaClient
-): Promise<void> {
+export async function updateUserFixture(userId: string, data: Partial<CreateUserOptions>, prisma?: PrismaClient): Promise<void> {
   const client = prisma || getPrismaClient();
 
   const updateData: Record<string, unknown> = {};

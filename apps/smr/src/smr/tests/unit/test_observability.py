@@ -103,9 +103,7 @@ class TestSetupOpentelemetry:
         assert len(otel_handlers) >= 1
 
     def test_calls_logging_instrumentor(self):
-        with patch(
-            "smr.core.observability.LoggingInstrumentor"
-        ) as MockInstrumentor:
+        with patch("smr.core.observability.LoggingInstrumentor") as MockInstrumentor:
             mock_instance = MagicMock()
             MockInstrumentor.return_value = mock_instance
 
@@ -117,9 +115,7 @@ class TestSetupOpentelemetry:
             mock_instance.instrument.assert_called_once_with(set_logging_format=False)
 
     def test_excludes_health_urls_from_fastapi(self):
-        with patch(
-            "smr.core.observability.FastAPIInstrumentor"
-        ) as MockFastAPI:
+        with patch("smr.core.observability.FastAPIInstrumentor") as MockFastAPI:
             from smr.core.observability import setup_opentelemetry
 
             app = MagicMock()
@@ -130,9 +126,7 @@ class TestSetupOpentelemetry:
             assert "/health" in call_kwargs.kwargs["excluded_urls"]
 
     def test_adds_phi_hook_to_fastapi(self):
-        with patch(
-            "smr.core.observability.FastAPIInstrumentor"
-        ) as MockFastAPI:
+        with patch("smr.core.observability.FastAPIInstrumentor") as MockFastAPI:
             from smr.core.observability import _phi_sanitization_hook, setup_opentelemetry
 
             app = MagicMock()
@@ -215,9 +209,7 @@ class TestShutdownOpentelemetry:
         mock_logger_prov.shutdown.assert_called_once()
 
     def test_shutdown_uninstruments_logging(self):
-        with patch(
-            "smr.core.observability.LoggingInstrumentor"
-        ) as MockInstrumentor:
+        with patch("smr.core.observability.LoggingInstrumentor") as MockInstrumentor:
             mock_instance = MagicMock()
             MockInstrumentor.return_value = mock_instance
 
@@ -315,8 +307,11 @@ class TestOtelLogsEnabledSetting:
 class TestCreateAppObservability:
     def test_initializes_logger_provider_state(self):
         settings = Settings(
-            host="127.0.0.1", port=5099, debug=True,
-            otel_enabled=False, metrics_enabled=False,
+            host="127.0.0.1",
+            port=5099,
+            debug=True,
+            otel_enabled=False,
+            metrics_enabled=False,
         )
         from smr.main import create_app
 
@@ -326,8 +321,11 @@ class TestCreateAppObservability:
 
     def test_calls_setup_opentelemetry_when_enabled(self):
         settings = Settings(
-            host="127.0.0.1", port=5099, debug=True,
-            otel_enabled=True, metrics_enabled=False,
+            host="127.0.0.1",
+            port=5099,
+            debug=True,
+            otel_enabled=True,
+            metrics_enabled=False,
         )
         with patch("smr.core.observability.setup_opentelemetry") as mock_setup:
             from smr.main import create_app
@@ -337,8 +335,11 @@ class TestCreateAppObservability:
 
     def test_skips_setup_when_disabled(self):
         settings = Settings(
-            host="127.0.0.1", port=5099, debug=True,
-            otel_enabled=False, metrics_enabled=False,
+            host="127.0.0.1",
+            port=5099,
+            debug=True,
+            otel_enabled=False,
+            metrics_enabled=False,
         )
         with patch("smr.core.observability.setup_opentelemetry") as mock_setup:
             from smr.main import create_app

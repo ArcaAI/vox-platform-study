@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { DotPattern } from '../../../registries/magicui/dot-pattern'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { DotPattern } from '../../../registries/magicui/dot-pattern';
 
 describe('DotPattern', () => {
   it('renders without crashing', () => {
-    const { container } = render(<DotPattern />)
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    const { container } = render(<DotPattern />);
+    expect(container.firstChild).toBeTruthy();
+  });
+});

@@ -67,5 +67,4 @@ export class PromptUsageRecordEntity extends BaseTenantEntity {
   set departmentId(value: IPromptUsageRecordEntity['departmentId']) {
     this.setProperty('departmentId', value);
   }
-
 }

@@ -24,9 +24,7 @@ describe('@Secret decorator (Phase 0 Item 4)', () => {
   });
 
   it('getSecretFields returns the same set', () => {
-    expect(new Set(getSecretFields(Sample.prototype))).toEqual(
-      new Set(['value', 'defaultValue']),
-    );
+    expect(new Set(getSecretFields(Sample.prototype))).toEqual(new Set(['value', 'defaultValue']));
   });
 
   it('getSecretFields returns [] for a class with no decorations', () => {

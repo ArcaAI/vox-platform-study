@@ -80,9 +80,7 @@ def _make_provider(engine: str, ttl_seconds: int = ENV_TTL_S):  # noqa: ANN202
     from tts.core.config import IndicF5Config
     from tts.providers.indic_f5 import IndicF5Provider
 
-    return IndicF5Provider(
-        IndicF5Config(), generate_factory=lambda: None, ttl_seconds=ttl_seconds
-    )
+    return IndicF5Provider(IndicF5Config(), generate_factory=lambda: None, ttl_seconds=ttl_seconds)
 
 
 def _app_state(handler, *, engines=LOCAL_ENGINES):  # noqa: ANN001,ANN202

@@ -16,6 +16,7 @@ from smr.models.stream import StreamChunk
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_request(**overrides) -> GenerateRequest:
     defaults = {"prompt": "Hello", "provider": "openai_compat"}
     defaults.update(overrides)
@@ -59,9 +60,11 @@ def _clear_smr_env(monkeypatch):
 # 1. Config tests
 # ---------------------------------------------------------------------------
 
+
 def _clear_smr_env(monkeypatch):
     """Remove all SMR_* env vars so pydantic-settings reads only code defaults."""
     import os
+
     for key in list(os.environ):
         if key.startswith("SMR_"):
             monkeypatch.delenv(key, raising=False)
@@ -96,6 +99,7 @@ class TestOpenAICompatConfig:
 # ---------------------------------------------------------------------------
 # 2. Provider tests (mock the openai client)
 # ---------------------------------------------------------------------------
+
 
 class TestOpenAICompatProvider:
     @pytest.fixture()
@@ -179,9 +183,7 @@ class TestOpenAICompatProvider:
         chunk2.choices[0].delta.reasoning_content = None
         chunk2.choices[0].finish_reason = "stop"
 
-        mock_client.chat.completions.create.return_value = _async_stream_chunks(
-            [chunk1, chunk2]
-        )
+        mock_client.chat.completions.create.return_value = _async_stream_chunks([chunk1, chunk2])
 
         results: list[StreamChunk] = []
         async for sc in provider.generate_stream(_make_request(stream=True)):
@@ -204,9 +206,7 @@ class TestOpenAICompatProvider:
         chunk2.choices[0].delta.content = " world"
         chunk2.choices[0].finish_reason = "stop"
 
-        mock_client.chat.completions.create.return_value = _async_stream_chunks(
-            [chunk1, chunk2]
-        )
+        mock_client.chat.completions.create.return_value = _async_stream_chunks([chunk1, chunk2])
 
         results: list[StreamChunk] = []
         async for sc in provider.generate_stream(_make_request(stream=True)):
@@ -237,9 +237,7 @@ class TestOpenAICompatProvider:
 
         usage_chunk = MagicMock()
         usage_chunk.choices = []
-        usage_chunk.usage = MagicMock(
-            prompt_tokens=10, completion_tokens=5, total_tokens=15
-        )
+        usage_chunk.usage = MagicMock(prompt_tokens=10, completion_tokens=5, total_tokens=15)
 
         mock_client.chat.completions.create.return_value = _async_stream_chunks(
             [content_chunk, usage_chunk]
@@ -270,14 +268,10 @@ class TestOpenAICompatProvider:
 
     # -- 9. health_check returns False on connection error --
     @pytest.mark.asyncio
-    async def test_health_check_returns_false_on_connection_error(
-        self, provider, mock_client
-    ):
+    async def test_health_check_returns_false_on_connection_error(self, provider, mock_client):
         from openai import APIConnectionError
 
-        mock_client.models.list.side_effect = APIConnectionError(
-            request=MagicMock()
-        )
+        mock_client.models.list.side_effect = APIConnectionError(request=MagicMock())
 
         result = await provider.health_check()
 
@@ -332,9 +326,7 @@ class TestOpenAICompatProvider:
 
         schema = {"title": "MySchema", "type": "object", "properties": {"name": {"type": "string"}}}
         req = _make_request(
-            response_format=ResponseFormat(
-                type="json_schema", json_schema=schema, strict=True
-            )
+            response_format=ResponseFormat(type="json_schema", json_schema=schema, strict=True)
         )
         await provider.generate(req)
 
@@ -357,9 +349,7 @@ class TestOpenAICompatProvider:
         chunk2.choices[0].delta.content = '"value"}'
         chunk2.choices[0].finish_reason = "stop"
 
-        mock_client.chat.completions.create.return_value = _async_stream_chunks(
-            [chunk1, chunk2]
-        )
+        mock_client.chat.completions.create.return_value = _async_stream_chunks([chunk1, chunk2])
 
         req = _make_request(stream=True, response_format=ResponseFormat(type="json"))
         results: list[StreamChunk] = []
@@ -383,9 +373,7 @@ class TestOpenAICompatProvider:
         chunk2.choices[0].delta.content = '"test"}'
         chunk2.choices[0].finish_reason = "stop"
 
-        mock_client.chat.completions.create.return_value = _async_stream_chunks(
-            [chunk1, chunk2]
-        )
+        mock_client.chat.completions.create.return_value = _async_stream_chunks([chunk1, chunk2])
 
         schema = {"title": "MySchema", "type": "object", "properties": {"name": {"type": "string"}}}
         req = _make_request(
@@ -427,16 +415,10 @@ class TestOpenAICompatProvider:
 
         mock_span = MagicMock()
         mock_tracer = MagicMock()
-        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(
-            return_value=mock_span
-        )
-        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(
-            return_value=False
-        )
+        mock_tracer.start_as_current_span.return_value.__enter__ = MagicMock(return_value=mock_span)
+        mock_tracer.start_as_current_span.return_value.__exit__ = MagicMock(return_value=False)
 
-        with patch(
-            "smr.providers.openai_compat._get_tracer", return_value=mock_tracer
-        ):
+        with patch("smr.providers.openai_compat._get_tracer", return_value=mock_tracer):
             await provider.generate(_make_request())
 
         mock_tracer.start_as_current_span.assert_called_once()
@@ -448,14 +430,13 @@ class TestOpenAICompatProvider:
 
         mock_span.set_attribute.assert_any_call("gen_ai.usage.input_tokens", 10)
         mock_span.set_attribute.assert_any_call("gen_ai.usage.output_tokens", 5)
-        mock_span.set_attribute.assert_any_call(
-            "gen_ai.response.finish_reason", "stop"
-        )
+        mock_span.set_attribute.assert_any_call("gen_ai.response.finish_reason", "stop")
 
 
 # ---------------------------------------------------------------------------
 # 3. Registration & timeout tests
 # ---------------------------------------------------------------------------
+
 
 class TestOpenAICompatRegistration:
     # -- 18. provider available via lazy factory --

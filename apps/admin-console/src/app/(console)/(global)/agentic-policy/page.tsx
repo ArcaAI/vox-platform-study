@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Agentic Policy' };
 
 /** screen 3 — global-default agentic loop policy (tier 10-19, GLOBAL_ADMIN only). */
 export default function AgenticPolicyPage() {
-    return <AgenticPolicyScreen />;
+  return <AgenticPolicyScreen />;
 }

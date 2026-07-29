@@ -346,7 +346,11 @@ class _FakeApi:
             user_prompt="U",
             system_prompt="S",
             hyperparameters={"temperature": 0.2, "max_tokens": 1024},
-            response_format={"type": "json_schema", "json_schema": {"type": "object"}, "strict": True},
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"type": "object"},
+                "strict": True,
+            },
             prompt_template_id="tmpl-1",
             prompt_version="3",
             resolved_from="department",
@@ -413,12 +417,15 @@ class TestWorkflowOrderedSpine:
     @pytest.mark.asyncio
     async def test_happy_path_emits_exact_ordered_step_sequence(self, monkeypatch):
         cap = _CapTraj()
-        smr_stats = {"stop_reason": "stop", "total_ms": 900, "provider": "azure-openai", "model": "gpt-4o"}
+        smr_stats = {
+            "stop_reason": "stop",
+            "total_ms": 900,
+            "provider": "azure-openai",
+            "model": "gpt-4o",
+        }
         _patch_real_activity_clients(monkeypatch, cap, smr_stats=smr_stats)
 
-        env = await WorkflowEnvironment.start_time_skipping(
-            data_converter=pydantic_data_converter
-        )
+        env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
         async with env:
             tq = f"harness-traj-{uuid.uuid4()}"
             async with Worker(
@@ -478,9 +485,7 @@ class TestWorkflowOrderedSpine:
         cap = _CapTraj()
         _patch_real_activity_clients(monkeypatch, cap, traj=_RaiseTraj())
 
-        env = await WorkflowEnvironment.start_time_skipping(
-            data_converter=pydantic_data_converter
-        )
+        env = await WorkflowEnvironment.start_time_skipping(data_converter=pydantic_data_converter)
         async with env:
             tq = f"harness-traj-{uuid.uuid4()}"
             async with Worker(

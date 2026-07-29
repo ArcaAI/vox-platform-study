@@ -1,12 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  Stepper,
-  StepperList,
-  StepperItem,
-  StepperTrigger,
-  StepperIndicator,
-} from '@/components/registries/diceui/stepper'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Stepper, StepperList, StepperItem, StepperTrigger, StepperIndicator } from '@/components/registries/diceui/stepper';
 
 describe('Stepper', () => {
   it('renders without crashing', () => {
@@ -20,7 +14,7 @@ describe('Stepper', () => {
           </StepperItem>
         </StepperList>
       </Stepper>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

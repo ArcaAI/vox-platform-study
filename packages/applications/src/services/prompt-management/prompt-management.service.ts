@@ -22,11 +22,7 @@ import {
   SysEventType,
   CoreDatabaseService,
 } from '@arcaai/domains';
-import {
-  IPromptManagementService,
-  ListPromptTemplatesFilters,
-  PaginatedPromptTemplates,
-} from './IPromptManagementService';
+import { IPromptManagementService, ListPromptTemplatesFilters, PaginatedPromptTemplates } from './IPromptManagementService';
 import {
   PromptTemplateResponse,
   PromptVersionResponse,
@@ -537,11 +533,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // guard above already confines an admin to their own tenant). Non-owner,
     // non-admin callers are denied (null — no existence leak), preserving the
     // end-user self-only contract.
-    if (
-      template.scope === SCOPE_USER_PERSONAL &&
-      template.ownerUserId !== this.requestUserId &&
-      !this.callerCanManageTemplates()
-    ) {
+    if (template.scope === SCOPE_USER_PERSONAL && template.ownerUserId !== this.requestUserId && !this.callerCanManageTemplates()) {
       return null;
     }
     return PromptManagementDtoMapper.toTemplateResponse(template);
@@ -708,10 +700,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     if (!template) throw new NotFoundException(`Prompt template ${templateId} not found`);
     this.assertOwnedByTenant(template, templateId);
 
-    const [from, to] = await Promise.all([
-      this.getVersion(templateId, fromVersion),
-      this.getVersion(templateId, toVersion),
-    ]);
+    const [from, to] = await Promise.all([this.getVersion(templateId, fromVersion), this.getVersion(templateId, toVersion)]);
     if (!from) throw new NotFoundException(`Version ${fromVersion} not found for template ${templateId}`);
     if (!to) throw new NotFoundException(`Version ${toVersion} not found for template ${templateId}`);
 
@@ -835,9 +824,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
 
     // Encrypt the free-text test output into the ciphertext
     // column before the CAS persist (dual-write; plaintext retained for soak).
-    await this.encryptBestEffort('PromptTemplate', () =>
-      this.promptTemplateRepository.encryptFieldsIntoEntity(template, this.secretsService!),
-    );
+    await this.encryptBestEffort('PromptTemplate', () => this.promptTemplateRepository.encryptFieldsIntoEntity(template, this.secretsService!));
 
     // Compare-And-Set against the row `_version` (mirrors updatePromptTemplate).
     const updated = await this.promptTemplateRepository.updateWithVersion(id, template, dto.expectedVersion);
@@ -884,11 +871,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * `getUsageAnalytics` with the individual run rows. Read-only; the optional
    * `promptTemplateId` narrows to a single agent.
    */
-  async listUsageRecords(filters?: {
-    page?: number;
-    limit?: number;
-    promptTemplateId?: string;
-  }): Promise<Paginated<PromptUsageRecordResponse>> {
+  async listUsageRecords(filters?: { page?: number; limit?: number; promptTemplateId?: string }): Promise<Paginated<PromptUsageRecordResponse>> {
     const tenantId = this.tenantId;
     if (!tenantId) throw new BadRequestException('Tenant ID is required');
 

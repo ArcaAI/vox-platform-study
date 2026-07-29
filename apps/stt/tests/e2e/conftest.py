@@ -408,7 +408,7 @@ async def valid_pipeline_id(real_audio_client) -> str:
         result = await session.execute(
             text(
                 'SELECT slug FROM core."AsrPipeline"'
-                ' WHERE slug = :slug'
+                " WHERE slug = :slug"
                 " AND \"resourceStatus\" = 'ENABLED'"
                 ' AND "tenantId" = :tenant_id'
             ),

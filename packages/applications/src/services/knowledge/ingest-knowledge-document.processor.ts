@@ -117,9 +117,7 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
           status: chunk.status,
           createdBy: userId ?? null,
         });
-        await this.encryptBestEffort('KnowledgeChunk', () =>
-          this.knowledgeChunkRepository.encryptFieldsIntoEntity(entity, this.secretsService!),
-        );
+        await this.encryptBestEffort('KnowledgeChunk', () => this.knowledgeChunkRepository.encryptFieldsIntoEntity(entity, this.secretsService!));
         const saved = await this.knowledgeChunkRepository.create(entity);
         chunkIds.push(saved?.id ?? entity.id);
       }

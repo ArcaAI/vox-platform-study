@@ -69,9 +69,7 @@ describe('Prisma Client Creation', () => {
       const clientModule = await import('../client');
 
       // The createNewPrismaClient should throw when DATABASE_URL is missing
-      expect(() => clientModule.createNewPrismaClient()).toThrow(
-        'DATABASE_URL environment variable is not set'
-      );
+      expect(() => clientModule.createNewPrismaClient()).toThrow('DATABASE_URL environment variable is not set');
     });
 
     it('should create client when DATABASE_URL is set', async () => {
@@ -88,9 +86,7 @@ describe('Prisma Client Creation', () => {
 
       const clientModule = await import('../client');
 
-      expect(() => clientModule.createNewPrismaClient()).toThrow(
-        'DATABASE_URL environment variable is not set'
-      );
+      expect(() => clientModule.createNewPrismaClient()).toThrow('DATABASE_URL environment variable is not set');
     });
   });
 });

@@ -41,9 +41,7 @@ class TestAtomicUpdateBasic:
     @pytest.mark.asyncio
     async def test_update_task_returns_updated_state(self, task_manager):
         task = await task_manager.create_task(provider="ollama", model="llama3")
-        updated = await task_manager.update_task(
-            task.task_id, status=TaskStatus.RUNNING
-        )
+        updated = await task_manager.update_task(task.task_id, status=TaskStatus.RUNNING)
 
         assert updated is not None
         assert updated.task_id == task.task_id
@@ -51,20 +49,14 @@ class TestAtomicUpdateBasic:
 
     @pytest.mark.asyncio
     async def test_update_task_returns_none_for_missing(self, task_manager):
-        result = await task_manager.update_task(
-            "nonexistent-id", status=TaskStatus.RUNNING
-        )
+        result = await task_manager.update_task("nonexistent-id", status=TaskStatus.RUNNING)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_update_task_preserves_existing_fields(self, task_manager):
-        task = await task_manager.create_task(
-            provider="azure", model="gpt-4o", max_retries=5
-        )
+        task = await task_manager.create_task(provider="azure", model="gpt-4o", max_retries=5)
 
-        updated = await task_manager.update_task(
-            task.task_id, status=TaskStatus.RUNNING
-        )
+        updated = await task_manager.update_task(task.task_id, status=TaskStatus.RUNNING)
 
         assert updated is not None
         assert updated.provider == "azure"
@@ -80,9 +72,7 @@ class TestAtomicUpdateBasic:
             TaskStatus.RUNNING,
             TaskStatus.COMPLETED,
         ):
-            updated = await task_manager.update_task(
-                task.task_id, status=target_status
-            )
+            updated = await task_manager.update_task(task.task_id, status=target_status)
             assert updated is not None
             assert updated.status == target_status
 
@@ -145,12 +135,10 @@ class TestAtomicUpdateConcurrency:
 
         final = await tm.get_task(task.task_id)
         assert final is not None
-        assert final.status == TaskStatus.RUNNING, (
-            "status update was lost — race condition in GET+SET"
-        )
-        assert final.total_tokens == 100, (
-            "total_tokens update was lost — race condition in GET+SET"
-        )
+        assert (
+            final.status == TaskStatus.RUNNING
+        ), "status update was lost — race condition in GET+SET"
+        assert final.total_tokens == 100, "total_tokens update was lost — race condition in GET+SET"
 
     @pytest.mark.asyncio
     async def test_update_task_uses_eval_not_get_set(self, redis_client):
@@ -172,9 +160,7 @@ class TestAtomicUpdateConcurrency:
 
         redis_client.eval = original_eval
 
-        assert eval_called, (
-            "update_task must use redis.eval() for atomic Lua-based updates"
-        )
+        assert eval_called, "update_task must use redis.eval() for atomic Lua-based updates"
 
 
 class TestCancelUsesAtomicUpdate:

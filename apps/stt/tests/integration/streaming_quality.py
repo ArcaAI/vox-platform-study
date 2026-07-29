@@ -338,7 +338,9 @@ def regression_report(
         base = wer_cfg.get("baseline")
         if base is not None:
             lim = base + wer_cfg.get("epsilon", 0.0)
-            checks.append(_check("medical_wer_vs_baseline", wer, lim, wer <= lim, "<= baseline+eps"))
+            checks.append(
+                _check("medical_wer_vs_baseline", wer, lim, wer <= lim, "<= baseline+eps")
+            )
 
     # --- keyterm / keyphrase recall: >= floor and >= baseline-ε ---------------
     for name in ("keyterm_recall", "keyphrase_recall"):
@@ -375,14 +377,22 @@ def regression_report(
             if observed is not None and base is not None:
                 lim = base * (1 + ratio)
                 checks.append(
-                    _check(f"commit_latency_{pct}", observed, lim, observed <= lim, "<= baseline*(1+eps)")
+                    _check(
+                        f"commit_latency_{pct}",
+                        observed,
+                        lim,
+                        observed <= lim,
+                        "<= baseline*(1+eps)",
+                    )
                 )
 
     # --- dropped captions: seq gap count == 0 (zero tolerance) ----------------
     gap_cfg = thresholds.get("seq_gap_count", {})
     gaps = transport.get("seq_gap_count")
     if gaps is not None and gap_cfg.get("max") is not None:
-        checks.append(_check("seq_gap_count", gaps, gap_cfg["max"], gaps <= gap_cfg["max"], "<= max"))
+        checks.append(
+            _check("seq_gap_count", gaps, gap_cfg["max"], gaps <= gap_cfg["max"], "<= max")
+        )
 
     # --- audio coverage: >= baseline-ε ----------------------------------------
     cov_cfg = thresholds.get("audio_coverage_ratio", {})

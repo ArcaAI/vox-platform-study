@@ -28,13 +28,7 @@ vi.mock('../../admin/api/admin-client', () => ({
   adminClient: { get: mockGet, patch: mockPatch, post: mockPost },
 }));
 
-import {
-  applyDefaultToReports,
-  dnaWritingStyleKeys,
-  useMyDnaReports,
-  useSetDefaultDnaReport,
-  type DnaReport,
-} from '../api/dna-writing-styles';
+import { applyDefaultToReports, dnaWritingStyleKeys, useMyDnaReports, useSetDefaultDnaReport, type DnaReport } from '../api/dna-writing-styles';
 
 const REPORTS: DnaReport[] = [
   { id: 'r1', doctorId: 'd1', reportData: null, isLatest: true, currentVersionNumber: 2, createdAt: '', updatedAt: '' },
@@ -91,7 +85,11 @@ describe('useSetDefaultDnaReport', () => {
 
   it('optimistically promotes the report in the cached /mine list', async () => {
     let resolvePatch: (v: unknown) => void = () => {};
-    mockPatch.mockReturnValue(new Promise((res) => { resolvePatch = res; }));
+    mockPatch.mockReturnValue(
+      new Promise((res) => {
+        resolvePatch = res;
+      }),
+    );
     const { qc, wrapper } = makeWrapper();
     qc.setQueryData(dnaWritingStyleKeys.mine(), REPORTS);
 

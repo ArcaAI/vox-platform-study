@@ -45,5 +45,4 @@ export class UserDepartmentEntity extends BaseTenantEntity {
   set departmentId(value: IUserDepartmentEntity['departmentId']) {
     this.setProperty('departmentId', value);
   }
-
 }

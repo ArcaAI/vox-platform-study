@@ -84,6 +84,20 @@ def _register_provider_factories(
 
         _register(("bedrock",), lambda: BedrockProvider(settings.bedrock))
 
+    # Cloud BYO providers (openai / anthropic / vertex) — governed by the
+    # unified provider plane (C5). Unlike azure/bedrock these are BYO-FIRST:
+    # the tenant credential arrives per request as a ``provider_overrides`` entry
+    # injected by the gateway, so they must be AVAILABLE even when no platform
+    # env credential is configured. They are therefore registered unconditionally
+    # (the env config is only the platform fallback / fail-open target).
+    from smr.providers.anthropic import AnthropicProvider
+    from smr.providers.openai import OpenAIProvider
+    from smr.providers.vertex import VertexProvider
+
+    _register(("openai",), _shared(lambda: OpenAIProvider(settings.openai)))
+    _register(("anthropic",), _shared(lambda: AnthropicProvider(settings.anthropic)))
+    _register(("vertex",), _shared(lambda: VertexProvider(settings.vertex)))
+
     if settings.vllm.base_url:
         from smr.providers.vllm import VllmProvider
 
@@ -121,6 +135,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if not hasattr(app.state, "task_manager") or app.state.task_manager is None:
         from smr.services.task_manager import TaskManager
+
         app.state.task_manager = TaskManager(
             redis=redis_client,
             task_ttl=settings.redis.task_ttl_seconds,
@@ -132,6 +147,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # enforced inside the client (bounded retry, then a not-allowed verdict).
     if not hasattr(app.state, "guardrail_client") or app.state.guardrail_client is None:
         from smr.services.external_guardrail import ExternalGuardrailClient
+
         app.state.guardrail_client = ExternalGuardrailClient(
             settings=settings.external_guardrail,
             http_client=http_client,
@@ -145,6 +161,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if not hasattr(app.state, "provider_registry") or app.state.provider_registry is None:
         from smr.providers.base import ProviderRegistry
+
         app.state.provider_registry = ProviderRegistry()
 
     registry = app.state.provider_registry
@@ -163,6 +180,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "azure-openai": settings.azure,
         "azure": settings.azure,
         "bedrock": settings.bedrock,
+        "openai": settings.openai,
+        "anthropic": settings.anthropic,
+        "vertex": settings.vertex,
         "lm-studio": settings.openai_compat,
         "openai_compat": settings.openai_compat,
         "vllm": settings.vllm,
@@ -204,6 +224,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "azure-openai": settings.azure,
             "azure": settings.azure,
             "bedrock": settings.bedrock,
+            "openai": settings.openai,
+            "anthropic": settings.anthropic,
+            "vertex": settings.vertex,
             "lm-studio": settings.openai_compat,
             "openai_compat": settings.openai_compat,
             "vllm": settings.vllm,
@@ -259,6 +282,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             logger.error("redis.close_unexpected_error", error=str(exc))
 
     from smr.core.observability import shutdown_opentelemetry
+
     shutdown_opentelemetry(app)
 
     logger.info("smr.shutdown_complete")
@@ -295,6 +319,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.logger_provider = None
 
     from smr.core.exception_handlers import register_exception_handlers
+
     register_exception_handlers(app)
 
     from smr.api.middleware.auth import ServiceAuthMiddleware
@@ -313,9 +338,11 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     # RequestLoggingMiddleware added before RequestIDMiddleware in code
     # so it executes AFTER request_id is bound to contextvars.
     from smr.api.middleware.logging import RequestLoggingMiddleware
+
     app.add_middleware(RequestLoggingMiddleware)
 
     from smr.api.middleware.request_id import RequestIDMiddleware
+
     app.add_middleware(RequestIDMiddleware)
 
     from smr.api.endpoints.generate import router as generate_router
@@ -332,6 +359,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     if settings.otel_enabled:
         from smr.core.observability import setup_opentelemetry
+
         setup_opentelemetry(
             app,
             endpoint=settings.otel_exporter_endpoint,
@@ -344,6 +372,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
 
     if settings.metrics_enabled:
         from prometheus_fastapi_instrumentator import Instrumentator
+
         Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
     return app

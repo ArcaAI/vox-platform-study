@@ -106,6 +106,9 @@ function setupStore(overrides: Record<string, any> = {}) {
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),
     resetAudioDropped: vi.fn(),
+    // Streaming STT connection/pipeline actions (TASK-567 Phase F)
+    setSttConnectionState: vi.fn(),
+    setActivePipeline: vi.fn(),
     ...overrides,
   };
   (useAgenticStore as any).mockReturnValue(mockStoreData);

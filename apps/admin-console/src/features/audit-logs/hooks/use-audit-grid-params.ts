@@ -30,78 +30,74 @@ const AUDIT_GRID_PARSERS = { search: searchParser, limit: limitParser, f: filter
 
 /** `yyyy-MM-dd` (grid date filter) or ISO string → ISO-8601 instant; upper bound gets end-of-day. */
 function toIsoInstant(value: unknown, endOfDay = false): string | undefined {
-    if (typeof value !== 'string' || value.trim() === '') return undefined;
-    const iso = value.length <= 10 ? `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z` : value;
-    const date = new Date(iso);
-    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  if (typeof value !== 'string' || value.trim() === '') return undefined;
+  const iso = value.length <= 10 ? `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}Z` : value;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 function ruleValue(rule: FilterRule | undefined): string | undefined {
-    const value = Array.isArray(rule?.value) ? rule?.value[0] : rule?.value;
-    return typeof value === 'string' && value.trim() !== '' ? value : undefined;
+  const value = Array.isArray(rule?.value) ? rule?.value[0] : rule?.value;
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 
 export interface AuditGridParams {
-    queryState: DataQueryState;
-    setQueryState: (next: DataQueryState) => void;
-    /** Cursor query for `useAuditLogsCursor`. */
-    listParams: AuditLogCursorParams;
-    /** Filter-only params (no cursor/limit) for the count probe + export. */
-    filterParams: AuditLogListParams;
+  queryState: DataQueryState;
+  setQueryState: (next: DataQueryState) => void;
+  /** Cursor query for `useAuditLogsCursor`. */
+  listParams: AuditLogCursorParams;
+  /** Filter-only params (no cursor/limit) for the count probe + export. */
+  filterParams: AuditLogListParams;
 }
 
 export function useAuditGridParams(): AuditGridParams {
-    const [{ search, limit, f }, setUrlState] = useQueryStates(AUDIT_GRID_PARSERS);
-    const [cursor, setCursor] = useState<string | null>(null);
+  const [{ search, limit, f }, setUrlState] = useQueryStates(AUDIT_GRID_PARSERS);
+  const [cursor, setCursor] = useState<string | null>(null);
 
-    const queryState = useMemo<DataQueryState>(
-        () => ({
-            pagination: { mode: 'cursor', cursor, limit },
-            sorting: [],
-            filters: f,
-            globalSearch: search.length > 0 ? search : undefined,
-        }),
-        [cursor, limit, f, search],
-    );
+  const queryState = useMemo<DataQueryState>(
+    () => ({
+      pagination: { mode: 'cursor', cursor, limit },
+      sorting: [],
+      filters: f,
+      globalSearch: search.length > 0 ? search : undefined,
+    }),
+    [cursor, limit, f, search],
+  );
 
-    const setQueryState = useCallback(
-        (next: DataQueryState) => {
-            // A result-set change (filters / omni search) restarts the keyset walk.
-            const changedResultSet =
-                encodeFilters(next.filters) !== encodeFilters(queryState.filters) ||
-                (next.globalSearch ?? '') !== (queryState.globalSearch ?? '');
-            const nextCursor = changedResultSet ? null : next.pagination.mode === 'cursor' ? next.pagination.cursor : null;
-            setCursor(nextCursor);
+  const setQueryState = useCallback(
+    (next: DataQueryState) => {
+      // A result-set change (filters / omni search) restarts the keyset walk.
+      const changedResultSet =
+        encodeFilters(next.filters) !== encodeFilters(queryState.filters) || (next.globalSearch ?? '') !== (queryState.globalSearch ?? '');
+      const nextCursor = changedResultSet ? null : next.pagination.mode === 'cursor' ? next.pagination.cursor : null;
+      setCursor(nextCursor);
 
-            setUrlState({
-                search: next.globalSearch && next.globalSearch.length > 0 ? next.globalSearch : null,
-                f: next.filters.length > 0 ? next.filters : null,
-                limit: next.pagination.limit !== DEFAULT_LIMIT ? next.pagination.limit : null,
-            });
-        },
-        [queryState, setUrlState],
-    );
+      setUrlState({
+        search: next.globalSearch && next.globalSearch.length > 0 ? next.globalSearch : null,
+        f: next.filters.length > 0 ? next.filters : null,
+        limit: next.pagination.limit !== DEFAULT_LIMIT ? next.pagination.limit : null,
+      });
+    },
+    [queryState, setUrlState],
+  );
 
-    const filterParams = useMemo<AuditLogListParams>(() => {
-        const action = ruleValue(f.find((rule) => rule.id === 'action'));
-        const resourceType = ruleValue(f.find((rule) => rule.id === 'resourceType'));
-        const createdAt = f.find((rule) => rule.id === 'createdAt');
-        const [fromRaw, toRaw] = Array.isArray(createdAt?.value) ? createdAt.value : [];
-        const from = toIsoInstant(fromRaw);
-        const to = toIsoInstant(toRaw, true);
-        return {
-            ...(action ? { action: action as AuditLog['action'] } : {}),
-            ...(resourceType ? { resourceType } : {}),
-            ...(search ? { userId: search } : {}),
-            ...(from ? { from } : {}),
-            ...(to ? { to } : {}),
-        };
-    }, [f, search]);
+  const filterParams = useMemo<AuditLogListParams>(() => {
+    const action = ruleValue(f.find((rule) => rule.id === 'action'));
+    const resourceType = ruleValue(f.find((rule) => rule.id === 'resourceType'));
+    const createdAt = f.find((rule) => rule.id === 'createdAt');
+    const [fromRaw, toRaw] = Array.isArray(createdAt?.value) ? createdAt.value : [];
+    const from = toIsoInstant(fromRaw);
+    const to = toIsoInstant(toRaw, true);
+    return {
+      ...(action ? { action: action as AuditLog['action'] } : {}),
+      ...(resourceType ? { resourceType } : {}),
+      ...(search ? { userId: search } : {}),
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    };
+  }, [f, search]);
 
-    const listParams = useMemo<AuditLogCursorParams>(
-        () => ({ ...filterParams, limit, ...(cursor ? { cursor } : {}) }),
-        [filterParams, limit, cursor],
-    );
+  const listParams = useMemo<AuditLogCursorParams>(() => ({ ...filterParams, limit, ...(cursor ? { cursor } : {}) }), [filterParams, limit, cursor]);
 
-    return { queryState, setQueryState, listParams, filterParams };
+  return { queryState, setQueryState, listParams, filterParams };
 }

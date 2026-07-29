@@ -8,5 +8,5 @@ import { redirect } from 'next/navigation';
  * after the one that ships the rename.
  */
 export default function PstudioRedirectPage(): never {
-    redirect('/db-studio');
+  redirect('/db-studio');
 }

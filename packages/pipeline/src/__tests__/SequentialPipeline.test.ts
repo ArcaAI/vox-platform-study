@@ -298,7 +298,7 @@ describe('SequentialPipeline', () => {
         expect.objectContaining({
           stageName: 'failing',
           error: expect.any(Error),
-        })
+        }),
       );
     });
   });
@@ -493,7 +493,7 @@ describe('SequentialPipeline', () => {
         expect.objectContaining({
           runId: expect.any(String),
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -509,7 +509,7 @@ describe('SequentialPipeline', () => {
           runId: expect.any(String),
           durationMs: expect.any(Number),
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -529,7 +529,7 @@ describe('SequentialPipeline', () => {
           stageName: 'add',
           durationMs: expect.any(Number),
           result: 15,
-        })
+        }),
       );
     });
 

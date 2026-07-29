@@ -178,9 +178,7 @@ class FasterWhisperAsrAdapter:
         self._batched = extra.get("batched_pipeline")
         self._batch_size = (
             batch_size
-            if isinstance(batch_size, int)
-            and not isinstance(batch_size, bool)
-            and batch_size > 0
+            if isinstance(batch_size, int) and not isinstance(batch_size, bool) and batch_size > 0
             else None
         )
 
@@ -277,9 +275,7 @@ class FasterWhisperAsrAdapter:
                         "word": (w.word or "").strip(),
                         "start": float(w.start),
                         "end": float(w.end),
-                        "confidence": float(
-                            getattr(w, "probability", 1.0) or 1.0
-                        ),
+                        "confidence": float(getattr(w, "probability", 1.0) or 1.0),
                     }
                     for w in seg_words
                 ]

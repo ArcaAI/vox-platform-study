@@ -20,30 +20,30 @@ import { ProfileListCard } from './profile-list-card';
  * bar's persona control, so there is no page-level playground banner.
  */
 export function VoiceProfilesScreen() {
-    const profiles = useVoiceProfiles();
-    const wizardRef = useRef<HTMLDivElement | null>(null);
+  const profiles = useVoiceProfiles();
+  const wizardRef = useRef<HTMLDivElement | null>(null);
 
-    /** Header/empty CTA: the wizard is inline, so "enroll" = move focus to it. */
-    function focusWizard() {
-        wizardRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-        wizardRef.current?.focus();
-    }
+  /** Header/empty CTA: the wizard is inline, so "enroll" = move focus to it. */
+  function focusWizard() {
+    wizardRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    wizardRef.current?.focus();
+  }
 
-    return (
-        <PlaygroundCanvas>
-            <CanvasHeader
-                title="My Voice Enrollment & Profiles"
-                description={'Enroll & manage speaker profiles · runs under your own account'}
-                badges={<StatusBadge label={'Biometric · user-owned only'} colorRole="info" icon={<IconFingerprint aria-hidden />} />}
-                actions={
-                    <Button onClick={focusWizard}>
-                        <IconPlus aria-hidden />
-                        New profile
-                    </Button>
-                }
-            />
-            <EnrollmentCard ref={wizardRef} />
-            <ProfileListCard query={profiles} onEnroll={focusWizard} />
-        </PlaygroundCanvas>
-    );
+  return (
+    <PlaygroundCanvas>
+      <CanvasHeader
+        title="My Voice Enrollment & Profiles"
+        description={'Enroll & manage speaker profiles · runs under your own account'}
+        badges={<StatusBadge label={'Biometric · user-owned only'} colorRole="info" icon={<IconFingerprint aria-hidden />} />}
+        actions={
+          <Button onClick={focusWizard}>
+            <IconPlus aria-hidden />
+            New profile
+          </Button>
+        }
+      />
+      <EnrollmentCard ref={wizardRef} />
+      <ProfileListCard query={profiles} onEnroll={focusWizard} />
+    </PlaygroundCanvas>
+  );
 }

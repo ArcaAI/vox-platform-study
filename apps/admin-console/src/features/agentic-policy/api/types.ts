@@ -18,38 +18,38 @@ export type HarnessPolicySource = 'tenant' | 'system-default' | 'code-default';
  * overrides (null = harness env/code default) and may be absent on older rows.
  */
 export interface AgenticPolicy {
-    id: string | null;
-    tenantId: string;
-    source: HarnessPolicySource;
-    entityFaithfulnessThreshold: number;
-    coverageThreshold: number;
-    citationPresenceThreshold: number;
-    numericDoseThreshold: number;
-    groundednessThreshold: number;
-    safetyEnabled: boolean;
-    phiEnabled: boolean;
-    phiFailClosed: boolean;
-    safetyProvider: string;
-    safetyModel: string;
-    smrProvider: string | null;
-    smrModel: string | null;
-    maxRegen: number;
-    gateSlaSeconds: number;
-    gateEscalationSeconds: number;
-    toolAllowlist: string[] | null;
-    // agentic loop knobs (nullable overrides; may be undefined on the wire).
-    optimisticDeliveryEnabled?: boolean | null;
-    atomicFactEnabled?: boolean | null;
-    retrievalEnabled?: boolean | null;
-    warmStartEnabled?: boolean | null;
-    nerPriorsEnabled?: boolean | null;
-    maxEditReruns?: number | null;
-    regenFeedbackEnabled?: boolean | null;
-    // MCP external-tools master switch (null = OFF). Global-admin
-    // governed, so the effective value always comes from the SYSTEM row.
-    mcpToolsEnabled?: boolean | null;
-    updatedAt: string | null;
-    version: number;
+  id: string | null;
+  tenantId: string;
+  source: HarnessPolicySource;
+  entityFaithfulnessThreshold: number;
+  coverageThreshold: number;
+  citationPresenceThreshold: number;
+  numericDoseThreshold: number;
+  groundednessThreshold: number;
+  safetyEnabled: boolean;
+  phiEnabled: boolean;
+  phiFailClosed: boolean;
+  safetyProvider: string;
+  safetyModel: string;
+  smrProvider: string | null;
+  smrModel: string | null;
+  maxRegen: number;
+  gateSlaSeconds: number;
+  gateEscalationSeconds: number;
+  toolAllowlist: string[] | null;
+  // agentic loop knobs (nullable overrides; may be undefined on the wire).
+  optimisticDeliveryEnabled?: boolean | null;
+  atomicFactEnabled?: boolean | null;
+  retrievalEnabled?: boolean | null;
+  warmStartEnabled?: boolean | null;
+  nerPriorsEnabled?: boolean | null;
+  maxEditReruns?: number | null;
+  regenFeedbackEnabled?: boolean | null;
+  // MCP external-tools master switch (null = OFF). Global-admin
+  // governed, so the effective value always comes from the SYSTEM row.
+  mcpToolsEnabled?: boolean | null;
+  updatedAt: string | null;
+  version: number;
 }
 
 /**
@@ -59,32 +59,32 @@ export interface AgenticPolicy {
  * server-side; the client sends both.
  */
 export interface UpdateAgenticPolicyRequest {
-    entityFaithfulnessThreshold?: number;
-    coverageThreshold?: number;
-    citationPresenceThreshold?: number;
-    numericDoseThreshold?: number;
-    groundednessThreshold?: number;
-    safetyEnabled?: boolean;
-    phiEnabled?: boolean;
-    phiFailClosed?: boolean;
-    safetyProvider?: string;
-    safetyModel?: string;
-    smrProvider?: string | null;
-    smrModel?: string | null;
-    maxRegen?: number;
-    gateSlaSeconds?: number;
-    gateEscalationSeconds?: number;
-    toolAllowlist?: string[] | null;
-    optimisticDeliveryEnabled?: boolean | null;
-    atomicFactEnabled?: boolean | null;
-    retrievalEnabled?: boolean | null;
-    warmStartEnabled?: boolean | null;
-    nerPriorsEnabled?: boolean | null;
-    maxEditReruns?: number | null;
-    regenFeedbackEnabled?: boolean | null;
-    mcpToolsEnabled?: boolean | null;
-    reason?: string;
-    expectedVersion?: number;
+  entityFaithfulnessThreshold?: number;
+  coverageThreshold?: number;
+  citationPresenceThreshold?: number;
+  numericDoseThreshold?: number;
+  groundednessThreshold?: number;
+  safetyEnabled?: boolean;
+  phiEnabled?: boolean;
+  phiFailClosed?: boolean;
+  safetyProvider?: string;
+  safetyModel?: string;
+  smrProvider?: string | null;
+  smrModel?: string | null;
+  maxRegen?: number;
+  gateSlaSeconds?: number;
+  gateEscalationSeconds?: number;
+  toolAllowlist?: string[] | null;
+  optimisticDeliveryEnabled?: boolean | null;
+  atomicFactEnabled?: boolean | null;
+  retrievalEnabled?: boolean | null;
+  warmStartEnabled?: boolean | null;
+  nerPriorsEnabled?: boolean | null;
+  maxEditReruns?: number | null;
+  regenFeedbackEnabled?: boolean | null;
+  mcpToolsEnabled?: boolean | null;
+  reason?: string;
+  expectedVersion?: number;
 }
 
 /** Where the live-doc engine enabled flag resolved from. */
@@ -92,37 +92,37 @@ export type LiveDocEngineConfigSource = 'env-default' | 'redis-override';
 
 /** GET/PATCH /admin/harness/live/config — the engine kill-switch (NOT versioned). */
 export interface LiveDocEngineConfig {
-    enabled: boolean;
-    envDefault: boolean;
-    source: LiveDocEngineConfigSource;
-    updatedAt?: string;
-    updatedBy?: string;
+  enabled: boolean;
+  envDefault: boolean;
+  source: LiveDocEngineConfigSource;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 /** PATCH body (UpdateLiveDocEngineConfigRequest) — plain PATCH, no If-Match. */
 export interface UpdateLiveDocEngineConfigRequest {
-    enabled: boolean;
-    reason?: string;
+  enabled: boolean;
+  reason?: string;
 }
 
 /** One entry of the settings catalog (SettingCatalogItemResponse) — metadata only. */
 export interface SettingCatalogItem {
-    key: string;
-    tier: string;
-    dataType: string;
-    sensitivity: string;
-    maxScope: string;
-    editableBy: string;
-    category: string;
-    globalOnly?: boolean;
-    label?: string;
-    description?: string;
+  key: string;
+  tier: string;
+  dataType: string;
+  sensitivity: string;
+  maxScope: string;
+  editableBy: string;
+  category: string;
+  globalOnly?: boolean;
+  label?: string;
+  description?: string;
 }
 
 /** GET /admin/settings/catalog envelope (SettingCatalogResponse). */
 export interface SettingCatalog {
-    items: SettingCatalogItem[];
-    categories: string[];
+  items: SettingCatalogItem[];
+  categories: string[];
 }
 
 /**
@@ -131,19 +131,19 @@ export interface SettingCatalog {
  * no row is stored, so the gateway emits no ETag and a first write needs none.
  */
 export interface EffectiveSetting {
-    key: string;
-    tier: string;
-    value: unknown;
-    /** Which cascade tier supplied the value (`global-kv` | `code-default` | ...). */
-    sourceScope: string;
-    version?: number;
+  key: string;
+  tier: string;
+  value: unknown;
+  /** Which cascade tier supplied the value (`global-kv` | `code-default` | ...). */
+  sourceScope: string;
+  version?: number;
 }
 
 /** Result of a registry write; `version` is the next `If-Match`. */
 export interface WriteRegistrySettingResult {
-    key: string;
-    tier: string;
-    value: unknown;
-    scope: string;
-    version: number;
+  key: string;
+  tier: string;
+  value: unknown;
+  scope: string;
+  version: number;
 }

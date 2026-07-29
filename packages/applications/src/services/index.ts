@@ -77,6 +77,8 @@ export * from './rbac';
 export * from './platform-metrics';
 // Per-tenant TTS configuration (DB-backed spec + BYO provider creds).
 export * from './tenant-tts-config';
+// Per-tenant STT fallback configuration (fallback pipeline pointer + BYO provider creds).
+export * from './tenant-stt-config';
 // Tenant-scoped external identity provider (OIDC config + per-tenant client resolver + JIT-provisioning login round-trip).
 export * from './tenant-idp-config';
 export * from './idp-resolver';

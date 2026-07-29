@@ -9,11 +9,11 @@ import { describe, it, expect } from 'vitest';
 import { ThrottleConfigModule } from '../throttle.module';
 
 describe('ThrottleConfigModule', () => {
-    it('should be defined and importable', () => {
-        expect(ThrottleConfigModule).toBeDefined();
-    });
+  it('should be defined and importable', () => {
+    expect(ThrottleConfigModule).toBeDefined();
+  });
 
-    it('should be a class (NestJS module)', () => {
-        expect(typeof ThrottleConfigModule).toBe('function');
-    });
+  it('should be a class (NestJS module)', () => {
+    expect(typeof ThrottleConfigModule).toBe('function');
+  });
 });

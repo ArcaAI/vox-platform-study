@@ -69,12 +69,12 @@ Clauses (each has a conformance test in `tests/test_cache_contract.py`,
    called once per evicted key on ALL SIX paths (explicit `evict`, lazy TTL on
    `get`, TTL `sweep`, LRU overflow, VRAM pressure, `clear`) for BOTH cache
    classes. TASK-529's TDD caught two real defects here (LRU-overflow and
-   lazy-TTL eviction dropped entries *without* calling `unload`, so the cache
+   lazy-TTL eviction dropped entries _without_ calling `unload`, so the cache
    reported an eviction, freed nothing, and its byte budget silently stopped
    meaning anything). TASK-530 generalized those spot fixes into this
    path-parameterized clause so a new eviction path cannot regress it.
 10. **Identical stats surface** — `stats()` returns the same `CacheStats`
-   field-for-field from both classes, so one Grafana dashboard reads both.
+    field-for-field from both classes, so one Grafana dashboard reads both.
 
 ## Consuming it
 
@@ -89,5 +89,5 @@ hope-runtime-models = { workspace = true }
 
 then run `uv lock` at the repo ROOT. Docker builds copy this package's source in
 build layer 1 (before `uv sync --no-install-project`) because
-`--no-install-project` skips only the *target* package, not its workspace path
+`--no-install-project` skips only the _target_ package, not its workspace path
 dependencies — see `docs/operations/inference/model-retention.md`.

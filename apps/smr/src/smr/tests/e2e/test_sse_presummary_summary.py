@@ -44,7 +44,8 @@ class TestPreSummarySseE2E:
     """Pre-summary generation via SSE streaming against real Ollama."""
 
     async def test_presummary_stream_returns_202_with_stream_url(
-        self, e2e_client: AsyncClient,
+        self,
+        e2e_client: AsyncClient,
     ) -> None:
         resp = await e2e_client.post(
             "/api/v1/generate",
@@ -68,7 +69,8 @@ class TestPreSummarySseE2E:
         assert body["stream_url"].endswith("/stream")
 
     async def test_presummary_sse_stream_produces_chunks_and_done(
-        self, e2e_client: AsyncClient,
+        self,
+        e2e_client: AsyncClient,
     ) -> None:
         task_resp = await e2e_client.post(
             "/api/v1/generate",
@@ -100,7 +102,8 @@ class TestPreSummarySseE2E:
         assert has_done, "SSE stream should end with a done signal"
 
     async def test_presummary_sync_returns_content(
-        self, e2e_client: AsyncClient,
+        self,
+        e2e_client: AsyncClient,
     ) -> None:
         resp = await e2e_client.post(
             "/api/v1/generate",
@@ -128,7 +131,8 @@ class TestSummarySseE2E:
     """Full summary generation via SSE streaming against real Ollama."""
 
     async def test_summary_stream_returns_202_with_stream_url(
-        self, e2e_client: AsyncClient,
+        self,
+        e2e_client: AsyncClient,
     ) -> None:
         resp = await e2e_client.post(
             "/api/v1/generate",
@@ -150,7 +154,8 @@ class TestSummarySseE2E:
         assert body["stream_url"]
 
     async def test_summary_sse_stream_produces_chunks_and_done(
-        self, e2e_client: AsyncClient,
+        self,
+        e2e_client: AsyncClient,
     ) -> None:
         task_resp = await e2e_client.post(
             "/api/v1/generate",
@@ -181,7 +186,8 @@ class TestSummarySseE2E:
         assert has_done, "SSE stream should end with a done signal"
 
     async def test_summary_with_presummary_context_stream(
-        self, e2e_client: AsyncClient,
+        self,
+        e2e_client: AsyncClient,
     ) -> None:
         """Full flow: pre-summary context injected into summary generation."""
         pre_summary = "Key History: Persistent chest pain, ST-segment changes. Medications: Aspirin, Atorvastatin, Metformin."
@@ -213,7 +219,8 @@ class TestSummarySseE2E:
         assert len(lines) > 0
 
     async def test_summary_sync_returns_content(
-        self, e2e_client: AsyncClient,
+        self,
+        e2e_client: AsyncClient,
     ) -> None:
         resp = await e2e_client.post(
             "/api/v1/generate",

@@ -21,17 +21,9 @@ describe('vad browserSupport utilities', () => {
     it('should match Safari user agent pattern', () => {
       const safariPattern = /^((?!chrome|android).)*safari/i;
 
-      expect(
-        safariPattern.test(
-          'Mozilla/5.0 Version/17.4 Safari/605.1.15'
-        )
-      ).toBe(true);
+      expect(safariPattern.test('Mozilla/5.0 Version/17.4 Safari/605.1.15')).toBe(true);
 
-      expect(
-        safariPattern.test(
-          'Chrome/120.0.0.0 Safari/537.36'
-        )
-      ).toBe(false);
+      expect(safariPattern.test('Chrome/120.0.0.0 Safari/537.36')).toBe(false);
     });
   });
 

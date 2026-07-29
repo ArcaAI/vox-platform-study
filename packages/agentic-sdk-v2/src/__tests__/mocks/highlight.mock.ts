@@ -6,18 +6,18 @@
  */
 
 export const H = {
-    init: () => {},
-    identify: () => {},
-    track: () => {},
-    consume: () => {},
-    consumeError: () => {},
-    log: () => {},
-    start: () => {},
-    stop: () => {},
-    getSessionURL: () => 'https://highlight.io/session',
-    getSessionId: () => 'mock-session-id',
-    isRunningOnHighlight: () => false,
-    error: () => {},
+  init: () => {},
+  identify: () => {},
+  track: () => {},
+  consume: () => {},
+  consumeError: () => {},
+  log: () => {},
+  start: () => {},
+  stop: () => {},
+  getSessionURL: () => 'https://highlight.io/session',
+  getSessionId: () => 'mock-session-id',
+  isRunningOnHighlight: () => false,
+  error: () => {},
 };
 
 export default { H };

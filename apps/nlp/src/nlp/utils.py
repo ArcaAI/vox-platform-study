@@ -1,4 +1,3 @@
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -10,7 +9,9 @@ from pathlib import Path
 
 
 def is_production() -> bool:
-    return os.getenv("ENVIRONMENT") == "production"
+    from nlp.core.config import Environment, settings
+
+    return settings.service.environment == Environment.PRODUCTION
 
 
 def get_project_root() -> Path:

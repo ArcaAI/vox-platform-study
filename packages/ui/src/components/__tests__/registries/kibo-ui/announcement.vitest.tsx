@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { Announcement, AnnouncementTag, AnnouncementTitle } from '../../../registries/kibo-ui/announcement'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Announcement, AnnouncementTag, AnnouncementTitle } from '../../../registries/kibo-ui/announcement';
 
 describe('Announcement', () => {
   it('renders without crashing', () => {
@@ -8,8 +8,8 @@ describe('Announcement', () => {
       <Announcement>
         <AnnouncementTag>New</AnnouncementTag>
         <AnnouncementTitle>Test announcement</AnnouncementTitle>
-      </Announcement>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </Announcement>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

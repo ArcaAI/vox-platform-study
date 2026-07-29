@@ -92,16 +92,12 @@ describe('TenantIdentityProviderEntity.validate()', () => {
   });
 
   it('should throw when protocol is missing', () => {
-    const entity = TenantIdentityProviderFactory.CreateTenantIdentityProvider(
-      validProps({ protocol: undefined as never }),
-    );
+    const entity = TenantIdentityProviderFactory.CreateTenantIdentityProvider(validProps({ protocol: undefined as never }));
     expect(() => entity.validate()).toThrow('protocol is required');
   });
 
   it('should throw when config is missing', () => {
-    const entity = TenantIdentityProviderFactory.CreateTenantIdentityProvider(
-      validProps({ config: undefined as never }),
-    );
+    const entity = TenantIdentityProviderFactory.CreateTenantIdentityProvider(validProps({ config: undefined as never }));
     expect(() => entity.validate()).toThrow('config is required');
   });
 

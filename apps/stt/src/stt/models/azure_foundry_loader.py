@@ -32,7 +32,11 @@ class AzureFoundryLoader(BaseModelLoader):
     def supported_formats(self) -> list[AiModelFormat]:
         return [AiModelFormat.AZURE_FOUNDRY]
 
-    async def load(self, model_config: AiModelConfig) -> LoadedModel:
+    async def load(
+        self,
+        model_config: AiModelConfig,
+        provider_overrides: dict[str, object] | None = None,
+    ) -> LoadedModel:
         settings = get_settings()
 
         if not settings.azure_foundry_enabled:
@@ -42,8 +46,21 @@ class AzureFoundryLoader(BaseModelLoader):
                 "enable explicitly once GA + data residency are signed off."
             )
 
-        endpoint = (settings.azure_foundry_endpoint or "").rstrip("/")
-        api_key = (
+        # Per-tenant BYOK override (TASK-567): the `azure-speech` credential row
+        # carries the Foundry endpoint/key too (a Foundry resource IS an Azure
+        # Speech resource). Override wins over env; env fallback preserved.
+        override = None
+        if provider_overrides:
+            entry = provider_overrides.get("azure-speech")
+            if isinstance(entry, dict) and entry:
+                override = entry
+
+        endpoint = (
+            (override.get("endpoint") if override else None)
+            or settings.azure_foundry_endpoint
+            or ""
+        ).rstrip("/")
+        api_key = (override.get("api_key") if override else None) or (
             settings.azure_foundry_api_key.get_secret_value()
             if settings.azure_foundry_api_key
             else None

@@ -12,14 +12,10 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { DepartmentController } from '../department.controller';
 
 describe('DepartmentController.updatePromptConfig — DEF-C3 authorization metadata', () => {
-    const getMethodMetadata = (method: string) =>
-        Reflect.getMetadata(
-            REQUIRED_PERMISSIONS_KEY,
-            (DepartmentController.prototype as any)[method],
-        );
+  const getMethodMetadata = (method: string) => Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, (DepartmentController.prototype as any)[method]);
 
-    it('updatePromptConfig should require ["manage","Department"] permissions', () => {
-        const meta = getMethodMetadata('updatePromptConfig');
-        expect(meta).toEqual([{ action: 'manage', subject: 'Department' }]);
-    });
+  it('updatePromptConfig should require ["manage","Department"] permissions', () => {
+    const meta = getMethodMetadata('updatePromptConfig');
+    expect(meta).toEqual([{ action: 'manage', subject: 'Department' }]);
+  });
 });

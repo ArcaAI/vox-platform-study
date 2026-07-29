@@ -112,7 +112,7 @@ vi.mock('../utils/browserSupport.js', () => ({
     recommendedModel: 'v5',
   }),
   isVADSupported: vi.fn().mockReturnValue(true),
-  getFrameSamplesForModel: vi.fn().mockImplementation((model: string) => model === 'v5' ? 512 : 1536),
+  getFrameSamplesForModel: vi.fn().mockImplementation((model: string) => (model === 'v5' ? 512 : 1536)),
 }));
 
 describe('VADProcessor', () => {
@@ -209,7 +209,7 @@ describe('VADProcessor', () => {
           speechSegmentsDetected: 0,
           misfireCount: 0,
           averageSpeechProbability: 0,
-        })
+        }),
       );
       expect(typeof stats.timestamp).toBe('number');
     });
@@ -588,8 +588,7 @@ interface InternalProcessor {
   destroy: () => Promise<void>;
 }
 
-const asInternal = (p: VADProcessor): InternalProcessor =>
-  p as unknown as InternalProcessor;
+const asInternal = (p: VADProcessor): InternalProcessor => p as unknown as InternalProcessor;
 
 // Every describe below shares the module-level micVADCalls array; make sure
 // it does not leak across tests (the existing vi.clearAllMocks() does not
@@ -1031,10 +1030,9 @@ describe('VADSpeechEndPayload.duration', () => {
     await asInternal(processor).init(makeInitOpts());
 
     const internalEmits: Array<{ type: string; data: Record<string, unknown> }> = [];
-    (processor as unknown as { emitData: (t: string, d: unknown) => void }).emitData =
-      (type: string, data: unknown) => {
-        internalEmits.push({ type, data: data as Record<string, unknown> });
-      };
+    (processor as unknown as { emitData: (t: string, d: unknown) => void }).emitData = (type: string, data: unknown) => {
+      internalEmits.push({ type, data: data as Record<string, unknown> });
+    };
 
     const onSpeechStart = micVADCalls[0]!.options.onSpeechStart as () => void;
     const onSpeechEnd = micVADCalls[0]!.options.onSpeechEnd as (audio: Float32Array) => void;

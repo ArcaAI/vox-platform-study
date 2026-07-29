@@ -1,20 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import {
-  SEED_CUSTOMER_TENANT_IDS,
-  SEED_GLOBAL_SETTING_IDS,
-  SEED_TENANT_ID,
-} from '../prisma/db_main/seed/00-constants';
+import { SEED_CUSTOMER_TENANT_IDS, SEED_GLOBAL_SETTING_IDS, SEED_TENANT_ID } from '../prisma/db_main/seed/00-constants';
 import { ALL_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 
 const UUID_REGEX = /^85000000-/;
 
 const SETTING_PREFIXES = ['ARCAAI', 'GLOBAL'] as const;
 
-const GENERAL_SUFFIXES = [
-  'MAX_CONCURRENT_SESSIONS',
-  'DEFAULT_LANGUAGE',
-  'SESSION_TIMEOUT',
-] as const;
+const GENERAL_SUFFIXES = ['MAX_CONCURRENT_SESSIONS', 'DEFAULT_LANGUAGE', 'SESSION_TIMEOUT'] as const;
 
 const CORE_SUFFIXES = [
   'FF_TRANSCRIPTION',
@@ -80,15 +72,10 @@ const SYSTEM_WIDE_KEYS = [
 ] as const;
 
 function suffixesFor(prefix: string) {
-  return PREFIXES_WITH_GENERAL.has(prefix)
-    ? [...GENERAL_SUFFIXES, ...CORE_SUFFIXES]
-    : [...CORE_SUFFIXES];
+  return PREFIXES_WITH_GENERAL.has(prefix) ? [...GENERAL_SUFFIXES, ...CORE_SUFFIXES] : [...CORE_SUFFIXES];
 }
 
-const TOTAL_IDS =
-  SETTING_PREFIXES.reduce((sum, p) => sum + suffixesFor(p).length, 0) +
-  PLATFORM_WIDE_KEYS.length +
-  SYSTEM_WIDE_KEYS.length;
+const TOTAL_IDS = SETTING_PREFIXES.reduce((sum, p) => sum + suffixesFor(p).length, 0) + PLATFORM_WIDE_KEYS.length + SYSTEM_WIDE_KEYS.length;
 
 describe('Global Settings Seed Data (11-global-setting)', () => {
   describe('every tenant has all expected setting IDs', () => {
@@ -132,11 +119,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
   });
 
   describe('UX constant IDs use 04x range across all tenants', () => {
-    const UX_SUFFIXES = [
-      'UX_LOCAL_ASR_MODELS',
-      'UX_LOCAL_VAD_MODELS',
-      'UX_LOCAL_NOISE_SUPPRESSION_MODELS',
-    ] as const;
+    const UX_SUFFIXES = ['UX_LOCAL_ASR_MODELS', 'UX_LOCAL_VAD_MODELS', 'UX_LOCAL_NOISE_SUPPRESSION_MODELS'] as const;
 
     for (const prefix of SETTING_PREFIXES) {
       it(`${prefix} UX constants should use 04x range`, () => {
@@ -203,8 +186,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
       ARCAAI: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     };
 
-    const settingsForTenant = (tenantId: string) =>
-      ALL_SETTINGS.filter((s) => s.tenantId === tenantId);
+    const settingsForTenant = (tenantId: string) => ALL_SETTINGS.filter((s) => s.tenantId === tenantId);
 
     for (const prefix of SETTING_PREFIXES) {
       const tenantId = TENANT_ID_BY_PREFIX[prefix];
@@ -214,17 +196,11 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
             .filter((s) => s.namespace === 'general')
             .map((s) => s.key)
             .sort();
-          expect(generalKeys).toEqual([
-            'default-language',
-            'max-concurrent-sessions',
-            'session-timeout',
-          ]);
+          expect(generalKeys).toEqual(['default-language', 'max-concurrent-sessions', 'session-timeout']);
         });
 
         it('emits the enable-transcription feature flag', () => {
-          const flag = settingsForTenant(tenantId).find(
-            (s) => s.namespace === 'feature-flags' && s.key === 'enable-transcription',
-          );
+          const flag = settingsForTenant(tenantId).find((s) => s.namespace === 'feature-flags' && s.key === 'enable-transcription');
           expect(flag).toBeDefined();
         });
 
@@ -232,17 +208,13 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
         // by AiTaskDefault + the AiModel registry); nothing is emitted and
         // `retireSupersededGlobalSettings` sweeps existing rows to DELETED.
         it('emits NO guardrail namespace settings (retired by)', () => {
-          const guardrail = settingsForTenant(tenantId).filter(
-            (s) => s.namespace === 'guardrail',
-          );
+          const guardrail = settingsForTenant(tenantId).filter((s) => s.namespace === 'guardrail');
           expect(guardrail).toEqual([]);
         });
 
         // SMR Azure deployment-name parity (non-secret, unlocked).
         it('emits the smr-azure-deployment setting (non-secret, unlocked)', () => {
-          const azure = settingsForTenant(tenantId).find(
-            (s) => s.namespace === 'smr' && s.key === 'smr-azure-deployment',
-          );
+          const azure = settingsForTenant(tenantId).find((s) => s.namespace === 'smr' && s.key === 'smr-azure-deployment');
           expect(azure).toBeDefined();
           expect(azure?.value).toBe('');
           expect(azure?.locked).toBeFalsy();
@@ -255,9 +227,7 @@ describe('Global Settings Seed Data (11-global-setting)', () => {
     }
 
     it('emits the same number of settings for every tenant', () => {
-      const counts = SETTING_PREFIXES.map(
-        (p) => settingsForTenant(TENANT_ID_BY_PREFIX[p]).length,
-      );
+      const counts = SETTING_PREFIXES.map((p) => settingsForTenant(TENANT_ID_BY_PREFIX[p]).length);
       expect(new Set(counts).size).toBe(1);
     });
   });

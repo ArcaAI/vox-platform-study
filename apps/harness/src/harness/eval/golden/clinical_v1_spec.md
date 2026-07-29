@@ -6,7 +6,7 @@
 **Owner (clinical content):** _unassigned — requires a clinical SME lead (see §11)_
 **Scope of this doc:** the spec, schema, and multi-rater labeling protocol for the **real clinician-authored** golden set that replaces the synthetic fixtures before any clinically-validated calibration claim.
 
-> **Integrity boundary.** This document and the shipped scaffold (`clinical_v1.schema.json`, `clinical_v1.template.json`) contain **no real clinical cases and no real clinician ratings**. Every example value in the template is a `[[PLACEHOLDER]]`. Nothing here may be cited as a calibration result. The deliverable is the *machinery to let SMEs author a real set*, not invented clinical data.
+> **Integrity boundary.** This document and the shipped scaffold (`clinical_v1.schema.json`, `clinical_v1.template.json`) contain **no real clinical cases and no real clinician ratings**. Every example value in the template is a `[[PLACEHOLDER]]`. Nothing here may be cited as a calibration result. The deliverable is the _machinery to let SMEs author a real set_, not invented clinical data.
 
 ---
 
@@ -14,11 +14,11 @@
 
 Today's release gate (`harness.eval.config.EvalConfig`) requires:
 
-| Gate | Threshold | Source |
-|---|---|---|
-| Judge↔clinician agreement | **ICC(2,1) ≥ 0.80** | `calibration/reliability.py` |
-| Faithfulness | ≥ 0.85 | `metrics/faithfulness.py` |
-| PDSQI accurate / thorough / mean | ≥ 4.0 each | `ci.py::apply_gate` |
+| Gate                             | Threshold           | Source                       |
+| -------------------------------- | ------------------- | ---------------------------- |
+| Judge↔clinician agreement        | **ICC(2,1) ≥ 0.80** | `calibration/reliability.py` |
+| Faithfulness                     | ≥ 0.85              | `metrics/faithfulness.py`    |
+| PDSQI accurate / thorough / mean | ≥ 4.0 each          | `ci.py::apply_gate`          |
 
 The currently-reported **ICC ≈ 0.821 is not a clinical validation**. It is:
 
@@ -55,15 +55,15 @@ apply_gate() → ICC(2,1) ≥ 0.80 release gate          [eval/ci.py]
 
 ### Fields each case must provide for the gate
 
-| Consumed by | Field | Notes |
-|---|---|---|
-| PDSQI judge prompt | `source_documents`, `generated_note`, `target_specialty` | the transcript→note pair under eval |
-| ICC pairing | `clinician_pdsqi` (consensus) | the human reference; must be 1–5 Likert + 0/1 flags matching `PDSQIScore` |
-| Lane separation | `role` (`quality` \| `calibration`) | quality feeds quality+faithfulness gates; calibration feeds ICC only |
-| Faithfulness (quality lane) | `source_documents` (or `contexts`) | entailment premise |
-| Human IRR (offline) | `pdsqi_raters[]` (≥3) + `adjudication` | establishes the consensus is reliable |
-| Groundedness/safety truth | `claims[].groundedness_truth`, `safety_truth` | scores the inferential sensors against truth |
-| Governance | `deidentification`, `provenance` | release/audit preconditions |
+| Consumed by                 | Field                                                    | Notes                                                                     |
+| --------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------- |
+| PDSQI judge prompt          | `source_documents`, `generated_note`, `target_specialty` | the transcript→note pair under eval                                       |
+| ICC pairing                 | `clinician_pdsqi` (consensus)                            | the human reference; must be 1–5 Likert + 0/1 flags matching `PDSQIScore` |
+| Lane separation             | `role` (`quality` \| `calibration`)                      | quality feeds quality+faithfulness gates; calibration feeds ICC only      |
+| Faithfulness (quality lane) | `source_documents` (or `contexts`)                       | entailment premise                                                        |
+| Human IRR (offline)         | `pdsqi_raters[]` (≥3) + `adjudication`                   | establishes the consensus is reliable                                     |
+| Groundedness/safety truth   | `claims[].groundedness_truth`, `safety_truth`            | scores the inferential sensors against truth                              |
+| Governance                  | `deidentification`, `provenance`                         | release/audit preconditions                                               |
 
 ## 3. Target N and sample-size justification
 
@@ -77,14 +77,14 @@ n = 8·z²·(1−ρ)²·(1+(k−1)·ρ)² / (w²·k·(k−1)) + 1
 
 With `z = 1.96`, `k = 2`:
 
-| Anticipated ICC ρ | CI half-width | Required n (cases) | Note |
-|---|---|---|---|
-| **0.75 (conservative)** | **±0.075** | **132** | **← spec target (both levers conservative)** |
-| 0.80 | ±0.075 | 90 | single-lever conservative (tight CI only) |
-| 0.75 (conservative) | ±0.10 | 75 | single-lever conservative (low ρ only) |
-| 0.80 | ±0.10 | 51 | prior non-conservative default |
-| 0.80 | ±0.125 | 33 | |
-| 0.80 | ±0.15 | 24 | |
+| Anticipated ICC ρ       | CI half-width | Required n (cases) | Note                                         |
+| ----------------------- | ------------- | ------------------ | -------------------------------------------- |
+| **0.75 (conservative)** | **±0.075**    | **132**            | **← spec target (both levers conservative)** |
+| 0.80                    | ±0.075        | 90                 | single-lever conservative (tight CI only)    |
+| 0.75 (conservative)     | ±0.10         | 75                 | single-lever conservative (low ρ only)       |
+| 0.80                    | ±0.10         | 51                 | prior non-conservative default               |
+| 0.80                    | ±0.125        | 33                 |                                              |
+| 0.80                    | ±0.15         | 24                 |                                              |
 
 **Why 132 is the floor (conservative target).** The target deliberately stacks **both** conservative levers: a **planning value ρ = 0.75, below the 0.80 release gate** (so N stays adequate even if real-rater agreement lands under the gate), **and** a tight **±0.075** CI half-width. At ρ = 0.75, k = 2, total width w = 0.15, Bonett gives n = 131.72 → **132**. A 95% CI half-width of ≈ ±0.075 puts the lower bound of a measured ICC near 0.80 at ≈ 0.725 — clear of the 0.70 "good-agreement" boundary. Relaxing **either** lever drops the floor into the 75–90 range (table above); the prior non-conservative default (ρ = 0.80, ±0.10) gave only 51. Below ~30 cases the CI is so wide (±0.15+) that a 0.82 point estimate is statistically indistinguishable from 0.65 — exactly the weakness of today's n = 6. N ≥ 132 also subsumes the HLD's documented "≥ 50 cases scored" exit gate, and provides ~132 paired observations **per dimension** for the per-dimension ICCs (§8).
 
@@ -94,13 +94,13 @@ With `z = 1.96`, `k = 2`:
 
 Variance is mandatory: an ICC over cases that all score 5/5 is undefined. Mirror the proven two-lane design of `curated_v1` but at scale and with real labels. Lane counts scale with the 3:2 quality:calibration split.
 
-| Dimension | Target | Rationale |
-|---|---|---|
-| **Lane** | ~79 `quality` + ~53 `calibration` (3:2; = 132) | quality drives the PDSQI/faithfulness gates; calibration spans the score range for ICC |
-| **Specialty** | ≥ 8 specialties, ≤ ~20% any one | generalization across clinical domains |
-| **Score range (calibration)** | full 1–5 on each Likert dim across the set | ICC needs between-case variance |
-| **Flaw coverage (calibration)** | fabrication, falsification, harmful omission, dose error, wrong laterality, missed contraindication, verbosity, disorganization, missing citations, stigmatizing language | the safety/quality failure modes the gate must detect |
-| **Note length / complexity** | short follow-ups → complex multi-problem visits | avoid length confound |
+| Dimension                       | Target                                                                                                                                                                    | Rationale                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| **Lane**                        | ~79 `quality` + ~53 `calibration` (3:2; = 132)                                                                                                                            | quality drives the PDSQI/faithfulness gates; calibration spans the score range for ICC |
+| **Specialty**                   | ≥ 8 specialties, ≤ ~20% any one                                                                                                                                           | generalization across clinical domains                                                 |
+| **Score range (calibration)**   | full 1–5 on each Likert dim across the set                                                                                                                                | ICC needs between-case variance                                                        |
+| **Flaw coverage (calibration)** | fabrication, falsification, harmful omission, dose error, wrong laterality, missed contraindication, verbosity, disorganization, missing citations, stigmatizing language | the safety/quality failure modes the gate must detect                                  |
+| **Note length / complexity**    | short follow-ups → complex multi-problem visits                                                                                                                           | avoid length confound                                                                  |
 
 Each calibration case should inject **one clearly-scoped flaw** and apply the **independent-dimension principle** (a flaw in one dimension must not bleed into unrelated dimensions) — the same principle documented in `curated_v1`'s `label_rationale` fields.
 
@@ -109,16 +109,18 @@ Each calibration case should inject **one clearly-scoped flaw** and apply the **
 The authored format is the JSON Schema at **`fixtures/clinical_v1.schema.json`** (Draft 2020-12). It is a **superset** of the runtime `GoldenCase`; the loader projects it down (§2). Field summary:
 
 ### Runtime-native (project 1:1 to `GoldenCase`)
+
 - `case_id` — unique lowercase-kebab id.
 - `role` — `quality` | `calibration`.
 - `target_specialty` — drives stratification.
 - `source_documents[]` — **de-identified** transcript turns + prior notes (the grounding premise).
 - `generated_note` — the draft note under eval; inline `<Note ID:N>` cites `source_documents[N-1]`.
 - `reference_note` — gold exemplar or a description of the high-quality target.
-- `contexts[]` *(optional)* — explicit faithfulness contexts (defaults to `source_documents`).
+- `contexts[]` _(optional)_ — explicit faithfulness contexts (defaults to `source_documents`).
 - `clinician_pdsqi` — the **adjudicated consensus** PDSQI (the calibration reference). Exact `PDSQIScore` shape: seven 1–5 Likert (`citation, accurate, thorough, useful, organized, comprehensible, succinct`), an NA-able 1–5 `synthesized`, and three 0/1 flags (`abstraction, voice_summ, voice_note`).
 
 ### Extended (preserved under `GoldenCase.metadata`)
+
 - `pdsqi_raters[]` — **≥3** independent, **blinded** clinician ratings: `{rater_id (pseudonym), rater_role, rated_at, blinded, ratings (PDSQIScore), notes}`.
 - `adjudication` — `{method, adjudicator_id?, adjudicated_dimensions[], notes}`; method ∈ `mean_round_half_up | median | panel_adjudicated | senior_override`.
 - `claims[]` — claim-level groundedness **ground truth**: `{id, text, section (S/O/A/P), evidence[{quote, source_index}], groundedness_truth ∈ supported|partially_supported|unsupported|contradicted}`. Mirrors the production NER `citationsMap` shape (`inferential_corpus_eval.derive_citations_map`) so sensors can be scored against truth.
@@ -129,7 +131,7 @@ The authored format is the JSON Schema at **`fixtures/clinical_v1.schema.json`**
 
 ## 6. SME authoring protocol
 
-1. **Source acquisition.** Obtain transcript→note material from a *consented/licensed* origin (§10): de-identified real encounters under IRB/DUA, clinician-simulated cases, or a license-permitting public set (e.g. MTS-Dialog / ACI-Bench).
+1. **Source acquisition.** Obtain transcript→note material from a _consented/licensed_ origin (§10): de-identified real encounters under IRB/DUA, clinician-simulated cases, or a license-permitting public set (e.g. MTS-Dialog / ACI-Bench).
 2. **De-identify (§9).** Remove all 18 HIPAA identifiers; a second clinician verifies; record the `deidentification` block.
 3. **Curate the draft note.** For `quality` cases, the `generated_note` is a high-quality reference exemplar. For `calibration` cases, inject exactly one scoped flaw and record it.
 4. **Author claim/safety truth.** Decompose `generated_note` into atomic `claims[]` and adjudicate each `groundedness_truth`; set `safety_truth`.
@@ -149,12 +151,14 @@ The authored format is the JSON Schema at **`fixtures/clinical_v1.schema.json`**
 
 Two distinct statistics — **both** must be reported. The first is the precondition; the second is the gate.
 
-### (A) Human inter-rater reliability — *is the reference trustworthy?*
+### (A) Human inter-rater reliability — _is the reference trustworthy?_
+
 - **Statistic:** `ICC(2,k)` (or `ICC(2,1)`), two-way random, absolute agreement, computed **per PDSQI dimension** over the `(n_cases × k_raters)` matrix built from `pdsqi_raters`.
 - **Target:** **ICC_human ≥ 0.75** ("good", Koo & Li 2016) **before** the set is used as a calibration reference. If clinicians cannot agree on a dimension, that dimension is ill-defined and **no judge can be meaningfully calibrated to it**.
 - **Tooling — already supported, no new code:** `harness.eval.calibration.intraclass_correlation()` accepts an arbitrary `(n_targets, k_raters)` matrix. Feed it the per-dimension human rating matrix directly. (This analysis is run offline from `metadata.pdsqi_raters`; it does not change the gate.)
 
-### (B) Judge ↔ consensus — *the release gate (ICC ≥ 0.80)*
+### (B) Judge ↔ consensus — _the release gate (ICC ≥ 0.80)_
+
 - **Statistic:** `ICC(2,1)`, judge vs. the adjudicated `clinician_pdsqi` consensus.
 - **Report both:**
   - **Per-dimension ICC** (n ≈ N observations each) — the **defensible** unit; report each with its 95% CI.
@@ -173,6 +177,7 @@ Two distinct statistics — **both** must be reported. The first is the precondi
 ## 10. Provenance & consent
 
 Every case records `provenance`:
+
 - `source_type`: `real_encounter_deidentified` | `simulated_by_clinician` | `public_dataset`.
 - `consent.status`: `irb_approved` (+`irb_protocol`) | `data_use_agreement` (+`dua_reference`) | `patient_consent` | `not_applicable_synthetic` | `public_license`.
 - `dataset` + `license` are **required** for `public_dataset` (verify the license permits derivative eval use and redistribution).
@@ -193,8 +198,8 @@ The set may replace the synthetic fixtures for a clinical calibration claim only
 
 ## 12. References
 
-- Bonett DG (2002). *Sample size requirements for estimating intraclass correlations with desired precision.* Statistics in Medicine 21(9):1331–1335.
-- Shrout PE, Fleiss JL (1979). *Intraclass correlations: uses in assessing rater reliability.* Psychological Bulletin 86(2):420–428. (ICC(2,1))
-- Koo TK, Li MY (2016). *A guideline of selecting and reporting intraclass correlation coefficients for reliability research.* J Chiropr Med 15(2):155–163.
-- Gwet KL (2014). *Handbook of Inter-Rater Reliability* (4th ed.). (AC1/AC2)
+- Bonett DG (2002). _Sample size requirements for estimating intraclass correlations with desired precision._ Statistics in Medicine 21(9):1331–1335.
+- Shrout PE, Fleiss JL (1979). _Intraclass correlations: uses in assessing rater reliability._ Psychological Bulletin 86(2):420–428. (ICC(2,1))
+- Koo TK, Li MY (2016). _A guideline of selecting and reporting intraclass correlation coefficients for reliability research._ J Chiropr Med 15(2):155–163.
+- Gwet KL (2014). _Handbook of Inter-Rater Reliability_ (4th ed.). (AC1/AC2)
 - Epic PDSQI-9 open-source clinical-summary quality instrument (the verbatim instrument used by the judge).

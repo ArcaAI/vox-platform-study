@@ -2,12 +2,7 @@ import { Inject, Injectable, Logger, type MessageEvent } from '@nestjs/common';
 import { Observable, ReplaySubject, type Subscription, filter, interval, map, merge, takeWhile } from 'rxjs';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { RedisSubscriberService } from '../../stt/realtime/redisSubscriber.service';
-import type {
-  HarnessAssuranceAck,
-  HarnessAssuranceClaimDto,
-  HarnessAssuranceEventDto,
-  HarnessAssuranceEventRequest,
-} from './dto';
+import type { HarnessAssuranceAck, HarnessAssuranceClaimDto, HarnessAssuranceEventDto, HarnessAssuranceEventRequest } from './dto';
 
 /**
  * Terminal-verdict payload published by {@link HarnessInternalService.finalizeAssurance}

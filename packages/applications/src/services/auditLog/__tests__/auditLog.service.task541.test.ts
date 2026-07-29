@@ -142,9 +142,7 @@ describe('AuditLogService — failed-authentication audit', () => {
   it('never lets an audit failure escape into the auth path', async () => {
     auditLogCreate.mockRejectedValueOnce(new Error('DB down'));
 
-    await expect(
-      service.handleUserAuthenticationFailedEvent({ attemptedUsername: 'jdoe', reason: 'invalid_credentials' }),
-    ).resolves.toBeUndefined();
+    await expect(service.handleUserAuthenticationFailedEvent({ attemptedUsername: 'jdoe', reason: 'invalid_credentials' })).resolves.toBeUndefined();
   });
 
   it('defaults an omitted reason to a stable slug rather than writing undefined', async () => {

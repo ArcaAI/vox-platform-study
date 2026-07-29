@@ -9,7 +9,7 @@
 // `API_PLATFORM_ENV_SETTINGS` the gateway topology. Env-var NAMES come from
 // `toEnvVarName()` — the mechanical dotted-key ↔ SCREAMING_SNAKE mapping of plan
 // §3.3 — so a rename in the registry can never silently diverge from what this
-// file validates. `scripts/env-sync.mts` generates `.env.example` and
+// file validates. `scripts/env-sync.mts` generates `apps/api/.env.sample` and
 // `turbo.json#globalEnv` from the SAME list.
 //
 // WHY THE SCHEMA COVERS FLAGS THIS PROCESS DOES NOT READ (e.g.
@@ -70,7 +70,8 @@ const CONNECTION_STRING_NAME = new Set(['DATABASE_URL', 'DIRECT_URL', 'REDIS_URL
 
 /**
  * The gateway's declared env surface. Order is stable (floor → knobs → gates →
- * topology) because `env-sync` renders `.env.example` in exactly this order.
+ * topology) because `env-sync` renders `apps/api/.env.sample` in exactly this
+ * order.
  */
 export const API_ENV_DESCRIPTORS: SettingDescriptor[] = [
   ...BOOTSTRAP_ENV_SETTINGS,
@@ -190,7 +191,7 @@ export function parseApiEnv(raw: Record<string, string | undefined>): ApiEnv {
     throw new Error(
       `Invalid API gateway environment — ${problems.length} problem(s):\n` +
         problems.map((p) => `  • ${p}`).join('\n') +
-        '\nDeclared surface: .env.example (bootstrap floor) + apps/api/.env.example. Regenerate with `pnpm env:sync`.',
+        '\nDeclared surface: .env.sample §1 (bootstrap floor) + apps/api/.env.sample. Regenerate with `pnpm env:sync`.',
     );
   }
 

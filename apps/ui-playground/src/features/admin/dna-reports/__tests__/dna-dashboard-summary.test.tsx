@@ -30,9 +30,7 @@ vi.mock('@arcaai/ui', () => ({
     </div>
   ),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  Chart: ({ id, data }: any) => (
-    <div data-testid="chart" data-id={id} data-points={data.length} />
-  ),
+  Chart: ({ id, data }: any) => <div data-testid="chart" data-id={id} data-points={data.length} />,
 }));
 
 // TASK-331 doc-02 F10 — DashboardSkeleton now uses <Skeleton/> (rule 10).

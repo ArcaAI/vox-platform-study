@@ -820,7 +820,9 @@ class TestPartialEmission:
         # Speech for 800ms then silence for enough frames to trigger final
         speech_frames = int(800 / 32)  # ~25 frames
         vad = _make_alternating_vad(
-            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+            speech_prob=1.0,
+            silence_prob=0.0,
+            speech_frames=speech_frames,
         )
 
         pp = StreamingPreprocessor(
@@ -887,7 +889,9 @@ class TestPartialEmission:
         """Feed speech + silence, expect partials followed by 1 final with full audio."""
         speech_frames = int(1500 / 32)  # ~47 frames at 32ms
         vad = _make_alternating_vad(
-            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+            speech_prob=1.0,
+            silence_prob=0.0,
+            speech_frames=speech_frames,
         )
 
         pp = StreamingPreprocessor(
@@ -925,7 +929,9 @@ class TestPartialEmission:
         """Feed 400ms speech then silence, expect 0 partials, 1 final."""
         speech_frames = int(400 / 32)  # ~12 frames
         vad = _make_alternating_vad(
-            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+            speech_prob=1.0,
+            silence_prob=0.0,
+            speech_frames=speech_frames,
         )
 
         pp = StreamingPreprocessor(
@@ -986,9 +992,7 @@ class TestPartialEmission:
         for p in partials:
             assert len(p.samples) <= max_window_samples
             # Timing stays consistent with the (possibly trimmed) snapshot.
-            assert p.end_time - p.start_time == pytest.approx(
-                len(p.samples) / 16000, abs=0.05
-            )
+            assert p.end_time - p.start_time == pytest.approx(len(p.samples) / 16000, abs=0.05)
 
         # Late partials (buffer > window) are actually trimmed to the window.
         late = partials[-1]
@@ -1000,7 +1004,9 @@ class TestPartialEmission:
         when partials were window-trimmed."""
         speech_frames = int(4000 / 32)  # 4 s of speech
         vad = _make_alternating_vad(
-            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+            speech_prob=1.0,
+            silence_prob=0.0,
+            speech_frames=speech_frames,
         )
         window_s = 2.0
         pp = StreamingPreprocessor(
@@ -1044,7 +1050,9 @@ class TestPartialEmission:
         """Partial and final for same speech have same utterance_index."""
         speech_frames = int(1500 / 32)
         vad = _make_alternating_vad(
-            speech_prob=1.0, silence_prob=0.0, speech_frames=speech_frames,
+            speech_prob=1.0,
+            silence_prob=0.0,
+            speech_frames=speech_frames,
         )
 
         pp = StreamingPreprocessor(
@@ -1478,7 +1486,7 @@ class TestTask505OffsetHysteresis:
             session_id="hys",
             vad_service=_sequence_vad(probs),
             threshold=0.6,
-            min_speech_duration_ms=96,   # 3 frames
+            min_speech_duration_ms=96,  # 3 frames
             min_silence_duration_ms=64,  # 2 frames
         )
 

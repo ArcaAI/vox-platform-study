@@ -11,11 +11,13 @@ import time
 class TestCircuitBreakerStates:
     def test_initial_state_is_closed(self):
         from smr.services.circuit_breaker import CircuitBreaker, CircuitState
+
         cb = CircuitBreaker(failure_threshold=3, recovery_timeout=5.0)
         assert cb.state == CircuitState.CLOSED
 
     def test_stays_closed_under_threshold(self):
         from smr.services.circuit_breaker import CircuitBreaker, CircuitState
+
         cb = CircuitBreaker(failure_threshold=3, recovery_timeout=5.0)
         cb.record_failure()
         cb.record_failure()
@@ -23,6 +25,7 @@ class TestCircuitBreakerStates:
 
     def test_opens_at_threshold(self):
         from smr.services.circuit_breaker import CircuitBreaker, CircuitState
+
         cb = CircuitBreaker(failure_threshold=3, recovery_timeout=5.0)
         cb.record_failure()
         cb.record_failure()
@@ -31,6 +34,7 @@ class TestCircuitBreakerStates:
 
     def test_half_open_after_recovery_timeout(self):
         from smr.services.circuit_breaker import CircuitBreaker, CircuitState
+
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.05)
         cb.record_failure()
         cb.record_failure()
@@ -40,6 +44,7 @@ class TestCircuitBreakerStates:
 
     def test_closes_after_success_in_half_open(self):
         from smr.services.circuit_breaker import CircuitBreaker, CircuitState
+
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.05)
         cb.record_failure()
         cb.record_failure()
@@ -50,6 +55,7 @@ class TestCircuitBreakerStates:
 
     def test_reopens_after_failure_in_half_open(self):
         from smr.services.circuit_breaker import CircuitBreaker, CircuitState
+
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.05)
         cb.record_failure()
         cb.record_failure()
@@ -62,11 +68,13 @@ class TestCircuitBreakerStates:
 class TestCircuitBreakerAllowRequest:
     def test_allows_when_closed(self):
         from smr.services.circuit_breaker import CircuitBreaker
+
         cb = CircuitBreaker(failure_threshold=3, recovery_timeout=5.0)
         assert cb.allow_request() is True
 
     def test_rejects_when_open(self):
         from smr.services.circuit_breaker import CircuitBreaker
+
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=5.0)
         cb.record_failure()
         cb.record_failure()
@@ -74,6 +82,7 @@ class TestCircuitBreakerAllowRequest:
 
     def test_allows_probe_in_half_open(self):
         from smr.services.circuit_breaker import CircuitBreaker
+
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.05)
         cb.record_failure()
         cb.record_failure()
@@ -84,6 +93,7 @@ class TestCircuitBreakerAllowRequest:
 class TestCircuitBreakerSuccessResets:
     def test_success_resets_failure_count(self):
         from smr.services.circuit_breaker import CircuitBreaker
+
         cb = CircuitBreaker(failure_threshold=3, recovery_timeout=5.0)
         cb.record_failure()
         cb.record_failure()
@@ -92,6 +102,7 @@ class TestCircuitBreakerSuccessResets:
 
     def test_manual_reset(self):
         from smr.services.circuit_breaker import CircuitBreaker, CircuitState
+
         cb = CircuitBreaker(failure_threshold=2, recovery_timeout=5.0)
         cb.record_failure()
         cb.record_failure()
@@ -101,7 +112,7 @@ class TestCircuitBreakerSuccessResets:
 
 
 class TestCircuitBreakerWiredConfigFields:
-    """ D6 (dead-config sweep) — ``CircuitBreakerConfig.half_open_max_calls``,
+    """D6 (dead-config sweep) — ``CircuitBreakerConfig.half_open_max_calls``,
     ``.reset_timeout_s`` and ``.count_rate_limits`` were defined but never read by
     ``CircuitBreaker``. Defaults (``None``, ``None``, ``True``) must reproduce the
     exact pre-wiring behavior: unlimited trial calls while HALF_OPEN, no

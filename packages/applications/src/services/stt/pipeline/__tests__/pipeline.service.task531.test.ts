@@ -82,18 +82,47 @@ function createPipelineEntity(
     templateLocked: overrides.templateLocked ?? false,
     sourceTemplateSlug: overrides.sourceTemplateSlug ?? null,
 
-    get name() { return _name; },
-    set name(v: string) { _name = v; _changes.name = v; },
-    get slug() { return _slug; },
-    set slug(v: string) { _slug = v; _changes.slug = v; },
-    get configYaml() { return _configYaml; },
-    set configYaml(v: string) { _configYaml = v; _changes.configYaml = v; },
-    get resourceStatus() { return _resourceStatus; },
-    get changes() { return _changes; },
-    get hasChanges() { return Object.keys(_changes).length > 0; },
-    get isEnabled() { return _resourceStatus === ResourceStatusType.ENABLED; },
-    enable() { _resourceStatus = ResourceStatusType.ENABLED; _changes.resourceStatus = _resourceStatus; },
-    disable() { _resourceStatus = ResourceStatusType.DISABLED; _changes.resourceStatus = _resourceStatus; },
+    get name() {
+      return _name;
+    },
+    set name(v: string) {
+      _name = v;
+      _changes.name = v;
+    },
+    get slug() {
+      return _slug;
+    },
+    set slug(v: string) {
+      _slug = v;
+      _changes.slug = v;
+    },
+    get configYaml() {
+      return _configYaml;
+    },
+    set configYaml(v: string) {
+      _configYaml = v;
+      _changes.configYaml = v;
+    },
+    get resourceStatus() {
+      return _resourceStatus;
+    },
+    get changes() {
+      return _changes;
+    },
+    get hasChanges() {
+      return Object.keys(_changes).length > 0;
+    },
+    get isEnabled() {
+      return _resourceStatus === ResourceStatusType.ENABLED;
+    },
+    enable() {
+      _resourceStatus = ResourceStatusType.ENABLED;
+      _changes.resourceStatus = _resourceStatus;
+    },
+    disable() {
+      _resourceStatus = ResourceStatusType.DISABLED;
+      _changes.resourceStatus = _resourceStatus;
+    },
   };
 }
 
@@ -137,9 +166,12 @@ describe('PipelineService — template governance', () => {
 
     mockClsService.get.mockImplementation((key: string) => {
       switch (key) {
-        case 'user': return { id: 'current-user-id' };
-        case 'tenantId': return 'tenant-1';
-        default: return null;
+        case 'user':
+          return { id: 'current-user-id' };
+        case 'tenantId':
+          return 'tenant-1';
+        default:
+          return null;
       }
     });
 
@@ -169,12 +201,8 @@ describe('PipelineService — template governance', () => {
         createPipelineEntity({ templateLocked: true, sourceTemplateSlug: 'production-whisper-large-v3' }),
       );
 
-      await expect(service.update('pipeline-1', { name: 'Mine', expectedVersion: 3 })).rejects.toThrow(
-        ForbiddenException,
-      );
-      await expect(service.update('pipeline-1', { name: 'Mine', expectedVersion: 3 })).rejects.toThrow(
-        LOCK_MESSAGE,
-      );
+      await expect(service.update('pipeline-1', { name: 'Mine', expectedVersion: 3 })).rejects.toThrow(ForbiddenException);
+      await expect(service.update('pipeline-1', { name: 'Mine', expectedVersion: 3 })).rejects.toThrow(LOCK_MESSAGE);
       expect(mockPipelineRepository.updateWithVersion).not.toHaveBeenCalled();
     });
 
@@ -212,11 +240,7 @@ describe('PipelineService — template governance', () => {
       mockPipelineRepository.setDefaultForTenant.mockResolvedValue(undefined);
 
       await expect(service.setDefault('pipeline-1')).resolves.toBeDefined();
-      expect(mockPipelineRepository.setDefaultForTenant).toHaveBeenCalledWith(
-        'tenant-1',
-        'pipeline-1',
-        'current-user-id',
-      );
+      expect(mockPipelineRepository.setDefaultForTenant).toHaveBeenCalledWith('tenant-1', 'pipeline-1', 'current-user-id');
     });
   });
 
@@ -225,8 +249,7 @@ describe('PipelineService — template governance', () => {
   // ===================================================================
 
   describe('cross-tenant probes never see the lock signal', () => {
-    const foreignLocked = () =>
-      createPipelineEntity({ tenantId: 'tenant-OTHER', templateLocked: true });
+    const foreignLocked = () => createPipelineEntity({ tenantId: 'tenant-OTHER', templateLocked: true });
 
     it('update() on another tenant’s locked row throws NotFound, not Forbidden', async () => {
       mockPipelineRepository.findById.mockResolvedValue(foreignLocked());
@@ -244,9 +267,7 @@ describe('PipelineService — template governance', () => {
 
     it('clone() of another tenant’s row throws NotFound', async () => {
       mockPipelineRepository.findById.mockResolvedValue(foreignLocked());
-      await expect(service.clone('pipeline-1', { name: 'Copy', slug: 'copy' })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.clone('pipeline-1', { name: 'Copy', slug: 'copy' })).rejects.toThrow(NotFoundException);
       expect(mockPipelineRepository.create).not.toHaveBeenCalled();
     });
   });
@@ -292,15 +313,11 @@ describe('PipelineService — template governance', () => {
 
       await service.clone('clone-1', { name: 'Second', slug: 'second' });
 
-      expect(mockPipelineRepository.create.mock.calls[0][0].sourceTemplateSlug).toBe(
-        'production-whisper-large-v3',
-      );
+      expect(mockPipelineRepository.create.mock.calls[0][0].sourceTemplateSlug).toBe('production-whisper-large-v3');
     });
 
     it('leaves lineage null when cloning a wholly hand-made pipeline', async () => {
-      mockPipelineRepository.findById.mockResolvedValue(
-        createPipelineEntity({ id: 'hand-1', templateLocked: false, sourceTemplateSlug: null }),
-      );
+      mockPipelineRepository.findById.mockResolvedValue(createPipelineEntity({ id: 'hand-1', templateLocked: false, sourceTemplateSlug: null }));
 
       await service.clone('hand-1', { name: 'Copy', slug: 'copy' });
 
@@ -353,9 +370,7 @@ describe('PipelineService — template governance', () => {
       mockPipelineRepository.findById.mockResolvedValue(lockedSource());
       mockPipelineRepository.isSlugUnique.mockResolvedValue(false);
 
-      await expect(service.clone('source-1', { name: 'Copy', slug: 'taken' })).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.clone('source-1', { name: 'Copy', slug: 'taken' })).rejects.toThrow(BadRequestException);
       expect(mockPipelineRepository.create).not.toHaveBeenCalled();
     });
 
@@ -366,19 +381,13 @@ describe('PipelineService — template governance', () => {
 
       await service.clone('source-1', { name: 'Copy', slug: 'copy' });
 
-      expect(mockEntitlements.assertQuantityQuota).toHaveBeenCalledWith(
-        'tenant-1',
-        'maxAsrPipelines',
-        7,
-      );
+      expect(mockEntitlements.assertQuantityQuota).toHaveBeenCalledWith('tenant-1', 'maxAsrPipelines', 7);
     });
 
     it('throws NotFound when the source does not exist', async () => {
       mockPipelineRepository.findById.mockResolvedValue(null);
 
-      await expect(service.clone('missing', { name: 'Copy', slug: 'copy' })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.clone('missing', { name: 'Copy', slug: 'copy' })).rejects.toThrow(NotFoundException);
     });
   });
 });

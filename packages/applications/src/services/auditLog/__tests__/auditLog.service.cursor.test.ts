@@ -103,10 +103,7 @@ describe('AuditLogService — cursor pagination', () => {
     const call = mockAuditLogRepository.findAll.mock.calls[0][0];
     expect(call.where).toEqual(
       expect.objectContaining({
-        AND: expect.arrayContaining([
-          expect.objectContaining({ tenantId: 'tenant-1' }),
-          expect.objectContaining({ OR: expect.any(Array) }),
-        ]),
+        AND: expect.arrayContaining([expect.objectContaining({ tenantId: 'tenant-1' }), expect.objectContaining({ OR: expect.any(Array) })]),
       }),
     );
   });

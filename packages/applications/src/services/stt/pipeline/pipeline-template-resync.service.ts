@@ -152,11 +152,7 @@ export class PipelineTemplateResyncService extends BaseService {
     });
 
     const saved = await this.pipelineRepository.create(clone);
-    await this.snapshotVersion(
-      saved,
-      tenantId,
-      'Added by SYSTEM pipeline template resync (TASK-531)',
-    );
+    await this.snapshotVersion(saved, tenantId, 'Added by SYSTEM pipeline template resync (TASK-531)');
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -177,11 +173,7 @@ export class PipelineTemplateResyncService extends BaseService {
    * (ii)/(iii)/(iv) — advance a pristine locked copy to the template's current
    * config. Returns true when a fast-forward was written.
    */
-  private async fastForwardIfPristine(
-    existing: AsrPipelineEntity,
-    template: AsrPipelineEntity,
-    tenantId: string,
-  ): Promise<boolean> {
+  private async fastForwardIfPristine(existing: AsrPipelineEntity, template: AsrPipelineEntity, tenantId: string): Promise<boolean> {
     // (iii) unlocked → the tenant owns this row.
     if (!existing.templateLocked) {
       return false;
@@ -216,17 +208,9 @@ export class PipelineTemplateResyncService extends BaseService {
     existing.configYaml = templateConfigYaml;
     existing.updatedBy = this.requestUserId ?? null;
 
-    const updated = await this.pipelineRepository.updateWithVersion(
-      existing.id,
-      existing,
-      existing.version,
-    );
+    const updated = await this.pipelineRepository.updateWithVersion(existing.id, existing, existing.version);
 
-    await this.snapshotVersion(
-      updated,
-      tenantId,
-      `Fast-forwarded to SYSTEM template '${template.slug}' by resync (TASK-531)`,
-    );
+    await this.snapshotVersion(updated, tenantId, `Fast-forwarded to SYSTEM template '${template.slug}' by resync (TASK-531)`);
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: existing.id,
@@ -244,11 +228,7 @@ export class PipelineTemplateResyncService extends BaseService {
   }
 
   /** Write the pipeline's current config as its next version snapshot. */
-  private async snapshotVersion(
-    pipeline: AsrPipelineEntity,
-    tenantId: string,
-    changeReason: string,
-  ): Promise<void> {
+  private async snapshotVersion(pipeline: AsrPipelineEntity, tenantId: string, changeReason: string): Promise<void> {
     const versionNumber = await this.versionRepository.getNextVersionNumber(pipeline.id);
     const version = AsrPipelineVersionFactory.CreateAsrPipelineVersion({
       asrPipelineId: pipeline.id,

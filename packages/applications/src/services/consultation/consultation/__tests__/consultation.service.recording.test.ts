@@ -71,7 +71,10 @@ describe('ConsultationService — recording lifecycle (WS2)', () => {
     expect(mockConsultationRepository.update).toHaveBeenCalledTimes(1);
     expect(mockEventEmitter.emit).toHaveBeenCalledWith(
       SysEventType.ResourceUpdated,
-      expect.objectContaining({ resourceId: 'c-1', data: expect.objectContaining({ action: 'startRecording', status: ConsultationStatus.RECORDING }) }),
+      expect.objectContaining({
+        resourceId: 'c-1',
+        data: expect.objectContaining({ action: 'startRecording', status: ConsultationStatus.RECORDING }),
+      }),
     );
   });
 

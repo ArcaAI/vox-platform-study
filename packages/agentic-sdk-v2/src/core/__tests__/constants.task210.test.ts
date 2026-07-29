@@ -41,7 +41,6 @@ import {
 // =============================================================================
 
 describe('SDK v2 route standardization', () => {
-
   describe('PERSONALIZATION_ENDPOINTS (users/me -> user/me)', () => {
     it('should use /user/me/preferences for GET_PREFERENCES', () => {
       expect(PERSONALIZATION_ENDPOINTS.GET_PREFERENCES).toBe('/user/me/preferences');
@@ -139,7 +138,7 @@ describe('SDK v2 route standardization', () => {
         STT_ENDPOINTS.RETRY_JOB('x'),
         STT_ENDPOINTS.CLOSE_SESSION('x'),
       ];
-      restEndpoints.forEach(ep => expect(ep).not.toContain('/api/v1/'));
+      restEndpoints.forEach((ep) => expect(ep).not.toContain('/api/v1/'));
     });
   });
 
@@ -165,13 +164,8 @@ describe('SDK v2 route standardization', () => {
     });
 
     it('should NOT contain /api/v1/ prefix', () => {
-      const all = [
-        PIPELINE_ENDPOINTS.LIST,
-        PIPELINE_ENDPOINTS.VALIDATE,
-        PIPELINE_ENDPOINTS.GET('x'),
-        PIPELINE_ENDPOINTS.GET_BY_SLUG('x'),
-      ];
-      all.forEach(ep => expect(ep).not.toContain('/api/v1/'));
+      const all = [PIPELINE_ENDPOINTS.LIST, PIPELINE_ENDPOINTS.VALIDATE, PIPELINE_ENDPOINTS.GET('x'), PIPELINE_ENDPOINTS.GET_BY_SLUG('x')];
+      all.forEach((ep) => expect(ep).not.toContain('/api/v1/'));
     });
   });
 
@@ -213,7 +207,7 @@ describe('SDK v2 route standardization', () => {
         GLOBAL_SETTINGS_ENDPOINTS.BY_TENANT('x'),
         GLOBAL_SETTINGS_ENDPOINTS.TENANT_CONFIG('x'),
       ];
-      all.forEach(ep => expect(ep).not.toContain('/global-settings'));
+      all.forEach((ep) => expect(ep).not.toContain('/global-settings'));
     });
   });
 
@@ -228,11 +222,8 @@ describe('SDK v2 route standardization', () => {
     });
 
     it('should NOT contain /user-settings path', () => {
-      const all = [
-        USER_SETTINGS_ENDPOINTS.list,
-        USER_SETTINGS_ENDPOINTS.updateByKey('ns', 'k'),
-      ];
-      all.forEach(ep => expect(ep).not.toContain('/user-settings'));
+      const all = [USER_SETTINGS_ENDPOINTS.list, USER_SETTINGS_ENDPOINTS.updateByKey('ns', 'k')];
+      all.forEach((ep) => expect(ep).not.toContain('/user-settings'));
     });
   });
 
@@ -462,7 +453,7 @@ describe('SDK v2 route standardization', () => {
         ROLE_ENDPOINTS.LIST,
         ROLE_ENDPOINTS.CREATE,
       ];
-      statics.forEach(ep => {
+      statics.forEach((ep) => {
         expect(ep).toMatch(/^\//);
         expect(ep).not.toMatch(/\/$/);
       });
@@ -497,7 +488,7 @@ describe('SDK v2 route standardization', () => {
         TENANT_ENDPOINTS.GET_CONFIGS('x'),
         TENANT_ENDPOINTS.UPDATE_CONFIGS('x'),
       ];
-      dynamics.forEach(ep => {
+      dynamics.forEach((ep) => {
         expect(ep).toMatch(/^\//);
       });
     });
@@ -560,7 +551,6 @@ describe('SDK v2 route standardization', () => {
       expect(TENANT_ENDPOINTS.GET_CONFIGS(dangerous)).toContain(encoded);
       expect(TENANT_ENDPOINTS.UPDATE_CONFIGS(dangerous)).toContain(encoded);
     });
-
   });
 
   // ===========================================================================
@@ -641,7 +631,7 @@ describe('SDK v2 route standardization', () => {
         ROLE_ENDPOINTS.LIST,
         ROLE_ENDPOINTS.CREATE,
       ];
-      statics.forEach(ep => {
+      statics.forEach((ep) => {
         expect(ep).not.toMatch(/\/\//);
       });
     });
@@ -676,7 +666,7 @@ describe('SDK v2 route standardization', () => {
         TENANT_ENDPOINTS.GET_CONFIGS(id),
         TENANT_ENDPOINTS.UPDATE_CONFIGS(id),
       ];
-      dynamics.forEach(ep => {
+      dynamics.forEach((ep) => {
         expect(ep).not.toMatch(/\/\//);
       });
     });
@@ -691,25 +681,37 @@ describe('SDK v2 route standardization', () => {
       expect(Object.keys(PERSONALIZATION_ENDPOINTS)).toHaveLength(2);
     });
 
-    it('STT_ENDPOINTS should have exactly 16 keys', () => {
-      // REFRESH_TICKET supports stream-ticket refresh
-      // on reconnect.
-      expect(Object.keys(STT_ENDPOINTS)).toHaveLength(16);
-      expect(Object.keys(STT_ENDPOINTS)).toEqual(expect.arrayContaining([
-        'CREATE_SESSION', 'CLOSE_SESSION', 'WS_STREAM', 'CREATE_JOB',
-        'CREATE_BATCH_JOB', 'CREATE_STREAMING_JOB', 'TRANSCRIBE',
-        'JOB_STREAM', 'GET_JOB', 'LIST_JOBS', 'JOB_STATS',
-        'JOBS_BY_CONSULTATION', 'JOBS_BY_STATUS', 'CANCEL_JOB', 'RETRY_JOB',
-        'REFRESH_TICKET',
-      ]));
+    it('STT_ENDPOINTS should have exactly 17 keys', () => {
+      // REFRESH_TICKET supports stream-ticket refresh on reconnect;
+      // SWITCH_TO_FALLBACK (TASK-567) drives the in-place fallback switch.
+      expect(Object.keys(STT_ENDPOINTS)).toHaveLength(17);
+      expect(Object.keys(STT_ENDPOINTS)).toEqual(
+        expect.arrayContaining([
+          'CREATE_SESSION',
+          'CLOSE_SESSION',
+          'WS_STREAM',
+          'CREATE_JOB',
+          'CREATE_BATCH_JOB',
+          'CREATE_STREAMING_JOB',
+          'TRANSCRIBE',
+          'JOB_STREAM',
+          'GET_JOB',
+          'LIST_JOBS',
+          'JOB_STATS',
+          'JOBS_BY_CONSULTATION',
+          'JOBS_BY_STATUS',
+          'CANCEL_JOB',
+          'RETRY_JOB',
+          'REFRESH_TICKET',
+          'SWITCH_TO_FALLBACK',
+        ]),
+      );
     });
 
     it('PIPELINE_ENDPOINTS should have exactly 13 keys', () => {
       // SET_DEFAULT, TOGGLE, VERSIONS, VERSION bring the count to 13.
       expect(Object.keys(PIPELINE_ENDPOINTS)).toHaveLength(13);
-      expect(Object.keys(PIPELINE_ENDPOINTS)).toEqual(
-        expect.arrayContaining(['SET_DEFAULT', 'TOGGLE', 'VERSIONS', 'VERSION']),
-      );
+      expect(Object.keys(PIPELINE_ENDPOINTS)).toEqual(expect.arrayContaining(['SET_DEFAULT', 'TOGGLE', 'VERSIONS', 'VERSION']));
     });
 
     it('GLOBAL_SETTINGS_ENDPOINTS should have exactly 8 keys', () => {
@@ -747,14 +749,11 @@ describe('SDK v2 route standardization', () => {
     beforeAll(async () => {
       const fs = await import('fs');
       const path = await import('path');
-      constantsSource = fs.readFileSync(
-        path.resolve(__dirname, '../constants.ts'),
-        'utf-8',
-      );
+      constantsSource = fs.readFileSync(path.resolve(__dirname, '../constants.ts'), 'utf-8');
     });
 
     function codeLines(src: string): string[] {
-      return src.split('\n').filter(l => {
+      return src.split('\n').filter((l) => {
         const t = l.trimStart();
         return !t.startsWith('*') && !t.startsWith('//') && !t.startsWith('/**');
       });
@@ -762,73 +761,72 @@ describe('SDK v2 route standardization', () => {
 
     it('should not contain /api/v1/ai-models in any code line', () => {
       const code = codeLines(constantsSource);
-      const matches = code.filter(l => l.includes('/api/v1/ai-models'));
+      const matches = code.filter((l) => l.includes('/api/v1/ai-models'));
       expect(matches).toHaveLength(0);
     });
 
     it('should not contain /api/v1/transcription-jobs in any code line', () => {
       const code = codeLines(constantsSource);
-      const matches = code.filter(l => l.includes('/api/v1/transcription-jobs'));
+      const matches = code.filter((l) => l.includes('/api/v1/transcription-jobs'));
       expect(matches).toHaveLength(0);
     });
 
     it('should not contain /api/v1/pipelines in any code line', () => {
       const code = codeLines(constantsSource);
-      const matches = code.filter(l => l.includes('/api/v1/pipelines'));
+      const matches = code.filter((l) => l.includes('/api/v1/pipelines'));
       expect(matches).toHaveLength(0);
     });
 
     it('should not contain /users/me/preferences in any code line', () => {
       const code = codeLines(constantsSource);
-      const matches = code.filter(l => l.includes('/users/me/preferences'));
+      const matches = code.filter((l) => l.includes('/users/me/preferences'));
       expect(matches).toHaveLength(0);
     });
 
     it('should not contain /global-settings as endpoint path in any code line', () => {
       const code = codeLines(constantsSource);
-      const matches = code.filter(l =>
-        l.includes("'/global-settings") || l.includes('`/global-settings')
-      );
+      const matches = code.filter((l) => l.includes("'/global-settings") || l.includes('`/global-settings'));
       expect(matches).toHaveLength(0);
     });
 
     it('should not contain /user-settings as endpoint path in any code line', () => {
       const code = codeLines(constantsSource);
-      const matches = code.filter(l =>
-        l.includes("'/user-settings") || l.includes('`/user-settings')
-      );
+      const matches = code.filter((l) => l.includes("'/user-settings") || l.includes('`/user-settings'));
       expect(matches).toHaveLength(0);
     });
 
     it('should not contain bare /api-keys (without /admin prefix) as endpoint path', () => {
       const lines = constantsSource.split('\n');
-      const endpointLines = lines.filter(l =>
-        (l.includes("'/api-keys") || l.includes('`/api-keys')) &&
-        !l.includes('/admin/api-keys') &&
-        !l.trimStart().startsWith('*') &&
-        !l.trimStart().startsWith('//')
+      const endpointLines = lines.filter(
+        (l) =>
+          (l.includes("'/api-keys") || l.includes('`/api-keys')) &&
+          !l.includes('/admin/api-keys') &&
+          !l.trimStart().startsWith('*') &&
+          !l.trimStart().startsWith('//'),
       );
       expect(endpointLines).toHaveLength(0);
     });
 
     it('should not contain bare /rbac/roles (without /admin prefix) as endpoint path', () => {
       const lines = constantsSource.split('\n');
-      const endpointLines = lines.filter(l =>
-        (l.includes("'/rbac/roles") || l.includes('`/rbac/roles')) &&
-        !l.includes('/admin/rbac/roles') &&
-        !l.trimStart().startsWith('*') &&
-        !l.trimStart().startsWith('//')
+      const endpointLines = lines.filter(
+        (l) =>
+          (l.includes("'/rbac/roles") || l.includes('`/rbac/roles')) &&
+          !l.includes('/admin/rbac/roles') &&
+          !l.trimStart().startsWith('*') &&
+          !l.trimStart().startsWith('//'),
       );
       expect(endpointLines).toHaveLength(0);
     });
 
     it('should not contain bare /tenants/configs (without /admin prefix) as endpoint path', () => {
       const lines = constantsSource.split('\n');
-      const endpointLines = lines.filter(l =>
-        (l.includes("'/tenants/configs") || l.includes('`/tenants/configs')) &&
-        !l.includes('/admin/tenants/configs') &&
-        !l.trimStart().startsWith('*') &&
-        !l.trimStart().startsWith('//')
+      const endpointLines = lines.filter(
+        (l) =>
+          (l.includes("'/tenants/configs") || l.includes('`/tenants/configs')) &&
+          !l.includes('/admin/tenants/configs') &&
+          !l.trimStart().startsWith('*') &&
+          !l.trimStart().startsWith('//'),
       );
       expect(endpointLines).toHaveLength(0);
     });
@@ -872,7 +870,7 @@ describe('SDK v2 route standardization', () => {
         'VOICE_EMBEDDING_ENDPOINTS',
         'MY_TENANT_ENDPOINTS',
       ];
-      expectedExports.forEach(name => {
+      expectedExports.forEach((name) => {
         expect(constants).toHaveProperty(name);
       });
     });

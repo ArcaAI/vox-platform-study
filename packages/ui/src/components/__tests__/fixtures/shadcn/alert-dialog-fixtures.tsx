@@ -8,16 +8,10 @@ import {
   AlertDialogDescription,
   AlertDialogAction,
   AlertDialogCancel,
-} from '../../../shadcn/alert-dialog'
-import { Button } from '../../../shadcn/button'
+} from '../../../shadcn/alert-dialog';
+import { Button } from '../../../shadcn/button';
 
-export function ControlledAlertDialog({
-  defaultOpen = false,
-  size = 'default',
-}: {
-  defaultOpen?: boolean
-  size?: 'default' | 'sm'
-}) {
+export function ControlledAlertDialog({ defaultOpen = false, size = 'default' }: { defaultOpen?: boolean; size?: 'default' | 'sm' }) {
   return (
     <AlertDialog defaultOpen={defaultOpen}>
       <AlertDialogTrigger asChild>
@@ -26,9 +20,7 @@ export function ControlledAlertDialog({
       <AlertDialogContent size={size}>
         <AlertDialogHeader>
           <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-          <AlertDialogDescription>
-            This action cannot be undone.
-          </AlertDialogDescription>
+          <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -36,5 +28,5 @@ export function ControlledAlertDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
+  );
 }

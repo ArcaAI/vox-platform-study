@@ -15,10 +15,7 @@
 // snapshot AFTER the burst settles to verify the pool drains cleanly.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  createPoolerAdminPg,
-  createPooledPrisma,
-} from '../_helpers/clients.ts';
+import { createPoolerAdminPg, createPooledPrisma } from '../_helpers/clients.ts';
 
 const prisma = createPooledPrisma();
 const admin = createPoolerAdminPg();
@@ -55,11 +52,7 @@ describe('PgBouncer txn-mode — SHOW POOLS under load (Task 1.16)', () => {
     // pgbouncer establishes the additional 35 backends (~5–20 ms each).
     // That queue depth is pool-warm-up behaviour, not a rubric violation.
     // The rubric ("cl_waiting=0 sustained") applies to steady state.
-    await Promise.all(
-      Array.from({ length: 40 }, () =>
-        prisma.$queryRawUnsafe(`SELECT pg_sleep(0.02)::text AS warmup`),
-      ),
-    );
+    await Promise.all(Array.from({ length: 40 }, () => prisma.$queryRawUnsafe(`SELECT pg_sleep(0.02)::text AS warmup`)));
     // Brief settle so bouncer-side post-warmup bookkeeping completes.
     await new Promise((resolve) => setTimeout(resolve, 200));
 
@@ -96,9 +89,7 @@ describe('PgBouncer txn-mode — SHOW POOLS under load (Task 1.16)', () => {
     }
     await burst;
 
-    console.log(
-      `[Task 1.16] burst peak sv_active=${peakActive}, cl_waiting=${peakWaiting}, maxwait=${maxMaxwait}s`,
-    );
+    console.log(`[Task 1.16] burst peak sv_active=${peakActive}, cl_waiting=${peakWaiting}, maxwait=${maxMaxwait}s`);
 
     expect(peakActive, 'sv_active should peak above 0 during the burst').toBeGreaterThan(0);
     expect(peakWaiting, 'cl_waiting should stay at 0 (default_pool_size=50 > burst=40)').toBe(0);
@@ -112,10 +103,7 @@ describe('PgBouncer txn-mode — SHOW POOLS under load (Task 1.16)', () => {
 
     const [row] = await showPools();
     expect(row).toBeDefined();
-    console.log(
-      `[Task 1.16] post-burst sv_idle=${row!.sv_idle}, sv_active=${row!.sv_active}, ` +
-        `pool_mode=${row!.pool_mode}`,
-    );
+    console.log(`[Task 1.16] post-burst sv_idle=${row!.sv_idle}, sv_active=${row!.sv_active}, ` + `pool_mode=${row!.pool_mode}`);
 
     expect(Number(row!.sv_idle)).toBeGreaterThanOrEqual(5); // min_pool_size
     expect(row!.pool_mode).toBe('transaction');

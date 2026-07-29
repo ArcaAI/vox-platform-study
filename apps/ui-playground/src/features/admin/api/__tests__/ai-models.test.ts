@@ -71,11 +71,7 @@ describe('AI model API hooks (TASK-356 Phase 1)', () => {
       result.current.mutate({ id: 'm1', name: 'Updated', expectedVersion: 7, ifMatch: '"7"' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockPatch).toHaveBeenCalledWith(
-        '/admin/ai-models/m1',
-        { name: 'Updated', expectedVersion: 7 },
-        { tenantId: TENANT_ID, ifMatch: '"7"' },
-      );
+      expect(mockPatch).toHaveBeenCalledWith('/admin/ai-models/m1', { name: 'Updated', expectedVersion: 7 }, { tenantId: TENANT_ID, ifMatch: '"7"' });
     });
 
     it('falls back to tenant-only options when ifMatch is omitted', async () => {

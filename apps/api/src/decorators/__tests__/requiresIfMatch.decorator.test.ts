@@ -23,73 +23,73 @@ import { RequiresIfMatchGuard } from '../requiresIfMatch.guard';
 import type { ExecutionContext } from '@nestjs/common';
 
 class Controller {
-    @RequiresIfMatch()
-    update() {}
+  @RequiresIfMatch()
+  update() {}
 
-    plainGet() {}
+  plainGet() {}
 }
 
 interface MockReq {
-    headers: Record<string, string | undefined>;
-    _requiresIfMatch?: boolean;
+  headers: Record<string, string | undefined>;
+  _requiresIfMatch?: boolean;
 }
 
 const buildCtx = (handler: () => void, klass: typeof Controller, req: MockReq): ExecutionContext =>
-    ({
-        getHandler: () => handler,
-        getClass: () => klass,
-        switchToHttp: () => ({ getRequest: () => req }),
-    }) as unknown as ExecutionContext;
+  ({
+    getHandler: () => handler,
+    getClass: () => klass,
+    switchToHttp: () => ({ getRequest: () => req }),
+  }) as unknown as ExecutionContext;
 
 describe('@RequiresIfMatch', () => {
-    it('marks the handler with REQUIRES_IF_MATCH_KEY metadata = true', () => {
-        const reflector = new Reflector();
-        const flag = reflector.get(REQUIRES_IF_MATCH_KEY, Controller.prototype.update);
-        expect(flag).toBe(true);
-    });
+  it('marks the handler with REQUIRES_IF_MATCH_KEY metadata = true', () => {
+    const reflector = new Reflector();
+    const flag = reflector.get(REQUIRES_IF_MATCH_KEY, Controller.prototype.update);
+    expect(flag).toBe(true);
+  });
 
-    it('does NOT mark a plain (un-annotated) handler', () => {
-        const reflector = new Reflector();
-        const flag = reflector.get(REQUIRES_IF_MATCH_KEY, Controller.prototype.plainGet);
-        // No metadata on plainGet — the lookup returns undefined.
-        expect(flag).toBeUndefined();
-    });
+  it('does NOT mark a plain (un-annotated) handler', () => {
+    const reflector = new Reflector();
+    const flag = reflector.get(REQUIRES_IF_MATCH_KEY, Controller.prototype.plainGet);
+    // No metadata on plainGet — the lookup returns undefined.
+    expect(flag).toBeUndefined();
+  });
 });
 
 describe('RequiresIfMatchGuard', () => {
-    it('sets req._requiresIfMatch = true on @RequiresIfMatch()-annotated handlers', () => {
-        const reflector = new Reflector();
-        const guard = new RequiresIfMatchGuard(reflector);
-        const req: MockReq = { headers: {} };
-        const ctx = buildCtx(Controller.prototype.update, Controller, req);
+  it('sets req._requiresIfMatch = true on @RequiresIfMatch()-annotated handlers', () => {
+    const reflector = new Reflector();
+    const guard = new RequiresIfMatchGuard(reflector);
+    const req: MockReq = { headers: {} };
+    const ctx = buildCtx(Controller.prototype.update, Controller, req);
 
-        expect(guard.canActivate(ctx)).toBe(true);
-        // The whole point of the guard is to mutate the request so the
-        // downstream @ExpectedVersion() extractor can throw 428.
-        expect(req._requiresIfMatch).toBe(true);
-    });
+    expect(guard.canActivate(ctx)).toBe(true);
+    // The whole point of the guard is to mutate the request so the
+    // downstream @ExpectedVersion() extractor can throw 428.
+    expect(req._requiresIfMatch).toBe(true);
+  });
 
-    it('leaves req._requiresIfMatch unset on non-annotated handlers', () => {
-        const reflector = new Reflector();
-        const guard = new RequiresIfMatchGuard(reflector);
-        const req: MockReq = { headers: {} };
-        const ctx = buildCtx(Controller.prototype.plainGet, Controller, req);
+  it('leaves req._requiresIfMatch unset on non-annotated handlers', () => {
+    const reflector = new Reflector();
+    const guard = new RequiresIfMatchGuard(reflector);
+    const req: MockReq = { headers: {} };
+    const ctx = buildCtx(Controller.prototype.plainGet, Controller, req);
 
-        expect(guard.canActivate(ctx)).toBe(true);
-        // Non-annotated routes pay zero cost and have no contract change.
-        expect(req._requiresIfMatch).toBeUndefined();
-    });
+    expect(guard.canActivate(ctx)).toBe(true);
+    // Non-annotated routes pay zero cost and have no contract change.
+    expect(req._requiresIfMatch).toBeUndefined();
+  });
 
-    it('always returns true (the param decorator does the throwing, not the guard)', () => {
-        // Critical contract: the guard does NOT block requests. Its only
-        // job is metadata propagation onto the request object. If a guard
-        // returned `false`, the param decorator would never run and we'd
-        // emit a 403 Forbidden instead of the correct 428 Precondition
-        // Required.
-        const reflector = new Reflector();
-        const guard = new RequiresIfMatchGuard(reflector);
-        const req: MockReq = { headers: {} };
-        expect(guard.canActivate(buildCtx(Controller.prototype.update, Controller, req))).toBe(true);
-        expect(guard.canActivate(buildCtx(Controller.prototype.plainGet, Controller, req))).toBe(true);
-    });
+  it('always returns true (the param decorator does the throwing, not the guard)', () => {
+    // Critical contract: the guard does NOT block requests. Its only
+    // job is metadata propagation onto the request object. If a guard
+    // returned `false`, the param decorator would never run and we'd
+    // emit a 403 Forbidden instead of the correct 428 Precondition
+    // Required.
+    const reflector = new Reflector();
+    const guard = new RequiresIfMatchGuard(reflector);
+    const req: MockReq = { headers: {} };
+    expect(guard.canActivate(buildCtx(Controller.prototype.update, Controller, req))).toBe(true);
+    expect(guard.canActivate(buildCtx(Controller.prototype.plainGet, Controller, req))).toBe(true);
+  });
 });

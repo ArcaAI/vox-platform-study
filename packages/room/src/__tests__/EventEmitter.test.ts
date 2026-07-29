@@ -18,10 +18,7 @@ interface TestEvents {
 
 // Create a testable subclass that exposes the emit method
 class TestEmitter extends TypedEventEmitter<TestEvents> {
-  public testEmit<K extends keyof TestEvents & string>(
-    event: K,
-    ...args: TestEvents[K] extends void ? [] : [payload: TestEvents[K]]
-  ): void {
+  public testEmit<K extends keyof TestEvents & string>(event: K, ...args: TestEvents[K] extends void ? [] : [payload: TestEvents[K]]): void {
     this.emit(event, ...args);
   }
 }

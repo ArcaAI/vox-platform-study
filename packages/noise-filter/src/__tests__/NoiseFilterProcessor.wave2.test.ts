@@ -104,9 +104,7 @@ describe('NoiseFilterProcessor — Wave 2', () => {
 
       await processor.updateOptions({ noiseCancellationLevel: 'low' });
 
-      const setEnabledCalls = workletNode.port.postMessage.mock.calls.filter(
-        ([msg]) => (msg as { type: string }).type === 'setEnabled',
-      );
+      const setEnabledCalls = workletNode.port.postMessage.mock.calls.filter(([msg]) => (msg as { type: string }).type === 'setEnabled');
       expect(setEnabledCalls).toHaveLength(0);
     });
   });

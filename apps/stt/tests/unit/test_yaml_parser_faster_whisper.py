@@ -36,15 +36,11 @@ inference:
 
 class TestFasterWhisperEngineMapping:
     def test_engine_faster_whisper_underscore(self):
-        ref = ModelRef.from_value(
-            {"hf_model_id": "x/y-ct2", "engine": "faster_whisper"}
-        )
+        ref = ModelRef.from_value({"hf_model_id": "x/y-ct2", "engine": "faster_whisper"})
         assert ref.inline.engine == AiModelFormat.FASTER_WHISPER
 
     def test_engine_faster_whisper_hyphen(self):
-        ref = ModelRef.from_value(
-            {"hf_model_id": "x/y-ct2", "engine": "faster-whisper"}
-        )
+        ref = ModelRef.from_value({"hf_model_id": "x/y-ct2", "engine": "faster-whisper"})
         assert ref.inline.engine == AiModelFormat.FASTER_WHISPER
 
     def test_supports_initial_prompt(self):
@@ -68,17 +64,13 @@ class TestYamlParserFasterWhisper:
 
     def test_valid_ct2_compute_type_passes(self):
         parser = PipelineYamlParser()
-        spec = parser.parse(
-            FASTER_WHISPER_COMPUTE_TYPE_YAML.format(compute_type="int8_float16")
-        )
+        spec = parser.parse(FASTER_WHISPER_COMPUTE_TYPE_YAML.format(compute_type="int8_float16"))
         result = parser.validate(spec)
         assert result.valid is True, result.get_error_messages()
 
     def test_invalid_ct2_compute_type_rejected(self):
         parser = PipelineYamlParser()
-        spec = parser.parse(
-            FASTER_WHISPER_COMPUTE_TYPE_YAML.format(compute_type="fp99")
-        )
+        spec = parser.parse(FASTER_WHISPER_COMPUTE_TYPE_YAML.format(compute_type="fp99"))
         result = parser.validate(spec)
         assert result.valid is False
         assert any(

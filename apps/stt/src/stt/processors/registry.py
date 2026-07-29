@@ -45,8 +45,7 @@ class ProcessorRegistry:
         except KeyError:
             known = ", ".join(sorted(self.names(kind))) or "(none)"
             raise KeyError(
-                f"No processor '{name}' registered for kind '{kind}'. "
-                f"Registered: {known}"
+                f"No processor '{name}' registered for kind '{kind}'. " f"Registered: {known}"
             ) from None
 
     def names(self, kind: str) -> list[str]:
@@ -107,9 +106,7 @@ class ProcessorRegistry:
         """
         spec = self.spec(kind, name)
         mode_ok = [
-            c
-            for c in spec.capabilities
-            if (c.streaming if mode == "streaming" else c.batch)
+            c for c in spec.capabilities if (c.streaming if mode == "streaming" else c.batch)
         ]
         for device in devices:
             rows = sorted(

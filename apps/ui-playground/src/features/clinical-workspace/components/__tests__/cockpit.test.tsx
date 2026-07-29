@@ -29,13 +29,7 @@ function liveSummary(overrides: Partial<UseLiveSummaryStreamResult> = {}): UseLi
 
 function renderCockpit(ls: UseLiveSummaryStreamResult) {
   return render(
-    <Cockpit
-      consultationId="c1"
-      recording={ls.status === 'open'}
-      liveSummary={ls}
-      onRecordingStarted={vi.fn()}
-      onRecordingStopped={vi.fn()}
-    />,
+    <Cockpit consultationId="c1" recording={ls.status === 'open'} liveSummary={ls} onRecordingStarted={vi.fn()} onRecordingStopped={vi.fn()} />,
   );
 }
 

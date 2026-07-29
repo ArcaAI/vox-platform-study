@@ -138,9 +138,7 @@ export class OcrEnrichmentProcessor {
         // field-encryption migration, so an unencrypted update here would
         // silently lose the OCR'd clinical text at rest (mirrors
         // context.service.ts `encryptContent`).
-        await this.encryptBestEffort('ContextItem content', () =>
-          this.contextItemRepository.encryptContentIntoEntity(item, this.secretsService!),
-        );
+        await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(item, this.secretsService!));
         await this.contextItemRepository.update(contextItemId, item);
 
         // Re-emit the live preview so LiveDocumentationService folds the OCR text

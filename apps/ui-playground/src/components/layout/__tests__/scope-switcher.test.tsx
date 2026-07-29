@@ -55,7 +55,13 @@ vi.mock('@arcaai/ui/command', () => ({
   ),
 }));
 vi.mock('@arcaai/ui/button', () => ({ Button: ({ children, ...p }: any) => <button {...p}>{children}</button> }));
-vi.mock('@arcaai/ui/badge', () => ({ Badge: ({ children, ...p }: any) => <span data-testid="badge" {...p}>{children}</span> }));
+vi.mock('@arcaai/ui/badge', () => ({
+  Badge: ({ children, ...p }: any) => (
+    <span data-testid="badge" {...p}>
+      {children}
+    </span>
+  ),
+}));
 vi.mock('@arcaai/ui/skeleton', () => ({ Skeleton: (p: any) => <div data-testid="skeleton" {...p} /> }));
 vi.mock('@arcaai/ui/tooltip', () => ({
   Tooltip: ({ children }: any) => <div>{children}</div>,

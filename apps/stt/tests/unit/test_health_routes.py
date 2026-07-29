@@ -142,9 +142,7 @@ class TestReadinessEndpoint:
         )
 
         with (
-            patch(
-                "stt.health.api.routes.get_db_session", MagicMock(return_value=mock_db_session)
-            ),
+            patch("stt.health.api.routes.get_db_session", MagicMock(return_value=mock_db_session)),
             patch(
                 "stt.health.api.routes.get_minio_client",
                 return_value=MagicMock(health_check=MagicMock(return_value=True)),
@@ -307,9 +305,7 @@ class TestCheckMinio:
     async def test_minio_exception(self):
         from stt.health.api.routes import _check_minio
 
-        with patch(
-            "stt.health.api.routes.get_minio_client", side_effect=RuntimeError("no minio")
-        ):
+        with patch("stt.health.api.routes.get_minio_client", side_effect=RuntimeError("no minio")):
             result = await _check_minio()
 
         assert result.status.value == "unhealthy"

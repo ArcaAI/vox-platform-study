@@ -15,15 +15,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  NotificationEntity,
-  INotificationEntity,
-} from '../generated/core/NotificationEntity';
+import { NotificationEntity, INotificationEntity } from '../generated/core/NotificationEntity';
 import { NotificationType, ResourceStatusType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<INotificationEntity> = {},
-): INotificationEntity {
+function createValidInit(overrides: Partial<INotificationEntity> = {}): INotificationEntity {
   return {
     id: 'notif-test-id',
     tenantId: '50000000-0000-0000-0000-000000000000',
@@ -66,14 +61,11 @@ describe('NotificationEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it.each(Object.values(NotificationType))(
-      'should accept type %s',
-      (type) => {
-        const entity = new NotificationEntity(createValidInit({ type }));
+    it.each(Object.values(NotificationType))('should accept type %s', (type) => {
+      const entity = new NotificationEntity(createValidInit({ type }));
 
-        expect(() => entity.validate()).not.toThrow();
-      },
-    );
+      expect(() => entity.validate()).not.toThrow();
+    });
 
     it('should accept null/undefined optional message fields', () => {
       const entity = new NotificationEntity(
@@ -103,19 +95,13 @@ describe('NotificationEntity.validate()', () => {
     });
 
     it('should throw when title exceeds 255 characters', () => {
-      const entity = new NotificationEntity(
-        createValidInit({ title: 'x'.repeat(256) }),
-      );
+      const entity = new NotificationEntity(createValidInit({ title: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Notification title must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('Notification title must not exceed 255 characters');
     });
 
     it('should accept title exactly 255 characters', () => {
-      const entity = new NotificationEntity(
-        createValidInit({ title: 'x'.repeat(255) }),
-      );
+      const entity = new NotificationEntity(createValidInit({ title: 'x'.repeat(255) }));
 
       expect(() => entity.validate()).not.toThrow();
     });
@@ -123,9 +109,7 @@ describe('NotificationEntity.validate()', () => {
 
   describe('type', () => {
     it('should throw when type is undefined', () => {
-      const entity = new NotificationEntity(
-        createValidInit({ type: undefined as unknown as NotificationType }),
-      );
+      const entity = new NotificationEntity(createValidInit({ type: undefined as unknown as NotificationType }));
 
       expect(() => entity.validate()).toThrow('Notification type is required');
     });
@@ -143,13 +127,9 @@ describe('NotificationEntity.validate()', () => {
 
   describe('read', () => {
     it('should throw when read is not a boolean', () => {
-      const entity = new NotificationEntity(
-        createValidInit({ read: null as unknown as boolean }),
-      );
+      const entity = new NotificationEntity(createValidInit({ read: null as unknown as boolean }));
 
-      expect(() => entity.validate()).toThrow(
-        'Notification read must be a boolean',
-      );
+      expect(() => entity.validate()).toThrow('Notification read must be a boolean');
     });
 
     it('should accept read=true', () => {
@@ -161,43 +141,29 @@ describe('NotificationEntity.validate()', () => {
 
   describe('targetUserId', () => {
     it('should throw when targetUserId is empty', () => {
-      const entity = new NotificationEntity(
-        createValidInit({ targetUserId: '' }),
-      );
+      const entity = new NotificationEntity(createValidInit({ targetUserId: '' }));
 
-      expect(() => entity.validate()).toThrow(
-        'Notification targetUserId is required',
-      );
+      expect(() => entity.validate()).toThrow('Notification targetUserId is required');
     });
 
     it('should throw when targetUserId is whitespace only', () => {
-      const entity = new NotificationEntity(
-        createValidInit({ targetUserId: '   ' }),
-      );
+      const entity = new NotificationEntity(createValidInit({ targetUserId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'Notification targetUserId is required',
-      );
+      expect(() => entity.validate()).toThrow('Notification targetUserId is required');
     });
   });
 
   describe('resourceSubscriptionId', () => {
     it('should accept null resourceSubscriptionId', () => {
-      const entity = new NotificationEntity(
-        createValidInit({ resourceSubscriptionId: null }),
-      );
+      const entity = new NotificationEntity(createValidInit({ resourceSubscriptionId: null }));
 
       expect(() => entity.validate()).not.toThrow();
     });
 
     it('should throw when resourceSubscriptionId is an empty string', () => {
-      const entity = new NotificationEntity(
-        createValidInit({ resourceSubscriptionId: '   ' }),
-      );
+      const entity = new NotificationEntity(createValidInit({ resourceSubscriptionId: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'Notification resourceSubscriptionId must not be empty when provided',
-      );
+      expect(() => entity.validate()).toThrow('Notification resourceSubscriptionId must not be empty when provided');
     });
   });
 });

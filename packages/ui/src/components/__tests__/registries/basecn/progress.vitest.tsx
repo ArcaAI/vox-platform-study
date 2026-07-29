@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { Progress, ProgressTrack, ProgressIndicator } from '../../../registries/basecn/progress'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Progress, ProgressTrack, ProgressIndicator } from '../../../registries/basecn/progress';
 
 describe('Progress', () => {
   it('renders without crashing', () => {
@@ -9,8 +9,8 @@ describe('Progress', () => {
         <ProgressTrack>
           <ProgressIndicator />
         </ProgressTrack>
-      </Progress>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </Progress>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

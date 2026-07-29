@@ -323,10 +323,26 @@ export interface WsWordTimestamp {
  */
 export interface WsStatusMessage {
   type: 'status';
-  /** Status identifier (e.g., 'connected', 'finalizing', 'closed') */
+  /** Status identifier (e.g., 'connected', 'finalizing', 'closed', 'provider_switched') */
   status: string;
-  /** Human-readable status message */
-  message: string;
+  /**
+   * Human-readable status message. Optional: structured status results
+   * (e.g. `provider_switched`, TASK-567) carry typed fields instead of prose,
+   * so the gateway forwards them without a `message`.
+   */
+  message?: string;
+  // ---- provider_switched passthrough (TASK-567 §3.4) ----
+  // The backend publishes an ASR engine swap as a `status` result with
+  // `status === 'provider_switched'` (zero WS protocol change); the gateway
+  // relays these snake_case fields verbatim.
+  /** Pipeline switched away from. */
+  from_pipeline?: string;
+  /** Pipeline now transcribing (the fallback). */
+  to_pipeline?: string;
+  /** Switch trigger: `auto` (outage/exception) or `user` (clinician-initiated). */
+  reason?: string;
+  /** Utterance ordinal at which the swap happened (string on the wire, coerced by consumers). */
+  utterance_index?: number | string;
 }
 
 /**

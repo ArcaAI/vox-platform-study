@@ -20,10 +20,7 @@
 
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
-import {
-  BaseTenantEntity,
-  IBaseTenantEntity,
-} from '../base.tenantEntity';
+import { BaseTenantEntity, IBaseTenantEntity } from '../base.tenantEntity';
 
 // Stand-in for TenantEntity — importing the real one from
 // `../../../entities` would create a circular barrel cycle at module
@@ -75,9 +72,7 @@ describe('BaseTenantEntity', () => {
       // tenantId = '' is invalid, but construction must not throw — the
       // entity is created in a possibly-invalid state and the caller is
       // responsible for invoking validate() before persistence.
-      expect(
-        () => new TestTenantEntity(makeInit({ tenantId: '' as never })),
-      ).not.toThrow();
+      expect(() => new TestTenantEntity(makeInit({ tenantId: '' as never }))).not.toThrow();
     });
   });
 
@@ -89,45 +84,33 @@ describe('BaseTenantEntity', () => {
     });
 
     it('throws BadRequestException when tenantId is an empty string', () => {
-      const entity = new TestTenantEntity(
-        makeInit({ tenantId: '' as never }),
-      );
+      const entity = new TestTenantEntity(makeInit({ tenantId: '' as never }));
 
       expect(() => entity.validate()).toThrow(BadRequestException);
-      expect(() => entity.validate()).toThrow(
-        /TestTenantEntity is missing tenant context/,
-      );
+      expect(() => entity.validate()).toThrow(/TestTenantEntity is missing tenant context/);
     });
 
     it('throws BadRequestException when tenantId is null (bypasses TS via as any)', () => {
-      const entity = new TestTenantEntity(
-        makeInit({ tenantId: null as unknown as string }),
-      );
+      const entity = new TestTenantEntity(makeInit({ tenantId: null as unknown as string }));
 
       expect(() => entity.validate()).toThrow(BadRequestException);
     });
 
     it('throws BadRequestException when tenantId is undefined (bypasses TS via as any)', () => {
-      const entity = new TestTenantEntity(
-        makeInit({ tenantId: undefined as unknown as string }),
-      );
+      const entity = new TestTenantEntity(makeInit({ tenantId: undefined as unknown as string }));
 
       expect(() => entity.validate()).toThrow(BadRequestException);
     });
 
     it('error message includes the entity class name (helps audit logs)', () => {
-      const entity = new TestTenantEntity(
-        makeInit({ tenantId: '' as never }),
-      );
+      const entity = new TestTenantEntity(makeInit({ tenantId: '' as never }));
 
       try {
         entity.validate();
         throw new Error('validate() should have thrown');
       } catch (err) {
         expect(err).toBeInstanceOf(BadRequestException);
-        expect((err as BadRequestException).message).toContain(
-          'TestTenantEntity',
-        );
+        expect((err as BadRequestException).message).toContain('TestTenantEntity');
       }
     });
   });
@@ -163,12 +146,10 @@ describe('BaseTenantEntity', () => {
       const entity = new TestTenantEntity(makeInit());
 
       expect(() => {
-        (entity as unknown as { Tenant: FakeTenantEntity | null }).Tenant =
-          null;
+        (entity as unknown as { Tenant: FakeTenantEntity | null }).Tenant = null;
       }).toThrow(BadRequestException);
       expect(() => {
-        (entity as unknown as { Tenant: FakeTenantEntity | null }).Tenant =
-          null;
+        (entity as unknown as { Tenant: FakeTenantEntity | null }).Tenant = null;
       }).toThrow(/Tenant cannot be unset/);
     });
 
@@ -176,9 +157,11 @@ describe('BaseTenantEntity', () => {
       const entity = new TestTenantEntity(makeInit());
 
       expect(() => {
-        (entity as unknown as {
-          Tenant: FakeTenantEntity | undefined;
-        }).Tenant = undefined;
+        (
+          entity as unknown as {
+            Tenant: FakeTenantEntity | undefined;
+          }
+        ).Tenant = undefined;
       }).toThrow(BadRequestException);
     });
 

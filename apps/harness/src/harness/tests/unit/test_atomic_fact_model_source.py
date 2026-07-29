@@ -134,9 +134,7 @@ async def test_missing_local_path_falls_through_to_env(tmp_path: Path) -> None:
     env_path = tmp_path / "from-env"
     env_path.mkdir()
 
-    client = _StubClient(
-        {ATOMIC_FACT_MODEL_SLUG: {"localPath": str(tmp_path / "nope")}}
-    )
+    client = _StubClient({ATOMIC_FACT_MODEL_SLUG: {"localPath": str(tmp_path / "nope")}})
 
     result = await resolve_atomic_fact_model_path(
         client, env_path=str(env_path), config=_config(tmp_path)

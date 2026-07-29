@@ -11,31 +11,31 @@ import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
 import type { ReactElement, ReactNode } from 'react';
 
 export interface RenderWithProvidersOptions {
-    /** Initial URL search params for nuqs-backed filters, e.g. "?status=active". */
-    searchParams?: string;
-    /** Spy for nuqs URL updates. */
-    onUrlUpdate?: (event: { searchParams: URLSearchParams }) => void;
+  /** Initial URL search params for nuqs-backed filters, e.g. "?status=active". */
+  searchParams?: string;
+  /** Spy for nuqs URL updates. */
+  onUrlUpdate?: (event: { searchParams: URLSearchParams }) => void;
 }
 
 export function createTestQueryClient(): QueryClient {
-    return new QueryClient({
-        defaultOptions: {
-            queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
-            mutations: { retry: false },
-        },
-    });
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      mutations: { retry: false },
+    },
+  });
 }
 
 export function renderWithProviders(ui: ReactElement, { searchParams = '', onUrlUpdate }: RenderWithProvidersOptions = {}) {
-    const queryClient = createTestQueryClient();
+  const queryClient = createTestQueryClient();
 
-    function Wrapper({ children }: { children: ReactNode }) {
-        return (
-            <NuqsTestingAdapter searchParams={searchParams} onUrlUpdate={onUrlUpdate}>
-                <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-            </NuqsTestingAdapter>
-        );
-    }
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <NuqsTestingAdapter searchParams={searchParams} onUrlUpdate={onUrlUpdate}>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </NuqsTestingAdapter>
+    );
+  }
 
-    return { queryClient, ...render(ui, { wrapper: Wrapper }) };
+  return { queryClient, ...render(ui, { wrapper: Wrapper }) };
 }

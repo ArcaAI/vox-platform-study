@@ -26,17 +26,19 @@ SRC_ROOT = Path(__file__).resolve().parents[3]
 # 1. No __contains__ anti-pattern in main.py
 # ---------------------------------------------------------------------------
 
+
 class TestNoDunderContains:
     def test_no_dunder_contains_in_main(self):
         source = (SRC_ROOT / "smr" / "main.py").read_text()
-        assert "__contains__" not in source, (
-            "main.py still uses .__contains__() — use the `in` operator instead"
-        )
+        assert (
+            "__contains__" not in source
+        ), "main.py still uses .__contains__() — use the `in` operator instead"
 
 
 # ---------------------------------------------------------------------------
 # 2. Providers use specific exceptions (not bare except Exception)
 # ---------------------------------------------------------------------------
+
 
 class TestProvidersUseSpecificExceptions:
     """Verify that health_check / get_info in each provider file
@@ -69,9 +71,8 @@ class TestProvidersUseSpecificExceptions:
                 if isinstance(child.type, ast.Name) and child.type.id == "Exception":
                     if child.name is not None:
                         continue
-                    body_is_pass = (
-                        len(child.body) == 1
-                        and isinstance(child.body[0], (ast.Pass, ast.Expr))
+                    body_is_pass = len(child.body) == 1 and isinstance(
+                        child.body[0], (ast.Pass, ast.Expr)
                     )
                     body_returns_false = (
                         len(child.body) == 1
@@ -104,9 +105,11 @@ class TestProvidersUseSpecificExceptions:
 # 3. Endpoint functions have return type annotations
 # ---------------------------------------------------------------------------
 
+
 class TestEndpointReturnTypes:
     def test_health_endpoints_have_return_types(self):
         from smr.api.endpoints import health
+
         for name in ("health_check", "liveness", "readiness"):
             func = getattr(health, name)
             hints = get_type_hints(func, include_extras=True)
@@ -114,6 +117,7 @@ class TestEndpointReturnTypes:
 
     def test_task_endpoints_have_return_types(self):
         from smr.api.endpoints import tasks
+
         for name in ("get_task", "cancel_task"):
             func = getattr(tasks, name)
             hints = get_type_hints(func, include_extras=True)
@@ -121,16 +125,19 @@ class TestEndpointReturnTypes:
 
     def test_provider_endpoint_has_return_type(self):
         from smr.api.endpoints import providers
+
         hints = get_type_hints(providers.list_providers, include_extras=True)
         assert "return" in hints, "providers.list_providers() missing return type annotation"
 
     def test_generate_endpoint_has_return_type(self):
         from smr.api.endpoints import generate
+
         hints = get_type_hints(generate.generate, include_extras=True)
         assert "return" in hints, "generate.generate() missing return type annotation"
 
     def test_stream_endpoint_has_return_type(self):
         from smr.api.endpoints import stream
+
         hints = get_type_hints(stream.stream_task, include_extras=True)
         assert "return" in hints, "stream.stream_task() missing return type annotation"
 
@@ -138,6 +145,7 @@ class TestEndpointReturnTypes:
 # ---------------------------------------------------------------------------
 # 4. generate() returns Pydantic model directly for non-streaming
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateReturnsPydanticModel:
     def test_generate_no_model_dump_for_sync_return(self):
@@ -171,6 +179,7 @@ class TestGenerateReturnsPydanticModel:
 # ---------------------------------------------------------------------------
 # 5. Health check failures are logged (not silently swallowed)
 # ---------------------------------------------------------------------------
+
 
 class TestHealthCheckLogsOnFailure:
     @pytest.mark.asyncio
@@ -252,6 +261,7 @@ class TestHealthCheckLogsOnFailure:
 # 6-8. Provider health_check catches specific exception types
 # ---------------------------------------------------------------------------
 
+
 class TestOllamaSpecificExceptions:
     @pytest.mark.asyncio
     async def test_catches_httpx_connect_error(self):
@@ -331,9 +341,7 @@ class TestAzureSpecificExceptions:
 
         provider = AzureOpenAIProvider(config)
         provider._client = AsyncMock()
-        provider._client.models.list = AsyncMock(
-            side_effect=APITimeoutError(request=MagicMock())
-        )
+        provider._client.models.list = AsyncMock(side_effect=APITimeoutError(request=MagicMock()))
         result = await provider.health_check()
         assert result is False
 
@@ -381,7 +389,9 @@ class TestBedrockSpecificExceptions:
             provider = BedrockProvider(config)
 
         error_response = {"Error": {"Code": "AccessDeniedException", "Message": "denied"}}
-        mock_mgmt.list_foundation_models.side_effect = ClientError(error_response, "ListFoundationModels")
+        mock_mgmt.list_foundation_models.side_effect = ClientError(
+            error_response, "ListFoundationModels"
+        )
 
         with patch("smr.providers.bedrock.asyncio.to_thread", side_effect=self._fake_to_thread):
             result = await provider.health_check()
@@ -403,7 +413,9 @@ class TestBedrockSpecificExceptions:
             mock_boto.side_effect = [mock_runtime, mock_mgmt]
             provider = BedrockProvider(config)
 
-        mock_mgmt.list_foundation_models.side_effect = EndpointConnectionError(endpoint_url="https://bedrock.us-east-1.amazonaws.com")
+        mock_mgmt.list_foundation_models.side_effect = EndpointConnectionError(
+            endpoint_url="https://bedrock.us-east-1.amazonaws.com"
+        )
 
         with patch("smr.providers.bedrock.asyncio.to_thread", side_effect=self._fake_to_thread):
             result = await provider.health_check()
@@ -436,6 +448,7 @@ class TestBedrockSpecificExceptions:
 # 9. Lifespan teardown logs Redis close failures
 # ---------------------------------------------------------------------------
 
+
 class TestLifespanTeardownLogging:
     def test_no_bare_except_in_lifespan_redis_close(self):
         """The lifespan function should not silently swallow Redis close errors."""
@@ -455,8 +468,5 @@ class TestLifespanTeardownLogging:
                 if isinstance(child.type, ast.Name) and child.type.id == "Exception":
                     if len(child.body) == 1 and isinstance(child.body[0], ast.Pass):
                         pytest.fail(
-                            "lifespan() catches Exception and does `pass` — "
-                            "should log the error"
+                            "lifespan() catches Exception and does `pass` — " "should log the error"
                         )
-
-

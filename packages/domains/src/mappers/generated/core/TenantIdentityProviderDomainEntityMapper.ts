@@ -10,34 +10,16 @@ export class TenantIdentityProviderDomainEntityMapper extends BaseMapper<
     super();
   }
 
-  public toPersistence(
-    entity: Entities.TenantIdentityProviderDomainEntity,
-  ): Models.TenantIdentityProviderDomain {
-    return AutoClassMapper(
-      entity,
-      Models.TenantIdentityProviderDomain,
-      TenantIdentityProviderDomainEntityMapperHandlers.$toPersistence,
-    );
+  public toPersistence(entity: Entities.TenantIdentityProviderDomainEntity): Models.TenantIdentityProviderDomain {
+    return AutoClassMapper(entity, Models.TenantIdentityProviderDomain, TenantIdentityProviderDomainEntityMapperHandlers.$toPersistence);
   }
 
-  public toPersistenceChanges(
-    entity: Entities.TenantIdentityProviderDomainEntity,
-  ): Partial<Models.TenantIdentityProviderDomain> {
-    return AutoEntityChangeMapper(
-      entity,
-      Models.TenantIdentityProviderDomain,
-      TenantIdentityProviderDomainEntityMapperHandlers.$toPersistence,
-    );
+  public toPersistenceChanges(entity: Entities.TenantIdentityProviderDomainEntity): Partial<Models.TenantIdentityProviderDomain> {
+    return AutoEntityChangeMapper(entity, Models.TenantIdentityProviderDomain, TenantIdentityProviderDomainEntityMapperHandlers.$toPersistence);
   }
 
-  public toDomainEntity(
-    dataModel: Models.TenantIdentityProviderDomain,
-  ): Entities.TenantIdentityProviderDomainEntity {
-    return AutoClassMapper(
-      dataModel,
-      Entities.TenantIdentityProviderDomainEntity,
-      TenantIdentityProviderDomainEntityMapperHandlers.$toDomain,
-    );
+  public toDomainEntity(dataModel: Models.TenantIdentityProviderDomain): Entities.TenantIdentityProviderDomainEntity {
+    return AutoClassMapper(dataModel, Entities.TenantIdentityProviderDomainEntity, TenantIdentityProviderDomainEntityMapperHandlers.$toDomain);
   }
 }
 

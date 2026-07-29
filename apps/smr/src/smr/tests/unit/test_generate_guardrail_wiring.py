@@ -74,9 +74,7 @@ async def _client_factory(mock_registry, mock_task_manager):
 async def test_blocked_content_rejected_with_422(_client_factory, mock_provider):
     # A genuine content rejection (guardrail reachable, verdict not-allowed) is a 422.
     guardrail = AsyncMock()
-    guardrail.validate = AsyncMock(
-        return_value={"allowed": False, "reason": "not_medical"}
-    )
+    guardrail.validate = AsyncMock(return_value={"allowed": False, "reason": "not_medical"})
     client = await _client_factory(guardrail)
 
     resp = await client.post("/api/v1/generate", json={"prompt": "hello"})
@@ -92,7 +90,9 @@ async def test_allowed_content_proceeds(_client_factory, mock_provider):
     guardrail.validate = AsyncMock(return_value={"allowed": True})
     client = await _client_factory(guardrail)
 
-    resp = await client.post("/api/v1/generate", json={"prompt": "patient note", "model": "test-model"})
+    resp = await client.post(
+        "/api/v1/generate", json={"prompt": "patient note", "model": "test-model"}
+    )
 
     assert resp.status_code == 200
     mock_provider.generate.assert_called_once()

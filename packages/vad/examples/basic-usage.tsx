@@ -23,21 +23,14 @@ export function App() {
  * Voice recorder component with VAD integration.
  */
 function VoiceRecorder() {
-  const { track, isCapturing, startCapture, stopCapture, isMuted, toggleMute } =
-    useAudioTrack({
-      noiseSuppression: true,
-      echoCancellation: true,
-    });
+  const { track, isCapturing, startCapture, stopCapture, isMuted, toggleMute } = useAudioTrack({
+    noiseSuppression: true,
+    echoCancellation: true,
+  });
 
   const { level } = useAudioLevel(track);
 
-  const {
-    isSpeaking,
-    speechProbability,
-    stats,
-    isActive,
-    error,
-  } = useVAD({
+  const { isSpeaking, speechProbability, stats, isActive, error } = useVAD({
     track,
     model: 'v5',
     positiveSpeechThreshold: 0.5,
@@ -65,25 +58,14 @@ function VoiceRecorder() {
     <div style={styles.container}>
       <h1>Voice Activity Detection Demo</h1>
 
-      {error && (
-        <div style={styles.error}>
-          Error: {error.message}
-        </div>
-      )}
+      {error && <div style={styles.error}>Error: {error.message}</div>}
 
       <div style={styles.controls}>
-        <button
-          onClick={isCapturing ? stopCapture : startCapture}
-          style={styles.button}
-        >
+        <button onClick={isCapturing ? stopCapture : startCapture} style={styles.button}>
           {isCapturing ? '⏹️ Stop' : '▶️ Start'}
         </button>
 
-        <button
-          onClick={toggleMute}
-          disabled={!isCapturing}
-          style={styles.button}
-        >
+        <button onClick={toggleMute} disabled={!isCapturing} style={styles.button}>
           {isMuted ? '🔇 Unmute' : '🔊 Mute'}
         </button>
       </div>
@@ -91,19 +73,9 @@ function VoiceRecorder() {
       <div style={styles.status}>
         <StatusRow label="Recording" value={isCapturing ? 'Yes' : 'No'} />
         <StatusRow label="VAD Active" value={isActive ? 'Yes' : 'No'} />
-        <StatusRow
-          label="Speaking"
-          value={isSpeaking ? '🎤 Yes' : '⏸️ No'}
-          highlight={isSpeaking}
-        />
-        <StatusRow
-          label="Probability"
-          value={`${(speechProbability * 100).toFixed(1)}%`}
-        />
-        <StatusRow
-          label="Audio Level"
-          value={`${(level * 100).toFixed(0)}%`}
-        />
+        <StatusRow label="Speaking" value={isSpeaking ? '🎤 Yes' : '⏸️ No'} highlight={isSpeaking} />
+        <StatusRow label="Probability" value={`${(speechProbability * 100).toFixed(1)}%`} />
+        <StatusRow label="Audio Level" value={`${(level * 100).toFixed(0)}%`} />
       </div>
 
       {stats && (
@@ -112,10 +84,7 @@ function VoiceRecorder() {
           <StatRow label="Frames Processed" value={stats.framesProcessed} />
           <StatRow label="Speech Segments" value={stats.speechSegmentsDetected} />
           <StatRow label="Misfires" value={stats.misfireCount} />
-          <StatRow
-            label="Avg Probability"
-            value={`${(stats.averageSpeechProbability * 100).toFixed(1)}%`}
-          />
+          <StatRow label="Avg Probability" value={`${(stats.averageSpeechProbability * 100).toFixed(1)}%`} />
         </div>
       )}
 
@@ -133,15 +102,7 @@ function VoiceRecorder() {
 }
 
 // Helper components
-function StatusRow({
-  label,
-  value,
-  highlight = false,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
+function StatusRow({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div style={{ ...styles.statusRow, fontWeight: highlight ? 'bold' : 'normal' }}>
       <span>{label}:</span>

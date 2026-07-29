@@ -34,10 +34,7 @@ describe('ScheduledRotationProcessor.processOnce (Phase 6 Task 6.6)', () => {
     expect(vaultPut).toHaveBeenCalledTimes(1);
     expect(vaultPut.mock.calls[0][0]).toBe('API_KEY_PEPPER');
 
-    expect(publisher.publish).toHaveBeenCalledWith(
-      'arca:secrets:invalidate',
-      JSON.stringify({ key: 'API_KEY_PEPPER' }),
-    );
+    expect(publisher.publish).toHaveBeenCalledWith('arca:secrets:invalidate', JSON.stringify({ key: 'API_KEY_PEPPER' }));
 
     expect(auditAppend).toHaveBeenCalledWith({
       action: 'vault.kv.rotate',

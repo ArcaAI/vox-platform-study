@@ -114,10 +114,10 @@ class TestFailClosed:
         monkeypatch.setattr(activities, "get_settings", _settings)
         monkeypatch.setattr(activities, "_phi_redactor", lambda: _ContractRedactor())
         # a rewrite rule with NO replacement ⇒ needs the SMR semantic pass
-        rule = RedactionRule(id="sem", type="rewrite", match="category", pattern="email", note="soften")
-        out = await env.run(
-            activities.apply_redaction, _input(rules=[rule], provider="azure")
+        rule = RedactionRule(
+            id="sem", type="rewrite", match="category", pattern="email", note="soften"
         )
+        out = await env.run(activities.apply_redaction, _input(rules=[rule], provider="azure"))
         assert out.failed_closed is True
 
 
@@ -130,11 +130,17 @@ class TestSmrRewritePass:
         monkeypatch.setattr(activities, "get_settings", _settings)
         monkeypatch.setattr(activities, "_phi_redactor", lambda: redactor)
         # a semantic (category) rewrite with no replacement drives the SMR pass
-        rule = RedactionRule(id="sem", type="rewrite", match="category", pattern="email", note="soften")
+        rule = RedactionRule(
+            id="sem", type="rewrite", match="category", pattern="email", note="soften"
+        )
         out = await env.run(
             activities.apply_redaction,
-            _input(note_text="mail me a@b.com", rules=[rule], provider="azure",
-                   response_format={"type": "json_object"}),
+            _input(
+                note_text="mail me a@b.com",
+                rules=[rule],
+                provider="azure",
+                response_format={"type": "json_object"},
+            ),
         )
         assert out.failed_closed is False
         # idempotency key present + egress guard consulted for the cloud provider

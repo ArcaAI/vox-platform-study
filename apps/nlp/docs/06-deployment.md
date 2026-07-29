@@ -38,7 +38,7 @@ docker run -d \
   -e NLP_ENVIRONMENT=production \
   -e TEXT_CLASSIFIER_USE_GPU=true \
   -e TOKEN_CLASSIFIER_USE_GPU=true \
-  --env-file .env.production \
+  --env-file .env.prod \
   --gpus all \
   --restart unless-stopped \
   --memory="4g" \
@@ -56,13 +56,13 @@ services:
     image: hope-nlp:1.0.0
     container_name: hope-nlp-prod
     ports:
-      - "8864:8864"
+      - '8864:8864'
     environment:
       - NLP_ENVIRONMENT=production
       - TEXT_CLASSIFIER_USE_GPU=true
       - TOKEN_CLASSIFIER_USE_GPU=true
     env_file:
-      - .env.production
+      - .env.prod
     volumes:
       - huggingface-cache:/root/.cache/huggingface
     deploy:
@@ -77,7 +77,7 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8864/api/v1/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:8864/api/v1/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -108,39 +108,39 @@ spec:
         app: hope-nlp
     spec:
       containers:
-      - name: nlp
-        image: hope-nlp:1.0.0
-        ports:
-        - containerPort: 8864
-        env:
-        - name: NLP_ENVIRONMENT
-          value: "production"
-        - name: TEXT_CLASSIFIER_USE_GPU
-          value: "true"
-        envFrom:
-        - secretRef:
-            name: nlp-secrets
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "1000m"
-            nvidia.com/gpu: 1
-          limits:
-            memory: "4Gi"
-            cpu: "2000m"
-            nvidia.com/gpu: 1
-        livenessProbe:
-          httpGet:
-            path: /api/v1/health
-            port: 8864
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /api/v1/health
-            port: 8864
-          initialDelaySeconds: 30
-          periodSeconds: 10
+        - name: nlp
+          image: hope-nlp:1.0.0
+          ports:
+            - containerPort: 8864
+          env:
+            - name: NLP_ENVIRONMENT
+              value: 'production'
+            - name: TEXT_CLASSIFIER_USE_GPU
+              value: 'true'
+          envFrom:
+            - secretRef:
+                name: nlp-secrets
+          resources:
+            requests:
+              memory: '2Gi'
+              cpu: '1000m'
+              nvidia.com/gpu: 1
+            limits:
+              memory: '4Gi'
+              cpu: '2000m'
+              nvidia.com/gpu: 1
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8864
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8864
+            initialDelaySeconds: 30
+            periodSeconds: 10
 ```
 
 ### Service Manifest
@@ -155,8 +155,8 @@ spec:
   selector:
     app: hope-nlp
   ports:
-  - port: 8864
-    targetPort: 8864
+    - port: 8864
+      targetPort: 8864
   type: ClusterIP
 ```
 
@@ -176,12 +176,12 @@ Requires=docker.service
 Type=simple
 User=hope
 WorkingDirectory=/opt/hope/nlp
-EnvironmentFile=/opt/hope/nlp/.env.production
+EnvironmentFile=/opt/hope/nlp/.env.prod
 ExecStartPre=-/usr/bin/docker stop hope-nlp
 ExecStartPre=-/usr/bin/docker rm hope-nlp
 ExecStart=/usr/bin/docker run --name hope-nlp \
   -p 8864:8864 \
-  --env-file /opt/hope/nlp/.env.production \
+  --env-file /opt/hope/nlp/.env.prod \
   --gpus all \
   hope-nlp:1.0.0
 ExecStop=/usr/bin/docker stop hope-nlp
@@ -193,6 +193,7 @@ WantedBy=multi-user.target
 ```
 
 Enable and start:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable hope-nlp
@@ -241,6 +242,7 @@ scrape_configs:
 ### Grafana Dashboard
 
 Import the NLP service dashboard (ID: coming soon) or create custom dashboards monitoring:
+
 - Request rate and latency
 - Model inference time
 - Error rates
@@ -259,6 +261,7 @@ Expected: `200 OK` with JSON response
 ### Readiness Probe
 
 Check if models are loaded:
+
 ```bash
 curl http://localhost:8864/api/v1/health
 ```
@@ -280,14 +283,15 @@ kubectl scale deployment hope-nlp --replicas=3
 ### Vertical Scaling
 
 Adjust resource limits:
+
 ```yaml
 resources:
   requests:
-    memory: "4Gi"
-    cpu: "2000m"
+    memory: '4Gi'
+    cpu: '2000m'
   limits:
-    memory: "8Gi"
-    cpu: "4000m"
+    memory: '8Gi'
+    cpu: '4000m'
 ```
 
 ## Backup and Recovery
@@ -306,7 +310,7 @@ tar -xzf huggingface-cache-backup.tar.gz -C ~/
 
 ```bash
 # Backup configuration
-cp .env.production .env.production.backup
+cp .env.prod .env.prod.backup
 
 # Backup dictionaries
 tar -czf dictionaries-backup.tar.gz data/dictionaries/
@@ -396,8 +400,8 @@ curl http://localhost:8864/api/v1/health
 ## Support
 
 For production support:
+
 - Check logs first
 - Review monitoring dashboards
 - Consult troubleshooting guide
 - Contact DevOps team
-

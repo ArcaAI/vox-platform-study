@@ -8,23 +8,23 @@ Follows `.claude/rules/13-nextjs-apps.md`: BFF-mandatory auth (tokens never clie
 
 ## Commands
 
-| Command | Effect |
-|---|---|
-| `pnpm dev` (root: `pnpm admin:dev`) | Dev server on port 5176 |
-| `pnpm build` / `pnpm start` | Production build (standalone) / serve on port 3000 |
-| `pnpm test` / `pnpm test:watch` | Vitest (node project for `*.test.ts`, happy-dom for `*.test.tsx`) |
-| `pnpm test:e2e` | Playwright smoke + axe a11y (`tests/e2e/`); requires the dev server (`pnpm dev`) and API :8868 running — specs skip with instructions otherwise. `ADMIN_CONSOLE_URL`/`E2E_ADMIN_USERNAME`/`E2E_ADMIN_PASSWORD` override the defaults (seeded `super_admin`) |
-| `pnpm lint` / `pnpm typecheck` | ESLint (0 warnings) / `tsc --noEmit` |
+| Command                             | Effect                                                                                                                                                                                                                                                      |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev` (root: `pnpm admin:dev`) | Dev server on port 5176                                                                                                                                                                                                                                     |
+| `pnpm build` / `pnpm start`         | Production build (standalone) / serve on port 3000                                                                                                                                                                                                          |
+| `pnpm test` / `pnpm test:watch`     | Vitest (node project for `*.test.ts`, happy-dom for `*.test.tsx`)                                                                                                                                                                                           |
+| `pnpm test:e2e`                     | Playwright smoke + axe a11y (`tests/e2e/`); requires the dev server (`pnpm dev`) and API :8868 running — specs skip with instructions otherwise. `ADMIN_CONSOLE_URL`/`E2E_ADMIN_USERNAME`/`E2E_ADMIN_PASSWORD` override the defaults (seeded `super_admin`) |
+| `pnpm lint` / `pnpm typecheck`      | ESLint (0 warnings) / `tsc --noEmit`                                                                                                                                                                                                                        |
 
 ## Environment
 
 Development loads the monorepo-root `.env.dev` (host env wins); CI/production use host env only.
 
-| Variable | Purpose |
-|---|---|
-| `API_URL` | Gateway origin for the BFF (default `http://localhost:8868`) |
+| Variable               | Purpose                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `API_URL`              | Gateway origin for the BFF (default `http://localhost:8868`)                 |
 | `ADMIN_SESSION_SECRET` | Session-cookie encryption secret, min 32 chars (AES key derived via SHA-256) |
-| `NEXT_PUBLIC_API_HOST` | Gateway origin the browser connects to directly for SSE/WS streams |
+| `NEXT_PUBLIC_API_HOST` | Gateway origin the browser connects to directly for SSE/WS streams           |
 
 ## Architecture
 

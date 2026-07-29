@@ -123,13 +123,17 @@ class NLPServiceConfig(BaseSettings):
     port: int = Field(default=int(os.getenv("PORT", "8864")))
     workers: int = Field(default=int(os.getenv("WORKERS", "1")))
 
-    opentelemetry_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
+    opentelemetry_endpoint: str | None = Field(
+        default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None)
+    )
     otlp_endpoint: str | None = Field(default=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None))
     resource_attributes_raw: str | None = Field(default=None)
     # Master switch: gates traces, metrics, AND log export (default off).
     otel_enabled: bool = Field(default=os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
     traces_enabled: bool = Field(default=os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
-    metrics_enabled: bool = Field(default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
+    metrics_enabled: bool = Field(
+        default=os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true"
+    )
 
     # Inter-service authentication. Reads NLP_SERVICE_TOKEN via the
     # env_prefix below — the exact key the gateway provisions. Empty by default
@@ -159,16 +163,24 @@ class NLPServiceConfig(BaseSettings):
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault("name", os.getenv("OTEL_SERVICE_NAME", os.getenv("SERVICE_NAME", "nlp")))
-        kwargs.setdefault("version", os.getenv("OTEL_SERVICE_VERSION", os.getenv("SERVICE_VERSION", "0.1.0")))
-        kwargs.setdefault("namespace", os.getenv("OTEL_SERVICE_NAMESPACE", os.getenv("SERVICE_NAMESPACE", "hope")))
+        kwargs.setdefault(
+            "version", os.getenv("OTEL_SERVICE_VERSION", os.getenv("SERVICE_VERSION", "0.1.0"))
+        )
+        kwargs.setdefault(
+            "namespace", os.getenv("OTEL_SERVICE_NAMESPACE", os.getenv("SERVICE_NAMESPACE", "hope"))
+        )
         kwargs.setdefault("host", os.getenv("HOST", "0.0.0.0"))
         kwargs.setdefault("port", int(os.getenv("PORT", "8864")))
         kwargs.setdefault("workers", int(os.getenv("WORKERS", "1")))
         kwargs.setdefault("otlp_endpoint", os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
         kwargs.setdefault("resource_attributes_raw", os.getenv("OTEL_RESOURCE_ATTRIBUTES"))
         kwargs.setdefault("otel_enabled", os.getenv("NLP_OTEL_ENABLED", "false").lower() == "true")
-        kwargs.setdefault("traces_enabled", os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true")
-        kwargs.setdefault("metrics_enabled", os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true")
+        kwargs.setdefault(
+            "traces_enabled", os.getenv("OTEL_TRACES_ENABLED", "true").lower() == "true"
+        )
+        kwargs.setdefault(
+            "metrics_enabled", os.getenv("OTEL_METRICS_ENABLED", "true").lower() == "true"
+        )
         super().__init__(**kwargs)
 
     @property

@@ -75,9 +75,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
   // attempted assignment from mass-assignment, applyChangesToEntity, or
   // ad-hoc service code is a defense-in-depth red flag.
   set key(_value: IGlobalSettingEntity['key']) {
-    throw new BusinessException(
-      'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.key is immutable post-construction.',
-    );
+    throw new BusinessException('Phase 0 Item 2 (TASK-302): GlobalSettingEntity.key is immutable post-construction.');
   }
 
   // @Secret marks this field for
@@ -90,9 +88,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
 
   // Immutable post-construction.
   set defaultValue(_value: IGlobalSettingEntity['defaultValue']) {
-    throw new BusinessException(
-      'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.defaultValue is immutable post-construction.',
-    );
+    throw new BusinessException('Phase 0 Item 2 (TASK-302): GlobalSettingEntity.defaultValue is immutable post-construction.');
   }
 
   // @Secret marks this field for
@@ -134,9 +130,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
 
   // Immutable post-construction.
   set locked(_value: IGlobalSettingEntity['locked']) {
-    throw new BusinessException(
-      'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.locked is immutable post-construction.',
-    );
+    throw new BusinessException('Phase 0 Item 2 (TASK-302): GlobalSettingEntity.locked is immutable post-construction.');
   }
 
   // Override BaseTenantEntity.tenantId
@@ -144,9 +138,7 @@ export class GlobalSettingEntity extends BaseTaggedEntity {
   // the row to a different tenant. Construction-time tenantId is set via
   // the BaseTenantEntity constructor, which bypasses this override.
   override set tenantId(_value: IGlobalSettingEntity['tenantId']) {
-    throw new BusinessException(
-      'Phase 0 Item 2 (TASK-302): GlobalSettingEntity.tenantId is immutable post-construction.',
-    );
+    throw new BusinessException('Phase 0 Item 2 (TASK-302): GlobalSettingEntity.tenantId is immutable post-construction.');
   }
 
   override get tenantId(): IGlobalSettingEntity['tenantId'] {

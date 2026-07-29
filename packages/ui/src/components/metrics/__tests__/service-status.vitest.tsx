@@ -106,7 +106,9 @@ describe('ServiceStatusBar (§3.2)', () => {
   });
 
   it('has no axe violations', async () => {
-    const { container } = render(<ServiceStatusBar services={SERVICES} activeSessions={14} processingJobs={23} env="Production" onRefresh={vi.fn()} />);
+    const { container } = render(
+      <ServiceStatusBar services={SERVICES} activeSessions={14} processingJobs={23} env="Production" onRefresh={vi.fn()} />,
+    );
     const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results).toHaveNoViolations();
   });

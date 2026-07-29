@@ -89,6 +89,8 @@ function setupStore() {
     setAudioError: vi.fn(),
     setActiveStream: vi.fn(),
     setActiveAudioContext: vi.fn(),
+    setSttConnectionState: vi.fn(),
+    setActivePipeline: vi.fn(),
     addTranscriptSegment: vi.fn(),
     addContextItem: vi.fn(),
     addEntities: vi.fn(),
@@ -129,9 +131,7 @@ describe('useArcaAudio — canonical speaker-label', () => {
       onTranscription({ text: 'chest pain since this morning', isFinal: true, speakerId: 'unknown' });
     });
 
-    expect(mockStoreData.addTranscriptSegment).toHaveBeenCalledWith(
-      expect.objectContaining({ speakerLabel: 'Unknown speaker' }),
-    );
+    expect(mockStoreData.addTranscriptSegment).toHaveBeenCalledWith(expect.objectContaining({ speakerLabel: 'Unknown speaker' }));
     // The raw sentinel must NEVER reach the clinician verbatim.
     const segment = mockStoreData.addTranscriptSegment.mock.calls[0][0];
     expect(segment.speakerLabel).not.toBe('unknown');
@@ -144,9 +144,7 @@ describe('useArcaAudio — canonical speaker-label', () => {
       onTranscription({ text: 'and how long has that been going on?', isFinal: true, speakerId: 'Speaker 1' });
     });
 
-    expect(mockStoreData.addTranscriptSegment).toHaveBeenCalledWith(
-      expect.objectContaining({ speakerLabel: 'Speaker 1' }),
-    );
+    expect(mockStoreData.addTranscriptSegment).toHaveBeenCalledWith(expect.objectContaining({ speakerLabel: 'Speaker 1' }));
   });
 
   it('leaves speakerLabel undefined when the result carries no speaker attribution', async () => {

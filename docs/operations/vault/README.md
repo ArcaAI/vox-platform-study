@@ -197,7 +197,7 @@ runs automatically on `./scripts/start-infra.sh --all`). `.env.dev` sets
 role (unlike dev); `infrastructure/single-deployment/vault/bootstrap/` only
 configures kv-v2/transit/AppRole, and `deployment/` (k3s+ArgoCD) only wires
 env vars. Provision it manually once per prod Vault, then keep
-`apps/api/.env.production`'s `PG_VAULT_MAX_TTL_SEC=2592000` (30d in seconds)
+`apps/api/.env.prod`'s `PG_VAULT_MAX_TTL_SEC=2592000` (30d in seconds)
 in sync with whatever `max_ttl` you set below:
 
 ```bash
@@ -528,7 +528,7 @@ checklist (it needs real infra + ≥7 days), not an automated step.
 
 - [ ] Bootstrap complete on staging k3s (Bootstrap section); **root token revoked**; the 5/3 recovery keys are **offline** (not in-cluster).
 - [ ] `monitoring/recording-rules.yaml` + `alerts.yaml` applied; Grafana dashboard imported; a deliberately-sealed node fires `VaultSealed` (prove the pipe end-to-end).
-- [ ] API deploys with the AppRole **file** contract (`VAULT_ROLE_ID_FILE` / `VAULT_WRAPPED_SECRET_ID_FILE`, from Secret `hope/hope-vault-approle`); `apps/api/.env.production` is secret-free (TASK-312 §B).
+- [ ] API deploys with the AppRole **file** contract (`VAULT_ROLE_ID_FILE` / `VAULT_WRAPPED_SECRET_ID_FILE`, from Secret `hope/hope-vault-approle`); `apps/api/.env.prod` is secret-free (TASK-312 §B).
 - [ ] The deploy pipeline runs `bootstrap/rotate-secret-id.sh` **before each rollout** (fresh single-use wrapped secret_id) — no root needed.
 - [ ] Raft snapshots scheduled (`vault operator raft snapshot save` via CronJob).
 

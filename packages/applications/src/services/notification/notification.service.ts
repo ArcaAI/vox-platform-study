@@ -280,8 +280,7 @@ export class NotificationService extends BaseService implements INotificationSer
     // field names differ from the entity columns) so read-status / tag-only
     // updates don't churn the ciphertext columns.
     const changedKeys = notification.changes as Record<string, unknown>;
-    const messageChanged =
-      'messageText' in changedKeys || 'messageRichText' in changedKeys || 'messageContent' in changedKeys;
+    const messageChanged = 'messageText' in changedKeys || 'messageRichText' in changedKeys || 'messageContent' in changedKeys;
     if (messageChanged) {
       await this.encryptMessage(notification);
     }

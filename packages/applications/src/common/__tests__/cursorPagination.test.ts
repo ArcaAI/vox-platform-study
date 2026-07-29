@@ -86,8 +86,7 @@ describe('cursorPagination engine', () => {
   });
 
   describe('toCursorPage', () => {
-    const makeRows = (n: number) =>
-      Array.from({ length: n }, (_, i) => ({ id: `id-${i}`, createdAt: new Date(2026, 0, 1, 0, 0, i) }));
+    const makeRows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `id-${i}`, createdAt: new Date(2026, 0, 1, 0, 0, i) }));
     const getKey = (r: { createdAt: Date }) => r.createdAt.toISOString();
 
     it('over-fetched (limit+1 rows) → hasMore, slices to limit, nextCursor = last returned row', () => {

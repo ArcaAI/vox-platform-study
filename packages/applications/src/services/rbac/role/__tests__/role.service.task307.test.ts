@@ -151,10 +151,7 @@ describe('RbacRoleService', () => {
       expect(mocks.roleRepo.findMany).toHaveBeenCalledWith({
         where: {
           resourceStatus: ResourceStatusType.ENABLED,
-          OR: [
-            { name: { contains: 'doc', mode: 'insensitive' } },
-            { description: { contains: 'doc', mode: 'insensitive' } },
-          ],
+          OR: [{ name: { contains: 'doc', mode: 'insensitive' } }, { description: { contains: 'doc', mode: 'insensitive' } }],
         },
         skip: 5,
         take: 5,
@@ -185,9 +182,7 @@ describe('RbacRoleService', () => {
       mocks.roleRepo.findParentRoleById.mockResolvedValue(null);
       const service = buildService(mocks);
 
-      await expect(
-        service.create({ name: 'orphan', parentRoleId: 'missing' }),
-      ).rejects.toThrow(/Parent role 'missing' not found/);
+      await expect(service.create({ name: 'orphan', parentRoleId: 'missing' })).rejects.toThrow(/Parent role 'missing' not found/);
       expect(mocks.roleRepo.create).not.toHaveBeenCalled();
     });
 
@@ -261,9 +256,7 @@ describe('RbacRoleService', () => {
       mocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       const service = buildService(mocks);
 
-      await expect(service.update('role-sys', { name: 'x' })).rejects.toThrow(
-        /Cannot modify system role 'GLOBAL_ADMIN'/,
-      );
+      await expect(service.update('role-sys', { name: 'x' })).rejects.toThrow(/Cannot modify system role 'GLOBAL_ADMIN'/);
       expect(mocks.roleRepo.update).not.toHaveBeenCalled();
     });
 
@@ -274,9 +267,7 @@ describe('RbacRoleService', () => {
       mocks.roleRepo.findParentRoleById.mockResolvedValue({ id: 'parent-1', parentRoleId: 'role-1' });
       const service = buildService(mocks);
 
-      await expect(
-        service.update('role-1', { parentRoleId: 'parent-1' }),
-      ).rejects.toThrow(/Circular reference detected/);
+      await expect(service.update('role-1', { parentRoleId: 'parent-1' })).rejects.toThrow(/Circular reference detected/);
       expect(mocks.roleRepo.update).not.toHaveBeenCalled();
     });
 
@@ -337,9 +328,7 @@ describe('RbacRoleService', () => {
       const tenantMocks = makeMocks(TENANT_ADMIN_USER);
       tenantMocks.roleRepo.findByIdGuardSelect.mockResolvedValue({ isSystemRole: true, name: 'GLOBAL_ADMIN' });
       const tenantService = buildService(tenantMocks);
-      await expect(tenantService.patch('role-sys', { resourceStatus: 'DISABLED' })).rejects.toThrow(
-        /Cannot modify system role 'GLOBAL_ADMIN'/,
-      );
+      await expect(tenantService.patch('role-sys', { resourceStatus: 'DISABLED' })).rejects.toThrow(/Cannot modify system role 'GLOBAL_ADMIN'/);
       expect(tenantMocks.roleRepo.update).not.toHaveBeenCalled();
     });
   });
@@ -466,11 +455,7 @@ describe('RbacRoleService', () => {
 
       await service.removePolicy('role-1', 'policy-1', BREAK_GLASS('team-policy'));
 
-      expect(mocks.rolePolicyRepo.softDeleteByRoleAndPolicy).toHaveBeenCalledWith(
-        'role-1',
-        'policy-1',
-        ADMIN_USER.id,
-      );
+      expect(mocks.rolePolicyRepo.softDeleteByRoleAndPolicy).toHaveBeenCalledWith('role-1', 'policy-1', ADMIN_USER.id);
 
       expect(mocks.engine.invalidateRole).toHaveBeenCalledWith('role-1');
       expect(mocks.eventEmitter.emit).toHaveBeenCalledWith(

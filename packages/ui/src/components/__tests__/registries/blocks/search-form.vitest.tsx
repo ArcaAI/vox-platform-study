@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { SearchForm } from '../../../registries/blocks/search-form'
-import { SidebarProvider, Sidebar } from '../../../shadcn/sidebar'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { SearchForm } from '../../../registries/blocks/search-form';
+import { SidebarProvider, Sidebar } from '../../../shadcn/sidebar';
 
 describe('SearchForm', () => {
   it('renders without crashing', () => {
@@ -10,8 +10,8 @@ describe('SearchForm', () => {
         <Sidebar>
           <SearchForm />
         </Sidebar>
-      </SidebarProvider>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </SidebarProvider>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

@@ -30,11 +30,7 @@ export default defineConfig({
   workers: 1,
 
   // Reporter configuration
-  reporter: [
-    ['list'],
-    ['html', { open: 'never', outputFolder: './test-results/html' }],
-    ['json', { outputFile: './test-results/results.json' }],
-  ],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: './test-results/html' }], ['json', { outputFile: './test-results/results.json' }]],
 
   // Longer timeout for audio processing tests
   timeout: 60000,
@@ -60,11 +56,7 @@ export default defineConfig({
     // Launch options
     launchOptions: {
       // Required for fake media streams in headless mode
-      args: [
-        '--use-fake-ui-for-media-stream',
-        '--use-fake-device-for-media-stream',
-        '--autoplay-policy=no-user-gesture-required',
-      ],
+      args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'],
     },
   },
 

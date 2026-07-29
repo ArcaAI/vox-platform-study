@@ -132,7 +132,9 @@ describe('ScrollSpyTimeline (§4a.3)', () => {
 
   it('computes the active milestone from the IntersectionObserver and fires onActiveChange', () => {
     const onActiveChange = vi.fn();
-    const { container } = render(<ScrollSpyTimeline milestones={MILESTONES} stickyOffset={64} onActiveChange={onActiveChange} aria-label="Releases" />);
+    const { container } = render(
+      <ScrollSpyTimeline milestones={MILESTONES} stickyOffset={64} onActiveChange={onActiveChange} aria-label="Releases" />,
+    );
     expect(MockIntersectionObserver.instances[0]?.options?.rootMargin).toContain('-64px');
     const entryFor = (id: string, isIntersecting: boolean, top: number): MockEntry => ({
       target: container.querySelector(`[data-slot="timeline-entry"][data-id="${id}"]`)!,

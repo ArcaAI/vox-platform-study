@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel, Field
 
 from nlp.schemas.common import Entity, SupportedLanguage
@@ -10,13 +9,20 @@ from nlp.schemas.common import Entity, SupportedLanguage
 
 class TextClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
-    language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
+    language: SupportedLanguage | None = Field(
+        default=SupportedLanguage.ENGLISH, description="Language of the text"
+    )
     # Optional per-request model override (gateway-injected from the
     # AiTaskDefault registry). None → the startup default instance, unchanged.
-    model_name: str | None = Field(default=None, description="Optional HF model id overriding the default classifier")
+    model_name: str | None = Field(
+        default=None, description="Optional HF model id overriding the default classifier"
+    )
     # Gateway-injected `AiModel.localPath`. Registry-derived,
     # never caller-chosen; absent ⇒ load by `model_name` exactly as before.
-    model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
+    model_path: str | None = Field(
+        default=None,
+        description="Optional local weights directory (gateway-injected AiModel.localPath)",
+    )
 
 
 class TextClassificationResponse(BaseModel):
@@ -32,12 +38,19 @@ class TextClassificationResponse(BaseModel):
 class TokenClassificationRequest(BaseModel):
     text: str = Field(..., description="Input text")
     aggregation_strategy: str = Field(default="simple", description="Entity aggregation strategy")
-    language: SupportedLanguage | None = Field(default=SupportedLanguage.ENGLISH, description="Language of the text")
+    language: SupportedLanguage | None = Field(
+        default=SupportedLanguage.ENGLISH, description="Language of the text"
+    )
     # Optional per-request model override (gateway-injected from the
     # AiTaskDefault registry). None → the startup default instance, unchanged.
-    model_name: str | None = Field(default=None, description="Optional HF model id overriding the default NER model")
+    model_name: str | None = Field(
+        default=None, description="Optional HF model id overriding the default NER model"
+    )
     # Gateway-injected `AiModel.localPath`.
-    model_path: str | None = Field(default=None, description="Optional local weights directory (gateway-injected AiModel.localPath)")
+    model_path: str | None = Field(
+        default=None,
+        description="Optional local weights directory (gateway-injected AiModel.localPath)",
+    )
 
 
 class Vitals(BaseModel):
@@ -59,7 +72,14 @@ class Vitals(BaseModel):
         """True when at least one vital was extracted."""
         return any(
             value is not None
-            for value in (self.systolic, self.diastolic, self.heart_rate, self.spo2, self.temperature_c, self.weight_kg)
+            for value in (
+                self.systolic,
+                self.diastolic,
+                self.heart_rate,
+                self.spo2,
+                self.temperature_c,
+                self.weight_kg,
+            )
         )
 
 

@@ -76,9 +76,7 @@ class LocalAgreementPolicy:
         # hypotheses.
         agreement = 0
         if self._prev_norm_tokens is not None:
-            for prev_tok, cur_tok in zip(
-                self._prev_norm_tokens, norm_tokens, strict=False
-            ):
+            for prev_tok, cur_tok in zip(self._prev_norm_tokens, norm_tokens, strict=False):
                 if prev_tok != cur_tok:
                     break
                 agreement += 1
@@ -90,9 +88,7 @@ class LocalAgreementPolicy:
         # point rather than re-slice the stale count, which would silently
         # change the settled region's meaning.
         consistent = 0
-        for committed_tok, cur_tok in zip(
-            self._committed_norm_tokens, norm_tokens, strict=False
-        ):
+        for committed_tok, cur_tok in zip(self._committed_norm_tokens, norm_tokens, strict=False):
             if committed_tok != cur_tok:
                 break
             consistent += 1

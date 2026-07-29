@@ -36,8 +36,7 @@ vi.mock('pdfjs-dist', () => ({
             numPages: pdfMock.pages.length,
             getPage: (n: number) =>
               Promise.resolve({
-                getTextContent: () =>
-                  Promise.resolve({ items: pdfMock.pages[n - 1].map((str) => ({ str })) }),
+                getTextContent: () => Promise.resolve({ items: pdfMock.pages[n - 1].map((str) => ({ str })) }),
               }),
           }),
     };
@@ -92,7 +91,10 @@ describe('extractTextFromFile (TASK-342 GAP #5)', () => {
 
 describe('extractTextFromFile — PDF text layer (TASK-344 A1)', () => {
   it('extracts text from a digital (text-layer) PDF', async () => {
-    pdfMock.pages = [['WBC', '11.2', 'x10^9/L', '(high)'], ['Hemoglobin', '9.8']];
+    pdfMock.pages = [
+      ['WBC', '11.2', 'x10^9/L', '(high)'],
+      ['Hemoglobin', '9.8'],
+    ];
     const out = await extractTextFromFile(makePdf());
     expect(out).toContain('WBC 11.2');
     expect(out).toContain('Hemoglobin 9.8');

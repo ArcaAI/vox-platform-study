@@ -202,9 +202,7 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           inputTokens: smrResponse.inputTokens,
           outputTokens: smrResponse.outputTokens,
         });
-        await this.encryptBestEffort('SummaryMeta', () =>
-          this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
-        );
+        await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
         await this.summaryMetaRepository.create(summaryMeta);
 
         // Step 6: Complete (100%)

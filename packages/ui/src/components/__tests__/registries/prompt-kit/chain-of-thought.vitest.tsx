@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import {
   ChainOfThought,
   ChainOfThoughtStep,
   ChainOfThoughtItem,
   ChainOfThoughtTrigger,
   ChainOfThoughtContent,
-} from '../../../registries/prompt-kit/chain-of-thought'
+} from '../../../registries/prompt-kit/chain-of-thought';
 
 describe('ChainOfThought', () => {
   it('renders without crashing', () => {
@@ -19,7 +19,7 @@ describe('ChainOfThought', () => {
           </ChainOfThoughtItem>
         </ChainOfThoughtStep>
       </ChainOfThought>,
-    )
-    expect(screen.getByText('Step 1')).toBeInTheDocument()
-  })
-})
+    );
+    expect(screen.getByText('Step 1')).toBeInTheDocument();
+  });
+});

@@ -1792,9 +1792,7 @@ class TestRedaction:
         """A redaction that FAILS CLOSED forces a FLAG — a note the doctor expected
         redacted must never slip through silently."""
         recorder = StubRecorder()
-        config = StubConfig(
-            verdicts=["PASS"], policy=HarnessPolicy(), redaction_failed_closed=True
-        )
+        config = StubConfig(verdicts=["PASS"], policy=HarnessPolicy(), redaction_failed_closed=True)
         async with await _env() as env:
             tq = f"harness-test-{uuid.uuid4()}"
             async with Worker(

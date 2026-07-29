@@ -45,7 +45,7 @@ def _split_inline_think(
             if before:
                 segments.append(("reasoning" if in_think else "chunk", before))
             in_think = not in_think
-            remaining = remaining[idx + len(tag):]
+            remaining = remaining[idx + len(tag) :]
     return segments, in_think
 
 
@@ -100,7 +100,10 @@ class OllamaProvider:
             payload["system"] = request.system_prompt
 
         if request.response_format is not None:
-            if request.response_format.type == "json_schema" and request.response_format.json_schema:
+            if (
+                request.response_format.type == "json_schema"
+                and request.response_format.json_schema
+            ):
                 payload["format"] = request.response_format.json_schema
             elif request.response_format.type == "json":
                 payload["format"] = "json"
@@ -180,9 +183,13 @@ class OllamaProvider:
                         )
                         span.set_attribute("gen_ai.usage.input_tokens", stats.prompt_tokens)
                         span.set_attribute("gen_ai.usage.output_tokens", stats.predicted_tokens)
-                        span.set_attribute("gen_ai.response.finish_reason", stats.stop_reason_raw or "stop")
+                        span.set_attribute(
+                            "gen_ai.response.finish_reason", stats.stop_reason_raw or "stop"
+                        )
                         yield StreamChunk(type="usage", data=stats.model_dump())
-                        yield StreamChunk(type="done", data={"finish_reason": stats.stop_reason_raw or "stop"})
+                        yield StreamChunk(
+                            type="done", data={"finish_reason": stats.stop_reason_raw or "stop"}
+                        )
                         return
                     thinking = data.get("thinking", "")
                     if thinking:

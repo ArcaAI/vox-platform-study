@@ -125,10 +125,7 @@ const STORAGE_PROBE_TIMEOUT_MS = 5000;
 
 /** Reject after `ms` so an unreachable/black-hole MinIO endpoint can't hang the seed. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
-  ]);
+  return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms))]);
 }
 
 // =============================================================================
@@ -162,9 +159,7 @@ function escapePdfText(text: string): string {
  * renders the given lines — a genuine `application/pdf` blob.
  */
 function buildSamplePdf(lines: string[]): Buffer {
-  const text = lines
-    .map((line, i) => `BT /F1 16 Tf 72 ${740 - i * 24} Td (${escapePdfText(line)}) Tj ET`)
-    .join('\n');
+  const text = lines.map((line, i) => `BT /F1 16 Tf 72 ${740 - i * 24} Td (${escapePdfText(line)}) Tj ET`).join('\n');
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
@@ -337,9 +332,33 @@ async function main(): Promise<void> {
     { id: MEDIA_IDS.image, bucket: ATTACH_BUCKET, key: KEYS.image, ext: 'png', mimeType: 'image/png', size: sizes.image, kind: 'image' },
     { id: MEDIA_IDS.pdf, bucket: ATTACH_BUCKET, key: KEYS.pdf, ext: 'pdf', mimeType: 'application/pdf', size: sizes.pdf, kind: 'pdf' },
     { id: MEDIA_IDS.audio, bucket: AUDIO_BUCKET, key: KEYS.audio, ext: 'wav', mimeType: 'audio/wav', size: sizes.audio, kind: 'audio' },
-    { id: MEDIA_IDS.mixedImage, bucket: ATTACH_BUCKET, key: KEYS.mixedImage, ext: 'png', mimeType: 'image/png', size: sizes.mixedImage, kind: 'mixed-image' },
-    { id: MEDIA_IDS.mixedFile, bucket: ATTACH_BUCKET, key: KEYS.mixedFile, ext: 'txt', mimeType: 'text/plain', size: sizes.mixedFile, kind: 'mixed-file' },
-    { id: MEDIA_IDS.recordingWav, bucket: AUDIO_BUCKET, key: KEYS.recordingWav, ext: 'wav', mimeType: 'audio/wav', size: sizes.recordingWav, kind: 'recording-audio' },
+    {
+      id: MEDIA_IDS.mixedImage,
+      bucket: ATTACH_BUCKET,
+      key: KEYS.mixedImage,
+      ext: 'png',
+      mimeType: 'image/png',
+      size: sizes.mixedImage,
+      kind: 'mixed-image',
+    },
+    {
+      id: MEDIA_IDS.mixedFile,
+      bucket: ATTACH_BUCKET,
+      key: KEYS.mixedFile,
+      ext: 'txt',
+      mimeType: 'text/plain',
+      size: sizes.mixedFile,
+      kind: 'mixed-file',
+    },
+    {
+      id: MEDIA_IDS.recordingWav,
+      bucket: AUDIO_BUCKET,
+      key: KEYS.recordingWav,
+      ext: 'wav',
+      mimeType: 'audio/wav',
+      size: sizes.recordingWav,
+      kind: 'recording-audio',
+    },
   ];
   for (const m of mediaRows) {
     const bucketId = m.bucket === ATTACH_BUCKET ? attachBucketRow?.id : audioBucketRow?.id;

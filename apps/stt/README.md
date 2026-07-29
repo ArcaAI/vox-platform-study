@@ -41,7 +41,7 @@ STT is a Python FastAPI service (port **8861**) that provides:
 >
 > The earlier **Qdrant-backed speaker store was removed by design** during the
 > diarization refactor (commit `feat(diarization): implement speaker tracking and
-> embedding extraction`). Any provisioned `stt_speaker_embeddings` Qdrant
+embedding extraction`). Any provisioned `stt_speaker_embeddings` Qdrant
 > collection is **legacy/unused** by STT — the absence of a `core/vectorstore`
 > module is **intentional, not a regression**.
 
@@ -207,11 +207,7 @@ pip install -e ".[dev,test]"
 
 ### Configuration
 
-Copy the example environment file from the monorepo root:
-
-```bash
-cp .env.example .env.dev
-```
+`pnpm setup:dev` creates `.env.dev` for you (from the consolidated `.env.sample` at the repo root — TASK-583), only if it doesn't already exist. Manually: `cp .env.sample .env.dev`.
 
 #### Core Service Configuration
 
@@ -222,7 +218,7 @@ cp .env.example .env.dev
 | `MINIO_ENDPOINT`   | MinIO endpoint               | `localhost:9000`                                             |
 | `MINIO_ACCESS_KEY` | MinIO access key             | `minio_admin`                                                |
 | `MINIO_SECRET_KEY` | MinIO secret key             | `minio_admin`                                                |
-| `API_GATEWAY_URL`  | Internal API Gateway URL     | `http://localhost:8868/api/v1`                                      |
+| `API_GATEWAY_URL`  | Internal API Gateway URL     | `http://localhost:8868/api/v1`                               |
 | `API_GATEWAY_KEY`  | Internal service auth key    | -                                                            |
 
 #### ASR Engine Configuration
@@ -247,22 +243,22 @@ cp .env.example .env.dev
 
 #### Speaker Diarization (Pyannote)
 
-| Variable                           | Description                          | Default                                     |
-| ---------------------------------- | ------------------------------------ | ------------------------------------------- |
-| `DIARIZATION_HF_MODEL_ID`          | Speaker-embedding model (a `speechbrain/*` id selects the ECAPA-TDNN service) | `pyannote/wespeaker-voxceleb-resnet34-LM` |
-| `DIARIZATION_SIMILARITY_THRESHOLD` | Speaker matching threshold (0.0–1.0) | `0.7`                                       |
-| `DIARIZATION_DEVICE`               | Inference device (auto, cuda, cpu)   | `auto`                                      |
-| `VOICE_PROFILE_EMBEDDING_DIM`      | Embedding dimension — must match the `UserVoiceProfile.embedding` column (256 = wespeaker; 192 = ECAPA-TDNN) | `256`   |
+| Variable                           | Description                                                                                                  | Default                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `DIARIZATION_HF_MODEL_ID`          | Speaker-embedding model (a `speechbrain/*` id selects the ECAPA-TDNN service)                                | `pyannote/wespeaker-voxceleb-resnet34-LM` |
+| `DIARIZATION_SIMILARITY_THRESHOLD` | Speaker matching threshold (0.0–1.0)                                                                         | `0.7`                                     |
+| `DIARIZATION_DEVICE`               | Inference device (auto, cuda, cpu)                                                                           | `auto`                                    |
+| `VOICE_PROFILE_EMBEDDING_DIM`      | Embedding dimension — must match the `UserVoiceProfile.embedding` column (256 = wespeaker; 192 = ECAPA-TDNN) | `256`                                     |
 
 #### Punctuation Restoration (Cadence)
 
-| Variable                     | Description                                       | Default   |
-| ---------------------------- | ------------------------------------------------- | --------- |
-| `PUNCTUATION_ENABLED`        | Global kill-switch for Cadence punctuation        | `false`   |
-| `PUNCTUATION_MODEL_NAME`     | `Cadence` (1B) or `Cadence-Fast` (270M)           | `Cadence` |
-| `PUNCTUATION_MODEL_CACHE_DIR`| Weights cache dir (empty = HF default cache)      | -         |
-| `PUNCTUATION_DEVICE`         | Inference device (`cpu`, `cuda`, `auto`)          | `auto`    |
-| `PUNCTUATION_MAX_LENGTH`     | Max sequence length / sliding window width        | `300`     |
+| Variable                      | Description                                  | Default   |
+| ----------------------------- | -------------------------------------------- | --------- |
+| `PUNCTUATION_ENABLED`         | Global kill-switch for Cadence punctuation   | `false`   |
+| `PUNCTUATION_MODEL_NAME`      | `Cadence` (1B) or `Cadence-Fast` (270M)      | `Cadence` |
+| `PUNCTUATION_MODEL_CACHE_DIR` | Weights cache dir (empty = HF default cache) | -         |
+| `PUNCTUATION_DEVICE`          | Inference device (`cpu`, `cuda`, `auto`)     | `auto`    |
+| `PUNCTUATION_MAX_LENGTH`      | Max sequence length / sliding window width   | `300`     |
 
 `PUNCTUATION_ENABLED` defaults to `false`: the production Whisper pipelines
 already emit punctuation/casing, and `cadence-punctuation 1.1.0` cannot load
@@ -278,12 +274,12 @@ combination that is known to load the model.
 
 #### Worker & Inference
 
-| Variable              | Description                         | Default           |
-| --------------------- | ----------------------------------- | ----------------- |
-| `WORKER_THREADS`          | Dramatiq worker threads per process     | `4`               |
-| `WORKER_POLL_TIMEOUT_MS`  | Consumer poll max-backoff in ms          | `1000`            |
-| `WORKER_MAX_RETRIES`      | Max retry attempts                       | `3`               |
-| `INFERENCE_POOL_SIZE` | ProcessPoolExecutor size (0 = auto) | `0`               |
+| Variable                 | Description                         | Default |
+| ------------------------ | ----------------------------------- | ------- |
+| `WORKER_THREADS`         | Dramatiq worker threads per process | `4`     |
+| `WORKER_POLL_TIMEOUT_MS` | Consumer poll max-backoff in ms     | `1000`  |
+| `WORKER_MAX_RETRIES`     | Max retry attempts                  | `3`     |
+| `INFERENCE_POOL_SIZE`    | ProcessPoolExecutor size (0 = auto) | `0`     |
 
 #### Future / Reserved
 
@@ -374,18 +370,18 @@ Health lives under the `/api/v1` prefix; internal, transcription, streaming, and
 voice-profile routers mount their own prefixes. Browsers reach transcription and
 streaming only through the API Gateway.
 
-| Method | Endpoint                          | Description                     |
-| ------ | --------------------------------- | ------------------------------- |
+| Method | Endpoint                                        | Description                   |
+| ------ | ----------------------------------------------- | ----------------------------- |
 | `GET`  | `/api/v1/health` `/health/live` `/health/ready` | Health / liveness / readiness |
-| `GET`  | `/api/v1/ready` `/api/v1/live`    | Readiness / liveness aliases    |
-| `GET`  | `/metrics`                        | Prometheus metrics              |
-| `GET`  | `/internal/cache/stats`           | Model cache statistics          |
-| `POST` | `/internal/cache/clear`           | Clear model cache               |
-| `GET`  | `/internal/cache/model/{slug}`    | Per-model cache entry           |
-| `GET`  | `/internal/pipelines/loaded`      | Loaded pipeline inventory       |
-| `GET`  | `/internal/sessions`              | Streaming session inventory     |
-| `GET`  | `/internal/streaming/status`      | Streaming subsystem status      |
-| `POST` | `/internal/sessions/cleanup`      | Reap stale streaming sessions   |
+| `GET`  | `/api/v1/ready` `/api/v1/live`                  | Readiness / liveness aliases  |
+| `GET`  | `/metrics`                                      | Prometheus metrics            |
+| `GET`  | `/internal/cache/stats`                         | Model cache statistics        |
+| `POST` | `/internal/cache/clear`                         | Clear model cache             |
+| `GET`  | `/internal/cache/model/{slug}`                  | Per-model cache entry         |
+| `GET`  | `/internal/pipelines/loaded`                    | Loaded pipeline inventory     |
+| `GET`  | `/internal/sessions`                            | Streaming session inventory   |
+| `GET`  | `/internal/streaming/status`                    | Streaming subsystem status    |
+| `POST` | `/internal/sessions/cleanup`                    | Reap stale streaming sessions |
 
 ## Development
 
@@ -594,16 +590,35 @@ Registry name → runtime, from `processors/asr_capabilities.py`. Engine names a
 `AiModelFormat` values lowercased, so YAML engine strings and registry keys are
 one vocabulary.
 
-| Registry name           | Model Source              | Runtime          | Best For                          |
-| ----------------------- | ------------------------- | ---------------- | --------------------------------- |
-| `faster_whisper`        | HuggingFace               | CTranslate2      | Fast CPU/CUDA Whisper, batch+stream |
-| `onnx` / `onnx_optimum` | HuggingFace               | ONNX Runtime     | Offline CPU/GPU (optimum adds streaming) |
-| `whisper_cpp`           | GGUF (whisper-large-v3-turbo) | ggml (pywhispercpp) | CPU/Metal/CUDA offline (TASK-507) |
-| `safetensor`            | HuggingFace               | PyTorch/Transformers | CUDA/MPS/CPU HF models          |
-| `nemo`                  | HuggingFace / NVIDIA NGC  | PyTorch (NeMo)   | High-accuracy Parakeet, CUDA GPUs |
-| `parakeet_cpp`          | ggml quantized            | ggml             | CPU/Metal/CUDA Parakeet (TASK-505 P3) |
-| `azure_speech`          | Azure Cloud API           | REST/WebSocket   | Cloud-hosted, no GPU              |
-| `azure_foundry`         | Azure AI Foundry (MAI)    | Cloud (batch)    | Cloud batch preview (TASK-505 P3) |
+| Registry name           | Model Source                  | Runtime              | Best For                                    |
+| ----------------------- | ----------------------------- | -------------------- | ------------------------------------------- |
+| `faster_whisper`        | HuggingFace                   | CTranslate2          | Fast CPU/CUDA Whisper, batch+stream         |
+| `onnx` / `onnx_optimum` | HuggingFace                   | ONNX Runtime         | Offline CPU/GPU (optimum adds streaming)    |
+| `whisper_cpp`           | GGUF (whisper-large-v3-turbo) | ggml (pywhispercpp)  | CPU/Metal/CUDA offline (TASK-507)           |
+| `safetensor`            | HuggingFace                   | PyTorch/Transformers | CUDA/MPS/CPU HF models                      |
+| `nemo`                  | HuggingFace / NVIDIA NGC      | PyTorch (NeMo)       | High-accuracy Parakeet, CUDA GPUs           |
+| `parakeet_cpp`          | ggml quantized                | ggml                 | CPU/Metal/CUDA Parakeet (TASK-505 P3)       |
+| `azure_speech`          | Azure Cloud API               | REST/WebSocket       | Cloud-hosted, no GPU                        |
+| `azure_foundry`         | Azure AI Foundry (MAI)        | Cloud (batch)        | Cloud batch preview (TASK-505 P3)           |
+| `sarvam`                | Sarvam Cloud API              | REST                 | Indic languages + English, BYOK (TASK-567)  |
+| `openai`                | OpenAI Cloud API              | REST                 | `gpt-4o-transcribe` family, BYOK (TASK-567) |
+
+### Per-tenant BYOK + fallback (TASK-567)
+
+`azure_speech`, `sarvam`, and `openai` accept an optional per-tenant credential
+override (`provider_overrides`, keyed by `azure-speech`/`sarvam`/`openai`) instead
+of the env-only keys above — the gateway resolves a tenant's
+`TenantSttProviderCredential` rows and injects the decrypted override into the
+streaming session-create request (in-memory only, never persisted/logged) or the
+Dramatiq batch worker pulls it via `GET /internal/stt/provider-overrides`. A
+tenant may also configure a `fallbackPipelineId`: `SessionManager`'s
+`EngineSwitchController` swaps the live session's ASR engine to that pipeline
+one-way on a classified outage (auth/quota immediately, transient after N
+consecutive failures) or on a manual `POST
+/internal/streaming/sessions/{id}/switch`, publishing a `status`/
+`provider_switched` result on the session's result stream; `transcribe_file`
+re-dispatches once on the fallback within the same Dramatiq attempt for batch
+jobs. See `docs/implementation/TASK-567-Tenant-STT-Fallback-Provider-BYOK/README.md`.
 
 ## Documentation
 

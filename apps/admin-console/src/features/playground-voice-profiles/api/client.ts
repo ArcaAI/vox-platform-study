@@ -22,29 +22,29 @@ export const MAX_LABEL_LENGTH = 100;
  * FormData bodies so fetch derives the multipart boundary itself.
  */
 export async function enrollVoiceProfile({ files, label }: EnrollVoiceProfileInput): Promise<VoiceProfile> {
-    const form = new FormData();
-    for (const file of files) {
-        form.append('files', file);
-    }
-    if (label) {
-        form.append('label', label);
-    }
-    return (await request<VoiceProfile>(`${BASE}/enroll`, { method: 'POST', body: form })).data;
+  const form = new FormData();
+  for (const file of files) {
+    form.append('files', file);
+  }
+  if (label) {
+    form.append('label', label);
+  }
+  return (await request<VoiceProfile>(`${BASE}/enroll`, { method: 'POST', body: form })).data;
 }
 
 export function listVoiceProfiles(): Promise<VoiceProfile[]> {
-    return getJson(BASE);
+  return getJson(BASE);
 }
 
 export function activateVoiceProfile(id: string): Promise<VoiceProfileToggleResponse> {
-    return patchJson(`${BASE}/${encodeURIComponent(id)}/activate`);
+  return patchJson(`${BASE}/${encodeURIComponent(id)}/activate`);
 }
 
 export function deactivateVoiceProfile(id: string): Promise<VoiceProfileToggleResponse> {
-    return patchJson(`${BASE}/${encodeURIComponent(id)}/deactivate`);
+  return patchJson(`${BASE}/${encodeURIComponent(id)}/deactivate`);
 }
 
 /** DELETE :id — biometric removal; returns the removed row. */
 export function deleteVoiceProfile(id: string): Promise<VoiceProfile> {
-    return deleteJson<VoiceProfile>(`${BASE}/${encodeURIComponent(id)}`);
+  return deleteJson<VoiceProfile>(`${BASE}/${encodeURIComponent(id)}`);
 }

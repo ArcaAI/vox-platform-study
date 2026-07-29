@@ -101,7 +101,9 @@ class TestAssembleWithSegmentBlock:
             [SensorResult(name="numeric_dose", score=0.0, passed=False, claims_flagged=["x"])],
             enabled=True,
         )
-        assembled = assemble_generation_prompt("USER", "KB_BLOCK", regen_feedback=fb, segment_block=seg)
+        assembled = assemble_generation_prompt(
+            "USER", "KB_BLOCK", regen_feedback=fb, segment_block=seg
+        )
         assert assembled.index("KB_BLOCK") < assembled.index("[[seg:")
         assert assembled.index(_SEG_A) < assembled.index("numeric_dose")
 

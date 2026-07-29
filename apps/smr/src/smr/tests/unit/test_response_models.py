@@ -124,9 +124,7 @@ class TestResponseModelSerialization:
         assert data["message"] is None
 
     def test_readiness_response_not_ready(self):
-        resp = ReadinessResponse(
-            status="unhealthy", message="No healthy providers available"
-        )
+        resp = ReadinessResponse(status="unhealthy", message="No healthy providers available")
         data = resp.model_dump()
         assert data["status"] == "unhealthy"
         assert "No healthy" in data["message"]

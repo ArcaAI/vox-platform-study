@@ -241,7 +241,9 @@ class TestCreateSession:
 
         assert resp.status_code == 422  # Validation error
 
-    def test_create_session_forwards_audio_bucket_name(self, client, mock_session_manager, mock_session):
+    def test_create_session_forwards_audio_bucket_name(
+        self, client, mock_session_manager, mock_session
+    ):
         """Posting audio_bucket_name should be forwarded verbatim to SessionManager.create_session."""
         mock_session_manager.create_session = AsyncMock(return_value=mock_session)
 
@@ -259,7 +261,9 @@ class TestCreateSession:
         kwargs = mock_session_manager.create_session.call_args.kwargs
         assert kwargs["audio_bucket_name"] == "hope-audio-arcaai"
 
-    def test_create_session_defaults_audio_bucket_name(self, client, mock_session_manager, mock_session):
+    def test_create_session_defaults_audio_bucket_name(
+        self, client, mock_session_manager, mock_session
+    ):
         """Omitting audio_bucket_name should default to the legacy 'hope-audio' fallback."""
         mock_session_manager.create_session = AsyncMock(return_value=mock_session)
 
@@ -276,7 +280,9 @@ class TestCreateSession:
         kwargs = mock_session_manager.create_session.call_args.kwargs
         assert kwargs["audio_bucket_name"] == "hope-audio"
 
-    def test_create_session_forwards_storage_descriptor(self, client, mock_session_manager, mock_session):
+    def test_create_session_forwards_storage_descriptor(
+        self, client, mock_session_manager, mock_session
+    ):
         """A `storage` descriptor should be forwarded verbatim to create_session."""
         mock_session_manager.create_session = AsyncMock(return_value=mock_session)
 

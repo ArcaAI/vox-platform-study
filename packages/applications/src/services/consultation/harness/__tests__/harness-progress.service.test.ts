@@ -45,10 +45,7 @@ function buildDeps(opts: BuildOpts = {}) {
     unsubscribeFromChannel: vi.fn(),
   };
 
-  const service = new HarnessProgressService(
-    cacheService as any,
-    redisSubscriber as any,
-  );
+  const service = new HarnessProgressService(cacheService as any, redisSubscriber as any);
 
   return { service, cacheService, redisSubscriber, channelMessages$ };
 }
@@ -154,7 +151,14 @@ describe('HarnessProgressService — reportProgress folding', () => {
 
   it('folds an advancing stage: prior stages complete, the new one becomes active', async () => {
     const prior = snapshotOf([
-      { stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'active', attempt: 1, at: '2026-06-10T00:00:00.000Z' },
+      {
+        stage: 'extracting_information',
+        label: 'Extracting key information',
+        ordinal: 1,
+        status: 'active',
+        attempt: 1,
+        at: '2026-06-10T00:00:00.000Z',
+      },
     ]);
     const { service, cacheService } = buildDeps({ snapshot: prior });
 
@@ -197,7 +201,13 @@ describe('HarnessProgressService — reportProgress folding', () => {
 
     // A slow stage-2 HTTP request landing after stage 3 was folded must not
     // rewind the checklist (lost-update flicker).
-    const ack = await service.reportProgress(CID, { tenantId: TENANT, stage: 'assembling_context', label: 'Assembling context', ordinal: 2, total: 5 });
+    const ack = await service.reportProgress(CID, {
+      tenantId: TENANT,
+      stage: 'assembling_context',
+      label: 'Assembling context',
+      ordinal: 2,
+      total: 5,
+    });
 
     expect(ack).toEqual({ ok: true });
     expect(cacheService.setex).not.toHaveBeenCalled();
@@ -214,7 +224,14 @@ describe('HarnessProgressService — reportProgress folding', () => {
     );
     const { service, cacheService } = buildDeps({ snapshot: prior });
 
-    const ack = await service.reportProgress(CID, { tenantId: TENANT, jobId: 'harness-doc-1', stage: 'finalizing_draft', label: 'Finalizing the draft', ordinal: 5, total: 5 });
+    const ack = await service.reportProgress(CID, {
+      tenantId: TENANT,
+      jobId: 'harness-doc-1',
+      stage: 'finalizing_draft',
+      label: 'Finalizing the draft',
+      ordinal: 5,
+      total: 5,
+    });
 
     expect(ack).toEqual({ ok: true });
     expect(cacheService.publish).not.toHaveBeenCalled();
@@ -246,13 +263,19 @@ describe('HarnessProgressService — reportProgress folding', () => {
   });
 
   it('a new jobId also reopens a feed previously closed by a terminal event', async () => {
-    const prior = snapshotOf(
-      [{ stage: 'finalizing_draft', label: 'Finalizing the draft', ordinal: 5, status: 'completed', attempt: 1, at: 't5' }],
-      { closed: true },
-    );
+    const prior = snapshotOf([{ stage: 'finalizing_draft', label: 'Finalizing the draft', ordinal: 5, status: 'completed', attempt: 1, at: 't5' }], {
+      closed: true,
+    });
     const { service, cacheService } = buildDeps({ snapshot: prior });
 
-    await service.reportProgress(CID, { tenantId: TENANT, jobId: 'harness-doc-2', stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, total: 5 });
+    await service.reportProgress(CID, {
+      tenantId: TENANT,
+      jobId: 'harness-doc-2',
+      stage: 'extracting_information',
+      label: 'Extracting key information',
+      ordinal: 1,
+      total: 5,
+    });
 
     const event = lastPublished(cacheService);
     expect(event.closed).toBe(false);
@@ -323,7 +346,14 @@ describe('HarnessProgressService — reportProgress folding', () => {
   it('folds tenantId into the published event (accepted AND used)', async () => {
     const { service, cacheService } = buildDeps();
 
-    await service.reportProgress(CID, { tenantId: TENANT, jobId: 'harness-doc-1', stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, total: 5 });
+    await service.reportProgress(CID, {
+      tenantId: TENANT,
+      jobId: 'harness-doc-1',
+      stage: 'extracting_information',
+      label: 'Extracting key information',
+      ordinal: 1,
+      total: 5,
+    });
 
     expect(lastPublished(cacheService).tenantId).toBe(TENANT);
   });
@@ -474,10 +504,9 @@ describe('HarnessProgressService — SSE relay', () => {
       [{ stage: 'extracting_information', label: 'Extracting key information', ordinal: 1, status: 'active', attempt: 1, at: 't1' }],
       { updatedAt: '2026-06-10T00:00:01.000Z' },
     );
-    const gapEvent = snapshotOf(
-      [{ stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'active', attempt: 1, at: 't2' }],
-      { updatedAt: '2026-06-10T00:00:02.000Z' },
-    );
+    const gapEvent = snapshotOf([{ stage: 'assembling_context', label: 'Assembling context', ordinal: 2, status: 'active', attempt: 1, at: 't2' }], {
+      updatedAt: '2026-06-10T00:00:02.000Z',
+    });
     // Published in the snapshot-read window — the old snapshot-then-subscribe
     // order dropped this on the floor.
     refcounted.publish(CHANNEL, gapEvent);

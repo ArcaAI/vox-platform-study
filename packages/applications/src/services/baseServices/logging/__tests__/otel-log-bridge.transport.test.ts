@@ -62,9 +62,7 @@ describe('OTelLogBridgeTransport', () => {
   it('should include log message as body', () => {
     transport.log(createEntry({ message: 'Hello world' }));
 
-    expect(mockEmit).toHaveBeenCalledWith(
-      expect.objectContaining({ body: 'Hello world' }),
-    );
+    expect(mockEmit).toHaveBeenCalledWith(expect.objectContaining({ body: 'Hello world' }));
   });
 
   describe('severity mapping', () => {
@@ -77,19 +75,16 @@ describe('OTelLogBridgeTransport', () => {
       ['fatal', 21, 'FATAL'],
     ];
 
-    it.each(cases)(
-      'should map %s to SeverityNumber %d',
-      (level, expectedNumber, expectedText) => {
-        transport.log(createEntry({ level, levelNumber: expectedNumber * 10 }));
+    it.each(cases)('should map %s to SeverityNumber %d', (level, expectedNumber, expectedText) => {
+      transport.log(createEntry({ level, levelNumber: expectedNumber * 10 }));
 
-        expect(mockEmit).toHaveBeenCalledWith(
-          expect.objectContaining({
-            severityNumber: expectedNumber,
-            severityText: expectedText,
-          }),
-        );
-      },
-    );
+      expect(mockEmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severityNumber: expectedNumber,
+          severityText: expectedText,
+        }),
+      );
+    });
   });
 
   it('should include context as nestjs.context attribute', () => {
@@ -147,9 +142,11 @@ describe('OTelLogBridgeTransport', () => {
   });
 
   it('should include metadata as attributes', () => {
-    transport.log(createEntry({
-      meta: { duration: 150, action: 'login' },
-    }));
+    transport.log(
+      createEntry({
+        meta: { duration: 150, action: 'login' },
+      }),
+    );
 
     expect(mockEmit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -162,9 +159,11 @@ describe('OTelLogBridgeTransport', () => {
   });
 
   it('should stringify object metadata values', () => {
-    transport.log(createEntry({
-      meta: { nested: { key: 'value' } },
-    }));
+    transport.log(
+      createEntry({
+        meta: { nested: { key: 'value' } },
+      }),
+    );
 
     expect(mockEmit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -215,9 +214,11 @@ describe('OTelLogBridgeTransport', () => {
   });
 
   it('should skip null and undefined metadata values', () => {
-    transport.log(createEntry({
-      meta: { present: 'yes', absent: undefined, nothing: null },
-    }));
+    transport.log(
+      createEntry({
+        meta: { present: 'yes', absent: undefined, nothing: null },
+      }),
+    );
 
     const emittedAttrs = mockEmit.mock.calls[0][0].attributes;
     expect(emittedAttrs.present).toBe('yes');

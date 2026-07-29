@@ -88,8 +88,18 @@ beforeEach(() => {
         return null;
     }
   });
-  mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({ id: 'ura-1', userId: 'user-1', tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED });
-  mockUserDepartmentRepository.findFirst.mockResolvedValue({ id: 'ud-1', userId: 'user-1', tenantId: 'tenant-1', resourceStatus: ResourceStatusType.ENABLED });
+  mockUserRoleAssignmentRepository.findFirst.mockResolvedValue({
+    id: 'ura-1',
+    userId: 'user-1',
+    tenantId: 'tenant-1',
+    resourceStatus: ResourceStatusType.ENABLED,
+  });
+  mockUserDepartmentRepository.findFirst.mockResolvedValue({
+    id: 'ud-1',
+    userId: 'user-1',
+    tenantId: 'tenant-1',
+    resourceStatus: ResourceStatusType.ENABLED,
+  });
   mockUserRepository.findFirst.mockResolvedValue({ id: 'user-1', isServiceAccount: false });
 });
 
@@ -101,7 +111,10 @@ describe('create — encrypts message fields + strips ciphertext from audit (Pha
     await service.create({ tenantId: 'tenant-1', targetUserId: 'user-1', title: 'T', messageText: 'PHI body', type: NotificationType.INFO } as never);
 
     expect(mockNotificationRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
-    expect(mockNotificationRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(expect.objectContaining({ messageText: 'PHI body' }), mockSecretsService);
+    expect(mockNotificationRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(
+      expect.objectContaining({ messageText: 'PHI body' }),
+      mockSecretsService,
+    );
     const encOrder = mockNotificationRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
     const createOrder = mockNotificationRepository.create.mock.invocationCallOrder[0];
     expect(encOrder).toBeLessThan(createOrder);
@@ -127,7 +140,13 @@ describe('create — encrypts message fields + strips ciphertext from audit (Pha
     mockNotificationRepository.encryptFieldsIntoEntity.mockRejectedValueOnce(new Error('vault down'));
 
     const service = buildService(true);
-    const res = await service.create({ tenantId: 'tenant-1', targetUserId: 'user-1', title: 'T', messageText: 'PHI body', type: NotificationType.INFO } as never);
+    const res = await service.create({
+      tenantId: 'tenant-1',
+      targetUserId: 'user-1',
+      title: 'T',
+      messageText: 'PHI body',
+      type: NotificationType.INFO,
+    } as never);
 
     expect(res.id).toBe('new-notification-id');
     expect(mockNotificationRepository.create).toHaveBeenCalledTimes(1);

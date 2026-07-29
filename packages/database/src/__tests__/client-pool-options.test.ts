@@ -88,9 +88,7 @@ describe('PrismaPg adapter pool options (Stream C Phase 0)', () => {
 
     const clientModule = await import('../client');
 
-    expect(() => clientModule.createNewPrismaClient()).toThrow(
-      /PRISMA_PG_MAX must be a positive integer/,
-    );
+    expect(() => clientModule.createNewPrismaClient()).toThrow(/PRISMA_PG_MAX must be a positive integer/);
   });
 
   it('throws when PRISMA_PG_MAX is zero', async () => {
@@ -99,9 +97,7 @@ describe('PrismaPg adapter pool options (Stream C Phase 0)', () => {
 
     const clientModule = await import('../client');
 
-    expect(() => clientModule.createNewPrismaClient()).toThrow(
-      /PRISMA_PG_MAX must be a positive integer/,
-    );
+    expect(() => clientModule.createNewPrismaClient()).toThrow(/PRISMA_PG_MAX must be a positive integer/);
   });
 
   it('throws when PRISMA_PG_MAX is not a number', async () => {
@@ -110,9 +106,7 @@ describe('PrismaPg adapter pool options (Stream C Phase 0)', () => {
 
     const clientModule = await import('../client');
 
-    expect(() => clientModule.createNewPrismaClient()).toThrow(
-      /PRISMA_PG_MAX must be a positive integer/,
-    );
+    expect(() => clientModule.createNewPrismaClient()).toThrow(/PRISMA_PG_MAX must be a positive integer/);
   });
 
   it('still throws when DATABASE_URL is missing (pre-existing behavior preserved)', async () => {
@@ -120,8 +114,6 @@ describe('PrismaPg adapter pool options (Stream C Phase 0)', () => {
 
     const clientModule = await import('../client');
 
-    expect(() => clientModule.createNewPrismaClient()).toThrow(
-      /DATABASE_URL environment variable is not set/,
-    );
+    expect(() => clientModule.createNewPrismaClient()).toThrow(/DATABASE_URL environment variable is not set/);
   });
 });

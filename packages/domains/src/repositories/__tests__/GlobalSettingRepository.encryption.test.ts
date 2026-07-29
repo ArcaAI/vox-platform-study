@@ -12,9 +12,7 @@ import { ValueType } from '../../enums';
 // Side-effect import that registers the prototype methods.
 import '../generated/core/GlobalSettingRepository.encryption';
 
-function makeEntity(
-  overrides: Partial<ConstructorParameters<typeof GlobalSettingEntity>[0]> = {},
-): GlobalSettingEntity {
+function makeEntity(overrides: Partial<ConstructorParameters<typeof GlobalSettingEntity>[0]> = {}): GlobalSettingEntity {
   return new GlobalSettingEntity({
     id: 'b0000000-0000-0000-0000-000000000001',
     createdAt: new Date('2026-01-01T00:00:00Z'),

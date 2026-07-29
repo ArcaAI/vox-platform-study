@@ -158,7 +158,7 @@ class TestOllamaQwen35Summary:
 
         accumulated = ""
         for line in lines:
-            data_str = line[len("data: "):]
+            data_str = line[len("data: ") :]
             if data_str == "[DONE]":
                 break
             try:
@@ -299,7 +299,7 @@ class TestLmStudioQwen35Summary:
 
         accumulated = ""
         for line in lines:
-            data_str = line[len("data: "):]
+            data_str = line[len("data: ") :]
             if data_str == "[DONE]":
                 break
             try:
@@ -313,9 +313,7 @@ class TestLmStudioQwen35Summary:
 
     async def test_summary_with_visit_type_context(self, e2e_client: AsyncClient) -> None:
         """Summary with visit type context (simulating debug mode assembled payload)."""
-        system_prompt = (
-            f"{SUMMARY_SYSTEM_PROMPT}\n\nThis is a referral visit."
-        )
+        system_prompt = f"{SUMMARY_SYSTEM_PROMPT}\n\nThis is a referral visit."
 
         resp = await e2e_client.post(
             "/api/v1/generate",

@@ -89,9 +89,7 @@ def identity(**kwargs) -> ModelWeightIdentity:
 @pytest.fixture
 def stub_s3(monkeypatch) -> StubS3Client:
     client = StubS3Client()
-    monkeypatch.setattr(
-        "harness.models.source_resolver._make_s3_client", lambda cfg: client
-    )
+    monkeypatch.setattr("harness.models.source_resolver._make_s3_client", lambda cfg: client)
     return client
 
 
@@ -112,9 +110,7 @@ async def test_local_path_wins_without_network(
 
     monkeypatch.setattr("harness.models.source_resolver._make_s3_client", _explode)
 
-    resolved = await resolve_model_dir(
-        identity(local_path=str(staged)), config=config
-    )
+    resolved = await resolve_model_dir(identity(local_path=str(staged)), config=config)
 
     assert resolved == staged
 
@@ -126,9 +122,7 @@ async def test_local_path_missing_falls_through_with_warning(
     missing = tmp_path / "not-there"
 
     with capture_logs() as events:
-        resolved = await resolve_model_dir(
-            identity(local_path=str(missing)), config=config
-        )
+        resolved = await resolve_model_dir(identity(local_path=str(missing)), config=config)
 
     assert resolved != missing
     assert stub_s3.download_calls == 1
@@ -217,25 +211,19 @@ async def test_partial_download_leaves_no_final_dir(
 # ---------------------------------------------------------------------------
 
 
-async def test_file_scheme_verify_and_use(
-    tmp_path: Path, config: ModelSourceConfig
-) -> None:
+async def test_file_scheme_verify_and_use(tmp_path: Path, config: ModelSourceConfig) -> None:
     staged = tmp_path / "onprem"
     staged.mkdir()
     (staged / "model.gguf").write_bytes(b"weights")
 
-    resolved = await resolve_model_dir(
-        identity(source_uri=f"file://{staged}"), config=config
-    )
+    resolved = await resolve_model_dir(identity(source_uri=f"file://{staged}"), config=config)
 
     assert resolved == staged, "file:// is used in place, never copied"
 
 
 async def test_file_scheme_missing_path_raises(config: ModelSourceConfig) -> None:
     with pytest.raises(ModelSourceError):
-        await resolve_model_dir(
-            identity(source_uri="file:///definitely/not/here"), config=config
-        )
+        await resolve_model_dir(identity(source_uri="file:///definitely/not/here"), config=config)
 
 
 # ---------------------------------------------------------------------------
@@ -243,17 +231,13 @@ async def test_file_scheme_missing_path_raises(config: ModelSourceConfig) -> Non
 # ---------------------------------------------------------------------------
 
 
-async def test_hf_offline_uncached_raises_cleanly(
-    config: ModelSourceConfig, monkeypatch
-) -> None:
+async def test_hf_offline_uncached_raises_cleanly(config: ModelSourceConfig, monkeypatch) -> None:
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
 
     def _snapshot(**kwargs):  # pragma: no cover - offline guard fires first
         raise AssertionError("resolver attempted a hub call while offline")
 
-    monkeypatch.setattr(
-        "harness.models.source_resolver._hf_snapshot_download", _snapshot
-    )
+    monkeypatch.setattr("harness.models.source_resolver._hf_snapshot_download", _snapshot)
 
     with pytest.raises(ModelSourceError) as exc:
         await resolve_model_dir(
@@ -271,9 +255,7 @@ async def test_hf_bare_id_is_accepted(config: ModelSourceConfig, monkeypatch) ->
         seen.update(kwargs)
         return "/hf/snapshot"
 
-    monkeypatch.setattr(
-        "harness.models.source_resolver._hf_snapshot_download", _snapshot
-    )
+    monkeypatch.setattr("harness.models.source_resolver._hf_snapshot_download", _snapshot)
 
     resolved = await resolve_model_dir(
         identity(source_uri="openai/whisper-large-v3", source="HUGGINGFACE"),
@@ -300,9 +282,7 @@ async def test_s3_allowed_when_network_disallowed(
     config: ModelSourceConfig, stub_s3: StubS3Client
 ) -> None:
     """s3:// is in-deployment + checksum-verified, so the clinical gate permits it."""
-    resolved = await resolve_model_dir(
-        identity(), config=config, allow_network=False
-    )
+    resolved = await resolve_model_dir(identity(), config=config, allow_network=False)
 
     assert (resolved / "model.gguf").exists()
 
@@ -314,9 +294,7 @@ async def test_s3_allowed_when_network_disallowed(
 
 async def test_unknown_scheme_rejected(config: ModelSourceConfig) -> None:
     with pytest.raises(ModelSourceError) as exc:
-        await resolve_model_dir(
-            identity(source_uri="azure-blob://container/prefix"), config=config
-        )
+        await resolve_model_dir(identity(source_uri="azure-blob://container/prefix"), config=config)
 
     message = str(exc.value)
     assert "azure-blob" in message

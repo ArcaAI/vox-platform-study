@@ -1,13 +1,7 @@
-import { RadioGroup, RadioGroupItem } from '../../../shadcn/radio-group'
-import { Label } from '../../../shadcn/label'
+import { RadioGroup, RadioGroupItem } from '../../../shadcn/radio-group';
+import { Label } from '../../../shadcn/label';
 
-export function BasicRadioGroup({
-  defaultValue = 'option1',
-  disabled = false,
-}: {
-  defaultValue?: string
-  disabled?: boolean
-}) {
+export function BasicRadioGroup({ defaultValue = 'option1', disabled = false }: { defaultValue?: string; disabled?: boolean }) {
   return (
     <RadioGroup defaultValue={defaultValue} disabled={disabled}>
       <div className="flex items-center space-x-2">
@@ -23,5 +17,5 @@ export function BasicRadioGroup({
         <Label htmlFor="option3">Option 3</Label>
       </div>
     </RadioGroup>
-  )
+  );
 }

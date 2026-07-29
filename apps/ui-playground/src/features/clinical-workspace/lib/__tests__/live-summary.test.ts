@@ -121,18 +121,22 @@ describe('buildSoapSectionViews', () => {
   it('passes through a non-SOAP fallback section and still highlights within it', () => {
     const text = 'Pt started on aspirin today.';
     const aspStart = text.indexOf('aspirin');
-    const views = buildSoapSectionViews(text, [{ title: 'Running Summary', content: text }], [
-      { text: 'aspirin', type: 'MEDICATION', confidence: 0.8, start: aspStart, end: aspStart + 'aspirin'.length },
-    ]);
+    const views = buildSoapSectionViews(
+      text,
+      [{ title: 'Running Summary', content: text }],
+      [{ text: 'aspirin', type: 'MEDICATION', confidence: 0.8, start: aspStart, end: aspStart + 'aspirin'.length }],
+    );
     expect(views).toHaveLength(1);
     expect(views[0].title).toBe('Running Summary');
     expect(views[0].segments.find((s) => s.entity)?.text).toBe('aspirin');
   });
 
   it('renders section content with no highlights when it is absent from runningSummary', () => {
-    const views = buildSoapSectionViews('totally different text', [{ title: 'Plan', content: 'Detached plan note.' }], [
-      { text: 'Detached', type: 'PROBLEM', confidence: 0.5, start: 0, end: 8 },
-    ]);
+    const views = buildSoapSectionViews(
+      'totally different text',
+      [{ title: 'Plan', content: 'Detached plan note.' }],
+      [{ text: 'Detached', type: 'PROBLEM', confidence: 0.5, start: 0, end: 8 }],
+    );
     expect(views[3].content).toBe('Detached plan note.');
     expect(views[3].segments.every((s) => s.entity === null)).toBe(true);
   });
@@ -151,7 +155,9 @@ describe('reduceLiveSummaryMessage', () => {
   });
 
   it('classifies the terminal closed event', () => {
-    const result = reduceLiveSummaryMessage(JSON.stringify({ consultationId: 'c1', runningSummary: 'final', entities: [], closed: true, updatedAt: 't' }));
+    const result = reduceLiveSummaryMessage(
+      JSON.stringify({ consultationId: 'c1', runningSummary: 'final', entities: [], closed: true, updatedAt: 't' }),
+    );
     expect(result.kind).toBe('closed');
   });
 

@@ -41,13 +41,35 @@ def _session_with_results() -> StreamSession:
     """A session whose finals interleave with partials and an empty utterance."""
     session = _build_session()
     session.results = [
-        SegmentResult(text="Patient reports chest pain.", speaker_id="doctor", start_time=0.0, end_time=1.5, is_final=True),
+        SegmentResult(
+            text="Patient reports chest pain.",
+            speaker_id="doctor",
+            start_time=0.0,
+            end_time=1.5,
+            is_final=True,
+        ),
         # Partial hypothesis — excluded from the transcript text, so excluded here.
-        SegmentResult(text="No shortness", speaker_id="patient", start_time=1.5, end_time=2.0, is_final=False),
-        SegmentResult(text="  No shortness of breath.  ", speaker_id="patient", start_time=1.5, end_time=3.0, is_final=True),
+        SegmentResult(
+            text="No shortness", speaker_id="patient", start_time=1.5, end_time=2.0, is_final=False
+        ),
+        SegmentResult(
+            text="  No shortness of breath.  ",
+            speaker_id="patient",
+            start_time=1.5,
+            end_time=3.0,
+            is_final=True,
+        ),
         # Whitespace-only final — dropped by build_transcript_text, so dropped here.
-        SegmentResult(text="   ", speaker_id="patient", start_time=3.0, end_time=3.1, is_final=True),
-        SegmentResult(text="Start amlodipine 5mg daily.", speaker_id="doctor", start_time=3.1, end_time=5.0, is_final=True),
+        SegmentResult(
+            text="   ", speaker_id="patient", start_time=3.0, end_time=3.1, is_final=True
+        ),
+        SegmentResult(
+            text="Start amlodipine 5mg daily.",
+            speaker_id="doctor",
+            start_time=3.1,
+            end_time=5.0,
+            is_final=True,
+        ),
     ]
     return session
 
@@ -81,7 +103,9 @@ class TestBuildTranscriptSegments:
 
     def test_is_empty_when_the_transcript_is_empty(self) -> None:
         session = _build_session("sess-empty")
-        session.results = [SegmentResult(text="partial only", start_time=0.0, end_time=1.0, is_final=False)]
+        session.results = [
+            SegmentResult(text="partial only", start_time=0.0, end_time=1.0, is_final=False)
+        ]
 
         assert session.build_transcript_text() == ""
         assert session.build_transcript_segments() == []
@@ -167,7 +191,15 @@ class TestPersistSendsSegments:
             "idempotency_key": "idem-1",
             "attempts": 0,
             "segments": [
-                {"idx": 0, "t0Ms": 0, "t1Ms": 1500, "speaker": "doctor", "text": "Patient reports chest pain.", "charStart": 0, "charEnd": 27},
+                {
+                    "idx": 0,
+                    "t0Ms": 0,
+                    "t1Ms": 1500,
+                    "speaker": "doctor",
+                    "text": "Patient reports chest pain.",
+                    "charStart": 0,
+                    "charEnd": 27,
+                },
             ],
         }
 

@@ -61,10 +61,7 @@ describe('usePipelines.select — persistence', () => {
     });
 
     await waitFor(() => {
-      expect(mockPatch).toHaveBeenCalledWith(
-        USER_SETTINGS_ENDPOINTS.updateByKey('arcaai-sdk', 'selectedPipelineId'),
-        { value: 'p-2' },
-      );
+      expect(mockPatch).toHaveBeenCalledWith(USER_SETTINGS_ENDPOINTS.updateByKey('arcaai-sdk', 'selectedPipelineId'), { value: 'p-2' });
     });
   });
 
@@ -72,9 +69,11 @@ describe('usePipelines.select — persistence', () => {
     const data = [{ id: 'p-A', name: 'A', slug: 'a' }];
     mockGet.mockResolvedValue(data);
     let resolvePatch: (v: unknown) => void = () => {};
-    mockPatch.mockReturnValue(new Promise((res) => {
-      resolvePatch = res;
-    }));
+    mockPatch.mockReturnValue(
+      new Promise((res) => {
+        resolvePatch = res;
+      }),
+    );
 
     const { result } = renderHook(() => usePipelines());
 

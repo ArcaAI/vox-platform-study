@@ -120,13 +120,10 @@ const buildService = (responseFormat: unknown, responses: string[]) => {
 };
 
 /** The content of the RAW_SUMMARY entity handed to the repository. */
-const persistedSummary = (ctx: { create: ReturnType<typeof vi.fn> }): string =>
-  (ctx.create.mock.calls[0][0] as { content: string }).content;
+const persistedSummary = (ctx: { create: ReturnType<typeof vi.fn> }): string => (ctx.create.mock.calls[0][0] as { content: string }).content;
 
 const generateBodies = (http: { axiosRef: { post: ReturnType<typeof vi.fn> } }) =>
-  http.axiosRef.post.mock.calls
-    .filter((c: unknown[]) => String(c[0]).includes('/generate'))
-    .map((c: unknown[]) => c[1] as { prompt: string });
+  http.axiosRef.post.mock.calls.filter((c: unknown[]) => String(c[0]).includes('/generate')).map((c: unknown[]) => c[1] as { prompt: string });
 
 describe('SummaryService — bounded JSON auto-repair on the finalize path', () => {
   beforeEach(() => vi.clearAllMocks());

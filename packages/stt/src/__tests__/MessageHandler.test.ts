@@ -252,10 +252,7 @@ describe('MessageHandler', () => {
 
       handler.handleMessage(message);
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Unknown STT WebSocket message type:',
-        'unknown_type'
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('Unknown STT WebSocket message type:', 'unknown_type');
       expect(callbacks.onConnected).not.toHaveBeenCalled();
       expect(callbacks.onTranscription).not.toHaveBeenCalled();
       expect(callbacks.onKeepAlive).not.toHaveBeenCalled();
@@ -321,9 +318,7 @@ describe('MessageHandler', () => {
       const result = handler.parseMessage(JSON.stringify(message));
 
       expect(result).not.toBeNull();
-      expect((result as Extract<WSInboundMessage, { type: 'connected' }>).audio_config).toEqual(
-        message.audio_config
-      );
+      expect((result as Extract<WSInboundMessage, { type: 'connected' }>).audio_config).toEqual(message.audio_config);
     });
   });
 

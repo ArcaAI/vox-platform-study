@@ -188,8 +188,7 @@ describe('string utilities', () => {
   describe('generateUUID', () => {
     it('should generate valid UUID v4 format', () => {
       const uuid = generateUUID();
-      const uuidRegex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       expect(uuid).toMatch(uuidRegex);
     });
 
@@ -267,9 +266,7 @@ describe('string utilities', () => {
     });
 
     it('should escape multiple characters', () => {
-      expect(escapeHtml('<script>alert("XSS")</script>')).toBe(
-        '&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;'
-      );
+      expect(escapeHtml('<script>alert("XSS")</script>')).toBe('&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;');
     });
 
     it('should handle strings without special characters', () => {

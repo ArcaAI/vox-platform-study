@@ -29,10 +29,14 @@ def _chunk_json(type_: str, content: str | None = None, data: dict | None = None
 
 def _make_task_manager_mock(**overrides) -> AsyncMock:
     tm = AsyncMock(spec=TaskManager)
-    tm.get_task = AsyncMock(return_value=TaskState(
-        task_id="task-123", status=TaskStatus.RUNNING,
-        provider="ollama", model="llama3.2:latest",
-    ))
+    tm.get_task = AsyncMock(
+        return_value=TaskState(
+            task_id="task-123",
+            status=TaskStatus.RUNNING,
+            provider="ollama",
+            model="llama3.2:latest",
+        )
+    )
     tm.read_chunks_blocking = AsyncMock(return_value=[])
     tm.get_chunks = AsyncMock(return_value=[])
     for k, v in overrides.items():
@@ -53,7 +57,9 @@ def _build_app(settings, task_manager):
 
 @pytest.fixture
 def settings():
-    return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False)
+    return Settings(
+        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
+    )
 
 
 @pytest.fixture
@@ -77,12 +83,17 @@ class TestReadChunksBlocking:
     @pytest.mark.asyncio
     async def test_read_chunks_blocking_returns_chunks(self, mock_redis):
         """When chunks exist, returns them as (msg_id, chunk) tuples."""
-        mock_redis.xread = AsyncMock(return_value=[
-            (b"smr:stream:task-123", [
-                (b"1-0", {b"data": _chunk_json("chunk", content="Hello")}),
-                (b"2-0", {b"data": _chunk_json("done", data={"finish_reason": "stop"})}),
-            ])
-        ])
+        mock_redis.xread = AsyncMock(
+            return_value=[
+                (
+                    b"smr:stream:task-123",
+                    [
+                        (b"1-0", {b"data": _chunk_json("chunk", content="Hello")}),
+                        (b"2-0", {b"data": _chunk_json("done", data={"finish_reason": "stop"})}),
+                    ],
+                )
+            ]
+        )
 
         tm = TaskManager(redis=mock_redis)
         result = await tm.read_chunks_blocking("task-123", last_id="0-0", block_ms=5000)
@@ -119,11 +130,16 @@ class TestReadChunksBlocking:
     @pytest.mark.asyncio
     async def test_read_chunks_blocking_resumes_from_last_id(self, mock_redis):
         """Only returns chunks after the given last_id."""
-        mock_redis.xread = AsyncMock(return_value=[
-            (b"smr:stream:task-789", [
-                (b"5-0", {b"data": _chunk_json("chunk", content="World")}),
-            ])
-        ])
+        mock_redis.xread = AsyncMock(
+            return_value=[
+                (
+                    b"smr:stream:task-789",
+                    [
+                        (b"5-0", {b"data": _chunk_json("chunk", content="World")}),
+                    ],
+                )
+            ]
+        )
 
         tm = TaskManager(redis=mock_redis)
         result = await tm.read_chunks_blocking("task-789", last_id="4-0", block_ms=5000)
@@ -141,11 +157,16 @@ class TestReadChunksBlocking:
     @pytest.mark.asyncio
     async def test_read_chunks_blocking_handles_bytes(self, mock_redis):
         """Handles both bytes and string field values from Redis."""
-        mock_redis.xread = AsyncMock(return_value=[
-            (b"smr:stream:task-b", [
-                (b"10-0", {b"data": b'{"type":"chunk","content":"bytes data"}'}),
-            ])
-        ])
+        mock_redis.xread = AsyncMock(
+            return_value=[
+                (
+                    b"smr:stream:task-b",
+                    [
+                        (b"10-0", {b"data": b'{"type":"chunk","content":"bytes data"}'}),
+                    ],
+                )
+            ]
+        )
 
         tm = TaskManager(redis=mock_redis)
         result = await tm.read_chunks_blocking("task-b", last_id="0-0")
@@ -159,11 +180,16 @@ class TestReadChunksBlocking:
     @pytest.mark.asyncio
     async def test_read_chunks_blocking_handles_string_keys(self, mock_redis):
         """Handles string (decoded) field keys from Redis."""
-        mock_redis.xread = AsyncMock(return_value=[
-            ("smr:stream:task-s", [
-                ("20-0", {"data": '{"type":"chunk","content":"string keys"}'}),
-            ])
-        ])
+        mock_redis.xread = AsyncMock(
+            return_value=[
+                (
+                    "smr:stream:task-s",
+                    [
+                        ("20-0", {"data": '{"type":"chunk","content":"string keys"}'}),
+                    ],
+                )
+            ]
+        )
 
         tm = TaskManager(redis=mock_redis)
         result = await tm.read_chunks_blocking("task-s", last_id="0-0")
@@ -224,6 +250,7 @@ class TestSSEXreadStreaming:
     @pytest.mark.asyncio
     async def test_sse_includes_message_id(self, settings):
         """Each SSE event includes the Redis stream message ID."""
+
         async def _mock_read_blocking(task_id, last_id="0-0", block_ms=5000):
             if last_id == "0-0":
                 return [
@@ -248,6 +275,7 @@ class TestSSEXreadStreaming:
     @pytest.mark.asyncio
     async def test_sse_stops_on_done_chunk(self, settings):
         """SSE stream ends when a 'done' chunk is received."""
+
         async def _mock_read_blocking(task_id, last_id="0-0", block_ms=5000):
             if last_id == "0-0":
                 return [
@@ -282,12 +310,16 @@ class TestSSEXreadStreaming:
             return []
 
         completed_task = TaskState(
-            task_id="task-123", status=TaskStatus.COMPLETED,
-            provider="ollama", model="llama3.2:latest",
+            task_id="task-123",
+            status=TaskStatus.COMPLETED,
+            provider="ollama",
+            model="llama3.2:latest",
         )
         running_task = TaskState(
-            task_id="task-123", status=TaskStatus.RUNNING,
-            provider="ollama", model="llama3.2:latest",
+            task_id="task-123",
+            status=TaskStatus.RUNNING,
+            provider="ollama",
+            model="llama3.2:latest",
         )
 
         get_task_calls = 0
@@ -314,6 +346,7 @@ class TestSSEXreadStreaming:
     @pytest.mark.asyncio
     async def test_sse_resumes_from_last_event_id(self, settings):
         """When last_event_id is provided, only sends chunks after that ID."""
+
         async def _mock_read_blocking(task_id, last_id="0-0", block_ms=5000):
             if last_id == "50-0":
                 return [

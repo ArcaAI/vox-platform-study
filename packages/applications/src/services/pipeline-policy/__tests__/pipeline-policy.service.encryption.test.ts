@@ -110,7 +110,12 @@ describe('PipelinePolicyService — change-row encryption', () => {
   });
 
   it('encrypts the change row on the doctor setDnaStyleForDoctor UPDATE path', async () => {
-    const row = PipelinePolicyFactory.CreatePipelinePolicy({ tenantId: TENANT, scope: PipelinePolicyScope.DOCTOR, scopeId: DOCTOR, dnaStyleEnabled: true });
+    const row = PipelinePolicyFactory.CreatePipelinePolicy({
+      tenantId: TENANT,
+      scope: PipelinePolicyScope.DOCTOR,
+      scopeId: DOCTOR,
+      dnaStyleEnabled: true,
+    });
     policyRepository.findForScope.mockResolvedValue(row);
     policyRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
     configResolver.resolveEffectiveDnaStyleEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false });

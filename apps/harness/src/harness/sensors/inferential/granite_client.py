@@ -207,6 +207,7 @@ class GraniteGuardianClient:
                 "temperature": 0.0,
                 "stream": False,
             }
+
         async def _send() -> httpx.Response:
             resp = await client.post(url, json=body)
             resp.raise_for_status()
@@ -343,7 +344,9 @@ class GraniteGroundednessJudge:
             body = {"model": self.model, "messages": messages, "temperature": 0.0, "stream": False}
 
         async def _send() -> httpx.Response:
-            async with httpx.AsyncClient(transport=self._transport, timeout=self._timeout) as client:
+            async with httpx.AsyncClient(
+                transport=self._transport, timeout=self._timeout
+            ) as client:
                 resp = await client.post(url, json=body)
                 resp.raise_for_status()
                 return resp

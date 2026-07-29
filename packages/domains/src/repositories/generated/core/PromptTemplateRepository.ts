@@ -64,11 +64,7 @@ export class PromptTemplateRepository extends Repository<PromptTemplateEntity, P
    * Find all USER_PERSONAL templates owned by a given user inside a department, within a tenant.
    * Used by PromptManagementService.listMyPersonalForDepartment.
    */
-  async findMyPersonalForDepartment(
-    tenantId: string,
-    ownerUserId: string,
-    departmentId: string,
-  ): Promise<PromptTemplateEntity[]> {
+  async findMyPersonalForDepartment(tenantId: string, ownerUserId: string, departmentId: string): Promise<PromptTemplateEntity[]> {
     return this.findAll({
       filters: {
         tenantId,
@@ -90,11 +86,7 @@ export class PromptTemplateRepository extends Repository<PromptTemplateEntity, P
    * precedent (`db.findMany` + `db.count` against the same extended client, so
    * soft-delete semantics match the query-builder list path).
    */
-  async findPaginated(
-    where: Record<string, unknown>,
-    page: number,
-    limit: number,
-  ): Promise<{ data: PromptTemplateEntity[]; count: number }> {
+  async findPaginated(where: Record<string, unknown>, page: number, limit: number): Promise<{ data: PromptTemplateEntity[]; count: number }> {
     const db = (this as any).db;
     const [models, count] = await Promise.all([
       db.findMany({

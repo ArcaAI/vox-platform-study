@@ -12,50 +12,50 @@ import { RunBar } from '../run-bar';
 afterEach(cleanup);
 
 describe('PlaygroundCanvas', () => {
-    it('renders children in a centered, width-capped column', () => {
-        const { container } = render(
-            <PlaygroundCanvas>
-                <p>work</p>
-            </PlaygroundCanvas>,
-        );
-        expect(screen.getByText('work')).toBeDefined();
-        expect(container.querySelector('.max-w-\\[760px\\]')).not.toBeNull();
-    });
+  it('renders children in a centered, width-capped column', () => {
+    const { container } = render(
+      <PlaygroundCanvas>
+        <p>work</p>
+      </PlaygroundCanvas>,
+    );
+    expect(screen.getByText('work')).toBeDefined();
+    expect(container.querySelector('.max-w-\\[760px\\]')).not.toBeNull();
+  });
 });
 
 describe('SplitCanvas', () => {
-    it('renders both the input and output panes', () => {
-        render(<SplitCanvas input={<div>capture</div>} output={<div>transcript</div>} />);
-        expect(screen.getByText('capture')).toBeDefined();
-        expect(screen.getByText('transcript')).toBeDefined();
-    });
+  it('renders both the input and output panes', () => {
+    render(<SplitCanvas input={<div>capture</div>} output={<div>transcript</div>} />);
+    expect(screen.getByText('capture')).toBeDefined();
+    expect(screen.getByText('transcript')).toBeDefined();
+  });
 });
 
 describe('RunBar', () => {
-    it('shows Run when idle and calls onRun', () => {
-        const onRun = vi.fn();
-        render(<RunBar running={false} onRun={onRun} onStop={vi.fn()} />);
-        const button = screen.getByRole('button', { name: /run/i });
-        fireEvent.click(button);
-        expect(onRun).toHaveBeenCalledOnce();
-    });
+  it('shows Run when idle and calls onRun', () => {
+    const onRun = vi.fn();
+    render(<RunBar running={false} onRun={onRun} onStop={vi.fn()} />);
+    const button = screen.getByRole('button', { name: /run/i });
+    fireEvent.click(button);
+    expect(onRun).toHaveBeenCalledOnce();
+  });
 
-    it('shows Stop when running and calls onStop', () => {
-        const onStop = vi.fn();
-        render(<RunBar running onRun={vi.fn()} onStop={onStop} />);
-        const button = screen.getByRole('button', { name: /stop/i });
-        fireEvent.click(button);
-        expect(onStop).toHaveBeenCalledOnce();
-    });
+  it('shows Stop when running and calls onStop', () => {
+    const onStop = vi.fn();
+    render(<RunBar running onRun={vi.fn()} onStop={onStop} />);
+    const button = screen.getByRole('button', { name: /stop/i });
+    fireEvent.click(button);
+    expect(onStop).toHaveBeenCalledOnce();
+  });
 
-    it('renders the connection chip and progress label', () => {
-        render(<RunBar running onRun={vi.fn()} onStop={vi.fn()} connection="live" progressLabel="12s · 3 chunks" />);
-        expect(screen.getByText(/live/i)).toBeDefined();
-        expect(screen.getByText('12s · 3 chunks')).toBeDefined();
-    });
+  it('renders the connection chip and progress label', () => {
+    render(<RunBar running onRun={vi.fn()} onStop={vi.fn()} connection="live" progressLabel="12s · 3 chunks" />);
+    expect(screen.getByText(/live/i)).toBeDefined();
+    expect(screen.getByText('12s · 3 chunks')).toBeDefined();
+  });
 
-    it('disables the action when disabled', () => {
-        render(<RunBar running={false} onRun={vi.fn()} onStop={vi.fn()} disabled />);
-        expect(screen.getByRole('button', { name: /run/i }).hasAttribute('disabled')).toBe(true);
-    });
+  it('disables the action when disabled', () => {
+    render(<RunBar running={false} onRun={vi.fn()} onStop={vi.fn()} disabled />);
+    expect(screen.getByRole('button', { name: /run/i }).hasAttribute('disabled')).toBe(true);
+  });
 });

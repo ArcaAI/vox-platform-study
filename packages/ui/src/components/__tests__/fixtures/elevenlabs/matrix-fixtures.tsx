@@ -1,4 +1,4 @@
-import { Matrix, digits, loader, pulse, wave } from '../../../elevenlabs/matrix'
+import { Matrix, digits, loader, pulse, wave } from '../../../elevenlabs/matrix';
 
 export function StaticMatrix({
   className,
@@ -8,30 +8,20 @@ export function StaticMatrix({
   mode,
   levels,
 }: {
-  className?: string
-  ariaLabel?: string
-  size?: number
-  gap?: number
-  mode?: 'default' | 'vu'
-  levels?: number[]
+  className?: string;
+  ariaLabel?: string;
+  size?: number;
+  gap?: number;
+  mode?: 'default' | 'vu';
+  levels?: number[];
 }) {
   return (
-    <Matrix
-      rows={7}
-      cols={5}
-      pattern={digits[0]}
-      className={className}
-      ariaLabel={ariaLabel}
-      size={size}
-      gap={gap}
-      mode={mode}
-      levels={levels}
-    />
-  )
+    <Matrix rows={7} cols={5} pattern={digits[0]} className={className} ariaLabel={ariaLabel} size={size} gap={gap} mode={mode} levels={levels} />
+  );
 }
 
 export function AnimatedMatrix() {
-  return <Matrix rows={7} cols={7} frames={loader} />
+  return <Matrix rows={7} cols={7} frames={loader} />;
 }
 
 export function SmallGridMatrix() {
@@ -45,32 +35,25 @@ export function SmallGridMatrix() {
         [1, 0, 1],
       ]}
     />
-  )
+  );
 }
 
 export function DefaultModeMatrix() {
-  return <Matrix rows={7} cols={5} pattern={digits[0]} mode="default" />
+  return <Matrix rows={7} cols={5} pattern={digits[0]} mode="default" />;
 }
 
 export function VuModeMatrix() {
-  return (
-    <Matrix
-      rows={7}
-      cols={5}
-      mode="vu"
-      levels={[0.2, 0.5, 0.8, 1.0, 0.6]}
-    />
-  )
+  return <Matrix rows={7} cols={5} mode="vu" levels={[0.2, 0.5, 0.8, 1.0, 0.6]} />;
 }
 
 export function PulseMatrix() {
-  return <Matrix rows={7} cols={7} frames={pulse} />
+  return <Matrix rows={7} cols={7} frames={pulse} />;
 }
 
 export function WaveMatrix() {
-  return <Matrix rows={7} cols={7} frames={wave} />
+  return <Matrix rows={7} cols={7} frames={wave} />;
 }
 
 export function CssVarsMatrix() {
-  return <Matrix rows={7} cols={5} pattern={digits[0]} size={12} gap={3} />
+  return <Matrix rows={7} cols={5} pattern={digits[0]} size={12} gap={3} />;
 }

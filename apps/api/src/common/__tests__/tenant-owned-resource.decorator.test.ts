@@ -8,11 +8,7 @@
  * on the contract.
  */
 import { describe, it, expect } from 'vitest';
-import {
-  TenantOwnedResource,
-  TENANT_OWNED_RESOURCE_KEY,
-  type TenantOwnedResourceOptions,
-} from '../tenant-owned-resource.decorator';
+import { TenantOwnedResource, TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../tenant-owned-resource.decorator';
 
 describe('@TenantOwnedResource decorator', () => {
   it('exports a stable Reflector metadata key string', () => {
@@ -27,10 +23,7 @@ describe('@TenantOwnedResource decorator', () => {
       }
     }
 
-    const meta = Reflect.getMetadata(
-      TENANT_OWNED_RESOURCE_KEY,
-      TestController.prototype.getBucket,
-    ) as TenantOwnedResourceOptions;
+    const meta = Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, TestController.prototype.getBucket) as TenantOwnedResourceOptions;
 
     expect(meta).toEqual({ modelName: 'TenantBucket', paramName: 'id' });
   });
@@ -43,10 +36,7 @@ describe('@TenantOwnedResource decorator', () => {
       }
     }
 
-    const meta = Reflect.getMetadata(
-      TENANT_OWNED_RESOURCE_KEY,
-      StorageLike.prototype.getBucketByName,
-    ) as TenantOwnedResourceOptions;
+    const meta = Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, StorageLike.prototype.getBucketByName) as TenantOwnedResourceOptions;
 
     expect(meta).toEqual({ modelName: 'TenantBucket', paramName: 'name', lookup: 'name' });
   });
@@ -60,10 +50,7 @@ describe('@TenantOwnedResource decorator', () => {
       }
     }
 
-    const meta = Reflect.getMetadata(
-      TENANT_OWNED_RESOURCE_KEY,
-      JobLike.prototype.cancelJob,
-    ) as TenantOwnedResourceOptions;
+    const meta = Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, JobLike.prototype.cancelJob) as TenantOwnedResourceOptions;
 
     expect(meta).toEqual({
       modelName: 'ConsultationJob',
@@ -87,17 +74,14 @@ describe('@TenantOwnedResource decorator', () => {
       transcriptionJob(): void {}
     }
 
-    expect(
-      Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, CoverageController.prototype.bucket),
-    ).toMatchObject({ modelName: 'TenantBucket' });
-    expect(
-      Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, CoverageController.prototype.voice),
-    ).toMatchObject({ modelName: 'UserVoiceProfile' });
-    expect(
-      Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, CoverageController.prototype.consultationJob),
-    ).toMatchObject({ modelName: 'ConsultationJob', paramName: 'jobId' });
-    expect(
-      Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, CoverageController.prototype.transcriptionJob),
-    ).toMatchObject({ modelName: 'TranscriptionJob' });
+    expect(Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, CoverageController.prototype.bucket)).toMatchObject({ modelName: 'TenantBucket' });
+    expect(Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, CoverageController.prototype.voice)).toMatchObject({ modelName: 'UserVoiceProfile' });
+    expect(Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, CoverageController.prototype.consultationJob)).toMatchObject({
+      modelName: 'ConsultationJob',
+      paramName: 'jobId',
+    });
+    expect(Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, CoverageController.prototype.transcriptionJob)).toMatchObject({
+      modelName: 'TranscriptionJob',
+    });
   });
 });

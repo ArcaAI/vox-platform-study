@@ -15,7 +15,7 @@ import { render, screen } from '@testing-library/react';
 // ── auth store ──────────────────────────────────────────────────────
 const authState = { user: { roles: [] as string[] }, tenantId: 't1', tenantName: 'Tenant One' };
 vi.mock('@/store/auth-store', () => ({
-    useAuthStore: (selector: (s: typeof authState) => unknown) => selector(authState),
+  useAuthStore: (selector: (s: typeof authState) => unknown) => selector(authState),
 }));
 
 // ── api hooks ───────────────────────────────────────────────────────
@@ -24,23 +24,23 @@ let bucketsTenantArg = '';
 let lastColumns: any[] = [];
 const refetch = vi.fn();
 vi.mock('../../api/tenant-storage', () => ({
-    useTenantBuckets: (tenantId: string) => {
-        bucketsTenantArg = tenantId;
-        return { data: [], isLoading: bucketsLoading, refetch };
-    },
-    useTenantBucketTree: () => ({ data: undefined, refetch }),
-    useTenantBucketObjects: () => ({ data: [], isLoading: false, refetch }),
-    useCreateTenantBucket: () => ({ mutate: vi.fn(), isPending: false }),
-    useDeleteTenantBucket: () => ({ mutate: vi.fn(), isPending: false }),
-    useCreateTenantFolder: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
-    useUploadTenantObject: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useTenantBuckets: (tenantId: string) => {
+    bucketsTenantArg = tenantId;
+    return { data: [], isLoading: bucketsLoading, refetch };
+  },
+  useTenantBucketTree: () => ({ data: undefined, refetch }),
+  useTenantBucketObjects: () => ({ data: [], isLoading: false, refetch }),
+  useCreateTenantBucket: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteTenantBucket: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateTenantFolder: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useUploadTenantObject: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
 }));
 
 // ── feature components ──────────────────────────────────────────────
 vi.mock('../../components', () => ({
-    AdminDataTable: () => <div data-testid="admin-data-table" />,
-    ConfirmDialog: () => null,
-    StatusBadge: () => <span />,
+  AdminDataTable: () => <div data-testid="admin-data-table" />,
+  ConfirmDialog: () => null,
+  StatusBadge: () => <span />,
 }));
 vi.mock('../../components/folder-tree-view', () => ({ FolderTreeView: () => <div data-testid="folder-tree" /> }));
 vi.mock('../object-actions', () => ({ ObjectActions: () => <div /> }));
@@ -54,33 +54,33 @@ vi.mock('@arcaai/ui/button', () => ({ Button: ({ children, onClick }: any) => <b
 vi.mock('@arcaai/ui/input', () => ({ Input: (props: any) => <input {...props} /> }));
 vi.mock('@arcaai/ui/separator', () => ({ Separator: () => <hr /> }));
 vi.mock('@arcaai/ui/select', () => ({
-    Select: ({ children }: any) => <div>{children}</div>,
-    SelectTrigger: ({ children }: any) => <div>{children}</div>,
-    SelectValue: () => null,
-    SelectContent: ({ children }: any) => <div>{children}</div>,
-    SelectItem: ({ children }: any) => <div>{children}</div>,
+  Select: ({ children }: any) => <div>{children}</div>,
+  SelectTrigger: ({ children }: any) => <div>{children}</div>,
+  SelectValue: () => null,
+  SelectContent: ({ children }: any) => <div>{children}</div>,
+  SelectItem: ({ children }: any) => <div>{children}</div>,
 }));
 vi.mock('@arcaai/ui/dialog', () => ({
-    Dialog: ({ open, children }: any) => (open ? <div>{children}</div> : null),
-    DialogContent: ({ children }: any) => <div>{children}</div>,
-    DialogDescription: ({ children }: any) => <div>{children}</div>,
-    DialogFooter: ({ children }: any) => <div>{children}</div>,
-    DialogHeader: ({ children }: any) => <div>{children}</div>,
-    DialogTitle: ({ children }: any) => <div>{children}</div>,
+  Dialog: ({ open, children }: any) => (open ? <div>{children}</div> : null),
+  DialogContent: ({ children }: any) => <div>{children}</div>,
+  DialogDescription: ({ children }: any) => <div>{children}</div>,
+  DialogFooter: ({ children }: any) => <div>{children}</div>,
+  DialogHeader: ({ children }: any) => <div>{children}</div>,
+  DialogTitle: ({ children }: any) => <div>{children}</div>,
 }));
 // MultiColumnLayout drives each content column's renderContent(), where the
 // bucket-loading skeleton lives.
 vi.mock('@arcaai/ui/multi-column-layout', () => ({
-    MultiColumnLayout: ({ columns }: any) => {
-        lastColumns = columns;
-        return (
-            <div>
-                {columns.map((col: any, i: number) => (
-                    <div key={col.id ?? i}>{typeof col.renderContent === 'function' ? col.renderContent() : null}</div>
-                ))}
-            </div>
-        );
-    },
+  MultiColumnLayout: ({ columns }: any) => {
+    lastColumns = columns;
+    return (
+      <div>
+        {columns.map((col: any, i: number) => (
+          <div key={col.id ?? i}>{typeof col.renderContent === 'function' ? col.renderContent() : null}</div>
+        ))}
+      </div>
+    );
+  },
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -88,46 +88,46 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const { default: StorageManagementPage } = await import('../index');
 
 describe('StorageManagementPage — bucket loading (TASK-331 doc-03 F9)', () => {
-    beforeEach(() => {
-        bucketsLoading = true;
-        vi.clearAllMocks();
-    });
+  beforeEach(() => {
+    bucketsLoading = true;
+    vi.clearAllMocks();
+  });
 
-    it('renders skeleton placeholders (not a text loader) while buckets load', () => {
-        render(<StorageManagementPage scopedTenantId="t1" embedded />);
+  it('renders skeleton placeholders (not a text loader) while buckets load', () => {
+    render(<StorageManagementPage scopedTenantId="t1" embedded />);
 
-        expect(screen.getAllByTestId('bucket-skeleton').length).toBeGreaterThan(0);
-        expect(screen.queryByText(/loading buckets/i)).toBeNull();
-    });
+    expect(screen.getAllByTestId('bucket-skeleton').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/loading buckets/i)).toBeNull();
+  });
 
-    it('stops rendering the bucket skeletons once loading completes', () => {
-        bucketsLoading = false;
-        render(<StorageManagementPage scopedTenantId="t1" embedded />);
+  it('stops rendering the bucket skeletons once loading completes', () => {
+    bucketsLoading = false;
+    render(<StorageManagementPage scopedTenantId="t1" embedded />);
 
-        expect(screen.queryAllByTestId('bucket-skeleton').length).toBe(0);
-    });
+    expect(screen.queryAllByTestId('bucket-skeleton').length).toBe(0);
+  });
 });
 
 // TASK-335 — the header ScopeSwitcher owns the working tenant, so the in-page
 // "Tenants" column is gone; the page scopes buckets to the header store tenant.
 describe('StorageManagementPage — header-driven tenant scope (TASK-335)', () => {
-    beforeEach(() => {
-        bucketsLoading = false;
-        bucketsTenantArg = '';
-        lastColumns = [];
-        vi.clearAllMocks();
-    });
+  beforeEach(() => {
+    bucketsLoading = false;
+    bucketsTenantArg = '';
+    lastColumns = [];
+    vi.clearAllMocks();
+  });
 
-    it('renders no in-page tenants column — scope comes from the header switcher', () => {
-        render(<StorageManagementPage embedded />);
+  it('renders no in-page tenants column — scope comes from the header switcher', () => {
+    render(<StorageManagementPage embedded />);
 
-        expect(lastColumns.map((col) => col.id)).toEqual(['storage-buckets', 'storage-objects']);
-        expect(lastColumns.some((col) => col.id === 'storage-tenants')).toBe(false);
-    });
+    expect(lastColumns.map((col) => col.id)).toEqual(['storage-buckets', 'storage-objects']);
+    expect(lastColumns.some((col) => col.id === 'storage-tenants')).toBe(false);
+  });
 
-    it('scopes buckets to the header store tenant', () => {
-        render(<StorageManagementPage embedded />);
+  it('scopes buckets to the header store tenant', () => {
+    render(<StorageManagementPage embedded />);
 
-        expect(bucketsTenantArg).toBe('t1');
-    });
+    expect(bucketsTenantArg).toBe('t1');
+  });
 });

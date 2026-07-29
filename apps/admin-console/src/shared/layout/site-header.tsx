@@ -8,17 +8,17 @@ import { UserMenu } from '@/shared/layout/user-menu';
 import { Breadcrumbs } from '@/shared/navigation/breadcrumbs';
 
 export function SiteHeader({ session }: { session: SafeSession }) {
-    return (
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-4" />
-            <Breadcrumbs />
-            <div className="ml-auto flex items-center gap-2">
-                <CommandPalette />
-                {session.isElevated ? <TenantSwitcher session={session} /> : null}
-                <ThemeToggle />
-                <UserMenu session={session} />
-            </div>
-        </header>
-    );
+  return (
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+      <SidebarTrigger className="-ml-1" />
+      <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-4" />
+      <Breadcrumbs />
+      <div className="ml-auto flex items-center gap-2">
+        <CommandPalette />
+        {session.isElevated ? <TenantSwitcher session={session} /> : null}
+        <ThemeToggle />
+        <UserMenu session={session} />
+      </div>
+    </header>
+  );
 }

@@ -79,6 +79,16 @@ export default defineConfig({
         test: {
           name: 'workspace',
           exclude: [...SHARED_EXCLUDE, 'apps/admin-console/**'],
+          // `packages/applications/.../image-thumbnail.service.test.ts` deliberately
+          // exercises the REAL `sharp` codec (not mocked). sharp's native libvips
+          // addon is not safe under Node's worker_threads (Vitest's default `threads`
+          // pool) — it segfaults (SIGSEGV, exit 139) nondeterministically, worse here
+          // since two libvips builds are resolvable in this workspace (sharp 0.35.3
+          // direct dep of @arcaai/applications vs 0.34.5 transitive via
+          // @huggingface/transformers / Next.js). `forks` isolates each test file in
+          // its own OS process instead of a shared V8 isolate, which native addons
+          // require. Same fix already applied in vitest.integration.config.ts.
+          pool: 'forks',
         },
       },
       {

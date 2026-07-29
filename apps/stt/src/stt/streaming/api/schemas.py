@@ -18,8 +18,12 @@ class CreateStreamingSessionRequest(BaseModel):
     microphone_id: str | None = Field(
         default=None, description="Identifier for the microphone device"
     )
-    user_id: str | None = Field(default=None, description="Authenticated user ID for speaker pre-seeding")
-    language: str | None = Field(default=None, description="Override pipeline language (ISO 639-1/639-3 code)")
+    user_id: str | None = Field(
+        default=None, description="Authenticated user ID for speaker pre-seeding"
+    )
+    language: str | None = Field(
+        default=None, description="Override pipeline language (ISO 639-1/639-3 code)"
+    )
     audio_bucket_name: str | None = Field(
         default=None,
         description="Tenant-scoped audio bucket name. Defaults to 'hope-audio' if not provided.",
@@ -31,6 +35,23 @@ class CreateStreamingSessionRequest(BaseModel):
             "credentials). When present, selects the MinIO/S3/Azure provider and "
             "bucket for this tenant; when absent, the global MinIO client and "
             "'audio_bucket_name' are used."
+        ),
+    )
+    provider_overrides: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Optional per-tenant BYO cloud-provider credential map (TASK-567), "
+            "gateway-injected: {provider: {api_key, region?, base_url?, model?}}. "
+            "Held by the session runtime IN MEMORY ONLY — never persisted, never "
+            "logged. Preferred over env creds by the cloud ASR loaders."
+        ),
+    )
+    fallback_pipeline_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional tenant fallback pipeline (TASK-567). When set, the session "
+            "can swap its live ASR engine to it on create-time load failure, "
+            "classified outage, or a user-initiated switch."
         ),
     )
 

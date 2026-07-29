@@ -43,9 +43,7 @@ describe('AgentTrajectoryController', () => {
 
   // `read` not `manage`: this controller exposes no mutation.
   it('is class-gated by @CanRead(AgentTrajectory), not the borrowed HarnessPolicy subject', () => {
-    const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AgentTrajectoryController) as
-      | { action: string; subject: string }[]
-      | undefined;
+    const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AgentTrajectoryController) as { action: string; subject: string }[] | undefined;
     expect(meta).toEqual([{ action: 'read', subject: 'AgentTrajectory' }]);
   });
 
@@ -150,9 +148,7 @@ describe('AgentTrajectoryController', () => {
     });
 
     it('inherits class-level @CanRead(AgentTrajectory) (same gate as sessions)', () => {
-      const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AgentTrajectoryController) as
-        | { action: string; subject: string }[]
-        | undefined;
+      const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AgentTrajectoryController) as { action: string; subject: string }[] | undefined;
       expect(meta).toEqual([{ action: 'read', subject: 'AgentTrajectory' }]);
     });
   });

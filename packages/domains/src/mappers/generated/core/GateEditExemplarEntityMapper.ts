@@ -35,10 +35,7 @@ export class GateEditExemplarEntityMapper extends BaseMapper<Entities.GateEditEx
   }
 }
 
-export const GateEditExemplarEntityMapperHandlers = createMapperHandlers<
-  Entities.GateEditExemplarEntity,
-  Models.GateEditExemplar
->({
+export const GateEditExemplarEntityMapperHandlers = createMapperHandlers<Entities.GateEditExemplarEntity, Models.GateEditExemplar>({
   $toPersistence: {},
   $toDomain: {},
 });

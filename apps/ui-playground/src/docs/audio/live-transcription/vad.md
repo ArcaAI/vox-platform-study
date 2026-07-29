@@ -6,10 +6,10 @@ Detects speech segments in real-time using Silero VAD v5 and only sends detected
 
 ### Configuration
 
-| Parameter | Default | Range | Description |
-|-----------|---------|-------|-------------|
-| VAD Toggle | Off | On/Off | Enables VAD-gated transcription mode |
-| VAD Sensitivity | 50% | 10%–95% | Controls the speech detection threshold. Higher values require a stronger speech signal to trigger. |
+| Parameter       | Default | Range   | Description                                                                                         |
+| --------------- | ------- | ------- | --------------------------------------------------------------------------------------------------- |
+| VAD Toggle      | Off     | On/Off  | Enables VAD-gated transcription mode                                                                |
+| VAD Sensitivity | 50%     | 10%–95% | Controls the speech detection threshold. Higher values require a stronger speech signal to trigger. |
 
 <!-- @example -->
 
@@ -18,7 +18,7 @@ import { useVAD } from '@arcaai/vad';
 
 const { isSpeaking, speechSegments } = useVAD({
   track,
-  sensitivity: 0.5,     // 0.0 (least) to 1.0 (most sensitive)
+  sensitivity: 0.5, // 0.0 (least) to 1.0 (most sensitive)
   minSpeechDuration: 180,
   autoAttach: true,
   onSpeechStart: () => console.log('Speaking'),

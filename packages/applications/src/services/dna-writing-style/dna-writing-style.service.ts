@@ -115,13 +115,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       throw new BadRequestException('Tenant ID is required');
     }
 
-    await assertUserBelongsToTenant(
-      this.userRoleAssignmentRepository,
-      this.userDepartmentRepository,
-      this.userRepository,
-      doctorId,
-      tenantId,
-    );
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
 
     const userId = this.requestUserId ?? '';
     const jobId = uuidv7();
@@ -162,13 +156,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
-    await assertUserBelongsToTenant(
-      this.userRoleAssignmentRepository,
-      this.userDepartmentRepository,
-      this.userRepository,
-      doctorId,
-      tenantId,
-    );
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
 
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
     if (!report) return null;
@@ -188,13 +176,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     if (!tenantId) {
       throw new BadRequestException('Tenant ID is required');
     }
-    await assertUserBelongsToTenant(
-      this.userRoleAssignmentRepository,
-      this.userDepartmentRepository,
-      this.userRepository,
-      doctorId,
-      tenantId,
-    );
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
 
     const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
     if (!report) return { rules: [] };
@@ -361,12 +343,8 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
       // Re-encrypt the new content into both the version
       // snapshot and the report row before they are persisted in the tx below.
       // Only runs when content actually changed (status-only edits skip it).
-      await this.encryptBestEffort('DnaWritingStyleVersion', () =>
-        this.dnaVersionRepository.encryptFieldsIntoEntity(version!, this.secretsService!),
-      );
-      await this.encryptBestEffort('DnaWritingStyleReport', () =>
-        this.dnaReportRepository.encryptFieldsIntoEntity(report, this.secretsService!),
-      );
+      await this.encryptBestEffort('DnaWritingStyleVersion', () => this.dnaVersionRepository.encryptFieldsIntoEntity(version!, this.secretsService!));
+      await this.encryptBestEffort('DnaWritingStyleReport', () => this.dnaReportRepository.encryptFieldsIntoEntity(report, this.secretsService!));
     }
 
     if (dto.resourceStatus !== undefined) {
@@ -542,9 +520,7 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
     // single query (skipped entirely when the page is empty).
     const usernameById = await this.resolveDoctorUsernames(data.map((report) => report.doctorId));
     return {
-      data: data.map((report) =>
-        DnaWritingStyleDtoMapper.toReportResponse(report, report.doctorId ? usernameById[report.doctorId] : undefined),
-      ),
+      data: data.map((report) => DnaWritingStyleDtoMapper.toReportResponse(report, report.doctorId ? usernameById[report.doctorId] : undefined)),
       count,
       page,
       limit,

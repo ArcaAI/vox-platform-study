@@ -6,12 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  debugLog,
-  debugLogConfig,
-  debugLogTranscript,
-  type DebugTranscriptEntry,
-} from '../utils/debugLogger.js';
+import { debugLog, debugLogConfig, debugLogTranscript, type DebugTranscriptEntry } from '../utils/debugLogger.js';
 
 describe('debugLogger', () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>;
@@ -27,20 +22,13 @@ describe('debugLogger', () => {
   describe('debugLog', () => {
     it('should log with prefix and component', () => {
       debugLog('TestComponent', 'hello world');
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[ARCAAI:DEBUG] [TestComponent]',
-        'hello world',
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('[ARCAAI:DEBUG] [TestComponent]', 'hello world');
     });
 
     it('should log with data when provided', () => {
       const data = { key: 'value' };
       debugLog('TestComponent', 'with data', data);
-      expect(consoleSpy).toHaveBeenCalledWith(
-        '[ARCAAI:DEBUG] [TestComponent]',
-        'with data',
-        data,
-      );
+      expect(consoleSpy).toHaveBeenCalledWith('[ARCAAI:DEBUG] [TestComponent]', 'with data', data);
     });
 
     it('should not pass data argument when undefined', () => {

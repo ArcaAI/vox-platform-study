@@ -44,6 +44,28 @@ TRANSCRIPTION_AUDIO_DURATION = Histogram(
 )
 
 # ---------------------------------------------------------------------------
+# Cloud ASR / provider-fallback metrics (TASK-567)
+# ---------------------------------------------------------------------------
+
+# Classified cloud-ASR failures, emitted at the REST error-mapping boundary of
+# the Sarvam/OpenAI engines. ``class`` is the CloudASR* taxonomy bucket
+# (auth | quota | transcription).
+STT_CLOUD_ASR_ERRORS_TOTAL = Counter(
+    "stt_cloud_asr_errors_total",
+    "Cloud ASR provider errors by classified taxonomy bucket",
+    ["provider", "class"],
+)
+
+# In-session provider switches (primary -> fallback). Emission site lives in the
+# streaming EngineSwitchController (deferred with the switch runtime); defined
+# here so the dashboard/query contract is stable ahead of that wiring.
+STT_PROVIDER_SWITCH_TOTAL = Counter(
+    "stt_provider_switch_total",
+    "STT in-session provider switches from primary to fallback",
+    ["tenant", "from", "to", "reason"],
+)
+
+# ---------------------------------------------------------------------------
 # Streaming session metrics
 # ---------------------------------------------------------------------------
 
@@ -147,8 +169,21 @@ MODEL_INFERENCE_LATENCY = Histogram(
     "Per-inference wall-clock latency in seconds, by service and model.",
     ["service", "model"],
     buckets=[
-        0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0,
-        2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
+        30.0,
+        60.0,
+        120.0,
+        300.0,
     ],
 )
 

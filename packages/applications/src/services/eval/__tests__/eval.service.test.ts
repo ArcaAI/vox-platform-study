@@ -117,13 +117,10 @@ describe('EvalService', () => {
 
   describe('recordEvalRunWithScores', () => {
     it('persists the run then a score per case, all linked to the run', async () => {
-      const { run, scores } = await service.recordEvalRunWithScores(
-        { tenantId: 'tenant-1', goldenSetId: 'set-1', modelName: 'gpt-x' },
-        [
-          { goldenCaseId: 'case-1', metric: 'faithfulness', score: 0.9 },
-          { goldenCaseId: 'case-2', metric: 'coverage', score: 0.8 },
-        ],
-      );
+      const { run, scores } = await service.recordEvalRunWithScores({ tenantId: 'tenant-1', goldenSetId: 'set-1', modelName: 'gpt-x' }, [
+        { goldenCaseId: 'case-1', metric: 'faithfulness', score: 0.9 },
+        { goldenCaseId: 'case-2', metric: 'coverage', score: 0.8 },
+      ]);
 
       expect(mockEvalRunRepository.create).toHaveBeenCalledTimes(1);
       expect(mockEvalScoreRepository.create).toHaveBeenCalledTimes(2);
@@ -278,9 +275,9 @@ describe('EvalService', () => {
     it('throws DataNotFoundException (no create) when the parent set is missing for the tenant', async () => {
       mockGoldenSetRepository.findAll.mockResolvedValue([]);
 
-      await expect(
-        service.addGoldenCase({ tenantId: 'tenant-1', goldenSetId: 'missing', transcript: 't', referenceNote: 'r' }),
-      ).rejects.toThrow(DataNotFoundException);
+      await expect(service.addGoldenCase({ tenantId: 'tenant-1', goldenSetId: 'missing', transcript: 't', referenceNote: 'r' })).rejects.toThrow(
+        DataNotFoundException,
+      );
       expect(mockGoldenCaseRepository.create).not.toHaveBeenCalled();
     });
   });
@@ -318,9 +315,9 @@ describe('EvalService', () => {
       mockDepartmentRepository.findById.mockResolvedValue(null);
       const service2 = makeServiceWithDepartments();
 
-      await expect(
-        service2.createGoldenSet({ tenantId: 'tenant-1', name: 'Cardio set', departmentId: 'missing-dept' }),
-      ).rejects.toThrow(DataNotFoundException);
+      await expect(service2.createGoldenSet({ tenantId: 'tenant-1', name: 'Cardio set', departmentId: 'missing-dept' })).rejects.toThrow(
+        DataNotFoundException,
+      );
       expect(mockGoldenSetRepository.create).not.toHaveBeenCalled();
     });
 
@@ -328,9 +325,9 @@ describe('EvalService', () => {
       mockDepartmentRepository.findById.mockResolvedValue({ id: 'dept-1', tenantId: 'other-tenant' });
       const service2 = makeServiceWithDepartments();
 
-      await expect(
-        service2.createGoldenSet({ tenantId: 'tenant-1', name: 'Cardio set', departmentId: 'dept-1' }),
-      ).rejects.toThrow(DataNotFoundException);
+      await expect(service2.createGoldenSet({ tenantId: 'tenant-1', name: 'Cardio set', departmentId: 'dept-1' })).rejects.toThrow(
+        DataNotFoundException,
+      );
       expect(mockGoldenSetRepository.create).not.toHaveBeenCalled();
     });
 

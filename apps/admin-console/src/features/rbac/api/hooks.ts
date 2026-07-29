@@ -2,136 +2,136 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    assignPolicyToRole,
-    cloneRole,
-    createPolicy,
-    createRole,
-    deletePolicy,
-    deleteRole,
-    detachPolicyFromRole,
-    getPolicy,
-    getRole,
-    listPolicies,
-    listRoleMembers,
-    listRoles,
-    updatePolicy,
-    updateRole,
-    validatePolicyRules,
+  assignPolicyToRole,
+  cloneRole,
+  createPolicy,
+  createRole,
+  deletePolicy,
+  deleteRole,
+  detachPolicyFromRole,
+  getPolicy,
+  getRole,
+  listPolicies,
+  listRoleMembers,
+  listRoles,
+  updatePolicy,
+  updateRole,
+  validatePolicyRules,
 } from './client';
 import { rbacKeys } from './keys';
 import type {
-    BreakGlass,
-    CloneRoleRequest,
-    CreatePolicyRequest,
-    CreateRoleRequest,
-    PolicyListParams,
-    PolicyRule,
-    RbacListParams,
-    UpdatePolicyRequest,
-    UpdateRoleRequest,
+  BreakGlass,
+  CloneRoleRequest,
+  CreatePolicyRequest,
+  CreateRoleRequest,
+  PolicyListParams,
+  PolicyRule,
+  RbacListParams,
+  UpdatePolicyRequest,
+  UpdateRoleRequest,
 } from './types';
 
 export function useRoles(params?: RbacListParams) {
-    return useQuery({ queryKey: rbacKeys.roles(params), queryFn: () => listRoles(params), placeholderData: keepPreviousData });
+  return useQuery({ queryKey: rbacKeys.roles(params), queryFn: () => listRoles(params), placeholderData: keepPreviousData });
 }
 
 export function useRole(id: string) {
-    return useQuery({ queryKey: rbacKeys.role(id), queryFn: () => getRole(id), enabled: !!id });
+  return useQuery({ queryKey: rbacKeys.role(id), queryFn: () => getRole(id), enabled: !!id });
 }
 
 /** Paginated users-by-role for the role detail Members tab. */
 export function useRoleMembers(roleId: string, params?: RbacListParams) {
-    return useQuery({
-        queryKey: rbacKeys.roleMembers(roleId, params),
-        queryFn: () => listRoleMembers(roleId, params),
-        enabled: !!roleId,
-        placeholderData: keepPreviousData,
-    });
+  return useQuery({
+    queryKey: rbacKeys.roleMembers(roleId, params),
+    queryFn: () => listRoleMembers(roleId, params),
+    enabled: !!roleId,
+    placeholderData: keepPreviousData,
+  });
 }
 
 export function usePolicies(params?: PolicyListParams) {
-    return useQuery({ queryKey: rbacKeys.policies(params), queryFn: () => listPolicies(params), placeholderData: keepPreviousData });
+  return useQuery({ queryKey: rbacKeys.policies(params), queryFn: () => listPolicies(params), placeholderData: keepPreviousData });
 }
 
 export function usePolicy(id: string) {
-    return useQuery({ queryKey: rbacKeys.policy(id), queryFn: () => getPolicy(id), enabled: !!id });
+  return useQuery({ queryKey: rbacKeys.policy(id), queryFn: () => getPolicy(id), enabled: !!id });
 }
 
 function useInvalidateRbac() {
-    const queryClient = useQueryClient();
-    return () => queryClient.invalidateQueries({ queryKey: rbacKeys.root });
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: rbacKeys.root });
 }
 
 export function useCreateRole() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({ mutationFn: (body: CreateRoleRequest) => createRole(body), onSuccess: invalidate });
+  const invalidate = useInvalidateRbac();
+  return useMutation({ mutationFn: (body: CreateRoleRequest) => createRole(body), onSuccess: invalidate });
 }
 
 /** Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
 export function useCloneRole() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({
-        mutationFn: ({ id, body }: { id: string; body: CloneRoleRequest }) => cloneRole(id, body),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateRbac();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CloneRoleRequest }) => cloneRole(id, body),
+    onSuccess: invalidate,
+  });
 }
 
 export function useUpdateRole() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({
-        mutationFn: ({ id, body }: { id: string; body: UpdateRoleRequest }) => updateRole(id, body),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateRbac();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateRoleRequest }) => updateRole(id, body),
+    onSuccess: invalidate,
+  });
 }
 
 export function useDeleteRole() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({
-        mutationFn: ({ id, breakGlass }: { id: string; breakGlass: BreakGlass }) => deleteRole(id, breakGlass),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateRbac();
+  return useMutation({
+    mutationFn: ({ id, breakGlass }: { id: string; breakGlass: BreakGlass }) => deleteRole(id, breakGlass),
+    onSuccess: invalidate,
+  });
 }
 
 export function useAssignPolicyToRole() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({
-        mutationFn: ({ roleId, policyId, priority }: { roleId: string; policyId: string; priority?: number }) =>
-            assignPolicyToRole(roleId, policyId, priority),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateRbac();
+  return useMutation({
+    mutationFn: ({ roleId, policyId, priority }: { roleId: string; policyId: string; priority?: number }) =>
+      assignPolicyToRole(roleId, policyId, priority),
+    onSuccess: invalidate,
+  });
 }
 
 export function useDetachPolicyFromRole() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({
-        mutationFn: ({ roleId, policyId, breakGlass }: { roleId: string; policyId: string; breakGlass: BreakGlass }) =>
-            detachPolicyFromRole(roleId, policyId, breakGlass),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateRbac();
+  return useMutation({
+    mutationFn: ({ roleId, policyId, breakGlass }: { roleId: string; policyId: string; breakGlass: BreakGlass }) =>
+      detachPolicyFromRole(roleId, policyId, breakGlass),
+    onSuccess: invalidate,
+  });
 }
 
 export function useCreatePolicy() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({ mutationFn: (body: CreatePolicyRequest) => createPolicy(body), onSuccess: invalidate });
+  const invalidate = useInvalidateRbac();
+  return useMutation({ mutationFn: (body: CreatePolicyRequest) => createPolicy(body), onSuccess: invalidate });
 }
 
 export function useUpdatePolicy() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({
-        mutationFn: ({ id, body }: { id: string; body: UpdatePolicyRequest }) => updatePolicy(id, body),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateRbac();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdatePolicyRequest }) => updatePolicy(id, body),
+    onSuccess: invalidate,
+  });
 }
 
 export function useDeletePolicy() {
-    const invalidate = useInvalidateRbac();
-    return useMutation({
-        mutationFn: ({ id, breakGlass }: { id: string; breakGlass: BreakGlass }) => deletePolicy(id, breakGlass),
-        onSuccess: invalidate,
-    });
+  const invalidate = useInvalidateRbac();
+  return useMutation({
+    mutationFn: ({ id, breakGlass }: { id: string; breakGlass: BreakGlass }) => deletePolicy(id, breakGlass),
+    onSuccess: invalidate,
+  });
 }
 
 /** Editor dry-run; no cache impact. */
 export function useValidatePolicyRules() {
-    return useMutation({ mutationFn: (rules: PolicyRule[]) => validatePolicyRules(rules) });
+  return useMutation({ mutationFn: (rules: PolicyRule[]) => validatePolicyRules(rules) });
 }

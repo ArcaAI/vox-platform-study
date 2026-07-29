@@ -21,6 +21,7 @@ from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
 from smr.models.stats import GenerationStats, stats_from_bedrock
 from smr.models.stream import StreamChunk
+from smr.providers.base import require_model
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -120,13 +121,15 @@ class BedrockProvider:
         if request.response_format is not None and request.response_format.type == "json_schema":
             schema = request.response_format.json_schema or {}
             params["toolConfig"] = {
-                "tools": [{
-                    "toolSpec": {
-                        "name": schema.get("title", "output"),
-                        "description": "Structured output schema",
-                        "inputSchema": {"json": schema},
+                "tools": [
+                    {
+                        "toolSpec": {
+                            "name": schema.get("title", "output"),
+                            "description": "Structured output schema",
+                            "inputSchema": {"json": schema},
+                        }
                     }
-                }],
+                ],
                 "toolChoice": {"tool": {"name": schema.get("title", "output")}},
             }
 
@@ -140,12 +143,12 @@ class BedrockProvider:
 
     async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
         resolved = resolve_request_defaults(request)
-        resolved_model = self._resolve_model(request)
+        resolved_model = require_model(self._resolve_model(request), provider="bedrock")
         with _get_tracer().start_as_current_span(
             "gen_ai.generate",
             attributes={
                 "gen_ai.system": "aws_bedrock",
-                "gen_ai.request.model": resolved_model or "",
+                "gen_ai.request.model": resolved_model,
                 "gen_ai.operation.name": "generate",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
@@ -177,7 +180,7 @@ class BedrockProvider:
             raw_usage: dict[str, Any] = dict(response.get("usage", {}))
             stats = stats_from_bedrock(
                 provider="bedrock",
-                model=resolved_model or "",
+                model=resolved_model,
                 usage=raw_usage,
                 stop_reason=stop_reason,
                 total_ms=total_ms,
@@ -190,18 +193,18 @@ class BedrockProvider:
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
+        resolved_model = require_model(self._resolve_model(request), provider="bedrock")
         with _get_tracer().start_as_current_span(
             "gen_ai.generate_stream",
             attributes={
                 "gen_ai.system": "aws_bedrock",
-                "gen_ai.request.model": self._resolve_model(request) or "",
+                "gen_ai.request.model": resolved_model,
                 "gen_ai.operation.name": "generate_stream",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
             params = self._build_converse_params(request)
-            resolved_model = self._resolve_model(request)
             client = self._client_for(request)
 
             loop = asyncio.get_running_loop()
@@ -260,12 +263,16 @@ class BedrockProvider:
             total_ms = int((time.monotonic() - start) * 1000)
             stats = stats_from_bedrock(
                 provider="bedrock",
-                model=resolved_model or "",
+                model=resolved_model,
                 usage=raw_usage,
                 stop_reason=stop_reason,
                 total_ms=total_ms,
                 ttft_ms=ttft_ms,
-                engine_native={"usage": raw_usage, "stopReason": stop_reason} if raw_usage or stop_reason else None,
+                engine_native=(
+                    {"usage": raw_usage, "stopReason": stop_reason}
+                    if raw_usage or stop_reason
+                    else None
+                ),
             )
             if raw_usage:
                 span.set_attribute("gen_ai.usage.input_tokens", raw_usage.get("inputTokens", 0))

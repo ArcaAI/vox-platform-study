@@ -90,16 +90,20 @@ class TestBedrockAsyncStream:
         """Content chunks must arrive in the same order as the EventStream."""
         provider = _make_provider()
         provider._client.converse_stream.return_value = {
-            "stream": MockEventStream([
-                {"contentBlockDelta": {"delta": {"text": "Hello"}}},
-                {"contentBlockDelta": {"delta": {"text": " world"}}},
-                {"contentBlockDelta": {"delta": {"text": "!"}}},
-                {"messageStop": {"stopReason": "end_turn"}},
-            ])
+            "stream": MockEventStream(
+                [
+                    {"contentBlockDelta": {"delta": {"text": "Hello"}}},
+                    {"contentBlockDelta": {"delta": {"text": " world"}}},
+                    {"contentBlockDelta": {"delta": {"text": "!"}}},
+                    {"messageStop": {"stopReason": "end_turn"}},
+                ]
+            )
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        ):
             chunks.append(chunk)
 
         text_chunks = [c for c in chunks if c.type == "chunk"]
@@ -113,15 +117,19 @@ class TestBedrockAsyncStream:
         """A reasoningContent delta must produce a reasoning StreamChunk."""
         provider = _make_provider()
         provider._client.converse_stream.return_value = {
-            "stream": MockEventStream([
-                {"contentBlockDelta": {"delta": {"reasoningContent": {"text": "Thinking..."}}}},
-                {"contentBlockDelta": {"delta": {"text": "Answer"}}},
-                {"messageStop": {"stopReason": "end_turn"}},
-            ])
+            "stream": MockEventStream(
+                [
+                    {"contentBlockDelta": {"delta": {"reasoningContent": {"text": "Thinking..."}}}},
+                    {"contentBlockDelta": {"delta": {"text": "Answer"}}},
+                    {"messageStop": {"stopReason": "end_turn"}},
+                ]
+            )
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        ):
             chunks.append(chunk)
 
         reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
@@ -136,14 +144,18 @@ class TestBedrockAsyncStream:
         """A messageStop event must produce a done StreamChunk with finish_reason."""
         provider = _make_provider()
         provider._client.converse_stream.return_value = {
-            "stream": MockEventStream([
-                {"contentBlockDelta": {"delta": {"text": "Hi"}}},
-                {"messageStop": {"stopReason": "end_turn"}},
-            ])
+            "stream": MockEventStream(
+                [
+                    {"contentBlockDelta": {"delta": {"text": "Hi"}}},
+                    {"messageStop": {"stopReason": "end_turn"}},
+                ]
+            )
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        ):
             chunks.append(chunk)
 
         done_chunks = [c for c in chunks if c.type == "done"]
@@ -155,15 +167,19 @@ class TestBedrockAsyncStream:
         """A metadata event with usage must produce a usage StreamChunk."""
         provider = _make_provider()
         provider._client.converse_stream.return_value = {
-            "stream": MockEventStream([
-                {"contentBlockDelta": {"delta": {"text": "Ok"}}},
-                {"messageStop": {"stopReason": "end_turn"}},
-                {"metadata": {"usage": {"inputTokens": 10, "outputTokens": 5}}},
-            ])
+            "stream": MockEventStream(
+                [
+                    {"contentBlockDelta": {"delta": {"text": "Ok"}}},
+                    {"messageStop": {"stopReason": "end_turn"}},
+                    {"metadata": {"usage": {"inputTokens": 10, "outputTokens": 5}}},
+                ]
+            )
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        ):
             chunks.append(chunk)
 
         # AD-1: the usage chunk now carries the FULL GenerationStats dict
@@ -182,17 +198,21 @@ class TestBedrockAsyncStream:
         """Events with empty text in contentBlockDelta must be skipped."""
         provider = _make_provider()
         provider._client.converse_stream.return_value = {
-            "stream": MockEventStream([
-                {"contentBlockDelta": {"delta": {"text": "A"}}},
-                {"contentBlockDelta": {"delta": {"text": ""}}},
-                {"contentBlockDelta": {"delta": {"text": "B"}}},
-                {"contentBlockDelta": {"delta": {}}},
-                {"messageStop": {"stopReason": "end_turn"}},
-            ])
+            "stream": MockEventStream(
+                [
+                    {"contentBlockDelta": {"delta": {"text": "A"}}},
+                    {"contentBlockDelta": {"delta": {"text": ""}}},
+                    {"contentBlockDelta": {"delta": {"text": "B"}}},
+                    {"contentBlockDelta": {"delta": {}}},
+                    {"messageStop": {"stopReason": "end_turn"}},
+                ]
+            )
         }
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        ):
             chunks.append(chunk)
 
         text_chunks = [c for c in chunks if c.type == "chunk"]
@@ -215,7 +235,9 @@ class TestBedrockAsyncStream:
 
         chunks: list[StreamChunk] = []
         with pytest.raises(RuntimeError, match="connection reset"):
-            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+            async for chunk in provider.generate_stream(
+                GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            ):
                 chunks.append(chunk)
 
         assert len(chunks) == 1
@@ -240,8 +262,7 @@ class TestBedrockAsyncStream:
 
         provider = _make_provider()
         events = [
-            {"contentBlockDelta": {"delta": {"text": f"tok{i}"}}}
-            for i in range(n_events)
+            {"contentBlockDelta": {"delta": {"text": f"tok{i}"}}} for i in range(n_events)
         ] + [{"messageStop": {"stopReason": "end_turn"}}]
 
         provider._client.converse_stream.return_value = {
@@ -260,7 +281,9 @@ class TestBedrockAsyncStream:
         probe_task = asyncio.create_task(probe())
 
         chunks: list[StreamChunk] = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        ):
             chunks.append(chunk)
 
         await probe_task
@@ -278,11 +301,13 @@ class TestBedrockAsyncStream:
         """OTel span attributes must be set for finish_reason and token usage."""
         provider = _make_provider()
         provider._client.converse_stream.return_value = {
-            "stream": MockEventStream([
-                {"contentBlockDelta": {"delta": {"text": "Hi"}}},
-                {"messageStop": {"stopReason": "end_turn"}},
-                {"metadata": {"usage": {"inputTokens": 42, "outputTokens": 17}}},
-            ])
+            "stream": MockEventStream(
+                [
+                    {"contentBlockDelta": {"delta": {"text": "Hi"}}},
+                    {"messageStop": {"stopReason": "end_turn"}},
+                    {"metadata": {"usage": {"inputTokens": 42, "outputTokens": 17}}},
+                ]
+            )
         }
 
         mock_span = MagicMock()
@@ -292,13 +317,12 @@ class TestBedrockAsyncStream:
 
         with patch("smr.providers.bedrock._get_tracer", return_value=mock_tracer):
             chunks: list[StreamChunk] = []
-            async for chunk in provider.generate_stream(GenerateRequest(prompt="hi")):
+            async for chunk in provider.generate_stream(
+                GenerateRequest(prompt="hi", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+            ):
                 chunks.append(chunk)
 
-        calls = {
-            call.args[0]: call.args[1]
-            for call in mock_span.set_attribute.call_args_list
-        }
+        calls = {call.args[0]: call.args[1] for call in mock_span.set_attribute.call_args_list}
         assert calls["gen_ai.response.finish_reason"] == "end_turn"
         assert calls["gen_ai.usage.input_tokens"] == 42
         assert calls["gen_ai.usage.output_tokens"] == 17

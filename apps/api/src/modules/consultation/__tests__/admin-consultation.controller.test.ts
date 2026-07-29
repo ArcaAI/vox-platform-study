@@ -44,9 +44,7 @@ describe('AdminConsultationController', () => {
     it('defaults page=1 / pageSize=10 when query params are absent', async () => {
       mockConsultationService.listConsultationsForTenant.mockResolvedValue({ data: [], count: 0, page: 1, limit: 10 });
       await controller.list({} as any);
-      expect(mockConsultationService.listConsultationsForTenant).toHaveBeenCalledWith(
-        expect.objectContaining({ page: 1, pageSize: 10 }),
-      );
+      expect(mockConsultationService.listConsultationsForTenant).toHaveBeenCalledWith(expect.objectContaining({ page: 1, pageSize: 10 }));
     });
 
     // Optional ?status=RECORDING filter (admin live console).
@@ -84,8 +82,7 @@ describe('AdminConsultationController', () => {
   describe('access gate', () => {
     it('is class-gated by @CanManage(Consultation) so plain doctors are excluded', () => {
       const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, AdminConsultationController) as
-        | Array<{ action: string; subject: string }>
-        | undefined;
+        Array<{ action: string; subject: string }> | undefined;
       expect(meta).toEqual([{ action: 'manage', subject: 'Consultation' }]);
     });
   });

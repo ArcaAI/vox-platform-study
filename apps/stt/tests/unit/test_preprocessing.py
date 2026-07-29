@@ -609,7 +609,10 @@ class TestApplyVadSmartPriority:
         assert applied is True
         assert segments == expected_segments
         mock_vad.assert_called_once_with(
-            audio_samples, 16000, pipeline_model, vad_config.threshold,
+            audio_samples,
+            16000,
+            pipeline_model,
+            vad_config.threshold,
             min_speech_duration_ms=vad_config.min_speech_duration_ms,
             min_silence_duration_ms=vad_config.min_silence_duration_ms,
             padding_ms=vad_config.padding_ms,
@@ -1186,11 +1189,11 @@ class TestDenoiseEngineDispatch:
         config.target_sample_rate = 16000
         config.resample_enabled = True
 
-        preprocessor._apply_denoise = AsyncMock(return_value=(np.zeros(100, dtype=np.float32), 48000))
-        preprocessor._apply_denoise_deepfilternet3 = AsyncMock()
-        preprocessor._load_audio = MagicMock(
-            return_value=(np.zeros(1600, dtype=np.float32), 16000)
+        preprocessor._apply_denoise = AsyncMock(
+            return_value=(np.zeros(100, dtype=np.float32), 48000)
         )
+        preprocessor._apply_denoise_deepfilternet3 = AsyncMock()
+        preprocessor._load_audio = MagicMock(return_value=(np.zeros(1600, dtype=np.float32), 16000))
 
         await preprocessor.process(b"fake", config)
 
@@ -1213,9 +1216,7 @@ class TestDenoiseEngineDispatch:
         preprocessor._apply_denoise_deepfilternet3 = AsyncMock(
             return_value=(np.zeros(100, dtype=np.float32), 48000)
         )
-        preprocessor._load_audio = MagicMock(
-            return_value=(np.zeros(1600, dtype=np.float32), 16000)
-        )
+        preprocessor._load_audio = MagicMock(return_value=(np.zeros(1600, dtype=np.float32), 16000))
 
         await preprocessor.process(b"fake", config)
 
@@ -1493,9 +1494,7 @@ class TestTask505DualPathDenoise:
 
         with (
             patch.object(pre, "_apply_denoise", side_effect=fake_denoise),
-            patch.object(
-                pre, "_apply_vad_smart", side_effect=AsyncMock(return_value=([], True))
-            ),
+            patch.object(pre, "_apply_vad_smart", side_effect=AsyncMock(return_value=([], True))),
         ):
             out = await pre.process(self._sine_bytes(), self._config(scope="full"))
 
@@ -1521,9 +1520,7 @@ class TestTask505DualPathDenoise:
         # resample.enabled=false is honored only when input already matches;
         # a mismatch resamples anyway (VAD/ASR require the target rate).
         pre = self._pre()
-        with patch.object(
-            pre, "_apply_vad_smart", side_effect=AsyncMock(return_value=([], True))
-        ):
+        with patch.object(pre, "_apply_vad_smart", side_effect=AsyncMock(return_value=([], True))):
             out = await pre.process(
                 self._sine_bytes(sr=48000),
                 self._config(denoise_enabled=False, resample_enabled=False),
@@ -1533,9 +1530,7 @@ class TestTask505DualPathDenoise:
 
     def test_rms_normalize(self):
         pre = self._pre()
-        wave = (0.5 * np.sin(2 * np.pi * 440 * np.arange(16000) / 16000)).astype(
-            np.float32
-        )
+        wave = (0.5 * np.sin(2 * np.pi * 440 * np.arange(16000) / 16000)).astype(np.float32)
         out = pre._normalize(wave, method="rms")
         rms = float(np.sqrt(np.mean(out**2)))
         assert rms == pytest.approx(0.1, rel=0.05)

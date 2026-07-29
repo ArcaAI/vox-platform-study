@@ -268,9 +268,7 @@ describe('ParallelPipeline', () => {
     it('should throw if execute not called first', async () => {
       pipeline.addStage(new ProcessorStage('manual', '-manual'), { triggerMode: 'manual' });
 
-      await expect(pipeline.triggerStage('manual')).rejects.toThrow(
-        'Pipeline must be executed first'
-      );
+      await expect(pipeline.triggerStage('manual')).rejects.toThrow('Pipeline must be executed first');
     });
 
     it('should throw if stage is disabled', async () => {
@@ -502,7 +500,7 @@ describe('ParallelPipeline', () => {
         expect.objectContaining({
           runId: expect.any(String),
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -518,7 +516,7 @@ describe('ParallelPipeline', () => {
           runId: expect.any(String),
           durationMs: expect.any(Number),
           timestamp: expect.any(Number),
-        })
+        }),
       );
     });
 
@@ -546,7 +544,7 @@ describe('ParallelPipeline', () => {
         expect.objectContaining({
           stageName: 'failing',
           error: expect.any(Error),
-        })
+        }),
       );
     });
   });

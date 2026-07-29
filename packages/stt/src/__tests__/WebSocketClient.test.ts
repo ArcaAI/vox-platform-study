@@ -7,12 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  WebSocketClient,
-  DEFAULT_WS_OPTIONS,
-  type WebSocketCallbacks,
-  type ConnectionState,
-} from '../websocket/WebSocketClient.js';
+import { WebSocketClient, DEFAULT_WS_OPTIONS, type WebSocketCallbacks, type ConnectionState } from '../websocket/WebSocketClient.js';
 
 // Mock WebSocket
 class MockWebSocket {
@@ -186,7 +181,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
 
       await connectPromise;
@@ -217,7 +212,7 @@ describe('WebSocketClient', () => {
           session_id: 'my-session',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
 
       await connectPromise;
@@ -239,7 +234,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise1;
 
@@ -317,7 +312,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -344,7 +339,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -353,9 +348,7 @@ describe('WebSocketClient', () => {
 
       // Check that stop message was sent
       const sentMessages = mockWsInstance?.getSentMessages() ?? [];
-      const stopMessage = sentMessages.find(
-        (msg) => typeof msg === 'string' && msg.includes('"type":"stop"')
-      );
+      const stopMessage = sentMessages.find((msg) => typeof msg === 'string' && msg.includes('"type":"stop"'));
       expect(stopMessage).toBeDefined();
     });
 
@@ -400,7 +393,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -430,7 +423,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -458,7 +451,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -486,7 +479,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -495,9 +488,7 @@ describe('WebSocketClient', () => {
       client.sendAudio(audio, { sampleRate: 16000, channels: 1 });
 
       const sentMessages = mockWsInstance?.getSentMessages() ?? [];
-      const metadataMessage = sentMessages.find(
-        (msg) => typeof msg === 'string' && msg.includes('"type":"audio"')
-      );
+      const metadataMessage = sentMessages.find((msg) => typeof msg === 'string' && msg.includes('"type":"audio"'));
       expect(metadataMessage).toBeDefined();
     });
   });
@@ -530,7 +521,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -538,9 +529,7 @@ describe('WebSocketClient', () => {
       client.sendMessage({ type: 'ping' });
 
       const sentMessages = mockWsInstance?.getSentMessages() ?? [];
-      const pingMessage = sentMessages.find(
-        (msg) => typeof msg === 'string' && msg.includes('"type":"ping"')
-      );
+      const pingMessage = sentMessages.find((msg) => typeof msg === 'string' && msg.includes('"type":"ping"'));
       expect(pingMessage).toBeDefined();
     });
   });
@@ -562,7 +551,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -570,9 +559,7 @@ describe('WebSocketClient', () => {
       client.sendPing();
 
       const sentMessages = mockWsInstance?.getSentMessages() ?? [];
-      const pingMessage = sentMessages.find(
-        (msg) => typeof msg === 'string' && msg.includes('"type":"ping"')
-      );
+      const pingMessage = sentMessages.find((msg) => typeof msg === 'string' && msg.includes('"type":"ping"'));
       expect(pingMessage).toBeDefined();
     });
   });
@@ -597,7 +584,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -610,7 +597,7 @@ describe('WebSocketClient', () => {
           speaker_id: 'sp1',
           session_id: 'session-123',
           language: 'en',
-        })
+        }),
       );
 
       expect(onMessage).toHaveBeenCalled();
@@ -639,7 +626,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -674,7 +661,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 
@@ -709,7 +696,7 @@ describe('WebSocketClient', () => {
           session_id: 'session-123',
           audio_config: {},
           timestamp: new Date().toISOString(),
-        })
+        }),
       );
       await connectPromise;
 

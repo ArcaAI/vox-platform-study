@@ -140,12 +140,12 @@ src/nlp/
 
 ### ML Models
 
-| Feature | Model | Task |
-|---------|-------|------|
-| Text Classification | `michellejieli/emotion_text_classifier` | 11 emotion categories |
-| Token Classification | `blaze999/Medical-NER` | Medical entity extraction |
-| Medical Diagnosis | `shanover/symps_disease_bert_v3_c41` | Disease suggestion (41 classes) |
-| Text Correction | SymSpell + Medical Dictionaries | Spelling & terminology correction |
+| Feature              | Model                                   | Task                              |
+| -------------------- | --------------------------------------- | --------------------------------- |
+| Text Classification  | `michellejieli/emotion_text_classifier` | 11 emotion categories             |
+| Token Classification | `blaze999/Medical-NER`                  | Medical entity extraction         |
+| Medical Diagnosis    | `shanover/symps_disease_bert_v3_c41`    | Disease suggestion (41 classes)   |
+| Text Correction      | SymSpell + Medical Dictionaries         | Spelling & terminology correction |
 
 ### Infrastructure
 
@@ -191,6 +191,7 @@ src/nlp/
 - `POST /api/v1/classify/text` - Classify text into emotion categories
 
 **Request:**
+
 ```json
 {
   "text": "The patient is very happy with the treatment results",
@@ -199,6 +200,7 @@ src/nlp/
 ```
 
 **Response:**
+
 ```json
 {
   "predicted_label": "joy",
@@ -218,6 +220,7 @@ src/nlp/
 - `POST /api/v1/classify/tokens` - Extract medical entities from text
 
 **Request:**
+
 ```json
 {
   "text": "Patient has diabetes and hypertension with chest pain",
@@ -227,6 +230,7 @@ src/nlp/
 ```
 
 **Response:**
+
 ```json
 {
   "entities": [
@@ -272,6 +276,7 @@ src/nlp/
 - `POST /api/v1/diagnosis/suggest` - Suggest possible medical conditions
 
 **Request:**
+
 ```json
 {
   "text": "Patient complains of fever, cough, and difficulty breathing for 3 days",
@@ -281,6 +286,7 @@ src/nlp/
 ```
 
 **Response:**
+
 ```json
 {
   "suggestions": [
@@ -307,6 +313,7 @@ src/nlp/
 - `POST /api/v1/correct/text` - Correct spelling and terminology
 
 **Request:**
+
 ```json
 {
   "type": "spelling",
@@ -318,15 +325,13 @@ src/nlp/
 ```
 
 **Response:**
+
 ```json
 {
   "original_text": "paracetmol for fver",
   "corrected_text": "paracetamol for fever",
   "language": "en",
-  "alternatives": [
-    "paracetamol -> paracetamol",
-    "fver -> fever"
-  ]
+  "alternatives": ["paracetamol -> paracetamol", "fver -> fever"]
 }
 ```
 
@@ -335,6 +340,7 @@ src/nlp/
 - `WS /ws/classify/text/{session_id}` - Real-time text classification stream
 
 **WebSocket Message (Incoming):**
+
 ```json
 {
   "text": "Patient is experiencing severe anxiety",
@@ -343,6 +349,7 @@ src/nlp/
 ```
 
 **WebSocket Message (Outgoing):**
+
 ```json
 {
   "predicted_label": "fear",
@@ -436,7 +443,7 @@ services:
       target: production
     container_name: hope-nlp
     ports:
-      - "8864:8864"
+      - '8864:8864'
     environment:
       - NLP_ENVIRONMENT=production
       - TEXT_CLASSIFIER_USE_GPU=true
@@ -453,7 +460,7 @@ services:
               capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8864/api/v1/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:8864/api/v1/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -525,12 +532,14 @@ http POST localhost:8864/api/v1/classify/tokens \
 ### Available Metrics
 
 **Service Metrics:**
+
 - `nlp_requests_total` - Total requests by endpoint and status
 - `nlp_request_duration_seconds` - Request processing latency
 - `nlp_active_requests` - Currently processing requests
 - `nlp_model_inference_duration_seconds` - ML model inference time
 
 **Model Metrics:**
+
 - `nlp_text_classification_total` - Text classification requests
 - `nlp_token_classification_total` - Token classification requests
 - `nlp_diagnosis_suggestions_total` - Diagnosis suggestion requests
@@ -538,6 +547,7 @@ http POST localhost:8864/api/v1/classify/tokens \
 - `nlp_model_load_duration_seconds` - Model loading time
 
 **Resource Metrics:**
+
 - `nlp_cpu_usage_percent` - CPU usage percentage
 - `nlp_memory_usage_bytes` - Memory usage in bytes
 - `nlp_gpu_memory_usage_bytes` - GPU memory usage (if available)
@@ -780,4 +790,3 @@ For support and questions:
 ✅ **GPU Acceleration** (2-5x performance boost)
 ✅ **Production Ready** (Docker + Observability)
 ✅ **Comprehensive Documentation** (10 detailed guides)
-

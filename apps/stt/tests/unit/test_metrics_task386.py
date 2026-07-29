@@ -73,10 +73,7 @@ class TestTranscriptionMetrics:
         )
 
         assert _val("stt_transcription_total", total_labels) == before_total + 1
-        assert (
-            _val("stt_transcription_latency_seconds_count", lat_labels)
-            == before_lat + 1
-        )
+        assert _val("stt_transcription_latency_seconds_count", lat_labels) == before_lat + 1
         # _sum / 60 is the "transcription minutes" platform metric
         assert _val("stt_audio_duration_seconds_sum") == before_audio_sum + 42.0
 
@@ -98,10 +95,7 @@ class TestStreamingMetrics:
         m.streaming_session_started(active_count=3)
 
         assert _val("stt_streaming_sessions_active") == 3
-        assert (
-            _val("stt_streaming_sessions_total", {"status": "started"})
-            == before_total + 1
-        )
+        assert _val("stt_streaming_sessions_total", {"status": "started"}) == before_total + 1
 
     def test_streaming_session_ended_syncs_active_gauge(self):
         m.streaming_session_started(active_count=3)

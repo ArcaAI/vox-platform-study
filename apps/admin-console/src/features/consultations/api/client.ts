@@ -12,15 +12,15 @@ const CONSULTATIONS = 'admin/consultations';
 
 /** NOTE: `page` is 1-based on this endpoint (see ListConsultationsParams). */
 export function listConsultations(params?: ListConsultationsParams): Promise<PaginatedConsultations> {
-    return getJson(CONSULTATIONS, params);
+  return getJson(CONSULTATIONS, params);
 }
 
 /** Zero-filled new/revisit buckets; `from`/`to` are required (400 without). */
 export function getConsultationAggregate(params: ConsultationAggregateParams): Promise<ConsultationAggregate> {
-    return getJson(`${CONSULTATIONS}/aggregate`, params);
+  return getJson(`${CONSULTATIONS}/aggregate`, params);
 }
 
 /** Read-only detail with relations (doctor, department, context items). */
 export function getConsultation(id: string): Promise<Consultation> {
-    return getJson(`${CONSULTATIONS}/${encodeURIComponent(id)}`);
+  return getJson(`${CONSULTATIONS}/${encodeURIComponent(id)}`);
 }

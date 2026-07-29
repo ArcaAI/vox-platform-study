@@ -8,8 +8,8 @@ import { handleProxy } from '@/server/hope-proxy';
 type RouteContext = { params: Promise<{ path: string[] }> };
 
 async function handler(request: Request, context: RouteContext): Promise<Response> {
-    const { path } = await context.params;
-    return handleProxy(request, path);
+  const { path } = await context.params;
+  return handleProxy(request, path);
 }
 
 export const GET = handler;

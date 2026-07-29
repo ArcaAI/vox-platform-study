@@ -104,12 +104,14 @@ describe('FileTranscriptionService', () => {
 
     it('should normalize batch transcribe response with id', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(createMockResponse({
-        id: 'job-batch-999',
-        status: 'QUEUED',
-        sseUrl: '/api/v1/audio/transcription-jobs/job-batch-999/stream',
-        audioUri: 's3://hope-audio/demo.wav',
-      }));
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          id: 'job-batch-999',
+          status: 'QUEUED',
+          sseUrl: '/api/v1/audio/transcription-jobs/job-batch-999/stream',
+          audioUri: 's3://hope-audio/demo.wav',
+        }),
+      );
 
       const result = await service.uploadAndTranscribe(file, {
         pipelineId: 'whisper-default',
@@ -123,28 +125,32 @@ describe('FileTranscriptionService', () => {
       const file = createMockAudioFile();
       mockFetch.mockResolvedValueOnce(createMockResponse({ status: 'QUEUED' }));
 
-      await expect(service.uploadAndTranscribe(file, {
-        pipelineId: 'whisper-default',
-      })).rejects.toThrow('missing job id');
+      await expect(
+        service.uploadAndTranscribe(file, {
+          pipelineId: 'whisper-default',
+        }),
+      ).rejects.toThrow('missing job id');
     });
 
     it('should throw when batch transcribe response has unknown status', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(createMockResponse({
-        id: 'job-batch-123',
-        status: 'UNKNOWN_STATUS',
-      }));
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          id: 'job-batch-123',
+          status: 'UNKNOWN_STATUS',
+        }),
+      );
 
-      await expect(service.uploadAndTranscribe(file, {
-        pipelineId: 'whisper-default',
-      })).rejects.toThrow('Invalid transcription response status');
+      await expect(
+        service.uploadAndTranscribe(file, {
+          pipelineId: 'whisper-default',
+        }),
+      ).rejects.toThrow('Invalid transcription response status');
     });
 
     it('should call the TRANSCRIBE endpoint', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
 
@@ -154,9 +160,7 @@ describe('FileTranscriptionService', () => {
 
     it('should send FormData with the audio file', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
 
@@ -167,9 +171,7 @@ describe('FileTranscriptionService', () => {
 
     it('should include pipelineId in the form data', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, {
         pipelineId: 'whisper-large-v3',
@@ -181,9 +183,7 @@ describe('FileTranscriptionService', () => {
 
     it('should include optional fields in the form data', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, {
         pipelineId: 'default',
@@ -204,9 +204,7 @@ describe('FileTranscriptionService', () => {
 
     it('should include codeSwitching: false in form data (not omit falsy)', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, {
         pipelineId: 'default',
@@ -221,20 +219,14 @@ describe('FileTranscriptionService', () => {
 
     it('should throw on upload failure', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(413, 'File too large'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(413, 'File too large'));
 
-      await expect(
-        service.uploadAndTranscribe(file, { pipelineId: 'default' }),
-      ).rejects.toThrow();
+      await expect(service.uploadAndTranscribe(file, { pipelineId: 'default' })).rejects.toThrow();
     });
 
     it('should use POST method', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
 
@@ -244,9 +236,7 @@ describe('FileTranscriptionService', () => {
 
     it('should include auth headers via apiClient (not bare fetch)', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
 
@@ -256,9 +246,7 @@ describe('FileTranscriptionService', () => {
 
     it('should NOT set Content-Type header (let browser set multipart boundary)', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
 
@@ -268,9 +256,7 @@ describe('FileTranscriptionService', () => {
 
     it('should omit optional fields from FormData when not provided', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
 
@@ -284,9 +270,7 @@ describe('FileTranscriptionService', () => {
 
     it('should NOT update activeJobId on failed upload', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(500, 'Server Error'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Server Error'));
 
       try {
         await service.uploadAndTranscribe(file, { pipelineId: 'default' });
@@ -299,22 +283,16 @@ describe('FileTranscriptionService', () => {
 
     it('should throw on 401 unauthorized', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(401, 'Unauthorized'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(401, 'Unauthorized'));
 
-      await expect(
-        service.uploadAndTranscribe(file, { pipelineId: 'default' }),
-      ).rejects.toThrow();
+      await expect(service.uploadAndTranscribe(file, { pipelineId: 'default' })).rejects.toThrow();
     });
 
     it('should throw on network error', async () => {
       const file = createMockAudioFile();
       mockFetch.mockRejectedValueOnce(new TypeError('Network request failed'));
 
-      await expect(
-        service.uploadAndTranscribe(file, { pipelineId: 'default' }),
-      ).rejects.toThrow();
+      await expect(service.uploadAndTranscribe(file, { pipelineId: 'default' })).rejects.toThrow();
     });
   });
 
@@ -326,9 +304,7 @@ describe('FileTranscriptionService', () => {
     it('should build the SSE stream URL for a job', () => {
       const url = service.buildJobStreamUrl('job-sse-test');
 
-      expect(url).toBe(
-        'https://api.example.com/audio/transcription-jobs/job-sse-test/stream',
-      );
+      expect(url).toBe('https://api.example.com/audio/transcription-jobs/job-sse-test/stream');
     });
 
     it('should use STT_ENDPOINTS.JOB_STREAM', () => {
@@ -349,9 +325,7 @@ describe('FileTranscriptionService', () => {
 
     it('should return the job ID after a successful upload', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
 
@@ -366,9 +340,7 @@ describe('FileTranscriptionService', () => {
   describe('dispose', () => {
     it('should clean up and reset state', async () => {
       const file = createMockAudioFile();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockTranscribeResponse()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockTranscribeResponse()));
 
       await service.uploadAndTranscribe(file, { pipelineId: 'default' });
       expect(service.getActiveJobId()).toBe('job-file-123');

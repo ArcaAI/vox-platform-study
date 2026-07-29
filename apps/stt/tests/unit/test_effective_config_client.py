@@ -69,7 +69,11 @@ class TestFetch:
         snapshot = await client.get()
 
         assert snapshot.ok is True
-        assert snapshot.retention() == {"ttl_seconds": 1800, "max_models": 8, "max_memory_mb": 20000}
+        assert snapshot.retention() == {
+            "ttl_seconds": 1800,
+            "max_models": 8,
+            "max_memory_mb": 20000,
+        }
         assert snapshot.worker_concurrency() == 6
         assert snapshot.streaming_max_concurrent() == 3
 
@@ -125,7 +129,12 @@ class TestFailSafe:
     async def test_null_fields_are_omitted_rather_than_zeroed(self) -> None:
         payload = {
             "service": "stt",
-            "retention": {"ttlSeconds": None, "maxModels": 5, "maxMemoryMb": None, "source": "env-fallback"},
+            "retention": {
+                "ttlSeconds": None,
+                "maxModels": 5,
+                "maxMemoryMb": None,
+                "source": "env-fallback",
+            },
         }
         client, _ = make_client(FakeClock(), lambda _r: httpx.Response(200, json=payload))
 

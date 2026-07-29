@@ -55,10 +55,9 @@ describe('Admin Jobs (OB-02) API hooks', () => {
     it('forwards optional filters (doctorId / departmentId / patientId)', async () => {
       mockGet.mockResolvedValueOnce({ data: [], count: 0, page: 2, limit: 25 });
 
-      const { result } = renderHook(
-        () => useAdminConsultations(TENANT_ID, { page: 2, limit: 25, doctorId: 'doc-1', departmentId: 'dep-1' }),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useAdminConsultations(TENANT_ID, { page: 2, limit: 25, doctorId: 'doc-1', departmentId: 'dep-1' }), {
+        wrapper: createWrapper(),
+      });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockGet).toHaveBeenCalledWith('/admin/consultations?page=2&limit=25&doctorId=doc-1&departmentId=dep-1', { tenantId: TENANT_ID });

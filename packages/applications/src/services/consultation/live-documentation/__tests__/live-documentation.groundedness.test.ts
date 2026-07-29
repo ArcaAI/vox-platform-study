@@ -57,7 +57,9 @@ interface HttpMockOptions {
 function buildHttpMock(opts: HttpMockOptions = {}) {
   const ground = opts.ground ?? (() => Promise.resolve({ data: GROUND_WIRE_MIXED }));
   const summary = opts.summary ?? TWO_SEGMENT_SUMMARY;
-  const classifyEntities = opts.classifyEntities ?? [{ entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.92, position: { start: 6, end: 16 } }];
+  const classifyEntities = opts.classifyEntities ?? [
+    { entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.92, position: { start: 6, end: 16 } },
+  ];
   return {
     axiosRef: {
       post: vi.fn().mockImplementation((url: string, body: unknown) => {
@@ -181,9 +183,7 @@ describe('LiveDocumentationService — output groundedness gate', () => {
 
     // The gate ran AFTER the note was generated (verifies the generated text, not the prompt).
     const postUrls = httpMock.axiosRef.post.mock.calls.map((c: unknown[]) => String(c[0]));
-    expect(postUrls.findIndex((u) => u.includes('/generate'))).toBeLessThan(
-      postUrls.findIndex((u) => u.includes('/guardrail/ground')),
-    );
+    expect(postUrls.findIndex((u) => u.includes('/generate'))).toBeLessThan(postUrls.findIndex((u) => u.includes('/guardrail/ground')));
   });
 
   it('sends {summary, transcript} to the configured GUARDRAIL_URL with the service token', async () => {
@@ -222,7 +222,9 @@ describe('LiveDocumentationService — output groundedness gate', () => {
   it('carries the NLP ontology ICD-10 code through to the published entity (TASK-543)', async () => {
     const httpMock = buildHttpMock({
       summary: 'Assessment: essential hypertension, stable on therapy.',
-      classifyEntities: [{ entity_type: 'DISEASE_DISORDER', text: 'hypertension', confidence: 0.9, icd_code: 'I10', position: { start: 0, end: 12 } }],
+      classifyEntities: [
+        { entity_type: 'DISEASE_DISORDER', text: 'hypertension', confidence: 0.9, icd_code: 'I10', position: { start: 0, end: 12 } },
+      ],
     });
     const { service } = buildDeps(httpMock, { config: ENABLED_CONFIG });
     service.start({ consultationId: CID, tenantId: TENANT });
@@ -304,7 +306,11 @@ describe('LiveDocumentationService — output groundedness gate', () => {
     expect(published.groundedness.verdict).toBe('unverified');
 
     // PHI hygiene: the failure logs carry no clinical text.
-    const gateWarns = warnSpy.mock.calls.filter((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('groundedness'));
+    const gateWarns = warnSpy.mock.calls.filter((c) =>
+      String((c[0] as { message?: string })?.message ?? '')
+        .toLowerCase()
+        .includes('groundedness'),
+    );
     expect(gateWarns.length).toBeGreaterThan(0);
     for (const call of gateWarns) {
       expect(JSON.stringify(call[0])).not.toContain('amlodipine');

@@ -112,7 +112,7 @@ describe('HOOK-03/SUM-06: DNA methods have no backend', () => {
     await expect(
       act(async () => {
         await result.current.summary.analyzeDNA(['sample text']);
-      })
+      }),
     ).rejects.toThrow('DNA analysis is not supported');
   });
 
@@ -134,7 +134,7 @@ describe('HOOK-03/SUM-06: DNA methods have no backend', () => {
     await expect(
       act(async () => {
         await result.current.summary.analyzeDNA([]);
-      })
+      }),
     ).rejects.toThrow('DNA analysis is not supported');
   });
 
@@ -146,8 +146,12 @@ describe('HOOK-03/SUM-06: DNA methods have no backend', () => {
 
   it('SummaryActions type should mark loadDNAStyle and analyzeDNA as deprecated', () => {
     const actions: Partial<SummaryActions> = {
-      analyzeDNA: async () => { throw new Error('deprecated'); },
-      loadDNAStyle: async () => { throw new Error('deprecated'); },
+      analyzeDNA: async () => {
+        throw new Error('deprecated');
+      },
+      loadDNAStyle: async () => {
+        throw new Error('deprecated');
+      },
     };
     expect(actions.analyzeDNA).toBeDefined();
     expect(actions.loadDNAStyle).toBeDefined();
@@ -248,7 +252,15 @@ describe('summary action behaviors', () => {
   });
 
   it('generateSummary should POST to SUMMARY_ENDPOINTS.GENERATE', async () => {
-    const summaryResp = { id: 's-1', contextItemId: 'ctx-1', content: 'Summary', type: 'summary', llmProvider: 'openai', modelName: 'gpt-4', createdAt: '' };
+    const summaryResp = {
+      id: 's-1',
+      contextItemId: 'ctx-1',
+      content: 'Summary',
+      type: 'summary',
+      llmProvider: 'openai',
+      modelName: 'gpt-4',
+      createdAt: '',
+    };
     mockPost.mockResolvedValue(summaryResp);
 
     const { result } = renderHook(() => useArca());
@@ -257,15 +269,20 @@ describe('summary action behaviors', () => {
       await result.current.summary.generateSummary({ includeNER: true });
     });
 
-    expect(mockPost).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.GENERATE('c-001'),
-      { includeNER: true }
-    );
+    expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE('c-001'), { includeNER: true });
     expect(currentMockStore.addSummary).toHaveBeenCalledWith(summaryResp);
   });
 
   it('generatePreSummary should POST to SUMMARY_ENDPOINTS.PRE_SUMMARY', async () => {
-    const preSummaryResp = { id: 'ps-1', contextItemId: 'ctx-1', content: 'Pre-summary', type: 'pre_summary', llmProvider: 'openai', modelName: 'gpt-4', createdAt: '' };
+    const preSummaryResp = {
+      id: 'ps-1',
+      contextItemId: 'ctx-1',
+      content: 'Pre-summary',
+      type: 'pre_summary',
+      llmProvider: 'openai',
+      modelName: 'gpt-4',
+      createdAt: '',
+    };
     mockPost.mockResolvedValue(preSummaryResp);
 
     const { result } = renderHook(() => useArca());
@@ -274,10 +291,7 @@ describe('summary action behaviors', () => {
       await result.current.summary.generatePreSummary();
     });
 
-    expect(mockPost).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.PRE_SUMMARY('c-001'),
-      undefined
-    );
+    expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.PRE_SUMMARY('c-001'), undefined);
   });
 
   it('loadSummaries should GET from SUMMARY_ENDPOINTS.LIST', async () => {
@@ -289,9 +303,7 @@ describe('summary action behaviors', () => {
       await result.current.summary.loadSummaries();
     });
 
-    expect(mockGet).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.LIST('c-001')
-    );
+    expect(mockGet).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.LIST('c-001'));
     expect(currentMockStore.setSummaries).toHaveBeenCalledWith([]);
   });
 
@@ -304,10 +316,7 @@ describe('summary action behaviors', () => {
       await result.current.summary.updateSummary('s-1', 'Updated content');
     });
 
-    expect(mockPatch).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'),
-      { content: 'Updated content' }
-    );
+    expect(mockPatch).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'), { content: 'Updated content' });
   });
 
   it('generateSummaryAsync should POST to SUMMARY_ENDPOINTS.GENERATE_ASYNC', async () => {
@@ -321,10 +330,7 @@ describe('summary action behaviors', () => {
       job = await result.current.summary.generateSummaryAsync();
     });
 
-    expect(mockPost).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'),
-      {}
-    );
+    expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.GENERATE_ASYNC('c-001'), {});
     expect(job).toEqual(jobResp);
   });
 
@@ -338,10 +344,7 @@ describe('summary action behaviors', () => {
       await result.current.summary.generateComprehensiveSummary();
     });
 
-    expect(mockPost).toHaveBeenCalledWith(
-      SUMMARY_ENDPOINTS.COMPREHENSIVE('c-001'),
-      {}
-    );
+    expect(mockPost).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.COMPREHENSIVE('c-001'), {});
   });
 
   it('should throw "No active consultation" when consultation is null', async () => {
@@ -352,7 +355,7 @@ describe('summary action behaviors', () => {
     await expect(
       act(async () => {
         await result.current.summary.generateSummary();
-      })
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
@@ -364,7 +367,7 @@ describe('summary action behaviors', () => {
     await expect(
       act(async () => {
         await result.current.summary.generateSummary();
-      })
+      }),
     ).rejects.toThrow('SDK not initialized');
   });
 });
@@ -407,10 +410,11 @@ describe('WS-5: summary versioning enhancements', () => {
         });
       });
 
-      expect(mockPatch).toHaveBeenCalledWith(
-        SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'),
-        { content: 'New content', changeReason: 'Doctor correction', changeSource: 'doctor_edit' }
-      );
+      expect(mockPatch).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'), {
+        content: 'New content',
+        changeReason: 'Doctor correction',
+        changeSource: 'doctor_edit',
+      });
     });
 
     it('should work without options (backwards compatible)', async () => {
@@ -421,10 +425,7 @@ describe('WS-5: summary versioning enhancements', () => {
         await result.current.summary.updateSummary('s-1', 'Updated');
       });
 
-      expect(mockPatch).toHaveBeenCalledWith(
-        SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'),
-        { content: 'Updated' }
-      );
+      expect(mockPatch).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.UPDATE('c-001', 's-1'), { content: 'Updated' });
     });
   });
 
@@ -442,9 +443,7 @@ describe('WS-5: summary versioning enhancements', () => {
         history = await result.current.summary.getSummaryHistory('ctx-1');
       });
 
-      expect(mockGet).toHaveBeenCalledWith(
-        SUMMARY_ENDPOINTS.VERSIONS('c-001', 'ctx-1')
-      );
+      expect(mockGet).toHaveBeenCalledWith(SUMMARY_ENDPOINTS.VERSIONS('c-001', 'ctx-1'));
       expect(history).toEqual(versions);
     });
 
@@ -455,16 +454,14 @@ describe('WS-5: summary versioning enhancements', () => {
       await expect(
         act(async () => {
           await result.current.summary.getSummaryHistory('ctx-1');
-        })
+        }),
       ).rejects.toThrow('No active consultation');
     });
   });
 
   describe('compareSummaryVersions', () => {
     it('should fetch two versions and return diff result', async () => {
-      mockGet
-        .mockResolvedValueOnce({ content: 'version one text' })
-        .mockResolvedValueOnce({ content: 'version two text' });
+      mockGet.mockResolvedValueOnce({ content: 'version one text' }).mockResolvedValueOnce({ content: 'version two text' });
       const { result } = renderHook(() => useArca());
 
       let diff: unknown;
@@ -485,7 +482,7 @@ describe('WS-5: summary versioning enhancements', () => {
       await expect(
         act(async () => {
           await result.current.summary.compareSummaryVersions('ctx-1', 1, 2);
-        })
+        }),
       ).rejects.toThrow('No active consultation');
     });
   });
@@ -499,7 +496,7 @@ describe('WS-5: summary versioning enhancements', () => {
       await expect(
         act(async () => {
           await result.current.summary.updateSummary('s-1', 'Content');
-        })
+        }),
       ).rejects.toThrow('Network error');
 
       expect(currentMockStore.setSummaryError).toHaveBeenCalledWith(apiError);
@@ -513,7 +510,7 @@ describe('WS-5: summary versioning enhancements', () => {
       await expect(
         act(async () => {
           await result.current.summary.updateSummary('s-1', 'Content');
-        })
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
@@ -524,7 +521,7 @@ describe('WS-5: summary versioning enhancements', () => {
       await expect(
         act(async () => {
           await result.current.summary.updateSummary('s-1', 'Content');
-        })
+        }),
       ).rejects.toThrow('No active consultation');
     });
   });
@@ -537,7 +534,7 @@ describe('WS-5: summary versioning enhancements', () => {
       await expect(
         act(async () => {
           await result.current.summary.getSummaryHistory('ctx-1');
-        })
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
@@ -549,7 +546,7 @@ describe('WS-5: summary versioning enhancements', () => {
       await expect(
         act(async () => {
           await result.current.summary.getSummaryHistory('ctx-1');
-        })
+        }),
       ).rejects.toThrow('API failure');
     });
 
@@ -574,47 +571,35 @@ describe('WS-5: summary versioning enhancements', () => {
       await expect(
         act(async () => {
           await result.current.summary.compareSummaryVersions('ctx-1', 1, 2);
-        })
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
     it('should throw error on API failure when one of the parallel fetches fails', async () => {
-      mockGet
-        .mockResolvedValueOnce({ content: 'version one' })
-        .mockRejectedValueOnce(new Error('Fetch failed'));
+      mockGet.mockResolvedValueOnce({ content: 'version one' }).mockRejectedValueOnce(new Error('Fetch failed'));
       const { result } = renderHook(() => useArca());
 
       await expect(
         act(async () => {
           await result.current.summary.compareSummaryVersions('ctx-1', 1, 2);
-        })
+        }),
       ).rejects.toThrow('Fetch failed');
     });
 
     it('should call CONTEXT_ENDPOINTS.VERSION with correct consultationId, contextItemId, and version numbers', async () => {
-      mockGet
-        .mockResolvedValueOnce({ content: 'v1' })
-        .mockResolvedValueOnce({ content: 'v2' });
+      mockGet.mockResolvedValueOnce({ content: 'v1' }).mockResolvedValueOnce({ content: 'v2' });
       const { result } = renderHook(() => useArca());
 
       await act(async () => {
         await result.current.summary.compareSummaryVersions('ctx-abc', 3, 7);
       });
 
-      expect(mockGet).toHaveBeenNthCalledWith(
-        1,
-        CONTEXT_ENDPOINTS.VERSION('c-001', 'ctx-abc', 3)
-      );
-      expect(mockGet).toHaveBeenNthCalledWith(
-        2,
-        CONTEXT_ENDPOINTS.VERSION('c-001', 'ctx-abc', 7)
-      );
+      expect(mockGet).toHaveBeenNthCalledWith(1, CONTEXT_ENDPOINTS.VERSION('c-001', 'ctx-abc', 3));
+      expect(mockGet).toHaveBeenNthCalledWith(2, CONTEXT_ENDPOINTS.VERSION('c-001', 'ctx-abc', 7));
     });
 
     it('should have additions > 0 and deletions > 0 when comparing "hello world" vs "hello universe"', async () => {
-      mockGet
-        .mockResolvedValueOnce({ content: 'hello world' })
-        .mockResolvedValueOnce({ content: 'hello universe' });
+      mockGet.mockResolvedValueOnce({ content: 'hello world' }).mockResolvedValueOnce({ content: 'hello universe' });
       const { result } = renderHook(() => useArca());
 
       let diff!: { stats: { additions: number; deletions: number } };

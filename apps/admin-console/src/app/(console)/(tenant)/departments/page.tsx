@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Departments' };
 
 /** Frame 30 — Departments (tier 30-49, working-tenant scoped). */
 export default function DepartmentsPage() {
-    return <DepartmentsScreen />;
+  return <DepartmentsScreen />;
 }

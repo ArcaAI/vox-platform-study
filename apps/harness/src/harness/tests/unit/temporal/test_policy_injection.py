@@ -189,7 +189,9 @@ _NOTE = (
     '{"subjective": "Patient reports hypertension.", "objective": "BP 140/90.", '
     '"assessment": "Hypertension.", "plan": "Continue lisinopril 10 mg daily."}'
 )
-_TRANSCRIPT = "Patient has hypertension and diabetes. BP is 140/90. Continue lisinopril 10 mg daily."
+_TRANSCRIPT = (
+    "Patient has hypertension and diabetes. BP is 140/90. Continue lisinopril 10 mg daily."
+)
 _TRANSCRIPT_ENTITIES = [
     NEREntity(text="hypertension", type="DISEASE", start=17, end=29),
     NEREntity(text="diabetes", type="DISEASE", start=34, end=42),
@@ -240,7 +242,9 @@ class TestPolicyDrivesComputationalGate:
     @pytest.mark.asyncio
     async def test_lowered_policy_threshold_passes_same_draft(self, env):
         thresholds = HarnessPolicy.from_api({**_POLICY_JSON, "coverageThreshold": 0.4})
-        out = await env.run(activities.run_sensors, _run_sensors_input(thresholds.to_sensor_thresholds()))
+        out = await env.run(
+            activities.run_sensors, _run_sensors_input(thresholds.to_sensor_thresholds())
+        )
         coverage = next(r for r in out.results if r.name == "coverage_omission")
         assert coverage.passed is True  # 0.5 >= lowered 0.4
         verdict = aggregate(
@@ -280,7 +284,12 @@ class _FakeGranite:
 # so groundedness = 0.5 — the verdict hinges purely on the policy threshold.
 _TWO_CLAIMS = {
     "claims": [
-        {"id": "c-htn", "text": "hypertension", "section": "A", "evidence": [{"quote": "hypertension"}]},
+        {
+            "id": "c-htn",
+            "text": "hypertension",
+            "section": "A",
+            "evidence": [{"quote": "hypertension"}],
+        },
         {"id": "c-dm", "text": "diabetes", "section": "A", "evidence": [{"quote": "diabetes"}]},
     ]
 }
@@ -291,7 +300,9 @@ class TestPolicyDrivesInferentialGate:
     async def test_default_groundedness_threshold_regens(self, env, monkeypatch):
         judge = _StubJudge(unsupported_markers=("diabetes",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
 
         result = await env.run(
             activities.run_inferential_sensors,
@@ -310,7 +321,9 @@ class TestPolicyDrivesInferentialGate:
     async def test_lowered_groundedness_threshold_passes(self, env, monkeypatch):
         judge = _StubJudge(unsupported_markers=("diabetes",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
 
         result = await env.run(
             activities.run_inferential_sensors,

@@ -6,14 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  VAD_SAMPLE_RATE,
-  linearResample,
-  Resampler,
-  downsampleTo16kHz,
-  upsampleFrom16kHz,
-  resampleToVADRate,
-} from '../utils/resampler.js';
+import { VAD_SAMPLE_RATE, linearResample, Resampler, downsampleTo16kHz, upsampleFrom16kHz, resampleToVADRate } from '../utils/resampler.js';
 
 describe('resampler utilities', () => {
   describe('VAD_SAMPLE_RATE', () => {

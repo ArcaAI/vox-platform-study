@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'AI Operations — Runs' };
 
 /** screen 1 — trajectory runs, gate queue, cancel/signal (tier 10-19). */
 export default function AiOperationsRunsPage() {
-    return <AiOperationsRunsScreen />;
+  return <AiOperationsRunsScreen />;
 }

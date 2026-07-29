@@ -8,11 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SttWebSocketClient } from '../SttWebSocketClient';
 import { createMockLogger } from '../../__tests__/setup';
-import type {
-  WsTranscriptResult,
-  WsStatusMessage,
-  WsErrorMessage,
-} from '../../types/stt';
+import type { WsTranscriptResult, WsStatusMessage, WsErrorMessage } from '../../types/stt';
 
 // ===========================================================================
 // Mock WebSocket
@@ -153,9 +149,7 @@ describe('SttWebSocketClient', () => {
       lastMockWs!.simulateOpen();
       await p1;
 
-      await expect(
-        client.connect('wss://example.com/ws?tenantId=test-tenant')
-      ).rejects.toThrow(/already connected/i);
+      await expect(client.connect('wss://example.com/ws?tenantId=test-tenant')).rejects.toThrow(/already connected/i);
     });
 
     it('should reject with timeout error if server does not respond within timeoutMs', async () => {
@@ -447,12 +441,24 @@ describe('SttWebSocketClient', () => {
       const transcripts: WsTranscriptResult[] = [];
       client.onTranscript((t) => transcripts.push(t));
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript', text: 'Hel', startTime: 0, endTime: 0.3, isFinal: false,
-      }));
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript', text: 'Hello', startTime: 0, endTime: 0.5, isFinal: true,
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'Hel',
+          startTime: 0,
+          endTime: 0.3,
+          isFinal: false,
+        }),
+      );
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'Hello',
+          startTime: 0,
+          endTime: 0.5,
+          isFinal: true,
+        }),
+      );
 
       expect(transcripts).toHaveLength(2);
       expect(transcripts[0].isFinal).toBe(false);
@@ -473,6 +479,31 @@ describe('SttWebSocketClient', () => {
         type: 'status',
         status: 'connected',
         message: 'Ready for audio',
+      };
+      lastMockWs!.simulateMessage(JSON.stringify(msg));
+
+      expect(onStatus).toHaveBeenCalledWith(msg);
+    });
+
+    // TASK-567: the backend publishes an ASR-engine swap as a `status`/
+    // `provider_switched` result that carries typed fields but NO human
+    // `message`. The validator must not drop it, and the typed fields pass
+    // through to onStatus.
+    it('forwards a provider_switched status frame without a message', async () => {
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      const onStatus = vi.fn();
+      client.onStatus(onStatus);
+
+      const msg = {
+        type: 'status',
+        status: 'provider_switched',
+        from_pipeline: 'azure_speech_transcription',
+        to_pipeline: 'sarvam_transcription',
+        reason: 'auto',
+        utterance_index: 4,
       };
       lastMockWs!.simulateMessage(JSON.stringify(msg));
 
@@ -514,10 +545,7 @@ describe('SttWebSocketClient', () => {
         lastMockWs!.simulateMessage('not valid json {{{');
       }).not.toThrow();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'Failed to parse WebSocket message',
-        expect.any(Object),
-      );
+      expect(mockLogger.error).toHaveBeenCalledWith('Failed to parse WebSocket message', expect.any(Object));
     });
 
     it('should warn on unknown message type from server', async () => {
@@ -542,10 +570,7 @@ describe('SttWebSocketClient', () => {
 
       lastMockWs!.simulateMessage(new ArrayBuffer(16));
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        'Received non-string WebSocket message',
-        expect.any(Object),
-      );
+      expect(mockLogger.warn).toHaveBeenCalledWith('Received non-string WebSocket message', expect.any(Object));
     });
 
     it('should not fire any callback for unknown message types', async () => {
@@ -1183,10 +1208,7 @@ describe('SttWebSocketClient', () => {
       lastMockWs!.close(1006, 'Lost');
 
       // With Math.random() = 0, jitter = 0, delay = 1000ms exactly
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('reconnecting in 1000ms'),
-        expect.any(Object),
-      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(expect.stringContaining('reconnecting in 1000ms'), expect.any(Object));
 
       // With Math.random() = 1.0, jitter = exponentialDelay * 0.5
       // For attempt 1: exponentialDelay = 1000, jitter = 500, total = 1500
@@ -1199,10 +1221,7 @@ describe('SttWebSocketClient', () => {
 
       // Attempt 2: exponentialDelay = min(1000 * 2^1, 30000) = 2000
       // jitter = 1.0 * 2000 * 0.5 = 1000, total = 3000
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.stringContaining('reconnecting in 3000ms'),
-        expect.any(Object),
-      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(expect.stringContaining('reconnecting in 3000ms'), expect.any(Object));
 
       jitterClient.disconnect();
       mathRandomSpy.mockRestore();
@@ -1448,10 +1467,7 @@ describe('SttWebSocketClient', () => {
       lastMockWs!.simulateMessage(JSON.stringify({ text: 'hello' }));
 
       expect(transcriptCb).not.toHaveBeenCalled();
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringMatching(/invalid|unknown/i),
-        expect.anything(),
-      );
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/invalid|unknown/i), expect.anything());
 
       client.disconnect();
     });
@@ -1491,10 +1507,7 @@ describe('SttWebSocketClient', () => {
       lastMockWs!.simulateMessage(JSON.stringify({ type: 'transcript' }));
 
       expect(transcriptCb).not.toHaveBeenCalled();
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringMatching(/invalid.*transcript/i),
-        expect.anything(),
-      );
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/invalid.*transcript/i), expect.anything());
 
       client.disconnect();
     });
@@ -1510,17 +1523,17 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'hello world',
-        startTime: 0.0,
-        endTime: 1.5,
-        isFinal: true,
-      }));
-
-      expect(transcriptCb).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'transcript', text: 'hello world', isFinal: true }),
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'hello world',
+          startTime: 0.0,
+          endTime: 1.5,
+          isFinal: true,
+        }),
       );
+
+      expect(transcriptCb).toHaveBeenCalledWith(expect.objectContaining({ type: 'transcript', text: 'hello world', isFinal: true }));
 
       client.disconnect();
     });
@@ -1536,15 +1549,17 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'hello snake case',
-        start_time: 0.25,
-        end_time: 1.75,
-        is_final: '1',
-        speaker_id: 'speaker-42',
-        speaker_confidence: '0.87',
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'hello snake case',
+          start_time: 0.25,
+          end_time: 1.75,
+          is_final: '1',
+          speaker_id: 'speaker-42',
+          speaker_confidence: '0.87',
+        }),
+      );
 
       expect(transcriptCb).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1572,14 +1587,16 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்',
-        english_text: 'Will not call ...',
-        start_time: 74.784,
-        end_time: 82.88,
-        is_final: '1',
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'வில் நாட் கால விலிக்கில்லா தீரித்து விலிக்கியும்',
+          english_text: 'Will not call ...',
+          start_time: 74.784,
+          end_time: 82.88,
+          is_final: '1',
+        }),
+      );
 
       expect(transcriptCb).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1606,18 +1623,20 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'speaker enriched payload',
-        start_time: 1.0,
-        end_time: 2.0,
-        is_final: '1',
-        speaker_id: 'speaker-7',
-        speaker_label: 'Doctor',
-        speaker_confidence: 0.91,
-        speaker_embedding: [0.1, 0.2, 0.3],
-        speaker_features: { source: 'remote', model: 'ecapa' },
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'speaker enriched payload',
+          start_time: 1.0,
+          end_time: 2.0,
+          is_final: '1',
+          speaker_id: 'speaker-7',
+          speaker_label: 'Doctor',
+          speaker_confidence: 0.91,
+          speaker_embedding: [0.1, 0.2, 0.3],
+          speaker_features: { source: 'remote', model: 'ecapa' },
+        }),
+      );
 
       expect(transcriptCb).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1647,20 +1666,20 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'anonymous diarized final',
-        startTime: 4.0,
-        endTime: 5.0,
-        isFinal: true,
-        speakerId: 'Speaker 0',
-        speakerLabel: 'Speaker 0',
-        seq: 12,
-      }));
-
-      expect(transcriptCb).toHaveBeenCalledWith(
-        expect.objectContaining({ speakerId: 'Speaker 0', speakerLabel: 'Speaker 0' }),
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'anonymous diarized final',
+          startTime: 4.0,
+          endTime: 5.0,
+          isFinal: true,
+          speakerId: 'Speaker 0',
+          speakerLabel: 'Speaker 0',
+          seq: 12,
+        }),
       );
+
+      expect(transcriptCb).toHaveBeenCalledWith(expect.objectContaining({ speakerId: 'Speaker 0', speakerLabel: 'Speaker 0' }));
 
       client.disconnect();
     });
@@ -1678,18 +1697,18 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'hello tentative tail',
-        startTime: 0.5,
-        endTime: 1.5,
-        isFinal: false,
-        stableChars: 5,
-      }));
-
-      expect(transcriptCb).toHaveBeenCalledWith(
-        expect.objectContaining({ stableChars: 5, isFinal: false }),
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'hello tentative tail',
+          startTime: 0.5,
+          endTime: 1.5,
+          isFinal: false,
+          stableChars: 5,
+        }),
       );
+
+      expect(transcriptCb).toHaveBeenCalledWith(expect.objectContaining({ stableChars: 5, isFinal: false }));
 
       client.disconnect();
     });
@@ -1705,18 +1724,18 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'hello tentative tail',
-        start_time: 0.5,
-        end_time: 1.5,
-        is_final: '0',
-        stable_chars: 7,
-      }));
-
-      expect(transcriptCb).toHaveBeenCalledWith(
-        expect.objectContaining({ stableChars: 7 }),
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'hello tentative tail',
+          start_time: 0.5,
+          end_time: 1.5,
+          is_final: '0',
+          stable_chars: 7,
+        }),
       );
+
+      expect(transcriptCb).toHaveBeenCalledWith(expect.objectContaining({ stableChars: 7 }));
 
       client.disconnect();
     });
@@ -1732,13 +1751,15 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'plain partial',
-        startTime: 0,
-        endTime: 1,
-        isFinal: false,
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'plain partial',
+          startTime: 0,
+          endTime: 1,
+          isFinal: false,
+        }),
+      );
 
       expect(transcriptCb).toHaveBeenCalledTimes(1);
       const normalized = transcriptCb.mock.calls[0][0];
@@ -1761,16 +1782,18 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'xin chào',
-        startTime: 0,
-        endTime: 1.5,
-        isFinal: true,
-        resultType: 'gloss',
-        englishText: 'hello',
-        utteranceIndex: 4,
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'xin chào',
+          startTime: 0,
+          endTime: 1.5,
+          isFinal: true,
+          resultType: 'gloss',
+          englishText: 'hello',
+          utteranceIndex: 4,
+        }),
+      );
 
       expect(transcriptCb).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1795,18 +1818,18 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'snake payload',
-        start_time: 0,
-        end_time: 1,
-        is_final: '0',
-        utterance_index: 7,
-      }));
-
-      expect(transcriptCb).toHaveBeenCalledWith(
-        expect.objectContaining({ utteranceIndex: 7 }),
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'snake payload',
+          start_time: 0,
+          end_time: 1,
+          is_final: '0',
+          utterance_index: 7,
+        }),
       );
+
+      expect(transcriptCb).toHaveBeenCalledWith(expect.objectContaining({ utteranceIndex: 7 }));
 
       client.disconnect();
     });
@@ -1904,13 +1927,15 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       client.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'legacy payload',
-        startTime: 0,
-        endTime: 1,
-        isFinal: true,
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'legacy payload',
+          startTime: 0,
+          endTime: 1,
+          isFinal: true,
+        }),
+      );
 
       expect(transcriptCb).toHaveBeenCalledTimes(1);
       const normalized = transcriptCb.mock.calls[0][0];
@@ -1934,10 +1959,7 @@ describe('SttWebSocketClient', () => {
       lastMockWs!.simulateMessage(JSON.stringify({ type: 'status' }));
 
       expect(statusCb).not.toHaveBeenCalled();
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringMatching(/invalid.*status/i),
-        expect.anything(),
-      );
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/invalid.*status/i), expect.anything());
 
       client.disconnect();
     });
@@ -1956,10 +1978,7 @@ describe('SttWebSocketClient', () => {
       lastMockWs!.simulateMessage(JSON.stringify({ type: 'error' }));
 
       expect(errorCb).not.toHaveBeenCalled();
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        expect.stringMatching(/invalid.*error/i),
-        expect.anything(),
-      );
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringMatching(/invalid.*error/i), expect.anything());
 
       client.disconnect();
     });
@@ -1997,14 +2016,16 @@ describe('SttWebSocketClient', () => {
       const transcriptCb = vi.fn();
       debugClient.onTranscript(transcriptCb);
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'hello world',
-        startTime: 1.234,
-        endTime: 3.567,
-        isFinal: true,
-        speakerId: 'speaker-2',
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'hello world',
+          startTime: 1.234,
+          endTime: 3.567,
+          isFinal: true,
+          speakerId: 'speaker-2',
+        }),
+      );
 
       expect(transcriptCb).toHaveBeenCalled();
       expect(consoleSpy).not.toHaveBeenCalled();
@@ -2038,13 +2059,15 @@ describe('SttWebSocketClient', () => {
       mockLogger.debug.mockClear();
       noDebugClient.onTranscript(vi.fn());
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'hello',
-        startTime: 0,
-        endTime: 1,
-        isFinal: true,
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'hello',
+          startTime: 0,
+          endTime: 1,
+          isFinal: true,
+        }),
+      );
 
       expect(consoleSpy).not.toHaveBeenCalled();
       const transcriptDebugCalls = mockLogger.debug.mock.calls.filter(
@@ -2065,13 +2088,15 @@ describe('SttWebSocketClient', () => {
       mockLogger.debug.mockClear();
       debugClient.onTranscript(vi.fn());
 
-      lastMockWs!.simulateMessage(JSON.stringify({
-        type: 'transcript',
-        text: 'partial',
-        startTime: 0,
-        endTime: 0.5,
-        isFinal: false,
-      }));
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'partial',
+          startTime: 0,
+          endTime: 0.5,
+          isFinal: false,
+        }),
+      );
 
       expect(consoleSpy).not.toHaveBeenCalled();
       const transcriptDebugCalls = mockLogger.debug.mock.calls.filter(
@@ -2093,13 +2118,15 @@ describe('SttWebSocketClient', () => {
       debugClient.onTranscript(vi.fn());
 
       for (let i = 0; i < 3; i++) {
-        lastMockWs!.simulateMessage(JSON.stringify({
-          type: 'transcript',
-          text: `segment ${i}`,
-          startTime: i,
-          endTime: i + 1,
-          isFinal: true,
-        }));
+        lastMockWs!.simulateMessage(
+          JSON.stringify({
+            type: 'transcript',
+            text: `segment ${i}`,
+            startTime: i,
+            endTime: i + 1,
+            isFinal: true,
+          }),
+        );
       }
 
       const transcriptDebugCalls = mockLogger.debug.mock.calls.filter(
@@ -2228,9 +2255,7 @@ describe('SttWebSocketClient', () => {
       await p;
 
       reconnectClient.onTranscript(vi.fn());
-      lastMockWs!.simulateMessage(
-        JSON.stringify({ type: 'transcript', text: 'foo', startTime: 0, endTime: 1, isFinal: true, seq: 42 }),
-      );
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'transcript', text: 'foo', startTime: 0, endTime: 1, isFinal: true, seq: 42 }));
       expect(reconnectClient.getLastReceivedSeq()).toBe(42);
 
       // Trigger reconnect.
@@ -2287,21 +2312,15 @@ describe('SttWebSocketClient', () => {
       await p;
 
       client.onTranscript(vi.fn());
-      lastMockWs!.simulateMessage(
-        JSON.stringify({ type: 'transcript', text: 'x', startTime: 0, endTime: 1, isFinal: true, seq: 100 }),
-      );
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'transcript', text: 'x', startTime: 0, endTime: 1, isFinal: true, seq: 100 }));
       expect(client.getLastReceivedSeq()).toBe(100);
 
       const onError = vi.fn();
       client.onWsError(onError);
 
-      lastMockWs!.simulateMessage(
-        JSON.stringify({ type: 'resume_failed', sessionId: 's-1', reason: 'buffer_overflow', minAvailableSeq: 500 }),
-      );
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'resume_failed', sessionId: 's-1', reason: 'buffer_overflow', minAvailableSeq: 500 }));
 
-      expect(onError).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'error', code: 'RESUME_FAILED' }),
-      );
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ type: 'error', code: 'RESUME_FAILED' }));
       expect(client.getLastReceivedSeq()).toBe(0);
     });
   });

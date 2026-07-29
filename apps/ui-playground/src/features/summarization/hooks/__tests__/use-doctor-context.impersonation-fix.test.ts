@@ -290,17 +290,13 @@ describe('useDoctorContext fix — token refresh safety', () => {
     useAuthStore.getState().startImpersonation(DOCTOR_USER, 'imp-token');
 
     const { isImpersonating, impersonationToken, accessToken } = useAuthStore.getState();
-    const effectiveToken = isImpersonating && impersonationToken
-      ? impersonationToken
-      : accessToken || undefined;
+    const effectiveToken = isImpersonating && impersonationToken ? impersonationToken : accessToken || undefined;
 
     expect(effectiveToken).toBe('imp-token');
 
     useAuthStore.getState().endImpersonation();
     const after = useAuthStore.getState();
-    const effectiveTokenAfter = after.isImpersonating && after.impersonationToken
-      ? after.impersonationToken
-      : after.accessToken || undefined;
+    const effectiveTokenAfter = after.isImpersonating && after.impersonationToken ? after.impersonationToken : after.accessToken || undefined;
 
     expect(effectiveTokenAfter).toBe('admin-token');
   });

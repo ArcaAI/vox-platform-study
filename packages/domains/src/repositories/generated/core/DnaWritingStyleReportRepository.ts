@@ -56,11 +56,7 @@ export class DnaWritingStyleReportRepository extends Repository<DnaWritingStyleR
    * (`db.findMany` + `db.count` against the same extended client, so soft-delete
    * semantics match the query-builder list path), ordering by `createdAt desc`.
    */
-  async findPaginated(
-    where: Record<string, unknown>,
-    page: number,
-    limit: number,
-  ): Promise<{ data: DnaWritingStyleReportEntity[]; count: number }> {
+  async findPaginated(where: Record<string, unknown>, page: number, limit: number): Promise<{ data: DnaWritingStyleReportEntity[]; count: number }> {
     const db = (this as any).db;
     const [models, count] = await Promise.all([
       db.findMany({

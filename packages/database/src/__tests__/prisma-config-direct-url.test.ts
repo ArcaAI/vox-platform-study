@@ -37,9 +37,7 @@ describe('resolveMigrationUrl — DATABASE_URL / DIRECT_URL routing (Task 2A.3.2
   });
 
   it('when both are empty, throws (does not silently produce undefined)', () => {
-    expect(() => resolveMigrationUrl({ DATABASE_URL: '', DIRECT_URL: '' })).toThrowError(
-      /DATABASE_URL.*or.*DIRECT_URL/i,
-    );
+    expect(() => resolveMigrationUrl({ DATABASE_URL: '', DIRECT_URL: '' })).toThrowError(/DATABASE_URL.*or.*DIRECT_URL/i);
   });
 
   it('when DIRECT_URL targets the pooler port (6432), emits a console warning', () => {

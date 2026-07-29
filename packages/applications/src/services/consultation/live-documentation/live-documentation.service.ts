@@ -192,7 +192,7 @@ interface LiveSession {
   /** Epoch ms when the watcher session started — surfaced in the admin stats snapshot. */
   startedAt: number;
   /**
- * §2C — stable, per-instance trajectory session id used as the
+   * §2C — stable, per-instance trajectory session id used as the
    * `sessionId` on every emitted step. Distinct across stop→restart of the same
    * consultation so the `(tenantId, sessionId, runId, seq)` composite-unique key
    * never collides (which would make `skipDuplicates` silently drop the restarted
@@ -200,7 +200,7 @@ interface LiveSession {
    * stream attaches, so grouping stays stable for the session's whole lifetime.
    */
   trajectorySessionId: string;
- /** §2C — monotonic trajectory-step sequence within this LIVE_DOC session. */
+  /** §2C — monotonic trajectory-step sequence within this LIVE_DOC session. */
   trajectorySeq: number;
 }
 
@@ -691,7 +691,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     this.clearTimer(session);
 
     const transcript = session.transcriptParts.join(' ').trim();
-    const notes = session.contextNotes.map((n) => n.text).join('\n').trim();
+    const notes = session.contextNotes
+      .map((n) => n.text)
+      .join('\n')
+      .trim();
     if (!transcript && !notes) return null;
 
     // Min-interval throttle (P0-A): coalesce a burst into a single trailing re-run so
@@ -989,7 +992,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
- * §2C — record the ordered trajectory for one flush:
+   * §2C — record the ordered trajectory for one flush:
    *   [LLM_CALL:flush, TOOL_CALL:nlp.classify-tokens (when NLP ran),
    *    GUARDRAIL:groundedness (when the gate ran), PHASE:publish].
    * sessionKind=LIVE_DOC, runId="" (non-Temporal sentinel), consultationId set,
@@ -1002,7 +1005,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
       smrStats: LiveSummaryStatsDto | null;
       smrFailed: boolean;
       smrLatencyMs: number;
- /** whether the bounded JSON auto-repair retry ran. */
+      /** whether the bounded JSON auto-repair retry ran. */
       smrRepaired: boolean;
       repairStats: LiveSummaryStatsDto | null;
       repairLatencyMs: number;
@@ -1242,7 +1245,10 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     try {
       session.sttSubscription = this.audioBridge.subscribeToResults(sessionId).subscribe({
         next: (msg) => {
-          if (msg?.isFinal && msg.text?.trim()) {
+          // The result stream now also carries non-transcript status frames
+          // (provider_switched, TASK-567); narrow to transcripts before reading
+          // transcript-only fields.
+          if (msg?.type === 'transcript' && msg.isFinal && msg.text?.trim()) {
             this.ingestSegment(session.consultationId, { text: msg.text, isFinal: true });
           }
         },
@@ -1334,7 +1340,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         },
       });
     } catch (error) {
-      this.logger.warn({ message: 'Failed to subscribe to live-doc control channel', consultationId: session.consultationId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'Failed to subscribe to live-doc control channel',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -1499,7 +1509,11 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
         await this.contextItemRepository.update(session.snapshotEntity.id, session.snapshotEntity);
       }
     } catch (error) {
-      this.logger.warn({ message: 'Failed to persist live SOAP durable snapshot', consultationId: session.consultationId, error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn({
+        message: 'Failed to persist live SOAP durable snapshot',
+        consultationId: session.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -1544,9 +1558,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // reuses the cached KV of that prefix. The mode-specific directive that
     // used to LEAD the prompt (breaking the shared prefix between first/update
     // flushes) is now the trailing block.
-    const transcriptBlock = hasPriorNote
-      ? `\n\nNew transcript since last update:\n${delta}`
-      : `\n\nTranscript so far:\n${delta}`;
+    const transcriptBlock = hasPriorNote ? `\n\nNew transcript since last update:\n${delta}` : `\n\nTranscript so far:\n${delta}`;
     const currentNoteBlock = hasPriorNote ? `\n\nCurrent SOAP note so far:\n${priorNote}` : '';
     const deltaInstruction = hasPriorNote
       ? '\n\nUpdate the existing SOAP note above using ONLY the new transcript since the last update; keep prior content unless it is contradicted.'
@@ -1680,7 +1692,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
- * extract the AD-1 GenerationStats block from the SMR
+   * extract the AD-1 GenerationStats block from the SMR
    * `/generate` response for the SSE payload. Passes the normalized headline
    * fields through near-verbatim (snake_case, matching the SMR contract) minus
    * `engine_native` (the raw per-provider blob stays server-side, off the

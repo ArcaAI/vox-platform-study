@@ -149,12 +149,10 @@ describe('PipelinePolicyAdminController — row PUT (OCC + max-scope)', () => {
     const { controller, policyService } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     policyService.upsertRow.mockRejectedValue(new BadRequestException("'harnessEnabled' cannot be set at DOCTOR scope (max scope: DEPARTMENT)."));
 
-    await expect(
-      controller.updateRow({ scope: 'DOCTOR', scopeId: 'doc1' }, { harnessEnabled: true } as never, 1),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    expect(policyService.upsertRow).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: PipelinePolicyScope.DOCTOR, scopeId: 'doc1' }),
+    await expect(controller.updateRow({ scope: 'DOCTOR', scopeId: 'doc1' }, { harnessEnabled: true } as never, 1)).rejects.toBeInstanceOf(
+      BadRequestException,
     );
+    expect(policyService.upsertRow).toHaveBeenCalledWith(expect.objectContaining({ scope: PipelinePolicyScope.DOCTOR, scopeId: 'doc1' }));
   });
 
   it('forbids a tenant admin from writing another tenant', async () => {

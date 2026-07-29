@@ -12,6 +12,7 @@ export class AiProviderConnectionDtoMapper {
   static toResponse(entity: AiProviderConnectionEntity): AiProviderConnectionResponse {
     return {
       tenantId: entity.tenantId,
+      service: entity.service,
       provider: entity.provider,
       baseUrl: entity.baseUrl ?? null,
       region: entity.region ?? null,
@@ -31,9 +32,10 @@ export class AiProviderConnectionDtoMapper {
    * `If-Match: "0"` / `expectedVersion: 0` to create — mirroring the
    * `TenantTtsConfigDtoMapper.placeholder` contract.
    */
-  static placeholder(tenantId: string, provider: string): AiProviderConnectionResponse {
+  static placeholder(service: string, tenantId: string, provider: string): AiProviderConnectionResponse {
     return {
       tenantId,
+      service,
       provider,
       baseUrl: null,
       region: null,

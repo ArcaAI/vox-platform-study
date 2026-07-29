@@ -142,12 +142,8 @@ class DeepFilterNet3StreamingDenoiser:
             block_48k = block_in
             if self._input_sr != _DF_SR:
                 n_up = len(block_in) * self._up_factor // self._down_factor
-                x_48k = (
-                    np.arange(n_up, dtype=np.float64) * self._down_factor / self._up_factor
-                )
-                block_48k = np.interp(
-                    x_48k, np.arange(len(block_in)), block_in
-                ).astype(np.float32)
+                x_48k = np.arange(n_up, dtype=np.float64) * self._down_factor / self._up_factor
+                block_48k = np.interp(x_48k, np.arange(len(block_in)), block_in).astype(np.float32)
 
             audio_tensor = torch.from_numpy(block_48k).unsqueeze(0)
             enhanced_tensor = enhance(self._model, self._df_state, audio_tensor)

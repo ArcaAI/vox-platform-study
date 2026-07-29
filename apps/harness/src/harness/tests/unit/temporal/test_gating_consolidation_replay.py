@@ -72,5 +72,11 @@ def test_inferential_input_uses_additive_optional_fields():
     the same way is additive and replay-safe — it does not introduce a new workflow
     command, so it needs no patch marker.
     """
-    required = [name for name, field in RunInferentialSensorsInput.model_fields.items() if field.is_required()]
-    assert required == ["note_text"], f"only note_text should be required, also required: {required}"
+    required = [
+        name
+        for name, field in RunInferentialSensorsInput.model_fields.items()
+        if field.is_required()
+    ]
+    assert required == [
+        "note_text"
+    ], f"only note_text should be required, also required: {required}"
