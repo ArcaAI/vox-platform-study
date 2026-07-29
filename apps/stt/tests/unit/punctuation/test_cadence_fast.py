@@ -54,9 +54,7 @@ class TestLoadModelSpikeKwargs:
                 "stt.punctuation.cadence_fast.get_settings",
                 return_value=_make_settings(cache_dir),
             ),
-            patch.object(
-                cadence_fast.CadenceFastModel, "punctuate", return_value=["ok"]
-            ) as warmup,
+            patch.object(cadence_fast.CadenceFastModel, "punctuate", return_value=["ok"]) as warmup,
         ):
             loaded = cadence_fast.load_model()
         return fake_transformers, fake_model, warmup, loaded
@@ -83,9 +81,7 @@ class TestLoadModelSpikeKwargs:
         )
 
     def test_revision_is_pinned_to_spike_audited_sha(self):
-        assert cadence_fast.REVISION == (
-            "8971c5011e4fba5dcfbcac52744587d7da605534"
-        )
+        assert cadence_fast.REVISION == ("8971c5011e4fba5dcfbcac52744587d7da605534")
 
     def test_model_set_to_eval_with_bidirectional_attention(self):
         _, fake_model, _, _ = self._load_with_mocks()
@@ -187,9 +183,7 @@ class TestCadenceFastModelDecode:
 
         model._punctuate_one = fake_one  # type: ignore[method-assign]
 
-        threads = [
-            threading.Thread(target=model.punctuate, args=(["x"],)) for _ in range(4)
-        ]
+        threads = [threading.Thread(target=model.punctuate, args=(["x"],)) for _ in range(4)]
         for thread in threads:
             thread.start()
         for thread in threads:
@@ -207,9 +201,7 @@ class TestServiceRouting:
         mock_load.return_value = sentinel
         wrapper_cls = MagicMock()
 
-        with patch.dict(
-            sys.modules, {"cadence": MagicMock(PunctuationModel=wrapper_cls)}
-        ):
+        with patch.dict(sys.modules, {"cadence": MagicMock(PunctuationModel=wrapper_cls)}):
             result = service._load_model(cadence_fast.MODEL_NAME)
 
         assert result is sentinel
@@ -227,9 +219,7 @@ class TestServiceRouting:
         instance = MagicMock()
         wrapper_cls = MagicMock(return_value=instance)
 
-        with patch.dict(
-            sys.modules, {"cadence": MagicMock(PunctuationModel=wrapper_cls)}
-        ):
+        with patch.dict(sys.modules, {"cadence": MagicMock(PunctuationModel=wrapper_cls)}):
             result = service._load_model("Cadence-Fast")
 
         assert result is instance
@@ -273,14 +263,12 @@ class TestPunctuateLazyLoadOffLoop:
 
         with patch("stt.punctuation.service._load_model", side_effect=slow_load):
             start = time.monotonic()
-            task = asyncio.create_task(
-                service.punctuate("hello", model_name="slow-model")
-            )
+            task = asyncio.create_task(service.punctuate("hello", model_name="slow-model"))
             await asyncio.sleep(0.05)
             loop_latency = time.monotonic() - start
             result = await task
 
         assert result == "Hello."
-        assert loop_latency < 0.3, (
-            f"event loop was blocked for {loop_latency:.3f}s during lazy model load"
-        )
+        assert (
+            loop_latency < 0.3
+        ), f"event loop was blocked for {loop_latency:.3f}s during lazy model load"

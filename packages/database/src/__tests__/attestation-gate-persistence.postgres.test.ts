@@ -129,7 +129,16 @@ describe('Phase 1 — attestation gate (persist + WORM, rolled back)', () => {
           `INSERT INTO core."ContextItemVersion"
              ("id","tenantId","contextItemId","versionNumber","content","changeReason","changeSummary","changedBy","changeSource","attestedAt","attestedBy","attestationHash","sensorScores")
            VALUES ($1,$2,$3,$4,$5,'approved','Approved and locked',$6,'attestation',now(),$6,$7,$8::jsonb)`,
-          [versionId, seed!.tenantId, seed!.ctxId, versionNumber, 'S:.. O:.. A:.. P:..', clinicianId, attestationHash, JSON.stringify({ coverage: 0.91 })],
+          [
+            versionId,
+            seed!.tenantId,
+            seed!.ctxId,
+            versionNumber,
+            'S:.. O:.. A:.. P:..',
+            clinicianId,
+            attestationHash,
+            JSON.stringify({ coverage: 0.91 }),
+          ],
         );
 
         // 2. ATTEST WORM audit event referencing the signed version.
@@ -141,10 +150,9 @@ describe('Phase 1 — attestation gate (persist + WORM, rolled back)', () => {
         );
 
         // 3. Consultation lifecycle → SIGNED.
-        const upd = await admin.query(
-          `UPDATE core."Consultation" SET "status" = 'SIGNED'::core."ConsultationStatus" WHERE "id" = $1`,
-          [seed!.consId],
-        );
+        const upd = await admin.query(`UPDATE core."Consultation" SET "status" = 'SIGNED'::core."ConsultationStatus" WHERE "id" = $1`, [
+          seed!.consId,
+        ]);
         expect(upd.rowCount).toBe(1);
 
         // Read everything back inside the txn.
@@ -188,9 +196,9 @@ describe('Phase 1 — attestation gate (persist + WORM, rolled back)', () => {
         );
 
         await admin.query(`SET LOCAL ROLE ${TEST_ROLE}`);
-        await expect(
-          admin.query(`UPDATE ${AUDIT_TABLE} SET "clinicianId" = 'tampered' WHERE "id" = $1`, [auditId]),
-        ).rejects.toMatchObject({ code: '42501' });
+        await expect(admin.query(`UPDATE ${AUDIT_TABLE} SET "clinicianId" = 'tampered' WHERE "id" = $1`, [auditId])).rejects.toMatchObject({
+          code: '42501',
+        });
       } finally {
         // Failed UPDATE aborts the txn; ROLLBACK discards the seed row + resets role.
         await admin.query('ROLLBACK');
@@ -212,9 +220,7 @@ describe('Phase 1 — attestation gate (persist + WORM, rolled back)', () => {
         );
 
         await admin.query(`SET LOCAL ROLE ${TEST_ROLE}`);
-        await expect(
-          admin.query(`DELETE FROM ${AUDIT_TABLE} WHERE "id" = $1`, [auditId]),
-        ).rejects.toMatchObject({ code: '42501' });
+        await expect(admin.query(`DELETE FROM ${AUDIT_TABLE} WHERE "id" = $1`, [auditId])).rejects.toMatchObject({ code: '42501' });
       } finally {
         await admin.query('ROLLBACK');
       }

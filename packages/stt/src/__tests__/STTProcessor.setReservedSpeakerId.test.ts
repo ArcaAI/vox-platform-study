@@ -34,8 +34,7 @@ describe('STTProcessor.setReservedSpeakerId — Wave 3', () => {
 
     const setReservedSpeakerIdSpy = vi.fn();
     const fakeProvider = Object.create(LocalSTTProvider.prototype) as LocalSTTProvider;
-    (fakeProvider as unknown as { setReservedSpeakerId: typeof setReservedSpeakerIdSpy }).setReservedSpeakerId =
-      setReservedSpeakerIdSpy;
+    (fakeProvider as unknown as { setReservedSpeakerId: typeof setReservedSpeakerIdSpy }).setReservedSpeakerId = setReservedSpeakerIdSpy;
 
     const internals = asInternals(processor);
     internals.provider = fakeProvider;
@@ -54,9 +53,7 @@ describe('STTProcessor.setReservedSpeakerId — Wave 3', () => {
       features: { provider: 'local', modelId: 'whisper-tiny' },
     });
 
-    expect(() =>
-      (processor as unknown as { setReservedSpeakerId(id: string | undefined): void }).setReservedSpeakerId('Dr. Smith'),
-    ).not.toThrow();
+    expect(() => (processor as unknown as { setReservedSpeakerId(id: string | undefined): void }).setReservedSpeakerId('Dr. Smith')).not.toThrow();
   });
 
   it('is a no-op when the active provider is remote (no diarizer to update)', () => {
@@ -89,8 +86,7 @@ describe('STTProcessor.setReservedSpeakerId — Wave 3', () => {
 
     const setReservedSpeakerIdSpy = vi.fn();
     const fakeProvider = Object.create(LocalSTTProvider.prototype) as LocalSTTProvider;
-    (fakeProvider as unknown as { setReservedSpeakerId: typeof setReservedSpeakerIdSpy }).setReservedSpeakerId =
-      setReservedSpeakerIdSpy;
+    (fakeProvider as unknown as { setReservedSpeakerId: typeof setReservedSpeakerIdSpy }).setReservedSpeakerId = setReservedSpeakerIdSpy;
 
     const internals = asInternals(processor);
     internals.provider = fakeProvider;
@@ -114,8 +110,6 @@ describe('STTProcessor.setReservedSpeakerId — Wave 3', () => {
     internals.provider = fakeProvider;
     internals.resolvedProviderType = 'local';
 
-    expect(() =>
-      (processor as unknown as { setReservedSpeakerId(id: string | undefined): void }).setReservedSpeakerId('Dr. Smith'),
-    ).not.toThrow();
+    expect(() => (processor as unknown as { setReservedSpeakerId(id: string | undefined): void }).setReservedSpeakerId('Dr. Smith')).not.toThrow();
   });
 });

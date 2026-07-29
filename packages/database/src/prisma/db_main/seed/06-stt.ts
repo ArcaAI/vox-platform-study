@@ -511,6 +511,89 @@ postprocessing:
     enabled: false
 `,
 
+  sarvam_transcription: `version: "2.0"
+
+# TASK-567 — [sarvam] Sarvam AI speech-to-text (saaras:v3), cloud REST.
+# BYOK: per-tenant SARVAM credential (TASK-567) or SARVAM_API_KEY env. The ASR
+# ref is an INLINE definition binding the SARVAM engine (a superset of the
+# Prisma AiModelFormat enum, equivalent to the "sarvam :: saaras:v3" shorthand),
+# so no DB slug is required for the superset engine.
+
+models:
+  asr:
+    hf_model_id: "saaras:v3"
+    engine: "sarvam"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: cloud REST expects 16k mono PCM
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+
+  openai_transcription: `version: "2.0"
+
+# TASK-567 — [openai] OpenAI speech-to-text (gpt-4o-transcribe), cloud REST.
+# BYOK: per-tenant OPENAI credential (TASK-567) or OPENAI_API_KEY env. The ASR
+# ref is an INLINE definition binding the OPENAI engine (equivalent to the
+# "openai :: gpt-4o-transcribe" shorthand).
+
+models:
+  asr:
+    hf_model_id: "gpt-4o-transcribe"
+    engine: "openai"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: cloud REST expects 16k mono PCM
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+
   parakeet_nemotron_streaming: `version: "2.0"
 
 # TASK-505 matrix #8 — [parakeet.cpp] nemotron-3.5-asr-streaming-0.6b, bare.
@@ -812,6 +895,29 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     description: 'TASK-505 matrix #8 — bare nemotron-3.5-asr-streaming-0.6b transcription via the parakeet.cpp ggml runtime.',
     configYaml: PIPELINE_CONFIGS.parakeet_nemotron_streaming,
     tags: ['matrix', 'streaming', 'parakeet.cpp'],
+  },
+  {
+    // TASK-567 — cloud BYOK fallback pipeline (Sarvam). A tenant points
+    // TenantSttConfig.fallbackPipelineId at a clone of this to fail over off a
+    // local/GPU primary onto a cloud provider. Reaches the SARVAM engine via the
+    // `provider :: model` shorthand (no DB slug for the superset engine).
+    id: '81000000-0000-0000-0001-000000000016',
+    tenantId: DEFAULT_TENANT_ID,
+    name: '[sarvam] Sarvam Speech-to-Text',
+    slug: 'sarvam-transcription',
+    description: 'TASK-567 — bare Sarvam AI speech-to-text (saaras:v3, cloud REST). Tenant BYOK fallback candidate.',
+    configYaml: PIPELINE_CONFIGS.sarvam_transcription,
+    tags: ['cloud', 'sarvam', 'byok', 'fallback'],
+  },
+  {
+    // TASK-567 — cloud BYOK fallback pipeline (OpenAI). See the sarvam row.
+    id: '81000000-0000-0000-0001-000000000017',
+    tenantId: DEFAULT_TENANT_ID,
+    name: '[openai] OpenAI Speech-to-Text',
+    slug: 'openai-transcription',
+    description: 'TASK-567 — bare OpenAI speech-to-text (gpt-4o-transcribe, cloud REST). Tenant BYOK fallback candidate.',
+    configYaml: PIPELINE_CONFIGS.openai_transcription,
+    tags: ['cloud', 'openai', 'byok', 'fallback'],
   },
   // Code-switching / language templates retired from the product
   // matrix of 9 (soft-disabled by retireRetiredAsrPipelines).
@@ -1658,6 +1764,39 @@ export const seedSttSettings = async (client: CorePrismaClient) => {
 };
 
 /**
+ * Seed the SYSTEM-tenant TenantSttConfig row (TASK-567) — the PLATFORM-DEFAULT
+ * STT config every tenant merges under its own row (TenantSttConfigService
+ * .getEffective, Phase C). No fallback by default: `fallbackPipelineId` stays
+ * NULL because the fallback is an explicit per-tenant choice, and auto-switch is
+ * ON by default. Idempotent (find-by-tenant then create). Mirrors the TTS SYSTEM
+ * platform-default posture; unscoped seed client so the SYSTEM row is written
+ * directly.
+ */
+export const seedTenantSttConfig = async (client: CorePrismaClient) => {
+  console.log('Seeding SYSTEM TenantSttConfig (platform default)...');
+
+  const existing = await client.tenantSttConfig.findFirst({
+    where: { tenantId: SYSTEM_TENANT_ID },
+  });
+
+  if (existing) {
+    console.log('  SYSTEM TenantSttConfig already exists, leaving as-is.');
+    return { success: true, created: false };
+  }
+
+  await client.tenantSttConfig.create({
+    data: {
+      tenantId: SYSTEM_TENANT_ID,
+      // No platform-default fallback — fallback is an explicit tenant choice.
+      fallbackPipelineId: null,
+      autoSwitchEnabled: true,
+    },
+  });
+  console.log('  Created SYSTEM TenantSttConfig platform-default row.');
+  return { success: true, created: true };
+};
+
+/**
  * Main seed function for STT domain
  * Seeds: AI Models → ASR Pipelines → Global Settings
  */
@@ -1702,6 +1841,10 @@ export const seedStt = async (client: CorePrismaClient) => {
     console.log('');
 
     await seedSttSettings(client);
+    console.log('');
+
+    // SYSTEM TenantSttConfig platform-default row (TASK-567).
+    await seedTenantSttConfig(client);
     console.log('');
 
     // Scrub credential rows this seed used to plant in plaintext. Runs AFTER

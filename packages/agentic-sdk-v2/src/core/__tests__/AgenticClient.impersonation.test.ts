@@ -28,10 +28,7 @@ describe('AgenticClient impersonation', () => {
 
   beforeEach(() => {
     mockLogger = createMockLogger();
-    client = new AgenticClient(
-      { baseUrl: 'https://api.example.com' },
-      mockLogger,
-    );
+    client = new AgenticClient({ baseUrl: 'https://api.example.com' }, mockLogger);
   });
 
   describe('startImpersonation / stopImpersonation / isImpersonating', () => {

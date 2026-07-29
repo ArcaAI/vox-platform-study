@@ -148,7 +148,7 @@ def _ws_origin(api_url: str) -> str:
     """`ws://host` from the HTTP base (WS path sits OUTSIDE `/api/v1`)."""
     origin = api_url
     if origin.startswith("http"):
-        origin = "ws" + origin[len("http"):]
+        origin = "ws" + origin[len("http") :]
     return origin.rstrip("/").removesuffix("/api/v1")
 
 
@@ -268,7 +268,9 @@ def _classify(raw: dict[str, Any], recv_ms: float) -> MessageRecord:
     if kind in ("resumed", "resume_failed"):
         return MessageRecord(recv_ms=recv_ms, kind=kind)
     if kind == "error":
-        return MessageRecord(recv_ms=recv_ms, kind="error", text=str(raw.get("message") or raw.get("code") or ""))
+        return MessageRecord(
+            recv_ms=recv_ms, kind="error", text=str(raw.get("message") or raw.get("code") or "")
+        )
     return MessageRecord(recv_ms=recv_ms, kind="other")
 
 
@@ -446,8 +448,10 @@ def compute_metrics(
     transcripts = partials + finals
 
     first_speech_idx = _first_speech_frame(audio.samples, frame_ms)
-    first_speech_send_ms = frames[first_speech_idx].send_ms if first_speech_idx < len(frames) else (
-        frames[0].send_ms if frames else 0.0
+    first_speech_send_ms = (
+        frames[first_speech_idx].send_ms
+        if first_speech_idx < len(frames)
+        else (frames[0].send_ms if frames else 0.0)
     )
 
     first_transcript = min(transcripts, key=lambda e: e.recv_ms) if transcripts else None
@@ -479,7 +483,9 @@ def compute_metrics(
     audio_seconds_sent = round(audio.duration_s, 2)
     final_coverage_max = round(max((f.end_time for f in finals), default=0.0), 2)
     final_coverage_sum = round(sum(max(0.0, f.end_time - f.start_time) for f in finals), 2)
-    coverage_ratio = round(final_coverage_max / audio_seconds_sent, 3) if audio_seconds_sent else None
+    coverage_ratio = (
+        round(final_coverage_max / audio_seconds_sent, 3) if audio_seconds_sent else None
+    )
 
     return {
         "first_partial_ms": first_partial_ms,
@@ -551,7 +557,10 @@ async def _create_session(http: Any, api_url: str, token: str) -> dict[str, Any]
     resp = await http.post(
         f"{api_url}/api/v1/audio/transcription-jobs/stream/session",
         headers={"Authorization": f"Bearer {token}"},
-        json={"pipelineId": _env("STREAM_PIPELINE_ID", _DEFAULT_PIPELINE_ID), "sampleRate": _SAMPLE_RATE},
+        json={
+            "pipelineId": _env("STREAM_PIPELINE_ID", _DEFAULT_PIPELINE_ID),
+            "sampleRate": _SAMPLE_RATE,
+        },
         timeout=30.0,
     )
     if resp.status_code != 201:
@@ -670,7 +679,9 @@ async def test_streaming_loss_latency_harness() -> None:
         if warmup:
             try:
                 warm_clip = ReplayAudio(samples=audio.samples[: 5 * _SAMPLE_RATE], source="warmup")
-                await _run_one_session(http, api_url, ws_origin, token, warm_clip, frame_ms, min(timeout_s, 20.0))
+                await _run_one_session(
+                    http, api_url, ws_origin, token, warm_clip, frame_ms, min(timeout_s, 20.0)
+                )
                 warmed = True
             except Exception:
                 warmed = False  # best-effort; measured run proceeds regardless
@@ -681,7 +692,9 @@ async def test_streaming_loss_latency_harness() -> None:
         )
 
     metrics = compute_metrics(frames, events, audio, frame_ms)
-    feed_span_s = round((frames[-1].send_ms - frames[0].send_ms) / 1000.0, 2) if len(frames) > 1 else 0.0
+    feed_span_s = (
+        round((frames[-1].send_ms - frames[0].send_ms) / 1000.0, 2) if len(frames) > 1 else 0.0
+    )
     report = {
         "harness": "TASK-455 S1-EVAL streaming loss/latency (AC-5/6) — through the WS gateway",
         "generated_at": datetime.now(UTC).isoformat(),
@@ -702,7 +715,9 @@ async def test_streaming_loss_latency_harness() -> None:
         },
         "feed": {
             "feed_span_s": feed_span_s,
-            "realtime_ratio": round(feed_span_s / audio.duration_s, 3) if audio.duration_s else None,
+            "realtime_ratio": (
+                round(feed_span_s / audio.duration_s, 3) if audio.duration_s else None
+            ),
             "closed_status_received": closed,
         },
         "metrics": metrics,

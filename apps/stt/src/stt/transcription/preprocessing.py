@@ -124,9 +124,7 @@ class AudioPreprocessor:
                 logger.debug(
                     f"[{job_id}] [NOISE_SUPPRESSION] Applying {denoise_engine_name} for noise suppression..."
                 )
-                samples, current_sr = await denoise_fn(
-                    samples, current_sr, config.denoise.strength
-                )
+                samples, current_sr = await denoise_fn(samples, current_sr, config.denoise.strength)
                 denoise_applied = True
             elif config.vad.enabled:
                 logger.debug(
@@ -136,9 +134,7 @@ class AudioPreprocessor:
                     samples.copy(), current_sr, config.denoise.strength
                 )
                 if denoised_sr != config.target_sample_rate:
-                    denoised = self._resample(
-                        denoised, denoised_sr, config.target_sample_rate
-                    )
+                    denoised = self._resample(denoised, denoised_sr, config.target_sample_rate)
                 vad_branch = denoised
                 denoise_applied = True
             # scope == "vad_only" with VAD disabled: the denoised branch has
@@ -206,7 +202,10 @@ class AudioPreprocessor:
         if pipeline_model is not None:
             try:
                 segments = await self._apply_vad(
-                    samples, sample_rate, pipeline_model, vad_config.threshold,
+                    samples,
+                    sample_rate,
+                    pipeline_model,
+                    vad_config.threshold,
                     min_speech_duration_ms=vad_config.min_speech_duration_ms,
                     min_silence_duration_ms=vad_config.min_silence_duration_ms,
                     padding_ms=vad_config.padding_ms,
@@ -285,10 +284,7 @@ class AudioPreprocessor:
         try:
             import librosa
 
-            return cast(
-                np.ndarray,
-                librosa.resample(samples, orig_sr=original_sr, target_sr=target_sr),
-            )
+            return librosa.resample(samples, orig_sr=original_sr, target_sr=target_sr)
         except ImportError:
             # Simple linear interpolation fallback
             ratio = target_sr / original_sr

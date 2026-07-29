@@ -28,7 +28,11 @@ from smr.models.requests import GenerateRequest
 def mock_provider():
     provider = AsyncMock()
     provider.generate = AsyncMock(
-        return_value=("Generated text", "", {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2})
+        return_value=(
+            "Generated text",
+            "",
+            {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        )
     )
     return provider
 
@@ -73,9 +77,7 @@ class TestGenerateRequiresModel:
 
     @pytest.mark.asyncio
     async def test_missing_model_returns_422(self, client):
-        resp = await client.post(
-            "/api/v1/generate", json={"prompt": "hello", "provider": "ollama"}
-        )
+        resp = await client.post("/api/v1/generate", json={"prompt": "hello", "provider": "ollama"})
         assert resp.status_code == 422
         assert "model" in resp.json()["detail"].lower()
 

@@ -109,9 +109,7 @@ describe('DnaWritingStyleService.updateDnaReport — field encryption', () => {
     expect(mockVersionRepo.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
     expect(mockReportRepo.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
     // both encrypts run before the version insert + report CAS
-    expect(mockVersionRepo.encryptFieldsIntoEntity.mock.invocationCallOrder[0]).toBeLessThan(
-      mockVersionRepo.create.mock.invocationCallOrder[0],
-    );
+    expect(mockVersionRepo.encryptFieldsIntoEntity.mock.invocationCallOrder[0]).toBeLessThan(mockVersionRepo.create.mock.invocationCallOrder[0]);
     expect(mockReportRepo.encryptFieldsIntoEntity.mock.invocationCallOrder[0]).toBeLessThan(
       mockReportRepo.updateWithVersion.mock.invocationCallOrder[0],
     );

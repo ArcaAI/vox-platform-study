@@ -25,12 +25,20 @@
       "types": "./dist/plugins-med-ner.d.ts",
       "import": "./dist/plugins-med-ner.mjs",
       "require": "./dist/plugins-med-ner.js"
+    },
+    "./compat": {
+      "types": "./dist/compat.d.ts",
+      "import": "./dist/compat.mjs",
+      "require": "./dist/compat.js"
     }
   },
   "typesVersions": {
     "*": {
       "core": [
         "./dist/core.d.ts"
+      ],
+      "compat": [
+        "./dist/compat.d.ts"
       ],
       "plugins": [
         "./dist/plugins.d.ts"

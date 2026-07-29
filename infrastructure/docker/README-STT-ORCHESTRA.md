@@ -29,6 +29,7 @@ cp env.stt-dev.example .env.stt-dev
 ```
 
 Edit `.env.stt-dev` and update:
+
 - `AZURE_SPEECH_KEY` - Your Azure Speech Service key
 - `HUGGINGFACE_TOKEN` - Your HuggingFace token
 - Other credentials as needed
@@ -95,16 +96,16 @@ curl http://localhost:5103/health
 
 ## 📦 Services Overview
 
-| Service | Container Name | Port | Description |
-|---------|---------------|------|-------------|
-| **Vault** | hope-vault | 8200 | Secret management |
-| **Qdrant** | hope-qdrant | 6333, 6334 | Vector database (speaker embeddings) |
-| **STT Orchestrator** | arcaai-stt-orchestrator | 5100 | Workflow coordination & job management |
-| **STT VAD** | arcaai-stt-vad | 5101 | Voice Activity Detection (Silero) |
-| **STT Transcription** | arcaai-stt-transcription | 5102 | Speech-to-Text (Whisper, NeMo, Azure) |
-| **STT Recognition** | arcaai-stt-recognition | 5103 | Speaker Recognition (Pyannote) |
-| **Realtime Workers** | arcaai-stt-realtime-worker-* | N/A | High-priority Celery workers |
-| **Batch Workers** | arcaai-stt-batch-worker-* | N/A | Low-priority Celery workers |
+| Service               | Container Name               | Port       | Description                            |
+| --------------------- | ---------------------------- | ---------- | -------------------------------------- |
+| **Vault**             | hope-vault                   | 8200       | Secret management                      |
+| **Qdrant**            | hope-qdrant                  | 6333, 6334 | Vector database (speaker embeddings)   |
+| **STT Orchestrator**  | arcaai-stt-orchestrator      | 5100       | Workflow coordination & job management |
+| **STT VAD**           | arcaai-stt-vad               | 5101       | Voice Activity Detection (Silero)      |
+| **STT Transcription** | arcaai-stt-transcription     | 5102       | Speech-to-Text (Whisper, NeMo, Azure)  |
+| **STT Recognition**   | arcaai-stt-recognition       | 5103       | Speaker Recognition (Pyannote)         |
+| **Realtime Workers**  | arcaai-stt-realtime-worker-* | N/A        | High-priority Celery workers           |
+| **Batch Workers**     | arcaai-stt-batch-worker-*    | N/A        | Low-priority Celery workers            |
 
 ---
 
@@ -189,6 +190,7 @@ print(json.dumps(response.json(), indent=2))
 ```
 
 **Comprehensive Verification**:
+
 ```bash
 # Run the automated verification script
 cd infrastructure/docker
@@ -196,6 +198,7 @@ cd infrastructure/docker
 ```
 
 This script tests:
+
 - ✅ Health check
 - ✅ Collection existence and configuration
 - ✅ Write operations
@@ -420,12 +423,14 @@ docker exec -it hope-kafka kafka-console-consumer \
 ## 🔐 Security Notes
 
 ### Development Environment
+
 - Uses root token for Vault (dev mode only)
 - No TLS/SSL encryption
 - Default passwords
 - Exposed ports on localhost
 
 ### Production Environment
+
 - Use Vault AppRole authentication
 - Enable TLS/SSL for all services
 - Use strong, unique passwords
@@ -447,4 +452,3 @@ docker exec -it hope-kafka kafka-console-consumer \
 ---
 
 **Questions?** Check the troubleshooting section or post in `#stt-orchestra-dev` Slack channel.
-

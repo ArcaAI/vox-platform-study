@@ -117,6 +117,23 @@ register_processor(
     traits=("word_timestamps",),
 )
 
+# Cloud BYOK speech providers (TASK-567): REST engines, no local compute.
+register_processor(
+    kind="asr",
+    name="sarvam",
+    lazy_target="stt.processors.asr_engines:SarvamEngine",
+    capabilities=[Capability(device="cloud", streaming=True, batch=True)],
+    traits=(),
+)
+
+register_processor(
+    kind="asr",
+    name="openai",
+    lazy_target="stt.processors.asr_engines:OpenAIEngine",
+    capabilities=[Capability(device="cloud", streaming=True, batch=True)],
+    traits=(),
+)
+
 register_processor(
     kind="asr",
     name="azure_foundry",

@@ -96,9 +96,7 @@ describe('RbacRoleService member counts', () => {
 
     await service.findAll({ page: 1, pageSize: 20 });
 
-    expect(mocks.roleRepo.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ include: expectedInclude(TENANT_ID) }),
-    );
+    expect(mocks.roleRepo.findMany).toHaveBeenCalledWith(expect.objectContaining({ include: expectedInclude(TENANT_ID) }));
   });
 
   it('findAll omits the tenantId filter for an unscoped (no CLS tenant) caller', async () => {
@@ -107,9 +105,7 @@ describe('RbacRoleService member counts', () => {
 
     await service.findAll({ page: 1, pageSize: 20 });
 
-    expect(mocks.roleRepo.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ include: expectedInclude(null) }),
-    );
+    expect(mocks.roleRepo.findMany).toHaveBeenCalledWith(expect.objectContaining({ include: expectedInclude(null) }));
   });
 
   it('findOne passes the member-count include to findByIdWithPolicies and surfaces _count', async () => {

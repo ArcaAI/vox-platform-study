@@ -17,9 +17,7 @@ def client():
 class TestPipelineValidateEndpoint:
     def test_valid_v2_config(self, client):
         yaml_str = (
-            'version: "2.0"\n'
-            "models:\n"
-            '  asr: "transformer :: openai/whisper-large-v3-turbo"\n'
+            'version: "2.0"\n' "models:\n" '  asr: "transformer :: openai/whisper-large-v3-turbo"\n'
         )
         resp = client.post("/api/v1/pipelines/validate", json={"config_yaml": yaml_str})
         assert resp.status_code == 200
@@ -28,9 +26,7 @@ class TestPipelineValidateEndpoint:
         assert body["errors"] == []
 
     def test_parse_error_reported_not_raised(self, client):
-        resp = client.post(
-            "/api/v1/pipelines/validate", json={"config_yaml": "version: '1.0'\n"}
-        )
+        resp = client.post("/api/v1/pipelines/validate", json={"config_yaml": "version: '1.0'\n"})
         assert resp.status_code == 200
         body = resp.json()
         assert body["valid"] is False

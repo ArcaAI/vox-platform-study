@@ -33,12 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     setup_logging(settings.log_level)
 
-    logger.info(
-        "guardrail.starting",
-        host=settings.host,
-        port=settings.port,
-        debug=settings.debug
-    )
+    logger.info("guardrail.starting", host=settings.host, port=settings.port, debug=settings.debug)
 
     # HTTP client for external calls
     http_client = httpx.AsyncClient(
@@ -106,12 +101,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not hasattr(app.state, "ollama_provider") or app.state.ollama_provider is None:
         if settings.provider == "ollama":
             from guardrail.providers.ollama import OllamaProvider
+
             app.state.ollama_provider = OllamaProvider(
                 settings=cast(OllamaConfig, engine_cfg),
                 http_client=http_client,
             )
         else:
             from guardrail.providers.openai_compat import OpenAICompatProvider
+
             app.state.ollama_provider = OpenAICompatProvider(
                 settings=cast(OpenAICompatConfig, engine_cfg),
                 http_client=http_client,
@@ -128,12 +125,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if not hasattr(app.state, "guardian_provider") or app.state.guardian_provider is None:
         if settings.provider == "ollama":
             from guardrail.providers.guardian import GuardianProvider
+
             app.state.guardian_provider = GuardianProvider(
                 settings=cast(OllamaConfig, engine_cfg),
                 http_client=http_client,
             )
         else:
             from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
+
             app.state.guardian_provider = OpenAICompatGuardianProvider(
                 settings=cast(OpenAICompatConfig, engine_cfg),
                 http_client=http_client,
@@ -168,7 +167,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
 
         # Start background job processing
-        app.state.job_processor_task = asyncio.create_task(app.state.job_processor.start_processing())
+        app.state.job_processor_task = asyncio.create_task(
+            app.state.job_processor.start_processing()
+        )
         logger.info("guardrail.job_processor_started")
 
     yield

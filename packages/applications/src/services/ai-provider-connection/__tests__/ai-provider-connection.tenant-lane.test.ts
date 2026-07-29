@@ -39,6 +39,7 @@ function makeRow(
     deploymentName?: string | null;
     encryptedApiKey?: Uint8Array | null;
     keyVersion?: number | null;
+    extraJson?: Record<string, unknown> | null;
   } = {},
 ) {
   return AiProviderConnectionFactory.CreateAiProviderConnection({
@@ -51,13 +52,14 @@ function makeRow(
     enabled: overrides.enabled ?? true,
     encryptedApiKey: overrides.encryptedApiKey === undefined ? Buffer.from('vault:v3:cipher', 'utf8') : overrides.encryptedApiKey,
     keyVersion: overrides.keyVersion === undefined ? 3 : overrides.keyVersion,
+    extraJson: overrides.extraJson ?? null,
   });
 }
 
 function makeService(opts: { rows?: unknown[]; withVault?: boolean; decrypt?: () => Promise<Buffer> } = {}) {
   const repo = {
-    findByTenantAndProvider: vi.fn().mockResolvedValue(null),
-    findByTenantId: vi.fn().mockResolvedValue(opts.rows ?? []),
+    findByTenantServiceProvider: vi.fn().mockResolvedValue(null),
+    findByTenantIdAndService: vi.fn().mockResolvedValue(opts.rows ?? []),
     create: vi.fn(async (e: any) => e),
     updateWithVersion: vi.fn(async (_id: string, e: any) => e),
     softDelete: vi.fn(),
@@ -73,6 +75,7 @@ function makeService(opts: { rows?: unknown[]; withVault?: boolean; decrypt?: ()
       : {
           encrypt: vi.fn(async () => 'vault:v3:cipher'),
           decrypt: vi.fn(opts.decrypt ?? (async () => Buffer.from('plaintext-key', 'utf8'))),
+          supportsTransit: vi.fn(() => true),
         };
   const svc = new AiProviderConnectionService(repo as any, db as any, emitter as any, cls as any, secrets as any);
   const warn = vi.spyOn((svc as any).logger, 'warn').mockImplementation(() => undefined);
@@ -82,6 +85,27 @@ function makeService(opts: { rows?: unknown[]; withVault?: boolean; decrypt?: ()
 beforeEach(() => vi.clearAllMocks());
 
 describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
+  it('folds model/project/location from extraJson into the wire entry (vertex/openai BYO)', async () => {
+    const { svc } = makeService({
+      rows: [
+        makeRow({
+          provider: 'vertex',
+          extraJson: { project: 'my-gcp-project', location: 'us-central1', model: 'gemini-2.0-flash' },
+        }),
+      ],
+    });
+    const out = await svc.resolveTenantCloudOverrides('llm', TENANT_A);
+    // The Python ProviderOverride carries project/location/model; the console
+    // stores them in extraJson (no dedicated column), so the gateway emitter
+    // MUST forward them or Vertex BYO never reaches the tenant's project.
+    expect(out.vertex).toMatchObject({
+      api_key: 'plaintext-key',
+      project: 'my-gcp-project',
+      location: 'us-central1',
+      model: 'gemini-2.0-flash',
+    });
+  });
+
   it('maps an enabled azure row to the snake_case wire shape', async () => {
     const { svc } = makeService({
       rows: [
@@ -139,8 +163,10 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
   it('is tenant-isolated: tenant B resolves nothing from tenant A rows', async () => {
     const { svc, repo } = makeService({ rows: [] });
     await expect(svc.resolveTenantCloudOverrides(TENANT_B)).resolves.toEqual({});
-    // The lookup is pinned to the requested tenant — never widened.
-    expect(repo.findByTenantId.mock.calls[0][0]).toBe(TENANT_B);
+    // The lookup is pinned to the requested tenant — never widened. Service-first
+    // signature: findByTenantIdAndService(service, tenantId, tx) → tenantId is arg 1.
+    expect(repo.findByTenantIdAndService.mock.calls[0][1]).toBe(TENANT_B);
+    expect(repo.findByTenantIdAndService.mock.calls[0][0]).toBe('llm');
   });
 
   describe('fail-open per credential ON DECRYPT ERROR ONLY', () => {
@@ -166,11 +192,12 @@ describe('resolveTenantCloudOverrides — BYO injection resolver', () => {
 
       expect(warn).toHaveBeenCalledTimes(1);
       const arg = warn.mock.calls[0][0] as Record<string, unknown>;
-      expect(arg).toMatchObject({ tenantId: TENANT_A, provider: 'azure', keyVersion: 7 });
+      // The 1-arg resolver form resolves the llm lane, so the warn carries service='llm'.
+      expect(arg).toMatchObject({ tenantId: TENANT_A, service: 'llm', provider: 'azure', keyVersion: 7 });
 
-      // Nothing beyond the four allow-listed fields may be logged, and no
-      // serialized value may contain key material or ciphertext.
-      expect(Object.keys(arg).sort()).toEqual(['keyVersion', 'message', 'provider', 'tenantId']);
+      // Nothing beyond the allow-listed fields may be logged, and no serialized
+      // value may contain key material or ciphertext.
+      expect(Object.keys(arg).sort()).toEqual(['keyVersion', 'message', 'provider', 'service', 'tenantId']);
       const serialized = JSON.stringify(arg);
       expect(serialized).not.toContain('vault:');
       expect(serialized).not.toContain('plaintext-key');

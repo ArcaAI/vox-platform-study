@@ -34,6 +34,7 @@ def _shutdown_on_evict(_key: str, instance: Any) -> Any:
     shutdown = getattr(instance, "shutdown", None)
     return None if shutdown is None else shutdown()
 
+
 # Per-slot bound on cached model instances (LRU-evicted beyond it).
 DEFAULT_MAX_SIZE = 3
 

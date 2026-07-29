@@ -178,7 +178,11 @@ describe('harnessApi raw client functions', () => {
   it('signalWorkflow POSTs the signalName + payload to /signal', async () => {
     mockPost.mockResolvedValueOnce({ ...ACTION, action: 'signal' });
     await harnessApi.signalWorkflow('wf1', { signalName: 'approve', payload: { ok: true } }, 't1');
-    expect(mockPost).toHaveBeenCalledWith('/admin/harness/workflows/wf1/signal', { signalName: 'approve', payload: { ok: true } }, { tenantId: 't1' });
+    expect(mockPost).toHaveBeenCalledWith(
+      '/admin/harness/workflows/wf1/signal',
+      { signalName: 'approve', payload: { ok: true } },
+      { tenantId: 't1' },
+    );
   });
 });
 

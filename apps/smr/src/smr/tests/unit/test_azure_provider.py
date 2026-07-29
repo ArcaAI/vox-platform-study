@@ -28,11 +28,13 @@ def azure_config():
 class TestAzureProviderInit:
     def test_creates_with_config(self, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         provider = AzureOpenAIProvider(config=azure_config)
         assert provider is not None
 
     def test_default_model_from_config(self, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         provider = AzureOpenAIProvider(config=azure_config)
         assert provider._default_model == "gpt-4"
 
@@ -54,7 +56,9 @@ class TestAzureGenerate:
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hi", provider="azure_openai"))
+        content, _reasoning, stats = await provider.generate(
+            GenerateRequest(prompt="hi", provider="azure_openai")
+        )
         assert content == "Azure response!"
         assert isinstance(stats, GenerationStats)
 
@@ -73,7 +77,11 @@ class TestAzureGenerate:
         provider._client = AsyncMock()
         provider._client.chat.completions.create = AsyncMock(return_value=mock_completion)
 
-        await provider.generate(GenerateRequest(prompt="explain AI", system_prompt="You are helpful", provider="azure_openai"))
+        await provider.generate(
+            GenerateRequest(
+                prompt="explain AI", system_prompt="You are helpful", provider="azure_openai"
+            )
+        )
 
         call_kwargs = provider._client.chat.completions.create.call_args.kwargs
         messages = call_kwargs["messages"]
@@ -118,7 +126,9 @@ class TestAzureGenerateStream:
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, provider="azure_openai")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", stream=True, provider="azure_openai")
+        ):
             chunks.append(chunk)
 
         reasoning_chunks = [c for c in chunks if c.type == "reasoning"]
@@ -147,7 +157,9 @@ class TestAzureGenerateStream:
         provider._client.chat.completions.create = AsyncMock(return_value=_mock_stream())
 
         chunks = []
-        async for chunk in provider.generate_stream(GenerateRequest(prompt="hi", stream=True, provider="azure_openai")):
+        async for chunk in provider.generate_stream(
+            GenerateRequest(prompt="hi", stream=True, provider="azure_openai")
+        ):
             chunks.append(chunk)
 
         text_chunks = [c for c in chunks if c.type == "chunk"]
@@ -296,7 +308,7 @@ class TestAzureStructuredOutput:
 
 
 class TestAzureDeploymentName:
-    """ D6 (dead-config sweep) — ``AzureOpenAIConfig.deployment_name``
+    """D6 (dead-config sweep) — ``AzureOpenAIConfig.deployment_name``
     was defined but never read; Azure OpenAI routes requests by *deployment
     name*, not model name, so an operator-configured deployment must win over
     the caller-supplied ``request.model``. When unset (the "" default), today's
@@ -369,6 +381,7 @@ class TestAzureHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_true(self, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.models.list = AsyncMock(return_value=MagicMock())
@@ -377,6 +390,7 @@ class TestAzureHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_false_on_error(self, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.models.list = AsyncMock(side_effect=Exception("down"))
@@ -387,6 +401,7 @@ class TestAzureGetInfo:
     @pytest.mark.asyncio
     async def test_get_info(self, azure_config):
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         provider = AzureOpenAIProvider(config=azure_config)
         provider._client = AsyncMock()
         provider._client.models.list = AsyncMock(return_value=MagicMock())

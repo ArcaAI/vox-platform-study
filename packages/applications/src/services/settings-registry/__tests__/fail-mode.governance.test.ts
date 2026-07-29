@@ -50,6 +50,27 @@ describe('SettingsRegistry — secret ⇒ fail-closed (assembly invariant)', () 
     ]);
     expect(r.secrets().map((d) => d.key)).toEqual(['b']);
   });
+
+  // TASK-585 follow-up: `sampleValue` puts a ready-to-use value into a
+  // COMMITTED template file (`.env.sample`) — it must never coexist with
+  // `sensitivity: 'secret'`, or a "sample" becomes a real leaked credential.
+  it('rejects a secret-sensitivity descriptor that declares a sampleValue', () => {
+    const r = new SettingsRegistry();
+    expect(() =>
+      r.register(desc({ key: 'bad.secret.sample', sensitivity: 'secret', dataType: 'secret', failMode: 'closed', sampleValue: 'not-a-secret-honest' })),
+    ).toThrow(/secret.*sampleValue/i);
+  });
+
+  it('accepts a non-secret descriptor that declares a sampleValue', () => {
+    const r = new SettingsRegistry();
+    expect(() => r.register(desc({ key: 'ok.sample', sampleValue: 'redis://localhost:6379' }))).not.toThrow();
+  });
+
+  it('no registered secret declares a sampleValue', () => {
+    for (const d of HOPE_SETTINGS_REGISTRY.secrets()) {
+      expect(d.sampleValue, d.key).toBeUndefined();
+    }
+  });
 });
 
 describe('HOPE_SETTINGS_REGISTRY — failMode governance', () => {
@@ -164,11 +185,22 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'azure.speechKey': 'AZURE_SPEECH_KEY',
     'azure.foundryApiKey': 'AZURE_FOUNDRY_API_KEY',
     'smrAzure.apiKey': 'SMR_AZURE_API_KEY',
+    'smrOpenai.apiKey': 'SMR_OPENAI_API_KEY',
+    'smrAnthropic.apiKey': 'SMR_ANTHROPIC_API_KEY',
     'ttsSarvam.apiKey': 'TTS_SARVAM_API_KEY',
     'guardrailVllm.apiKey': 'GUARDRAIL_VLLM_API_KEY',
     'harnessJudgeOpenaiCompat.apiKey': 'HARNESS_JUDGE_OPENAI_COMPAT_API_KEY',
     'harness.claimCheck.accessKey': 'HARNESS_CLAIM_CHECK_ACCESS_KEY',
     'harness.claimCheck.secretKey': 'HARNESS_CLAIM_CHECK_SECRET_KEY',
+    // ── env (SMR cloud-provider connection config — TASK-572) ──
+    'smrOpenai.baseUrl': 'SMR_OPENAI_BASE_URL',
+    'smrOpenai.organization': 'SMR_OPENAI_ORGANIZATION',
+    'smrOpenai.defaultModel': 'SMR_OPENAI_DEFAULT_MODEL',
+    'smrAnthropic.baseUrl': 'SMR_ANTHROPIC_BASE_URL',
+    'smrAnthropic.defaultModel': 'SMR_ANTHROPIC_DEFAULT_MODEL',
+    'smrVertex.project': 'SMR_VERTEX_PROJECT',
+    'smrVertex.location': 'SMR_VERTEX_LOCATION',
+    'smrVertex.defaultModel': 'SMR_VERTEX_DEFAULT_MODEL',
     // ── env (bootstrap floor) ──
     nodeEnv: 'NODE_ENV',
     databaseUrl: 'DATABASE_URL',
@@ -202,7 +234,7 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'registration.selfSignupEnabled': 'REGISTRATION_SELF_SIGNUP_ENABLED',
     'entitlements.enabledDefault': 'ENTITLEMENTS_ENABLED_DEFAULT',
     // NOTE: `TENANT_IDP_ENABLED` is deliberately ABSENT — it has no reader
-    // anywhere in the repo despite an `.env.example` comment claiming one.
+    // anywhere in the repo despite an `.env.sample` comment claiming one.
     // See `feature-flags.descriptors.ts` for the evidence.
     'semanticEndpoint.enabled': 'SEMANTIC_ENDPOINT_ENABLED',
     'guardrailV2.groundedness.enabled': 'GUARDRAIL_V2_GROUNDEDNESS_ENABLED',

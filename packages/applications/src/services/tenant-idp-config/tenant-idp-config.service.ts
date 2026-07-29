@@ -228,17 +228,11 @@ export class TenantIdpConfigService extends BaseService implements ITenantIdpCon
     return { ok: true, providerStatus: updated.providerStatus };
   }
 
-  async setDirectoryCredentials(
-    tenantId: string,
-    id: string,
-    dto: SetDirectoryCredentialsRequest,
-  ): Promise<TenantIdpConfigResponse> {
+  async setDirectoryCredentials(tenantId: string, id: string, dto: SetDirectoryCredentialsRequest): Promise<TenantIdpConfigResponse> {
     const row = await this.findOwnedRow(tenantId, id);
 
     if (!this.secretsService) {
-      throw new BadRequestException(
-        'Identity provider federation requires the Vault secrets provider (SECRETS_PROVIDER=vault).',
-      );
+      throw new BadRequestException('Identity provider federation requires the Vault secrets provider (SECRETS_PROVIDER=vault).');
     }
 
     row.directoryCredentialsRef = await this.secretsService.encrypt(Buffer.from(JSON.stringify(dto.credentials), 'utf8'));

@@ -139,9 +139,7 @@ describe('VAD Types', () => {
 
     it('should have sensible threshold relationship', () => {
       // Positive threshold should be higher than negative
-      expect(DEFAULT_VAD_OPTIONS.positiveSpeechThreshold).toBeGreaterThan(
-        DEFAULT_VAD_OPTIONS.negativeSpeechThreshold
-      );
+      expect(DEFAULT_VAD_OPTIONS.positiveSpeechThreshold).toBeGreaterThan(DEFAULT_VAD_OPTIONS.negativeSpeechThreshold);
     });
 
     it('should have thresholds within valid probability range', () => {
@@ -319,7 +317,6 @@ describe('VAD Types', () => {
         expect(supportWithReason.unsupportedReason).toBe('WebAssembly not supported');
       });
     });
-
   });
 
   describe('VADModel type', () => {
@@ -336,14 +333,7 @@ describe('VAD Types', () => {
 
   describe('VADDataEventType', () => {
     it('should include all event types', () => {
-      const eventTypes: VADDataEventType[] = [
-        'vad-frame',
-        'vad-speech-start',
-        'vad-speech-real-start',
-        'vad-speech-end',
-        'vad-misfire',
-        'vad-stats',
-      ];
+      const eventTypes: VADDataEventType[] = ['vad-frame', 'vad-speech-start', 'vad-speech-real-start', 'vad-speech-end', 'vad-misfire', 'vad-stats'];
 
       eventTypes.forEach((eventType) => {
         expect(typeof eventType).toBe('string');

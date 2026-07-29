@@ -46,7 +46,7 @@ const mockCryptoService = {
 
 // Policy reader — defaults pass through; individual tests override knobs.
 const mockAppSettings = {
-  getValueWithDefault: vi.fn(<T,>(_key: string, defaultValue: T): T => defaultValue),
+  getValueWithDefault: vi.fn(<T>(_key: string, defaultValue: T): T => defaultValue),
 };
 
 // Real factory semantics are irrelevant here — echo props so the password the
@@ -86,7 +86,7 @@ describe('UserService — password hashing on the CRUD paths', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAppSettings.getValueWithDefault.mockImplementation(<T,>(_key: string, d: T): T => d);
+    mockAppSettings.getValueWithDefault.mockImplementation(<T>(_key: string, d: T): T => d);
     mockClsService.get.mockImplementation((key: string) => {
       switch (key) {
         case 'user':
@@ -123,15 +123,13 @@ describe('UserService — password hashing on the CRUD paths', () => {
     });
 
     it('honors GlobalSetting policy overrides via IAppSettingsService (minLength raised)', async () => {
-      mockAppSettings.getValueWithDefault.mockImplementation(<T,>(key: string, d: T): T => {
+      mockAppSettings.getValueWithDefault.mockImplementation(<T>(key: string, d: T): T => {
         if (key === 'security.password.minLength') return 20 as unknown as T;
         return d;
       });
 
       // 12+ compliant against defaults, but short of the raised minimum.
-      await expect(service.create({ username: 'carol', password: STRONG_PW, isServiceAccount: false })).rejects.toThrow(
-        'at least 20 characters',
-      );
+      await expect(service.create({ username: 'carol', password: STRONG_PW, isServiceAccount: false })).rejects.toThrow('at least 20 characters');
       expect(mockUserRepository.create).not.toHaveBeenCalled();
     });
 

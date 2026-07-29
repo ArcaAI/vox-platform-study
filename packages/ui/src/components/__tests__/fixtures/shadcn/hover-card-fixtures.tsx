@@ -1,8 +1,4 @@
-import {
-  HoverCard,
-  HoverCardTrigger,
-  HoverCardContent,
-} from '../../../shadcn/hover-card'
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '../../../shadcn/hover-card';
 
 export function BasicHoverCard() {
   return (
@@ -15,7 +11,7 @@ export function BasicHoverCard() {
         <p>Additional details here</p>
       </HoverCardContent>
     </HoverCard>
-  )
+  );
 }
 
 export function DefaultOpenHoverCard() {
@@ -28,7 +24,7 @@ export function DefaultOpenHoverCard() {
         <div>Visible content</div>
       </HoverCardContent>
     </HoverCard>
-  )
+  );
 }
 
 export function HoverCardWithCustomClass() {
@@ -41,14 +37,10 @@ export function HoverCardWithCustomClass() {
         <div>Styled content</div>
       </HoverCardContent>
     </HoverCard>
-  )
+  );
 }
 
-export function HoverCardWithAlign({
-  align = 'center',
-}: {
-  align?: 'start' | 'center' | 'end'
-}) {
+export function HoverCardWithAlign({ align = 'center' }: { align?: 'start' | 'center' | 'end' }) {
   return (
     <HoverCard defaultOpen>
       <HoverCardTrigger asChild>
@@ -58,5 +50,5 @@ export function HoverCardWithAlign({
         <div>Aligned content</div>
       </HoverCardContent>
     </HoverCard>
-  )
+  );
 }

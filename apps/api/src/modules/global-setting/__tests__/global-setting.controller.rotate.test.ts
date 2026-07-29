@@ -81,8 +81,7 @@ describe('GlobalSettingController — POST /admin/settings/:id/rotate', () => {
 
   it('is gated GLOBAL_ADMIN-only via @Authorize(["manage","all"]) (overrides the class gate)', () => {
     const methodMeta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, GlobalSettingController.prototype.rotate) as
-      | Array<{ action: string; subject: string }>
-      | undefined;
+      Array<{ action: string; subject: string }> | undefined;
     expect(methodMeta).toEqual([{ action: 'manage', subject: 'all' }]);
   });
 

@@ -246,7 +246,9 @@ class IngestionConsumer:
                 error=str(exc),
             )
 
-    async def _reclaim_pending(self, stream_key: str, min_idle_ms: int, force: bool = False) -> None:
+    async def _reclaim_pending(
+        self, stream_key: str, min_idle_ms: int, force: bool = False
+    ) -> None:
         """Reclaim + process another consumer's idle pending entries via XAUTOCLAIM.
 
         On the first pass (``force``, ``min_idle_ms=0``) this also drains this
@@ -468,6 +470,40 @@ class ResultPublisher:
         )
         entry_id_str = entry_id.decode() if isinstance(entry_id, bytes) else entry_id
         return entry_id_str
+
+    async def publish_provider_switched(
+        self,
+        *,
+        from_pipeline: str,
+        to_pipeline: str,
+        reason: str,
+        utterance_index: int | None = None,
+    ) -> str:
+        """Publish a ``provider_switched`` status result (TASK-567 §3.4).
+
+        Reuses the ``status`` result type so the API gateway forwards it as the
+        existing ``status`` WS frame with ZERO protocol changes; the client
+        distinguishes it by ``status == 'provider_switched'``. Carries the
+        from/to pipeline ids, the trigger reason (``auto``|``user``), and the
+        utterance ordinal at which the swap happened so the UI can correlate.
+        """
+        fields: dict[str, str] = {
+            "type": "status",
+            "status": "provider_switched",
+            "from_pipeline": from_pipeline,
+            "to_pipeline": to_pipeline,
+            "reason": reason,
+        }
+        if utterance_index is not None:
+            fields["utterance_index"] = str(utterance_index)
+        key = result_stream_key(self._session_id)
+        entry_id = await self._redis.xadd(
+            key,
+            fields,
+            maxlen=self._resolve_maxlen(),
+            approximate=True,
+        )
+        return entry_id.decode() if isinstance(entry_id, bytes) else entry_id
 
 
 # ---------------------------------------------------------------------------

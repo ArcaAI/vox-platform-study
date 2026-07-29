@@ -156,7 +156,7 @@ describe('BaseTextProcessor', () => {
         expect.objectContaining({
           error: expect.any(Error),
           recoverable: false,
-        })
+        }),
       );
     });
 
@@ -208,9 +208,7 @@ describe('BaseTextProcessor', () => {
     it('should throw if not initialized', async () => {
       const uninitProcessor = new TestTextProcessor();
 
-      await expect(uninitProcessor.process('test')).rejects.toThrow(
-        'Processor not initialized'
-      );
+      await expect(uninitProcessor.process('test')).rejects.toThrow('Processor not initialized');
     });
 
     it('should throw if disabled', async () => {
@@ -230,7 +228,7 @@ describe('BaseTextProcessor', () => {
         expect.objectContaining({
           error: expect.any(Error),
           recoverable: true,
-        })
+        }),
       );
     });
   });
@@ -363,7 +361,7 @@ describe('BaseTextProcessor', () => {
           processingTimeMs: 0,
           tokensProcessed: 0,
           averageLatencyMs: 0,
-        })
+        }),
       );
     });
 
@@ -416,7 +414,7 @@ describe('BaseTextProcessor', () => {
             type: 'test-type',
             data: { value: 42 },
             timestamp: expect.any(Number),
-          })
+          }),
         );
       });
     });

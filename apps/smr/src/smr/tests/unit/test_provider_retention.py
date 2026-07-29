@@ -67,18 +67,26 @@ class TestOllamaKeepAlive:
 
         assert payload["keep_alive"] == "900s"
 
-    def test_keep_alive_is_clamped_to_the_product_window(
-        self, ollama_config, mock_http_client
-    ):
+    def test_keep_alive_is_clamped_to_the_product_window(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
 
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
 
         provider.apply_retention({"ttl_seconds": 7200})
-        assert provider._build_payload(GenerateRequest(prompt="x", model="m"), stream=False)["keep_alive"] == "3600s"
+        assert (
+            provider._build_payload(GenerateRequest(prompt="x", model="m"), stream=False)[
+                "keep_alive"
+            ]
+            == "3600s"
+        )
 
         provider.apply_retention({"ttl_seconds": 5})
-        assert provider._build_payload(GenerateRequest(prompt="x", model="m"), stream=False)["keep_alive"] == "60s"
+        assert (
+            provider._build_payload(GenerateRequest(prompt="x", model="m"), stream=False)[
+                "keep_alive"
+            ]
+            == "60s"
+        )
 
     def test_default_keep_alive_is_the_od5_default(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider

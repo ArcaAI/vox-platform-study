@@ -63,11 +63,7 @@ describe('AppSettingsService — platform row wins over tenant clones', () => {
   });
 
   it('serves the PLATFORM row when tenant clones come BEFORE it (reverse ordering)', async () => {
-    repo.findAll.mockResolvedValue([
-      buildSetting(TENANT_A, 'false'),
-      buildSetting(TENANT_B, 'false'),
-      buildSetting(GLOBAL_TENANT_ID, 'true'),
-    ]);
+    repo.findAll.mockResolvedValue([buildSetting(TENANT_A, 'false'), buildSetting(TENANT_B, 'false'), buildSetting(GLOBAL_TENANT_ID, 'true')]);
     const svc = buildService();
 
     await svc.cacheAppSettings();

@@ -88,11 +88,7 @@ export function clampCursorLimit(limit?: number): number {
  * detect `hasMore`, orders by `(<sortKey>, id)`, and (when a cursor is present)
  * composes the keyset predicate with the caller's base `where` via `AND`.
  */
-export function buildCursorFindAllProps(
-  cursor: CursorPayload | null,
-  limit: number,
-  options: BuildCursorPropsOptions = {},
-): IFindAllProps {
+export function buildCursorFindAllProps(cursor: CursorPayload | null, limit: number, options: BuildCursorPropsOptions = {}): IFindAllProps {
   const { where, sortKey = 'createdAt', direction = 'desc' } = options;
   const sort = [{ [sortKey]: direction }, { id: direction }];
 
@@ -104,10 +100,7 @@ export function buildCursorFindAllProps(
   // Sort key is a timestamp for our entities; compare as Date so Prisma binds it correctly.
   const keyValue = new Date(cursor.k);
   const keyset: DbFilters = {
-    OR: [
-      { [sortKey]: { [op]: keyValue } },
-      { AND: [{ [sortKey]: keyValue }, { id: { [op]: cursor.id } }] },
-    ],
+    OR: [{ [sortKey]: { [op]: keyValue } }, { AND: [{ [sortKey]: keyValue }, { id: { [op]: cursor.id } }] }],
   };
 
   return {
@@ -123,11 +116,7 @@ export function buildCursorFindAllProps(
  * `hasMore`, and (when there is a next page) encodes `nextCursor` from the last
  * returned row.
  */
-export function toCursorPage<T extends { id: string }>(
-  rows: T[],
-  limit: number,
-  getSortKey: (row: T) => string,
-): CursorPage<T> {
+export function toCursorPage<T extends { id: string }>(rows: T[], limit: number, getSortKey: (row: T) => string): CursorPage<T> {
   const hasMore = rows.length > limit;
   const data = hasMore ? rows.slice(0, limit) : rows;
   const last = data[data.length - 1];

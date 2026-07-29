@@ -211,7 +211,7 @@ describe('BaseProcessor', () => {
           kind: 'audio',
           track: mockTrack,
           audioContext: mockAudioContext,
-        })
+        }),
       ).rejects.toThrow('Init failed');
 
       expect(processor.getStatus()).toBe(ProcessorStatus.ERROR);
@@ -227,14 +227,14 @@ describe('BaseProcessor', () => {
           kind: 'audio',
           track: mockTrack,
           audioContext: mockAudioContext,
-        })
+        }),
       ).rejects.toThrow('Custom init error');
 
       expect(errorHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           error: expect.any(Error),
           recoverable: false,
-        })
+        }),
       );
     });
 
@@ -250,7 +250,7 @@ describe('BaseProcessor', () => {
           kind: 'audio',
           track: mockTrack,
           audioContext: mockAudioContext,
-        })
+        }),
       ).rejects.toThrow(/Cannot initialize processor in state/);
     });
   });
@@ -499,7 +499,7 @@ describe('BaseProcessor', () => {
             type: 'test-type',
             data: { value: 42 },
             timestamp: expect.any(Number),
-          })
+          }),
         );
       });
     });

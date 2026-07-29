@@ -12,12 +12,7 @@ describe('Legacy STT v1 Cleanup (ASR-R-11)', () => {
     const exported = Object.keys(constants);
 
     // There should be no STT v1/gateway references
-    const v1References = exported.filter(
-      (key) =>
-        key.includes('STT_GATEWAY') ||
-        key.includes('STT_V1') ||
-        key.includes('LEGACY_STT')
-    );
+    const v1References = exported.filter((key) => key.includes('STT_GATEWAY') || key.includes('STT_V1') || key.includes('LEGACY_STT'));
 
     expect(v1References).toHaveLength(0);
   });

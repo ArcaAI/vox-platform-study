@@ -25,36 +25,32 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets/SecretsService';
 import { decryptSecretField, encryptSecretField } from '../baseServices/_meta/secrets/secret-field.util';
-import {
-  IAiProviderConnectionService,
-  LlmProviderOverrideEntry,
-  LlmProviderOverrides,
-  ResolvedProviderConnection,
-} from './IAiProviderConnectionService';
+import { IProviderConnectionService, ProviderOverrideEntry, ProviderOverrides, ResolvedProviderConnection } from './IProviderConnectionService';
 import { AiProviderConnectionDtoMapper } from './ai-provider-connection.dto.mapper';
-import { isCloudByoProvider } from './constants';
+import { ProviderService, isCloudByoProvider } from './constants';
 import { AiProviderConnectionResponse, UpsertAiProviderConnectionRequest } from './dto';
 
 /**
- * Provider-connection service.
+ * Unified provider-connection service (TASK-569).
  *
- * Owns WHERE a serving provider lives and HOW to authenticate to it, as the
- * DB control plane replacing per-service env configuration.
+ * Owns WHERE a serving provider lives and HOW to authenticate to it — as the DB
+ * control plane for ALL THREE AI capabilities (llm | stt | tts), keyed by
+ * (tenant, SERVICE, provider). Replaces per-service env configuration AND the
+ * former per-capability credential tables.
  *
  * TWO privilege boundaries, both 403 (NOT the 404-over-403 cross-tenant
  * posture — these are rules about the caller's OWN tenant, not existence
  * probes on someone else's):
- *   - a TENANT row is permitted only for a cloud BYO provider (azure/bedrock);
- *     self-host engine endpoints are platform infrastructure;
+ *   - a TENANT row is permitted only for a cloud BYO provider LISTED UNDER ITS
+ *     SERVICE (C5); a self-host engine endpoint is platform infrastructure;
  *   - a SYSTEM row may be written only by a global admin.
  *
  * Secrets travel through `encryptSecretField` exclusively; there is no
- * plaintext-at-rest fallback (a key write is REJECTED when Vault is absent,
- * mirroring `TenantTtsConfigService.setCredential`), and no read path — and no
- * route at all — ever returns the ciphertext.
+ * plaintext-at-rest fallback (a key write is REJECTED when Vault is absent), and
+ * no read path — and no route at all — ever returns the ciphertext.
  */
 @Injectable()
-export class AiProviderConnectionService extends BaseService implements IAiProviderConnectionService {
+export class AiProviderConnectionService extends BaseService implements IProviderConnectionService {
   private readonly logger = new Logger(AiProviderConnectionService.name);
 
   constructor(
@@ -71,44 +67,54 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     super(eventEmitter, clsService, ResourceType.AiProviderConnection);
   }
 
-  async list(tenantId?: string): Promise<AiProviderConnectionResponse[]> {
+  async list(service: ProviderService, tenantId?: string): Promise<AiProviderConnectionResponse[]> {
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
     const tx = this.crossTenantLane(scopedTenantId);
-    const rows = await this.connectionRepository.findByTenantId(scopedTenantId, tx);
+    const rows = await this.connectionRepository.findByTenantIdAndService(service, scopedTenantId, tx);
     return rows.map((r) => AiProviderConnectionDtoMapper.toResponse(r));
   }
 
-  async getRow(provider: string, tenantId?: string): Promise<AiProviderConnectionResponse> {
+  async getRow(service: ProviderService, provider: string, tenantId?: string): Promise<AiProviderConnectionResponse> {
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
     const tx = this.crossTenantLane(scopedTenantId);
-    const row = await this.connectionRepository.findByTenantAndProvider(scopedTenantId, provider, tx);
-    return row ? AiProviderConnectionDtoMapper.toResponse(row) : AiProviderConnectionDtoMapper.placeholder(scopedTenantId, provider);
+    const row = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
+    return row ? AiProviderConnectionDtoMapper.toResponse(row) : AiProviderConnectionDtoMapper.placeholder(service, scopedTenantId, provider);
   }
 
-  async upsertRow(provider: string, dto: UpsertAiProviderConnectionRequest, tenantId?: string): Promise<AiProviderConnectionResponse> {
+  async upsertRow(
+    service: ProviderService,
+    provider: string,
+    dto: UpsertAiProviderConnectionRequest,
+    tenantId?: string,
+    expectedVersion?: number,
+  ): Promise<AiProviderConnectionResponse> {
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
-    this.assertWriteAllowed(provider, scopedTenantId);
+    this.assertWriteAllowed(service, provider, scopedTenantId);
+
+    // C2 supplies `expectedVersion` as an explicit param; the pre-unification
+    // convention carried it inside the DTO. Prefer the explicit param, fall back
+    // to the DTO — so the gateway may pass it either way during the transition.
+    const ev = expectedVersion ?? dto.expectedVersion;
 
     const tx = this.crossTenantLane(scopedTenantId);
-    const existing = await this.connectionRepository.findByTenantAndProvider(scopedTenantId, provider, tx);
+    const existing = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
 
     if (!existing) {
-      if (dto.expectedVersion !== undefined && dto.expectedVersion !== 0) {
-        throw new OptimisticConcurrencyException('AiProviderConnection', `${scopedTenantId}:${provider}`, {
-          expectedVersion: dto.expectedVersion,
+      if (ev !== undefined && ev !== 0) {
+        throw new OptimisticConcurrencyException('AiProviderConnection', `${scopedTenantId}:${service}:${provider}`, {
+          expectedVersion: ev,
           currentVersion: 0,
         });
       }
 
-      // F-028 — restore-with-overwrite. The unique (tenantId, provider) index
-      // counts soft-DELETED rows, so a plain INSERT after a delete collides
-      // with the tombstone (409 unique-constraint) with no HTTP recovery path.
-      // A create-intent (`If-Match: "0"`) over a DELETED row instead REVIVES
-      // it — restore + apply every field as a fresh write, mirroring the
-      // `GlobalSettingService.create` / `UserRoleAssignmentService` precedent.
-      const deleted = await this.connectionRepository.findDeletedByTenantAndProvider(scopedTenantId, provider, tx);
+      // F-028 — restore-with-overwrite. The unique (tenantId, service, provider)
+      // index counts soft-DELETED rows, so a plain INSERT after a delete
+      // collides with the tombstone (409 unique-constraint) with no HTTP
+      // recovery path. A create-intent (`If-Match: "0"`) over a DELETED row
+      // instead REVIVES it — restore + apply every field as a fresh write.
+      const deleted = await this.connectionRepository.findDeletedByTenantServiceProvider(service, provider, scopedTenantId, tx);
       if (deleted) {
-        return this.restoreAndOverwrite(deleted, dto, provider, scopedTenantId, tx);
+        return this.restoreAndOverwrite(deleted, dto, service, provider, scopedTenantId, tx);
       }
 
       // Encrypt only when the caller actually supplied a key — and only AFTER
@@ -117,6 +123,7 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
       const secret = dto.apiKey !== undefined ? await this.encryptKey(dto.apiKey) : undefined;
       const entity = AiProviderConnectionFactory.CreateAiProviderConnection({
         tenantId: scopedTenantId,
+        service,
         provider,
         baseUrl: dto.baseUrl ?? null,
         region: dto.region ?? null,
@@ -132,26 +139,24 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
       this.broadcastSysEvent(SysEventType.ResourceCreated, {
         resourceId: saved.id,
         createdAt: saved.createdAt,
-        data: { provider, tenantId: scopedTenantId, enabled: saved.enabled, action: 'connection-created' },
+        data: { service, provider, tenantId: scopedTenantId, enabled: saved.enabled, action: 'connection-created' },
       });
       return AiProviderConnectionDtoMapper.toResponse(saved);
     }
 
-    if (dto.expectedVersion === undefined) {
+    if (ev === undefined) {
       // A CAS update without a token cannot be verified. The gateway's
       // `@RequiresIfMatch()` 428s before this; this covers off-route callers.
       throw new OptimisticConcurrencyException('AiProviderConnection', existing.id, {
-        expectedVersion: dto.expectedVersion,
+        expectedVersion: ev,
         currentVersion: existing.version,
       });
     }
-    if (dto.expectedVersion !== existing.version) {
+    if (ev !== existing.version) {
       // Fast-fail the CAS against the row just read, BEFORE any Vault call —
       // `updateWithVersion` below remains the atomic backstop for races.
-      // (Otherwise a stale precondition with an `apiKey` in the body would
-      // reach Transit first and surface as a 500 when Vault was down.)
       throw new OptimisticConcurrencyException('AiProviderConnection', existing.id, {
-        expectedVersion: dto.expectedVersion,
+        expectedVersion: ev,
         currentVersion: existing.version,
       });
     }
@@ -178,10 +183,11 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     }
 
     const previousVersion = existing.version;
-    const updated = await this.connectionRepository.updateWithVersion(existing.id, existing, dto.expectedVersion, tx);
+    const updated = await this.connectionRepository.updateWithVersion(existing.id, existing, ev, tx);
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: updated.id,
       data: {
+        service,
         provider,
         tenantId: scopedTenantId,
         previousVersion,
@@ -193,89 +199,109 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     return AiProviderConnectionDtoMapper.toResponse(updated);
   }
 
-  async deleteRow(provider: string, tenantId?: string): Promise<void> {
+  async deleteRow(service: ProviderService, provider: string, tenantId?: string, _expectedVersion?: number): Promise<void> {
     const scopedTenantId = this.resolveScopedTenantId(tenantId);
-    this.assertWriteAllowed(provider, scopedTenantId);
+    this.assertWriteAllowed(service, provider, scopedTenantId);
 
     const tx = this.crossTenantLane(scopedTenantId);
-    const existing = await this.connectionRepository.findByTenantAndProvider(scopedTenantId, provider, tx);
+    const existing = await this.connectionRepository.findByTenantServiceProvider(service, provider, scopedTenantId, tx);
     if (!existing) {
-      // An absent row is a 404, matching the frozen §3.6 contract and
-      // the `TenantTtsConfigService.removeCredential` precedent. A cross-tenant
-      // row reads as absent through the scope extension, so the same 404 hides
+      // An absent row is a 404, matching the frozen contract and the
+      // `TenantTtsConfigService.removeCredential` precedent. A cross-tenant row
+      // reads as absent through the scope extension, so the same 404 hides
       // existence — the house posture, not a 400 "bad argument".
-      throw new NotFoundException(`No connection row for provider '${provider}'.`);
+      throw new NotFoundException(`No connection row for provider '${provider}' (service '${service}').`);
     }
 
+    // `_expectedVersion` is accepted for C2 arity; soft-delete stays version-less
+    // (the HTTP `@RequiresIfMatch()` guard remains the OCC gate at the edge).
     // `softDelete(id, updatedBy)` takes no tx client — it writes through the
-    // extended client. A global admin soft-deleting a SYSTEM row while acting
-    // under a working tenant therefore relies on the SYSTEM-shared-read
-    // widening; the same limitation applies to every soft-delete in the repo.
+    // extended client, relying on the SYSTEM-shared-read widening for a global
+    // admin deleting a SYSTEM row under a working tenant.
     await this.connectionRepository.softDelete(existing.id, this.requestUserId ?? undefined);
     this.broadcastSysEvent(SysEventType.ResourceDeleted, {
       resourceId: existing.id,
-      data: { provider, tenantId: scopedTenantId, action: 'connection-deleted' },
+      data: { service, provider, tenantId: scopedTenantId, action: 'connection-deleted' },
     });
   }
 
-  async resolveConnection(provider: string, tenantId: string): Promise<ResolvedProviderConnection | null> {
+  async resolveConnection(service: ProviderService, provider: string, tenantId: string): Promise<ResolvedProviderConnection | null> {
     const tx = this.crossTenantLane(SYSTEM_TENANT_ID);
 
     const [tenantRow, systemRow] = await Promise.all([
-      tenantId === SYSTEM_TENANT_ID ? Promise.resolve(null) : this.connectionRepository.findByTenantAndProvider(tenantId, provider, tx),
-      this.connectionRepository.findByTenantAndProvider(SYSTEM_TENANT_ID, provider, tx),
+      tenantId === SYSTEM_TENANT_ID ? Promise.resolve(null) : this.connectionRepository.findByTenantServiceProvider(service, provider, tenantId, tx),
+      this.connectionRepository.findByTenantServiceProvider(service, provider, SYSTEM_TENANT_ID, tx),
     ]);
 
     // A DISABLED row is treated as absent — that is what makes the shipped
-    // all-disabled seed behaviour-neutral (ticket §7 silent-change guard).
+    // all-disabled seed behaviour-neutral (silent-change guard).
     if (tenantRow?.enabled) return this.toResolved(tenantRow, 'tenant');
     if (systemRow?.enabled) return this.toResolved(systemRow, 'system');
     return null;
   }
 
-  async findRow(provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null> {
+  async findRow(service: ProviderService, provider: string, tenantId: string): Promise<AiProviderConnectionEntity | null> {
     const tx = this.crossTenantLane(tenantId);
-    return this.connectionRepository.findByTenantAndProvider(tenantId, provider, tx);
+    return this.connectionRepository.findByTenantServiceProvider(service, provider, tenantId, tx);
   }
 
   /**
-   * The BYO injection resolver (see the interface for the full
+   * The BYO injection resolver for one service (see the interface for the full
    * contract). Mirrors `TenantTtsConfigService.resolveProviderOverrides` with
    * ONE deliberate improvement: the per-credential catch is not silent.
+   *
+   * The 1-arg overload is a `@deprecated` transition shim (assumes
+   * `service='llm'`) so the TASK-572-owned smr-proxy keeps compiling until it
+   * repoints to the service-first form.
    */
-  async resolveTenantCloudOverrides(tenantId: string): Promise<LlmProviderOverrides> {
+  async resolveTenantCloudOverrides(service: ProviderService, tenantId: string): Promise<ProviderOverrides>;
+  /** @deprecated 1-arg form assumes `service='llm'`; kept for the smr-proxy transition (TASK-572 removes it). */
+  async resolveTenantCloudOverrides(tenantId: string): Promise<ProviderOverrides>;
+  async resolveTenantCloudOverrides(a: ProviderService | string, b?: string): Promise<ProviderOverrides> {
+    const service = (b === undefined ? 'llm' : a) as ProviderService;
+    const tenantId = b === undefined ? a : b;
+
     // No Transit provider → nothing is decryptable. The WRITE path already
     // rejects key writes without Vault, so this is a degraded-runtime case,
     // not a policy decision: resolve to nothing and let SYSTEM/env serve.
     if (!this.secretsService) return {};
 
     const tx = this.crossTenantLane(tenantId);
-    const rows = await this.connectionRepository.findByTenantId(tenantId, tx);
+    const rows = await this.connectionRepository.findByTenantIdAndService(service, tenantId, tx);
 
-    const out: LlmProviderOverrides = {};
+    const out: ProviderOverrides = {};
     for (const row of rows) {
-      // A self-host row must never become a credential override even if one
-      // exists — the tenant lane is cloud-only (AD-2), enforced independently
-      // of the write-side guard.
-      if (!isCloudByoProvider(row.provider)) continue;
+      // A non-listed row must never become a credential override even if one
+      // exists — the tenant lane is cloud-only per-service (C5), enforced
+      // independently of the write-side guard.
+      if (!isCloudByoProvider(service, row.provider)) continue;
       if (!row.enabled || !row.encryptedApiKey) continue;
 
       try {
         const apiKey = await decryptSecretField(this.secretsService, row.encryptedApiKey);
-        const entry: LlmProviderOverrideEntry = { api_key: apiKey };
+        const entry: ProviderOverrideEntry = { api_key: apiKey };
         if (row.baseUrl) entry.base_url = row.baseUrl;
         if (row.region) entry.region = row.region;
         if (row.apiVersion) entry.api_version = row.apiVersion;
         if (row.deploymentName) entry.deployment_name = row.deploymentName;
+        // Columns cover azure/bedrock; the newer providers keep their per-request
+        // target in extraJson (console-written): `model` (openai/anthropic/stt),
+        // `project`/`location` (vertex). Without this, Vertex BYO never reaches
+        // the tenant's project and an LLM model override is silently dropped.
+        const extra = (row.extraJson ?? {}) as Record<string, unknown>;
+        if (typeof extra.model === 'string') entry.model = extra.model;
+        if (typeof extra.project === 'string') entry.project = extra.project;
+        if (typeof extra.location === 'string') entry.location = extra.location;
         out[row.provider] = entry;
       } catch {
-        // FAIL OPEN for this one credential. The log carries the three
-        // identifying facts and NOTHING else — no ciphertext, no plaintext, and
-        // deliberately not the error message either (a Transit error string can
-        // echo the payload it choked on).
+        // FAIL OPEN for this one credential. The log carries the identifying
+        // facts and NOTHING else — no ciphertext, no plaintext, and deliberately
+        // not the error message either (a Transit error string can echo the
+        // payload it choked on).
         this.logger.warn({
           message: 'Tenant provider credential failed to decrypt; skipping (request falls back to platform credentials)',
           tenantId,
+          service,
           provider: row.provider,
           keyVersion: row.keyVersion ?? null,
         });
@@ -285,18 +311,17 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
   }
 
   /**
-   * F-028 — restore a soft-deleted tombstone and overwrite every field from
-   * the create-intent request, exactly as a fresh `create()` would populate
-   * them (an omitted `apiKey` means NO key material on the revived row — the
-   * tombstone's old ciphertext must not resurrect silently). CAS-gated
-   * against the tombstone's OWN current version (never `dto.expectedVersion`,
-   * which the caller only knows as `0`), so a concurrent revive still throws
-   * `OptimisticConcurrencyException` via `updateWithVersion` rather than
-   * silently double-writing.
+   * F-028 — restore a soft-deleted tombstone and overwrite every field from the
+   * create-intent request, exactly as a fresh `create()` would populate them (an
+   * omitted `apiKey` means NO key material on the revived row). CAS-gated against
+   * the tombstone's OWN current version (never `dto.expectedVersion`, which the
+   * caller only knows as `0`), so a concurrent revive still throws
+   * `OptimisticConcurrencyException` via `updateWithVersion`.
    */
   private async restoreAndOverwrite(
     deleted: AiProviderConnectionEntity,
     dto: UpsertAiProviderConnectionRequest,
+    service: ProviderService,
     provider: string,
     scopedTenantId: string,
     tx?: CoreDatabaseService['baseClient'],
@@ -320,7 +345,7 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: restored.id,
       createdAt: restored.createdAt,
-      data: { provider, tenantId: scopedTenantId, enabled: restored.enabled, action: 'connection-restored' },
+      data: { service, provider, tenantId: scopedTenantId, enabled: restored.enabled, action: 'connection-restored' },
     });
     return AiProviderConnectionDtoMapper.toResponse(restored);
   }
@@ -329,11 +354,11 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
 
   /**
    * The two privilege boundaries. Both throw 403 rather than 404: the caller is
-   * acting on its OWN tenant, so there is nothing to hide — the rule is "you
-   * may not do this", not "this may not exist". Mirrors
+   * acting on its OWN tenant, so there is nothing to hide — the rule is "you may
+   * not do this", not "this may not exist". Mirrors
    * `AiTaskDefaultService.upsertRow`'s GLOBAL_ADMIN_ONLY guard.
    */
-  private assertWriteAllowed(provider: string, targetTenantId: string): void {
+  private assertWriteAllowed(service: ProviderService, provider: string, targetTenantId: string): void {
     if (targetTenantId === SYSTEM_TENANT_ID) {
       if (!isSuperAdmin(this.requestUser)) {
         throw new ForbiddenException('Platform provider connections are managed by global administrators only.');
@@ -341,16 +366,26 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
       return;
     }
 
-    if (!isCloudByoProvider(provider)) {
+    if (!isCloudByoProvider(service, provider)) {
       throw new ForbiddenException(
-        `Provider '${provider}' is a self-hosted engine; its connection is managed at the platform level only. ` +
-          'Tenant-owned connections are available for cloud API providers.',
+        `Provider '${provider}' is not a tenant-managed cloud provider for the '${service}' capability; ` +
+          'its connection is managed at the platform level only.',
       );
     }
   }
 
   private async encryptKey(plaintext: string): Promise<{ ciphertext: Buffer; keyVersion: number }> {
-    if (!this.secretsService) {
+    // Two DISTINCT "no Vault" shapes, and only one of them is a transient
+    // outage: `!this.secretsService` is the theoretical case where the module
+    // never provided SecretsService at all, but in this app it is always
+    // injected — SECRETS_PROVIDER=env/aws/azure/in-memory still constructs a
+    // real instance whose `.encrypt()` throws a capability-guard `Error` (see
+    // `SecretsService.encrypt`). Without this `supportsTransit()` check that
+    // guard error fell into the generic catch below and was misreported as a
+    // 503 "temporarily unavailable, retry" — but a non-vault provider is a
+    // permanent configuration state, not a transient Transit outage. The 400
+    // branch below is the one path a caller can't fix by retrying.
+    if (!this.secretsService || !this.secretsService.supportsTransit()) {
       throw new BadRequestException(
         'Provider API keys require the Vault secrets provider (SECRETS_PROVIDER=vault). ' + 'There is no plaintext-at-rest fallback.',
       );
@@ -358,7 +393,7 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
     try {
       return await encryptSecretField(this.secretsService, plaintext);
     } catch (err) {
-      // A Transit failure (Vault down / provider without Transit support) is a
+      // A genuine Transit call failure (Vault sealed/unreachable) IS a
       // dependency outage, not an internal fault: map to 503 so the client
       // retries rather than filing a 500. Never log or echo the plaintext.
       this.logger.warn(`Transit encryption unavailable for provider-key write: ${err instanceof Error ? err.message : String(err)}`);
@@ -370,6 +405,7 @@ export class AiProviderConnectionService extends BaseService implements IAiProvi
 
   private toResolved(entity: AiProviderConnectionEntity, source: 'tenant' | 'system'): ResolvedProviderConnection {
     return {
+      service: entity.service as ProviderService,
       provider: entity.provider,
       baseUrl: entity.baseUrl ?? null,
       region: entity.region ?? null,

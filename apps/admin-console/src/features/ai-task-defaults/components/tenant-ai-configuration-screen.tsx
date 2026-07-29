@@ -18,9 +18,9 @@ function CredentialsTab() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">
-        Bring your own Azure OpenAI or Amazon Bedrock account. Keys are encrypted at rest via Vault Transit, are never returned by any read, and
-        there is no reveal flow. An enabled credential is used for this tenant&apos;s generation requests; a disabled or removed one falls back to
-        the platform credentials.
+        Bring your own Azure OpenAI or Amazon Bedrock account. Keys are encrypted at rest via Vault Transit, are never returned by any read, and there
+        is no reveal flow. An enabled credential is used for this tenant&apos;s generation requests; a disabled or removed one falls back to the
+        platform credentials.
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
         {CLOUD_PROVIDERS.map((meta) => (
@@ -61,11 +61,7 @@ export function TenantAiConfigurationScreen() {
         </span>
       }
     >
-      <Tabs
-        className="flex min-h-0 flex-1 flex-col"
-        value={tab}
-        onValueChange={(next) => void setTabParam(next === 'effective' ? null : next)}
-      >
+      <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'effective' ? null : next)}>
         <ScreenTemplate
           header={<PageHeader title="AI Configuration" meta={<span>effective models &amp; bring-your-own cloud credentials</span>} />}
           // The credentials tab mutates tenant data — name the tenant it acts on.

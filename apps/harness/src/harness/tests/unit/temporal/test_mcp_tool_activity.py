@@ -39,12 +39,16 @@ from harness.tools.mcp_client import McpClientError, McpToolResult
 class _RecordingClient:
     """MCP client stub: records every call so we can assert network was/wasn't reached."""
 
-    def __init__(self, *, result: McpToolResult | None = None, exc: Exception | None = None) -> None:
+    def __init__(
+        self, *, result: McpToolResult | None = None, exc: Exception | None = None
+    ) -> None:
         self._result = result
         self._exc = exc
         self.calls: list[dict[str, Any]] = []
 
-    async def call_tool(self, *, base_url: str, tool: str, args: dict, auth_token: str | None = None):
+    async def call_tool(
+        self, *, base_url: str, tool: str, args: dict, auth_token: str | None = None
+    ):
         self.calls.append(
             {"base_url": base_url, "tool": tool, "args": args, "auth_token": auth_token}
         )
@@ -120,6 +124,7 @@ def _wire(monkeypatch, *, client, cap, settings=None, token=None, redactor=None)
     monkeypatch.setattr(activities, "get_settings", lambda: settings or Settings())
     monkeypatch.setattr(activities, "_mcp_client", lambda s: client)
     monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
+
     # The resolver is async (it round-trips to the gateway
     # instead of returning a hardcoded None), so the stub must be awaitable.
     async def _token(_settings, _ref):
@@ -166,9 +171,7 @@ class TestAllowlistDeny:
         cap = _CapTraj()
         _wire(monkeypatch, client=client, cap=cap)
         with pytest.raises(ApplicationError):
-            await env.run(
-                activities.call_mcp_tool, _input(server=_server(tool_allowlist=None))
-            )
+            await env.run(activities.call_mcp_tool, _input(server=_server(tool_allowlist=None)))
         assert client.calls == []
 
 
@@ -260,7 +263,7 @@ class TestCredentialScrub:
     @pytest.mark.asyncio
     async def test_token_resolved_but_never_leaks(self, env, monkeypatch):
         secret = "SUPER_SECRET_TOKEN_do_not_leak"
-        client = _RecordingClient(result=McpToolResult(content="{\"valid\": true}"))
+        client = _RecordingClient(result=McpToolResult(content='{"valid": true}'))
         cap = _CapTraj()
         _wire(
             monkeypatch,
@@ -326,12 +329,12 @@ class TestSizeCapClaimCheck:
 
     @pytest.mark.asyncio
     async def test_small_result_inline_ok(self, env, monkeypatch):
-        client = _RecordingClient(result=McpToolResult(content="{\"valid\": true}"))
+        client = _RecordingClient(result=McpToolResult(content='{"valid": true}'))
         cap = _CapTraj()
         _wire(monkeypatch, client=client, cap=cap)
         result = await env.run(activities.call_mcp_tool, _input())
         assert result.ok is True
-        assert result.content == "{\"valid\": true}"
+        assert result.content == '{"valid": true}'
         assert result.content_ref is None
         assert cap.steps[-1].status == "OK"
         assert cap.steps[-1].stats["offloaded"] is False

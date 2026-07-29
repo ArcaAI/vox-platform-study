@@ -34,21 +34,13 @@ declare module './EvalScoreRepository' {
      * it is safe to call unconditionally on a partial row. The transient
      * plaintext stays in memory for the request; only ciphertext persists.
      */
-    encryptFieldsIntoEntity(
-      this: EvalScoreRepository,
-      entity: EvalScoreEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: EvalScoreRepository, entity: EvalScoreEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**
      * Decrypt all ciphertext columns (ciphertext-only; the plaintext columns
      * were dropped in Phase 6).
      */
-    decryptFieldsFromEntity(
-      this: EvalScoreRepository,
-      entity: EvalScoreEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<EvalScorePlaintext>;
+    decryptFieldsFromEntity(this: EvalScoreRepository, entity: EvalScoreEntity, secrets: SecretsServiceLike): Promise<EvalScorePlaintext>;
 
     /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
     findByIdWithDecryptedFields(

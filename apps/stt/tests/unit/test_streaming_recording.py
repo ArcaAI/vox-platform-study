@@ -235,15 +235,11 @@ class TestBuildTranscriptJson:
         from stt.streaming.schemas import SegmentResult
 
         session = _make_session()
-        session.add_result(
-            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
-        )
+        session.add_result(SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True))
         session.add_result(
             SegmentResult(text="partial", start_time=1.0, end_time=1.2, is_final=False)
         )
-        session.add_result(
-            SegmentResult(text="world", start_time=1.2, end_time=2.0, is_final=True)
-        )
+        session.add_result(SegmentResult(text="world", start_time=1.2, end_time=2.0, is_final=True))
 
         assert session.build_transcript_text() == "Hello world"
 
@@ -376,7 +372,9 @@ class TestStreamingPaths:
             chunk_index=0,
         )
         now = datetime.utcnow()
-        expected_prefix = f"{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/streams/s1/"
+        expected_prefix = (
+            f"{now.strftime('%Y')}/{now.strftime('%m')}/{now.strftime('%d')}/streams/s1/"
+        )
         assert path.startswith(expected_prefix)
 
 
@@ -661,9 +659,7 @@ class TestFinalizeSessionDualCapture:
         mock_blob.upload_streaming_transcript = AsyncMock(
             return_value="s3://bucket/transcript.json"
         )
-        mock_blob.upload_streaming_metadata = AsyncMock(
-            return_value="s3://bucket/metadata.json"
-        )
+        mock_blob.upload_streaming_metadata = AsyncMock(return_value="s3://bucket/metadata.json")
         return mock_blob
 
     @pytest.mark.asyncio
@@ -714,9 +710,7 @@ class TestFinalizeSessionDualCapture:
         mgr = _make_manager()
         session = _make_session(consultation_id="c1")
         session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
-        session.add_result(
-            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
-        )
+        session.add_result(SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True))
 
         mgr._sessions[session.session_id] = session
         mgr._dual_capture[session.session_id] = DualCaptureConfig(
@@ -776,9 +770,7 @@ class TestFinalizeSessionDualCapture:
         session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
 
         mgr._sessions[session.session_id] = session
-        mgr._dual_capture[session.session_id] = DualCaptureConfig(
-            enabled=True, capture_raw=True
-        )
+        mgr._dual_capture[session.session_id] = DualCaptureConfig(enabled=True, capture_raw=True)
 
         mgr._blob_service = self._blob_with_both_complete()
         mgr.remove_session = AsyncMock()
@@ -804,15 +796,9 @@ class TestFinalizeTranscriptPersistence:
         mock_blob = MagicMock()
         mock_blob.upload_streaming_raw_chunk = AsyncMock(return_value="s3://b/chunk")
         mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://b/raw.wav")
-        mock_blob.upload_streaming_processed_complete = AsyncMock(
-            return_value="s3://b/proc.wav"
-        )
-        mock_blob.upload_streaming_transcript = AsyncMock(
-            return_value="s3://b/transcript.json"
-        )
-        mock_blob.upload_streaming_metadata = AsyncMock(
-            return_value="s3://b/metadata.json"
-        )
+        mock_blob.upload_streaming_processed_complete = AsyncMock(return_value="s3://b/proc.wav")
+        mock_blob.upload_streaming_transcript = AsyncMock(return_value="s3://b/transcript.json")
+        mock_blob.upload_streaming_metadata = AsyncMock(return_value="s3://b/metadata.json")
         return mock_blob
 
     @pytest.mark.asyncio
@@ -822,21 +808,15 @@ class TestFinalizeTranscriptPersistence:
         mgr = _make_manager()
         session = _make_session(consultation_id="c1")
         session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
-        session.add_result(
-            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
-        )
-        session.add_result(
-            SegmentResult(text="world", start_time=1.0, end_time=2.0, is_final=True)
-        )
+        session.add_result(SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True))
+        session.add_result(SegmentResult(text="world", start_time=1.0, end_time=2.0, is_final=True))
 
         mgr._sessions[session.session_id] = session
         mgr._blob_service = self._blob_mock()
         mgr.remove_session = AsyncMock()
 
         mock_gateway = MagicMock()
-        mock_gateway.create_transcript = AsyncMock(
-            return_value={"contextItemId": "ctx-1"}
-        )
+        mock_gateway.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-1"})
         mgr._get_api_client = MagicMock(return_value=mock_gateway)
 
         await mgr._finalize_session(session)
@@ -856,9 +836,7 @@ class TestFinalizeTranscriptPersistence:
         mgr = _make_manager()
         session = _make_session(consultation_id=None)
         session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
-        session.add_result(
-            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
-        )
+        session.add_result(SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True))
 
         mgr._sessions[session.session_id] = session
         mgr._blob_service = self._blob_mock()
@@ -907,15 +885,9 @@ class TestFinalizeTranscriptDurability:
         mock_blob = MagicMock()
         mock_blob.upload_streaming_raw_chunk = AsyncMock(return_value="s3://b/chunk")
         mock_blob.upload_streaming_raw_complete = AsyncMock(return_value="s3://b/raw.wav")
-        mock_blob.upload_streaming_processed_complete = AsyncMock(
-            return_value="s3://b/proc.wav"
-        )
-        mock_blob.upload_streaming_transcript = AsyncMock(
-            return_value="s3://b/transcript.json"
-        )
-        mock_blob.upload_streaming_metadata = AsyncMock(
-            return_value="s3://b/metadata.json"
-        )
+        mock_blob.upload_streaming_processed_complete = AsyncMock(return_value="s3://b/proc.wav")
+        mock_blob.upload_streaming_transcript = AsyncMock(return_value="s3://b/transcript.json")
+        mock_blob.upload_streaming_metadata = AsyncMock(return_value="s3://b/metadata.json")
         return mock_blob
 
     def _session_with_text(self, mgr):
@@ -923,9 +895,7 @@ class TestFinalizeTranscriptDurability:
 
         session = _make_session(consultation_id="c1")
         session.record_frame(seq=0, data=_one_second_pcm(), sample_rate=16000)
-        session.add_result(
-            SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True)
-        )
+        session.add_result(SegmentResult(text="Hello", start_time=0.0, end_time=1.0, is_final=True))
         mgr._sessions[session.session_id] = session
         mgr._blob_service = self._blob_mock()
         return session
@@ -984,9 +954,7 @@ class TestFinalizeTranscriptDurability:
         mgr.remove_session.assert_awaited_once()
         assert session.status == SessionStatus.CLOSED
         # Durably enqueued to the shared Redis outbox with the payload.
-        enqueue = [
-            c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY
-        ]
+        enqueue = [c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY]
         assert len(enqueue) == 1
         field, raw = enqueue[0].args[1], enqueue[0].args[2]
         assert field == f"c1:{session.session_id}"
@@ -1018,9 +986,7 @@ class TestFinalizeTranscriptDurability:
         # 4xx → not retried.
         assert mock_gateway.create_transcript.await_count == 1
         # Not enqueued (retrying a client error is futile).
-        assert not [
-            c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY
-        ]
+        assert not [c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY]
         # Capacity still released.
         mgr.remove_session.assert_awaited_once()
         assert session.status == SessionStatus.CLOSED
@@ -1047,9 +1013,7 @@ class TestFinalizeTranscriptDurability:
 
         # Retried (not dropped at attempt 1) then handed to the durable outbox.
         assert mock_gateway.create_transcript.await_count == 3
-        enqueue = [
-            c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY
-        ]
+        enqueue = [c for c in mgr._redis.hset.await_args_list if c.args[0] == self.OUTBOX_KEY]
         assert len(enqueue) == 1
         # Capacity still released.
         mgr.remove_session.assert_awaited_once()
@@ -1117,9 +1081,7 @@ class TestTranscriptOutbox:
         create_transcript is awaited, THEN hdel — never the reverse."""
         mgr = _make_manager()
         order: list[str] = []
-        mgr._redis.hgetall = AsyncMock(
-            return_value={"c1:sess_rec": json.dumps(self._entry())}
-        )
+        mgr._redis.hgetall = AsyncMock(return_value={"c1:sess_rec": json.dumps(self._entry())})
         mgr._redis.hset = AsyncMock(side_effect=lambda *a, **k: order.append("hset"))
         mgr._redis.hdel = AsyncMock(side_effect=lambda *a, **k: order.append("hdel"))
 
@@ -1141,9 +1103,7 @@ class TestTranscriptOutbox:
         the entry, so a worker crash mid-POST cannot lose the transcript."""
         mgr = _make_manager()
         mgr._transcript_outbox_max_attempts = 5
-        mgr._redis.hgetall = AsyncMock(
-            return_value={"c1:sess_rec": json.dumps(self._entry())}
-        )
+        mgr._redis.hgetall = AsyncMock(return_value={"c1:sess_rec": json.dumps(self._entry())})
         mgr._redis.hset = AsyncMock()
         mgr._redis.hdel = AsyncMock()
 
@@ -1171,9 +1131,7 @@ class TestTranscriptOutbox:
 
         mgr = _make_manager()
         mgr._redis.hgetall = AsyncMock(
-            return_value={
-                "c1:sess_rec": json.dumps(self._entry(lease_expiry=time.time() + 1000))
-            }
+            return_value={"c1:sess_rec": json.dumps(self._entry(lease_expiry=time.time() + 1000))}
         )
         mgr._redis.hset = AsyncMock()
         mgr._redis.hdel = AsyncMock()
@@ -1244,9 +1202,7 @@ class TestTranscriptOutbox:
         from stt.core.exceptions import APIGatewayError
 
         mgr = _make_manager()
-        mgr._redis.hgetall = AsyncMock(
-            return_value={"c1:sess_rec": json.dumps(self._entry())}
-        )
+        mgr._redis.hgetall = AsyncMock(return_value={"c1:sess_rec": json.dumps(self._entry())})
         mgr._redis.hset = AsyncMock()
         mgr._redis.hdel = AsyncMock()
 
@@ -1261,9 +1217,7 @@ class TestTranscriptOutbox:
 
         # A genuine 4xx is dropped (deleted) with a loud alert.
         mgr._redis.hdel.assert_awaited_once_with(self.OUTBOX_KEY, "c1:sess_rec")
-        assert any(
-            "outbox_permanent_drop" in (entry.get("event") or "") for entry in logs
-        )
+        assert any("outbox_permanent_drop" in (entry.get("event") or "") for entry in logs)
 
     @pytest.mark.asyncio
     async def test_outbox_exhausted_drops_and_alerts(self):
@@ -1286,9 +1240,7 @@ class TestTranscriptOutbox:
 
         # attempts 1 -> 2 == max → dropped (deleted) with an alert.
         mgr._redis.hdel.assert_awaited_once_with(self.OUTBOX_KEY, "c1:sess_rec")
-        assert any(
-            "outbox_exhausted_drop" in (entry.get("event") or "") for entry in logs
-        )
+        assert any("outbox_exhausted_drop" in (entry.get("event") or "") for entry in logs)
 
 
 # ---------------------------------------------------------------------------

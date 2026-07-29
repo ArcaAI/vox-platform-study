@@ -278,10 +278,7 @@ describe('RbacRoleFactory', () => {
 
   describe('buildUpdateInput', () => {
     it('returns only provided fields plus updatedBy when resourceStatus is omitted', () => {
-      const input = RbacRoleFactory.buildUpdateInput(
-        { name: 'doctor-v2' },
-        'user-1',
-      );
+      const input = RbacRoleFactory.buildUpdateInput({ name: 'doctor-v2' }, 'user-1');
 
       expect(input).toEqual({
         name: 'doctor-v2',
@@ -290,29 +287,20 @@ describe('RbacRoleFactory', () => {
     });
 
     it('honours description=null as an explicit clear, but skips undefined', () => {
-      const input = RbacRoleFactory.buildUpdateInput(
-        { description: null as unknown as string, externalName: undefined },
-        'user-1',
-      );
+      const input = RbacRoleFactory.buildUpdateInput({ description: null as unknown as string, externalName: undefined }, 'user-1');
 
       expect(input).toHaveProperty('description', null);
       expect(input).not.toHaveProperty('externalName');
     });
 
     it('honours parentRoleId=null as an explicit clear', () => {
-      const input = RbacRoleFactory.buildUpdateInput(
-        { parentRoleId: null as unknown as string },
-        'user-1',
-      );
+      const input = RbacRoleFactory.buildUpdateInput({ parentRoleId: null as unknown as string }, 'user-1');
 
       expect(input).toHaveProperty('parentRoleId', null);
     });
 
     it('stamps resource-status fields when resourceStatus is provided', () => {
-      const input = RbacRoleFactory.buildUpdateInput(
-        { resourceStatus: 'DISABLED' },
-        'user-1',
-      );
+      const input = RbacRoleFactory.buildUpdateInput({ resourceStatus: 'DISABLED' }, 'user-1');
 
       expect(input.resourceStatus).toBe('DISABLED');
       expect(input.resourceStatusUpdatedAt).toBeInstanceOf(Date);

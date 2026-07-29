@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Realtime Pipeline Policy' };
 
 /** Frame 39 — Realtime pipeline policy cascade (tier 30-49, working tenant). */
 export default function PipelinePolicyPage() {
-    return <PipelinePolicyScreen />;
+  return <PipelinePolicyScreen />;
 }

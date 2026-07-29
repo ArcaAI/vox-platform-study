@@ -29,8 +29,8 @@
 // below forbids.
 //
 // ── DELIBERATELY NOT REGISTERED ──────────────────────────────────────────────
-// `TENANT_IDP_ENABLED` — NO READER EXISTS. It is declared in `.env.example` and
-// in `turbo.json#globalEnv`, and its own `.env.example` comment claims it is
+// `TENANT_IDP_ENABLED` — NO READER EXISTS. It is declared in `.env.sample` and
+// in `turbo.json#globalEnv`, and its own `.env.sample` comment claims it is
 // "read by the apps/api layer (@arcaai/applications TenantIdpConfigService …)".
 // That comment is FALSE: a repo-wide grep across every `.ts` and `.py` finds no
 // read of `TENANT_IDP_ENABLED` or any camelCase equivalent — `TenantIdpConfigService`

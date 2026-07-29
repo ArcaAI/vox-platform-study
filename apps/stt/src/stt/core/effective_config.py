@@ -68,7 +68,9 @@ class EffectiveConfigSnapshot:
             "max_models": group.get("maxModels"),
             "max_memory_mb": group.get("maxMemoryMb"),
         }
-        return {key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None}
+        return {
+            key: value for key, raw in mapping.items() if (value := _positive_int(raw)) is not None
+        }
 
     def worker_concurrency(self) -> int | None:
         """Dramatiq worker-thread ceiling, or None to keep the env value."""
@@ -113,6 +115,14 @@ class EffectiveConfigClient:
         self._last_refresh_ok: bool | None = None
         self._last_refresh_at: datetime | None = None
 
+        # TASK-567 — per-tenant BYO STT provider overrides (batch-worker pull
+        # path, D-3). Cached per tenant with the same TTL/jitter window;
+        # single-flight per tenant; fail-open (a failed pull yields {} so the
+        # worker falls back to env creds). Keyed by tenant so one tenant's key is
+        # never served to another (§9.3 M4).
+        self._overrides_cache: dict[str, tuple[dict[str, Any], float]] = {}
+        self._overrides_locks: dict[str, asyncio.Lock] = {}
+
     async def get(self) -> EffectiveConfigSnapshot:
         """Return the cached snapshot, refreshing it if the window has elapsed."""
         if not self._expired():
@@ -125,10 +135,60 @@ class EffectiveConfigClient:
             self._expires_at = self._time() + self._next_window()
             return self._snapshot
 
+    async def get_provider_overrides(self, tenant_id: str) -> dict[str, Any]:
+        """Pull a tenant's decrypted BYO STT provider overrides (batch pull, D-3).
+
+        Hits ``GET /internal/stt/provider-overrides?tenantId=`` on the gateway
+        (service-token auth, same transport as :meth:`get`). Cached per tenant
+        for the TTL window, single-flight per tenant. FAIL-OPEN: any error yields
+        ``{}`` so the worker degrades to env credentials — a broken BYO key never
+        blocks transcription. The decrypted map is held in memory only.
+        """
+        if not tenant_id:
+            return {}
+        cached = self._overrides_cache.get(tenant_id)
+        if cached is not None and self._time() < cached[1]:
+            return cached[0]
+
+        lock = self._overrides_locks.setdefault(tenant_id, asyncio.Lock())
+        async with lock:
+            cached = self._overrides_cache.get(tenant_id)
+            if cached is not None and self._time() < cached[1]:
+                return cached[0]
+            overrides = await self._fetch_provider_overrides(tenant_id)
+            self._overrides_cache[tenant_id] = (overrides, self._time() + self._next_window())
+            return overrides
+
+    async def _fetch_provider_overrides(self, tenant_id: str) -> dict[str, Any]:
+        """One bounded fetch of a tenant's overrides. NEVER raises (fail-open)."""
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._base_url,
+                timeout=self._timeout_s,
+                transport=self._transport,
+                headers={"X-Internal-Service-Key": self._api_key},
+            ) as client:
+                response = await client.get(
+                    "/internal/stt/provider-overrides", params={"tenantId": tenant_id}
+                )
+                response.raise_for_status()
+                payload = response.json()
+            if not isinstance(payload, dict):
+                raise ValueError(f"expected a JSON object, got {type(payload).__name__}")
+            return payload
+        except Exception as exc:  # noqa: BLE001 — fail-open, worker uses env creds
+            logger.warning(
+                "stt.effective_config.provider_overrides_error",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return {}
+
     def clear_cache(self) -> None:
         """Drop the cached snapshot so the next read refetches (tests/admin)."""
         self._snapshot = EffectiveConfigSnapshot()
         self._expires_at = None
+        self._overrides_cache.clear()
 
     def diagnostics(self) -> dict[str, Any]:
         """The `/health` block — source labels and timestamps only."""
@@ -164,7 +224,9 @@ class EffectiveConfigClient:
                 transport=self._transport,
                 headers={"X-Internal-Service-Key": self._api_key},
             ) as client:
-                response = await client.get("/internal/effective-config", params={"service": self._service})
+                response = await client.get(
+                    "/internal/effective-config", params={"service": self._service}
+                )
                 response.raise_for_status()
                 payload = response.json()
 

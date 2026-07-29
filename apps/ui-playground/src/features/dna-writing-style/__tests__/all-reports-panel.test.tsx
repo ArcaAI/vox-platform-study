@@ -1,7 +1,7 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { AllReportsPanel } from '../components/all-reports-panel'
-import type { DnaReport, DnaStyleVersion } from '../api/dna-writing-styles'
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { AllReportsPanel } from '../components/all-reports-panel';
+import type { DnaReport, DnaStyleVersion } from '../api/dna-writing-styles';
 
 const MOCK_REPORTS: DnaReport[] = [
   {
@@ -26,7 +26,7 @@ const MOCK_REPORTS: DnaReport[] = [
     createdAt: '2025-11-20T09:00:00Z',
     updatedAt: '2025-11-20T09:00:00Z',
   },
-]
+];
 
 const MOCK_VERSIONS: DnaStyleVersion[] = [
   {
@@ -59,25 +59,27 @@ const MOCK_VERSIONS: DnaStyleVersion[] = [
     changedBy: null,
     createdAt: '2025-12-01T10:00:00Z',
   },
-]
+];
 
 vi.mock('@arcaai/ui/badge', () => ({
-  Badge: ({ children, ...props }: any) => <span data-testid="badge" {...props}>{children}</span>,
-}))
+  Badge: ({ children, ...props }: any) => (
+    <span data-testid="badge" {...props}>
+      {children}
+    </span>
+  ),
+}));
 vi.mock('@arcaai/ui/scroll-area', () => ({
   ScrollArea: ({ children, ...props }: any) => <div {...props}>{children}</div>,
-}))
+}));
 vi.mock('@arcaai/ui/skeleton', () => ({
   Skeleton: (props: any) => <div data-testid="skeleton" {...props} />,
-}))
+}));
 vi.mock('@arcaai/ui/separator', () => ({
   Separator: (props: any) => <hr {...props} />,
-}))
+}));
 vi.mock('@arcaai/ui/switch', () => ({
-  Switch: ({ checked, onCheckedChange, size, ...props }: any) => (
-    <button type="button" data-testid="switch" {...props} />
-  ),
-}))
+  Switch: ({ checked, onCheckedChange, size, ...props }: any) => <button type="button" data-testid="switch" {...props} />,
+}));
 
 // The ui-playground vitest config stubs every @arcaai/ui/* import, so the
 // MultiColumnLayout primitive must be mocked here. This lightweight mock
@@ -86,19 +88,19 @@ vi.mock('@arcaai/ui/switch', () => ({
 // `version-item-*`, `detail-column`).
 vi.mock('@arcaai/ui/multi-column-layout', () => {
   const renderColumn = (col: any, state: any, itemTestIdPrefix: string) => {
-    let body: any
+    let body: any;
     if (state.isLoading) {
-      body = Array.from({ length: col.skeletonCount ?? 3 }).map((_, i) => <div key={`sk-${i}`} data-testid="skeleton" />)
+      body = Array.from({ length: col.skeletonCount ?? 3 }).map((_, i) => <div key={`sk-${i}`} data-testid="skeleton" />);
     } else if (state.enabled === false || (state.data?.length ?? 0) === 0) {
       body = (
         <div>
           <p>{col.emptyTitle}</p>
           <p>{col.emptyDescription}</p>
         </div>
-      )
+      );
     } else {
       body = state.data.map((item: any) => {
-        const key = col.keyExtractor(item)
+        const key = col.keyExtractor(item);
         return (
           <div
             key={key}
@@ -108,13 +110,11 @@ vi.mock('@arcaai/ui/multi-column-layout', () => {
           >
             {col.renderItem(item)}
           </div>
-        )
-      })
+        );
+      });
     }
-    return (
-      <div data-testid={`${col.id}-column`}>{body}</div>
-    )
-  }
+    return <div data-testid={`${col.id}-column`}>{body}</div>;
+  };
 
   return {
     MultiColumnLayout: ({ columns, columnStates, detailColumn, detailState }: any) => (
@@ -133,8 +133,8 @@ vi.mock('@arcaai/ui/multi-column-layout', () => {
         </div>
       </div>
     ),
-  }
-})
+  };
+});
 
 describe('AllReportsPanel', () => {
   describe('Column 1 — Reports List', () => {
@@ -151,11 +151,11 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      expect(screen.getByText(/doctor-aaa/i)).toBeInTheDocument()
-      expect(screen.getByText(/doctor-bbb/i)).toBeInTheDocument()
-    })
+      expect(screen.getByText(/doctor-aaa/i)).toBeInTheDocument();
+      expect(screen.getByText(/doctor-bbb/i)).toBeInTheDocument();
+    });
 
     it('should show version number for each report', () => {
       render(
@@ -170,15 +170,15 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      expect(screen.getByText(/v3/)).toBeInTheDocument()
-      expect(screen.getByText(/v1/)).toBeInTheDocument()
-    })
+      expect(screen.getByText(/v3/)).toBeInTheDocument();
+      expect(screen.getByText(/v1/)).toBeInTheDocument();
+    });
 
     it('should call onSelectReport when a report is clicked', async () => {
-      const onSelectReport = vi.fn()
-      const user = userEvent.setup()
+      const onSelectReport = vi.fn();
+      const user = userEvent.setup();
 
       render(
         <AllReportsPanel
@@ -192,11 +192,11 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      await user.click(screen.getByText(/doctor-aaa/i))
-      expect(onSelectReport).toHaveBeenCalledWith('report-1')
-    })
+      await user.click(screen.getByText(/doctor-aaa/i));
+      expect(onSelectReport).toHaveBeenCalledWith('report-1');
+    });
 
     it('should highlight the selected report', () => {
       render(
@@ -211,11 +211,11 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      const reportItem = screen.getByTestId('report-item-report-1')
-      expect(reportItem.className).toContain('bg-accent')
-    })
+      const reportItem = screen.getByTestId('report-item-report-1');
+      expect(reportItem.className).toContain('bg-accent');
+    });
 
     it('should show loading skeletons when isLoadingReports is true', () => {
       render(
@@ -230,10 +230,10 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      expect(screen.getAllByTestId('skeleton').length).toBeGreaterThanOrEqual(3)
-    })
+      expect(screen.getAllByTestId('skeleton').length).toBeGreaterThanOrEqual(3);
+    });
 
     it('should show empty state when no reports exist', () => {
       render(
@@ -248,11 +248,11 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      expect(screen.getByText(/no reports/i)).toBeInTheDocument()
-    })
-  })
+      expect(screen.getByText(/no reports/i)).toBeInTheDocument();
+    });
+  });
 
   describe('Column 2 — Versions List', () => {
     it('should show placeholder when no report is selected', () => {
@@ -268,11 +268,11 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      const col = screen.getByTestId('versions-column')
-      expect(within(col).getByText(/select a report to view its version history/i)).toBeInTheDocument()
-    })
+      const col = screen.getByTestId('versions-column');
+      expect(within(col).getByText(/select a report to view its version history/i)).toBeInTheDocument();
+    });
 
     it('should render versions when a report is selected', () => {
       render(
@@ -287,17 +287,17 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      const col = screen.getByTestId('versions-column')
-      expect(within(col).getByText(/Refined tone after review/)).toBeInTheDocument()
-      expect(screen.getByTestId('version-item-ver-3')).toBeInTheDocument()
-      expect(screen.getByTestId('version-item-ver-2')).toBeInTheDocument()
-    })
+      const col = screen.getByTestId('versions-column');
+      expect(within(col).getByText(/Refined tone after review/)).toBeInTheDocument();
+      expect(screen.getByTestId('version-item-ver-3')).toBeInTheDocument();
+      expect(screen.getByTestId('version-item-ver-2')).toBeInTheDocument();
+    });
 
     it('should call onSelectVersion when a version is clicked', async () => {
-      const onSelectVersion = vi.fn()
-      const user = userEvent.setup()
+      const onSelectVersion = vi.fn();
+      const user = userEvent.setup();
 
       render(
         <AllReportsPanel
@@ -311,11 +311,11 @@ describe('AllReportsPanel', () => {
           onSelectVersion={onSelectVersion}
           doctors={[]}
         />,
-      )
+      );
 
-      await user.click(screen.getByTestId('version-item-ver-3'))
-      expect(onSelectVersion).toHaveBeenCalledWith('ver-3')
-    })
+      await user.click(screen.getByTestId('version-item-ver-3'));
+      expect(onSelectVersion).toHaveBeenCalledWith('ver-3');
+    });
 
     it('should show loading skeletons when isLoadingVersions is true', () => {
       render(
@@ -330,12 +330,12 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      const versionsColumn = screen.getByTestId('versions-column')
-      expect(within(versionsColumn).getAllByTestId('skeleton').length).toBeGreaterThanOrEqual(2)
-    })
-  })
+      const versionsColumn = screen.getByTestId('versions-column');
+      expect(within(versionsColumn).getAllByTestId('skeleton').length).toBeGreaterThanOrEqual(2);
+    });
+  });
 
   describe('Column 3 — Version Detail', () => {
     it('should show placeholder when no version is selected', () => {
@@ -351,11 +351,11 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      const col = screen.getByTestId('detail-column')
-      expect(within(col).getByText(/select a version to view its full details/i)).toBeInTheDocument()
-    })
+      const col = screen.getByTestId('detail-column');
+      expect(within(col).getByText(/select a version to view its full details/i)).toBeInTheDocument();
+    });
 
     it('should display version detail when a version is selected', () => {
       render(
@@ -370,12 +370,12 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      const col = screen.getByTestId('detail-column')
-      expect(within(col).getByText(/Concise clinical documentation style/)).toBeInTheDocument()
-      expect(within(col).getByText(/Change Reason/i)).toBeInTheDocument()
-    })
+      const col = screen.getByTestId('detail-column');
+      expect(within(col).getByText(/Concise clinical documentation style/)).toBeInTheDocument();
+      expect(within(col).getByText(/Change Reason/i)).toBeInTheDocument();
+    });
 
     it('should show style attributes in the detail view', () => {
       render(
@@ -390,19 +390,17 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={[]}
         />,
-      )
+      );
 
-      const col = screen.getByTestId('detail-column')
-      expect(within(col).getByText('Technical')).toBeInTheDocument()
-      expect(within(col).getByText('Formal')).toBeInTheDocument()
-    })
-  })
+      const col = screen.getByTestId('detail-column');
+      expect(within(col).getByText('Technical')).toBeInTheDocument();
+      expect(within(col).getByText('Formal')).toBeInTheDocument();
+    });
+  });
 
   describe('Doctor name resolution', () => {
     it('should display doctor username when doctors list is provided', () => {
-      const doctors = [
-        { id: 'doctor-aaa', username: 'Dr. Smith', email: 'smith@test.com', roles: [], permissions: [], isServiceAccount: false },
-      ]
+      const doctors = [{ id: 'doctor-aaa', username: 'Dr. Smith', email: 'smith@test.com', roles: [], permissions: [], isServiceAccount: false }];
 
       render(
         <AllReportsPanel
@@ -416,9 +414,9 @@ describe('AllReportsPanel', () => {
           onSelectVersion={vi.fn()}
           doctors={doctors as any}
         />,
-      )
+      );
 
-      expect(screen.getByText('Dr. Smith')).toBeInTheDocument()
-    })
-  })
-})
+      expect(screen.getByText('Dr. Smith')).toBeInTheDocument();
+    });
+  });
+});

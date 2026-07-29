@@ -210,8 +210,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
     workflowMode: 'local' | 'remote' | undefined,
   ): Promise<{ transcriptionMode: 'LOCAL' | 'BACKEND'; transcriptionModeLocked: boolean }> {
     const tenantId = this.tenantId;
-    const tenantCfg =
-      tenantId && this.tenantFrontendConfigRepository ? await this.tenantFrontendConfigRepository.findByTenant(tenantId) : null;
+    const tenantCfg = tenantId && this.tenantFrontendConfigRepository ? await this.tenantFrontendConfigRepository.findByTenant(tenantId) : null;
 
     const tenantMode: 'LOCAL' | 'BACKEND' = tenantCfg?.transcriptionMode === TranscriptionMode.LOCAL ? 'LOCAL' : 'BACKEND';
     const locked = tenantCfg?.transcriptionModeLocked ?? false;
@@ -325,8 +324,7 @@ export class UserPreferencesService extends BaseService implements IUserPreferen
       // rejects any pipeline whose tenantId != caller. Honouring such an
       // override surfaces a hard "Pipeline … not found" 404 on session start,
       // so skip it and fall through to the tenant's own default pipeline.
-      const isUnusableSystemPipeline =
-        pipeline?.tenantId === SYSTEM_TENANT_ID && this.tenantId !== SYSTEM_TENANT_ID;
+      const isUnusableSystemPipeline = pipeline?.tenantId === SYSTEM_TENANT_ID && this.tenantId !== SYSTEM_TENANT_ID;
 
       if (!isUnusableSystemPipeline) {
         return {

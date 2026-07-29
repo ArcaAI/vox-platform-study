@@ -9,13 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Room, RoomEvent, RoomState, createLocalTracks } from '../core/Room.js';
 import { AudioContextManager } from '../core/AudioContextManager.js';
 import { RoomErrorCode } from '../types/index.js';
-import {
-  RoomPermissionError,
-  RoomDeviceError,
-  RoomSecurityError,
-  RoomConstraintError,
-  RoomUnknownError,
-} from '../core/RoomErrors.js';
+import { RoomPermissionError, RoomDeviceError, RoomSecurityError, RoomConstraintError, RoomUnknownError } from '../core/RoomErrors.js';
 
 // ============================================================================
 // Mock Factories
@@ -127,9 +121,7 @@ describe('Room', () => {
     // Mock navigator.mediaDevices
     vi.stubGlobal('navigator', {
       mediaDevices: {
-        getUserMedia: vi.fn().mockResolvedValue(
-          createMockMediaStream([createMockMediaStreamTrack()])
-        ),
+        getUserMedia: vi.fn().mockResolvedValue(createMockMediaStream([createMockMediaStreamTrack()])),
         enumerateDevices: vi.fn().mockResolvedValue([]),
       },
     });
@@ -393,9 +385,7 @@ describe('Room', () => {
       await room.connect();
       await room.resumeAudio();
 
-      expect(handler).toHaveBeenCalledWith(
-        expect.objectContaining({ canPlayback: expect.any(Boolean) })
-      );
+      expect(handler).toHaveBeenCalledWith(expect.objectContaining({ canPlayback: expect.any(Boolean) }));
     });
 
     it('should allow unsubscribing from events', async () => {

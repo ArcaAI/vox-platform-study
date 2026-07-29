@@ -123,9 +123,7 @@ class BaseModelLoader(ABC):
             try:
                 import torch
 
-                if not (
-                    hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-                ):
+                if not (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()):
                     logger.warning(
                         "Requested device 'mps' unavailable, falling back to auto-detect"
                     )

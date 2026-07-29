@@ -394,9 +394,7 @@ export class TranscriptionJobService extends BaseService implements ITranscripti
 
     // Encrypt resultText/resultMetadata into the ciphertext
     // columns before the completing persist (dual-write; plaintext kept for soak).
-    await this.encryptBestEffort('TranscriptionJob', () =>
-      this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!),
-    );
+    await this.encryptBestEffort('TranscriptionJob', () => this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!));
 
     const updated = await this.jobRepository.update(id, job);
 

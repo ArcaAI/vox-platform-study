@@ -107,15 +107,10 @@ describe('Tenant API hooks', () => {
     it('should pass pagination params as query string', async () => {
       mockGet.mockResolvedValueOnce(paginatedResponse([]));
 
-      const { result } = renderHook(
-        () => useAdminTenants({ page: 2, limit: 10 }),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useAdminTenants({ page: 2, limit: 10 }), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockGet).toHaveBeenCalledWith(
-        expect.stringContaining('/admin/tenants?'),
-      );
+      expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('/admin/tenants?'));
       const calledUrl = mockGet.mock.calls[0][0] as string;
       expect(calledUrl).toContain('page=2');
       expect(calledUrl).toContain('limit=10');
@@ -129,10 +124,7 @@ describe('Tenant API hooks', () => {
     it('should call GET /admin/tenants with page 1 initially', async () => {
       mockGet.mockResolvedValueOnce(paginatedResponse([makeTenant()], 1));
 
-      const { result } = renderHook(
-        () => useTenantsInfinite(25),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenantsInfinite(25), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       const calledUrl = mockGet.mock.calls[0][0] as string;
@@ -170,10 +162,7 @@ describe('Tenant API hooks', () => {
       const tenant = makeTenant();
       mockGet.mockResolvedValueOnce(tenant);
 
-      const { result } = renderHook(
-        () => useTenant(TENANT_ID),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenant(TENANT_ID), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockGet).toHaveBeenCalledWith(`/admin/tenants/${TENANT_ID}`);
@@ -181,10 +170,7 @@ describe('Tenant API hooks', () => {
     });
 
     it('should not fetch when id is empty', async () => {
-      const { result } = renderHook(
-        () => useTenant(''),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenant(''), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
       expect(mockGet).not.toHaveBeenCalled();
@@ -204,10 +190,7 @@ describe('Tenant API hooks', () => {
       };
       mockGet.mockResolvedValueOnce(usage);
 
-      const { result } = renderHook(
-        () => useTenantUsage(TENANT_ID),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenantUsage(TENANT_ID), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockGet).toHaveBeenCalledWith(`/admin/tenants/${TENANT_ID}/usage`);
@@ -223,10 +206,7 @@ describe('Tenant API hooks', () => {
       const configs = [makeTenantConfig()];
       mockGet.mockResolvedValueOnce(paginatedResponse(configs));
 
-      const { result } = renderHook(
-        () => useTenantConfigs(TENANT_ID),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenantConfigs(TENANT_ID), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockGet).toHaveBeenCalledWith(`/admin/tenants/configs/${TENANT_ID}`);
@@ -236,10 +216,7 @@ describe('Tenant API hooks', () => {
     it('should pass pagination query params', async () => {
       mockGet.mockResolvedValueOnce(paginatedResponse([]));
 
-      const { result } = renderHook(
-        () => useTenantConfigs(TENANT_ID, { page: 1, limit: 300 }),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenantConfigs(TENANT_ID, { page: 1, limit: 300 }), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       const calledUrl = mockGet.mock.calls[0][0] as string;
@@ -248,26 +225,17 @@ describe('Tenant API hooks', () => {
     });
 
     it('should not fetch when identifier is empty', async () => {
-      const { result } = renderHook(
-        () => useTenantConfigs(''),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenantConfigs(''), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
       expect(mockGet).not.toHaveBeenCalled();
     });
 
     it('should return configs with locked field (TASK-244)', async () => {
-      const configs = [
-        makeTenantConfig({ id: 'cfg-locked', locked: true }),
-        makeTenantConfig({ id: 'cfg-unlocked' }),
-      ];
+      const configs = [makeTenantConfig({ id: 'cfg-locked', locked: true }), makeTenantConfig({ id: 'cfg-unlocked' })];
       mockGet.mockResolvedValueOnce(paginatedResponse(configs));
 
-      const { result } = renderHook(
-        () => useTenantConfigs(TENANT_ID),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenantConfigs(TENANT_ID), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       const data = result.current.data!.data;
@@ -284,10 +252,7 @@ describe('Tenant API hooks', () => {
       const configs = [makeTenantConfig({ tenantId: 'my-tenant' })];
       mockGet.mockResolvedValueOnce(paginatedResponse(configs));
 
-      const { result } = renderHook(
-        () => useMyTenantConfigs(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useMyTenantConfigs(), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockGet).toHaveBeenCalledWith('/tenant/me/config');
@@ -295,10 +260,7 @@ describe('Tenant API hooks', () => {
     });
 
     it('should respect enabled option', async () => {
-      const { result } = renderHook(
-        () => useMyTenantConfigs({ enabled: false }),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useMyTenantConfigs({ enabled: false }), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
       expect(mockGet).not.toHaveBeenCalled();
@@ -313,14 +275,9 @@ describe('Tenant API hooks', () => {
       const updated = paginatedResponse([makeTenantConfig({ value: 'fr' })]);
       mockPatch.mockResolvedValueOnce(updated);
 
-      const { result } = renderHook(
-        () => useUpdateTenantConfigs(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useUpdateTenantConfigs(), { wrapper: createWrapper() });
 
-      const payload: UpdateTenantConfigItem[] = [
-        { id: 'cfg-001', value: 'fr', expectedVersion: 1 },
-      ];
+      const payload: UpdateTenantConfigItem[] = [{ id: 'cfg-001', value: 'fr', expectedVersion: 1 }];
 
       result.current.mutate({ identifier: TENANT_ID, configs: payload, ifMatch: '"1"' });
 
@@ -328,33 +285,22 @@ describe('Tenant API hooks', () => {
       // TASK-302 Stream D Phase D.5 — the mutation now forwards an
       // `If-Match` header through `RequestOptions` when supplied. The
       // body shape remains the row array; only the wrapper changed.
-      expect(mockPatch).toHaveBeenCalledWith(
-        `/admin/tenants/configs/${TENANT_ID}`,
-        payload,
-        { ifMatch: '"1"' },
-      );
+      expect(mockPatch).toHaveBeenCalledWith(`/admin/tenants/configs/${TENANT_ID}`, payload, { ifMatch: '"1"' });
     });
 
     it('should send description when provided', async () => {
       mockPatch.mockResolvedValueOnce(paginatedResponse([]));
 
-      const { result } = renderHook(
-        () => useUpdateTenantConfigs(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useUpdateTenantConfigs(), { wrapper: createWrapper() });
 
-      const payload: UpdateTenantConfigItem[] = [
-        { id: 'cfg-001', value: 'updated', description: 'New desc', expectedVersion: 1 },
-      ];
+      const payload: UpdateTenantConfigItem[] = [{ id: 'cfg-001', value: 'updated', description: 'New desc', expectedVersion: 1 }];
 
       result.current.mutate({ identifier: TENANT_ID, configs: payload, ifMatch: '"1"' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(mockPatch).toHaveBeenCalledWith(
         expect.any(String),
-        expect.arrayContaining([
-          expect.objectContaining({ description: 'New desc', expectedVersion: 1 }),
-        ]),
+        expect.arrayContaining([expect.objectContaining({ description: 'New desc', expectedVersion: 1 })]),
         { ifMatch: '"1"' },
       );
     });
@@ -362,10 +308,7 @@ describe('Tenant API hooks', () => {
     it('should propagate API errors', async () => {
       mockPatch.mockRejectedValueOnce(new Error('Network error'));
 
-      const { result } = renderHook(
-        () => useUpdateTenantConfigs(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useUpdateTenantConfigs(), { wrapper: createWrapper() });
 
       result.current.mutate({
         identifier: TENANT_ID,
@@ -385,14 +328,9 @@ describe('Tenant API hooks', () => {
       const updated = paginatedResponse([makeTenantConfig({ value: 'ja' })]);
       mockPatch.mockResolvedValueOnce(updated);
 
-      const { result } = renderHook(
-        () => useUpdateMyTenantConfigs(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useUpdateMyTenantConfigs(), { wrapper: createWrapper() });
 
-      const payload: UpdateTenantConfigItem[] = [
-        { id: 'cfg-001', value: 'ja', expectedVersion: 1 },
-      ];
+      const payload: UpdateTenantConfigItem[] = [{ id: 'cfg-001', value: 'ja', expectedVersion: 1 }];
 
       result.current.mutate({ configs: payload, ifMatch: '"1"' });
 
@@ -403,10 +341,7 @@ describe('Tenant API hooks', () => {
     it('should propagate API errors', async () => {
       mockPatch.mockRejectedValueOnce(new Error('Forbidden'));
 
-      const { result } = renderHook(
-        () => useUpdateMyTenantConfigs(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useUpdateMyTenantConfigs(), { wrapper: createWrapper() });
 
       result.current.mutate({ configs: [{ id: 'cfg-001', value: 'bad', expectedVersion: 1 }] });
 
@@ -423,10 +358,7 @@ describe('Tenant API hooks', () => {
       const created = makeTenant({ id: 't-new', name: 'New Org', key: 'new-org' });
       mockPost.mockResolvedValueOnce(created);
 
-      const { result } = renderHook(
-        () => useCreateTenant(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useCreateTenant(), { wrapper: createWrapper() });
 
       result.current.mutate({ name: 'New Org', key: 'new-org' });
 
@@ -446,18 +378,12 @@ describe('Tenant API hooks', () => {
       const updated = makeTenant({ name: 'Renamed Corp' });
       mockPatch.mockResolvedValueOnce(updated);
 
-      const { result } = renderHook(
-        () => useUpdateTenant(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useUpdateTenant(), { wrapper: createWrapper() });
 
       result.current.mutate({ id: TENANT_ID, name: 'Renamed Corp' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockPatch).toHaveBeenCalledWith(
-        `/admin/tenants/${TENANT_ID}`,
-        { name: 'Renamed Corp' },
-      );
+      expect(mockPatch).toHaveBeenCalledWith(`/admin/tenants/${TENANT_ID}`, { name: 'Renamed Corp' });
     });
   });
 
@@ -468,18 +394,12 @@ describe('Tenant API hooks', () => {
     it('should call PATCH /admin/tenants/:id with resourceStatus', async () => {
       mockPatch.mockResolvedValueOnce(makeTenant({ resourceStatus: 'DISABLED' }));
 
-      const { result } = renderHook(
-        () => useToggleTenantStatus(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useToggleTenantStatus(), { wrapper: createWrapper() });
 
       result.current.mutate({ id: TENANT_ID, resourceStatus: 'DISABLED' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockPatch).toHaveBeenCalledWith(
-        `/admin/tenants/${TENANT_ID}`,
-        { resourceStatus: 'DISABLED' },
-      );
+      expect(mockPatch).toHaveBeenCalledWith(`/admin/tenants/${TENANT_ID}`, { resourceStatus: 'DISABLED' });
     });
   });
 
@@ -490,10 +410,7 @@ describe('Tenant API hooks', () => {
     it('should call DELETE /admin/tenants/:id', async () => {
       mockDelete.mockResolvedValueOnce(undefined);
 
-      const { result } = renderHook(
-        () => useDeleteTenant(),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useDeleteTenant(), { wrapper: createWrapper() });
 
       result.current.mutate(TENANT_ID);
 

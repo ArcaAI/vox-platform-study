@@ -4,14 +4,14 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 
 interface BreadcrumbState {
-    /** Resolved display name for the trailing dynamic segment (detail pages). */
-    trailing: string | null;
-    setTrailing: (label: string | null) => void;
+  /** Resolved display name for the trailing dynamic segment (detail pages). */
+  trailing: string | null;
+  setTrailing: (label: string | null) => void;
 }
 
 export const useBreadcrumbStore = create<BreadcrumbState>((set) => ({
-    trailing: null,
-    setTrailing: (trailing) => set({ trailing }),
+  trailing: null,
+  setTrailing: (trailing) => set({ trailing }),
 }));
 
 /**
@@ -20,9 +20,9 @@ export const useBreadcrumbStore = create<BreadcrumbState>((set) => ({
  * Cleared automatically on unmount.
  */
 export function useTrailingBreadcrumb(label: string | null | undefined) {
-    const setTrailing = useBreadcrumbStore((state) => state.setTrailing);
-    useEffect(() => {
-        setTrailing(label ?? null);
-        return () => setTrailing(null);
-    }, [label, setTrailing]);
+  const setTrailing = useBreadcrumbStore((state) => state.setTrailing);
+  useEffect(() => {
+    setTrailing(label ?? null);
+    return () => setTrailing(null);
+  }, [label, setTrailing]);
 }

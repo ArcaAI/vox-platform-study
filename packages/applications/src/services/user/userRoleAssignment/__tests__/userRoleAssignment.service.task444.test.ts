@@ -49,12 +49,7 @@ const mockDatabaseService = {
 };
 
 function buildService() {
-  return new UserRoleAssignmentService(
-    mockRepository as never,
-    mockEventEmitter as never,
-    mockClsService as never,
-    mockDatabaseService as never,
-  );
+  return new UserRoleAssignmentService(mockRepository as never, mockEventEmitter as never, mockClsService as never, mockDatabaseService as never);
 }
 
 /** A raw joined row as the scoped client returns it. */

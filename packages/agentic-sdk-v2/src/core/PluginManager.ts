@@ -19,6 +19,7 @@ import type {
   KnowledgePipelineConfig,
   UserPreferences,
 } from '../types';
+import type { SttConnectionState, ProviderSwitchInfo } from '../types/audio';
 import { DEFAULT_NOISE_FILTER_CONFIG, DEFAULT_VAD_CONFIG, DEFAULT_STT_CONFIG, DEFAULT_NER_CONFIG } from './constants';
 import type { ISDKLogger } from './logger';
 import { TranscriptionPipeline, createTranscriptionPipeline } from './TranscriptionPipeline';
@@ -79,6 +80,18 @@ export interface PluginEventCallbacks {
    * render a degraded-connection signal.
    */
   onAudioDrop?: (droppedFrameCount: number) => void;
+  /**
+   * Streaming STT connection-health transition (TASK-567 Phase F), driven by
+   * the streaming client's reconnect callbacks. The vox hook maps it onto the
+   * store so the UI can render a reconnecting/error/degraded banner.
+   */
+  onSttConnectionState?: (state: SttConnectionState) => void;
+  /**
+   * The backend swapped the session's ASR engine to the tenant fallback
+   * (auto on outage OR user-triggered). Carried from the `provider_switched`
+   * status frame so the hook can mark the active pipeline as the fallback.
+   */
+  onProviderSwitched?: (info: ProviderSwitchInfo) => void;
 }
 
 /**
@@ -750,6 +763,28 @@ export class PluginManager {
       },
       this._debugMode,
     );
+
+    // Wire the streaming client's connection-lifecycle callbacks — previously
+    // implemented but dangling — into the plugin callback bus so the hook/store
+    // can surface a live connection-health signal (TASK-567 Phase F). The
+    // arrows read `this.callbacks` at fire time, so ordering vs. setCallbacks()
+    // is irrelevant.
+    wsClient.onDisconnect(() => this.callbacks.onSttConnectionState?.('reconnecting'));
+    wsClient.onReconnect(() => this.callbacks.onSttConnectionState?.('reconnecting'));
+    wsClient.onReconnected(() => this.callbacks.onSttConnectionState?.('connected'));
+    wsClient.onReconnectFailed(() => this.callbacks.onSttConnectionState?.('error'));
+    // The backend publishes an ASR engine swap as a `status`/`provider_switched`
+    // result (zero WS protocol change); route it to the provider-switch callback.
+    wsClient.onStatus((status) => {
+      if (status.status === 'provider_switched') {
+        this.callbacks.onProviderSwitched?.({
+          fromPipeline: status.from_pipeline ?? '',
+          toPipeline: status.to_pipeline ?? '',
+          reason: status.reason ?? 'auto',
+          ...(status.utterance_index != null && status.utterance_index !== '' ? { utteranceIndex: Number(status.utterance_index) } : {}),
+        });
+      }
+    });
 
     return {
       sessionManager,

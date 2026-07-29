@@ -67,8 +67,14 @@ export function resolvePasswordPolicy(settings: PasswordPolicySettingsReader): P
   return {
     minLength: toInt(settings.getValueWithDefault<unknown>(PASSWORD_POLICY_SETTING_KEYS.minLength, d.minLength), d.minLength),
     maxLength: d.maxLength,
-    requireUppercase: toBool(settings.getValueWithDefault<unknown>(PASSWORD_POLICY_SETTING_KEYS.requireUppercase, d.requireUppercase), d.requireUppercase),
-    requireLowercase: toBool(settings.getValueWithDefault<unknown>(PASSWORD_POLICY_SETTING_KEYS.requireLowercase, d.requireLowercase), d.requireLowercase),
+    requireUppercase: toBool(
+      settings.getValueWithDefault<unknown>(PASSWORD_POLICY_SETTING_KEYS.requireUppercase, d.requireUppercase),
+      d.requireUppercase,
+    ),
+    requireLowercase: toBool(
+      settings.getValueWithDefault<unknown>(PASSWORD_POLICY_SETTING_KEYS.requireLowercase, d.requireLowercase),
+      d.requireLowercase,
+    ),
     requireDigit: toBool(settings.getValueWithDefault<unknown>(PASSWORD_POLICY_SETTING_KEYS.requireDigit, d.requireDigit), d.requireDigit),
     requireSpecial: toBool(settings.getValueWithDefault<unknown>(PASSWORD_POLICY_SETTING_KEYS.requireSpecial, d.requireSpecial), d.requireSpecial),
     maxAgeDays: toInt(settings.getValueWithDefault<unknown>(PASSWORD_POLICY_SETTING_KEYS.maxAgeDays, d.maxAgeDays), d.maxAgeDays),

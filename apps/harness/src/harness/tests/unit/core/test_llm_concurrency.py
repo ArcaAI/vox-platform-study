@@ -136,9 +136,7 @@ async def test_cap_is_shared_across_different_base_urls_same_box():
     probe = _ConcurrencyProbe()
     cfg = LlmGovernorConfig(max_concurrency=2, max_attempts=1)
     urls = ["http://localhost:1234/v1", "http://localhost:1234"]
-    await asyncio.gather(
-        *(governed_request(urls[i % 2], probe.run, config=cfg) for i in range(10))
-    )
+    await asyncio.gather(*(governed_request(urls[i % 2], probe.run, config=cfg) for i in range(10)))
     assert probe.peak == 2
 
 

@@ -7,14 +7,14 @@ scored by `GoldenSetRunner` (`runner.py`). Threshold gating lives in
 
 ## Contents
 
-| File | Provenance | Use |
-|---|---|---|
-| `fixtures/synthetic_v0.json` | synthetic | hermetic CI smoke (default source) |
-| `fixtures/curated_v1.json` | **curated, rubric-derived** (NOT real clinician labels) | exercises the harness end-to-end; **not** a clinical validation |
-| `fixtures/clinical_v1.schema.json` | — | JSON Schema (Draft 2020-12) contract for the **real** set |
-| `fixtures/clinical_v1.template.json` | **TEMPLATE / PLACEHOLDER** | copy-me starting point for SMEs; refused by the loader |
-| `fixtures/clinical_v1.json` | **real (clinician-authored)** | _does not exist yet — the open Phase-0 prerequisite_ |
-| `clinical_v1_spec.md` | — | spec + multi-rater labeling protocol + ICC plan |
+| File                                 | Provenance                                              | Use                                                             |
+| ------------------------------------ | ------------------------------------------------------- | --------------------------------------------------------------- |
+| `fixtures/synthetic_v0.json`         | synthetic                                               | hermetic CI smoke (default source)                              |
+| `fixtures/curated_v1.json`           | **curated, rubric-derived** (NOT real clinician labels) | exercises the harness end-to-end; **not** a clinical validation |
+| `fixtures/clinical_v1.schema.json`   | —                                                       | JSON Schema (Draft 2020-12) contract for the **real** set       |
+| `fixtures/clinical_v1.template.json` | **TEMPLATE / PLACEHOLDER**                              | copy-me starting point for SMEs; refused by the loader          |
+| `fixtures/clinical_v1.json`          | **real (clinician-authored)**                           | _does not exist yet — the open Phase-0 prerequisite_            |
+| `clinical_v1_spec.md`                | —                                                       | spec + multi-rater labeling protocol + ICC plan                 |
 
 > The reported **ICC ≈ 0.821 is judge-vs-rubric over n = 6**, not a clinical
 > validation. A clinically-validated claim requires the real `clinical_v1.json`

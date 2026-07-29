@@ -33,8 +33,7 @@ const buildService = (userProfileRepository?: { findAll: ReturnType<typeof vi.fn
 };
 
 // Private seam — invoked indirectly by generate(Pre)Summary; tested directly here.
-const resolve = (svc: SummaryService, doctorId: string | null) =>
-  (svc as any).resolvePreferredPromptTemplateId(doctorId) as Promise<string | null>;
+const resolve = (svc: SummaryService, doctorId: string | null) => (svc as any).resolvePreferredPromptTemplateId(doctorId) as Promise<string | null>;
 
 describe('SummaryService.resolvePreferredPromptTemplateId (Tier-0)', () => {
   let findAll: ReturnType<typeof vi.fn>;

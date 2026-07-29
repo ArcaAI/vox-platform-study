@@ -164,9 +164,7 @@ describe('QueueAdminController', () => {
     // same posture as the rate-limit admin surface. Tenant admins must NOT be
     // able to pause/clean platform queues.
     it('is class-gated by @Authorize(["manage","all"]) (GLOBAL_ADMIN only)', () => {
-      const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, QueueAdminController) as
-        | Array<{ action: string; subject: string }>
-        | undefined;
+      const meta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, QueueAdminController) as Array<{ action: string; subject: string }> | undefined;
       expect(meta).toEqual([{ action: 'manage', subject: 'all' }]);
     });
   });

@@ -7,9 +7,9 @@ import { getSession, isElevated } from '@/server/session';
  * sessions — never 403 — matching the gateway's existence-hiding posture.
  */
 export default async function GlobalTierLayout({ children }: { children: ReactNode }) {
-    const session = await getSession();
-    if (!isElevated(session?.user)) {
-        notFound();
-    }
-    return children;
+  const session = await getSession();
+  if (!isElevated(session?.user)) {
+    notFound();
+  }
+  return children;
 }

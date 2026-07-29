@@ -216,7 +216,9 @@ class TestAmbiguousZone:
         sub_emb1 = SpeakerEmbedding(embedding=base.tolist(), segment_start=0.0, segment_end=1.0)
         sub_emb2_vec = np.random.randn(256).astype(np.float32)
         sub_emb2_vec = sub_emb2_vec / np.linalg.norm(sub_emb2_vec)
-        sub_emb2 = SpeakerEmbedding(embedding=sub_emb2_vec.tolist(), segment_start=1.0, segment_end=2.0)
+        sub_emb2 = SpeakerEmbedding(
+            embedding=sub_emb2_vec.tolist(), segment_start=1.0, segment_end=2.0
+        )
         mock_emb_service.extract_from_samples = AsyncMock(side_effect=[sub_emb1, sub_emb2])
 
         config = _make_config(high_threshold=0.99, low_threshold=0.01)  # Force ambiguous zone
@@ -234,7 +236,9 @@ class TestAmbiguousZone:
 
         samples = np.random.randn(32000).astype(np.float32)
         result = await identifier.identify(
-            query, samples=samples, sample_rate=16000,
+            query,
+            samples=samples,
+            sample_rate=16000,
         )
 
         # Should have triggered segmentation
@@ -264,7 +268,9 @@ class TestAmbiguousZone:
         query = _make_embedding(noisy.tolist())
 
         result = await identifier.identify(
-            query, samples=np.zeros(16000, dtype=np.float32), sample_rate=16000,
+            query,
+            samples=np.zeros(16000, dtype=np.float32),
+            sample_rate=16000,
             _depth=1,
         )
 

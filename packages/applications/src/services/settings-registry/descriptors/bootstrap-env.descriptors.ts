@@ -10,7 +10,7 @@
 // keys declared-but-unread"; the mirror obligation is zero keys READ-but-
 // undeclared. Declaring the floor makes it EXPLICIT — a reviewer can see exactly
 // which variables a deployable must be handed before it can boot, and lane D can
-// GENERATE the per-deployable zod schema and `.env.example` from this list
+// GENERATE the per-deployable zod schema and `.env.sample` from this list
 // instead of hand-maintaining one (plan §9.1 D1/D2).
 //
 // FIELD SEMANTICS FOR THIS TIER
@@ -70,22 +70,32 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
   envFloor('port', 'number', 'Bootstrap', 'API gateway port', 'HTTP listen port for the NestJS gateway.', 'open-to-default', 8868),
 
   // ── Reaching the database (the floor, by definition) ──────────────────────
-  envFloor(
-    'databaseUrl',
-    'string',
-    'Bootstrap',
-    'Database URL',
-    'Primary PostgreSQL connection string (PgBouncer transaction mode in production). Cannot come from the database or from Vault — this IS the credential that reaches them. No fallback exists: absence is a hard boot error.',
-    'closed',
-  ),
-  envFloor(
-    'directUrl',
-    'string',
-    'Bootstrap',
-    'Direct (un-pooled) database URL',
-    'Migrations-only, un-pooled PostgreSQL endpoint (`packages/database/src/migration-url.ts`). Falls back to `DATABASE_URL` when unset, which is correct in dev but wrong behind a transaction-mode pooler — production must set it explicitly.',
-    'open-to-default',
-  ),
+  {
+    ...envFloor(
+      'databaseUrl',
+      'string',
+      'Bootstrap',
+      'Database URL',
+      'Primary PostgreSQL connection string (PgBouncer transaction mode in production). Cannot come from the database or from Vault — this IS the credential that reaches them. No fallback exists: absence is a hard boot error.',
+      'closed',
+    ),
+    // Template-only (see `sampleValue`'s doc comment) — the LOCAL superuser
+    // credentials `infrastructure/docker/docker-compose.yml` provisions for
+    // every developer, not a runtime fallback: `failMode: 'closed'` above still
+    // means an absent `DATABASE_URL` fails boot in every real environment.
+    sampleValue: 'postgresql://postgres:postgres@localhost:5432/hope',
+  },
+  {
+    ...envFloor(
+      'directUrl',
+      'string',
+      'Bootstrap',
+      'Direct (un-pooled) database URL',
+      'Migrations-only, un-pooled PostgreSQL endpoint (`packages/database/src/migration-url.ts`). Falls back to `DATABASE_URL` when unset, which is correct in dev but wrong behind a transaction-mode pooler — production must set it explicitly.',
+      'open-to-default',
+    ),
+    sampleValue: 'postgresql://postgres:postgres@localhost:5432/hope',
+  },
   envFloor(
     'prisma.pgMax',
     'number',
@@ -97,14 +107,17 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
   ),
 
   // ── Reaching Redis ────────────────────────────────────────────────────────
-  envFloor(
-    'redis.url',
-    'string',
-    'Bootstrap',
-    'Redis URL',
-    'Full Redis connection URL; when set it wins over the host/port pair.',
-    'open-to-default',
-  ),
+  {
+    ...envFloor(
+      'redis.url',
+      'string',
+      'Bootstrap',
+      'Redis URL',
+      'Full Redis connection URL; when set it wins over the host/port pair.',
+      'open-to-default',
+    ),
+    sampleValue: 'redis://localhost:6379',
+  },
   envFloor('redis.host', 'string', 'Bootstrap', 'Redis host', 'Redis host, used when `REDIS_URL` is unset.', 'open-to-default', 'localhost'),
   envFloor('redis.port', 'number', 'Bootstrap', 'Redis port', 'Redis port, used when `REDIS_URL` is unset.', 'open-to-default', 6379),
 

@@ -126,7 +126,14 @@ describe('AgentTemplateResyncService', () => {
     mockAgentRepo.updateWithVersion.mockImplementation(async (_id: string, e: unknown) => e);
     mockAgentRepo.isSlugUnique.mockResolvedValue(true);
     mockAgentRepo.setDefaultForDepartment.mockResolvedValue(undefined);
-    mockDeptRepo.findById.mockResolvedValue({ id: 'sys-dept-gen', code: 'GEN', name: 'General Practice', description: 'd', defaultSummaryTemplate: 'SOAP', promptConfig: {} });
+    mockDeptRepo.findById.mockResolvedValue({
+      id: 'sys-dept-gen',
+      code: 'GEN',
+      name: 'General Practice',
+      description: 'd',
+      defaultSummaryTemplate: 'SOAP',
+      promptConfig: {},
+    });
     mockDeptRepo.findByCode.mockResolvedValue({ id: 'ten-dept-gen', code: 'GEN' });
     mockDeptRepo.create.mockImplementation(async (e: any) => ({ ...e, id: 'ten-dept-new' }));
     mockTemplateRepo.create.mockImplementation(async (e: any) => ({ ...e, id: 'ten-tpl-new' }));
@@ -151,9 +158,7 @@ describe('AgentTemplateResyncService', () => {
   it('reads the SYSTEM golden agents as the template source', async () => {
     mockAgentRepo.findAll.mockResolvedValue([]);
     await service.resyncTenant(TARGET_TENANT);
-    expect(mockAgentRepo.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ filters: expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }) }),
-    );
+    expect(mockAgentRepo.findAll).toHaveBeenCalledWith(expect.objectContaining({ filters: expect.objectContaining({ tenantId: SYSTEM_TENANT_ID }) }));
   });
 
   // (i) — a golden agent the tenant has never seen.
@@ -180,9 +185,7 @@ describe('AgentTemplateResyncService', () => {
 
   // (ii) — a pristine locked clone behind the golden template.
   it('fast-forwards a pristine locked clone when the golden template advanced', async () => {
-    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
-      props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent()] : [tenantAgent()],
-    );
+    mockAgentRepo.findAll.mockImplementation(async (props: any) => (props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent()] : [tenantAgent()]));
     mockTemplateRepo.findById.mockImplementation(async (id: string) => {
       if (id === 'sys-tpl-gen') return template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V2, currentVersionNumber: 2 });
       if (id === 'ten-tpl-gen') return template({ id: 'ten-tpl-gen', content: GOLDEN_CONTENT_V1, currentVersionNumber: 1 });
@@ -234,9 +237,7 @@ describe('AgentTemplateResyncService', () => {
 
   // (iv) — a locked clone whose bound template drifted (out-of-band edit).
   it('skips a drifted locked clone and never overwrites it', async () => {
-    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
-      props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent()] : [tenantAgent()],
-    );
+    mockAgentRepo.findAll.mockImplementation(async (props: any) => (props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent()] : [tenantAgent()]));
     mockTemplateRepo.findById.mockImplementation(async (id: string) => {
       if (id === 'sys-tpl-gen') return template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V2, currentVersionNumber: 2 });
       // Tenant content diverged from the golden source version → drifted.
@@ -254,7 +255,10 @@ describe('AgentTemplateResyncService', () => {
   it('per-row isolation — one bad golden agent does not abort the rest', async () => {
     mockAgentRepo.findAll.mockImplementation(async (props: any) =>
       props.filters.tenantId === SYSTEM_TENANT_ID
-        ? [goldenAgent({ id: 'g1', slug: 'boom', departmentId: 'sys-dept-boom' }), goldenAgent({ id: 'g2', slug: 'ok-new', departmentId: 'sys-dept-ok' })]
+        ? [
+            goldenAgent({ id: 'g1', slug: 'boom', departmentId: 'sys-dept-boom' }),
+            goldenAgent({ id: 'g2', slug: 'ok-new', departmentId: 'sys-dept-ok' }),
+          ]
         : [],
     );
     mockDeptRepo.findByCode.mockResolvedValue({ id: 'ten-dept', code: 'X' });

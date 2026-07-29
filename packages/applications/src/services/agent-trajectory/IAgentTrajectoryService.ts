@@ -69,20 +69,13 @@ export interface IAgentTrajectoryService {
   ): Promise<AgentTrajectorySessionsListResponse>;
 
   /** Ordered steps for a session (`seq asc`), keyset-paginated. 404-over-403 on cross-tenant. */
-  listSteps(
-    tenantId: string,
-    sessionId: string,
-    options?: ListTrajectoryStepsOptions,
-  ): Promise<AgentTrajectoryStepsPageResponse>;
+  listSteps(tenantId: string, sessionId: string, options?: ListTrajectoryStepsOptions): Promise<AgentTrajectoryStepsPageResponse>;
 
   /**
- * Bounded rollup of LLM_CALL GenerationStats for admin Metrics.
+   * Bounded rollup of LLM_CALL GenerationStats for admin Metrics.
    * Requires a createdAt window (default last 7 days) and hard-caps scanned rows.
    */
-  aggregateGenerationStats(
-    tenantId: string,
-    filters?: AggregateGenerationStatsFilters,
-  ): Promise<GenerationMetricsAggregateResponse>;
+  aggregateGenerationStats(tenantId: string, filters?: AggregateGenerationStatsFilters): Promise<GenerationMetricsAggregateResponse>;
 
   /** HARD-delete steps older than `now - days` (retention). Returns the count deleted. */
   pruneOlderThan(days: number): Promise<number>;

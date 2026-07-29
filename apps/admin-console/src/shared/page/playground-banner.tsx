@@ -10,19 +10,19 @@ import { useSession } from '@/shared/auth';
  * surfaces. The username renders once the session projection hydrates.
  */
 export function PlaygroundBanner() {
-    const session = useSession();
-    const username = session.data?.user.username;
+  const session = useSession();
+  const username = session.data?.user.username;
 
-    return (
-        <div
-            role="note"
-            className="border-primary/25 bg-primary/10 text-primary flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium"
-        >
-            <IconPlayerPlay aria-hidden className="size-3.5 shrink-0" />
-            <span className="min-w-0 truncate">
-                Playground {'—'} demo sessions run under your own account
-                {username ? <span className="font-mono font-normal"> ({username})</span> : null}
-            </span>
-        </div>
-    );
+  return (
+    <div
+      role="note"
+      className="border-primary/25 bg-primary/10 text-primary flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium"
+    >
+      <IconPlayerPlay aria-hidden className="size-3.5 shrink-0" />
+      <span className="min-w-0 truncate">
+        Playground {'—'} demo sessions run under your own account
+        {username ? <span className="font-mono font-normal"> ({username})</span> : null}
+      </span>
+    </div>
+  );
 }

@@ -54,6 +54,7 @@ The HOPE NLP Service is built using a clean, modular architecture that separates
 The API layer handles all external communication and routing.
 
 **Components:**
+
 - **REST Endpoints** (`api/v1/rest/`): Synchronous HTTP endpoints
   - `classify.py`: Text and token classification endpoints
   - `correct.py`: Text correction endpoints
@@ -64,6 +65,7 @@ The API layer handles all external communication and routing.
   - `classify.py`: Streaming classification WebSocket
 
 **Responsibilities:**
+
 - Request/response handling
 - Input validation using Pydantic
 - Error handling and HTTP status codes
@@ -77,6 +79,7 @@ The services layer contains the core business logic and ML model interfaces.
 **Services:**
 
 #### Text Classifier Service
+
 ```python
 class TransformerTextClassifier(TextClassifier):
     """
@@ -90,12 +93,14 @@ class TransformerTextClassifier(TextClassifier):
 ```
 
 **Features:**
+
 - Emotion detection (anger, fear, joy, love, sadness, surprise, etc.)
 - Confidence scoring
 - Probability distribution across all classes
 - GPU/CPU support
 
 #### Token Classifier Service
+
 ```python
 class TransformerTokenClassifier(TokenClassifier):
     """
@@ -109,12 +114,14 @@ class TransformerTokenClassifier(TokenClassifier):
 ```
 
 **Features:**
+
 - Medical entity extraction (diseases, symptoms, treatments, medications)
 - BIO tagging with position tracking
 - Entity confidence scoring
 - Aggregation strategies (simple, first, max, average)
 
 #### Medical Suggester Service
+
 ```python
 class MedicalSuggester:
     """
@@ -128,12 +135,14 @@ class MedicalSuggester:
 ```
 
 **Features:**
+
 - Symptom analysis
 - Disease confidence ranking
 - Top-K suggestions
 - Minimum confidence filtering
 
 #### Text Corrector Service
+
 ```python
 class TextCorrector:
     """
@@ -146,6 +155,7 @@ class TextCorrector:
 ```
 
 **Features:**
+
 - Fast spelling correction (SymSpell algorithm)
 - Medical terminology dictionaries
 - Multi-language support
@@ -159,6 +169,7 @@ Pydantic models for data validation and serialization.
 **Model Categories:**
 
 #### Classification Models (`classification.py`)
+
 ```python
 class TextClassificationRequest(BaseModel):
     text: str
@@ -172,6 +183,7 @@ class TextClassificationResponse(BaseModel):
 ```
 
 #### Diagnosis Models (`diagnosis.py`)
+
 ```python
 class DiagnosisSuggestionRequest(BaseModel):
     text: str
@@ -185,6 +197,7 @@ class DiagnosisSuggestionResponse(BaseModel):
 ```
 
 #### Common Models (`common.py`)
+
 ```python
 class Entity(BaseModel):
     id: str
@@ -207,6 +220,7 @@ Core functionality and infrastructure concerns.
 **Components:**
 
 #### Configuration (`config.py`)
+
 ```python
 class Settings:
     """Central configuration management"""
@@ -219,42 +233,49 @@ class Settings:
 ```
 
 **Features:**
+
 - Environment-based configuration
 - Pydantic validation
 - Type-safe settings
 - Nested configuration classes
 
 #### Logging (`logging.py`)
+
 ```python
 def get_logger(name: str) -> logging.Logger:
     """Get structured logger with correlation IDs"""
 ```
 
 **Features:**
+
 - Structured JSON logging
 - Correlation ID tracking
 - Log levels (DEBUG, INFO, WARNING, ERROR)
 - Performance metrics logging
 
 #### Observability (`observability.py`)
+
 ```python
 def setup_observability(app: FastAPI):
     """Configure OpenTelemetry tracing and Prometheus metrics"""
 ```
 
 **Features:**
+
 - OpenTelemetry tracing
 - Prometheus metrics
 - Custom business metrics
 - Health check integration
 
 #### WebSocket Manager (`websocket_manager.py`)
+
 ```python
 class WebSocketManager:
     """Manage WebSocket connections and sessions"""
 ```
 
 **Features:**
+
 - Connection lifecycle management
 - Session tracking
 - Heartbeat/ping-pong
@@ -265,6 +286,7 @@ class WebSocketManager:
 Low-level infrastructure and utilities.
 
 **Components:**
+
 - Database connections (if needed)
 - External service clients
 - Caching mechanisms
@@ -295,6 +317,7 @@ class TextClassifier(ABC):
 ```
 
 **Benefits:**
+
 - Enforces consistent interface
 - Easy to swap implementations
 - Clear contract for all services
@@ -317,6 +340,7 @@ async def classify_text(
 ```
 
 **Benefits:**
+
 - Testability (easy mocking)
 - Loose coupling
 - Lifecycle management
@@ -344,6 +368,7 @@ def get_app() -> FastAPI:
 ```
 
 **Benefits:**
+
 - Configuration flexibility
 - Testing isolation
 - Multiple instances support
@@ -371,6 +396,7 @@ async def lifespan(app: FastAPI):
 ```
 
 **Benefits:**
+
 - Clean startup/shutdown
 - Resource management
 - Graceful degradation
@@ -461,6 +487,7 @@ async def process(self, request: TextClassificationRequest):
 ```
 
 **Benefits:**
+
 - High concurrency
 - Non-blocking I/O
 - Efficient resource usage
@@ -484,6 +511,7 @@ async def lifespan(app: FastAPI):
 ```
 
 **Considerations:**
+
 - Models are loaded once
 - Shared across all requests
 - Thread-safe transformers library
@@ -586,6 +614,7 @@ Load Balancer
 ```
 
 **Considerations:**
+
 - Stateless service (no session state)
 - Each instance loads models independently
 - Round-robin or least-connections load balancing
@@ -679,4 +708,3 @@ Load Balancer
 - [Transformers Documentation](https://huggingface.co/docs/transformers)
 - [Pydantic Documentation](https://docs.pydantic.dev/)
 - [OpenTelemetry Documentation](https://opentelemetry.io/)
-

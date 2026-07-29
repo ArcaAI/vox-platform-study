@@ -6,16 +6,16 @@ The transcription language for batch (file upload) jobs is determined by the sel
 
 ### Supported Languages
 
-| Code | Language |
-|------|----------|
-| `en` | English |
-| `hi` | Hindi |
-| `ta` | Tamil |
+| Code | Language  |
+| ---- | --------- |
+| `en` | English   |
+| `hi` | Hindi     |
+| `ta` | Tamil     |
 | `ml` | Malayalam |
-| `es` | Spanish |
-| `fr` | French |
-| `de` | German |
-| `th` | Thai |
+| `es` | Spanish   |
+| `fr` | French    |
+| `de` | German    |
+| `th` | Thai      |
 
 <!-- @/section -->
 

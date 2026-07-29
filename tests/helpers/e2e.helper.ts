@@ -163,9 +163,7 @@ async function readBodyExcerpt(response: MinimalResponse): Promise<string> {
   try {
     const text = await response.text();
     if (!text) return '<empty body>';
-    return text.length > MAX_BODY_EXCERPT
-      ? `${text.slice(0, MAX_BODY_EXCERPT)}…`
-      : text;
+    return text.length > MAX_BODY_EXCERPT ? `${text.slice(0, MAX_BODY_EXCERPT)}…` : text;
   } catch {
     return '<unreadable body>';
   }
@@ -175,15 +173,9 @@ async function readBodyExcerpt(response: MinimalResponse): Promise<string> {
  * Log a structured warning for a non-2xx HTTP response so test failures point
  * at the API answer rather than a bare `null`/`false` sentinel.
  */
-async function warnHttpFailure(
-  method: string,
-  url: string,
-  response: MinimalResponse
-): Promise<void> {
+async function warnHttpFailure(method: string, url: string, response: MinimalResponse): Promise<void> {
   const excerpt = await readBodyExcerpt(response);
-  console.warn(
-    `[e2e.helper] ${method} ${url} returned ${response.status()}: ${excerpt}`
-  );
+  console.warn(`[e2e.helper] ${method} ${url} returned ${response.status()}: ${excerpt}`);
 }
 
 /**
@@ -194,7 +186,7 @@ function wrapTransportError(method: string, url: string, error: unknown): Error 
   const message = error instanceof Error ? error.message : String(error);
   const wrapped = new Error(
     `Failed to reach API at ${method} ${url}: ${message}. Is the dev/test stack running?`,
-    error instanceof Error ? { cause: error } : undefined
+    error instanceof Error ? { cause: error } : undefined,
   );
   return wrapped;
 }
@@ -220,7 +212,7 @@ export async function loginUser(
   request: APIRequestContext,
   username: string,
   password: string,
-  tenantKey?: string
+  tenantKey?: string,
 ): Promise<{ token: string; refreshToken: string; user: { id: string; username: string } } | null> {
   const url = '/api/v1/auth/login';
   const data: Record<string, string> = { username, password };
@@ -249,9 +241,7 @@ export async function loginUser(
 /**
  * Login all seeded users and return their tokens
  */
-export async function loginSeededUsers(
-  request: APIRequestContext
-): Promise<{
+export async function loginSeededUsers(request: APIRequestContext): Promise<{
   superAdminToken: string | null;
   adminToken: string | null;
   userToken: string | null;
@@ -292,7 +282,7 @@ export async function createTestUser(
   request: APIRequestContext,
   token: string,
   data: { username?: string; email?: string; password?: string } = {},
-  registry?: TestDataRegistry
+  registry?: TestDataRegistry,
 ): Promise<TestUserCredentials | null> {
   const username = data.username || generateUniqueUsername();
   const email = data.email || `${username}@test.com`;
@@ -335,11 +325,7 @@ export async function createTestUser(
  * Network failures rethrow (wrapped); non-2xx responses log a structured
  * warning and return `false`. See `loginUser` for the rationale.
  */
-export async function deleteTestUser(
-  request: APIRequestContext,
-  token: string,
-  userId: string
-): Promise<boolean> {
+export async function deleteTestUser(request: APIRequestContext, token: string, userId: string): Promise<boolean> {
   const url = `/api/v1/users/${userId}`;
   let response;
   try {
@@ -372,7 +358,7 @@ export async function createTestRole(
   request: APIRequestContext,
   token: string,
   data: { name?: string; description?: string } = {},
-  registry?: TestDataRegistry
+  registry?: TestDataRegistry,
 ): Promise<{ id: string; name: string } | null> {
   const name = data.name || `test-role-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   const description = data.description || `E2E test role: ${name}`;
@@ -417,7 +403,7 @@ export async function deleteTestRole(
    * password + the exact role name). Defaults to the seeded test password;
    * the name is fetched from the API when not supplied.
    */
-  breakGlass: { password?: string; confirmationName?: string } = {}
+  breakGlass: { password?: string; confirmationName?: string } = {},
 ): Promise<boolean> {
   const url = `/api/v1/admin/rbac/roles/${roleId}`;
 
@@ -472,7 +458,7 @@ export async function createTestPolicy(
     description?: string;
     rules?: Array<{ action: string; subject: string; conditions?: Record<string, unknown> }>;
   } = {},
-  registry?: TestDataRegistry
+  registry?: TestDataRegistry,
 ): Promise<{ id: string; name: string } | null> {
   const name = data.name || `test-policy-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
   const description = data.description || `E2E test policy: ${name}`;
@@ -518,7 +504,7 @@ export async function deleteTestPolicy(
    * password + the exact policy name). Defaults to the seeded test password;
    * the name is fetched from the API when not supplied.
    */
-  breakGlass: { password?: string; confirmationName?: string } = {}
+  breakGlass: { password?: string; confirmationName?: string } = {},
 ): Promise<boolean> {
   const url = `/api/v1/admin/rbac/policies/${policyId}`;
 
@@ -566,7 +552,7 @@ export async function deleteTestPolicy(
 export async function cleanupTestData(
   request: APIRequestContext,
   token: string,
-  registry: TestDataRegistry
+  registry: TestDataRegistry,
 ): Promise<{ success: boolean; errors: string[] }> {
   const errors: string[] = [];
 
@@ -620,9 +606,7 @@ export async function cleanupTestData(
 /**
  * Check if the API is healthy and ready for tests
  */
-export async function checkApiHealth(
-  request: APIRequestContext
-): Promise<boolean> {
+export async function checkApiHealth(request: APIRequestContext): Promise<boolean> {
   try {
     const response = await request.get('/api/v1/health');
     return response.ok();
@@ -635,9 +619,7 @@ export async function checkApiHealth(
  * Check if seeded users exist and can login
  * This verifies the database has been properly seeded
  */
-export async function verifySeededData(
-  request: APIRequestContext
-): Promise<{ ready: boolean; message: string }> {
+export async function verifySeededData(request: APIRequestContext): Promise<{ ready: boolean; message: string }> {
   const { superAdminToken, adminToken, userToken } = await loginSeededUsers(request);
 
   if (!superAdminToken) {

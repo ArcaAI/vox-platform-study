@@ -19,67 +19,67 @@ import type { CallHandler, ExecutionContext } from '@nestjs/common';
 import { ETagInterceptor } from '../etag.interceptor';
 
 const makeContext = (response: { setHeader: ReturnType<typeof vi.fn> }): ExecutionContext =>
-    ({
-        switchToHttp: () => ({
-            getResponse: () => response,
-            getRequest: () => ({}),
-        }),
-    }) as unknown as ExecutionContext;
+  ({
+    switchToHttp: () => ({
+      getResponse: () => response,
+      getRequest: () => ({}),
+    }),
+  }) as unknown as ExecutionContext;
 
 describe('ETagInterceptor', () => {
-    it('sets ETag from body.version', async () => {
-        const res = { setHeader: vi.fn() };
-        const next: CallHandler = { handle: () => of({ id: 'x', version: 7 }) };
-        const interceptor = new ETagInterceptor();
-        const result = await lastValueFrom(interceptor.intercept(makeContext(res), next));
-        expect(res.setHeader).toHaveBeenCalledWith('ETag', '"7"');
-        expect(result).toEqual({ id: 'x', version: 7 });
-    });
+  it('sets ETag from body.version', async () => {
+    const res = { setHeader: vi.fn() };
+    const next: CallHandler = { handle: () => of({ id: 'x', version: 7 }) };
+    const interceptor = new ETagInterceptor();
+    const result = await lastValueFrom(interceptor.intercept(makeContext(res), next));
+    expect(res.setHeader).toHaveBeenCalledWith('ETag', '"7"');
+    expect(result).toEqual({ id: 'x', version: 7 });
+  });
 
-    it('does not set ETag when body has no version', async () => {
-        const res = { setHeader: vi.fn() };
-        const next: CallHandler = { handle: () => of({ id: 'x' }) };
-        const interceptor = new ETagInterceptor();
-        await lastValueFrom(interceptor.intercept(makeContext(res), next));
-        expect(res.setHeader).not.toHaveBeenCalled();
-    });
+  it('does not set ETag when body has no version', async () => {
+    const res = { setHeader: vi.fn() };
+    const next: CallHandler = { handle: () => of({ id: 'x' }) };
+    const interceptor = new ETagInterceptor();
+    await lastValueFrom(interceptor.intercept(makeContext(res), next));
+    expect(res.setHeader).not.toHaveBeenCalled();
+  });
 
-    it('does NOT set ETag for collection responses (FetchResponse wrapper)', async () => {
-        const res = { setHeader: vi.fn() };
-        const next: CallHandler = { handle: () => of({ data: [{ id: 'x', version: 4 }] }) };
-        const interceptor = new ETagInterceptor();
-        await lastValueFrom(interceptor.intercept(makeContext(res), next));
-        // Collections don't carry a single ETag — interceptor must not set one.
-        expect(res.setHeader).not.toHaveBeenCalled();
-    });
+  it('does NOT set ETag for collection responses (FetchResponse wrapper)', async () => {
+    const res = { setHeader: vi.fn() };
+    const next: CallHandler = { handle: () => of({ data: [{ id: 'x', version: 4 }] }) };
+    const interceptor = new ETagInterceptor();
+    await lastValueFrom(interceptor.intercept(makeContext(res), next));
+    // Collections don't carry a single ETag — interceptor must not set one.
+    expect(res.setHeader).not.toHaveBeenCalled();
+  });
 
-    it('does NOT set ETag for non-positive version (0)', async () => {
-        // Defensive: `version: 0` would render as `ETag: "0"` and break the
-        // OCC contract (the row's _version starts at 1 per the schema default).
-        const res = { setHeader: vi.fn() };
-        const next: CallHandler = { handle: () => of({ id: 'x', version: 0 }) };
-        const interceptor = new ETagInterceptor();
-        await lastValueFrom(interceptor.intercept(makeContext(res), next));
-        expect(res.setHeader).not.toHaveBeenCalled();
-    });
+  it('does NOT set ETag for non-positive version (0)', async () => {
+    // Defensive: `version: 0` would render as `ETag: "0"` and break the
+    // OCC contract (the row's _version starts at 1 per the schema default).
+    const res = { setHeader: vi.fn() };
+    const next: CallHandler = { handle: () => of({ id: 'x', version: 0 }) };
+    const interceptor = new ETagInterceptor();
+    await lastValueFrom(interceptor.intercept(makeContext(res), next));
+    expect(res.setHeader).not.toHaveBeenCalled();
+  });
 
-    it('does NOT set ETag for non-integer version (string)', async () => {
-        // If a service ever returns version as a string (legacy mapper bug),
-        // we must not render it as an ETag — that would mask the real
-        // problem with a syntactically-valid-but-semantically-broken token.
-        const res = { setHeader: vi.fn() };
-        const next: CallHandler = { handle: () => of({ id: 'x', version: '7' as unknown as number }) };
-        const interceptor = new ETagInterceptor();
-        await lastValueFrom(interceptor.intercept(makeContext(res), next));
-        expect(res.setHeader).not.toHaveBeenCalled();
-    });
+  it('does NOT set ETag for non-integer version (string)', async () => {
+    // If a service ever returns version as a string (legacy mapper bug),
+    // we must not render it as an ETag — that would mask the real
+    // problem with a syntactically-valid-but-semantically-broken token.
+    const res = { setHeader: vi.fn() };
+    const next: CallHandler = { handle: () => of({ id: 'x', version: '7' as unknown as number }) };
+    const interceptor = new ETagInterceptor();
+    await lastValueFrom(interceptor.intercept(makeContext(res), next));
+    expect(res.setHeader).not.toHaveBeenCalled();
+  });
 
-    it('passes the body through unchanged regardless of header decision', async () => {
-        const res = { setHeader: vi.fn() };
-        const body = { id: 'x', version: 12, name: 'tenant' };
-        const next: CallHandler = { handle: () => of(body) };
-        const interceptor = new ETagInterceptor();
-        const result = await lastValueFrom(interceptor.intercept(makeContext(res), next));
-        expect(result).toBe(body);
-    });
+  it('passes the body through unchanged regardless of header decision', async () => {
+    const res = { setHeader: vi.fn() };
+    const body = { id: 'x', version: 12, name: 'tenant' };
+    const next: CallHandler = { handle: () => of(body) };
+    const interceptor = new ETagInterceptor();
+    const result = await lastValueFrom(interceptor.intercept(makeContext(res), next));
+    expect(result).toBe(body);
+  });
 });

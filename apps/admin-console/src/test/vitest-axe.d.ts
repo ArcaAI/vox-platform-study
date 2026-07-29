@@ -24,17 +24,17 @@
 import type { AxeMatchers } from 'vitest-axe/matchers';
 
 declare module 'vitest' {
-    /*
-     * The `<T = any>` parameter is load-bearing, not sloppiness: TypeScript
-     * refuses to merge declarations whose type parameters differ ("All
-     * declarations of 'Matchers' must have identical type parameters"), and
-     * Vitest declares `interface Matchers<T = any>`. So `T` must keep that exact
-     * name and default even though this body does not reference it — renaming it
-     * `_T` or dropping `any` silently breaks the merge and the matcher types
-     * disappear again.
-     */
-    /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-object-type -- module augmentation: the parameter name, the `any` default and the empty extends-only bodies must mirror vitest's own `Matchers` declaration exactly, or the interfaces stop merging and the axe matcher types vanish (see the note above) */
-    interface Matchers<T = any> extends AxeMatchers {}
-    interface AsymmetricMatchersContaining extends AxeMatchers {}
-    /* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-object-type -- end of the vitest module-augmentation block */
+  /*
+   * The `<T = any>` parameter is load-bearing, not sloppiness: TypeScript
+   * refuses to merge declarations whose type parameters differ ("All
+   * declarations of 'Matchers' must have identical type parameters"), and
+   * Vitest declares `interface Matchers<T = any>`. So `T` must keep that exact
+   * name and default even though this body does not reference it — renaming it
+   * `_T` or dropping `any` silently breaks the merge and the matcher types
+   * disappear again.
+   */
+  /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-object-type -- module augmentation: the parameter name, the `any` default and the empty extends-only bodies must mirror vitest's own `Matchers` declaration exactly, or the interfaces stop merging and the axe matcher types vanish (see the note above) */
+  interface Matchers<T = any> extends AxeMatchers {}
+  interface AsymmetricMatchersContaining extends AxeMatchers {}
+  /* eslint-enable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-empty-object-type -- end of the vitest module-augmentation block */
 }

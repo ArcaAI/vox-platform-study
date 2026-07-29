@@ -10,12 +10,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { GLOBAL_TENANT_KEY } from '../tenant/constants';
 import { IEntitlementsService } from './IEntitlementsService';
-import {
-  DowngradeDisabledGroup,
-  DowngradeReport,
-  IEntitlementsLifecycleService,
-  TrialExpiryReport,
-} from './IEntitlementsLifecycleService';
+import { DowngradeDisabledGroup, DowngradeReport, IEntitlementsLifecycleService, TrialExpiryReport } from './IEntitlementsLifecycleService';
 import { EntitlementLimitKey, isTrialExpired, selectResourcesToDisable } from './enforcement';
 import {
   ENTITLEMENTS_DOWNGRADE_APPLIED_EVENT,
@@ -59,10 +54,7 @@ interface SoftDisableDelegate {
  * NEVER deletes (Q10).
  */
 @Injectable()
-export class EntitlementsLifecycleService
-  extends BaseService
-  implements IEntitlementsLifecycleService, OnModuleInit, OnModuleDestroy
-{
+export class EntitlementsLifecycleService extends BaseService implements IEntitlementsLifecycleService, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EntitlementsLifecycleService.name);
   private activeCron: string | null = null;
 

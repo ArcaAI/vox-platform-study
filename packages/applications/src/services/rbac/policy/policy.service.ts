@@ -437,7 +437,9 @@ export class PolicyService extends BaseService implements IPolicyService {
    */
   private rejectExplicitIsProtectedWrite(request: UpdatePolicyRequest): void {
     if ((request as Record<string, unknown>).isProtected !== undefined) {
-      throw new BadRequestException(`'isProtected' is read-only: the protected marker is managed by the platform seed and cannot be changed via the API.`);
+      throw new BadRequestException(
+        `'isProtected' is read-only: the protected marker is managed by the platform seed and cannot be changed via the API.`,
+      );
     }
   }
 

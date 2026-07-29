@@ -60,7 +60,9 @@ class SymSpellCorrector(TextCorrector):
 
             # Malayalam
             language = SupportedLanguage.MALAYALAM
-            self.sym_spell_instances[language] = SymSpell(max_dictionary_edit_distance=self.config.symspell_max_edit_distance)
+            self.sym_spell_instances[language] = SymSpell(
+                max_dictionary_edit_distance=self.config.symspell_max_edit_distance
+            )
             self.sym_spell_instances[language].load_bigram_dictionary(
                 self.config.dictionary_path + "/ml/bigram.txt", term_index=0, count_index=1
             )
@@ -100,7 +102,9 @@ class SymSpellCorrector(TextCorrector):
                 )
             else:
                 suggestions = sym_spell.lookup(
-                    text, verbosity=Verbosity.TOP, max_edit_distance=self.config.symspell_max_edit_distance
+                    text,
+                    verbosity=Verbosity.TOP,
+                    max_edit_distance=self.config.symspell_max_edit_distance,
                 )
 
             return TextCorrectionResponse(

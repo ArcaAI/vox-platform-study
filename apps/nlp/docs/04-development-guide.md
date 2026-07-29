@@ -38,6 +38,7 @@ uv run python src/nlp/main.py
 #### VS Code
 
 Recommended extensions:
+
 - Python
 - Pylance
 - Python Test Explorer
@@ -45,6 +46,7 @@ Recommended extensions:
 - YAML
 
 **`.vscode/settings.json`:**
+
 ```json
 {
   "python.linting.enabled": true,
@@ -261,14 +263,14 @@ class YourService:
 
 ### Naming Conventions
 
-| Type | Convention | Example |
-|------|------------|---------|
-| Classes | PascalCase | `TextClassifier` |
-| Functions | snake_case | `extract_entities` |
-| Variables | snake_case | `model_name` |
-| Constants | UPPER_SNAKE_CASE | `MAX_BATCH_SIZE` |
-| Private Methods | _snake_case | `_load_model` |
-| Type Variables | PascalCase | `ModelType` |
+| Type            | Convention       | Example            |
+| --------------- | ---------------- | ------------------ |
+| Classes         | PascalCase       | `TextClassifier`   |
+| Functions       | snake_case       | `extract_entities` |
+| Variables       | snake_case       | `model_name`       |
+| Constants       | UPPER_SNAKE_CASE | `MAX_BATCH_SIZE`   |
+| Private Methods | _snake_case      | `_load_model`      |
+| Type Variables  | PascalCase       | `ModelType`        |
 
 ### Import Organization
 
@@ -389,6 +391,7 @@ breakpoint()
 ### VS Code Debugging
 
 **`.vscode/launch.json`:**
+
 ```json
 {
   "version": "0.2.0",
@@ -398,12 +401,7 @@ breakpoint()
       "type": "python",
       "request": "launch",
       "module": "uvicorn",
-      "args": [
-        "nlp.main:app",
-        "--reload",
-        "--host", "0.0.0.0",
-        "--port", "8864"
-      ],
+      "args": ["nlp.main:app", "--reload", "--host", "0.0.0.0", "--port", "8864"],
       "jinja": true,
       "justMyCode": false
     }
@@ -474,7 +472,7 @@ services:
       context: .
       target: debug
     ports:
-      - "8864:8864"
+      - '8864:8864'
     volumes:
       - ./src:/app/src
     environment:
@@ -646,4 +644,3 @@ kill -9 $(lsof -ti:8864)
 - [Pytest Documentation](https://docs.pytest.org/)
 - [Python Type Hints](https://docs.python.org/3/library/typing.html)
 - [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-

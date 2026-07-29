@@ -34,21 +34,15 @@ describe('constants', () => {
     });
 
     it('should generate PATIENT_HISTORY endpoint', () => {
-      expect(CONSULTATION_ENDPOINTS.PATIENT_HISTORY('patient-1')).toBe(
-        '/consultations/patient/patient-1/history'
-      );
+      expect(CONSULTATION_ENDPOINTS.PATIENT_HISTORY('patient-1')).toBe('/consultations/patient/patient-1/history');
     });
 
     it('should generate PATIENT_DATE endpoint', () => {
-      expect(CONSULTATION_ENDPOINTS.PATIENT_DATE('patient-1', '2026-01-27')).toBe(
-        '/consultations/patient/patient-1/date/2026-01-27'
-      );
+      expect(CONSULTATION_ENDPOINTS.PATIENT_DATE('patient-1', '2026-01-27')).toBe('/consultations/patient/patient-1/date/2026-01-27');
     });
 
     it('should generate TIMELINE endpoint', () => {
-      expect(CONSULTATION_ENDPOINTS.TIMELINE('consult-1')).toBe(
-        '/consultations/consult-1/timeline'
-      );
+      expect(CONSULTATION_ENDPOINTS.TIMELINE('consult-1')).toBe('/consultations/consult-1/timeline');
     });
   });
 
@@ -66,45 +60,31 @@ describe('constants', () => {
     });
 
     it('should generate UPDATE endpoint', () => {
-      expect(CONTEXT_ENDPOINTS.UPDATE('123', 'ctx-1')).toBe(
-        '/consultations/123/context/ctx-1'
-      );
+      expect(CONTEXT_ENDPOINTS.UPDATE('123', 'ctx-1')).toBe('/consultations/123/context/ctx-1');
     });
 
     it('should generate VERSIONS endpoint', () => {
-      expect(CONTEXT_ENDPOINTS.VERSIONS('123', 'ctx-1')).toBe(
-        '/consultations/123/context/ctx-1/versions'
-      );
+      expect(CONTEXT_ENDPOINTS.VERSIONS('123', 'ctx-1')).toBe('/consultations/123/context/ctx-1/versions');
     });
 
     it('should generate VERSION endpoint with version number', () => {
-      expect(CONTEXT_ENDPOINTS.VERSION('123', 'ctx-1', 3)).toBe(
-        '/consultations/123/context/ctx-1/versions/3'
-      );
+      expect(CONTEXT_ENDPOINTS.VERSION('123', 'ctx-1', 3)).toBe('/consultations/123/context/ctx-1/versions/3');
     });
 
     it('should generate TRANSCRIPTIONS endpoint', () => {
-      expect(CONTEXT_ENDPOINTS.TRANSCRIPTIONS('123')).toBe(
-        '/consultations/123/context/transcriptions'
-      );
+      expect(CONTEXT_ENDPOINTS.TRANSCRIPTIONS('123')).toBe('/consultations/123/context/transcriptions');
     });
 
     it('should generate CASE_NOTES endpoint', () => {
-      expect(CONTEXT_ENDPOINTS.CASE_NOTES('123')).toBe(
-        '/consultations/123/context/case-notes'
-      );
+      expect(CONTEXT_ENDPOINTS.CASE_NOTES('123')).toBe('/consultations/123/context/case-notes');
     });
 
     it('should handle UUID-format IDs in all endpoint functions', () => {
       const uuid = '550e8400-e29b-41d4-a716-446655440000';
       const ctxUuid = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
       expect(CONTEXT_ENDPOINTS.ADD(uuid)).toBe(`/consultations/${uuid}/context`);
-      expect(CONTEXT_ENDPOINTS.UPDATE(uuid, ctxUuid)).toBe(
-        `/consultations/${uuid}/context/${ctxUuid}`
-      );
-      expect(CONTEXT_ENDPOINTS.VERSIONS(uuid, ctxUuid)).toBe(
-        `/consultations/${uuid}/context/${ctxUuid}/versions`
-      );
+      expect(CONTEXT_ENDPOINTS.UPDATE(uuid, ctxUuid)).toBe(`/consultations/${uuid}/context/${ctxUuid}`);
+      expect(CONTEXT_ENDPOINTS.VERSIONS(uuid, ctxUuid)).toBe(`/consultations/${uuid}/context/${ctxUuid}/versions`);
     });
 
     it('should handle empty string IDs without throwing', () => {
@@ -119,9 +99,7 @@ describe('constants', () => {
     });
 
     it('should generate PRE_SUMMARY endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.PRE_SUMMARY('123')).toBe(
-        '/consultations/123/summary/pre-summary'
-      );
+      expect(SUMMARY_ENDPOINTS.PRE_SUMMARY('123')).toBe('/consultations/123/summary/pre-summary');
     });
 
     it('should generate LATEST endpoint', () => {
@@ -129,9 +107,7 @@ describe('constants', () => {
     });
 
     it('should generate LATEST_PRE_SUMMARY endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY('123')).toBe(
-        '/consultations/123/summary/pre-summary/latest'
-      );
+      expect(SUMMARY_ENDPOINTS.LATEST_PRE_SUMMARY('123')).toBe('/consultations/123/summary/pre-summary/latest');
     });
 
     it('should generate LIST endpoint (same path as GENERATE)', () => {
@@ -139,39 +115,27 @@ describe('constants', () => {
     });
 
     it('should generate UPDATE endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.UPDATE('123', 'sum-1')).toBe(
-        '/consultations/123/summary/sum-1'
-      );
+      expect(SUMMARY_ENDPOINTS.UPDATE('123', 'sum-1')).toBe('/consultations/123/summary/sum-1');
     });
 
     it('should generate EXTRACT_ENTITIES endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.EXTRACT_ENTITIES('123', 'ctx-1')).toBe(
-        '/consultations/123/summary/ctx-1/extract-entities'
-      );
+      expect(SUMMARY_ENDPOINTS.EXTRACT_ENTITIES('123', 'ctx-1')).toBe('/consultations/123/summary/ctx-1/extract-entities');
     });
 
     it('should generate COMPREHENSIVE endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.COMPREHENSIVE('123')).toBe(
-        '/consultations/123/summary/comprehensive'
-      );
+      expect(SUMMARY_ENDPOINTS.COMPREHENSIVE('123')).toBe('/consultations/123/summary/comprehensive');
     });
 
     it('should generate GENERATE_ASYNC endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.GENERATE_ASYNC('123')).toBe(
-        '/consultations/123/summary/async'
-      );
+      expect(SUMMARY_ENDPOINTS.GENERATE_ASYNC('123')).toBe('/consultations/123/summary/async');
     });
 
     it('should generate PRE_SUMMARY_ASYNC endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('123')).toBe(
-        '/consultations/123/summary/pre-summary/async'
-      );
+      expect(SUMMARY_ENDPOINTS.PRE_SUMMARY_ASYNC('123')).toBe('/consultations/123/summary/pre-summary/async');
     });
 
     it('should generate COMPREHENSIVE_ASYNC endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.COMPREHENSIVE_ASYNC('123')).toBe(
-        '/consultations/123/summary/comprehensive/async'
-      );
+      expect(SUMMARY_ENDPOINTS.COMPREHENSIVE_ASYNC('123')).toBe('/consultations/123/summary/comprehensive/async');
     });
   });
 
@@ -181,9 +145,7 @@ describe('constants', () => {
     });
 
     it('should generate GET_FOR_ITEM endpoint with named-entities path', () => {
-      expect(ENTITY_ENDPOINTS.GET_FOR_ITEM('123', 'ctx-1')).toBe(
-        '/consultations/123/context/ctx-1/named-entities'
-      );
+      expect(ENTITY_ENDPOINTS.GET_FOR_ITEM('123', 'ctx-1')).toBe('/consultations/123/context/ctx-1/named-entities');
     });
   });
 
@@ -199,13 +161,15 @@ describe('constants', () => {
 
   describe('STT_ENDPOINTS', () => {
     it('should have CREATE_SESSION endpoint', () => {
-      expect(STT_ENDPOINTS.CREATE_SESSION).toBe(
-        '/audio/transcription-jobs/stream/session'
-      );
+      expect(STT_ENDPOINTS.CREATE_SESSION).toBe('/audio/transcription-jobs/stream/session');
     });
 
     it('should have WS_STREAM path', () => {
       expect(STT_ENDPOINTS.WS_STREAM).toBe('/ws/stt/stream');
+    });
+
+    it('should generate SWITCH_TO_FALLBACK endpoint by session id (TASK-567)', () => {
+      expect(STT_ENDPOINTS.SWITCH_TO_FALLBACK('sess-1')).toBe('/audio/transcription-jobs/stream/session/sess-1/switch-to-fallback');
     });
 
     it('should have CREATE_JOB endpoint', () => {
@@ -213,33 +177,23 @@ describe('constants', () => {
     });
 
     it('should have CREATE_BATCH_JOB endpoint', () => {
-      expect(STT_ENDPOINTS.CREATE_BATCH_JOB).toBe(
-        '/audio/transcription-jobs/batch'
-      );
+      expect(STT_ENDPOINTS.CREATE_BATCH_JOB).toBe('/audio/transcription-jobs/batch');
     });
 
     it('should have CREATE_STREAMING_JOB endpoint', () => {
-      expect(STT_ENDPOINTS.CREATE_STREAMING_JOB).toBe(
-        '/audio/transcription-jobs/streaming'
-      );
+      expect(STT_ENDPOINTS.CREATE_STREAMING_JOB).toBe('/audio/transcription-jobs/streaming');
     });
 
     it('should have TRANSCRIBE endpoint', () => {
-      expect(STT_ENDPOINTS.TRANSCRIBE).toBe(
-        '/audio/transcription-jobs/transcribe'
-      );
+      expect(STT_ENDPOINTS.TRANSCRIBE).toBe('/audio/transcription-jobs/transcribe');
     });
 
     it('should generate JOB_STREAM endpoint by ID', () => {
-      expect(STT_ENDPOINTS.JOB_STREAM('job-123')).toBe(
-        '/audio/transcription-jobs/job-123/stream'
-      );
+      expect(STT_ENDPOINTS.JOB_STREAM('job-123')).toBe('/audio/transcription-jobs/job-123/stream');
     });
 
     it('should generate GET_JOB endpoint by ID', () => {
-      expect(STT_ENDPOINTS.GET_JOB('job-456')).toBe(
-        '/audio/transcription-jobs/job-456'
-      );
+      expect(STT_ENDPOINTS.GET_JOB('job-456')).toBe('/audio/transcription-jobs/job-456');
     });
 
     it('should have LIST_JOBS endpoint', () => {
@@ -247,46 +201,30 @@ describe('constants', () => {
     });
 
     it('should have JOB_STATS endpoint', () => {
-      expect(STT_ENDPOINTS.JOB_STATS).toBe(
-        '/audio/transcription-jobs/stats'
-      );
+      expect(STT_ENDPOINTS.JOB_STATS).toBe('/audio/transcription-jobs/stats');
     });
 
     it('should generate JOBS_BY_CONSULTATION endpoint', () => {
-      expect(STT_ENDPOINTS.JOBS_BY_CONSULTATION('consult-789')).toBe(
-        '/audio/transcription-jobs/consultation/consult-789'
-      );
+      expect(STT_ENDPOINTS.JOBS_BY_CONSULTATION('consult-789')).toBe('/audio/transcription-jobs/consultation/consult-789');
     });
 
     it('should generate JOBS_BY_STATUS endpoint', () => {
-      expect(STT_ENDPOINTS.JOBS_BY_STATUS('completed')).toBe(
-        '/audio/transcription-jobs/status/completed'
-      );
+      expect(STT_ENDPOINTS.JOBS_BY_STATUS('completed')).toBe('/audio/transcription-jobs/status/completed');
     });
 
     it('should generate CANCEL_JOB endpoint', () => {
-      expect(STT_ENDPOINTS.CANCEL_JOB('job-abc')).toBe(
-        '/audio/transcription-jobs/job-abc/cancel'
-      );
+      expect(STT_ENDPOINTS.CANCEL_JOB('job-abc')).toBe('/audio/transcription-jobs/job-abc/cancel');
     });
 
     it('should generate RETRY_JOB endpoint', () => {
-      expect(STT_ENDPOINTS.RETRY_JOB('job-abc')).toBe(
-        '/audio/transcription-jobs/job-abc/retry'
-      );
+      expect(STT_ENDPOINTS.RETRY_JOB('job-abc')).toBe('/audio/transcription-jobs/job-abc/retry');
     });
 
     it('should handle UUID-format job IDs', () => {
       const uuid = '019503c0-d93f-7f41-b782-af9e1a3b5c0d';
-      expect(STT_ENDPOINTS.GET_JOB(uuid)).toBe(
-        `/audio/transcription-jobs/${uuid}`
-      );
-      expect(STT_ENDPOINTS.CANCEL_JOB(uuid)).toBe(
-        `/audio/transcription-jobs/${uuid}/cancel`
-      );
-      expect(STT_ENDPOINTS.JOB_STREAM(uuid)).toBe(
-        `/audio/transcription-jobs/${uuid}/stream`
-      );
+      expect(STT_ENDPOINTS.GET_JOB(uuid)).toBe(`/audio/transcription-jobs/${uuid}`);
+      expect(STT_ENDPOINTS.CANCEL_JOB(uuid)).toBe(`/audio/transcription-jobs/${uuid}/cancel`);
+      expect(STT_ENDPOINTS.JOB_STREAM(uuid)).toBe(`/audio/transcription-jobs/${uuid}/stream`);
     });
 
     it('should use different path prefix for WS_STREAM vs REST endpoints', () => {
@@ -340,9 +278,7 @@ describe('constants', () => {
     });
 
     it('should generate GET_BY_SLUG endpoint', () => {
-      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe(
-        '/audio/pipelines/slug/whisper-streaming'
-      );
+      expect(PIPELINE_ENDPOINTS.GET_BY_SLUG('whisper-streaming')).toBe('/audio/pipelines/slug/whisper-streaming');
     });
 
     it('should have VALIDATE endpoint', () => {
@@ -373,12 +309,7 @@ describe('constants', () => {
     });
 
     it('should use /nlp prefix matching NlpController base path', () => {
-      const allEndpoints = [
-        NLP_ENDPOINTS.CLASSIFY_TOKENS,
-        NLP_ENDPOINTS.CLASSIFY_TEXT,
-        NLP_ENDPOINTS.CORRECT,
-        NLP_ENDPOINTS.SUGGEST,
-      ];
+      const allEndpoints = [NLP_ENDPOINTS.CLASSIFY_TOKENS, NLP_ENDPOINTS.CLASSIFY_TEXT, NLP_ENDPOINTS.CORRECT, NLP_ENDPOINTS.SUGGEST];
       for (const ep of allEndpoints) {
         expect(ep).toMatch(/^\/nlp\//);
       }
@@ -461,7 +392,7 @@ describe('constants', () => {
         expect(DEFAULT_NER_CONFIG.autoExtract).toBe(false);
       });
 
-    it('should default to the clinical preset', () => {
+      it('should default to the clinical preset', () => {
         expect(DEFAULT_NER_CONFIG.model).toBe('clinical');
       });
 

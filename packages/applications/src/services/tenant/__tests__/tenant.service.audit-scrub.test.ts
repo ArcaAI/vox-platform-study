@@ -57,13 +57,7 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
   beforeEach(() => {
     vi.clearAllMocks();
     cls.get.mockImplementation((k: string) =>
-      k === 'user'
-        ? { id: 'sa-id', roles: ['GLOBAL_ADMIN'] }
-        : k === 'tenantId'
-          ? 'tenant-1'
-          : k === 'tenantCode'
-            ? 'TENANT_1'
-            : null,
+      k === 'user' ? { id: 'sa-id', roles: ['GLOBAL_ADMIN'] } : k === 'tenantId' ? 'tenant-1' : k === 'tenantCode' ? 'TENANT_1' : null,
     );
     service = new TenantService(
       tenantRepo as never,
@@ -104,9 +98,7 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
     gsRepo.findById.mockResolvedValue(locked);
     gsRepo.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
-    await service.updateTenantConfigs('tenant-1', [
-      { id: locked.id, value: 'new-secret', expectedVersion: 1 } as never,
-    ]);
+    await service.updateTenantConfigs('tenant-1', [{ id: locked.id, value: 'new-secret', expectedVersion: 1 } as never]);
 
     const emit = events.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceUpdated);
     expect(emit, 'ResourceUpdated SysEvent must have been emitted').toBeDefined();
@@ -137,9 +129,7 @@ describe('TenantService — audit-log secret scrubbing (Phase 0 Item 4)', () => 
     gsRepo.findById.mockResolvedValue(unlocked);
     gsRepo.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
-    await service.updateTenantConfigs('tenant-1', [
-      { id: unlocked.id, value: 'true', expectedVersion: 1 } as never,
-    ]);
+    await service.updateTenantConfigs('tenant-1', [{ id: unlocked.id, value: 'true', expectedVersion: 1 } as never]);
 
     const emit = events.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceUpdated);
     const data = (emit![1] as { data: Array<Record<string, unknown>> }).data;

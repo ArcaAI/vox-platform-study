@@ -51,9 +51,7 @@ class TestDatabaseEngineCreation:
         try:
             with (
                 patch.object(conn_module, "_get_loop_id", return_value=12345),
-                patch(
-                    "stt.core.database.connection.create_async_engine", return_value=mock_engine
-                ),
+                patch("stt.core.database.connection.create_async_engine", return_value=mock_engine),
                 patch(
                     "stt.core.database.connection.async_sessionmaker",
                     return_value=mock_session_factory,

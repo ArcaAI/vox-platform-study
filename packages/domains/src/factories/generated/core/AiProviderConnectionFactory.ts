@@ -7,6 +7,13 @@ import { generateId } from '../../../utils';
 
 export interface CreateAiProviderConnectionProps extends BaseEntityFactoryCreateProps {
   tenantId: IAiProviderConnectionEntity['tenantId'];
+  /**
+   * Capability discriminator (llm | stt | tts). Optional at the factory level
+   * and defaulting to 'llm' — mirrors the Prisma column default and keeps the
+   * pre-unification call convention compiling for the one-release transition.
+   * The application service always passes it explicitly.
+   */
+  service?: IAiProviderConnectionEntity['service'];
   provider: IAiProviderConnectionEntity['provider'];
   baseUrl?: IAiProviderConnectionEntity['baseUrl'];
   region?: IAiProviderConnectionEntity['region'];
@@ -37,6 +44,7 @@ export class AiProviderConnectionFactory {
       updatedBy: props.updatedBy || null,
 
       tenantId: props.tenantId,
+      service: props.service ?? 'llm',
       provider: props.provider,
       baseUrl: props.baseUrl ?? null,
       region: props.region ?? null,

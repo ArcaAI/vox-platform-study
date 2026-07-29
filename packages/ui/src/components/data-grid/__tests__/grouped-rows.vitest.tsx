@@ -33,7 +33,12 @@ beforeAll(() => {
   Element.prototype.getBoundingClientRect = function () {
     return { width: 1200, height: 600, top: 0, left: 0, right: 1200, bottom: 600, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
   };
-  for (const [prop, value] of [['clientHeight', 600], ['clientWidth', 1200], ['offsetHeight', 600], ['offsetWidth', 1200]] as const) {
+  for (const [prop, value] of [
+    ['clientHeight', 600],
+    ['clientWidth', 1200],
+    ['offsetHeight', 600],
+    ['offsetWidth', 1200],
+  ] as const) {
     Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value });
   }
 });
@@ -82,15 +87,9 @@ describe('buildDisplayRows (pure grouping)', () => {
 
   it('injects a header with a count ahead of each contiguous group', () => {
     const out = buildDisplayRows<Setting>(asRows(ROWS), GROUP_BY);
-    expect(out.map((entry) => (entry.kind === 'group' ? `#${entry.label}:${entry.count}` : (entry as { row: { original: Setting } }).row.original.id))).toEqual([
-      '#smtp:2',
-      's1',
-      's2',
-      '#llm:1',
-      's3',
-      '#—:1',
-      's4',
-    ]);
+    expect(
+      out.map((entry) => (entry.kind === 'group' ? `#${entry.label}:${entry.count}` : (entry as { row: { original: Setting } }).row.original.id)),
+    ).toEqual(['#smtp:2', 's1', 's2', '#llm:1', 's3', '#—:1', 's4']);
   });
 
   it('re-opens a group when the same key reappears non-contiguously (page order is authoritative)', () => {

@@ -81,10 +81,8 @@ describe('Prompt Template types', () => {
     });
 
     it('should accept all valid categories', () => {
-      const categories: PromptTemplateCategory[] = [
-        'SYSTEM', 'SUMMARY', 'DNA_ANALYSIS', 'CUSTOM',
-      ];
-      categories.forEach(category => {
+      const categories: PromptTemplateCategory[] = ['SYSTEM', 'SUMMARY', 'DNA_ANALYSIS', 'CUSTOM'];
+      categories.forEach((category) => {
         const template = makePromptTemplate({ category });
         expect(template.category).toBe(category);
       });

@@ -192,15 +192,13 @@ describe('GlobalSettingController', () => {
     // admin (has manage:GlobalSetting, not manage:all) is 403.
     it('is gated GLOBAL_ADMIN-only via @Authorize(["manage","all"]) (overrides the class gate)', () => {
       const methodMeta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, GlobalSettingController.prototype.reveal) as
-        | Array<{ action: string; subject: string }>
-        | undefined;
+        Array<{ action: string; subject: string }> | undefined;
       expect(methodMeta).toEqual([{ action: 'manage', subject: 'all' }]);
 
       // The class default is the broader manage:GlobalSetting (tenant admins included),
       // proving the method-level gate is a deliberate tightening.
       const classMeta = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, GlobalSettingController) as
-        | Array<{ action: string; subject: string }>
-        | undefined;
+        Array<{ action: string; subject: string }> | undefined;
       expect(classMeta).toEqual([{ action: 'manage', subject: 'GlobalSetting' }]);
     });
   });

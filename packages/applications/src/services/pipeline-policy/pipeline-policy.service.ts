@@ -170,7 +170,7 @@ export class PipelinePolicyService {
     expectedVersion?: number;
   }): Promise<PipelinePolicyResponse> {
     const { tenantId, scope, dto, expectedVersion } = params;
-    const scopeId = scope === PipelinePolicyScope.TENANT ? null : params.scopeId ?? null;
+    const scopeId = scope === PipelinePolicyScope.TENANT ? null : (params.scopeId ?? null);
 
     this.assertGlobalOnlyToggles(dto);
     this.assertWithinMaxScope(scope, dto);
@@ -431,8 +431,7 @@ export class PipelinePolicyService {
     if (isSuperAdmin(this.clsService.get('user'))) return;
 
     const present = WRITABLE_TOGGLE_KEYS.filter(
-      (key) =>
-        (dto as Record<string, unknown>)[key] !== undefined && HOPE_SETTINGS_REGISTRY.getOrThrow(`pipeline.${key}`).globalOnly === true,
+      (key) => (dto as Record<string, unknown>)[key] !== undefined && HOPE_SETTINGS_REGISTRY.getOrThrow(`pipeline.${key}`).globalOnly === true,
     );
     if (present.length === 0) return;
 

@@ -104,9 +104,7 @@ class TestSessionManagerAsrCallable:
         run_inference = SessionManager._make_asr_callable(
             mgr,
             asr_model=mock_asr_model,
-            inference_config=MagicMock(
-                beam_size=1, code_switching=True, language="ml"
-            ),
+            inference_config=MagicMock(beam_size=1, code_switching=True, language="ml"),
         )
         await run_inference(np.zeros(16000, dtype=np.float32), 16000)
 
@@ -126,9 +124,7 @@ class TestSessionManagerAsrCallable:
         run_inference = SessionManager._make_asr_callable(
             mgr,
             asr_model=mock_asr_model,
-            inference_config=MagicMock(
-                beam_size=1, code_switching=True, language=None
-            ),
+            inference_config=MagicMock(beam_size=1, code_switching=True, language=None),
         )
         await run_inference(np.zeros(16000, dtype=np.float32), 16000)
 

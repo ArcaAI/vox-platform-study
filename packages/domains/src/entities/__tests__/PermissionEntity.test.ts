@@ -14,15 +14,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  PermissionEntity,
-  IPermissionEntity,
-} from '../generated/core/PermissionEntity';
+import { PermissionEntity, IPermissionEntity } from '../generated/core/PermissionEntity';
 import { PermissionAction, ResourceStatusType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<IPermissionEntity> = {},
-): IPermissionEntity {
+function createValidInit(overrides: Partial<IPermissionEntity> = {}): IPermissionEntity {
   return {
     id: 'perm-test-id',
     name: 'read.user',
@@ -58,16 +53,11 @@ describe('PermissionEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it.each(Object.values(PermissionAction))(
-      'should accept permissionAction %s',
-      (permissionAction) => {
-        const entity = new PermissionEntity(
-          createValidInit({ permissionAction }),
-        );
+    it.each(Object.values(PermissionAction))('should accept permissionAction %s', (permissionAction) => {
+      const entity = new PermissionEntity(createValidInit({ permissionAction }));
 
-        expect(() => entity.validate()).not.toThrow();
-      },
-    );
+      expect(() => entity.validate()).not.toThrow();
+    });
   });
 
   describe('name', () => {
@@ -84,19 +74,13 @@ describe('PermissionEntity.validate()', () => {
     });
 
     it('should throw when name exceeds 255 characters', () => {
-      const entity = new PermissionEntity(
-        createValidInit({ name: 'x'.repeat(256) }),
-      );
+      const entity = new PermissionEntity(createValidInit({ name: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Permission name must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('Permission name must not exceed 255 characters');
     });
 
     it('should accept name exactly 255 characters', () => {
-      const entity = new PermissionEntity(
-        createValidInit({ name: 'x'.repeat(255) }),
-      );
+      const entity = new PermissionEntity(createValidInit({ name: 'x'.repeat(255) }));
 
       expect(() => entity.validate()).not.toThrow();
     });
@@ -104,33 +88,21 @@ describe('PermissionEntity.validate()', () => {
 
   describe('resourceTypeName', () => {
     it('should throw when resourceTypeName is empty', () => {
-      const entity = new PermissionEntity(
-        createValidInit({ resourceTypeName: '' }),
-      );
+      const entity = new PermissionEntity(createValidInit({ resourceTypeName: '' }));
 
-      expect(() => entity.validate()).toThrow(
-        'Permission resourceTypeName is required',
-      );
+      expect(() => entity.validate()).toThrow('Permission resourceTypeName is required');
     });
 
     it('should throw when resourceTypeName is whitespace only', () => {
-      const entity = new PermissionEntity(
-        createValidInit({ resourceTypeName: '   ' }),
-      );
+      const entity = new PermissionEntity(createValidInit({ resourceTypeName: '   ' }));
 
-      expect(() => entity.validate()).toThrow(
-        'Permission resourceTypeName is required',
-      );
+      expect(() => entity.validate()).toThrow('Permission resourceTypeName is required');
     });
 
     it('should throw when resourceTypeName exceeds 255 characters', () => {
-      const entity = new PermissionEntity(
-        createValidInit({ resourceTypeName: 'x'.repeat(256) }),
-      );
+      const entity = new PermissionEntity(createValidInit({ resourceTypeName: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Permission resourceTypeName must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('Permission resourceTypeName must not exceed 255 characters');
     });
   });
 
@@ -142,9 +114,7 @@ describe('PermissionEntity.validate()', () => {
         }),
       );
 
-      expect(() => entity.validate()).toThrow(
-        'Permission permissionAction is required',
-      );
+      expect(() => entity.validate()).toThrow('Permission permissionAction is required');
     });
 
     it('should throw when permissionAction is not a member of PermissionAction', () => {
@@ -154,37 +124,27 @@ describe('PermissionEntity.validate()', () => {
         }),
       );
 
-      expect(() => entity.validate()).toThrow(
-        'Permission permissionAction is invalid',
-      );
+      expect(() => entity.validate()).toThrow('Permission permissionAction is invalid');
     });
   });
 
   describe('description', () => {
     it('should accept null description', () => {
-      const entity = new PermissionEntity(
-        createValidInit({ description: null }),
-      );
+      const entity = new PermissionEntity(createValidInit({ description: null }));
 
       expect(() => entity.validate()).not.toThrow();
     });
 
     it('should accept undefined description', () => {
-      const entity = new PermissionEntity(
-        createValidInit({ description: undefined }),
-      );
+      const entity = new PermissionEntity(createValidInit({ description: undefined }));
 
       expect(() => entity.validate()).not.toThrow();
     });
 
     it('should throw when description exceeds 1000 characters', () => {
-      const entity = new PermissionEntity(
-        createValidInit({ description: 'x'.repeat(1001) }),
-      );
+      const entity = new PermissionEntity(createValidInit({ description: 'x'.repeat(1001) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Permission description must not exceed 1000 characters',
-      );
+      expect(() => entity.validate()).toThrow('Permission description must not exceed 1000 characters');
     });
   });
 });

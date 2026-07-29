@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Harness Observability' };
 
 /** Frame 37 — Harness observability (tier 30-49). */
 export default function HarnessObservabilityPage() {
-    return <HarnessObservabilityScreen />;
+  return <HarnessObservabilityScreen />;
 }

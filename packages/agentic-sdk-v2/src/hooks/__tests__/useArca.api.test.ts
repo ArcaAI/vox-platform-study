@@ -75,10 +75,7 @@ function calledBody(callIndex = 0): unknown {
 
 beforeEach(() => {
   mockLogger = createMockLogger();
-  apiClient = new AgenticClient(
-    { baseUrl: 'http://test', apiKey: 'test-key' },
-    mockLogger,
-  );
+  apiClient = new AgenticClient({ baseUrl: 'http://test', apiKey: 'test-key' }, mockLogger);
 
   mockStoreData = {
     apiClient,
@@ -185,10 +182,7 @@ describe('useArca API — session', () => {
     });
 
     it('should load contextItems from the returned consultation', async () => {
-      const ctxItems = [
-        createMockContextItem({ id: 'ci-1' }),
-        createMockContextItem({ id: 'ci-2' }),
-      ];
+      const ctxItems = [createMockContextItem({ id: 'ci-1' }), createMockContextItem({ id: 'ci-2' })];
       const consultation = createMockConsultation({ id: 'with-ctx', contextItems: ctxItems });
       mockFetch.mockResolvedValueOnce(createMockResponse(consultation));
 
@@ -320,7 +314,9 @@ describe('useArca API — session', () => {
       const { result } = renderHook(() => useArca());
 
       await expect(
-        act(async () => { await result.current.session.getTimeline(); }),
+        act(async () => {
+          await result.current.session.getTimeline();
+        }),
       ).rejects.toThrow('No active consultation');
     });
   });
@@ -679,9 +675,7 @@ describe('useArca API — summary', () => {
   // ---- summary.getSummaryHistory -----------------------------------------
   describe('summary.getSummaryHistory()', () => {
     it('should GET versions for a summary', async () => {
-      const versions = [
-        { versionNumber: 1, content: 'v1', createdAt: '2026-02-19T00:00:00Z' },
-      ];
+      const versions = [{ versionNumber: 1, content: 'v1', createdAt: '2026-02-19T00:00:00Z' }];
       mockFetch.mockResolvedValueOnce(createMockResponse(versions));
 
       const { result } = renderHook(() => useArca());
@@ -906,70 +900,90 @@ describe('useArca API — consultation guard', () => {
   it('context.addCaseNote throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.context.addCaseNote('x'); }),
+      act(async () => {
+        await result.current.context.addCaseNote('x');
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('context.addTranscription throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.context.addTranscription('x'); }),
+      act(async () => {
+        await result.current.context.addTranscription('x');
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('context.updateItem throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.context.updateItem('id', 'c'); }),
+      act(async () => {
+        await result.current.context.updateItem('id', 'c');
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('context.loadSharedContext throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.context.loadSharedContext(); }),
+      act(async () => {
+        await result.current.context.loadSharedContext();
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('context.extractEntities throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.context.extractEntities(); }),
+      act(async () => {
+        await result.current.context.extractEntities();
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('context.fetchTranscriptions throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.context.fetchTranscriptions(); }),
+      act(async () => {
+        await result.current.context.fetchTranscriptions();
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('context.fetchCaseNotes throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.context.fetchCaseNotes(); }),
+      act(async () => {
+        await result.current.context.fetchCaseNotes();
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('summary.generateSummary throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.summary.generateSummary(); }),
+      act(async () => {
+        await result.current.summary.generateSummary();
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('summary.generatePreSummary throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.summary.generatePreSummary(); }),
+      act(async () => {
+        await result.current.summary.generatePreSummary();
+      }),
     ).rejects.toThrow('No active consultation');
   });
 
   it('summary.loadSummaries throws without consultation', async () => {
     const { result } = renderHook(() => useArca());
     await expect(
-      act(async () => { await result.current.summary.loadSummaries(); }),
+      act(async () => {
+        await result.current.summary.loadSummaries();
+      }),
     ).rejects.toThrow('No active consultation');
   });
 });

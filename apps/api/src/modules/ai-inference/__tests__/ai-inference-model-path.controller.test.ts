@@ -126,9 +126,7 @@ describe('model_path injection (diagnosis)', () => {
 describe('override lane stays fail-closed', () => {
   it('a validated override forwards the matched row localPath, not a caller value', async () => {
     const aiModels = {
-      getByTaskTypeSharedRead: vi.fn().mockResolvedValue([
-        { slug: 'ner-alt', sourceUri: 'org/ner-alt', localPath: '/opt/hope/models/ner-alt' },
-      ]),
+      getByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ slug: 'ner-alt', sourceUri: 'org/ner-alt', localPath: '/opt/hope/models/ner-alt' }]),
     };
     const { controller, client } = makeController(undefined, aiModels);
     client.classifyTokens.mockResolvedValue({});
@@ -145,9 +143,7 @@ describe('override lane stays fail-closed', () => {
 
   it('an override whose row has no localPath injects no model_path', async () => {
     const aiModels = {
-      getByTaskTypeSharedRead: vi.fn().mockResolvedValue([
-        { slug: 'ner-alt', sourceUri: 'org/ner-alt', localPath: null },
-      ]),
+      getByTaskTypeSharedRead: vi.fn().mockResolvedValue([{ slug: 'ner-alt', sourceUri: 'org/ner-alt', localPath: null }]),
     };
     const { controller, client } = makeController(undefined, aiModels);
     client.classifyTokens.mockResolvedValue({});

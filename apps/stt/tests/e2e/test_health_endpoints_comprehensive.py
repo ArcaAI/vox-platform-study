@@ -76,9 +76,9 @@ class TestHealthEndpointE2E:
             "checks",
             "effective_config",
         }
-        assert required_keys <= set(data.keys()), (
-            f"Missing keys in /health response: {required_keys - set(data.keys())}"
-        )
+        assert required_keys <= set(
+            data.keys()
+        ), f"Missing keys in /health response: {required_keys - set(data.keys())}"
 
         assert isinstance(data["effective_config"], dict)
 

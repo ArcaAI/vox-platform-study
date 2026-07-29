@@ -69,7 +69,10 @@ async def health_check(
         if not engine_health.get("healthy", False):
             health_status["status"] = "degraded"
     else:
-        health_status["checks"]["llm_engine"] = {"status": "disabled", "provider": settings.provider}
+        health_status["checks"]["llm_engine"] = {
+            "status": "disabled",
+            "provider": settings.provider,
+        }
 
     # GLiNER is lazy — report cache state without degrading health.
     health_status["checks"]["gliner"] = _gliner_status(request)

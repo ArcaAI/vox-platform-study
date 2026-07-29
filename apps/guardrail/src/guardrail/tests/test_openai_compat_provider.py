@@ -30,7 +30,9 @@ class _FakeChatClient:
         self.content = content
         self.requests: list[dict[str, Any]] = []
 
-    async def post(self, url: str, json: dict[str, Any] | None = None, headers=None, timeout=None) -> _FakeResponse:
+    async def post(
+        self, url: str, json: dict[str, Any] | None = None, headers=None, timeout=None
+    ) -> _FakeResponse:
         self.requests.append({"url": url, "json": json, "headers": headers})
         return _FakeResponse({"choices": [{"message": {"content": self.content}}]})
 

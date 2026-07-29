@@ -70,15 +70,12 @@ class ProcessorSpec:
     def __post_init__(self) -> None:
         if self.kind not in STAGE_KINDS:
             raise ValueError(
-                f"Unknown stage kind '{self.kind}'. Valid kinds: "
-                + ", ".join(sorted(STAGE_KINDS))
+                f"Unknown stage kind '{self.kind}'. Valid kinds: " + ", ".join(sorted(STAGE_KINDS))
             )
         if not self.capabilities:
             raise ValueError(f"Processor {self.kind}/{self.name} declares no capabilities")
         if ":" not in self.lazy_target:
-            raise ValueError(
-                f"lazy_target must be 'module:attr', got '{self.lazy_target}'"
-            )
+            raise ValueError(f"lazy_target must be 'module:attr', got '{self.lazy_target}'")
 
 
 class CapabilityError(RuntimeError):

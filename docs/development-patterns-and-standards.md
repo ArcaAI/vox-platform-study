@@ -465,7 +465,7 @@ The contract is DECLARED ONCE in `packages/applications/src/common/env/env-file-
 - **Precedence: host env > env file > schema default.** The file never overwrites a variable already in `process.env`. (Before TASK-558 this was inverted in development.)
 - **One file per `NODE_ENV`** — `.env.dev` / `.env.test` / `.env.production`; **no `.env` fallback**. The root `.env` is docker-compose interpolation input, not application config, and `scripts/dev-infra.sh` generates `infrastructure/docker/.env` for that purpose.
 - **No file at all when `CI` is truthy or `NODE_ENV=production`** — host env only.
-- `.env.test` is loaded by dotenv-cli in the `test:*` scripts (isolated infra ports: Postgres 5433, Redis 6380, MinIO 9002). `.env.production` is a REFERENCE template. `.env.dev` is gitignored and untracked.
+- `.env.test` is loaded by dotenv-cli in the `test:*` scripts (isolated infra ports: Postgres 5433, Redis 6380, MinIO 9002) and, like `.env.dev`, is gitignored and generated (`pnpm setup:dev`/`pnpm setup:test` from the consolidated `.env.sample` — TASK-583/584). Production reference templates live per-service as `apps/*/.env.prod`, not at the monorepo root — none are ever loaded by the app.
 
 Consumers of the single declaration: `loadEnv()`, `apps/api/src/main.ts`, both `prisma.config.ts` files, and `@arcaai/tools`.
 

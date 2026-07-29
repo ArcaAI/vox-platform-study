@@ -120,7 +120,12 @@ test.describe('model-cache retention TTL — write lane reaches the effective-co
     const after = await readKey(request);
     expect(after.value).toBe(testValue);
     expect(after.tier).toBe('global-kv');
-    expect(after.sourceScope).toBe('global-kv');
+    // sourceScope names WHICH row answered the tenant->SYSTEM->code-default
+    // cascade ('tenant' | 'system' | 'code-default'), not the descriptor's
+    // tier — a platform-scoped write (no tenant override) resolves 'system'.
+    // See TenantSettingsService.resolve() (packages/applications/src/services/
+    // settings-registry/tenant-settings.service.ts).
+    expect(after.sourceScope).toBe('system');
   });
 
   test('a below-minimum write (< 60s) is accepted verbatim — the clamp is enforced downstream, not by this gateway', async ({ request }) => {

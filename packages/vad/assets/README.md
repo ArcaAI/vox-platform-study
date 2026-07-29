@@ -46,5 +46,6 @@ npx @ricky0123/vad-web
 ```
 
 Or download directly from:
+
 - https://cdn.jsdelivr.net/npm/@ricky0123/vad-web/dist/silero_vad_v5.onnx
 - https://cdn.jsdelivr.net/npm/@ricky0123/vad-web/dist/silero_vad_legacy.onnx

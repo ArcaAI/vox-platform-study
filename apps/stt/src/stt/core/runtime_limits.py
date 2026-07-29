@@ -74,7 +74,9 @@ async def resolve_streaming_max_concurrent(default: int) -> int:
         snapshot = await get_effective_config_client().get()
         served = snapshot.streaming_max_concurrent()
         if served is not None:
-            logger.info("stt.effective_config.streaming_max_concurrent", value=served, previous=default)
+            logger.info(
+                "stt.effective_config.streaming_max_concurrent", value=served, previous=default
+            )
             return served
     except Exception as exc:  # noqa: BLE001
         logger.warning(

@@ -82,9 +82,7 @@ describe('GateEditMiningService — curation gate on retrieval', () => {
 
     await service.retrieveExemplars({ tenantId: TENANT, departmentId: 'dept-1', limit: 3 });
 
-    expect(repository.findTopForRetrieval).toHaveBeenCalledWith(
-      expect.objectContaining({ curationStatus: ExemplarCurationStatus.APPROVED }),
-    );
+    expect(repository.findTopForRetrieval).toHaveBeenCalledWith(expect.objectContaining({ curationStatus: ExemplarCurationStatus.APPROVED }));
   });
 
   it('degrades to off (today’s behaviour) when the governance read fails', async () => {

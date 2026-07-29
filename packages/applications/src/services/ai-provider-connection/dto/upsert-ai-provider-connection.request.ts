@@ -1,16 +1,30 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 /**
- * Upsert one (tenant, provider) connection row.
+ * Upsert one (service, tenant, provider) connection row.
  *
  * Every accepted field is declared here: the global pipe runs
  * `whitelist + forbidNonWhitelisted`, so an undeclared field 400s.
  *
  * `apiKey` is WRITE-ONLY — it is Vault-Transit encrypted on the way in and is
  * NEVER returned by any read DTO (see `AiProviderConnectionResponse.hasKey`).
+ *
+ * The capability discriminator is authoritatively the `:service` PATH param on
+ * the route (the service method takes it explicitly). It is also accepted here
+ * (optional, validated) for symmetry and for callers/mocks that carry it in the
+ * body; the path param wins.
  */
 export class UpsertAiProviderConnectionRequest {
+  @ApiPropertyOptional({
+    description: 'Capability the connection serves. The route `:service` path param is authoritative.',
+    enum: ['llm', 'stt', 'tts'],
+    example: 'llm',
+  })
+  @IsOptional()
+  @IsIn(['llm', 'stt', 'tts'])
+  service?: 'llm' | 'stt' | 'tts';
+
   @ApiPropertyOptional({
     description: 'Base URL of the serving endpoint (ollama / lm-studio / vllm / llama-cpp / azure).',
     example: 'http://localhost:11434',

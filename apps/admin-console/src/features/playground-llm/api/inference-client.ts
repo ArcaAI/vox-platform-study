@@ -9,9 +9,9 @@ import { postJson } from '@/shared/api';
 import type { GuardrailAnalysis, GuardrailType, NerResult } from './types';
 
 export function analyzeGuardrail(body: { text: string; guardrailType?: GuardrailType }): Promise<GuardrailAnalysis> {
-    return postJson('ai/guardrail/analyze', body);
+  return postJson('ai/guardrail/analyze', body);
 }
 
 export function extractEntities(body: { text: string; aggregationStrategy?: string; language?: string }): Promise<NerResult> {
-    return postJson('ai/nlp/entities', body);
+  return postJson('ai/nlp/entities', body);
 }

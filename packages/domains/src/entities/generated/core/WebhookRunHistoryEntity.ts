@@ -89,9 +89,7 @@ export class WebhookRunHistoryEntity extends BaseEntity {
         this._responeStatusCode < 100 ||
         this._responeStatusCode > 599
       ) {
-        throw new BusinessException(
-          'WebhookRunHistory responeStatusCode must be a valid HTTP status code (100-599).',
-        );
+        throw new BusinessException('WebhookRunHistory responeStatusCode must be a valid HTTP status code (100-599).');
       }
     }
   }

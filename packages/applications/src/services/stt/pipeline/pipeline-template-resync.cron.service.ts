@@ -81,14 +81,8 @@ export class PipelineTemplateResyncCronService implements OnModuleInit, OnModule
 
   getConfig(): PipelineTemplateResyncCronConfig {
     return {
-      enabled: this.appSettingsService.getValueWithDefault<boolean>(
-        'pipeline.templateResync.enabled',
-        DEFAULTS.enabled,
-      ),
-      cron: this.appSettingsService.getValueWithDefault<string>(
-        'pipeline.templateResync.cron',
-        DEFAULTS.cron,
-      ),
+      enabled: this.appSettingsService.getValueWithDefault<boolean>('pipeline.templateResync.enabled', DEFAULTS.enabled),
+      cron: this.appSettingsService.getValueWithDefault<string>('pipeline.templateResync.cron', DEFAULTS.cron),
     };
   }
 

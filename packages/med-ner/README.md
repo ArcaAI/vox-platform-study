@@ -6,11 +6,11 @@ Last updated: 2026-07-04
 
 ## Where it fits
 
-| Direction | Package | Relationship |
-|---|---|---|
-| Depends on | `@huggingface/transformers` | Token-classification pipeline (ONNX) |
-| Depends on | `@arcaai/room` (peer, `^0.1.0`) | Type-only import (`TrackProcessor`, `ProcessorOptions`) |
-| Consumed by | `@arcaai/vox` (optional peer) | NER stage of `KnowledgePipeline`; hook re-exported at `@arcaai/vox/plugins/med-ner` |
+| Direction   | Package                         | Relationship                                                                        |
+| ----------- | ------------------------------- | ----------------------------------------------------------------------------------- |
+| Depends on  | `@huggingface/transformers`     | Token-classification pipeline (ONNX)                                                |
+| Depends on  | `@arcaai/room` (peer, `^0.1.0`) | Type-only import (`TrackProcessor`, `ProcessorOptions`)                             |
+| Consumed by | `@arcaai/vox` (optional peer)   | NER stage of `KnowledgePipeline`; hook re-exported at `@arcaai/vox/plugins/med-ner` |
 
 This is a text processor, not an audio processor: `MedNERProcessor` is a standalone class you `init()` and call `extract(text)` on. `react` is an optional peer dependency (only needed for `useMedNER`).
 
@@ -51,9 +51,7 @@ const ner = createMedNER({
 
 await ner.init(); // downloads + caches the model on first use
 
-const result = await ner.extract(
-  'Patient diagnosed with Type 2 Diabetes and prescribed Metformin 500mg twice daily.'
-);
+const result = await ner.extract('Patient diagnosed with Type 2 Diabetes and prescribed Metformin 500mg twice daily.');
 // result.entities: [{ text, type, score, start, end, rawLabel }, ...]
 
 await ner.destroy();
@@ -75,16 +73,15 @@ function MedicalTextAnalyzer() {
 
   return (
     <div>
-      <button
-        onClick={() => extract('Patient has hypertension and takes Lisinopril.')}
-        disabled={!isReady || isProcessing}
-      >
+      <button onClick={() => extract('Patient has hypertension and takes Lisinopril.')} disabled={!isReady || isProcessing}>
         Analyze
       </button>
       {error && <div>{error.message}</div>}
       <ul>
         {entities.map((e, i) => (
-          <li key={i}>{e.text} ({e.type}) — {(e.score * 100).toFixed(1)}%</li>
+          <li key={i}>
+            {e.text} ({e.type}) — {(e.score * 100).toFixed(1)}%
+          </li>
         ))}
       </ul>
     </div>
@@ -96,18 +93,18 @@ The hook additionally exposes `isLoading` / `loadProgress`, `result`, `stats`, `
 
 ### Options (`MedNEROptions`)
 
-| Option | Default | Description |
-|---|---|---|
-| `model` | `'default'` | `'default' \| 'biomedical' \| 'clinical'` or any HF model ID with ONNX weights |
-| `threshold` | `0.5` | Minimum confidence; lower-scoring entities are dropped |
-| `entityTypes` | all | Restrict output to specific `MedicalEntityType` values |
-| `mergeAdjacent` / `mergeOverlapping` | `true` / `true` | B-I-O merge and overlap resolution |
-| `maxTokens` / `stride` | `384` / `64` | Token-aware chunking for long texts (headroom for `[CLS]`/`[SEP]`) |
-| `maxLength` / `chunkOverlap` | `512` / `50` | Deprecated character-based limits; prefer `maxTokens` / `stride` |
-| `dtype` | `'q8'` browser, `'fp32'` Node | Quantization: `'fp32' \| 'fp16' \| 'q8' \| 'q4'` |
-| `workerFactory` | — | Factory returning a `Worker` hosting `medner.worker.js` |
-| `onProgress` | — | Model download/load progress callback |
-| `enableStats` / `statsInterval` | `false` / `1000` | Emit stats events |
+| Option                               | Default                       | Description                                                                    |
+| ------------------------------------ | ----------------------------- | ------------------------------------------------------------------------------ |
+| `model`                              | `'default'`                   | `'default' \| 'biomedical' \| 'clinical'` or any HF model ID with ONNX weights |
+| `threshold`                          | `0.5`                         | Minimum confidence; lower-scoring entities are dropped                         |
+| `entityTypes`                        | all                           | Restrict output to specific `MedicalEntityType` values                         |
+| `mergeAdjacent` / `mergeOverlapping` | `true` / `true`               | B-I-O merge and overlap resolution                                             |
+| `maxTokens` / `stride`               | `384` / `64`                  | Token-aware chunking for long texts (headroom for `[CLS]`/`[SEP]`)             |
+| `maxLength` / `chunkOverlap`         | `512` / `50`                  | Deprecated character-based limits; prefer `maxTokens` / `stride`               |
+| `dtype`                              | `'q8'` browser, `'fp32'` Node | Quantization: `'fp32' \| 'fp16' \| 'q8' \| 'q4'`                               |
+| `workerFactory`                      | —                             | Factory returning a `Worker` hosting `medner.worker.js`                        |
+| `onProgress`                         | —                             | Model download/load progress callback                                          |
+| `enableStats` / `statsInterval`      | `false` / `1000`              | Emit stats events                                                              |
 
 `MedNERProcessor` methods: `init()`, `extract(text)`, `destroy()`, `isSupported()`, `isInitialized()`, `isProcessing()`, `getModelId()`, `getOptions()`, `updateOptions()`, `getStats()`, `resetStats()`, `on()` / `off()`.
 
@@ -115,11 +112,11 @@ The hook additionally exposes `isLoading` / `loadProgress`, `result`, `stats`, `
 
 `MODEL_MAP` pins each preset to a validated Hugging Face commit SHA, so an upstream re-push cannot silently change inference results:
 
-| Preset | Hugging Face model |
-|---|---|
-| `default` | `Xenova/bert-base-NER` (general NER) |
+| Preset       | Hugging Face model                        |
+| ------------ | ----------------------------------------- |
+| `default`    | `Xenova/bert-base-NER` (general NER)      |
 | `biomedical` | `Kushtrim/bert-base-cased-biomedical-ner` |
-| `clinical` | `samrawal/bert-base-uncased_clinical-ner` |
+| `clinical`   | `samrawal/bert-base-uncased_clinical-ner` |
 
 Compute device is resolved automatically per environment (`getRecommendedDevice()` → `'webgpu'` when usable, else `'wasm'`).
 
@@ -141,14 +138,14 @@ Chunking: `chunkByTokens`, `segmentSentences`, `mergeChunkEntities`. Support pro
 
 From this directory:
 
-| Command | Action |
-|---|---|
-| `pnpm build` | tsup build (main + worker + e2e bundles) |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests |
-| `pnpm test:e2e` | Playwright browser tests (`pnpm e2e:serve` serves fixtures); `:ui`, `:headed`, `:chromium` variants exist |
-| `pnpm lint` | ESLint (`--max-warnings 0`) |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
+| Command                                                | Action                                                                                                    |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                                           | tsup build (main + worker + e2e bundles)                                                                  |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests                                                                                         |
+| `pnpm test:e2e`                                        | Playwright browser tests (`pnpm e2e:serve` serves fixtures); `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint`                                            | ESLint (`--max-warnings 0`)                                                                               |
+| `pnpm typecheck`                                       | `tsc --noEmit`                                                                                            |
+| `pnpm clean` / `pnpm clean:all`                        | Remove build output (nuke also removes `node_modules`)                                                    |
 
 From the repo root: `pnpm --filter @arcaai/med-ner build` (same pattern for `test`, `lint`, etc.).
 

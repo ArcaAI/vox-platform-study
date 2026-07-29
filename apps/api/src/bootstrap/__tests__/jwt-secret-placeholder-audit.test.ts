@@ -24,9 +24,7 @@ describe('bootstrap refuses placeholder secret', () => {
     // The error message disambiguates the literal-placeholder branch from
     // the undefined branch so a crash-loop reading container logs can pin
     // the root cause without re-running with debug logging.
-    expect(() => assertJwtSecretNotPlaceholder(fakeSecrets(PLACEHOLDER) as never)).toThrowError(
-      /Refusing to boot.*literal development placeholder/,
-    );
+    expect(() => assertJwtSecretNotPlaceholder(fakeSecrets(PLACEHOLDER) as never)).toThrowError(/Refusing to boot.*literal development placeholder/);
   });
 
   it('throws when SecretsService returns undefined (warmup miss)', () => {
@@ -38,9 +36,7 @@ describe('bootstrap refuses placeholder secret', () => {
   });
 
   it('passes when SecretsService returns a real secret', () => {
-    expect(() =>
-      assertJwtSecretNotPlaceholder(fakeSecrets('a-real-32-byte-jwt-signing-secret-aaaa') as never),
-    ).not.toThrow();
+    expect(() => assertJwtSecretNotPlaceholder(fakeSecrets('a-real-32-byte-jwt-signing-secret-aaaa') as never)).not.toThrow();
   });
 
   it('reads the JWT_SECRET_KEY key specifically', () => {

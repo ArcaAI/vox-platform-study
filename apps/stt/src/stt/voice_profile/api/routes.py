@@ -77,6 +77,7 @@ async def extract_voice_embedding(files: list[UploadFile]) -> ExtractionResponse
             sample_rate = sr
         elif sr != sample_rate:
             import librosa
+
             samples = librosa.resample(samples, orig_sr=sr, target_sr=sample_rate)
 
         audio_samples.append(samples)

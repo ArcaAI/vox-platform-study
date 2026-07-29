@@ -32,7 +32,9 @@ def _info(name: str) -> ProviderInfo:
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug", provider_probe_timeout_s=1)
+    return Settings(
+        host="127.0.0.1", port=5099, debug=True, log_level="debug", provider_probe_timeout_s=1
+    )
 
 
 @pytest_asyncio.fixture
@@ -124,7 +126,9 @@ class TestOllamaLoadState:
     async def test_ollama_load_state_from_api_ps(self):
         def handler(request: httpx.Request) -> httpx.Response:
             if request.url.path == "/api/tags":
-                return httpx.Response(200, json={"models": [{"name": "a:latest"}, {"name": "b:latest"}]})
+                return httpx.Response(
+                    200, json={"models": [{"name": "a:latest"}, {"name": "b:latest"}]}
+                )
             if request.url.path == "/api/ps":
                 return httpx.Response(200, json={"models": [{"name": "a:latest"}]})
             return httpx.Response(404)
@@ -183,7 +187,11 @@ class TestLmStudioNativeEnrichment:
             )
 
         provider, mod, _ = self._provider(handler)
-        monkeypatch.setattr(mod, "_native_probe_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        monkeypatch.setattr(
+            mod,
+            "_native_probe_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
 
         info = await provider.get_info()
 
@@ -199,7 +207,11 @@ class TestLmStudioNativeEnrichment:
             return httpx.Response(404)
 
         provider, mod, _ = self._provider(handler)
-        monkeypatch.setattr(mod, "_native_probe_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        monkeypatch.setattr(
+            mod,
+            "_native_probe_client",
+            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
 
         info = await provider.get_info()
 

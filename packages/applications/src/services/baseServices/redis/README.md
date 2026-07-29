@@ -53,9 +53,7 @@ import { IRedisService } from '@arcaai/applications';
 
 @Injectable()
 export class MyService {
-  constructor(
-    @Inject(IRedisService) private redisService: IRedisService,
-  ) {}
+  constructor(@Inject(IRedisService) private redisService: IRedisService) {}
 
   async addJob() {
     await this.redisService.addJob({
@@ -100,6 +98,7 @@ The Redis service provides comprehensive error handling:
 ## Queue Configuration
 
 Default job options:
+
 - **Attempts**: 3 retries
 - **Backoff**: Exponential with 1000ms initial delay
 - **Cleanup**: Keep 100 completed jobs, 200 failed jobs
@@ -107,6 +106,7 @@ Default job options:
 ## Health Monitoring
 
 The service logs:
+
 - Redis connection details (without password)
 - Queue initialization status
 - Job processing results

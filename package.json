@@ -309,12 +309,7 @@
         "pgbv:show:stats": "PGPASSWORD=hope_app_local psql -h 127.0.0.1 -p 6532 -U hope_app -d pgbouncer -c 'SHOW STATS;'",
         "pgbv:push": "dotenv -e packages/database/tests/pgbouncer-validation/.env -- pnpm --filter @arcaai/database db:push",
         "pgbv:test": "dotenv -e packages/database/tests/pgbouncer-validation/.env -- vitest run --config packages/database/tests/pgbouncer-validation/vitest.config.ts",
-        "pgbv:pgbench": "bash packages/database/tests/pgbouncer-validation/pgbench/run-baseline.sh",
-        "── GIT HOOKS ─────────────────────────────────────": "",
-        "prepare": "simple-git-hooks || true"
-    },
-    "simple-git-hooks": {
-        "pre-commit": "./scripts/gitleaks-precommit.sh"
+        "pgbv:pgbench": "bash packages/database/tests/pgbouncer-validation/pgbench/run-baseline.sh"
     },
     "workspaces": [
         "apps/*",
@@ -342,7 +337,6 @@
         "prettier": "^3.9.4",
         "prisma": "^7.8.0",
         "rollup": "^4.62.2",
-        "simple-git-hooks": "^2.13.1",
         "ts-node": "^10.9.2",
         "tsx": "^4.23.0",
         "turbo": "^2.10.3",

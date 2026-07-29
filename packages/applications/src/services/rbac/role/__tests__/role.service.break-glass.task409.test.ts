@@ -76,7 +76,10 @@ const GOOD_CREDS = (name: string) => ({ password: GOOD_PASSWORD, confirmationNam
 
 function breakGlassAudits(m: ReturnType<typeof makeMocks>) {
   return m.eventEmitter.emit.mock.calls
-    .filter(([type, payload]) => type === SysEventType.ResourceViewed && (payload as { data?: { action?: string } })?.data?.action === RBAC_BREAK_GLASS_AUDIT_ACTION)
+    .filter(
+      ([type, payload]) =>
+        type === SysEventType.ResourceViewed && (payload as { data?: { action?: string } })?.data?.action === RBAC_BREAK_GLASS_AUDIT_ACTION,
+    )
     .map(([, payload]) => payload as Record<string, never> & { data: Record<string, unknown>; forceAuditLog?: boolean; tenantId?: string });
 }
 
@@ -168,8 +171,12 @@ describe('RbacRoleService break-glass on detach (removePolicy)', () => {
   });
 
   it('wrong password → 401; wrong name → 400', async () => {
-    await expect(service.removePolicy('role-1', 'policy-1', { password: 'nope', confirmationName: 'team-policy' })).rejects.toThrow(UnauthorizedException);
-    await expect(service.removePolicy('role-1', 'policy-1', { password: GOOD_PASSWORD, confirmationName: 'other' })).rejects.toThrow(BadRequestException);
+    await expect(service.removePolicy('role-1', 'policy-1', { password: 'nope', confirmationName: 'team-policy' })).rejects.toThrow(
+      UnauthorizedException,
+    );
+    await expect(service.removePolicy('role-1', 'policy-1', { password: GOOD_PASSWORD, confirmationName: 'other' })).rejects.toThrow(
+      BadRequestException,
+    );
     expect(mocks.rolePolicyRepo.softDeleteByRoleAndPolicy).not.toHaveBeenCalled();
   });
 

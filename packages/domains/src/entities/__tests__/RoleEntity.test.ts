@@ -80,19 +80,13 @@ describe('RoleEntity.validate()', () => {
     });
 
     it('should throw when name exceeds 255 characters', () => {
-      const entity = new RoleEntity(
-        createValidInit({ name: 'x'.repeat(256) }),
-      );
+      const entity = new RoleEntity(createValidInit({ name: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Role name must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('Role name must not exceed 255 characters');
     });
 
     it('should accept name exactly 255 characters', () => {
-      const entity = new RoleEntity(
-        createValidInit({ name: 'x'.repeat(255) }),
-      );
+      const entity = new RoleEntity(createValidInit({ name: 'x'.repeat(255) }));
 
       expect(() => entity.validate()).not.toThrow();
     });
@@ -100,19 +94,13 @@ describe('RoleEntity.validate()', () => {
 
   describe('description', () => {
     it('should throw when description exceeds 1000 characters', () => {
-      const entity = new RoleEntity(
-        createValidInit({ description: 'x'.repeat(1001) }),
-      );
+      const entity = new RoleEntity(createValidInit({ description: 'x'.repeat(1001) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Role description must not exceed 1000 characters',
-      );
+      expect(() => entity.validate()).toThrow('Role description must not exceed 1000 characters');
     });
 
     it('should accept description exactly 1000 characters', () => {
-      const entity = new RoleEntity(
-        createValidInit({ description: 'x'.repeat(1000) }),
-      );
+      const entity = new RoleEntity(createValidInit({ description: 'x'.repeat(1000) }));
 
       expect(() => entity.validate()).not.toThrow();
     });
@@ -120,19 +108,13 @@ describe('RoleEntity.validate()', () => {
 
   describe('externalName', () => {
     it('should throw when externalName exceeds 255 characters', () => {
-      const entity = new RoleEntity(
-        createValidInit({ externalName: 'x'.repeat(256) }),
-      );
+      const entity = new RoleEntity(createValidInit({ externalName: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Role externalName must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('Role externalName must not exceed 255 characters');
     });
 
     it('should accept externalName exactly 255 characters', () => {
-      const entity = new RoleEntity(
-        createValidInit({ externalName: 'x'.repeat(255) }),
-      );
+      const entity = new RoleEntity(createValidInit({ externalName: 'x'.repeat(255) }));
 
       expect(() => entity.validate()).not.toThrow();
     });
@@ -140,13 +122,9 @@ describe('RoleEntity.validate()', () => {
 
   describe('externalId', () => {
     it('should throw when externalId exceeds 255 characters', () => {
-      const entity = new RoleEntity(
-        createValidInit({ externalId: 'x'.repeat(256) }),
-      );
+      const entity = new RoleEntity(createValidInit({ externalId: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Role externalId must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('Role externalId must not exceed 255 characters');
     });
   });
 });

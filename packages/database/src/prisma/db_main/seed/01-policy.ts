@@ -168,6 +168,10 @@ export const DEFAULT_POLICIES = [
       // provider credentials. Tenant-scoped; the controller pins every op to
       // the caller's tenant. `manage` implies `read` (used by the GET routes).
       { action: 'manage', subject: 'TenantTtsConfig', conditions: { tenantId: '${context.tenantId}' } },
+      // Tenant admins manage their own tenant's STT fallback config + BYO
+      // provider credentials (TASK-567). Tenant-scoped; the controller pins
+      // every op to the caller's tenant. `manage` implies `read` (GET routes).
+      { action: 'manage', subject: 'TenantSttConfig', conditions: { tenantId: '${context.tenantId}' } },
       // Tenant admins read + manage their own tenant's AI
       // task-model defaults (AiTaskDefault). Tenant-scoped; global admins
       // are covered by `manage:all`. NOTE (governance): tenant admins DO

@@ -57,9 +57,7 @@ describe('encryptPhiFields — required mode (SECRETS_PROVIDER=vault)', () => {
     const logger = makeLogger();
     const run = vi.fn();
 
-    await expect(encryptPhiFields(undefined, 'ContextItem', run, logger, requiredEnv)).rejects.toThrow(
-      /required \(SECRETS_PROVIDER=vault\)/,
-    );
+    await expect(encryptPhiFields(undefined, 'ContextItem', run, logger, requiredEnv)).rejects.toThrow(/required \(SECRETS_PROVIDER=vault\)/);
 
     expect(run).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();

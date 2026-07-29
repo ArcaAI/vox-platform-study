@@ -33,7 +33,9 @@ class _FakePipeline:
 
 
 def _request(text: str = "hello") -> SynthesisRequest:
-    return SynthesisRequest(text=text, locale="en-US", fmt=AudioFormat.PCM, provider_voice=None, sample_rate=24000)
+    return SynthesisRequest(
+        text=text, locale="en-US", fmt=AudioFormat.PCM, provider_voice=None, sample_rate=24000
+    )
 
 
 # ── the warmup switch ───────────────────────────────────────────────────────
@@ -45,7 +47,9 @@ def test_warmup_is_disabled_by_default() -> None:
     assert settings.warmup_enabled is False
 
 
-def test_warmup_can_be_re_enabled_for_fail_at_boot_operators(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_warmup_can_be_re_enabled_for_fail_at_boot_operators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("TTS_WARMUP_ENABLED", "true")
     assert Settings().warmup_enabled is True
 
@@ -190,7 +194,9 @@ def _fake_generate():  # noqa: ANN202 — parler `(text, description)` / f5 `(te
     return lambda *_args: np.zeros(240, dtype=np.float32)
 
 
-def _make_engine(name: str, factory, *, ttl_seconds: int = 600, time_func=None):  # noqa: ANN001,ANN202
+def _make_engine(
+    name: str, factory, *, ttl_seconds: int = 600, time_func=None
+):  # noqa: ANN001,ANN202
     kwargs = {"ttl_seconds": ttl_seconds}
     if time_func is not None:
         kwargs["time_func"] = time_func

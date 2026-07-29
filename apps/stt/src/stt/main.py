@@ -179,6 +179,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await shutdown_streaming()
     try:
         from stt.punctuation import service as punctuation_service
+
         punctuation_service.shutdown()
     except Exception:
         pass

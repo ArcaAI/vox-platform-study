@@ -46,12 +46,9 @@ describe('UpsertTenantFrontendConfigRequest — audio fields', () => {
   });
 
   describe('captureMode', () => {
-    it.each([CaptureMode.RAW_AND_PROCESSED, CaptureMode.RAW_ONLY, CaptureMode.PROCESSED_ONLY, CaptureMode.NONE])(
-      'accepts %s',
-      async (mode) => {
-        expect(await validateDto({ captureMode: mode })).toBe(true);
-      },
-    );
+    it.each([CaptureMode.RAW_AND_PROCESSED, CaptureMode.RAW_ONLY, CaptureMode.PROCESSED_ONLY, CaptureMode.NONE])('accepts %s', async (mode) => {
+      expect(await validateDto({ captureMode: mode })).toBe(true);
+    });
 
     it('accepts null (clears the tenant override)', async () => {
       expect(await validateDto({ captureMode: null })).toBe(true);

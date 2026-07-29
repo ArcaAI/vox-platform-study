@@ -266,9 +266,7 @@ class HarnessDocWorkflow:
         self._seq += _SEQ_STRIDE
         return seq
 
-    def _traj(
-        self, inp: HarnessDocWorkflowInput, *, is_regen: bool = False
-    ) -> TrajectoryContext:
+    def _traj(self, inp: HarnessDocWorkflowInput, *, is_regen: bool = False) -> TrajectoryContext:
         """Build the ADDITIVE trajectory context for one activity call (workflow-owned seq)."""
         return TrajectoryContext(
             tenant_id=inp.tenant_id,
@@ -585,11 +583,7 @@ class HarnessDocWorkflow:
         # codes; the call is best-effort — a server error / allowlist-or-PHI block degrades
         # the run to reduced assurance (never crashes the loop).
         mcp_degraded = False
-        if (
-            mcp_tools_enabled
-            and transcript_entities
-            and workflow.patched("task-516-mcp-tools")
-        ):
+        if mcp_tools_enabled and transcript_entities and workflow.patched("task-516-mcp-tools"):
             mcp_server = _select_mcp_server(mcp_servers, MCP_TERMINOLOGY_TOOL)
             if mcp_server is not None:
                 try:
@@ -826,10 +820,16 @@ class HarnessDocWorkflow:
             tokens_used += _tokens_from_stats(generated.stats)
             budget_stopped = _budget_exhausted(gate.token_budget_per_run, tokens_used)
 
-            if comp_verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen and not budget_stopped:
+            if (
+                comp_verdict.decision == GateDecision.REGEN
+                and regens_used < gate.max_regen
+                and not budget_stopped
+            ):
                 # capture the failed computational sensors as the next
                 # iteration's corrective critique (gated on regenFeedbackEnabled).
-                regen_feedback = build_regen_feedback(sensors.results, enabled=regen_feedback_enabled)
+                regen_feedback = build_regen_feedback(
+                    sensors.results, enabled=regen_feedback_enabled
+                )
                 regens_used += 1
                 continue
 
@@ -900,7 +900,11 @@ class HarnessDocWorkflow:
                 degraded=degraded,
                 expected=list(COMPUTATIONAL_SENSOR_NAMES) + inferential_expected,
             )
-            if verdict.decision == GateDecision.REGEN and regens_used < gate.max_regen and not budget_stopped:
+            if (
+                verdict.decision == GateDecision.REGEN
+                and regens_used < gate.max_regen
+                and not budget_stopped
+            ):
                 # critique from the full (computational + inferential)
                 # sensor pass for the next regen iteration.
                 regen_feedback = build_regen_feedback(
@@ -1062,9 +1066,9 @@ class HarnessDocWorkflow:
                     retry_policy=_API_RETRY,
                 )
 
-            async def _regen_compute() -> tuple[
-                AssembleResponse, SmrGenerationResult, SensorRunOutput, bool
-            ]:
+            async def _regen_compute() -> (
+                tuple[AssembleResponse, SmrGenerationResult, SensorRunOutput, bool]
+            ):
                 """One regen pass (assemble → generate → extract → run_sensors).
 
                 Mirrors the computational loop body so the post-delivery regen-if-untouched
@@ -1268,9 +1272,7 @@ class HarnessDocWorkflow:
                 # Once edited, a REGEN-fixable issue must SURFACE as a FLAG (never swap
                 # the clinician's note): regens_remaining=0 makes aggregate escalate it.
                 regens_remaining = (
-                    0
-                    if (signals_enabled and self._ever_edited)
-                    else gate.max_regen - regens_used
+                    0 if (signals_enabled and self._ever_edited) else gate.max_regen - regens_used
                 )
                 verdict = aggregate(
                     list(sensors.results) + inferential_results,
@@ -1307,9 +1309,7 @@ class HarnessDocWorkflow:
                     budget_stopped = _budget_exhausted(gate.token_budget_per_run, tokens_used)
                     if regen_degraded:
                         degraded = True
-                    draft = await _deliver_early(
-                        generated, sensors, assembled, reduced_assurance
-                    )
+                    draft = await _deliver_early(generated, sensors, assembled, reduced_assurance)
                     assurance_content = generated.content
                     # keep the ref companion in lockstep with the re-generated note.
                     assurance_content_ref = generated.content_ref

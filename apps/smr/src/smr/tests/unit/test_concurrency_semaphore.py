@@ -38,12 +38,22 @@ def _make_provider(*, delay: float = 0.0, exc: Exception | None = None):
 
 def _make_task_manager():
     tm = AsyncMock()
-    tm.create_task = AsyncMock(return_value=TaskState(
-        task_id="t-1", status=TaskStatus.PENDING, provider="test", model="m",
-    ))
-    tm.update_task = AsyncMock(return_value=TaskState(
-        task_id="t-1", status=TaskStatus.RUNNING, provider="test", model="m",
-    ))
+    tm.create_task = AsyncMock(
+        return_value=TaskState(
+            task_id="t-1",
+            status=TaskStatus.PENDING,
+            provider="test",
+            model="m",
+        )
+    )
+    tm.update_task = AsyncMock(
+        return_value=TaskState(
+            task_id="t-1",
+            status=TaskStatus.RUNNING,
+            provider="test",
+            model="m",
+        )
+    )
     tm.get_chunks = AsyncMock(return_value=[])
     tm.append_chunk = AsyncMock()
     return tm
@@ -125,7 +135,10 @@ class TestSemaphoreDependency:
 @pytest.fixture
 def settings():
     return Settings(
-        host="127.0.0.1", port=5099, debug=True, log_level="debug",
+        host="127.0.0.1",
+        port=5099,
+        debug=True,
+        log_level="debug",
         metrics_enabled=False,
     )
 
@@ -184,17 +197,23 @@ class TestConcurrentRequestsLimitedBySemaphore:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             tasks = [
-                c.post("/api/v1/generate", json={"prompt": "a", "provider": "ollama", "model": "test-model"}),
-                c.post("/api/v1/generate", json={"prompt": "b", "provider": "ollama", "model": "test-model"}),
+                c.post(
+                    "/api/v1/generate",
+                    json={"prompt": "a", "provider": "ollama", "model": "test-model"},
+                ),
+                c.post(
+                    "/api/v1/generate",
+                    json={"prompt": "b", "provider": "ollama", "model": "test-model"},
+                ),
             ]
             responses = await asyncio.gather(*tasks)
 
         for resp in responses:
             assert resp.status_code in (200, 503)
 
-        assert max(concurrency_log) <= 1, (
-            f"Expected max concurrency 1, but saw {max(concurrency_log)}"
-        )
+        assert (
+            max(concurrency_log) <= 1
+        ), f"Expected max concurrency 1, but saw {max(concurrency_log)}"
 
 
 class TestSemaphoreReleasedOnSuccess:
@@ -211,10 +230,16 @@ class TestSemaphoreReleasedOnSuccess:
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp1 = await c.post("/api/v1/generate", json={"prompt": "a", "provider": "ollama", "model": "test-model"})
+            resp1 = await c.post(
+                "/api/v1/generate",
+                json={"prompt": "a", "provider": "ollama", "model": "test-model"},
+            )
             assert resp1.status_code == 200
 
-            resp2 = await c.post("/api/v1/generate", json={"prompt": "b", "provider": "ollama", "model": "test-model"})
+            resp2 = await c.post(
+                "/api/v1/generate",
+                json={"prompt": "b", "provider": "ollama", "model": "test-model"},
+            )
             assert resp2.status_code == 200
 
         assert sem._value == 1, "Semaphore should be fully released after both requests"
@@ -234,7 +259,10 @@ class TestSemaphoreReleasedOnFailure:
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.post("/api/v1/generate", json={"prompt": "a", "provider": "broken", "model": "test-model"})
+            resp = await c.post(
+                "/api/v1/generate",
+                json={"prompt": "a", "provider": "broken", "model": "test-model"},
+            )
             assert resp.status_code == 502
 
         assert sem._value == 1, "Semaphore must be released even after provider failure"
@@ -256,7 +284,10 @@ class TestSemaphoreTimeoutReturns503:
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test", timeout=10.0) as c:
-            resp = await c.post("/api/v1/generate", json={"prompt": "a", "provider": "ollama", "model": "test-model"})
+            resp = await c.post(
+                "/api/v1/generate",
+                json={"prompt": "a", "provider": "ollama", "model": "test-model"},
+            )
 
         assert resp.status_code == 503
         assert "concurrent" in resp.json()["detail"].lower()
@@ -278,7 +309,10 @@ class TestNoSemaphoreAllowsUnlimited:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             tasks = [
-                c.post("/api/v1/generate", json={"prompt": f"q{i}", "provider": "ollama", "model": "test-model"})
+                c.post(
+                    "/api/v1/generate",
+                    json={"prompt": f"q{i}", "provider": "ollama", "model": "test-model"},
+                )
                 for i in range(5)
             ]
             responses = await asyncio.gather(*tasks)
@@ -334,10 +368,22 @@ class TestSemaphoresPerProvider:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             tasks = [
-                c.post("/api/v1/generate", json={"prompt": "a1", "provider": "ollama", "model": "test-model"}),
-                c.post("/api/v1/generate", json={"prompt": "a2", "provider": "ollama", "model": "test-model"}),
-                c.post("/api/v1/generate", json={"prompt": "b1", "provider": "azure", "model": "test-model"}),
-                c.post("/api/v1/generate", json={"prompt": "b2", "provider": "azure", "model": "test-model"}),
+                c.post(
+                    "/api/v1/generate",
+                    json={"prompt": "a1", "provider": "ollama", "model": "test-model"},
+                ),
+                c.post(
+                    "/api/v1/generate",
+                    json={"prompt": "a2", "provider": "ollama", "model": "test-model"},
+                ),
+                c.post(
+                    "/api/v1/generate",
+                    json={"prompt": "b1", "provider": "azure", "model": "test-model"},
+                ),
+                c.post(
+                    "/api/v1/generate",
+                    json={"prompt": "b2", "provider": "azure", "model": "test-model"},
+                ),
             ]
             responses = await asyncio.gather(*tasks)
 

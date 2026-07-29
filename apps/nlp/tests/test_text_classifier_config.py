@@ -92,7 +92,5 @@ async def test_initialize_when_configured_loads_model_without_warning(
     mock_model.from_pretrained.assert_called_once_with("some-org/clinical-doctype-model")
     assert classifier.is_initialized is True
 
-    unconfigured_warnings = [
-        r for r in caplog.records if "unconfigured" in r.getMessage().lower()
-    ]
+    unconfigured_warnings = [r for r in caplog.records if "unconfigured" in r.getMessage().lower()]
     assert not unconfigured_warnings

@@ -102,7 +102,9 @@ class AzureSpeechProvider:
             ssml = self._ssml(req)
             result = await asyncio.to_thread(lambda: synth.start_speaking_ssml_async(ssml).get())
         else:
-            result = await asyncio.to_thread(lambda: synth.start_speaking_text_async(req.text).get())
+            result = await asyncio.to_thread(
+                lambda: synth.start_speaking_text_async(req.text).get()
+            )
 
         if result.reason == sdk.ResultReason.Canceled:
             detail = getattr(result, "cancellation_details", None)
@@ -190,7 +192,9 @@ class AzureTextStream:
         def _on_synthesizing(evt: Any) -> None:
             data = getattr(getattr(evt, "result", None), "audio_data", None)
             if data:
-                self._loop.call_soon_threadsafe(self._queue.put_nowait, AudioChunk(data=bytes(data)))
+                self._loop.call_soon_threadsafe(
+                    self._queue.put_nowait, AudioChunk(data=bytes(data))
+                )
 
         def _on_completed(_evt: Any) -> None:
             self._loop.call_soon_threadsafe(self._queue.put_nowait, _StreamDone())

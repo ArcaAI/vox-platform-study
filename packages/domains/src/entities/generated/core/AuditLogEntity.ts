@@ -233,21 +233,13 @@ export class AuditLogEntity extends BaseTenantEntity {
     if (!Object.values(Enums.ResourceType).includes(this._resourceType)) {
       throw new BusinessException(`AuditLog resourceType is invalid: ${String(this._resourceType)}.`);
     }
-    if (
-      this._responsibleUserId !== undefined &&
-      this._responsibleUserId !== null &&
-      this._responsibleUserId.trim().length === 0
-    ) {
+    if (this._responsibleUserId !== undefined && this._responsibleUserId !== null && this._responsibleUserId.trim().length === 0) {
       throw new BusinessException('AuditLog responsibleUserId must not be blank when provided.');
     }
     if (this._responsibleIp && this._responsibleIp.length > 45) {
       throw new BusinessException('AuditLog responsibleIp must not exceed 45 characters.');
     }
-    if (
-      this._resourceId !== undefined &&
-      this._resourceId !== null &&
-      this._resourceId.trim().length === 0
-    ) {
+    if (this._resourceId !== undefined && this._resourceId !== null && this._resourceId.trim().length === 0) {
       throw new BusinessException('AuditLog resourceId must not be blank when provided.');
     }
     if (this._eventType && this._eventType.length > 100) {

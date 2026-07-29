@@ -85,18 +85,14 @@ describe('SummaryMetaEntityMapper — versionless persistence', () => {
   // existing inputTokens/outputTokens, so they are intentionally NOT added.
   describe('generation-stats fields round-trip', () => {
     it('toDomainEntity carries stopReason / ttftMs / tokensPerSecond from the row', () => {
-      const entity = mapper.toDomainEntity(
-        sampleRow({ stopReason: 'length', ttftMs: 120, tokensPerSecond: 42.5 }),
-      );
+      const entity = mapper.toDomainEntity(sampleRow({ stopReason: 'length', ttftMs: 120, tokensPerSecond: 42.5 }));
       expect(entity.stopReason).toBe('length');
       expect(entity.ttftMs).toBe(120);
       expect(entity.tokensPerSecond).toBe(42.5);
     });
 
     it('toPersistence writes stopReason / ttftMs / tokensPerSecond back to the row', () => {
-      const entity = mapper.toDomainEntity(
-        sampleRow({ stopReason: 'content_filter', ttftMs: 87, tokensPerSecond: 15.25 }),
-      );
+      const entity = mapper.toDomainEntity(sampleRow({ stopReason: 'content_filter', ttftMs: 87, tokensPerSecond: 15.25 }));
       const persisted = mapper.toPersistence(entity);
       expect(persisted).toMatchObject({
         stopReason: 'content_filter',

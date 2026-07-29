@@ -9,10 +9,10 @@ import { PlaygroundPersonaBar } from '@/features/playground-shared/components/pl
  * no-shell (playground) route group + PlaygroundTopBar.
  */
 export default function PlaygroundLayout({ children }: { children: ReactNode }) {
-    return (
-        <>
-            <PlaygroundPersonaBar />
-            {children}
-        </>
-    );
+  return (
+    <>
+      <PlaygroundPersonaBar />
+      {children}
+    </>
+  );
 }

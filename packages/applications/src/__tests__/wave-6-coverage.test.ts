@@ -147,21 +147,16 @@ function readSource(relativePath: string): string {
 
 describe('Wave 6 — Direct-Prisma-removal coverage aggregator', () => {
   it('every WAVE_6_TEST_COVERAGE entry points to a file that exists on disk', () => {
-    const missing = WAVE_6_TEST_COVERAGE.filter(
-      (entry) => !existsSync(resolve(APPLICATIONS_SRC, entry.file)),
-    ).map((entry) => entry.file);
+    const missing = WAVE_6_TEST_COVERAGE.filter((entry) => !existsSync(resolve(APPLICATIONS_SRC, entry.file))).map((entry) => entry.file);
     expect(missing).toEqual([]);
   });
 
-  it.each(WAVE_6_TEST_COVERAGE)(
-    '$subtask — $name has ≥$minTests pins in $file under marker $marker',
-    ({ file, minTests, marker }) => {
-      const source = readSource(file);
-      expect(marker.test(source)).toBe(true);
-      const count = countItInMatchingDescribes(source, marker);
-      expect(count).toBeGreaterThanOrEqual(minTests);
-    },
-  );
+  it.each(WAVE_6_TEST_COVERAGE)('$subtask — $name has ≥$minTests pins in $file under marker $marker', ({ file, minTests, marker }) => {
+    const source = readSource(file);
+    expect(marker.test(source)).toBe(true);
+    const count = countItInMatchingDescribes(source, marker);
+    expect(count).toBeGreaterThanOrEqual(minTests);
+  });
 
   /*
    * Hand-off note (consumed by `apps/api/src/__tests__/

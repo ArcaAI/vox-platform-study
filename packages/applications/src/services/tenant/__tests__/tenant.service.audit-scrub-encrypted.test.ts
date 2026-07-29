@@ -59,13 +59,7 @@ describe('TenantService — audit-scrub for Vault-encrypted rows (Phase 4 Task 4
   beforeEach(() => {
     vi.clearAllMocks();
     cls.get.mockImplementation((k: string) =>
-      k === 'user'
-        ? { id: 'sa-id', roles: ['GLOBAL_ADMIN'] }
-        : k === 'tenantId'
-          ? 'tenant-1'
-          : k === 'tenantCode'
-            ? 'TENANT_1'
-            : null,
+      k === 'user' ? { id: 'sa-id', roles: ['GLOBAL_ADMIN'] } : k === 'tenantId' ? 'tenant-1' : k === 'tenantCode' ? 'TENANT_1' : null,
     );
     service = new TenantService(
       tenantRepo as never,
@@ -92,10 +86,7 @@ describe('TenantService — audit-scrub for Vault-encrypted rows (Phase 4 Task 4
     tenantRepo.findById.mockResolvedValue(tenant);
     tenantRepo.findFirst.mockResolvedValue(tenant);
 
-    const cipherBytes = Buffer.from(
-      'vault:v1:DEADBEEF-CIPHERTEXT-SHOULD-NEVER-APPEAR-IN-AUDIT',
-      'utf8',
-    );
+    const cipherBytes = Buffer.from('vault:v1:DEADBEEF-CIPHERTEXT-SHOULD-NEVER-APPEAR-IN-AUDIT', 'utf8');
     const locked = GlobalSettingFactory.CreateGlobalSetting({
       tenantId: 'tenant-1',
       key: 'JWT_SECRET_KEY',
@@ -112,9 +103,7 @@ describe('TenantService — audit-scrub for Vault-encrypted rows (Phase 4 Task 4
     gsRepo.findById.mockResolvedValue(locked);
     gsRepo.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
-    await service.updateTenantConfigs('tenant-1', [
-      { id: locked.id, value: 'new-plain', expectedVersion: 1 } as never,
-    ]);
+    await service.updateTenantConfigs('tenant-1', [{ id: locked.id, value: 'new-plain', expectedVersion: 1 } as never]);
 
     const emit = events.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceUpdated);
     expect(emit, 'ResourceUpdated SysEvent must have been emitted').toBeDefined();
@@ -161,9 +150,7 @@ describe('TenantService — audit-scrub for Vault-encrypted rows (Phase 4 Task 4
     gsRepo.findById.mockResolvedValue(unlocked);
     gsRepo.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
-    await service.updateTenantConfigs('tenant-1', [
-      { id: unlocked.id, value: 'false', expectedVersion: 1 } as never,
-    ]);
+    await service.updateTenantConfigs('tenant-1', [{ id: unlocked.id, value: 'false', expectedVersion: 1 } as never]);
 
     const emit = events.emit.mock.calls.find((c) => c[0] === SysEventType.ResourceUpdated);
     const data = (emit![1] as { data: Array<Record<string, unknown>> }).data;

@@ -58,7 +58,9 @@ vi.mock('@arcaai/ui/select', () => ({
 }));
 vi.mock('@arcaai/ui/skeleton', () => ({ Skeleton: ({ ...p }: any) => <div {...p} /> }));
 vi.mock('@arcaai/ui/switch', () => ({
-  Switch: ({ checked, onCheckedChange, ...p }: any) => <button role="switch" aria-checked={!!checked} onClick={() => onCheckedChange?.(!checked)} {...p} />,
+  Switch: ({ checked, onCheckedChange, ...p }: any) => (
+    <button role="switch" aria-checked={!!checked} onClick={() => onCheckedChange?.(!checked)} {...p} />
+  ),
 }));
 
 import { FrontendPipelineTab } from '../frontend-pipeline-tab';
@@ -152,7 +154,16 @@ describe('FrontendPipelineTab (TASK-331 doc-03 #1)', () => {
     const save = vi.fn().mockRejectedValue(new Error('conflict'));
     useTenantFrontendConfig.mockReturnValue({
       ...baseHook(),
-      config: { tenantId: 't1', asrModel: '', noiseCancel: false, vad: false, voiceEnrollment: false, diarization: false, configJson: {}, version: 2 },
+      config: {
+        tenantId: 't1',
+        asrModel: '',
+        noiseCancel: false,
+        vad: false,
+        voiceEnrollment: false,
+        diarization: false,
+        configJson: {},
+        version: 2,
+      },
       save,
     });
 

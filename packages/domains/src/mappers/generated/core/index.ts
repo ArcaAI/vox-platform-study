@@ -53,8 +53,8 @@ export * from './TenantFrontendConfigEntityMapper';
 export * from './TenantIdentityProviderEntityMapper';
 export * from './TenantIdentityProviderDomainEntityMapper';
 export * from './TenantStorageConfigEntityMapper';
+export * from './TenantSttConfigEntityMapper';
 export * from './TenantTtsConfigEntityMapper';
-export * from './TenantTtsProviderCredentialEntityMapper';
 export * from './TenantEntityMapper';
 export * from './TenantUsageMeterEntityMapper';
 export * from './TranscriptionJobEntityMapper';
@@ -68,4 +68,3 @@ export * from './UserSettingsEntityMapper';
 export * from './UserVoiceProfileEntityMapper';
 export * from './WebhookEntityMapper';
 export * from './WebhookRunHistoryEntityMapper';
-

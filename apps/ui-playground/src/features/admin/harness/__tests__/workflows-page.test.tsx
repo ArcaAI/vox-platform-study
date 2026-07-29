@@ -26,7 +26,8 @@ vi.mock('../api/harness', () => ({
 vi.mock('sonner', () => ({ toast: h.toast }));
 
 vi.mock('@/store/auth-store', () => ({
-  useAuthStore: (selector: (s: { tenantId: string; isGlobalScope: () => boolean }) => unknown) => selector({ tenantId: 't1', isGlobalScope: () => false }),
+  useAuthStore: (selector: (s: { tenantId: string; isGlobalScope: () => boolean }) => unknown) =>
+    selector({ tenantId: 't1', isGlobalScope: () => false }),
 }));
 
 vi.mock('../../api/admin-client', () => ({

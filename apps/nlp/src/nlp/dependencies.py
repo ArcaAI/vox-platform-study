@@ -30,7 +30,9 @@ async def get_inference_bound(request: Request) -> ResizableSemaphore:
     Used as a route dependency so the ceiling tracks the control plane without a
     background poller. Cheap inside the client's TTL window, and never raises.
     """
-    return await refresh_inference_limit(getattr(request.app.state, "effective_config_client", None))
+    return await refresh_inference_limit(
+        getattr(request.app.state, "effective_config_client", None)
+    )
 
 
 def get_text_classifier() -> TextClassifier:
@@ -53,7 +55,9 @@ def get_text_corrector() -> TextCorrector:
 
 def get_medical_suggester() -> MedicalSuggester:
     if globals().get("_medical_suggester_instance") is None:
-        globals()["_medical_suggester_instance"] = MedicalSuggester(token_classifier=get_token_classifier())
+        globals()["_medical_suggester_instance"] = MedicalSuggester(
+            token_classifier=get_token_classifier()
+        )
     return cast(MedicalSuggester, globals()["_medical_suggester_instance"])
 
 
@@ -75,7 +79,7 @@ def get_document_extractor() -> DocumentExtractor:
 # Every classify/diagnosis request carries a REQUIRED `model_name` (the
 # gateway-injected `AiModel.sourceUri` resolved from the DB AiTaskDefault
 # registry). Model identity is never selected by environment variables
-#; a missing/unloadable model fails closed with HTTP 503. Resolved
+# ; a missing/unloadable model fails closed with HTTP 503. Resolved
 # instances live in a bounded, idle-TTL per-slot cache (lazily created and
 # initialized on first use) and are pinned for the duration of the request so
 # they cannot be evicted mid-flight. Tuning env (thresholds, GPU flags,
@@ -178,9 +182,7 @@ def _retention_kwargs() -> dict[str, int]:
         "ttl_seconds": _current_retention.get(
             "ttl_seconds", settings.service.model_cache_ttl_seconds
         ),
-        "max_size": _current_retention.get(
-            "max_models", settings.service.model_cache_max_models
-        ),
+        "max_size": _current_retention.get("max_models", settings.service.model_cache_max_models),
         "metrics": build_model_cache_metrics_sink(),
     }
 

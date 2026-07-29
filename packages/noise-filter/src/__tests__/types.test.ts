@@ -86,9 +86,7 @@ describe('NoiseFilterErrorCode', () => {
   });
 
   it('should have WORKLET_REGISTRATION_FAILED code', () => {
-    expect(NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED).toBe(
-      'WORKLET_REGISTRATION_FAILED'
-    );
+    expect(NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED).toBe('WORKLET_REGISTRATION_FAILED');
   });
 
   it('should have PROCESSING_ERROR code', () => {
@@ -112,10 +110,7 @@ describe('NoiseFilterErrorCode', () => {
 describe('NoiseFilterError', () => {
   describe('constructor', () => {
     it('should create error with code and message', () => {
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.NOT_SUPPORTED,
-        'Browser not supported'
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.NOT_SUPPORTED, 'Browser not supported');
 
       expect(error.code).toBe(NoiseFilterErrorCode.NOT_SUPPORTED);
       expect(error.message).toBe('Browser not supported');
@@ -124,11 +119,7 @@ describe('NoiseFilterError', () => {
 
     it('should create error with cause', () => {
       const originalError = new Error('Original error');
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.WASM_LOAD_FAILED,
-        'Failed to load WASM',
-        originalError
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.WASM_LOAD_FAILED, 'Failed to load WASM', originalError);
 
       expect(error.code).toBe(NoiseFilterErrorCode.WASM_LOAD_FAILED);
       expect(error.message).toBe('Failed to load WASM');
@@ -138,29 +129,20 @@ describe('NoiseFilterError', () => {
 
   describe('properties', () => {
     it('should have name "NoiseFilterError"', () => {
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.PROCESSING_ERROR,
-        'Processing failed'
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.PROCESSING_ERROR, 'Processing failed');
 
       expect(error.name).toBe('NoiseFilterError');
     });
 
     it('should extend Error', () => {
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.PROCESSING_ERROR,
-        'Processing failed'
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.PROCESSING_ERROR, 'Processing failed');
 
       expect(error).toBeInstanceOf(Error);
       expect(error).toBeInstanceOf(NoiseFilterError);
     });
 
     it('should have stack trace', () => {
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.PROCESSING_ERROR,
-        'Processing failed'
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.PROCESSING_ERROR, 'Processing failed');
 
       expect(error.stack).toBeDefined();
       expect(error.stack).toContain('NoiseFilterError');
@@ -169,37 +151,25 @@ describe('NoiseFilterError', () => {
 
   describe('error codes in context', () => {
     it('should use WASM_LOAD_FAILED for WASM errors', () => {
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.WASM_LOAD_FAILED,
-        'WebAssembly module failed to compile'
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.WASM_LOAD_FAILED, 'WebAssembly module failed to compile');
 
       expect(error.code).toBe('WASM_LOAD_FAILED');
     });
 
     it('should use WORKLET_REGISTRATION_FAILED for worklet errors', () => {
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED,
-        'AudioWorklet registration failed'
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.WORKLET_REGISTRATION_FAILED, 'AudioWorklet registration failed');
 
       expect(error.code).toBe('WORKLET_REGISTRATION_FAILED');
     });
 
     it('should use NOT_SUPPORTED for browser compatibility errors', () => {
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.NOT_SUPPORTED,
-        'AudioContext not supported'
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.NOT_SUPPORTED, 'AudioContext not supported');
 
       expect(error.code).toBe('NOT_SUPPORTED');
     });
 
     it('should use INVALID_CONFIG for configuration errors', () => {
-      const error = new NoiseFilterError(
-        NoiseFilterErrorCode.INVALID_CONFIG,
-        'Invalid sample rate: -1'
-      );
+      const error = new NoiseFilterError(NoiseFilterErrorCode.INVALID_CONFIG, 'Invalid sample rate: -1');
 
       expect(error.code).toBe('INVALID_CONFIG');
     });

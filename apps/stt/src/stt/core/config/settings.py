@@ -260,6 +260,30 @@ class Settings(BaseSettings):
         description="MAI transcription model name for enhancedMode",
     )
 
+    # Sarvam AI speech-to-text (engine SARVAM, TASK-567 cloud fallback).
+    # Platform-level env fallback; per-tenant BYOK overrides take precedence
+    # when injected. Env vars: SARVAM_API_KEY / SARVAM_BASE_URL.
+    sarvam_api_key: SecretStr | None = Field(
+        default=None,
+        description="Sarvam AI api-subscription-key (platform-level fallback)",
+    )
+    sarvam_base_url: str = Field(
+        default="https://api.sarvam.ai",
+        description="Sarvam AI API base URL",
+    )
+
+    # OpenAI speech-to-text (engine OPENAI, TASK-567 cloud fallback).
+    # base_url supports Azure-OpenAI-compatible endpoints. Env vars:
+    # OPENAI_API_KEY / OPENAI_BASE_URL.
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        description="OpenAI API key (platform-level fallback)",
+    )
+    openai_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        description="OpenAI (or Azure-OpenAI-compatible) API base URL",
+    )
+
     # parakeet.cpp — ggml runtime for NVIDIA Parakeet/Nemotron ASR
     # (engine PARAKEET_CPP). No official Python bindings exist upstream
     # (mudler/parakeet.cpp is C API + CLI); the loader lazy-imports a
@@ -577,6 +601,14 @@ class Settings(BaseSettings):
             "Redis audio frames and let stt:audio's MAXLEN trim unread raw audio. "
             "The finalize-path drain uses the separate "
             "streaming_inference_drain_timeout_s bound and is unaffected."
+        ),
+    )
+    streaming_inference_stop_timeout_s: float = Field(
+        default=30.0,
+        description=(
+            "Seconds to wait for a session's inference worker task to "
+            "drain/stop before giving up (used both on graceful session "
+            "removal and when force-finalizing on session-end)."
         ),
     )
     streaming_worker_heartbeat_s: int = Field(

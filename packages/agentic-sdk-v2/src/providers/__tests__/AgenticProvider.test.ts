@@ -73,11 +73,7 @@ describe('AgenticProvider (HOOK-02)', () => {
         delete: vi.fn(),
       } as unknown as AgenticClient;
 
-      const manager = new PluginManager(
-        { noiseFilter: { enabled: true } },
-        undefined,
-        mockApiClient
-      );
+      const manager = new PluginManager({ noiseFilter: { enabled: true } }, undefined, mockApiClient);
 
       expect(manager).toBeDefined();
     });
@@ -90,11 +86,7 @@ describe('AgenticProvider (HOOK-02)', () => {
         delete: vi.fn(),
       } as unknown as AgenticClient;
 
-      const manager = new PluginManager(
-        {},
-        undefined,
-        mockApiClient
-      );
+      const manager = new PluginManager({}, undefined, mockApiClient);
 
       // Initialize knowledge pipeline with backend NER config
       await manager.initializeKnowledgePipeline({
@@ -104,9 +96,7 @@ describe('AgenticProvider (HOOK-02)', () => {
 
       expect(pipeline).not.toBeNull();
 
-      await expect(
-        pipeline!.triggerNER('Patient has chest pain')
-      ).rejects.toThrow('Backend NER is not yet wired in this SDK');
+      await expect(pipeline!.triggerNER('Patient has chest pain')).rejects.toThrow('Backend NER is not yet wired in this SDK');
     });
 
     it('should fail KnowledgePipeline backend NER when apiClient is NOT passed', async () => {
@@ -114,7 +104,7 @@ describe('AgenticProvider (HOOK-02)', () => {
       const manager = new PluginManager(
         {},
         undefined,
-        undefined // NO apiClient — explicitly undefined
+        undefined, // NO apiClient — explicitly undefined
       );
 
       // Initialize knowledge pipeline with backend NER config
@@ -126,9 +116,7 @@ describe('AgenticProvider (HOOK-02)', () => {
       expect(pipeline).not.toBeNull();
 
       // Without apiClient, backend NER should still fail fast (unsupported via API gateway)
-      await expect(
-        pipeline!.triggerNER('Patient has chest pain')
-      ).rejects.toThrow('Backend NER is not yet wired in this SDK');
+      await expect(pipeline!.triggerNER('Patient has chest pain')).rejects.toThrow('Backend NER is not yet wired in this SDK');
     });
   });
 
@@ -150,9 +138,7 @@ describe('AgenticProvider (HOOK-02)', () => {
       const pipeline = manager.getKnowledgePipeline();
       expect(pipeline).not.toBeNull();
 
-      await expect(
-        pipeline!.triggerNER('Patient takes aspirin')
-      ).rejects.toThrow('Backend NER is not yet wired in this SDK');
+      await expect(pipeline!.triggerNER('Patient takes aspirin')).rejects.toThrow('Backend NER is not yet wired in this SDK');
       expect(mockApiClient.post).not.toHaveBeenCalled();
     });
 

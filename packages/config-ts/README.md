@@ -6,13 +6,13 @@ Last updated: 2026-07-04
 
 ## Available Presets
 
-| File | Highlights | Current consumers (verified) |
-|---|---|---|
-| `base.json` | `strict`, `module`/`moduleResolution` NodeNext, declarations + maps, `isolatedModules`, `skipLibCheck` | root `tsconfig.json`, `packages/database`, `exceptions`, `logger`, `pipeline`, `room`, `types`, `utils` |
-| `nestjs.json` | extends base; CommonJS, ES2021, decorators + metadata, relaxed strictness (`noImplicitAny`/`strictNullChecks` off), incremental | `apps/api`, `packages/applications`, `packages/domains` |
-| `react-library.json` | extends base; `jsx: react-jsx`, ES6 target | `packages/agentic-sdk-v2`, `config-tailwind`, `med-ner`, `noise-filter`, `ui`, `vad` |
-| `nextjs.json` | extends base; Next.js plugin, `jsx: preserve`, bundler resolution, `noEmit` | none currently |
-| `vite.json` | extends base; ESNext, `jsx: react`, `types: ["vite/client"]`, `noEmit` | none currently |
+| File                 | Highlights                                                                                                                      | Current consumers (verified)                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `base.json`          | `strict`, `module`/`moduleResolution` NodeNext, declarations + maps, `isolatedModules`, `skipLibCheck`                          | root `tsconfig.json`, `packages/database`, `exceptions`, `logger`, `pipeline`, `room`, `types`, `utils` |
+| `nestjs.json`        | extends base; CommonJS, ES2021, decorators + metadata, relaxed strictness (`noImplicitAny`/`strictNullChecks` off), incremental | `apps/api`, `packages/applications`, `packages/domains`                                                 |
+| `react-library.json` | extends base; `jsx: react-jsx`, ES6 target                                                                                      | `packages/agentic-sdk-v2`, `config-tailwind`, `med-ner`, `noise-filter`, `ui`, `vad`                    |
+| `nextjs.json`        | extends base; Next.js plugin, `jsx: preserve`, bundler resolution, `noEmit`                                                     | none currently                                                                                          |
+| `vite.json`          | extends base; ESNext, `jsx: react`, `types: ["vite/client"]`, `noEmit`                                                          | none currently                                                                                          |
 
 ## Usage
 

@@ -44,19 +44,13 @@ describe('AppSettingsService — Phase 0 Item 5 boot-time invariant', () => {
   });
 
   it('throws when >1 row exists for the SAME platform key', async () => {
-    repo.findAll.mockResolvedValue([
-      buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID),
-      buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID),
-    ]);
+    repo.findAll.mockResolvedValue([buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID), buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID)]);
     const svc = new AppSettingsService(repo as never, events as never, cls as never, scheduler as never);
     await expect(svc.cacheAppSettings()).rejects.toThrow(/duplicate platform key/i);
   });
 
   it('does NOT throw when duplicates are tenant-scoped (different tenantIds)', async () => {
-    repo.findAll.mockResolvedValue([
-      buildSetting('enable-x', 'tenant-a'),
-      buildSetting('enable-x', 'tenant-b'),
-    ]);
+    repo.findAll.mockResolvedValue([buildSetting('enable-x', 'tenant-a'), buildSetting('enable-x', 'tenant-b')]);
     const svc = new AppSettingsService(repo as never, events as never, cls as never, scheduler as never);
     await expect(svc.cacheAppSettings()).resolves.toBeUndefined();
   });
@@ -64,10 +58,7 @@ describe('AppSettingsService — Phase 0 Item 5 boot-time invariant', () => {
   it('bypasses invariant in dev with APP_SETTINGS_BOOT_INVARIANT=skip', async () => {
     process.env.NODE_ENV = 'development';
     process.env.APP_SETTINGS_BOOT_INVARIANT = 'skip';
-    repo.findAll.mockResolvedValue([
-      buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID),
-      buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID),
-    ]);
+    repo.findAll.mockResolvedValue([buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID), buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID)]);
     const svc = new AppSettingsService(repo as never, events as never, cls as never, scheduler as never);
     await expect(svc.cacheAppSettings()).resolves.toBeUndefined();
   });
@@ -75,10 +66,7 @@ describe('AppSettingsService — Phase 0 Item 5 boot-time invariant', () => {
   it('NEVER bypasses invariant in production, even with APP_SETTINGS_BOOT_INVARIANT=skip', async () => {
     process.env.NODE_ENV = 'production';
     process.env.APP_SETTINGS_BOOT_INVARIANT = 'skip';
-    repo.findAll.mockResolvedValue([
-      buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID),
-      buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID),
-    ]);
+    repo.findAll.mockResolvedValue([buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID), buildSetting('crypto.saltRounds', GLOBAL_TENANT_ID)]);
     const svc = new AppSettingsService(repo as never, events as never, cls as never, scheduler as never);
     await expect(svc.cacheAppSettings()).rejects.toThrow(/duplicate platform key/i);
   });

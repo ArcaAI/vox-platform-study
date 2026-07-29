@@ -1,12 +1,4 @@
-import {
-  Command,
-  CommandInput,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandSeparator,
-} from '../../../shadcn/command'
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator } from '../../../shadcn/command';
 
 export function BasicCommand() {
   return (
@@ -26,5 +18,5 @@ export function BasicCommand() {
         </CommandGroup>
       </CommandList>
     </Command>
-  )
+  );
 }

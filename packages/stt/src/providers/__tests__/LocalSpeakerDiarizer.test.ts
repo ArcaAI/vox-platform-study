@@ -8,13 +8,7 @@ const SAMPLE_RATE = 16000;
  * Real speech has harmonic structure; pure sine tones are too simple
  * for a mel/MFCC-based diarizer to differentiate meaningfully.
  */
-function generateVoiceLike(
-  f0: number,
-  durationSec = 1.5,
-  amplitude = 0.5,
-  harmonics = 5,
-  formantShift = 0,
-): Float32Array {
+function generateVoiceLike(f0: number, durationSec = 1.5, amplitude = 0.5, harmonics = 5, formantShift = 0): Float32Array {
   const length = Math.floor(SAMPLE_RATE * durationSec);
   const audio = new Float32Array(length);
   for (let i = 0; i < length; i += 1) {
@@ -136,7 +130,7 @@ describe('LocalSpeakerDiarizer', () => {
 
     const shortAudio = new Float32Array(100);
     for (let i = 0; i < shortAudio.length; i += 1) {
-      shortAudio[i] = Math.sin(2 * Math.PI * 200 * i / SAMPLE_RATE) * 0.5;
+      shortAudio[i] = Math.sin((2 * Math.PI * 200 * i) / SAMPLE_RATE) * 0.5;
     }
 
     const result = diarizer.assignSpeaker(shortAudio);

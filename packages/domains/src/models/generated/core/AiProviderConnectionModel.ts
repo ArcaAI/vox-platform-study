@@ -8,6 +8,7 @@ import * as Enums from '../../../enums';
 import * as Models from './';
 
 export class AiProviderConnection extends BaseTenantDataModel {
+  public service: string;
   public provider: string;
   public baseUrl: string | null;
   public region: string | null;
@@ -23,6 +24,7 @@ export class AiProviderConnection extends BaseTenantDataModel {
 
   constructor(data: AiProviderConnection & BaseTenantDataModel) {
     super(data);
+    this.service = data.service;
     this.provider = data.provider;
     this.baseUrl = data.baseUrl;
     this.region = data.region;

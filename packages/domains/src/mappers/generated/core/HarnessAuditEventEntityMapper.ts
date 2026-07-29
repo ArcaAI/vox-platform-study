@@ -44,10 +44,7 @@ export class HarnessAuditEventEntityMapper extends BaseMapper<Entities.HarnessAu
   }
 }
 
-export const HarnessAuditEventEntityMapperHandlers = createMapperHandlers<
-  Entities.HarnessAuditEventEntity,
-  Models.HarnessAuditEvent
->({
+export const HarnessAuditEventEntityMapperHandlers = createMapperHandlers<Entities.HarnessAuditEventEntity, Models.HarnessAuditEvent>({
   $toPersistence: {
     // Bypass the generic auto-mapper for binary ciphertext.
     // BaseEntity.toObject() walks Object.keys on objects, destructively turning a

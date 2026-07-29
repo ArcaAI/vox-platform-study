@@ -38,7 +38,9 @@ class MedicalValidationResponse(BaseModel):
     confidence: float = Field(..., description="Confidence score (0.0-1.0)")
     context_type: str = Field(..., description="Type of context: clinical/administrative/general")
     reasoning: str | None = Field(None, description="Explanation of the validation result")
-    matched_keywords: list[str] | None = Field(None, description="Medical keywords found (if using fallback)")
+    matched_keywords: list[str] | None = Field(
+        None, description="Medical keywords found (if using fallback)"
+    )
     processing_time_ms: float = Field(..., description="Processing time in milliseconds")
     request_id: str = Field(..., description="Request ID for tracking")
     timestamp: str = Field(..., description="Validation timestamp")

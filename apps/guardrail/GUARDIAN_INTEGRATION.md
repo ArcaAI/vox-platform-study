@@ -66,10 +66,10 @@ GUARDRAIL_CONFIG_CACHE_TTL_S=60
 When enabled, the service resolves the guardian provider/model at request time by reading
 `core."GlobalSetting"` (read-only SQLAlchemy + asyncpg, mirroring STT):
 
-| namespace | key | meaning |
-|---|---|---|
+| namespace   | key                          | meaning                                         |
+| ----------- | ---------------------------- | ----------------------------------------------- |
 | `guardrail` | `default-guardrail-provider` | `lm-studio` \| `ollama` \| `azure` \| `bedrock` |
-| `guardrail` | `default-guardrail-model` | guardian model id / slug |
+| `guardrail` | `default-guardrail-model`    | guardian model id / slug                        |
 | `guardrail` | `guardrail-azure-deployment` | non-secret Azure deployment name (may be empty) |
 
 - **Tenant selection** comes from the **`X-Tenant-Id`** request header (OQ1).
@@ -83,10 +83,12 @@ When enabled, the service resolves the guardian provider/model at request time b
 ### 2. Recommended Models
 
 **Default (LM Studio):**
+
 - Model: `granite-guardian-4.1-8b`
 - Load `lmstudio-community/granite-guardian-4.1-8b-GGUF` and ensure LM Studio's model id resolves to `granite-guardian-4.1-8b` (or override via `GUARDRAIL_OPENAI_COMPAT_GUARDIAN_MODEL`)
 
 **Optional (Ollama engine):**
+
 - A medical or general chat model served by Ollama (e.g. `gemma3`); uses the generic JSON prompt path
 
 ### 3. Load / Pull the Model
@@ -105,12 +107,14 @@ ollama pull gemma3:latest
 **Endpoint:** `POST /api/medical/validate`
 
 **Headers (optional):**
+
 - `X-Tenant-Id`: consultation tenant. When `GUARDRAIL_DB_CONFIG_ENABLED=true`, this selects
   the per-tenant guardian provider/model (see §1b). Ignored in env-only mode. SMR forwards
   the consultation tenant here automatically.
 - `X-Service-Token`: inter-service auth token (when configured).
 
 **Request:**
+
 ```json
 {
   "text": "Patient presents with chest pain and shortness of breath.",
@@ -120,6 +124,7 @@ ollama pull gemma3:latest
 ```
 
 **Response:**
+
 ```json
 {
   "is_medical": true,
@@ -137,12 +142,10 @@ ollama pull gemma3:latest
 **Endpoint:** `POST /api/medical/validate/batch`
 
 **Request:**
+
 ```json
 {
-  "texts": [
-    "Patient diagnosed with hypertension",
-    "Meeting scheduled for tomorrow"
-  ],
+  "texts": ["Patient diagnosed with hypertension", "Meeting scheduled for tomorrow"],
   "request_id": "batch_001"
 }
 ```
@@ -152,6 +155,7 @@ ollama pull gemma3:latest
 **Endpoint:** `GET /api/medical/health`
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -179,11 +183,13 @@ ollama pull gemma3:latest
 ### Fail-Open vs Fail-Closed
 
 **Fail-Open (Default):**
+
 - If Guardian service is unavailable, allow requests
 - Use keyword-based fallback validation
 - Suitable for production with high availability needs
 
 **Fail-Closed (Strict):**
+
 - If Guardian service is unavailable, block requests
 - No fallback validation
 - Suitable for strict compliance requirements
@@ -263,6 +269,7 @@ Guardian logs include:
 **Symptom:** Timeout errors when validating
 
 **Solutions:**
+
 1. Check Guardian service is running: `curl http://localhost:8863/api/health`
 2. Verify the LLM engine is accessible: `curl http://localhost:1234/v1/models` (LM Studio default)
 3. Check the configured model id is loaded in the engine
@@ -272,6 +279,7 @@ Guardian logs include:
 **Symptom:** Medical content getting low confidence
 
 **Solutions:**
+
 1. Use a medical-specialized model (meditron, biomistral)
 2. Lower the confidence threshold
 3. Add domain-specific keywords to the validator
@@ -281,6 +289,7 @@ Guardian logs include:
 **Symptom:** Non-medical content marked as medical
 
 **Solutions:**
+
 1. Increase confidence threshold to 0.85+
 2. Review and refine the validation prompt
 3. Use stricter keyword matching
@@ -314,6 +323,7 @@ Guardian logs include:
 ## Support
 
 For issues or questions:
+
 - Check logs: `docker-compose logs guardrail`
 - Health endpoint: `GET /api/medical/health`
 - Metrics: `GET /metrics`

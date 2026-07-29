@@ -123,9 +123,7 @@ class TestQueueWhenRateLimited:
         mock_provider.generate.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_queued_request_proceeds_when_capacity_frees(
-        self, app, client, mock_provider
-    ):
+    async def test_queued_request_proceeds_when_capacity_frees(self, app, client, mock_provider):
         """Queued request eventually proceeds when the queue processor
         signals the future."""
         queue = ProviderQueue(max_size=5)
@@ -224,8 +222,10 @@ class TestQueueMetrics:
         app.state.provider_queues = {"ollama": queue}
         app.state.rate_limiters = {"ollama": rate_limiter}
 
-        with patch("smr.api.endpoints.generate.QUEUE_SIZE") as mock_gauge, \
-             patch("smr.api.endpoints.generate.QUEUE_WAIT_TIME") as mock_hist:
+        with (
+            patch("smr.api.endpoints.generate.QUEUE_SIZE") as mock_gauge,
+            patch("smr.api.endpoints.generate.QUEUE_WAIT_TIME") as mock_hist,
+        ):
             mock_labels = MagicMock()
             mock_gauge.labels.return_value = mock_labels
 

@@ -105,9 +105,7 @@ describe('MedNERProcessor.init() pipeline options', () => {
         // Aggregated output - positions are chunk-local (start where the
         // target appears in this specific chunk).
         const start = chunk.indexOf('Type 2 Diabetes');
-        return [
-          { entity_group: 'Disease', score: 0.95, word: 'Type 2 Diabetes', start, end: start + 15 },
-        ];
+        return [{ entity_group: 'Disease', score: 0.95, word: 'Type 2 Diabetes', start, end: start + 15 }];
       }
       return [];
     });

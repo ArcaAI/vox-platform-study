@@ -6,24 +6,24 @@ Last updated: 2026-07-04
 
 ## Where it fits
 
-| Direction | Package / app | Relationship |
-|---|---|---|
-| Depends on | `@arcaai/room` | Audio capture, `AudioTrack`, processor contract, `AudioMixer` |
-| Depends on | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Stages of the transcription pipeline |
-| Optional peer | `@arcaai/med-ner` | Browser NER stage; hook at `@arcaai/vox/plugins/med-ner` |
-| Optional peer | `highlight.run` | Optional logging transport |
-| Talks to | `apps/api` (NestJS gateway, port 8868) | REST + WebSocket/SSE (streaming ASR via the STT service behind the gateway) |
-| Consumed by | `apps/ui-playground` (deprecated) | Only current in-repo consumer |
+| Direction     | Package / app                                        | Relationship                                                                |
+| ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------- |
+| Depends on    | `@arcaai/room`                                       | Audio capture, `AudioTrack`, processor contract, `AudioMixer`               |
+| Depends on    | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Stages of the transcription pipeline                                        |
+| Optional peer | `@arcaai/med-ner`                                    | Browser NER stage; hook at `@arcaai/vox/plugins/med-ner`                    |
+| Optional peer | `highlight.run`                                      | Optional logging transport                                                  |
+| Talks to      | `apps/api` (NestJS gateway, port 8868)               | REST + WebSocket/SSE (streaming ASR via the STT service behind the gateway) |
+| Consumed by   | `apps/ui-playground` (deprecated)                    | Only current in-repo consumer                                               |
 
 Peer dependencies: `react` / `react-dom` `^18.3.0 || ^19.0.4`.
 
 ## Entry points
 
-| Import | Contents |
-|---|---|
-| `@arcaai/vox` | Everything: core + audio plugin hooks and pipelines |
-| `@arcaai/vox/core` | Provider, hooks, types, client — no audio/ML plugin code |
-| `@arcaai/vox/plugins` | `useVAD`, `useSTT`, `useNoiseFilter`, `useArcaAudio`, `PluginManager`, pipelines |
+| Import                        | Contents                                                                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `@arcaai/vox`                 | Everything: core + audio plugin hooks and pipelines                                                                                  |
+| `@arcaai/vox/core`            | Provider, hooks, types, client — no audio/ML plugin code                                                                             |
+| `@arcaai/vox/plugins`         | `useVAD`, `useSTT`, `useNoiseFilter`, `useArcaAudio`, `PluginManager`, pipelines                                                     |
 | `@arcaai/vox/plugins/med-ner` | `useMedNER` only — isolates the optional `@arcaai/med-ner` dependency so the main plugins entry never fails when it is not installed |
 
 Use `/core` for admin/dashboard surfaces that only need API access; audio and ML dependencies stay out of that graph.
@@ -96,9 +96,13 @@ function ConsultationPage() {
         <button onClick={handleStart}>Start Consultation</button>
       ) : (
         <>
-          <p>Level: {audio.level}% — Speaking: {audio.isSpeaking ? 'Yes' : 'No'}</p>
+          <p>
+            Level: {audio.level}% — Speaking: {audio.isSpeaking ? 'Yes' : 'No'}
+          </p>
           {audio.currentTranscript && <p>{audio.currentTranscript}…</p>}
-          {context.transcriptions.map((t) => <p key={t.id}>{t.content}</p>)}
+          {context.transcriptions.map((t) => (
+            <p key={t.id}>{t.content}</p>
+          ))}
         </>
       )}
     </div>
@@ -141,14 +145,14 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 
 ### Transports and cross-tab behaviour
 
-| Component | Purpose |
-|---|---|
-| `AgenticClient` | REST client: auth/refresh (single-slot 401 handler, `autoWireTokenRefresh`), idempotency keys, optimistic locking (ETag/If-Match) |
-| `SttWebSocketClient` | Streaming ASR WebSocket (audio frames out, transcripts in, reconnect) |
-| `SSEClient` | Server-sent events (job progress) |
-| `FileTranscriptionService` / `TranscriptionJobService` | File-based transcription jobs |
-| `SharedConnectionManager` + `SharedConnectionWorker` | One shared WS/SSE connection across tabs (SharedWorker), dedup keyed per user |
-| `SimpleCrossTabSync` | BroadcastChannel `agentic.<tenantId>`, HMAC-authenticated messages (`CrossTabHmacKeyManager`, per-tenant HKDF subkeys) |
+| Component                                              | Purpose                                                                                                                           |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `AgenticClient`                                        | REST client: auth/refresh (single-slot 401 handler, `autoWireTokenRefresh`), idempotency keys, optimistic locking (ETag/If-Match) |
+| `SttWebSocketClient`                                   | Streaming ASR WebSocket (audio frames out, transcripts in, reconnect)                                                             |
+| `SSEClient`                                            | Server-sent events (job progress)                                                                                                 |
+| `FileTranscriptionService` / `TranscriptionJobService` | File-based transcription jobs                                                                                                     |
+| `SharedConnectionManager` + `SharedConnectionWorker`   | One shared WS/SSE connection across tabs (SharedWorker), dedup keyed per user                                                     |
+| `SimpleCrossTabSync`                                   | BroadcastChannel `agentic.<tenantId>`, HMAC-authenticated messages (`CrossTabHmacKeyManager`, per-tenant HKDF subkeys)            |
 
 ### Consultation session lifecycle
 
@@ -168,14 +172,14 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 
 ## Hooks overview
 
-| Group | Hooks |
-|---|---|
-| Consultation | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useAudioRecordings` |
-| Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements` |
-| Admin | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
-| Platform | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys` |
-| Voice and DNA | `useVoiceEmbedding`, `useLocalVoiceEmbedding`, `useDnaStyle`, `useDnaDashboard` |
-| Audio plugins | `useVAD`, `useSTT`, `useNoiseFilter` (from `/plugins`), `useMedNER` (from `/plugins/med-ner`) |
+| Group            | Hooks                                                                                                                                                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Consultation     | `useArca`, `useArcaSession`, `useArcaAudio`, `useArcaContext`, `useArcaSummary`, `useArcaConfig`, `useConsultationChain`, `useConsultationJob`, `useAudioRecordings`                                                                                   |
+| Auth and tenancy | `useAuth`, `useTenants`, `useTenantFrontendConfig`, `useTenantStorageConfig`, `useTenantBuckets`, `useEntitlements`                                                                                                                                    |
+| Admin            | `useUsers`, `useRoles`, `useDepartments`, `useUserDepartments`, `usePolicies`, `usePrompts`, `useApiKeys`, `useAuditLog`, `useAdminConsultations`, `useAdminTranscriptionJobs`, `useHarnessAdmin`, `useQueueAdmin`, `useRateLimits`, `usePrismaStudio` |
+| Platform         | `useHealthCheck`, `useMonitoring`, `usePlatformMetrics`, `usePipelines`, `useGlobalSettings`, `useUserSettings`, `useStorage`, `useStorageKeys`                                                                                                        |
+| Voice and DNA    | `useVoiceEmbedding`, `useLocalVoiceEmbedding`, `useDnaStyle`, `useDnaDashboard`                                                                                                                                                                        |
+| Audio plugins    | `useVAD`, `useSTT`, `useNoiseFilter` (from `/plugins`), `useMedNER` (from `/plugins/med-ner`)                                                                                                                                                          |
 
 Full signatures and types: [docs/API-Reference.md](docs/API-Reference.md). Release history: [CHANGELOG.md](CHANGELOG.md).
 
@@ -195,26 +199,26 @@ Set `debug: true` in the config to enable verbose `[ARCAAI:DEBUG]` console loggi
 
 From this directory:
 
-| Command | Action |
-|---|---|
-| `pnpm build` / `pnpm dev` | tsup build of all four entries / watch mode |
-| `pnpm test` / `pnpm test:watch` | Vitest unit tests |
-| `pnpm test:e2e` | Builds, then Playwright (`e2e/playwright.config.ts`); `:ui`, `:headed`, `:chromium` variants exist |
-| `pnpm lint` | ESLint on `src` |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
+| Command                         | Action                                                                                             |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `pnpm build` / `pnpm dev`       | tsup build of all four entries / watch mode                                                        |
+| `pnpm test` / `pnpm test:watch` | Vitest unit tests                                                                                  |
+| `pnpm test:e2e`                 | Builds, then Playwright (`e2e/playwright.config.ts`); `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint`                     | ESLint on `src`                                                                                    |
+| `pnpm typecheck`                | `tsc --noEmit`                                                                                     |
+| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`)                                             |
 
 From the repo root: `pnpm --filter @arcaai/vox build` (same pattern for `test`, `lint`, etc.).
 
 ## Related packages
 
-| Package | Role |
-|---|---|
-| `@arcaai/room` | Audio capture, tracks, processor pipeline |
-| `@arcaai/noise-filter` | RNNoise WASM noise cancellation |
-| `@arcaai/vad` | Silero voice activity detection |
-| `@arcaai/stt` | Whisper STT (worker) + backend streaming |
-| `@arcaai/med-ner` | Optional browser medical NER |
+| Package                | Role                                      |
+| ---------------------- | ----------------------------------------- |
+| `@arcaai/room`         | Audio capture, tracks, processor pipeline |
+| `@arcaai/noise-filter` | RNNoise WASM noise cancellation           |
+| `@arcaai/vad`          | Silero voice activity detection           |
+| `@arcaai/stt`          | Whisper STT (worker) + backend streaming  |
+| `@arcaai/med-ner`      | Optional browser medical NER              |
 
 ## License
 

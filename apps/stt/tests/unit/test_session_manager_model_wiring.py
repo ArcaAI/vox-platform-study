@@ -128,11 +128,7 @@ class TestLoadPipelineConfig:
             # Patch the import inside the method
             with patch.dict(
                 "sys.modules",
-                {
-                    "stt.pipeline.config_reader": MagicMock(
-                        get_pipeline_reader=lambda: mock_reader
-                    )
-                },
+                {"stt.pipeline.config_reader": MagicMock(get_pipeline_reader=lambda: mock_reader)},
             ):
                 result = await mgr._load_pipeline_config("pipe-1")
 
@@ -269,8 +265,8 @@ class TestLoadAsrPipeline:
         mock_cache = AsyncMock()
         mock_cache.get_or_load_from_ref = AsyncMock(return_value=mock_model)
 
-        mgr._make_asr_callable = (
-            lambda asr_model, inference_config, initial_prompt=None: AsyncMock(return_value="ok")
+        mgr._make_asr_callable = lambda asr_model, inference_config, initial_prompt=None: AsyncMock(
+            return_value="ok"
         )
 
         with patch.dict(
@@ -738,7 +734,9 @@ class TestCreateSessionModelWiring:
         captured_args = {}
         original_load = AsyncMock(return_value=(None, None))
 
-        async def spy_load_asr(pipeline_config, session_id, tenant_id=None):
+        async def spy_load_asr(
+            pipeline_config, session_id, tenant_id=None, provider_overrides=None
+        ):
             captured_args["pipeline_config"] = pipeline_config
             captured_args["session_id"] = session_id
             return await original_load(pipeline_config, session_id)
@@ -2027,9 +2025,7 @@ class TestSessionLeakPrevention:
         broken_consumer.start = AsyncMock(side_effect=RuntimeError("consumer start failed"))
 
         with (
-            patch(
-                "stt.streaming.session_manager.IngestionConsumer", return_value=broken_consumer
-            ),
+            patch("stt.streaming.session_manager.IngestionConsumer", return_value=broken_consumer),
             patch("stt.streaming.session_manager.ControlListener", return_value=AsyncMock()),
             patch("stt.streaming.session_manager.ResultPublisher"),
         ):
@@ -2068,9 +2064,7 @@ class TestSessionLeakPrevention:
         broken_consumer.start = AsyncMock(side_effect=RuntimeError("recover consumer start failed"))
 
         with (
-            patch(
-                "stt.streaming.session_manager.IngestionConsumer", return_value=broken_consumer
-            ),
+            patch("stt.streaming.session_manager.IngestionConsumer", return_value=broken_consumer),
             patch("stt.streaming.session_manager.ControlListener", return_value=AsyncMock()),
             patch("stt.streaming.session_manager.ResultPublisher"),
         ):
@@ -2159,7 +2153,6 @@ class TestSessionLeakPrevention:
         count = await mgr.reap_expired_sessions(timeout_s=60)
 
         assert count == 0
-
 
 
 class TestRecoverSessionsWorkerParity:
@@ -2270,9 +2263,7 @@ class TestAssemblyWithRealPipelineSpec:
             )
 
         # The pipeline's embedding model reached BOTH consumers:
-        mgr._get_pipeline_embedding_service.assert_awaited_with(
-            "speechbrain/spkrec-ecapa-voxceleb"
-        )
+        mgr._get_pipeline_embedding_service.assert_awaited_with("speechbrain/spkrec-ecapa-voxceleb")
         assert runtime.inference_worker._embedding_service is fake_emb
         assert runtime.effective_diarization is True
 
@@ -2308,12 +2299,8 @@ class TestAssemblyWithRealPipelineSpec:
                 return_value=mock_reader,
             ),
         ):
-            await SessionManager._load_asr_pipeline(
-                mgr, spec, "s-1", tenant_id="t-9"
-            )
+            await SessionManager._load_asr_pipeline(mgr, spec, "s-1", tenant_id="t-9")
 
-        mock_reader.get_model_by_slug.assert_awaited_once_with(
-            "whisper-large-v3-turbo", "t-9"
-        )
+        mock_reader.get_model_by_slug.assert_awaited_once_with("whisper-large-v3-turbo", "t-9")
         kwargs = mock_cache.get_or_load_from_ref.call_args.kwargs
         assert kwargs["db_model_config"] is db_config

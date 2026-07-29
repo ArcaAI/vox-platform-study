@@ -8,5 +8,5 @@ import { getJson } from '@/shared/api';
 import type { HarnessPolicySummary } from './harness-policy-summary-types';
 
 export function getHarnessPolicySummary(): Promise<HarnessPolicySummary> {
-    return getJson('admin/harness/policy');
+  return getJson('admin/harness/policy');
 }

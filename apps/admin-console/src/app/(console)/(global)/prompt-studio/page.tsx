@@ -13,5 +13,5 @@ import { redirect } from 'next/navigation';
  * `/agents` gates identically. Approve authority is server-side either way.
  */
 export default function PromptStudioRedirectPage(): never {
-    redirect('/agents?tab=governance');
+  redirect('/agents?tab=governance');
 }

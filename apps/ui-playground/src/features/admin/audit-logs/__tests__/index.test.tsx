@@ -63,15 +63,17 @@ vi.mock('../../api/tenants', () => ({
 
 vi.mock('@arcaai/ui', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const Pass = (tag: string) => ({ children, ...rest }: any) => {
-    // Drop non-DOM props that would warn when spread onto a host element.
-    const { variant, size, onValueChange, ...domProps } = rest;
-    void variant;
-    void size;
-    void onValueChange;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return <div {...domProps}>{children}</div>;
-  };
+  const Pass =
+    (tag: string) =>
+    ({ children, ...rest }: any) => {
+      // Drop non-DOM props that would warn when spread onto a host element.
+      const { variant, size, onValueChange, ...domProps } = rest;
+      void variant;
+      void size;
+      void onValueChange;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return <div {...domProps}>{children}</div>;
+    };
   return {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Button: ({ children, onClick, disabled, ...rest }: any) => {
@@ -89,17 +91,7 @@ vi.mock('@arcaai/ui', () => {
       const { variant, size, ...domProps } = rest;
       void variant;
       void size;
-      return (
-        <input
-          id={id}
-          type={type}
-          value={value}
-          placeholder={placeholder}
-          onChange={onChange}
-          onKeyDown={onKeyDown}
-          {...domProps}
-        />
-      );
+      return <input id={id} type={type} value={value} placeholder={placeholder} onChange={onChange} onKeyDown={onKeyDown} {...domProps} />;
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Label: ({ children, htmlFor }: any) => <label htmlFor={htmlFor}>{children}</label>,
@@ -196,11 +188,7 @@ describe('AuditLogManagementPage (TASK-328 A8)', () => {
     fireEvent.change(fromInput, { target: { value: '2026-01-01' } });
     fireEvent.click(screen.getByTestId('apply-filters'));
 
-    await waitFor(() =>
-      expect(list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ from: '2026-01-01T00:00:00.000Z', page: 1 }),
-      ),
-    );
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-01-01T00:00:00.000Z', page: 1 })));
   });
 
   it('renders the responsible-user column label', async () => {
@@ -309,7 +297,11 @@ describe('AuditLogManagementPage (TASK-328 A8)', () => {
   // F9 — skeleton loaders (no "Loading…" text) -----------------------------
   it('shows a skeleton (not "Loading…") in the drawer while the detail loads (TASK-331 doc-03 F9)', async () => {
     let resolveDetail!: (value: unknown) => void;
-    getById.mockReturnValue(new Promise((resolve) => { resolveDetail = resolve; }));
+    getById.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDetail = resolve;
+      }),
+    );
     mockHook();
     render(<AuditLogManagementPage />);
 

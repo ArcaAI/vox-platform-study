@@ -18,20 +18,12 @@ describe('filterContextItems', () => {
   });
 
   it('filters by patient via consultationPatientMap', () => {
-    const result = filterContextItems(
-      items,
-      { query: '', type: 'ALL', recency: 'ALL', patientId: 'alice', consultationPatientMap: patientMap },
-      now,
-    );
+    const result = filterContextItems(items, { query: '', type: 'ALL', recency: 'ALL', patientId: 'alice', consultationPatientMap: patientMap }, now);
     expect(result.map((i) => i.id)).toEqual(['ctx-alice-1', 'ctx-alice-2']);
   });
 
   it("treats 'ALL' patientId as no filter", () => {
-    const result = filterContextItems(
-      items,
-      { query: '', type: 'ALL', recency: 'ALL', patientId: 'ALL', consultationPatientMap: patientMap },
-      now,
-    );
+    const result = filterContextItems(items, { query: '', type: 'ALL', recency: 'ALL', patientId: 'ALL', consultationPatientMap: patientMap }, now);
     expect(result).toHaveLength(3);
   });
 

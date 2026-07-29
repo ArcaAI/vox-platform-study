@@ -114,7 +114,12 @@ async def app_without_rate_limiters(settings, mock_provider_registry, mock_task_
     return _make_app(settings, mock_provider_registry, mock_task_manager, rate_limiters={})
 
 
-GENERATE_PAYLOAD = {"prompt": "Hello world test prompt", "provider": "ollama", "model": "test-model", "stream": False}
+GENERATE_PAYLOAD = {
+    "prompt": "Hello world test prompt",
+    "provider": "ollama",
+    "model": "test-model",
+    "stream": False,
+}
 
 
 class TestGenerateWithRateLimits:
@@ -179,9 +184,7 @@ class TestGenerateWithRateLimits:
         assert "retry-after" in second.headers
 
     @pytest.mark.asyncio
-    async def test_rate_limiters_per_provider(
-        self, settings, mock_task_manager
-    ):
+    async def test_rate_limiters_per_provider(self, settings, mock_task_manager):
         """Each provider has independent rate limits."""
         from smr.providers.base import ProviderRegistry
 

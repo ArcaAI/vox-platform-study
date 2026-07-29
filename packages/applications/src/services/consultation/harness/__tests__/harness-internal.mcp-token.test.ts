@@ -109,11 +109,9 @@ describe('HarnessInternalService.resolveMcpToken', () => {
     const service = buildService();
     const logged: string[] = [];
     for (const level of ['log', 'warn', 'error', 'debug', 'verbose'] as const) {
-      vi.spyOn((service as unknown as { logger: Record<string, unknown> }).logger, level as never).mockImplementation(
-        ((payload: unknown) => {
-          logged.push(typeof payload === 'string' ? payload : JSON.stringify(payload));
-        }) as never,
-      );
+      vi.spyOn((service as unknown as { logger: Record<string, unknown> }).logger, level as never).mockImplementation(((payload: unknown) => {
+        logged.push(typeof payload === 'string' ? payload : JSON.stringify(payload));
+      }) as never);
     }
 
     await service.resolveMcpToken(AUTH_REF);

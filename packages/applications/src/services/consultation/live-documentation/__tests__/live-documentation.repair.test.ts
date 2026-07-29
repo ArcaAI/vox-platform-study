@@ -39,7 +39,12 @@ function buildRepairHttpMock() {
     }
     return Promise.resolve({ data: {} });
   });
-  return { axiosRef: { post }, get generateCalls() { return generateCalls; } };
+  return {
+    axiosRef: { post },
+    get generateCalls() {
+      return generateCalls;
+    },
+  };
 }
 
 function buildService(http: ReturnType<typeof buildRepairHttpMock>) {
@@ -56,7 +61,10 @@ function buildService(http: ReturnType<typeof buildRepairHttpMock>) {
     expire: vi.fn().mockResolvedValue(true),
   };
   const redisSubscriber = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
-  const audioBridge = { subscribeToResults: vi.fn().mockReturnValue({ subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }) }), unsubscribeFromResults: vi.fn() };
+  const audioBridge = {
+    subscribeToResults: vi.fn().mockReturnValue({ subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }) }),
+    unsubscribeFromResults: vi.fn(),
+  };
   const configService = { get: vi.fn().mockReturnValue(undefined) };
   const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }) };
   const trajectory = { recordSteps: vi.fn().mockResolvedValue(undefined) };
@@ -99,9 +107,7 @@ describe('LiveDocumentationService — bounded JSON auto-repair (Phase 4D.3)', (
     expect(payload?.runningSummary).toContain('amlodipine');
 
     // The corrective retry appended the seeded CORRECTIVE_RETRY instruction.
-    const generateBodies = http.axiosRef.post.mock.calls
-      .filter((c) => String(c[0]).includes('/generate'))
-      .map((c) => c[1] as { prompt: string });
+    const generateBodies = http.axiosRef.post.mock.calls.filter((c) => String(c[0]).includes('/generate')).map((c) => c[1] as { prompt: string });
     expect(generateBodies[0].prompt).not.toContain('REVISE STRICTLY');
     expect(generateBodies[1].prompt).toContain('REVISE STRICTLY');
 

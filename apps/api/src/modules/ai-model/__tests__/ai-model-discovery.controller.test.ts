@@ -110,9 +110,7 @@ describe('AiModelDiscoveryService.discover — merge rule', () => {
 
     // No FALSE "missing on server" from a transient probe failure.
     expect(result.entries[0]).toMatchObject({ status: 'registered', loadState: 'unknown' });
-    expect(result.probes).toEqual(
-      expect.arrayContaining([expect.objectContaining({ provider: 'ollama', probeStatus: 'timeout' })]),
-    );
+    expect(result.probes).toEqual(expect.arrayContaining([expect.objectContaining({ provider: 'ollama', probeStatus: 'timeout' })]));
   });
 
   it('reports probeStatus error for the whole probe when SMR itself is unreachable', async () => {

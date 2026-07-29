@@ -60,11 +60,7 @@ describe('UserSettingsController — selectedPipelineId validator', () => {
 
     userSettingsService.upsertByUserKeyNamespace.mockResolvedValue(fakeSettingEntity);
 
-    controller = new UserSettingsController(
-      userSettingsService as never,
-      pipelineService as never,
-      clsService as never,
-    );
+    controller = new UserSettingsController(userSettingsService as never, pipelineService as never, clsService as never);
   });
 
   describe('updateSetting — arcaai-sdk:selectedPipelineId', () => {
@@ -175,11 +171,7 @@ describe('UserSettingsController — selectedPipelineId validator', () => {
   describe('getMySettings', () => {
     it('throws UnauthorizedException when no user is in CLS', async () => {
       clsService = createMockClsService(undefined);
-      controller = new UserSettingsController(
-        userSettingsService as never,
-        pipelineService as never,
-        clsService as never,
-      );
+      controller = new UserSettingsController(userSettingsService as never, pipelineService as never, clsService as never);
 
       await expect(controller.getMySettings()).rejects.toBeInstanceOf(UnauthorizedException);
     });

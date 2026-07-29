@@ -101,7 +101,7 @@ generate_compose_env_file() {
 
     if [ ! -f "$SOURCE_ENV_FILE" ]; then
         echo "WARNING: $SOURCE_ENV_FILE not found — compose will use its built-in defaults." >&2
-        echo "         Create it from .env.example before running the app services." >&2
+        echo "         Run 'pnpm setup:dev' (creates it from .env.sample) before running the app services." >&2
     fi
     echo "Compose env: $ENV_FILE ($found/$total interpolated vars sourced from .env.dev)"
 }

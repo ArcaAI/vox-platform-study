@@ -61,12 +61,14 @@ This guide covers deploying the HOPE API Gateway to various environments. The AP
 ### Infrastructure Requirements
 
 #### Minimum Requirements (Single Instance)
+
 - **CPU**: 2 cores
 - **RAM**: 4 GB
 - **Disk**: 20 GB SSD
 - **Network**: 100 Mbps
 
 #### Recommended (Production)
+
 - **CPU**: 4+ cores
 - **RAM**: 8+ GB
 - **Disk**: 50+ GB SSD
@@ -74,21 +76,23 @@ This guide covers deploying the HOPE API Gateway to various environments. The AP
 
 ### Dependencies
 
-| Service | Version | Purpose |
-|---------|---------|---------|
-| **PostgreSQL** | 14+ | Primary database |
-| **Redis** | 7+ | Cache & session store |
-| **Node.js** | 18+ | Runtime (for non-Docker) |
-| **Docker** | 20+ | Containerization |
-| **Nginx** | Latest | Reverse proxy |
+| Service        | Version | Purpose                  |
+| -------------- | ------- | ------------------------ |
+| **PostgreSQL** | 14+     | Primary database         |
+| **Redis**      | 7+      | Cache & session store    |
+| **Node.js**    | 18+     | Runtime (for non-Docker) |
+| **Docker**     | 20+     | Containerization         |
+| **Nginx**      | Latest  | Reverse proxy            |
 
 ### Network Requirements
 
 **Inbound Ports:**
+
 - `8868` - API Gateway HTTP
 - `443` - HTTPS (via reverse proxy)
 
 **Outbound Access:**
+
 - PostgreSQL (typically port 5432)
 - Redis (typically port 6379)
 - Python microservices (STT=8861, SMR=8862, Guardrail=8863, NLP=8864, Harness=8866)
@@ -100,12 +104,12 @@ This guide covers deploying the HOPE API Gateway to various environments. The AP
 
 ### Comparison Matrix
 
-| Option | Complexity | Scalability | Cost | Use Case |
-|--------|-----------|-------------|------|----------|
-| **Docker** | Low | Medium | Low | Development, Testing |
-| **Single Server** | Medium | Low | Low | Small deployments |
-| **Kubernetes** | High | High | Medium | Production, Enterprise |
-| **Cloud Platforms** | Medium | High | Variable | Production, Auto-scaling |
+| Option              | Complexity | Scalability | Cost     | Use Case                 |
+| ------------------- | ---------- | ----------- | -------- | ------------------------ |
+| **Docker**          | Low        | Medium      | Low      | Development, Testing     |
+| **Single Server**   | Medium     | Low         | Low      | Small deployments        |
+| **Kubernetes**      | High       | High        | Medium   | Production, Enterprise   |
+| **Cloud Platforms** | Medium     | High        | Variable | Production, Auto-scaling |
 
 ---
 
@@ -261,7 +265,7 @@ docker run -d --name api-gateway \
   -e DB_CONNECTION_STRING=postgresql://hope:password@postgres:5432/hope \
   -e REDIS_HOST=redis \
   -e REDIS_PASS=your-redis-password \
-  --env-file .env.production \
+  --env-file .env.prod \
   hope-api:latest
 ```
 
@@ -355,7 +359,7 @@ Type=simple
 User=hope
 Group=hope
 WorkingDirectory=/opt/hope/api/apps/api
-EnvironmentFile=/opt/hope/api/apps/api/.env.production
+EnvironmentFile=/opt/hope/api/apps/api/.env.prod
 ExecStart=/usr/bin/node dist/main.js
 Restart=always
 RestartSec=10
@@ -577,56 +581,56 @@ spec:
         app: api-gateway
     spec:
       containers:
-      - name: api
-        image: your-registry/hope-api:latest
-        ports:
-        - containerPort: 8868
-          name: http
-        env:
-        - name: NODE_ENV
-          value: "production"
-        - name: PORT
-          value: "8868"
-        - name: DB_CONNECTION_STRING
-          valueFrom:
-            secretKeyRef:
-              name: postgres-credentials
-              key: connection-string
-        - name: REDIS_HOST
-          value: "redis-master"
-        - name: REDIS_PASS
-          valueFrom:
-            secretKeyRef:
-              name: redis-credentials
-              key: password
-        - name: SESSION_SECRET_KEY
-          valueFrom:
-            secretKeyRef:
-              name: api-secrets
-              key: session-secret
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "2000m"
-        livenessProbe:
-          httpGet:
-            path: /api/v1/health/live
-            port: 8868
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /api/v1/health/ready
-            port: 8868
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
+        - name: api
+          image: your-registry/hope-api:latest
+          ports:
+            - containerPort: 8868
+              name: http
+          env:
+            - name: NODE_ENV
+              value: 'production'
+            - name: PORT
+              value: '8868'
+            - name: DB_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: connection-string
+            - name: REDIS_HOST
+              value: 'redis-master'
+            - name: REDIS_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: redis-credentials
+                  key: password
+            - name: SESSION_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secrets
+                  key: session-secret
+          resources:
+            requests:
+              memory: '512Mi'
+              cpu: '500m'
+            limits:
+              memory: '2Gi'
+              cpu: '2000m'
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health/live
+              port: 8868
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health/ready
+              port: 8868
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -638,9 +642,9 @@ spec:
   selector:
     app: api-gateway
   ports:
-  - port: 80
-    targetPort: 8868
-    name: http
+    - port: 80
+      targetPort: 8868
+      name: http
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -652,20 +656,20 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   tls:
-  - hosts:
-    - api.hope.com
-    secretName: api-tls
+    - hosts:
+        - api.hope.com
+      secretName: api-tls
   rules:
-  - host: api.hope.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: api-gateway
-            port:
-              number: 80
+    - host: api.hope.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 80
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -680,18 +684,18 @@ spec:
   minReplicas: 3
   maxReplicas: 10
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
 ```
 
 Apply:
@@ -842,6 +846,7 @@ kubectl logs -f deployment/api-gateway -n hope
 ### Metrics
 
 Access Prometheus metrics:
+
 ```bash
 curl https://api.hope.com/metrics
 ```
@@ -949,10 +954,10 @@ When the application receives a termination signal (SIGTERM/SIGINT):
 
 ### Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SHUTDOWN_TIMEOUT_MS` | 30000 | Total time allowed for graceful shutdown (match Kubernetes `terminationGracePeriodSeconds`) |
-| `SHUTDOWN_DRAIN_DELAY_MS` | 5000 | Time to wait for load balancer to stop routing traffic |
+| Variable                  | Default | Description                                                                                 |
+| ------------------------- | ------- | ------------------------------------------------------------------------------------------- |
+| `SHUTDOWN_TIMEOUT_MS`     | 30000   | Total time allowed for graceful shutdown (match Kubernetes `terminationGracePeriodSeconds`) |
+| `SHUTDOWN_DRAIN_DELAY_MS` | 5000    | Time to wait for load balancer to stop routing traffic                                      |
 
 ### Kubernetes Configuration
 
@@ -960,40 +965,40 @@ Ensure your Kubernetes deployment has matching timeout values:
 
 ```yaml
 spec:
-  terminationGracePeriodSeconds: 30  # Should match SHUTDOWN_TIMEOUT_MS
+  terminationGracePeriodSeconds: 30 # Should match SHUTDOWN_TIMEOUT_MS
   containers:
-  - name: api
-    env:
-    - name: SHUTDOWN_TIMEOUT_MS
-      value: "30000"
-    - name: SHUTDOWN_DRAIN_DELAY_MS
-      value: "5000"
-    readinessProbe:
-      httpGet:
-        path: /api/v1/health/ready
-        port: 8868
-    initialDelaySeconds: 10
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 3
-    livenessProbe:
-      httpGet:
-        path: /api/v1/health/live
-        port: 8868
-      initialDelaySeconds: 30
-      periodSeconds: 10
-      timeoutSeconds: 5
+    - name: api
+      env:
+        - name: SHUTDOWN_TIMEOUT_MS
+          value: '30000'
+        - name: SHUTDOWN_DRAIN_DELAY_MS
+          value: '5000'
+      readinessProbe:
+        httpGet:
+          path: /api/v1/health/ready
+          port: 8868
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
       failureThreshold: 3
+      livenessProbe:
+        httpGet:
+          path: /api/v1/health/live
+          port: 8868
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
 ```
 
 ### Health Endpoints
 
-| Endpoint | Purpose | Returns 503 During Shutdown |
-|----------|---------|----------------------------|
-| `/api/v1/health/live` | Liveness probe - is the process running? | No |
-| `/api/v1/health/ready` | Readiness probe - accept new traffic? | Yes |
-| `/api/v1/health/startup` | Startup probe - has initialization completed? | No (after startup) |
-| `/api/v1/health` | Detailed health information | No (returns shutdown status in body) |
+| Endpoint                 | Purpose                                       | Returns 503 During Shutdown          |
+| ------------------------ | --------------------------------------------- | ------------------------------------ |
+| `/api/v1/health/live`    | Liveness probe - is the process running?      | No                                   |
+| `/api/v1/health/ready`   | Readiness probe - accept new traffic?         | Yes                                  |
+| `/api/v1/health/startup` | Startup probe - has initialization completed? | No (after startup)                   |
+| `/api/v1/health`         | Detailed health information                   | No (returns shutdown status in body) |
 
 ### Testing Graceful Shutdown
 
@@ -1035,4 +1040,3 @@ INFO [GracefulShutdownService] Application shutdown complete
 **Document Version**: 2.0
 **Last Updated**: 2026-02-22
 **Maintained By**: HOPE DevOps Team
-

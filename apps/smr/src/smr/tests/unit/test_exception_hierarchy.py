@@ -20,6 +20,7 @@ from smr.core.exceptions import (
     ConcurrencyLimitError,
     ContentBlockedError,
     InputValidationError,
+    ModelNotSelectedError,
     ProviderError,
     ProviderNotFoundError,
     ProviderTimeoutError,
@@ -49,6 +50,7 @@ _ALL_EXCEPTIONS: list[tuple[type[SmrError], str]] = [
     (ConcurrencyLimitError, "CONCURRENCY_LIMIT"),
     (ContentBlockedError, "CONTENT_BLOCKED"),
     (ProviderNotFoundError, "PROVIDER_NOT_FOUND"),
+    (ModelNotSelectedError, "MODEL_NOT_SELECTED"),
 ]
 
 
@@ -74,7 +76,9 @@ def _make_task_manager():
         return_value=TaskState(task_id="t-1", status=TaskStatus.RUNNING, provider="test", model="m")
     )
     tm.get_task = AsyncMock(
-        return_value=TaskState(task_id="t-1", status=TaskStatus.COMPLETED, provider="test", model="m")
+        return_value=TaskState(
+            task_id="t-1", status=TaskStatus.COMPLETED, provider="test", model="m"
+        )
     )
     tm.cancel_task = AsyncMock(return_value=None)
     tm.get_chunks = AsyncMock(return_value=[])
@@ -96,7 +100,9 @@ def _build_app(settings, registry, task_manager, *, shutdown_manager=None):
 
 @pytest.fixture
 def settings():
-    return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False)
+    return Settings(
+        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
+    )
 
 
 # ===========================================================================
@@ -115,8 +121,15 @@ class TestExceptionErrorCodes:
     def test_exception_error_codes(self, exc_cls, expected_code):
         if exc_cls in (SmrError, InputValidationError, ContentBlockedError, ShutdownError):
             exc = exc_cls("test")
-        elif exc_cls in (ProviderError, ProviderTimeoutError, ProviderNotFoundError,
-                         CircuitOpenError, QueueFullError, QueueTimeoutError, ConcurrencyLimitError):
+        elif exc_cls in (
+            ProviderError,
+            ProviderTimeoutError,
+            ProviderNotFoundError,
+            CircuitOpenError,
+            QueueFullError,
+            QueueTimeoutError,
+            ConcurrencyLimitError,
+        ):
             exc = exc_cls("test", provider="p")
         elif exc_cls is RateLimitError:
             exc = exc_cls("test", retry_after=10.0)
@@ -224,6 +237,17 @@ class TestExceptionHandlerStatusCodes:
         from smr.core.exception_handlers import smr_exception_handler
 
         exc = ContentBlockedError()
+        resp = await smr_exception_handler(MagicMock(), exc)
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_handler_returns_correct_status_for_model_not_selected(self):
+        """TASK-579: a cloud provider raising ModelNotSelectedError (no model
+        resolved — never a substituted vendor default) maps to 422, same as
+        InputValidationError (its parent)."""
+        from smr.core.exception_handlers import smr_exception_handler
+
+        exc = ModelNotSelectedError("no model", provider="azure_openai")
         resp = await smr_exception_handler(MagicMock(), exc)
         assert resp.status_code == 422
 
@@ -353,7 +377,10 @@ class TestGenerateEndpointDomainExceptions:
         app = _build_app(settings, registry, _make_task_manager(), shutdown_manager=sm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ollama", "model": "test-model"})
+            resp = await client.post(
+                "/api/v1/generate",
+                json={"prompt": "hi", "provider": "ollama", "model": "test-model"},
+            )
         assert resp.status_code == 503
         body = resp.json()
         assert body["error_code"] == "SHUTTING_DOWN"
@@ -374,7 +401,10 @@ class TestGenerateEndpointDomainExceptions:
         app.state.circuit_breakers = {"ollama": cb}
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ollama", "model": "test-model"})
+            resp = await client.post(
+                "/api/v1/generate",
+                json={"prompt": "hi", "provider": "ollama", "model": "test-model"},
+            )
         assert resp.status_code == 503
         assert resp.headers.get("retry-after") == "30"
         body = resp.json()
@@ -387,7 +417,10 @@ class TestGenerateEndpointDomainExceptions:
         app = _build_app(settings, registry, _make_task_manager())
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "ghost", "model": "test-model"})
+            resp = await client.post(
+                "/api/v1/generate",
+                json={"prompt": "hi", "provider": "ghost", "model": "test-model"},
+            )
         assert resp.status_code == 404
         body = resp.json()
         assert body["error_code"] == "PROVIDER_NOT_FOUND"

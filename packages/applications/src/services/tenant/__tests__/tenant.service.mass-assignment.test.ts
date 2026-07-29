@@ -44,10 +44,10 @@ const mockAsrPipelineRepository = { findAll: vi.fn(), count: vi.fn() };
 // callback with a sentinel tx client so the loop executes.
 const mockTxClient = { __tx: true } as const;
 const mockDatabaseService = {
-    getClient: vi.fn(),
-    baseClient: {
-        $transaction: vi.fn().mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient)),
-    },
+  getClient: vi.fn(),
+  baseClient: {
+    $transaction: vi.fn().mockImplementation(async (callback: (tx: typeof mockTxClient) => Promise<unknown>) => callback(mockTxClient)),
+  },
 };
 const mockTenantBucketService = { provisionSystemBuckets: vi.fn() };
 
@@ -168,9 +168,7 @@ describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply un
     });
     mockTenantRepository.findFirst.mockResolvedValue(tenant);
     mockGlobalSettingRepository.findById.mockResolvedValue(setting);
-    mockGlobalSettingRepository.updateWithVersion.mockImplementation(
-      (_id: string, entity: MockSetting) => Promise.resolve(entity),
-    );
+    mockGlobalSettingRepository.updateWithVersion.mockImplementation((_id: string, entity: MockSetting) => Promise.resolve(entity));
 
     const evilPayload = {
       id: 'cfg-1',
@@ -203,13 +201,9 @@ describe('Phase 0 Item 2 — TenantService.updateTenantConfigs must NOT apply un
     });
     mockTenantRepository.findFirst.mockResolvedValue(tenant);
     mockGlobalSettingRepository.findById.mockResolvedValue(setting);
-    mockGlobalSettingRepository.updateWithVersion.mockImplementation(
-      (_id: string, entity: MockSetting) => Promise.resolve(entity),
-    );
+    mockGlobalSettingRepository.updateWithVersion.mockImplementation((_id: string, entity: MockSetting) => Promise.resolve(entity));
 
-    await service.updateTenantConfigs('tenant-123', [
-      { id: 'cfg-2', value: 'fr', description: 'new', expectedVersion: 1 } as any,
-    ]);
+    await service.updateTenantConfigs('tenant-123', [{ id: 'cfg-2', value: 'fr', description: 'new', expectedVersion: 1 } as any]);
 
     expect(setting.value).toBe('fr');
     expect(setting.description).toBe('new');

@@ -23,12 +23,7 @@ type StreamSessionResponse = {
   currentActive?: number;
 };
 
-export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
-  apiBaseUrl,
-  pipelineId,
-  authToken,
-  tenantId,
-}) => {
+export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ apiBaseUrl, pipelineId, authToken, tenantId }) => {
   const [status, setStatus] = useState<string>('Idle');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [transcript, setTranscript] = useState<string>('');
@@ -50,7 +45,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
   }, []);
 
   const appendTranscript = useCallback((line: string) => {
-    setTranscript(prev => prev + line + '\n');
+    setTranscript((prev) => prev + line + '\n');
   }, []);
 
   const downsampleBuffer = useCallback((buffer: Float32Array, inputSampleRate: number, outputSampleRate: number) => {
@@ -145,7 +140,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
     }
 
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach(t => t.stop());
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
   }, []);
@@ -246,7 +241,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
           const processorNode = audioContext.createScriptProcessor(4096, 1, 1);
           processorNodeRef.current = processorNode;
 
-          processorNode.onaudioprocess = event => {
+          processorNode.onaudioprocess = (event) => {
             if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
               return;
             }
@@ -268,7 +263,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
         }
       };
 
-      ws.onmessage = event => {
+      ws.onmessage = (event) => {
         try {
           const msg: TranscriptMessage = JSON.parse(event.data);
           if (msg.type === 'transcript') {
@@ -286,7 +281,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
         }
       };
 
-      ws.onerror = err => {
+      ws.onerror = (err) => {
         console.error('WebSocket error', err);
         setStatus('WebSocket error');
       };
@@ -305,7 +300,19 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
       setStatus('Error: ' + err.message);
       setIsRunning(false);
     }
-  }, [apiBaseUrl, appendTranscript, authToken, buildRequestHeaders, buildWebSocketUrl, convertFloat32ToInt16, deleteStreamSession, downsampleBuffer, pipelineId, teardownAudio, tenantId]);
+  }, [
+    apiBaseUrl,
+    appendTranscript,
+    authToken,
+    buildRequestHeaders,
+    buildWebSocketUrl,
+    convertFloat32ToInt16,
+    deleteStreamSession,
+    downsampleBuffer,
+    pipelineId,
+    teardownAudio,
+    tenantId,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -326,9 +333,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
         </button>
       </p>
 
-      <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#555' }}>
-        Status: {status}
-      </div>
+      <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#555' }}>Status: {status}</div>
 
       <div
         style={{

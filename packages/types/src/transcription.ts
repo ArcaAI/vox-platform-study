@@ -140,4 +140,3 @@ export interface TranscriptionJob {
   createdAt: Timestamp;
   completedAt?: Timestamp;
 }
-

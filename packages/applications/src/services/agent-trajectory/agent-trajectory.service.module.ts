@@ -16,10 +16,7 @@ import { IAgentTrajectoryService } from './IAgentTrajectoryService';
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
-  providers: [
-    AgentTrajectoryService,
-    { provide: IAgentTrajectoryService, useClass: AgentTrajectoryService },
-  ],
+  providers: [AgentTrajectoryService, { provide: IAgentTrajectoryService, useClass: AgentTrajectoryService }],
   exports: [IAgentTrajectoryService, AgentTrajectoryService],
 })
 export class AgentTrajectoryServiceModule {}

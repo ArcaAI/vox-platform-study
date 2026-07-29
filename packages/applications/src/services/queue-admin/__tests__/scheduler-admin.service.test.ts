@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SchedulerAdminService } from '../scheduler-admin.service';
 
-const createMockCronJob = (overrides: Partial<{
-  running: boolean;
-  lastDate: Date | null;
-  nextDate: Date | null;
-}> = {}) => ({
+const createMockCronJob = (
+  overrides: Partial<{
+    running: boolean;
+    lastDate: Date | null;
+    nextDate: Date | null;
+  }> = {},
+) => ({
   isActive: overrides.running ?? true,
   lastDate: vi.fn().mockReturnValue(overrides.lastDate ?? null),
   nextDate: vi.fn().mockReturnValue(overrides.nextDate ?? null),
@@ -40,10 +42,7 @@ describe('SchedulerAdminService', () => {
     mockSchedulerRegistry.getCronJobs.mockReturnValue(new Map());
     mockSchedulerRegistry.getIntervals.mockReturnValue([]);
     mockSchedulerRegistry.getTimeouts.mockReturnValue([]);
-    service = new SchedulerAdminService(
-      mockSchedulerRegistry as any,
-      mockAppSettingsService as any,
-    );
+    service = new SchedulerAdminService(mockSchedulerRegistry as any, mockAppSettingsService as any);
   });
 
   describe('listSchedulers', () => {
@@ -60,9 +59,7 @@ describe('SchedulerAdminService', () => {
         nextDate: luxonLikeDate as any,
       });
 
-      mockSchedulerRegistry.getCronJobs.mockReturnValue(
-        new Map([['test-scheduler', mockJob]]),
-      );
+      mockSchedulerRegistry.getCronJobs.mockReturnValue(new Map([['test-scheduler', mockJob]]));
 
       const result = service.listSchedulers();
 
@@ -83,9 +80,7 @@ describe('SchedulerAdminService', () => {
 
     it('should identify dynamic schedulers (dna-regeneration)', () => {
       const mockJob = createMockCronJob();
-      mockSchedulerRegistry.getCronJobs.mockReturnValue(
-        new Map([['dna-regeneration', mockJob]]),
-      );
+      mockSchedulerRegistry.getCronJobs.mockReturnValue(new Map([['dna-regeneration', mockJob]]));
 
       const result = service.listSchedulers();
 
@@ -125,9 +120,7 @@ describe('SchedulerAdminService', () => {
 
     it('should combine cron, interval, and timeout schedulers', () => {
       const mockJob = createMockCronJob();
-      mockSchedulerRegistry.getCronJobs.mockReturnValue(
-        new Map([['cron-task', mockJob]]),
-      );
+      mockSchedulerRegistry.getCronJobs.mockReturnValue(new Map([['cron-task', mockJob]]));
       mockSchedulerRegistry.getIntervals.mockReturnValue(['interval-task']);
       mockSchedulerRegistry.getTimeouts.mockReturnValue(['timeout-task']);
 
@@ -152,9 +145,7 @@ describe('SchedulerAdminService', () => {
       const mockJob = createMockCronJob({ running: false });
       mockSchedulerRegistry.getCronJob.mockReturnValue(mockJob);
 
-      expect(() => service.pauseScheduler('test-scheduler')).toThrow(
-        /already paused/,
-      );
+      expect(() => service.pauseScheduler('test-scheduler')).toThrow(/already paused/);
     });
 
     it('should throw NotFoundException when scheduler does not exist', () => {
@@ -180,30 +171,22 @@ describe('SchedulerAdminService', () => {
       const mockJob = createMockCronJob({ running: true });
       mockSchedulerRegistry.getCronJob.mockReturnValue(mockJob);
 
-      expect(() => service.resumeScheduler('test-scheduler')).toThrow(
-        /already running/,
-      );
+      expect(() => service.resumeScheduler('test-scheduler')).toThrow(/already running/);
     });
   });
 
   describe('updateSchedulerCron', () => {
     it('should reject updates to static schedulers', async () => {
-      await expect(
-        service.updateSchedulerCron('static-scheduler', '*/10 * * * *'),
-      ).rejects.toThrow(/static/);
+      await expect(service.updateSchedulerCron('static-scheduler', '*/10 * * * *')).rejects.toThrow(/static/);
     });
 
     it('should reject invalid cron expressions', async () => {
-      await expect(
-        service.updateSchedulerCron('dna-regeneration', 'invalid-cron'),
-      ).rejects.toThrow(/Invalid cron/);
+      await expect(service.updateSchedulerCron('dna-regeneration', 'invalid-cron')).rejects.toThrow(/Invalid cron/);
     });
 
     it('should update cron via app settings and refresh cache for dynamic schedulers', async () => {
       const mockJob = createMockCronJob();
-      mockSchedulerRegistry.getCronJobs.mockReturnValue(
-        new Map([['dna-regeneration', mockJob]]),
-      );
+      mockSchedulerRegistry.getCronJobs.mockReturnValue(new Map([['dna-regeneration', mockJob]]));
 
       await service.updateSchedulerCron('dna-regeneration', '0 2 * * *');
 
@@ -213,16 +196,12 @@ describe('SchedulerAdminService', () => {
 
   describe('toggleScheduler', () => {
     it('should reject toggles on static schedulers', async () => {
-      await expect(
-        service.toggleScheduler('static-scheduler', false),
-      ).rejects.toThrow(/static/);
+      await expect(service.toggleScheduler('static-scheduler', false)).rejects.toThrow(/static/);
     });
 
     it('should toggle a dynamic scheduler and refresh cache', async () => {
       const mockJob = createMockCronJob();
-      mockSchedulerRegistry.getCronJobs.mockReturnValue(
-        new Map([['dna-regeneration', mockJob]]),
-      );
+      mockSchedulerRegistry.getCronJobs.mockReturnValue(new Map([['dna-regeneration', mockJob]]));
 
       await service.toggleScheduler('dna-regeneration', false);
 

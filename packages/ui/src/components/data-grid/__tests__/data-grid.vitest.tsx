@@ -29,7 +29,12 @@ beforeAll(() => {
       return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
     };
   }
-  for (const [prop, value] of [['clientHeight', 600], ['clientWidth', 800], ['offsetHeight', 600], ['offsetWidth', 800]] as const) {
+  for (const [prop, value] of [
+    ['clientHeight', 600],
+    ['clientWidth', 800],
+    ['offsetHeight', 600],
+    ['offsetWidth', 800],
+  ] as const) {
     Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value });
   }
 });
@@ -42,10 +47,17 @@ interface Person {
 
 const COLUMNS: ColumnDef<Person>[] = [
   { accessorKey: 'name', meta: { label: 'Name', variant: 'text' } },
-  { accessorKey: 'status', meta: { label: 'Status', variant: 'multiSelect', options: [
-    { label: 'Active', value: 'ACTIVE' },
-    { label: 'Archived', value: 'ARCHIVED' },
-  ] } },
+  {
+    accessorKey: 'status',
+    meta: {
+      label: 'Status',
+      variant: 'multiSelect',
+      options: [
+        { label: 'Active', value: 'ACTIVE' },
+        { label: 'Archived', value: 'ARCHIVED' },
+      ],
+    },
+  },
 ];
 
 function makeData(n: number): Person[] {
@@ -91,10 +103,20 @@ describe('useDataGrid (headless controller)', () => {
     const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(4), columns: COLUMNS, getRowId: (r) => r.id }));
 
     act(() => result.current.setFilter({ id: 'status', operator: 'inArray', value: ['ACTIVE'], variant: 'multiSelect' }, 'status'));
-    expect(result.current.table.getFilteredRowModel().rows.map((r) => r.original.id).sort()).toEqual(['p1', 'p3']);
+    expect(
+      result.current.table
+        .getFilteredRowModel()
+        .rows.map((r) => r.original.id)
+        .sort(),
+    ).toEqual(['p1', 'p3']);
 
     act(() => result.current.setFilter({ id: 'status', operator: 'inArray', value: ['ACTIVE', 'ARCHIVED'], variant: 'multiSelect' }, 'status'));
-    expect(result.current.table.getFilteredRowModel().rows.map((r) => r.original.id).sort()).toEqual(['p0', 'p1', 'p2', 'p3']);
+    expect(
+      result.current.table
+        .getFilteredRowModel()
+        .rows.map((r) => r.original.id)
+        .sort(),
+    ).toEqual(['p0', 'p1', 'p2', 'p3']);
   });
 
   it('emits onPaginate with an offset PageRequest on page change and respects rowCount', () => {
@@ -142,7 +164,12 @@ describe('useDataGrid (headless controller)', () => {
 
   it('keeps row selection (by id) across a page change', () => {
     const { result } = renderHook(() =>
-      useDataGrid<Person>({ data: makeData(40), columns: COLUMNS, getRowId: (r) => r.id, defaultQueryState: { pagination: { mode: 'offset', page: 0, limit: 10 } } }),
+      useDataGrid<Person>({
+        data: makeData(40),
+        columns: COLUMNS,
+        getRowId: (r) => r.id,
+        defaultQueryState: { pagination: { mode: 'offset', page: 0, limit: 10 } },
+      }),
     );
     act(() => result.current.table.getRow('p0').toggleSelected(true));
     expect(result.current.table.getState().rowSelection).toEqual({ p0: true });
@@ -171,7 +198,9 @@ describe('useDataGrid (headless controller)', () => {
   it('supports controlled queryState (does not self-update internal state)', () => {
     const onQueryStateChange = vi.fn();
     const controlled: DataQueryState = { pagination: { mode: 'offset', page: 0, limit: 20 }, sorting: [], filters: [] };
-    const { result } = renderHook(() => useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id, queryState: controlled, onQueryStateChange }));
+    const { result } = renderHook(() =>
+      useDataGrid<Person>({ data: makeData(3), columns: COLUMNS, getRowId: (r) => r.id, queryState: controlled, onQueryStateChange }),
+    );
     act(() => result.current.table.getColumn('name')!.toggleSorting(false));
     expect(onQueryStateChange).toHaveBeenCalled();
     // Controlled: internal value stays equal to the prop until the parent updates it.
@@ -234,11 +263,23 @@ describe('VirtualizedDataGrid (shell)', () => {
 
   it('shows the actionBar only when there is a selection', () => {
     const { rerender } = render(
-      <VirtualizedDataGrid<Person> data={makeData(3)} columns={COLUMNS} getRowId={(r) => r.id} actionBar={<div>Bulk actions</div>} selection={{ value: {} }} />,
+      <VirtualizedDataGrid<Person>
+        data={makeData(3)}
+        columns={COLUMNS}
+        getRowId={(r) => r.id}
+        actionBar={<div>Bulk actions</div>}
+        selection={{ value: {} }}
+      />,
     );
     expect(screen.queryByText('Bulk actions')).not.toBeInTheDocument();
     rerender(
-      <VirtualizedDataGrid<Person> data={makeData(3)} columns={COLUMNS} getRowId={(r) => r.id} actionBar={<div>Bulk actions</div>} selection={{ value: { p0: true } }} />,
+      <VirtualizedDataGrid<Person>
+        data={makeData(3)}
+        columns={COLUMNS}
+        getRowId={(r) => r.id}
+        actionBar={<div>Bulk actions</div>}
+        selection={{ value: { p0: true } }}
+      />,
     );
     expect(screen.getByText('Bulk actions')).toBeInTheDocument();
   });
@@ -353,12 +394,16 @@ describe('useDataGrid — personalization, a11y announcements & page sizes (Δ4/
     act(() => result.current.resetLayout());
     expect(result.current.density).toBe('comfortable');
     expect(result.current.announcement).toMatch(/reset/i);
-    expect(onColumnChange).toHaveBeenLastCalledWith(expect.objectContaining({ density: 'comfortable', order: [], sizing: {}, visibility: {}, pinning: {} }));
+    expect(onColumnChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ density: 'comfortable', order: [], sizing: {}, visibility: {}, pinning: {} }),
+    );
   });
 });
 
 describe('useGridLayout (D8 persistence)', () => {
-  function makeAdapter(loaded: GridLayoutState | null = null): GridLayoutPersistenceAdapter & { load: ReturnType<typeof vi.fn>; save: ReturnType<typeof vi.fn> } {
+  function makeAdapter(
+    loaded: GridLayoutState | null = null,
+  ): GridLayoutPersistenceAdapter & { load: ReturnType<typeof vi.fn>; save: ReturnType<typeof vi.fn> } {
     return {
       load: vi.fn().mockResolvedValue(loaded),
       save: vi.fn().mockResolvedValue(undefined),

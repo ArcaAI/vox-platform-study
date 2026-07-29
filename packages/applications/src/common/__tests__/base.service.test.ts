@@ -37,11 +37,7 @@ class MockEntity {
 // Concrete implementation for testing
 class TestService extends BaseService {
   constructor() {
-    super(
-      mockEventEmitter as unknown as EventEmitter2,
-      mockClsService as any,
-      'TestResource' as any
-    );
+    super(mockEventEmitter as unknown as EventEmitter2, mockClsService as any, 'TestResource' as any);
   }
 
   // Expose protected methods for testing
@@ -209,7 +205,7 @@ describe('BaseService', () => {
           resourceType: 'TestResource',
           correlationId: 'corr-123',
           tenantId: 'tenant-456',
-        })
+        }),
       );
     });
 

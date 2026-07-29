@@ -1,41 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ArgumentInvalidException, OptimisticConcurrencyException } from '@arcaai/exceptions';
-import {
-  SYSTEM_TENANT_ID,
-  SysEventType,
-  TenantTtsConfigFactory,
-  TenantTtsProviderCredentialFactory,
-} from '@arcaai/domains';
+import { SYSTEM_TENANT_ID, SysEventType, TenantTtsConfigFactory } from '@arcaai/domains';
 import { TenantTtsConfigService } from '../tenant-tts-config.service';
 import { PLATFORM_TTS_LIMITS } from '../platform-limits';
 
 const TENANT = 'tenant-abc';
 
-// Fake Vault Transit: ciphertext is `vault:v1:<base64(plaintext)>`, reversible.
-const fakeSecrets = () => ({
-  encrypt: vi.fn(async (buf: Buffer) => `vault:v1:${buf.toString('base64')}`),
-  decrypt: vi.fn(async (ct: string) => Buffer.from(ct.split(':')[2], 'base64')),
-});
-
-function makeService(opts: { withVault?: boolean } = {}) {
+function makeService() {
   const repo = { findByTenantId: vi.fn(), create: vi.fn(), updateWithVersion: vi.fn() };
-  const credRepo = {
-    findByTenantId: vi.fn().mockResolvedValue([]),
-    findByTenantAndProvider: vi.fn().mockResolvedValue(null),
-    create: vi.fn(),
-    update: vi.fn(),
-    softDelete: vi.fn(),
-  };
   // SYSTEM TTS registry rows (empty = pre-seed fallback).
   const modelRepo = { findByTaskType: vi.fn().mockResolvedValue([]) };
   const emitter = { emit: vi.fn() };
   const cls = {
     get: vi.fn((k: string) => (k === 'user' ? { id: 'u1' } : k === 'tenantId' ? TENANT : undefined)),
   };
-  const secrets = opts.withVault ? fakeSecrets() : undefined;
-  const svc = new TenantTtsConfigService(repo as any, credRepo as any, modelRepo as any, emitter as any, cls as any, secrets as any);
-  return { svc, repo, credRepo, modelRepo, emitter, secrets };
+  const svc = new TenantTtsConfigService(repo as any, modelRepo as any, emitter as any, cls as any);
+  return { svc, repo, modelRepo, emitter };
 }
 
 /** Minimal SYSTEM AiModel TTS registry row shape consumed by the catalog. */
@@ -47,13 +27,17 @@ function ttsModelRow(over: { slug?: string; name?: string; provider?: string | n
     // Catalog voices carry PROVIDER voice identifiers (what voiceBindings bind to).
     metaData:
       over.metaData === undefined
-        ? { voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }, { id: 'ml-IN-SobhanaNeural', locale: 'ml-IN' }] }
+        ? {
+            voices: [
+              { id: 'en-IN-NeerjaNeural', locale: 'en-IN' },
+              { id: 'ml-IN-SobhanaNeural', locale: 'ml-IN' },
+            ],
+          }
         : over.metaData,
   };
 }
 
-const existingRow = () =>
-  TenantTtsConfigFactory.CreateTenantTtsConfig({ tenantId: TENANT, defaultSpeed: 1.0, defaultVoiceEn: 'en-female-1' });
+const existingRow = () => TenantTtsConfigFactory.CreateTenantTtsConfig({ tenantId: TENANT, defaultSpeed: 1.0, defaultVoiceEn: 'en-female-1' });
 
 describe('TenantTtsConfigService', () => {
   let ctx: ReturnType<typeof makeService>;
@@ -91,9 +75,7 @@ describe('TenantTtsConfigService', () => {
 
   it('upsert create with a non-zero expectedVersion is a concurrency conflict', async () => {
     ctx.repo.findByTenantId.mockResolvedValue(null);
-    await expect(ctx.svc.upsertRow(TENANT, { defaultSpeed: 2.0, expectedVersion: 5 })).rejects.toBeInstanceOf(
-      OptimisticConcurrencyException,
-    );
+    await expect(ctx.svc.upsertRow(TENANT, { defaultSpeed: 2.0, expectedVersion: 5 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
   });
 
   it('upsert updates via compare-and-set + broadcasts ResourceUpdated when a row exists', async () => {
@@ -119,7 +101,12 @@ describe('TenantTtsConfigService — platform catalog from the AiModel registry'
     const ctx = makeService();
     ctx.modelRepo.findByTaskType.mockResolvedValue([
       ttsModelRow(),
-      ttsModelRow({ slug: 'kokoro', name: 'Kokoro', provider: 'built-in', metaData: { ttsProvider: 'kokoro', voices: [{ id: 'af_heart', locale: 'en-US' }] } }),
+      ttsModelRow({
+        slug: 'kokoro',
+        name: 'Kokoro',
+        provider: 'built-in',
+        metaData: { ttsProvider: 'kokoro', voices: [{ id: 'af_heart', locale: 'en-US' }] },
+      }),
     ]);
 
     const catalog = await ctx.svc.getPlatformCatalog();
@@ -168,12 +155,8 @@ describe('TenantTtsConfigService — provider-universe validation on upsert', ()
     ctx.modelRepo.findByTaskType.mockResolvedValue([ttsModelRow()]); // universe = ['azure']
     ctx.repo.findByTenantId.mockResolvedValue(null);
 
-    await expect(ctx.svc.upsertRow(TENANT, { routingEn: ['azure', 'kokoro'], expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
-    await expect(ctx.svc.upsertRow(TENANT, { allowedProviders: ['polly'], expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
+    await expect(ctx.svc.upsertRow(TENANT, { routingEn: ['azure', 'kokoro'], expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(ctx.svc.upsertRow(TENANT, { allowedProviders: ['polly'], expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it('accepts entries inside the catalog-derived universe', async () => {
@@ -199,9 +182,7 @@ describe('TenantTtsConfigService — provider-universe validation on upsert', ()
     const res = await ctx.svc.upsertRow(TENANT, { routingMl: ['indic_parler'], expectedVersion: 0 });
     expect(res.routingMl).toEqual(['indic_parler']);
 
-    await expect(ctx.svc.upsertRow(TENANT, { routingMl: ['polly'], expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ArgumentInvalidException,
-    );
+    await expect(ctx.svc.upsertRow(TENANT, { routingMl: ['polly'], expectedVersion: 0 })).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 });
 
@@ -226,9 +207,9 @@ describe('TenantTtsConfigService — voice bindings', () => {
     ctx.modelRepo.findByTaskType.mockResolvedValue([ttsModelRow()]); // universe = ['azure']
     ctx.repo.findByTenantId.mockResolvedValue(null);
 
-    await expect(
-      ctx.svc.upsertRow(TENANT, { voiceBindings: { 'en-female-1': { polly: 'Joanna' } }, expectedVersion: 0 }),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(ctx.svc.upsertRow(TENANT, { voiceBindings: { 'en-female-1': { polly: 'Joanna' } }, expectedVersion: 0 })).rejects.toBeInstanceOf(
+      ArgumentInvalidException,
+    );
   });
 
   it('rejects a bound voice name missing from the provider catalog voices', async () => {
@@ -238,16 +219,14 @@ describe('TenantTtsConfigService — voice bindings', () => {
     ]);
     ctx.repo.findByTenantId.mockResolvedValue(null);
 
-    await expect(
-      ctx.svc.upsertRow(TENANT, { voiceBindings: { 'en-female-1': { azure: 'nope-voice' } }, expectedVersion: 0 }),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(ctx.svc.upsertRow(TENANT, { voiceBindings: { 'en-female-1': { azure: 'nope-voice' } }, expectedVersion: 0 })).rejects.toBeInstanceOf(
+      ArgumentInvalidException,
+    );
   });
 
   it('accepts a bound voice name declared in the provider catalog (by name or id)', async () => {
     const ctx = makeService();
-    ctx.modelRepo.findByTaskType.mockResolvedValue([
-      ttsModelRow({ metaData: { voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }] } }),
-    ]);
+    ctx.modelRepo.findByTaskType.mockResolvedValue([ttsModelRow({ metaData: { voices: [{ id: 'en-IN-NeerjaNeural', locale: 'en-IN' }] } })]);
     ctx.repo.findByTenantId.mockResolvedValue(null);
     ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
@@ -301,70 +280,12 @@ describe('TenantTtsConfigService — voice bindings', () => {
   });
 });
 
-describe('TenantTtsConfigService — BYO credentials (Phase 6)', () => {
-  it('setCredential encrypts the key, stores ciphertext, and returns a masked view', async () => {
-    const ctx = makeService({ withVault: true });
-    ctx.credRepo.create.mockImplementation(async (e: unknown) => e);
-    const res = await ctx.svc.setCredential(TENANT, 'azure', { apiKey: 'super-secret', endpoint: 'eastus' });
-    // encrypted (not plaintext) + never returns the key
-    expect(ctx.secrets!.encrypt).toHaveBeenCalledOnce();
-    expect(JSON.stringify(res)).not.toContain('super-secret');
-    expect(res).toMatchObject({ provider: 'azure', endpoint: 'eastus', hasKey: true, keyVersion: 1 });
-    // persisted ciphertext, not the plaintext
-    const created = ctx.credRepo.create.mock.calls[0][0];
-    expect(Buffer.from(created.encryptedApiKey).toString('utf8')).toMatch(/^vault:v1:/);
-  });
-
-  it('setCredential rotates an existing credential via update(id, entity)', async () => {
-    const ctx = makeService({ withVault: true });
-    const existing = TenantTtsProviderCredentialFactory.CreateTenantTtsProviderCredential({
-      tenantId: TENANT,
-      provider: 'sarvam',
-      enabled: true,
-    });
-    ctx.credRepo.findByTenantAndProvider.mockResolvedValue(existing);
-    ctx.credRepo.update.mockImplementation(async (_id: string, e: unknown) => e);
-    const res = await ctx.svc.setCredential(TENANT, 'sarvam', { apiKey: 'rotated', endpoint: 'https://vpc.sarvam' });
-    expect(ctx.credRepo.update).toHaveBeenCalledWith(existing.id, existing);
-    expect(res).toMatchObject({ provider: 'sarvam', hasKey: true });
-  });
-
-  it('setCredential rejects without a Vault secrets provider (no plaintext-at-rest)', async () => {
-    const ctx = makeService({ withVault: false });
-    await expect(ctx.svc.setCredential(TENANT, 'azure', { apiKey: 'x' })).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('setCredential rejects an unsupported provider', async () => {
-    const ctx = makeService({ withVault: true });
-    await expect(ctx.svc.setCredential(TENANT, 'kokoro', { apiKey: 'x' })).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('resolveProviderOverrides decrypts enabled credentials into the injectable map', async () => {
-    const ctx = makeService({ withVault: true });
-    const row = TenantTtsProviderCredentialFactory.CreateTenantTtsProviderCredential({
-      tenantId: TENANT,
-      provider: 'azure',
-      endpoint: 'eastus',
-      enabled: true,
-      encryptedApiKey: Buffer.from(`vault:v1:${Buffer.from('THE-KEY').toString('base64')}`, 'utf8'),
-      keyVersion: 1,
-    });
-    ctx.credRepo.findByTenantId.mockResolvedValue([row]);
-    const overrides = await ctx.svc.resolveProviderOverrides(TENANT);
-    expect(overrides).toEqual({ azure: { api_key: 'THE-KEY', region: 'eastus' } });
-  });
-
-  it('resolveProviderOverrides returns empty without a Vault provider', async () => {
-    const ctx = makeService({ withVault: false });
-    expect(await ctx.svc.resolveProviderOverrides(TENANT)).toEqual({});
-  });
-
-  it('removeCredential 404s when the provider has no credential', async () => {
-    const ctx = makeService({ withVault: true });
-    ctx.credRepo.findByTenantAndProvider.mockResolvedValue(null);
-    await expect(ctx.svc.removeCredential(TENANT, 'azure')).rejects.toBeInstanceOf(NotFoundException);
-  });
-});
+// BYO credential behavior (set/rotate/remove/resolve) moved to the unified
+// `IProviderConnectionService` (TASK-570) — see
+// `TenantTtsConfigAdminController`'s credential-route tests and
+// `SpeechProxyController`/`TtsWsGateway` injection tests, which now exercise
+// that delegation directly. `TenantTtsConfigService` no longer has a
+// credential surface to test.
 
 /**
  * `getEffective` must consult the TTS registry catalog so a
@@ -412,7 +333,7 @@ describe('TenantTtsConfigService — registry-driven provider universe in getEff
     expect(eff.allowedProviders).toEqual(['elevenlabs', 'kokoro']);
   });
 
-  it('EMPTY registry catalog → code-constant universe (today\'s behaviour byte-for-byte)', async () => {
+  it("EMPTY registry catalog → code-constant universe (today's behaviour byte-for-byte)", async () => {
     const ctx = makeService();
     ctx.repo.findByTenantId.mockResolvedValue(null);
     ctx.modelRepo.findByTaskType.mockResolvedValue([]); // pre-seed
@@ -421,9 +342,7 @@ describe('TenantTtsConfigService — registry-driven provider universe in getEff
 
     expect(eff.routingEn).toEqual([...PLATFORM_TTS_LIMITS.codeDefaults.routingEn]);
     expect(eff.routingMl).toEqual(['azure', 'indic_parler']); // sarvam PHI-stripped
-    expect(eff.allowedProviders).toEqual(
-      PLATFORM_TTS_LIMITS.providerUniverse.filter((p) => p !== 'sarvam'),
-    );
+    expect(eff.allowedProviders).toEqual(PLATFORM_TTS_LIMITS.providerUniverse.filter((p) => p !== 'sarvam'));
   });
 
   it('caches the catalog read across getEffective calls (hot-path TTL cache)', async () => {

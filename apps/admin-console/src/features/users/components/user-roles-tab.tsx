@@ -6,14 +6,7 @@ import { toast } from 'sonner';
 import { type ColumnDef, VirtualizedDataGrid } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@arcaai/ui/components/shadcn/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@arcaai/ui/components/shadcn/dialog';
 import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@arcaai/ui/components/shadcn/select';
@@ -29,18 +22,18 @@ import type { UserRoleAssignment } from '../api/types';
 
 /** Embedded detail-tab grids: no personalization, client-side only (rule #2). */
 const EMBEDDED_GRID_FEATURES = {
-    columnReorder: false,
-    columnResize: false,
-    columnPinning: false,
-    columnVisibility: false,
-    rowSelection: false,
-    globalSearch: false,
-    facetedFilters: false,
-    sorting: true,
+  columnReorder: false,
+  columnResize: false,
+  columnPinning: false,
+  columnVisibility: false,
+  rowSelection: false,
+  globalSearch: false,
+  facetedFilters: false,
+  sorting: true,
 } as const;
 
 function roleLabel(assignment: UserRoleAssignment): string {
-    return assignment.roleName ?? assignment.roleId;
+  return assignment.roleName ?? assignment.roleId;
 }
 
 /**
@@ -50,230 +43,235 @@ function roleLabel(assignment: UserRoleAssignment): string {
  * field falls back to the free-text id input so the flow never dead-ends.
  */
 function AssignRoleDialog({ userId, open, onOpenChange }: { userId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
-    const assignRole = useAssignRole();
-    const roles = useRoleOptions();
-    const tenantCatalog = useTenantCatalog();
-    const [roleId, setRoleId] = useState('');
-    const [tenantChoice, setTenantChoice] = useState(SYSTEM_TENANT_ID);
-    const [tenantText, setTenantText] = useState('');
+  const assignRole = useAssignRole();
+  const roles = useRoleOptions();
+  const tenantCatalog = useTenantCatalog();
+  const [roleId, setRoleId] = useState('');
+  const [tenantChoice, setTenantChoice] = useState(SYSTEM_TENANT_ID);
+  const [tenantText, setTenantText] = useState('');
 
-    const roleFallback = roles.isError || (!roles.isLoading && roles.options.length === 0);
-    const tenants = tenantCatalog.data ?? [];
-    const tenantFallback = tenantCatalog.isError || (!tenantCatalog.isLoading && tenants.length === 0);
-    function handleOpenChange(next: boolean) {
-        if (!next) {
-            setRoleId('');
-            setTenantChoice(SYSTEM_TENANT_ID);
-            setTenantText('');
-            assignRole.reset();
-        }
-        onOpenChange(next);
+  const roleFallback = roles.isError || (!roles.isLoading && roles.options.length === 0);
+  const tenants = tenantCatalog.data ?? [];
+  const tenantFallback = tenantCatalog.isError || (!tenantCatalog.isLoading && tenants.length === 0);
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      setRoleId('');
+      setTenantChoice(SYSTEM_TENANT_ID);
+      setTenantText('');
+      assignRole.reset();
     }
+    onOpenChange(next);
+  }
 
-    function handleSubmit(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        const role = roleId.trim();
-        if (!role) return;
-        const tenantId = tenantFallback ? tenantText.trim() : tenantChoice;
-        assignRole.mutate(
-            { id: userId, body: { roleId: role, ...(tenantId ? { tenantId } : {}) } },
-            {
-                onSuccess: () => {
-                    toast.success('Role assigned');
-                    handleOpenChange(false);
-                },
-                onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not assign the role.'),
-            },
-        );
-    }
-
-    return (
-        <Dialog open={open} onOpenChange={handleOpenChange}>
-            <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                    <DialogTitle>Assign role</DialogTitle>
-                    <DialogDescription>Grants the role&apos;s permissions to this user. Pick a role and, optionally, a tenant to scope it to.</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-2">
-                        <Label htmlFor="assign-role-id">
-                            Role <span aria-hidden className="text-destructive">*</span>
-                        </Label>
-                        {roleFallback ? (
-                            <Input
-                                id="assign-role-id"
-                                value={roleId}
-                                onChange={(event) => setRoleId(event.target.value)}
-                                autoComplete="off"
-                                className="font-mono"
-                                required
-                            />
-                        ) : (
-                            <Select value={roleId} onValueChange={setRoleId}>
-                                <SelectTrigger id="assign-role-id" className="w-full">
-                                    <SelectValue placeholder="Select a role" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {roles.options.map((option) => (
-                                        <SelectItem key={option.value} value={option.value}>
-                                            {option.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                        <Label htmlFor="assign-role-tenant-id">Tenant</Label>
-                        {tenantFallback ? (
-                            <>
-                                <Input
-                                    id="assign-role-tenant-id"
-                                    value={tenantText}
-                                    onChange={(event) => setTenantText(event.target.value)}
-                                    autoComplete="off"
-                                    className="font-mono"
-                                />
-                                <p className="text-muted-foreground text-xs">Leave empty for a global (cross-tenant) assignment.</p>
-                            </>
-                        ) : (
-                            <Select value={tenantChoice} onValueChange={setTenantChoice}>
-                                <SelectTrigger id="assign-role-tenant-id" className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {tenants.map((tenant) => (
-                                        <SelectItem key={tenant.id} value={tenant.id}>
-                                            {tenant.name || tenant.key || tenant.id}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={!roleId.trim() || assignRole.isPending}>
-                            {assignRole.isPending ? <Spinner /> : null}
-                            Assign
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const role = roleId.trim();
+    if (!role) return;
+    const tenantId = tenantFallback ? tenantText.trim() : tenantChoice;
+    assignRole.mutate(
+      { id: userId, body: { roleId: role, ...(tenantId ? { tenantId } : {}) } },
+      {
+        onSuccess: () => {
+          toast.success('Role assigned');
+          handleOpenChange(false);
+        },
+        onError: (error) => toast.error(error instanceof GatewayError ? error.message : 'Could not assign the role.'),
+      },
     );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Assign role</DialogTitle>
+          <DialogDescription>
+            Grants the role&apos;s permissions to this user. Pick a role and, optionally, a tenant to scope it to.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="assign-role-id">
+              Role{' '}
+              <span aria-hidden className="text-destructive">
+                *
+              </span>
+            </Label>
+            {roleFallback ? (
+              <Input
+                id="assign-role-id"
+                value={roleId}
+                onChange={(event) => setRoleId(event.target.value)}
+                autoComplete="off"
+                className="font-mono"
+                required
+              />
+            ) : (
+              <Select value={roleId} onValueChange={setRoleId}>
+                <SelectTrigger id="assign-role-id" className="w-full">
+                  <SelectValue placeholder="Select a role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.options.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="assign-role-tenant-id">Tenant</Label>
+            {tenantFallback ? (
+              <>
+                <Input
+                  id="assign-role-tenant-id"
+                  value={tenantText}
+                  onChange={(event) => setTenantText(event.target.value)}
+                  autoComplete="off"
+                  className="font-mono"
+                />
+                <p className="text-muted-foreground text-xs">Leave empty for a global (cross-tenant) assignment.</p>
+              </>
+            ) : (
+              <Select value={tenantChoice} onValueChange={setTenantChoice}>
+                <SelectTrigger id="assign-role-tenant-id" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenants.map((tenant) => (
+                    <SelectItem key={tenant.id} value={tenant.id}>
+                      {tenant.name || tenant.key || tenant.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!roleId.trim() || assignRole.isPending}>
+              {assignRole.isPending ? <Spinner /> : null}
+              Assign
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** Frame 20.1 roles tab: assignment list + assign/remove. */
 export function UserRolesTab({ id }: { id: string }) {
-    const { data, isLoading, error, refetch } = useUserRoles(id);
-    const removeRole = useRemoveRole();
-    const tenantNames = useTenantNames();
-    const [assignOpen, setAssignOpen] = useState(false);
-    const [removal, setRemoval] = useState<UserRoleAssignment | null>(null);
-    const rows = data?.data ?? [];
+  const { data, isLoading, error, refetch } = useUserRoles(id);
+  const removeRole = useRemoveRole();
+  const tenantNames = useTenantNames();
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [removal, setRemoval] = useState<UserRoleAssignment | null>(null);
+  const rows = data?.data ?? [];
 
-    function handleRemove() {
-        if (!removal) return;
-        removeRole.mutate(
-            { id, assignmentId: removal.id },
-            {
-                onSuccess: () => {
-                    toast.success('Role removed');
-                    setRemoval(null);
-                },
-                onError: (mutationError) => toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Could not remove the role.'),
-            },
-        );
-    }
-
-    const columns = useMemo<ColumnDef<UserRoleAssignment>[]>(
-        () => [
-            {
-                id: 'role',
-                header: 'Role',
-                enableSorting: false,
-                meta: { label: 'Role' },
-                size: 240,
-                minSize: 160,
-                cell: ({ row }) => <NameWithId name={row.original.roleName} id={row.original.roleId} />,
-            },
-            {
-                id: 'scope',
-                header: 'Scope',
-                enableSorting: false,
-                meta: { label: 'Scope' },
-                size: 220,
-                cell: ({ row }) =>
-                    !row.original.tenantId || row.original.tenantId === SYSTEM_TENANT_ID ? (
-                        <Badge variant="outline">Global</Badge>
-                    ) : (
-                        <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
-                    ),
-            },
-            {
-                accessorKey: 'createdAt',
-                header: 'Assigned',
-                meta: { label: 'Assigned' },
-                size: 200,
-                cell: ({ row }) => <span className="text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
-            },
-            {
-                id: 'actions',
-                header: () => <span className="sr-only">Actions</span>,
-                meta: { label: 'Actions' },
-                enableSorting: false,
-                enableHiding: false,
-                enableResizing: false,
-                size: 56,
-                minSize: 56,
-                cell: ({ row }) => (
-                    <div className="flex w-full justify-end">
-                        <Button variant="ghost" size="icon-sm" aria-label={`Remove role ${roleLabel(row.original)}`} onClick={() => setRemoval(row.original)}>
-                            <IconTrash aria-hidden />
-                        </Button>
-                    </div>
-                ),
-            },
-        ],
-        [tenantNames],
+  function handleRemove() {
+    if (!removal) return;
+    removeRole.mutate(
+      { id, assignmentId: removal.id },
+      {
+        onSuccess: () => {
+          toast.success('Role removed');
+          setRemoval(null);
+        },
+        onError: (mutationError) => toast.error(mutationError instanceof GatewayError ? mutationError.message : 'Could not remove the role.'),
+      },
     );
+  }
 
-    return (
-        <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-end">
-                <Button variant="outline" onClick={() => setAssignOpen(true)}>
-                    <IconPlus aria-hidden />
-                    Assign role
-                </Button>
-            </div>
-            <VirtualizedDataGrid<UserRoleAssignment>
-                aria-label="Role assignments"
-                columns={columns}
-                data={rows}
-                getRowId={(row) => row.id}
-                features={EMBEDDED_GRID_FEATURES}
-                height={320}
-                isLoading={isLoading}
-                error={error}
-                onRetry={() => refetch()}
-                emptyState={<EmptyState icon={IconShieldCheck} title="No roles assigned" description="Assign a role to grant this user permissions." />}
-            />
-            <AssignRoleDialog userId={id} open={assignOpen} onOpenChange={setAssignOpen} />
-            {removal ? (
-                <ConfirmDialog
-                    open
-                    onOpenChange={(open) => !open && setRemoval(null)}
-                    title={`Remove ${roleLabel(removal)}?`}
-                    description="The user loses this role's permissions immediately."
-                    confirmLabel="Remove"
-                    destructive
-                    isPending={removeRole.isPending}
-                    onConfirm={handleRemove}
-                />
-            ) : null}
-        </div>
-    );
+  const columns = useMemo<ColumnDef<UserRoleAssignment>[]>(
+    () => [
+      {
+        id: 'role',
+        header: 'Role',
+        enableSorting: false,
+        meta: { label: 'Role' },
+        size: 240,
+        minSize: 160,
+        cell: ({ row }) => <NameWithId name={row.original.roleName} id={row.original.roleId} />,
+      },
+      {
+        id: 'scope',
+        header: 'Scope',
+        enableSorting: false,
+        meta: { label: 'Scope' },
+        size: 220,
+        cell: ({ row }) =>
+          !row.original.tenantId || row.original.tenantId === SYSTEM_TENANT_ID ? (
+            <Badge variant="outline">Global</Badge>
+          ) : (
+            <NameWithId name={tenantNames.get(row.original.tenantId)} id={row.original.tenantId} />
+          ),
+      },
+      {
+        accessorKey: 'createdAt',
+        header: 'Assigned',
+        meta: { label: 'Assigned' },
+        size: 200,
+        cell: ({ row }) => <span className="text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
+      },
+      {
+        id: 'actions',
+        header: () => <span className="sr-only">Actions</span>,
+        meta: { label: 'Actions' },
+        enableSorting: false,
+        enableHiding: false,
+        enableResizing: false,
+        size: 56,
+        minSize: 56,
+        cell: ({ row }) => (
+          <div className="flex w-full justify-end">
+            <Button variant="ghost" size="icon-sm" aria-label={`Remove role ${roleLabel(row.original)}`} onClick={() => setRemoval(row.original)}>
+              <IconTrash aria-hidden />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [tenantNames],
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-end">
+        <Button variant="outline" onClick={() => setAssignOpen(true)}>
+          <IconPlus aria-hidden />
+          Assign role
+        </Button>
+      </div>
+      <VirtualizedDataGrid<UserRoleAssignment>
+        aria-label="Role assignments"
+        columns={columns}
+        data={rows}
+        getRowId={(row) => row.id}
+        features={EMBEDDED_GRID_FEATURES}
+        height={320}
+        isLoading={isLoading}
+        error={error}
+        onRetry={() => refetch()}
+        emptyState={<EmptyState icon={IconShieldCheck} title="No roles assigned" description="Assign a role to grant this user permissions." />}
+      />
+      <AssignRoleDialog userId={id} open={assignOpen} onOpenChange={setAssignOpen} />
+      {removal ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => !open && setRemoval(null)}
+          title={`Remove ${roleLabel(removal)}?`}
+          description="The user loses this role's permissions immediately."
+          confirmLabel="Remove"
+          destructive
+          isPending={removeRole.isPending}
+          onConfirm={handleRemove}
+        />
+      ) : null}
+    </div>
+  );
 }

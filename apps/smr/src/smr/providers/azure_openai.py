@@ -16,6 +16,7 @@ from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
 from smr.models.stats import GenerationStats, stats_from_openai_usage
 from smr.models.stream import StreamChunk
+from smr.providers.base import require_model
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -84,12 +85,12 @@ class AzureOpenAIProvider:
 
     async def generate(self, request: GenerateRequest) -> tuple[str, str, GenerationStats]:
         resolved = resolve_request_defaults(request)
-        resolved_model = self._resolve_model(request)
+        resolved_model = require_model(self._resolve_model(request), provider="azure_openai")
         with _get_tracer().start_as_current_span(
             "gen_ai.generate",
             attributes={
                 "gen_ai.system": "azure_openai",
-                "gen_ai.request.model": resolved_model or "",
+                "gen_ai.request.model": resolved_model,
                 "gen_ai.operation.name": "generate",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
@@ -104,7 +105,10 @@ class AzureOpenAIProvider:
                 "stream": False,
             }
 
-            if request.response_format is not None and request.response_format.type == "json_schema":
+            if (
+                request.response_format is not None
+                and request.response_format.type == "json_schema"
+            ):
                 schema = request.response_format.json_schema or {}
                 kwargs["response_format"] = {
                     "type": "json_schema",
@@ -132,7 +136,11 @@ class AzureOpenAIProvider:
 
             message = response.choices[0].message
             content = message.content or ""
-            reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
+            reasoning = (
+                getattr(message, "reasoning_content", None)
+                or getattr(message, "reasoning", None)
+                or ""
+            )
             finish_reason = response.choices[0].finish_reason
             usage_obj = getattr(response, "usage", None)
             usage = {
@@ -149,7 +157,7 @@ class AzureOpenAIProvider:
                     native[attr] = val
             stats = stats_from_openai_usage(
                 provider="azure_openai",
-                model=resolved_model or "",
+                model=resolved_model,
                 usage=usage,
                 finish_reason=finish_reason,
                 total_ms=total_ms,
@@ -162,18 +170,19 @@ class AzureOpenAIProvider:
 
     async def generate_stream(self, request: GenerateRequest) -> AsyncIterator[StreamChunk]:
         resolved = resolve_request_defaults(request)
+        resolved_model = require_model(self._resolve_model(request), provider="azure_openai")
         with _get_tracer().start_as_current_span(
             "gen_ai.generate_stream",
             attributes={
                 "gen_ai.system": "azure_openai",
-                "gen_ai.request.model": self._resolve_model(request) or "",
+                "gen_ai.request.model": resolved_model,
                 "gen_ai.operation.name": "generate_stream",
                 "gen_ai.request.temperature": resolved["temperature"],
                 "gen_ai.request.max_tokens": resolved["max_tokens"],
             },
         ) as span:
             kwargs: dict[str, Any] = {
-                "model": self._resolve_model(request),
+                "model": resolved_model,
                 "messages": self._build_messages(request),
                 "temperature": resolved["temperature"],
                 "max_tokens": resolved["max_tokens"],
@@ -216,7 +225,9 @@ class AzureOpenAIProvider:
                 delta = chunk.choices[0].delta
                 if chunk.choices[0].finish_reason:
                     finish_reason = chunk.choices[0].finish_reason
-                reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                reasoning = getattr(delta, "reasoning_content", None) or getattr(
+                    delta, "reasoning", None
+                )
                 if isinstance(reasoning, str) and reasoning:
                     if ttft_ms is None:
                         ttft_ms = int((time.monotonic() - start) * 1000)
@@ -229,7 +240,7 @@ class AzureOpenAIProvider:
             total_ms = int((time.monotonic() - start) * 1000)
             stats = stats_from_openai_usage(
                 provider="azure_openai",
-                model=self._resolve_model(request) or "",
+                model=resolved_model,
                 usage=usage,
                 finish_reason=finish_reason,
                 total_ms=total_ms,
@@ -255,7 +266,14 @@ class AzureOpenAIProvider:
             return False
 
     async def get_info(self) -> ProviderInfo:
-        models: list[ModelInfo] = [ModelInfo(name=self._default_model, supports_streaming=True)]
+        # TASK-579: default_model is informational-only (may be unset now that
+        # cloud configs carry no compiled-in vendor model) — never advertise an
+        # empty-named model.
+        models: list[ModelInfo] = (
+            [ModelInfo(name=self._default_model, supports_streaming=True)]
+            if self._default_model
+            else []
+        )
         status = "available"
         try:
             await self._client.models.list()

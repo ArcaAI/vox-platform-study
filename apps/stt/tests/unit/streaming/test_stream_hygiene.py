@@ -121,10 +121,12 @@ class TestIngestionConsumerOnBatch:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return [[
-                    b"stt:audio:s1",
-                    [(b"1-0", _frame_fields()), (b"2-0", _frame_fields())],
-                ]]
+                return [
+                    [
+                        b"stt:audio:s1",
+                        [(b"1-0", _frame_fields()), (b"2-0", _frame_fields())],
+                    ]
+                ]
             await asyncio.sleep(0.05)
             return []
 
@@ -335,7 +337,9 @@ class TestBatchHandler:
         from stt.streaming.session import StreamSession
 
         meta = SessionMetadata(
-            session_id=session_id, tenant_id="t1", pipeline_id="p1",
+            session_id=session_id,
+            tenant_id="t1",
+            pipeline_id="p1",
         )
         return StreamSession(metadata=meta, redis=mgr._redis)
 
@@ -360,9 +364,7 @@ class TestBatchHandler:
 
         await handler("7-0")
 
-        mgr._redis.xtrim.assert_awaited_once_with(
-            "stt:audio:s1", minid="7-0", approximate=True
-        )
+        mgr._redis.xtrim.assert_awaited_once_with("stt:audio:s1", minid="7-0", approximate=True)
 
     @pytest.mark.asyncio
     async def test_trim_throttled_by_interval(self):
@@ -416,9 +418,7 @@ class TestBatchHandler:
 class TestRecoveryResumeFromStoredId:
     def _arm_recovery(self, mgr, meta: SessionMetadata):
         redis_data = meta.to_redis_dict()
-        mgr._redis.scan = AsyncMock(
-            return_value=(0, [f"stt:session:{meta.session_id}".encode()])
-        )
+        mgr._redis.scan = AsyncMock(return_value=(0, [f"stt:session:{meta.session_id}".encode()]))
         mgr._redis.hgetall = AsyncMock(return_value=redis_data)
         mgr._redis.exists = AsyncMock(return_value=False)
         mgr._load_pipeline_config = AsyncMock(return_value=None)

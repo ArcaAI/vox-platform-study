@@ -6,42 +6,42 @@ import { Breadcrumbs } from '../breadcrumbs';
 
 const usePathnameMock = vi.fn<() => string>(() => '/dashboard');
 vi.mock('next/navigation', () => ({
-    usePathname: () => usePathnameMock(),
+  usePathname: () => usePathnameMock(),
 }));
 
 afterEach(() => {
-    act(() => useBreadcrumbStore.setState({ trailing: null }));
+  act(() => useBreadcrumbStore.setState({ trailing: null }));
 });
 
 describe('Breadcrumbs', () => {
-    it('renders section and screen label for a top-level route', () => {
-        usePathnameMock.mockReturnValue('/dashboard');
-        renderWithProviders(<Breadcrumbs />);
-        const nav = screen.getByRole('navigation', { name: /breadcrumb/i });
-        expect(nav.textContent).toContain('Platform');
-        expect(screen.getByText('Dashboard')).toBeTruthy();
-    });
+  it('renders section and screen label for a top-level route', () => {
+    usePathnameMock.mockReturnValue('/dashboard');
+    renderWithProviders(<Breadcrumbs />);
+    const nav = screen.getByRole('navigation', { name: /breadcrumb/i });
+    expect(nav.textContent).toContain('Platform');
+    expect(screen.getByText('Dashboard')).toBeTruthy();
+  });
 
-    it('links the parent and shows the resolved detail name from the store', () => {
-        usePathnameMock.mockReturnValue('/tenants/t-123');
-        act(() => useBreadcrumbStore.setState({ trailing: 'Sunrise Medical Group' }));
-        renderWithProviders(<Breadcrumbs />);
+  it('links the parent and shows the resolved detail name from the store', () => {
+    usePathnameMock.mockReturnValue('/tenants/t-123');
+    act(() => useBreadcrumbStore.setState({ trailing: 'Sunrise Medical Group' }));
+    renderWithProviders(<Breadcrumbs />);
 
-        const parentLink = screen.getByRole('link', { name: 'Tenants' });
-        expect(parentLink.getAttribute('href')).toBe('/tenants');
-        expect(screen.getByText('Sunrise Medical Group')).toBeTruthy();
-    });
+    const parentLink = screen.getByRole('link', { name: 'Tenants' });
+    expect(parentLink.getAttribute('href')).toBe('/tenants');
+    expect(screen.getByText('Sunrise Medical Group')).toBeTruthy();
+  });
 
-    it('falls back to the raw segment before the detail name resolves', () => {
-        usePathnameMock.mockReturnValue('/tenants/t-123');
-        renderWithProviders(<Breadcrumbs />);
-        expect(screen.getByText('t-123')).toBeTruthy();
-    });
+  it('falls back to the raw segment before the detail name resolves', () => {
+    usePathnameMock.mockReturnValue('/tenants/t-123');
+    renderWithProviders(<Breadcrumbs />);
+    expect(screen.getByText('t-123')).toBeTruthy();
+  });
 
-    it('prefers the longest route match (/tenants/storage over /tenants)', () => {
-        usePathnameMock.mockReturnValue('/tenants/storage');
-        renderWithProviders(<Breadcrumbs />);
-        expect(screen.getByText('Tenant storage')).toBeTruthy();
-        expect(screen.queryByRole('link', { name: 'Tenants' })).toBeNull();
-    });
+  it('prefers the longest route match (/tenants/storage over /tenants)', () => {
+    usePathnameMock.mockReturnValue('/tenants/storage');
+    renderWithProviders(<Breadcrumbs />);
+    expect(screen.getByText('Tenant storage')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Tenants' })).toBeNull();
+  });
 });

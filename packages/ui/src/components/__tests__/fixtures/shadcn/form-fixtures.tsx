@@ -1,18 +1,10 @@
-import { useForm } from 'react-hook-form'
-import {
-  Form,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormDescription,
-  FormMessage,
-} from '../../../shadcn/form'
+import { useForm } from 'react-hook-form';
+import { Form, FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from '../../../shadcn/form';
 
 export function BasicForm() {
   const form = useForm({
     defaultValues: { username: '' },
-  })
+  });
 
   return (
     <Form {...form}>
@@ -33,15 +25,15 @@ export function BasicForm() {
         />
       </form>
     </Form>
-  )
+  );
 }
 
 export function FormWithError() {
   const form = useForm({
     defaultValues: { email: '' },
-  })
+  });
 
-  form.setError('email', { message: 'Email is required' })
+  form.setError('email', { message: 'Email is required' });
 
   return (
     <Form {...form}>
@@ -55,22 +47,20 @@ export function FormWithError() {
               <FormControl>
                 <input placeholder="Enter email" {...field} />
               </FormControl>
-              <FormDescription>
-                We will never share your email.
-              </FormDescription>
+              <FormDescription>We will never share your email.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
       </form>
     </Form>
-  )
+  );
 }
 
 export function FormWithMultipleFields() {
   const form = useForm({
     defaultValues: { firstName: '', lastName: '' },
-  })
+  });
 
   return (
     <Form {...form}>
@@ -103,5 +93,5 @@ export function FormWithMultipleFields() {
         />
       </form>
     </Form>
-  )
+  );
 }

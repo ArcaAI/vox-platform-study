@@ -13,12 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, it, expect } from 'vitest';
 
-import {
-  VAD_WEB_VERSION,
-  ORT_WEB_VERSION,
-  DEFAULT_BASE_ASSET_PATH,
-  DEFAULT_ONNX_WASM_BASE_PATH,
-} from '../constants.js';
+import { VAD_WEB_VERSION, ORT_WEB_VERSION, DEFAULT_BASE_ASSET_PATH, DEFAULT_ONNX_WASM_BASE_PATH } from '../constants.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pkgJsonPath = resolve(here, '..', '..', 'package.json');

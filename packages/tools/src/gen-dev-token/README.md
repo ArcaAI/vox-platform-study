@@ -19,16 +19,16 @@ pnpm gen-dev-token
 
 ## Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-u, --username <username>` | Username to generate token for | `super_admin` |
-| `-e, --expires <expires>` | Token expiration time | `24h` |
-| `-t, --tenant <tenantId>` | Override tenant ID | User's default |
-| `-r, --roles <roles>` | Override roles (comma-separated) | User's default |
-| `-p, --print` | Print full token payload | `false` |
-| `-l, --list` | List available users | - |
-| `-V, --version` | Output version number | - |
-| `-h, --help` | Display help | - |
+| Option                      | Description                      | Default        |
+| --------------------------- | -------------------------------- | -------------- |
+| `-u, --username <username>` | Username to generate token for   | `super_admin`  |
+| `-e, --expires <expires>`   | Token expiration time            | `24h`          |
+| `-t, --tenant <tenantId>`   | Override tenant ID               | User's default |
+| `-r, --roles <roles>`       | Override roles (comma-separated) | User's default |
+| `-p, --print`               | Print full token payload         | `false`        |
+| `-l, --list`                | List available users             | -              |
+| `-V, --version`             | Output version number            | -              |
+| `-h, --help`                | Display help                     | -              |
 
 ## Examples
 
@@ -86,11 +86,11 @@ pnpm gen-dev-token -- -u admin -e 48h -t "tenant-123" -r "ADMIN" -p
 
 Users are defined in `users.ts` and match the database seed data:
 
-| Username | Roles | Tenant | Description |
-|----------|-------|--------|-------------|
+| Username      | Roles       | Tenant | Description                           |
+| ------------- | ----------- | ------ | ------------------------------------- |
 | `super_admin` | SUPER_ADMIN | Global | System administrator with full access |
-| `admin` | ADMIN | Global | Organization administrator |
-| `user` | USER | Global | Standard user with basic permissions |
+| `admin`       | ADMIN       | Global | Organization administrator            |
+| `user`        | USER        | Global | Standard user with basic permissions  |
 
 ## Adding New Users
 

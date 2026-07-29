@@ -51,9 +51,7 @@ function makeService(opts: { roles?: string[] } = {}) {
   };
   const emitter = { emit: vi.fn() };
   const cls = {
-    get: vi.fn((k: string) =>
-      k === 'user' ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] } : k === 'tenantId' ? TENANT : undefined,
-    ),
+    get: vi.fn((k: string) => (k === 'user' ? { id: 'u1', roles: opts.roles ?? ['GLOBAL_ADMIN'] } : k === 'tenantId' ? TENANT : undefined)),
   };
   const db = { baseClient: { $lane: 'unscoped-base-client' } };
   const svc = new AiRuntimeProfileService(repo as any, db as any, emitter as any, cls as any);
@@ -131,18 +129,14 @@ describe('AiRuntimeProfileService — range validation (§5 test 7)', () => {
     ['topP', -0.2],
   ])('rejects out-of-range %s = %s', async (field, value) => {
     const { svc } = makeService();
-    await expect(
-      svc.upsertProfile('lm-studio', '', { [field]: value } as any),
-    ).rejects.toBeInstanceOf(ArgumentInvalidException);
+    await expect(svc.upsertProfile('lm-studio', '', { [field]: value } as any)).rejects.toBeInstanceOf(ArgumentInvalidException);
   });
 
   it.each(['maxTokens', 'contextLength', 'maxConcurrent', 'tpmLimit', 'rpmLimit', 'timeoutS', 'keepAliveSeconds'])(
     'rejects a negative %s',
     async (field) => {
       const { svc } = makeService();
-      await expect(
-        svc.upsertProfile('lm-studio', '', { [field]: -1 } as any),
-      ).rejects.toBeInstanceOf(ArgumentInvalidException);
+      await expect(svc.upsertProfile('lm-studio', '', { [field]: -1 } as any)).rejects.toBeInstanceOf(ArgumentInvalidException);
     },
   );
 
@@ -170,9 +164,7 @@ describe('AiRuntimeProfileService — governance (§5 test 8)', () => {
 
   it('rejects an explicitly non-SYSTEM tenant target with 403', async () => {
     const { svc } = makeService({ roles: ['GLOBAL_ADMIN'] });
-    await expect(
-      svc.upsertProfile('lm-studio', '', { temperature: 0.5 }, TENANT),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.upsertProfile('lm-studio', '', { temperature: 0.5 }, TENANT)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('pins created rows to the SYSTEM tenant', async () => {

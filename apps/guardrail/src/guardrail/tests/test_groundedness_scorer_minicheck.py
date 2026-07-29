@@ -70,9 +70,7 @@ def _claim_keyed_logits(yes_claims: set[str]) -> LogitFn:
 
 def test_score_pairs_preserves_order_and_maps_probability() -> None:
     scorer = LlamaCppMiniCheckScorer(_claim_keyed_logits({"entailed claim"}))
-    scores = scorer.score_pairs(
-        [("src", "entailed claim"), ("src", "contradicted claim")]
-    )
+    scores = scorer.score_pairs([("src", "entailed claim"), ("src", "contradicted claim")])
     assert scores[0] > 0.99  # entailed
     assert scores[1] < 0.01  # not entailed
 
@@ -138,9 +136,7 @@ def test_verifier_fail_closed_on_unexpected_factory_error() -> None:
     def boom(_config: GroundednessConfig) -> LlamaCppMiniCheckScorer:
         raise RuntimeError("llama.cpp exploded during calibration")
 
-    verifier = GroundednessNliVerifier(
-        GroundednessConfig(enabled=True), scorer_factory=boom
-    )
+    verifier = GroundednessNliVerifier(GroundednessConfig(enabled=True), scorer_factory=boom)
     result = verifier.verify("A sentence.", "src")
     assert result.checked is False
     assert result.reason == "nli_model_unavailable"

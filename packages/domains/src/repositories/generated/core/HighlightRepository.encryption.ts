@@ -9,11 +9,7 @@
 
 import { HighlightRepository } from './HighlightRepository';
 import { HighlightEntity } from '../../../entities';
-import {
-  type SecretsServiceLike,
-  encryptStringToCiphertext,
-  decryptCiphertextToString,
-} from '../../../common/field-encryption';
+import { type SecretsServiceLike, encryptStringToCiphertext, decryptCiphertextToString } from '../../../common/field-encryption';
 
 /** Plaintext view returned by {@link HighlightRepository.decryptFieldsFromEntity}. */
 export interface HighlightPlaintext {
@@ -32,18 +28,10 @@ declare module './HighlightRepository' {
      * entity in place. No-op per field when empty/null. Only ciphertext
      * persists (Phase 6).
      */
-    encryptFieldsIntoEntity(
-      this: HighlightRepository,
-      entity: HighlightEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: HighlightRepository, entity: HighlightEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /** Decrypt all ciphertext columns (ciphertext-only; plaintext dropped in Phase 6). */
-    decryptFieldsFromEntity(
-      this: HighlightRepository,
-      entity: HighlightEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<HighlightPlaintext>;
+    decryptFieldsFromEntity(this: HighlightRepository, entity: HighlightEntity, secrets: SecretsServiceLike): Promise<HighlightPlaintext>;
 
     /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
     findByIdWithDecryptedFields(

@@ -36,7 +36,9 @@ def test_snapshot_exposes_retention_ttl() -> None:
 
 def test_snapshot_omits_absent_or_null_retention() -> None:
     assert EffectiveConfigSnapshot(raw={}, ok=True).retention() == {}
-    assert EffectiveConfigSnapshot(raw={"retention": {"ttlSeconds": None}}, ok=True).retention() == {}
+    assert (
+        EffectiveConfigSnapshot(raw={"retention": {"ttlSeconds": None}}, ok=True).retention() == {}
+    )
     assert EffectiveConfigSnapshot(raw={"retention": {"ttlSeconds": 0}}, ok=True).retention() == {}
 
 
@@ -58,7 +60,9 @@ def test_apply_retention_reaches_instantiated_providers() -> None:
 def test_apply_retention_skips_providers_without_support() -> None:
     from smr.services.runtime_limits import apply_provider_retention
 
-    registry = SimpleNamespace(_providers={"azure": _PlainProvider()}, is_instantiated=lambda name: True)
+    registry = SimpleNamespace(
+        _providers={"azure": _PlainProvider()}, is_instantiated=lambda name: True
+    )
     snapshot = EffectiveConfigSnapshot(raw={"retention": {"ttlSeconds": 900}}, ok=True)
 
     apply_provider_retention(snapshot, registry)  # must not raise
@@ -90,7 +94,9 @@ async def test_refresh_runtime_limits_applies_retention() -> None:
         effective_config_client=_Client(),
         provider_semaphores={},
         provider_timeouts={},
-        provider_registry=SimpleNamespace(_providers={"ollama": provider}, is_instantiated=lambda n: True),
+        provider_registry=SimpleNamespace(
+            _providers={"ollama": provider}, is_instantiated=lambda n: True
+        ),
     )
 
     await refresh_runtime_limits(state)

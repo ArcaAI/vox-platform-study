@@ -392,4 +392,3 @@ export interface AudioImportOptions {
   validateAudio?: boolean;
   onProgress?: (progress: { current: number; total: number }) => void;
 }
-

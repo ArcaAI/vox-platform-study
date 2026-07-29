@@ -39,6 +39,11 @@ class ControlAction(StrEnum):
     PAUSE = "pause"
     RESUME = "resume"
     CANCEL = "cancel"
+    # TASK-567 — manual (user-initiated) mid-session switch to the tenant's
+    # configured fallback pipeline. Routed by ``ControlListener`` to the
+    # per-session ``EngineSwitchController``. Unknown to older services, which
+    # log it as an unknown action and no-op (graceful degrade).
+    SWITCH_TO_FALLBACK = "switch_to_fallback"
 
 
 # ---------------------------------------------------------------------------

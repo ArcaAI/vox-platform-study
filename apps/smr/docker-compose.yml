@@ -7,7 +7,7 @@ services:
     ports:
       - "${SMR_PORT:-8862}:8862"
     env_file:
-      - .env.example
+      - .env.sample
     environment:
       - SMR_HOST=0.0.0.0
       - SMR_PORT=8862

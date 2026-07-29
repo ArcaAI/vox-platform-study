@@ -37,7 +37,7 @@ async function callTestHelper(page: Page, fn: string, ...args: unknown[]): Promi
       const helpers = (window as unknown as { roomTestHelpers: Record<string, (...args: unknown[]) => Promise<unknown>> }).roomTestHelpers;
       return helpers[fn](...args);
     },
-    { fn, args }
+    { fn, args },
   );
 }
 
@@ -86,10 +86,10 @@ test.describe('@arcaai/room E2E Tests', () => {
 
     test('should have browser support status displayed in UI', async ({ page }) => {
       await page.goto('http://localhost:3334/', { waitUntil: 'networkidle' });
-      
+
       // Wait for at least one status to be checked
       await page.waitForSelector('#audio-context-support:not(:has-text("Checking..."))', { timeout: 15000 });
-      
+
       // Check that support status is displayed in the UI
       await expect(page.locator('#audio-context-support')).toContainText(/Supported|Not supported/);
       await expect(page.locator('#get-user-media-support')).toContainText(/Supported|Not supported/);
@@ -104,7 +104,7 @@ test.describe('@arcaai/room E2E Tests', () => {
       const results = await getTestResults(page);
 
       expect(results.events.length).toBeGreaterThan(0);
-      const supportEvent = results.events.find(e => e.message.includes('Browser support checked'));
+      const supportEvent = results.events.find((e) => e.message.includes('Browser support checked'));
       expect(supportEvent).toBeDefined();
     });
   });
@@ -139,11 +139,11 @@ test.describe('@arcaai/room E2E Tests', () => {
       const result = await page.evaluate(async () => {
         const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         const ctx = new AudioContextCtor();
-        
+
         const initialState = ctx.state;
         await ctx.resume();
         const afterResumeState = ctx.state;
-        
+
         ctx.close();
         return { initialState, afterResumeState };
       });
@@ -210,7 +210,7 @@ test.describe('@arcaai/room E2E Tests', () => {
             trackReadyState: tracks[0]?.readyState,
           };
           // Clean up
-          tracks.forEach(t => t.stop());
+          tracks.forEach((t) => t.stop());
           return info;
         } catch (error) {
           return { success: false, error: (error as Error).message };
@@ -239,7 +239,7 @@ test.describe('@arcaai/room E2E Tests', () => {
           });
           const track = stream.getAudioTracks()[0];
           const settings = track?.getSettings();
-          
+
           const info = {
             success: true,
             settings: {
@@ -248,7 +248,7 @@ test.describe('@arcaai/room E2E Tests', () => {
               autoGainControl: settings?.autoGainControl,
             },
           };
-          
+
           track?.stop();
           return info;
         } catch (error) {
@@ -265,9 +265,9 @@ test.describe('@arcaai/room E2E Tests', () => {
       const devices = await page.evaluate(async () => {
         try {
           const allDevices = await navigator.mediaDevices.enumerateDevices();
-          const audioInputs = allDevices.filter(d => d.kind === 'audioinput');
-          const audioOutputs = allDevices.filter(d => d.kind === 'audiooutput');
-          
+          const audioInputs = allDevices.filter((d) => d.kind === 'audioinput');
+          const audioOutputs = allDevices.filter((d) => d.kind === 'audiooutput');
+
           return {
             success: true,
             totalDevices: allDevices.length,
@@ -297,10 +297,7 @@ test.describe('@arcaai/room E2E Tests', () => {
       await page.click('#btn-connect');
 
       // Wait for room to connect
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       const results = await getTestResults(page);
       expect(results.roomConnected).toBe(true);
@@ -315,10 +312,7 @@ test.describe('@arcaai/room E2E Tests', () => {
       await page.goto('http://localhost:3334/', { waitUntil: 'networkidle' });
 
       await page.click('#btn-connect');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       const sampleRateText = await page.locator('#sample-rate').textContent();
       expect(sampleRateText).toMatch(/\d+ Hz/);
@@ -329,17 +323,11 @@ test.describe('@arcaai/room E2E Tests', () => {
 
       // Connect first
       await page.click('#btn-connect');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       // Disconnect
       await page.click('#btn-disconnect');
-      await page.waitForFunction(
-        () => !(window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 10000 }
-      );
+      await page.waitForFunction(() => !(window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 10000 });
 
       const results = await getTestResults(page);
       expect(results.roomConnected).toBe(false);
@@ -357,10 +345,7 @@ test.describe('@arcaai/room E2E Tests', () => {
 
       // Connect
       await page.click('#btn-connect');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       // After connection
       await expect(page.locator('#btn-start-capture')).toBeEnabled();
@@ -377,18 +362,12 @@ test.describe('@arcaai/room E2E Tests', () => {
 
       // Connect first
       await page.click('#btn-connect');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       await page.click('#btn-start-capture');
 
       // Wait for track to be active
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.trackActive,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.trackActive, { timeout: 15000 });
 
       const results = await getTestResults(page);
       expect(results.trackActive).toBe(true);
@@ -403,24 +382,15 @@ test.describe('@arcaai/room E2E Tests', () => {
 
       // Connect first
       await page.click('#btn-connect');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       // Start capture first
       await page.click('#btn-start-capture');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.trackActive,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.trackActive, { timeout: 15000 });
 
       // Stop capture
       await page.click('#btn-stop-capture');
-      await page.waitForFunction(
-        () => !(window as unknown as { testResults: TestResults }).testResults.trackActive,
-        { timeout: 10000 }
-      );
+      await page.waitForFunction(() => !(window as unknown as { testResults: TestResults }).testResults.trackActive, { timeout: 10000 });
 
       const results = await getTestResults(page);
       expect(results.trackActive).toBe(false);
@@ -434,17 +404,11 @@ test.describe('@arcaai/room E2E Tests', () => {
 
       // Connect first
       await page.click('#btn-connect');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       // Start capture
       await page.click('#btn-start-capture');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.trackActive,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.trackActive, { timeout: 15000 });
 
       // Initially not muted
       await expect(page.locator('#track-muted')).toHaveText('false');
@@ -463,17 +427,11 @@ test.describe('@arcaai/room E2E Tests', () => {
 
       // Connect first
       await page.click('#btn-connect');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       // Start capture
       await page.click('#btn-start-capture');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.trackActive,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.trackActive, { timeout: 15000 });
 
       // Wait a bit for audio level monitoring to start
       await page.waitForTimeout(500);
@@ -536,17 +494,11 @@ test.describe('@arcaai/room E2E Tests', () => {
 
       // Connect
       await page.click('#btn-connect');
-      await page.waitForFunction(
-        () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 15000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 15000 });
 
       // Disconnect
       await page.click('#btn-disconnect');
-      await page.waitForFunction(
-        () => !(window as unknown as { testResults: TestResults }).testResults.roomConnected,
-        { timeout: 10000 }
-      );
+      await page.waitForFunction(() => !(window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 10000 });
 
       const results = await getTestResults(page);
       expect(results.room).toBeNull();
@@ -561,13 +513,16 @@ test.describe('@arcaai/room E2E Tests', () => {
 test.describe('@arcaai/room Cross-Browser Tests', () => {
   test('should detect Safari correctly', async ({ page, browserName }) => {
     await page.goto('http://localhost:3334/');
-    await page.waitForFunction(() => {
-      const results = (window as unknown as { testResults: TestResults }).testResults;
-      return results.browserSupport !== null;
-    }, { timeout: 10000 });
+    await page.waitForFunction(
+      () => {
+        const results = (window as unknown as { testResults: TestResults }).testResults;
+        return results.browserSupport !== null;
+      },
+      { timeout: 10000 },
+    );
 
     const results = await getTestResults(page);
-    
+
     if (browserName === 'webkit') {
       expect(results.browserSupport!.isSafari).toBe(true);
     } else {
@@ -581,20 +536,20 @@ test.describe('@arcaai/room Cross-Browser Tests', () => {
     const contextState = await page.evaluate(async () => {
       const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AudioContextCtor();
-      
+
       // Initial state may vary by browser
       const initial = ctx.state;
-      
+
       // Try to resume
       try {
         await ctx.resume();
       } catch (e) {
         // Some browsers may require user gesture
       }
-      
+
       const afterResume = ctx.state;
       ctx.close();
-      
+
       return { initial, afterResume };
     });
 
@@ -614,17 +569,17 @@ test.describe('@arcaai/room Error Handling', () => {
     await context.grantPermissions([]); // Remove all permissions
 
     await page.goto('http://localhost:3334/');
-    await page.waitForFunction(() => {
-      const results = (window as unknown as { testResults: TestResults }).testResults;
-      return results.browserSupport !== null;
-    }, { timeout: 10000 });
+    await page.waitForFunction(
+      () => {
+        const results = (window as unknown as { testResults: TestResults }).testResults;
+        return results.browserSupport !== null;
+      },
+      { timeout: 10000 },
+    );
 
     // Try to start capture (should fail)
     await page.click('#btn-connect');
-    await page.waitForFunction(
-      () => (window as unknown as { testResults: TestResults }).testResults.roomConnected,
-      { timeout: 10000 }
-    );
+    await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.roomConnected, { timeout: 10000 });
 
     // This may throw or log an error
     const captureResult = await page.evaluate(async () => {
@@ -644,13 +599,16 @@ test.describe('@arcaai/room Error Handling', () => {
 
   test('should track errors in testResults', async ({ page }) => {
     await page.goto('http://localhost:3334/');
-    await page.waitForFunction(() => {
-      const results = (window as unknown as { testResults: TestResults }).testResults;
-      return results.browserSupport !== null;
-    }, { timeout: 10000 });
+    await page.waitForFunction(
+      () => {
+        const results = (window as unknown as { testResults: TestResults }).testResults;
+        return results.browserSupport !== null;
+      },
+      { timeout: 10000 },
+    );
 
     const results = await getTestResults(page);
-    
+
     // Initially no errors
     expect(results.errors).toHaveLength(0);
   });

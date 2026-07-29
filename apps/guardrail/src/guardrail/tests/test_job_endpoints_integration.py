@@ -23,7 +23,9 @@ class RecordingProvider(OllamaProvider):
         self.calls: list[tuple[str, str]] = []
         self.delay_s = 0.0
 
-    async def analyze_content(self, text: str, guardrail_type: str = "comprehensive") -> dict[str, object]:
+    async def analyze_content(
+        self, text: str, guardrail_type: str = "comprehensive"
+    ) -> dict[str, object]:
         self.calls.append((text, guardrail_type))
         if self.delay_s:
             await asyncio.sleep(self.delay_s)
@@ -39,7 +41,9 @@ class RecordingProvider(OllamaProvider):
 
 
 @pytest_asyncio.fixture
-async def integration_client() -> AsyncGenerator[tuple[AsyncClient, FastAPI, RecordingProvider], None]:
+async def integration_client() -> (
+    AsyncGenerator[tuple[AsyncClient, FastAPI, RecordingProvider], None]
+):
     settings = Settings(metrics_enabled=False)
     redis_client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     provider = RecordingProvider()

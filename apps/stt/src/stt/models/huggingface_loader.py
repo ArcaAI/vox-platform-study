@@ -55,24 +55,29 @@ class HuggingFaceLoader(BaseModelLoader):
 
             logger.info(
                 "Loading HuggingFace model: %s (device=%s, dtype=%s, attn_implementation=%s)",
-                model_source, device, torch_dtype, model_config.attn_implementation,
+                model_source,
+                device,
+                torch_dtype,
+                model_config.attn_implementation,
             )
 
             # Load model in a thread pool to avoid blocking the event loop.
-            model, tokenizer, processor, feature_extractor, is_multimodal_lm = await asyncio.to_thread(
-                self._load_by_task,
-                model_source=model_source,
-                task_type=model_config.task_type,
-                device=device,
-                torch_dtype=torch_dtype,
-                cache_dir=cache_dir,
-                revision=model_config.source_revision,
-                token=(
-                    settings.huggingface_token.get_secret_value()
-                    if settings.huggingface_token
-                    else None
-                ),
-                attn_implementation=model_config.attn_implementation,
+            model, tokenizer, processor, feature_extractor, is_multimodal_lm = (
+                await asyncio.to_thread(
+                    self._load_by_task,
+                    model_source=model_source,
+                    task_type=model_config.task_type,
+                    device=device,
+                    torch_dtype=torch_dtype,
+                    cache_dir=cache_dir,
+                    revision=model_config.source_revision,
+                    token=(
+                        settings.huggingface_token.get_secret_value()
+                        if settings.huggingface_token
+                        else None
+                    ),
+                    attn_implementation=model_config.attn_implementation,
+                )
             )
 
             # Estimate memory usage
@@ -80,7 +85,8 @@ class HuggingFaceLoader(BaseModelLoader):
 
             logger.info(
                 "Loaded model %s successfully (memory: ~%dMB)",
-                model_config.slug, memory_mb,
+                model_config.slug,
+                memory_mb,
             )
 
             extra: dict[str, Any] = {
@@ -170,12 +176,15 @@ class HuggingFaceLoader(BaseModelLoader):
 
             logger.info(
                 "ASR branch selection: model_source=%s, is_multimodal_lm=%s",
-                model_source, is_multimodal_lm,
+                model_source,
+                is_multimodal_lm,
             )
 
             if is_multimodal_lm:
                 AutoModelForMultimodalLM = getattr(
-                    transformers, "AutoModelForMultimodalLM", None,
+                    transformers,
+                    "AutoModelForMultimodalLM",
+                    None,
                 )
                 if AutoModelForMultimodalLM is None:
                     raise ModelLoadError(
@@ -184,6 +193,7 @@ class HuggingFaceLoader(BaseModelLoader):
                     )
                 try:
                     import torch as _torch
+
                     _use_device_map = _torch.cuda.is_available() and _has_accelerate
                     _multimodal_kwargs: dict[str, Any] = {"low_cpu_mem_usage": True}
                     if _use_device_map:
@@ -195,9 +205,7 @@ class HuggingFaceLoader(BaseModelLoader):
                         **common_kwargs,
                     )
                 except Exception as err:
-                    raise ModelLoadError(
-                        f"Cannot load multimodal LLM '{model_source}'"
-                    ) from err
+                    raise ModelLoadError(f"Cannot load multimodal LLM '{model_source}'") from err
             else:
                 attn_kwargs: dict[str, Any] = {}
                 if resolved_attn is not None:
@@ -212,7 +220,9 @@ class HuggingFaceLoader(BaseModelLoader):
                         **attn_kwargs,
                         **common_kwargs,
                     )
-                    generation_config = GenerationConfig.from_pretrained(model_source, **common_kwargs)
+                    generation_config = GenerationConfig.from_pretrained(
+                        model_source, **common_kwargs
+                    )
                     model.generation_config = generation_config
                     processor = WhisperProcessor.from_pretrained(model_source, **common_kwargs)
                 except Exception as whisper_err:
@@ -294,6 +304,7 @@ class HuggingFaceLoader(BaseModelLoader):
         """Check if the ``accelerate`` package is available."""
         try:
             import accelerate  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -324,8 +335,7 @@ class HuggingFaceLoader(BaseModelLoader):
         if requested == "flash_attention_2":
             if not device.startswith("cuda"):
                 logger.warning(
-                    "flash_attention_2 requires CUDA but device is '%s' "
-                    "-- falling back to sdpa",
+                    "flash_attention_2 requires CUDA but device is '%s' " "-- falling back to sdpa",
                     device,
                 )
                 return "sdpa"
@@ -371,20 +381,23 @@ class HuggingFaceLoader(BaseModelLoader):
             )
             has_audio_config = getattr(config, "audio_config", None) is not None
             result = has_multimodal_arch or (
-                model_type == "gemma4"
-                and has_gemma4_conditional_arch
-                and has_audio_config
+                model_type == "gemma4" and has_gemma4_conditional_arch and has_audio_config
             )
             logger.info(
                 "_is_multimodal_lm detection: model_source=%s, model_type=%s, "
                 "architectures=%s, has_audio_config=%s, result=%s",
-                model_source, model_type, architectures, has_audio_config, result,
+                model_source,
+                model_type,
+                architectures,
+                has_audio_config,
+                result,
             )
             return result
         except Exception as exc:
             logger.warning(
                 "Failed to auto-detect multimodal LLM: model_source=%s, error=%s",
-                model_source, exc,
+                model_source,
+                exc,
             )
             return False
 

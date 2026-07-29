@@ -53,7 +53,10 @@ function buildService(opts: { config?: Record<string, unknown>; trajectory?: unk
     expire: vi.fn().mockResolvedValue(true),
   };
   const redisSubscriber = { subscribeToChannel: vi.fn(), unsubscribeFromChannel: vi.fn() };
-  const audioBridge = { subscribeToResults: vi.fn().mockReturnValue({ subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }) }), unsubscribeFromResults: vi.fn() };
+  const audioBridge = {
+    subscribeToResults: vi.fn().mockReturnValue({ subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }) }),
+    unsubscribeFromResults: vi.fn(),
+  };
   const config = opts.config ?? {};
   const configService = { get: vi.fn().mockImplementation((key: string) => config[key]) };
   const harnessPolicyService = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'live-medgemma' }) };

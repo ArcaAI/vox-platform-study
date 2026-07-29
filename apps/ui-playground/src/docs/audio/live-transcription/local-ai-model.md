@@ -6,10 +6,10 @@ Selects which Whisper model to use for on-device transcription. Different models
 
 ### Available Models
 
-| Model | Size | Speed | Best For |
-|-------|------|-------|----------|
-| **Whisper Tiny** | ~75 MB | Fastest | Real-time use on lower-power devices |
-| **Whisper Base** | ~140 MB | Fast | General-purpose transcription |
+| Model             | Size    | Speed    | Best For                              |
+| ----------------- | ------- | -------- | ------------------------------------- |
+| **Whisper Tiny**  | ~75 MB  | Fastest  | Real-time use on lower-power devices  |
+| **Whisper Base**  | ~140 MB | Fast     | General-purpose transcription         |
 | **Whisper Small** | ~460 MB | Moderate | When accuracy matters more than speed |
 
 <!-- @example -->

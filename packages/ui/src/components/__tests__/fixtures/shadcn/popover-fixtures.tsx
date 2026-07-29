@@ -1,12 +1,5 @@
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverDescription,
-} from '../../../shadcn/popover'
-import { Button } from '../../../shadcn/button'
+import { Popover, PopoverTrigger, PopoverContent, PopoverHeader, PopoverTitle, PopoverDescription } from '../../../shadcn/popover';
+import { Button } from '../../../shadcn/button';
 
 export function BasicPopover({ defaultOpen = false }: { defaultOpen?: boolean }) {
   return (
@@ -22,7 +15,7 @@ export function BasicPopover({ defaultOpen = false }: { defaultOpen?: boolean })
         <div>Popover body content</div>
       </PopoverContent>
     </Popover>
-  )
+  );
 }
 
 export function PopoverWithCustomClass({ defaultOpen = false }: { defaultOpen?: boolean }) {
@@ -35,5 +28,5 @@ export function PopoverWithCustomClass({ defaultOpen = false }: { defaultOpen?: 
         <PopoverTitle>Custom Popover</PopoverTitle>
       </PopoverContent>
     </Popover>
-  )
+  );
 }

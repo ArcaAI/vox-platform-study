@@ -72,6 +72,7 @@ def _resolver(data, clock=None, ttl=60) -> _StubResolver:
 # Resolution: header present, fallback, no header
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_resolve_uses_request_tenant_rows() -> None:
     data = {
@@ -158,6 +159,7 @@ async def test_empty_azure_deployment_is_treated_as_unset() -> None:
 # TTL cache: hit / miss / expiry
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_cache_hit_avoids_second_db_call() -> None:
     data = {TENANT_A: {KEY_PROVIDER: "ollama", KEY_MODEL: "gemma3:latest"}}
@@ -201,6 +203,7 @@ async def test_cache_valid_within_ttl() -> None:
 # deployment without a reachable Postgres pays at most one connection attempt
 # per tenant per TTL, not one per request.
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_db_error_resolves_to_empty_config() -> None:
@@ -267,6 +270,7 @@ async def test_db_error_one_session_attempt_per_tenant_per_ttl() -> None:
 # Engine resolution: map a resolved config onto an env sub-config
 # ---------------------------------------------------------------------------
 
+
 def _settings() -> Settings:
     return Settings()
 
@@ -330,6 +334,7 @@ def test_resolve_engine_no_model_returns_base_unmodified() -> None:
 # ---------------------------------------------------------------------------
 # Provider construction
 # ---------------------------------------------------------------------------
+
 
 def test_build_guardian_provider_openai_compat() -> None:
     from guardrail.providers.openai_compat import OpenAICompatGuardianProvider
@@ -504,6 +509,7 @@ async def test_db_metadata_without_deployment_leaves_it_unset() -> None:
 # Contract: the read targets the exact AiTaskDefault / AiModel tables+columns
 # ---------------------------------------------------------------------------
 
+
 def test_ai_task_default_read_maps_prisma_columns() -> None:
     table = AiTaskDefaultRead.__table__
     assert table.schema == "core"
@@ -517,7 +523,15 @@ def test_ai_model_read_maps_prisma_columns() -> None:
     assert table.schema == "core"
     assert table.name == "AiModel"  # type: ignore[attr-defined]
     colnames = {c.name for c in table.columns}
-    assert {"id", "tenantId", "slug", "provider", "sourceUri", "_metadata", "resourceStatus"} <= colnames
+    assert {
+        "id",
+        "tenantId",
+        "slug",
+        "provider",
+        "sourceUri",
+        "_metadata",
+        "resourceStatus",
+    } <= colnames
 
 
 def test_guardrail_task_key_contract() -> None:

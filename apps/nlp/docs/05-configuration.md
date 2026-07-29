@@ -32,7 +32,7 @@ NLP_MAX_BATCH_SIZE=100
 ### Text Classification Configuration
 
 > **Open decision (TASK-330 §3.4) — doc-type classifier is unconfigured.** The
-> `/classify/text` endpoint is meant for clinical *document-type* classification (e.g.
+> `/classify/text` endpoint is meant for clinical _document-type_ classification (e.g.
 > clinical note vs discharge summary vs lab report), but the intended model + label
 > taxonomy has not been chosen yet. The default is therefore a non-functional placeholder
 > (`__UNCONFIGURED_DOC_TYPE_CLASSIFIER__`); while it is in effect the service logs a loud
@@ -190,6 +190,7 @@ nano .env
 ### Environment-Specific Configurations
 
 **Development (.env.development):**
+
 ```bash
 NLP_ENVIRONMENT=development
 NLP_DEBUG=true
@@ -198,7 +199,8 @@ TEXT_CLASSIFIER_USE_GPU=false
 TOKEN_CLASSIFIER_USE_GPU=false
 ```
 
-**Production (.env.production):**
+**Production (.env.prod):**
+
 ```bash
 NLP_ENVIRONMENT=production
 NLP_DEBUG=false
@@ -225,7 +227,7 @@ docker run -d \
 
 ```bash
 docker run -d \
-  --env-file .env.production \
+  --env-file .env.prod \
   --gpus all \
   hope-nlp:latest
 ```
@@ -243,7 +245,7 @@ services:
       - TEXT_CLASSIFIER_USE_GPU=true
       - TOKEN_CLASSIFIER_USE_GPU=true
     env_file:
-      - .env.production
+      - .env.prod
     deploy:
       resources:
         reservations:
@@ -314,4 +316,3 @@ NLP_WORKERS=4
 ## Configuration Reference
 
 See `env.example` for the complete list of configuration options with descriptions and default values.
-

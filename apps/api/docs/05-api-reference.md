@@ -43,6 +43,7 @@ The application entry point configures:
 **Key Functions:**
 
 #### `isOriginAllowed(origin: string, nodeEnv: string): boolean`
+
 Validates request origins based on environment.
 
 **Development**: All origins allowed
@@ -50,6 +51,7 @@ Validates request origins based on environment.
 **Production**: Configured origins + HTTPS origins (SDK-friendly)
 
 #### `getCorsOrigins(nodeEnv: string)`
+
 Returns CORS configuration for environment.
 
 ---
@@ -73,6 +75,7 @@ export class ProtectedController {}
 ```
 
 **Features:**
+
 - Header-based API key validation
 - Integration with ApiKeyValidationService
 - Scope-based permission checking
@@ -95,6 +98,7 @@ export class UserProtectedController {}
 ```
 
 **Features:**
+
 - Bearer token validation
 - User extraction and context injection
 - Token expiration handling
@@ -117,6 +121,7 @@ export class SsoProtectedController {}
 ```
 
 **Features:**
+
 - OIDC provider integration
 - Multiple identity provider support
 - Automatic user provisioning
@@ -146,6 +151,7 @@ export class AdminController {
 ```
 
 **Features:**
+
 - Multiple role support
 - Hierarchical role checking
 - Tenant-aware authorization
@@ -264,6 +270,7 @@ async getUserProfile(@AuthUser() user: any) {
 ```
 
 **User Object Structure:**
+
 ```typescript
 {
   id: string;
@@ -298,6 +305,7 @@ async getUserById(@Param('id') id: string) {}
 ```
 
 **Options:**
+
 - `returnedModel`: Response DTO class
 - `method`: HTTP method (GET, POST, PUT, DELETE, PATCH)
 - `path`: Route path
@@ -315,12 +323,14 @@ async getUserById(@Param('id') id: string) {}
 Manages request context with correlation IDs.
 
 **Features:**
+
 - Request ID generation (X-Request-Id header or UUID v7)
 - Context propagation across async operations
 - Request/response logging
 - Timing metrics
 
 **Context Structure:**
+
 ```typescript
 {
   requestId: string;
@@ -341,12 +351,14 @@ Manages request context with correlation IDs.
 Handles exception transformation and logging.
 
 **Features:**
+
 - Standardized error responses
 - Error classification (client vs server)
 - Sentry error reporting
 - PII redaction from error logs
 
 **Error Response Format:**
+
 ```typescript
 {
   error: {
@@ -368,6 +380,7 @@ Handles exception transformation and logging.
 Handles maintenance mode enforcement.
 
 **Features:**
+
 - Global maintenance mode flag
 - Whitelisted endpoints during maintenance
 - Custom maintenance messages
@@ -384,15 +397,18 @@ Handles maintenance mode enforcement.
 Manages medical session lifecycle.
 
 **Dependencies:**
+
 - `ISessionService`: Session business logic
 - `IKafkaService`: Event publishing
 
 #### Endpoints
 
 ##### POST /api/v1/sessions
+
 Creates a new medical session.
 
 **Request:** `CreateSessionRequest`
+
 ```typescript
 {
   patientId: string;
@@ -408,6 +424,7 @@ Creates a new medical session.
 ---
 
 ##### GET /api/sessions/:id
+
 Retrieves session by ID.
 
 **Response:** `SessionResponse`
@@ -415,6 +432,7 @@ Retrieves session by ID.
 ---
 
 ##### PUT /api/sessions/:id
+
 Updates session.
 
 **Request:** `UpdateSessionRequest`
@@ -424,6 +442,7 @@ Updates session.
 ---
 
 ##### DELETE /api/sessions/:id
+
 Deletes session.
 
 **Response:** `SessionResponse`
@@ -432,9 +451,11 @@ Deletes session.
 ---
 
 ##### POST /api/v1/sessions/:id/validate
+
 Validates session state.
 
 **Response:** `SessionValidateResponse`
+
 ```typescript
 {
   isValid: boolean;
@@ -446,9 +467,11 @@ Validates session state.
 ---
 
 ##### POST /api/v1/sessions/:id/sync
+
 Syncs session data across devices.
 
 **Request:** `SessionSyncRequest`
+
 ```typescript
 {
   syncData: {
@@ -465,6 +488,7 @@ Syncs session data across devices.
 ---
 
 ##### GET /api/v1/sessions/patient/:patientId
+
 Lists sessions for a patient.
 
 **Query Parameters:** `PaginatedQuery`
@@ -479,14 +503,15 @@ Lists sessions for a patient.
 Shared abstract base class for all proxy controllers. Provides lazy proxy creation, request ID generation, structured logging, and error handling via `http-proxy-middleware`.
 
 **Configuration Interface:**
+
 ```typescript
 interface ProxyControllerConfig {
-    serviceUrl: string;
-    serviceName: string;
-    pathRewriteFrom: string;
-    pathRewriteTo: string;
-    proxyTimeout?: number;  // default: 60000
-    timeout?: number;       // default: 60000
+  serviceUrl: string;
+  serviceName: string;
+  pathRewriteFrom: string;
+  pathRewriteTo: string;
+  proxyTimeout?: number; // default: 60000
+  timeout?: number; // default: 60000
 }
 ```
 
@@ -498,13 +523,13 @@ interface ProxyControllerConfig {
 
 **Location**: `src/modules/stt/`
 
-| Controller | Route | Purpose |
-|---|---|---|
-| `TranscriptionJobController` | `audio/transcription-jobs` | Job CRUD |
-| `TranscriptionStreamController` | `audio/transcription-jobs` | Streaming endpoints |
-| `PipelineController` | `audio/pipelines` | Pipeline management |
-| `AiModelController` | `audio/ai-models` | AI model listing |
-| `SttInternalController` | `internal/stt` | Internal service-to-service |
+| Controller                      | Route                      | Purpose                     |
+| ------------------------------- | -------------------------- | --------------------------- |
+| `TranscriptionJobController`    | `audio/transcription-jobs` | Job CRUD                    |
+| `TranscriptionStreamController` | `audio/transcription-jobs` | Streaming endpoints         |
+| `PipelineController`            | `audio/pipelines`          | Pipeline management         |
+| `AiModelController`             | `audio/ai-models`          | AI model listing            |
+| `SttInternalController`         | `internal/stt`             | Internal service-to-service |
 
 ---
 
@@ -514,6 +539,7 @@ interface ProxyControllerConfig {
 **Route**: `text` → `/api/v1/text/**`
 
 **Proxy Configuration:**
+
 - **Target**: `SMR_URL || 'http://localhost:8862'`
 - **Path Rewrite**: `^/api/v1/text` → (empty)
 - **Timeout**: 120000ms
@@ -526,24 +552,24 @@ interface ProxyControllerConfig {
 
 ### Admin Controllers
 
-| Controller | Route | Purpose |
-|---|---|---|
-| `GlobalSettingsController` | `admin/settings` | Global settings CRUD |
-| `TenantController` | `admin/tenants` | Tenant management |
-| `ApiKeyController` | `admin/api-keys` | API key management |
-| `AuditLogController` | `admin/audit-logs` | Audit log access |
-| `RolesController` | `admin/rbac/roles` | RBAC role management |
-| `PoliciesController` | `admin/rbac/policies` | RBAC policy management |
-| `PstudioController` | `admin/pstudio` | Prisma Studio |
+| Controller                 | Route                 | Purpose                |
+| -------------------------- | --------------------- | ---------------------- |
+| `GlobalSettingsController` | `admin/settings`      | Global settings CRUD   |
+| `TenantController`         | `admin/tenants`       | Tenant management      |
+| `ApiKeyController`         | `admin/api-keys`      | API key management     |
+| `AuditLogController`       | `admin/audit-logs`    | Audit log access       |
+| `RolesController`          | `admin/rbac/roles`    | RBAC role management   |
+| `PoliciesController`       | `admin/rbac/policies` | RBAC policy management |
+| `PstudioController`        | `admin/pstudio`       | Prisma Studio          |
 
 ---
 
 ### User Self-Service Controllers
 
-| Controller | Route | Purpose |
-|---|---|---|
-| `UserPreferencesController` | `user/me` | User preferences |
-| `UserSettingsController` | `user/me/settings` | User settings |
+| Controller                  | Route              | Purpose          |
+| --------------------------- | ------------------ | ---------------- |
+| `UserPreferencesController` | `user/me`          | User preferences |
+| `UserSettingsController`    | `user/me/settings` | User settings    |
 
 ---
 
@@ -556,6 +582,7 @@ Provides health check endpoints.
 **Imports:** `HealthCheckServiceModule` from `@arcaai/applications`
 
 **Endpoints:**
+
 - `GET /api/v1/health` - Basic health check
 - `GET /api/v1/health/ready` - Readiness probe (checks dependencies)
 - `GET /api/v1/health/live` - Liveness probe
@@ -573,9 +600,11 @@ Validates and manages API keys.
 **Methods:**
 
 #### `validateApiKey(apiKey: string): Promise<ApiKeyValidation>`
+
 Validates an API key.
 
 **Returns:**
+
 ```typescript
 {
   valid: boolean;
@@ -599,30 +628,39 @@ Handles session business logic.
 **Methods:**
 
 #### `create(request: CreateSessionRequest): Promise<Session>`
+
 Creates a new session.
 
 #### `fetchById(id: string): Promise<Session>`
+
 Retrieves session by ID.
 
 #### `update(id: string, request: UpdateSessionRequest): Promise<Session>`
+
 Updates session.
 
 #### `deleteById(id: string): Promise<Session>`
+
 Deletes session.
 
 #### `validateSession(id: string): Promise<ValidationResult>`
+
 Validates session state.
 
 #### `syncSession(id: string, syncData: any): Promise<Session>`
+
 Syncs session data.
 
 #### `fetchAll(query: PaginatedQuery): Promise<PaginatedResult<Session>>`
+
 Lists all sessions with pagination.
 
 #### `fetchAllByPatientId(query: PatientQuery): Promise<PaginatedResult<Session>>`
+
 Lists sessions for a specific patient.
 
 #### `fetchAllByTenantId(query: TenantQuery): Promise<PaginatedResult<Session>>`
+
 Lists sessions for a specific tenant.
 
 ---
@@ -636,9 +674,11 @@ Handles event streaming with Kafka.
 **Methods:**
 
 #### `publishSessionEvent(eventType: string, session: Session): Promise<void>`
+
 Publishes session lifecycle events.
 
 **Event Types:**
+
 - `session.created`
 - `session.updated`
 - `session.deleted`
@@ -670,14 +710,14 @@ enum SessionType {
   CONSULTATION = 'CONSULTATION',
   FOLLOW_UP = 'FOLLOW_UP',
   EMERGENCY = 'EMERGENCY',
-  TELEHEALTH = 'TELEHEALTH'
+  TELEHEALTH = 'TELEHEALTH',
 }
 
 enum SessionStatus {
   ACTIVE = 'ACTIVE',
   PAUSED = 'PAUSED',
   COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED'
+  CANCELLED = 'CANCELLED',
 }
 ```
 
@@ -703,10 +743,10 @@ interface PaginatedResult<T> {
 
 ```typescript
 interface PaginatedQuery {
-  page?: number;        // Default: 1
-  limit?: number;       // Default: 20, Max: 100
-  sortBy?: string;      // Default: 'createdAt'
-  sortOrder?: 'asc' | 'desc';  // Default: 'desc'
+  page?: number; // Default: 1
+  limit?: number; // Default: 20, Max: 100
+  sortBy?: string; // Default: 'createdAt'
+  sortOrder?: 'asc' | 'desc'; // Default: 'desc'
 }
 ```
 
@@ -730,34 +770,37 @@ Provides real-time STT streaming.
 
 ### Standard Error Codes
 
-| Code | HTTP Status | Description |
-|------|-------------|-------------|
-| `VALIDATION_ERROR` | 400 | Request validation failed |
-| `UNAUTHORIZED` | 401 | Missing or invalid authentication |
-| `FORBIDDEN` | 403 | Insufficient permissions |
-| `RESOURCE_NOT_FOUND` | 404 | Requested resource not found |
-| `CONFLICT` | 409 | Resource conflict (duplicate, etc.) |
-| `RATE_LIMIT_EXCEEDED` | 429 | Too many requests |
-| `INTERNAL_SERVER_ERROR` | 500 | Unexpected server error |
-| `SERVICE_UNAVAILABLE` | 503 | Service temporarily unavailable |
+| Code                    | HTTP Status | Description                         |
+| ----------------------- | ----------- | ----------------------------------- |
+| `VALIDATION_ERROR`      | 400         | Request validation failed           |
+| `UNAUTHORIZED`          | 401         | Missing or invalid authentication   |
+| `FORBIDDEN`             | 403         | Insufficient permissions            |
+| `RESOURCE_NOT_FOUND`    | 404         | Requested resource not found        |
+| `CONFLICT`              | 409         | Resource conflict (duplicate, etc.) |
+| `RATE_LIMIT_EXCEEDED`   | 429         | Too many requests                   |
+| `INTERNAL_SERVER_ERROR` | 500         | Unexpected server error             |
+| `SERVICE_UNAVAILABLE`   | 503         | Service temporarily unavailable     |
 
 ---
 
 ## Environment-Specific Behavior
 
 ### Development
+
 - All origins allowed (CORS)
 - Swagger UI enabled
 - Debug logging enabled
 - No Sentry reporting
 
 ### Staging
+
 - Localhost + staging domains allowed (CORS)
 - Swagger UI enabled (with auth)
 - Info-level logging
 - Sentry reporting to staging project
 
 ### Production
+
 - Configured origins + HTTPS allowed (CORS)
 - Swagger UI disabled
 - Warn/Error logging only
@@ -769,16 +812,19 @@ Provides real-time STT streaming.
 ## Performance Considerations
 
 ### Request Timeouts
+
 - **Default**: 30 seconds
 - **Long-running operations**: 5 minutes
 - **WebSocket idle**: 24 hours
 
 ### Rate Limiting
+
 - **Default**: 100 requests/15 minutes per IP
 - **Authenticated**: 1000 requests/hour per user
 - **API Key**: Configurable per key
 
 ### Caching
+
 - Session data: 5 minutes (Redis)
 - Static responses: 1 hour (Redis)
 - API key validation: 10 minutes (in-memory)
@@ -788,17 +834,21 @@ Provides real-time STT streaming.
 ## Security Notes
 
 ### Authentication Priority
+
 1. API Key (if X-API-Key header present)
 2. JWT Bearer Token (if Authorization header present)
 3. OIDC Session (if valid session cookie)
 
 ### CORS Policy
+
 - **Development**: Allow all
 - **Staging**: Whitelist + localhost
 - **Production**: Whitelist + all HTTPS (SDK-friendly)
 
 ### Rate Limiting
+
 Applied per:
+
 - IP address (global)
 - User ID (authenticated)
 - API key (service)
@@ -817,4 +867,3 @@ Applied per:
 
 **Document Version**: 1.0
 **Last Updated**: 2025-01-10
-

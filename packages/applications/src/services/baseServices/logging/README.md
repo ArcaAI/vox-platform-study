@@ -4,13 +4,13 @@ A pluggable logging system with support for multiple observability backends.
 
 ## Supported Transports
 
-| Transport | Description | Use Case |
-|-----------|-------------|----------|
-| **Console** | stdout/stderr output | Development, container logs |
-| **File** | Rotating log files | Local debugging, compliance |
-| **Highlight.io** | Error tracking & monitoring | Production monitoring |
-| **Loki** | Grafana log aggregation | Grafana stack integration |
-| **OpenTelemetry** | OTLP export | Any OTLP-compatible backend |
+| Transport         | Description                 | Use Case                    |
+| ----------------- | --------------------------- | --------------------------- |
+| **Console**       | stdout/stderr output        | Development, container logs |
+| **File**          | Rotating log files          | Local debugging, compliance |
+| **Highlight.io**  | Error tracking & monitoring | Production monitoring       |
+| **Loki**          | Grafana log aggregation     | Grafana stack integration   |
+| **OpenTelemetry** | OTLP export                 | Any OTLP-compatible backend |
 
 ## Environment Variables
 
@@ -81,20 +81,20 @@ import { ILoggingService } from '@arcaai/applications';
 
 @Injectable()
 class MyService {
-    constructor(
-        @Inject(ILoggingService)
-        private readonly logger: ILoggingService
-    ) {}
+  constructor(
+    @Inject(ILoggingService)
+    private readonly logger: ILoggingService,
+  ) {}
 
-    async doSomething() {
-        this.logger.info('Processing request', 'MyService');
+  async doSomething() {
+    this.logger.info('Processing request', 'MyService');
 
-        try {
-            // ...
-        } catch (error) {
-            this.logger.error('Failed to process', error, 'MyService');
-        }
+    try {
+      // ...
+    } catch (error) {
+      this.logger.error('Failed to process', error, 'MyService');
     }
+  }
 }
 ```
 
@@ -102,20 +102,28 @@ class MyService {
 
 ```typescript
 // With trace context
-this.logger.info('Request received', {
+this.logger.info(
+  'Request received',
+  {
     traceId: span.spanContext().traceId,
     spanId: span.spanContext().spanId,
     requestId: req.id,
     userId: user.id,
     tenantId: tenant.id,
-}, 'RequestHandler');
+  },
+  'RequestHandler',
+);
 
 // With custom metadata
-this.logger.info('Order processed', {
+this.logger.info(
+  'Order processed',
+  {
     orderId: order.id,
     amount: order.total,
     items: order.items.length,
-}, 'OrderService');
+  },
+  'OrderService',
+);
 ```
 
 ### Child Loggers
@@ -123,14 +131,14 @@ this.logger.info('Order processed', {
 ```typescript
 // Create a child logger with fixed context
 const orderLogger = this.logger.child('OrderService');
-orderLogger.info('Order created');  // Context: OrderService
+orderLogger.info('Order created'); // Context: OrderService
 
 // Create a child logger with default metadata
 const requestLogger = this.logger.withMeta({
-    requestId: req.id,
-    userId: user.id,
+  requestId: req.id,
+  userId: user.id,
 });
-requestLogger.info('Processing');  // Includes requestId and userId
+requestLogger.info('Processing'); // Includes requestId and userId
 ```
 
 ## Log Entry Structure
@@ -139,22 +147,22 @@ All logs include the following fields:
 
 ```typescript
 interface LogEntry {
-    level: string;          // Log level (trace, debug, info, warn, error, fatal)
-    message: string;        // Log message
-    timestamp: string;      // ISO timestamp
-    context?: string;       // Logger context (class/service name)
-    traceId?: string;       // OpenTelemetry trace ID
-    spanId?: string;        // OpenTelemetry span ID
-    requestId?: string;     // Request correlation ID
-    userId?: string;        // User ID
-    tenantId?: string;      // Tenant ID
-    error?: object;         // Error details (for error logs)
-    meta?: object;          // Additional metadata
-    serviceName: string;    // Service name
-    serviceVersion: string; // Service version
-    environment: string;    // Environment (dev/staging/prod)
-    hostname: string;       // Host name
-    pid: number;           // Process ID
+  level: string; // Log level (trace, debug, info, warn, error, fatal)
+  message: string; // Log message
+  timestamp: string; // ISO timestamp
+  context?: string; // Logger context (class/service name)
+  traceId?: string; // OpenTelemetry trace ID
+  spanId?: string; // OpenTelemetry span ID
+  requestId?: string; // Request correlation ID
+  userId?: string; // User ID
+  tenantId?: string; // Tenant ID
+  error?: object; // Error details (for error logs)
+  meta?: object; // Additional metadata
+  serviceName: string; // Service name
+  serviceVersion: string; // Service version
+  environment: string; // Environment (dev/staging/prod)
+  hostname: string; // Host name
+  pid: number; // Process ID
 }
 ```
 
@@ -185,11 +193,13 @@ interface LogEntry {
 ### Label Strategy for Grafana Loki
 
 Use labels for **low-cardinality** data only:
+
 - `service` - Service name
 - `env` - Environment
 - `level` - Log level
 
 Store **high-cardinality** data in the log line:
+
 - `trace_id`, `span_id`
 - `request_id`
 - `user_id`

@@ -414,37 +414,28 @@ function detectTenantScopedTestFiles(servicesDir: string): string[] {
  * given `tenantScopedFiles`. Pure function — used both by the live
  * assertion and the meta-test below.
  */
-function findUncoveredFiles(
-  tenantScopedFiles: readonly string[],
-  serviceCoverage: readonly { file: string }[],
-): string[] {
+function findUncoveredFiles(tenantScopedFiles: readonly string[], serviceCoverage: readonly { file: string }[]): string[] {
   const covered = new Set(serviceCoverage.map((entry) => entry.file));
   return tenantScopedFiles.filter((file) => !covered.has(file));
 }
 
 describe('Cross-tenant test coverage aggregator', () => {
   describe('service-layer inline cross-tenant tests', () => {
-    it.each(SERVICE_COVERAGE)(
-      '$name has ≥$minTests cross-tenant tests in $file',
-      ({ file, minTests, marker }) => {
-        const source = readSource(file);
-        expect(marker.test(source)).toBe(true);
-        const count = countItInMatchingDescribes(source, marker);
-        expect(count).toBeGreaterThanOrEqual(minTests);
-      },
-    );
+    it.each(SERVICE_COVERAGE)('$name has ≥$minTests cross-tenant tests in $file', ({ file, minTests, marker }) => {
+      const source = readSource(file);
+      expect(marker.test(source)).toBe(true);
+      const count = countItInMatchingDescribes(source, marker);
+      expect(count).toBeGreaterThanOrEqual(minTests);
+    });
   });
 
   describe('processor + event-handler CLS-rebind tests', () => {
-    it.each(PROCESSOR_COVERAGE)(
-      '$name has ≥$minTests CLS-rebind/fail-closed tests in $file',
-      ({ file, minTests, marker }) => {
-        const source = readSource(file);
-        expect(marker.test(source)).toBe(true);
-        const count = countItInMatchingDescribes(source, marker);
-        expect(count).toBeGreaterThanOrEqual(minTests);
-      },
-    );
+    it.each(PROCESSOR_COVERAGE)('$name has ≥$minTests CLS-rebind/fail-closed tests in $file', ({ file, minTests, marker }) => {
+      const source = readSource(file);
+      expect(marker.test(source)).toBe(true);
+      const count = countItInMatchingDescribes(source, marker);
+      expect(count).toBeGreaterThanOrEqual(minTests);
+    });
   });
 
   it('introspection counter handles brace-tracked nested describes', () => {
@@ -494,9 +485,7 @@ describe('Cross-tenant test coverage aggregator', () => {
     });
 
     it('every SERVICE_COVERAGE entry points to a file that exists on disk', () => {
-      const missing = SERVICE_COVERAGE.filter(
-        (entry) => !existsSync(resolve(APPLICATIONS_SRC, entry.file)),
-      ).map((entry) => entry.file);
+      const missing = SERVICE_COVERAGE.filter((entry) => !existsSync(resolve(APPLICATIONS_SRC, entry.file))).map((entry) => entry.file);
       expect(missing).toEqual([]);
     });
 
@@ -524,10 +513,7 @@ describe('Cross-tenant test coverage aggregator', () => {
     });
 
     it('returns no gaps when every tenant-scoped file is covered (meta-test happy path)', () => {
-      const fakeTenantScopedFiles = [
-        'services/foo/__tests__/foo.service.test.ts',
-        'services/bar/__tests__/bar.service.test.ts',
-      ];
+      const fakeTenantScopedFiles = ['services/foo/__tests__/foo.service.test.ts', 'services/bar/__tests__/bar.service.test.ts'];
       const fakeServiceCoverage = [
         { file: 'services/foo/__tests__/foo.service.test.ts' },
         { file: 'services/bar/__tests__/bar.service.test.ts' },
@@ -556,16 +542,12 @@ describe('Cross-tenant test coverage aggregator', () => {
         'DEF-C2',
       ];
       for (const token of tokens) {
-        expect(
-          TENANT_SCOPED_DETECTION.test(`some surrounding source code ${token} more code`),
-        ).toBe(true);
+        expect(TENANT_SCOPED_DETECTION.test(`some surrounding source code ${token} more code`)).toBe(true);
       }
       // And a negative — pure casual `tenantId` mention should NOT
       // flag the file (it'd produce too many false positives, e.g.
       // logger / appSettings setup blocks).
-      expect(
-        TENANT_SCOPED_DETECTION.test(`const tenantId = "tenant-1";`),
-      ).toBe(false);
+      expect(TENANT_SCOPED_DETECTION.test(`const tenantId = "tenant-1";`)).toBe(false);
     });
   });
 });

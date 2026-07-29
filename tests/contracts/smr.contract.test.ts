@@ -158,9 +158,7 @@ describe('SMR Service Contract', () => {
       const minimalRequest = {
         session_data: {
           session_id: 'session-456',
-          conversation_segments: [
-            { speaker: 'Doctor', text: 'Hello' },
-          ],
+          conversation_segments: [{ speaker: 'Doctor', text: 'Hello' }],
         },
       };
 

@@ -42,7 +42,8 @@ export class GenerationMetricsAggregateResponse {
 
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Estimated spend from AiModel.metaData.pricing. Null when no price book was supplied; unpriced models contribute nothing rather than a guess.',
+    description:
+      'Estimated spend from AiModel.metaData.pricing. Null when no price book was supplied; unpriced models contribute nothing rather than a guess.',
   })
   estimatedCost: number | null;
 
