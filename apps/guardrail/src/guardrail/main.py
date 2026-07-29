@@ -193,7 +193,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.http_client.aclose()
 
     if hasattr(app.state, "redis") and app.state.redis:
-        await app.state.redis.close()
+        await app.state.redis.aclose()
 
     if getattr(app.state, "tenant_config_engine", None) is not None:
         await app.state.tenant_config_engine.dispose()

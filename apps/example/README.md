@@ -105,6 +105,6 @@ Configure via Vite env vars (e.g. an `.env.local` in this folder):
 | Var                 | Purpose                                                   |
 | ------------------- | --------------------------------------------------------- |
 | `VITE_API_BASE_URL` | Base URL of the HOPE API (e.g. `https://api.example.com`) |
-| `VITE_PIPELINE_ID`  | Streaming transcription pipeline id                       |
-| `VITE_AUTH_TOKEN`   | Bearer token sent as `Authorization`                      |
-| `VITE_TENANT_ID`    | Tenant id sent as `X-Tenant-ID`                           |
+| `VITE_PIPELINE_ID` | Streaming transcription pipeline id |
+| `VITE_API_KEY` | API key sent as `X-API-Key` |
+| `VITE_TENANT_ID` | Tenant id sent as `X-Tenant-ID` |

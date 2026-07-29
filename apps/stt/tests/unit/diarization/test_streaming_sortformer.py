@@ -56,22 +56,31 @@ def _config(**overrides) -> DiarizationConfig:  # type: ignore[no-untyped-def]
 
 
 class TestModelStagingBoundary:
-    def test_default_backend_factory_raises_unavailable(self) -> None:
-        """The production factory must raise until the Sortformer weights are staged."""
+    def test_default_backend_factory_raises_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _unavailable(config: DiarizationConfig) -> object:
+            raise RuntimeError("model not staged")
+
+        monkeypatch.setattr(sortformer_module, "_restore_sortformer_model", _unavailable)
         with pytest.raises(SortformerModelUnavailableError):
             load_default_backend(_config())
 
-    def test_unavailable_error_names_the_model_and_ticket(self) -> None:
-        try:
+    def test_unavailable_error_names_the_model_and_ticket(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _unavailable(config: DiarizationConfig) -> object:
+            raise RuntimeError("model not staged")
+
+        monkeypatch.setattr(sortformer_module, "_restore_sortformer_model", _unavailable)
+        with pytest.raises(SortformerModelUnavailableError) as excinfo:
             load_default_backend(
                 _config(sortformer_model_id="nvidia/diar_streaming_sortformer_4spk-v2.1")
             )
-        except SortformerModelUnavailableError as exc:
-            message = str(exc)
-            assert "nvidia/diar_streaming_sortformer_4spk-v2.1" in message
-            assert "TASK-475" in message
-        else:  # pragma: no cover - the call above must raise
-            pytest.fail("load_default_backend did not raise")
+        message = str(excinfo.value)
+        assert "nvidia/diar_streaming_sortformer_4spk-v2.1" in message
+        assert "TASK-475" in message
+
 
 
 # ---------------------------------------------------------------------------
@@ -81,8 +90,11 @@ class TestModelStagingBoundary:
 
 class TestUnavailableDegrade:
     def test_diarize_degrades_to_no_labels_when_model_unavailable(self) -> None:
-        """No injected backend + default factory raising => empty, not-applied result."""
-        diarizer = StreamingSortformerDiarizer(_config())
+        """No injected backend + unavailable factory => empty, not-applied result."""
+        def _unavailable(config: DiarizationConfig) -> object:
+            raise SortformerModelUnavailableError("model not staged")
+
+        diarizer = StreamingSortformerDiarizer(_config(), backend_factory=_unavailable)
         result = diarizer.diarize([0.0] * 1600, sample_rate=16000)
         assert result.applied is False
         assert result.reason == REASON_MODEL_UNAVAILABLE
@@ -91,13 +103,18 @@ class TestUnavailableDegrade:
 
     def test_diarize_never_raises_on_unavailable(self) -> None:
         """The hot path must not crash when the model is missing — it degrades."""
-        diarizer = StreamingSortformerDiarizer(_config())
-        # Must not raise:
+        def _unavailable(config: DiarizationConfig) -> object:
+            raise SortformerModelUnavailableError("model not staged")
+
+        diarizer = StreamingSortformerDiarizer(_config(), backend_factory=_unavailable)
         diarizer.diarize([0.1, 0.2, 0.3], sample_rate=16000)
 
     def test_unavailable_log_is_phi_safe(self, caplog: pytest.LogCaptureFixture) -> None:
         """The degrade log carries counts/reasons only — never audio samples."""
-        diarizer = StreamingSortformerDiarizer(_config())
+        def _unavailable(config: DiarizationConfig) -> object:
+            raise SortformerModelUnavailableError("model not staged")
+
+        diarizer = StreamingSortformerDiarizer(_config(), backend_factory=_unavailable)
         with caplog.at_level(logging.WARNING):
             diarizer.diarize([0.123456, 0.654321], sample_rate=16000)
         joined = " ".join(record.getMessage() for record in caplog.records)
@@ -139,11 +156,15 @@ class TestFrameToTurns:
 
     def test_reset_clears_lazy_loaded_backend(self) -> None:
         backend = _FakeBackend([[0.9, 0.1]])
-        diarizer = StreamingSortformerDiarizer(_config(), backend=backend)
+
+        def _unavailable(config: DiarizationConfig) -> object:
+            raise SortformerModelUnavailableError("model not staged")
+
+        diarizer = StreamingSortformerDiarizer(
+            _config(), backend=backend, backend_factory=_unavailable
+        )
         diarizer.diarize([0.0] * 320, sample_rate=16000)
         diarizer.reset()
-        # After reset the injected backend is cleared; the default factory raises,
-        # so the next call degrades rather than reusing the old backend.
         result = diarizer.diarize([0.0] * 320, sample_rate=16000)
         assert result.applied is False
         assert result.reason == REASON_MODEL_UNAVAILABLE

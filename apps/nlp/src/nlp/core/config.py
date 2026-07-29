@@ -3,7 +3,7 @@ from enum import IntEnum, StrEnum
 from typing import Any
 
 from hope_env import build_hope_sources, hope_settings_sources, load_env
-from pydantic import Field, SecretStr
+from pydantic import ConfigDict, Field, SecretStr
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
@@ -158,8 +158,7 @@ class NLPServiceConfig(BaseSettings):
     model_cache_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     model_cache_max_models: int = Field(default=3, ge=1)
 
-    class Config:
-        env_prefix = "NLP_"
+    model_config = ConfigDict(env_prefix="NLP_")
 
     def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault("name", os.getenv("OTEL_SERVICE_NAME", os.getenv("SERVICE_NAME", "nlp")))
@@ -225,8 +224,7 @@ class TextClassificationConfig(BaseSettings):
     confidence_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     return_all_probabilities: bool = Field(default=True)
 
-    class Config:
-        env_prefix = "TEXT_CLASSIFIER_"
+    model_config = ConfigDict(env_prefix="TEXT_CLASSIFIER_")
 
     # model identity comes from the DB (gateway-injected request
     # `model_name`), never from env; tuning env (thresholds, GPU, etc.) stays.
@@ -267,8 +265,7 @@ class TokenClassificationConfig(BaseSettings):
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
     entity_confidence_aggregation: str = Field(default="mean")  # mean, max, min
 
-    class Config:
-        env_prefix = "TOKEN_CLASSIFIER_"
+    model_config = ConfigDict(env_prefix="TOKEN_CLASSIFIER_")
 
     # model identity is DB/gateway-selected, never env-selected.
     settings_customise_sources = classmethod(_model_identity_filtered_sources)
@@ -289,8 +286,7 @@ class OntologyLinkerConfig(BaseSettings):
     linker_enabled: bool = Field(default=True)
     linker_confidence_floor: float = Field(default=0.0, ge=0.0, le=1.0)
 
-    class Config:
-        env_prefix = "NLP_"
+    model_config = ConfigDict(env_prefix="NLP_")
 
 
 class MedicalSuggesterConfig(BaseSettings):
@@ -308,8 +304,7 @@ class MedicalSuggesterConfig(BaseSettings):
     # Confidence settings
     confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
-    class Config:
-        env_prefix = "MEDICAL_SUGGESTER_"
+    model_config = ConfigDict(env_prefix="MEDICAL_SUGGESTER_")
 
     # model identity is DB/gateway-selected, never env-selected.
     settings_customise_sources = classmethod(_model_identity_filtered_sources)
@@ -327,8 +322,7 @@ class WebSocketConfig(BaseSettings):
     heartbeat_interval: int = Field(default=30)
     ping_timeout: int = Field(default=10)
 
-    class Config:
-        env_prefix = "WEBSOCKET_"
+    model_config = ConfigDict(env_prefix="WEBSOCKET_")
 
 
 class WebSocketTokenClassificationConfig(BaseSettings):
@@ -353,8 +347,7 @@ class SecurityConfig(BaseSettings):
     cors_allow_credentials: bool = Field(default=True)
     cors_max_age: int = Field(default=3600)
 
-    class Config:
-        env_prefix = "SECURITY_"
+    model_config = ConfigDict(env_prefix="SECURITY_")
 
 
 class TextCorrectorConfig(BaseSettings):
@@ -372,8 +365,7 @@ class TextCorrectorConfig(BaseSettings):
     symspell_ignore_non_words: bool = Field(default=True)
     symspell_ignore_term_with_digits: bool = Field(default=True)
 
-    class Config:
-        env_prefix = "SPELLING_CORRECTOR_"
+    model_config = ConfigDict(env_prefix="SPELLING_CORRECTOR_")
 
 
 class Settings:
