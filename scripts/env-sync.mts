@@ -223,19 +223,26 @@ const BANNER = (source: string) =>
 
 /**
  * The value written for a variable: never a real secret (plan §9.1 D3).
- *   secret                    → `<CHANGE_ME>` (wins even over `sampleValue` —
+ *   secret                    → `CHANGE_ME` (wins even over `sampleValue` —
  *                                belt-and-suspenders alongside the registry's
  *                                own assembly-time throw, see `settings-registry.ts`)
  *   sampleValue declared      → that value (template-only, TASK-585 follow-up —
  *                                never fed back into a runtime fallback, unlike `default`)
- *   required, no code default → `<CHANGE_ME>` (the operator MUST supply one)
+ *   required, no code default → `CHANGE_ME` (the operator MUST supply one)
  *   otherwise                 → the declared default, or empty for "unset by default"
+ *
+ * Deliberately NOT `<CHANGE_ME>` (angle brackets): every env file this produces
+ * is `source`d as shell by scripts/vault-seed-secrets.sh and generate-prod-secrets.sh
+ * (their own headers call this out — "sourced, not parsed"), and `<`/`>` are shell
+ * redirection operators. An unquoted `KEY=<CHANGE_ME>` is a syntax error there, not
+ * a placeholder — found via scripts/dev-setup.sh's finalize step actually sourcing
+ * a generated .env.dev.
  */
 function exampleValue(v: EnvVar): string {
-    if (v.secret) return '<CHANGE_ME>';
+    if (v.secret) return 'CHANGE_ME';
     if (v.sampleValue !== undefined) return String(v.sampleValue);
     if (v.default !== undefined) return String(v.default);
-    return v.required ? '<CHANGE_ME>' : '';
+    return v.required ? 'CHANGE_ME' : '';
 }
 
 /**
@@ -557,7 +564,7 @@ function renderDocsTable(globalEnv: string[]): string {
         '|---|---|---|---|---|---|',
     ];
     for (const v of rows) {
-        const dflt = v.secret ? '`<CHANGE_ME>`' : v.default === undefined ? '—' : `\`${String(v.default)}\``;
+        const dflt = v.secret ? '`CHANGE_ME`' : v.default === undefined ? '—' : `\`${String(v.default)}\``;
         const purpose = (v.description || v.label).replace(/\|/g, '\\|').replace(/\n/g, ' ');
         lines.push(`| \`${v.name}\` | \`${v.tier}\` | ${v.required ? 'yes' : 'no'} | ${dflt} | \`${v.owner}\` | ${purpose} |`);
     }

@@ -98,6 +98,18 @@ class Settings(BaseSettings):
     minio_audio_bucket: str = "hope-audio"
     minio_chunk_bucket: str = "hope-audio-chunks"
 
+    @field_validator("minio_endpoint", mode="before")
+    @classmethod
+    def _default_minio_endpoint_when_blank(cls, v: str) -> str:
+        """`MINIO_ENDPOINT` is deliberately blank in the shared env file — it's
+        apps/api's bootstrap-fallback tier (empty until the SYSTEM storage row
+        exists), and apps/api treats a blank value as absent. Do the same here
+        instead of passing "" straight to the MinIO client.
+        """
+        if isinstance(v, str) and not v.strip():
+            return cls.model_fields["minio_endpoint"].default
+        return v
+
     # Object storage provider (platform default for the no-descriptor path).
     # Per-tenant requests may override this via a `storage` descriptor.
     storage_provider: Literal["minio", "aws_s3", "azure_blob"] = Field(
