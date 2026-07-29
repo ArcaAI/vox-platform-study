@@ -234,7 +234,12 @@ while IFS="$(printf '\t')" read -r NAME REGISTRY_KEY <&3; do
   # Indirect expansion: the descriptor's env name IS the variable name.
   VALUE="${!NAME-}"
 
-  if [ -z "${VALUE}" ]; then
+  # CHANGE_ME is generate-env-file.sh's/env-sync.mts's unfilled-secret sentinel
+  # (an operator-supplied provider key that was never pasted in) — it is NOT a
+  # value, and writing the literal string would make an unconfigured provider
+  # look configured, which is exactly the failure mode "absent values are
+  # skipped" (see the file header) exists to prevent.
+  if [ -z "${VALUE}" ] || [ "${VALUE}" = "CHANGE_ME" ]; then
     printf '  %-38s %s\n' "${NAME}" "SKIP      (not set in environment)"
     SKIPPED=$((SKIPPED + 1))
     continue

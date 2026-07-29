@@ -116,14 +116,14 @@ describe('env:sync — committed files carry placeholders only (plan §9.1 D3)',
     expect(secretNames.size).toBeGreaterThan(20);
   });
 
-  it('renders every declared secret as <CHANGE_ME>', () => {
+  it('renders every declared secret as CHANGE_ME', () => {
     for (const path of GENERATED_ENV_ARTIFACTS) {
       for (const line of artifact(path).split('\n')) {
         const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
         if (!match) continue;
         const [, name, value] = match;
         if (!secretNames.has(name)) continue;
-        expect(value, `${path}: ${name}`).toBe('<CHANGE_ME>');
+        expect(value, `${path}: ${name}`).toBe('CHANGE_ME');
       }
     }
   });
@@ -140,7 +140,7 @@ describe('env:sync — committed files carry placeholders only (plan §9.1 D3)',
 
   // TASK-585 follow-up: `sampleValue` (a ready-to-use local-dev value, distinct
   // from `default` — see registry.types.ts) renders into `.env.sample`, but a
-  // secret's `<CHANGE_ME>` redaction still wins even if one were mistakenly set
+  // secret's `CHANGE_ME` redaction still wins even if one were mistakenly set
   // (the registry itself refuses to assemble that combination — belt-and-suspenders).
   it('never lets a sampleValue override a secret redaction', () => {
     for (const v of declaredSurface) {

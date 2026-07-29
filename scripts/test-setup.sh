@@ -15,14 +15,32 @@
 # `refresh-vault-creds.sh` step. Vault itself is the SHARED dev container
 # (hope-vault); the test infra does not run its own Vault.
 #
-# Sequence:
-#   0. Create .env.test from .env.sample if it doesn't already exist (TASK-583)
-#   1. Start isolated test infrastructure (Postgres:5433, Redis:6380, MinIO:9002,
-#      Qdrant:6335) and wait for health
-#   2. Provision Vault AppRole creds + config in .env.test (needs hope-vault up)
-#   3. Generate the Prisma client
-#   4. Push the schema to the test database (test:db:push)
-#   5. Seed baseline data                  (test:db:seed)
+# Sequence — mirrors dev-setup.sh's 0-6 shape, with ONE deliberate reorder:
+#   0. Create/overwrite .env.test from .env.sample                (TASK-583)
+#   1. Start isolated test infrastructure (Postgres:5433, Redis:6380,
+#      MinIO:9002, Qdrant:6335)
+#   2. Wait for the isolated test infra to report healthy
+#   3. Refresh Vault AppRole creds + config in .env.test (needs hope-vault up)
+#      — this runs BEFORE the migrate+seed step on purpose, unlike dev-setup.sh:
+#      the PHI seed encrypts ciphertext via Vault Transit under
+#      SECRETS_PROVIDER=vault (test's fixed setting), and the seed is a
+#      SEPARATE process that reads .env.test fresh from disk, so the Vault
+#      connection info (VAULT_DEV_ROOT_TOKEN, VAULT_ADDR, ...) must already be
+#      written there before it starts. Vault AppRole auth itself is unrelated —
+#      this step's writes use the Vault root token, not the AppRole secret_id.
+#   4. Generate the Prisma client, push the schema, seed baseline data
+#      (db:generate, test:db:push, test:db:seed)
+#   5. Bootstrap Vault dynamic DB credentials — SKIPPED for test on purpose.
+#      The test env deliberately keeps STATIC Postgres creds
+#      (DATABASE_URL=...test:test@localhost:5433/hope_test, PG_DYNAMIC_CREDS=false)
+#      for CI reliability; there is no dynamic-DB-engine step to run here.
+#   6. Finalize the env — build the settings registry and reconcile Vault
+#      kv-v2 secrets with .env.test (scripts/vault-seed-secrets.sh). This
+#      matters MORE for test than dev: test already runs SECRETS_PROVIDER=vault
+#      unconditionally, so without this step the API would authenticate to the
+#      test MinIO container with dev-init.sh's stale placeholder
+#      (MINIO_ACCESS_KEY=minio_admin) instead of the real test creds
+#      (MINIO_ACCESS_KEY=test) that tests/docker-compose.test.yml actually set.
 #
 # USAGE:
 #   pnpm setup:test        (preferred)
@@ -56,16 +74,21 @@ vault_exec() {
     "export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=${ROOT_TOKEN}; $*"
 }
 
-bold "── Step 0/5: ensuring .env.test exists ──────────────────────────────"
+bold "── Step 0/6: ensuring .env.test exists ──────────────────────────────"
 # shellcheck source=./generate-env-file.sh
 source "$SCRIPT_DIR/generate-env-file.sh"
 ensure_env_file "$ENV_FILE" test
 
-bold "── Step 1/5: starting + validating test infrastructure ─────────────"
-# start-test-infra.sh runs 'up -d --wait' and a health validation pass.
+bold "── Step 1-2/6: starting + validating test infrastructure ───────────"
+# start-test-infra.sh runs 'up -d --wait' (start) and a health validation
+# pass (wait-for-ready) as one idempotent call — there's no separate script
+# for each half.
 "$SCRIPT_DIR/start-test-infra.sh"
 
-bold "── Step 2/5: provisioning Vault AppRole creds in .env.test ─────────"
+bold "── Step 3/6: provisioning Vault AppRole creds in .env.test ─────────"
+# Runs BEFORE migrate+seed (step 4) — see the header note above: the PHI seed
+# needs Vault Transit access via .env.test, which is a separate process that
+# reads this file fresh from disk.
 # The test API (SECRETS_PROVIDER=vault) warms secrets + uses Transit to encrypt
 # BYO provider keys, and the PHI seed encrypts ciphertext via Transit. Both need
 # valid Vault credentials. Vault is the shared dev container (hope-vault); ensure
@@ -114,14 +137,25 @@ set_env VAULT_AUDIT_LOG_PATH "${VAULT_AUDIT_LOG_PATH:-/tmp/hope-vault-audit-test
 : > "${VAULT_AUDIT_LOG_PATH:-/tmp/hope-vault-audit-test.log}" 2>/dev/null || true
 green "→ .env.test Vault config provisioned (role_id ${ROLE_ID:0:8}…, raw reusable secret_id)."
 
-bold "── Step 3/5: generating Prisma client ──────────────────────────────"
+bold "── Step 4/6: applying migrations + seed ─────────────────────────────"
 pnpm db:generate
-
-bold "── Step 4/5: pushing schema to test database (test:db:push) ─────────"
 pnpm test:db:push
-
-bold "── Step 5/5: seeding baseline data (test:db:seed) ──────────────────"
 pnpm test:db:seed
+
+bold "── Step 5/6: bootstrapping Vault dynamic DB credentials ─────────────"
+yellow "→ SKIPPED on purpose: test keeps static Postgres creds for CI reliability"
+yellow "  (DATABASE_URL=...test:test@localhost:5433/hope_test, PG_DYNAMIC_CREDS=false)."
+
+bold "── Step 6/6: finalizing the env (syncing Vault kv-v2 secrets) ───────"
+# vault-seed-secrets.sh derives its key list from the built settings registry
+# (no hardcoded fallback list — that's the drift TASK-558 removed), so the
+# registry must be compiled before it can run. This matters more here than in
+# dev-setup.sh: test runs SECRETS_PROVIDER=vault unconditionally (set above),
+# so without this the API would read dev-init.sh's stale placeholder secrets
+# (e.g. MINIO_ACCESS_KEY=minio_admin) instead of .env.test's real values
+# (e.g. MINIO_ACCESS_KEY=test, matching tests/docker-compose.test.yml).
+pnpm --filter @arcaai/applications build
+"$SCRIPT_DIR/vault-seed-secrets.sh" --env-file "$ENV_FILE"
 
 green ""
 green "✔ Local test environment is ready."

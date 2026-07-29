@@ -9,6 +9,7 @@
         "setup:dev:observability": "./scripts/dev-setup.sh --observability",
         "setup:dev:inference": "./scripts/dev-setup.sh --inference",
         "setup:test": "./scripts/test-setup.sh",
+        "setup:prod": "./scripts/generate-prod-secrets.sh",
         "setup:node": "pnpm install",
         "setup:node:rebuild": "./scripts/clean.sh deps --yes && pnpm install && pnpm db:generate",
         "setup:python": "./scripts/setup-python-env.sh",
