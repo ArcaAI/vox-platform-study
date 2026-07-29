@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
-import { Confetti } from '../../../registries/magicui/confetti'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render } from '@testing-library/react';
+import { Confetti } from '../../../registries/magicui/confetti';
 
 describe('Confetti', () => {
   beforeEach(() => {
@@ -30,11 +30,11 @@ describe('Confetti', () => {
       rect: vi.fn(),
       clip: vi.fn(),
       canvas: { width: 800, height: 600 },
-    }) as unknown as typeof HTMLCanvasElement.prototype.getContext
-  })
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
 
   it('renders without crashing', () => {
-    const { container } = render(<Confetti />)
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    const { container } = render(<Confetti />);
+    expect(container.firstChild).toBeTruthy();
+  });
+});

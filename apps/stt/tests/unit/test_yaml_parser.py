@@ -1733,10 +1733,7 @@ models:
 """
         spec = parser.parse(yaml_content)
         defaults = InferenceConfig()
-        assert (
-            spec.inference.compression_ratio_threshold
-            == defaults.compression_ratio_threshold
-        )
+        assert spec.inference.compression_ratio_threshold == defaults.compression_ratio_threshold
         assert spec.inference.logprob_threshold == defaults.logprob_threshold
         assert spec.inference.no_speech_threshold == defaults.no_speech_threshold
 
@@ -1859,9 +1856,7 @@ inference:
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert not result.valid
-        assert any(
-            "compression_ratio_threshold" in e.field for e in result.errors
-        )
+        assert any("compression_ratio_threshold" in e.field for e in result.errors)
 
     def test_positive_logprob_threshold_fails(self, parser):
         yaml_content = """
@@ -1903,9 +1898,7 @@ inference:
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert not result.valid
-        assert any(
-            "no_repeat_ngram_size" in e.field for e in result.errors
-        )
+        assert any("no_repeat_ngram_size" in e.field for e in result.errors)
 
     def test_negative_no_repeat_ngram_size_fails(self, parser):
         yaml_content = """
@@ -1918,9 +1911,7 @@ inference:
         spec = parser.parse(yaml_content)
         result = parser.validate(spec)
         assert not result.valid
-        assert any(
-            "no_repeat_ngram_size" in e.field for e in result.errors
-        )
+        assert any("no_repeat_ngram_size" in e.field for e in result.errors)
 
     def test_scalar_temperature_out_of_range_still_fails(self, parser):
         """Legacy scalar temperature still respects the [0, 2] range."""
@@ -2270,7 +2261,7 @@ class TestTask505SchemaV2:
     def test_provider_model_shorthand(self, parser):
         spec = self._parse(
             parser,
-            "models:\n  asr: \"transformer :: openai/whisper-large-v3-turbo\"\n",
+            'models:\n  asr: "transformer :: openai/whisper-large-v3-turbo"\n',
         )
         ref = spec.models.asr
         assert ref.is_inline
@@ -2280,7 +2271,7 @@ class TestTask505SchemaV2:
     def test_provider_model_with_revision(self, parser):
         spec = self._parse(
             parser,
-            "models:\n  asr: whisper-large-v3\n  vad: \"onnx :: snakers4/silero-vad@v6.0\"\n",
+            'models:\n  asr: whisper-large-v3\n  vad: "onnx :: snakers4/silero-vad@v6.0"\n',
         )
         vad = spec.models.vad
         assert vad.is_inline
@@ -2291,13 +2282,13 @@ class TestTask505SchemaV2:
     def test_faster_whisper_provider(self, parser):
         spec = self._parse(
             parser,
-            "models:\n  asr: \"faster-whisper :: deepdml/faster-whisper-large-v3-turbo-ct2\"\n",
+            'models:\n  asr: "faster-whisper :: deepdml/faster-whisper-large-v3-turbo-ct2"\n',
         )
         assert spec.models.asr.inline.engine == AiModelFormat.FASTER_WHISPER
 
     def test_unknown_provider_raises(self, parser):
         with pytest.raises(ValueError, match="Unknown ASR provider 'warpdrive'"):
-            self._parse(parser, "models:\n  asr: \"warpdrive :: some/model\"\n")
+            self._parse(parser, 'models:\n  asr: "warpdrive :: some/model"\n')
 
     def test_normalize_dict_form(self, parser):
         spec = self._parse(
@@ -2308,9 +2299,7 @@ class TestTask505SchemaV2:
         assert spec.preprocessing.normalize_processor == "rms"
 
     def test_normalize_bool_shorthand_keeps_peak(self, parser):
-        spec = self._parse(
-            parser, "models:\n  asr: m\npreprocessing:\n  normalize: false\n"
-        )
+        spec = self._parse(parser, "models:\n  asr: m\npreprocessing:\n  normalize: false\n")
         assert spec.preprocessing.normalize is False
         assert spec.preprocessing.normalize_processor == "peak"
 
@@ -2391,7 +2380,7 @@ class TestTask505SchemaV2:
 
         spec_ok = self._parse(
             parser,
-            "models:\n  asr: m\n  embedding: \"transformer :: speechbrain/spkrec-ecapa-voxceleb\"\npreprocessing:\n  diar_feature_extraction:\n    enabled: true\n",
+            'models:\n  asr: m\n  embedding: "transformer :: speechbrain/spkrec-ecapa-voxceleb"\npreprocessing:\n  diar_feature_extraction:\n    enabled: true\n',
         )
         result_ok = parser.validate(spec_ok)
         assert not [e for e in result_ok.errors if "embedding" in e.message]

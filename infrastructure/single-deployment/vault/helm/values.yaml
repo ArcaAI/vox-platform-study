@@ -32,7 +32,7 @@ global:
 # Agent Injector (C.4) — renders the AppRole token + secrets into app pods.
 # -----------------------------------------------------------------------------
 # HOPE's app reads role_id + a wrapped secret_id from FILES (VAULT_ROLE_ID_FILE
-# / VAULT_WRAPPED_SECRET_ID_FILE — shipped in apps/api/.env.production, TASK-312
+# / VAULT_WRAPPED_SECRET_ID_FILE — shipped in apps/api/.env.prod, TASK-312
 # B.9/B.10). We therefore use the injector ONLY to deliver those two bootstrap
 # files; the app then performs its own AppRole login + token self-renewal
 # (TASK-312 B.1–B.4). We do NOT delegate full secret templating to the agent —

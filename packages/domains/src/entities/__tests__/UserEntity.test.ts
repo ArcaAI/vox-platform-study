@@ -93,19 +93,13 @@ describe('UserEntity.validate()', () => {
     });
 
     it('should throw when username exceeds 255 characters', () => {
-      const entity = new UserEntity(
-        createValidInit({ username: 'x'.repeat(256) }),
-      );
+      const entity = new UserEntity(createValidInit({ username: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User username must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User username must not exceed 255 characters');
     });
 
     it('should accept username exactly 255 characters', () => {
-      const entity = new UserEntity(
-        createValidInit({ username: 'x'.repeat(255) }),
-      );
+      const entity = new UserEntity(createValidInit({ username: 'x'.repeat(255) }));
 
       expect(() => entity.validate()).not.toThrow();
     });
@@ -133,9 +127,7 @@ describe('UserEntity.validate()', () => {
         }),
       );
 
-      expect(() => entity.validate()).toThrow(
-        'User isServiceAccount must be a boolean',
-      );
+      expect(() => entity.validate()).toThrow('User isServiceAccount must be a boolean');
     });
   });
 
@@ -147,43 +139,29 @@ describe('UserEntity.validate()', () => {
     });
 
     it('should throw when externalId exceeds 255 characters', () => {
-      const entity = new UserEntity(
-        createValidInit({ externalId: 'x'.repeat(256) }),
-      );
+      const entity = new UserEntity(createValidInit({ externalId: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User externalId must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User externalId must not exceed 255 characters');
     });
   });
 
   describe('secret fields', () => {
     it('should accept null secret1/secret2', () => {
-      const entity = new UserEntity(
-        createValidInit({ secret1: null, secret2: null }),
-      );
+      const entity = new UserEntity(createValidInit({ secret1: null, secret2: null }));
 
       expect(() => entity.validate()).not.toThrow();
     });
 
     it('should throw when secret1 exceeds 255 characters', () => {
-      const entity = new UserEntity(
-        createValidInit({ secret1: 'x'.repeat(256) }),
-      );
+      const entity = new UserEntity(createValidInit({ secret1: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User secret1 must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User secret1 must not exceed 255 characters');
     });
 
     it('should throw when secret2 exceeds 255 characters', () => {
-      const entity = new UserEntity(
-        createValidInit({ secret2: 'x'.repeat(256) }),
-      );
+      const entity = new UserEntity(createValidInit({ secret2: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User secret2 must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User secret2 must not exceed 255 characters');
     });
   });
 });

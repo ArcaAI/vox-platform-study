@@ -17,17 +17,14 @@ import { getPrismaClient, disconnectDatabase, resetDatabase } from '../helpers/d
 // Verify test environment is set (should be set by dotenv-cli)
 if (process.env.NODE_ENV !== 'test') {
   console.warn(
-    'WARNING: NODE_ENV is not "test". Tests should be run with dotenv-cli:\n' +
-    '  pnpm test:integration (which uses dotenv -e .env.test)'
+    'WARNING: NODE_ENV is not "test". Tests should be run with dotenv-cli:\n' + '  pnpm test:integration (which uses dotenv -e .env.test)',
   );
   process.env.NODE_ENV = 'test';
 }
 
 // Ensure we're using test database
 if (!process.env.DATABASE_URL?.includes('test')) {
-  throw new Error(
-    'Integration tests must use a test database. DATABASE_URL must contain "test".'
-  );
+  throw new Error('Integration tests must use a test database. DATABASE_URL must contain "test".');
 }
 
 beforeAll(async () => {

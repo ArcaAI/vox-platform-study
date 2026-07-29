@@ -52,11 +52,7 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-type Handler = (params: {
-  model: string;
-  args: Record<string, unknown>;
-  query: (a: unknown) => Promise<unknown>;
-}) => Promise<unknown>;
+type Handler = (params: { model: string; args: Record<string, unknown>; query: (a: unknown) => Promise<unknown> }) => Promise<unknown>;
 
 interface ExtensionConfig {
   name: string;
@@ -65,10 +61,7 @@ interface ExtensionConfig {
   query: { $allModels: { [op: string]: Handler } };
 }
 
-function captureExtensionConfig(opts: {
-  getTenantId: () => string | null | undefined;
-  isSuperAdmin?: () => boolean;
-}): ExtensionConfig {
+function captureExtensionConfig(opts: { getTenantId: () => string | null | undefined; isSuperAdmin?: () => boolean }): ExtensionConfig {
   const prisma = { $extends: vi.fn().mockReturnThis() };
   applyTenantScopeExtension(prisma as never, opts);
   expect(prisma.$extends).toHaveBeenCalledTimes(1);
@@ -93,10 +86,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
   });
 
   it('includes every PHI-bearing model', () => {
-    for (const phi of [
-      'Consultation', 'ContextItem', 'ContextItemVersion',
-      'AudioRecording', 'SummaryMeta', 'NamedEntity', 'AuditLog',
-    ]) {
+    for (const phi of ['Consultation', 'ContextItem', 'ContextItemVersion', 'AudioRecording', 'SummaryMeta', 'NamedEntity', 'AuditLog']) {
       expect(TENANT_SCOPED_MODELS.has(phi)).toBe(true);
     }
   });
@@ -171,13 +161,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
 describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
   // Resolve db_main relative to THIS test file (ESM, no __dirname):
   //   src/extensions/__tests__ → ../../prisma/db_main
-  const DB_MAIN_DIR = join(
-    dirname(fileURLToPath(import.meta.url)),
-    '..',
-    '..',
-    'prisma',
-    'db_main',
-  );
+  const DB_MAIN_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'prisma', 'db_main');
 
   /**
    * Models that carry a `tenantId` scalar but are DELIBERATELY excluded from
@@ -265,9 +249,7 @@ describe('TENANT_SCOPED_MODELS stays in sync with the Prisma schema', () => {
   });
 
   it('lists every schema tenantId model in TENANT_SCOPED_MODELS (drift = []) ', () => {
-    const missing = schemaModelsWithTenantId().filter(
-      (m) => !TENANT_SCOPED_MODELS.has(m) && !INTENTIONALLY_UNSCOPED.has(m),
-    );
+    const missing = schemaModelsWithTenantId().filter((m) => !TENANT_SCOPED_MODELS.has(m) && !INTENTIONALLY_UNSCOPED.has(m));
     // Empty once F2/F3 are fixed; the failure diff names any drifted model.
     expect(missing).toEqual([]);
   });
@@ -287,8 +269,9 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
       // GlobalSetting — platform infra settings (S3/MinIO, STT) are seeded under
       // the SYSTEM tenant; the AppSettingsService platform cache reads them.
       // TenantTtsConfig's SYSTEM-tenant row is the per-tenant TTS
-      // platform default every tenant's resolveForTenant merges over (credentials
-      // are NEVER shared, so TenantTtsProviderCredential is intentionally absent).
+      // platform default every tenant's resolveForTenant merges over. This model
+      // never carries a secret — BYO credentials live in the unified
+      // AiProviderConnection plane (service='tts'), never shared cross-tenant.
       // AiTaskDefault's SYSTEM-tenant rows are the platform default
       // model per AI task (guardrail.validate / nlp.*) every tenant's
       // getEffective merges under its own row; writes are NOT widened.
@@ -310,6 +293,11 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         'PipelinePolicy',
         'GlobalSetting',
         'TenantTtsConfig',
+        // TenantSttConfig's SYSTEM-tenant row is the per-tenant STT platform
+        // default every tenant's getEffective merges over. This model never
+        // carries a secret — BYO credentials live in the unified
+        // AiProviderConnection plane (service='stt'), never shared cross-tenant.
+        'TenantSttConfig',
         'AiTaskDefault',
         'McpServer',
         'AiProviderConnection',
@@ -343,11 +331,7 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
 });
 
 describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
-  const READ_OPS = [
-    'findFirst', 'findFirstOrThrow',
-    'findUnique', 'findUniqueOrThrow',
-    'findMany', 'count', 'aggregate', 'groupBy',
-  ];
+  const READ_OPS = ['findFirst', 'findFirstOrThrow', 'findUnique', 'findUniqueOrThrow', 'findMany', 'count', 'aggregate', 'groupBy'];
 
   it.each(READ_OPS)('%s widens AsrPipeline tenantId to IN [caller, SYSTEM]', async (op) => {
     const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });
@@ -463,11 +447,7 @@ describe('SYSTEM-tenant read inheritance on shared catalog models', () => {
 // ---------------------------------------------------------------------------
 
 describe('Read operations on tenant-scoped models', () => {
-  const READ_OPS = [
-    'findFirst', 'findFirstOrThrow',
-    'findUnique', 'findUniqueOrThrow',
-    'findMany', 'count', 'aggregate', 'groupBy',
-  ];
+  const READ_OPS = ['findFirst', 'findFirstOrThrow', 'findUnique', 'findUniqueOrThrow', 'findMany', 'count', 'aggregate', 'groupBy'];
 
   it.each(READ_OPS)('%s injects tenantId into args.where', async (op) => {
     const config = captureExtensionConfig({ getTenantId: () => 'tenant-A' });

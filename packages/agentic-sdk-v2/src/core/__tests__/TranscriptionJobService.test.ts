@@ -14,30 +14,17 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TranscriptionJobService } from '../TranscriptionJobService';
-import {
-  createMockLogger,
-  mockFetch,
-  createMockResponse,
-  createMockErrorResponse,
-} from '../../__tests__/setup';
+import { createMockLogger, mockFetch, createMockResponse, createMockErrorResponse } from '../../__tests__/setup';
 import { AgenticClient } from '../AgenticClient';
 import { STT_ENDPOINTS } from '../constants';
-import {
-  TranscriptionJobStatus,
-  TranscriptionJobType,
-} from '../../types/stt';
-import type {
-  TranscriptionJobResponse,
-  TranscriptionJobStatusCounts,
-} from '../../types/stt';
+import { TranscriptionJobStatus, TranscriptionJobType } from '../../types/stt';
+import type { TranscriptionJobResponse, TranscriptionJobStatusCounts } from '../../types/stt';
 
 // ===========================================================================
 // Fixtures
 // ===========================================================================
 
-function createMockJob(
-  overrides: Partial<TranscriptionJobResponse> = {},
-): TranscriptionJobResponse {
+function createMockJob(overrides: Partial<TranscriptionJobResponse> = {}): TranscriptionJobResponse {
   return {
     id: 'job-abc-123',
     jobType: TranscriptionJobType.STREAMING,
@@ -129,17 +116,13 @@ describe('TranscriptionJobService', () => {
     });
 
     it('should throw on 404', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(404, 'Job not found'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(404, 'Job not found'));
 
       await expect(service.getJob('nonexistent')).rejects.toThrow();
     });
 
     it('should throw on 500 server error', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(500, 'Internal Server Error'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Internal Server Error'));
 
       await expect(service.getJob('job-server-err')).rejects.toThrow();
     });
@@ -258,10 +241,7 @@ describe('TranscriptionJobService', () => {
 
   describe('getJobsByConsultation', () => {
     it('should fetch jobs linked to a specific consultation', async () => {
-      const jobs = [
-        createMockJob({ id: 'j1', consultationId: 'consult-abc' }),
-        createMockJob({ id: 'j2', consultationId: 'consult-abc' }),
-      ];
+      const jobs = [createMockJob({ id: 'j1', consultationId: 'consult-abc' }), createMockJob({ id: 'j2', consultationId: 'consult-abc' })];
       mockFetch.mockResolvedValueOnce(createMockResponse(jobs));
 
       const result = await service.getJobsByConsultation('consult-abc');
@@ -276,9 +256,7 @@ describe('TranscriptionJobService', () => {
       await service.getJobsByConsultation('consult-123');
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
-      expect(callUrl).toContain(
-        STT_ENDPOINTS.JOBS_BY_CONSULTATION('consult-123'),
-      );
+      expect(callUrl).toContain(STT_ENDPOINTS.JOBS_BY_CONSULTATION('consult-123'));
     });
 
     it('should return empty array when no jobs exist', async () => {
@@ -295,14 +273,10 @@ describe('TranscriptionJobService', () => {
 
   describe('getJobsByStatus', () => {
     it('should fetch jobs by status', async () => {
-      const jobs = [
-        createMockJob({ status: TranscriptionJobStatus.PROCESSING }),
-      ];
+      const jobs = [createMockJob({ status: TranscriptionJobStatus.PROCESSING })];
       mockFetch.mockResolvedValueOnce(createMockResponse(jobs));
 
-      const result = await service.getJobsByStatus(
-        TranscriptionJobStatus.PROCESSING,
-      );
+      const result = await service.getJobsByStatus(TranscriptionJobStatus.PROCESSING);
 
       expect(result).toHaveLength(1);
       expect(result[0].status).toBe(TranscriptionJobStatus.PROCESSING);
@@ -314,9 +288,7 @@ describe('TranscriptionJobService', () => {
       await service.getJobsByStatus(TranscriptionJobStatus.COMPLETED);
 
       const callUrl = mockFetch.mock.calls[0][0] as string;
-      expect(callUrl).toContain(
-        STT_ENDPOINTS.JOBS_BY_STATUS('COMPLETED'),
-      );
+      expect(callUrl).toContain(STT_ENDPOINTS.JOBS_BY_STATUS('COMPLETED'));
     });
   });
 
@@ -366,11 +338,7 @@ describe('TranscriptionJobService', () => {
     });
 
     it('should call the CANCEL_JOB endpoint with POST', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(
-          createMockJob({ status: TranscriptionJobStatus.CANCELLED }),
-        ),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockJob({ status: TranscriptionJobStatus.CANCELLED })));
 
       await service.cancelJob('job-xyz');
 
@@ -381,9 +349,7 @@ describe('TranscriptionJobService', () => {
     });
 
     it('should throw when cancelling an already completed job', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(409, 'Job already completed'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(409, 'Job already completed'));
 
       await expect(service.cancelJob('job-done')).rejects.toThrow();
     });
@@ -409,9 +375,7 @@ describe('TranscriptionJobService', () => {
     });
 
     it('should call the RETRY_JOB endpoint with POST', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockJob()),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(createMockJob()));
 
       await service.retryJob('job-abc');
 
@@ -422,9 +386,7 @@ describe('TranscriptionJobService', () => {
     });
 
     it('should throw when retrying a non-failed job', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(409, 'Job is not in a retryable state'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(409, 'Job is not in a retryable state'));
 
       await expect(service.retryJob('job-active')).rejects.toThrow();
     });
@@ -492,16 +454,11 @@ describe('TranscriptionJobService', () => {
       await service.pollJobStatus('job-poll-fail', {
         onUpdate,
         intervalMs: 10,
-        terminalStatuses: [
-          TranscriptionJobStatus.COMPLETED,
-          TranscriptionJobStatus.FAILED,
-        ],
+        terminalStatuses: [TranscriptionJobStatus.COMPLETED, TranscriptionJobStatus.FAILED],
       });
 
       expect(onUpdate).toHaveBeenCalledTimes(1);
-      expect(onUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ status: TranscriptionJobStatus.FAILED }),
-      );
+      expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: TranscriptionJobStatus.FAILED }));
     });
 
     it('should respect maxAttempts and stop after limit', async () => {
@@ -550,9 +507,7 @@ describe('TranscriptionJobService', () => {
         progress: 100,
       });
 
-      mockFetch
-        .mockRejectedValueOnce(new Error('Temporary network error'))
-        .mockResolvedValueOnce(createMockResponse(completedJob));
+      mockFetch.mockRejectedValueOnce(new Error('Temporary network error')).mockResolvedValueOnce(createMockResponse(completedJob));
 
       const onUpdate = vi.fn();
       const onError = vi.fn();
@@ -567,9 +522,7 @@ describe('TranscriptionJobService', () => {
 
       expect(onError).toHaveBeenCalledTimes(1);
       expect(onUpdate).toHaveBeenCalledTimes(1);
-      expect(onUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({ status: TranscriptionJobStatus.COMPLETED }),
-      );
+      expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: TranscriptionJobStatus.COMPLETED }));
     });
 
     it('should use default intervalMs of 2000 when not specified', async () => {

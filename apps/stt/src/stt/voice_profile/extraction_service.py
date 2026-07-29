@@ -103,11 +103,12 @@ class ExtractionService:
         if norm > 1e-10:
             centroid = centroid / norm
 
-        hf_id = getattr(self._embedding_service, '_hf_model_id', None)
+        hf_id = getattr(self._embedding_service, "_hf_model_id", None)
         if isinstance(hf_id, str) and hf_id:
             model_id = hf_id
         else:
             from ..core.config.settings import get_settings
+
             model_id = get_settings().diarization_hf_model_id
 
         if len(centroid) != self._expected_embedding_dim:

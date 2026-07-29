@@ -210,9 +210,7 @@ describe('LocalSTTProvider — Wave 3 setReservedSpeakerId forwarding', () => {
 
     const provider = new LocalSTTProvider();
     // No init() yet — no diarizer constructed.
-    expect(() =>
-      (provider as unknown as { setReservedSpeakerId(id: string | undefined): void }).setReservedSpeakerId('any'),
-    ).not.toThrow();
+    expect(() => (provider as unknown as { setReservedSpeakerId(id: string | undefined): void }).setReservedSpeakerId('any')).not.toThrow();
     expect(diarizerSetCalls).toEqual([]);
   });
 

@@ -39,7 +39,12 @@ class _StubJudge:
         self._markers = ungrounded_markers
 
     async def complete(
-        self, messages: Messages, *, json_mode: bool = False, temperature: float | None = None, seed: int | None = None
+        self,
+        messages: Messages,
+        *,
+        json_mode: bool = False,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> str:
         _, hypothesis = _split_premise_hypothesis(messages)
         supported = not any(m in hypothesis for m in self._markers)
@@ -53,7 +58,11 @@ class _BrokenJudge:
         raise JudgeConnectionError("backend down")
 
 
-_CLAIMS = [{"id": "c-1", "text": "alpha"}, {"id": "c-2", "text": "bravo"}, {"id": "c-3", "text": "charlie"}]
+_CLAIMS = [
+    {"id": "c-1", "text": "alpha"},
+    {"id": "c-2", "text": "bravo"},
+    {"id": "c-3", "text": "charlie"},
+]
 
 
 class TestDiffVerdicts:
@@ -64,7 +73,9 @@ class TestDiffVerdicts:
 
     def test_candidate_loosening_is_an_unsafe_flip(self):
         # incumbent flags c-2 ungrounded; candidate says everything grounded.
-        counts, dis = diff_verdicts(_CLAIMS, {"c-2"}, set(), case_id="x", transcript="the transcript")
+        counts, dis = diff_verdicts(
+            _CLAIMS, {"c-2"}, set(), case_id="x", transcript="the transcript"
+        )
         assert counts == {"n_claims": 3, "agree": 2, "unsafe_flips": 1, "safe_flips": 0}
         assert len(dis) == 1
         assert dis[0].kind == "unsafe_flip"
@@ -164,16 +175,22 @@ class TestScoreCaseParity:
     async def test_detects_a_candidate_that_loosens_a_verdict(self):
         incumbent = _StubJudge("incumbent", ungrounded_markers=("denies fever",))
         candidate = _StubJudge("candidate")  # says everything grounded -> loosens
-        res = await score_case_parity(_golden_case(), incumbent=incumbent, candidate=candidate, threshold=0.8)
+        res = await score_case_parity(
+            _golden_case(), incumbent=incumbent, candidate=candidate, threshold=0.8
+        )
         assert res.unsafe_flips == 1
         assert res.safe_flips == 0
-        assert any(d.kind == "unsafe_flip" and "denies fever" in d.claim_text for d in res.disagreements)
+        assert any(
+            d.kind == "unsafe_flip" and "denies fever" in d.claim_text for d in res.disagreements
+        )
 
     @pytest.mark.asyncio
     async def test_agreeing_candidate_has_no_flips(self):
         incumbent = _StubJudge("incumbent", ungrounded_markers=("denies fever",))
         candidate = _StubJudge("candidate", ungrounded_markers=("denies fever",))
-        res = await score_case_parity(_golden_case(), incumbent=incumbent, candidate=candidate, threshold=0.8)
+        res = await score_case_parity(
+            _golden_case(), incumbent=incumbent, candidate=candidate, threshold=0.8
+        )
         assert res.unsafe_flips == 0
         assert res.safe_flips == 0
         assert res.disagreements == []
@@ -181,7 +198,10 @@ class TestScoreCaseParity:
     @pytest.mark.asyncio
     async def test_candidate_backend_failure_marks_degraded_not_a_flip(self):
         res = await score_case_parity(
-            _golden_case(), incumbent=_StubJudge("incumbent"), candidate=_BrokenJudge(), threshold=0.8
+            _golden_case(),
+            incumbent=_StubJudge("incumbent"),
+            candidate=_BrokenJudge(),
+            threshold=0.8,
         )
         assert res.candidate_degraded is True
         assert res.unsafe_flips == 0

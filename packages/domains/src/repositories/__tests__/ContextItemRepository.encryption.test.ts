@@ -11,9 +11,7 @@ import type { SecretsServiceLike } from '../../common/field-encryption';
 // Side-effect import that registers the prototype methods.
 import '../generated/core/ContextItemRepository.encryption';
 
-function makeEntity(
-  overrides: Partial<ConstructorParameters<typeof ContextItemEntity>[0]> = {},
-): ContextItemEntity {
+function makeEntity(overrides: Partial<ConstructorParameters<typeof ContextItemEntity>[0]> = {}): ContextItemEntity {
   return new ContextItemEntity({
     id: 'c0000000-0000-0000-0000-000000000001',
     createdAt: new Date('2026-01-01T00:00:00Z'),

@@ -31,7 +31,9 @@ describe('useApiOperation', () => {
     });
   });
 
-  afterEach(() => { vi.clearAllMocks(); });
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
 
   describe('initial state', () => {
     it('should return isLoading false and error null', () => {
@@ -72,7 +74,11 @@ describe('useApiOperation', () => {
       const fn = vi.fn().mockRejectedValue(err);
 
       await act(async () => {
-        try { await result.current.execute('op', fn); } catch { /* expected */ }
+        try {
+          await result.current.execute('op', fn);
+        } catch {
+          /* expected */
+        }
       });
 
       expect(result.current.error).toBe(err);
@@ -84,7 +90,9 @@ describe('useApiOperation', () => {
       const { result } = renderHook(() => useApiOperation('testHook'));
 
       await expect(
-        act(async () => { await result.current.execute('op', vi.fn()); }),
+        act(async () => {
+          await result.current.execute('op', vi.fn());
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
@@ -92,7 +100,11 @@ describe('useApiOperation', () => {
       const { result } = renderHook(() => useApiOperation('testHook'));
 
       await act(async () => {
-        try { await result.current.execute('op', vi.fn().mockRejectedValue(new Error('fail'))); } catch { /* expected */ }
+        try {
+          await result.current.execute('op', vi.fn().mockRejectedValue(new Error('fail')));
+        } catch {
+          /* expected */
+        }
       });
       expect(result.current.error).not.toBeNull();
 
@@ -118,7 +130,11 @@ describe('useApiOperation', () => {
       const err = new Error('boom');
 
       await act(async () => {
-        try { await result.current.execute('myOp', vi.fn().mockRejectedValue(err)); } catch { /* expected */ }
+        try {
+          await result.current.execute('myOp', vi.fn().mockRejectedValue(err));
+        } catch {
+          /* expected */
+        }
       });
 
       const timer = mockLogger.startOperation.mock.results[0].value;
@@ -146,8 +162,12 @@ describe('useApiOperation', () => {
 
       let resolve1!: (v: string) => void;
       let resolve2!: (v: string) => void;
-      const p1 = new Promise<string>((r) => { resolve1 = r; });
-      const p2 = new Promise<string>((r) => { resolve2 = r; });
+      const p1 = new Promise<string>((r) => {
+        resolve1 = r;
+      });
+      const p2 = new Promise<string>((r) => {
+        resolve2 = r;
+      });
 
       let exec1: Promise<unknown>;
       let exec2: Promise<unknown>;
@@ -159,10 +179,16 @@ describe('useApiOperation', () => {
 
       expect(result.current.isLoading).toBe(true);
 
-      await act(async () => { resolve1('done1'); await exec1!; });
+      await act(async () => {
+        resolve1('done1');
+        await exec1!;
+      });
       expect(result.current.isLoading).toBe(true);
 
-      await act(async () => { resolve2('done2'); await exec2!; });
+      await act(async () => {
+        resolve2('done2');
+        await exec2!;
+      });
       expect(result.current.isLoading).toBe(false);
     });
   });
@@ -172,11 +198,17 @@ describe('useApiOperation', () => {
       const { result } = renderHook(() => useApiOperation('testHook'));
 
       await act(async () => {
-        try { await result.current.execute('op', vi.fn().mockRejectedValue(new Error('err'))); } catch { /* expected */ }
+        try {
+          await result.current.execute('op', vi.fn().mockRejectedValue(new Error('err')));
+        } catch {
+          /* expected */
+        }
       });
       expect(result.current.error).not.toBeNull();
 
-      act(() => { result.current.clearError(); });
+      act(() => {
+        result.current.clearError();
+      });
       expect(result.current.error).toBeNull();
     });
   });

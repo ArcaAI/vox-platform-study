@@ -6,15 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  AudioFeature,
-  TrackState,
-  TrackSource,
-  RoomErrorCode,
-  RoomError,
-  DEFAULT_AUDIO_OPTIONS,
-  DEFAULT_ROOM_OPTIONS,
-} from '../types/index.js';
+import { AudioFeature, TrackState, TrackSource, RoomErrorCode, RoomError, DEFAULT_AUDIO_OPTIONS, DEFAULT_ROOM_OPTIONS } from '../types/index.js';
 
 // ============================================================================
 // AudioFeature Tests
@@ -112,11 +104,7 @@ describe('RoomError', () => {
 
   it('should create error with cause', () => {
     const originalError = new Error('Original error');
-    const error = new RoomError(
-      RoomErrorCode.DEVICE_NOT_FOUND,
-      'No microphone found',
-      originalError
-    );
+    const error = new RoomError(RoomErrorCode.DEVICE_NOT_FOUND, 'No microphone found', originalError);
 
     expect(error.code).toBe(RoomErrorCode.DEVICE_NOT_FOUND);
     expect(error.message).toBe('No microphone found');
@@ -164,11 +152,7 @@ describe('RoomError', () => {
   it('should preserve cause chain', () => {
     const rootCause = new Error('Root cause');
     const middleError = new RoomError(RoomErrorCode.UNKNOWN, 'Middle error', rootCause);
-    const topError = new RoomError(
-      RoomErrorCode.PROCESSOR_INIT_FAILED,
-      'Init failed',
-      middleError
-    );
+    const topError = new RoomError(RoomErrorCode.PROCESSOR_INIT_FAILED, 'Init failed', middleError);
 
     expect(topError.cause).toBe(middleError);
     expect((topError.cause as RoomError).cause).toBe(rootCause);
@@ -196,13 +180,7 @@ describe('DEFAULT_AUDIO_OPTIONS', () => {
 
   it('should be read-only at compile time (runtime check)', () => {
     // At runtime, we verify the object exists with expected shape
-    expect(Object.keys(DEFAULT_AUDIO_OPTIONS)).toEqual([
-      'echoCancellation',
-      'noiseSuppression',
-      'autoGainControl',
-      'voiceIsolation',
-      'channelCount',
-    ]);
+    expect(Object.keys(DEFAULT_AUDIO_OPTIONS)).toEqual(['echoCancellation', 'noiseSuppression', 'autoGainControl', 'voiceIsolation', 'channelCount']);
   });
 });
 

@@ -5,9 +5,9 @@ import { getConsultationReview } from './client';
 import { consultationReviewKeys } from './keys';
 
 export function useConsultationReview(consultationId: string, enabled: boolean) {
-    return useQuery({
-        queryKey: consultationReviewKeys.detail(consultationId),
-        queryFn: () => getConsultationReview(consultationId),
-        enabled: enabled && !!consultationId,
-    });
+  return useQuery({
+    queryKey: consultationReviewKeys.detail(consultationId),
+    queryFn: () => getConsultationReview(consultationId),
+    enabled: enabled && !!consultationId,
+  });
 }

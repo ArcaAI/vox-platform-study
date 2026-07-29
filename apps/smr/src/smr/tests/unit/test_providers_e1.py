@@ -23,6 +23,7 @@ class TestOllamaPayloadDefaults:
     def _make_provider(self):
         from smr.core.config import OllamaConfig
         from smr.providers.ollama import OllamaProvider
+
         config = OllamaConfig(base_url="http://localhost:11434")
         http_client = MagicMock()
         return OllamaProvider(config, http_client)
@@ -56,6 +57,7 @@ class TestOllamaResponseFormat:
     def _make_provider(self):
         from smr.core.config import OllamaConfig
         from smr.providers.ollama import OllamaProvider
+
         config = OllamaConfig(base_url="http://localhost:11434")
         return OllamaProvider(config, MagicMock())
 
@@ -94,6 +96,7 @@ class TestOllamaTokenUsage:
     def _make_provider(self):
         from smr.core.config import OllamaConfig
         from smr.providers.ollama import OllamaProvider
+
         config = OllamaConfig(base_url="http://localhost:11434")
         mock_http = AsyncMock()
         return OllamaProvider(config, mock_http), mock_http
@@ -140,8 +143,10 @@ class TestAzurePayloadDefaults:
     def _make_provider(self):
         from smr.core.config import AzureOpenAIConfig
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         config = AzureOpenAIConfig(
-            api_key="test-key", endpoint="https://test.openai.azure.com",
+            api_key="test-key",
+            endpoint="https://test.openai.azure.com",
             deployment_name="gpt-4",
         )
         provider = AzureOpenAIProvider(config)
@@ -187,8 +192,10 @@ class TestAzureResponseFormat:
     def _make_provider(self):
         from smr.core.config import AzureOpenAIConfig
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         config = AzureOpenAIConfig(
-            api_key="test-key", endpoint="https://test.openai.azure.com",
+            api_key="test-key",
+            endpoint="https://test.openai.azure.com",
             deployment_name="gpt-4",
         )
         provider = AzureOpenAIProvider(config)
@@ -198,9 +205,15 @@ class TestAzureResponseFormat:
     @pytest.mark.asyncio
     async def test_json_schema_format_passed_to_api(self):
         provider = self._make_provider()
-        schema = {"type": "object", "properties": {"plan": {"type": "string"}}, "title": "ClinicalNote"}
+        schema = {
+            "type": "object",
+            "properties": {"plan": {"type": "string"}},
+            "title": "ClinicalNote",
+        }
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content='{"plan":"rest"}'), finish_reason="stop")]
+        mock_resp.choices = [
+            MagicMock(message=MagicMock(content='{"plan":"rest"}'), finish_reason="stop")
+        ]
         mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=10, total_tokens=15)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
@@ -238,8 +251,10 @@ class TestAzureTokenUsage:
     def _make_provider(self):
         from smr.core.config import AzureOpenAIConfig
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         config = AzureOpenAIConfig(
-            api_key="test-key", endpoint="https://test.openai.azure.com",
+            api_key="test-key",
+            endpoint="https://test.openai.azure.com",
             deployment_name="gpt-4",
         )
         provider = AzureOpenAIProvider(config)
@@ -250,7 +265,9 @@ class TestAzureTokenUsage:
     async def test_generate_returns_tuple_with_usage(self):
         provider = self._make_provider()
         mock_resp = MagicMock()
-        mock_resp.choices = [MagicMock(message=MagicMock(content="Summary here"), finish_reason="stop")]
+        mock_resp.choices = [
+            MagicMock(message=MagicMock(content="Summary here"), finish_reason="stop")
+        ]
         mock_resp.usage = MagicMock(prompt_tokens=50, completion_tokens=100, total_tokens=150)
         provider._client.chat.completions.create = AsyncMock(return_value=mock_resp)
 
@@ -270,6 +287,7 @@ class TestBedrockPayloadDefaults:
     def _make_provider(self):
         from smr.core.config import BedrockConfig
         from smr.providers.bedrock import BedrockProvider
+
         config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             return BedrockProvider(config)
@@ -297,6 +315,7 @@ class TestBedrockResponseFormat:
     def _make_provider(self):
         from smr.core.config import BedrockConfig
         from smr.providers.bedrock import BedrockProvider
+
         config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             return BedrockProvider(config)
@@ -309,7 +328,11 @@ class TestBedrockResponseFormat:
 
     def test_json_schema_adds_tool_config(self):
         provider = self._make_provider()
-        schema = {"type": "object", "properties": {"plan": {"type": "string"}}, "title": "ClinicalNote"}
+        schema = {
+            "type": "object",
+            "properties": {"plan": {"type": "string"}},
+            "title": "ClinicalNote",
+        }
         req = GenerateRequest(
             prompt="hello",
             response_format=ResponseFormat(type="json_schema", json_schema=schema),
@@ -327,6 +350,7 @@ class TestBedrockTokenUsage:
     def _make_provider(self):
         from smr.core.config import BedrockConfig
         from smr.providers.bedrock import BedrockProvider
+
         config = BedrockConfig(region="us-east-1")
         with patch("boto3.client"):
             provider = BedrockProvider(config)
@@ -341,7 +365,9 @@ class TestBedrockTokenUsage:
             "usage": {"inputTokens": 25, "outputTokens": 50},
         }
 
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(
+            GenerateRequest(prompt="hello", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        )
         assert content == "Summary"
         assert stats.prompt_tokens == 25
         assert stats.predicted_tokens == 50
@@ -354,7 +380,9 @@ class TestBedrockTokenUsage:
             "output": {"message": {"content": [{"text": "Hi"}]}},
         }
 
-        content, _reasoning, stats = await provider.generate(GenerateRequest(prompt="hello"))
+        content, _reasoning, stats = await provider.generate(
+            GenerateRequest(prompt="hello", model="anthropic.claude-3-5-haiku-20241022-v1:0")
+        )
         assert content == "Hi"
         assert stats.prompt_tokens == 0
         assert stats.predicted_tokens == 0

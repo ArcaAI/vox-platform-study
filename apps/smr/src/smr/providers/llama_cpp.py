@@ -144,7 +144,7 @@ class LlamaCppProvider:
                         continue
                     # llama.cpp streams SSE ``data: {json}`` lines.
                     if line.startswith("data:"):
-                        line = line[len("data:"):].strip()
+                        line = line[len("data:") :].strip()
                     if not line:
                         continue
                     data = json.loads(line)
@@ -198,7 +198,11 @@ class LlamaCppProvider:
             logger.warning("get_info.failed", provider=_ENGINE, error=str(exc))
         except Exception as exc:
             logger.error("get_info.unexpected_error", provider=_ENGINE, error=str(exc))
-        models = [ModelInfo(name=self._default_model, supports_streaming=True)] if self._default_model else []
+        models = (
+            [ModelInfo(name=self._default_model, supports_streaming=True)]
+            if self._default_model
+            else []
+        )
         return ProviderInfo(
             name=_ENGINE,
             display_name="llama.cpp",

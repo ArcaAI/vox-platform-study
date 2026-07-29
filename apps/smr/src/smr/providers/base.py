@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from typing import Protocol, runtime_checkable
 
+from smr.core.exceptions import ModelNotSelectedError
 from smr.models.provider import ProviderInfo
 from smr.models.requests import GenerateRequest
 from smr.models.stats import GenerationStats
@@ -13,6 +14,27 @@ from smr.models.stream import StreamChunk
 
 class ProviderNotFoundError(KeyError):
     """Raised when a requested provider is not registered."""
+
+
+def require_model(model: str | None, *, provider: str) -> str:
+    """Fail-closed guard for CLOUD providers (Azure/Bedrock/OpenAI/Anthropic/
+    Vertex): raise when no model resolved rather than falling through to a
+    substituted default.
+
+    The five cloud sub-configs (``core/config.py``) carry no runtime
+    fallback model — provider/model SELECTION is ``failMode=closed``, so an
+    unresolved value must raise, never substitute a vendor model. Local
+    built-in engines (Ollama, LM Studio/OpenAICompat, vLLM, llama.cpp) do
+    NOT call this guard; they keep their topology-level model default.
+    """
+    if not model or not model.strip():
+        raise ModelNotSelectedError(
+            f"No model selected for provider '{provider}': SMR does not "
+            "substitute a default cloud model — the caller must supply "
+            "'model' (resolved via AiTaskDefault upstream).",
+            provider=provider,
+        )
+    return model
 
 
 @runtime_checkable

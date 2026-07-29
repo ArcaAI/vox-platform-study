@@ -11,7 +11,7 @@ function makeAppSettings(map: Record<string, unknown>): IAppSettingsService {
   return {
     getFromCache: () => undefined,
     getValueFromCache: (key: string) => (key in map ? map[key] : null),
-    getValueWithDefault: <T,>(key: string, def: T): T => (key in map ? (map[key] as T) : def),
+    getValueWithDefault: <T>(key: string, def: T): T => (key in map ? (map[key] as T) : def),
     hasSetting: (key: string) => key in map,
     getAllKeys: () => Object.keys(map),
     getCacheStats: () => ({ lastRefresh: new Date(), refreshCount: 0, errorCount: 0, settingsCount: 0, isInitialized: true }),
@@ -44,9 +44,7 @@ describe('RateLimitSettingsService', () => {
     });
 
     it('returns the DB value when a tier baseline is overridden', () => {
-      const svc = new RateLimitSettingsService(
-        makeAppSettings({ 'rate-limit.tier.default.limit': 42, 'rate-limit.tier.default.ttl': 30000 }),
-      );
+      const svc = new RateLimitSettingsService(makeAppSettings({ 'rate-limit.tier.default.limit': 42, 'rate-limit.tier.default.ttl': 30000 }));
       expect(svc.getTier('default')).toEqual({ limit: 42, ttl: 30000 });
     });
   });
@@ -58,16 +56,12 @@ describe('RateLimitSettingsService', () => {
     });
 
     it('returns only the fields the admin set', () => {
-      const svc = new RateLimitSettingsService(
-        makeAppSettings({ 'rate-limit.route.auth.login.limit': 3 }),
-      );
+      const svc = new RateLimitSettingsService(makeAppSettings({ 'rate-limit.route.auth.login.limit': 3 }));
       expect(svc.getRouteOverride('auth.login')).toEqual({ limit: 3, ttl: undefined, enabled: undefined });
     });
 
     it('captures a per-route disable flag', () => {
-      const svc = new RateLimitSettingsService(
-        makeAppSettings({ 'rate-limit.route.health.enabled': false }),
-      );
+      const svc = new RateLimitSettingsService(makeAppSettings({ 'rate-limit.route.health.enabled': false }));
       expect(svc.getRouteOverride('health')).toEqual({ limit: undefined, ttl: undefined, enabled: false });
     });
   });

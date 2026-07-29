@@ -3,7 +3,14 @@ import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomBytes } from 'crypto';
 import { DataNotFoundException } from '@arcaai/exceptions';
-import { PasswordResetTokenFactory, PasswordResetTokenRepository, ResourceStatusType, ResourceType, UserEntity, UserRepository } from '@arcaai/domains';
+import {
+  PasswordResetTokenFactory,
+  PasswordResetTokenRepository,
+  ResourceStatusType,
+  ResourceType,
+  UserEntity,
+  UserRepository,
+} from '@arcaai/domains';
 import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IUserService } from '../../user/user/IUserService';

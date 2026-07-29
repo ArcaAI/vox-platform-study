@@ -39,9 +39,17 @@ from ._stubs import (
 
 def _score(**over: int) -> PDSQIScore:
     base: dict[str, Any] = {
-        "citation": 4, "accurate": 5, "thorough": 4, "useful": 5, "organized": 4,
-        "comprehensible": 5, "succinct": 4, "synthesized": 4,
-        "abstraction": 1, "voice_summ": 0, "voice_note": 0,
+        "citation": 4,
+        "accurate": 5,
+        "thorough": 4,
+        "useful": 5,
+        "organized": 4,
+        "comprehensible": 5,
+        "succinct": 4,
+        "synthesized": 4,
+        "abstraction": 1,
+        "voice_summ": 0,
+        "voice_note": 0,
     }
     base.update(over)
     return PDSQIScore(**base)
@@ -74,9 +82,7 @@ class TestGoldenCaseRole:
 
     def test_role_rejects_unknown_value(self):
         with pytest.raises(ValueError):
-            GoldenCase(
-                case_id="c", source_documents=["s"], generated_note="n", role="bogus"
-            )
+            GoldenCase(case_id="c", source_documents=["s"], generated_note="n", role="bogus")
 
 
 class TestRoleAwareAggregation:
@@ -85,7 +91,11 @@ class TestRoleAwareAggregation:
         # calibration case scores low; it must not drag the quality mean down.
         def respond(messages):  # noqa: ANN001
             blob = " ".join(m["content"] for m in messages)
-            return pdsqi_score_json(accurate=1, thorough=1) if "Acute MI" in blob else pdsqi_score_json()
+            return (
+                pdsqi_score_json(accurate=1, thorough=1)
+                if "Acute MI" in blob
+                else pdsqi_score_json()
+            )
 
         judge = PDSQI9Judge(StubJudgeClient(respond), output_mode=OutputMode.SCORE)
         runner = GoldenSetRunner(judge=judge)
@@ -133,7 +143,9 @@ class TestRoleAwareAggregation:
         class _DownClient:
             model = "down"
 
-            async def complete(self, messages, *, json_mode=False, temperature=None, seed=None):  # noqa: ANN001
+            async def complete(
+                self, messages, *, json_mode=False, temperature=None, seed=None
+            ):  # noqa: ANN001
                 raise JudgeConnectionError("openai_compat judge call failed: 400 model load")
 
         judge = PDSQI9Judge(_DownClient(), output_mode=OutputMode.SCORE)
@@ -245,8 +257,8 @@ class TestSelfConsistencyAggregation:
             _score(thorough=4, accurate=4, organized=5),
         ]
         agg = aggregate_scores(scores)
-        assert agg.thorough == 4   # median(2,4,4)
-        assert agg.accurate == 5   # median(5,5,4)
+        assert agg.thorough == 4  # median(2,4,4)
+        assert agg.accurate == 5  # median(5,5,4)
         assert agg.organized == 5  # median(3,5,5)
 
     def test_aggregate_single_score_is_identity(self):
@@ -281,9 +293,7 @@ class TestSelfConsistencySeed:
     @pytest.mark.asyncio
     async def test_seed_varies_per_sample(self):
         client = ScriptedJudgeClient([pdsqi_score_json() for _ in range(3)])
-        judge = PDSQI9Judge(
-            client, output_mode=OutputMode.SCORE, self_consistency=3, seed=7
-        )
+        judge = PDSQI9Judge(client, output_mode=OutputMode.SCORE, self_consistency=3, seed=7)
         case = GoldenCase(case_id="c", source_documents=["s"], generated_note="n <Note ID:1>")
         await judge.score(case)
         assert client.seeds == [7, 8, 9]

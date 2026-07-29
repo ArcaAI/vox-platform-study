@@ -206,4 +206,3 @@ export interface VADProcessingOptions {
   /** Whether to return frame-level results */
   includeFrameResults?: boolean;
 }
-

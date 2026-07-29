@@ -111,16 +111,23 @@ class TestCatalogAndRouting:
         assert catalog.get("ml-female-1").bindings["sarvam"] == "ishita"
         assert catalog.get("ml-male-1").bindings["sarvam"] == "shubh"
 
-    def test_routing_ml_places_sarvam_after_azure(self):
-        assert Settings().routing_ml == ["azure", "sarvam", "indic_parler"]
-
     @pytest.mark.asyncio
     async def test_router_uses_sarvam_for_ml(self):
+        # sarvam is routable when the gateway injects an ml chain that includes
+        # it (a BYO/PHI-enabled tenant). Routing is DB-sourced (TASK-577) — the
+        # router no longer carries a code default, so the chain is injected here.
         reg = ProviderRegistry()
         sarvam = FakeEngine("sarvam", chunks=2)
         reg.register("sarvam", sarvam)  # azure / indic_parler NOT registered
         router = TTSRouter(reg, VoiceCatalog(), Settings())
-        chunks = [c async for c in router.synthesize(voice_id="ml-female-1", text="ഹലോ.")]
+        chunks = [
+            c
+            async for c in router.synthesize(
+                voice_id="ml-female-1",
+                text="ഹലോ.",
+                routing_ml=["azure", "sarvam", "indic_parler"],
+            )
+        ]
         assert sarvam.calls == 1 and len(chunks) == 2
         assert sarvam.requests[0].provider_voice == "ishita"  # resolved catalog binding
 

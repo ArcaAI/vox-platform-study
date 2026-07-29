@@ -65,13 +65,3 @@ conflicts = [
         { package = "stt", extra = "nemo" },
     ],
 ]
-
-# deepfilternet 0.5.6 (TASK-507, latest release on PyPI) declares
-# numpy>=1.22,<2.0, but stt's base dependencies require numpy>=2.0.0 (shared
-# with the rest of the `ml` extra: torch 2.8, scipy 1.17, librosa). deepfilternet
-# has no numpy-2.x-compatible release upstream, so the <2.0 pin is overridden
-# here to unblock resolution. deepfilterlib is a compiled (PyO3) extension and
-# numpy 2.0 made a C-API/ABI break — this override has NOT been runtime-verified.
-# Manually smoke-test the DeepFilterNet3 denoise path before relying on it
-# (see docs/implementation/TASK-507-ASR-Pipeline-Model-Catalog-Refresh/README.md).
-override-dependencies = ["numpy>=2.0.0"]

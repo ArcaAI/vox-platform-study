@@ -2,5 +2,5 @@ import { ConsultationDemoSkeleton } from '@/features/playground-consultation/com
 
 /** Route-level skeleton mirroring the consultation demo layout (frame 50). */
 export default function ConsultationDemoLoading() {
-    return <ConsultationDemoSkeleton />;
+  return <ConsultationDemoSkeleton />;
 }

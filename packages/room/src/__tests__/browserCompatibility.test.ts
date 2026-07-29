@@ -20,8 +20,10 @@ const UA = {
   firefox110: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:110.0) Gecko/20100101 Firefox/110.0',
   safari17_4: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15',
   safari16_0: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15',
-  iosSafari17: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-  iosSafari16_4: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Mobile/15E148 Safari/604.1',
+  iosSafari17:
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+  iosSafari16_4:
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 16_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Mobile/15E148 Safari/604.1',
   unknown: 'SomeBot/1.0',
 };
 
@@ -158,31 +160,31 @@ describe('getBrowserLimitations', () => {
   it('should return blocker for unsupported browser', () => {
     const caps = getBrowserCapabilities(UA.unknown);
     const limitations = getBrowserLimitations(caps);
-    expect(limitations.some(l => l.severity === 'blocker')).toBe(true);
+    expect(limitations.some((l) => l.severity === 'blocker')).toBe(true);
   });
 
   it('should return multi-mic degraded for Firefox', () => {
     const caps = getBrowserCapabilities(UA.firefox121);
     const limitations = getBrowserLimitations(caps);
-    expect(limitations.some(l => l.feature === 'multiple-microphones')).toBe(true);
+    expect(limitations.some((l) => l.feature === 'multiple-microphones')).toBe(true);
   });
 
   it('should return AudioWorklet degraded for iOS Safari 17', () => {
     const caps = getBrowserCapabilities(UA.iosSafari17);
     const limitations = getBrowserLimitations(caps);
-    expect(limitations.some(l => l.feature === 'audio-worklet')).toBe(true);
+    expect(limitations.some((l) => l.feature === 'audio-worklet')).toBe(true);
   });
 
   it('should return background-audio degraded for iOS Safari', () => {
     const caps = getBrowserCapabilities(UA.iosSafari17);
     const limitations = getBrowserLimitations(caps);
-    expect(limitations.some(l => l.feature === 'background-audio')).toBe(true);
+    expect(limitations.some((l) => l.feature === 'background-audio')).toBe(true);
   });
 
   it('should return persistent-permissions info for Safari', () => {
     const caps = getBrowserCapabilities(UA.safari17_4);
     const limitations = getBrowserLimitations(caps);
-    expect(limitations.some(l => l.feature === 'persistent-permissions')).toBe(true);
+    expect(limitations.some((l) => l.feature === 'persistent-permissions')).toBe(true);
   });
 
   it('should return empty for fully supported Chrome', () => {

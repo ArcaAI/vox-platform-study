@@ -541,7 +541,7 @@ describe('HarnessAdminController — gate-edit exemplar curation', () => {
     expect(result).toEqual(expect.objectContaining({ id: 'ex-1', curationStatus: 'APPROVED' }));
   });
 
-  it('rejects a tenant admin curating another tenant\'s exemplar (and never reaches the store)', async () => {
+  it("rejects a tenant admin curating another tenant's exemplar (and never reaches the store)", async () => {
     const { controller, gateEditMiningService } = makeController({ user: TENANT_ADMIN('tenant-1'), tenantId: 'tenant-1' });
 
     await expect(controller.curateGateEditExemplar('ex-1', { status: 'APPROVED' } as never, { tenantId: 'tenant-elsewhere' })).rejects.toThrow(

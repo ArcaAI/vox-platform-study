@@ -167,13 +167,9 @@ describe('SmrProxyController', () => {
     });
 
     it('should return 502 when SMR service is unreachable', async () => {
-      mockHttpService.axiosRef.post.mockRejectedValue(
-        new Error('ECONNREFUSED'),
-      );
+      mockHttpService.axiosRef.post.mockRejectedValue(new Error('ECONNREFUSED'));
 
-      await expect(
-        controller.generate({ prompt: 'test', stream: false }),
-      ).rejects.toThrow();
+      await expect(controller.generate({ prompt: 'test', stream: false })).rejects.toThrow();
     });
 
     // The proxy MUST preserve the upstream status code but must
@@ -444,7 +440,9 @@ describe('SmrProxyController', () => {
     });
 
     it('keeps the broad retry for the idempotent GET task-status (ECONNRESET retries)', async () => {
-      mockHttpService.axiosRef.get.mockRejectedValueOnce(codeError('ECONNRESET')).mockResolvedValueOnce({ data: { task_id: 't-1', status: 'completed' } });
+      mockHttpService.axiosRef.get
+        .mockRejectedValueOnce(codeError('ECONNRESET'))
+        .mockResolvedValueOnce({ data: { task_id: 't-1', status: 'completed' } });
 
       const outcome = controller.getTaskStatus('t-1');
       await vi.runAllTimersAsync();
@@ -473,10 +471,7 @@ describe('SmrProxyController', () => {
 
       const result = await controller.getTaskStatus('task-1');
 
-      expect(mockHttpService.axiosRef.get).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/tasks/task-1'),
-        expect.any(Object),
-      );
+      expect(mockHttpService.axiosRef.get).toHaveBeenCalledWith(expect.stringContaining('/api/v1/tasks/task-1'), expect.any(Object));
       expect(result.task_id).toBe('task-1');
       expect(result.status).toBe('completed');
     });
@@ -574,19 +569,13 @@ describe('SmrProxyController', () => {
 
       const result = await controller.cancelTask('task-1');
 
-      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v1/tasks/task-1/cancel'),
-        {},
-        expect.any(Object),
-      );
+      expect(mockHttpService.axiosRef.post).toHaveBeenCalledWith(expect.stringContaining('/api/v1/tasks/task-1/cancel'), {}, expect.any(Object));
       expect(result.task_id).toBe('task-1');
       expect(result.status).toBe('cancelled');
     });
 
     it('should return 502 when SMR service is unreachable', async () => {
-      mockHttpService.axiosRef.post.mockRejectedValue(
-        new Error('ECONNREFUSED'),
-      );
+      mockHttpService.axiosRef.post.mockRejectedValue(new Error('ECONNREFUSED'));
 
       await expect(controller.cancelTask('task-1')).rejects.toThrow();
     });
@@ -747,7 +736,14 @@ describe('SmrProxyController', () => {
               registryRow({ slug: 'lms-gemma-4-e2b-it-qat', provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat', memorySizeMb: 3100 }),
               registryRow({ slug: 'ollama-qwen3.5-2b', provider: 'ollama', sourceUri: 'qwen3.5:2b', memorySizeMb: 900 }),
             ]
-          : [registryRow({ slug: 'lms-gemma-4-e4b-it-qat', provider: 'lm-studio', sourceUri: 'gemma-4-e4b-it-qat', taskType: ModelTaskType.SUMMARIZATION })],
+          : [
+              registryRow({
+                slug: 'lms-gemma-4-e4b-it-qat',
+                provider: 'lm-studio',
+                sourceUri: 'gemma-4-e4b-it-qat',
+                taskType: ModelTaskType.SUMMARIZATION,
+              }),
+            ],
       );
       const harnessPolicy = { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' }) };
       const ctrl = buildProvidersController({ aiModels, harnessPolicy });
@@ -821,7 +817,13 @@ describe('SmrProxyController', () => {
       mockHttpService.axiosRef.get.mockResolvedValue({
         data: [
           { name: 'ollama', display_name: 'Ollama', status: 'available', default_model: 'granite4:latest', models: [{ name: 'granite4:latest' }] },
-          { name: 'azure-openai', display_name: 'Azure OpenAI', status: 'unavailable', default_model: 'gpt-4o-mini', models: [{ name: 'gpt-4o-mini' }] },
+          {
+            name: 'azure-openai',
+            display_name: 'Azure OpenAI',
+            status: 'unavailable',
+            default_model: 'gpt-4o-mini',
+            models: [{ name: 'gpt-4o-mini' }],
+          },
         ],
       });
       const ctrl = buildProvidersController({ aiModels });
@@ -937,7 +939,13 @@ describe('SmrProxyController', () => {
     it('groups ENABLED GUARDRAIL rows by provider and marks the effective guardrail.validate default', async () => {
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockResolvedValue([
-        registryRow({ slug: 'granite-guardian-4.1-8b', provider: 'lm-studio', sourceUri: 'granite-guardian-4.1-8b', taskType: ModelTaskType.GUARDRAIL, memorySizeMb: 4900 }),
+        registryRow({
+          slug: 'granite-guardian-4.1-8b',
+          provider: 'lm-studio',
+          sourceUri: 'granite-guardian-4.1-8b',
+          taskType: ModelTaskType.GUARDRAIL,
+          memorySizeMb: 4900,
+        }),
         registryRow({ slug: 'ollama-guardian', provider: 'ollama', sourceUri: 'granite3-guardian:8b', taskType: ModelTaskType.GUARDRAIL }),
       ]);
       const aiTaskDefaults = createMockAiTaskDefaultService();
@@ -994,7 +1002,12 @@ describe('SmrProxyController', () => {
     it('fails open when the effective-default resolution throws — listing returned, no default marked', async () => {
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockResolvedValue([
-        registryRow({ slug: 'granite-guardian-4.1-8b', provider: 'lm-studio', sourceUri: 'granite-guardian-4.1-8b', taskType: ModelTaskType.GUARDRAIL }),
+        registryRow({
+          slug: 'granite-guardian-4.1-8b',
+          provider: 'lm-studio',
+          sourceUri: 'granite-guardian-4.1-8b',
+          taskType: ModelTaskType.GUARDRAIL,
+        }),
       ]);
       const aiTaskDefaults = createMockAiTaskDefaultService();
       aiTaskDefaults.getEffective.mockRejectedValue(new Error('resolver down'));
@@ -1015,10 +1028,22 @@ describe('SmrProxyController', () => {
       mockTenantService.fetchByCodeName.mockResolvedValue({ id: 'global-tenant' });
       const aiModels = createMockAiModelService();
       aiModels.getByTaskTypeSharedRead.mockResolvedValue([
-        registryRow({ slug: 'granite-guardian-4.1-8b', provider: 'lm-studio', sourceUri: 'granite-guardian-4.1-8b', taskType: ModelTaskType.GUARDRAIL }),
+        registryRow({
+          slug: 'granite-guardian-4.1-8b',
+          provider: 'lm-studio',
+          sourceUri: 'granite-guardian-4.1-8b',
+          taskType: ModelTaskType.GUARDRAIL,
+        }),
       ]);
       const aiTaskDefaults = createMockAiTaskDefaultService();
-      aiTaskDefaults.getEffective.mockResolvedValue({ tenantId: 'global-tenant', taskKey: 'guardrail.validate', modelSlug: null, source: null, configJson: null, model: null });
+      aiTaskDefaults.getEffective.mockResolvedValue({
+        tenantId: 'global-tenant',
+        taskKey: 'guardrail.validate',
+        modelSlug: null,
+        source: null,
+        configJson: null,
+        model: null,
+      });
       const ctrl = buildProvidersController({ aiModels, aiTaskDefaults });
 
       await ctrl.getGuardrailProviders('__GLOBAL__');
@@ -1041,9 +1066,7 @@ describe('SmrProxyController', () => {
 
   describe('POST /text/generate/assembled', () => {
     it('should reject when neither context_item_ids nor message is provided', async () => {
-      await expect(
-        controller.generateAssembled({ type: 'pre-summary' } as any),
-      ).rejects.toThrow(BadRequestException);
+      await expect(controller.generateAssembled({ type: 'pre-summary' } as any)).rejects.toThrow(BadRequestException);
     });
 
     it('should reject when both context_item_ids and message are provided', async () => {

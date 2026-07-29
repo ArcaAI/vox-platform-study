@@ -123,11 +123,7 @@ describe('Admin user-detail API hooks (TASK-328 A1–A3)', () => {
       result.current.mutate({ assignmentId: 'ud1', isPrimary: true, expectedVersion: 3 });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockPatch).toHaveBeenCalledWith(
-        `/admin/users/${USER_ID}/departments/ud1`,
-        { isPrimary: true, expectedVersion: 3 },
-        { ifMatch: '"3"' },
-      );
+      expect(mockPatch).toHaveBeenCalledWith(`/admin/users/${USER_ID}/departments/ud1`, { isPrimary: true, expectedVersion: 3 }, { ifMatch: '"3"' });
     });
 
     it('DELETEs an assignment', async () => {

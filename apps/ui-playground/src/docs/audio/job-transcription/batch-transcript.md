@@ -21,10 +21,7 @@ Each segment can include:
 ```tsx
 const { transcripts, status, jobId } = useFileTranscription();
 
-const wordCount = transcripts.reduce(
-  (acc, segment) => acc + segment.text.split(/\s+/).length,
-  0
-);
+const wordCount = transcripts.reduce((acc, segment) => acc + segment.text.split(/\s+/).length, 0);
 ```
 
 <!-- @/example -->
@@ -34,12 +31,12 @@ const wordCount = transcripts.reduce(
 
 ### Status Display
 
-| Status | Description |
-|--------|-------------|
-| `idle` | No upload started |
-| `uploading` | File is being uploaded |
+| Status      | Description                       |
+| ----------- | --------------------------------- |
+| `idle`      | No upload started                 |
+| `uploading` | File is being uploaded            |
 | `streaming` | Transcript segments are streaming |
-| `complete` | Processing finished successfully |
-| `error` | Upload or processing failed |
+| `complete`  | Processing finished successfully  |
+| `error`     | Upload or processing failed       |
 
 <!-- @/section -->

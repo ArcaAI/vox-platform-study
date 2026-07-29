@@ -28,7 +28,7 @@ still accept legacy bodies untouched.
 - **Request — `If-Match` header.** Routes annotated `@RequiresIfMatch()`
   parse `If-Match: "<n>"` and feed the integer to the service layer.
   - Missing `If-Match` → `428 Precondition Required` (RFC 6585), `{ code:
-    "PRECONDITION_REQUIRED" }`.
+"PRECONDITION_REQUIRED" }`.
   - Malformed validator → `400 Bad Request`.
   - `If-Match: *` is **not** supported on these routes (per RFC 7232 it
     means "any current state", which would defeat OCC).

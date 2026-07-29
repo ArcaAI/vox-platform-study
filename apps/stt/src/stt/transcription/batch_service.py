@@ -49,7 +49,7 @@ from ..models.base_loader import LoadedModel
 from ..models.cache import get_model_cache
 from ..models.whisper_kwargs import build_whisper_generate_kwargs
 from ..pipeline.config_reader import get_model_reader
-from ..pipeline.dto import InferenceConfig, ModelTaskType, PipelineConfig
+from ..pipeline.dto import AiModelFormat, InferenceConfig, ModelTaskType, PipelineConfig
 from .dto import (
     AudioSegment,
     ChunkTranscriptionResult,
@@ -62,6 +62,18 @@ from .dto import (
 from .preprocessing import get_preprocessor
 
 logger = logging.getLogger(__name__)
+
+# Cloud ASR engines whose loaders accept a per-tenant ``provider_overrides``
+# dict (TASK-567 BYOK). For these the batch ASR load bypasses the shared by-slug
+# cache when an override is present. Mirrors the streaming set in session_manager.
+_CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
+    {
+        AiModelFormat.AZURE_SPEECH,
+        AiModelFormat.AZURE_FOUNDRY,
+        AiModelFormat.SARVAM,
+        AiModelFormat.OPENAI,
+    }
+)
 
 
 class BatchTranscriptionService:
@@ -145,6 +157,7 @@ class BatchTranscriptionService:
         blob_service: Any = None,
         audio_filename: str | None = None,
         user_id: str | None = None,
+        provider_overrides: dict[str, Any] | None = None,
     ) -> TranscriptionResult:
         """
         Transcribe audio file with optional speaker diarization.
@@ -187,7 +200,7 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             logger.info(f"[{job_id}] Loading models...")
             model_start = time.time()
-            models = await self._load_models(pipeline_config)
+            models = await self._load_models(pipeline_config, provider_overrides=provider_overrides)
             timing.model_loading_seconds = time.time() - model_start
 
             asr_model = models.get("asr")
@@ -244,13 +257,16 @@ class BatchTranscriptionService:
                             hf_model_id = diar_ref.inline.hf_model_id
 
                     if hf_model_id:
-                        logger.info("[%s] Using pipeline diarization model: %s", job_id, hf_model_id)
+                        logger.info(
+                            "[%s] Using pipeline diarization model: %s", job_id, hf_model_id
+                        )
                         emb_service = create_embedding_service(
                             hf_model_id=hf_model_id,
                         )
                         await emb_service.initialize()
                     else:
                         from ..diarization.embedding_service import get_embedding_service
+
                         emb_service = get_embedding_service()
 
                     seg_service = None
@@ -263,10 +279,13 @@ class BatchTranscriptionService:
                                     seg_model_id = seg_ref.inline.hf_model_id
                             if seg_model_id:
                                 from ..diarization.segmentation_service import SegmentationService
+
                                 seg_service = SegmentationService(hf_model_id=seg_model_id)
                                 await seg_service.initialize()
                         except Exception:
-                            logger.warning("[%s] Failed to load segmentation model", job_id, exc_info=True)
+                            logger.warning(
+                                "[%s] Failed to load segmentation model", job_id, exc_info=True
+                            )
 
                     tracker = SpeakerTracker(
                         max_speakers=spec.diarization.max_speakers,
@@ -288,7 +307,9 @@ class BatchTranscriptionService:
                     inline_diarization_config = spec.diarization
                     logger.info("[%s] Inline diarization ready", job_id)
                 except Exception as e:
-                    logger.warning(f"[{job_id}] Failed to set up inline diarization (non-fatal): {e}")
+                    logger.warning(
+                        f"[{job_id}] Failed to set up inline diarization (non-fatal): {e}"
+                    )
                     inline_identifier = None
 
             # ----------------------------------------------------------
@@ -402,7 +423,8 @@ class BatchTranscriptionService:
                         )
                     logger.info(
                         "[%s] Inline diarization: %d speakers detected",
-                        job_id, len(speaker_ids),
+                        job_id,
+                        len(speaker_ids),
                     )
             elif spec.diarization.enabled and tenant_id:
                 diarization_segments = raw_result.segments
@@ -579,6 +601,7 @@ class BatchTranscriptionService:
         user_id: str | None = None,
     ) -> None:
         from ..diarization.preseed import preseed_speaker
+
         await preseed_speaker(
             tracker,
             consultation_id,
@@ -624,6 +647,7 @@ class BatchTranscriptionService:
             await emb_service.initialize()
         else:
             from ..diarization.embedding_service import get_embedding_service
+
             emb_service = get_embedding_service()
 
         seg_service = None
@@ -636,10 +660,13 @@ class BatchTranscriptionService:
                         seg_model_id = seg_ref.inline.hf_model_id
                 if seg_model_id:
                     from ..diarization.segmentation_service import SegmentationService
+
                     seg_service = SegmentationService(hf_model_id=seg_model_id)
                     await seg_service.initialize()
             except Exception:
-                logger.warning("Failed to load segmentation model for batch diarization", exc_info=True)
+                logger.warning(
+                    "Failed to load segmentation model for batch diarization", exc_info=True
+                )
 
         # Create per-job tracker + identifier
         tracker = SpeakerTracker(
@@ -682,7 +709,10 @@ class BatchTranscriptionService:
             try:
                 emb = await emb_service.extract_from_samples(seg_samples, sample_rate)
                 result = await identifier.identify(
-                    emb, samples=seg_samples, sample_rate=sample_rate, config=config,
+                    emb,
+                    samples=seg_samples,
+                    sample_rate=sample_rate,
+                    config=config,
                 )
 
                 if isinstance(result, list):
@@ -703,7 +733,9 @@ class BatchTranscriptionService:
             except Exception:
                 logger.warning(
                     "Segment diarization failed for [%.2f-%.2f]",
-                    seg_start, seg_end, exc_info=True,
+                    seg_start,
+                    seg_end,
+                    exc_info=True,
                 )
                 continue
 
@@ -779,11 +811,21 @@ class BatchTranscriptionService:
                 if best_confidence is not None:
                     per_seg["speaker_confidence"] = round(best_confidence, 4)
 
-    async def _load_models(self, pipeline: PipelineConfig) -> dict[str, LoadedModel | None]:
+    async def _load_models(
+        self,
+        pipeline: PipelineConfig,
+        provider_overrides: dict[str, Any] | None = None,
+    ) -> dict[str, LoadedModel | None]:
         """
         Load all models required by pipeline.
 
         Handles both slug references (from database) and inline model definitions.
+
+        ``provider_overrides`` (TASK-567) carries per-tenant BYO cloud creds; for
+        a cloud ASR engine WITH overrides the ASR load bypasses the shared
+        by-slug cache and calls the loader directly (a tenant key must never be
+        cached under a slug and served to another tenant). Env-only keeps the
+        existing cache path byte-identical.
         """
         cache = get_model_cache()
         model_reader = get_model_reader()
@@ -806,15 +848,38 @@ class BatchTranscriptionService:
             from ..processors.asr_engines import ASR_FORMAT_TO_NAME
             from ..processors.binding import resolve_engine_binding
 
-            _engine_fmt = (
-                asr_ref.inline.engine if asr_ref.is_inline and asr_ref.inline else None
-            )
+            _engine_fmt = asr_ref.inline.engine if asr_ref.is_inline and asr_ref.inline else None
             _engine_name = ASR_FORMAT_TO_NAME.get(_engine_fmt) if _engine_fmt else None
             if _engine_name is not None:
                 resolve_engine_binding("asr", _engine_name, mode="batch")
         except Exception:  # noqa: BLE001 — advisory only, never block loading
             logger.debug("Batch engine capability check skipped", exc_info=True)
-        if asr_ref.is_inline and asr_ref.inline:
+        # TASK-567 — cloud BYOK: which format does this ASR ref bind?
+        _asr_format = asr_ref.inline.engine if asr_ref.is_inline and asr_ref.inline else None
+        if _asr_format is None and asr_ref.slug and asr_ref.slug in model_configs:
+            _asr_format = getattr(model_configs[asr_ref.slug], "format", None)
+        _asr_cloud_byok = bool(provider_overrides) and _asr_format in _CLOUD_ASR_OVERRIDE_FORMATS
+
+        if _asr_cloud_byok:
+            # Bypass the by-slug cache so the injected key reaches the loader.
+            if asr_ref.is_inline and asr_ref.inline:
+                _asr_config = asr_ref.inline.to_ai_model_config(
+                    ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
+                )
+            elif asr_ref.slug and asr_ref.slug in model_configs:
+                _asr_config = model_configs[asr_ref.slug]
+            else:
+                raise TranscriptionError("ASR model is required but not specified")
+            # Typed Any: the cloud loaders accept ``provider_overrides`` (the base
+            # ``load`` abstractmethod does not declare it — a superset param).
+            _loader: Any = cache._get_loader(_asr_config.format)
+            if _loader is None:
+                raise TranscriptionError(
+                    f"No loader available for cloud ASR format {_asr_config.format}"
+                )
+            logger.info(f"Loading cloud ASR model (BYOK, uncached): {_asr_config.slug}")
+            models["asr"] = await _loader.load(_asr_config, provider_overrides=provider_overrides)
+        elif asr_ref.is_inline and asr_ref.inline:
             # Inline model definition
             logger.info(f"Loading inline ASR model: {asr_ref.inline.hf_model_id}")
             models["asr"] = await cache.get_or_load_inline(
@@ -976,9 +1041,7 @@ class BatchTranscriptionService:
         parameters = signature.parameters
         if kwarg in parameters:
             return True
-        return any(
-            p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
-        )
+        return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
 
     def _prepare_asr_inputs(
         self,
@@ -991,9 +1054,7 @@ class BatchTranscriptionService:
         return_attention_mask: bool = False,
     ) -> dict[str, Any]:
         """Build processor inputs while handling processor-specific language args."""
-        supports_language, requires_language = self._inspect_processor_language_support(
-            processor
-        )
+        supports_language, requires_language = self._inspect_processor_language_support(processor)
 
         if requires_language and language is None:
             raise TranscriptionError(
@@ -1087,9 +1148,7 @@ class BatchTranscriptionService:
         """
         settings = get_settings()
         chunk_length_s = float(settings.transcription_chunk_length_s)
-        stride_parts = [
-            int(s.strip()) for s in settings.transcription_stride_length_s.split(",")
-        ]
+        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
         stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
         stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
         raw_carry = getattr(config, "prev_text_context_words", None)
@@ -1198,7 +1257,8 @@ class BatchTranscriptionService:
                 capped_audio = seg_audio[:max_emb_samples]
 
                 emb = await emb_svc.extract_from_samples(
-                    capped_audio, sample_rate,
+                    capped_audio,
+                    sample_rate,
                     start_time=chunk.start_time,
                     end_time=chunk.end_time,
                 )
@@ -1210,6 +1270,7 @@ class BatchTranscriptionService:
                 )
 
                 from ..diarization.dto import SpeakerIdentification
+
                 if isinstance(result, list):
                     # Ambiguous split - use first sub-segment's speaker
                     if result:
@@ -1218,27 +1279,34 @@ class BatchTranscriptionService:
                         for sub in result:
                             if sub.speaker_confidence is None:
                                 inline_new_speakers += 1
-                            inline_diar_segments.append({
-                                "start": sub.start_time,
-                                "end": sub.end_time,
-                                "speaker_id": sub.speaker_id,
-                                "speaker_confidence": sub.speaker_confidence,
-                            })
+                            inline_diar_segments.append(
+                                {
+                                    "start": sub.start_time,
+                                    "end": sub.end_time,
+                                    "speaker_id": sub.speaker_id,
+                                    "speaker_confidence": sub.speaker_confidence,
+                                }
+                            )
                 elif isinstance(result, SpeakerIdentification):
                     chunk.speaker_id = result.speaker_id
                     chunk.speaker_confidence = result.confidence
                     if result.is_new_speaker:
                         inline_new_speakers += 1
-                    inline_diar_segments.append({
-                        "start": chunk.start_time,
-                        "end": chunk.end_time,
-                        "speaker_id": result.speaker_id,
-                        "speaker_confidence": result.confidence,
-                    })
+                    inline_diar_segments.append(
+                        {
+                            "start": chunk.start_time,
+                            "end": chunk.end_time,
+                            "speaker_id": result.speaker_id,
+                            "speaker_confidence": result.confidence,
+                        }
+                    )
             except Exception as e:
                 logger.warning(
                     "[%s] Inline diarization failed for chunk [%.1f-%.1f]: %s",
-                    job_id, chunk.start_time, chunk.end_time, e,
+                    job_id,
+                    chunk.start_time,
+                    chunk.end_time,
+                    e,
                 )
 
         for idx, seg in enumerate(speech_segments):
@@ -1293,7 +1361,10 @@ class BatchTranscriptionService:
 
                     try:
                         sub_result = await self._run_inference(
-                            sub_audio, sample_rate, model, config,
+                            sub_audio,
+                            sample_rate,
+                            model,
+                            config,
                             prompt=segment_prompt,
                             initial_prompt=initial_prompt,
                         )
@@ -1335,11 +1406,7 @@ class BatchTranscriptionService:
                         )  # use original for dedup matching
                         # Update prompt for next sub-chunk with latest text
                         words = sub_result.text.strip().split()
-                        carry = (
-                            " ".join(words[-carry_max_words:])
-                            if carry_max_words > 0
-                            else ""
-                        )
+                        carry = " ".join(words[-carry_max_words:]) if carry_max_words > 0 else ""
                         segment_prompt = compose_prompt(initial_prompt, carry)
                         sub_seg: dict[str, Any] = {
                             "text": chunk_text,
@@ -1358,8 +1425,13 @@ class BatchTranscriptionService:
                     time_offset = sub_start_global
                     for wt in sub_result.word_timestamps:
                         if isinstance(wt, dict):
-                            wt["start"] = cast(float, wt.get("start", wt.get("start_time", 0.0))) + time_offset
-                            wt["end"] = cast(float, wt.get("end", wt.get("end_time", 0.0))) + time_offset
+                            wt["start"] = (
+                                cast(float, wt.get("start", wt.get("start_time", 0.0)))
+                                + time_offset
+                            )
+                            wt["end"] = (
+                                cast(float, wt.get("end", wt.get("end_time", 0.0))) + time_offset
+                            )
                             wt["start_time"] = wt["start"]
                             wt["end_time"] = wt["end"]
                             seg_word_ts.append(wt)
@@ -1367,7 +1439,10 @@ class BatchTranscriptionService:
                     # Emit chunk callback
                     next_offset = sub_offset + step_samples
                     next_end = min(next_offset + chunk_samples, len(segment_audio))
-                    is_last_sub = next_offset >= len(segment_audio) or (next_end - next_offset) < sample_rate // 2
+                    is_last_sub = (
+                        next_offset >= len(segment_audio)
+                        or (next_end - next_offset) < sample_rate // 2
+                    )
                     if chunk_callback:
                         chunk_result = ChunkTranscriptionResult(
                             chunk_index=global_chunk_idx,
@@ -1398,7 +1473,10 @@ class BatchTranscriptionService:
                 # ---- Short segment: single inference call ----
                 try:
                     seg_result = await self._run_inference(
-                        segment_audio, sample_rate, model, config,
+                        segment_audio,
+                        sample_rate,
+                        model,
+                        config,
                         prompt=segment_prompt,
                         initial_prompt=initial_prompt,
                     )
@@ -1438,8 +1516,12 @@ class BatchTranscriptionService:
 
                 for wt in seg_result.word_timestamps:
                     if isinstance(wt, dict):
-                        wt["start"] = cast(float, wt.get("start", wt.get("start_time", 0.0))) + time_offset
-                        wt["end"] = cast(float, wt.get("end", wt.get("end_time", 0.0))) + time_offset
+                        wt["start"] = (
+                            cast(float, wt.get("start", wt.get("start_time", 0.0))) + time_offset
+                        )
+                        wt["end"] = (
+                            cast(float, wt.get("end", wt.get("end_time", 0.0))) + time_offset
+                        )
                         wt["start_time"] = wt["start"]
                         wt["end_time"] = wt["end"]
                         seg_word_ts.append(wt)
@@ -1492,9 +1574,7 @@ class BatchTranscriptionService:
                 # Carry forward last N words for next segment's prompt
                 words = seg_merged_text.strip().split()
                 previous_segment_text = (
-                    " ".join(words[-carry_max_words:])
-                    if carry_max_words > 0
-                    else ""
+                    " ".join(words[-carry_max_words:]) if carry_max_words > 0 else ""
                 )
             all_segments.extend(seg_segments)
             all_word_timestamps.extend(seg_word_ts)
@@ -1561,9 +1641,7 @@ class BatchTranscriptionService:
         try:
             engine = resolve_asr_engine(model.format)
         except LookupError:
-            raise TranscriptionError(
-                f"Unsupported model format: {model.format}"
-            ) from None
+            raise TranscriptionError(f"Unsupported model format: {model.format}") from None
 
         result: RawTranscription = await engine.run_batch(
             self,
@@ -1799,6 +1877,55 @@ class BatchTranscriptionService:
         finally:
             os.unlink(tmp.name)
 
+    async def _run_sarvam_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> RawTranscription:
+        """Run whole-audio inference via the Sarvam speech-to-text REST API.
+
+        ``model.model`` is a ``CloudRestConfig`` (from ``SarvamLoader``). Errors
+        are already mapped to the ``CloudASR*`` taxonomy by the recognize helper.
+        """
+        from ..streaming.sarvam_asr import sarvam_recognize_utterance
+
+        language = getattr(config, "language", None)
+        result = await sarvam_recognize_utterance(model.model, samples, sample_rate, language)
+        if progress_callback:
+            progress_callback(1.0)
+        return RawTranscription(
+            text=result.get("text", ""),
+            language=language,
+            word_timestamps=result.get("word_timestamps", []),
+        )
+
+    async def _run_openai_inference(
+        self,
+        samples: np.ndarray,
+        sample_rate: int,
+        model: LoadedModel,
+        config: Any,
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> RawTranscription:
+        """Run whole-audio inference via the OpenAI speech-to-text REST API.
+
+        ``model.model`` is a ``CloudRestConfig`` (from ``OpenAILoader``).
+        """
+        from ..streaming.openai_asr import openai_recognize_utterance
+
+        language = getattr(config, "language", None)
+        result = await openai_recognize_utterance(model.model, samples, sample_rate, language)
+        if progress_callback:
+            progress_callback(1.0)
+        return RawTranscription(
+            text=result.get("text", ""),
+            language=language,
+            word_timestamps=result.get("word_timestamps", []),
+        )
+
     async def _run_transformers_inference(
         self,
         samples: np.ndarray,
@@ -1814,8 +1941,12 @@ class BatchTranscriptionService:
 
         if isinstance(model.extra, dict) and model.extra.get("multimodal_lm") is True:
             return await self._run_multimodal_lm_inference(
-                samples, sample_rate, model, config,
-                progress_callback, prompt=initial_prompt,
+                samples,
+                sample_rate,
+                model,
+                config,
+                progress_callback,
+                prompt=initial_prompt,
             )
 
         asr_model = model.model
@@ -1846,9 +1977,10 @@ class BatchTranscriptionService:
         # Force float32 for stable autoregressive decoding on non-CUDA.
         # The cast is done IN-PLACE on the LoadedModel so subsequent
         # requests use the already-converted model (no repeated 6 GB copies).
-        needs_fp32 = model_dtype in (torch.float16, torch.bfloat16) and str(
-            device
-        ) in ("cpu", "mps")
+        needs_fp32 = model_dtype in (torch.float16, torch.bfloat16) and str(device) in (
+            "cpu",
+            "mps",
+        )
         if needs_fp32:
             logger.warning(
                 "Model dtype %s on %s is unsafe for generation — "
@@ -1993,7 +2125,7 @@ class BatchTranscriptionService:
         system_text = prompt
 
         chunk_size = MAX_AUDIO_S * sample_rate
-        chunks = [samples[i:i + chunk_size] for i in range(0, len(samples), chunk_size)]
+        chunks = [samples[i : i + chunk_size] for i in range(0, len(samples), chunk_size)]
         total_chunks = len(chunks)
 
         all_texts: list[str] = []
@@ -2016,7 +2148,10 @@ class BatchTranscriptionService:
 
             def _sync_generate(msgs: Any = messages, chunk: Any = chunk_array) -> str:
                 inputs = prepare_chat_inputs(
-                    processor, msgs, lm_model.device, dtype=lm_model.dtype,
+                    processor,
+                    msgs,
+                    lm_model.device,
+                    dtype=lm_model.dtype,
                 )
 
                 duration_s = len(chunk) / sample_rate
@@ -2025,7 +2160,7 @@ class BatchTranscriptionService:
                 with torch.no_grad():
                     outputs = lm_model.generate(**inputs, max_new_tokens=max_new_tokens)
 
-                generated = outputs[0, inputs["input_ids"].shape[-1]:]
+                generated = outputs[0, inputs["input_ids"].shape[-1] :]
                 text: str = processor.decode(generated, skip_special_tokens=True).strip()
                 return text
 
@@ -2041,11 +2176,7 @@ class BatchTranscriptionService:
         merged = " ".join(merged.split())  # collapse whitespace
 
         duration_seconds = len(samples) / sample_rate
-        segments = (
-            [{"start": 0.0, "end": duration_seconds, "text": merged}]
-            if merged
-            else []
-        )
+        segments = [{"start": 0.0, "end": duration_seconds, "text": merged}] if merged else []
 
         return RawTranscription(
             text=merged,
@@ -2135,9 +2266,7 @@ class BatchTranscriptionService:
         chunk_length_s = float(settings.transcription_chunk_length_s)
 
         # Parse stride from settings (e.g. "4,2" -> left=4, right=2)
-        stride_parts = [
-            int(s.strip()) for s in settings.transcription_stride_length_s.split(",")
-        ]
+        stride_parts = [int(s.strip()) for s in settings.transcription_stride_length_s.split(",")]
         stride_left = stride_parts[0] if len(stride_parts) >= 1 else 4
         stride_right = stride_parts[1] if len(stride_parts) >= 2 else 2
         stride_s = stride_left + stride_right
@@ -2262,8 +2391,7 @@ class BatchTranscriptionService:
             )
             if device != "cpu":
                 inputs = {
-                    k: v.to(device) if isinstance(v, torch.Tensor) else v
-                    for k, v in inputs.items()
+                    k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()
                 }
 
             with torch.no_grad():
@@ -2349,7 +2477,9 @@ class BatchTranscriptionService:
 
             next_offset = offset + step_samples
             next_end = min(next_offset + chunk_samples, len(samples))
-            is_last_chunk = next_offset >= len(samples) or (next_end - next_offset) < sample_rate // 2
+            is_last_chunk = (
+                next_offset >= len(samples) or (next_end - next_offset) < sample_rate // 2
+            )
 
             # Emit chunk callback for near-real-time output
             if chunk_callback:
@@ -2416,8 +2546,7 @@ class BatchTranscriptionService:
         )
         if device != "cpu":
             inputs = {
-                k: v.to(device) if isinstance(v, torch.Tensor) else v
-                for k, v in inputs.items()
+                k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()
             }
 
         with torch.no_grad():
@@ -2516,9 +2645,7 @@ class BatchTranscriptionService:
 
         adapter = NemoAsrAdapter(model, config)
 
-        result = await asyncio.to_thread(
-            adapter, samples, sample_rate, prompt=None
-        )
+        result = await asyncio.to_thread(adapter, samples, sample_rate, prompt=None)
 
         if progress_callback:
             progress_callback(1.0)
@@ -2556,9 +2683,7 @@ class BatchTranscriptionService:
             batch_size=getattr(config, "batch_size", None),
         )
 
-        result = await asyncio.to_thread(
-            adapter, samples, sample_rate, prompt=initial_prompt
-        )
+        result = await asyncio.to_thread(adapter, samples, sample_rate, prompt=initial_prompt)
 
         if progress_callback:
             progress_callback(1.0)
@@ -2685,9 +2810,7 @@ class BatchTranscriptionService:
                     data={"definition": _json.dumps(definition)},
                 )
         except httpx.HTTPError as exc:
-            raise CloudASRTranscriptionError(
-                f"Azure Foundry request failed: {exc}"
-            ) from exc
+            raise CloudASRTranscriptionError(f"Azure Foundry request failed: {exc}") from exc
 
         if response.status_code == 401:
             raise CloudASRAuthError("Azure Foundry authentication failed (401)")
@@ -2701,9 +2824,7 @@ class BatchTranscriptionService:
 
         body = response.json()
         combined = body.get("combinedPhrases") or []
-        text = " ".join(
-            str(p.get("text", "") or "").strip() for p in combined
-        ).strip()
+        text = " ".join(str(p.get("text", "") or "").strip() for p in combined).strip()
 
         segments: list[dict[str, Any]] = []
         word_timestamps: list[dict[str, Any]] = []
@@ -2738,7 +2859,9 @@ class BatchTranscriptionService:
 
         return RawTranscription(
             text=text,
-            language=(body.get("phrases") or [{}])[0].get("locale") if body.get("phrases") else None,
+            language=(
+                (body.get("phrases") or [{}])[0].get("locale") if body.get("phrases") else None
+            ),
             word_timestamps=word_timestamps,
             segments=segments,
         )
@@ -2763,8 +2886,7 @@ class BatchTranscriptionService:
                 segment_texts = []
                 if config.timestamps.sentence_timestamps and raw.segments:
                     segment_texts = [
-                        seg.get("text", "") if isinstance(seg, dict) else ""
-                        for seg in raw.segments
+                        seg.get("text", "") if isinstance(seg, dict) else "" for seg in raw.segments
                     ]
                     texts_to_punctuate.extend(segment_texts)
 

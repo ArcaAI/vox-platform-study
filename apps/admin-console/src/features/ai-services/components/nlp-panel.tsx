@@ -14,26 +14,26 @@ import { DocumentCard, DocumentSkeleton, UpstreamDocument } from './guardrail-pa
  * comment in `guardrail-panel.tsx` before changing anything here.
  */
 export function NlpPanel() {
-    const statusQuery = useNlpStatus();
+  const statusQuery = useNlpStatus();
 
-    if (statusQuery.isPending) {
-        return (
-            <DocumentCard title="NLP service status">
-                <DocumentSkeleton rows={5} />
-            </DocumentCard>
-        );
-    }
-
-    if (statusQuery.error || !statusQuery.data) {
-        return <ErrorState title="Couldn’t load the NLP status" error={statusQuery.error} onRetry={() => void statusQuery.refetch()} />;
-    }
-
+  if (statusQuery.isPending) {
     return (
-        <DocumentCard
-            title="NLP service status"
-            description="Proxied verbatim from the NLP service (GET /api/v1/health). Per-model component checks with load status."
-        >
-            <UpstreamDocument document={statusQuery.data} />
-        </DocumentCard>
+      <DocumentCard title="NLP service status">
+        <DocumentSkeleton rows={5} />
+      </DocumentCard>
     );
+  }
+
+  if (statusQuery.error || !statusQuery.data) {
+    return <ErrorState title="Couldn’t load the NLP status" error={statusQuery.error} onRetry={() => void statusQuery.refetch()} />;
+  }
+
+  return (
+    <DocumentCard
+      title="NLP service status"
+      description="Proxied verbatim from the NLP service (GET /api/v1/health). Per-model component checks with load status."
+    >
+      <UpstreamDocument document={statusQuery.data} />
+    </DocumentCard>
+  );
 }

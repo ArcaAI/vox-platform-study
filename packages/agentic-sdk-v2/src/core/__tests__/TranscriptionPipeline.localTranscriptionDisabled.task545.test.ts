@@ -122,9 +122,7 @@ describe('TranscriptionPipeline: local transcription disabled (TASK-545)', () =>
       code: 'LOCAL_TRANSCRIPTION_DISABLED',
     });
 
-    expect(errorHandler).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.objectContaining({ code: 'LOCAL_TRANSCRIPTION_DISABLED' }) }),
-    );
+    expect(errorHandler).toHaveBeenCalledWith(expect.objectContaining({ error: expect.objectContaining({ code: 'LOCAL_TRANSCRIPTION_DISABLED' }) }));
     // The local Whisper processor must never be constructed — no model
     // download side effects while local transcription is disabled.
     expect(createSTT).not.toHaveBeenCalled();

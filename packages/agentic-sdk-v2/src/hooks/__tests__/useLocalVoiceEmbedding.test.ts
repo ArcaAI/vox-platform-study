@@ -123,9 +123,7 @@ describe('useLocalVoiceEmbedding (LOCAL provider)', () => {
 
     it('pools (averages) multiple samples into one enrolled embedding', async () => {
       const embedder = fakeEmbedder();
-      embedder.embedBlob
-        .mockResolvedValueOnce([1, 0, 0])
-        .mockResolvedValueOnce([0, 1, 0]);
+      embedder.embedBlob.mockResolvedValueOnce([1, 0, 0]).mockResolvedValueOnce([0, 1, 0]);
       const { result } = renderHook(() => useLocalVoiceEmbedding({ embedder }));
 
       await act(async () => {
@@ -220,10 +218,7 @@ describe('useLocalVoiceEmbedding (LOCAL provider)', () => {
       });
 
       await waitFor(async () => {
-        const cached = await SecureStorage.getItemWithPassphrase(
-          'vox.localVoiceEmbeddings.user-1.tenant-1',
-          'vox-lve-user-1-tenant-1',
-        );
+        const cached = await SecureStorage.getItemWithPassphrase('vox.localVoiceEmbeddings.user-1.tenant-1', 'vox-lve-user-1-tenant-1');
         expect(cached).not.toBeNull();
         const parsed = JSON.parse(cached!);
         expect(parsed[0].profileId).toBe('profile-1');
@@ -233,13 +228,16 @@ describe('useLocalVoiceEmbedding (LOCAL provider)', () => {
 
     it('hydrates enrolled embeddings from the namespaced cache on mount', async () => {
       const seeded = [
-        { profileId: 'seed-1', label: 'Seeded', modelId: 'Xenova/wavlm-base-plus-sv', dim: 3, embedding: [1, 0, 0], createdAt: new Date().toISOString() },
+        {
+          profileId: 'seed-1',
+          label: 'Seeded',
+          modelId: 'Xenova/wavlm-base-plus-sv',
+          dim: 3,
+          embedding: [1, 0, 0],
+          createdAt: new Date().toISOString(),
+        },
       ];
-      await SecureStorage.setItemWithPassphrase(
-        'vox.localVoiceEmbeddings.user-1.tenant-1',
-        'vox-lve-user-1-tenant-1',
-        JSON.stringify(seeded),
-      );
+      await SecureStorage.setItemWithPassphrase('vox.localVoiceEmbeddings.user-1.tenant-1', 'vox-lve-user-1-tenant-1', JSON.stringify(seeded));
 
       const { result } = renderHook(() => useLocalVoiceEmbedding({ embedder: fakeEmbedder() }));
 

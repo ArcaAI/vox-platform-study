@@ -20,26 +20,26 @@ process.env.API_URL = 'http://gateway.test:8868';
 // project (which lacks Element/HTMLElement) is untouched. Mirrors the shims in
 // packages/ui/src/components/data-grid/__tests__/data-grid.vitest.tsx.
 if (typeof Element !== 'undefined' && typeof HTMLElement !== 'undefined') {
-    if (!('ResizeObserver' in globalThis)) {
-        (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
-            observe() {}
-            unobserve() {}
-            disconnect() {}
-        };
-    }
-    if (!Element.prototype.getBoundingClientRect || Element.prototype.getBoundingClientRect.toString().includes('[native code]')) {
-        Element.prototype.getBoundingClientRect = function () {
-            return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
-        };
-    }
-    for (const [prop, value] of [
-        ['clientHeight', 600],
-        ['clientWidth', 800],
-        ['offsetHeight', 600],
-        ['offsetWidth', 800],
-    ] as const) {
-        Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value });
-    }
+  if (!('ResizeObserver' in globalThis)) {
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+  }
+  if (!Element.prototype.getBoundingClientRect || Element.prototype.getBoundingClientRect.toString().includes('[native code]')) {
+    Element.prototype.getBoundingClientRect = function () {
+      return { width: 800, height: 600, top: 0, left: 0, right: 800, bottom: 600, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    };
+  }
+  for (const [prop, value] of [
+    ['clientHeight', 600],
+    ['clientWidth', 800],
+    ['offsetHeight', 600],
+    ['offsetWidth', 800],
+  ] as const) {
+    Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value });
+  }
 }
 
 /**

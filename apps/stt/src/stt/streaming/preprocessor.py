@@ -450,10 +450,7 @@ class StreamingPreprocessor:
                     # budget is spent, reset the onset attempt — this rejects
                     # both consecutive dips and periodic near-threshold noise,
                     # not just lone transients.
-                    if (
-                        state.speech_onset_frames > 0
-                        and state.onset_gap < _ONSET_HANGOVER_FRAMES
-                    ):
+                    if state.speech_onset_frames > 0 and state.onset_gap < _ONSET_HANGOVER_FRAMES:
                         state.onset_gap += 1
                     else:
                         state.speech_onset_frames = 0
@@ -649,9 +646,7 @@ class StreamingPreprocessor:
             and state.noise_floor_cooldown == 0
         ):
             self._fallback_noise_floor = (0.95 * self._fallback_noise_floor) + (0.05 * rms)
-            self._fallback_noise_floor = min(
-                self._fallback_noise_floor, _FALLBACK_NOISE_FLOOR_MAX
-            )
+            self._fallback_noise_floor = min(self._fallback_noise_floor, _FALLBACK_NOISE_FLOOR_MAX)
 
         if state.noise_floor_cooldown > 0:
             state.noise_floor_cooldown -= 1
@@ -745,9 +740,7 @@ class StreamingPreprocessor:
         end_time = state.total_samples_fed / self._target_sr
         trimmed = len(window_frames) < len(state.utterance_buffer)
         start_time = (
-            end_time - (len(samples) / self._target_sr)
-            if trimmed
-            else state.utterance_start_time
+            end_time - (len(samples) / self._target_sr) if trimmed else state.utterance_start_time
         )
 
         partial = AudioUtterance(
@@ -771,7 +764,7 @@ class StreamingPreprocessor:
         search_start = max(0, len(buffer) - lookback_frames)
 
         # Compute mean energy of full buffer for comparison
-        mean_energy = float(np.mean([np.mean(f ** 2) for f in buffer]))
+        mean_energy = float(np.mean([np.mean(f**2) for f in buffer]))
         if mean_energy < _ENERGY_FLOOR:
             return None
 
@@ -787,7 +780,9 @@ class StreamingPreprocessor:
 
         return best_idx
 
-    def _emit_utterance(self, is_final: bool, carry_buffer: list[np.ndarray] | None = None) -> AudioUtterance | None:
+    def _emit_utterance(
+        self, is_final: bool, carry_buffer: list[np.ndarray] | None = None
+    ) -> AudioUtterance | None:
         """Concatenate buffered frames into an AudioUtterance and reset state."""
         state = self._state
 

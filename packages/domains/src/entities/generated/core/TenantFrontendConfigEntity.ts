@@ -123,5 +123,4 @@ export class TenantFrontendConfigEntity extends BaseTenantEntity {
   set configJson(value: ITenantFrontendConfigEntity['configJson']) {
     this.setProperty('configJson', value);
   }
-
 }

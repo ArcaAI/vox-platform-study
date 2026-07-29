@@ -9,11 +9,11 @@ import type { AssembledGenerateRequest, AssembledGenerateResponse, GenerateOutco
 
 /** Tenant catalog by default; `tenantKey: '__GLOBAL__'` is GLOBAL_ADMIN-only (403 otherwise). */
 export function listProviders(tenantKey?: string): Promise<SmrProvider[]> {
-    return getJson('text/providers', tenantKey ? { tenantKey } : undefined);
+  return getJson('text/providers', tenantKey ? { tenantKey } : undefined);
 }
 
 export function listGuardrailProviders(tenantKey?: string): Promise<SmrProvider[]> {
-    return getJson('text/guardrail-providers', tenantKey ? { tenantKey } : undefined);
+  return getJson('text/guardrail-providers', tenantKey ? { tenantKey } : undefined);
 }
 
 /**
@@ -23,20 +23,20 @@ export function listGuardrailProviders(tenantKey?: string): Promise<SmrProvider[
  * them — and SMR fails CLOSED with 422 when nothing resolves.
  */
 export function generateText(body: GenerateTextRequest): Promise<GenerateOutcome> {
-    return postJson('text/generate', body);
+  return postJson('text/generate', body);
 }
 
 /** Server-side prompt assembly; `debug: true` is admin-only (403 otherwise). */
 export function generateAssembled(body: AssembledGenerateRequest): Promise<AssembledGenerateResponse> {
-    return postJson('text/generate/assembled', body);
+  return postJson('text/generate/assembled', body);
 }
 
 export function getTask(taskId: string): Promise<SmrTask> {
-    return getJson(`text/tasks/${encodeURIComponent(taskId)}`);
+  return getJson(`text/tasks/${encodeURIComponent(taskId)}`);
 }
 
 export function cancelTask(taskId: string): Promise<SmrTask> {
-    return postJson(`text/tasks/${encodeURIComponent(taskId)}/cancel`);
+  return postJson(`text/tasks/${encodeURIComponent(taskId)}/cancel`);
 }
 
 /**
@@ -45,7 +45,7 @@ export function cancelTask(taskId: string): Promise<SmrTask> {
  * ticket. Streams never traverse the BFF proxy.
  */
 export function taskStreamPath(taskId: string): string {
-    return `text/tasks/${encodeURIComponent(taskId)}/stream`;
+  return `text/tasks/${encodeURIComponent(taskId)}/stream`;
 }
 
 /**
@@ -54,5 +54,5 @@ export function taskStreamPath(taskId: string): string {
  * rejects the minted ticket.
  */
 export function taskStreamScope(taskId: string): string {
-    return `smr_task:${taskId}`;
+  return `smr_task:${taskId}`;
 }

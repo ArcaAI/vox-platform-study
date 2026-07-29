@@ -23,7 +23,16 @@ const effectiveWithModel = (taskKey: string, sourceUri: string) => ({
   modelSlug: 'some-slug',
   source: 'system' as const,
   configJson: null,
-  model: { id: 'm1', slug: 'some-slug', name: 'Some Model', provider: 'built-in', architecture: null, taskType: 'X', format: 'SAFETENSOR', sourceUri },
+  model: {
+    id: 'm1',
+    slug: 'some-slug',
+    name: 'Some Model',
+    provider: 'built-in',
+    architecture: null,
+    taskType: 'X',
+    format: 'SAFETENSOR',
+    sourceUri,
+  },
 });
 
 describe('AiInferenceController — guardrail', () => {

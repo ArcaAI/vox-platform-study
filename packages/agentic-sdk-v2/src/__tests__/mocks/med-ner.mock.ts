@@ -8,9 +8,7 @@ const createMockProcessor = () => ({
   init: vi.fn().mockResolvedValue(undefined),
   extract: vi.fn().mockResolvedValue({
     text: 'test text',
-    entities: [
-      { text: 'diabetes', type: 'CONDITION', score: 0.95, start: 0, end: 8 },
-    ],
+    entities: [{ text: 'diabetes', type: 'CONDITION', score: 0.95, start: 0, end: 8 }],
     processingTime: 100,
     timestamp: Date.now(),
   }),

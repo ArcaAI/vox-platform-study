@@ -36,11 +36,7 @@ interface StoredLayout {
 
 /** A layout is valid only as three finite, strictly-positive percentages. */
 function isValidSizes(sizes: unknown): sizes is number[] {
-  return (
-    Array.isArray(sizes) &&
-    sizes.length === PANEL_COUNT &&
-    sizes.every((n) => typeof n === 'number' && Number.isFinite(n) && n > 0)
-  );
+  return Array.isArray(sizes) && sizes.length === PANEL_COUNT && sizes.every((n) => typeof n === 'number' && Number.isFinite(n) && n > 0);
 }
 
 export interface UseColumnLayoutResult {
@@ -89,7 +85,12 @@ export function useColumnLayout(): UseColumnLayoutResult {
     };
   }, [list]);
 
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+  useEffect(
+    () => () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    },
+    [],
+  );
 
   const persist = useCallback(
     (next: number[]) => {

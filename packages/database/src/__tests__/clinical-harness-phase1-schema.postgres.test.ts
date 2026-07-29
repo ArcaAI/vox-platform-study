@@ -26,8 +26,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
 
-const DATABASE_URL =
-  process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/hope';
+const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/hope';
 
 let client: pg.Client;
 /** False when no live DB is reachable — the suite then self-skips. */
@@ -46,9 +45,7 @@ async function enumLabels(typname: string): Promise<string[]> {
   return res.rows.map((r) => r.label as string);
 }
 
-async function columns(
-  table: string,
-): Promise<Map<string, { dataType: string; udtName: string; isNullable: string; columnDefault: string | null }>> {
+async function columns(table: string): Promise<Map<string, { dataType: string; udtName: string; isNullable: string; columnDefault: string | null }>> {
   const res = await client.query(
     `SELECT column_name, data_type, udt_name, is_nullable, column_default
        FROM information_schema.columns
@@ -88,9 +85,7 @@ describe('Phase 1 additive schema', () => {
     if (!available) return;
     const labels = await enumLabels('ConsultationStatus');
     // DRAFT_PENDING_SENSORS supports optimistic two-phase delivery.
-    expect(new Set(labels)).toEqual(
-      new Set(['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']),
-    );
+    expect(new Set(labels)).toEqual(new Set(['OPEN', 'RECORDING', 'DRAFT_PENDING_SENSORS', 'PENDING_REVIEW', 'SIGNED', 'CLOSED', 'REOPENED']));
   });
 
   it('adds SIGNED_NOTE to core.ContextItemType', async () => {

@@ -5,10 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     include: ['src/**/*.test.ts', 'src/**/__tests__/**/*.test.ts'],
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-    ],
+    exclude: ['**/node_modules/**', '**/dist/**'],
     setupFiles: ['./vitest.setup.ts'],
     testTimeout: 30000,
     hookTimeout: 30000,

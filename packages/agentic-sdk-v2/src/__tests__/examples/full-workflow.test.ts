@@ -19,12 +19,7 @@ import {
   createMockSummary,
 } from '../../__tests__/setup';
 import { AgenticClient } from '../../core/AgenticClient';
-import {
-  CONSULTATION_ENDPOINTS,
-  CONTEXT_ENDPOINTS,
-  SUMMARY_ENDPOINTS,
-  ENTITY_ENDPOINTS,
-} from '../../core/constants';
+import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../../core/constants';
 
 // =============================================================================
 // Test fixtures
@@ -38,10 +33,7 @@ const PATIENT_ID = 'patient-456';
 const SUMMARY_ID = 'summary-123';
 
 function createClient(logger = createMockLogger()) {
-  return new AgenticClient(
-    { baseUrl: API_BASE, apiKey: API_KEY, tenantId: TENANT_ID },
-    logger as any,
-  );
+  return new AgenticClient({ baseUrl: API_BASE, apiKey: API_KEY, tenantId: TENANT_ID }, logger as any);
 }
 
 function lastFetchCall() {
@@ -251,10 +243,7 @@ describe('full consultation workflow', () => {
     });
 
     it('step 12: load summaries list', async () => {
-      const summariesList = [
-        createMockSummary({ id: 'sum-1', type: 'pre_summary' }),
-        createMockSummary({ id: 'sum-2', type: 'summary' }),
-      ];
+      const summariesList = [createMockSummary({ id: 'sum-1', type: 'pre_summary' }), createMockSummary({ id: 'sum-2', type: 'summary' })];
       mockFetch.mockResolvedValueOnce(createMockResponse(summariesList));
 
       const endpoint = SUMMARY_ENDPOINTS.LIST(CONSULTATION_ID);
@@ -349,9 +338,7 @@ describe('full consultation workflow', () => {
     });
 
     it('should include X-Request-ID that increments across calls', async () => {
-      mockFetch
-        .mockResolvedValueOnce(createMockResponse({}))
-        .mockResolvedValueOnce(createMockResponse({}));
+      mockFetch.mockResolvedValueOnce(createMockResponse({})).mockResolvedValueOnce(createMockResponse({}));
 
       await client.get(CONSULTATION_ENDPOINTS.OPEN);
       const firstRequestId = (nthFetchInit(0).headers as Record<string, string>)['X-Request-ID'];
@@ -401,57 +388,40 @@ describe('full consultation workflow', () => {
     });
 
     it('401 authentication error', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(401, 'Unauthorized'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(401, 'Unauthorized'));
 
-      await expect(
-        client.post(CONSULTATION_ENDPOINTS.OPEN, { patientId: PATIENT_ID }),
-      ).rejects.toMatchObject({
+      await expect(client.post(CONSULTATION_ENDPOINTS.OPEN, { patientId: PATIENT_ID })).rejects.toMatchObject({
         code: 'AUTHENTICATION_ERROR',
         message: 'Unauthorized',
       });
     });
 
     it('timeout error', async () => {
-      const fastClient = new AgenticClient(
-        { baseUrl: API_BASE, apiKey: API_KEY, tenantId: TENANT_ID, timeout: 1 },
-        createMockLogger() as any,
-      );
+      const fastClient = new AgenticClient({ baseUrl: API_BASE, apiKey: API_KEY, tenantId: TENANT_ID, timeout: 1 }, createMockLogger() as any);
 
       const abortError = new Error('The operation was aborted');
       abortError.name = 'AbortError';
       mockFetch.mockRejectedValueOnce(abortError);
 
-      await expect(
-        fastClient.get(CONSULTATION_ENDPOINTS.GET(CONSULTATION_ID)),
-      ).rejects.toMatchObject({
+      await expect(fastClient.get(CONSULTATION_ENDPOINTS.GET(CONSULTATION_ID))).rejects.toMatchObject({
         code: 'NETWORK_ERROR',
         message: 'Request timeout',
       });
     });
 
     it('404 not found for non-existent consultation', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(404, 'Consultation not found'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(404, 'Consultation not found'));
 
-      await expect(
-        client.get(CONSULTATION_ENDPOINTS.GET('non-existent')),
-      ).rejects.toMatchObject({
+      await expect(client.get(CONSULTATION_ENDPOINTS.GET('non-existent'))).rejects.toMatchObject({
         code: 'NOT_FOUND',
         message: 'Consultation not found',
       });
     });
 
     it('500 server error during summary generation', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(500, 'Internal Server Error'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(500, 'Internal Server Error'));
 
-      await expect(
-        client.post(SUMMARY_ENDPOINTS.GENERATE(CONSULTATION_ID), {}),
-      ).rejects.toMatchObject({
+      await expect(client.post(SUMMARY_ENDPOINTS.GENERATE(CONSULTATION_ID), {})).rejects.toMatchObject({
         code: 'API_ERROR',
         message: 'Internal Server Error',
       });
@@ -460,22 +430,16 @@ describe('full consultation workflow', () => {
     it('unknown error wraps as UNKNOWN_ERROR', async () => {
       mockFetch.mockRejectedValueOnce('unexpected string error');
 
-      await expect(
-        client.get(CONSULTATION_ENDPOINTS.GET(CONSULTATION_ID)),
-      ).rejects.toMatchObject({
+      await expect(client.get(CONSULTATION_ENDPOINTS.GET(CONSULTATION_ID))).rejects.toMatchObject({
         code: 'UNKNOWN_ERROR',
         message: 'An unexpected error occurred',
       });
     });
 
     it('validation error (422) during context add', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse(422, 'Content is required'),
-      );
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(422, 'Content is required'));
 
-      await expect(
-        client.post(CONTEXT_ENDPOINTS.ADD(CONSULTATION_ID), { type: 'case_note' }),
-      ).rejects.toMatchObject({
+      await expect(client.post(CONTEXT_ENDPOINTS.ADD(CONSULTATION_ID), { type: 'case_note' })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: 'Content is required',
       });
@@ -490,45 +454,25 @@ describe('full consultation workflow', () => {
     it('consultation endpoints use correct paths', () => {
       expect(CONSULTATION_ENDPOINTS.OPEN).toBe('/consultations/open');
       expect(CONSULTATION_ENDPOINTS.GET(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}`);
-      expect(CONSULTATION_ENDPOINTS.PATIENT_HISTORY(PATIENT_ID)).toBe(
-        `/consultations/patient/${PATIENT_ID}/history`,
-      );
-      expect(CONSULTATION_ENDPOINTS.TIMELINE(CONSULTATION_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/timeline`,
-      );
+      expect(CONSULTATION_ENDPOINTS.PATIENT_HISTORY(PATIENT_ID)).toBe(`/consultations/patient/${PATIENT_ID}/history`);
+      expect(CONSULTATION_ENDPOINTS.TIMELINE(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/timeline`);
     });
 
     it('context endpoints use correct paths', () => {
-      expect(CONTEXT_ENDPOINTS.ADD(CONSULTATION_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/context`,
-      );
-      expect(CONTEXT_ENDPOINTS.SHARED(CONSULTATION_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/context/shared`,
-      );
+      expect(CONTEXT_ENDPOINTS.ADD(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/context`);
+      expect(CONTEXT_ENDPOINTS.SHARED(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/context/shared`);
     });
 
     it('summary endpoints use correct paths', () => {
-      expect(SUMMARY_ENDPOINTS.PRE_SUMMARY(CONSULTATION_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/summary/pre-summary`,
-      );
-      expect(SUMMARY_ENDPOINTS.GENERATE(CONSULTATION_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/summary`,
-      );
-      expect(SUMMARY_ENDPOINTS.UPDATE(CONSULTATION_ID, SUMMARY_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/summary/${SUMMARY_ID}`,
-      );
-      expect(SUMMARY_ENDPOINTS.VERSIONS(CONSULTATION_ID, SUMMARY_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/summary/${SUMMARY_ID}/versions`,
-      );
-      expect(SUMMARY_ENDPOINTS.LIST(CONSULTATION_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/summary`,
-      );
+      expect(SUMMARY_ENDPOINTS.PRE_SUMMARY(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/pre-summary`);
+      expect(SUMMARY_ENDPOINTS.GENERATE(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary`);
+      expect(SUMMARY_ENDPOINTS.UPDATE(CONSULTATION_ID, SUMMARY_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/${SUMMARY_ID}`);
+      expect(SUMMARY_ENDPOINTS.VERSIONS(CONSULTATION_ID, SUMMARY_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary/${SUMMARY_ID}/versions`);
+      expect(SUMMARY_ENDPOINTS.LIST(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/summary`);
     });
 
     it('entity endpoints use correct /named-entities path', () => {
-      expect(ENTITY_ENDPOINTS.GET_ALL(CONSULTATION_ID)).toBe(
-        `/consultations/${CONSULTATION_ID}/named-entities`,
-      );
+      expect(ENTITY_ENDPOINTS.GET_ALL(CONSULTATION_ID)).toBe(`/consultations/${CONSULTATION_ID}/named-entities`);
     });
   });
 
@@ -538,10 +482,7 @@ describe('full consultation workflow', () => {
 
   describe('client construction', () => {
     it('strips trailing slash from base URL', async () => {
-      const trailingSlashClient = new AgenticClient(
-        { baseUrl: `${API_BASE}/`, apiKey: API_KEY },
-        createMockLogger() as any,
-      );
+      const trailingSlashClient = new AgenticClient({ baseUrl: `${API_BASE}/`, apiKey: API_KEY }, createMockLogger() as any);
 
       mockFetch.mockResolvedValueOnce(createMockResponse({}));
       await trailingSlashClient.get(CONSULTATION_ENDPOINTS.OPEN);
@@ -550,10 +491,7 @@ describe('full consultation workflow', () => {
     });
 
     it('works without tenant ID', async () => {
-      const noTenantClient = new AgenticClient(
-        { baseUrl: API_BASE, apiKey: API_KEY },
-        createMockLogger() as any,
-      );
+      const noTenantClient = new AgenticClient({ baseUrl: API_BASE, apiKey: API_KEY }, createMockLogger() as any);
 
       mockFetch.mockResolvedValueOnce(createMockResponse({}));
       await noTenantClient.get(CONSULTATION_ENDPOINTS.OPEN);
@@ -563,9 +501,7 @@ describe('full consultation workflow', () => {
     });
 
     it('works without logger', async () => {
-      const noLoggerClient = new AgenticClient(
-        { baseUrl: API_BASE, apiKey: API_KEY },
-      );
+      const noLoggerClient = new AgenticClient({ baseUrl: API_BASE, apiKey: API_KEY });
 
       mockFetch.mockResolvedValueOnce(createMockResponse({ ok: true }));
       const result = await noLoggerClient.get(CONSULTATION_ENDPOINTS.OPEN);
@@ -574,10 +510,7 @@ describe('full consultation workflow', () => {
     });
 
     it('updateAccessToken changes the token used in subsequent requests', async () => {
-      const tokenClient = new AgenticClient(
-        { baseUrl: API_BASE },
-        createMockLogger() as any,
-      );
+      const tokenClient = new AgenticClient({ baseUrl: API_BASE }, createMockLogger() as any);
       tokenClient.updateAccessToken('new-jwt-token-999');
 
       mockFetch.mockResolvedValueOnce(createMockResponse({}));
@@ -603,9 +536,7 @@ describe('full consultation workflow', () => {
     });
 
     it('handles 204 No Content response', async () => {
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse(undefined, { status: 204 }),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse(undefined, { status: 204 }));
 
       const result = await client.delete(CONSULTATION_ENDPOINTS.GET(CONSULTATION_ID));
 

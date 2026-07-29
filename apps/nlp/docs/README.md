@@ -82,6 +82,7 @@ Welcome to the HOPE NLP Service documentation. This directory contains comprehen
 All code examples are provided in multiple formats where applicable:
 
 **curl:**
+
 ```bash
 curl -X POST http://localhost:8864/api/v1/classify/text \
   -H "Content-Type: application/json" \
@@ -89,6 +90,7 @@ curl -X POST http://localhost:8864/api/v1/classify/text \
 ```
 
 **Python:**
+
 ```python
 import requests
 
@@ -99,11 +101,12 @@ response = requests.post(
 ```
 
 **JavaScript:**
+
 ```javascript
 const response = await fetch('http://localhost:8864/api/v1/classify/text', {
   method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({text: 'Patient is happy', language: 'en'})
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ text: 'Patient is happy', language: 'en' }),
 });
 ```
 
@@ -120,6 +123,7 @@ const response = await fetch('http://localhost:8864/api/v1/classify/text', {
 ### Documentation Issues
 
 If you find any issues with the documentation:
+
 1. Check if the information is outdated
 2. Verify against the actual codebase
 3. Open an issue or submit a PR
@@ -128,6 +132,7 @@ If you find any issues with the documentation:
 ### Technical Support
 
 For technical support:
+
 1. Check the [troubleshooting guide](../README.md#-troubleshooting)
 2. Review the [FAQ](04-development-guide.md#troubleshooting)
 3. Search existing issues
@@ -159,6 +164,7 @@ We welcome contributions to improve the documentation!
 ### Documentation Review
 
 All documentation changes go through:
+
 1. Technical accuracy review
 2. Grammar and style review
 3. Code example testing
@@ -184,6 +190,7 @@ We value your feedback on our documentation!
 - **Examples**: Are the examples helpful?
 
 Please share your feedback by:
+
 - Opening an issue
 - Contacting the team
 - Submitting improvements
@@ -217,4 +224,3 @@ Please share your feedback by:
 **Last Updated:** January 2025
 **Documentation Version:** 1.0.0
 **Service Version:** 0.1.0
-

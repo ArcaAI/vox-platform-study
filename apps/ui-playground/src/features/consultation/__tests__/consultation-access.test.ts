@@ -11,18 +11,11 @@ function isDoctorRole(roles: string[]): boolean {
   return roles.some((r) => DOCTOR_ROLES.includes(r));
 }
 
-function requiresImpersonation(
-  roles: string[],
-  isImpersonating: boolean,
-): boolean {
+function requiresImpersonation(roles: string[], isImpersonating: boolean): boolean {
   return isAdminRole(roles) && !isDoctorRole(roles) && !isImpersonating;
 }
 
-function canAccessConsultations(
-  hasTenant: boolean,
-  roles: string[],
-  isImpersonating: boolean,
-): boolean {
+function canAccessConsultations(hasTenant: boolean, roles: string[], isImpersonating: boolean): boolean {
   return hasTenant && !requiresImpersonation(roles, isImpersonating);
 }
 

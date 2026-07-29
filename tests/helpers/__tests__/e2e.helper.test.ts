@@ -24,8 +24,7 @@ interface MockResponse {
 }
 
 function makeMockResponse(status: number, body: unknown): MockResponse {
-  const bodyText =
-    typeof body === 'string' ? body : body == null ? '' : JSON.stringify(body);
+  const bodyText = typeof body === 'string' ? body : body == null ? '' : JSON.stringify(body);
   return {
     status: () => status,
     json: async () => (typeof body === 'string' ? JSON.parse(body) : body),
@@ -33,9 +32,7 @@ function makeMockResponse(status: number, body: unknown): MockResponse {
   };
 }
 
-function makeMockRequest(
-  postImpl: (url: string, opts: unknown) => Promise<MockResponse> | MockResponse
-): APIRequestContext {
+function makeMockRequest(postImpl: (url: string, opts: unknown) => Promise<MockResponse> | MockResponse): APIRequestContext {
   return {
     post: vi.fn(async (url: string, opts: unknown) => postImpl(url, opts)),
   } as unknown as APIRequestContext;
@@ -58,7 +55,7 @@ describe('loginUser', () => {
         token: 'jwt-abc',
         refreshToken: 'rt-xyz',
         user: { id: 'user-1', username: 'super_admin' },
-      })
+      }),
     );
 
     const result = await loginUser(request, 'super_admin', 'password123');
@@ -72,9 +69,7 @@ describe('loginUser', () => {
   });
 
   it('returns null and logs a structured stderr warning on HTTP 401', async () => {
-    const request = makeMockRequest(() =>
-      makeMockResponse(401, { error: 'Invalid credentials' })
-    );
+    const request = makeMockRequest(() => makeMockResponse(401, { error: 'Invalid credentials' }));
 
     const result = await loginUser(request, 'super_admin', 'wrong-password');
 
@@ -93,17 +88,11 @@ describe('loginUser', () => {
       throw new Error('connect ECONNREFUSED 127.0.0.1:8868');
     });
 
-    await expect(
-      loginUser(request, 'super_admin', 'password123')
-    ).rejects.toThrow(/Failed to reach API at POST \/api\/v1\/auth\/login/);
+    await expect(loginUser(request, 'super_admin', 'password123')).rejects.toThrow(/Failed to reach API at POST \/api\/v1\/auth\/login/);
 
-    await expect(
-      loginUser(request, 'super_admin', 'password123')
-    ).rejects.toThrow(/ECONNREFUSED/);
+    await expect(loginUser(request, 'super_admin', 'password123')).rejects.toThrow(/ECONNREFUSED/);
 
-    await expect(
-      loginUser(request, 'super_admin', 'password123')
-    ).rejects.toThrow(/Is the dev\/test stack running\?/);
+    await expect(loginUser(request, 'super_admin', 'password123')).rejects.toThrow(/Is the dev\/test stack running\?/);
   });
 
   it('truncates large response bodies in the warning to 500 chars', async () => {

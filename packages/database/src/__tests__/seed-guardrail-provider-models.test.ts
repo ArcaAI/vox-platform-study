@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SEED_GLOBAL_SETTING_IDS } from '../prisma/db_main/seed/00-constants';
-import {
-  GUARDRAIL_PROVIDER_MODELS,
-  GUARDRAIL_PROVIDER_NAMES,
-} from '../prisma/db_main/seed/11-global-setting';
+import { GUARDRAIL_PROVIDER_MODELS, GUARDRAIL_PROVIDER_NAMES } from '../prisma/db_main/seed/11-global-setting';
 
 interface GuardrailModelEntry {
   name: string;
@@ -27,9 +24,7 @@ describe('Guardrail Provider-Model Catalog Seed Data', () => {
     });
 
     it('should contain entries for lm-studio, ollama, and azure-openai', () => {
-      const providerNames = GUARDRAIL_PROVIDER_MODELS.map(
-        (p: GuardrailProviderCatalogEntry) => p.provider,
-      );
+      const providerNames = GUARDRAIL_PROVIDER_MODELS.map((p: GuardrailProviderCatalogEntry) => p.provider);
       expect(providerNames).toContain('lm-studio');
       expect(providerNames).toContain('ollama');
       expect(providerNames).toContain('azure-openai');
@@ -61,19 +56,13 @@ describe('Guardrail Provider-Model Catalog Seed Data', () => {
 
   describe('GUARDRAIL_PROVIDER_NAMES constant', () => {
     it('should list the three canonical provider names in contract order', () => {
-      expect(GUARDRAIL_PROVIDER_NAMES).toEqual([
-        'lm-studio',
-        'ollama',
-        'azure-openai',
-      ]);
+      expect(GUARDRAIL_PROVIDER_NAMES).toEqual(['lm-studio', 'ollama', 'azure-openai']);
     });
   });
 
   describe('lm-studio provider models (cross-worker contract)', () => {
     it('should include the default granite-guardian-4.1-8b model', () => {
-      const lms = (GUARDRAIL_PROVIDER_MODELS as GuardrailProviderCatalogEntry[]).find(
-        (p) => p.provider === 'lm-studio',
-      );
+      const lms = (GUARDRAIL_PROVIDER_MODELS as GuardrailProviderCatalogEntry[]).find((p) => p.provider === 'lm-studio');
       const names = lms!.models.map((m) => m.name);
       expect(names).toContain('granite-guardian-4.1-8b');
     });
@@ -92,10 +81,7 @@ describe('Guardrail Provider-Model Catalog Seed Data', () => {
 
     it('should have unique IDs for all Guardrail catalog entries', () => {
       const ids = ['GLOBAL', 'ARCAAI'].map(
-        (prefix) =>
-          SEED_GLOBAL_SETTING_IDS[
-            `${prefix}_UX_GUARDRAIL_PROVIDER_MODELS` as keyof typeof SEED_GLOBAL_SETTING_IDS
-          ],
+        (prefix) => SEED_GLOBAL_SETTING_IDS[`${prefix}_UX_GUARDRAIL_PROVIDER_MODELS` as keyof typeof SEED_GLOBAL_SETTING_IDS],
       );
       const unique = new Set(ids);
       expect(unique.size).toBe(2);

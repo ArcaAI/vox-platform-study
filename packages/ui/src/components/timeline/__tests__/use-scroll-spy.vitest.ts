@@ -35,15 +35,7 @@ class MockIntersectionObserver {
   }
 }
 
-function Harness({
-  ids,
-  offset,
-  onActiveChange,
-}: {
-  ids: string[];
-  offset?: number;
-  onActiveChange?: (id: string) => void;
-}) {
+function Harness({ ids, offset, onActiveChange }: { ids: string[]; offset?: number; onActiveChange?: (id: string) => void }) {
   const { activeId, register } = useScrollSpy({ ids, offset, onActiveChange });
   return React.createElement(
     'div',

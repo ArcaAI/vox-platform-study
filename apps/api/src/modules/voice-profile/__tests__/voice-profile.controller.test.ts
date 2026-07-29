@@ -1,10 +1,7 @@
 import { ResourceStatusType } from '@arcaai/domains';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { VoiceProfileController } from '../voice-profile.controller';
-import {
-  TENANT_OWNED_RESOURCE_KEY,
-  type TenantOwnedResourceOptions,
-} from '../../../common/tenant-owned-resource.decorator';
+import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../../../common/tenant-owned-resource.decorator';
 
 const mockVoiceProfileService = {
   enroll: vi.fn(),
@@ -41,10 +38,7 @@ describe('VoiceProfileController', () => {
       if (key === 'user') return { id: 'user-1', tenantId: 'tenant-1' };
       return null;
     });
-    controller = new VoiceProfileController(
-      mockVoiceProfileService as any,
-      mockClsService as any,
-    );
+    controller = new VoiceProfileController(mockVoiceProfileService as any, mockClsService as any);
   });
 
   describe('enroll', () => {
@@ -70,18 +64,13 @@ describe('VoiceProfileController', () => {
     });
 
     it('should throw when no audio file provided', async () => {
-      await expect(
-        controller.enroll(undefined as any, {}),
-      ).rejects.toThrow();
+      await expect(controller.enroll(undefined as any, {})).rejects.toThrow();
     });
   });
 
   describe('list', () => {
     it('should return profiles for current user', async () => {
-      const profiles = [
-        createMockProfile({ id: 'vp-1', isActive: true }),
-        createMockProfile({ id: 'vp-2', isActive: false }),
-      ];
+      const profiles = [createMockProfile({ id: 'vp-1', isActive: true }), createMockProfile({ id: 'vp-2', isActive: false })];
       mockVoiceProfileService.listByUserId.mockResolvedValue(profiles);
 
       const result = await controller.list();
@@ -128,42 +117,27 @@ describe('VoiceProfileController', () => {
     const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
 
     it('enroll requires ["create", "UserVoiceProfile"]', () => {
-      const permissions = Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_KEY,
-        VoiceProfileController.prototype.enroll,
-      );
+      const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, VoiceProfileController.prototype.enroll);
       expect(permissions).toEqual([{ action: 'create', subject: 'UserVoiceProfile' }]);
     });
 
     it('list requires ["read", "UserVoiceProfile"]', () => {
-      const permissions = Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_KEY,
-        VoiceProfileController.prototype.list,
-      );
+      const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, VoiceProfileController.prototype.list);
       expect(permissions).toEqual([{ action: 'read', subject: 'UserVoiceProfile' }]);
     });
 
     it('activate requires ["update", "UserVoiceProfile"]', () => {
-      const permissions = Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_KEY,
-        VoiceProfileController.prototype.activate,
-      );
+      const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, VoiceProfileController.prototype.activate);
       expect(permissions).toEqual([{ action: 'update', subject: 'UserVoiceProfile' }]);
     });
 
     it('deactivate requires ["update", "UserVoiceProfile"]', () => {
-      const permissions = Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_KEY,
-        VoiceProfileController.prototype.deactivate,
-      );
+      const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, VoiceProfileController.prototype.deactivate);
       expect(permissions).toEqual([{ action: 'update', subject: 'UserVoiceProfile' }]);
     });
 
     it('deleteById requires ["delete", "UserVoiceProfile"]', () => {
-      const permissions = Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_KEY,
-        VoiceProfileController.prototype.deleteById,
-      );
+      const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, VoiceProfileController.prototype.deleteById);
       expect(permissions).toEqual([{ action: 'delete', subject: 'UserVoiceProfile' }]);
     });
   });
@@ -175,10 +149,7 @@ describe('VoiceProfileController', () => {
   // ------------------------------------------------------------------------
   describe('@TenantOwnedResource metadata', () => {
     const meta = (m: keyof VoiceProfileController): TenantOwnedResourceOptions | undefined =>
-      Reflect.getMetadata(
-        TENANT_OWNED_RESOURCE_KEY,
-        VoiceProfileController.prototype[m] as object,
-      ) as TenantOwnedResourceOptions | undefined;
+      Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, VoiceProfileController.prototype[m] as object) as TenantOwnedResourceOptions | undefined;
 
     const expected = { modelName: 'UserVoiceProfile', paramName: 'id' };
 

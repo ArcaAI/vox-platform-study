@@ -149,9 +149,7 @@ class StreamingInferenceWorker:
         self._diarization_config = diarization_config
         self._postprocessing_config = postprocessing_config
         self._punctuation_config = (
-            postprocessing_config.punctuation
-            if postprocessing_config
-            else None
+            postprocessing_config.punctuation if postprocessing_config else None
         )
         # Direct Cadence-Fast punctuation (finals-only,
         # time-boxed, raw-text fallback).
@@ -187,8 +185,7 @@ class StreamingInferenceWorker:
         self._gloss_callable = gloss_callable
         self._gloss_timeout_s: float = (
             float(gloss_timeout_s)
-            if isinstance(gloss_timeout_s, (int, float))
-            and not isinstance(gloss_timeout_s, bool)
+            if isinstance(gloss_timeout_s, (int, float)) and not isinstance(gloss_timeout_s, bool)
             else _GLOSS_TIMEOUT_S
         )
         self._gloss_tasks: set[asyncio.Task[None]] = set()
@@ -258,11 +255,7 @@ class StreamingInferenceWorker:
             value = get_settings().streaming_punctuation_timeout_s
         except Exception:
             return _PUNCTUATION_TIMEOUT_S
-        if (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and float(value) > 0
-        ):
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and float(value) > 0:
             return float(value)
         return _PUNCTUATION_TIMEOUT_S
 
@@ -388,9 +381,7 @@ class StreamingInferenceWorker:
         if text.strip():
             if self._prev_text_context_words > 0:
                 words = text.strip().split()
-                self._previous_text = " ".join(
-                    words[-self._prev_text_context_words:]
-                )
+                self._previous_text = " ".join(words[-self._prev_text_context_words :])
             else:
                 self._previous_text = ""
 
@@ -431,9 +422,7 @@ class StreamingInferenceWorker:
         # artifact tokens whose raw timestamp entries survive, so a blind
         # leading-N trim removed the wrong entries.
         if dedup_dropped_words:
-            word_timestamps = self._trim_dedup_word_timestamps(
-                word_timestamps, dedup_dropped_words
-            )
+            word_timestamps = self._trim_dedup_word_timestamps(word_timestamps, dedup_dropped_words)
 
         # Respect word_timestamps config
         if (
@@ -483,8 +472,10 @@ class StreamingInferenceWorker:
                     self._diarization_config and getattr(self._diarization_config, "enabled", False)
                 )
                 speaker_id, speaker_confidence = await self._identify_speaker(
-                    embedding, result.text,
-                    samples=utterance.samples, sample_rate=utterance.sample_rate,
+                    embedding,
+                    result.text,
+                    samples=utterance.samples,
+                    sample_rate=utterance.sample_rate,
                 )
                 if diarization_enabled and result.text.strip() and not speaker_id:
                     speaker_id = "unknown"
@@ -679,12 +670,14 @@ class StreamingInferenceWorker:
             for i, word in enumerate(words):
                 w_start = start + i * word_dur
                 w_end = start + (i + 1) * word_dur
-                result.append({
-                    "word": word,
-                    "start": round(w_start, 4),
-                    "end": round(w_end, 4),
-                    "confidence": confidence,
-                })
+                result.append(
+                    {
+                        "word": word,
+                        "start": round(w_start, 4),
+                        "end": round(w_end, 4),
+                        "confidence": confidence,
+                    }
+                )
         return result
 
     def _dedup_forced_boundary(
@@ -791,7 +784,7 @@ class StreamingInferenceWorker:
                 original_length=len(cleaned),
                 max_length=self._max_segment_text_chars,
             )
-            cleaned = cleaned[:self._max_segment_text_chars].rstrip()
+            cleaned = cleaned[: self._max_segment_text_chars].rstrip()
 
         return cleaned
 
@@ -872,9 +865,7 @@ class StreamingInferenceWorker:
             )
             return None, None
 
-    async def _diarize_utterance_sortformer(
-        self, utterance: AudioUtterance
-    ) -> str | None:
+    async def _diarize_utterance_sortformer(self, utterance: AudioUtterance) -> str | None:
         """Streaming Sortformer turn label for one utterance window.
 
         Runs the (self-hosted, injectable) diarizer over the utterance audio and
@@ -895,9 +886,7 @@ class StreamingInferenceWorker:
             # final threads — only the forward needs the lock; ``to_turns``
             # runs on a fresh result and touches no shared state.
             async with self._sortformer_lock:
-                diarization = await asyncio.to_thread(
-                    diarizer.diarize, samples, sample_rate
-                )
+                diarization = await asyncio.to_thread(diarizer.diarize, samples, sample_rate)
             if not diarization.applied:
                 return None
             threshold = (
@@ -965,7 +954,7 @@ class StreamingInferenceWorker:
 
         word_count = len(stripped.split())
         if word_count <= self._hallucination_short_word_count:
-            rms = float(np.sqrt(np.mean(utterance.samples ** 2)))
+            rms = float(np.sqrt(np.mean(utterance.samples**2)))
             if rms < self._hallucination_rms_threshold:
                 return True
 
@@ -1024,9 +1013,7 @@ class StreamingInferenceWorker:
         """
         if not is_final:
             return text
-        model_name = (
-            self._punctuation_config.model if self._punctuation_config else None
-        )
+        model_name = self._punctuation_config.model if self._punctuation_config else None
         try:
             from stt.punctuation import service as punctuation_service
 
@@ -1053,9 +1040,7 @@ class StreamingInferenceWorker:
 
     def _note_punctuation_fallback(self, reason: str, exc_info: bool = False) -> None:
         """Log the raw-text fallback: warn once per session, then debug."""
-        log = (
-            logger.debug if self._punctuation_fallback_warned else logger.warning
-        )
+        log = logger.debug if self._punctuation_fallback_warned else logger.warning
         self._punctuation_fallback_warned = True
         log(
             "Cadence-Fast punctuation unavailable; publishing raw final text",

@@ -28,9 +28,7 @@ _CLAIM_CHECK_ENV = (
 
 
 class TestClaimCheckConfig:
-    def test_defaults_offload_on_threshold_set_self_hosted(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
+    def test_defaults_offload_on_threshold_set_self_hosted(self, monkeypatch: pytest.MonkeyPatch):
         for var in _CLAIM_CHECK_ENV:
             monkeypatch.delenv(var, raising=False)
         c = ClaimCheckConfig()

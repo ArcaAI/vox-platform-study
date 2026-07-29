@@ -22,11 +22,14 @@ from smr.providers.base import ProviderRegistry
 
 @pytest.fixture
 def settings():
-    return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False)
+    return Settings(
+        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
+    )
 
 
 def _build_app(settings, task_manager):
     from smr.main import create_app
+
     app = create_app(settings_override=settings)
     app.state.provider_registry = ProviderRegistry()
     app.state.task_manager = task_manager
@@ -39,14 +42,16 @@ class TestStreamEndpointSSE:
     async def test_stream_yields_chunks_and_done(self, settings):
         """When chunks exist including a 'done', the SSE stream should emit them and close."""
         tm = AsyncMock()
-        tm.get_task = AsyncMock(return_value=TaskState(
-            task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m"
-        ))
-        tm.read_chunks_blocking = AsyncMock(return_value=[
-            ("1-0", StreamChunk(type="chunk", content="Hello")),
-            ("2-0", StreamChunk(type="chunk", content=" world")),
-            ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
-        ])
+        tm.get_task = AsyncMock(
+            return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
+        )
+        tm.read_chunks_blocking = AsyncMock(
+            return_value=[
+                ("1-0", StreamChunk(type="chunk", content="Hello")),
+                ("2-0", StreamChunk(type="chunk", content=" world")),
+                ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
+            ]
+        )
 
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)
@@ -62,13 +67,15 @@ class TestStreamEndpointSSE:
     async def test_stream_stops_on_error_chunk(self, settings):
         """When an error chunk is encountered, the stream should stop."""
         tm = AsyncMock()
-        tm.get_task = AsyncMock(return_value=TaskState(
-            task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m"
-        ))
-        tm.read_chunks_blocking = AsyncMock(return_value=[
-            ("1-0", StreamChunk(type="chunk", content="partial")),
-            ("2-0", StreamChunk(type="error", data={"error": "provider crashed"})),
-        ])
+        tm.get_task = AsyncMock(
+            return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
+        )
+        tm.read_chunks_blocking = AsyncMock(
+            return_value=[
+                ("1-0", StreamChunk(type="chunk", content="partial")),
+                ("2-0", StreamChunk(type="error", data={"error": "provider crashed"})),
+            ]
+        )
 
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)
@@ -82,9 +89,11 @@ class TestStreamEndpointSSE:
     async def test_stream_completes_when_task_done_no_chunks(self, settings):
         """When task is COMPLETED and there are no new chunks, stream should end."""
         tm = AsyncMock()
-        tm.get_task = AsyncMock(return_value=TaskState(
-            task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m"
-        ))
+        tm.get_task = AsyncMock(
+            return_value=TaskState(
+                task_id="t1", status=TaskStatus.COMPLETED, provider="p", model="m"
+            )
+        )
         tm.read_chunks_blocking = AsyncMock(return_value=[])
 
         app = _build_app(settings, tm)
@@ -97,9 +106,9 @@ class TestStreamEndpointSSE:
     async def test_stream_completes_when_task_failed_no_chunks(self, settings):
         """When task is FAILED and there are no new chunks, stream should end."""
         tm = AsyncMock()
-        tm.get_task = AsyncMock(return_value=TaskState(
-            task_id="t1", status=TaskStatus.FAILED, provider="p", model="m"
-        ))
+        tm.get_task = AsyncMock(
+            return_value=TaskState(task_id="t1", status=TaskStatus.FAILED, provider="p", model="m")
+        )
         tm.read_chunks_blocking = AsyncMock(return_value=[])
 
         app = _build_app(settings, tm)
@@ -112,9 +121,11 @@ class TestStreamEndpointSSE:
     async def test_stream_completes_when_task_cancelled_no_chunks(self, settings):
         """When task is CANCELLED and there are no new chunks, stream should end."""
         tm = AsyncMock()
-        tm.get_task = AsyncMock(return_value=TaskState(
-            task_id="t1", status=TaskStatus.CANCELLED, provider="p", model="m"
-        ))
+        tm.get_task = AsyncMock(
+            return_value=TaskState(
+                task_id="t1", status=TaskStatus.CANCELLED, provider="p", model="m"
+            )
+        )
         tm.read_chunks_blocking = AsyncMock(return_value=[])
 
         app = _build_app(settings, tm)
@@ -127,12 +138,14 @@ class TestStreamEndpointSSE:
     async def test_stream_resumes_from_last_event_id_header(self, settings):
         """A Last-Event-ID header should be used as the resume cursor when no query param is given."""
         tm = AsyncMock()
-        tm.get_task = AsyncMock(return_value=TaskState(
-            task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m"
-        ))
-        tm.read_chunks_blocking = AsyncMock(return_value=[
-            ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
-        ])
+        tm.get_task = AsyncMock(
+            return_value=TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="p", model="m")
+        )
+        tm.read_chunks_blocking = AsyncMock(
+            return_value=[
+                ("3-0", StreamChunk(type="done", data={"finish_reason": "stop"})),
+            ]
+        )
 
         app = _build_app(settings, tm)
         transport = ASGITransport(app=app)

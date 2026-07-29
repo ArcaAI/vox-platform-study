@@ -5,10 +5,7 @@
 // network. The dev-container integration test lives in
 // vault-secrets.provider.integration.test.ts.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  VaultSecretsProvider,
-  VaultProviderConfig,
-} from '../vault-secrets.provider';
+import { VaultSecretsProvider, VaultProviderConfig } from '../vault-secrets.provider';
 
 /** Helper: build a config with required + transit defaults. */
 function cfg(overrides: Partial<VaultProviderConfig> = {}): VaultProviderConfig {
@@ -82,15 +79,11 @@ describe('VaultSecretsProvider (construction)', () => {
 
 describe('VaultSecretsProvider.boot()', () => {
   it('unwraps a wrapped secret_id then logs in via AppRole', async () => {
-    const mockUnwrap = vi
-      .fn()
-      .mockResolvedValue({ data: { secret_id: 'real-sid' } });
+    const mockUnwrap = vi.fn().mockResolvedValue({ data: { secret_id: 'real-sid' } });
     const mockLogin = vi.fn().mockResolvedValue({
       auth: { client_token: 'hvs.xxx', lease_duration: 3600, renewable: true },
     });
-    const p = new VaultSecretsProvider(
-      cfg({ secretId: undefined, wrappedSecretId: 'wrap.token' }),
-    );
+    const p = new VaultSecretsProvider(cfg({ secretId: undefined, wrappedSecretId: 'wrap.token' }));
     const mockClient: Record<string, unknown> & { token: string } = {
       token: '',
       unwrap: mockUnwrap,
@@ -121,9 +114,7 @@ describe('VaultSecretsProvider.boot()', () => {
         auth: { client_token: 'hvs.session', lease_duration: 60, renewable: true },
       }),
     };
-    const p = new VaultSecretsProvider(
-      cfg({ secretId: undefined, wrappedSecretId: 'wrap.token' }),
-    );
+    const p = new VaultSecretsProvider(cfg({ secretId: undefined, wrappedSecretId: 'wrap.token' }));
     (p as unknown as { client: unknown }).client = mockClient;
     await p.boot();
     expect(tokenDuringUnwrap).toBe('wrap.token');
@@ -146,9 +137,7 @@ describe('VaultSecretsProvider.boot()', () => {
 
   it('throws when boot is required but neither wrapped nor raw secret_id is usable', async () => {
     // construct with wrapped, then make unwrap return empty secret_id
-    const p = new VaultSecretsProvider(
-      cfg({ secretId: undefined, wrappedSecretId: 'wrap.token' }),
-    );
+    const p = new VaultSecretsProvider(cfg({ secretId: undefined, wrappedSecretId: 'wrap.token' }));
     (p as unknown as { client: unknown }).client = {
       unwrap: vi.fn().mockResolvedValue({ data: {} }),
       approleLogin: vi.fn(),
@@ -162,17 +151,13 @@ describe('VaultSecretsProvider reads (kv-v2)', () => {
     const p = new VaultSecretsProvider(cfg());
     (p as unknown as { client: unknown }).client = {
       read,
-      approleLogin: vi
-        .fn()
-        .mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
+      approleLogin: vi.fn().mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
     };
     return p;
   }
 
   it('getSecret reads secret/data/hope/<KEY> and returns .data.data.value', async () => {
-    const mockRead = vi
-      .fn()
-      .mockResolvedValue({ data: { data: { value: 'shh' }, metadata: { version: 1 } } });
+    const mockRead = vi.fn().mockResolvedValue({ data: { data: { value: 'shh' }, metadata: { version: 1 } } });
     const p = provider(mockRead);
     await p.boot();
     await expect(p.getSecret('JWT_SECRET_KEY')).resolves.toBe('shh');
@@ -206,18 +191,14 @@ describe('VaultSecretsProvider reads (kv-v2)', () => {
   });
 
   it('getSecretJson parses JSON value', async () => {
-    const mockRead = vi
-      .fn()
-      .mockResolvedValue({ data: { data: { value: '{"a":1}' }, metadata: { version: 1 } } });
+    const mockRead = vi.fn().mockResolvedValue({ data: { data: { value: '{"a":1}' }, metadata: { version: 1 } } });
     const p = provider(mockRead);
     await p.boot();
     await expect(p.getSecretJson<{ a: number }>('K')).resolves.toEqual({ a: 1 });
   });
 
   it('getSecretJson throws on non-JSON value', async () => {
-    const mockRead = vi
-      .fn()
-      .mockResolvedValue({ data: { data: { value: 'not-json' }, metadata: { version: 1 } } });
+    const mockRead = vi.fn().mockResolvedValue({ data: { data: { value: 'not-json' }, metadata: { version: 1 } } });
     const p = provider(mockRead);
     await p.boot();
     await expect(p.getSecretJson('K')).rejects.toThrow(/not valid JSON/);
@@ -228,9 +209,7 @@ describe('VaultSecretsProvider bulk + health', () => {
   function provider(client: Record<string, unknown>) {
     const p = new VaultSecretsProvider(cfg());
     (p as unknown as { client: unknown }).client = {
-      approleLogin: vi
-        .fn()
-        .mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
+      approleLogin: vi.fn().mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
       ...client,
     };
     return p;
@@ -266,9 +245,7 @@ describe('VaultSecretsProvider bulk + health', () => {
   });
 
   it('health returns ok:true when sys/health says initialized && !sealed', async () => {
-    const mockHealth = vi
-      .fn()
-      .mockResolvedValue({ initialized: true, sealed: false });
+    const mockHealth = vi.fn().mockResolvedValue({ initialized: true, sealed: false });
     const p = provider({ health: mockHealth });
     await p.boot();
     const h = await p.health();
@@ -286,9 +263,7 @@ describe('VaultSecretsProvider bulk + health', () => {
   });
 
   it('health returns ok:false when sealed', async () => {
-    const mockHealth = vi
-      .fn()
-      .mockResolvedValue({ initialized: true, sealed: true });
+    const mockHealth = vi.fn().mockResolvedValue({ initialized: true, sealed: true });
     const p = provider({ health: mockHealth });
     await p.boot();
     const h = await p.health();
@@ -301,18 +276,14 @@ describe('VaultSecretsProvider transit helpers', () => {
   function provider(client: Record<string, unknown>) {
     const p = new VaultSecretsProvider(cfg());
     (p as unknown as { client: unknown }).client = {
-      approleLogin: vi
-        .fn()
-        .mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
+      approleLogin: vi.fn().mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
       ...client,
     };
     return p;
   }
 
   it('encrypt base64-encodes plaintext and returns ciphertext', async () => {
-    const mockWrite = vi
-      .fn()
-      .mockResolvedValue({ data: { ciphertext: 'vault:v1:abc==' } });
+    const mockWrite = vi.fn().mockResolvedValue({ data: { ciphertext: 'vault:v1:abc==' } });
     const p = provider({ write: mockWrite });
     await p.boot();
     const ct = await p.encrypt(Buffer.from('hello'));
@@ -330,9 +301,7 @@ describe('VaultSecretsProvider transit helpers', () => {
   });
 
   it('decrypt sends ciphertext and returns base64-decoded plaintext', async () => {
-    const mockWrite = vi
-      .fn()
-      .mockResolvedValue({ data: { plaintext: 'aGVsbG8=' } });
+    const mockWrite = vi.fn().mockResolvedValue({ data: { plaintext: 'aGVsbG8=' } });
     const p = provider({ write: mockWrite });
     await p.boot();
     const pt = await p.decrypt('vault:v1:abc==');
@@ -408,9 +377,7 @@ describe('VaultSecretsProvider keyed transit (Phase 3A PHI)', () => {
   function provider(client: Record<string, unknown>, overrides: Partial<VaultProviderConfig> = {}) {
     const p = new VaultSecretsProvider(cfg(overrides));
     (p as unknown as { client: unknown }).client = {
-      approleLogin: vi
-        .fn()
-        .mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
+      approleLogin: vi.fn().mockResolvedValue({ auth: { client_token: 't', lease_duration: 1, renewable: false } }),
       ...client,
     };
     return p;
@@ -485,9 +452,7 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
           renewable: opts.renewable ?? true,
         },
       }),
-      tokenRenewSelf:
-        opts.renewSelf ??
-        vi.fn().mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } }),
+      tokenRenewSelf: opts.renewSelf ?? vi.fn().mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } }),
       health: opts.health ?? vi.fn().mockResolvedValue({ initialized: true, sealed: false }),
     };
     (p as unknown as { client: unknown }).client = client;
@@ -496,9 +461,7 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
   }
 
   it('schedules tokenRenewSelf at 50% of the AppRole token TTL', async () => {
-    const renewSelf = vi
-      .fn()
-      .mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } });
+    const renewSelf = vi.fn().mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } });
     const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
 
     expect(renewSelf).not.toHaveBeenCalled();
@@ -514,9 +477,7 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
 
   it('reschedules at 50% of the freshly-returned TTL after each renewal', async () => {
     // login TTL 3600 → first tick at 1800s; renewal returns 60 → next at 30s.
-    const renewSelf = vi
-      .fn()
-      .mockResolvedValue({ auth: { lease_duration: 60, renewable: true } });
+    const renewSelf = vi.fn().mockResolvedValue({ auth: { lease_duration: 60, renewable: true } });
     const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
 
     await vi.advanceTimersByTimeAsync(1_800_000);
@@ -540,9 +501,7 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
   });
 
   it('reports degraded=true in health() after 3 consecutive renewal failures', async () => {
-    const renewSelf = vi
-      .fn()
-      .mockRejectedValue(Object.assign(new Error('500'), { response: { statusCode: 500 } }));
+    const renewSelf = vi.fn().mockRejectedValue(Object.assign(new Error('500'), { response: { statusCode: 500 } }));
     const health = vi.fn().mockResolvedValue({ initialized: true, sealed: false });
     const { p } = await bootRenewable({ loginTtl: 3600, renewSelf, health });
 
@@ -582,9 +541,7 @@ describe('VaultSecretsProvider AppRole token renewal', () => {
   });
 
   it('cancels the renewal loop on shutdown (onModuleDestroy)', async () => {
-    const renewSelf = vi
-      .fn()
-      .mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } });
+    const renewSelf = vi.fn().mockResolvedValue({ auth: { lease_duration: 3600, renewable: true } });
     const { p } = await bootRenewable({ loginTtl: 3600, renewSelf });
 
     await (p as unknown as { onModuleDestroy: () => Promise<void> }).onModuleDestroy();
@@ -600,18 +557,14 @@ describe('VaultSecretsProvider.boot() fail-closed', () => {
   it('throws a single FATAL-shaped error when AppRole login hits a sealed/unreachable Vault', async () => {
     const p = new VaultSecretsProvider(cfg());
     (p as unknown as { client: unknown }).client = {
-      approleLogin: vi
-        .fn()
-        .mockRejectedValue(Object.assign(new Error('Status 503'), { response: { statusCode: 503 } })),
+      approleLogin: vi.fn().mockRejectedValue(Object.assign(new Error('Status 503'), { response: { statusCode: 503 } })),
     };
     await expect(p.boot()).rejects.toThrow(/FATAL/);
     await expect(p.boot()).rejects.toThrow(/vault/i);
   });
 
   it('does not retry AppRole login on boot (fails fast, single attempt)', async () => {
-    const approleLogin = vi
-      .fn()
-      .mockRejectedValue(Object.assign(new Error('Status 503'), { response: { statusCode: 503 } }));
+    const approleLogin = vi.fn().mockRejectedValue(Object.assign(new Error('Status 503'), { response: { statusCode: 503 } }));
     const p = new VaultSecretsProvider(cfg());
     (p as unknown as { client: unknown }).client = { approleLogin };
     await expect(p.boot()).rejects.toThrow(/FATAL/);

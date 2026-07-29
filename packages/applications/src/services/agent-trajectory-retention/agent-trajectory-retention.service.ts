@@ -65,18 +65,9 @@ export class AgentTrajectoryRetentionService implements OnModuleInit, OnModuleDe
 
   getConfig(): AgentTrajectoryRetentionConfig {
     return {
-      enabled: this.appSettingsService.getValueWithDefault<boolean>(
-        'agentic.trajectory.enabled',
-        DEFAULTS.enabled,
-      ),
-      cron: this.appSettingsService.getValueWithDefault<string>(
-        'agentic.trajectory.cron',
-        DEFAULTS.cron,
-      ),
-      retentionDays: this.appSettingsService.getValueWithDefault<number>(
-        'agentic.trajectory.retentionDays',
-        DEFAULTS.retentionDays,
-      ),
+      enabled: this.appSettingsService.getValueWithDefault<boolean>('agentic.trajectory.enabled', DEFAULTS.enabled),
+      cron: this.appSettingsService.getValueWithDefault<string>('agentic.trajectory.cron', DEFAULTS.cron),
+      retentionDays: this.appSettingsService.getValueWithDefault<number>('agentic.trajectory.retentionDays', DEFAULTS.retentionDays),
     };
   }
 

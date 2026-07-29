@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Live Transcription' };
 
 /** Playground tier — frame 51 (matrix row 35). */
 export default function LiveTranscriptionPage() {
-    return <LiveTranscriptionScreen />;
+  return <LiveTranscriptionScreen />;
 }

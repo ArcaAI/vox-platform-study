@@ -10,108 +10,103 @@
 import { Logger } from '@nestjs/common';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import {
-    SESSION_REMOVAL_RETRY_BASE_DELAY_MS,
-    SESSION_REMOVAL_RETRY_MAX_ATTEMPTS,
-    SESSION_REMOVAL_RETRY_SET_KEY,
-    SessionRemovalRetryService,
+  SESSION_REMOVAL_RETRY_BASE_DELAY_MS,
+  SESSION_REMOVAL_RETRY_MAX_ATTEMPTS,
+  SESSION_REMOVAL_RETRY_SET_KEY,
+  SessionRemovalRetryService,
 } from '../session-removal-retry.service';
 
 const createMockSessionService = () => ({
-    removeSession: vi.fn().mockResolvedValue(undefined),
+  removeSession: vi.fn().mockResolvedValue(undefined),
 });
 
 const createMockCache = () => ({
-    sadd: vi.fn().mockResolvedValue(1),
-    srem: vi.fn().mockResolvedValue(1),
-    expire: vi.fn().mockResolvedValue(true),
+  sadd: vi.fn().mockResolvedValue(1),
+  srem: vi.fn().mockResolvedValue(1),
+  expire: vi.fn().mockResolvedValue(true),
 });
 
 /** Total time that covers every scheduled backoff step plus slack. */
-const ALL_ATTEMPTS_MS =
-    SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2 ** (SESSION_REMOVAL_RETRY_MAX_ATTEMPTS + 1);
+const ALL_ATTEMPTS_MS = SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2 ** (SESSION_REMOVAL_RETRY_MAX_ATTEMPTS + 1);
 
 describe('SessionRemovalRetryService', () => {
-    let service: SessionRemovalRetryService;
-    let mockSessionService: ReturnType<typeof createMockSessionService>;
-    let mockCache: ReturnType<typeof createMockCache>;
+  let service: SessionRemovalRetryService;
+  let mockSessionService: ReturnType<typeof createMockSessionService>;
+  let mockCache: ReturnType<typeof createMockCache>;
 
-    beforeEach(() => {
-        vi.clearAllMocks();
-        vi.useFakeTimers();
-        mockSessionService = createMockSessionService();
-        mockCache = createMockCache();
-        service = new SessionRemovalRetryService(mockSessionService as any, mockCache as any);
-        vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
-        vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
-        vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
-        vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
-    });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockSessionService = createMockSessionService();
+    mockCache = createMockCache();
+    service = new SessionRemovalRetryService(mockSessionService as any, mockCache as any);
+    vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
+    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
+  });
 
-    afterEach(() => {
-        service.onModuleDestroy();
-        vi.useRealTimers();
-    });
+  afterEach(() => {
+    service.onModuleDestroy();
+    vi.useRealTimers();
+  });
 
-    it('persists the session id on the Redis-backed retry set when enqueued', async () => {
-        service.enqueue('sess-park');
-        await vi.advanceTimersByTimeAsync(0);
+  it('persists the session id on the Redis-backed retry set when enqueued', async () => {
+    service.enqueue('sess-park');
+    await vi.advanceTimersByTimeAsync(0);
 
-        expect(mockCache.sadd).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, 'sess-park');
-        // TTL-bounded like the sibling stream-session keys — no leaked Redis memory.
-        expect(mockCache.expire).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, expect.any(Number));
-    });
+    expect(mockCache.sadd).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, 'sess-park');
+    // TTL-bounded like the sibling stream-session keys — no leaked Redis memory.
+    expect(mockCache.expire).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, expect.any(Number));
+  });
 
-    it('retries with backoff and clears the Redis entry once a retry succeeds', async () => {
-        mockSessionService.removeSession
-            .mockRejectedValueOnce(new Error('stt down'))
-            .mockResolvedValueOnce(undefined);
+  it('retries with backoff and clears the Redis entry once a retry succeeds', async () => {
+    mockSessionService.removeSession.mockRejectedValueOnce(new Error('stt down')).mockResolvedValueOnce(undefined);
 
-        service.enqueue('sess-retry');
+    service.enqueue('sess-retry');
 
-        // Attempt 1 after the base delay — fails.
-        await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
-        expect(mockSessionService.removeSession).toHaveBeenCalledTimes(1);
-        expect(mockCache.srem).not.toHaveBeenCalled();
+    // Attempt 1 after the base delay — fails.
+    await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
+    expect(mockSessionService.removeSession).toHaveBeenCalledTimes(1);
+    expect(mockCache.srem).not.toHaveBeenCalled();
 
-        // Attempt 2 after the doubled delay — succeeds and clears the entry.
-        await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2);
-        expect(mockSessionService.removeSession).toHaveBeenCalledTimes(2);
-        expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-retry');
-        expect(mockCache.srem).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, 'sess-retry');
-    });
+    // Attempt 2 after the doubled delay — succeeds and clears the entry.
+    await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2);
+    expect(mockSessionService.removeSession).toHaveBeenCalledTimes(2);
+    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-retry');
+    expect(mockCache.srem).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, 'sess-retry');
+  });
 
-    it('stops after the bounded number of attempts and logs an error (entry left for ops)', async () => {
-        const errorSpy = vi.spyOn(Logger.prototype, 'error');
-        mockSessionService.removeSession.mockRejectedValue(new Error('still down'));
+  it('stops after the bounded number of attempts and logs an error (entry left for ops)', async () => {
+    const errorSpy = vi.spyOn(Logger.prototype, 'error');
+    mockSessionService.removeSession.mockRejectedValue(new Error('still down'));
 
-        service.enqueue('sess-exhaust');
-        await vi.advanceTimersByTimeAsync(ALL_ATTEMPTS_MS);
+    service.enqueue('sess-exhaust');
+    await vi.advanceTimersByTimeAsync(ALL_ATTEMPTS_MS);
 
-        expect(mockSessionService.removeSession).toHaveBeenCalledTimes(SESSION_REMOVAL_RETRY_MAX_ATTEMPTS);
-        expect(errorSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ sessionId: 'sess-exhaust' }),
-        );
-        // Never cleared — the Redis entry stays visible (TTL reclaims it).
-        expect(mockCache.srem).not.toHaveBeenCalled();
-    });
+    expect(mockSessionService.removeSession).toHaveBeenCalledTimes(SESSION_REMOVAL_RETRY_MAX_ATTEMPTS);
+    expect(errorSpy).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'sess-exhaust' }));
+    // Never cleared — the Redis entry stays visible (TTL reclaims it).
+    expect(mockCache.srem).not.toHaveBeenCalled();
+  });
 
-    it('keeps retrying in-process even when the Redis persistence write fails', async () => {
-        mockCache.sadd.mockRejectedValueOnce(new Error('redis blip'));
-        mockSessionService.removeSession.mockResolvedValueOnce(undefined);
+  it('keeps retrying in-process even when the Redis persistence write fails', async () => {
+    mockCache.sadd.mockRejectedValueOnce(new Error('redis blip'));
+    mockSessionService.removeSession.mockResolvedValueOnce(undefined);
 
-        service.enqueue('sess-redis-blip');
-        await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
+    service.enqueue('sess-redis-blip');
+    await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
 
-        expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-redis-blip');
-    });
+    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-redis-blip');
+  });
 
-    it('cancels pending retries on module destroy', async () => {
-        mockSessionService.removeSession.mockRejectedValue(new Error('down'));
+  it('cancels pending retries on module destroy', async () => {
+    mockSessionService.removeSession.mockRejectedValue(new Error('down'));
 
-        service.enqueue('sess-shutdown');
-        service.onModuleDestroy();
-        await vi.advanceTimersByTimeAsync(ALL_ATTEMPTS_MS);
+    service.enqueue('sess-shutdown');
+    service.onModuleDestroy();
+    await vi.advanceTimersByTimeAsync(ALL_ATTEMPTS_MS);
 
-        expect(mockSessionService.removeSession).not.toHaveBeenCalled();
-    });
+    expect(mockSessionService.removeSession).not.toHaveBeenCalled();
+  });
 });

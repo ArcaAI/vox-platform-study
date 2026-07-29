@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { CodeComparison } from '../../../registries/magicui/code-comparison'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { CodeComparison } from '../../../registries/magicui/code-comparison';
 
 describe('CodeComparison', () => {
   it('renders without crashing', () => {
@@ -12,8 +12,8 @@ describe('CodeComparison', () => {
         filename="example.ts"
         lightTheme="github-light"
         darkTheme="github-dark"
-      />
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      />,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

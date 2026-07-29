@@ -441,9 +441,7 @@ class TestTranslateTaskKwargs:
         run_gloss = SessionManager._make_asr_callable(
             mgr,
             asr_model=asr_model,
-            inference_config=MagicMock(
-                beam_size=1, code_switching=False, language="ml"
-            ),
+            inference_config=MagicMock(beam_size=1, code_switching=False, language="ml"),
             task="translate",
         )
         await run_gloss(np.zeros(16000, dtype=np.float32), 16000)

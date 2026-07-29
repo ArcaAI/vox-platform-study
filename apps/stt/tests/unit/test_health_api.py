@@ -210,9 +210,7 @@ class TestMinioHealthCheck:
     @pytest.mark.asyncio
     async def test_minio_unhealthy_exception(self):
         """Test MinIO check when exception occurs."""
-        with patch(
-            "stt.health.api.routes.get_minio_client", side_effect=Exception("MinIO error")
-        ):
+        with patch("stt.health.api.routes.get_minio_client", side_effect=Exception("MinIO error")):
             result = await _check_minio()
 
             assert result.status == HealthStatus.UNHEALTHY

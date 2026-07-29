@@ -21,11 +21,7 @@
 
 import { ContextItemRepository } from './ContextItemRepository';
 import { ContextItemEntity } from '../../../entities';
-import {
-  type SecretsServiceLike,
-  encryptStringToCiphertext,
-  decryptCiphertextToString,
-} from '../../../common/field-encryption';
+import { type SecretsServiceLike, encryptStringToCiphertext, decryptCiphertextToString } from '../../../common/field-encryption';
 
 declare module './ContextItemRepository' {
   interface ContextItemRepository {
@@ -37,21 +33,13 @@ declare module './ContextItemRepository' {
      * No-op when `content` is empty/null so it is safe to call unconditionally
      * on a not-yet-migrated row.
      */
-    encryptContentIntoEntity(
-      this: ContextItemRepository,
-      entity: ContextItemEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptContentIntoEntity(this: ContextItemRepository, entity: ContextItemEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**
      * Decrypt `encryptedContent` and return the plaintext string. Returns
      * `null` when `encryptedContent` is null (e.g. media-only context items).
      */
-    decryptContentFromEntity(
-      this: ContextItemRepository,
-      entity: ContextItemEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<string | null>;
+    decryptContentFromEntity(this: ContextItemRepository, entity: ContextItemEntity, secrets: SecretsServiceLike): Promise<string | null>;
 
     /**
      * Read-path helper: findById + decryptContentFromEntity in one shot, so

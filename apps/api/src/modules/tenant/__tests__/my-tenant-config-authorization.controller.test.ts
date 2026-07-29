@@ -13,22 +13,18 @@ import { REQUIRED_PERMISSIONS_KEY } from '@arcaai/applications';
 import { MyTenantController } from '../my-tenant.controller';
 
 describe('MyTenantController.updateMyConfig — authorization metadata', () => {
-    const getMethodMetadata = (method: string) =>
-        Reflect.getMetadata(
-            REQUIRED_PERMISSIONS_KEY,
-            (MyTenantController.prototype as any)[method],
-        );
+  const getMethodMetadata = (method: string) => Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, (MyTenantController.prototype as any)[method]);
 
-    it('updateMyConfig should require ["update","Tenant"] permissions', () => {
-        const meta = getMethodMetadata('updateMyConfig');
-        expect(meta).toEqual([{ action: 'update', subject: 'Tenant' }]);
-    });
+  it('updateMyConfig should require ["update","Tenant"] permissions', () => {
+    const meta = getMethodMetadata('updateMyConfig');
+    expect(meta).toEqual([{ action: 'update', subject: 'Tenant' }]);
+  });
 
-    it('me (GET) stays bare-@Authorize() self-service — no method-level requirement added', () => {
-        expect(getMethodMetadata('me')).toBeUndefined();
-    });
+  it('me (GET) stays bare-@Authorize() self-service — no method-level requirement added', () => {
+    expect(getMethodMetadata('me')).toBeUndefined();
+  });
 
-    it('myConfig (GET) stays bare-@Authorize() self-service — no method-level requirement added', () => {
-        expect(getMethodMetadata('myConfig')).toBeUndefined();
-    });
+  it('myConfig (GET) stays bare-@Authorize() self-service — no method-level requirement added', () => {
+    expect(getMethodMetadata('myConfig')).toBeUndefined();
+  });
 });

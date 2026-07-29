@@ -146,7 +146,7 @@ describe('NativeProcessor', () => {
       expect(mockTrack.applyConstraints).toHaveBeenCalledWith(
         expect.objectContaining({
           echoCancellation: true,
-        })
+        }),
       );
     });
 
@@ -166,7 +166,7 @@ describe('NativeProcessor', () => {
       expect(mockTrack.applyConstraints).toHaveBeenCalledWith(
         expect.objectContaining({
           noiseSuppression: true,
-        })
+        }),
       );
     });
 
@@ -186,7 +186,7 @@ describe('NativeProcessor', () => {
       expect(mockTrack.applyConstraints).toHaveBeenCalledWith(
         expect.objectContaining({
           autoGainControl: true,
-        })
+        }),
       );
     });
 
@@ -210,7 +210,7 @@ describe('NativeProcessor', () => {
           kind: 'audio',
           track: mockTrack,
           audioContext: mockAudioContext,
-        })
+        }),
       ).resolves.toBeUndefined();
     });
 

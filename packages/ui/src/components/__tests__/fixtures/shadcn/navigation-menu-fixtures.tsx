@@ -5,7 +5,7 @@ import {
   NavigationMenuTrigger,
   NavigationMenuContent,
   NavigationMenuLink,
-} from '../../../shadcn/navigation-menu'
+} from '../../../shadcn/navigation-menu';
 
 export function BasicNavigationMenu() {
   return (
@@ -30,7 +30,7 @@ export function BasicNavigationMenu() {
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>
-  )
+  );
 }
 
 export function NavigationMenuNoViewport() {
@@ -45,7 +45,7 @@ export function NavigationMenuNoViewport() {
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>
-  )
+  );
 }
 
 export function NavigationMenuWithCustomClass() {
@@ -57,5 +57,5 @@ export function NavigationMenuWithCustomClass() {
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>
-  )
+  );
 }

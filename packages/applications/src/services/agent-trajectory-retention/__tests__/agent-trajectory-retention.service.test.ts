@@ -43,12 +43,7 @@ const buildService = (
   appSettings: ReturnType<typeof createMockAppSettingsService>,
   schedulerRegistry: ReturnType<typeof createMockSchedulerRegistry>,
   trajectoryService: ReturnType<typeof createMockTrajectoryService>,
-) =>
-  new AgentTrajectoryRetentionService(
-    appSettings as never,
-    schedulerRegistry as never,
-    trajectoryService as never,
-  );
+) => new AgentTrajectoryRetentionService(appSettings as never, schedulerRegistry as never, trajectoryService as never);
 
 vi.mock('cron', () => {
   return {
@@ -93,9 +88,7 @@ describe('AgentTrajectoryRetentionService', () => {
     });
 
     it('should fall back to defaults when settings are missing', () => {
-      mockAppSettings.getValueWithDefault.mockImplementation(
-        <T>(_key: string, defaultValue: T): T => defaultValue,
-      );
+      mockAppSettings.getValueWithDefault.mockImplementation(<T>(_key: string, defaultValue: T): T => defaultValue);
 
       const config = service.getConfig();
 
@@ -121,10 +114,7 @@ describe('AgentTrajectoryRetentionService', () => {
     it('should create a cron job when enabled and no job exists', () => {
       service.syncSchedulerFromConfig();
 
-      expect(mockSchedulerRegistry.addCronJob).toHaveBeenCalledWith(
-        'agent-trajectory-retention',
-        expect.any(Object),
-      );
+      expect(mockSchedulerRegistry.addCronJob).toHaveBeenCalledWith('agent-trajectory-retention', expect.any(Object));
     });
 
     it('should not create a job when disabled', () => {
@@ -140,13 +130,11 @@ describe('AgentTrajectoryRetentionService', () => {
       service.syncSchedulerFromConfig();
       expect(mockSchedulerRegistry.addCronJob).toHaveBeenCalledTimes(1);
 
-      mockAppSettings.getValueWithDefault.mockImplementation(
-        <T>(key: string, defaultValue: T): T => {
-          if (key === 'agentic.trajectory.enabled') return false as T;
-          if (key === 'agentic.trajectory.cron') return '0 4 * * *' as T;
-          return defaultValue;
-        },
-      );
+      mockAppSettings.getValueWithDefault.mockImplementation(<T>(key: string, defaultValue: T): T => {
+        if (key === 'agentic.trajectory.enabled') return false as T;
+        if (key === 'agentic.trajectory.cron') return '0 4 * * *' as T;
+        return defaultValue;
+      });
 
       service.syncSchedulerFromConfig();
 
@@ -157,13 +145,11 @@ describe('AgentTrajectoryRetentionService', () => {
       service.syncSchedulerFromConfig();
       expect(mockSchedulerRegistry.addCronJob).toHaveBeenCalledTimes(1);
 
-      mockAppSettings.getValueWithDefault.mockImplementation(
-        <T>(key: string, defaultValue: T): T => {
-          if (key === 'agentic.trajectory.enabled') return true as T;
-          if (key === 'agentic.trajectory.cron') return '0 5 * * *' as T;
-          return defaultValue;
-        },
-      );
+      mockAppSettings.getValueWithDefault.mockImplementation(<T>(key: string, defaultValue: T): T => {
+        if (key === 'agentic.trajectory.enabled') return true as T;
+        if (key === 'agentic.trajectory.cron') return '0 5 * * *' as T;
+        return defaultValue;
+      });
 
       service.syncSchedulerFromConfig();
 
@@ -184,10 +170,7 @@ describe('AgentTrajectoryRetentionService', () => {
     it('should call syncSchedulerFromConfig', () => {
       service.onModuleInit();
 
-      expect(mockSchedulerRegistry.addCronJob).toHaveBeenCalledWith(
-        'agent-trajectory-retention',
-        expect.any(Object),
-      );
+      expect(mockSchedulerRegistry.addCronJob).toHaveBeenCalledWith('agent-trajectory-retention', expect.any(Object));
     });
   });
 
@@ -195,10 +178,7 @@ describe('AgentTrajectoryRetentionService', () => {
     it('should call syncSchedulerFromConfig when settings refresh', () => {
       service.onSettingsRefreshed();
 
-      expect(mockAppSettings.getValueWithDefault).toHaveBeenCalledWith(
-        'agentic.trajectory.enabled',
-        expect.any(Boolean),
-      );
+      expect(mockAppSettings.getValueWithDefault).toHaveBeenCalledWith('agentic.trajectory.enabled', expect.any(Boolean));
     });
   });
 

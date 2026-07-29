@@ -1,4 +1,11 @@
-import { ClonePipelineRequest, CreatePipelineRequest, UpdatePipelineRequest, PipelineResponse, PaginatedPipelineResponse, PipelineVersionResponse } from './dto';
+import {
+  ClonePipelineRequest,
+  CreatePipelineRequest,
+  UpdatePipelineRequest,
+  PipelineResponse,
+  PaginatedPipelineResponse,
+  PipelineVersionResponse,
+} from './dto';
 
 export interface IPipelineService {
   /**

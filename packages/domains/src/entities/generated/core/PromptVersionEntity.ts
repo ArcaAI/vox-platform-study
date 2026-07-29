@@ -90,5 +90,4 @@ export class PromptVersionEntity extends BaseTenantEntity {
   set PromptTemplate(value: IPromptVersionEntity['PromptTemplate']) {
     this.setProperty('PromptTemplate', value);
   }
-
 }

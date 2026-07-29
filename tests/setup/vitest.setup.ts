@@ -15,10 +15,7 @@ import { beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 
 // Verify test environment is set (should be set by dotenv-cli)
 if (process.env.NODE_ENV !== 'test') {
-  console.warn(
-    'WARNING: NODE_ENV is not "test". Tests should be run with dotenv-cli:\n' +
-    '  pnpm test:unit (which uses dotenv -e .env.test)'
-  );
+  console.warn('WARNING: NODE_ENV is not "test". Tests should be run with dotenv-cli:\n' + '  pnpm test:unit (which uses dotenv -e .env.test)');
   process.env.NODE_ENV = 'test';
 }
 
@@ -26,15 +23,22 @@ if (process.env.NODE_ENV !== 'test') {
 // methods unless --localstorage-file is provided. When vitest uses jsdom the
 // environment normally supplies a working Storage, but the native getter can
 // shadow it. Patch it here so every workspace project gets a functional mock.
-if (typeof globalThis.localStorage === 'undefined' ||
-    typeof globalThis.localStorage?.setItem !== 'function') {
+if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localStorage?.setItem !== 'function') {
   const store: Record<string, string> = {};
   const localStorageFallback = {
     getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, value: string) => { store[key] = String(value); },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { for (const k of Object.keys(store)) delete store[k]; },
-    get length() { return Object.keys(store).length; },
+    setItem: (key: string, value: string) => {
+      store[key] = String(value);
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      for (const k of Object.keys(store)) delete store[k];
+    },
+    get length() {
+      return Object.keys(store).length;
+    },
     key: (index: number) => Object.keys(store)[index] ?? null,
   };
   Object.defineProperty(globalThis, 'localStorage', {
@@ -128,9 +132,7 @@ if (typeof window !== 'undefined') {
     private tracks: MockMediaStreamTrack[];
 
     constructor(tracks?: MediaStreamTrack[]) {
-      this.tracks = tracks
-        ? (tracks as unknown as MockMediaStreamTrack[])
-        : [new MockMediaStreamTrack()];
+      this.tracks = tracks ? (tracks as unknown as MockMediaStreamTrack[]) : [new MockMediaStreamTrack()];
     }
 
     getAudioTracks = () => this.tracks;

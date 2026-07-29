@@ -17,9 +17,7 @@ describe('appendPagination', () => {
   });
 
   it('should append page and limit', () => {
-    expect(appendPagination('/api/users', { page: 2, limit: 10 })).toBe(
-      '/api/users?page=2&limit=10',
-    );
+    expect(appendPagination('/api/users', { page: 2, limit: 10 })).toBe('/api/users?page=2&limit=10');
   });
 
   it('should use DEFAULT_PAGE_SIZE when limit is undefined', () => {
@@ -45,15 +43,11 @@ describe('appendFilters', () => {
   });
 
   it('should append string filter', () => {
-    expect(appendFilters('/api/prompts', { category: 'summary' })).toBe(
-      '/api/prompts?category=summary',
-    );
+    expect(appendFilters('/api/prompts', { category: 'summary' })).toBe('/api/prompts?category=summary');
   });
 
   it('should join array values with commas', () => {
-    expect(appendFilters('/api/prompts', { tags: ['a', 'b', 'c'] })).toBe(
-      '/api/prompts?tags=a%2Cb%2Cc',
-    );
+    expect(appendFilters('/api/prompts', { tags: ['a', 'b', 'c'] })).toBe('/api/prompts?tags=a%2Cb%2Cc');
   });
 
   it('should handle mixed string and array filters', () => {

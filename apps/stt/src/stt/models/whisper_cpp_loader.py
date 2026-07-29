@@ -66,9 +66,7 @@ class WhisperCppLoader(BaseModelLoader):
 
         gguf_path = resolved
         if os.path.isdir(resolved):
-            gguf_path = await asyncio.to_thread(
-                self._select_gguf_file, resolved, model_config
-            )
+            gguf_path = await asyncio.to_thread(self._select_gguf_file, resolved, model_config)
 
         use_gpu = (model_config.device or "auto") != "cpu"
         num_threads = settings.whisper_cpp_num_threads

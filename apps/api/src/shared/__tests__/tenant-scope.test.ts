@@ -1,10 +1,6 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
-import {
-  assertTenantInScope,
-  resolveScopedTenantId,
-  resolveScopedTenantIdOptional,
-} from '../tenant-scope';
+import { assertTenantInScope, resolveScopedTenantId, resolveScopedTenantIdOptional } from '../tenant-scope';
 
 // One shared home for the tenant-resolution logic that was
 // copy-pasted across tenant / harness-admin / pipeline-policy-admin /
@@ -41,9 +37,7 @@ describe('resolveScopedTenantId', () => {
   });
 
   it('tenant-bound: 400 when no tenant context at all', () => {
-    expect(() => resolveScopedTenantId({ roles: ['TENANT_ADMIN'] }, undefined, undefined)).toThrow(
-      BadRequestException,
-    );
+    expect(() => resolveScopedTenantId({ roles: ['TENANT_ADMIN'] }, undefined, undefined)).toThrow(BadRequestException);
   });
 });
 
@@ -61,9 +55,7 @@ describe('resolveScopedTenantIdOptional (list filter)', () => {
   });
 
   it('tenant-bound: foreign query rejected 403', () => {
-    expect(() => resolveScopedTenantIdOptional(TENANT_A, 'tenant-a', 'tenant-b')).toThrow(
-      ForbiddenException,
-    );
+    expect(() => resolveScopedTenantIdOptional(TENANT_A, 'tenant-a', 'tenant-b')).toThrow(ForbiddenException);
   });
 });
 
@@ -85,11 +77,7 @@ describe('assertTenantInScope', () => {
   });
 
   it('no tenant context: 403 (or 404 when requested)', () => {
-    expect(() => assertTenantInScope({ roles: ['TENANT_ADMIN'] }, 'tenant-a')).toThrow(
-      ForbiddenException,
-    );
-    expect(() => assertTenantInScope({ roles: ['TENANT_ADMIN'] }, 'tenant-a', 'notfound')).toThrow(
-      NotFoundException,
-    );
+    expect(() => assertTenantInScope({ roles: ['TENANT_ADMIN'] }, 'tenant-a')).toThrow(ForbiddenException);
+    expect(() => assertTenantInScope({ roles: ['TENANT_ADMIN'] }, 'tenant-a', 'notfound')).toThrow(NotFoundException);
   });
 });

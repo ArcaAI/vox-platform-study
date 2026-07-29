@@ -18,10 +18,7 @@ describe('AgenticClient error code mapping', () => {
 
   beforeEach(() => {
     mockLogger = createMockLogger();
-    client = new AgenticClient(
-      { baseUrl: 'https://api.example.com', apiKey: 'k', tenantId: 't' },
-      mockLogger,
-    );
+    client = new AgenticClient({ baseUrl: 'https://api.example.com', apiKey: 'k', tenantId: 't' }, mockLogger);
   });
 
   afterEach(() => {

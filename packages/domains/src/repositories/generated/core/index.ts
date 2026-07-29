@@ -98,8 +98,8 @@ export * from './TenantFrontendConfigRepository';
 export * from './TenantIdentityProviderRepository';
 export * from './TenantIdentityProviderDomainRepository';
 export * from './TenantStorageConfigRepository';
+export * from './TenantSttConfigRepository';
 export * from './TenantTtsConfigRepository';
-export * from './TenantTtsProviderCredentialRepository';
 export * from './TenantRepository';
 export * from './TenantUsageMeterRepository';
 export * from './TranscriptionJobRepository';
@@ -115,4 +115,3 @@ export * from './UserSettingsRepository';
 export * from './UserVoiceProfileRepository';
 export * from './WebhookRepository';
 export * from './WebhookRunHistoryRepository';
-

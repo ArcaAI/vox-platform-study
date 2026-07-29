@@ -2,10 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { BaseEntityFactoryCreateProps } from '../../../common';
-import {
-  ITenantIdentityProviderDomainEntity,
-  TenantIdentityProviderDomainEntity,
-} from '../../../entities';
+import { ITenantIdentityProviderDomainEntity, TenantIdentityProviderDomainEntity } from '../../../entities';
 import { generateId } from '../../../utils';
 
 export interface CreateTenantIdentityProviderDomainProps extends BaseEntityFactoryCreateProps {
@@ -20,9 +17,7 @@ export interface CreateTenantIdentityProviderDomainProps extends BaseEntityFacto
 }
 
 export class TenantIdentityProviderDomainFactory {
-  static CreateTenantIdentityProviderDomain(
-    props: CreateTenantIdentityProviderDomainProps,
-  ): TenantIdentityProviderDomainEntity {
+  static CreateTenantIdentityProviderDomain(props: CreateTenantIdentityProviderDomainProps): TenantIdentityProviderDomainEntity {
     const id = generateId();
     const now = new Date();
 

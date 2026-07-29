@@ -92,9 +92,7 @@ class _FakeApi:
         self.calls["finalize_assurance"] = {"consultation_id": consultation_id, **kw}
         return FinalizeAssuranceResponse(recorded=True, context_item_id="ctx-1")
 
-    async def record_escalation(
-        self, consultation_id: str, **kw: Any
-    ) -> EscalationRecordResponse:
+    async def record_escalation(self, consultation_id: str, **kw: Any) -> EscalationRecordResponse:
         self.calls["record_escalation"] = {"consultation_id": consultation_id, **kw}
         return EscalationRecordResponse(recorded=True)
 
@@ -113,9 +111,7 @@ class _FakeApiPriors:
         self._error = error
         self.calls: list[tuple[str, str]] = []
 
-    async def load_entity_priors(
-        self, consultation_id: str, *, tenant_id: str
-    ) -> list[NEREntity]:
+    async def load_entity_priors(self, consultation_id: str, *, tenant_id: str) -> list[NEREntity]:
         self.calls.append((consultation_id, tenant_id))
         if self._error is not None:
             raise self._error
@@ -413,8 +409,7 @@ class TestFetchPolicy:
     async def test_403_raises_non_retryable_policy_auth_error(self, env, monkeypatch):
         fake = _FakePolicyApi(
             error=ApiServiceError(
-                "apps/api /policy failed: Client error '403 Forbidden' for url "
-                "'http://x/policy'"
+                "apps/api /policy failed: Client error '403 Forbidden' for url " "'http://x/policy'"
             )
         )
         monkeypatch.setattr(activities, "_api_client", lambda s: fake)
@@ -425,9 +420,7 @@ class TestFetchPolicy:
 
     @pytest.mark.asyncio
     async def test_transient_outage_stays_a_plain_api_service_error(self, env, monkeypatch):
-        fake = _FakePolicyApi(
-            error=ApiServiceError("apps/api /policy failed: connection refused")
-        )
+        fake = _FakePolicyApi(error=ApiServiceError("apps/api /policy failed: connection refused"))
         monkeypatch.setattr(activities, "_api_client", lambda s: fake)
         with pytest.raises(ApiServiceError):
             await env.run(activities.fetch_policy, FetchPolicyInput(tenant_id="t-1"))
@@ -802,8 +795,12 @@ class TestReportProgress:
         result = await env.run(
             activities.report_progress,
             ReportProgressInput(
-                consultation_id="c-1", tenant_id="t-1", stage="drafting_note",
-                label="Drafting the note", ordinal=3, total=5,
+                consultation_id="c-1",
+                tenant_id="t-1",
+                stage="drafting_note",
+                label="Drafting the note",
+                ordinal=3,
+                total=5,
             ),
         )
         assert result.reported is False  # swallowed — never raises into the workflow
@@ -980,7 +977,12 @@ class TestRunInferentialSensorsLiveAssurance:
         return _infer_input(
             citations_map={
                 "claims": [
-                    {"id": "c-htn", "text": "hypertension", "section": "A", "evidence": [{"quote": "hypertension"}]},
+                    {
+                        "id": "c-htn",
+                        "text": "hypertension",
+                        "section": "A",
+                        "evidence": [{"quote": "hypertension"}],
+                    },
                     {"id": "c-pen", "text": "penicillin allergy", "section": "P", "evidence": []},
                 ]
             },
@@ -991,7 +993,9 @@ class TestRunInferentialSensorsLiveAssurance:
     async def test_publishes_one_event_per_claim_with_mapped_verdict(self, env, monkeypatch):
         judge = _StubJudge(unsupported_markers=("penicillin",))
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: judge)
-        monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
         fake = _FakeAssuranceApi()
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
 
@@ -1021,7 +1025,9 @@ class TestRunInferentialSensorsLiveAssurance:
     @pytest.mark.asyncio
     async def test_no_publish_when_live_assurance_disabled(self, env, monkeypatch):
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
-        monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
         fake = _FakeAssuranceApi()
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
 
@@ -1035,7 +1041,9 @@ class TestRunInferentialSensorsLiveAssurance:
         from harness.services.api_client import ApiServiceError
 
         monkeypatch.setattr(activities, "_build_runtime_judge", lambda *a, **k: _StubJudge())
-        monkeypatch.setattr(activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False}))
+        monkeypatch.setattr(
+            activities, "_granite_client", lambda s: _FakeGranite(dimensions={"harm": False})
+        )
         fake = _FakeAssuranceApi(error=ApiServiceError("redis down"))
         monkeypatch.setattr(activities, "_progress_api_client", lambda s: fake)
 

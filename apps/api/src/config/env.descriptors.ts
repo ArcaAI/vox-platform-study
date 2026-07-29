@@ -253,13 +253,19 @@ const VAULT_CLIENT: SettingDescriptor[] = [
     'File the rotation worker tails for Vault audit events. Unset disables the worker.',
   ),
   envKnob('vault.token', 'string', 'Secrets', 'Vault token', 'Direct Vault token. Operator/CLI path only — services authenticate with AppRole.'),
-  envKnob(
-    'vault.devRootToken',
-    'string',
-    'Secrets',
-    'Vault dev root token',
-    'Root token of the LOCAL dev Vault; used by seeds. Never set in a deployed environment.',
-  ),
+  {
+    ...envKnob(
+      'vault.devRootToken',
+      'string',
+      'Secrets',
+      'Vault dev root token',
+      'Root token of the LOCAL dev Vault; used by seeds. Never set in a deployed environment.',
+    ),
+    // `docker-compose.dev.yml` boots Vault dev-mode with `${VAULT_DEV_ROOT_TOKEN:-root}`
+    // — `root` is the fixed default for every developer's local Vault, not a
+    // runtime fallback substituted for a missing value elsewhere.
+    sampleValue: 'root',
+  },
   envKnob('secrets.ttlSec', 'number', 'Secrets', 'Secret cache TTL (s)', 'Per-entry TTL of the SecretsService LRU cache.', 300),
   envKnob('secrets.lruMax', 'number', 'Secrets', 'Secret cache size', 'Maximum entries in the SecretsService LRU cache.', 200),
   envKnob(

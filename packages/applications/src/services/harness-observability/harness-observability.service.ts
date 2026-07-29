@@ -231,7 +231,7 @@ export class HarnessObservabilityService {
    * summary text is consumed to compute the distance and NEVER returned; only
    * derived scalars leave. Any signal whose input is absent is `null`.
    *
- * the burden aggregate below is legitimately all-zero for
+   * the burden aggregate below is legitimately all-zero for
    * an existing, in-tenant consultation that simply has no activity yet, so it
    * cannot be used to infer existence (0-C's controller-side heuristic conflated
    * "no such consultation" with "no activity yet"). Existence + tenancy are

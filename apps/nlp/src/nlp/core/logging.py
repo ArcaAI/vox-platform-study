@@ -58,7 +58,9 @@ class LoggingConfig:
     DEFAULT_ROTATION_BACKUP_COUNT = 30  # Keep 30 days of logs
 
     # Log format templates
-    DETAILED_FORMAT = "[%(asctime)s] %(levelname)s - %(name)s :: %(funcName)s:%(lineno)d :: %(message)s"
+    DETAILED_FORMAT = (
+        "[%(asctime)s] %(levelname)s - %(name)s :: %(funcName)s:%(lineno)d :: %(message)s"
+    )
     SIMPLE_FORMAT = "[%(asctime)s] %(levelname)s - %(name)s :: %(message)s"
 
     @classmethod
@@ -112,7 +114,9 @@ class LoggingConfig:
         # Daily rotation configuration
         rotation_when = os.getenv("LOG_ROTATION_WHEN", cls.DEFAULT_ROTATION_WHEN)
         rotation_interval = int(os.getenv("LOG_ROTATION_INTERVAL", cls.DEFAULT_ROTATION_INTERVAL))
-        rotation_backup_count = int(os.getenv("LOG_ROTATION_BACKUP_COUNT", cls.DEFAULT_ROTATION_BACKUP_COUNT))
+        rotation_backup_count = int(
+            os.getenv("LOG_ROTATION_BACKUP_COUNT", cls.DEFAULT_ROTATION_BACKUP_COUNT)
+        )
         use_daily_rotation = cls._get_env_bool("LOG_USE_DAILY_ROTATION", True)
 
         # Clear any existing handlers to avoid duplication
@@ -135,7 +139,9 @@ class LoggingConfig:
         if console_enabled:
             console_handler = logging.StreamHandler()
             console_handler.setLevel(getattr(logging, log_level, logging.INFO))
-            console_handler.setFormatter(json_formatter if console_json_format else simple_formatter)
+            console_handler.setFormatter(
+                json_formatter if console_json_format else simple_formatter
+            )
             handlers.append(console_handler)
 
         # File handlers
@@ -149,7 +155,9 @@ class LoggingConfig:
             # Main log file (all levels)
             main_log_file = log_dir / f"{service_name}.log"
 
-            main_file_handler: logging.handlers.TimedRotatingFileHandler | logging.handlers.RotatingFileHandler
+            main_file_handler: (
+                logging.handlers.TimedRotatingFileHandler | logging.handlers.RotatingFileHandler
+            )
             if use_daily_rotation:
                 main_file_handler = logging.handlers.TimedRotatingFileHandler(
                     filename=str(main_log_file),
@@ -161,7 +169,10 @@ class LoggingConfig:
                 )
             else:
                 main_file_handler = logging.handlers.RotatingFileHandler(
-                    filename=str(main_log_file), maxBytes=max_bytes, backupCount=log_file_max_files, encoding="utf-8"
+                    filename=str(main_log_file),
+                    maxBytes=max_bytes,
+                    backupCount=log_file_max_files,
+                    encoding="utf-8",
                 )
 
             main_file_handler.setLevel(getattr(logging, log_level, logging.INFO))
@@ -172,7 +183,9 @@ class LoggingConfig:
             if log_file_separate_error:
                 error_log_file = log_dir / f"{service_name}_errors.log"
 
-                error_file_handler: logging.handlers.TimedRotatingFileHandler | logging.handlers.RotatingFileHandler
+                error_file_handler: (
+                    logging.handlers.TimedRotatingFileHandler | logging.handlers.RotatingFileHandler
+                )
                 if use_daily_rotation:
                     error_file_handler = logging.handlers.TimedRotatingFileHandler(
                         filename=str(error_log_file),
@@ -184,7 +197,10 @@ class LoggingConfig:
                     )
                 else:
                     error_file_handler = logging.handlers.RotatingFileHandler(
-                        filename=str(error_log_file), maxBytes=max_bytes, backupCount=log_file_max_files, encoding="utf-8"
+                        filename=str(error_log_file),
+                        maxBytes=max_bytes,
+                        backupCount=log_file_max_files,
+                        encoding="utf-8",
                     )
 
                 error_file_handler.setLevel(logging.ERROR)

@@ -60,6 +60,9 @@ vi.mock('../../store', () => {
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),
+    // Streaming STT connection/pipeline actions (TASK-567 Phase F).
+    setSttConnectionState: vi.fn(),
+    setActivePipeline: vi.fn(),
     setContextLoading: vi.fn(),
     setContextError: vi.fn(),
     addContextItem: vi.fn(),
@@ -189,16 +192,14 @@ describe('useArca', () => {
         result.current.session.open({
           patientId: 'patient-1',
           appointmentDate: '2026-01-27',
-        })
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
     it('should throw when loading consultation without API client', async () => {
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.session.load('cons-123')).rejects.toThrow(
-        'SDK not initialized'
-      );
+      await expect(result.current.session.load('cons-123')).rejects.toThrow('SDK not initialized');
     });
   });
 
@@ -233,17 +234,13 @@ describe('useArca', () => {
     it('should throw when adding case note without API client', async () => {
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.context.addCaseNote('Test note')).rejects.toThrow(
-        'SDK not initialized'
-      );
+      await expect(result.current.context.addCaseNote('Test note')).rejects.toThrow('SDK not initialized');
     });
 
     it('should throw when adding transcription without API client', async () => {
       const { result } = renderHook(() => useArca());
 
-      await expect(
-        result.current.context.addTranscription('Test transcription')
-      ).rejects.toThrow('SDK not initialized');
+      await expect(result.current.context.addTranscription('Test transcription')).rejects.toThrow('SDK not initialized');
     });
   });
 
@@ -251,17 +248,13 @@ describe('useArca', () => {
     it('should throw when generating summary without API client', async () => {
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.summary.generateSummary()).rejects.toThrow(
-        'SDK not initialized'
-      );
+      await expect(result.current.summary.generateSummary()).rejects.toThrow('SDK not initialized');
     });
 
     it('should throw unsupported error when analyzing DNA (SUM-06: no backend)', async () => {
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.summary.analyzeDNA(['text1', 'text2'])).rejects.toThrow(
-        'DNA analysis is not supported'
-      );
+      await expect(result.current.summary.analyzeDNA(['text1', 'text2'])).rejects.toThrow('DNA analysis is not supported');
     });
   });
 
@@ -287,17 +280,13 @@ describe('useArca', () => {
     it('should throw when triggering NER without knowledge pipeline', async () => {
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.pipelines.triggerNER()).rejects.toThrow(
-        'Knowledge pipeline not initialized'
-      );
+      await expect(result.current.pipelines.triggerNER()).rejects.toThrow('Knowledge pipeline not initialized');
     });
 
     it('should throw when triggering summarization without consultation', async () => {
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.pipelines.triggerSummarization()).rejects.toThrow(
-        'No active consultation'
-      );
+      await expect(result.current.pipelines.triggerSummarization()).rejects.toThrow('No active consultation');
     });
   });
 
@@ -332,9 +321,7 @@ describe('useArca', () => {
           vad: { isActive: false },
           stt: { isActive: false },
         }),
-        getKnowledgePipeline: vi.fn().mockReturnValue(
-          overrides?.knowledgePipeline === null ? null : mockKnowledgePipeline
-        ),
+        getKnowledgePipeline: vi.fn().mockReturnValue(overrides?.knowledgePipeline === null ? null : mockKnowledgePipeline),
         destroy: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -383,10 +370,7 @@ describe('useArca', () => {
       return { mockKnowledgePipeline, mockSetCallbacks, store };
     }
 
-    async function startAudioAndGetCallbacks(
-      hookResult: { current: ReturnType<typeof useArca> },
-      mockSetCallbacks: ReturnType<typeof vi.fn>
-    ) {
+    async function startAudioAndGetCallbacks(hookResult: { current: ReturnType<typeof useArca> }, mockSetCallbacks: ReturnType<typeof vi.fn>) {
       await act(async () => {
         await hookResult.current.audio.start();
       });
@@ -394,7 +378,7 @@ describe('useArca', () => {
       expect(mockSetCallbacks).toHaveBeenCalledWith(
         expect.objectContaining({
           onTranscription: expect.any(Function),
-        })
+        }),
       );
 
       return mockSetCallbacks.mock.calls[0][0];
@@ -418,14 +402,8 @@ describe('useArca', () => {
         await new Promise((r) => setTimeout(r, 10));
       });
 
-      expect(mockKnowledgePipeline.process).toHaveBeenCalledWith(
-        expect.objectContaining({ text: 'Patient has diabetes' })
-      );
-      expect(store.addEntities).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ entityType: 'DISEASE', text: 'diabetes' }),
-        ])
-      );
+      expect(mockKnowledgePipeline.process).toHaveBeenCalledWith(expect.objectContaining({ text: 'Patient has diabetes' }));
+      expect(store.addEntities).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ entityType: 'DISEASE', text: 'diabetes' })]));
     });
 
     it('should NOT trigger NER on non-final (partial) transcriptions', async () => {
@@ -556,9 +534,7 @@ describe('useArca', () => {
 
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.summary.analyzeDNA(['text1', 'text2'])).rejects.toThrow(
-        'DNA analysis is not supported'
-      );
+      await expect(result.current.summary.analyzeDNA(['text1', 'text2'])).rejects.toThrow('DNA analysis is not supported');
 
       // Should NOT call the API at all
       expect(store.apiClient.post).not.toHaveBeenCalled();
@@ -575,9 +551,7 @@ describe('useArca', () => {
 
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.summary.analyzeDNA([])).rejects.toThrow(
-        'DNA analysis is not supported'
-      );
+      await expect(result.current.summary.analyzeDNA([])).rejects.toThrow('DNA analysis is not supported');
       expect(store.apiClient.post).not.toHaveBeenCalled();
     });
 
@@ -601,9 +575,7 @@ describe('useArca', () => {
 
       const { result } = renderHook(() => useArca());
 
-      await expect(result.current.summary.analyzeDNA(['text'])).rejects.toThrow(
-        'DNA analysis is not supported'
-      );
+      await expect(result.current.summary.analyzeDNA(['text'])).rejects.toThrow('DNA analysis is not supported');
     });
   });
 });

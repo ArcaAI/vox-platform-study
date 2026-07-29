@@ -32,6 +32,14 @@ class ProviderOverride(BaseModel):
     region: str | None = None
     api_version: str | None = None
     deployment_name: str | None = None
+    # C4 wire shape: an override MAY pin the model (override-wins over the
+    # caller-supplied ``request.model``). Absent ⇒ the caller's model stands.
+    model: str | None = None
+    # Google Vertex routing — a Vertex client is bound to a (project, location);
+    # the tenant's BYO service-account key (``api_key``) is scoped to a project,
+    # so both travel with the override. Ignored by every non-Vertex provider.
+    project: str | None = None
+    location: str | None = None
 
 
 class GenerateRequest(BaseModel):

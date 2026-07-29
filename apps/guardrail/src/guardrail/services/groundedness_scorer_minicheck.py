@@ -57,8 +57,7 @@ _EOS = "</s>"
 # Published model-card reference pair (lytang/MiniCheck-Flan-T5-Large) — the
 # calibration gate's ground truth. raw_prob ≈ 0.981 (supported) / ≈ 0.007 (unsupported).
 _CAL_DOC = (
-    "A group of students gather in the school library to study for their "
-    "upcoming final exams."
+    "A group of students gather in the school library to study for their " "upcoming final exams."
 )
 _CAL_SUPPORTED_CLAIM = "The students are preparing for an examination."
 _CAL_UNSUPPORTED_CLAIM = "The students are on vacation."
@@ -219,7 +218,9 @@ def load_minicheck_scorer(config: GroundednessConfig) -> NliScorer:
         scorer.verify_calibration()  # raises NliModelUnavailableError if mis-wired / too-lossy
     except NliModelUnavailableError:
         raise
-    except Exception as exc:  # noqa: BLE001 — a llama.cpp runtime error at calibration is fail-closed
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 — a llama.cpp runtime error at calibration is fail-closed
         raise NliModelUnavailableError(
             f"MiniCheck GGUF calibration raised {type(exc).__name__} — fail-closed to "
             "'unverified'."

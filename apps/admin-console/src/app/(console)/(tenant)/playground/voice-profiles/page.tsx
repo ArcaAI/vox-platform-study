@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'My Voice Enrollment & Profiles' };
 
 /** Frame 52 / artboard 4d — own-account voice enrollment & profiles (tier 50-59, matrix row 36). */
 export default function VoiceProfilesPage() {
-    return <VoiceProfilesScreen />;
+  return <VoiceProfilesScreen />;
 }

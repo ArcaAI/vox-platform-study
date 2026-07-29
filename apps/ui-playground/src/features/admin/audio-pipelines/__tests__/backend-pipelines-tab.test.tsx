@@ -47,7 +47,12 @@ vi.mock('@/store/auth-store', () => ({
 
 vi.mock('../pipeline-config-editor', () => ({
   PipelineConfigEditor: ({ value, onChange, readOnly }: any) => (
-    <textarea aria-label={readOnly ? 'config-readonly' : 'config-editor'} value={value} readOnly={readOnly} onChange={(e) => onChange?.(e.target.value)} />
+    <textarea
+      aria-label={readOnly ? 'config-readonly' : 'config-editor'}
+      value={value}
+      readOnly={readOnly}
+      onChange={(e) => onChange?.(e.target.value)}
+    />
   ),
   configToYaml: () => 'version: "1.0"\n',
   DEFAULT_CONFIG: {},
@@ -80,7 +85,9 @@ vi.mock('@arcaai/ui/input', () => ({ Input: ({ ...p }: any) => <input {...p} /> 
 vi.mock('@arcaai/ui/label', () => ({ Label: ({ children, ...p }: any) => <label {...p}>{children}</label> }));
 vi.mock('@arcaai/ui/skeleton', () => ({ Skeleton: ({ ...p }: any) => <div {...p} /> }));
 vi.mock('@arcaai/ui/switch', () => ({
-  Switch: ({ checked, onCheckedChange, ...p }: any) => <button role="switch" aria-checked={!!checked} onClick={() => onCheckedChange?.(!checked)} {...p} />,
+  Switch: ({ checked, onCheckedChange, ...p }: any) => (
+    <button role="switch" aria-checked={!!checked} onClick={() => onCheckedChange?.(!checked)} {...p} />
+  ),
 }));
 vi.mock('@arcaai/ui/dialog', () => ({
   Dialog: ({ open, children }: any) => (open ? <div role="dialog">{children}</div> : null),
@@ -221,9 +228,7 @@ describe('BackendPipelinesTab (TASK-331 doc-03 #2/#4/#10)', () => {
     fireEvent.click(screen.getByTestId('create-submit'));
 
     await waitFor(() => expect(validateMutateAsync).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(createMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ name: 'New Pipeline', slug: 'new-pipeline' })),
-    );
+    await waitFor(() => expect(createMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ name: 'New Pipeline', slug: 'new-pipeline' })));
     expect(toastSuccess).toHaveBeenCalled();
   });
 

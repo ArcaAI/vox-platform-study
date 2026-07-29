@@ -23,16 +23,16 @@ export default createConfig({
 
 ### createConfig(options)
 
-| Option | Default | Description |
-|---|---|---|
-| `input` | required | Entry point(s) |
-| `outDir` | required | Output directory (CJS, named exports) |
-| `minify` | `true` | Terser minification (skipped when `isDev`) |
-| `obfuscate` | `true` | javascript-obfuscator hardening (skipped when `isDev`) |
-| `sourceMap` | `true` | Emit source maps |
-| `externals` | `[]` | Extra externals (merged with built-in list incl. `node_modules`, `@prisma/client`, `express`, ...) |
-| `isDev` | `NODE_ENV === 'development'` | Disables minify/obfuscate |
-| `preserveModules` / `preserveModulesRoot` | `false` / `null` | Preserve module structure in output |
+| Option                                    | Default                      | Description                                                                                        |
+| ----------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| `input`                                   | required                     | Entry point(s)                                                                                     |
+| `outDir`                                  | required                     | Output directory (CJS, named exports)                                                              |
+| `minify`                                  | `true`                       | Terser minification (skipped when `isDev`)                                                         |
+| `obfuscate`                               | `true`                       | javascript-obfuscator hardening (skipped when `isDev`)                                             |
+| `sourceMap`                               | `true`                       | Emit source maps                                                                                   |
+| `externals`                               | `[]`                         | Extra externals (merged with built-in list incl. `node_modules`, `@prisma/client`, `express`, ...) |
+| `isDev`                                   | `NODE_ENV === 'development'` | Disables minify/obfuscate                                                                          |
+| `preserveModules` / `preserveModulesRoot` | `false` / `null`             | Preserve module structure in output                                                                |
 
 Plugin pipeline: `rollup-plugin-node-externals`, `@rollup/plugin-node-resolve`, `@rollup/plugin-commonjs`, `@rollup/plugin-json`, `@rollup/plugin-replace` (`process.env.NODE_ENV`), `rollup-plugin-typescript2` (uses the consumer's `./tsconfig.json`), `@rollup/plugin-babel`, `rollup-plugin-node-builtins`, `rollup-plugin-node-globals`, then conditionally `@rollup/plugin-terser` and `rollup-plugin-obfuscator`. Circular-dependency warnings are suppressed.
 

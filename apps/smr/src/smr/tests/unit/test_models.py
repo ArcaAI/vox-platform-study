@@ -15,26 +15,32 @@ from pydantic import ValidationError
 class TestTaskStatus:
     def test_has_pending_state(self):
         from smr.models.task import TaskStatus
+
         assert TaskStatus.PENDING == "pending"
 
     def test_has_running_state(self):
         from smr.models.task import TaskStatus
+
         assert TaskStatus.RUNNING == "running"
 
     def test_has_completed_state(self):
         from smr.models.task import TaskStatus
+
         assert TaskStatus.COMPLETED == "completed"
 
     def test_has_failed_state(self):
         from smr.models.task import TaskStatus
+
         assert TaskStatus.FAILED == "failed"
 
     def test_has_cancelled_state(self):
         from smr.models.task import TaskStatus
+
         assert TaskStatus.CANCELLED == "cancelled"
 
     def test_has_retrying_state(self):
         from smr.models.task import TaskStatus
+
         assert TaskStatus.RETRYING == "retrying"
 
 
@@ -44,7 +50,10 @@ class TestTaskStatus:
 class TestTaskState:
     def test_create_minimal_task_state(self):
         from smr.models.task import TaskState, TaskStatus
-        state = TaskState(task_id="abc-123", status=TaskStatus.PENDING, provider="ollama", model="llama3.2:latest")
+
+        state = TaskState(
+            task_id="abc-123", status=TaskStatus.PENDING, provider="ollama", model="llama3.2:latest"
+        )
         assert state.task_id == "abc-123"
         assert state.status == TaskStatus.PENDING
         assert state.retry_count == 0
@@ -52,6 +61,7 @@ class TestTaskState:
 
     def test_task_state_defaults(self):
         from smr.models.task import TaskState, TaskStatus
+
         state = TaskState(task_id="t1", status=TaskStatus.RUNNING, provider="ollama", model="m")
         assert state.error is None
         assert state.total_chunks == 0
@@ -60,6 +70,7 @@ class TestTaskState:
 
     def test_task_state_serializes_to_dict(self):
         from smr.models.task import TaskState, TaskStatus
+
         state = TaskState(task_id="t1", status=TaskStatus.PENDING, provider="ollama", model="m")
         d = state.model_dump()
         assert d["task_id"] == "t1"
@@ -72,11 +83,13 @@ class TestTaskState:
 class TestTokenUsage:
     def test_create_token_usage(self):
         from smr.models.responses import TokenUsage
+
         usage = TokenUsage(prompt_tokens=10, completion_tokens=20, total_tokens=30)
         assert usage.total_tokens == 30
 
     def test_token_usage_defaults_to_zero(self):
         from smr.models.responses import TokenUsage
+
         usage = TokenUsage()
         assert usage.prompt_tokens == 0
         assert usage.completion_tokens == 0
@@ -89,6 +102,7 @@ class TestTokenUsage:
 class TestRetryConfig:
     def test_default_retry_config(self):
         from smr.models.requests import RetryConfig
+
         cfg = RetryConfig()
         assert cfg.max_retries == 3
         assert "timeout" in cfg.retry_on
@@ -96,6 +110,7 @@ class TestRetryConfig:
 
     def test_custom_retry_config(self):
         from smr.models.requests import RetryConfig
+
         cfg = RetryConfig(max_retries=5, retry_on=["timeout"])
         assert cfg.max_retries == 5
         assert cfg.retry_on == ["timeout"]
@@ -107,6 +122,7 @@ class TestRetryConfig:
 class TestGenerateRequest:
     def test_minimal_request(self):
         from smr.models.requests import GenerateRequest
+
         req = GenerateRequest(prompt="Hello world")
         assert req.prompt == "Hello world"
         assert req.provider == "lm-studio"
@@ -118,6 +134,7 @@ class TestGenerateRequest:
 
     def test_full_request(self):
         from smr.models.requests import GenerateRequest
+
         req = GenerateRequest(
             prompt="Summarize this",
             system_prompt="You are helpful",
@@ -137,16 +154,19 @@ class TestGenerateRequest:
 
     def test_empty_prompt_rejected(self):
         from smr.models.requests import GenerateRequest
+
         with pytest.raises(ValidationError):
             GenerateRequest(prompt="")
 
     def test_negative_max_tokens_rejected(self):
         from smr.models.requests import GenerateRequest
+
         with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", max_tokens=-1)
 
     def test_temperature_out_of_range_rejected(self):
         from smr.models.requests import GenerateRequest
+
         with pytest.raises(ValidationError):
             GenerateRequest(prompt="hi", temperature=3.0)
 
@@ -157,6 +177,7 @@ class TestGenerateRequest:
 class TestGenerateResponse:
     def test_non_streaming_response(self):
         from smr.models.responses import GenerateResponse
+
         resp = GenerateResponse(
             task_id="t1",
             status="completed",
@@ -171,6 +192,7 @@ class TestGenerateResponse:
 
     def test_streaming_response_has_urls(self):
         from smr.models.responses import StreamingGenerateResponse
+
         resp = StreamingGenerateResponse(
             task_id="t1",
             status="running",
@@ -186,6 +208,7 @@ class TestGenerateResponse:
 class TestTaskResponse:
     def test_task_response_fields(self):
         from smr.models.responses import TaskResponse
+
         resp = TaskResponse(
             task_id="t1",
             status="running",
@@ -204,23 +227,27 @@ class TestTaskResponse:
 class TestStreamChunk:
     def test_text_chunk(self):
         from smr.models.stream import StreamChunk
+
         chunk = StreamChunk(type="chunk", content="Hello")
         assert chunk.type == "chunk"
         assert chunk.content == "Hello"
 
     def test_meta_chunk(self):
         from smr.models.stream import StreamChunk
+
         chunk = StreamChunk(type="meta", data={"provider": "ollama"})
         assert chunk.type == "meta"
         assert chunk.data["provider"] == "ollama"
 
     def test_done_chunk(self):
         from smr.models.stream import StreamChunk
+
         chunk = StreamChunk(type="done", data={"finish_reason": "stop"})
         assert chunk.data["finish_reason"] == "stop"
 
     def test_usage_chunk(self):
         from smr.models.stream import StreamChunk
+
         chunk = StreamChunk(type="usage", data={"prompt_tokens": 10, "total_tokens": 30})
         assert chunk.data["total_tokens"] == 30
 
@@ -231,11 +258,13 @@ class TestStreamChunk:
 class TestProviderModels:
     def test_model_info(self):
         from smr.models.provider import ModelInfo
+
         m = ModelInfo(name="llama3.2:latest", supports_streaming=True)
         assert m.name == "llama3.2:latest"
 
     def test_provider_info(self):
         from smr.models.provider import ModelInfo, ProviderInfo
+
         p = ProviderInfo(
             name="ollama",
             display_name="Ollama (Self-Hosted)",
@@ -249,6 +278,7 @@ class TestProviderModels:
 
     def test_provider_info_unavailable(self):
         from smr.models.provider import ProviderInfo
+
         p = ProviderInfo(
             name="bedrock",
             display_name="AWS Bedrock",
@@ -266,6 +296,7 @@ class TestProviderModels:
 class TestRateLimitState:
     def test_rate_limit_state(self):
         from smr.models.provider import RateLimitState
+
         state = RateLimitState(
             provider="azure_openai",
             rpm_limit=480,
@@ -281,6 +312,7 @@ class TestRateLimitState:
 
     def test_rate_limit_state_when_limited(self):
         from smr.models.provider import RateLimitState
+
         state = RateLimitState(
             provider="bedrock",
             rpm_limit=100,

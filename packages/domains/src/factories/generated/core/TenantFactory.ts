@@ -49,8 +49,7 @@ export class TenantFactory {
       // Stamp the trial clock when a tenant is created on the
       // TRIAL plan (unless an explicit end was supplied). The clock therefore
       // starts at creation for any TRIAL tenant; non-TRIAL tenants carry null.
-      trialEndsAt:
-        props.trialEndsAt ?? (plan === Enums.TenantPlan.TRIAL ? new Date(createdAt.getTime() + TenantFactory.TRIAL_PERIOD_MS) : null),
+      trialEndsAt: props.trialEndsAt ?? (plan === Enums.TenantPlan.TRIAL ? new Date(createdAt.getTime() + TenantFactory.TRIAL_PERIOD_MS) : null),
       tags: props.tags ?? [],
       Tags: props.Tags ?? [],
     });

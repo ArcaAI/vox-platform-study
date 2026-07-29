@@ -17,13 +17,7 @@ import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
 import { IAiTaskDefaultService } from './IAiTaskDefaultService';
 import { AiTaskDefaultDtoMapper } from './ai-task-default.dto.mapper';
-import {
-  AI_TASK_KEYS,
-  AI_TASK_MODEL_TASK_TYPES,
-  AiTaskKey,
-  GLOBAL_ADMIN_ONLY_TASK_PREFIXES,
-  isGlobalAdminOnlyTaskKey,
-} from './constants';
+import { AI_TASK_KEYS, AI_TASK_MODEL_TASK_TYPES, AiTaskKey, GLOBAL_ADMIN_ONLY_TASK_PREFIXES, isGlobalAdminOnlyTaskKey } from './constants';
 import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefaultRequest } from './dto';
 
 /**

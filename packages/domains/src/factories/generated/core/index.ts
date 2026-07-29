@@ -52,8 +52,8 @@ export * from './TenantFrontendConfigFactory';
 export * from './TenantIdentityProviderFactory';
 export * from './TenantIdentityProviderDomainFactory';
 export * from './TenantStorageConfigFactory';
+export * from './TenantSttConfigFactory';
 export * from './TenantTtsConfigFactory';
-export * from './TenantTtsProviderCredentialFactory';
 export * from './TenantFactory';
 export * from './TenantUsageMeterFactory';
 export * from './TranscriptionJobFactory';
@@ -68,4 +68,3 @@ export * from './UserVoiceProfileFactory';
 export * from './WebhookFactory';
 export * from './WebhookRunHistoryFactory';
 export * from './DepartmentAgentFactory';
-

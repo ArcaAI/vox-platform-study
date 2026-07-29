@@ -18,10 +18,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma } from '@arcaai/database';
-import {
-  createPoolerAdminPg,
-  createPooledPrisma,
-} from '../_helpers/clients.ts';
+import { createPoolerAdminPg, createPooledPrisma } from '../_helpers/clients.ts';
 
 const prisma = createPooledPrisma();
 const admin = createPoolerAdminPg();
@@ -66,9 +63,7 @@ describe('PgBouncer txn-mode — prepared statements (Task 1.10)', () => {
       Array.from({ length: N }, (_, i) => {
         // Use a parameterised Prisma.sql template; the adapter will register
         // this as a named prepared statement.
-        return prisma.$queryRaw<{ n: number }[]>(
-          Prisma.sql`SELECT ${i}::int AS n`,
-        );
+        return prisma.$queryRaw<{ n: number }[]>(Prisma.sql`SELECT ${i}::int AS n`);
       }),
     );
     const failures = results.filter((r) => r.status === 'rejected');

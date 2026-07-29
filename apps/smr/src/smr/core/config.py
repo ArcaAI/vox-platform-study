@@ -12,6 +12,16 @@ bootstrap fallbacks — their runtime values come from the control plane via
 ``core/effective_config.py`` and are applied by ``services/runtime_limits.py``.
 The selection contract above is UNCHANGED: effective-config carries capacity and
 timeouts only, never a provider or model choice.
+
+TASK-579: the five CLOUD sub-configs (``AzureOpenAIConfig``, ``BedrockConfig``,
+``OpenAIConfig``, ``AnthropicConfig``, ``VertexConfig``) carry no compiled-in
+vendor ``default_model`` — the field defaults to ``""`` and is retained ONLY
+as informational metadata for the ``/providers`` listing. Provider/model
+SELECTION is ``failMode=closed``: a cloud generate request that resolves no
+model raises ``ModelNotSelectedError`` (``providers/base.py`` ``require_model``)
+instead of silently substituting a vendor model. Local/built-in engines
+(``OllamaConfig``, ``OpenAICompatConfig``, ``VllmConfig``, ``LlamaCppConfig``)
+are unaffected — their model default is acceptable built-in topology.
 """
 
 from __future__ import annotations
@@ -58,7 +68,12 @@ class AzureOpenAIConfig(BaseSettings):
     endpoint: str = ""
     api_version: str = "2024-12-01-preview"
     deployment_name: str = ""
-    default_model: str = "gpt-5-mini"
+    # TASK-579: no compiled-in vendor model — provider/model SELECTION is
+    # failMode=closed (09-infrastructure-devops.md §Configuration Tiers).
+    # Informational only (providers listing); never substituted into a
+    # generation request — a missing model raises (see `providers/base.py`
+    # `require_model`).
+    default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
@@ -77,7 +92,8 @@ class BedrockConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SMR_BEDROCK_")
 
     region: str = "us-east-1"
-    default_model: str = "anthropic.claude-3-5-haiku-20241022-v1:0"
+    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    default_model: str = ""
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 120
     max_concurrent: int = 10
@@ -148,6 +164,87 @@ class LlamaCppConfig(BaseSettings):
     # Bootstrap fallbacks; runtime values come from the control plane.
     timeout_s: int = 300
     max_concurrent: int = 4
+
+
+class OpenAIConfig(BaseSettings):
+    """OpenAI (api.openai.com) provider configuration — BYO/tenant-first.
+
+    The OpenAI wire is identical to ``OpenAICompatConfig``'s, but this is the
+    governed first-class ``openai`` provider (a tenant BYO key arrives per
+    request as a ``ProviderOverride``). The env values below are the PLATFORM
+    fallback used when no tenant override is present (and the fail-open target
+    when an override client cannot be built). An empty ``api_key`` simply means
+    no platform fallback is configured — the provider is then usable only with a
+    tenant override.
+    """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="SMR_OPENAI_")
+
+    api_key: SecretStr = SecretStr("")
+    base_url: str = "https://api.openai.com/v1"
+    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    default_model: str = ""
+    organization: str | None = None
+    # Bootstrap fallbacks; runtime values come from the control plane.
+    timeout_s: int = 120
+    max_concurrent: int = 10
+    tpm_limit: int = 0
+    rpm_limit: int = 0
+
+
+class AnthropicConfig(BaseSettings):
+    """Anthropic (Claude Messages API) provider configuration — BYO/tenant-first.
+
+    ``base_url`` empty ⇒ the SDK default (``https://api.anthropic.com``). Same
+    fallback semantics as ``OpenAIConfig``: env is the platform fallback / the
+    fail-open target; a tenant BYO key arrives per request as a
+    ``ProviderOverride``.
+    """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="SMR_ANTHROPIC_")
+
+    api_key: SecretStr = SecretStr("")
+    base_url: str = ""
+    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    default_model: str = ""
+    # Bootstrap fallbacks; runtime values come from the control plane.
+    timeout_s: int = 120
+    max_concurrent: int = 10
+    tpm_limit: int = 0
+    rpm_limit: int = 0
+
+
+class VertexConfig(BaseSettings):
+    """Google Vertex AI (Gemini) provider configuration — BYO/tenant-first.
+
+    A Vertex client is bound to a ``(project, location)`` pair and authenticated
+    with Application Default Credentials by default. A tenant BYO credential
+    instead carries a service-account JSON (``ProviderOverride.api_key``) plus
+    its ``project``/``location``. The env values below are the platform fallback
+    (ADC-authenticated) used when no tenant override is present; an empty
+    ``project`` means no platform fallback is configured.
+    """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="SMR_VERTEX_")
+
+    project: str = ""
+    location: str = "us-central1"
+    # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
+    default_model: str = ""
+    # Bootstrap fallbacks; runtime values come from the control plane.
+    timeout_s: int = 120
+    max_concurrent: int = 10
+    tpm_limit: int = 0
+    rpm_limit: int = 0
 
 
 class ExternalGuardrailConfig(BaseSettings):
@@ -248,7 +345,9 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", validation_alias=AliasChoices("HOST", "V2_HOST"))
     port: int = Field(default=8862, validation_alias=AliasChoices("PORT", "V2_PORT"))
     debug: bool = Field(default=False, validation_alias=AliasChoices("DEBUG", "V2_DEBUG"))
-    log_level: str = Field(default="info", validation_alias=AliasChoices("LOG_LEVEL", "V2_LOG_LEVEL"))
+    log_level: str = Field(
+        default="info", validation_alias=AliasChoices("LOG_LEVEL", "V2_LOG_LEVEL")
+    )
     cors_origins: list[str] = Field(
         default_factory=list, validation_alias=AliasChoices("CORS_ORIGINS", "V2_CORS_ORIGINS")
     )
@@ -272,7 +371,8 @@ class Settings(BaseSettings):
 
     # Connection pooling
     httpx_max_connections: int = Field(
-        default=200, validation_alias=AliasChoices("HTTPX_MAX_CONNECTIONS", "V2_HTTPX_MAX_CONNECTIONS")
+        default=200,
+        validation_alias=AliasChoices("HTTPX_MAX_CONNECTIONS", "V2_HTTPX_MAX_CONNECTIONS"),
     )
     httpx_max_keepalive: int = Field(
         default=100, validation_alias=AliasChoices("HTTPX_MAX_KEEPALIVE", "V2_HTTPX_MAX_KEEPALIVE")
@@ -313,6 +413,9 @@ class Settings(BaseSettings):
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     azure: AzureOpenAIConfig = Field(default_factory=AzureOpenAIConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
+    openai: OpenAIConfig = Field(default_factory=OpenAIConfig)
+    anthropic: AnthropicConfig = Field(default_factory=AnthropicConfig)
+    vertex: VertexConfig = Field(default_factory=VertexConfig)
     openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
     vllm: VllmConfig = Field(default_factory=VllmConfig)
     llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)

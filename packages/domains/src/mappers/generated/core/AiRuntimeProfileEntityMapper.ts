@@ -16,45 +16,27 @@ function stripNonWritableFields<T extends object>(model: T, fields: string[]): T
   return model;
 }
 
-export class AiRuntimeProfileEntityMapper extends BaseMapper<
-  Entities.AiRuntimeProfileEntity,
-  Models.AiRuntimeProfile
-> {
+export class AiRuntimeProfileEntityMapper extends BaseMapper<Entities.AiRuntimeProfileEntity, Models.AiRuntimeProfile> {
   constructor() {
     super();
   }
 
   public toPersistence(entity: Entities.AiRuntimeProfileEntity): Models.AiRuntimeProfile {
-    const result = AutoClassMapper(
-      entity,
-      Models.AiRuntimeProfile,
-      AiRuntimeProfileEntityMapperHandlers.$toPersistence,
-    );
+    const result = AutoClassMapper(entity, Models.AiRuntimeProfile, AiRuntimeProfileEntityMapperHandlers.$toPersistence);
     return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
   public toPersistenceChanges(entity: Entities.AiRuntimeProfileEntity): Partial<Models.AiRuntimeProfile> {
-    const result = AutoEntityChangeMapper(
-      entity,
-      Models.AiRuntimeProfile,
-      AiRuntimeProfileEntityMapperHandlers.$toPersistence,
-    );
+    const result = AutoEntityChangeMapper(entity, Models.AiRuntimeProfile, AiRuntimeProfileEntityMapperHandlers.$toPersistence);
     return stripNonWritableFields(result, FIELDS_NOT_WRITABLE);
   }
 
   public toDomainEntity(dataModel: Models.AiRuntimeProfile): Entities.AiRuntimeProfileEntity {
-    return AutoClassMapper(
-      dataModel,
-      Entities.AiRuntimeProfileEntity,
-      AiRuntimeProfileEntityMapperHandlers.$toDomain,
-    );
+    return AutoClassMapper(dataModel, Entities.AiRuntimeProfileEntity, AiRuntimeProfileEntityMapperHandlers.$toDomain);
   }
 }
 
-export const AiRuntimeProfileEntityMapperHandlers = createMapperHandlers<
-  Entities.AiRuntimeProfileEntity,
-  Models.AiRuntimeProfile
->({
+export const AiRuntimeProfileEntityMapperHandlers = createMapperHandlers<Entities.AiRuntimeProfileEntity, Models.AiRuntimeProfile>({
   $toPersistence: {},
   $toDomain: {},
 });

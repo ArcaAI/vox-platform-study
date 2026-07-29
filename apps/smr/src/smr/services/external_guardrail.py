@@ -93,7 +93,9 @@ class ExternalGuardrailClient:
                     "allowed": is_medical if self.settings.require_medical else True,
                     "is_medical": is_medical,
                     "confidence": float(payload.get("confidence", 0.0)),
-                    "reason": payload.get("reasoning") or payload.get("error") or "medical_validation_completed",
+                    "reason": payload.get("reasoning")
+                    or payload.get("error")
+                    or "medical_validation_completed",
                     "raw": payload,
                 }
             except Exception as exc:

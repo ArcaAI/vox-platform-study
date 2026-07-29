@@ -54,11 +54,17 @@ def test_family_history_marks_family():
 
 
 def test_conditional_marks_hypothetical():
-    assert _classify("Return if symptoms worsen or SOB develops.", "SOB") == AssertionStatus.HYPOTHETICAL
+    assert (
+        _classify("Return if symptoms worsen or SOB develops.", "SOB")
+        == AssertionStatus.HYPOTHETICAL
+    )
 
 
 def test_rule_out_marks_hypothetical():
-    assert _classify("Plan: rule out pulmonary embolism.", "pulmonary embolism") == AssertionStatus.HYPOTHETICAL
+    assert (
+        _classify("Plan: rule out pulmonary embolism.", "pulmonary embolism")
+        == AssertionStatus.HYPOTHETICAL
+    )
 
 
 def test_history_of_marks_historical():
@@ -66,7 +72,10 @@ def test_history_of_marks_historical():
 
 
 def test_plain_mention_is_present():
-    assert _classify("Patient has chest pain radiating to the arm.", "chest pain") == AssertionStatus.PRESENT
+    assert (
+        _classify("Patient has chest pain radiating to the arm.", "chest pain")
+        == AssertionStatus.PRESENT
+    )
 
 
 def test_default_present_field_on_entity():

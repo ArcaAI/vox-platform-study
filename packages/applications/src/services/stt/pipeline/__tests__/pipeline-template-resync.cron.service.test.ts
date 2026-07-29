@@ -20,9 +20,7 @@ const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const createMockAppSettingsService = (overrides: Record<string, unknown> = {}) => {
   const settings: Record<string, unknown> = { ...overrides };
   return {
-    getValueWithDefault: vi.fn(<T>(key: string, defaultValue: T): T =>
-      key in settings ? (settings[key] as T) : defaultValue,
-    ),
+    getValueWithDefault: vi.fn(<T>(key: string, defaultValue: T): T => (key in settings ? (settings[key] as T) : defaultValue)),
     getValueFromCache: vi.fn((key: string) => settings[key] ?? null),
   };
 };
@@ -30,8 +28,12 @@ const createMockAppSettingsService = (overrides: Record<string, unknown> = {}) =
 const createMockSchedulerRegistry = () => {
   const registeredJobs = new Map<string, { stop: ReturnType<typeof vi.fn> }>();
   return {
-    addCronJob: vi.fn((name: string, job: any) => { registeredJobs.set(name, job); }),
-    deleteCronJob: vi.fn((name: string) => { registeredJobs.delete(name); }),
+    addCronJob: vi.fn((name: string, job: any) => {
+      registeredJobs.set(name, job);
+    }),
+    deleteCronJob: vi.fn((name: string) => {
+      registeredJobs.delete(name);
+    }),
     getCronJob: vi.fn((name: string) => {
       if (!registeredJobs.has(name)) throw new Error(`No job named "${name}"`);
       return registeredJobs.get(name);
@@ -42,7 +44,10 @@ const createMockSchedulerRegistry = () => {
 
 vi.mock('cron', () => ({
   CronJob: class {
-    constructor(public cronTime: string, public onTick: () => void) {}
+    constructor(
+      public cronTime: string,
+      public onTick: () => void,
+    ) {}
     start = vi.fn();
     stop = vi.fn();
   },
@@ -61,13 +66,7 @@ const build = (
   scheduler: ReturnType<typeof createMockSchedulerRegistry>,
   resync: ReturnType<typeof createMockResyncService>,
   tenants: ReturnType<typeof createMockTenantRepository>,
-) =>
-  new PipelineTemplateResyncCronService(
-    appSettings as never,
-    scheduler as never,
-    resync as never,
-    tenants as never,
-  );
+) => new PipelineTemplateResyncCronService(appSettings as never, scheduler as never, resync as never, tenants as never);
 
 describe('PipelineTemplateResyncCronService', () => {
   let appSettings: ReturnType<typeof createMockAppSettingsService>;
@@ -136,11 +135,7 @@ describe('PipelineTemplateResyncCronService', () => {
 
   it('resyncs every non-SYSTEM tenant on a tick', async () => {
     appSettings = createMockAppSettingsService({ 'pipeline.templateResync.enabled': true });
-    tenants = createMockTenantRepository([
-      { id: SYSTEM_TENANT_ID },
-      { id: 'tenant-a' },
-      { id: 'tenant-b' },
-    ]);
+    tenants = createMockTenantRepository([{ id: SYSTEM_TENANT_ID }, { id: 'tenant-a' }, { id: 'tenant-b' }]);
     const service = build(appSettings, scheduler, resync, tenants);
 
     await service.handleScheduledResync();
@@ -154,9 +149,7 @@ describe('PipelineTemplateResyncCronService', () => {
   it('isolates a per-tenant failure so the sweep continues', async () => {
     appSettings = createMockAppSettingsService({ 'pipeline.templateResync.enabled': true });
     const service = build(appSettings, scheduler, resync, tenants);
-    resync.resyncTenant
-      .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce({ added: 1, fastForwarded: 0, skipped: 0 });
+    resync.resyncTenant.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({ added: 1, fastForwarded: 0, skipped: 0 });
 
     await expect(service.handleScheduledResync()).resolves.toBeUndefined();
     expect(resync.resyncTenant).toHaveBeenCalledTimes(2);

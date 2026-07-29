@@ -11,7 +11,7 @@ database-owned `_version` OCC token — see below). Public surface lives at
   historical version to `currentVersionNumber`.
 
 > **Two "version" concepts.** `PromptTemplate.currentVersionNumber` is a
-> *domain* notion: which historical revision is currently published. The
+> _domain_ notion: which historical revision is currently published. The
 > database-owned `_version` exposed on the response as `version: number` is
 > the OCC token. The two are independent and update on different events.
 

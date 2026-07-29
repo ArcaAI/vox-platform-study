@@ -140,7 +140,9 @@ async def test_ground_degrades_to_unverified_when_model_unavailable() -> None:
     """enabled=True but the NLI model is not staged → every segment ``unverified``."""
     app = _app(enabled=True, seed_stub_scorer=False)  # default factory raises
 
-    resp = await _post(app, {"summary": f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", "transcript": TRANSCRIPT})
+    resp = await _post(
+        app, {"summary": f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", "transcript": TRANSCRIPT}
+    )
 
     assert resp.status_code == 200
     body = resp.json()
@@ -169,7 +171,9 @@ async def test_ground_never_marks_grounded_when_verifier_raises() -> None:
     app = _app(enabled=True)
     app.state.groundedness_verifier = ExplodingVerifier()
 
-    resp = await _post(app, {"summary": f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", "transcript": TRANSCRIPT})
+    resp = await _post(
+        app, {"summary": f"{SUPPORTED_CLAIM} {HALLUCINATED_CLAIM}", "transcript": TRANSCRIPT}
+    )
 
     assert resp.status_code == 200
     body = resp.json()

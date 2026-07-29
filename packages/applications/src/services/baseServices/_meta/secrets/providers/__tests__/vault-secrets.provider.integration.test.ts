@@ -26,9 +26,7 @@ function vaultExec(args: string): string {
 }
 
 function mintWrappedSecretId(): string {
-  const wrapJson = vaultExec(
-    'write -wrap-ttl=60s -f -format=json auth/approle/role/hope-app/secret-id',
-  );
+  const wrapJson = vaultExec('write -wrap-ttl=60s -f -format=json auth/approle/role/hope-app/secret-id');
   const parsed = JSON.parse(wrapJson) as { wrap_info?: { token?: string } };
   const token = parsed.wrap_info?.token ?? '';
   if (!token) {
@@ -41,9 +39,7 @@ describe.skipIf(!enabled)('VaultSecretsProvider (integration)', () => {
   let roleId: string;
 
   beforeAll(() => {
-    roleId = vaultExec(
-      'read -field=role_id auth/approle/role/hope-app/role-id',
-    );
+    roleId = vaultExec('read -field=role_id auth/approle/role/hope-app/role-id');
   });
 
   it('boots, AppRole-logs in, and reads a seeded kv-v2 secret', async () => {

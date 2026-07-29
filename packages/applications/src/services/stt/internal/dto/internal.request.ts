@@ -214,7 +214,8 @@ export class CreateAudioRecordRequest {
   contextItemId?: string;
 
   @ApiPropertyOptional({
-    description: 'Consultation ID to attach the recording to (streaming path). Resolves/creates the AUDIO_RECORDING container. Provide this OR contextItemId.',
+    description:
+      'Consultation ID to attach the recording to (streaming path). Resolves/creates the AUDIO_RECORDING container. Provide this OR contextItemId.',
     example: '01234567-89ab-cdef-0123-456789abcdef',
   })
   @IsString()

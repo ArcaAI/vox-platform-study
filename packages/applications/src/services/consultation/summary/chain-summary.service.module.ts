@@ -12,7 +12,15 @@ import { ConfigResolverModule } from '../../config-resolver';
 @Module({
   // HarnessPolicyServiceModule supplies the SMR-selection resolver.
   // ConfigResolverModule supplies the preferred-prompt resolver.
-  imports: [CommonServiceModule, CoreDatabaseModule, ConfigModule, HttpModule, PromptResolutionServiceModule, HarnessPolicyServiceModule, ConfigResolverModule],
+  imports: [
+    CommonServiceModule,
+    CoreDatabaseModule,
+    ConfigModule,
+    HttpModule,
+    PromptResolutionServiceModule,
+    HarnessPolicyServiceModule,
+    ConfigResolverModule,
+  ],
   providers: [PromptAssemblyService, ChainSummaryService],
   exports: [ChainSummaryService],
 })

@@ -5,7 +5,6 @@
 
 // Browser API types (available in browser environment)
 
-
 /**
  * Voice profile stored in database
  */
@@ -333,10 +332,9 @@ export class VoiceRecognitionError extends Error {
   constructor(
     public code: VoiceRecognitionErrorCode,
     message: string,
-    public details?: unknown
+    public details?: unknown,
   ) {
     super(message);
     this.name = 'VoiceRecognitionError';
   }
 }
-

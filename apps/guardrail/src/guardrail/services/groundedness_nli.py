@@ -166,7 +166,9 @@ class GroundednessNliVerifier:
 
         def degrade(reason: str) -> GroundednessResult:
             return GroundednessResult(
-                segments=[SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans],
+                segments=[
+                    SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans
+                ],
                 checked=False,
                 reason=reason,
                 model_id=self._config.model_id,
@@ -199,7 +201,9 @@ class GroundednessNliVerifier:
         scores: list[float] = []
         try:
             for batch in _chunked(capped, self._config.batch_size):
-                batch_scores = list(scorer.score_pairs([(transcript, text) for text, _, _ in batch]))
+                batch_scores = list(
+                    scorer.score_pairs([(transcript, text) for text, _, _ in batch])
+                )
                 if len(batch_scores) != len(batch):
                     raise ValueError("NLI scorer returned a mismatched score count")
                 scores.extend(batch_scores)
@@ -227,7 +231,8 @@ class GroundednessNliVerifier:
         ]
         # Segments beyond the per-request cap were never scored — honestly `unverified`.
         segments.extend(
-            SegmentVerdict(text, UNVERIFIED, start, end) for text, start, end in spans[len(capped):]
+            SegmentVerdict(text, UNVERIFIED, start, end)
+            for text, start, end in spans[len(capped) :]
         )
 
         elapsed_s = time.monotonic() - started

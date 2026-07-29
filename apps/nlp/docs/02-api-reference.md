@@ -35,11 +35,13 @@ curl -H "Authorization: Bearer <token>" \
 Get basic service information.
 
 **Request:**
+
 ```bash
 curl http://localhost:8864/
 ```
 
 **Response:**
+
 ```json
 {
   "service": "Medical Entity Recognition & NLP",
@@ -52,11 +54,13 @@ curl http://localhost:8864/
 Check service health and model status.
 
 **Request:**
+
 ```bash
 curl http://localhost:8864/api/v1/health
 ```
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
@@ -73,6 +77,7 @@ curl http://localhost:8864/api/v1/health
 ```
 
 **Status Codes:**
+
 - `200 OK`: Service is healthy
 - `503 Service Unavailable`: Service is unhealthy or models not loaded
 
@@ -81,11 +86,13 @@ curl http://localhost:8864/api/v1/health
 Get Prometheus metrics for monitoring.
 
 **Request:**
+
 ```bash
 curl http://localhost:8864/metrics
 ```
 
 **Response:**
+
 ```
 # HELP nlp_requests_total Total number of requests
 # TYPE nlp_requests_total counter
@@ -102,6 +109,7 @@ Classify text into emotion categories.
 **Model:** `michellejieli/emotion_text_classifier`
 
 **Supported Emotions:**
+
 - anger
 - fear
 - joy
@@ -115,6 +123,7 @@ Classify text into emotion categories.
 - confusion
 
 **Request:**
+
 ```json
 {
   "text": "The patient is very happy with the treatment results",
@@ -123,12 +132,14 @@ Classify text into emotion categories.
 ```
 
 **Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| text | string | Yes | - | Input text to classify |
-| language | string | No | "en" | Language code (en, ml) |
+
+| Parameter | Type   | Required | Default | Description            |
+| --------- | ------ | -------- | ------- | ---------------------- |
+| text      | string | Yes      | -       | Input text to classify |
+| language  | string | No       | "en"    | Language code (en, ml) |
 
 **Response:**
+
 ```json
 {
   "predicted_label": "joy",
@@ -144,14 +155,16 @@ Classify text into emotion categories.
 ```
 
 **Response Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| predicted_label | string | Top predicted emotion category |
-| confidence | float | Confidence score (0.0-1.0) |
-| probabilities | object | Probability distribution across all classes |
-| model_version | string | Model version used for classification |
+
+| Field           | Type   | Description                                 |
+| --------------- | ------ | ------------------------------------------- |
+| predicted_label | string | Top predicted emotion category              |
+| confidence      | float  | Confidence score (0.0-1.0)                  |
+| probabilities   | object | Probability distribution across all classes |
+| model_version   | string | Model version used for classification       |
 
 **Example with curl:**
+
 ```bash
 curl -X POST http://localhost:8864/api/v1/classify/text \
   -H "Content-Type: application/json" \
@@ -162,6 +175,7 @@ curl -X POST http://localhost:8864/api/v1/classify/text \
 ```
 
 **Example with Python:**
+
 ```python
 import requests
 
@@ -179,6 +193,7 @@ print(f"Confidence: {result['confidence']:.2%}")
 ```
 
 **Status Codes:**
+
 - `200 OK`: Classification successful
 - `400 Bad Request`: Invalid input
 - `503 Service Unavailable`: Model not loaded
@@ -193,6 +208,7 @@ Extract medical entities from text using Named Entity Recognition.
 **Model:** `blaze999/Medical-NER`
 
 **Supported Entity Types:**
+
 - DISEASE
 - SYMPTOM
 - TREATMENT
@@ -203,6 +219,7 @@ Extract medical entities from text using Named Entity Recognition.
 - DOSAGE
 
 **Request:**
+
 ```json
 {
   "text": "Patient has diabetes and hypertension with chest pain",
@@ -212,13 +229,15 @@ Extract medical entities from text using Named Entity Recognition.
 ```
 
 **Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| text | string | Yes | - | Input text for entity extraction |
-| aggregation_strategy | string | No | "simple" | Entity aggregation strategy (simple, first, max, average) |
-| language | string | No | "en" | Language code (en, ml) |
+
+| Parameter            | Type   | Required | Default  | Description                                               |
+| -------------------- | ------ | -------- | -------- | --------------------------------------------------------- |
+| text                 | string | Yes      | -        | Input text for entity extraction                          |
+| aggregation_strategy | string | No       | "simple" | Entity aggregation strategy (simple, first, max, average) |
+| language             | string | No       | "en"     | Language code (en, ml)                                    |
 
 **Response:**
+
 ```json
 {
   "entities": [
@@ -264,20 +283,22 @@ Extract medical entities from text using Named Entity Recognition.
 ```
 
 **Response Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| entities | array | List of extracted entities |
-| entities[].id | string | Unique entity identifier (UUID) |
-| entities[].text | string | Original entity text |
-| entities[].normalized_text | string | Normalized entity text (lowercase, trimmed) |
-| entities[].entity_type | string | Entity type classification |
-| entities[].confidence | float | Confidence score (0.0-1.0) |
-| entities[].position | object | Entity position in text |
-| entities[].position.start | integer | Start character index |
-| entities[].position.end | integer | End character index |
-| model_version | string | Model version used |
+
+| Field                      | Type    | Description                                 |
+| -------------------------- | ------- | ------------------------------------------- |
+| entities                   | array   | List of extracted entities                  |
+| entities[].id              | string  | Unique entity identifier (UUID)             |
+| entities[].text            | string  | Original entity text                        |
+| entities[].normalized_text | string  | Normalized entity text (lowercase, trimmed) |
+| entities[].entity_type     | string  | Entity type classification                  |
+| entities[].confidence      | float   | Confidence score (0.0-1.0)                  |
+| entities[].position        | object  | Entity position in text                     |
+| entities[].position.start  | integer | Start character index                       |
+| entities[].position.end    | integer | End character index                         |
+| model_version              | string  | Model version used                          |
 
 **Example with curl:**
+
 ```bash
 curl -X POST http://localhost:8864/api/v1/classify/tokens \
   -H "Content-Type: application/json" \
@@ -289,6 +310,7 @@ curl -X POST http://localhost:8864/api/v1/classify/tokens \
 ```
 
 **Example with Python:**
+
 ```python
 import requests
 
@@ -307,6 +329,7 @@ for entity in result['entities']:
 ```
 
 **Status Codes:**
+
 - `200 OK`: Entity extraction successful
 - `400 Bad Request`: Invalid input
 - `503 Service Unavailable`: Model not loaded
@@ -321,6 +344,7 @@ Analyze symptoms and suggest possible medical conditions.
 **Model:** `shanover/symps_disease_bert_v3_c41`
 
 **Supported Conditions:** 41 disease classes including common conditions like:
+
 - Pneumonia
 - Diabetes
 - Hypertension
@@ -330,6 +354,7 @@ Analyze symptoms and suggest possible medical conditions.
 - And more...
 
 **Request:**
+
 ```json
 {
   "text": "Patient complains of fever, cough, and difficulty breathing for 3 days",
@@ -339,13 +364,15 @@ Analyze symptoms and suggest possible medical conditions.
 ```
 
 **Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| text | string | Yes | - | Patient conversation or symptom description |
-| min_confidence | float | No | 0.1 | Minimum confidence threshold (0.0-1.0) |
-| language | string | No | "en" | Language code (en, ml) |
+
+| Parameter      | Type   | Required | Default | Description                                 |
+| -------------- | ------ | -------- | ------- | ------------------------------------------- |
+| text           | string | Yes      | -       | Patient conversation or symptom description |
+| min_confidence | float  | No       | 0.1     | Minimum confidence threshold (0.0-1.0)      |
+| language       | string | No       | "en"    | Language code (en, ml)                      |
 
 **Response:**
+
 ```json
 {
   "suggestions": [
@@ -366,25 +393,23 @@ Analyze symptoms and suggest possible medical conditions.
       "confidence": 0.45
     }
   ],
-  "symptoms_analyzed": [
-    "fever",
-    "cough",
-    "difficulty breathing"
-  ],
+  "symptoms_analyzed": ["fever", "cough", "difficulty breathing"],
   "model_version": "1.0.0"
 }
 ```
 
 **Response Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| suggestions | array | List of disease suggestions ranked by confidence |
-| suggestions[].disease | string | Disease/condition name |
-| suggestions[].confidence | float | Confidence score (0.0-1.0) |
-| symptoms_analyzed | array | List of symptoms identified in the text |
-| model_version | string | Model version used |
+
+| Field                    | Type   | Description                                      |
+| ------------------------ | ------ | ------------------------------------------------ |
+| suggestions              | array  | List of disease suggestions ranked by confidence |
+| suggestions[].disease    | string | Disease/condition name                           |
+| suggestions[].confidence | float  | Confidence score (0.0-1.0)                       |
+| symptoms_analyzed        | array  | List of symptoms identified in the text          |
+| model_version            | string | Model version used                               |
 
 **Example with curl:**
+
 ```bash
 curl -X POST http://localhost:8864/api/v1/diagnosis/suggest \
   -H "Content-Type: application/json" \
@@ -396,6 +421,7 @@ curl -X POST http://localhost:8864/api/v1/diagnosis/suggest \
 ```
 
 **Example with Python:**
+
 ```python
 import requests
 
@@ -415,6 +441,7 @@ for suggestion in result['suggestions']:
 ```
 
 **Status Codes:**
+
 - `200 OK`: Diagnosis suggestion successful
 - `400 Bad Request`: Invalid input
 - `503 Service Unavailable`: Model not loaded
@@ -432,10 +459,12 @@ Correct spelling errors and standardize medical terminology.
 **Engine:** SymSpellPy with medical dictionaries
 
 **Supported Languages:**
+
 - English (en)
 - Malayalam (ml)
 
 **Request:**
+
 ```json
 {
   "type": "spelling",
@@ -447,37 +476,37 @@ Correct spelling errors and standardize medical terminology.
 ```
 
 **Parameters:**
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| type | string | No | "spelling" | Correction type (spelling, grammar, all) |
-| text | string | Yes | - | Text to correct |
-| language | string | No | "en" | Language code (en, ml) |
-| min_confidence | float | No | 0.7 | Minimum confidence for corrections (0.0-1.0) |
-| include_alternatives | boolean | No | true | Include alternative suggestions |
+
+| Parameter            | Type    | Required | Default    | Description                                  |
+| -------------------- | ------- | -------- | ---------- | -------------------------------------------- |
+| type                 | string  | No       | "spelling" | Correction type (spelling, grammar, all)     |
+| text                 | string  | Yes      | -          | Text to correct                              |
+| language             | string  | No       | "en"       | Language code (en, ml)                       |
+| min_confidence       | float   | No       | 0.7        | Minimum confidence for corrections (0.0-1.0) |
+| include_alternatives | boolean | No       | true       | Include alternative suggestions              |
 
 **Response:**
+
 ```json
 {
   "original_text": "paracetmol for fver and headach",
   "corrected_text": "paracetamol for fever and headache",
   "language": "en",
-  "alternatives": [
-    "paracetmol -> paracetamol",
-    "fver -> fever",
-    "headach -> headache"
-  ]
+  "alternatives": ["paracetmol -> paracetamol", "fver -> fever", "headach -> headache"]
 }
 ```
 
 **Response Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| original_text | string | Original input text |
-| corrected_text | string | Corrected text |
-| language | string | Language of the correction |
-| alternatives | array | List of corrections made |
+
+| Field          | Type   | Description                |
+| -------------- | ------ | -------------------------- |
+| original_text  | string | Original input text        |
+| corrected_text | string | Corrected text             |
+| language       | string | Language of the correction |
+| alternatives   | array  | List of corrections made   |
 
 **Example with curl:**
+
 ```bash
 curl -X POST http://localhost:8864/api/v1/correct/text \
   -H "Content-Type: application/json" \
@@ -491,6 +520,7 @@ curl -X POST http://localhost:8864/api/v1/correct/text \
 ```
 
 **Example with Python:**
+
 ```python
 import requests
 
@@ -512,6 +542,7 @@ print("Corrections:", result['alternatives'])
 ```
 
 **Status Codes:**
+
 - `200 OK`: Correction successful
 - `400 Bad Request`: Invalid input
 - `500 Internal Server Error`: Correction failed
@@ -525,16 +556,19 @@ print("Corrections:", result['alternatives'])
 Establish a WebSocket connection for real-time text classification streaming.
 
 **Connection URL:**
+
 ```
 ws://localhost:8864/ws/classify/text/{session_id}
 ```
 
 **Path Parameters:**
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| session_id | string | Yes | Unique session identifier |
+
+| Parameter  | Type   | Required | Description               |
+| ---------- | ------ | -------- | ------------------------- |
+| session_id | string | Yes      | Unique session identifier |
 
 **Incoming Message Format:**
+
 ```json
 {
   "text": "Patient is experiencing severe anxiety",
@@ -543,6 +577,7 @@ ws://localhost:8864/ws/classify/text/{session_id}
 ```
 
 **Outgoing Message Format:**
+
 ```json
 {
   "predicted_label": "fear",
@@ -558,35 +593,39 @@ ws://localhost:8864/ws/classify/text/{session_id}
 ```
 
 **Example with JavaScript:**
+
 ```javascript
 const ws = new WebSocket('ws://localhost:8864/ws/classify/text/session-123');
 
 ws.onopen = () => {
-    console.log('WebSocket connected');
+  console.log('WebSocket connected');
 
-    // Send classification request
-    ws.send(JSON.stringify({
-        text: 'Patient is experiencing severe anxiety',
-        language: 'en'
-    }));
+  // Send classification request
+  ws.send(
+    JSON.stringify({
+      text: 'Patient is experiencing severe anxiety',
+      language: 'en',
+    }),
+  );
 };
 
 ws.onmessage = (event) => {
-    const result = JSON.parse(event.data);
-    console.log('Classification:', result.predicted_label);
-    console.log('Confidence:', result.confidence);
+  const result = JSON.parse(event.data);
+  console.log('Classification:', result.predicted_label);
+  console.log('Confidence:', result.confidence);
 };
 
 ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+  console.error('WebSocket error:', error);
 };
 
 ws.onclose = () => {
-    console.log('WebSocket closed');
+  console.log('WebSocket closed');
 };
 ```
 
 **Example with Python (websockets library):**
+
 ```python
 import asyncio
 import websockets
@@ -614,6 +653,7 @@ asyncio.run(classify_stream())
 ```
 
 **Connection Lifecycle:**
+
 1. Client establishes WebSocket connection
 2. Server accepts connection and registers session
 3. Client sends text classification requests (JSON)
@@ -622,6 +662,7 @@ asyncio.run(classify_stream())
 6. Client or server can close connection
 
 **Features:**
+
 - Bidirectional communication
 - Low latency (~50-100ms)
 - Multiple requests per connection
@@ -641,17 +682,18 @@ All error responses follow this format:
 
 ### Common Error Status Codes
 
-| Code | Description | Example |
-|------|-------------|---------|
-| 400 | Bad Request | Invalid input data, validation error |
-| 404 | Not Found | Endpoint not found |
-| 422 | Unprocessable Entity | Pydantic validation error |
-| 500 | Internal Server Error | Unexpected server error |
-| 503 | Service Unavailable | Model not loaded or service unavailable |
+| Code | Description           | Example                                 |
+| ---- | --------------------- | --------------------------------------- |
+| 400  | Bad Request           | Invalid input data, validation error    |
+| 404  | Not Found             | Endpoint not found                      |
+| 422  | Unprocessable Entity  | Pydantic validation error               |
+| 500  | Internal Server Error | Unexpected server error                 |
+| 503  | Service Unavailable   | Model not loaded or service unavailable |
 
 ### Example Error Responses
 
 **400 Bad Request:**
+
 ```json
 {
   "error": "Text field is required",
@@ -660,6 +702,7 @@ All error responses follow this format:
 ```
 
 **422 Validation Error:**
+
 ```json
 {
   "detail": [
@@ -673,6 +716,7 @@ All error responses follow this format:
 ```
 
 **503 Service Unavailable:**
+
 ```json
 {
   "error": "Text classification model not available",
@@ -688,6 +732,7 @@ Rate limiting is handled at the API Gateway level. Default limits:
 - **Per IP**: 1000 requests per minute
 
 Rate limit headers:
+
 ```
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
@@ -747,7 +792,7 @@ const client = new NLPClient({ baseUrl: 'http://localhost:8864' });
 // Text classification
 const result = await client.classifyText({
   text: 'Patient is very happy',
-  language: 'en'
+  language: 'en',
 });
 
 console.log(result.predictedLabel, result.confidence);
@@ -819,8 +864,8 @@ http POST localhost:8864/api/v1/classify/tokens \
 ## Support
 
 For API support:
+
 - Check the [troubleshooting guide](04-development-guide.md#troubleshooting)
 - Review the [FAQ](04-development-guide.md#faq)
 - Open an issue on GitHub
 - Contact the development team
-

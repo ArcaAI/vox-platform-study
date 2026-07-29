@@ -16,11 +16,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ConsultationEventHandler } from '../consultation-event.handler';
 import {
-    ConsultationPipelineEvent,
-    DEFAULT_PIPELINE_CONFIG,
-    type TranscriptionCreatedPayload,
-    type SummaryGeneratedPayload,
-    type NerExtractedPayload,
+  ConsultationPipelineEvent,
+  DEFAULT_PIPELINE_CONFIG,
+  type TranscriptionCreatedPayload,
+  type SummaryGeneratedPayload,
+  type NerExtractedPayload,
 } from '../consultation.events';
 
 // =============================================================================
@@ -28,54 +28,54 @@ import {
 // =============================================================================
 
 const createMockJobService = () => ({
-    createSummaryJob: vi.fn().mockResolvedValue({ jobId: 'summary-job-001', status: 'PENDING' }),
-    createNerJob: vi.fn().mockResolvedValue({ jobId: 'ner-job-001', status: 'PENDING' }),
-    createPreSummaryJob: vi.fn().mockResolvedValue({ jobId: 'presummary-job-001', status: 'PENDING' }),
-    getJobStatus: vi.fn().mockResolvedValue(null),
-    cancelJob: vi.fn().mockResolvedValue(false),
-    subscribeToJobUpdates: vi.fn(),
-    notifyProgress: vi.fn().mockResolvedValue(undefined),
-    notifyComplete: vi.fn().mockResolvedValue(undefined),
-    notifyFailed: vi.fn().mockResolvedValue(undefined),
+  createSummaryJob: vi.fn().mockResolvedValue({ jobId: 'summary-job-001', status: 'PENDING' }),
+  createNerJob: vi.fn().mockResolvedValue({ jobId: 'ner-job-001', status: 'PENDING' }),
+  createPreSummaryJob: vi.fn().mockResolvedValue({ jobId: 'presummary-job-001', status: 'PENDING' }),
+  getJobStatus: vi.fn().mockResolvedValue(null),
+  cancelJob: vi.fn().mockResolvedValue(false),
+  subscribeToJobUpdates: vi.fn(),
+  notifyProgress: vi.fn().mockResolvedValue(undefined),
+  notifyComplete: vi.fn().mockResolvedValue(undefined),
+  notifyFailed: vi.fn().mockResolvedValue(undefined),
 });
 
 const createMockConsultationRepository = () => ({
-    findById: vi.fn().mockResolvedValue({
-        id: 'consultation-001',
-        tenantId: 'tenant-abc',
-        patientId: 'patient-001',
-        metadata: null,
-    }),
+  findById: vi.fn().mockResolvedValue({
+    id: 'consultation-001',
+    tenantId: 'tenant-abc',
+    patientId: 'patient-001',
+    metadata: null,
+  }),
 });
 
 const createMockEventEmitter = () => ({
-    emit: vi.fn(),
+  emit: vi.fn(),
 });
 
 // (Lane G) — outbound harness gate adapter. When the
 // consultation's pipelineConfig.harnessEnabled flag is set, the handler routes
 // to HarnessGatewayService.start instead of the legacy BullMQ summary job.
 const createMockHarnessGatewayService = () => ({
-    start: vi.fn().mockResolvedValue({ workflowId: 'harness-wf-001' }),
-    signalApproval: vi.fn().mockResolvedValue({ ok: true }),
+  start: vi.fn().mockResolvedValue({ workflowId: 'harness-wf-001' }),
+  signalApproval: vi.fn().mockResolvedValue({ ok: true }),
 });
 
 // (Lane G) — the handler loads the triggering transcript's
 // content so it can forward it to the harness workflow (NER + sensors run on it).
 const createMockContextItemRepository = () => ({
-    findById: vi.fn().mockResolvedValue({ id: 'ctx-transcript-001', content: 'Patient reports chest pain.' }),
+  findById: vi.fn().mockResolvedValue({ id: 'ctx-transcript-001', content: 'Patient reports chest pain.' }),
 });
 
 const createMockPromptResolutionService = () => ({
-    resolve: vi.fn().mockImplementation((params: { explicitTemplate?: string }) =>
-        Promise.resolve({
-            template: params.explicitTemplate ?? 'SOAP',
-            promptId: 'prompt_default',
-            contextVariables: {},
-            resolvedFrom: params.explicitTemplate ? 'explicit' : 'default',
-            resolutionTrace: { usedDefaults: ['template', 'promptId', 'contextVariables'] },
-        }),
-    ),
+  resolve: vi.fn().mockImplementation((params: { explicitTemplate?: string }) =>
+    Promise.resolve({
+      template: params.explicitTemplate ?? 'SOAP',
+      promptId: 'prompt_default',
+      contextVariables: {},
+      resolvedFrom: params.explicitTemplate ? 'explicit' : 'default',
+      resolutionTrace: { usedDefaults: ['template', 'promptId', 'contextVariables'] },
+    }),
+  ),
 });
 
 // (Pillar B) — the realtime cascade resolver. Defaults mirror
@@ -83,14 +83,14 @@ const createMockPromptResolutionService = () => ({
 // no-op unless a test overrides it; `resolvePreferredPromptTemplateId` defaults
 // to null (no doctor preference).
 const createMockConfigResolver = () => ({
-    resolvePipelineToggles: vi.fn().mockResolvedValue({
-        autoSummaryEnabled: true,
-        autoNerEnabled: true,
-        harnessEnabled: false,
-        dnaStyleEnabled: false,
-        trace: {},
-    }),
-    resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
+  resolvePipelineToggles: vi.fn().mockResolvedValue({
+    autoSummaryEnabled: true,
+    autoNerEnabled: true,
+    harnessEnabled: false,
+    dnaStyleEnabled: false,
+    trace: {},
+  }),
+  resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
 });
 
 // Mock ClsService. EventEmitter2 async handlers
@@ -99,19 +99,17 @@ const createMockConfigResolver = () => ({
 // This mock runs the cls.run callback inline so existing tests stay
 // synchronous and exposes spies for the new D.9 assertions.
 const createMockClsService = () => {
-    const store = new Map<string, unknown>();
-    return {
-        run: vi.fn((...args: unknown[]) => {
-            const callback = (args.length === 1 ? args[0] : args[1]) as () => unknown;
-            return callback();
-        }),
-        set: vi.fn((key: string, value: unknown) => {
-            store.set(key, value);
-        }),
-        get: vi.fn((key?: string) =>
-            key === undefined ? Object.fromEntries(store) : store.get(key),
-        ),
-    };
+  const store = new Map<string, unknown>();
+  return {
+    run: vi.fn((...args: unknown[]) => {
+      const callback = (args.length === 1 ? args[0] : args[1]) as () => unknown;
+      return callback();
+    }),
+    set: vi.fn((key: string, value: unknown) => {
+      store.set(key, value);
+    }),
+    get: vi.fn((key?: string) => (key === undefined ? Object.fromEntries(store) : store.get(key))),
+  };
 };
 
 // =============================================================================
@@ -119,40 +117,40 @@ const createMockClsService = () => {
 // =============================================================================
 
 const basePayload = {
-    consultationId: 'consultation-001',
-    tenantId: 'tenant-abc',
-    timestamp: new Date().toISOString(),
-    correlationId: 'corr-xyz',
+  consultationId: 'consultation-001',
+  tenantId: 'tenant-abc',
+  timestamp: new Date().toISOString(),
+  correlationId: 'corr-xyz',
 };
 
 const makeTranscriptionPayload = (overrides?: Partial<TranscriptionCreatedPayload>): TranscriptionCreatedPayload => ({
-    ...basePayload,
-    userId: 'doctor-1',
-    contextItemId: 'ctx-transcript-001',
-    jobId: 'stt-job-001',
-    wordCount: 350,
-    transcriptionSource: 'streaming',
-    ...overrides,
+  ...basePayload,
+  userId: 'doctor-1',
+  contextItemId: 'ctx-transcript-001',
+  jobId: 'stt-job-001',
+  wordCount: 350,
+  transcriptionSource: 'streaming',
+  ...overrides,
 });
 
 const makeSummaryPayload = (overrides?: Partial<SummaryGeneratedPayload>): SummaryGeneratedPayload => ({
-    ...basePayload,
-    userId: 'doctor-1',
-    contextItemId: 'ctx-summary-001',
-    jobId: 'summary-job-001',
-    isAutoGenerated: true,
-    ...overrides,
+  ...basePayload,
+  userId: 'doctor-1',
+  contextItemId: 'ctx-summary-001',
+  jobId: 'summary-job-001',
+  isAutoGenerated: true,
+  ...overrides,
 });
 
 const makeNerPayload = (overrides?: Partial<NerExtractedPayload>): NerExtractedPayload => ({
-    ...basePayload,
-    userId: 'doctor-1',
-    contextItemId: 'ctx-summary-001',
-    jobId: 'ner-job-001',
-    entityCount: 12,
-    isAutoGenerated: true,
-    entityCountByClass: { MEDICATION: 4, CONDITION: 3, PROCEDURE: 5 },
-    ...overrides,
+  ...basePayload,
+  userId: 'doctor-1',
+  contextItemId: 'ctx-summary-001',
+  jobId: 'ner-job-001',
+  entityCount: 12,
+  isAutoGenerated: true,
+  entityCountByClass: { MEDICATION: 4, CONDITION: 3, PROCEDURE: 5 },
+  ...overrides,
 });
 
 // =============================================================================
@@ -160,1113 +158,1096 @@ const makeNerPayload = (overrides?: Partial<NerExtractedPayload>): NerExtractedP
 // =============================================================================
 
 describe('ConsultationEventHandler', () => {
-    let handler: ConsultationEventHandler;
-    let mockJobService: ReturnType<typeof createMockJobService>;
-    let mockConsultationRepository: ReturnType<typeof createMockConsultationRepository>;
-    let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
-    let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
-    let mockClsService: ReturnType<typeof createMockClsService>;
-    let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
-    let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
+  let handler: ConsultationEventHandler;
+  let mockJobService: ReturnType<typeof createMockJobService>;
+  let mockConsultationRepository: ReturnType<typeof createMockConsultationRepository>;
+  let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
+  let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
+  let mockClsService: ReturnType<typeof createMockClsService>;
+  let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
+  let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockJobService = createMockJobService();
+    mockConsultationRepository = createMockConsultationRepository();
+    mockPromptResolutionService = createMockPromptResolutionService();
+    mockEventEmitter = createMockEventEmitter();
+    mockClsService = createMockClsService();
+    mockHarnessGateway = createMockHarnessGatewayService();
+    mockContextItemRepository = createMockContextItemRepository();
+
+    handler = new ConsultationEventHandler(
+      mockJobService as any,
+      mockConsultationRepository as any,
+      mockPromptResolutionService as any,
+      mockEventEmitter as any,
+      mockClsService as any,
+      mockHarnessGateway as any,
+      mockContextItemRepository as any,
+    );
+  });
+
+  // =========================================================================
+  // handleTranscriptionCreated
+  // =========================================================================
+
+  describe('handleTranscriptionCreated', () => {
+    it('should create a summary job when autoSummaryEnabled (default config)', async () => {
+      const payload = makeTranscriptionPayload();
+
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
+        'consultation-001',
+        'tenant-abc',
+        'doctor-1',
+        expect.objectContaining({
+          contextItemIds: ['ctx-transcript-001'],
+          options: expect.objectContaining({ autoGenerated: true }),
+        }),
+      );
+    });
+
+    it('should pass dnaStyleId and template from pipeline config', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: true,
+            dnaStyleId: 'style_hematology',
+            summaryTemplate: 'SOAP',
+          },
+        },
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
+        'consultation-001',
+        'tenant-abc',
+        'doctor-1',
+        expect.objectContaining({
+          dnaStyleId: 'style_hematology',
+          template: 'SOAP',
+        }),
+      );
+    });
+
+    it('should NOT create summary job when autoSummaryEnabled is false', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: false,
+            autoNerEnabled: true,
+          },
+        },
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+    });
+
+    it('should use "system" as userId when payload userId is undefined', async () => {
+      const payload = makeTranscriptionPayload({ userId: undefined });
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(expect.any(String), expect.any(String), 'system', expect.any(Object));
+    });
+
+    it('should emit PipelineStepFailed on summary job creation failure', async () => {
+      mockJobService.createSummaryJob.mockRejectedValue(new Error('Queue connection refused'));
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineStepFailed,
+        expect.objectContaining({
+          consultationId: 'consultation-001',
+          failedStep: 'summary',
+          error: 'Queue connection refused',
+          willContinue: false,
+        }),
+      );
+    });
+
+    it('should use default config when consultation not found', async () => {
+      mockConsultationRepository.findById.mockResolvedValue(null);
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      // Default config has autoSummaryEnabled=true
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
+    });
+
+    it('should use default config when consultation has no metadata', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: null,
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
+    });
+
+    it('should use default config when metadata has no pipelineConfig', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: { someOtherField: true },
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
+    });
+  });
+
+  // =========================================================================
+  // handleTranscriptionCreated — Prompt Resolution
+  // =========================================================================
+
+  describe('handleTranscriptionCreated — prompt resolution', () => {
+    it('should call PromptResolutionService.resolve with departmentId from consultation', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        doctorId: 'dr-smith-001',
+        departmentId: 'dept-card-001',
+        parentConsultationId: null,
+        metadata: null,
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentId: 'dept-card-001',
+        }),
+      );
+    });
+
+    it('should pass departmentId when consultation has parentConsultationId', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        doctorId: 'dr-jones-001',
+        departmentId: 'dept-hema-001',
+        parentConsultationId: 'consultation-parent-001',
+        metadata: null,
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentId: 'dept-hema-001',
+        }),
+      );
+    });
+
+    it('should pass pipeline config summaryTemplate as explicit override', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        doctorId: 'dr-smith-001',
+        departmentId: 'dept-card-001',
+        parentConsultationId: null,
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            dnaStyleId: 'style_from_pipeline',
+            summaryTemplate: 'Custom-Pipeline-Template',
+          },
+        },
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          explicitTemplate: 'Custom-Pipeline-Template',
+        }),
+      );
+    });
+
+    it('should pass resolved template to createSummaryJob (dnaStyleId from pipeline config only)', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        doctorId: 'dr-smith-001',
+        departmentId: 'dept-card-001',
+        parentConsultationId: null,
+        metadata: null,
+      });
+
+      mockPromptResolutionService.resolve.mockResolvedValue({
+        template: 'Cardiology-Report',
+        promptId: 'prompt_card_new',
+        contextVariables: { ecgResults: true },
+        resolvedFrom: 'department',
+        resolutionTrace: {
+          departmentTemplate: 'Cardiology-Report',
+          usedDefaults: [],
+        },
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
+        'consultation-001',
+        'tenant-abc',
+        'doctor-1',
+        expect.objectContaining({
+          template: 'Cardiology-Report',
+        }),
+      );
+    });
+
+    it('should include resolution trace in job options for audit', async () => {
+      const mockTrace = {
+        departmentTemplate: 'SOAP',
+        usedDefaults: [],
+      };
+
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        doctorId: 'dr-smith-001',
+        departmentId: 'dept-card-001',
+        parentConsultationId: null,
+        metadata: null,
+      });
+
+      mockPromptResolutionService.resolve.mockResolvedValue({
+        template: 'SOAP',
+        promptId: 'prompt_default',
+        contextVariables: {},
+        resolvedFrom: 'default',
+        resolutionTrace: mockTrace,
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({
+          options: expect.objectContaining({
+            promptResolution: mockTrace,
+          }),
+        }),
+      );
+    });
+
+    it('should handle consultation with null departmentId gracefully', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        doctorId: 'dr-smith-001',
+        departmentId: null,
+        parentConsultationId: null,
+        metadata: null,
+      });
+
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          departmentId: undefined,
+        }),
+      );
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
+    });
+  });
+
+  // =========================================================================
+  // handleSummaryGenerated
+  // =========================================================================
+
+  describe('handleSummaryGenerated', () => {
+    it('should create NER job when autoNerEnabled and isAutoGenerated', async () => {
+      const payload = makeSummaryPayload();
+
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
+      expect(mockJobService.createNerJob).toHaveBeenCalledWith('ctx-summary-001', 'consultation-001', 'tenant-abc', 'doctor-1');
+    });
+
+    it('should NOT create NER job when isAutoGenerated is false', async () => {
+      const payload = makeSummaryPayload({ isAutoGenerated: false });
+
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+    });
+
+    it('should NOT create NER job when autoNerEnabled is false', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: false,
+          },
+        },
+      });
+
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+    });
+
+    // (F-22, Lane G) — when the resolved pipeline config has
+    // harnessEnabled=true, the harness workflow persists its own NamedEntity
+    // rows for the same content, so the legacy BullMQ NER job would duplicate
+    // that work. Skip it with a structured info log naming the reason.
+    it('should NOT create NER job when harnessEnabled is true (harness persists its own NER)', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: true,
+            harnessEnabled: true,
+          },
+        },
+      });
+
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+    });
+
+    it('should still emit PipelineCompleted when NER is skipped due to harnessEnabled', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: true,
+            harnessEnabled: true,
+          },
+        },
+      });
+
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineCompleted,
+        expect.objectContaining({
+          consultationId: 'consultation-001',
+          stepsExecuted: ['transcription', 'summary'],
+        }),
+      );
+    });
+
+    it('should still create NER job when harnessEnabled is false (regression lock)', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: true,
+            harnessEnabled: false,
+          },
+        },
+      });
+
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
+    });
+
+    it('should still create NER job when harnessEnabled is undefined (regression lock)', async () => {
+      // Default metadata (null) resolves via DEFAULT_PIPELINE_CONFIG, which
+      // leaves harnessEnabled undefined — the pre-existing legacy path.
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
+    });
+
+    it('should emit PipelineCompleted when NER disabled and summary auto-generated', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: false,
+          },
+        },
+      });
+
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineCompleted,
+        expect.objectContaining({
+          consultationId: 'consultation-001',
+          stepsExecuted: ['transcription', 'summary'],
+        }),
+      );
+    });
+
+    it('should emit PipelineStepFailed on NER job creation failure', async () => {
+      mockJobService.createNerJob.mockRejectedValue(new Error('NLP service down'));
+
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineStepFailed,
+        expect.objectContaining({
+          consultationId: 'consultation-001',
+          failedStep: 'ner',
+          error: 'NLP service down',
+        }),
+      );
+    });
+
+    it('should emit PipelineCompleted after NER failure when haltOnFailure is false', async () => {
+      mockJobService.createNerJob.mockRejectedValue(new Error('NLP timeout'));
+
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      const emittedEvents = mockEventEmitter.emit.mock.calls.map((c: unknown[]) => c[0]);
+      expect(emittedEvents).toContain(ConsultationPipelineEvent.PipelineStepFailed);
+      expect(emittedEvents).toContain(ConsultationPipelineEvent.PipelineCompleted);
+    });
+
+    it('should NOT emit PipelineCompleted after NER failure when haltOnFailure is true', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: true,
+            haltOnFailure: true,
+          },
+        },
+      });
+
+      mockJobService.createNerJob.mockRejectedValue(new Error('NLP timeout'));
+
+      const payload = makeSummaryPayload();
+      await handler.handleSummaryGenerated(payload);
+
+      const emittedEvents = mockEventEmitter.emit.mock.calls.map((c: unknown[]) => c[0]);
+      expect(emittedEvents).toContain(ConsultationPipelineEvent.PipelineStepFailed);
+      expect(emittedEvents).not.toContain(ConsultationPipelineEvent.PipelineCompleted);
+    });
+
+    it('should use "system" as userId when payload userId is undefined', async () => {
+      const payload = makeSummaryPayload({ userId: undefined });
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(String), 'system');
+    });
+  });
+
+  // =========================================================================
+  // handleNerExtracted
+  // =========================================================================
+
+  describe('handleNerExtracted', () => {
+    it('should emit PipelineCompleted when isAutoGenerated', async () => {
+      const payload = makeNerPayload();
+
+      await handler.handleNerExtracted(payload);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineCompleted,
+        expect.objectContaining({
+          consultationId: 'consultation-001',
+          tenantId: 'tenant-abc',
+          totalEntityCount: 12,
+          stepsExecuted: ['transcription', 'summary', 'ner'],
+        }),
+      );
+    });
+
+    it('should NOT emit PipelineCompleted when isAutoGenerated is false', async () => {
+      const payload = makeNerPayload({ isAutoGenerated: false });
+
+      await handler.handleNerExtracted(payload);
+
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+
+    it('should include correlationId in PipelineCompleted payload', async () => {
+      const payload = makeNerPayload({ correlationId: 'trace-456' });
+
+      await handler.handleNerExtracted(payload);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineCompleted,
+        expect.objectContaining({
+          correlationId: 'trace-456',
+        }),
+      );
+    });
+  });
+
+  // =========================================================================
+  // resolvePipelineConfig
+  // =========================================================================
+
+  describe('resolvePipelineConfig', () => {
+    it('should return default config when consultation not found', async () => {
+      mockConsultationRepository.findById.mockResolvedValue(null);
+
+      const config = await handler.resolvePipelineConfig('missing-id');
+
+      expect(config).toEqual(DEFAULT_PIPELINE_CONFIG);
+    });
+
+    it('should return default config when metadata is null', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'c1',
+        metadata: null,
+      });
+
+      const config = await handler.resolvePipelineConfig('c1');
+
+      expect(config.autoSummaryEnabled).toBe(true);
+      expect(config.autoNerEnabled).toBe(true);
+    });
+
+    it('should merge partial pipelineConfig with defaults', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'c1',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: false,
+            dnaStyleId: 'style_cardiology',
+          },
+        },
+      });
+
+      const config = await handler.resolvePipelineConfig('c1');
+
+      expect(config.autoSummaryEnabled).toBe(true);
+      expect(config.autoNerEnabled).toBe(false);
+      expect(config.dnaStyleId).toBe('style_cardiology');
+      expect(config.haltOnFailure).toBe(false); // from default
+    });
+
+    it('should return default config on repository error', async () => {
+      mockConsultationRepository.findById.mockRejectedValue(new Error('DB down'));
+
+      const config = await handler.resolvePipelineConfig('c1');
+
+      expect(config).toEqual(DEFAULT_PIPELINE_CONFIG);
+    });
+
+    it('should return fully specified config from metadata', async () => {
+      const fullConfig = {
+        autoSummaryEnabled: false,
+        autoNerEnabled: false,
+        dnaStyleId: 'style_custom',
+        summaryTemplate: 'Hematology-New',
+        includeSharedContext: true,
+        haltOnFailure: true,
+      };
+
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'c1',
+        metadata: { pipelineConfig: fullConfig },
+      });
+
+      const config = await handler.resolvePipelineConfig('c1');
+
+      expect(config).toEqual(fullConfig);
+    });
+  });
+
+  // =========================================================================
+  // Full Pipeline Integration (event chain simulation)
+  // =========================================================================
+
+  describe('Full pipeline chain', () => {
+    it('should chain: TranscriptionCreated → createSummaryJob (auto-summary enabled)', async () => {
+      const payload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
+      expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+    });
+
+    it('should chain: SummaryGenerated (auto) → createNerJob', async () => {
+      const payload = makeSummaryPayload({ isAutoGenerated: true });
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
+    });
+
+    it('should chain: NerExtracted (auto) → PipelineCompleted', async () => {
+      const payload = makeNerPayload({ isAutoGenerated: true });
+      await handler.handleNerExtracted(payload);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineCompleted,
+        expect.objectContaining({
+          stepsExecuted: ['transcription', 'summary', 'ner'],
+        }),
+      );
+    });
+
+    it('should stop at summary when autoNerEnabled=false', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: true,
+            autoNerEnabled: false,
+          },
+        },
+      });
+
+      const summaryPayload = makeSummaryPayload({ isAutoGenerated: true });
+      await handler.handleSummaryGenerated(summaryPayload);
+
+      expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineCompleted,
+        expect.objectContaining({
+          stepsExecuted: ['transcription', 'summary'],
+        }),
+      );
+    });
+
+    it('should not trigger any pipeline when both auto flags are false', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: {
+          pipelineConfig: {
+            autoSummaryEnabled: false,
+            autoNerEnabled: false,
+          },
+        },
+      });
+
+      const transcriptionPayload = makeTranscriptionPayload();
+      await handler.handleTranscriptionCreated(transcriptionPayload);
+
+      expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+      expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // CLS rebind + fail-closed guard
+  //
+  // EventEmitter2 async handlers run in their own microtask context that
+  // does NOT inherit the caller's AsyncLocalStorage scope. Without these
+  // guards, the consultationRepository.findById call inside each handler
+  // hits the tenantScope extension's "no CLS = super-admin pass-through"
+  // branch and silently bypasses tenant scoping. Each handler must
+  // explicitly re-establish CLS from the payload.
+  //
+  // Fail-closed posture: log + early return (NOT throw), because
+  // @OnEvent({ async: true }) handlers swallow throws and a throw here
+  // would surface as an unhandled rejection.
+  // =========================================================================
+
+  describe('CLS rebind + fail-closed (follow-up)', () => {
+    it('handleTranscriptionCreated wraps work in cls.run with tenantId + user set', async () => {
+      const setOrder: Array<[string, unknown]> = [];
+      mockClsService.set.mockImplementation((key: string, value: unknown) => {
+        setOrder.push([key, value]);
+      });
+
+      const payload = makeTranscriptionPayload({
+        tenantId: 'tenant-A',
+        userId: 'doctor-A',
+      });
+
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockClsService.run).toHaveBeenCalledTimes(1);
+
+      const keys = setOrder.map(([k]) => k);
+      expect(keys).toContain('tenantId');
+      expect(keys).toContain('user');
+
+      const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+      expect(tenantEntry?.[1]).toBe('tenant-A');
+
+      const userEntry = setOrder.find(([k]) => k === 'user');
+      expect(userEntry?.[1]).toMatchObject({
+        id: 'doctor-A',
+        tenantId: 'tenant-A',
+        roles: [],
+        permissions: [],
+      });
+
+      expect(mockConsultationRepository.findById).toHaveBeenCalled();
+    });
+
+    it('handleSummaryGenerated wraps work in cls.run with tenantId + user set', async () => {
+      const setOrder: Array<[string, unknown]> = [];
+      mockClsService.set.mockImplementation((key: string, value: unknown) => {
+        setOrder.push([key, value]);
+      });
+
+      const payload = makeSummaryPayload({
+        tenantId: 'tenant-B',
+        userId: 'doctor-B',
+      });
+
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockClsService.run).toHaveBeenCalledTimes(1);
+
+      const keys = setOrder.map(([k]) => k);
+      expect(keys).toContain('tenantId');
+      expect(keys).toContain('user');
+
+      const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+      expect(tenantEntry?.[1]).toBe('tenant-B');
+
+      const userEntry = setOrder.find(([k]) => k === 'user');
+      expect(userEntry?.[1]).toMatchObject({
+        id: 'doctor-B',
+        tenantId: 'tenant-B',
+        roles: [],
+        permissions: [],
+      });
+    });
+
+    it('handleNerExtracted wraps work in cls.run with tenantId + user set', async () => {
+      const setOrder: Array<[string, unknown]> = [];
+      mockClsService.set.mockImplementation((key: string, value: unknown) => {
+        setOrder.push([key, value]);
+      });
+
+      const payload = makeNerPayload({
+        tenantId: 'tenant-C',
+        userId: 'doctor-C',
+      });
+
+      await handler.handleNerExtracted(payload);
+
+      expect(mockClsService.run).toHaveBeenCalledTimes(1);
+
+      const keys = setOrder.map(([k]) => k);
+      expect(keys).toContain('tenantId');
+      expect(keys).toContain('user');
+
+      const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
+      expect(tenantEntry?.[1]).toBe('tenant-C');
+
+      const userEntry = setOrder.find(([k]) => k === 'user');
+      expect(userEntry?.[1]).toMatchObject({
+        id: 'doctor-C',
+        tenantId: 'tenant-C',
+        roles: [],
+        permissions: [],
+      });
+    });
+
+    it('handleTranscriptionCreated logs+returns when payload.tenantId is missing', async () => {
+      const payload = makeTranscriptionPayload({ tenantId: '' });
+
+      await handler.handleTranscriptionCreated(payload);
+
+      expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+      expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('handleSummaryGenerated logs+returns when payload.tenantId is missing', async () => {
+      const payload = makeSummaryPayload({ tenantId: '' });
+
+      await handler.handleSummaryGenerated(payload);
+
+      expect(mockJobService.createNerJob).not.toHaveBeenCalled();
+      expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
+    });
+
+    it('handleNerExtracted logs+returns when payload.tenantId is missing', async () => {
+      const payload = makeNerPayload({ tenantId: '' });
+
+      await handler.handleNerExtracted(payload);
+
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // (Lane G) — harness flag routing
+  //
+  // When `metadata.pipelineConfig.harnessEnabled` is true, the transcription
+  // handler routes auto-generation to the durable harness workflow
+  // (HarnessGatewayService.start) and does NOT enqueue the legacy BullMQ
+  // summary job. When the flag is absent/false (the default), the legacy path
+  // is preserved unchanged.
+  // =========================================================================
+
+  describe('harness flag routing (Lane G)', () => {
+    const withHarnessConfig = (harnessEnabled: boolean) =>
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        departmentId: 'dept-card-001',
+        parentConsultationId: null,
+        metadata: { pipelineConfig: { autoSummaryEnabled: true, harnessEnabled } },
+      });
+
+    it('routes to HarnessGatewayService.start (legacy summary job NOT enqueued) when harnessEnabled=true', async () => {
+      withHarnessConfig(true);
+
+      await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+      expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+      expect(mockHarnessGateway.start).toHaveBeenCalledWith(
+        'consultation-001',
+        expect.objectContaining({
+          tenantId: 'tenant-abc',
+          userId: 'doctor-1',
+          contextItemId: 'ctx-transcript-001',
+          jobId: expect.any(String),
+        }),
+      );
+      expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+    });
+
+    it('mints a non-empty jobId so the existing SSE channel works', async () => {
+      withHarnessConfig(true);
+
+      await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+      const ctx = mockHarnessGateway.start.mock.calls[0][1];
+      expect(typeof ctx.jobId).toBe('string');
+      expect(ctx.jobId.length).toBeGreaterThan(0);
+    });
+
+    it('loads the triggering transcript and forwards its text to the workflow', async () => {
+      withHarnessConfig(true);
+
+      await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+      expect(mockContextItemRepository.findById).toHaveBeenCalledWith('ctx-transcript-001');
+      const ctx = mockHarnessGateway.start.mock.calls[0][1];
+      expect(ctx.transcriptText).toBe('Patient reports chest pain.');
+    });
+
+    it('still starts the harness when the transcript load fails (best-effort; assemble re-loads)', async () => {
+      withHarnessConfig(true);
+      mockContextItemRepository.findById.mockRejectedValue(new Error('ctx read failed'));
+
+      await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+      expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+      const ctx = mockHarnessGateway.start.mock.calls[0][1];
+      expect(ctx.transcriptText).toBeUndefined();
+    });
+
+    it('keeps the legacy summary-job path (gateway NOT called) when harnessEnabled=false', async () => {
+      withHarnessConfig(false);
+
+      await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+      expect(mockHarnessGateway.start).not.toHaveBeenCalled();
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the legacy path (gateway NOT called) when harnessEnabled is absent (default)', async () => {
+      // default mock consultation has metadata: null
+      await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+      expect(mockHarnessGateway.start).not.toHaveBeenCalled();
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not start the harness when auto-summary is disabled, even if harnessEnabled=true', async () => {
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        metadata: { pipelineConfig: { autoSummaryEnabled: false, harnessEnabled: true } },
+      });
+
+      await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+      expect(mockHarnessGateway.start).not.toHaveBeenCalled();
+      expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
+    });
+
+    it('emits PipelineStepFailed when the harness start call throws', async () => {
+      withHarnessConfig(true);
+      mockHarnessGateway.start.mockRejectedValue(new Error('harness unreachable'));
+
+      await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        ConsultationPipelineEvent.PipelineStepFailed,
+        expect.objectContaining({ failedStep: 'summary', error: 'harness unreachable' }),
+      );
+    });
+  });
+
+  // =========================================================================
+  // (Pillar B) — realtime cascade + preferred-prompt threading
+  //
+  // The handler now resolves the realtime toggles through the PipelinePolicy
+  // cascade (ConfigResolver: doctor → department → tenant → SYSTEM default)
+  // rather than reading the consultation metadata alone. The per-consultation
+  // `metadata.pipelineConfig` stays the TOP overlay (back-compat). The legacy
+  // auto path also threads the doctor-preferred prompt id (§2.5 correction).
+  // A dedicated handler instance is wired WITH the resolver (the suite above
+  // intentionally exercises the resolver-absent legacy fallback).
+  // =========================================================================
+
+  describe('realtime cascade (Phase 5)', () => {
+    let cascadeHandler: ConsultationEventHandler;
+    let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
 
     beforeEach(() => {
-        vi.clearAllMocks();
-
-        mockJobService = createMockJobService();
-        mockConsultationRepository = createMockConsultationRepository();
-        mockPromptResolutionService = createMockPromptResolutionService();
-        mockEventEmitter = createMockEventEmitter();
-        mockClsService = createMockClsService();
-        mockHarnessGateway = createMockHarnessGatewayService();
-        mockContextItemRepository = createMockContextItemRepository();
-
-        handler = new ConsultationEventHandler(
-            mockJobService as any,
-            mockConsultationRepository as any,
-            mockPromptResolutionService as any,
-            mockEventEmitter as any,
-            mockClsService as any,
-            mockHarnessGateway as any,
-            mockContextItemRepository as any,
-        );
+      mockConfigResolver = createMockConfigResolver();
+      cascadeHandler = new ConsultationEventHandler(
+        mockJobService as any,
+        mockConsultationRepository as any,
+        mockPromptResolutionService as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        mockHarnessGateway as any,
+        mockContextItemRepository as any,
+        mockConfigResolver as any,
+      );
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        departmentId: 'dept-card-001',
+        doctorId: 'dr-smith-001',
+        parentConsultationId: null,
+        metadata: null,
+      });
     });
 
-    // =========================================================================
-    // handleTranscriptionCreated
-    // =========================================================================
+    it('resolves the cascade with the consultation tenant/department/doctor', async () => {
+      await cascadeHandler.resolvePipelineConfig('consultation-001');
 
-    describe('handleTranscriptionCreated', () => {
-        it('should create a summary job when autoSummaryEnabled (default config)', async () => {
-            const payload = makeTranscriptionPayload();
-
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
-                'consultation-001',
-                'tenant-abc',
-                'doctor-1',
-                expect.objectContaining({
-                    contextItemIds: ['ctx-transcript-001'],
-                    options: expect.objectContaining({ autoGenerated: true }),
-                }),
-            );
-        });
-
-        it('should pass dnaStyleId and template from pipeline config', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: true,
-                        dnaStyleId: 'style_hematology',
-                        summaryTemplate: 'SOAP',
-                    },
-                },
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
-                'consultation-001',
-                'tenant-abc',
-                'doctor-1',
-                expect.objectContaining({
-                    dnaStyleId: 'style_hematology',
-                    template: 'SOAP',
-                }),
-            );
-        });
-
-        it('should NOT create summary job when autoSummaryEnabled is false', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: false,
-                        autoNerEnabled: true,
-                    },
-                },
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
-        });
-
-        it('should use "system" as userId when payload userId is undefined', async () => {
-            const payload = makeTranscriptionPayload({ userId: undefined });
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
-                expect.any(String),
-                expect.any(String),
-                'system',
-                expect.any(Object),
-            );
-        });
-
-        it('should emit PipelineStepFailed on summary job creation failure', async () => {
-            mockJobService.createSummaryJob.mockRejectedValue(new Error('Queue connection refused'));
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineStepFailed,
-                expect.objectContaining({
-                    consultationId: 'consultation-001',
-                    failedStep: 'summary',
-                    error: 'Queue connection refused',
-                    willContinue: false,
-                }),
-            );
-        });
-
-        it('should use default config when consultation not found', async () => {
-            mockConsultationRepository.findById.mockResolvedValue(null);
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            // Default config has autoSummaryEnabled=true
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
-        });
-
-        it('should use default config when consultation has no metadata', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: null,
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
-        });
-
-        it('should use default config when metadata has no pipelineConfig', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: { someOtherField: true },
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
-        });
+      expect(mockConfigResolver.resolvePipelineToggles).toHaveBeenCalledWith({
+        tenantId: 'tenant-abc',
+        departmentId: 'dept-card-001',
+        doctorId: 'dr-smith-001',
+      });
     });
 
-    // =========================================================================
-    // handleTranscriptionCreated — Prompt Resolution
-    // =========================================================================
+    it('disables auto-summary when the cascade resolves autoSummaryEnabled=false (no metadata)', async () => {
+      mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
+        autoSummaryEnabled: false,
+        autoNerEnabled: true,
+        harnessEnabled: false,
+        dnaStyleEnabled: false,
+        trace: {},
+      });
 
-    describe('handleTranscriptionCreated — prompt resolution', () => {
-        it('should call PromptResolutionService.resolve with departmentId from consultation', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                doctorId: 'dr-smith-001',
-                departmentId: 'dept-card-001',
-                parentConsultationId: null,
-                metadata: null,
-            });
+      await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    departmentId: 'dept-card-001',
-                }),
-            );
-        });
-
-        it('should pass departmentId when consultation has parentConsultationId', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                doctorId: 'dr-jones-001',
-                departmentId: 'dept-hema-001',
-                parentConsultationId: 'consultation-parent-001',
-                metadata: null,
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    departmentId: 'dept-hema-001',
-                }),
-            );
-        });
-
-        it('should pass pipeline config summaryTemplate as explicit override', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                doctorId: 'dr-smith-001',
-                departmentId: 'dept-card-001',
-                parentConsultationId: null,
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        dnaStyleId: 'style_from_pipeline',
-                        summaryTemplate: 'Custom-Pipeline-Template',
-                    },
-                },
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    explicitTemplate: 'Custom-Pipeline-Template',
-                }),
-            );
-        });
-
-        it('should pass resolved template to createSummaryJob (dnaStyleId from pipeline config only)', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                doctorId: 'dr-smith-001',
-                departmentId: 'dept-card-001',
-                parentConsultationId: null,
-                metadata: null,
-            });
-
-            mockPromptResolutionService.resolve.mockResolvedValue({
-                template: 'Cardiology-Report',
-                promptId: 'prompt_card_new',
-                contextVariables: { ecgResults: true },
-                resolvedFrom: 'department',
-                resolutionTrace: {
-                    departmentTemplate: 'Cardiology-Report',
-                    usedDefaults: [],
-                },
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
-                'consultation-001',
-                'tenant-abc',
-                'doctor-1',
-                expect.objectContaining({
-                    template: 'Cardiology-Report',
-                }),
-            );
-        });
-
-        it('should include resolution trace in job options for audit', async () => {
-            const mockTrace = {
-                departmentTemplate: 'SOAP',
-                usedDefaults: [],
-            };
-
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                doctorId: 'dr-smith-001',
-                departmentId: 'dept-card-001',
-                parentConsultationId: null,
-                metadata: null,
-            });
-
-            mockPromptResolutionService.resolve.mockResolvedValue({
-                template: 'SOAP',
-                promptId: 'prompt_default',
-                contextVariables: {},
-                resolvedFrom: 'default',
-                resolutionTrace: mockTrace,
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledWith(
-                expect.any(String),
-                expect.any(String),
-                expect.any(String),
-                expect.objectContaining({
-                    options: expect.objectContaining({
-                        promptResolution: mockTrace,
-                    }),
-                }),
-            );
-        });
-
-        it('should handle consultation with null departmentId gracefully', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                doctorId: 'dr-smith-001',
-                departmentId: null,
-                parentConsultationId: null,
-                metadata: null,
-            });
-
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    departmentId: undefined,
-                }),
-            );
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
-        });
+      expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
     });
 
-    // =========================================================================
-    // handleSummaryGenerated
-    // =========================================================================
+    it('routes to the harness when the cascade resolves harnessEnabled=true (no metadata hard-code)', async () => {
+      mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
+        autoSummaryEnabled: true,
+        autoNerEnabled: true,
+        harnessEnabled: true,
+        dnaStyleEnabled: false,
+        trace: {},
+      });
 
-    describe('handleSummaryGenerated', () => {
-        it('should create NER job when autoNerEnabled and isAutoGenerated', async () => {
-            const payload = makeSummaryPayload();
+      await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
-            expect(mockJobService.createNerJob).toHaveBeenCalledWith(
-                'ctx-summary-001',
-                'consultation-001',
-                'tenant-abc',
-                'doctor-1',
-            );
-        });
-
-        it('should NOT create NER job when isAutoGenerated is false', async () => {
-            const payload = makeSummaryPayload({ isAutoGenerated: false });
-
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
-        });
-
-        it('should NOT create NER job when autoNerEnabled is false', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: false,
-                    },
-                },
-            });
-
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
-        });
-
-        // (F-22, Lane G) — when the resolved pipeline config has
-        // harnessEnabled=true, the harness workflow persists its own NamedEntity
-        // rows for the same content, so the legacy BullMQ NER job would duplicate
-        // that work. Skip it with a structured info log naming the reason.
-        it('should NOT create NER job when harnessEnabled is true (harness persists its own NER)', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: true,
-                        harnessEnabled: true,
-                    },
-                },
-            });
-
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
-        });
-
-        it('should still emit PipelineCompleted when NER is skipped due to harnessEnabled', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: true,
-                        harnessEnabled: true,
-                    },
-                },
-            });
-
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineCompleted,
-                expect.objectContaining({
-                    consultationId: 'consultation-001',
-                    stepsExecuted: ['transcription', 'summary'],
-                }),
-            );
-        });
-
-        it('should still create NER job when harnessEnabled is false (regression lock)', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: true,
-                        harnessEnabled: false,
-                    },
-                },
-            });
-
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
-        });
-
-        it('should still create NER job when harnessEnabled is undefined (regression lock)', async () => {
-            // Default metadata (null) resolves via DEFAULT_PIPELINE_CONFIG, which
-            // leaves harnessEnabled undefined — the pre-existing legacy path.
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
-        });
-
-        it('should emit PipelineCompleted when NER disabled and summary auto-generated', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: false,
-                    },
-                },
-            });
-
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineCompleted,
-                expect.objectContaining({
-                    consultationId: 'consultation-001',
-                    stepsExecuted: ['transcription', 'summary'],
-                }),
-            );
-        });
-
-        it('should emit PipelineStepFailed on NER job creation failure', async () => {
-            mockJobService.createNerJob.mockRejectedValue(new Error('NLP service down'));
-
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineStepFailed,
-                expect.objectContaining({
-                    consultationId: 'consultation-001',
-                    failedStep: 'ner',
-                    error: 'NLP service down',
-                }),
-            );
-        });
-
-        it('should emit PipelineCompleted after NER failure when haltOnFailure is false', async () => {
-            mockJobService.createNerJob.mockRejectedValue(new Error('NLP timeout'));
-
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            const emittedEvents = mockEventEmitter.emit.mock.calls.map((c: unknown[]) => c[0]);
-            expect(emittedEvents).toContain(ConsultationPipelineEvent.PipelineStepFailed);
-            expect(emittedEvents).toContain(ConsultationPipelineEvent.PipelineCompleted);
-        });
-
-        it('should NOT emit PipelineCompleted after NER failure when haltOnFailure is true', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: true,
-                        haltOnFailure: true,
-                    },
-                },
-            });
-
-            mockJobService.createNerJob.mockRejectedValue(new Error('NLP timeout'));
-
-            const payload = makeSummaryPayload();
-            await handler.handleSummaryGenerated(payload);
-
-            const emittedEvents = mockEventEmitter.emit.mock.calls.map((c: unknown[]) => c[0]);
-            expect(emittedEvents).toContain(ConsultationPipelineEvent.PipelineStepFailed);
-            expect(emittedEvents).not.toContain(ConsultationPipelineEvent.PipelineCompleted);
-        });
-
-        it('should use "system" as userId when payload userId is undefined', async () => {
-            const payload = makeSummaryPayload({ userId: undefined });
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).toHaveBeenCalledWith(
-                expect.any(String),
-                expect.any(String),
-                expect.any(String),
-                'system',
-            );
-        });
+      expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+      expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
     });
 
-    // =========================================================================
-    // handleNerExtracted
-    // =========================================================================
+    it('lets a per-consultation metadata override BEAT the cascade (harnessEnabled=false wins)', async () => {
+      mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
+        autoSummaryEnabled: true,
+        autoNerEnabled: true,
+        harnessEnabled: true,
+        dnaStyleEnabled: false,
+        trace: {},
+      });
+      mockConsultationRepository.findById.mockResolvedValue({
+        id: 'consultation-001',
+        tenantId: 'tenant-abc',
+        departmentId: 'dept-card-001',
+        doctorId: 'dr-smith-001',
+        parentConsultationId: null,
+        metadata: { pipelineConfig: { harnessEnabled: false } },
+      });
 
-    describe('handleNerExtracted', () => {
-        it('should emit PipelineCompleted when isAutoGenerated', async () => {
-            const payload = makeNerPayload();
+      await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-            await handler.handleNerExtracted(payload);
-
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineCompleted,
-                expect.objectContaining({
-                    consultationId: 'consultation-001',
-                    tenantId: 'tenant-abc',
-                    totalEntityCount: 12,
-                    stepsExecuted: ['transcription', 'summary', 'ner'],
-                }),
-            );
-        });
-
-        it('should NOT emit PipelineCompleted when isAutoGenerated is false', async () => {
-            const payload = makeNerPayload({ isAutoGenerated: false });
-
-            await handler.handleNerExtracted(payload);
-
-            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
-        });
-
-        it('should include correlationId in PipelineCompleted payload', async () => {
-            const payload = makeNerPayload({ correlationId: 'trace-456' });
-
-            await handler.handleNerExtracted(payload);
-
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineCompleted,
-                expect.objectContaining({
-                    correlationId: 'trace-456',
-                }),
-            );
-        });
+      expect(mockHarnessGateway.start).not.toHaveBeenCalled();
+      expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
     });
 
-    // =========================================================================
-    // resolvePipelineConfig
-    // =========================================================================
+    it('threads the doctor-preferred prompt id into PromptResolutionService (legacy auto path)', async () => {
+      mockConfigResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
 
-    describe('resolvePipelineConfig', () => {
-        it('should return default config when consultation not found', async () => {
-            mockConsultationRepository.findById.mockResolvedValue(null);
+      await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-            const config = await handler.resolvePipelineConfig('missing-id');
-
-            expect(config).toEqual(DEFAULT_PIPELINE_CONFIG);
-        });
-
-        it('should return default config when metadata is null', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'c1',
-                metadata: null,
-            });
-
-            const config = await handler.resolvePipelineConfig('c1');
-
-            expect(config.autoSummaryEnabled).toBe(true);
-            expect(config.autoNerEnabled).toBe(true);
-        });
-
-        it('should merge partial pipelineConfig with defaults', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'c1',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: false,
-                        dnaStyleId: 'style_cardiology',
-                    },
-                },
-            });
-
-            const config = await handler.resolvePipelineConfig('c1');
-
-            expect(config.autoSummaryEnabled).toBe(true);
-            expect(config.autoNerEnabled).toBe(false);
-            expect(config.dnaStyleId).toBe('style_cardiology');
-            expect(config.haltOnFailure).toBe(false); // from default
-        });
-
-        it('should return default config on repository error', async () => {
-            mockConsultationRepository.findById.mockRejectedValue(new Error('DB down'));
-
-            const config = await handler.resolvePipelineConfig('c1');
-
-            expect(config).toEqual(DEFAULT_PIPELINE_CONFIG);
-        });
-
-        it('should return fully specified config from metadata', async () => {
-            const fullConfig = {
-                autoSummaryEnabled: false,
-                autoNerEnabled: false,
-                dnaStyleId: 'style_custom',
-                summaryTemplate: 'Hematology-New',
-                includeSharedContext: true,
-                haltOnFailure: true,
-            };
-
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'c1',
-                metadata: { pipelineConfig: fullConfig },
-            });
-
-            const config = await handler.resolvePipelineConfig('c1');
-
-            expect(config).toEqual(fullConfig);
-        });
+      expect(mockConfigResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('dr-smith-001');
+      expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }));
     });
 
-    // =========================================================================
-    // Full Pipeline Integration (event chain simulation)
-    // =========================================================================
+    it('surfaces the cascade-resolved harnessEnabled on resolvePipelineConfig', async () => {
+      mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
+        autoSummaryEnabled: true,
+        autoNerEnabled: true,
+        harnessEnabled: true,
+        dnaStyleEnabled: false,
+        trace: {},
+      });
 
-    describe('Full pipeline chain', () => {
-        it('should chain: TranscriptionCreated → createSummaryJob (auto-summary enabled)', async () => {
-            const payload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(payload);
+      const config = await cascadeHandler.resolvePipelineConfig('consultation-001');
 
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledOnce();
-            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
-        });
-
-        it('should chain: SummaryGenerated (auto) → createNerJob', async () => {
-            const payload = makeSummaryPayload({ isAutoGenerated: true });
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).toHaveBeenCalledOnce();
-        });
-
-        it('should chain: NerExtracted (auto) → PipelineCompleted', async () => {
-            const payload = makeNerPayload({ isAutoGenerated: true });
-            await handler.handleNerExtracted(payload);
-
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineCompleted,
-                expect.objectContaining({
-                    stepsExecuted: ['transcription', 'summary', 'ner'],
-                }),
-            );
-        });
-
-        it('should stop at summary when autoNerEnabled=false', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: true,
-                        autoNerEnabled: false,
-                    },
-                },
-            });
-
-            const summaryPayload = makeSummaryPayload({ isAutoGenerated: true });
-            await handler.handleSummaryGenerated(summaryPayload);
-
-            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineCompleted,
-                expect.objectContaining({
-                    stepsExecuted: ['transcription', 'summary'],
-                }),
-            );
-        });
-
-        it('should not trigger any pipeline when both auto flags are false', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: {
-                    pipelineConfig: {
-                        autoSummaryEnabled: false,
-                        autoNerEnabled: false,
-                    },
-                },
-            });
-
-            const transcriptionPayload = makeTranscriptionPayload();
-            await handler.handleTranscriptionCreated(transcriptionPayload);
-
-            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
-            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
-            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
-        });
+      expect(config.harnessEnabled).toBe(true);
     });
-
-    // =========================================================================
-    // CLS rebind + fail-closed guard
-    //
-    // EventEmitter2 async handlers run in their own microtask context that
-    // does NOT inherit the caller's AsyncLocalStorage scope. Without these
-    // guards, the consultationRepository.findById call inside each handler
-    // hits the tenantScope extension's "no CLS = super-admin pass-through"
-    // branch and silently bypasses tenant scoping. Each handler must
-    // explicitly re-establish CLS from the payload.
-    //
-    // Fail-closed posture: log + early return (NOT throw), because
-    // @OnEvent({ async: true }) handlers swallow throws and a throw here
-    // would surface as an unhandled rejection.
-    // =========================================================================
-
-    describe('CLS rebind + fail-closed (follow-up)', () => {
-        it('handleTranscriptionCreated wraps work in cls.run with tenantId + user set', async () => {
-            const setOrder: Array<[string, unknown]> = [];
-            mockClsService.set.mockImplementation((key: string, value: unknown) => {
-                setOrder.push([key, value]);
-            });
-
-            const payload = makeTranscriptionPayload({
-                tenantId: 'tenant-A',
-                userId: 'doctor-A',
-            });
-
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockClsService.run).toHaveBeenCalledTimes(1);
-
-            const keys = setOrder.map(([k]) => k);
-            expect(keys).toContain('tenantId');
-            expect(keys).toContain('user');
-
-            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
-            expect(tenantEntry?.[1]).toBe('tenant-A');
-
-            const userEntry = setOrder.find(([k]) => k === 'user');
-            expect(userEntry?.[1]).toMatchObject({
-                id: 'doctor-A',
-                tenantId: 'tenant-A',
-                roles: [],
-                permissions: [],
-            });
-
-            expect(mockConsultationRepository.findById).toHaveBeenCalled();
-        });
-
-        it('handleSummaryGenerated wraps work in cls.run with tenantId + user set', async () => {
-            const setOrder: Array<[string, unknown]> = [];
-            mockClsService.set.mockImplementation((key: string, value: unknown) => {
-                setOrder.push([key, value]);
-            });
-
-            const payload = makeSummaryPayload({
-                tenantId: 'tenant-B',
-                userId: 'doctor-B',
-            });
-
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockClsService.run).toHaveBeenCalledTimes(1);
-
-            const keys = setOrder.map(([k]) => k);
-            expect(keys).toContain('tenantId');
-            expect(keys).toContain('user');
-
-            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
-            expect(tenantEntry?.[1]).toBe('tenant-B');
-
-            const userEntry = setOrder.find(([k]) => k === 'user');
-            expect(userEntry?.[1]).toMatchObject({
-                id: 'doctor-B',
-                tenantId: 'tenant-B',
-                roles: [],
-                permissions: [],
-            });
-        });
-
-        it('handleNerExtracted wraps work in cls.run with tenantId + user set', async () => {
-            const setOrder: Array<[string, unknown]> = [];
-            mockClsService.set.mockImplementation((key: string, value: unknown) => {
-                setOrder.push([key, value]);
-            });
-
-            const payload = makeNerPayload({
-                tenantId: 'tenant-C',
-                userId: 'doctor-C',
-            });
-
-            await handler.handleNerExtracted(payload);
-
-            expect(mockClsService.run).toHaveBeenCalledTimes(1);
-
-            const keys = setOrder.map(([k]) => k);
-            expect(keys).toContain('tenantId');
-            expect(keys).toContain('user');
-
-            const tenantEntry = setOrder.find(([k]) => k === 'tenantId');
-            expect(tenantEntry?.[1]).toBe('tenant-C');
-
-            const userEntry = setOrder.find(([k]) => k === 'user');
-            expect(userEntry?.[1]).toMatchObject({
-                id: 'doctor-C',
-                tenantId: 'tenant-C',
-                roles: [],
-                permissions: [],
-            });
-        });
-
-        it('handleTranscriptionCreated logs+returns when payload.tenantId is missing', async () => {
-            const payload = makeTranscriptionPayload({ tenantId: '' });
-
-            await handler.handleTranscriptionCreated(payload);
-
-            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
-            expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
-        });
-
-        it('handleSummaryGenerated logs+returns when payload.tenantId is missing', async () => {
-            const payload = makeSummaryPayload({ tenantId: '' });
-
-            await handler.handleSummaryGenerated(payload);
-
-            expect(mockJobService.createNerJob).not.toHaveBeenCalled();
-            expect(mockConsultationRepository.findById).not.toHaveBeenCalled();
-        });
-
-        it('handleNerExtracted logs+returns when payload.tenantId is missing', async () => {
-            const payload = makeNerPayload({ tenantId: '' });
-
-            await handler.handleNerExtracted(payload);
-
-            expect(mockEventEmitter.emit).not.toHaveBeenCalled();
-        });
-    });
-
-    // =========================================================================
-    // (Lane G) — harness flag routing
-    //
-    // When `metadata.pipelineConfig.harnessEnabled` is true, the transcription
-    // handler routes auto-generation to the durable harness workflow
-    // (HarnessGatewayService.start) and does NOT enqueue the legacy BullMQ
-    // summary job. When the flag is absent/false (the default), the legacy path
-    // is preserved unchanged.
-    // =========================================================================
-
-    describe('harness flag routing (Lane G)', () => {
-        const withHarnessConfig = (harnessEnabled: boolean) =>
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                departmentId: 'dept-card-001',
-                parentConsultationId: null,
-                metadata: { pipelineConfig: { autoSummaryEnabled: true, harnessEnabled } },
-            });
-
-        it('routes to HarnessGatewayService.start (legacy summary job NOT enqueued) when harnessEnabled=true', async () => {
-            withHarnessConfig(true);
-
-            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
-            expect(mockHarnessGateway.start).toHaveBeenCalledWith(
-                'consultation-001',
-                expect.objectContaining({
-                    tenantId: 'tenant-abc',
-                    userId: 'doctor-1',
-                    contextItemId: 'ctx-transcript-001',
-                    jobId: expect.any(String),
-                }),
-            );
-            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
-        });
-
-        it('mints a non-empty jobId so the existing SSE channel works', async () => {
-            withHarnessConfig(true);
-
-            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            const ctx = mockHarnessGateway.start.mock.calls[0][1];
-            expect(typeof ctx.jobId).toBe('string');
-            expect(ctx.jobId.length).toBeGreaterThan(0);
-        });
-
-        it('loads the triggering transcript and forwards its text to the workflow', async () => {
-            withHarnessConfig(true);
-
-            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockContextItemRepository.findById).toHaveBeenCalledWith('ctx-transcript-001');
-            const ctx = mockHarnessGateway.start.mock.calls[0][1];
-            expect(ctx.transcriptText).toBe('Patient reports chest pain.');
-        });
-
-        it('still starts the harness when the transcript load fails (best-effort; assemble re-loads)', async () => {
-            withHarnessConfig(true);
-            mockContextItemRepository.findById.mockRejectedValue(new Error('ctx read failed'));
-
-            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
-            const ctx = mockHarnessGateway.start.mock.calls[0][1];
-            expect(ctx.transcriptText).toBeUndefined();
-        });
-
-        it('keeps the legacy summary-job path (gateway NOT called) when harnessEnabled=false', async () => {
-            withHarnessConfig(false);
-
-            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockHarnessGateway.start).not.toHaveBeenCalled();
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
-        });
-
-        it('keeps the legacy path (gateway NOT called) when harnessEnabled is absent (default)', async () => {
-            // default mock consultation has metadata: null
-            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockHarnessGateway.start).not.toHaveBeenCalled();
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
-        });
-
-        it('does not start the harness when auto-summary is disabled, even if harnessEnabled=true', async () => {
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                metadata: { pipelineConfig: { autoSummaryEnabled: false, harnessEnabled: true } },
-            });
-
-            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockHarnessGateway.start).not.toHaveBeenCalled();
-            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
-        });
-
-        it('emits PipelineStepFailed when the harness start call throws', async () => {
-            withHarnessConfig(true);
-            mockHarnessGateway.start.mockRejectedValue(new Error('harness unreachable'));
-
-            await handler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-                ConsultationPipelineEvent.PipelineStepFailed,
-                expect.objectContaining({ failedStep: 'summary', error: 'harness unreachable' }),
-            );
-        });
-    });
-
-    // =========================================================================
-    // (Pillar B) — realtime cascade + preferred-prompt threading
-    //
-    // The handler now resolves the realtime toggles through the PipelinePolicy
-    // cascade (ConfigResolver: doctor → department → tenant → SYSTEM default)
-    // rather than reading the consultation metadata alone. The per-consultation
-    // `metadata.pipelineConfig` stays the TOP overlay (back-compat). The legacy
-    // auto path also threads the doctor-preferred prompt id (§2.5 correction).
-    // A dedicated handler instance is wired WITH the resolver (the suite above
-    // intentionally exercises the resolver-absent legacy fallback).
-    // =========================================================================
-
-    describe('realtime cascade (Phase 5)', () => {
-        let cascadeHandler: ConsultationEventHandler;
-        let mockConfigResolver: ReturnType<typeof createMockConfigResolver>;
-
-        beforeEach(() => {
-            mockConfigResolver = createMockConfigResolver();
-            cascadeHandler = new ConsultationEventHandler(
-                mockJobService as any,
-                mockConsultationRepository as any,
-                mockPromptResolutionService as any,
-                mockEventEmitter as any,
-                mockClsService as any,
-                mockHarnessGateway as any,
-                mockContextItemRepository as any,
-                mockConfigResolver as any,
-            );
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                departmentId: 'dept-card-001',
-                doctorId: 'dr-smith-001',
-                parentConsultationId: null,
-                metadata: null,
-            });
-        });
-
-        it('resolves the cascade with the consultation tenant/department/doctor', async () => {
-            await cascadeHandler.resolvePipelineConfig('consultation-001');
-
-            expect(mockConfigResolver.resolvePipelineToggles).toHaveBeenCalledWith({
-                tenantId: 'tenant-abc',
-                departmentId: 'dept-card-001',
-                doctorId: 'dr-smith-001',
-            });
-        });
-
-        it('disables auto-summary when the cascade resolves autoSummaryEnabled=false (no metadata)', async () => {
-            mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
-                autoSummaryEnabled: false,
-                autoNerEnabled: true,
-                harnessEnabled: false,
-                dnaStyleEnabled: false,
-                trace: {},
-            });
-
-            await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
-        });
-
-        it('routes to the harness when the cascade resolves harnessEnabled=true (no metadata hard-code)', async () => {
-            mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
-                autoSummaryEnabled: true,
-                autoNerEnabled: true,
-                harnessEnabled: true,
-                dnaStyleEnabled: false,
-                trace: {},
-            });
-
-            await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
-            expect(mockJobService.createSummaryJob).not.toHaveBeenCalled();
-        });
-
-        it('lets a per-consultation metadata override BEAT the cascade (harnessEnabled=false wins)', async () => {
-            mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
-                autoSummaryEnabled: true,
-                autoNerEnabled: true,
-                harnessEnabled: true,
-                dnaStyleEnabled: false,
-                trace: {},
-            });
-            mockConsultationRepository.findById.mockResolvedValue({
-                id: 'consultation-001',
-                tenantId: 'tenant-abc',
-                departmentId: 'dept-card-001',
-                doctorId: 'dr-smith-001',
-                parentConsultationId: null,
-                metadata: { pipelineConfig: { harnessEnabled: false } },
-            });
-
-            await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockHarnessGateway.start).not.toHaveBeenCalled();
-            expect(mockJobService.createSummaryJob).toHaveBeenCalledTimes(1);
-        });
-
-        it('threads the doctor-preferred prompt id into PromptResolutionService (legacy auto path)', async () => {
-            mockConfigResolver.resolvePreferredPromptTemplateId.mockResolvedValue('tpl-preferred');
-
-            await cascadeHandler.handleTranscriptionCreated(makeTranscriptionPayload());
-
-            expect(mockConfigResolver.resolvePreferredPromptTemplateId).toHaveBeenCalledWith('dr-smith-001');
-            expect(mockPromptResolutionService.resolve).toHaveBeenCalledWith(
-                expect.objectContaining({ preferredPromptTemplateId: 'tpl-preferred' }),
-            );
-        });
-
-        it('surfaces the cascade-resolved harnessEnabled on resolvePipelineConfig', async () => {
-            mockConfigResolver.resolvePipelineToggles.mockResolvedValue({
-                autoSummaryEnabled: true,
-                autoNerEnabled: true,
-                harnessEnabled: true,
-                dnaStyleEnabled: false,
-                trace: {},
-            });
-
-            const config = await cascadeHandler.resolvePipelineConfig('consultation-001');
-
-            expect(config.harnessEnabled).toBe(true);
-        });
-    });
+  });
 });
 
 // =============================================================================
@@ -1280,149 +1261,146 @@ describe('ConsultationEventHandler', () => {
 // =============================================================================
 
 describe('ConsultationEventHandler — DNA redaction wiring (TASK-551)', () => {
-    const REDACTION_RULE = { id: 'r1', type: 'remove', match: 'literal', pattern: "patient's employer" };
+  const REDACTION_RULE = { id: 'r1', type: 'remove', match: 'literal', pattern: "patient's employer" };
 
-    let handler: ConsultationEventHandler;
-    let mockJobService: ReturnType<typeof createMockJobService>;
-    let mockConsultationRepository: ReturnType<typeof createMockConsultationRepository>;
-    let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
-    let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
-    let mockClsService: ReturnType<typeof createMockClsService>;
-    let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
-    let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
-    let mockConfigResolver: {
-        resolvePipelineToggles: ReturnType<typeof vi.fn>;
-        resolvePreferredPromptTemplateId: ReturnType<typeof vi.fn>;
-        resolveEffectiveDnaRedactionEnabled: ReturnType<typeof vi.fn>;
+  let handler: ConsultationEventHandler;
+  let mockJobService: ReturnType<typeof createMockJobService>;
+  let mockConsultationRepository: ReturnType<typeof createMockConsultationRepository>;
+  let mockPromptResolutionService: ReturnType<typeof createMockPromptResolutionService>;
+  let mockEventEmitter: ReturnType<typeof createMockEventEmitter>;
+  let mockClsService: ReturnType<typeof createMockClsService>;
+  let mockHarnessGateway: ReturnType<typeof createMockHarnessGatewayService>;
+  let mockContextItemRepository: ReturnType<typeof createMockContextItemRepository>;
+  let mockConfigResolver: {
+    resolvePipelineToggles: ReturnType<typeof vi.fn>;
+    resolvePreferredPromptTemplateId: ReturnType<typeof vi.fn>;
+    resolveEffectiveDnaRedactionEnabled: ReturnType<typeof vi.fn>;
+  };
+  let mockDnaReportRepository: {
+    findLatestForDoctor: ReturnType<typeof vi.fn>;
+    decryptFieldsFromEntity: ReturnType<typeof vi.fn>;
+  };
+  let mockSecretsService: Record<string, unknown>;
+  let mockDepartmentAgentRepository: { findDefaultForDepartment: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mockJobService = createMockJobService();
+    mockConsultationRepository = createMockConsultationRepository();
+    mockPromptResolutionService = createMockPromptResolutionService();
+    mockEventEmitter = createMockEventEmitter();
+    mockClsService = createMockClsService();
+    mockHarnessGateway = createMockHarnessGatewayService();
+    mockContextItemRepository = createMockContextItemRepository();
+
+    mockConfigResolver = {
+      resolvePipelineToggles: vi.fn().mockResolvedValue({
+        autoSummaryEnabled: true,
+        autoNerEnabled: true,
+        harnessEnabled: false,
+        dnaStyleEnabled: false,
+        dnaRedactionEnabled: false,
+        trace: {},
+      }),
+      resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
+      resolveEffectiveDnaRedactionEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true }),
     };
-    let mockDnaReportRepository: {
-        findLatestForDoctor: ReturnType<typeof vi.fn>;
-        decryptFieldsFromEntity: ReturnType<typeof vi.fn>;
+    mockDnaReportRepository = {
+      findLatestForDoctor: vi.fn().mockResolvedValue({ id: 'dna-report-001', doctorId: 'dr-smith-001' }),
+      decryptFieldsFromEntity: vi.fn().mockResolvedValue({
+        reportData: null,
+        styleText: null,
+        redactionRules: { rules: [REDACTION_RULE] },
+      }),
     };
-    let mockSecretsService: Record<string, unknown>;
-    let mockDepartmentAgentRepository: { findDefaultForDepartment: ReturnType<typeof vi.fn> };
+    mockSecretsService = { getSecretOptional: vi.fn() };
+    mockDepartmentAgentRepository = {
+      findDefaultForDepartment: vi.fn().mockResolvedValue({ dnaStylePolicy: 'INHERIT' }),
+    };
 
-    beforeEach(() => {
-        vi.clearAllMocks();
-
-        mockJobService = createMockJobService();
-        mockConsultationRepository = createMockConsultationRepository();
-        mockPromptResolutionService = createMockPromptResolutionService();
-        mockEventEmitter = createMockEventEmitter();
-        mockClsService = createMockClsService();
-        mockHarnessGateway = createMockHarnessGatewayService();
-        mockContextItemRepository = createMockContextItemRepository();
-
-        mockConfigResolver = {
-            resolvePipelineToggles: vi.fn().mockResolvedValue({
-                autoSummaryEnabled: true,
-                autoNerEnabled: true,
-                harnessEnabled: false,
-                dnaStyleEnabled: false,
-                dnaRedactionEnabled: false,
-                trace: {},
-            }),
-            resolvePreferredPromptTemplateId: vi.fn().mockResolvedValue(null),
-            resolveEffectiveDnaRedactionEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true }),
-        };
-        mockDnaReportRepository = {
-            findLatestForDoctor: vi.fn().mockResolvedValue({ id: 'dna-report-001', doctorId: 'dr-smith-001' }),
-            decryptFieldsFromEntity: vi.fn().mockResolvedValue({
-                reportData: null,
-                styleText: null,
-                redactionRules: { rules: [REDACTION_RULE] },
-            }),
-        };
-        mockSecretsService = { getSecretOptional: vi.fn() };
-        mockDepartmentAgentRepository = {
-            findDefaultForDepartment: vi.fn().mockResolvedValue({ dnaStylePolicy: 'INHERIT' }),
-        };
-
-        // Harness routed via per-consultation metadata; doctor + department present
-        // so the redaction double-gate has a subject to resolve.
-        mockConsultationRepository.findById.mockResolvedValue({
-            id: 'consultation-001',
-            tenantId: 'tenant-abc',
-            departmentId: 'dept-card-001',
-            doctorId: 'dr-smith-001',
-            parentConsultationId: null,
-            metadata: { pipelineConfig: { autoSummaryEnabled: true, harnessEnabled: true } },
-        });
-
-        handler = new ConsultationEventHandler(
-            mockJobService as any,
-            mockConsultationRepository as any,
-            mockPromptResolutionService as any,
-            mockEventEmitter as any,
-            mockClsService as any,
-            mockHarnessGateway as any,
-            mockContextItemRepository as any,
-            mockConfigResolver as any,
-            mockDnaReportRepository as any,
-            mockSecretsService as any,
-            mockDepartmentAgentRepository as any,
-        );
+    // Harness routed via per-consultation metadata; doctor + department present
+    // so the redaction double-gate has a subject to resolve.
+    mockConsultationRepository.findById.mockResolvedValue({
+      id: 'consultation-001',
+      tenantId: 'tenant-abc',
+      departmentId: 'dept-card-001',
+      doctorId: 'dr-smith-001',
+      parentConsultationId: null,
+      metadata: { pipelineConfig: { autoSummaryEnabled: true, harnessEnabled: true } },
     });
 
-    it('threads the doctor decrypted redaction rules into the harness start ctx when the gate is effective', async () => {
-        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+    handler = new ConsultationEventHandler(
+      mockJobService as any,
+      mockConsultationRepository as any,
+      mockPromptResolutionService as any,
+      mockEventEmitter as any,
+      mockClsService as any,
+      mockHarnessGateway as any,
+      mockContextItemRepository as any,
+      mockConfigResolver as any,
+      mockDnaReportRepository as any,
+      mockSecretsService as any,
+      mockDepartmentAgentRepository as any,
+    );
+  });
 
-        expect(mockConfigResolver.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledWith({
-            tenantId: 'tenant-abc',
-            departmentId: 'dept-card-001',
-            doctorId: 'dr-smith-001',
-            departmentAgentDnaDisabled: false,
-        });
-        expect(mockDnaReportRepository.findLatestForDoctor).toHaveBeenCalledWith('dr-smith-001');
-        expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
-        const ctx = mockHarnessGateway.start.mock.calls[0][1];
-        expect(ctx.redactionRules).toEqual([REDACTION_RULE]);
+  it('threads the doctor decrypted redaction rules into the harness start ctx when the gate is effective', async () => {
+    await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+
+    expect(mockConfigResolver.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledWith({
+      tenantId: 'tenant-abc',
+      departmentId: 'dept-card-001',
+      doctorId: 'dr-smith-001',
+      departmentAgentDnaDisabled: false,
     });
+    expect(mockDnaReportRepository.findLatestForDoctor).toHaveBeenCalledWith('dr-smith-001');
+    expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+    const ctx = mockHarnessGateway.start.mock.calls[0][1];
+    expect(ctx.redactionRules).toEqual([REDACTION_RULE]);
+  });
 
-    it('does NOT fetch or thread rules when the gate resolves ineffective', async () => {
-        mockConfigResolver.resolveEffectiveDnaRedactionEnabled.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null });
+  it('does NOT fetch or thread rules when the gate resolves ineffective', async () => {
+    mockConfigResolver.resolveEffectiveDnaRedactionEnabled.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null });
 
-        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+    await handler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-        expect(mockDnaReportRepository.findLatestForDoctor).not.toHaveBeenCalled();
-        expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
-        const ctx = mockHarnessGateway.start.mock.calls[0][1];
-        expect(ctx.redactionRules ?? []).toEqual([]);
-    });
+    expect(mockDnaReportRepository.findLatestForDoctor).not.toHaveBeenCalled();
+    expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+    const ctx = mockHarnessGateway.start.mock.calls[0][1];
+    expect(ctx.redactionRules ?? []).toEqual([]);
+  });
 
-    it('passes departmentAgentDnaDisabled=true when the department default agent has dnaStylePolicy DISABLED', async () => {
-        mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({ dnaStylePolicy: 'DISABLED' });
-        mockConfigResolver.resolveEffectiveDnaRedactionEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: true });
+  it('passes departmentAgentDnaDisabled=true when the department default agent has dnaStylePolicy DISABLED', async () => {
+    mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({ dnaStylePolicy: 'DISABLED' });
+    mockConfigResolver.resolveEffectiveDnaRedactionEnabled.mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: true });
 
-        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+    await handler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-        expect(mockConfigResolver.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledWith(
-            expect.objectContaining({ departmentAgentDnaDisabled: true }),
-        );
-    });
+    expect(mockConfigResolver.resolveEffectiveDnaRedactionEnabled).toHaveBeenCalledWith(
+      expect.objectContaining({ departmentAgentDnaDisabled: true }),
+    );
+  });
 
-    it('fails safe (no rules, harness still starts) when decryption throws', async () => {
-        mockDnaReportRepository.decryptFieldsFromEntity.mockRejectedValue(new Error('vault transit unavailable'));
+  it('fails safe (no rules, harness still starts) when decryption throws', async () => {
+    mockDnaReportRepository.decryptFieldsFromEntity.mockRejectedValue(new Error('vault transit unavailable'));
 
-        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+    await handler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-        expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
-        const ctx = mockHarnessGateway.start.mock.calls[0][1];
-        expect(ctx.redactionRules ?? []).toEqual([]);
-        // The failure degrades to no-redaction, it does NOT emit a pipeline failure.
-        expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
-            ConsultationPipelineEvent.PipelineStepFailed,
-            expect.anything(),
-        );
-    });
+    expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+    const ctx = mockHarnessGateway.start.mock.calls[0][1];
+    expect(ctx.redactionRules ?? []).toEqual([]);
+    // The failure degrades to no-redaction, it does NOT emit a pipeline failure.
+    expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(ConsultationPipelineEvent.PipelineStepFailed, expect.anything());
+  });
 
-    it('threads no rules (and does not throw) when the doctor has no DNA report', async () => {
-        mockDnaReportRepository.findLatestForDoctor.mockResolvedValue(null);
+  it('threads no rules (and does not throw) when the doctor has no DNA report', async () => {
+    mockDnaReportRepository.findLatestForDoctor.mockResolvedValue(null);
 
-        await handler.handleTranscriptionCreated(makeTranscriptionPayload());
+    await handler.handleTranscriptionCreated(makeTranscriptionPayload());
 
-        expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
-        const ctx = mockHarnessGateway.start.mock.calls[0][1];
-        expect(ctx.redactionRules ?? []).toEqual([]);
-    });
+    expect(mockHarnessGateway.start).toHaveBeenCalledTimes(1);
+    const ctx = mockHarnessGateway.start.mock.calls[0][1];
+    expect(ctx.redactionRules ?? []).toEqual([]);
+  });
 });

@@ -26,6 +26,7 @@ import { seedEntitlements } from './15-entitlements';
 import { seedAiTaskDefault } from './16-ai-task-default';
 import { seedAiProviderConnection } from './17-ai-provider-connection';
 import { seedAiRuntimeProfile } from './18-ai-runtime-profile';
+import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedUser } from './91-user';
 
 /**
@@ -119,13 +120,22 @@ export const seed = async () => {
     // models). CREATE-ONLY; needs the AiModel catalog (seedStt above).
     await seedAiTaskDefault(client);
     console.log('');
-    // SYSTEM config-plane rows. Connections seed DISABLED and
-    // profiles seed EMPTY, so every resolution still falls through to the
-    // consuming service's env defaults (the silent-change guard).
+    // SYSTEM config-plane rows. Seed-authoritative Day-1 (TASK-578, OD-1):
+    // the built-in-local llm connections (ollama/lm-studio/built-in/vllm/
+    // llama-cpp) seed ENABLED, so `resolveConnection('llm', …)` returns the
+    // SYSTEM row and env is a pure fallback; cloud-BYO rows stay inert until a
+    // tenant brings a key. AiRuntimeProfile still seeds EMPTY (absence = no
+    // opinion → the injection cascade falls through to the service default).
     // No FK on either model; ordered after AiTaskDefault for readability.
     await seedAiProviderConnection(client);
     console.log('');
     await seedAiRuntimeProfile(client);
+    console.log('');
+    // SYSTEM TenantTtsConfig platform default (TASK-577 / F1): built-in-first
+    // TTS routing (kokoro / indic_parler) so an unconfigured tenant defaults to
+    // a LOCAL engine, never a cloud vendor. CREATE-ONLY; needs the TTS AiModel
+    // catalog (seedStt above) and the reserved SYSTEM tenant (Phase 1).
+    await seedTenantTtsConfig(client);
     console.log('');
 
     // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)

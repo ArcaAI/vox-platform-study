@@ -1,4 +1,11 @@
-import { EffectiveTtsConfigResponse, IConfigService, ITenantTtsConfigService, SecretsService, TtsProviderOverrides } from '@arcaai/applications';
+import {
+  EffectiveTtsConfigResponse,
+  IConfigService,
+  IProviderConnectionService,
+  ITenantTtsConfigService,
+  ProviderOverrides,
+  SecretsService,
+} from '@arcaai/applications';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
@@ -53,7 +60,7 @@ interface Bridge {
   /** Resolved tenant TTS spec injected into the init frame; null = none. */
   effectiveConfig: EffectiveTtsConfigResponse | null;
   /** Decrypted BYO provider credentials injected into the init frame; null = none. */
-  providerOverrides: TtsProviderOverrides | null;
+  providerOverrides: ProviderOverrides | null;
   /** The client's first `init` frame is enriched with the tenant config exactly once. */
   initEnriched: boolean;
 }
@@ -75,6 +82,9 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
     // Resolve the ticket tenant's TTS spec and inject it into the init frame.
     @Optional() @Inject(ITenantTtsConfigService) private readonly tenantTtsConfig?: ITenantTtsConfigService,
+    // BYO provider credential injection (`service='tts'`, TASK-570) — the
+    // unified provider-connection plane.
+    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
   ) {}
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
@@ -127,12 +137,12 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // error leaves it null → tts uses its own settings). Injected into the
     // first `init` frame the browser sends.
     let effectiveConfig: EffectiveTtsConfigResponse | null = null;
-    let providerOverrides: TtsProviderOverrides | null = null;
+    let providerOverrides: ProviderOverrides | null = null;
     if (this.tenantTtsConfig && tenantId) {
       try {
         [effectiveConfig, providerOverrides] = await Promise.all([
           this.tenantTtsConfig.getEffective(tenantId),
-          this.tenantTtsConfig.resolveProviderOverrides(tenantId),
+          this.providerConnectionService ? this.providerConnectionService.resolveTenantCloudOverrides('tts', tenantId) : Promise.resolve({}),
         ]);
       } catch (err) {
         this.logger.warn({

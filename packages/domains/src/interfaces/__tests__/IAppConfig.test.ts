@@ -11,19 +11,11 @@ import { describe, it, expect } from 'vitest';
 import type { IAppConfig } from '../IAppConfig';
 
 type Assert<T extends true> = T;
-type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B
-  ? 1
-  : 2
-  ? true
-  : false;
+type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
-type _PrismaPgMaxIsOptionalNumber = Assert<
-  Equals<IAppConfig['PRISMA_PG_MAX'], number | undefined>
->;
+type _PrismaPgMaxIsOptionalNumber = Assert<Equals<IAppConfig['PRISMA_PG_MAX'], number | undefined>>;
 
-type _DirectUrlIsOptionalString = Assert<
-  Equals<IAppConfig['DIRECT_URL'], string | undefined>
->;
+type _DirectUrlIsOptionalString = Assert<Equals<IAppConfig['DIRECT_URL'], string | undefined>>;
 
 describe('IAppConfig — Stream C Phase 0 fields', () => {
   it('declares PRISMA_PG_MAX as an optional number', () => {

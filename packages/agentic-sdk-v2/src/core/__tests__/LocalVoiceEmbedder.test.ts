@@ -32,7 +32,13 @@ function makeFakeTransformers(embedding: number[]) {
   };
   const AutoModel = {
     from_pretrained: vi.fn(async (_id: string, opts?: Record<string, unknown>) => {
-      (opts?.progress_callback as ((p: unknown) => void) | undefined)?.({ status: 'progress', file: 'model.onnx', progress: 50, loaded: 5, total: 10 });
+      (opts?.progress_callback as ((p: unknown) => void) | undefined)?.({
+        status: 'progress',
+        file: 'model.onnx',
+        progress: 50,
+        loaded: 5,
+        total: 10,
+      });
       return model;
     }),
   };

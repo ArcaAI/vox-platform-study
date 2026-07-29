@@ -20,11 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const SHARED_CHROME_ARGS = [
-  '--use-fake-ui-for-media-stream',
-  '--use-fake-device-for-media-stream',
-  '--autoplay-policy=no-user-gesture-required',
-];
+const SHARED_CHROME_ARGS = ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'];
 
 function chromeProjectWithAudio(name: string, specFile: string, audioFixture: string) {
   return {
@@ -35,10 +31,7 @@ function chromeProjectWithAudio(name: string, specFile: string, audioFixture: st
       channel: 'chrome' as const,
       permissions: ['microphone'] as string[],
       launchOptions: {
-        args: [
-          ...SHARED_CHROME_ARGS,
-          `--use-file-for-fake-audio-capture=${path.resolve(__dirname, audioFixture)}`,
-        ],
+        args: [...SHARED_CHROME_ARGS, `--use-file-for-fake-audio-capture=${path.resolve(__dirname, audioFixture)}`],
       },
     },
   };

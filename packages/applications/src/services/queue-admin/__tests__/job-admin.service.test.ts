@@ -2,22 +2,24 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { JobAdminService } from '../job-admin.service';
 import { JobQueue } from '@arcaai/domains';
 
-const createMockJob = (overrides: Partial<{
-  id: string;
-  name: string;
-  data: Record<string, unknown>;
-  opts: Record<string, unknown>;
-  progress: number;
-  attemptsMade: number;
-  delay: number;
-  timestamp: number;
-  processedOn: number | null;
-  finishedOn: number | null;
-  failedReason: string;
-  returnvalue: unknown;
-  stacktrace: string[];
-  parentKey: string | null;
-}> = {}) => ({
+const createMockJob = (
+  overrides: Partial<{
+    id: string;
+    name: string;
+    data: Record<string, unknown>;
+    opts: Record<string, unknown>;
+    progress: number;
+    attemptsMade: number;
+    delay: number;
+    timestamp: number;
+    processedOn: number | null;
+    finishedOn: number | null;
+    failedReason: string;
+    returnvalue: unknown;
+    stacktrace: string[];
+    parentKey: string | null;
+  }> = {},
+) => ({
   id: overrides.id ?? 'job-1',
   name: overrides.name ?? 'default',
   data: overrides.data ?? { key: 'value' },
@@ -68,10 +70,7 @@ describe('JobAdminService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new JobAdminService(
-      mockModuleRef as any,
-      mockRedactorService as any,
-    );
+    service = new JobAdminService(mockModuleRef as any, mockRedactorService as any);
   });
 
   describe('listJobs', () => {
@@ -110,12 +109,7 @@ describe('JobAdminService', () => {
         status: 'failed',
       });
 
-      expect(mockQueue.getJobs).toHaveBeenCalledWith(
-        ['failed'],
-        0,
-        19,
-        true,
-      );
+      expect(mockQueue.getJobs).toHaveBeenCalledWith(['failed'], 0, 19, true);
     });
 
     it('should get all statuses when status is not specified', async () => {
@@ -126,12 +120,7 @@ describe('JobAdminService', () => {
 
       await service.listJobs(JobQueue.AuditLog, { page: 0, limit: 20 });
 
-      expect(mockQueue.getJobs).toHaveBeenCalledWith(
-        ['waiting', 'active', 'completed', 'failed', 'delayed'],
-        0,
-        19,
-        true,
-      );
+      expect(mockQueue.getJobs).toHaveBeenCalledWith(['waiting', 'active', 'completed', 'failed', 'delayed'], 0, 19, true);
     });
 
     it('should calculate correct pagination offsets', async () => {
@@ -142,12 +131,7 @@ describe('JobAdminService', () => {
 
       await service.listJobs(JobQueue.AuditLog, { page: 2, limit: 10 });
 
-      expect(mockQueue.getJobs).toHaveBeenCalledWith(
-        expect.any(Array),
-        20,
-        29,
-        true,
-      );
+      expect(mockQueue.getJobs).toHaveBeenCalledWith(expect.any(Array), 20, 29, true);
     });
 
     it('should not include job data in list view', async () => {
@@ -184,10 +168,7 @@ describe('JobAdminService', () => {
         fromEmailAddressId: 'addr-1',
       });
 
-      const result = await service.getJobDetail(
-        JobQueue.SendEmail,
-        'job-42',
-      );
+      const result = await service.getJobDetail(JobQueue.SendEmail, 'job-42');
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -198,11 +179,7 @@ describe('JobAdminService', () => {
           data: { body: '[REDACTED]', fromEmailAddressId: 'addr-1' },
         }),
       );
-      expect(mockRedactorService.redact).toHaveBeenCalledWith(
-        { body: 'Hello patient', fromEmailAddressId: 'addr-1' },
-        JobQueue.SendEmail,
-        'detail',
-      );
+      expect(mockRedactorService.redact).toHaveBeenCalledWith({ body: 'Hello patient', fromEmailAddressId: 'addr-1' }, JobQueue.SendEmail, 'detail');
     });
 
     it('should throw NotFoundException when job does not exist', async () => {
@@ -210,9 +187,7 @@ describe('JobAdminService', () => {
       mockQueue.getJob.mockResolvedValue(null);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      await expect(
-        service.getJobDetail(JobQueue.AuditLog, 'nonexistent'),
-      ).rejects.toThrow();
+      await expect(service.getJobDetail(JobQueue.AuditLog, 'nonexistent')).rejects.toThrow();
     });
 
     it('should include stacktrace and return value', async () => {
@@ -226,15 +201,9 @@ describe('JobAdminService', () => {
       mockQueue.getJob.mockResolvedValue(mockJob);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      const result = await service.getJobDetail(
-        JobQueue.AuditLog,
-        'job-1',
-      );
+      const result = await service.getJobDetail(JobQueue.AuditLog, 'job-1');
 
-      expect(result.stacktrace).toEqual([
-        'Error: Something failed',
-        '  at handler (file.ts:10)',
-      ]);
+      expect(result.stacktrace).toEqual(['Error: Something failed', '  at handler (file.ts:10)']);
       expect(result.returnValue).toEqual({ result: 'ok' });
     });
   });
@@ -256,9 +225,7 @@ describe('JobAdminService', () => {
       mockQueue.getJob.mockResolvedValue(null);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      await expect(
-        service.retryJob(JobQueue.AuditLog, 'nonexistent'),
-      ).rejects.toThrow();
+      await expect(service.retryJob(JobQueue.AuditLog, 'nonexistent')).rejects.toThrow();
     });
   });
 
@@ -279,9 +246,7 @@ describe('JobAdminService', () => {
       mockQueue.getJob.mockResolvedValue(null);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      await expect(
-        service.removeJob(JobQueue.AuditLog, 'nonexistent'),
-      ).rejects.toThrow();
+      await expect(service.removeJob(JobQueue.AuditLog, 'nonexistent')).rejects.toThrow();
     });
   });
 
@@ -303,16 +268,10 @@ describe('JobAdminService', () => {
       const mockJob1 = createMockJob({ id: 'job-1' });
       const mockJob2 = createMockJob({ id: 'job-2' });
       const mockQueue = createMockQueue();
-      mockQueue.getJob
-        .mockResolvedValueOnce(mockJob1)
-        .mockResolvedValueOnce(mockJob2);
+      mockQueue.getJob.mockResolvedValueOnce(mockJob1).mockResolvedValueOnce(mockJob2);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      const result = await service.bulkAction(
-        JobQueue.AuditLog,
-        'retry',
-        ['job-1', 'job-2'],
-      );
+      const result = await service.bulkAction(JobQueue.AuditLog, 'retry', ['job-1', 'job-2']);
 
       expect(mockJob1.retry).toHaveBeenCalledOnce();
       expect(mockJob2.retry).toHaveBeenCalledOnce();
@@ -324,16 +283,10 @@ describe('JobAdminService', () => {
       const mockJob1 = createMockJob({ id: 'job-1' });
       const mockJob2 = createMockJob({ id: 'job-2' });
       const mockQueue = createMockQueue();
-      mockQueue.getJob
-        .mockResolvedValueOnce(mockJob1)
-        .mockResolvedValueOnce(mockJob2);
+      mockQueue.getJob.mockResolvedValueOnce(mockJob1).mockResolvedValueOnce(mockJob2);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      const result = await service.bulkAction(
-        JobQueue.AuditLog,
-        'remove',
-        ['job-1', 'job-2'],
-      );
+      const result = await service.bulkAction(JobQueue.AuditLog, 'remove', ['job-1', 'job-2']);
 
       expect(mockJob1.remove).toHaveBeenCalledOnce();
       expect(mockJob2.remove).toHaveBeenCalledOnce();
@@ -342,16 +295,10 @@ describe('JobAdminService', () => {
 
     it('should count failures when jobs do not exist', async () => {
       const mockQueue = createMockQueue();
-      mockQueue.getJob
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(createMockJob({ id: 'job-2' }));
+      mockQueue.getJob.mockResolvedValueOnce(null).mockResolvedValueOnce(createMockJob({ id: 'job-2' }));
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      const result = await service.bulkAction(
-        JobQueue.AuditLog,
-        'retry',
-        ['nonexistent', 'job-2'],
-      );
+      const result = await service.bulkAction(JobQueue.AuditLog, 'retry', ['nonexistent', 'job-2']);
 
       expect(result.succeeded).toBe(1);
       expect(result.failed).toBe(1);
@@ -364,11 +311,7 @@ describe('JobAdminService', () => {
       mockQueue.getJob.mockResolvedValue(mockJob);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      const result = await service.bulkAction(
-        JobQueue.AuditLog,
-        'retry',
-        ['job-1'],
-      );
+      const result = await service.bulkAction(JobQueue.AuditLog, 'retry', ['job-1']);
 
       expect(result.succeeded).toBe(0);
       expect(result.failed).toBe(1);

@@ -2,11 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { CodeEditor } from '../../custom/code-editor';
 
-const SAMPLE = JSON.stringify(
-  { model: 'gpt-4o', temperature: 0.2, tools: ['search', 'calc'], stream: true, fallback: null },
-  null,
-  2,
-);
+const SAMPLE = JSON.stringify({ model: 'gpt-4o', temperature: 0.2, tools: ['search', 'calc'], stream: true, fallback: null }, null, 2);
 
 const meta = {
   title: 'Custom/CodeEditor',

@@ -1,12 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
-import {
-  useAdminGenerateDnaReport,
-  useAdminUpdateDnaReport,
-  useDnaReportVersions,
-  useTenantDnaReportData,
-} from '../dna-reports';
+import { useAdminGenerateDnaReport, useAdminUpdateDnaReport, useDnaReportVersions, useTenantDnaReportData } from '../dna-reports';
 
 vi.mock('../admin-client', () => ({
   adminClient: {
@@ -69,16 +64,10 @@ describe('DNA Reports Admin API hooks', () => {
       ];
       mockGet.mockResolvedValueOnce(versions);
 
-      const { result } = renderHook(
-        () => useDnaReportVersions(TENANT_ID, REPORT_ID),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useDnaReportVersions(TENANT_ID, REPORT_ID), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockGet).toHaveBeenCalledWith(
-        `/admin/dna-writing-styles/${REPORT_ID}/versions`,
-        { tenantId: TENANT_ID },
-      );
+      expect(mockGet).toHaveBeenCalledWith(`/admin/dna-writing-styles/${REPORT_ID}/versions`, { tenantId: TENANT_ID });
     });
 
     it('should sort versions by versionNumber descending', async () => {
@@ -88,10 +77,7 @@ describe('DNA Reports Admin API hooks', () => {
       ];
       mockGet.mockResolvedValueOnce(versions);
 
-      const { result } = renderHook(
-        () => useDnaReportVersions(TENANT_ID, REPORT_ID),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useDnaReportVersions(TENANT_ID, REPORT_ID), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
       expect(result.current.data![0].versionNumber).toBe(2);
@@ -99,20 +85,14 @@ describe('DNA Reports Admin API hooks', () => {
     });
 
     it('should not fetch when tenantId is empty', async () => {
-      const { result } = renderHook(
-        () => useDnaReportVersions('', REPORT_ID),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useDnaReportVersions('', REPORT_ID), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
       expect(mockGet).not.toHaveBeenCalled();
     });
 
     it('should not fetch when reportId is empty', async () => {
-      const { result } = renderHook(
-        () => useDnaReportVersions(TENANT_ID, ''),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useDnaReportVersions(TENANT_ID, ''), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
       expect(mockGet).not.toHaveBeenCalled();
@@ -125,27 +105,17 @@ describe('DNA Reports Admin API hooks', () => {
         .mockResolvedValueOnce({ data: [{ id: 'u-1', username: 'doc1' }], count: 1, limit: 100, page: 1 })
         .mockResolvedValueOnce({ data: [{ id: 'r-1', doctorId: 'u-1' }], count: 1, limit: 500, page: 1 });
 
-      const { result } = renderHook(
-        () => useTenantDnaReportData(TENANT_ID),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenantDnaReportData(TENANT_ID), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockGet).toHaveBeenCalledWith(
-        `/admin/users/tenant/${TENANT_ID}?page=1&limit=100`,
-        { tenantId: TENANT_ID },
-      );
-      expect(mockGet).toHaveBeenCalledWith(
-        `/admin/dna-writing-styles?page=1&limit=500&includeDisabled=true&tenantId=${TENANT_ID}`,
-        { tenantId: TENANT_ID },
-      );
+      expect(mockGet).toHaveBeenCalledWith(`/admin/users/tenant/${TENANT_ID}?page=1&limit=100`, { tenantId: TENANT_ID });
+      expect(mockGet).toHaveBeenCalledWith(`/admin/dna-writing-styles?page=1&limit=500&includeDisabled=true&tenantId=${TENANT_ID}`, {
+        tenantId: TENANT_ID,
+      });
     });
 
     it('should not fetch when tenantId is empty', async () => {
-      const { result } = renderHook(
-        () => useTenantDnaReportData(''),
-        { wrapper: createWrapper() },
-      );
+      const { result } = renderHook(() => useTenantDnaReportData(''), { wrapper: createWrapper() });
 
       await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
       expect(mockGet).not.toHaveBeenCalled();
@@ -184,11 +154,7 @@ describe('DNA Reports Admin API hooks', () => {
       result.current.mutate({ reportId: REPORT_ID, tenantId: TENANT_ID, styleText: 'No version' });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockPatch).toHaveBeenCalledWith(
-        `/admin/dna-writing-styles/${REPORT_ID}`,
-        { styleText: 'No version' },
-        { tenantId: TENANT_ID },
-      );
+      expect(mockPatch).toHaveBeenCalledWith(`/admin/dna-writing-styles/${REPORT_ID}`, { styleText: 'No version' }, { tenantId: TENANT_ID });
     });
   });
 
@@ -207,11 +173,7 @@ describe('DNA Reports Admin API hooks', () => {
       result.current.mutate({ doctorId: DOCTOR_ID, tenantId: TENANT_ID });
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
-      expect(mockPost).toHaveBeenCalledWith(
-        `/admin/dna-writing-styles/generate/${DOCTOR_ID}`,
-        {},
-        { tenantId: TENANT_ID },
-      );
+      expect(mockPost).toHaveBeenCalledWith(`/admin/dna-writing-styles/generate/${DOCTOR_ID}`, {}, { tenantId: TENANT_ID });
     });
 
     it('forwards optional generation inputs in the body (not doctorId/tenantId)', async () => {

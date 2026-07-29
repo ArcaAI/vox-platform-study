@@ -38,8 +38,28 @@ function ingestResponse() {
   return {
     chunkCount: 2,
     chunks: [
-      { chunkIndex: 0, text: 'Give antibiotics within 1 hour.', qdrantPointId: 'pt-0', startOffset: 0, endOffset: 31, tokenCount: 6, embeddingModel: 'BAAI/bge-m3', embeddingDim: 1024, status: 'APPROVED' },
-      { chunkIndex: 1, text: 'Draw lactate and blood cultures.', qdrantPointId: 'pt-1', startOffset: 32, endOffset: 64, tokenCount: 5, embeddingModel: 'BAAI/bge-m3', embeddingDim: 1024, status: 'APPROVED' },
+      {
+        chunkIndex: 0,
+        text: 'Give antibiotics within 1 hour.',
+        qdrantPointId: 'pt-0',
+        startOffset: 0,
+        endOffset: 31,
+        tokenCount: 6,
+        embeddingModel: 'BAAI/bge-m3',
+        embeddingDim: 1024,
+        status: 'APPROVED',
+      },
+      {
+        chunkIndex: 1,
+        text: 'Draw lactate and blood cultures.',
+        qdrantPointId: 'pt-1',
+        startOffset: 32,
+        endOffset: 64,
+        tokenCount: 5,
+        embeddingModel: 'BAAI/bge-m3',
+        embeddingDim: 1024,
+        status: 'APPROVED',
+      },
     ],
   };
 }
@@ -86,9 +106,7 @@ describe('IngestKnowledgeDocumentProcessor — field encryption', () => {
       knowledgeChunkRepository.create.mock.invocationCallOrder[0],
     );
     // the SAME entity instance is encrypted then persisted
-    expect(knowledgeChunkRepository.encryptFieldsIntoEntity.mock.calls[0][0]).toBe(
-      knowledgeChunkRepository.create.mock.calls[0][0],
-    );
+    expect(knowledgeChunkRepository.encryptFieldsIntoEntity.mock.calls[0][0]).toBe(knowledgeChunkRepository.create.mock.calls[0][0]);
   });
 
   it('still persists chunks when encryption fails (dual-write soak)', async () => {

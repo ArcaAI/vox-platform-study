@@ -61,9 +61,7 @@ class TestS3ResolutionAgainstRealMinIO:
         _put(minio_client, f"{prefix}/weights.bin", b"weight-bytes")
         _put(minio_client, f"{prefix}/tokenizer.json", b'{"vocab": {}}')
 
-        identity = ModelWeightIdentity(
-            slug="probe-model", source_uri=f"s3://{_BUCKET}/{prefix}"
-        )
+        identity = ModelWeightIdentity(slug="probe-model", source_uri=f"s3://{_BUCKET}/{prefix}")
         config = _config(minio_config, tmp_path)
 
         first = await resolve_model_dir(identity, config=config)
@@ -97,9 +95,9 @@ class TestS3ResolutionAgainstRealMinIO:
         resolved = await resolve_model_dir(identity, config=_config(minio_config, tmp_path))
 
         assert (resolved / "model.gguf").read_bytes() == payload
-        assert (resolved / ".verified").exists(), (
-            "a verified cache entry must carry the marker so re-resolves skip re-hashing"
-        )
+        assert (
+            resolved / ".verified"
+        ).exists(), "a verified cache entry must carry the marker so re-resolves skip re-hashing"
 
     async def test_checksum_mismatch_is_a_hard_error_and_serves_nothing(
         self, minio_client, minio_config, tmp_path
@@ -120,9 +118,9 @@ class TestS3ResolutionAgainstRealMinIO:
 
         # Neither a promoted dir nor temp debris may remain holding the bad bytes.
         promoted = list((cache_dir / "s3").glob("*")) if (cache_dir / "s3").exists() else []
-        assert all(".tmp-" in p.name for p in promoted), (
-            f"checksum failure must leave no servable cache entry, found: {promoted}"
-        )
+        assert all(
+            ".tmp-" in p.name for p in promoted
+        ), f"checksum failure must leave no servable cache entry, found: {promoted}"
 
     async def test_empty_prefix_is_rejected(self, minio_client, minio_config, tmp_path):
         """A prefix with no objects is an error, not a silently-empty weights dir."""

@@ -118,7 +118,10 @@ class TestIdentifyWithEmbedding:
         samples = np.random.randn(32000).astype(np.float32)
 
         sid, conf = await worker._identify_speaker(
-            embedding, "hello world", samples=samples, sample_rate=16000,
+            embedding,
+            "hello world",
+            samples=samples,
+            sample_rate=16000,
         )
 
         assert sid == "spk-123"

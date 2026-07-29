@@ -104,9 +104,7 @@ def pytest_configure(config):
     # ``[Errno 2] No such file or directory: ''``.
     configured = (os.environ.get("HUGGINGFACE_CACHE_DIR") or "").strip()
     if not configured or not Path(configured).is_dir():
-        hf_cache = os.environ.get("HF_HOME") or str(
-            Path.home() / ".cache" / "huggingface" / "hub"
-        )
+        hf_cache = os.environ.get("HF_HOME") or str(Path.home() / ".cache" / "huggingface" / "hub")
         os.environ["HUGGINGFACE_CACHE_DIR"] = hf_cache
 
     # Ensure testcontainers can reach the Docker daemon.  OrbStack and Colima

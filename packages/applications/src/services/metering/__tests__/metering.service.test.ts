@@ -104,7 +104,12 @@ describe('MeteringService.reconcileTenant', () => {
       (call: [{ where: { TenantUsageMeter_tenant_metric_period_unique: { metric: UsageMeterMetric } } }]) =>
         call[0].where.TenantUsageMeter_tenant_metric_period_unique.metric === UsageMeterMetric.CONSULTATIONS,
     )![0];
-    expect(consultationCall.create).toMatchObject({ tenantId: 'tenant-1', usedCount: 12, periodStart: WINDOW.periodStart, periodEnd: WINDOW.periodEnd });
+    expect(consultationCall.create).toMatchObject({
+      tenantId: 'tenant-1',
+      usedCount: 12,
+      periodStart: WINDOW.periodStart,
+      periodEnd: WINDOW.periodEnd,
+    });
     expect(consultationCall.update).toMatchObject({ usedCount: 12, reconciledAt: FIXED_NOW });
   });
 });

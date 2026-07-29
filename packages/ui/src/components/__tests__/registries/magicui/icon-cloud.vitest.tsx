@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
-import { IconCloud } from '../../../registries/magicui/icon-cloud'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render } from '@testing-library/react';
+import { IconCloud } from '../../../registries/magicui/icon-cloud';
 
 describe('IconCloud', () => {
   beforeEach(() => {
@@ -30,13 +30,11 @@ describe('IconCloud', () => {
       rect: vi.fn(),
       clip: vi.fn(),
       canvas: { width: 800, height: 600 },
-    }) as unknown as typeof HTMLCanvasElement.prototype.getContext
-  })
+    }) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
 
   it('renders without crashing', () => {
-    const { container } = render(
-      <IconCloud images={["https://example.com/icon.png"]} />
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    const { container } = render(<IconCloud images={['https://example.com/icon.png']} />);
+    expect(container.firstChild).toBeTruthy();
+  });
+});

@@ -109,13 +109,9 @@ describe('TagEntity.validate()', () => {
 
   describe('resourceTypeName', () => {
     it('should throw when resourceTypeName exceeds 100 characters', () => {
-      const entity = new TagEntity(
-        createValidInit({ resourceTypeName: 'x'.repeat(101) }),
-      );
+      const entity = new TagEntity(createValidInit({ resourceTypeName: 'x'.repeat(101) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Tag resourceTypeName must not exceed 100 characters',
-      );
+      expect(() => entity.validate()).toThrow('Tag resourceTypeName must not exceed 100 characters');
     });
   });
 
@@ -129,13 +125,9 @@ describe('TagEntity.validate()', () => {
 
   describe('description', () => {
     it('should throw when description exceeds 1000 characters', () => {
-      const entity = new TagEntity(
-        createValidInit({ description: 'x'.repeat(1001) }),
-      );
+      const entity = new TagEntity(createValidInit({ description: 'x'.repeat(1001) }));
 
-      expect(() => entity.validate()).toThrow(
-        'Tag description must not exceed 1000 characters',
-      );
+      expect(() => entity.validate()).toThrow('Tag description must not exceed 1000 characters');
     });
   });
 

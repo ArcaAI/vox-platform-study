@@ -29,7 +29,16 @@ class Voice:
 DEFAULT_VOICES: tuple[Voice, ...] = (
     Voice("en-female-1", "en-IN", {"azure": "en-IN-NeerjaNeural", "kokoro": "af_heart"}),
     Voice("en-male-1", "en-IN", {"azure": "en-IN-PrabhatNeural", "kokoro": "am_adam"}),
-    Voice("ml-female-1", "ml-IN", {"azure": "ml-IN-SobhanaNeural", "sarvam": "ishita", "indic_parler": "Anjali", "indic_f5": "ml-ref-1"}),
+    Voice(
+        "ml-female-1",
+        "ml-IN",
+        {
+            "azure": "ml-IN-SobhanaNeural",
+            "sarvam": "ishita",
+            "indic_parler": "Anjali",
+            "indic_f5": "ml-ref-1",
+        },
+    ),
     Voice("ml-male-1", "ml-IN", {"azure": "ml-IN-MidhunNeural", "sarvam": "shubh"}),
 )
 

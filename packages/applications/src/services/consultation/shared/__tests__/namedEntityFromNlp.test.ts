@@ -14,10 +14,7 @@ const CTX = { tenantId: 'tenant-1', contextItemId: 'ctx-1' };
 
 describe('namedEntityPropsFromNlp', () => {
   it('maps the real NLP contract (text / entity_type / confidence / position)', () => {
-    const props = namedEntityPropsFromNlp(
-      { text: 'aspirin', entity_type: 'MEDICATION', confidence: 0.9, position: { start: 8, end: 15 } },
-      CTX,
-    );
+    const props = namedEntityPropsFromNlp({ text: 'aspirin', entity_type: 'MEDICATION', confidence: 0.9, position: { start: 8, end: 15 } }, CTX);
 
     expect(props).toEqual({
       tenantId: 'tenant-1',
@@ -31,10 +28,7 @@ describe('namedEntityPropsFromNlp', () => {
   });
 
   it('preserves 0 confidence and 0 offsets (nullish coalescing, not ||)', () => {
-    const props = namedEntityPropsFromNlp(
-      { text: 'x', entity_type: 'T', confidence: 0, position: { start: 0, end: 0 } },
-      CTX,
-    );
+    const props = namedEntityPropsFromNlp({ text: 'x', entity_type: 'T', confidence: 0, position: { start: 0, end: 0 } }, CTX);
 
     expect(props.confidence).toBe(0);
     expect(props.startOffset).toBe(0);
@@ -57,10 +51,7 @@ describe('namedEntityPropsFromNlp', () => {
   });
 
   it('falls back to legacy value/type/start/end names', () => {
-    const props = namedEntityPropsFromNlp(
-      { value: 'Diabetes', type: 'CONDITION', confidence: 0.95, start: 13, end: 21 },
-      CTX,
-    );
+    const props = namedEntityPropsFromNlp({ value: 'Diabetes', type: 'CONDITION', confidence: 0.95, start: 13, end: 21 }, CTX);
 
     expect(props).toMatchObject({
       text: 'Diabetes',
@@ -72,10 +63,7 @@ describe('namedEntityPropsFromNlp', () => {
   });
 
   it('falls back to NamedEntity-native className/startOffset/endOffset names', () => {
-    const props = namedEntityPropsFromNlp(
-      { text: 'MRI', className: 'PROCEDURE', startOffset: 5, endOffset: 8 },
-      CTX,
-    );
+    const props = namedEntityPropsFromNlp({ text: 'MRI', className: 'PROCEDURE', startOffset: 5, endOffset: 8 }, CTX);
 
     expect(props).toMatchObject({
       text: 'MRI',

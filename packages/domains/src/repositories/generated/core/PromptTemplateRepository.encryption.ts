@@ -9,11 +9,7 @@
 
 import { PromptTemplateRepository } from './PromptTemplateRepository';
 import { PromptTemplateEntity } from '../../../entities';
-import {
-  type SecretsServiceLike,
-  encryptStringToCiphertext,
-  decryptCiphertextToString,
-} from '../../../common/field-encryption';
+import { type SecretsServiceLike, encryptStringToCiphertext, decryptCiphertextToString } from '../../../common/field-encryption';
 
 /** Plaintext view returned by {@link PromptTemplateRepository.decryptFieldsFromEntity}. */
 export interface PromptTemplatePlaintext {
@@ -30,11 +26,7 @@ declare module './PromptTemplateRepository' {
      * call unconditionally on a partial row. The transient plaintext stays in
      * memory for the request; only ciphertext persists.
      */
-    encryptFieldsIntoEntity(
-      this: PromptTemplateRepository,
-      entity: PromptTemplateEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: PromptTemplateRepository, entity: PromptTemplateEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**
      * Decrypt the ciphertext column (ciphertext-only; the plaintext column was

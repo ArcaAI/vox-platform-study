@@ -144,7 +144,14 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
   // via a redirect page.: `/ai-services` takes the freed slot,
   // surfacing the guardrail/NLP status + config backends that had no screen.
   { route: '/ai-services', label: 'AI services', tier: '10-19', icon: IconServerCog, required: [['manage', 'all']], implemented: true },
-  { route: '/ai-operations/runs', label: 'AI operations — runs', tier: '10-19', icon: IconTimeline, required: [['manage', 'all']], implemented: true },
+  {
+    route: '/ai-operations/runs',
+    label: 'AI operations — runs',
+    tier: '10-19',
+    icon: IconTimeline,
+    required: [['manage', 'all']],
+    implemented: true,
+  },
   {
     route: '/ai-operations/metrics',
     label: 'AI operations — metrics',

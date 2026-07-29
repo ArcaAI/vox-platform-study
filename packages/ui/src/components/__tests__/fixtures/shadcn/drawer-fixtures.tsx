@@ -7,14 +7,10 @@ import {
   DrawerTitle,
   DrawerDescription,
   DrawerClose,
-} from '../../../shadcn/drawer'
-import { Button } from '../../../shadcn/button'
+} from '../../../shadcn/drawer';
+import { Button } from '../../../shadcn/button';
 
-export function ControlledDrawer({
-  defaultOpen = false,
-}: {
-  defaultOpen?: boolean
-}) {
+export function ControlledDrawer({ defaultOpen = false }: { defaultOpen?: boolean }) {
   return (
     <Drawer defaultOpen={defaultOpen}>
       <DrawerTrigger asChild>
@@ -33,5 +29,5 @@ export function ControlledDrawer({
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
-  )
+  );
 }

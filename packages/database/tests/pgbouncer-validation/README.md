@@ -11,14 +11,14 @@ independently while other agents iterate on the rest of the monorepo.
 
 ## What this validates
 
-| Concern | How |
-|---|---|
-| Prisma 7 + `@prisma/adapter-pg` survives transaction-mode pooling | `pgbv:test` runs Vitest cases that exercise pooled connections |
-| `$transaction` + `set_config('app.tenant_id', …, true)` (transaction-scoped, i.e. RLS) leaks across transactions | Soft-delete extension still applies, RLS GUC does not leak (Task 1.8, 1.13) |
-| Long-running prepared-statement budget under load | 100× concurrent prepared statements within `MAX_PREPARED_STATEMENTS=200` (Task 1.10) |
-| `DISCARD ALL` reset between txns is observable | `SHOW STATS` snapshot before/after (Task 1.11) |
-| Prisma Migrate (advisory locks) fails through pooler, succeeds through `DIRECT_URL` | Task 1.12 |
-| Performance: pooled TPS within 10–15% of direct on read/write mix | `pgbench` baseline (Task 1.14) |
+| Concern                                                                                                          | How                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Prisma 7 + `@prisma/adapter-pg` survives transaction-mode pooling                                                | `pgbv:test` runs Vitest cases that exercise pooled connections                       |
+| `$transaction` + `set_config('app.tenant_id', …, true)` (transaction-scoped, i.e. RLS) leaks across transactions | Soft-delete extension still applies, RLS GUC does not leak (Task 1.8, 1.13)          |
+| Long-running prepared-statement budget under load                                                                | 100× concurrent prepared statements within `MAX_PREPARED_STATEMENTS=200` (Task 1.10) |
+| `DISCARD ALL` reset between txns is observable                                                                   | `SHOW STATS` snapshot before/after (Task 1.11)                                       |
+| Prisma Migrate (advisory locks) fails through pooler, succeeds through `DIRECT_URL`                              | Task 1.12                                                                            |
+| Performance: pooled TPS within 10–15% of direct on read/write mix                                                | `pgbench` baseline (Task 1.14)                                                       |
 
 A PASS/FAIL verdict against the rubric in
 [03-pgbouncer-rollout.md §1 — Validation Rig](../../../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md)
@@ -29,10 +29,10 @@ rollout, preferred) or Phase 2B (session-mode fallback) is executed.
 
 ## Image pinning notes
 
-| Component | Tag | Why |
-|---|---|---|
-| `timescale/timescaledb-ha:pg18-all` | multi-arch (arm64 + amd64) | Matches the HA blueprint at `research/configs/postgres-ha/` |
-| `edoburu/pgbouncer:v1.25.1-p0` | latest 1.25.x | The originally-spec'd `1.25.0` tag is not published; `v1.25.1-p0` is the lowest 1.25.x tag and satisfies the `max_prepared_statements` (PgBouncer ≥ 1.21) requirement |
+| Component                           | Tag                        | Why                                                                                                                                                                   |
+| ----------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timescale/timescaledb-ha:pg18-all` | multi-arch (arm64 + amd64) | Matches the HA blueprint at `research/configs/postgres-ha/`                                                                                                           |
+| `edoburu/pgbouncer:v1.25.1-p0`      | latest 1.25.x              | The originally-spec'd `1.25.0` tag is not published; `v1.25.1-p0` is the lowest 1.25.x tag and satisfies the `max_prepared_statements` (PgBouncer ≥ 1.21) requirement |
 
 The plan referred to `edoburu/pgbouncer:1.25.0`; the actual published tag we
 pin to is documented here for traceability.
@@ -41,10 +41,10 @@ pin to is documented here for traceability.
 
 ## Networking + ports
 
-| Port | Service | Connection string env var |
-|---|---|---|
-| `5532` (host) → `5432` (container) | PostgreSQL — direct | `DIRECT_URL` |
-| `6532` (host) → `6432` (container) | PgBouncer — pooled | `DATABASE_URL` |
+| Port                               | Service             | Connection string env var |
+| ---------------------------------- | ------------------- | ------------------------- |
+| `5532` (host) → `5432` (container) | PostgreSQL — direct | `DIRECT_URL`              |
+| `6532` (host) → `6432` (container) | PgBouncer — pooled  | `DATABASE_URL`            |
 
 Both ports are intentionally offset from the dev (`5432`) and E2E test (`5433`)
 ports so the rig can co-exist with those stacks.

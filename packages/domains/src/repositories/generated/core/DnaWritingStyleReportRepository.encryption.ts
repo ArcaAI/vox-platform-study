@@ -36,11 +36,7 @@ declare module './DnaWritingStyleReportRepository' {
      * it is safe to call unconditionally on a partial row. The transient
      * plaintext stays in memory for the request; only ciphertext persists.
      */
-    encryptFieldsIntoEntity(
-      this: DnaWritingStyleReportRepository,
-      entity: DnaWritingStyleReportEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: DnaWritingStyleReportRepository, entity: DnaWritingStyleReportEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**
      * Decrypt all ciphertext columns (ciphertext-only; the plaintext columns

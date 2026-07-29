@@ -310,7 +310,12 @@ class TestProviderLimits:
         payload = {
             "service": "smr",
             "runtimeProfiles": [
-                {"provider": "ollama", "modelSlug": "llama3:8b", "maxConcurrent": 99, "timeoutS": None},
+                {
+                    "provider": "ollama",
+                    "modelSlug": "llama3:8b",
+                    "maxConcurrent": 99,
+                    "timeoutS": None,
+                },
             ],
         }
         client, _ = make_client(clock, lambda _r: httpx.Response(200, json=payload))
@@ -325,7 +330,9 @@ class TestProviderLimits:
 
 
 class TestLogging:
-    async def test_logs_the_fetch_error_once_per_window(self, caplog: pytest.LogCaptureFixture) -> None:
+    async def test_logs_the_fetch_error_once_per_window(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         clock = FakeClock()
         client, _ = make_client(clock, boom_handler)
 

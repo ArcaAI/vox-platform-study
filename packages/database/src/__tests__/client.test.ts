@@ -222,10 +222,7 @@ describe('Edge Cases and Error Handling', () => {
   it('should handle deeply nested where conditions', () => {
     const args: { where?: Record<string, unknown> } = {
       where: {
-        AND: [
-          { OR: [{ name: 'a' }, { name: 'b' }] },
-          { NOT: { archived: true } },
-        ],
+        AND: [{ OR: [{ name: 'a' }, { name: 'b' }] }, { NOT: { archived: true } }],
         nested: {
           field: { equals: 'value' },
         },

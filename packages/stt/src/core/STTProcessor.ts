@@ -347,6 +347,15 @@ export class STTProcessor extends BaseProcessor {
   }
 
   /**
+   * The streaming session manager for the injected transport, or `null` for the
+   * local provider / no transport. The vox hook reaches it to drive an on-the-fly
+   * provider switch (TASK-567 R4) without threading a new callback chain.
+   */
+  getStreamingSessionManager(): StreamingSessionLike | null {
+    return this.streamingTransport?.sessionManager ?? null;
+  }
+
+  /**
    * Register a callback fired once per outbound frame dropped at the
    * streaming client's backpressure watermark (with the running total). Only the
    * streaming remote provider produces drops. This is the PUSH complement to the

@@ -1,5 +1,5 @@
-import { defineConfig, devices } from '@playwright/experimental-ct-react'
-import { resolve } from 'path'
+import { defineConfig, devices } from '@playwright/experimental-ct-react';
+import { resolve } from 'path';
 
 /**
  * Playwright Component Testing Configuration for @arcaai/ui
@@ -35,11 +35,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
 
   // Reporter configuration
-  reporter: [
-    ['list'],
-    ['html', { open: 'never', outputFolder: 'test-results/html' }],
-    ['json', { outputFile: 'test-results/results.json' }],
-  ],
+  reporter: [['list'], ['html', { open: 'never', outputFolder: 'test-results/html' }], ['json', { outputFile: 'test-results/results.json' }]],
 
   // Shared settings for all projects
   use: {
@@ -86,4 +82,4 @@ export default defineConfig({
 
   // Output directory for test artifacts
   outputDir: 'test-results/artifacts',
-})
+});

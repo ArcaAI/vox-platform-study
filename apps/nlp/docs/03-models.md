@@ -6,12 +6,12 @@ This document provides detailed information about the machine learning models us
 
 The NLP Service uses four main components:
 
-| Component | Model | Purpose | Size |
-|-----------|-------|---------|------|
-| Text Classification | `michellejieli/emotion_text_classifier` | Emotion classification (11 classes) | ~500 MB |
-| Token Classification | `blaze999/Medical-NER` | Medical entity extraction (NER) | ~400 MB |
-| Medical Diagnosis | `shanover/symps_disease_bert_v3_c41` | Disease suggestion (41 classes) | ~450 MB |
-| Text Correction | SymSpellPy + Dictionaries | Spelling correction | ~50 MB |
+| Component            | Model                                   | Purpose                             | Size    |
+| -------------------- | --------------------------------------- | ----------------------------------- | ------- |
+| Text Classification  | `michellejieli/emotion_text_classifier` | Emotion classification (11 classes) | ~500 MB |
+| Token Classification | `blaze999/Medical-NER`                  | Medical entity extraction (NER)     | ~400 MB |
+| Medical Diagnosis    | `shanover/symps_disease_bert_v3_c41`    | Disease suggestion (41 classes)     | ~450 MB |
+| Text Correction      | SymSpellPy + Dictionaries               | Spelling correction                 | ~50 MB  |
 
 **Total Model Size:** ~1.4 GB
 
@@ -118,6 +118,7 @@ Output: {
 ### Aggregation Strategies
 
 **Simple:** Merge adjacent tokens with the same entity type
+
 ```
 Input tokens: ["dia", "##betes"]
 Output: "diabetes" (DISEASE)
@@ -179,6 +180,7 @@ Output: {
 ### Supported Diseases (41 Classes)
 
 Common conditions including:
+
 - Pneumonia
 - COVID-19
 - Diabetes
@@ -209,6 +211,7 @@ Common conditions including:
 ### Important Disclaimers
 
 ⚠️ **Medical Disclaimer:**
+
 - This is an AI-based suggestion tool
 - NOT a replacement for professional medical diagnosis
 - Should be used as a supportive tool only
@@ -307,11 +310,13 @@ tokenizer = AutoTokenizer.from_pretrained("michellejieli/emotion_text_classifier
 ### Cache Location
 
 **Default Cache Directory:**
+
 ```bash
 ~/.cache/huggingface/hub/
 ```
 
 **Docker Volume:**
+
 ```yaml
 volumes:
   - huggingface-cache:/root/.cache/huggingface
@@ -351,11 +356,11 @@ MEDICAL_SUGGESTER_USE_GPU=true
 
 ### Performance Comparison
 
-| Model | CPU (ms) | GPU (ms) | Speedup |
-|-------|----------|----------|---------|
-| Text Classification | 150 | 60 | 2.5x |
-| Token Classification | 250 | 100 | 2.5x |
-| Medical Diagnosis | 200 | 80 | 2.5x |
+| Model                | CPU (ms) | GPU (ms) | Speedup |
+| -------------------- | -------- | -------- | ------- |
+| Text Classification  | 150      | 60       | 2.5x    |
+| Token Classification | 250      | 100      | 2.5x    |
+| Medical Diagnosis    | 200      | 80       | 2.5x    |
 
 ### Docker GPU Support
 
@@ -378,11 +383,13 @@ MEDICAL_SUGGESTER_FP16=true
 ```
 
 **Benefits:**
+
 - 2x faster inference
 - 50% less memory usage
 - Minimal accuracy loss (<1%)
 
 **Requirements:**
+
 - GPU with FP16 support (Volta+, T4, A100, etc.)
 - PyTorch with CUDA
 
@@ -396,6 +403,7 @@ TOKEN_CLASSIFIER_BATCH_SIZE=32
 ```
 
 **Benefits:**
+
 - Higher throughput
 - Better GPU utilization
 - Efficient for batch jobs
@@ -539,4 +547,3 @@ nvidia-smi
 - [SymSpellPy Documentation](https://symspellpy.readthedocs.io/)
 - [PyTorch Documentation](https://pytorch.org/docs/)
 - [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
-

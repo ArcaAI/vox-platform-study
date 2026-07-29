@@ -8,13 +8,13 @@ import { platformKeys } from './keys';
 const REFRESH_MS = 30_000;
 
 export function usePlatformMetrics() {
-    return useQuery({ queryKey: platformKeys.metrics(), queryFn: getPlatformMetrics, refetchInterval: REFRESH_MS });
+  return useQuery({ queryKey: platformKeys.metrics(), queryFn: getPlatformMetrics, refetchInterval: REFRESH_MS });
 }
 
 export function useOpenSockets() {
-    return useQuery({ queryKey: platformKeys.sockets(), queryFn: getOpenSockets, refetchInterval: REFRESH_MS });
+  return useQuery({ queryKey: platformKeys.sockets(), queryFn: getOpenSockets, refetchInterval: REFRESH_MS });
 }
 
 export function useConsumption(tenantId?: string) {
-    return useQuery({ queryKey: platformKeys.consumption(tenantId), queryFn: () => getConsumption(tenantId), refetchInterval: REFRESH_MS });
+  return useQuery({ queryKey: platformKeys.consumption(tenantId), queryFn: () => getConsumption(tenantId), refetchInterval: REFRESH_MS });
 }

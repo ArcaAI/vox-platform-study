@@ -125,15 +125,7 @@ import { CapturePanel } from '../capture-panel';
 import { toast } from 'sonner';
 
 function renderPanel(props: Partial<React.ComponentProps<typeof CapturePanel>> = {}) {
-  return render(
-    <CapturePanel
-      consultationId="c-1"
-      recording={false}
-      onRecordingStarted={vi.fn()}
-      onRecordingStopped={vi.fn()}
-      {...props}
-    />,
-  );
+  return render(<CapturePanel consultationId="c-1" recording={false} onRecordingStarted={vi.fn()} onRecordingStopped={vi.fn()} {...props} />);
 }
 
 describe('CapturePanel pipeline resolution (Pipeline-not-found bugfix)', () => {

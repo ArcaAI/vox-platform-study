@@ -133,4 +133,17 @@ export interface SettingDescriptor {
   description?: string;
   /** The code default — the last fallback in the cascade. */
   default?: unknown;
+  /**
+   * A ready-to-use LOCAL DEV value for `.env.sample`'s generator only — never
+   * read at runtime (unlike `default`, which `parseApiEnv`-style validators
+   * feed back in as a real fallback whenever the env var is absent). Use this
+   * for values that are safe and identical for every developer because they
+   * match a FIXED local-only default the repo itself provisions (e.g. Docker
+   * Compose's `postgres:postgres@localhost:5432`, Vault dev-mode's fixed
+   * `root` token) — never for anything that varies per install or per
+   * environment. The registry refuses to assemble a `secret` descriptor that
+   * sets this (governance test), and the generator's `<CHANGE_ME>` redaction
+   * for secrets always wins over it regardless.
+   */
+  sampleValue?: unknown;
 }

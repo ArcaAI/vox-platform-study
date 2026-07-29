@@ -2,88 +2,88 @@
 
 import { deleteJson, getJson, patchJson, postJson } from '@/shared/api';
 import type {
-    BreakGlass,
-    CloneRoleRequest,
-    CreatePolicyRequest,
-    CreateRoleRequest,
-    Policy,
-    PolicyListParams,
-    PolicyRule,
-    PolicyValidationResult,
-    RbacListParams,
-    RbacPaginated,
-    Role,
-    RoleMember,
-    UpdatePolicyRequest,
-    UpdateRoleRequest,
+  BreakGlass,
+  CloneRoleRequest,
+  CreatePolicyRequest,
+  CreateRoleRequest,
+  Policy,
+  PolicyListParams,
+  PolicyRule,
+  PolicyValidationResult,
+  RbacListParams,
+  RbacPaginated,
+  Role,
+  RoleMember,
+  UpdatePolicyRequest,
+  UpdateRoleRequest,
 } from './types';
 
 const ROLES = 'admin/rbac/roles';
 const POLICIES = 'admin/rbac/policies';
 
 export function listRoles(params?: RbacListParams): Promise<RbacPaginated<Role>> {
-    return getJson(ROLES, params);
+  return getJson(ROLES, params);
 }
 
 export function getRole(id: string): Promise<Role> {
-    return getJson(`${ROLES}/${encodeURIComponent(id)}`);
+  return getJson(`${ROLES}/${encodeURIComponent(id)}`);
 }
 
 /** Users holding a role (tenant-scoped on the gateway). */
 export function listRoleMembers(roleId: string, params?: RbacListParams): Promise<RbacPaginated<RoleMember>> {
-    return getJson(`${ROLES}/${encodeURIComponent(roleId)}/members`, params);
+  return getJson(`${ROLES}/${encodeURIComponent(roleId)}/members`, params);
 }
 
 export function createRole(body: CreateRoleRequest): Promise<Role> {
-    return postJson(ROLES, body);
+  return postJson(ROLES, body);
 }
 
 /** Clone a role (SYSTEM or CUSTOM) into a new CUSTOM role. */
 export function cloneRole(id: string, body: CloneRoleRequest): Promise<Role> {
-    return postJson(`${ROLES}/${encodeURIComponent(id)}/clone`, body);
+  return postJson(`${ROLES}/${encodeURIComponent(id)}/clone`, body);
 }
 
 export function updateRole(id: string, body: UpdateRoleRequest): Promise<Role> {
-    return patchJson(`${ROLES}/${encodeURIComponent(id)}`, body);
+  return patchJson(`${ROLES}/${encodeURIComponent(id)}`, body);
 }
 
 /** Break-glass required (missing -> 428). */
 export function deleteRole(id: string, breakGlass: BreakGlass): Promise<void> {
-    return deleteJson(`${ROLES}/${encodeURIComponent(id)}`, breakGlass);
+  return deleteJson(`${ROLES}/${encodeURIComponent(id)}`, breakGlass);
 }
 
 export function assignPolicyToRole(roleId: string, policyId: string, priority?: number): Promise<{ message: string }> {
-    return postJson(`${ROLES}/${encodeURIComponent(roleId)}/policies/${encodeURIComponent(policyId)}`, priority === undefined ? {} : { priority });
+  return postJson(`${ROLES}/${encodeURIComponent(roleId)}/policies/${encodeURIComponent(policyId)}`, priority === undefined ? {} : { priority });
 }
 
 /** Break-glass required (missing -> 428). */
 export function detachPolicyFromRole(roleId: string, policyId: string, breakGlass: BreakGlass): Promise<void> {
-    return deleteJson(`${ROLES}/${encodeURIComponent(roleId)}/policies/${encodeURIComponent(policyId)}`, breakGlass);
+  return deleteJson(`${ROLES}/${encodeURIComponent(roleId)}/policies/${encodeURIComponent(policyId)}`, breakGlass);
 }
 
 export function listPolicies(params?: PolicyListParams): Promise<RbacPaginated<Policy>> {
-    return getJson(POLICIES, params);
+  return getJson(POLICIES, params);
 }
 
 export function getPolicy(id: string): Promise<Policy> {
-    return getJson(`${POLICIES}/${encodeURIComponent(id)}`);
+  return getJson(`${POLICIES}/${encodeURIComponent(id)}`);
 }
 
 export function createPolicy(body: CreatePolicyRequest): Promise<Policy> {
-    return postJson(POLICIES, body);
+  return postJson(POLICIES, body);
 }
 
 /** Editing rules of a multi-role policy needs body.breakGlass. */
 export function updatePolicy(id: string, body: UpdatePolicyRequest): Promise<Policy> {
-    return patchJson(`${POLICIES}/${encodeURIComponent(id)}`, body);
+  return patchJson(`${POLICIES}/${encodeURIComponent(id)}`, body);
 }
 
 /** Break-glass required; protected policies always refuse (403). */
 export function deletePolicy(id: string, breakGlass: BreakGlass): Promise<void> {
-    return deleteJson(`${POLICIES}/${encodeURIComponent(id)}`, breakGlass);
+  return deleteJson(`${POLICIES}/${encodeURIComponent(id)}`, breakGlass);
 }
 
 /** Dry-run rule validation for the policy editor. */
 export function validatePolicyRules(rules: PolicyRule[]): Promise<PolicyValidationResult> {
-    return postJson(`${POLICIES}/validate`, { rules });
+  return postJson(`${POLICIES}/validate`, { rules });
 }

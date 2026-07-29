@@ -120,9 +120,7 @@ def _extract_usage(result: Any) -> tuple[int, int, int]:
     return prompt, completion, int(total) if total is not None else prompt + completion
 
 
-def _coerce_stats(
-    result: Any, *, provider: str, model: str, latency_ms: int
-) -> GenerationStats:
+def _coerce_stats(result: Any, *, provider: str, model: str, latency_ms: int) -> GenerationStats:
     """Normalize a provider result into ``GenerationStats``.
 
     A provider that already returns ``GenerationStats`` (the AD-1 contract) is
@@ -164,6 +162,7 @@ def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
         "openai_compat": settings.openai_compat.timeout_s,
     }
     return float(config_map.get(provider_name, _DEFAULT_TIMEOUT_S))
+
 
 router = APIRouter(tags=["generate"])
 
@@ -281,10 +280,14 @@ async def generate(
                 queue_start = time.monotonic()
                 future: asyncio.Future[bool] = asyncio.get_event_loop().create_future()
                 try:
-                    await queue.enqueue(priority=0, future=future, request_id=ctx.get("request_id", "unknown"))
+                    await queue.enqueue(
+                        priority=0, future=future, request_id=ctx.get("request_id", "unknown")
+                    )
                     QUEUE_SIZE.labels(provider=request_body.provider).set(queue.size)
                     await asyncio.wait_for(future, timeout=settings.queue.max_wait_s)
-                    QUEUE_WAIT_TIME.labels(provider=request_body.provider).observe(time.monotonic() - queue_start)
+                    QUEUE_WAIT_TIME.labels(provider=request_body.provider).observe(
+                        time.monotonic() - queue_start
+                    )
                     QUEUE_SIZE.labels(provider=request_body.provider).set(queue.size)
                 except TimeoutError:
                     QUEUE_SIZE.labels(provider=request_body.provider).set(queue.size)
@@ -450,25 +453,31 @@ async def generate(
                 latency_ms=latency_ms,
             )
         except Exception as exc:
-            logger.warning(
-                "generation.stats_degraded", task_id=task.task_id, error=str(exc)
-            )
-            stats = degraded_stats(
-                provider=request_body.provider, model=model, total_ms=latency_ms
-            )
+            logger.warning("generation.stats_degraded", task_id=task.task_id, error=str(exc))
+            stats = degraded_stats(provider=request_body.provider, model=model, total_ms=latency_ms)
         # Wire-compat ``finish_reason`` reflects the provider's REAL native stop
         # reason (falling back to the normalized reason, then "stop") — NOT the
         # frozen "stop" the pre-AD-1 endpoint always reported.
         finish_reason = stats.stop_reason_raw or stats.stop_reason or "stop"
 
-        await task_manager.update_task(task.task_id, status=TaskStatus.COMPLETED, total_tokens=total_tokens)
+        await task_manager.update_task(
+            task.task_id, status=TaskStatus.COMPLETED, total_tokens=total_tokens
+        )
 
-        GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="completed").inc()
-        GENERATION_LATENCY.labels(provider=request_body.provider, model=model).observe(latency_ms / 1000)
+        GENERATION_TOTAL.labels(
+            provider=request_body.provider, model=model, status="completed"
+        ).inc()
+        GENERATION_LATENCY.labels(provider=request_body.provider, model=model).observe(
+            latency_ms / 1000
+        )
         # Cross-service per-model inference latency (for avg latency).
         MODEL_INFERENCE_LATENCY.labels(service=SERVICE_NAME, model=model).observe(latency_ms / 1000)
-        TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="input").inc(prompt_tokens)
-        TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="output").inc(completion_tokens)
+        TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="input").inc(
+            prompt_tokens
+        )
+        TOKENS_TOTAL.labels(provider=request_body.provider, model=model, direction="output").inc(
+            completion_tokens
+        )
 
         generation_audit.log_generation(
             GenerationAuditEvent(
@@ -543,14 +552,25 @@ async def generate(
                 await redis_client.set(cache_key, response.model_dump_json(), ex=_IDEMPOTENCY_TTL_S)
             except Exception as exc:
                 logger.warning(
-                    "generation.idempotency_cache_write_failed", task_id=task.task_id, error=str(exc)
+                    "generation.idempotency_cache_write_failed",
+                    task_id=task.task_id,
+                    error=str(exc),
                 )
         return response
     except TimeoutError:
         latency_ms = int((time.monotonic() - start) * 1000)
-        logger.error("generation.timeout_final", task_id=task.task_id, provider=request_body.provider, timeout_s=timeout_s)
-        await task_manager.update_task(task.task_id, status=TaskStatus.FAILED, error="Request timed out")
-        GENERATION_ERRORS.labels(provider=request_body.provider, model=model, error_type="timeout").inc()
+        logger.error(
+            "generation.timeout_final",
+            task_id=task.task_id,
+            provider=request_body.provider,
+            timeout_s=timeout_s,
+        )
+        await task_manager.update_task(
+            task.task_id, status=TaskStatus.FAILED, error="Request timed out"
+        )
+        GENERATION_ERRORS.labels(
+            provider=request_body.provider, model=model, error_type="timeout"
+        ).inc()
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
 
         generation_audit.log_generation(
@@ -578,9 +598,17 @@ async def generate(
             cb.record_failure()
             _update_cb_metric(request_body.provider, cb)
         latency_ms = int((time.monotonic() - start) * 1000)
-        logger.error("generation.failed", task_id=task.task_id, provider=request_body.provider, error=str(exc), exc_info=True)
+        logger.error(
+            "generation.failed",
+            task_id=task.task_id,
+            provider=request_body.provider,
+            error=str(exc),
+            exc_info=True,
+        )
         await task_manager.update_task(task.task_id, status=TaskStatus.FAILED, error=str(exc))
-        GENERATION_ERRORS.labels(provider=request_body.provider, model=model, error_type="provider_error").inc()
+        GENERATION_ERRORS.labels(
+            provider=request_body.provider, model=model, error_type="provider_error"
+        ).inc()
         GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
 
         generation_audit.log_generation(
@@ -599,7 +627,10 @@ async def generate(
             )
         )
 
-        raise HTTPException(status_code=502, detail="Generation failed due to an internal error. Check server logs for details.") from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Generation failed due to an internal error. Check server logs for details.",
+        ) from exc
     finally:
         ACTIVE_GENERATIONS.labels(provider=request_body.provider).dec()
         MODEL_RUNNING_INSTANCES.labels(service=SERVICE_NAME, model=model).dec()
@@ -677,9 +708,9 @@ async def _run_streaming_generation(
                 ttft_ms=ttft_ms,
             )
             if stream_stats.tokens_per_second is not None:
-                TOKENS_PER_SECOND.labels(
-                    provider=resolved_provider, model=resolved_model
-                ).observe(stream_stats.tokens_per_second)
+                TOKENS_PER_SECOND.labels(provider=resolved_provider, model=resolved_model).observe(
+                    stream_stats.tokens_per_second
+                )
             STOP_REASON_TOTAL.labels(
                 provider=resolved_provider,
                 model=resolved_model,
@@ -688,13 +719,23 @@ async def _run_streaming_generation(
         except Exception as exc:  # noqa: BLE001 — telemetry must never fail the stream
             logger.warning("streaming_generation.stats_degraded", task_id=task_id, error=str(exc))
         await task_manager.update_task(task_id, status=TaskStatus.COMPLETED)
-        GENERATION_TOTAL.labels(provider=resolved_provider, model=resolved_model, status="completed").inc()
-        GENERATION_LATENCY.labels(provider=resolved_provider, model=resolved_model).observe(latency_ms / 1000)
+        GENERATION_TOTAL.labels(
+            provider=resolved_provider, model=resolved_model, status="completed"
+        ).inc()
+        GENERATION_LATENCY.labels(provider=resolved_provider, model=resolved_model).observe(
+            latency_ms / 1000
+        )
         # Cross-service per-model inference latency (streaming path).
-        MODEL_INFERENCE_LATENCY.labels(service=SERVICE_NAME, model=resolved_model).observe(latency_ms / 1000)
+        MODEL_INFERENCE_LATENCY.labels(service=SERVICE_NAME, model=resolved_model).observe(
+            latency_ms / 1000
+        )
         if total_input_tokens or total_output_tokens:
-            TOKENS_TOTAL.labels(provider=resolved_provider, model=resolved_model, direction="input").inc(total_input_tokens)
-            TOKENS_TOTAL.labels(provider=resolved_provider, model=resolved_model, direction="output").inc(total_output_tokens)
+            TOKENS_TOTAL.labels(
+                provider=resolved_provider, model=resolved_model, direction="input"
+            ).inc(total_input_tokens)
+            TOKENS_TOTAL.labels(
+                provider=resolved_provider, model=resolved_model, direction="output"
+            ).inc(total_output_tokens)
         cb = (circuit_breakers or {}).get(resolved_provider)
         if cb:
             cb.record_success()
@@ -702,9 +743,18 @@ async def _run_streaming_generation(
     except Exception as exc:
         logger.error("streaming_generation.failed", task_id=task_id, error=str(exc), exc_info=True)
         await task_manager.update_task(task_id, status=TaskStatus.FAILED, error=str(exc))
-        await task_manager.append_chunk(task_id, StreamChunk(type="error", data={"error": "Generation failed due to an internal error."}))
-        GENERATION_ERRORS.labels(provider=resolved_provider, model=resolved_model, error_type="provider_error").inc()
-        GENERATION_TOTAL.labels(provider=resolved_provider, model=resolved_model, status="failed").inc()
+        await task_manager.append_chunk(
+            task_id,
+            StreamChunk(
+                type="error", data={"error": "Generation failed due to an internal error."}
+            ),
+        )
+        GENERATION_ERRORS.labels(
+            provider=resolved_provider, model=resolved_model, error_type="provider_error"
+        ).inc()
+        GENERATION_TOTAL.labels(
+            provider=resolved_provider, model=resolved_model, status="failed"
+        ).inc()
         cb = (circuit_breakers or {}).get(resolved_provider)
         if cb:
             cb.record_failure()

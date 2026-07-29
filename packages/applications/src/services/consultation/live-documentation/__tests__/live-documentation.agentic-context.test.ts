@@ -92,10 +92,7 @@ describe('LiveDocumentationService — agentic.context.* live lane', () => {
   });
 
   it('DB beats env — a stored value wins over an explicit env override', async () => {
-    const { service } = buildService(
-      { 'liveDelta.maxChars': 999 },
-      { AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS: '4321' },
-    );
+    const { service } = buildService({ 'liveDelta.maxChars': 999 }, { AGENTIC_CONTEXT_LIVE_DELTA_MAX_CHARS: '4321' });
 
     const knobs = await service.resolveAgenticContext(TENANT);
 

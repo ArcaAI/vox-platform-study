@@ -184,16 +184,19 @@ def _create_e2e_app(redis) -> tuple:
     # providers are gated by CONNECTION config, not an ENABLE flag.
     if settings.ollama.base_url:
         from smr.providers.ollama import OllamaProvider
+
         registry.register("ollama", OllamaProvider(settings.ollama, http_client))
 
     if settings.azure.endpoint and settings.azure.api_key.get_secret_value():
         from smr.providers.azure_openai import AzureOpenAIProvider
+
         provider_instance = AzureOpenAIProvider(settings.azure)
         registry.register("azure-openai", provider_instance)
         registry.register("azure", provider_instance)
 
     if settings.openai_compat.base_url:
         from smr.providers.openai_compat import OpenAICompatProvider
+
         provider_instance = OpenAICompatProvider(settings.openai_compat)
         registry.register("lm-studio", provider_instance)
         registry.register("openai_compat", provider_instance)

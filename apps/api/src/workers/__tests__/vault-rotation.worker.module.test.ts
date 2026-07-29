@@ -10,9 +10,7 @@
 //   - The leader lock is attempted via Redis SET …NX EX.
 //   - The worker does not start when the leader lock is taken.
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import {
-  VaultRotationWorkerService,
-} from '../vault-rotation.worker.module';
+import { VaultRotationWorkerService } from '../vault-rotation.worker.module';
 
 function makePub() {
   return { publish: vi.fn(async () => 1) };
@@ -22,9 +20,7 @@ function makeLeader({ acquire = true }: { acquire?: boolean } = {}) {
   // Typed signature matches the redis SET ... NX EX <seconds> usage in the
   // worker; without it `mock.calls[i]` is inferred as an empty tuple and the
   // tests can't index args[0..4].
-  const set = vi.fn(async (_key: string, _value: string, _ex: 'EX', _ttl: number, _nx: 'NX') =>
-    acquire ? 'OK' : null,
-  );
+  const set = vi.fn(async (_key: string, _value: string, _ex: 'EX', _ttl: number, _nx: 'NX') => (acquire ? 'OK' : null));
   const get = vi.fn(async () => 'self-pod');
   const expire = vi.fn(async () => 1);
   const evalFn = vi.fn(async () => 1);
@@ -52,11 +48,7 @@ describe('VaultRotationWorkerService bootstrap guards', () => {
     process.env.VAULT_AUDIT_LOG_PATH = '/tmp/foo';
     const pub = makePub();
     const leader = makeLeader();
-    const svc = new VaultRotationWorkerService(
-      undefined,
-      pub as never,
-      leader as never,
-    );
+    const svc = new VaultRotationWorkerService(undefined, pub as never, leader as never);
     await svc.onApplicationBootstrap();
     expect(leader.set).not.toHaveBeenCalled();
     expect(pub.publish).not.toHaveBeenCalled();
@@ -68,11 +60,7 @@ describe('VaultRotationWorkerService bootstrap guards', () => {
     delete process.env.VAULT_AUDIT_LOG_PATH;
     const pub = makePub();
     const leader = makeLeader();
-    const svc = new VaultRotationWorkerService(
-      undefined,
-      pub as never,
-      leader as never,
-    );
+    const svc = new VaultRotationWorkerService(undefined, pub as never, leader as never);
     await svc.onApplicationBootstrap();
     expect(leader.set).not.toHaveBeenCalled();
     await svc.onModuleDestroy();
@@ -94,11 +82,7 @@ describe('VaultRotationWorkerService bootstrap guards', () => {
     process.env.VAULT_AUDIT_LOG_PATH = '/tmp/__nonexistent_audit_log__';
     const pub = makePub();
     const leader = makeLeader({ acquire: false }); // simulate peer pod
-    const svc = new VaultRotationWorkerService(
-      undefined,
-      pub as never,
-      leader as never,
-    );
+    const svc = new VaultRotationWorkerService(undefined, pub as never, leader as never);
     await svc.onApplicationBootstrap();
     expect(leader.set).toHaveBeenCalledTimes(1);
     const args = leader.set.mock.calls[0];

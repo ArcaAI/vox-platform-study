@@ -60,8 +60,10 @@ from stt.transcription.dto import (
 
 def async_collector(target: list):
     """Return an async callback that appends to *target*."""
+
     async def _cb(chunk):
         target.append(chunk)
+
     return _cb
 
 
@@ -1070,9 +1072,7 @@ class TestBatchServiceInferenceMethods:
         samples = np.zeros(16000, dtype=np.float32)
         config = MagicMock()
 
-        with patch(
-            "stt.streaming.faster_whisper_asr.FasterWhisperAsrAdapter"
-        ) as mock_adapter_cls:
+        with patch("stt.streaming.faster_whisper_asr.FasterWhisperAsrAdapter") as mock_adapter_cls:
             mock_adapter_cls.return_value = MagicMock(
                 return_value={
                     "text": "fw batch text",
@@ -1382,15 +1382,21 @@ class TestRunDiarization:
 
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
-            patch("stt.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch(
+                "stt.diarization.embedding_service.get_embedding_service",
+                return_value=mock_emb_service,
+            ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
         ):
             mock_identifier = AsyncMock()
             from stt.diarization.dto import SpeakerIdentification
+
             mock_identifier.identify = AsyncMock(
                 return_value=SpeakerIdentification(
-                    speaker_id="Speaker 1", confidence=None, is_new_speaker=True,
+                    speaker_id="Speaker 1",
+                    confidence=None,
+                    is_new_speaker=True,
                 )
             )
             mock_identifier._embedding_service = mock_emb_service
@@ -1417,8 +1423,8 @@ class TestRunDiarization:
         samples = np.random.randn(5 * sample_rate).astype(np.float32)
         raw = RawTranscription(text="Hi Ok")
         raw.segments = [
-            {"start": 0.0, "end": 0.3, "text": "Hi"},   # too short
-            {"start": 0.5, "end": 2.5, "text": "Ok"},    # long enough
+            {"start": 0.0, "end": 0.3, "text": "Hi"},  # too short
+            {"start": 0.5, "end": 2.5, "text": "Ok"},  # long enough
         ]
 
         mock_emb_service = AsyncMock()
@@ -1438,15 +1444,21 @@ class TestRunDiarization:
 
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
-            patch("stt.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch(
+                "stt.diarization.embedding_service.get_embedding_service",
+                return_value=mock_emb_service,
+            ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
         ):
             mock_identifier = AsyncMock()
             from stt.diarization.dto import SpeakerIdentification
+
             mock_identifier.identify = AsyncMock(
                 return_value=SpeakerIdentification(
-                    speaker_id="Speaker 1", confidence=None, is_new_speaker=True,
+                    speaker_id="Speaker 1",
+                    confidence=None,
+                    is_new_speaker=True,
                 )
             )
             mock_identifier._embedding_service = mock_emb_service
@@ -1501,16 +1513,24 @@ class TestRunDiarization:
 
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
-            patch("stt.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch(
+                "stt.diarization.embedding_service.get_embedding_service",
+                return_value=mock_emb_service,
+            ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
         ):
             from stt.diarization.dto import SpeakerIdentification
+
             mock_identifier = AsyncMock()
             mock_identifier.identify = AsyncMock(
                 side_effect=[
-                    SpeakerIdentification(speaker_id="Speaker 1", confidence=None, is_new_speaker=True),
-                    SpeakerIdentification(speaker_id="Speaker 2", confidence=None, is_new_speaker=True),
+                    SpeakerIdentification(
+                        speaker_id="Speaker 1", confidence=None, is_new_speaker=True
+                    ),
+                    SpeakerIdentification(
+                        speaker_id="Speaker 2", confidence=None, is_new_speaker=True
+                    ),
                 ]
             )
             mock_identifier._embedding_service = mock_emb_service
@@ -1551,16 +1571,32 @@ class TestRunDiarization:
 
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
-            patch("stt.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch(
+                "stt.diarization.embedding_service.get_embedding_service",
+                return_value=mock_emb_service,
+            ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker", return_value=mock_tracker),
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
         ):
             from stt.diarization.dto import DiarizedSegment
+
             mock_identifier = AsyncMock()
             mock_identifier.identify = AsyncMock(
                 return_value=[
-                    DiarizedSegment(text="", start_time=0.0, end_time=1.5, speaker_id="Speaker 1", speaker_confidence=0.9),
-                    DiarizedSegment(text="", start_time=1.5, end_time=3.0, speaker_id="Speaker 2", speaker_confidence=0.8),
+                    DiarizedSegment(
+                        text="",
+                        start_time=0.0,
+                        end_time=1.5,
+                        speaker_id="Speaker 1",
+                        speaker_confidence=0.9,
+                    ),
+                    DiarizedSegment(
+                        text="",
+                        start_time=1.5,
+                        end_time=3.0,
+                        speaker_id="Speaker 2",
+                        speaker_confidence=0.8,
+                    ),
                 ]
             )
             mock_identifier._embedding_service = mock_emb_service
@@ -1600,7 +1636,10 @@ class TestRunDiarization:
 
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
-            patch("stt.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch(
+                "stt.diarization.embedding_service.get_embedding_service",
+                return_value=mock_emb_service,
+            ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker") as MockTracker,
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
             patch.object(service, "_preseed_speaker", new=AsyncMock()) as mock_preseed,
@@ -1613,7 +1652,9 @@ class TestRunDiarization:
             mock_identifier = AsyncMock()
             mock_identifier.identify = AsyncMock(
                 return_value=SpeakerIdentification(
-                    speaker_id="Speaker 1", confidence=0.95, is_new_speaker=False,
+                    speaker_id="Speaker 1",
+                    confidence=0.95,
+                    is_new_speaker=False,
                 )
             )
             MockIdentifier.return_value = mock_identifier
@@ -1650,7 +1691,10 @@ class TestRunDiarization:
 
         with (
             patch("stt.diarization.embedding_service.EmbeddingService"),
-            patch("stt.diarization.embedding_service.get_embedding_service", return_value=mock_emb_service),
+            patch(
+                "stt.diarization.embedding_service.get_embedding_service",
+                return_value=mock_emb_service,
+            ),
             patch("stt.diarization.speaker_tracker.SpeakerTracker") as MockTracker,
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier") as MockIdentifier,
             patch.object(service, "_preseed_speaker", new=AsyncMock()) as mock_preseed,
@@ -1663,7 +1707,9 @@ class TestRunDiarization:
             mock_identifier = AsyncMock()
             mock_identifier.identify = AsyncMock(
                 return_value=SpeakerIdentification(
-                    speaker_id="Speaker 1", confidence=0.95, is_new_speaker=False,
+                    speaker_id="Speaker 1",
+                    confidence=0.95,
+                    is_new_speaker=False,
                 )
             )
             MockIdentifier.return_value = mock_identifier
@@ -2416,7 +2462,9 @@ class TestTranscribeTimingMetrics:
         with (
             patch.object(service, "_load_models") as mock_load,
             patch("stt.transcription.batch_service.get_preprocessor") as mock_preproc,
-            patch.object(service, "_run_per_segment_inference", new_callable=AsyncMock) as mock_per_seg,
+            patch.object(
+                service, "_run_per_segment_inference", new_callable=AsyncMock
+            ) as mock_per_seg,
             patch.object(service, "_run_inference") as mock_full,
             patch.object(service, "_postprocess") as mock_postproc,
             patch("stt.diarization.embedding_service.get_embedding_service") as mock_get_emb,
@@ -2654,9 +2702,7 @@ class TestPerSegmentInferenceEdgeCases:
                 job_id="carry-default",
             )
 
-        expected = " ".join(
-            first_text.split()[-InferenceConfig().prev_text_context_words :]
-        )
+        expected = " ".join(first_text.split()[-InferenceConfig().prev_text_context_words :])
         assert prompts[0] is None
         assert prompts[1] == expected
 

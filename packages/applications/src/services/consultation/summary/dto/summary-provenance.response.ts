@@ -58,8 +58,7 @@ export class SummaryProvenanceResponse {
   ragTriadScore?: number | null;
 
   @ApiPropertyOptional({
-    description:
-      'Full sensor-score detail object emitted by the harness (persisted in the SummaryMeta.guardrailDecisions column)',
+    description: 'Full sensor-score detail object emitted by the harness (persisted in the SummaryMeta.guardrailDecisions column)',
     type: Object,
     nullable: true,
   })

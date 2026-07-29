@@ -203,11 +203,9 @@ describe('VaultLeaseRenewer secret residency (Gate 5)', () => {
     await Promise.resolve();
     await renewer.stop();
 
-    const allCalls = [
-      ...logSpy.mock.calls.flat(),
-      ...errSpy.mock.calls.flat(),
-      ...warnSpy.mock.calls.flat(),
-    ].map((c) => (typeof c === 'string' ? c : JSON.stringify(c)));
+    const allCalls = [...logSpy.mock.calls.flat(), ...errSpy.mock.calls.flat(), ...warnSpy.mock.calls.flat()].map((c) =>
+      typeof c === 'string' ? c : JSON.stringify(c),
+    );
     for (const line of allCalls) {
       expect(line).not.toContain('very-secret-lease-id-VERIFY');
     }

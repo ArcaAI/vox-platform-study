@@ -62,9 +62,7 @@ class TestBatchMessages:
 
 class TestParseBatchVerdicts:
     def test_wellformed_array_maps_each_id(self):
-        raw = json.dumps(
-            [{"id": "c1", "supported": True}, {"id": "c2", "supported": False}]
-        )
+        raw = json.dumps([{"id": "c1", "supported": True}, {"id": "c2", "supported": False}])
         assert parse_batch_verdicts(raw, ["c1", "c2"]) == {"c1": True, "c2": False}
 
     def test_reasoning_wrapped_array_is_extracted(self):
@@ -98,9 +96,7 @@ class TestParseBatchVerdicts:
         assert parse_batch_verdicts(raw, ["c1"]) == {"c1": False}
 
     def test_duplicate_conflict_is_ungrounded(self):
-        raw = json.dumps(
-            [{"id": "c1", "supported": True}, {"id": "c1", "supported": False}]
-        )
+        raw = json.dumps([{"id": "c1", "supported": True}, {"id": "c1", "supported": False}])
         assert parse_batch_verdicts(raw, ["c1"]) == {"c1": False}
 
     def test_dict_wrapped_list_is_parsed(self):

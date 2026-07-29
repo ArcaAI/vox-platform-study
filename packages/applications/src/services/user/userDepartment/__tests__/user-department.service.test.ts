@@ -235,9 +235,7 @@ describe('UserDepartmentService', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0].isPrimary).toBe(true);
-      expect(mockRepo.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: 'tenant-1', userId: 'user-1' } }),
-      );
+      expect(mockRepo.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: 'tenant-1', userId: 'user-1' } }));
     });
 
     // The admin console renders department NAMES/CODES, not raw UUIDs.
@@ -260,9 +258,7 @@ describe('UserDepartmentService', () => {
       expect(result[1].departmentCode).toBe('NEURO');
       // ONE batch query for the distinct department ids (no N+1).
       expect(mockDepartmentRepo.findAll).toHaveBeenCalledTimes(1);
-      expect(mockDepartmentRepo.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: { in: ['dept-1', 'dept-2'] } } }),
-      );
+      expect(mockDepartmentRepo.findAll).toHaveBeenCalledWith(expect.objectContaining({ where: { id: { in: ['dept-1', 'dept-2'] } } }));
     });
 
     it('leaves the label fields undefined when a department is missing (deleted) without throwing', async () => {
@@ -288,9 +284,7 @@ describe('UserDepartmentService', () => {
     // An unscoped GLOBAL_ADMIN (no working tenant) reads the user's
     // memberships CROSS-TENANT instead of failing with "Tenant ID is required".
     it('lists cross-tenant assignments for a GLOBAL_ADMIN with no tenant context', async () => {
-      mockClsService.get.mockImplementation((key: string) =>
-        key === 'user' ? { id: 'admin-id', roles: ['GLOBAL_ADMIN'] } : null,
-      );
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-id', roles: ['GLOBAL_ADMIN'] } : null));
       mockRepo.findAll.mockResolvedValueOnce([
         makeEntity({ id: 'ud-1', departmentId: 'dept-1', tenantId: 'tenant-1' }),
         makeEntity({ id: 'ud-2', departmentId: 'dept-2', tenantId: 'tenant-2' }),
@@ -305,9 +299,7 @@ describe('UserDepartmentService', () => {
     });
 
     it('still requires a tenant context for non-elevated callers', async () => {
-      mockClsService.get.mockImplementation((key: string) =>
-        key === 'user' ? { id: 'tenant-admin-id', roles: ['TENANT_ADMIN'] } : null,
-      );
+      mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'tenant-admin-id', roles: ['TENANT_ADMIN'] } : null));
 
       await expect(service.getByUser('user-1')).rejects.toThrow(BadRequestException);
       expect(mockRepo.findAll).not.toHaveBeenCalled();
@@ -318,16 +310,10 @@ describe('UserDepartmentService', () => {
   describe('setDepartments', () => {
     it('reconciles to exactly the target set — adds missing, soft-deletes extras, leaves matches', async () => {
       mockRepo.findAll
-        .mockResolvedValueOnce([
-          makeEntity({ id: 'ud-1', departmentId: 'dept-1' }),
-          makeEntity({ id: 'ud-2', departmentId: 'dept-2' }),
-        ]) // current active set
+        .mockResolvedValueOnce([makeEntity({ id: 'ud-1', departmentId: 'dept-1' }), makeEntity({ id: 'ud-2', departmentId: 'dept-2' })]) // current active set
         .mockResolvedValueOnce([]) // soft-deleted dup check for the added dept-3
         .mockResolvedValueOnce([]) // demoteExistingPrimaries (no primary requested)
-        .mockResolvedValueOnce([
-          makeEntity({ id: 'ud-1', departmentId: 'dept-1' }),
-          makeEntity({ id: 'ud-new', departmentId: 'dept-3' }),
-        ]); // final read-back
+        .mockResolvedValueOnce([makeEntity({ id: 'ud-1', departmentId: 'dept-1' }), makeEntity({ id: 'ud-new', departmentId: 'dept-3' })]); // final read-back
       mockRepo.softDelete.mockResolvedValue(makeEntity({ id: 'ud-2', departmentId: 'dept-2', resourceStatus: ResourceStatusType.DELETED }));
       mockRepo.create.mockResolvedValue(makeEntity({ id: 'ud-new', departmentId: 'dept-3' }));
 

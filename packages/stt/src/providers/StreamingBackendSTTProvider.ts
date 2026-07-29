@@ -122,6 +122,12 @@ export interface StreamingSessionLike {
   /** Refresh the one-shot stream ticket before reconnect. */
   refreshTicket?(): Promise<string>;
   getSessionId(): string | null;
+  /**
+   * Request an in-place switch of the live session to the tenant fallback
+   * pipeline (TASK-567 R4). Optional: only the vox `StreamingSessionManager`
+   * implements it. The backend swaps the ASR engine while the session survives.
+   */
+  switchToFallback?(): Promise<void>;
 }
 
 /**

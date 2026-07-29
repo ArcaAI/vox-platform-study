@@ -18,33 +18,33 @@ import { defineConfig, devices } from '@playwright/test';
 const isCI = ['1', 'true'].includes((process.env.CI ?? '').toLowerCase());
 
 export default defineConfig({
-    testDir: './tests/e2e',
-    testMatch: '**/*.spec.ts',
-    fullyParallel: true,
-    forbidOnly: isCI,
-    retries: isCI ? 2 : 0,
-    workers: isCI ? 1 : undefined,
-    reporter: [['list'], ['html', { open: 'never', outputFolder: 'test-results/html' }]],
-    timeout: 30_000,
-    expect: { timeout: 10_000 },
-    use: {
-        baseURL: process.env.ADMIN_CONSOLE_URL ?? 'http://localhost:5176',
-        trace: 'on-first-retry',
-        screenshot: 'only-on-failure',
+  testDir: './tests/e2e',
+  testMatch: '**/*.spec.ts',
+  fullyParallel: true,
+  forbidOnly: isCI,
+  retries: isCI ? 2 : 0,
+  workers: isCI ? 1 : undefined,
+  reporter: [['list'], ['html', { open: 'never', outputFolder: 'test-results/html' }]],
+  timeout: 30_000,
+  expect: { timeout: 10_000 },
+  use: {
+    baseURL: process.env.ADMIN_CONSOLE_URL ?? 'http://localhost:5176',
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+  },
+  projects: [
+    // Logs in ONCE and persists the session — the gateway login route is
+    // throttled (5/60s), so per-test UI logins trip the rate limiter.
+    { name: 'setup', testMatch: '**/auth.setup.ts' },
+    {
+      name: 'chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'test-results/.auth/admin.json',
+      },
+      dependencies: ['setup'],
     },
-    projects: [
-        // Logs in ONCE and persists the session — the gateway login route is
-        // throttled (5/60s), so per-test UI logins trip the rate limiter.
-        { name: 'setup', testMatch: '**/auth.setup.ts' },
-        {
-            name: 'chromium',
-            use: {
-                ...devices['Desktop Chrome'],
-                storageState: 'test-results/.auth/admin.json',
-            },
-            dependencies: ['setup'],
-        },
-    ],
-    outputDir: 'test-results/artifacts',
-    preserveOutput: 'failures-only',
+  ],
+  outputDir: 'test-results/artifacts',
+  preserveOutput: 'failures-only',
 });

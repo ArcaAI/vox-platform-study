@@ -6,11 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type {
-  LocalWorkflowConfig,
-  VoiceEmbeddingLocalConfig,
-  AudioSilenceLocalConfig,
-} from '../config';
+import type { LocalWorkflowConfig, VoiceEmbeddingLocalConfig, AudioSilenceLocalConfig } from '../config';
 import { DEFAULT_LOCAL_CONFIG } from '../config';
 
 // =============================================================================

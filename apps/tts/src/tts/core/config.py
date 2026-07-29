@@ -156,15 +156,11 @@ class Settings(BaseSettings):
     default_format: str = "pcm"
     sample_rate: int = 24000
 
-    # Per-locale ordered provider fallback chains (first healthy wins).
-    # NoDecode: read as a raw CSV string from env (TTS_ROUTING_EN=azure,kokoro)
-    # and split by _parse_csv, rather than pydantic-settings JSON-decoding it.
-    routing_en: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["azure", "kokoro"]
-    )
-    routing_ml: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["azure", "sarvam", "indic_parler"]
-    )
+    # NOTE: there is deliberately NO `routing_en` / `routing_ml` here (TASK-577 /
+    # F1). Per-locale provider SELECTION is DB-sourced — the SYSTEM
+    # `TenantTtsConfig` default, resolved by the gateway and injected per request
+    # — so env can no longer bake a vendor order. The router fails CLOSED when no
+    # chain is injected (see `routing/router.TtsRoutingUnconfiguredError`).
 
     # Provider sub-configs (loaded from their own env prefixes)
     azure: AzureSpeechConfig = Field(default_factory=AzureSpeechConfig)
@@ -194,7 +190,7 @@ class Settings(BaseSettings):
     def _normalise_log_level(cls, v: str) -> str:
         return v.lower()
 
-    @field_validator("routing_en", "routing_ml", "cors_origins", mode="before")
+    @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_csv(cls, v: Any) -> Any:
         return _split_csv(v)

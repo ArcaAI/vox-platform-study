@@ -171,9 +171,7 @@ class TestAdapterKwargsContract:
         if batched is not None:
             batched.transcribe.return_value = _transcribe_result()
         loaded = _make_loaded(fake_model=model, batched=batched)
-        adapter = FasterWhisperAsrAdapter(
-            loaded, inference_config, batch_size=batch_size
-        )
+        adapter = FasterWhisperAsrAdapter(loaded, inference_config, batch_size=batch_size)
         adapter(np.zeros(16000, dtype=np.float32), 16000, prompt=prompt)
         target = batched if batched is not None else model
         return target.transcribe.call_args
@@ -193,9 +191,7 @@ class TestAdapterKwargsContract:
         model = MagicMock()
         model.transcribe.return_value = _transcribe_result()
         loaded = _make_loaded(fake_model=model)
-        adapter = FasterWhisperAsrAdapter(
-            loaded, InferenceConfig(language="ml"), task="translate"
-        )
+        adapter = FasterWhisperAsrAdapter(loaded, InferenceConfig(language="ml"), task="translate")
         adapter(np.zeros(16000, dtype=np.float32), 16000)
         _args, kwargs = model.transcribe.call_args
         assert kwargs["task"] == "translate"
@@ -285,9 +281,7 @@ class TestAdapterOutputMapping:
         return FasterWhisperAsrAdapter(loaded, InferenceConfig())
 
     def test_text_joined_from_segments(self):
-        adapter = self._adapter_with_segments(
-            [_FakeSegment(" hello"), _FakeSegment(" world ")]
-        )
+        adapter = self._adapter_with_segments([_FakeSegment(" hello"), _FakeSegment(" world ")])
         out = adapter(np.zeros(16000, dtype=np.float32), 16000)
         assert out["text"] == "hello world"
 
@@ -382,9 +376,7 @@ class TestFasterWhisperLoader:
 
         fake_mod.BatchedInferencePipeline.assert_called_once()
         assert loaded.format == AiModelFormat.FASTER_WHISPER
-        assert loaded.extra["batched_pipeline"] is (
-            fake_mod.BatchedInferencePipeline.return_value
-        )
+        assert loaded.extra["batched_pipeline"] is (fake_mod.BatchedInferencePipeline.return_value)
         assert loaded.model is fake_mod.WhisperModel.return_value
 
     @pytest.mark.asyncio
@@ -435,9 +427,7 @@ class TestSessionManagerFasterWhisperRouting:
         mgr._profile = MagicMock(asr_max_batch_size=4)
         loaded = _make_loaded()
 
-        with patch(
-            "stt.streaming.faster_whisper_asr.FasterWhisperAsrAdapter"
-        ) as adapter_cls:
+        with patch("stt.streaming.faster_whisper_asr.FasterWhisperAsrAdapter") as adapter_cls:
             adapter_cls.return_value = MagicMock(
                 return_value={"text": "routed", "word_timestamps": []}
             )
@@ -462,9 +452,7 @@ class TestSessionManagerFasterWhisperRouting:
         mgr._profile = MagicMock(asr_max_batch_size=8)
         loaded = _make_loaded()
 
-        with patch(
-            "stt.streaming.faster_whisper_asr.FasterWhisperAsrAdapter"
-        ) as adapter_cls:
+        with patch("stt.streaming.faster_whisper_asr.FasterWhisperAsrAdapter") as adapter_cls:
             instance = MagicMock(return_value={"text": "", "word_timestamps": []})
             adapter_cls.return_value = instance
             callable_ = SessionManager._make_asr_callable(
@@ -472,9 +460,7 @@ class TestSessionManagerFasterWhisperRouting:
                 asr_model=loaded,
                 inference_config=InferenceConfig(),
             )
-            await callable_(
-                np.zeros(16000, dtype=np.float32), 16000, prompt="ctx"
-            )
+            await callable_(np.zeros(16000, dtype=np.float32), 16000, prompt="ctx")
 
         _args, kwargs = instance.call_args
         assert kwargs["prompt"] == "ctx"

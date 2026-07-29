@@ -17,12 +17,7 @@
 
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataNotFoundException } from '@arcaai/exceptions';
-import {
-  ResourceStatusType,
-  type UserDepartmentRepository,
-  type UserRepository,
-  type UserRoleAssignmentRepository,
-} from '@arcaai/domains';
+import { ResourceStatusType, type UserDepartmentRepository, type UserRepository, type UserRoleAssignmentRepository } from '@arcaai/domains';
 
 /**
  * Platform-wide operator role, scoped above any single tenant — the ONLY

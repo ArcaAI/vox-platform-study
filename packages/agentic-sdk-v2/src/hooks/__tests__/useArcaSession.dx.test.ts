@@ -89,9 +89,7 @@ describe('useArcaSession DX Polish (Stream F)', () => {
     });
 
     it('should fetch summaries from backend via GET /consultations/:id/summary', async () => {
-      const summaries = [
-        { id: 's1', type: 'summary', content: 'Test summary' },
-      ];
+      const summaries = [{ id: 's1', type: 'summary', content: 'Test summary' }];
       const mockGet = vi.fn().mockResolvedValue(summaries);
       const setSummaries = vi.fn();
 
@@ -127,7 +125,7 @@ describe('useArcaSession DX Polish (Stream F)', () => {
       await expect(
         act(async () => {
           await result.current.loadSummaries();
-        })
+        }),
       ).rejects.toThrow('No consultation open');
     });
 
@@ -143,7 +141,7 @@ describe('useArcaSession DX Polish (Stream F)', () => {
       await expect(
         act(async () => {
           await result.current.loadSummaries();
-        })
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
@@ -236,7 +234,7 @@ describe('useArcaSession DX Polish (Stream F)', () => {
       await expect(
         act(async () => {
           await result.current.loadSummaries();
-        })
+        }),
       ).rejects.toThrow('Service unavailable');
 
       expect(setSummaries).not.toHaveBeenCalled();

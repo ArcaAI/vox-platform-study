@@ -16,6 +16,7 @@ class TestProviderQueue:
     @pytest.mark.asyncio
     async def test_enqueue_and_dequeue(self):
         from smr.services.provider_queue import ProviderQueue
+
         q = ProviderQueue(max_size=10)
         future = asyncio.get_event_loop().create_future()
         await q.enqueue(priority=1, future=future, request_id="r1")
@@ -25,6 +26,7 @@ class TestProviderQueue:
     @pytest.mark.asyncio
     async def test_priority_ordering(self):
         from smr.services.provider_queue import ProviderQueue
+
         q = ProviderQueue(max_size=10)
         f1 = asyncio.get_event_loop().create_future()
         f2 = asyncio.get_event_loop().create_future()
@@ -43,6 +45,7 @@ class TestProviderQueue:
     @pytest.mark.asyncio
     async def test_rejects_when_full(self):
         from smr.services.provider_queue import ProviderQueue, QueueFullError
+
         q = ProviderQueue(max_size=1)
         f1 = asyncio.get_event_loop().create_future()
         await q.enqueue(priority=1, future=f1, request_id="r1")
@@ -53,6 +56,7 @@ class TestProviderQueue:
     @pytest.mark.asyncio
     async def test_current_size(self):
         from smr.services.provider_queue import ProviderQueue
+
         q = ProviderQueue(max_size=10)
         assert q.size == 0
         f = asyncio.get_event_loop().create_future()
@@ -62,6 +66,7 @@ class TestProviderQueue:
     @pytest.mark.asyncio
     async def test_is_full(self):
         from smr.services.provider_queue import ProviderQueue
+
         q = ProviderQueue(max_size=1)
         assert q.is_full is False
         f = asyncio.get_event_loop().create_future()
@@ -76,6 +81,7 @@ class TestRetryHandler:
     @pytest.mark.asyncio
     async def test_exponential_backoff_delay(self):
         from smr.services.retry_handler import calculate_backoff
+
         d0 = calculate_backoff(attempt=0, base_delay=1.0, max_delay=60.0)
         d1 = calculate_backoff(attempt=1, base_delay=1.0, max_delay=60.0)
         d2 = calculate_backoff(attempt=2, base_delay=1.0, max_delay=60.0)
@@ -86,28 +92,38 @@ class TestRetryHandler:
     @pytest.mark.asyncio
     async def test_backoff_capped_at_max(self):
         from smr.services.retry_handler import calculate_backoff
+
         d = calculate_backoff(attempt=100, base_delay=1.0, max_delay=60.0)
         assert d <= 60.0
 
     @pytest.mark.asyncio
     async def test_should_retry_on_retriable_error(self):
         from smr.services.retry_handler import should_retry
+
         assert should_retry(error_type="timeout", retry_on=["timeout", "provider_error"]) is True
 
     @pytest.mark.asyncio
     async def test_should_not_retry_on_non_retriable(self):
         from smr.services.retry_handler import should_retry
-        assert should_retry(error_type="validation_error", retry_on=["timeout", "provider_error"]) is False
+
+        assert (
+            should_retry(error_type="validation_error", retry_on=["timeout", "provider_error"])
+            is False
+        )
 
     @pytest.mark.asyncio
     async def test_should_not_retry_when_max_reached(self):
         from smr.services.retry_handler import should_retry
-        assert should_retry(
-            error_type="timeout",
-            retry_on=["timeout"],
-            attempt=3,
-            max_retries=3,
-        ) is False
+
+        assert (
+            should_retry(
+                error_type="timeout",
+                retry_on=["timeout"],
+                attempt=3,
+                max_retries=3,
+            )
+            is False
+        )
 
 
 # ── GracefulShutdown ──
@@ -117,6 +133,7 @@ class TestGracefulShutdown:
     @pytest.mark.asyncio
     async def test_register_and_track_task(self):
         from smr.services.shutdown_manager import ShutdownManager
+
         sm = ShutdownManager()
         sm.register_task("t1")
         assert sm.active_count == 1
@@ -124,6 +141,7 @@ class TestGracefulShutdown:
     @pytest.mark.asyncio
     async def test_complete_task(self):
         from smr.services.shutdown_manager import ShutdownManager
+
         sm = ShutdownManager()
         sm.register_task("t1")
         sm.complete_task("t1")
@@ -132,6 +150,7 @@ class TestGracefulShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_waits_for_tasks(self):
         from smr.services.shutdown_manager import ShutdownManager
+
         sm = ShutdownManager()
         sm.register_task("t1")
 
@@ -146,6 +165,7 @@ class TestGracefulShutdown:
     @pytest.mark.asyncio
     async def test_shutdown_respects_timeout(self):
         from smr.services.shutdown_manager import ShutdownManager
+
         sm = ShutdownManager()
         sm.register_task("t1")
         timed_out = await sm.wait_for_shutdown(timeout=0.05)
@@ -154,6 +174,7 @@ class TestGracefulShutdown:
     @pytest.mark.asyncio
     async def test_is_shutting_down(self):
         from smr.services.shutdown_manager import ShutdownManager
+
         sm = ShutdownManager()
         assert sm.is_shutting_down is False
         sm.initiate_shutdown()

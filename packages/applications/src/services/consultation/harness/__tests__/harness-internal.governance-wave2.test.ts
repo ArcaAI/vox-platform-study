@@ -18,7 +18,11 @@ import { NotFoundException } from '@nestjs/common';
 import { ConsultationStatus, ResourceStatusType } from '@arcaai/domains';
 import { OptimisticConcurrencyException } from '@arcaai/exceptions';
 import { HarnessInternalService } from '../harness-internal.service';
-import { AGENTIC_REVISIT_CARRY_FORWARD_KEY, PRIOR_VISIT_SUMMARY_MAX_CHARS, PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER } from '../../../settings-registry/descriptors/agentic-revisit.descriptors';
+import {
+  AGENTIC_REVISIT_CARRY_FORWARD_KEY,
+  PRIOR_VISIT_SUMMARY_MAX_CHARS,
+  PRIOR_VISIT_SUMMARY_TRUNCATION_MARKER,
+} from '../../../settings-registry/descriptors/agentic-revisit.descriptors';
 
 const TENANT = 'tenant-1';
 const CONSULTATION = 'consultation-1';
@@ -179,9 +183,7 @@ describe('HarnessInternalService — re-visit carry-forward (F-18)', () => {
 
     await service.assemble(CONSULTATION, assembleDto);
 
-    expect(promptAssemblyService.assemble).toHaveBeenCalledWith(
-      expect.objectContaining({ priorVisitSummary: 'SIGNED-MARKER final note' }),
-    );
+    expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ priorVisitSummary: 'SIGNED-MARKER final note' }));
   });
 
   it('falls back MODIFIED_SUMMARY → RAW_SUMMARY, newest first', async () => {

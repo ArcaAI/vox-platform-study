@@ -8,12 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  SimpleCrossTabSync,
-  createCrossTabSync,
-  __resetSessionHmacSecretForTests,
-  __getSessionHmacSecretForTests,
-} from '../SimpleCrossTabSync';
+import { SimpleCrossTabSync, createCrossTabSync, __resetSessionHmacSecretForTests, __getSessionHmacSecretForTests } from '../SimpleCrossTabSync';
 import type { ContextItem } from '../../types';
 
 // =============================================================================
@@ -370,13 +365,9 @@ describe('SimpleCrossTabSync', () => {
       // Sign a message with a DIFFERENT secret and inject directly.
       const otherSecret = new Uint8Array(32);
       crypto.getRandomValues(otherSecret);
-      const otherKey = await crypto.subtle.importKey(
-        'raw',
-        otherSecret as unknown as ArrayBuffer,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign'],
-      );
+      const otherKey = await crypto.subtle.importKey('raw', otherSecret as unknown as ArrayBuffer, { name: 'HMAC', hash: 'SHA-256' }, false, [
+        'sign',
+      ]);
       const payload = {
         type: 'context_added',
         tabId: 'attacker-tab',
@@ -564,9 +555,7 @@ describe('SimpleCrossTabSync', () => {
       | { id: string; op: 'sign'; payload: ArrayBuffer }
       | { id: string; op: 'verify'; payload: ArrayBuffer; hmac: ArrayBuffer }
       | { id: string; op: 'reset' };
-    type Res =
-      | { id: string; ok: true; result: ArrayBuffer | boolean | null }
-      | { id: string; ok: false; error: string };
+    type Res = { id: string; ok: true; result: ArrayBuffer | boolean | null } | { id: string; ok: false; error: string };
 
     class MockSharedWorkerImpl {
       private secret: Uint8Array | null = null;
@@ -577,13 +566,10 @@ describe('SimpleCrossTabSync', () => {
             this.secret = new Uint8Array(32);
             crypto.getRandomValues(this.secret);
           }
-          this.keyPromise = crypto.subtle.importKey(
-            'raw',
-            this.secret as unknown as ArrayBuffer,
-            { name: 'HMAC', hash: 'SHA-256' },
-            false,
-            ['sign', 'verify'],
-          );
+          this.keyPromise = crypto.subtle.importKey('raw', this.secret as unknown as ArrayBuffer, { name: 'HMAC', hash: 'SHA-256' }, false, [
+            'sign',
+            'verify',
+          ]);
         }
         return this.keyPromise;
       }

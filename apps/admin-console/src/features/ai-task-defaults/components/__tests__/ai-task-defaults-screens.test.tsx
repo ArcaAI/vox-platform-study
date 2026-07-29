@@ -104,7 +104,6 @@ const TENANT_SESSION = {
   effectiveTenantId: 'tnt-1' as string | null,
 };
 
-
 interface RecordedCall {
   url: string;
   method: string;

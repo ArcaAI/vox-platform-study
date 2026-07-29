@@ -87,9 +87,7 @@ def asr_processor_health() -> dict[str, Any]:
     for name in sorted(get_registry().names("asr")):
         entry: dict[str, Any] = {}
         for mode in ("batch", "streaming"):
-            binding = resolve_engine_binding(
-                "asr", name, mode=mode, platform=plat, warn=False
-            )
+            binding = resolve_engine_binding("asr", name, mode=mode, platform=plat, warn=False)
             entry[mode] = (
                 {"device": binding.device, "compute": binding.compute}
                 if binding is not None

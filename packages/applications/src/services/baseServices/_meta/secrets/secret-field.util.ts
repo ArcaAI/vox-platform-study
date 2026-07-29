@@ -1,11 +1,13 @@
 // Canonical "encrypted secret field in a DB column" helpers.
 //
 // The single home for the Vault-Transit crypto path behind per-tenant BYO
-// secrets at rest. Every credential/secret-field service
-// (TenantTtsProviderCredential, AiProviderConnection — LLM provider
-// endpoints/keys, and future SSO/SMTP/webhook secrets) encrypts and decrypts
-// through THIS module so the ciphertext handling is audited in exactly one
-// place instead of copy-pasted per feature.
+// secrets at rest. Every credential/secret-field service (AiProviderConnection
+// — the unified LLM/STT/TTS provider-credential plane, and future SSO/SMTP/
+// webhook secrets) encrypts and decrypts through THIS module so the
+// ciphertext handling is audited in exactly one place instead of copy-pasted
+// per feature. (The former per-capability `TenantTtsProviderCredential` /
+// `TenantSttProviderCredential` tables that used to be listed here were
+// dropped by TASK-576.)
 //
 // Layering note: this lives in the applications layer alongside SecretsService.
 // A behaviour-identical twin of parseKeyVersionFromCiphertext also exists in the

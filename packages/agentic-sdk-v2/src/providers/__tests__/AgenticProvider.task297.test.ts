@@ -64,12 +64,7 @@ let handler: FetchHandler;
 
 beforeEach(() => {
   fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-    const u =
-      typeof url === 'string'
-        ? url
-        : url instanceof URL
-          ? url.toString()
-          : (url as Request).url;
+    const u = typeof url === 'string' ? url : url instanceof URL ? url.toString() : (url as Request).url;
     return handler(u, init);
   });
   globalThis.fetch = fetchSpy as unknown as typeof fetch;
@@ -93,18 +88,15 @@ async function renderProvider(configOverride: Record<string, unknown> = {}) {
     return null;
   };
 
-  const element = React.createElement(
-    AgenticProvider,
-    {
-      config: {
-        api: { baseUrl: 'https://api.example.com', apiKey: 'k', accessToken: 'access', tenantId: 'tenant-1' },
-        audio: undefined,
-        personalization: { storage: 'local' },
-        ...configOverride,
-      },
-      children: React.createElement(Capture),
-    } as never,
-  ) as React.ReactElement;
+  const element = React.createElement(AgenticProvider, {
+    config: {
+      api: { baseUrl: 'https://api.example.com', apiKey: 'k', accessToken: 'access', tenantId: 'tenant-1' },
+      audio: undefined,
+      personalization: { storage: 'local' },
+      ...configOverride,
+    },
+    children: React.createElement(Capture),
+  } as never) as React.ReactElement;
   render(element);
   if (!captured.api) throw new Error('AgenticProvider store API was not captured');
   return captured.api;

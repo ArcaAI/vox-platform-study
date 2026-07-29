@@ -147,9 +147,7 @@ describe('SecretsService.boot()', () => {
   it('boot() does not fail when a warmup key is missing from the provider', async () => {
     const provider = new InMemorySecretsProvider({ JWT_SECRET_KEY: 'v' });
     const service = new SecretsService(provider, { defaultTtlSec: 300 });
-    await expect(
-      service.boot({ warmupKeys: ['JWT_SECRET_KEY', 'NOPE'] }),
-    ).resolves.toBeUndefined();
+    await expect(service.boot({ warmupKeys: ['JWT_SECRET_KEY', 'NOPE'] })).resolves.toBeUndefined();
   });
 });
 
@@ -239,10 +237,7 @@ describe('SecretsService keyed encrypt/decrypt (Phase 3A PHI)', () => {
     const service = new SecretsService(fakeVault, {});
     const ct = await service.encrypt(Buffer.from('hello'), 'hope-phi');
     expect(ct).toBe('vault:v1:hope-phi:aGVsbG8=');
-    expect((fakeVault as unknown as { encrypt: ReturnType<typeof vi.fn> }).encrypt).toHaveBeenCalledWith(
-      Buffer.from('hello'),
-      'hope-phi',
-    );
+    expect((fakeVault as unknown as { encrypt: ReturnType<typeof vi.fn> }).encrypt).toHaveBeenCalledWith(Buffer.from('hello'), 'hope-phi');
   });
 
   it('forwards an explicit key name to the provider on decrypt', async () => {
@@ -255,10 +250,7 @@ describe('SecretsService keyed encrypt/decrypt (Phase 3A PHI)', () => {
     const service = new SecretsService(fakeVault, {});
     const pt = await service.decrypt('vault:v1:aGVsbG8=', 'hope-phi');
     expect(pt.toString('utf8')).toBe('hello');
-    expect((fakeVault as unknown as { decrypt: ReturnType<typeof vi.fn> }).decrypt).toHaveBeenCalledWith(
-      'vault:v1:aGVsbG8=',
-      'hope-phi',
-    );
+    expect((fakeVault as unknown as { decrypt: ReturnType<typeof vi.fn> }).decrypt).toHaveBeenCalledWith('vault:v1:aGVsbG8=', 'hope-phi');
   });
 
   it('getPhiTransitKeyName returns the provider PHI key when exposed', () => {
@@ -360,9 +352,7 @@ describe('SecretsService.requestDbCredential (Phase 5 Task 5.3)', () => {
     expect(cred.username).toBe('v-token-hope-app-role-1');
     expect(cred.leaseId).toBe('database/creds/hope-app-role/abc');
     expect(cred.ttlSec).toBe(3600);
-    expect(
-      (fakeVault as unknown as { issueDbCredential: unknown }).issueDbCredential,
-    ).toHaveBeenCalledTimes(1);
+    expect((fakeVault as unknown as { issueDbCredential: unknown }).issueDbCredential).toHaveBeenCalledTimes(1);
   });
 
   it('does not cache the issued credential (returns a fresh credential each call)', async () => {
@@ -422,9 +412,7 @@ describe('SecretsService.renewDbLease', () => {
     const service = new SecretsService(fakeVault, {});
     const result = await service.renewDbLease('database/creds/hope-app-role/abc', 3600);
     expect(result).toEqual({ ttlSec: 3600 });
-    expect(
-      (fakeVault as unknown as { renewDbLease: unknown }).renewDbLease,
-    ).toHaveBeenCalledWith('database/creds/hope-app-role/abc', 3600);
+    expect((fakeVault as unknown as { renewDbLease: unknown }).renewDbLease).toHaveBeenCalledWith('database/creds/hope-app-role/abc', 3600);
   });
 });
 
@@ -446,9 +434,7 @@ describe('SecretsService Redis Pub/Sub invalidation', () => {
     await service.getSecret('K2');
     const spy = vi.spyOn(provider, 'getSecret');
 
-    handlers.message?.forEach((h) =>
-      h('arca:secrets:invalidate', JSON.stringify({ key: 'K' })),
-    );
+    handlers.message?.forEach((h) => h('arca:secrets:invalidate', JSON.stringify({ key: 'K' })));
 
     await service.getSecret('K');
     await service.getSecret('K2');
@@ -471,9 +457,7 @@ describe('SecretsService Redis Pub/Sub invalidation', () => {
     await service.getSecret('K');
     await service.getSecret('K2');
     const spy = vi.spyOn(provider, 'getSecret');
-    handlers.message?.forEach((h) =>
-      h('arca:secrets:invalidate', JSON.stringify({ all: true })),
-    );
+    handlers.message?.forEach((h) => h('arca:secrets:invalidate', JSON.stringify({ all: true })));
 
     await service.getSecret('K');
     await service.getSecret('K2');
@@ -494,9 +478,7 @@ describe('SecretsService Redis Pub/Sub invalidation', () => {
 
     await service.getSecret('K');
     const spy = vi.spyOn(provider, 'getSecret');
-    handlers.message?.forEach((h) =>
-      h('other:channel', JSON.stringify({ all: true })),
-    );
+    handlers.message?.forEach((h) => h('other:channel', JSON.stringify({ all: true })));
 
     await service.getSecret('K');
     expect(spy).not.toHaveBeenCalled();
@@ -516,9 +498,7 @@ describe('SecretsService Redis Pub/Sub invalidation', () => {
 
     await service.getSecret('K');
     const spy = vi.spyOn(provider, 'getSecret');
-    expect(() =>
-      handlers.message?.forEach((h) => h('arca:secrets:invalidate', '{not-json')),
-    ).not.toThrow();
+    expect(() => handlers.message?.forEach((h) => h('arca:secrets:invalidate', '{not-json'))).not.toThrow();
     await service.getSecret('K');
     expect(spy).not.toHaveBeenCalled();
   });

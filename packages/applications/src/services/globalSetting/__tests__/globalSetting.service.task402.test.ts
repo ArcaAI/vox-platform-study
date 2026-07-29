@@ -172,10 +172,7 @@ describe('GlobalSettingService — revive-on-create for soft-deleted keys', () =
     expect(mockGlobalSettingRepository.restore).not.toHaveBeenCalled();
     expect(mockGlobalSettingRepository.create).toHaveBeenCalledTimes(1);
     expect(result.id).toBe('brand-new-id');
-    expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-      SysEventType.ResourceCreated,
-      expect.objectContaining({ resourceId: 'brand-new-id' }),
-    );
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.objectContaining({ resourceId: 'brand-new-id' }));
   });
 
   it('does not probe for DELETED rows when no tenant context is resolvable', async () => {
@@ -196,9 +193,9 @@ describe('GlobalSettingService — revive-on-create for soft-deleted keys', () =
   it('propagates unexpected probe errors instead of masking them as creates', async () => {
     mockGlobalSettingRepository.findFirst.mockRejectedValue(new Error('connection reset'));
 
-    await expect(
-      service.create({ tenantId: TENANT, name: 'X', key: 'task402.err.key', value: 'v', dataType: ValueType.String }),
-    ).rejects.toThrow('connection reset');
+    await expect(service.create({ tenantId: TENANT, name: 'X', key: 'task402.err.key', value: 'v', dataType: ValueType.String })).rejects.toThrow(
+      'connection reset',
+    );
     expect(mockGlobalSettingRepository.create).not.toHaveBeenCalled();
   });
 });

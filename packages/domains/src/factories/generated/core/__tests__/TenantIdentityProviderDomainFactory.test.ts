@@ -56,16 +56,12 @@ describe('TenantIdentityProviderDomainFactory.CreateTenantIdentityProviderDomain
 
 describe('TenantIdentityProviderDomainEntity.validate()', () => {
   it('should throw when domain is blank', () => {
-    const entity = TenantIdentityProviderDomainFactory.CreateTenantIdentityProviderDomain(
-      validProps({ domain: '   ' }),
-    );
+    const entity = TenantIdentityProviderDomainFactory.CreateTenantIdentityProviderDomain(validProps({ domain: '   ' }));
     expect(() => entity.validate()).toThrow('domain is required');
   });
 
   it('should throw when providerId is blank', () => {
-    const entity = TenantIdentityProviderDomainFactory.CreateTenantIdentityProviderDomain(
-      validProps({ providerId: '' }),
-    );
+    const entity = TenantIdentityProviderDomainFactory.CreateTenantIdentityProviderDomain(validProps({ providerId: '' }));
     expect(() => entity.validate()).toThrow('providerId is required');
   });
 });

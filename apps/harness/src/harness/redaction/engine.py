@@ -78,7 +78,11 @@ class RedactionRule(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> RedactionRule:
-        if self.type == "rewrite" and self.match in ("literal", "regex") and self.replacement is None:
+        if (
+            self.type == "rewrite"
+            and self.match in ("literal", "regex")
+            and self.replacement is None
+        ):
             # A deterministic rewrite must carry its replacement. A rewrite with no
             # replacement is a *semantic* rewrite (SMR pass in the activity); it is
             # never handed to the pure engine, so reject it here.
@@ -142,14 +146,10 @@ def _compile(rule: RedactionRule) -> re.Pattern[str] | None:
     try:
         return re.compile(source)
     except re.error as exc:  # malformed regex — fail closed upstream
-        raise RedactionEngineError(
-            f"rule {rule.id!r} has an invalid pattern: {exc}"
-        ) from exc
+        raise RedactionEngineError(f"rule {rule.id!r} has an invalid pattern: {exc}") from exc
 
 
-def apply_deterministic_redaction(
-    text: str, rules: list[RedactionRule]
-) -> RedactionOutcome:
+def apply_deterministic_redaction(text: str, rules: list[RedactionRule]) -> RedactionOutcome:
     """Apply ``rules`` to ``text`` in order and return the transformed text + manifest.
 
     Deterministic: rules are applied sequentially; each rule matches against the

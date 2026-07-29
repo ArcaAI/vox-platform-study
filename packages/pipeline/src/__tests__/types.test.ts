@@ -6,13 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  PipelineEvent,
-  PipelineErrorCode,
-  PipelineError,
-  DEFAULT_PIPELINE_STATE,
-  DEFAULT_STAGE_CONFIG,
-} from '../types/index.js';
+import { PipelineEvent, PipelineErrorCode, PipelineError, DEFAULT_PIPELINE_STATE, DEFAULT_STAGE_CONFIG } from '../types/index.js';
 
 describe('Pipeline Types', () => {
   describe('DEFAULT_PIPELINE_STATE', () => {

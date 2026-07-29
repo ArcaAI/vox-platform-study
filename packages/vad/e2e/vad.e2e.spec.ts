@@ -44,17 +44,11 @@ interface TestResults {
 
 // Helper to get test results from page
 async function getTestResults(page: Page): Promise<TestResults> {
-  return page.evaluate(
-    () => (window as unknown as { testResults: TestResults }).testResults
-  );
+  return page.evaluate(() => (window as unknown as { testResults: TestResults }).testResults);
 }
 
 // Helper to call test helper functions
-async function callTestHelper(
-  page: Page,
-  fn: string,
-  ...args: unknown[]
-): Promise<unknown> {
+async function callTestHelper(page: Page, fn: string, ...args: unknown[]): Promise<unknown> {
   return page.evaluate(
     ({ fn, args }) => {
       const helpers = (
@@ -64,7 +58,7 @@ async function callTestHelper(
       ).vadTestHelpers;
       return helpers[fn](...args);
     },
-    { fn, args }
+    { fn, args },
   );
 }
 
@@ -75,8 +69,7 @@ test.describe('@arcaai/vad E2E Tests', () => {
 
     // Wait for page to load and check browser support
     await page.waitForFunction(() => {
-      const results = (window as unknown as { testResults: TestResults })
-        .testResults;
+      const results = (window as unknown as { testResults: TestResults }).testResults;
       return results.browserSupport !== null;
     });
   });
@@ -115,27 +108,15 @@ test.describe('@arcaai/vad E2E Tests', () => {
       const results = await getTestResults(page);
 
       // VAD requires WASM + AudioContext
-      const expectedSupport =
-        results.browserSupport!.webAssembly &&
-        results.browserSupport!.audioContext;
+      const expectedSupport = results.browserSupport!.webAssembly && results.browserSupport!.audioContext;
       expect(results.browserSupport!.vadSupported).toBe(expectedSupport);
     });
 
-    test('should have browser support status displayed in UI', async ({
-      page,
-    }) => {
-      await expect(page.locator('#wasm-support')).toContainText(
-        /Supported|Not supported/
-      );
-      await expect(page.locator('#audio-support')).toContainText(
-        /Supported|Not supported/
-      );
-      await expect(page.locator('#worklet-support')).toContainText(
-        /Supported|Not supported/
-      );
-      await expect(page.locator('#media-support')).toContainText(
-        /Supported|Not supported/
-      );
+    test('should have browser support status displayed in UI', async ({ page }) => {
+      await expect(page.locator('#wasm-support')).toContainText(/Supported|Not supported/);
+      await expect(page.locator('#audio-support')).toContainText(/Supported|Not supported/);
+      await expect(page.locator('#worklet-support')).toContainText(/Supported|Not supported/);
+      await expect(page.locator('#media-support')).toContainText(/Supported|Not supported/);
       await expect(page.locator('#vad-support')).toContainText(/Yes|No/);
     });
   });
@@ -149,8 +130,7 @@ test.describe('@arcaai/vad E2E Tests', () => {
             hasVADProcessor: typeof module.VADProcessor === 'function',
             hasCreateVAD: typeof module.createVAD === 'function',
             hasUseVAD: typeof module.useVAD === 'function',
-            hasGetVADBrowserSupport:
-              typeof module.getVADBrowserSupport === 'function',
+            hasGetVADBrowserSupport: typeof module.getVADBrowserSupport === 'function',
             exports: Object.keys(module),
           };
         } catch (error) {
@@ -263,8 +243,7 @@ test.describe('@arcaai/vad E2E Tests', () => {
     test('should return correct frame size for models', async ({ page }) => {
       const frameSizes = await page.evaluate(async () => {
         try {
-          const { getFrameSamplesForModel, FRAME_SIZE_V5, FRAME_SIZE_LEGACY } =
-            await import('/dist/index.mjs');
+          const { getFrameSamplesForModel, FRAME_SIZE_V5, FRAME_SIZE_LEGACY } = await import('/dist/index.mjs');
           return {
             v5: getFrameSamplesForModel('v5'),
             legacy: getFrameSamplesForModel('legacy'),
@@ -456,9 +435,7 @@ test.describe('@arcaai/vad E2E Tests', () => {
       }
     });
 
-    test('should accumulate samples across multiple calls', async ({
-      page,
-    }) => {
+    test('should accumulate samples across multiple calls', async ({ page }) => {
       const result = await page.evaluate(async () => {
         try {
           const { FrameAccumulator } = await import('/dist/index.mjs');
@@ -588,10 +565,7 @@ test.describe('@arcaai/vad E2E Tests', () => {
         try {
           const { VADError, VADErrorCode } = await import('/dist/index.mjs');
 
-          const error = new VADError(
-            VADErrorCode.NOT_SUPPORTED,
-            'Test error message'
-          );
+          const error = new VADError(VADErrorCode.NOT_SUPPORTED, 'Test error message');
 
           return {
             name: error.name,
@@ -619,9 +593,7 @@ test.describe('@arcaai/vad E2E Tests', () => {
     test('should convert duration to samples correctly', async ({ page }) => {
       const result = await page.evaluate(async () => {
         try {
-          const { durationToSamples, samplesToDuration } = await import(
-            '/dist/index.mjs'
-          );
+          const { durationToSamples, samplesToDuration } = await import('/dist/index.mjs');
 
           return {
             samplesFor1Sec: durationToSamples(1000, 16000),
@@ -645,9 +617,7 @@ test.describe('@arcaai/vad E2E Tests', () => {
     test('should convert duration to frames correctly', async ({ page }) => {
       const result = await page.evaluate(async () => {
         try {
-          const { durationToFrames, framesToDuration } = await import(
-            '/dist/index.mjs'
-          );
+          const { durationToFrames, framesToDuration } = await import('/dist/index.mjs');
 
           return {
             framesFor32ms: durationToFrames(32, 'v5', 16000),
@@ -694,15 +664,12 @@ test.describe('@arcaai/vad AudioContext Tests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('http://localhost:3334/');
     await page.waitForFunction(() => {
-      const results = (window as unknown as { testResults: TestResults })
-        .testResults;
+      const results = (window as unknown as { testResults: TestResults }).testResults;
       return results.browserSupport !== null;
     });
   });
 
-  test('should create AudioContext with 16kHz sample rate', async ({
-    page,
-  }) => {
+  test('should create AudioContext with 16kHz sample rate', async ({ page }) => {
     const audioInfo = await page.evaluate(() => {
       const ctx = new AudioContext({ sampleRate: 16000 });
       const info = {
@@ -771,15 +738,12 @@ test.describe('@arcaai/vad UI Interaction Tests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('http://localhost:3334/');
     await page.waitForFunction(() => {
-      const results = (window as unknown as { testResults: TestResults })
-        .testResults;
+      const results = (window as unknown as { testResults: TestResults }).testResults;
       return results.browserSupport !== null;
     });
   });
 
-  test('should have initialize button enabled when VAD supported', async ({
-    page,
-  }) => {
+  test('should have initialize button enabled when VAD supported', async ({ page }) => {
     const results = await getTestResults(page);
 
     if (results.browserSupport?.vadSupported) {

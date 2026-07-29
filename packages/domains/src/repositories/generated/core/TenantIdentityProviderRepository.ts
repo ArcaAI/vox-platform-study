@@ -8,10 +8,7 @@ import { TenantIdentityProviderEntityMapper } from '../../../mappers';
 import { TenantIdentityProvider } from '../../../models';
 
 @Injectable()
-export class TenantIdentityProviderRepository extends Repository<
-  TenantIdentityProviderEntity,
-  TenantIdentityProvider
-> {
+export class TenantIdentityProviderRepository extends Repository<TenantIdentityProviderEntity, TenantIdentityProvider> {
   constructor(private readonly unitOfWorkService: CoreUnitOfWorkService) {
     super(unitOfWorkService, 'tenantIdentityProvider', TenantIdentityProviderEntityMapper.getInstance());
   }
@@ -24,10 +21,7 @@ export class TenantIdentityProviderRepository extends Repository<
   }
 
   /** The tenant's ENABLED provider for a protocol (per-tenant OIDC client resolver, D4), or null. */
-  async findEnabledByTenantAndProtocol(
-    tenantId: string,
-    protocol: IdpProtocol,
-  ): Promise<TenantIdentityProviderEntity | null> {
+  async findEnabledByTenantAndProtocol(tenantId: string, protocol: IdpProtocol): Promise<TenantIdentityProviderEntity | null> {
     try {
       return await this.findFirst({
         filters: {

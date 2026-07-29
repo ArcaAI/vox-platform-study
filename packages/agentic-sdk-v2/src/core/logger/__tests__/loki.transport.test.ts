@@ -187,7 +187,7 @@ describe('LokiTransport', () => {
             boolKey: true,
           },
           tags: ['tag1', 'tag2'],
-        })
+        }),
       );
 
       await transport.flush();
@@ -206,7 +206,7 @@ describe('LokiTransport', () => {
             name: 'TestError',
             stack: 'Error: Test\n  at test.ts:1:1',
           },
-        })
+        }),
       );
 
       await transport.flush();
@@ -233,7 +233,7 @@ describe('LokiTransport', () => {
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
           }),
-        })
+        }),
       );
     });
 
@@ -286,7 +286,7 @@ describe('LokiTransport', () => {
           headers: expect.objectContaining({
             Authorization: expect.stringMatching(/^Basic /),
           }),
-        })
+        }),
       );
     });
 
@@ -308,7 +308,7 @@ describe('LokiTransport', () => {
           headers: expect.objectContaining({
             'X-Custom-Header': 'custom-value',
           }),
-        })
+        }),
       );
     });
   });
@@ -336,7 +336,7 @@ describe('LokiTransport', () => {
             sdkName: '@arcaai/vox',
             sdkVersion: '0.0.0-test',
           },
-        })
+        }),
       );
 
       await transport.flush();
@@ -355,7 +355,7 @@ describe('LokiTransport', () => {
             sdkName: '@arcaai/vox',
             sdkVersion: '0.0.0-test',
           },
-        })
+        }),
       );
 
       await transport.flush();
@@ -372,7 +372,7 @@ describe('LokiTransport', () => {
           operation: {
             component: 'MyComponent',
           },
-        })
+        }),
       );
 
       await transport.flush();
@@ -493,21 +493,13 @@ describe('LokiTransport', () => {
 
     it('exposes isAllowedToActivate as a pure static predicate', () => {
       process.env.NODE_ENV = 'development';
-      expect(
-        LokiTransport.isAllowedToActivate({ enabled: true, url: 'http://l:3100' })
-      ).toBe(true);
-      expect(
-        LokiTransport.isAllowedToActivate({ enabled: false, url: 'http://l:3100' })
-      ).toBe(false);
+      expect(LokiTransport.isAllowedToActivate({ enabled: true, url: 'http://l:3100' })).toBe(true);
+      expect(LokiTransport.isAllowedToActivate({ enabled: false, url: 'http://l:3100' })).toBe(false);
       expect(LokiTransport.isAllowedToActivate({ enabled: true, url: '' })).toBe(false);
-      expect(
-        LokiTransport.isAllowedToActivate({ enabled: true, url: '   ' })
-      ).toBe(false);
+      expect(LokiTransport.isAllowedToActivate({ enabled: true, url: '   ' })).toBe(false);
 
       process.env.NODE_ENV = 'production';
-      expect(
-        LokiTransport.isAllowedToActivate({ enabled: true, url: 'http://l:3100' })
-      ).toBe(false);
+      expect(LokiTransport.isAllowedToActivate({ enabled: true, url: 'http://l:3100' })).toBe(false);
     });
   });
 });

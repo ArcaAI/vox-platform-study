@@ -146,7 +146,14 @@ describe('resolveHighlights', () => {
 
   it('recovers via the quote tier when offsets drift', () => {
     const start = text.indexOf('cough');
-    const drifted: StoredHighlight = { id: 'h2', exact: 'cough', prefix: 'persistent ', suffix: '.', startOffset: start + 100, endOffset: start + 105 };
+    const drifted: StoredHighlight = {
+      id: 'h2',
+      exact: 'cough',
+      prefix: 'persistent ',
+      suffix: '.',
+      startOffset: start + 100,
+      endOffset: start + 105,
+    };
     const resolved = resolveHighlights(text, [drifted]);
     expect(resolved).toHaveLength(1);
     expect(text.slice(resolved[0].position.start, resolved[0].position.end)).toBe('cough');

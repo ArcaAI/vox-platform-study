@@ -99,8 +99,8 @@ function ciphertextToHashRepr(ct: Buffer | Uint8Array | string | null | undefine
  * digest while encrypted rows are bound to their ciphertext.
  */
 export function computeHarnessAuditHash(input: HarnessAuditHashInput): string {
-  const sensorScoresRepr = ciphertextToHashRepr(input.encryptedSensorScores) ?? (input.sensorScores ?? null);
-  const citationsRepr = ciphertextToHashRepr(input.encryptedCitations) ?? (input.citations ?? null);
+  const sensorScoresRepr = ciphertextToHashRepr(input.encryptedSensorScores) ?? input.sensorScores ?? null;
+  const citationsRepr = ciphertextToHashRepr(input.encryptedCitations) ?? input.citations ?? null;
   const canonical = canonicalJson({
     prevHash: input.prevHash,
     tenantId: input.tenantId,

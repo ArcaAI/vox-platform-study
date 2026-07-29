@@ -33,7 +33,12 @@ describe('lib/shared/query-state', () => {
 
   it('serializes sorting to CSV field:asc|desc', () => {
     const q = toPaginatedQuery(
-      makeState({ sorting: [{ id: 'name', desc: false }, { id: 'createdAt', desc: true }] }),
+      makeState({
+        sorting: [
+          { id: 'name', desc: false },
+          { id: 'createdAt', desc: true },
+        ],
+      }),
     );
     expect(q.sort).toBe('name:asc,createdAt:desc');
   });

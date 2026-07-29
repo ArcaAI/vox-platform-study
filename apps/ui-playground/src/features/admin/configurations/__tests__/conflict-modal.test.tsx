@@ -21,18 +21,15 @@ import { render, screen, fireEvent } from '@testing-library/react';
 // is structurally identical to this shim (verified by the SDK-level
 // `useGlobalSettings.optimistic-locking.test.ts` suite).
 class TestConfigConflictError extends Error {
-    readonly code = 'CONFIG_CONFLICT';
-    constructor(
-        public readonly settingId: string,
-        public readonly expectedVersion: number,
-        public readonly currentVersion: number,
-    ) {
-        super(
-            `Setting ${settingId} was changed by someone else ` +
-                `(yourVersion=${expectedVersion}, currentVersion=${currentVersion}).`,
-        );
-        this.name = 'ConfigConflictError';
-    }
+  readonly code = 'CONFIG_CONFLICT';
+  constructor(
+    public readonly settingId: string,
+    public readonly expectedVersion: number,
+    public readonly currentVersion: number,
+  ) {
+    super(`Setting ${settingId} was changed by someone else ` + `(yourVersion=${expectedVersion}, currentVersion=${currentVersion}).`);
+    this.name = 'ConfigConflictError';
+  }
 }
 vi.mock('@arcaai/vox', () => ({ ConfigConflictError: TestConfigConflictError }));
 const { ConfigConflictError } = await import('@arcaai/vox');
@@ -43,75 +40,72 @@ const { ConfigConflictModal } = await import('../conflict-modal');
 // having to thread `appendTo` through the test environment. The same
 // strategy is used by `configurations-page.test.tsx`.
 vi.mock('@arcaai/ui/dialog', () => ({
-    Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) =>
-        open ? <div role="dialog">{children}</div> : null,
-    DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-    DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
-    DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
+  Dialog: ({ open, children }: { open: boolean; children: React.ReactNode }) => (open ? <div role="dialog">{children}</div> : null),
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: { children: React.ReactNode }) => <p>{children}</p>,
 }));
 
 vi.mock('@arcaai/ui/button', () => ({
-    Button: ({ children, onClick, variant }: { children: React.ReactNode; onClick?: () => void; variant?: string }) => (
-        <button onClick={onClick} data-variant={variant}>
-            {children}
-        </button>
-    ),
+  Button: ({ children, onClick, variant }: { children: React.ReactNode; onClick?: () => void; variant?: string }) => (
+    <button onClick={onClick} data-variant={variant}>
+      {children}
+    </button>
+  ),
 }));
 
 describe('ConfigConflictModal (TASK-302 Stream D Phase D.5)', () => {
-    it('shows the conflict copy with the latest version', () => {
-        const err = new ConfigConflictError('gs-1', 7, 8);
+  it('shows the conflict copy with the latest version', () => {
+    const err = new ConfigConflictError('gs-1', 7, 8);
 
-        render(<ConfigConflictModal error={err} onRefresh={() => {}} onDismiss={() => {}} />);
+    render(<ConfigConflictModal error={err} onRefresh={() => {}} onDismiss={() => {}} />);
 
-        // The user-facing language is "changed by someone else" — NOT
-        // "412 precondition failed" or "OCC conflict." Tech jargon belongs
-        // in the developer console, not the admin's screen.
-        expect(screen.getByText(/changed by someone else/i)).toBeTruthy();
-        // The version numbers must be visible so the admin can grok the
-        // gap ("oh, I was editing v7 and someone saved v8 in between").
-        // Match the whole text node — versions are interpolated inline.
-        const desc = screen.getByText(/version 7/i);
-        expect(desc.textContent).toMatch(/version 7/i);
-        expect(desc.textContent).toMatch(/version is 8/i);
-        expect(screen.getByRole('button', { name: /refresh/i })).toBeTruthy();
-    });
+    // The user-facing language is "changed by someone else" — NOT
+    // "412 precondition failed" or "OCC conflict." Tech jargon belongs
+    // in the developer console, not the admin's screen.
+    expect(screen.getByText(/changed by someone else/i)).toBeTruthy();
+    // The version numbers must be visible so the admin can grok the
+    // gap ("oh, I was editing v7 and someone saved v8 in between").
+    // Match the whole text node — versions are interpolated inline.
+    const desc = screen.getByText(/version 7/i);
+    expect(desc.textContent).toMatch(/version 7/i);
+    expect(desc.textContent).toMatch(/version is 8/i);
+    expect(screen.getByRole('button', { name: /refresh/i })).toBeTruthy();
+  });
 
-    it('calls onRefresh when the "Refresh and try again" button is clicked', () => {
-        const err = new ConfigConflictError('gs-1', 7, 8);
-        const onRefresh = vi.fn();
+  it('calls onRefresh when the "Refresh and try again" button is clicked', () => {
+    const err = new ConfigConflictError('gs-1', 7, 8);
+    const onRefresh = vi.fn();
 
-        render(<ConfigConflictModal error={err} onRefresh={onRefresh} onDismiss={() => {}} />);
+    render(<ConfigConflictModal error={err} onRefresh={onRefresh} onDismiss={() => {}} />);
 
-        fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
 
-        expect(onRefresh).toHaveBeenCalledTimes(1);
-    });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
 
-    it('calls onDismiss when the cancel button is clicked', () => {
-        // Per the plan's Code Review Gate D bullet ("Confirm the conflict
-        // modal is **dismissable**"): the user must always be able to
-        // navigate away without resolving the conflict — never hostage
-        // the page.
-        const err = new ConfigConflictError('gs-1', 7, 8);
-        const onDismiss = vi.fn();
+  it('calls onDismiss when the cancel button is clicked', () => {
+    // Per the plan's Code Review Gate D bullet ("Confirm the conflict
+    // modal is **dismissable**"): the user must always be able to
+    // navigate away without resolving the conflict — never hostage
+    // the page.
+    const err = new ConfigConflictError('gs-1', 7, 8);
+    const onDismiss = vi.fn();
 
-        render(<ConfigConflictModal error={err} onRefresh={() => {}} onDismiss={onDismiss} />);
+    render(<ConfigConflictModal error={err} onRefresh={() => {}} onDismiss={onDismiss} />);
 
-        fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
-        expect(onDismiss).toHaveBeenCalledTimes(1);
-    });
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
 
-    it('renders nothing when error is null (precondition for conditional mount)', () => {
-        // The page mounts the modal only when an error is captured; this
-        // test pins the convenience prop in case the parent passes `null`
-        // during the dismiss animation.
-        const { container } = render(
-            <ConfigConflictModal error={null} onRefresh={() => {}} onDismiss={() => {}} />,
-        );
-        expect(container.firstChild).toBeNull();
-    });
+  it('renders nothing when error is null (precondition for conditional mount)', () => {
+    // The page mounts the modal only when an error is captured; this
+    // test pins the convenience prop in case the parent passes `null`
+    // during the dismiss animation.
+    const { container } = render(<ConfigConflictModal error={null} onRefresh={() => {}} onDismiss={() => {}} />);
+    expect(container.firstChild).toBeNull();
+  });
 });

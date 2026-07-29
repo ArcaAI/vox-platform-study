@@ -27,10 +27,9 @@ def test_snapshot_exposes_retention() -> None:
 def test_snapshot_omits_keys_without_an_opinion() -> None:
     """Omitted ⇒ keep the env/bootstrap value; never coerce null into a number."""
     assert EffectiveConfigSnapshot(raw={}, ok=True).retention() == {}
-    assert (
-        EffectiveConfigSnapshot(raw={"retention": {"ttlSeconds": None, "maxModels": 4}}, ok=True).retention()
-        == {"max_models": 4}
-    )
+    assert EffectiveConfigSnapshot(
+        raw={"retention": {"ttlSeconds": None, "maxModels": 4}}, ok=True
+    ).retention() == {"max_models": 4}
     assert EffectiveConfigSnapshot(raw={"retention": {"ttlSeconds": 0}}, ok=True).retention() == {}
 
 

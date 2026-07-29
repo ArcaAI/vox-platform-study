@@ -11,7 +11,9 @@ from smr.core.config import Settings
 
 @pytest.fixture
 def settings():
-    return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False)
+    return Settings(
+        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
+    )
 
 
 def collect_route_paths(app):
@@ -33,16 +35,19 @@ def collect_route_paths(app):
 class TestCreateApp:
     def test_creates_app_with_default_settings(self):
         from smr.main import create_app
+
         app = create_app(settings_override=Settings())
         assert app.title == "SMR — Text Generation Service"
 
     def test_creates_app_with_custom_settings(self, settings):
         from smr.main import create_app
+
         app = create_app(settings_override=settings)
         assert app.state.settings.debug is True
 
     def test_app_registers_all_routers(self, settings):
         from smr.main import create_app
+
         app = create_app(settings_override=settings)
         routes = collect_route_paths(app)
         assert "/api/v1/health" in routes
@@ -51,6 +56,7 @@ class TestCreateApp:
 
     def test_state_defaults_to_none(self, settings):
         from smr.main import create_app
+
         app = create_app(settings_override=settings)
         assert app.state.redis is None
         assert app.state.task_manager is None
@@ -58,6 +64,7 @@ class TestCreateApp:
 
     def test_metrics_disabled_when_false(self):
         from smr.main import create_app
+
         s = Settings(metrics_enabled=False)
         app = create_app(settings_override=s)
         routes = collect_route_paths(app)
@@ -65,6 +72,7 @@ class TestCreateApp:
 
     def test_metrics_enabled_when_true(self):
         from smr.main import create_app
+
         s = Settings(metrics_enabled=True)
         app = create_app(settings_override=s)
         routes = collect_route_paths(app)
@@ -128,6 +136,7 @@ class TestLifespan:
         mock_redis = AsyncMock()
         mock_redis.aclose = AsyncMock()
         from smr.providers.base import ProviderRegistry
+
         sentinel_tm = object()
         sentinel_reg = ProviderRegistry()
 

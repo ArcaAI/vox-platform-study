@@ -139,9 +139,7 @@ def test_model_load_failure_returns_503(client, clean_deps) -> None:
         patch("nlp.services.token_classifier.pipeline"),
     ):
         tok.from_pretrained.side_effect = OSError("no such model on the hub")
-        r = client.post(
-            "/api/v1/classify/tokens", json={"text": "x", "model_name": "org/missing"}
-        )
+        r = client.post("/api/v1/classify/tokens", json={"text": "x", "model_name": "org/missing"})
 
     assert r.status_code == 503
     # a failed load is not cached — a later request retries

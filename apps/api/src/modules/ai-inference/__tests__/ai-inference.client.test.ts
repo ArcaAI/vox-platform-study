@@ -16,13 +16,19 @@ const httpService = { axiosRef: { post: axiosPost } };
 const upstreamError = (status: number, data: unknown = { detail: 'unsafe input' }) => {
   const headers = new AxiosHeaders();
   const config = { headers };
-  return new AxiosError('upstream failed', 'ERR_BAD_RESPONSE', config as never, {}, {
-    status,
-    statusText: 'ERR',
-    headers,
-    config: config as never,
-    data,
-  });
+  return new AxiosError(
+    'upstream failed',
+    'ERR_BAD_RESPONSE',
+    config as never,
+    {},
+    {
+      status,
+      statusText: 'ERR',
+      headers,
+      config: config as never,
+      data,
+    },
+  );
 };
 
 describe('AiInferenceClient — URL resolution', () => {
@@ -38,10 +44,18 @@ describe('AiInferenceClient — URL resolution', () => {
     axiosPost.mockResolvedValue({ data: { safe: true } });
 
     await client.analyzeGuardrail({ text: 'hi', guardrail_type: 'comprehensive' });
-    expect(axiosPost).toHaveBeenCalledWith('http://guardrail.svc:9863/api/guardrail/analyze', { text: 'hi', guardrail_type: 'comprehensive' }, expect.anything());
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://guardrail.svc:9863/api/guardrail/analyze',
+      { text: 'hi', guardrail_type: 'comprehensive' },
+      expect.anything(),
+    );
 
     await client.classifyTokens({ text: 'hi', aggregation_strategy: 'simple' });
-    expect(axiosPost).toHaveBeenCalledWith('http://nlp.svc:9864/api/v1/classify/tokens', { text: 'hi', aggregation_strategy: 'simple' }, expect.anything());
+    expect(axiosPost).toHaveBeenCalledWith(
+      'http://nlp.svc:9864/api/v1/classify/tokens',
+      { text: 'hi', aggregation_strategy: 'simple' },
+      expect.anything(),
+    );
   });
 
   it('falls back to the local-dev defaults without a config service', async () => {

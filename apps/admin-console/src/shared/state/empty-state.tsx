@@ -6,26 +6,26 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
  * (+ optional CTA). Neutral tone — empty is not an error.
  */
 export function EmptyState({
-    icon: Icon,
-    title,
-    description,
-    action,
+  icon: Icon,
+  title,
+  description,
+  action,
 }: {
-    icon: ComponentType<{ className?: string }>;
-    title: ReactNode;
-    description?: ReactNode;
-    action?: ReactNode;
+  icon: ComponentType<{ className?: string }>;
+  title: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
 }) {
-    return (
-        <Empty>
-            <EmptyHeader>
-                <EmptyMedia variant="icon">
-                    <Icon />
-                </EmptyMedia>
-                <EmptyTitle>{title}</EmptyTitle>
-                {description ? <EmptyDescription>{description}</EmptyDescription> : null}
-            </EmptyHeader>
-            {action ? <EmptyContent>{action}</EmptyContent> : null}
-        </Empty>
-    );
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Icon />
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        {description ? <EmptyDescription>{description}</EmptyDescription> : null}
+      </EmptyHeader>
+      {action ? <EmptyContent>{action}</EmptyContent> : null}
+    </Empty>
+  );
 }

@@ -10,11 +10,7 @@
 
 import { GoldenCaseRepository } from './GoldenCaseRepository';
 import { GoldenCaseEntity } from '../../../entities';
-import {
-  type SecretsServiceLike,
-  encryptStringToCiphertext,
-  decryptCiphertextToString,
-} from '../../../common/field-encryption';
+import { type SecretsServiceLike, encryptStringToCiphertext, decryptCiphertextToString } from '../../../common/field-encryption';
 
 /** Plaintext view returned by {@link GoldenCaseRepository.decryptFieldsFromEntity}. */
 export interface GoldenCasePlaintext {
@@ -32,21 +28,13 @@ declare module './GoldenCaseRepository' {
      * it is safe to call unconditionally on a partial row. The transient
      * plaintext stays in memory for the request; only ciphertext persists.
      */
-    encryptFieldsIntoEntity(
-      this: GoldenCaseRepository,
-      entity: GoldenCaseEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: GoldenCaseRepository, entity: GoldenCaseEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**
      * Decrypt all ciphertext columns (ciphertext-only; the plaintext columns
      * were dropped in Phase 6).
      */
-    decryptFieldsFromEntity(
-      this: GoldenCaseRepository,
-      entity: GoldenCaseEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<GoldenCasePlaintext>;
+    decryptFieldsFromEntity(this: GoldenCaseRepository, entity: GoldenCaseEntity, secrets: SecretsServiceLike): Promise<GoldenCasePlaintext>;
 
     /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
     findByIdWithDecryptedFields(

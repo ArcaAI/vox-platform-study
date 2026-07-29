@@ -42,13 +42,7 @@ describe('useSharedConnection — userId/tenant threading (AC-8 / C-4)', () => {
       const mock = createMockManager();
       const manager = mock as unknown as SharedConnectionManager;
 
-      const { unmount } = renderHook(() =>
-        useSharedSSE(
-          'job-1',
-          { url: 'https://api.example.com/jobs/1/stream', userId: 'user-A' },
-          manager,
-        ),
-      );
+      const { unmount } = renderHook(() => useSharedSSE('job-1', { url: 'https://api.example.com/jobs/1/stream', userId: 'user-A' }, manager));
 
       expect(mock.subscribeSSE).toHaveBeenCalledTimes(1);
       expect(mock.subscribeSSE).toHaveBeenCalledWith(

@@ -7,11 +7,11 @@ This directory holds the k6 load-test script for Phase 1 Task 1.15 (the
 
 **Not executed in this rig run.** Justification:
 
-* Task 1.15 is explicitly marked optional in
+- Task 1.15 is explicitly marked optional in
   [03-pgbouncer-rollout.md §1.15](../../../../docs/implementation/TASK-302-System-Config-Implementation-Roadmap/03-pgbouncer-rollout.md).
-* The headline pgbench rubric (Task 1.14) was comfortably exceeded
+- The headline pgbench rubric (Task 1.14) was comfortably exceeded
   (pooled / direct = **0.999**, target ≥ 0.85).
-* k6 with PostgreSQL requires the `xk6-sql` extension; the developer
+- k6 with PostgreSQL requires the `xk6-sql` extension; the developer
   workstation that ran Phase 1 does not have a pre-built `k6` with this
   extension on `$PATH`.
 
@@ -34,11 +34,11 @@ docker run --rm -u "$(id -u):$(id -g)" \
 
 A simplified HOPE-style request mix per virtual user:
 
-| Step | Description | Frequency |
-|---|---|---|
-| 1 | `BEGIN; set_config('app.tenant_id', …, true); SELECT … LIMIT 20; COMMIT;` | every iteration |
-| 2 | `BEGIN; UPDATE … SET resourceStatus = …; COMMIT;` | every 10th iteration |
-| 3 | `BEGIN; INSERT INTO audit … ; COMMIT;` | every 5th iteration |
+| Step | Description                                                               | Frequency            |
+| ---- | ------------------------------------------------------------------------- | -------------------- |
+| 1    | `BEGIN; set_config('app.tenant_id', …, true); SELECT … LIMIT 20; COMMIT;` | every iteration      |
+| 2    | `BEGIN; UPDATE … SET resourceStatus = …; COMMIT;`                         | every 10th iteration |
+| 3    | `BEGIN; INSERT INTO audit … ; COMMIT;`                                    | every 5th iteration  |
 
 The script targets `DATABASE_URL` (port 6532 — the pooler) by default.
 

@@ -1,23 +1,14 @@
-import {
-  Sheet,
-  SheetTrigger,
-  SheetContent,
-  SheetHeader,
-  SheetFooter,
-  SheetTitle,
-  SheetDescription,
-  SheetClose,
-} from '../../../shadcn/sheet'
-import { Button } from '../../../shadcn/button'
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription, SheetClose } from '../../../shadcn/sheet';
+import { Button } from '../../../shadcn/button';
 
 export function BasicSheet({
   defaultOpen = false,
   side = 'right' as 'top' | 'right' | 'bottom' | 'left',
   showCloseButton = true,
 }: {
-  defaultOpen?: boolean
-  side?: 'top' | 'right' | 'bottom' | 'left'
-  showCloseButton?: boolean
+  defaultOpen?: boolean;
+  side?: 'top' | 'right' | 'bottom' | 'left';
+  showCloseButton?: boolean;
 }) {
   return (
     <Sheet defaultOpen={defaultOpen}>
@@ -38,7 +29,7 @@ export function BasicSheet({
         </SheetFooter>
       </SheetContent>
     </Sheet>
-  )
+  );
 }
 
 export function SheetWithCustomClass({ defaultOpen = false }: { defaultOpen?: boolean }) {
@@ -52,5 +43,5 @@ export function SheetWithCustomClass({ defaultOpen = false }: { defaultOpen?: bo
         <SheetDescription>Custom description</SheetDescription>
       </SheetContent>
     </Sheet>
-  )
+  );
 }

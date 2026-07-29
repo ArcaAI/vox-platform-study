@@ -14,7 +14,15 @@ import { GatewayError } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import type { TtsConfigRow, TtsPlatformCatalog, TtsVoiceBindings, UpdateTtsConfigRequest } from '../api';
-import { bindingsDirty, buildSparsePatch, fieldDraftValue, mergeBindingDrafts, rowVoiceBindings, TTS_FIELD_GROUPS, type TtsField } from './tts-config-fields';
+import {
+  bindingsDirty,
+  buildSparsePatch,
+  fieldDraftValue,
+  mergeBindingDrafts,
+  rowVoiceBindings,
+  TTS_FIELD_GROUPS,
+  type TtsField,
+} from './tts-config-fields';
 import { VoiceBindingsEditor } from './voice-bindings-editor';
 
 export type TtsRowMutation = UseMutationResult<

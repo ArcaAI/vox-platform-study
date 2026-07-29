@@ -188,13 +188,7 @@ export class ContextItemFactory {
   /**
    * Create an attachment context item
    */
-  static CreateAttachment(
-    tenantId: string,
-    consultationId: string,
-    createdBy: string,
-    mediaId?: string,
-    content?: string,
-  ): ContextItemEntity {
+  static CreateAttachment(tenantId: string, consultationId: string, createdBy: string, mediaId?: string, content?: string): ContextItemEntity {
     return this.CreateContextItem({
       tenantId,
       consultationId,

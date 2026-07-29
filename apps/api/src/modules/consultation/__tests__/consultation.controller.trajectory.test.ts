@@ -47,18 +47,14 @@ describe('ConsultationController trajectory stream', () => {
   });
 
   it('carries @TenantOwnedResource(Consultation/id) so cross-tenant probes 404 pre-stream', () => {
-    const meta = Reflect.getMetadata(
-      TENANT_OWNED_RESOURCE_KEY,
-      ConsultationController.prototype.streamTrajectory as object,
-    ) as TenantOwnedResourceOptions | undefined;
+    const meta = Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, ConsultationController.prototype.streamTrajectory as object) as
+      TenantOwnedResourceOptions | undefined;
     expect(meta).toEqual({ modelName: 'Consultation', paramName: 'id' });
   });
 
   it('carries @StreamScope(consultation_trajectory/id) so EventSource can connect with a one-shot ticket', () => {
-    const meta = Reflect.getMetadata(
-      STREAM_SCOPE_METADATA,
-      ConsultationController.prototype.streamTrajectory as object,
-    ) as StreamScopeConfig | undefined;
+    const meta = Reflect.getMetadata(STREAM_SCOPE_METADATA, ConsultationController.prototype.streamTrajectory as object) as
+      StreamScopeConfig | undefined;
     expect(meta).toEqual({ namespace: 'consultation_trajectory', param: 'id' });
   });
 });

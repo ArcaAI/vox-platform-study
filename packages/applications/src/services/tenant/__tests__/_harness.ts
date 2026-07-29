@@ -60,8 +60,15 @@ export async function buildTenantServiceTestHarness(): Promise<TenantServiceTest
   const bucketStub = {} as never;
 
   const tenantService = new TenantService(
-    repoStub, repoStub, repoStub, repoStub, repoStub,
-    dbStub, bucketStub, eventEmitter, clsStub,
+    repoStub,
+    repoStub,
+    repoStub,
+    repoStub,
+    repoStub,
+    dbStub,
+    bucketStub,
+    eventEmitter,
+    clsStub,
     // Appended AiModelRepository (clone-per-tenant).
     repoStub,
     // Appended AsrPipelineVersionRepository (pipeline clone).

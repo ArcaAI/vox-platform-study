@@ -18,10 +18,13 @@ class TestDefaults:
         assert s.default_format == "pcm"
         assert s.sample_rate == 24000
 
-    def test_default_routing_chains(self) -> None:
+    def test_no_routing_vendor_default_in_config(self) -> None:
+        # TASK-577 / F1: provider SELECTION is DB-sourced (SYSTEM TenantTtsConfig),
+        # so Settings carries NO routing chain — env can no longer bake a vendor
+        # order and the router fails closed when nothing is injected.
         s = Settings()
-        assert s.routing_en == ["azure", "kokoro"]
-        assert s.routing_ml == ["azure", "sarvam", "indic_parler"]
+        assert not hasattr(s, "routing_en")
+        assert not hasattr(s, "routing_ml")
 
 
 class TestEnvPrefix:
@@ -33,9 +36,11 @@ class TestEnvPrefix:
         monkeypatch.setenv("TTS_SERVICE_TOKEN", "secret-tok")
         assert Settings().service_token.get_secret_value() == "secret-tok"
 
-    def test_routing_csv_parsed(self, monkeypatch) -> None:
+    def test_routing_env_var_is_not_a_selectable_default(self, monkeypatch) -> None:
+        # Setting the old env var must NOT reintroduce a routing default: there is
+        # no field to populate, so it is inert (selection lives in the DB now).
         monkeypatch.setenv("TTS_ROUTING_EN", "kokoro, azure")
-        assert Settings().routing_en == ["kokoro", "azure"]
+        assert not hasattr(Settings(), "routing_en")
 
 
 class TestAzureAliasFallback:

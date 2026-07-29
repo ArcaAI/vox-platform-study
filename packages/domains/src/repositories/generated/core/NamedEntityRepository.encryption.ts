@@ -38,18 +38,10 @@ declare module './NamedEntityRepository' {
      * Transit key version in the shared `keyVersion`. Mutates in place; no-op
      * per field when empty/null. Only ciphertext persists (Phase 6).
      */
-    encryptFieldsIntoEntity(
-      this: NamedEntityRepository,
-      entity: NamedEntityEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: NamedEntityRepository, entity: NamedEntityEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /** Decrypt all ciphertext columns (ciphertext-only; plaintext dropped in Phase 6). */
-    decryptFieldsFromEntity(
-      this: NamedEntityRepository,
-      entity: NamedEntityEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<NamedEntityPlaintext>;
+    decryptFieldsFromEntity(this: NamedEntityRepository, entity: NamedEntityEntity, secrets: SecretsServiceLike): Promise<NamedEntityPlaintext>;
 
     /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
     findByIdWithDecryptedFields(

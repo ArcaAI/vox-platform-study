@@ -34,7 +34,7 @@ const mockDatabaseService = { baseClient: { $transaction } };
 const mockUserProfileService = { upsertByUserId: vi.fn() };
 // Create-time passwords are hashed; behavior pinned in task402 spec.
 const mockCryptoService = { hash: vi.fn(async (pw: string) => `$2b$10$hashed::${pw}`), verify: vi.fn() };
-const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_key: string, defaultValue: T): T => defaultValue) };
+const mockAppSettings = { getValueWithDefault: vi.fn(<T>(_key: string, defaultValue: T): T => defaultValue) };
 
 function buildService() {
   return new UserService(
@@ -113,9 +113,9 @@ describe('UserService — create-with-membership', () => {
     mockUserDepartmentRepository.create.mockRejectedValueOnce(new Error('department write failed'));
     const service = buildService();
 
-    await expect(
-      service.create({ username: 'newuser', password: 'Password123!', roleId: 'role-1', departmentId: 'dept-1' } as any),
-    ).rejects.toThrow(/department write failed/);
+    await expect(service.create({ username: 'newuser', password: 'Password123!', roleId: 'role-1', departmentId: 'dept-1' } as any)).rejects.toThrow(
+      /department write failed/,
+    );
 
     // Broadcasting happens AFTER the transaction commits, so a failed tx emits
     // NO ResourceCreated events for the user/role (no orphan side effects).
@@ -136,9 +136,9 @@ describe('UserService — create-with-membership', () => {
     mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-1', roles: ['TENANT_ADMIN'] } : null));
     const service = buildService();
 
-    await expect(
-      service.create({ username: 'newuser', password: 'Password123!', roleId: 'role-1' } as any),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.create({ username: 'newuser', password: 'Password123!', roleId: 'role-1' } as any)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
 
     expect($transaction).not.toHaveBeenCalled();
     expect(mockUserRepository.create).not.toHaveBeenCalled();

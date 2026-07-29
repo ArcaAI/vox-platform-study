@@ -36,9 +36,7 @@ describe('apikey.service.ts — API_KEY_PEPPER migration', () => {
     );
     const out = await service.hashKeyForStorage('raw-key');
     const { createHmac } = await import('crypto');
-    expect(out).toBe(
-      createHmac('sha256', 'integration-test-pepper').update('raw-key').digest('hex'),
-    );
+    expect(out).toBe(createHmac('sha256', 'integration-test-pepper').update('raw-key').digest('hex'));
   });
 
   it('hashKeyForStorage falls back to plain SHA-256 when SecretsService is absent', async () => {

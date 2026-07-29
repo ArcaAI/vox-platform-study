@@ -73,7 +73,14 @@ const makeMocks = () => ({
     update: vi.fn(async (_id: string, e: unknown) => e),
   },
   consultationRepository: {
-    findById: vi.fn().mockResolvedValue({ id: 'c-1', tenantId: 'tenant-1', departmentId: null, doctorId: 'doctor-1', parentConsultationId: null, status: 'PENDING_REVIEW' }),
+    findById: vi.fn().mockResolvedValue({
+      id: 'c-1',
+      tenantId: 'tenant-1',
+      departmentId: null,
+      doctorId: 'doctor-1',
+      parentConsultationId: null,
+      status: 'PENDING_REVIEW',
+    }),
     update: vi.fn(async (_id: string, e: unknown) => e),
   },
   summaryMetaRepository: { create: vi.fn().mockResolvedValue({ id: 'meta-1' }), findByContextItem: vi.fn().mockResolvedValue(null) },
@@ -85,7 +92,9 @@ const makeMocks = () => ({
     create: vi.fn(async (e: unknown) => e),
     getVersionsByChangeReason: vi.fn().mockResolvedValue([]),
   },
-  promptAssembly: { assemble: vi.fn().mockResolvedValue({ userPrompt: 'p', systemPrompt: '', hyperparameters: {}, responseFormat: null, resolvedFrom: 'default' }) },
+  promptAssembly: {
+    assemble: vi.fn().mockResolvedValue({ userPrompt: 'p', systemPrompt: '', hyperparameters: {}, responseFormat: null, resolvedFrom: 'default' }),
+  },
   harnessAudit: { append: vi.fn().mockResolvedValue({ id: 'a-1' }) },
   harnessPolicy: { resolveSmrSelection: vi.fn().mockResolvedValue({ provider: 'lm-studio', model: 'medgemma' }) },
 });
@@ -150,7 +159,9 @@ describe('SummaryService — DNA edit-capture (Phase 6)', () => {
 
   describe('generateSummary — DNA-style application gating (S3, tenant AND doctor)', () => {
     it('applies the requested DNA style when effective (passes the id to prompt assembly + draft)', async () => {
-      const configResolver = { resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }) };
+      const configResolver = {
+        resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: null }),
+      };
       service = build(m, configResolver);
 
       await service.generateSummary('c-1', { transcription: 'transcript', dnaStyleId: 'dna-1' } as any);
@@ -159,7 +170,9 @@ describe('SummaryService — DNA edit-capture (Phase 6)', () => {
     });
 
     it('drops the DNA style when NOT effective (opted out / tenant off) — undefined to prompt assembly', async () => {
-      const configResolver = { resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false }) };
+      const configResolver = {
+        resolveEffectiveDnaStyleEnabled: vi.fn().mockResolvedValue({ effective: false, tenantEnabled: true, doctorToggle: false }),
+      };
       service = build(m, configResolver);
 
       await service.generateSummary('c-1', { transcription: 'transcript', dnaStyleId: 'dna-1' } as any);

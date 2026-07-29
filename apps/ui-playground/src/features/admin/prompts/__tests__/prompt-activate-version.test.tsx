@@ -29,13 +29,30 @@ vi.mock('../../components', () => ({ ConfirmDialog: () => null, StatusBadge: ({ 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@arcaai/ui/multi-column-layout', () => ({ MultiColumnLayout: () => <div /> }));
 
-vi.mock('../api/tenants', () => ({ useTenantsInfinite: () => ({ data: undefined, hasNextPage: false, fetchNextPage: vi.fn(), isFetchingNextPage: false, isRefetching: false, refetch: vi.fn() }) }));
+vi.mock('../api/tenants', () => ({
+  useTenantsInfinite: () => ({
+    data: undefined,
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
+    isRefetching: false,
+    refetch: vi.fn(),
+  }),
+}));
 vi.mock('../api/prompts', () => ({
   useActivatePromptVersion: () => ({ mutate: vi.fn(), isPending: false }),
   useCreatePrompt: () => ({ mutate: vi.fn(), isPending: false }),
   useDeletePrompt: () => ({ mutate: vi.fn(), isPending: false }),
   usePromptTemplate: () => ({ data: undefined, isLoading: false }),
-  usePromptTemplatesInfinite: () => ({ data: undefined, isLoading: false, hasNextPage: false, fetchNextPage: vi.fn(), isFetchingNextPage: false, isRefetching: false, refetch: vi.fn() }),
+  usePromptTemplatesInfinite: () => ({
+    data: undefined,
+    isLoading: false,
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
+    isRefetching: false,
+    refetch: vi.fn(),
+  }),
   usePromptUsageStats: () => ({ data: undefined, isLoading: false }),
   usePromptVersions: () => ({ data: [], isLoading: false, isRefetching: false, refetch: vi.fn() }),
   useRefreshPromptDetails: () => vi.fn(),
@@ -46,7 +63,9 @@ vi.mock('../api/prompts', () => ({
 // ── form/select primitive stubs (avoid Radix portals + FormProvider) ──
 vi.mock('@arcaai/ui/button', () => ({
   Button: ({ children, onClick, disabled, type }: any) => (
-    <button type={type ?? 'button'} onClick={onClick} disabled={disabled}>{children}</button>
+    <button type={type ?? 'button'} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
   ),
 }));
 vi.mock('@arcaai/ui/badge', () => ({ Badge: ({ children }: any) => <span>{children}</span> }));
@@ -62,8 +81,7 @@ vi.mock('@arcaai/ui/select', () => ({
 }));
 vi.mock('@arcaai/ui/form', () => ({
   Form: ({ children }: any) => <div>{children}</div>,
-  FormField: ({ render, name, control }: any) =>
-    render({ field: { value: '', onChange: vi.fn(), onBlur: vi.fn(), name, ref: vi.fn(), control } }),
+  FormField: ({ render, name, control }: any) => render({ field: { value: '', onChange: vi.fn(), onBlur: vi.fn(), name, ref: vi.fn(), control } }),
   FormItem: ({ children }: any) => <div>{children}</div>,
   FormLabel: ({ children }: any) => <label>{children}</label>,
   FormControl: ({ children }: any) => <div>{children}</div>,

@@ -18,12 +18,7 @@ import { IngestKnowledgeDocumentProcessor } from './ingest-knowledge-document.pr
  * KnowledgeDocument/KnowledgeChunk repositories.
  */
 @Module({
-  imports: [
-    ConfigModule,
-    HttpModule,
-    CoreDatabaseModule,
-    BullModule.registerQueue({ name: JobQueue.IngestKnowledgeDocument }),
-  ],
+  imports: [ConfigModule, HttpModule, CoreDatabaseModule, BullModule.registerQueue({ name: JobQueue.IngestKnowledgeDocument })],
   providers: [KnowledgeDocumentService, KnowledgeIngestClient, IngestKnowledgeDocumentProcessor],
   exports: [KnowledgeDocumentService],
 })

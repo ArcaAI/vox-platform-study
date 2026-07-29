@@ -43,9 +43,7 @@ class TestNoDescriptorUsesGlobalMinio:
         mock_client = MagicMock()
         mock_client.client.bucket_exists.return_value = True
 
-        with patch(
-            "stt.storage.blob_service.get_minio_client", return_value=mock_client
-        ):
+        with patch("stt.storage.blob_service.get_minio_client", return_value=mock_client):
             await service._upload_bytes(
                 bucket="hope-audio",
                 path="p/o.bin",
@@ -64,9 +62,7 @@ class TestNoDescriptorUsesGlobalMinio:
         mock_client = MagicMock()
         mock_client.client.get_object.return_value = response
 
-        with patch(
-            "stt.storage.blob_service.get_minio_client", return_value=mock_client
-        ):
+        with patch("stt.storage.blob_service.get_minio_client", return_value=mock_client):
             data = await service._download_bytes("hope-audio", "p/o.bin", tenant_id=None)
 
         assert data == b"audio"
@@ -169,9 +165,7 @@ class TestDescriptorRoutesToProvider:
         )
         fake_provider = MagicMock()
 
-        with patch(
-            "stt.storage.blob_service.build_provider", return_value=fake_provider
-        ):
+        with patch("stt.storage.blob_service.build_provider", return_value=fake_provider):
             uri = await service.upload_transcript(
                 transcript_data='{"text": "hello"}',
                 tenant_id="tenant-9",
@@ -191,14 +185,17 @@ class TestDescriptorRoutesToProvider:
         service = _make_service(resolver)
         resolver.set_tenant_storage(
             "tenant-dl",
-            {"provider": "aws_s3", "bucket": "b1", "access_key_id": "ak", "secret_access_key": "sk"},
+            {
+                "provider": "aws_s3",
+                "bucket": "b1",
+                "access_key_id": "ak",
+                "secret_access_key": "sk",
+            },
         )
         fake_provider = MagicMock()
         fake_provider.get_bytes.return_value = b"bytes"
 
-        with patch(
-            "stt.storage.blob_service.build_provider", return_value=fake_provider
-        ):
+        with patch("stt.storage.blob_service.build_provider", return_value=fake_provider):
             data = await service.download_audio("s3://b1/p/o.bin", tenant_id="tenant-dl")
 
         assert data == b"bytes"

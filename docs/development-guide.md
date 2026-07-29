@@ -36,13 +36,13 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 
    Expected: workspace dependencies installed; the gitleaks pre-commit hook is registered via `simple-git-hooks` (skips with a warning if gitleaks is not installed).
 
-2. **Environment files.** `NODE_ENV` selects exactly one file — `.env.dev` (development), `.env.test` (testing), `.env.production` (reference template). The repo tracks only the templates: **`.env.dev` is gitignored** (TASK-558; it previously held real credentials in git). Create your own from the example:
+2. **Environment files.** `NODE_ENV` selects exactly one file — `.env.dev` (development), `.env.test` (testing), `.env.production` (a conceptual name in the loader's file map; no file is ever read in production — host env only). The repo tracks `.env.sample` (a consolidated, placeholder-only template covering every service — TASK-583) plus a per-service `.env.prod` reference for ops (`apps/{api,guardrail,harness,nlp,smr,stt,tts}/.env.prod` — TASK-584, relocated from the former monorepo-root `.env.production`): **both `.env.dev` and `.env.test` are gitignored and generated**, never committed (TASK-558 for `.env.dev`; TASK-583 extended the same model to `.env.test`, closing a repeated real-secret-in-a-tracked-file incident TASK-582 found). `pnpm setup:dev` / `pnpm setup:test` create them for you automatically — see step 6 and §8 below — but you can also create one by hand and it works the same way:
 
    ```bash
-   cp .env.example .env.dev
+   cp .env.sample .env.dev
    ```
 
-   Expected: `.env.dev` exists and is ignored by git (`git check-ignore .env.dev` prints a match). Defaults (Postgres `postgres/postgres`, MinIO `minio_admin`) match what the compose files assume.
+   Expected: `.env.dev` exists and is ignored by git (`git check-ignore .env.dev` prints a match). Defaults (Postgres `postgres/postgres`, MinIO `minio_admin`) match what the compose files assume. Full variable reference, including which vars are provider/model defaults vs. tenant-BYO fallbacks: `docs/architecture/environment-configuration-reference.md`.
 
    Three rules hold in **both** TypeScript and Python, and are declared once in `packages/applications/src/common/env/env-file-resolution.ts` (Python: `packages/py-env`):
 
@@ -79,13 +79,13 @@ There is no `.nvmrc`; use any Node >= 22. TypeScript 5.9, Prisma 7, Vitest 4, an
 
    Expected: generated client in `packages/database/src/generated/core-prisma-client`; `core` schema created in the `hope` DB; seed prints created tenants/users/roles. `pnpm db:all` does push + generate + seed in one shot but uses `--force-reset` — it **drops and recreates the schema**; only use it on a DB you are happy to lose.
 
-6. **Vault bootstrap.** `.env.dev` ships `SECRETS_PROVIDER=vault` + `PG_DYNAMIC_CREDS=true`, so the API will not boot until Vault AppRole credentials exist. The one-command, idempotent bootstrap (it also covers steps 4-5, so you can run it instead of them):
+6. **Vault bootstrap.** `.env.dev` ships `SECRETS_PROVIDER=vault` + `PG_DYNAMIC_CREDS=true`, so the API will not boot until Vault AppRole credentials exist. The one-command, idempotent bootstrap (it also covers step 2 above and steps 4-5, so you can run it instead of them, even from a completely fresh clone with no `.env.dev` yet):
 
    ```bash
    pnpm setup:dev
    ```
 
-   Expected: infra up, DB migrated + seeded, fresh `VAULT_ROLE_ID`/`VAULT_SECRET_ID` written into `.env.dev`, Vault's database engine wired for dynamic PG credentials. To opt out of Vault entirely, set `SECRETS_PROVIDER=env` and `PG_DYNAMIC_CREDS=false` in `.env.dev`.
+   Expected: `.env.dev` created from `.env.sample` if it didn't already exist (step 0 — safe to re-run, never overwrites an existing file), infra up, DB migrated + seeded, fresh `VAULT_ROLE_ID`/`VAULT_SECRET_ID` written into `.env.dev`, Vault's database engine wired for dynamic PG credentials. To opt out of Vault entirely, set `SECRETS_PROVIDER=env` and `PG_DYNAMIC_CREDS=false` in `.env.dev`.
 
 7. **Build.**
 
@@ -214,7 +214,7 @@ Full model reference, PHI encryption, and audit mechanics: [architecture/data-an
 
 ## 8. Testing
 
-All TypeScript suites load `.env.test` via dotenv-cli — the test stack is fully isolated from dev (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335, static credentials, no Vault). Bootstrap it with `pnpm setup:test` (infra + schema push + seed in one command), or stepwise `pnpm infra:test:up && pnpm test:db:push && pnpm test:db:seed`. `pnpm infra:test:down` stops the containers and removes volumes.
+All TypeScript suites load `.env.test` via dotenv-cli — the test stack is fully isolated from dev (Postgres 5433, Redis 6380, MinIO 9002, Qdrant 6335, static credentials, isolated-but-Vault-backed secrets). `.env.test` is gitignored and generated (TASK-583, same model as `.env.dev`): `pnpm setup:test` creates it from `.env.sample` on first run (if it doesn't already exist), applies the test-specific port/endpoint overrides, then provisions real local Vault AppRole credentials into it. Bootstrap with `pnpm setup:test` (env file + infra + schema push + seed in one command), or stepwise `pnpm infra:test:up && pnpm test:db:push && pnpm test:db:seed` (requires `.env.test` to already exist — run `pnpm setup:test` once first, or `./scripts/generate-env-file.sh .env.test test` to only create the file). `pnpm infra:test:down` stops the containers and removes volumes.
 
 | Suite | Command | Config | Needs |
 |---|---|---|---|
@@ -307,6 +307,7 @@ Run `pnpm stack:dev:doctor` first — it pinpoints most of these. Issues below a
 | [docs/README.md](./README.md) | Documentation index — start here |
 | [docs/architecture/overview.md](./architecture/overview.md) | System context, service topology + ports, data flows, deployment topologies |
 | [docs/architecture/data-and-domain-model.md](./architecture/data-and-domain-model.md) | Prisma domain model, tenancy, soft-delete, audit, PHI encryption, what lives where |
+| [docs/architecture/environment-configuration-reference.md](./architecture/environment-configuration-reference.md) | Full env-var reference: how `.env.sample`/`.env.dev`/`.env.test` relate, per-service variable tables, provider/model default & fallback semantics |
 | [docs/development-patterns-and-standards.md](./development-patterns-and-standards.md) | Layer-by-layer coding patterns with exemplar file paths; the 20 most important do/don'ts |
 | [docs/traceability-matrix.md](./traceability-matrix.md) | Capability → service → models → routes → tests mapping |
 | [scripts/README.md](../scripts/README.md) | Every operational script: dev, test, Vault, CI, diagnostics |

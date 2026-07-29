@@ -78,13 +78,7 @@ export class ConsultationService extends BaseService implements IConsultationSer
       parentConsultationId?: string | null;
     },
   ): Promise<void> {
-    await assertUserBelongsToTenant(
-      this.userRoleAssignmentRepository,
-      this.userDepartmentRepository,
-      this.userRepository,
-      refs.doctorId,
-      tenantId,
-    );
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, refs.doctorId, tenantId);
 
     if (refs.departmentId) {
       await assertParentInScope(this.departmentRepository, refs.departmentId, tenantId);

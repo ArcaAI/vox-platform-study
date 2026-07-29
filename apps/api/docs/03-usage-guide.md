@@ -25,17 +25,18 @@ The HOPE API Gateway provides a comprehensive REST API for managing medical conv
 
 ### Base URLs
 
-| Environment | Base URL | WebSocket URL |
-|-------------|----------|---------------|
-| **Development** | `http://localhost:8868` | `ws://localhost:8868` |
-| **Staging** | `https://staging-api.hope.com` | `wss://staging-api.hope.com` |
-| **Production** | `https://api.hope.com` | `wss://api.hope.com` |
+| Environment     | Base URL                       | WebSocket URL                |
+| --------------- | ------------------------------ | ---------------------------- |
+| **Development** | `http://localhost:8868`        | `ws://localhost:8868`        |
+| **Staging**     | `https://staging-api.hope.com` | `wss://staging-api.hope.com` |
+| **Production**  | `https://api.hope.com`         | `wss://api.hope.com`         |
 
 All public API endpoints use the `/api/v1` prefix (e.g., `http://localhost:8868/api/v1/sessions`).
 
 ### Interactive Documentation
 
 Access the interactive Swagger UI:
+
 - **Development**: http://localhost:8868/api/v1/docs
 - **Staging**: https://staging-api.hope.com/api/v1/docs (requires authentication)
 
@@ -54,6 +55,7 @@ X-API-Key: your-api-key-here
 ```
 
 **Example:**
+
 ```bash
 curl -X GET https://api.hope.com/api/v1/sessions \
   -H "X-API-Key: sk_live_abc123..."
@@ -68,6 +70,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 **Example:**
+
 ```bash
 curl -X GET https://api.hope.com/api/v1/sessions \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
@@ -98,6 +101,7 @@ GET /health
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -113,6 +117,7 @@ GET /health/ready
 ```
 
 **Response:**
+
 ```json
 {
   "status": "ok",
@@ -149,6 +154,7 @@ X-API-Key: your-api-key
 ```
 
 **Request Body:**
+
 ```json
 {
   "patientId": "patient_123",
@@ -162,6 +168,7 @@ X-API-Key: your-api-key
 ```
 
 **Response (201 Created):**
+
 ```json
 {
   "id": "session_456",
@@ -179,6 +186,7 @@ X-API-Key: your-api-key
 ```
 
 **cURL Example:**
+
 ```bash
 curl -X POST https://api.hope.com/api/v1/sessions \
   -H "Content-Type: application/json" \
@@ -201,6 +209,7 @@ X-API-Key: your-api-key
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "id": "session_456",
@@ -221,6 +230,7 @@ X-API-Key: your-api-key
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "data": [
@@ -249,6 +259,7 @@ X-API-Key: your-api-key
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "data": [
@@ -285,6 +296,7 @@ X-API-Key: your-api-key
 ```
 
 **Request Body:**
+
 ```json
 {
   "status": "COMPLETED",
@@ -296,6 +308,7 @@ X-API-Key: your-api-key
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "id": "session_456",
@@ -319,6 +332,7 @@ X-API-Key: your-api-key
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "isValid": true,
@@ -339,6 +353,7 @@ X-API-Key: your-api-key
 ```
 
 **Request Body:**
+
 ```json
 {
   "syncData": {
@@ -372,6 +387,7 @@ X-API-Key: your-api-key
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "data": [
@@ -394,6 +410,7 @@ X-API-Key: your-api-key
 ```
 
 **Request Body:**
+
 ```json
 {
   "sessionId": "session_456",
@@ -438,6 +455,7 @@ X-API-Key: your-api-key
 ```
 
 **Request Body:**
+
 ```json
 {
   "transcript": "Patient reports chest pain that started two days ago. Pain is described as sharp and intermittent. Patient has history of hypertension...",
@@ -451,6 +469,7 @@ X-API-Key: your-api-key
 ```
 
 **Response (200 OK):**
+
 ```json
 {
   "summary": {
@@ -491,6 +510,7 @@ X-Tenant-Id: tenant-id (optional, auto-detected from auth)
 ### Standard Response Format
 
 **Success Response:**
+
 ```json
 {
   "data": { ... },
@@ -502,6 +522,7 @@ X-Tenant-Id: tenant-id (optional, auto-detected from auth)
 ```
 
 **Error Response:**
+
 ```json
 {
   "error": {
@@ -518,14 +539,15 @@ X-Tenant-Id: tenant-id (optional, auto-detected from auth)
 
 Paginated endpoints support the following query parameters:
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `page` | integer | 1 | Page number |
-| `limit` | integer | 20 | Items per page (max 100) |
-| `sortBy` | string | createdAt | Field to sort by |
-| `sortOrder` | string | desc | Sort order (asc/desc) |
+| Parameter   | Type    | Default   | Description              |
+| ----------- | ------- | --------- | ------------------------ |
+| `page`      | integer | 1         | Page number              |
+| `limit`     | integer | 20        | Items per page (max 100) |
+| `sortBy`    | string  | createdAt | Field to sort by         |
+| `sortOrder` | string  | desc      | Sort order (asc/desc)    |
 
 **Example:**
+
 ```http
 GET /api/v1/sessions?page=2&limit=50&sortBy=updatedAt&sortOrder=asc
 ```
@@ -536,23 +558,24 @@ GET /api/v1/sessions?page=2&limit=50&sortBy=updatedAt&sortOrder=asc
 
 ### HTTP Status Codes
 
-| Status Code | Meaning | Description |
-|-------------|---------|-------------|
-| **200** | OK | Request succeeded |
-| **201** | Created | Resource created successfully |
-| **204** | No Content | Request succeeded, no content to return |
-| **400** | Bad Request | Invalid request parameters |
-| **401** | Unauthorized | Missing or invalid authentication |
-| **403** | Forbidden | Insufficient permissions |
-| **404** | Not Found | Resource not found |
-| **409** | Conflict | Resource conflict (e.g., duplicate) |
-| **429** | Too Many Requests | Rate limit exceeded |
-| **500** | Internal Server Error | Server error |
-| **503** | Service Unavailable | Service temporarily unavailable |
+| Status Code | Meaning               | Description                             |
+| ----------- | --------------------- | --------------------------------------- |
+| **200**     | OK                    | Request succeeded                       |
+| **201**     | Created               | Resource created successfully           |
+| **204**     | No Content            | Request succeeded, no content to return |
+| **400**     | Bad Request           | Invalid request parameters              |
+| **401**     | Unauthorized          | Missing or invalid authentication       |
+| **403**     | Forbidden             | Insufficient permissions                |
+| **404**     | Not Found             | Resource not found                      |
+| **409**     | Conflict              | Resource conflict (e.g., duplicate)     |
+| **429**     | Too Many Requests     | Rate limit exceeded                     |
+| **500**     | Internal Server Error | Server error                            |
+| **503**     | Service Unavailable   | Service temporarily unavailable         |
 
 ### Error Response Examples
 
 #### 400 Bad Request
+
 ```json
 {
   "error": {
@@ -571,6 +594,7 @@ GET /api/v1/sessions?page=2&limit=50&sortBy=updatedAt&sortOrder=asc
 ```
 
 #### 401 Unauthorized
+
 ```json
 {
   "error": {
@@ -581,6 +605,7 @@ GET /api/v1/sessions?page=2&limit=50&sortBy=updatedAt&sortOrder=asc
 ```
 
 #### 429 Rate Limit Exceeded
+
 ```json
 {
   "error": {
@@ -614,20 +639,20 @@ X-RateLimit-Reset: 1705316400
 
 ### Rate Limit Tiers
 
-| Tier | Requests per Hour | Burst Limit |
-|------|-------------------|-------------|
-| **Free** | 100 | 20 |
-| **Basic** | 1,000 | 100 |
-| **Professional** | 10,000 | 500 |
-| **Enterprise** | Custom | Custom |
+| Tier             | Requests per Hour | Burst Limit |
+| ---------------- | ----------------- | ----------- |
+| **Free**         | 100               | 20          |
+| **Basic**        | 1,000             | 100         |
+| **Professional** | 10,000            | 500         |
+| **Enterprise**   | Custom            | Custom      |
 
 ### Handling Rate Limits
 
 ```javascript
 const response = await fetch('https://api.hope.com/api/v1/sessions', {
   headers: {
-    'X-API-Key': apiKey
-  }
+    'X-API-Key': apiKey,
+  },
 });
 
 if (response.status === 429) {
@@ -645,11 +670,12 @@ if (response.status === 429) {
 ### Real-Time STT
 
 **Connect to WebSocket:**
+
 ```javascript
 const socket = io('wss://api.hope.com/stt', {
   auth: {
-    token: 'your-api-key'
-  }
+    token: 'your-api-key',
+  },
 });
 
 socket.on('connect', () => {
@@ -658,7 +684,7 @@ socket.on('connect', () => {
   // Start session
   socket.emit('start-session', {
     sessionId: 'session_456',
-    language: 'en-US'
+    language: 'en-US',
   });
 });
 
@@ -670,7 +696,7 @@ socket.on('session-started', (data) => {
 socket.emit('audio-data', {
   sessionId: 'session_456',
   audio: audioBuffer,
-  chunkIndex: 0
+  chunkIndex: 0,
 });
 
 // Receive transcription results
@@ -695,19 +721,19 @@ import { AgenticClient } from '@arcaai/agentic-sdk-v2';
 
 const client = new AgenticClient({
   apiKey: 'your-api-key',
-  baseUrl: 'https://api.hope.com/api/v1'
+  baseUrl: 'https://api.hope.com/api/v1',
 });
 
 // Create session
 const session = await client.sessions.create({
   patientId: 'patient_123',
-  sessionType: 'CONSULTATION'
+  sessionType: 'CONSULTATION',
 });
 
 // Start STT
 const transcription = await client.stt.startSession({
   sessionId: session.id,
-  language: 'en-US'
+  language: 'en-US',
 });
 
 // Listen to real-time transcription
@@ -729,12 +755,12 @@ async function createSession() {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': 'your-api-key'
+      'X-API-Key': 'your-api-key',
     },
     body: JSON.stringify({
       patientId: 'patient_123',
-      sessionType: 'CONSULTATION'
-    })
+      sessionType: 'CONSULTATION',
+    }),
   });
 
   if (!response.ok) {
@@ -859,4 +885,3 @@ For additional help:
 ---
 
 **Last Updated**: 2026-02-22
-

@@ -57,25 +57,19 @@ function instantiateWorkletProcessor(opts: { frameMs?: number; sampleRate?: numb
     };
   }
 
-  let RegisteredCtor: (new (options?: unknown) => { port: FakeAudioWorkletProcessor['port']; process(inputs: Float32Array[][]): boolean }) | null = null;
+  let RegisteredCtor: (new (options?: unknown) => { port: FakeAudioWorkletProcessor['port']; process(inputs: Float32Array[][]): boolean }) | null =
+    null;
   const registerProcessor = (_name: string, ctor: typeof RegisteredCtor) => {
     RegisteredCtor = ctor;
   };
 
-  const factory = new Function(
-    'AudioWorkletProcessor',
-    'registerProcessor',
-    'sampleRate',
-    __testing__.generateWorkletSource(),
-  );
+  const factory = new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', __testing__.generateWorkletSource());
   factory(FakeAudioWorkletProcessor, registerProcessor, opts.sampleRate ?? 16000);
 
   if (!RegisteredCtor) {
     throw new Error('worklet source did not call registerProcessor');
   }
-  const instance = new RegisteredCtor(
-    opts.frameMs === undefined ? undefined : { processorOptions: { frameMs: opts.frameMs } },
-  );
+  const instance = new RegisteredCtor(opts.frameMs === undefined ? undefined : { processorOptions: { frameMs: opts.frameMs } });
 
   return {
     process: (channel) => instance.process([[channel]]),

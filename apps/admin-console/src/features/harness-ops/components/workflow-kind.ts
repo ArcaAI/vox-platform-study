@@ -6,11 +6,11 @@
 export type WorkflowKind = 'doc' | 'eval' | 'live' | 'other';
 
 export function workflowKind(workflowId: string): WorkflowKind {
-    const id = workflowId.toLowerCase();
-    if (id.includes('doc')) return 'doc';
-    if (id.includes('eval')) return 'eval';
-    if (id.includes('live')) return 'live';
-    return 'other';
+  const id = workflowId.toLowerCase();
+  if (id.includes('doc')) return 'doc';
+  if (id.includes('eval')) return 'eval';
+  if (id.includes('live')) return 'live';
+  return 'other';
 }
 
 export const WORKFLOW_KINDS: WorkflowKind[] = ['doc', 'eval', 'live', 'other'];

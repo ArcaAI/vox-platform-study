@@ -30,9 +30,7 @@ describe('WS-4 endpoint constants', () => {
     });
 
     it('should generate GENERATE_FOR_DOCTOR endpoint', () => {
-      expect(DNA_STYLE_ENDPOINTS.GENERATE_FOR_DOCTOR('doc-123')).toBe(
-        '/admin/dna-writing-styles/generate/doc-123'
-      );
+      expect(DNA_STYLE_ENDPOINTS.GENERATE_FOR_DOCTOR('doc-123')).toBe('/admin/dna-writing-styles/generate/doc-123');
     });
 
     it('should have MY_STYLE endpoint', () => {
@@ -40,15 +38,11 @@ describe('WS-4 endpoint constants', () => {
     });
 
     it('should generate UPDATE endpoint', () => {
-      expect(DNA_STYLE_ENDPOINTS.UPDATE('report-1')).toBe(
-        '/dna-writing-styles/report-1'
-      );
+      expect(DNA_STYLE_ENDPOINTS.UPDATE('report-1')).toBe('/dna-writing-styles/report-1');
     });
 
     it('should generate VERSIONS endpoint', () => {
-      expect(DNA_STYLE_ENDPOINTS.VERSIONS('report-1')).toBe(
-        '/dna-writing-styles/report-1/versions'
-      );
+      expect(DNA_STYLE_ENDPOINTS.VERSIONS('report-1')).toBe('/dna-writing-styles/report-1/versions');
     });
 
     it('should have ADMIN_LIST endpoint', () => {
@@ -56,9 +50,7 @@ describe('WS-4 endpoint constants', () => {
     });
 
     it('should generate ADMIN_JOB_STATUS endpoint', () => {
-      expect(DNA_STYLE_ENDPOINTS.ADMIN_JOB_STATUS('job-1')).toBe(
-        '/admin/dna-writing-styles/jobs/job-1'
-      );
+      expect(DNA_STYLE_ENDPOINTS.ADMIN_JOB_STATUS('job-1')).toBe('/admin/dna-writing-styles/jobs/job-1');
     });
   });
 
@@ -88,21 +80,15 @@ describe('WS-4 endpoint constants', () => {
     });
 
     it('should generate VERSIONS endpoint', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.VERSIONS('pt-1')).toBe(
-        '/admin/prompt-templates/pt-1/versions'
-      );
+      expect(PROMPT_TEMPLATE_ENDPOINTS.VERSIONS('pt-1')).toBe('/admin/prompt-templates/pt-1/versions');
     });
 
     it('should generate VERSION endpoint for specific version number', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.VERSION('pt-1', 3)).toBe(
-        '/admin/prompt-templates/pt-1/versions/3'
-      );
+      expect(PROMPT_TEMPLATE_ENDPOINTS.VERSION('pt-1', 3)).toBe('/admin/prompt-templates/pt-1/versions/3');
     });
 
     it('should have ASSIGN_DEPARTMENT endpoint', () => {
-      expect(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT).toBe(
-        '/admin/prompt-templates/assign-department'
-      );
+      expect(PROMPT_TEMPLATE_ENDPOINTS.ASSIGN_DEPARTMENT).toBe('/admin/prompt-templates/assign-department');
     });
   });
 
@@ -130,9 +116,7 @@ describe('WS-4 endpoint constants', () => {
 
   describe('CONSULTATION_ENDPOINTS extensions', () => {
     it('should generate CHAIN endpoint', () => {
-      expect(CONSULTATION_ENDPOINTS.CHAIN('consult-1')).toBe(
-        '/consultations/consult-1/chain'
-      );
+      expect(CONSULTATION_ENDPOINTS.CHAIN('consult-1')).toBe('/consultations/consult-1/chain');
     });
   });
 
@@ -142,9 +126,7 @@ describe('WS-4 endpoint constants', () => {
 
   describe('SUMMARY_ENDPOINTS extensions', () => {
     it('should generate VERSIONS endpoint', () => {
-      expect(SUMMARY_ENDPOINTS.VERSIONS('consult-1', 'ctx-1')).toBe(
-        '/consultations/consult-1/summary/ctx-1/versions'
-      );
+      expect(SUMMARY_ENDPOINTS.VERSIONS('consult-1', 'ctx-1')).toBe('/consultations/consult-1/summary/ctx-1/versions');
     });
   });
 
@@ -176,15 +158,11 @@ describe('WS-4 endpoint constants', () => {
     });
 
     it('should generate SERVICE_UPTIME endpoint', () => {
-      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('api')).toBe(
-        '/monitoring/uptime/api'
-      );
+      expect(MONITORING_ENDPOINTS.SERVICE_UPTIME('api')).toBe('/monitoring/uptime/api');
     });
 
     it('should generate HEARTBEATS endpoint', () => {
-      expect(MONITORING_ENDPOINTS.HEARTBEATS('stt')).toBe(
-        '/monitoring/heartbeats/stt'
-      );
+      expect(MONITORING_ENDPOINTS.HEARTBEATS('stt')).toBe('/monitoring/heartbeats/stt');
     });
 
     it('should have SESSIONS endpoint', () => {
@@ -198,15 +176,11 @@ describe('WS-4 endpoint constants', () => {
 
   describe('TENANT_ENDPOINTS', () => {
     it('should generate GET_CONFIGS endpoint', () => {
-      expect(TENANT_ENDPOINTS.GET_CONFIGS('tenant-1')).toBe(
-        '/admin/tenants/configs/tenant-1'
-      );
+      expect(TENANT_ENDPOINTS.GET_CONFIGS('tenant-1')).toBe('/admin/tenants/configs/tenant-1');
     });
 
     it('should generate UPDATE_CONFIGS endpoint', () => {
-      expect(TENANT_ENDPOINTS.UPDATE_CONFIGS('tenant-1')).toBe(
-        '/admin/tenants/configs/tenant-1'
-      );
+      expect(TENANT_ENDPOINTS.UPDATE_CONFIGS('tenant-1')).toBe('/admin/tenants/configs/tenant-1');
     });
   });
 
@@ -241,9 +215,7 @@ describe('WS-4 endpoint constants', () => {
     });
 
     it('should handle UUID-style IDs in SUMMARY_ENDPOINTS.VERSIONS', () => {
-      expect(SUMMARY_ENDPOINTS.VERSIONS(uuid, uuid)).toBe(
-        `/consultations/${uuid}/summary/${uuid}/versions`
-      );
+      expect(SUMMARY_ENDPOINTS.VERSIONS(uuid, uuid)).toBe(`/consultations/${uuid}/summary/${uuid}/versions`);
     });
 
     it('should handle empty string inputs without throwing', () => {
@@ -282,10 +254,24 @@ describe('WS-4 endpoint constants', () => {
       // ADMIN_BY_DOCTOR + ADMIN_VERSIONS for admin cross-user PHI reads.
       const keys = Object.keys(DNA_STYLE_ENDPOINTS);
       expect(keys).toHaveLength(16);
-      expect(keys).toEqual(expect.arrayContaining([
-        'GENERATE', 'GENERATE_FOR_DOCTOR', 'JOB_STATUS', 'JOB_STREAM', 'MY_STYLE', 'MINE', 'UPDATE',
-        'SET_DEFAULT', 'VERSIONS', 'ADMIN_LIST', 'ADMIN_JOB_STATUS', 'ADMIN_JOB_STREAM', 'ADMIN_DASHBOARD', 'BY_DOCTOR',
-      ]));
+      expect(keys).toEqual(
+        expect.arrayContaining([
+          'GENERATE',
+          'GENERATE_FOR_DOCTOR',
+          'JOB_STATUS',
+          'JOB_STREAM',
+          'MY_STYLE',
+          'MINE',
+          'UPDATE',
+          'SET_DEFAULT',
+          'VERSIONS',
+          'ADMIN_LIST',
+          'ADMIN_JOB_STATUS',
+          'ADMIN_JOB_STREAM',
+          'ADMIN_DASHBOARD',
+          'BY_DOCTOR',
+        ]),
+      );
     });
 
     it('PROMPT_TEMPLATE_ENDPOINTS should have exactly 15 keys', () => {
@@ -294,11 +280,25 @@ describe('WS-4 endpoint constants', () => {
       // the end-user (clinician) plane; DIFF is the server-side version-diff
       // route; USAGE_RECORDS is tenant-wide agent-run history.
       expect(keys).toHaveLength(15);
-      expect(keys).toEqual(expect.arrayContaining([
-        'CREATE', 'LIST', 'AVAILABLE', 'GET', 'UPDATE', 'DELETE', 'VERSIONS', 'VERSION',
-        'ASSIGN_DEPARTMENT', 'USAGE', 'ACTIVATE_VERSION', 'TEST', 'USAGE_ANALYTICS', 'DIFF',
-        'USAGE_RECORDS',
-      ]));
+      expect(keys).toEqual(
+        expect.arrayContaining([
+          'CREATE',
+          'LIST',
+          'AVAILABLE',
+          'GET',
+          'UPDATE',
+          'DELETE',
+          'VERSIONS',
+          'VERSION',
+          'ASSIGN_DEPARTMENT',
+          'USAGE',
+          'ACTIVATE_VERSION',
+          'TEST',
+          'USAGE_ANALYTICS',
+          'DIFF',
+          'USAGE_RECORDS',
+        ]),
+      );
     });
 
     it('should generate TEST endpoint', () => {
@@ -313,9 +313,7 @@ describe('WS-4 endpoint constants', () => {
       // USERS supports the reverse dept->users listing.
       const keys = Object.keys(DEPARTMENT_ENDPOINTS);
       expect(keys).toHaveLength(10);
-      expect(keys).toEqual(expect.arrayContaining([
-        'LIST', 'GET', 'CREATE', 'UPDATE', 'DELETE', 'ROOTS', 'CHILDREN', 'BY_CODE', 'PROMPT_CONFIG',
-      ]));
+      expect(keys).toEqual(expect.arrayContaining(['LIST', 'GET', 'CREATE', 'UPDATE', 'DELETE', 'ROOTS', 'CHILDREN', 'BY_CODE', 'PROMPT_CONFIG']));
     });
 
     it('HEALTH_ENDPOINTS should have exactly 3 keys', () => {
@@ -327,9 +325,7 @@ describe('WS-4 endpoint constants', () => {
     it('MONITORING_ENDPOINTS should have exactly 4 keys', () => {
       const keys = Object.keys(MONITORING_ENDPOINTS);
       expect(keys).toHaveLength(4);
-      expect(keys).toEqual(expect.arrayContaining([
-        'UPTIME', 'SERVICE_UPTIME', 'HEARTBEATS', 'SESSIONS',
-      ]));
+      expect(keys).toEqual(expect.arrayContaining(['UPTIME', 'SERVICE_UPTIME', 'HEARTBEATS', 'SESSIONS']));
     });
 
     // USAGE tracks consumption; SUSPEND + ARCHIVE + RESTORE cover lifecycle
@@ -337,10 +333,9 @@ describe('WS-4 endpoint constants', () => {
     it('TENANT_ENDPOINTS should have exactly 13 keys', () => {
       const keys = Object.keys(TENANT_ENDPOINTS);
       expect(keys).toHaveLength(13);
-      expect(keys).toEqual(expect.arrayContaining([
-        'LIST', 'GET', 'GET_BY_CODE_NAME', 'CREATE', 'UPDATE', 'DELETE',
-        'GET_CONFIGS', 'UPDATE_CONFIGS', 'USAGE',
-      ]));
+      expect(keys).toEqual(
+        expect.arrayContaining(['LIST', 'GET', 'GET_BY_CODE_NAME', 'CREATE', 'UPDATE', 'DELETE', 'GET_CONFIGS', 'UPDATE_CONFIGS', 'USAGE']),
+      );
     });
 
     it('should use /admin/tenants/:id/usage for USAGE', () => {
@@ -397,7 +392,7 @@ describe('WS-4 endpoint constants', () => {
         MONITORING_ENDPOINTS.UPTIME,
         MONITORING_ENDPOINTS.SESSIONS,
       ];
-      staticEndpoints.forEach(endpoint => {
+      staticEndpoints.forEach((endpoint) => {
         expect(endpoint).toMatch(/^\//);
       });
     });
@@ -421,7 +416,7 @@ describe('WS-4 endpoint constants', () => {
         TENANT_ENDPOINTS.GET_CONFIGS('x'),
         TENANT_ENDPOINTS.UPDATE_CONFIGS('x'),
       ];
-      dynamicResults.forEach(path => {
+      dynamicResults.forEach((path) => {
         expect(path).toMatch(/^\//);
       });
     });

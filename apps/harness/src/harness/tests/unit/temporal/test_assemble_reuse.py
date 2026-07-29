@@ -103,7 +103,9 @@ class TestAssembleReuse:
         # Both generate calls (initial + regen) carry the same assembled prompt
         # and its PHI-safe segment refs; the regen adds only the critique.
         assert [g.prompt for g in recorder.generate_inputs] == ["U", "U"]
-        assert all([s.id for s in g.segment_citations] == ["seg-1"] for g in recorder.generate_inputs)
+        assert all(
+            [s.id for s in g.segment_citations] == ["seg-1"] for g in recorder.generate_inputs
+        )
         assert recorder.generate_inputs[0].regen_feedback is None
         assert recorder.generate_inputs[1].regen_feedback is not None
         # run_sensors keeps receiving the assemble-derived response_format + ids.

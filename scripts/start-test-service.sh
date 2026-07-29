@@ -42,8 +42,24 @@ check_env_file() {
     fi
 }
 
+# Direct container-state lookup (mirrors test-doctor.sh's docker_check) — NOT
+# `docker compose ps`. The compose-ps path re-parses/re-interpolates the whole
+# compose file per call and any failure of THAT (missing env var, a compose-CLI
+# quirk, whatever) was silently swallowed by `2>/dev/null`, making it
+# indistinguishable from "container not running". That produced a false
+# negative here specifically: test-run.sh's Step 1 (test-doctor.sh, this same
+# docker-inspect pattern) had just confirmed the container healthy, moments
+# before this function's old compose-ps check reported it missing in the
+# spawned (non-TTY) service process. `docker inspect <name>` needs no
+# compose-file parsing and is stable regardless of caller cwd/env.
+postgres_test_running() {
+    local state
+    state="$(docker inspect -f '{{.State.Status}}' hope-postgres-test 2>/dev/null)" || state="absent"
+    [ "$state" = "running" ]
+}
+
 check_docker_containers() {
-    if ! docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" ps --status running 2>/dev/null | grep -q "hope-postgres-test"; then
+    if ! postgres_test_running; then
         echo -e "${YELLOW}Warning: Test database container doesn't appear to be running.${NC}"
         echo "Start it with: pnpm infra:test:up"
         echo ""
@@ -65,7 +81,7 @@ check_docker_containers() {
             # the handling in start-test-infra.sh; we re-validate below to catch real
             # failures of the long-running services.
             docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" up -d --wait || true
-            if ! docker compose -f "$PROJECT_ROOT/tests/docker-compose.test.yml" ps --status running 2>/dev/null | grep -q "hope-postgres-test"; then
+            if ! postgres_test_running; then
                 echo -e "${RED}Error: postgres-test failed to start. Inspect with 'pnpm infra:test:logs'.${NC}"
                 exit 1
             fi

@@ -18,16 +18,16 @@ silently did nothing to the other half.
 init  >  host env  >  secrets_dir (Vault Agent)  >  <root>/.env.<environment>  >  field default
 ```
 
-| Rule | Behaviour |
-|---|---|
-| File selection | `NODE_ENV` → `development` = `.env.dev`, `test` = `.env.test`, `staging` = `.env.staging`. Unset/unrecognised → `development`. |
-| Precedence | A key already in `os.environ` is never overwritten — including when its value is the empty string. |
-| CI / production | `CI` truthy or `NODE_ENV=production` → **no env file is read**, host env only. The Vault `secrets_dir` tier still applies — that is the deployed path. |
-| Root discovery | Walk up for the `package.json` named `hope-monorepo`. No fixed parent count, so worktrees and editable installs work; in a container no root is found and nothing is loaded. |
-| Legacy `.env` | In `development` only, `.env` is used when `.env.dev` is absent — parity with the TS loader. Retired together with the `.env` file itself. |
+| Rule            | Behaviour                                                                                                                                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File selection  | `NODE_ENV` → `development` = `.env.dev`, `test` = `.env.test`, `staging` = `.env.staging`. Unset/unrecognised → `development`.                                               |
+| Precedence      | A key already in `os.environ` is never overwritten — including when its value is the empty string.                                                                           |
+| CI / production | `CI` truthy or `NODE_ENV=production` → **no env file is read**, host env only. The Vault `secrets_dir` tier still applies — that is the deployed path.                       |
+| Root discovery  | Walk up for the `package.json` named `hope-monorepo`. No fixed parent count, so worktrees and editable installs work; in a container no root is found and nothing is loaded. |
+| Legacy `.env`   | In `development` only, `.env` is used when `.env.dev` is absent — parity with the TS loader. Retired together with the `.env` file itself.                                   |
 
 `NODE_ENV` (not a Python-specific alias) is deliberate: one variable must decide
-which file *both* runtimes read, or the split brain reappears under a new name.
+which file _both_ runtimes read, or the split brain reappears under a new name.
 
 ## Usage
 
@@ -69,14 +69,14 @@ would outrank a freshly re-rendered Vault file.
 
 **This is the interface. Lane K's Vault Agent annotations must match it exactly.**
 
-| Requirement | Value |
-|---|---|
-| Directory | `/vault/secrets` (override with `HOPE_SECRETS_DIR`) |
-| Layout | **One file per secret.** No `.env`-style file of `KEY=VALUE` lines, no JSON, no YAML. |
-| Filename | **Exactly the environment-variable name**, including the service's pydantic `env_prefix`. |
-| File contents | The raw secret value and nothing else. A trailing newline is stripped. |
-| Volume | **Memory-backed** (`emptyDir.medium: Memory`) — secrets must never touch disk. |
-| Permissions | Readable by the service's non-root `hope` user; nothing wider. |
+| Requirement   | Value                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------- |
+| Directory     | `/vault/secrets` (override with `HOPE_SECRETS_DIR`)                                       |
+| Layout        | **One file per secret.** No `.env`-style file of `KEY=VALUE` lines, no JSON, no YAML.     |
+| Filename      | **Exactly the environment-variable name**, including the service's pydantic `env_prefix`. |
+| File contents | The raw secret value and nothing else. A trailing newline is stripped.                    |
+| Volume        | **Memory-backed** (`emptyDir.medium: Memory`) — secrets must never touch disk.            |
+| Permissions   | Readable by the service's non-root `hope` user; nothing wider.                            |
 
 ```
 /vault/secrets/
@@ -113,7 +113,7 @@ worth preserving. `stt` caches with `@lru_cache`, so it registers its cache:
 register_settings_cache(get_settings.cache_clear)   # apps/stt/…/config/settings.py
 ```
 
-`hope_env.reload_secrets()` drops every registered cache. Choosing the *trigger*
+`hope_env.reload_secrets()` drops every registered cache. Choosing the _trigger_
 (a SIGHUP from the agent's `command`, an admin endpoint, or a bounded TTL) is a
 deployment decision and deliberately not wired here — this package exposes the
 capability only.

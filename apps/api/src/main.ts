@@ -1,5 +1,5 @@
 import { ILoggingService, loadEnv, SecretsService } from '@arcaai/applications';
-import { LogLevel, ValidationPipe } from '@nestjs/common';
+import { LogLevel, RequestMethod, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { WsAdapter } from '@nestjs/platform-ws';
 import { SwaggerModule } from '@nestjs/swagger';
@@ -88,7 +88,15 @@ async function bootstrap() {
   const globalPrefix = 'api/v1';
 
   app.setGlobalPrefix(globalPrefix, {
-    exclude: ['/metrics'],
+    exclude: [
+      '/metrics',
+      // v1-compat SMR summary shims (TASK-562). Excluded from the `api/v1`
+      // global prefix so `@Controller('api/smr/api/v1')` yields the LITERAL v1
+      // paths existing clients already call (TASK-560 §5.6), instead of being
+      // rewritten to `/api/v1/api/smr/api/v1/...`.
+      { path: 'api/smr/api/v1/summary/sync', method: RequestMethod.POST },
+      { path: 'api/smr/api/v1/presummary', method: RequestMethod.POST },
+    ],
   });
 
   if (!isProduction) {

@@ -8,14 +8,14 @@ The `@arcaai/stt` package uses `@huggingface/transformers` which automatically d
 
 ### Supported Models
 
-| Model ID | Size | Description |
-|----------|------|-------------|
-| `onnx-community/whisper-tiny.en` | ~40MB | English-only, fastest |
-| `onnx-community/whisper-base.en` | ~75MB | English-only, balanced |
+| Model ID                          | Size   | Description                 |
+| --------------------------------- | ------ | --------------------------- |
+| `onnx-community/whisper-tiny.en`  | ~40MB  | English-only, fastest       |
+| `onnx-community/whisper-base.en`  | ~75MB  | English-only, balanced      |
 | `onnx-community/whisper-small.en` | ~240MB | English-only, high accuracy |
-| `Xenova/whisper-tiny` | ~40MB | Multilingual, fastest |
-| `Xenova/whisper-base` | ~75MB | Multilingual, balanced |
-| `Xenova/whisper-small` | ~240MB | Multilingual, high accuracy |
+| `Xenova/whisper-tiny`             | ~40MB  | Multilingual, fastest       |
+| `Xenova/whisper-base`             | ~75MB  | Multilingual, balanced      |
+| `Xenova/whisper-small`            | ~240MB | Multilingual, high accuracy |
 
 ### Model Caching
 

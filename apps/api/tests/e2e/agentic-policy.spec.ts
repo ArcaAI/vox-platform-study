@@ -165,13 +165,42 @@ test.describe('agentic policy governance (OCC + GLOBAL_ADMIN privilege walls)', 
       }
     });
 
-    test('C: a tenant admin cannot approve a template → 403 (GLOBAL_ADMIN-only privilege)', async ({ request }) => {
-      const resp = await request.post(`${PROMPT_TEMPLATES}/${templateId}/approve`, {
-        // Valid If-Match so 403 is the privilege verdict, not the 428 header gate.
+    test('C: a tenant admin CAN approve their own tenant-owned template (OD-3 split gate)', async ({ request }) => {
+      // Uses its OWN throwaway template rather than the shared `templateId`
+      // from beforeAll: approveTemplate is idempotent once status===APPROVED
+      // (prompt-management.service.ts:462, short-circuits BEFORE any version
+      // check), so mutating the shared template here would silently break
+      // every downstream OCC assertion in this serial block (test D, and the
+      // 428 / 412 / "flips to APPROVED" tests below, which all still need it
+      // in DRAFT).
+      const create = await request.post(PROMPT_TEMPLATES, {
+        headers: bearer(globalAdminToken),
+        data: {
+          name: `t511 tenant-approve ${unique}`,
+          content: 'Summarize the visit for {{patient}}.',
+          category: 'CUSTOM',
+          variables: ['patient'],
+          status: 'DRAFT',
+        },
+      });
+      expect(create.status(), 'create DRAFT template for the tenant-approve check').toBeLessThan(300);
+      const tenantOwnedId = ((await create.json()) as PromptTemplate).id;
+
+      // This template is created under the global admin's own (non-SYSTEM)
+      // tenant, so approval exercises the tenant-owned branch of
+      // assertCanApprove: a caller holding manage:PromptTemplate for that
+      // tenant may approve it. Only SYSTEM/library templates (tenantId =
+      // SYSTEM) stay GLOBAL_ADMIN-only — see test B for that privilege wall,
+      // and .claude/rules/05-nestjs-api.md's Imperative Privilege Checks table.
+      const resp = await request.post(`${PROMPT_TEMPLATES}/${tenantOwnedId}/approve`, {
         headers: { ...bearer(tenantAdminToken), 'If-Match': '"1"' },
         data: {},
       });
-      expect(resp.status()).toBe(403);
+      expect(resp.status()).toBe(200);
+      const approved = (await resp.json()) as PromptTemplate;
+      expect(approved.status).toBe('APPROVED');
+
+      await request.delete(`${PROMPT_TEMPLATES}/${tenantOwnedId}`, { headers: bearer(globalAdminToken) }).catch(() => undefined);
     });
 
     test('D: a DRAFT template is NEVER the resolved prompt tier (resolution skips non-APPROVED)', async ({ request }) => {

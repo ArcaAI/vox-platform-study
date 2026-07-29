@@ -4,20 +4,20 @@
 
 Generated from the settings registry plus each TypeScript deployable’s own
 schema. `pnpm env:sync --check` (CI job `env-drift-check`) fails when this file,
-the `.env.example` files or `turbo.json#globalEnv` disagree with those
-declarations.
+the `.env.sample` files (root consolidated / per-app), or `turbo.json#globalEnv`
+disagree with those declarations.
 
 ## Summary
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 134 |
-| … of which required (`failMode: closed`) | 34 |
-| … of which secret | 33 |
-| … tier `env` | 95 |
+| Declared keys (distinct) | 144 |
+| … of which required (`failMode: closed`) | 36 |
+| … of which secret | 35 |
+| … tier `env` | 103 |
 | … tier `global-kv` | 10 |
-| … tier `vault-kv` | 29 |
-| `turbo.json#globalEnv` entries | 146 |
+| … tier `vault-kv` | 31 |
+| `turbo.json#globalEnv` entries | 156 |
 
 ## Variables
 
@@ -125,11 +125,21 @@ declarations.
 | `SESSION_SECRET_KEY` | `vault-kv` | yes | `<CHANGE_ME>` | `apps/api` | Signing/encryption secret for server-side session material. Rotating it invalidates existing sessions; users re-authenticate. |
 | `SHUTDOWN_DRAIN_DELAY_MS` | `global-kv` | no | `5000` | `apps/api` | Delay between failing readiness and closing the server, so a load balancer stops routing before connections drop. Resolved at drain time (see `shutdown.timeoutMs`). `SHUTDOWN_DRAIN_DELAY_MS` remains the bootstrap fallback. |
 | `SHUTDOWN_TIMEOUT_MS` | `global-kv` | no | `30000` | `apps/api` | Upper bound on graceful shutdown before the process is forced down. `GracefulShutdownService` resolves it at SHUTDOWN time, not construction time, so a change applies to the next drain without a restart. `SHUTDOWN_TIMEOUT_MS` remains the bootstrap fallback. |
+| `SMR_ANTHROPIC_API_KEY` | `vault-kv` | yes | `<CHANGE_ME>` | `apps/smr` | SMR's PLATFORM-level Anthropic credential (`SMR_ANTHROPIC_` pydantic prefix, typed `SecretStr`) — the fallback when a tenant has no enabled `(llm, anthropic)` BYO connection. |
+| `SMR_ANTHROPIC_BASE_URL` | `env` | no | `` | `apps/api` | Anthropic API base URL for SMR’s platform-fallback client (`AnthropicConfig.base_url`). Empty ⇒ the SDK default (`https://api.anthropic.com`); a tenant BYO connection may override it per request. |
+| `SMR_ANTHROPIC_DEFAULT_MODEL` | `env` | no | `` | `apps/smr` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `AnthropicConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
 | `SMR_AZURE_API_KEY` | `vault-kv` | yes | `<CHANGE_ME>` | `apps/smr` | SMR's Azure OpenAI credential (`SMR_AZURE_` pydantic prefix, typed `SecretStr`). |
 | `SMR_EXTERNAL_GUARDRAIL_ENABLED` | `env` | no | `false` | `apps/smr` | Gates input moderation on SMR `/generate` (`SMR_EXTERNAL_GUARDRAIL_` prefix). OFF is the dev/CI bypass so local runs need no guardrail service. When ON the posture is fail-CLOSED by construction: a transient error is absorbed by a bounded retry, a sustained outage rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option. |
+| `SMR_OPENAI_API_KEY` | `vault-kv` | yes | `<CHANGE_ME>` | `apps/smr` | SMR's PLATFORM-level OpenAI credential (`SMR_OPENAI_` pydantic prefix, typed `SecretStr`) — the fallback when a tenant has no enabled `(llm, openai)` BYO connection. A TENANT-supplied OpenAI key is a different data class (`db-secret`, Vault-Transit ciphertext in `AiProviderConnection`). |
+| `SMR_OPENAI_BASE_URL` | `env` | no | `https://api.openai.com/v1` | `apps/api` | OpenAI API base URL for SMR’s platform-fallback OpenAI client (`OpenAIConfig.base_url`). Override for an OpenAI-compatible gateway; a tenant BYO connection may override it per request. |
+| `SMR_OPENAI_DEFAULT_MODEL` | `env` | no | `` | `apps/smr` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `OpenAIConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
+| `SMR_OPENAI_ORGANIZATION` | `env` | no | — | `apps/smr` | Optional OpenAI organization id sent by SMR’s platform-fallback client (`OpenAIConfig.organization`). Unset ⇒ the account default organization. |
 | `SMR_PORT` | `env` | no | `8862` | `apps/smr` | Port apps/smr binds; the gateway keeps it only to build health-probe URLs. |
 | `SMR_SERVICE_TOKEN` | `vault-kv` | yes | `<CHANGE_ME>` | `apps/api` | Shared secret on the gateway↔SMR hop. SMR reads it as `settings.service_token` under its `SMR_` pydantic prefix; the gateway resolves the same name for outbound proxying and for `InternalServiceTokenGuard`'s inbound check. |
 | `SMR_URL` | `env` | no | `http://localhost:8862` | `apps/api` | Summarization service base URL (apps/smr, port 8862). |
+| `SMR_VERTEX_DEFAULT_MODEL` | `env` | no | `` | `apps/smr` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `VertexConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
+| `SMR_VERTEX_LOCATION` | `env` | no | `us-central1` | `apps/smr` | GCP location/region for SMR’s platform-fallback Vertex client (`VertexConfig.location`), e.g. `us-central1`. |
+| `SMR_VERTEX_PROJECT` | `env` | no | `` | `apps/smr` | GCP project id for SMR’s platform-fallback Vertex client (`VertexConfig.project`). Empty ⇒ no platform fallback (Vertex is then usable only via a tenant BYO service-account connection). A Vertex client is bound to a `(project, location)`; a tenant override supplies its own. |
 | `STORAGE_ACCESS_KEY_PEPPER` | `vault-kv` | yes | `<CHANGE_ME>` | `apps/api` | HMAC pepper for hashing tenant STORAGE access-key secrets (`StorageAccessKeyService.hashSecretForStorage`). Falls back to the shared `API_KEY_PEPPER` when unset, then to un-peppered SHA-256 — so it inherits `API_KEY_PEPPER`’s rotation cliff: changing it invalidates every stored storage access key. Stage a rotation the same way (see `api.keyPepper`). |
 | `STORAGE_PLATFORM_DEFAULT_CREDENTIALS` | `vault-kv` | yes | `<CHANGE_ME>` | `apps/api` | Operator-set JSON `{ accessKeyId, secretAccessKey }` at the Vault path recorded in the SYSTEM row's `credentialsRef` (default `platform/storage/minio`). Never stored in the database and never returned by any API. |
 | `STT_PORT` | `env` | no | `8861` | `apps/stt` | Port apps/stt binds (test: 8961). |
