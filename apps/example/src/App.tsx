@@ -7,7 +7,7 @@ export const App: React.FC = () => {
       <LiveTranscriptionDemo
         apiBaseUrl={import.meta.env.VITE_API_BASE_URL ?? 'https://api.your-public-domain.com'}
         pipelineId={import.meta.env.VITE_PIPELINE_ID}
-        authToken={import.meta.env.VITE_AUTH_TOKEN}
+        apiKey={import.meta.env.VITE_API_KEY}
         tenantId={import.meta.env.VITE_TENANT_ID}
       />
     </div>

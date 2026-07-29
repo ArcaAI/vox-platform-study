@@ -23,7 +23,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { RequiresIfMatchGuard } from './decorators/requiresIfMatch.guard';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ClsModule } from 'nestjs-cls';
+import { ClsGuard, ClsModule } from 'nestjs-cls';
 import { uuidv7 } from 'uuidv7';
 import { DataNotFoundExceptionFilter } from './filters';
 import { JwtAuthGuard } from './guards';
@@ -89,6 +89,7 @@ import { ResourceSubscriptionModule } from './modules/resource-subscription/reso
 import { StorageAccessKeyModule } from './modules/storage-access-key/storage-access-key.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { SmrCompatModule } from './modules/smr-compat/smr-compat.module';
+import { SttCompatModule } from './modules/stt-compat/stt-compat.module';
 import { StreamingModule } from './modules/streaming/streaming.module';
 import { SpeechModule } from './modules/speech/speech.module';
 import { TenantBucketModule } from './modules/tenant-bucket/tenant-bucket.module';
@@ -146,6 +147,10 @@ const guards = [
   {
     provide: APP_GUARD,
     useClass: TieredThrottlerGuard,
+  },
+  {
+    provide: APP_GUARD,
+    useClass: ClsGuard,
   },
   {
     provide: APP_GUARD,
@@ -331,6 +336,7 @@ const featureModules: any[] = [
   StorageAccessKeyModule,
   // v1-compat SMR summary shims (/api/smr/api/v1/summary/sync + /presummary).
   SmrCompatModule,
+  SttCompatModule,
   StreamingModule,
   SpeechModule,
   PipelineModule,

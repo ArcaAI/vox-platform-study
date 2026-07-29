@@ -197,4 +197,7 @@ class AzureSpeechLoader(BaseModelLoader):
         if uri and "/" not in uri and "." not in uri:
             # Looks like a bare region string (e.g. "eastus"), not a URL/ID
             return uri
-        return model_config.source_revision
+        revision = model_config.source_revision
+        return (
+            revision if revision and revision.lower() not in {"main", "master", "latest"} else None
+        )

@@ -177,6 +177,9 @@ export class SessionDataDto {
   @ValidateNested({ each: true })
   @Type(() => PreviousVisitRecordDto)
   previous_visits?: PreviousVisitRecordDto[];
+  @ApiPropertyOptional()
+  @IsOptional()
+  previous_visit_summary?: unknown;
 
   @ApiPropertyOptional({ description: 'Plain-text alternative for test results' })
   @IsOptional()

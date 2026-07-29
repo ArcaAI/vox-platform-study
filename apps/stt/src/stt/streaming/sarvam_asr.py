@@ -28,6 +28,41 @@ logger = logging.getLogger(__name__)
 _TIMEOUT_S = 120.0
 
 
+_SARVAM_LANGUAGE_ALIASES = {
+    "as": "as-IN",
+    "bn": "bn-IN",
+    "brx": "brx-IN",
+    "doi": "doi-IN",
+    "en": "en-IN",
+    "gu": "gu-IN",
+    "hi": "hi-IN",
+    "kn": "kn-IN",
+    "kok": "kok-IN",
+    "ks": "ks-IN",
+    "mai": "mai-IN",
+    "ml": "ml-IN",
+    "mni": "mni-IN",
+    "mr": "mr-IN",
+    "ne": "ne-IN",
+    "od": "od-IN",
+    "pa": "pa-IN",
+    "sa": "sa-IN",
+    "sat": "sat-IN",
+    "sd": "sd-IN",
+    "ta": "ta-IN",
+    "te": "te-IN",
+    "ur": "ur-IN",
+}
+
+
+def _normalize_language_for_sarvam(language: str | None) -> str | None:
+    normalized = language.strip() if language else None
+    if not normalized:
+        return None
+    primary = normalized.split("-", 1)[0].lower()
+    return _SARVAM_LANGUAGE_ALIASES.get(primary, normalized)
+
+
 async def sarvam_recognize_utterance(
     config: CloudRestConfig,
     samples: np.ndarray,
@@ -46,7 +81,7 @@ async def sarvam_recognize_utterance(
     wav = wav_bytes_from_samples(samples, sample_rate)
 
     data: dict[str, str] = {"model": config.model_name}
-    lang = language or config.language_default
+    lang = _normalize_language_for_sarvam(language or config.language_default)
     if lang:
         data["language_code"] = lang
 

@@ -1,7 +1,7 @@
-import { HttpException } from '@nestjs/common';
+import { HttpException, ValidationPipe } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PreSummaryRequest } from '../dto/pre-summary.request';
-import type { SyncSummaryRequest } from '../dto/sync-summary.request';
+import { SyncSummaryRequest } from '../dto/sync-summary.request';
 import { SmrCompatController } from '../smr-compat.controller';
 
 const createMockHttpService = () => ({
@@ -20,6 +20,9 @@ const createMockClsService = () => ({
 const createMockSecrets = () => ({
   getSecretSync: vi.fn((key: string) => (key === 'SMR_SERVICE_TOKEN' ? 'svc-token-123' : undefined)),
 });
+const createMockHarnessPolicy = () => ({
+  resolveSmrSelection: vi.fn(async () => ({ provider: 'lm-studio', model: 'gemma-4' })),
+});
 
 const syncRequest = (overrides: Partial<SyncSummaryRequest> = {}): SyncSummaryRequest =>
   ({
@@ -36,12 +39,33 @@ const syncRequest = (overrides: Partial<SyncSummaryRequest> = {}): SyncSummaryRe
     ...overrides,
   }) as SyncSummaryRequest;
 
+describe('SyncSummaryRequest validation', () => {
+  it('accepts v1 previous_visit_summary in session_data', async () => {
+    const request = syncRequest({
+      session_data: { ...syncRequest().session_data, previous_visit_summary: null },
+    });
+    const pipe = new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      forbidUnknownValues: true,
+    });
+    const transformed = await pipe.transform(request, {
+      type: 'body',
+      metatype: SyncSummaryRequest,
+    } as never);
+
+    expect((transformed as SyncSummaryRequest).session_data.previous_visit_summary).toBeNull();
+  });
+});
+
 describe('SmrCompatController', () => {
   let controller: SmrCompatController;
   let http: ReturnType<typeof createMockHttpService>;
   let config: ReturnType<typeof createMockConfigService>;
   let cls: ReturnType<typeof createMockClsService>;
   let secrets: ReturnType<typeof createMockSecrets>;
+  let policy: ReturnType<typeof createMockHarnessPolicy>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,7 +73,8 @@ describe('SmrCompatController', () => {
     config = createMockConfigService();
     cls = createMockClsService();
     secrets = createMockSecrets();
-    controller = new SmrCompatController(http as any, config as any, cls as any, secrets as any);
+    policy = createMockHarnessPolicy();
+    controller = new SmrCompatController(http as any, config as any, cls as any, policy as any, secrets as any);
   });
 
   describe('POST summary/sync', () => {
@@ -61,9 +86,19 @@ describe('SmrCompatController', () => {
       await controller.summarySync(syncRequest());
 
       expect(config.getConfigValue).toHaveBeenCalledWith('SMR_URL');
-      const [url, , options] = http.axiosRef.post.mock.calls[0];
+      const [url, body, options] = http.axiosRef.post.mock.calls[0];
       expect(url).toBe('http://localhost:8862/api/v1/generate');
       expect(options.headers['X-Service-Token']).toBe('svc-token-123');
+      expect(body.provider).toBe('lm-studio');
+      expect(body.model).toBe('gemma-4');
+    });
+    it('uses the authenticated API-key tenant when CLS has no tenant', async () => {
+      cls.get.mockImplementation((key: string) => (key === 'tenantId' ? undefined : undefined));
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+
+      await controller.summarySync(syncRequest(), { apiKey: { tenantId: 'tenant-from-key' } } as any);
+
+      expect(policy.resolveSmrSelection).toHaveBeenCalledWith('tenant-from-key');
     });
 
     it('selects the Simplified schema when use_enhanced_format is false', async () => {
@@ -92,14 +127,6 @@ describe('SmrCompatController', () => {
       expect(res.session_id).toBe('sess-1');
       expect(res.processing_time_ms).toBe(777);
       expect(res.summary.summary).toBe('y');
-    });
-
-    it('does not omit the model → SMR resolves the tenant default (no provider/model in the body)', async () => {
-      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
-      await controller.summarySync(syncRequest());
-      const [, body] = http.axiosRef.post.mock.calls[0];
-      expect(body).not.toHaveProperty('provider');
-      expect(body).not.toHaveProperty('model');
     });
 
     it('maps an SMR connection failure to 500 { error: "SMR service unavailable" }', async () => {

@@ -18,7 +18,7 @@ from opentelemetry import metrics, trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import InMemoryLogExporter, SimpleLogRecordProcessor
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter, SimpleLogRecordProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
@@ -149,8 +149,8 @@ def _otel_reset():
 
 @pytest.fixture()
 def in_memory_log_exporter():
-    """InMemoryLogExporter wired to a LoggerProvider with SimpleLogRecordProcessor."""
-    exporter = InMemoryLogExporter()
+    """InMemoryLogRecordExporter wired to a LoggerProvider with SimpleLogRecordProcessor."""
+    exporter = InMemoryLogRecordExporter()
     provider = LoggerProvider(resource=_TEST_RESOURCE)
     provider.add_log_record_processor(SimpleLogRecordProcessor(exporter))
     set_logger_provider(provider)
