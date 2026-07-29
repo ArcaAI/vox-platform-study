@@ -60,7 +60,7 @@ pnpm setup:dev && pnpm stack:dev -- api stt smr
 # 2. Point the example at it (apps/example/.env.local):
 #   VITE_API_BASE_URL=http://localhost:8868
 #   VITE_WS_BASE_URL=ws://localhost:8868
-#   VITE_ARCA_API_KEY=<an SDK-type tenant api key>   # REQUIRED — no default key
+#   VITE_API_KEY=<an SDK-type tenant api key>   # REQUIRED — no default key
 #   VITE_PIPELINE_ID=<streaming pipeline id>          # enables live backend STT
 
 # 3. Start the dev server and open the compat page:
@@ -76,7 +76,7 @@ pnpm --filter live-transcription-example build
 | ------------------- | ---------------------------------------------------------------------------- |
 | `VITE_API_BASE_URL` | REST origin of the v2 gateway (e.g. `http://localhost:8868`)                 |
 | `VITE_WS_BASE_URL`  | WebSocket origin (e.g. `ws://localhost:8868`)                                |
-| `VITE_ARCA_API_KEY` | **Required** tenant SDK api key (`x-api-key` parity); no default is baked in |
+| `VITE_API_KEY`       | **Required** tenant SDK api key (`x-api-key` parity); no default is baked in |
 | `VITE_PIPELINE_ID`  | Streaming STT pipeline id — enables live backend transcription               |
 
 ### Per-chunk metadata passthrough (TASK-564)

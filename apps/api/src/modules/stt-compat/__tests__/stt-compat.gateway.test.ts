@@ -74,6 +74,7 @@ describe('SttCompatGateway', () => {
       true,
     );
     results.next({ type: 'transcript', text: 'hello', startTime: 1, endTime: 2, isFinal: true, speakerId: 'Guest-1' });
+    results.next({ type: 'transcript', text: 'without speaker', startTime: 2, endTime: 3, isFinal: true });
 
     expect(apiKeyService.authenticateByRawKey).toHaveBeenCalledWith('legacy-key', '127.0.0.1');
     expect(bridgeService.writeAudioFrame).toHaveBeenCalledWith('session-1', 1, Buffer.from([1, 2, 3]), 44100, 'pcm_s16le', false);
@@ -103,6 +104,15 @@ describe('SttCompatGateway', () => {
         detected_language: 'en-US',
       },
       sessionId: 'session-1',
+    });
+    const fallbackTranscription = client.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .find(
+        (payload: { data?: { type?: string; text?: string } }) =>
+          payload.data?.type === 'transcription' && payload.data?.text === 'without speaker',
+      );
+    expect(fallbackTranscription).toMatchObject({
+      data: { speaker_id: 'Unknown' },
     });
   });
 

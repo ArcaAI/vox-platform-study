@@ -760,6 +760,8 @@ export class PluginManager {
       {
         enabled: true,
         refreshTicket: async () => sessionManager.refreshTicket(),
+        // v1-compatibility
+        requireTenantClaim: sttConfig.requireTenantClaim,
       },
       this._debugMode,
     );

@@ -48,12 +48,13 @@ export class SttCompatController {
       headers?: Record<string, string | string[] | undefined>;
     } = {},
   ): Promise<StartSessionResponse> {
+    const provider = body.provider === 'whisper' ? 'azure' : (body.provider ?? 'azure');
     const response: StartSessionResponse = {
       message: 'Session started',
       session_id: body.session_id,
       status: 'active',
       audio_config: this.mergeAudioConfig(body.audioSettings),
-      provider: body.provider === 'sarvam' ? 'sarvam' : 'default',
+      provider,
     };
 
     if (!this.pipelineService || !this.sessionService || !this.sessionBinding) {
@@ -74,7 +75,7 @@ export class SttCompatController {
     const sessionBinding = this.sessionBinding;
     const createSession = async (): Promise<StartSessionResponse> => {
       const pipelines = await pipelineService.getAll();
-      const pipeline = this.selectPipeline(pipelines, body.provider);
+      const pipeline = this.selectPipeline(pipelines, provider);
       if (!pipeline) {
         throw new BadRequestException('No STT pipeline is configured for this tenant');
       }
@@ -149,7 +150,7 @@ export class SttCompatController {
     pipelines: Awaited<ReturnType<PipelineService['getAll']>>,
     provider: StartSessionRequest['provider'],
   ): (typeof pipelines)[number] | undefined {
-    const providerKey = provider === 'azure' ? 'azure' : provider === 'sarvam' ? 'sarvam' : 'whisper';
+    const providerKey = provider ?? 'azure';
     const providerPipeline = pipelines.find(
       (pipeline) =>
         pipeline.tags.some((tag) => tag.toLowerCase() === providerKey) ||

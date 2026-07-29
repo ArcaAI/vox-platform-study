@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { PreSummaryResponse, StructuredPreSummary, SummaryResponse, TokenUsage } from './dto/summary.response';
 
 const DEFAULT_PRE_SUMMARY_TITLE = 'Pre-Summary of Medical History';
@@ -71,7 +72,7 @@ export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta
   const summary = parseSummaryContent(content);
 
   return {
-    summary_id: meta.summaryId,
+    summary_id: meta.summaryId ?? randomUUID(),
     session_id: meta.sessionId,
     summary,
     created_at: meta.createdAt.toISOString(),

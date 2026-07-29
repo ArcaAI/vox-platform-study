@@ -204,6 +204,8 @@ export interface STTPluginConfig {
   pipelineId?: string;
   /** WebSocket URL for backend STT streaming (overrides api.wsUrl + default path) */
   sttSocket?: string;
+  // v1-compatibility
+  requireTenantClaim?: boolean;
   /** Enable speaker diarization */
   diarization?: boolean;
   /** Expected number of speakers when diarization is enabled */
