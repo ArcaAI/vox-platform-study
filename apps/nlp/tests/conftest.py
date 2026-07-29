@@ -50,6 +50,7 @@ def mock_services():
         patch("nlp.lifespan.get_websocket_manager", return_value=fake),
         patch("nlp.core.observability.setup_opentelemetry"),
         patch("nlp.core.observability.setup_prometheus"),
+        patch("nlp.app.setup_prometheus"),
         patch("nlp.core.observability.shutdown_opentelemetry"),
     ]
     for p in patches:

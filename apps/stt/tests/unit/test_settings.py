@@ -67,12 +67,12 @@ class TestSettings:
             assert settings.model_cache_ttl_seconds == 3600
 
     def test_huggingface_defaults(self):
-        """Test HuggingFace configuration has valid values."""
-        # Note: We don't check specific values as they may come from .env file
-        settings = get_settings()
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
 
-        assert settings.huggingface_cache_dir is not None
-        assert isinstance(settings.huggingface_cache_dir, str)
+            assert settings.huggingface_cache_dir == os.path.expanduser(
+                "~/.cache/huggingface/hub"
+            )
 
     def test_worker_defaults(self):
         """Test worker default configuration."""
@@ -285,7 +285,7 @@ class TestSettings:
     def test_diarization_defaults(self):
         """Test Pyannote diarization default configuration."""
         with patch.dict(os.environ, {}, clear=True):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             assert settings.diarization_hf_model_id == "pyannote/wespeaker-voxceleb-resnet34-LM"
             assert settings.diarization_similarity_threshold == 0.7
             assert settings.diarization_device == "auto"

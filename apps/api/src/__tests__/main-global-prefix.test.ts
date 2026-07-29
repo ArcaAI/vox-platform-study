@@ -123,6 +123,9 @@ describe('main.ts configuration regression guards', () => {
     it('should exclude /metrics', () => {
       expect(mainTsSource).toContain("'/metrics'");
     });
+    it('should exclude the legacy stop-session route', () => {
+      expect(mainTsSource).toContain("'api/stt/stop_session'");
+    });
   });
 
   describe('swagger path', () => {

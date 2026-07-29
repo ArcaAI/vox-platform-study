@@ -33,13 +33,24 @@ interface TranscriptLine {
   /** Delivered metadata off onTranscript (TASK-564 §5.2, normalized §4.3). */
   meta?: Record<string, unknown>;
 }
+type SttProvider = 'default' | 'sarvam';
 
-export function CompatConsultation() {
+interface CompatConsultationProps {
+  provider?: SttProvider;
+  apiBaseUrl?: string;
+  apiKey?: string;
+}
+
+export function CompatConsultation({ provider: initialProvider = 'default', apiBaseUrl, apiKey }: CompatConsultationProps) {
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [interim, setInterim] = useState('');
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   // Transient banner for STT provider switches (auto OR user).
   const [switchBanner, setSwitchBanner] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [sttSessionInfo, setSttSessionInfo] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<SttProvider>(initialProvider);
 
   // 1. Session — createSession + startSession collapse onto one idempotent open().
   //    doctorId is preserved in metadata.legacyDoctorId (server derives the doctor).
@@ -75,12 +86,12 @@ export function CompatConsultation() {
   // metadata sink), so pass an empty buffer and change the tag only at logical
   // TURN boundaries — the tag round-trips onto the next transcript(s).
   const chunkRef = useRef(0);
-  const tagTurn = (role: 'clinician' | 'patient') => {
+  const tagTurn = (slotIndex: 0 | 1) => {
+    const slotLabel = `mic${slotIndex + 1}`;
     stt.sendAudioData(new ArrayBuffer(0), {
-      device_id: role === 'clinician' ? 'mic-1' : 'mic-2',
-      role,
-      chunk_id: `chunk-${(chunkRef.current += 1)}`,
-      consultationId: mgr.session?.id ?? 'unknown',
+      device_id: slotLabel,
+      role: slotIndex === 0 ? 'patient' : 'doctor',
+      other: `${slotLabel}_chunk${(chunkRef.current += 1)}`,
     });
   };
 
@@ -92,18 +103,75 @@ export function CompatConsultation() {
     onProviderSwitched: (info) => setSwitchBanner(`Transcription switched to ${info.toPipeline.name ?? info.toPipeline.id} (${info.reason})`),
     onSwitchFailed: (err) => setSwitchBanner(`Provider switch failed: ${err.message}`),
   });
+  const switchProvider = () => {
+    if (capture.isRecording) {
+      void provider.switchToFallback().catch(() => undefined);
+      return;
+    }
+
+    const nextProvider: SttProvider = selectedProvider === 'sarvam' ? 'default' : 'sarvam';
+    setSelectedProvider(nextProvider);
+    setSwitchBanner(`Provider selected: ${nextProvider === 'sarvam' ? 'Sarvam' : 'Default'}`);
+  };
+
+  const selectedProviderLabel = selectedProvider === 'default' ? 'Default' : 'Sarvam';
+  const activeProviderLabel = provider.activeProvider?.name ?? selectedProviderLabel;
 
   // 4. Summary — same path + x-api-key as v1; sends real per-turn segments.
   const smr = useSMR({ sessionId: mgr.session?.id });
 
+  const startSttSession = async (sessionId: string): Promise<void> => {
+    const base = (apiBaseUrl ?? '').replace(/\/$/, '');
+    const res = await fetch(`${base}/api/stt/start_session`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(apiKey ? { 'x-api-key': apiKey } : {}),
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        language: 'en-US',
+        audioSettings: {
+          sampleRate: 16000,
+          format: 'pcm',
+          channels: 1,
+          bitDepth: 16,
+          chunkSize: 1024,
+          noiseSuppression: true,
+          echoCancellation: true,
+          autoGainControl: false,
+        },
+        provider: selectedProvider === 'sarvam' ? 'sarvam' : 'default',
+      }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      throw new Error(data.error ?? data.message ?? `HTTP ${res.status}`);
+    }
+    const ack = (await res.json()) as { session_id: string; status: string; provider: string };
+    setSttSessionInfo(`STT session ${ack.session_id} · ${ack.status} · ${ack.provider}`);
+  };
+
   const start = async () => {
+    if (isStarting || capture.isRecording) return;
+    setIsStarting(true);
+    setStartError(null);
     setSummary(null);
     setLines([]);
+    setSttSessionInfo(null);
     chunkRef.current = 0;
-    await mgr.createSession();
-    await mgr.startSession();
-    await capture.startRecording();
-    await stt.startTranscription();
+    try {
+      const session = await mgr.createSession();
+      await startSttSession(session.id);
+      await mgr.startSession();
+      await capture.startRecording();
+      await stt.startTranscription();
+    } catch (error) {
+      setStartError(error instanceof Error ? error.message : String(error));
+      await mgr.endSession().catch(() => undefined);
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   // 3. Stop the recording, then close the session.
@@ -136,9 +204,11 @@ export function CompatConsultation() {
         Session: <strong>{mgr.session?.id ?? '—'}</strong> · status: <strong>{mgr.session?.status ?? 'none'}</strong>
         {mgr.isLoading ? ' · working…' : ''}
       </p>
+      {sttSessionInfo ? <p style={{ color: '#2a7' }}>{sttSessionInfo}</p> : null}
 
       {mgr.error ? <p style={{ color: '#b00' }}>Session error: {mgr.error.message}</p> : null}
       {stt.error ? <p style={{ color: '#b00' }}>STT error: {stt.error.message}</p> : null}
+      {startError ? <p style={{ color: '#b00' }}>Start error: {startError}</p> : null}
       {switchBanner ? (
         <p style={{ background: '#eef6ff', border: '1px solid #b6d4fe', padding: '0.5rem 0.75rem', borderRadius: 4 }}>
           {switchBanner}{' '}
@@ -149,27 +219,31 @@ export function CompatConsultation() {
       ) : null}
 
       <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0' }}>
-        <button onClick={start} disabled={capture.isRecording}>
-          Start consultation
+        <button onClick={start} disabled={isStarting || capture.isRecording}>
+          {isStarting ? 'Starting…' : 'Start consultation'}
         </button>
-        <button onClick={stop} disabled={!capture.isRecording}>
+        <button onClick={stop} disabled={isStarting || !capture.isRecording}>
           Stop
         </button>
-        <button onClick={summarize} disabled={capture.isRecording || lines.length === 0 || smr.loading}>
+        <button onClick={summarize} disabled={isStarting || capture.isRecording || lines.length === 0 || smr.loading}>
           {smr.loading ? 'Summarizing…' : 'Generate summary'}
         </button>
-        {/* User provider-switch control flow (TASK-567 R4): enabled only while a
-            live backend session can switch and isn't already on the fallback. */}
         <button
-          onClick={() => void provider.switchToFallback().catch(() => undefined)}
-          disabled={!provider.fallbackAvailable || provider.switchStatus === 'switching'}
+          onClick={switchProvider}
+          disabled={isStarting || (capture.isRecording && provider.switchStatus === 'switching')}
         >
-          {provider.switchStatus === 'switching' ? 'Switching…' : 'Switch provider'}
+          {capture.isRecording
+            ? provider.switchStatus === 'switching'
+              ? 'Switching…'
+              : 'Switch provider'
+            : selectedProvider === 'sarvam'
+              ? 'Use Default'
+              : 'Use Sarvam'}
         </button>
       </div>
 
       <p style={{ color: '#666', fontSize: '0.85rem' }}>
-        STT provider: <strong>{provider.activeProvider?.name ?? provider.activeProvider?.pipelineId ?? 'local'}</strong>
+        STT provider: <strong>{activeProviderLabel}</strong>
         {provider.isFallbackActive ? ' (fallback)' : ''}
       </p>
 
@@ -177,11 +251,11 @@ export function CompatConsultation() {
           transcript line (TASK-564). Only enabled while recording. */}
       <div style={{ display: 'flex', gap: '0.5rem', margin: '0 0 1rem', alignItems: 'center' }}>
         <span style={{ color: '#666', fontSize: '0.85rem' }}>Tag turn:</span>
-        <button onClick={() => tagTurn('clinician')} disabled={!capture.isRecording}>
-          Clinician (mic-1)
+        <button onClick={() => tagTurn(0)} disabled={isStarting || !capture.isRecording}>
+          Patient (mic1)
         </button>
-        <button onClick={() => tagTurn('patient')} disabled={!capture.isRecording}>
-          Patient (mic-2)
+        <button onClick={() => tagTurn(1)} disabled={isStarting || !capture.isRecording}>
+          Doctor (mic2)
         </button>
       </div>
 

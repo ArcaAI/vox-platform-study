@@ -30,6 +30,7 @@ export interface SummaryResponseMetadata {
 
 /** v1 `SummaryResponse` (HTTP 200) for `/summary/sync`. */
 export interface SummaryResponse {
+  summary_id: string;
   session_id: string;
   /** `EnhancedMedicalSummary | SimplifiedMedicalSummary` — parsed LLM object. */
   summary: Record<string, unknown>;

@@ -981,7 +981,8 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
 
     if (!apiKey && request.url) {
       const url = new URL(request.url, 'http://localhost');
-      const apiKeyFromQuery = url.searchParams.get('apiKey') || url.searchParams.get('api-key');
+      // v1-compatibility: url.searchParams.get('key')
+      const apiKeyFromQuery = url.searchParams.get('apiKey') || url.searchParams.get('api-key') || url.searchParams.get('key');
       if (apiKeyFromQuery) {
         return apiKeyFromQuery;
       }
