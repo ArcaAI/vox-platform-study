@@ -46,6 +46,7 @@ class SegmentationService:
             if not token:
                 try:
                     from huggingface_hub import get_token as hf_get_token
+
                     token = hf_get_token()
                 except Exception:
                     pass
@@ -76,6 +77,7 @@ class SegmentationService:
         waveform = torch.from_numpy(samples).unsqueeze(0).float()
         if sample_rate != self._sample_rate:
             import torchaudio
+
             waveform = torchaudio.functional.resample(waveform, sample_rate, self._sample_rate)
 
         with self._lock:
@@ -103,7 +105,9 @@ class SegmentationService:
         Each tuple is (start_seconds, end_seconds).
         """
         activations, frame_duration = await asyncio.to_thread(
-            self._run_segmentation, samples, sample_rate,
+            self._run_segmentation,
+            samples,
+            sample_rate,
         )
 
         return self._extract_turn_boundaries(activations, frame_duration, min_segment_s)

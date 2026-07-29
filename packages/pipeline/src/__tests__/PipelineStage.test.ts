@@ -215,9 +215,7 @@ describe('PipelineStage', () => {
 
     it('should throw when canExecute returns false', async () => {
       const validatingStage = new ValidatingStage('validating');
-      await expect(validatingStage.execute('', context)).rejects.toThrow(
-        "Stage 'validating' cannot execute with given input"
-      );
+      await expect(validatingStage.execute('', context)).rejects.toThrow("Stage 'validating' cannot execute with given input");
     });
   });
 
@@ -237,9 +235,7 @@ describe('PipelineStage', () => {
       }
 
       const slowStage = new SlowStage('slow', { timeout: 50 });
-      await expect(slowStage.execute('input', context)).rejects.toThrow(
-        "Stage 'slow' timed out after 50ms"
-      );
+      await expect(slowStage.execute('input', context)).rejects.toThrow("Stage 'slow' timed out after 50ms");
     });
   });
 
@@ -417,9 +413,7 @@ describe('PipelineStage', () => {
 
       const stage = new SlowSignalStage('slow-signal', { timeout: 30 });
 
-      await expect(stage.execute('input', context)).rejects.toThrow(
-        "Stage 'slow-signal' timed out after 30ms"
-      );
+      await expect(stage.execute('input', context)).rejects.toThrow("Stage 'slow-signal' timed out after 30ms");
       expect(onExecuteAborted).toHaveBeenCalled();
     });
 

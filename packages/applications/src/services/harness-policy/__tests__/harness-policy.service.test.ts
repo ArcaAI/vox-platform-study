@@ -49,12 +49,7 @@ const cls = {
 };
 
 function makeService(): HarnessPolicyService {
-  return new HarnessPolicyService(
-    policyRepository as never,
-    policyChangeRepository as never,
-    databaseService as never,
-    cls as never,
-  );
+  return new HarnessPolicyService(policyRepository as never, policyChangeRepository as never, databaseService as never, cls as never);
 }
 
 // service with the AiTaskDefault-first SMR routing wired.
@@ -406,9 +401,9 @@ describe('HarnessPolicyService', () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, smrProvider: 'lm-studio', smrModel: 'm' });
       policyRepository.findForExactTenant.mockResolvedValue(own);
 
-      await expect(
-        service.updatePolicy({ atomicFactEnabled: true, maxEditReruns: 5, expectedVersion: 1 } as never, 1),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.updatePolicy({ atomicFactEnabled: true, maxEditReruns: 5, expectedVersion: 1 } as never, 1)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
       expect(policyChangeRepository.create).not.toHaveBeenCalled();
     });
 
@@ -542,7 +537,9 @@ describe('HarnessPolicyService', () => {
     it('propagates OptimisticConcurrencyException and writes NO change row on version drift', async () => {
       const own = HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, coverageThreshold: 0.8 });
       policyRepository.findForExactTenant.mockResolvedValue(own);
-      policyRepository.updateWithVersion.mockRejectedValue(new OptimisticConcurrencyException('HarnessPolicy', own.id, { expectedVersion: 1, currentVersion: 2 }));
+      policyRepository.updateWithVersion.mockRejectedValue(
+        new OptimisticConcurrencyException('HarnessPolicy', own.id, { expectedVersion: 1, currentVersion: 2 }),
+      );
 
       await expect(service.updatePolicy({ coverageThreshold: 0.5 }, 1)).rejects.toBeInstanceOf(OptimisticConcurrencyException);
       expect(policyChangeRepository.create).not.toHaveBeenCalled();

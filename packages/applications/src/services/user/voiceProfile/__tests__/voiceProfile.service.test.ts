@@ -156,10 +156,7 @@ describe('VoiceProfileService', () => {
       expect(url).toBe('http://localhost:8861/internal/voice-profile/extract');
 
       // Verify entity creation and embedding persistence
-      expect(mockVoiceProfileRepository.createWithEmbedding).toHaveBeenCalledWith(
-        expect.any(Object),
-        mockExtractionResponse.data.embedding,
-      );
+      expect(mockVoiceProfileRepository.createWithEmbedding).toHaveBeenCalledWith(expect.any(Object), mockExtractionResponse.data.embedding);
 
       // Verify sys event emitted
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
@@ -176,9 +173,7 @@ describe('VoiceProfileService', () => {
     // tenant; reads (incl. the STT-v2 diarization preseed) filter on it.
     it('should stamp the enrolled profile with the CLS tenant', async () => {
       const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(
-        of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }),
-      );
+      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }));
       mockVoiceProfileRepository.createWithEmbedding.mockImplementation(async (entity: any) => entity);
 
       await service.enroll({
@@ -197,9 +192,7 @@ describe('VoiceProfileService', () => {
         return null; // no tenantId in CLS
       });
       const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(
-        of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }),
-      );
+      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'm1' } }));
 
       await expect(
         service.enroll({
@@ -218,9 +211,7 @@ describe('VoiceProfileService', () => {
       mockHttpService.post.mockReturnValue(throwError(() => error));
 
       const audioBuffer = Buffer.from('fake-audio-data');
-      await expect(
-        service.enroll({ userId: 'user-id-1', audioBuffers: [audioBuffer] }),
-      ).rejects.toThrow();
+      await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [audioBuffer] })).rejects.toThrow();
     });
 
     // Translate STT-v2 errors into friendly HTTP exceptions
@@ -231,9 +222,7 @@ describe('VoiceProfileService', () => {
         const axiosErr = makeAxiosError(400, { detail: 'Sample 1 exceeds 15.0s (got 33.6s)' }, 'ERR_BAD_REQUEST');
         mockHttpService.post.mockReturnValue(throwError(() => axiosErr));
 
-        await expect(
-          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
-        ).rejects.toMatchObject({
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
           constructor: BadRequestException,
           message: 'Sample 1 exceeds 15.0s (got 33.6s)',
         });
@@ -245,9 +234,7 @@ describe('VoiceProfileService', () => {
         const axiosErr = makeAxiosError(503, { detail: 'Embedding service not available' });
         mockHttpService.post.mockReturnValue(throwError(() => axiosErr));
 
-        await expect(
-          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
-        ).rejects.toMatchObject({
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
           constructor: ServiceUnavailableException,
           message: 'Embedding service not available',
         });
@@ -258,9 +245,7 @@ describe('VoiceProfileService', () => {
         const axiosErr = makeAxiosError(undefined, undefined, 'ECONNREFUSED');
         mockHttpService.post.mockReturnValue(throwError(() => axiosErr));
 
-        await expect(
-          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
-        ).rejects.toMatchObject({
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
           constructor: ServiceUnavailableException,
           message: expect.stringMatching(/voice profile extraction service is unavailable/i),
         });
@@ -270,9 +255,9 @@ describe('VoiceProfileService', () => {
         const { throwError } = await import('rxjs');
         mockHttpService.post.mockReturnValue(throwError(() => new Error('boom')));
 
-        await expect(
-          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
-        ).rejects.toBeInstanceOf(InternalServerErrorException);
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toBeInstanceOf(
+          InternalServerErrorException,
+        );
       });
     });
 
@@ -282,13 +267,9 @@ describe('VoiceProfileService', () => {
     describe('embedding dimension guard', () => {
       it('rejects 512-d embedding with a clear BadRequest BEFORE hitting the DB', async () => {
         const { of } = await import('rxjs');
-        mockHttpService.post.mockReturnValue(
-          of({ data: { embedding: Array(512).fill(0.1), model_id: 'pyannote/embedding' } }),
-        );
+        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(512).fill(0.1), model_id: 'pyannote/embedding' } }));
 
-        await expect(
-          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
-        ).rejects.toMatchObject({
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
           constructor: BadRequestException,
           message: expect.stringMatching(/512.*256|256.*512|dimension/i),
         });
@@ -298,29 +279,21 @@ describe('VoiceProfileService', () => {
 
       it('includes the offending model id in the error message', async () => {
         const { of } = await import('rxjs');
-        mockHttpService.post.mockReturnValue(
-          of({ data: { embedding: Array(192).fill(0.1), model_id: 'some/other-model' } }),
-        );
+        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(192).fill(0.1), model_id: 'some/other-model' } }));
 
-        await expect(
-          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
-        ).rejects.toMatchObject({
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).rejects.toMatchObject({
           message: expect.stringContaining('some/other-model'),
         });
       });
 
       it('accepts the correct 256-d embedding', async () => {
         const { of } = await import('rxjs');
-        mockHttpService.post.mockReturnValue(
-          of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }),
-        );
+        mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }));
         const created = createMockVoiceProfileEntity({ id: 'vp-ok', userId: 'user-id-1' });
         mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);
         mockVoiceProfileRepository.findActiveByUserId.mockResolvedValue(null);
 
-        await expect(
-          service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] }),
-        ).resolves.toBeDefined();
+        await expect(service.enroll({ userId: 'user-id-1', audioBuffers: [Buffer.from('audio')] })).resolves.toBeDefined();
         expect(mockVoiceProfileRepository.createWithEmbedding).toHaveBeenCalled();
       });
     });
@@ -328,9 +301,7 @@ describe('VoiceProfileService', () => {
     // Auto-activate the first enrolled profile.
     it('auto-activates the newly created profile when the user has no active profile yet', async () => {
       const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(
-        of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }),
-      );
+      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }));
 
       const created = createMockVoiceProfileEntity({ id: 'vp-new', userId: 'user-id-1', isActive: false });
       mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);
@@ -349,9 +320,7 @@ describe('VoiceProfileService', () => {
 
     it('does NOT auto-activate when the user already has an active profile', async () => {
       const { of } = await import('rxjs');
-      mockHttpService.post.mockReturnValue(
-        of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }),
-      );
+      mockHttpService.post.mockReturnValue(of({ data: { embedding: Array(256).fill(0.1), model_id: 'pyannote/wespeaker-voxceleb-resnet34-LM' } }));
 
       const created = createMockVoiceProfileEntity({ id: 'vp-new', userId: 'user-id-1', isActive: false });
       mockVoiceProfileRepository.createWithEmbedding.mockResolvedValue(created);

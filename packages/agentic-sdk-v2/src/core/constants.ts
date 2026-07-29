@@ -381,6 +381,13 @@ export const STT_ENDPOINTS = {
    * previous ticket is consumed by the gateway on the first WS open.
    */
   REFRESH_TICKET: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/refresh-ticket`,
+  /**
+   * Switch a live streaming session to the tenant fallback pipeline (TASK-567 R4).
+   * The backend swaps the ASR engine in place; the client learns via the
+   * `provider_switched` status frame. 409 when no fallback is configured or the
+   * session is already on the fallback; 404 on a backend without the route.
+   */
+  SWITCH_TO_FALLBACK: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/switch-to-fallback`,
   /** WebSocket path for real-time audio streaming (absolute, not API-prefixed) */
   WS_STREAM: '/ws/stt/stream',
   /** Create a generic transcription job */

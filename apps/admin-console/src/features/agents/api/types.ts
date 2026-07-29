@@ -26,24 +26,24 @@ export type PromptTemplateScope = 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USE
  * the human-meaningful PromptVersion history counter shown as "vN".
  */
 export interface PromptTemplate {
-    id: string;
-    name: string;
-    description?: string;
-    content: string;
-    category: PromptTemplateCategory;
-    scope?: PromptTemplateScope;
-    status: PromptTemplateStatus;
-    variables?: Record<string, unknown>;
-    currentVersionNumber: number;
-    departmentId?: string;
-    tags?: string[];
-    createdAt: string;
-    updatedAt: string;
-    resourceStatus?: ResourceStatus;
-    /** Score (0-100 per DTO example; service emits [0,1]) of the last test run. */
-    lastTestScore?: number;
-    lastTestAt?: string;
-    version: number;
+  id: string;
+  name: string;
+  description?: string;
+  content: string;
+  category: PromptTemplateCategory;
+  scope?: PromptTemplateScope;
+  status: PromptTemplateStatus;
+  variables?: Record<string, unknown>;
+  currentVersionNumber: number;
+  departmentId?: string;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+  resourceStatus?: ResourceStatus;
+  /** Score (0-100 per DTO example; service emits [0,1]) of the last test run. */
+  lastTestScore?: number;
+  lastTestAt?: string;
+  version: number;
 }
 
 /**
@@ -52,78 +52,78 @@ export interface PromptTemplate {
  * page=0 silently becomes page 1.
  */
 export interface ListTemplatesParams {
-    category?: PromptTemplateCategory;
-    status?: PromptTemplateStatus;
-    departmentId?: string;
-    search?: string;
-    includeDisabled?: boolean;
-    scope?: PromptTemplateScope;
-    ownerUserId?: string;
-    /** One-based page number (this endpoint deviates from the 0-based convention). */
-    page?: number;
-    limit?: number;
-    [key: string]: string | number | boolean | undefined | null;
+  category?: PromptTemplateCategory;
+  status?: PromptTemplateStatus;
+  departmentId?: string;
+  search?: string;
+  includeDisabled?: boolean;
+  scope?: PromptTemplateScope;
+  ownerUserId?: string;
+  /** One-based page number (this endpoint deviates from the 0-based convention). */
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 export interface CreateTemplateRequest {
-    name: string;
-    description?: string;
-    content: string;
-    category: PromptTemplateCategory;
-    status?: PromptTemplateStatus;
-    variables?: Record<string, unknown>;
-    departmentId?: string;
-    tags?: string[];
-    scope?: PromptTemplateScope;
-    ownerUserId?: string;
+  name: string;
+  description?: string;
+  content: string;
+  category: PromptTemplateCategory;
+  status?: PromptTemplateStatus;
+  variables?: Record<string, unknown>;
+  departmentId?: string;
+  tags?: string[];
+  scope?: PromptTemplateScope;
+  ownerUserId?: string;
 }
 
 /** PATCH :id body — If-Match route; expectedVersion is added by the client. */
 export interface UpdateTemplateRequest {
-    name?: string;
-    description?: string;
-    content?: string;
-    status?: PromptTemplateStatus;
-    variables?: Record<string, unknown>;
-    tags?: string[];
-    /** Stored in the PromptVersion history row. */
-    changeReason?: string;
-    resourceStatus?: 'ENABLED' | 'DISABLED';
+  name?: string;
+  description?: string;
+  content?: string;
+  status?: PromptTemplateStatus;
+  variables?: Record<string, unknown>;
+  tags?: string[];
+  /** Stored in the PromptVersion history row. */
+  changeReason?: string;
+  resourceStatus?: 'ENABLED' | 'DISABLED';
 }
 
 /** GET :id/versions rows (PromptVersionResponse). */
 export interface PromptVersion {
-    id: string;
-    promptTemplateId: string;
-    versionNumber: number;
-    content: string;
-    variables?: Record<string, unknown>;
-    changeReason?: string;
-    changedBy?: string;
-    createdAt: string;
+  id: string;
+  promptTemplateId: string;
+  versionNumber: number;
+  content: string;
+  variables?: Record<string, unknown>;
+  changeReason?: string;
+  changedBy?: string;
+  createdAt: string;
 }
 
 /** One line-diff segment (shape-compatible with the `diff` npm package). */
 export interface PromptDiffChange {
-    value: string;
-    added?: boolean;
-    removed?: boolean;
-    count?: number;
+  value: string;
+  added?: boolean;
+  removed?: boolean;
+  count?: number;
 }
 
 export interface PromptDiffStats {
-    additions: number;
-    deletions: number;
-    unchanged: number;
+  additions: number;
+  deletions: number;
+  unchanged: number;
 }
 
 export interface PromptFieldDiff {
-    field: string;
-    changed: boolean;
-    before?: string;
-    after?: string;
-    changes: PromptDiffChange[];
-    stats: PromptDiffStats;
+  field: string;
+  changed: boolean;
+  before?: string;
+  after?: string;
+  changes: PromptDiffChange[];
+  stats: PromptDiffStats;
 }
 
 /**
@@ -132,32 +132,32 @@ export interface PromptFieldDiff {
  * `fields[]` is the per-field breakdown.
  */
 export interface PromptVersionDiff {
-    promptTemplateId: string;
-    fromVersion: number;
-    toVersion: number;
-    fields: PromptFieldDiff[];
-    changes: PromptDiffChange[];
-    patch: string;
-    stats: PromptDiffStats;
+  promptTemplateId: string;
+  fromVersion: number;
+  toVersion: number;
+  fields: PromptFieldDiff[];
+  changes: PromptDiffChange[];
+  patch: string;
+  stats: PromptDiffStats;
 }
 
 /** POST :id/test body — If-Match route; expectedVersion is added by the client. */
 export interface TestTemplateRequest {
-    /** Sample values interpolated into the template `{{variables}}`. */
-    variables?: Record<string, unknown>;
-    /** Extra sample input (e.g. transcript excerpt) appended to the prompt. */
-    sampleInput?: string;
+  /** Sample values interpolated into the template `{{variables}}`. */
+  variables?: Record<string, unknown>;
+  /** Extra sample input (e.g. transcript excerpt) appended to the prompt. */
+  sampleInput?: string;
 }
 
 /** Per-dimension breakdown behind the composite test score. */
 export interface PromptTestMetrics {
-    wordCount: number;
-    nonEmpty: boolean;
-    lengthScore: number;
-    jsonExpected: boolean;
-    jsonValid: boolean | null;
-    variablesDeclared: number;
-    variableCoverage: number | null;
+  wordCount: number;
+  nonEmpty: boolean;
+  lengthScore: number;
+  jsonExpected: boolean;
+  jsonValid: boolean | null;
+  variablesDeclared: number;
+  variableCoverage: number | null;
 }
 
 /**
@@ -166,62 +166,62 @@ export interface PromptTestMetrics {
  * editing without a re-fetch.
  */
 export interface PromptTestResult {
-    id: string;
-    /** Composite deterministic output-quality proxy in [0, 1]. */
-    score: number;
-    output: string;
-    testedAt: string;
-    version: number;
-    metrics?: PromptTestMetrics;
+  id: string;
+  /** Composite deterministic output-quality proxy in [0, 1]. */
+  score: number;
+  output: string;
+  testedAt: string;
+  version: number;
+  metrics?: PromptTestMetrics;
 }
 
 /** GET :id/usage (PromptUsageStatsResponse — all-time, not windowed). */
 export interface PromptUsageStats {
-    totalUsages: number;
-    lastUsedAt: string | null;
+  totalUsages: number;
+  lastUsedAt: string | null;
 }
 
 export interface PromptUsageByDepartment {
-    departmentId: string | null;
-    count: number;
+  departmentId: string | null;
+  count: number;
 }
 
 export interface PromptUsageByDoctor {
-    doctorId: string | null;
-    count: number;
+  doctorId: string | null;
+  count: number;
 }
 
 export interface PromptUsageByDay {
-    /** UTC day bucket (YYYY-MM-DD). */
-    day: string;
-    count: number;
+  /** UTC day bucket (YYYY-MM-DD). */
+  day: string;
+  count: number;
 }
 
 /** GET analytics/usage (PromptUsageAnalyticsResponse). */
 export interface PromptUsageAnalytics {
-    totalUsages: number;
-    byDepartment: PromptUsageByDepartment[];
-    byDoctor: PromptUsageByDoctor[];
-    byDay: PromptUsageByDay[];
+  totalUsages: number;
+  byDepartment: PromptUsageByDepartment[];
+  byDoctor: PromptUsageByDoctor[];
+  byDay: PromptUsageByDay[];
 }
 
 /** GET usage-records rows (PromptUsageRecordResponse — one agent run each). */
 export interface PromptUsageRecord {
-    id: string;
-    promptTemplateId?: string | null;
-    promptVersionNumber?: number | null;
-    consultationId?: string | null;
-    doctorId?: string | null;
-    departmentId?: string | null;
-    createdAt: string;
+  id: string;
+  promptTemplateId?: string | null;
+  promptVersionNumber?: number | null;
+  consultationId?: string | null;
+  doctorId?: string | null;
+  departmentId?: string | null;
+  createdAt: string;
 }
 
 /** GET usage-records query — ZERO-based page (default 0), unlike the list. */
 export interface ListUsageRecordsParams {
-    page?: number;
-    limit?: number;
-    promptTemplateId?: string;
-    [key: string]: string | number | boolean | undefined | null;
+  page?: number;
+  limit?: number;
+  promptTemplateId?: string;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 /**
@@ -230,11 +230,11 @@ export interface ListUsageRecordsParams {
  * departments read) — not the template's.
  */
 export interface AssignDepartmentRequest {
-    departmentId: string;
-    preSummaryPromptId?: string | null;
-    newPatientPromptId?: string | null;
-    revisitPromptId?: string | null;
-    expectedVersion: number;
+  departmentId: string;
+  preSummaryPromptId?: string | null;
+  newPatientPromptId?: string | null;
+  revisitPromptId?: string | null;
+  expectedVersion: number;
 }
 
 /**
@@ -243,17 +243,17 @@ export interface AssignDepartmentRequest {
  * and `version` as the assign-department expectedVersion source.
  */
 export interface Department {
-    id: string;
-    code?: string;
-    name?: string;
-    isRootDepartment: boolean;
-    preSummaryPromptId?: string;
-    newPatientPromptId?: string;
-    revisitPromptId?: string;
-    resourceStatus?: ResourceStatus;
-    createdAt: string;
-    updatedAt: string;
-    version: number;
+  id: string;
+  code?: string;
+  name?: string;
+  isRootDepartment: boolean;
+  preSummaryPromptId?: string;
+  newPatientPromptId?: string;
+  revisitPromptId?: string;
+  resourceStatus?: ResourceStatus;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
 }
 
 /**
@@ -265,49 +265,49 @@ export interface Department {
 export type DepartmentAgentDnaPolicy = 'INHERIT' | 'DISABLED';
 
 export interface DepartmentAgent {
-    id: string;
-    departmentId: string;
-    name: string;
-    slug: string;
-    description?: string;
-    /** Bound Agent Template id (a `PromptTemplate` row). */
-    promptTemplateId: string;
-    /** Pinned `PromptVersion` number; null/undefined ⇒ tracks latest APPROVED. */
-    pinnedVersionNumber?: number | null;
-    dnaStylePolicy: DepartmentAgentDnaPolicy;
-    harnessOverrides?: Record<string, unknown>;
-    goldenSetId?: string;
-    isDefault: boolean;
-    sourceAgentTemplateSlug?: string | null;
-    /** Cloned from the SYSTEM template library — content is read-only until cloned. */
-    templateLocked: boolean;
-    tags?: string[];
-    resourceStatus?: ResourceStatus;
-    createdAt: string;
-    updatedAt: string;
-    version: number;
+  id: string;
+  departmentId: string;
+  name: string;
+  slug: string;
+  description?: string;
+  /** Bound Agent Template id (a `PromptTemplate` row). */
+  promptTemplateId: string;
+  /** Pinned `PromptVersion` number; null/undefined ⇒ tracks latest APPROVED. */
+  pinnedVersionNumber?: number | null;
+  dnaStylePolicy: DepartmentAgentDnaPolicy;
+  harnessOverrides?: Record<string, unknown>;
+  goldenSetId?: string;
+  isDefault: boolean;
+  sourceAgentTemplateSlug?: string | null;
+  /** Cloned from the SYSTEM template library — content is read-only until cloned. */
+  templateLocked: boolean;
+  tags?: string[];
+  resourceStatus?: ResourceStatus;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
 }
 
 /** GET /admin/department-agents query — platform-standard ZERO-based page. */
 export interface ListDepartmentAgentsParams {
-    departmentId?: string;
-    page?: number;
-    limit?: number;
-    [key: string]: string | number | boolean | undefined | null;
+  departmentId?: string;
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 /** POST /admin/department-agents body (CreateDepartmentAgentRequest). */
 export interface CreateDepartmentAgentRequest {
-    departmentId: string;
-    name: string;
-    slug: string;
-    description?: string;
-    promptTemplateId: string;
-    pinnedVersionNumber?: number | null;
-    dnaStylePolicy?: DepartmentAgentDnaPolicy;
-    harnessOverrides?: Record<string, unknown>;
-    goldenSetId?: string;
-    tags?: string[];
+  departmentId: string;
+  name: string;
+  slug: string;
+  description?: string;
+  promptTemplateId: string;
+  pinnedVersionNumber?: number | null;
+  dnaStylePolicy?: DepartmentAgentDnaPolicy;
+  harnessOverrides?: Record<string, unknown>;
+  goldenSetId?: string;
+  tags?: string[];
 }
 
 /**
@@ -322,15 +322,15 @@ export interface CreateDepartmentAgentRequest {
  * "detach" affordance clears an attached golden set; TASK-549).
  */
 export interface UpdateDepartmentAgentRequest {
-    name?: string;
-    slug?: string;
-    description?: string;
-    promptTemplateId?: string;
-    dnaStylePolicy?: DepartmentAgentDnaPolicy;
-    harnessOverrides?: Record<string, unknown>;
-    goldenSetId?: string | null;
-    tags?: string[];
-    resourceStatus?: 'ENABLED' | 'DISABLED';
+  name?: string;
+  slug?: string;
+  description?: string;
+  promptTemplateId?: string;
+  dnaStylePolicy?: DepartmentAgentDnaPolicy;
+  harnessOverrides?: Record<string, unknown>;
+  goldenSetId?: string | null;
+  tags?: string[];
+  resourceStatus?: 'ENABLED' | 'DISABLED';
 }
 
 // ---------------------------------------------------------------------------
@@ -345,54 +345,54 @@ export interface UpdateDepartmentAgentRequest {
 
 /** GET admin/harness/golden-sets row — a slim GoldenSetResponse projection. */
 export interface EvalGoldenSet {
-    id: string;
-    name: string;
-    description?: string | null;
-    pinnedVersion?: string | null;
+  id: string;
+  name: string;
+  description?: string | null;
+  pinnedVersion?: string | null;
 }
 
 export interface EvalGoldenSetList {
-    items: EvalGoldenSet[];
-    total: number;
+  items: EvalGoldenSet[];
+  total: number;
 }
 
 /** NOTE: `page` is ONE-based on this endpoint (matches the harness-ops copy). */
 export interface ListEvalGoldenSetsParams {
-    page?: number;
-    limit?: number;
-    [key: string]: string | number | boolean | undefined | null;
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 /** GET admin/harness/eval-runs row — a slim EvalRunResponse projection. */
 export interface AgentEvalRun {
-    id: string;
-    goldenSetId: string;
-    status: string | null;
-    /** How the run was triggered: MANUAL (run-now) | PROMOTION (approve/pin gate) | CI. Null on legacy rows. */
-    triggerType: string | null;
-    startedAt: string | null;
-    completedAt: string | null;
-    aggregateScores: unknown;
-    createdAt: string;
+  id: string;
+  goldenSetId: string;
+  status: string | null;
+  /** How the run was triggered: MANUAL (run-now) | PROMOTION (approve/pin gate) | CI. Null on legacy rows. */
+  triggerType: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  aggregateScores: unknown;
+  createdAt: string;
 }
 
 export interface AgentEvalRunList {
-    items: AgentEvalRun[];
-    total: number;
+  items: AgentEvalRun[];
+  total: number;
 }
 
 /** NOTE: `page` is ONE-based on this endpoint (matches the harness-ops copy). */
 export interface ListAgentEvalRunsParams {
-    goldenSetId?: string;
-    page?: number;
-    limit?: number;
-    [key: string]: string | number | boolean | undefined | null;
+  goldenSetId?: string;
+  page?: number;
+  limit?: number;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 /** POST golden-sets/:id/run result (EvalRunTriggerResponse) — synchronous run-now verdict. */
 export interface EvalRunTrigger {
-    runId: string;
-    passed: boolean;
-    failures: string[];
-    aggregates: Record<string, number>;
+  runId: string;
+  passed: boolean;
+  failures: string[];
+  aggregates: Record<string, number>;
 }

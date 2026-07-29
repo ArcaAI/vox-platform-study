@@ -63,10 +63,7 @@ export class AiRuntimeProfileRepository extends Repository<AiRuntimeProfileEntit
   }
 
   /** Every ENABLED profile row for one tenant (admin list). */
-  async findByTenantId(
-    tenantId: string,
-    tx?: Prisma.TransactionClient | any,
-  ): Promise<AiRuntimeProfileEntity[]> {
+  async findByTenantId(tenantId: string, tx?: Prisma.TransactionClient | any): Promise<AiRuntimeProfileEntity[]> {
     const where = { tenantId, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {

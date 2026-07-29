@@ -127,6 +127,9 @@ interface MockStore {
   resetAudioDropped: ReturnType<typeof vi.fn>;
   markAudioLost: ReturnType<typeof vi.fn>;
   incrementDroppedFrames: ReturnType<typeof vi.fn>;
+  // Streaming STT connection/pipeline actions (TASK-567 Phase F).
+  setSttConnectionState: ReturnType<typeof vi.fn>;
+  setActivePipeline: ReturnType<typeof vi.fn>;
 }
 
 let mockStore: MockStore;
@@ -197,16 +200,32 @@ function buildMockStore(): MockStore {
     sessionError: null,
     globalError: null,
     relatedConsultations: [],
-    setIsCapturing: vi.fn((v: boolean) => { store.isCapturing = v; }),
-    setIsMuted: vi.fn((v: boolean) => { store.isMuted = v; }),
-    setAudioLevel: vi.fn((v: number) => { store.audioLevel = v; }),
-    setIsSpeaking: vi.fn((v: boolean) => { store.isSpeaking = v; }),
-    setCurrentTranscript: vi.fn((v: string) => { store.currentTranscript = v; }),
-    setAudioLanguage: vi.fn((v: string) => { store.audioLanguage = v; }),
+    setIsCapturing: vi.fn((v: boolean) => {
+      store.isCapturing = v;
+    }),
+    setIsMuted: vi.fn((v: boolean) => {
+      store.isMuted = v;
+    }),
+    setAudioLevel: vi.fn((v: number) => {
+      store.audioLevel = v;
+    }),
+    setIsSpeaking: vi.fn((v: boolean) => {
+      store.isSpeaking = v;
+    }),
+    setCurrentTranscript: vi.fn((v: string) => {
+      store.currentTranscript = v;
+    }),
+    setAudioLanguage: vi.fn((v: string) => {
+      store.audioLanguage = v;
+    }),
     setAudioPlugins: vi.fn(),
     setAudioError: vi.fn(),
-    setActiveStream: vi.fn((s: MockStream | null) => { store.activeStream = s; }),
-    setActiveAudioContext: vi.fn((c: typeof mockAudioContext | null) => { store.activeAudioContext = c; }),
+    setActiveStream: vi.fn((s: MockStream | null) => {
+      store.activeStream = s;
+    }),
+    setActiveAudioContext: vi.fn((c: typeof mockAudioContext | null) => {
+      store.activeAudioContext = c;
+    }),
     addTranscriptSegment: vi.fn(),
     addContextItem: vi.fn(),
     addEntities: vi.fn(),
@@ -214,6 +233,9 @@ function buildMockStore(): MockStore {
     resetAudioDropped: vi.fn(),
     markAudioLost: vi.fn(),
     incrementDroppedFrames: vi.fn(),
+    // Streaming STT connection/pipeline actions (TASK-567 Phase F).
+    setSttConnectionState: vi.fn(),
+    setActivePipeline: vi.fn(),
   };
   return store;
 }

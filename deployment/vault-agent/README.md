@@ -3,11 +3,11 @@
 TASK-558 §13.2 (P1/P2/P6/P7) and §9.2 L7. This directory holds the **contract**,
 not a deployment topology (see [`../README.md`](../README.md) for why).
 
-| File | Purpose |
-|---|---|
-| `reference-deployment.yaml` | One complete, annotated Deployment showing every required annotation. Copy the shape, swap the secret list. |
-| `kustomization.yaml` | Makes the reference manifest buildable so it cannot rot: `kubectl kustomize deployment/vault-agent`. |
-| `check-contract.sh` | Asserts the contract on any rendered manifest set — including a `helm template` of the `hope-deployments` chart. |
+| File                        | Purpose                                                                                                          |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `reference-deployment.yaml` | One complete, annotated Deployment showing every required annotation. Copy the shape, swap the secret list.      |
+| `kustomization.yaml`        | Makes the reference manifest buildable so it cannot rot: `kubectl kustomize deployment/vault-agent`.             |
+| `check-contract.sh`         | Asserts the contract on any rendered manifest set — including a `helm template` of the `hope-deployments` chart. |
 
 ## Why Vault Agent and not External Secrets Operator
 
@@ -72,15 +72,15 @@ rendered through `toEnvVarName()`. Do not add a secret here that has no descript
 `scripts/vault-seed-secrets.sh` derives its seed list from the same source, so an
 undeclared name would never be written to Vault.
 
-| Workload | Vault role | Injected secrets |
-|---|---|---|
-| `hope-api` (gateway) | `hope-api` | `JWT_SECRET_KEY`, `SESSION_SECRET_KEY`, `API_KEY_PEPPER`, `OIDC_CLIENT_SECRET`, `REDIS_PASS`, `MQTT_PASS`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `SMR_SERVICE_TOKEN`, `NLP_SERVICE_TOKEN`, `GUARDRAIL_SERVICE_TOKEN`, `HARNESS_SERVICE_TOKEN`, `TTS_SERVICE_TOKEN`, `API_GATEWAY_KEY` |
-| `hope-smr` | `hope-smr` | `SMR_SERVICE_TOKEN`, `SMR_AZURE_API_KEY`, `REDIS_PASS` |
-| `hope-guardrail` | `hope-guardrail` | `GUARDRAIL_SERVICE_TOKEN`, `GUARDRAIL_VLLM_API_KEY`, `REDIS_PASS` |
-| `hope-nlp` | `hope-nlp` | `NLP_SERVICE_TOKEN` |
-| `hope-harness` (+ Temporal worker) | `hope-harness` | `HARNESS_SERVICE_TOKEN`, `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY`, `HARNESS_CLAIM_CHECK_ACCESS_KEY`, `HARNESS_CLAIM_CHECK_SECRET_KEY` |
-| `hope-tts` | `hope-tts` | `TTS_SERVICE_TOKEN`, `TTS_SARVAM_API_KEY`, `AZURE_SPEECH_KEY` |
-| `hope-stt` (+ worker) | `hope-stt` | `API_GATEWAY_KEY`, `AZURE_SPEECH_KEY`, `AZURE_FOUNDRY_API_KEY` |
+| Workload                           | Vault role       | Injected secrets                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hope-api` (gateway)               | `hope-api`       | `JWT_SECRET_KEY`, `SESSION_SECRET_KEY`, `API_KEY_PEPPER`, `OIDC_CLIENT_SECRET`, `REDIS_PASS`, `MQTT_PASS`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `SMR_SERVICE_TOKEN`, `NLP_SERVICE_TOKEN`, `GUARDRAIL_SERVICE_TOKEN`, `HARNESS_SERVICE_TOKEN`, `TTS_SERVICE_TOKEN`, `API_GATEWAY_KEY` |
+| `hope-smr`                         | `hope-smr`       | `SMR_SERVICE_TOKEN`, `SMR_AZURE_API_KEY`, `REDIS_PASS`                                                                                                                                                                                                                                                                    |
+| `hope-guardrail`                   | `hope-guardrail` | `GUARDRAIL_SERVICE_TOKEN`, `GUARDRAIL_VLLM_API_KEY`, `REDIS_PASS`                                                                                                                                                                                                                                                         |
+| `hope-nlp`                         | `hope-nlp`       | `NLP_SERVICE_TOKEN`                                                                                                                                                                                                                                                                                                       |
+| `hope-harness` (+ Temporal worker) | `hope-harness`   | `HARNESS_SERVICE_TOKEN`, `HARNESS_JUDGE_OPENAI_COMPAT_API_KEY`, `HARNESS_CLAIM_CHECK_ACCESS_KEY`, `HARNESS_CLAIM_CHECK_SECRET_KEY`                                                                                                                                                                                        |
+| `hope-tts`                         | `hope-tts`       | `TTS_SERVICE_TOKEN`, `TTS_SARVAM_API_KEY`, `AZURE_SPEECH_KEY`                                                                                                                                                                                                                                                             |
+| `hope-stt` (+ worker)              | `hope-stt`       | `API_GATEWAY_KEY`, `AZURE_SPEECH_KEY`, `AZURE_FOUNDRY_API_KEY`                                                                                                                                                                                                                                                            |
 
 The gateway holds the superset because it both issues and verifies the
 service-token hop in each direction. `API_GATEWAY_KEY` (not `STT_SERVICE_TOKEN` —

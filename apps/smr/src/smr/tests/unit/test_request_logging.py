@@ -123,7 +123,9 @@ class TestRequestStartLogged:
             await client.get("/api/v1/health")
 
         start_logs = [log_line for log_line in cap_logs if log_line.get("event") == "request.start"]
-        assert len(start_logs) >= 1, f"Expected request.start, got events: {[log_line.get('event') for log_line in cap_logs]}"
+        assert (
+            len(start_logs) >= 1
+        ), f"Expected request.start, got events: {[log_line.get('event') for log_line in cap_logs]}"
         assert start_logs[0]["method"] == "GET"
         assert start_logs[0]["path"] == "/api/v1/health"
 
@@ -137,8 +139,12 @@ class TestRequestCompleteLogged:
             resp = await client.get("/api/v1/health")
 
         assert resp.status_code == 200
-        complete_logs = [log_line for log_line in cap_logs if log_line.get("event") == "request.complete"]
-        assert len(complete_logs) >= 1, f"Expected request.complete, got events: {[log_line.get('event') for log_line in cap_logs]}"
+        complete_logs = [
+            log_line for log_line in cap_logs if log_line.get("event") == "request.complete"
+        ]
+        assert (
+            len(complete_logs) >= 1
+        ), f"Expected request.complete, got events: {[log_line.get('event') for log_line in cap_logs]}"
         log = complete_logs[0]
         assert log["method"] == "GET"
         assert log["path"] == "/api/v1/health"
@@ -160,8 +166,12 @@ class TestRequestFailedLogged:
             with structlog.testing.capture_logs() as cap_logs:
                 _resp = await c.get("/api/v1/_test_explode")
 
-        failed_logs = [log_line for log_line in cap_logs if log_line.get("event") == "request.failed"]
-        assert len(failed_logs) >= 1, f"Expected request.failed, got events: {[log_line.get('event') for log_line in cap_logs]}"
+        failed_logs = [
+            log_line for log_line in cap_logs if log_line.get("event") == "request.failed"
+        ]
+        assert (
+            len(failed_logs) >= 1
+        ), f"Expected request.failed, got events: {[log_line.get('event') for log_line in cap_logs]}"
         log = failed_logs[0]
         assert log["method"] == "GET"
         assert log["path"] == "/api/v1/_test_explode"
@@ -178,7 +188,9 @@ class TestDurationMsPositive:
         with structlog.testing.capture_logs() as cap_logs:
             await client.get("/api/v1/health")
 
-        complete_logs = [log_line for log_line in cap_logs if log_line.get("event") == "request.complete"]
+        complete_logs = [
+            log_line for log_line in cap_logs if log_line.get("event") == "request.complete"
+        ]
         assert len(complete_logs) >= 1
         assert complete_logs[0]["duration_ms"] > 0
 
@@ -390,8 +402,12 @@ class TestEndpointEmitsGenerationAudit:
 
         assert resp.status_code == 200
 
-        audit_logs = [log_line for log_line in cap_logs if log_line.get("event") == "generation.audit"]
-        assert len(audit_logs) >= 1, f"Expected generation.audit, got events: {[log_line.get('event') for log_line in cap_logs]}"
+        audit_logs = [
+            log_line for log_line in cap_logs if log_line.get("event") == "generation.audit"
+        ]
+        assert (
+            len(audit_logs) >= 1
+        ), f"Expected generation.audit, got events: {[log_line.get('event') for log_line in cap_logs]}"
 
         evt = audit_logs[0]
         assert evt["provider"] == "ollama"

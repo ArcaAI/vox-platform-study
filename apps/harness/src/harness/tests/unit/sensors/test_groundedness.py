@@ -197,7 +197,9 @@ class TestOnClaimCallback:
     async def test_on_claim_fires_once_per_verifiable_claim_with_its_verdict(self):
         claims = [
             claim("c-pen", text="penicillin allergy", section="P"),  # ungrounded
-            claim("c-htn", text="hypertension", section="A", evidence=[evidence(quote="hypertension")]),
+            claim(
+                "c-htn", text="hypertension", section="A", evidence=[evidence(quote="hypertension")]
+            ),
         ]
         seen: list[tuple[str, bool]] = []
 

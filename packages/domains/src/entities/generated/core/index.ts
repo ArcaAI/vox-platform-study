@@ -52,8 +52,8 @@ export * from './TenantFrontendConfigEntity';
 export * from './TenantIdentityProviderEntity';
 export * from './TenantIdentityProviderDomainEntity';
 export * from './TenantStorageConfigEntity';
+export * from './TenantSttConfigEntity';
 export * from './TenantTtsConfigEntity';
-export * from './TenantTtsProviderCredentialEntity';
 export * from './TenantEntity';
 export * from './TenantUsageMeterEntity';
 export * from './TranscriptionJobEntity';
@@ -68,4 +68,3 @@ export * from './UserVoiceProfileEntity';
 export * from './WebhookEntity';
 export * from './WebhookRunHistoryEntity';
 export * from './DepartmentAgentEntity';
-

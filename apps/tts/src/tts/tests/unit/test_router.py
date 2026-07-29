@@ -8,8 +8,19 @@ import tts.routing.router as router_mod
 from tts.catalog.voices import VoiceCatalog
 from tts.core.config import Settings
 from tts.providers.base import AudioFormat, ProviderRegistry
-from tts.routing.router import AllProvidersUnavailableError, TTSRouter
+from tts.routing.router import (
+    AllProvidersUnavailableError,
+    TTSRouter,
+    TtsRoutingUnconfiguredError,
+)
 from tts.tests.fakes import FakeEngine
+
+# The gateway ALWAYS injects the tenant's resolved routing chain (built-in-first
+# by default — TASK-577). These mirror that injection so the router tests
+# exercise the same shape production does; the router itself no longer carries a
+# code/env vendor default and FAILS CLOSED when no chain is injected.
+_DEFAULT_ROUTING_EN = ["azure", "kokoro"]
+_DEFAULT_ROUTING_ML = ["azure", "sarvam", "indic_parler"]
 
 
 def _router(providers: dict, *, cb_threshold: int = 5) -> TTSRouter:
@@ -20,6 +31,10 @@ def _router(providers: dict, *, cb_threshold: int = 5) -> TTSRouter:
 
 
 async def _collect(router: TTSRouter, **kwargs) -> list:
+    # Default the injected chain (the gateway's job) so a test that only cares
+    # about failover/whitelist behaviour need not restate it.
+    kwargs.setdefault("routing_en", _DEFAULT_ROUTING_EN)
+    kwargs.setdefault("routing_ml", _DEFAULT_ROUTING_ML)
     return [chunk async for chunk in router.synthesize(**kwargs)]
 
 
@@ -56,7 +71,9 @@ class TestRouting:
         router = _router({"azure": azure, "kokoro": kokoro})
         got = []
         with pytest.raises(RuntimeError):
-            async for chunk in router.synthesize(voice_id="en-female-1", text="Hi."):
+            async for chunk in router.synthesize(
+                voice_id="en-female-1", text="Hi.", routing_en=_DEFAULT_ROUTING_EN
+            ):
                 got.append(chunk)
         assert len(got) == 1  # one chunk emitted before the failure
         assert kokoro.calls == 0  # never switched mid-stream
@@ -114,7 +131,9 @@ class TestRouting:
         # A BYO key lets a tenant use a provider the platform did NOT
         # register; the router builds a per-tenant engine from the injected creds.
         fake = FakeEngine("azure", chunks=1)
-        monkeypatch.setattr(router_mod, "_build_override_engine", lambda settings, name, override: fake)
+        monkeypatch.setattr(
+            router_mod, "_build_override_engine", lambda settings, name, override: fake
+        )
         router = _router({})  # azure NOT registered at the platform
         chunks = await _collect(
             router,
@@ -128,7 +147,61 @@ class TestRouting:
     async def test_cancellation_closes_engine(self) -> None:
         azure = FakeEngine("azure", chunks=5)
         router = _router({"azure": azure})
-        gen = router.synthesize(voice_id="en-female-1", text="Hi.", fmt=AudioFormat.PCM)
+        gen = router.synthesize(
+            voice_id="en-female-1", text="Hi.", fmt=AudioFormat.PCM, routing_en=_DEFAULT_ROUTING_EN
+        )
         await gen.__anext__()
         await gen.aclose()
         assert azure.closed >= 1
+
+
+class TestFailClosedRouting:
+    """The router carries NO code/env vendor default (TASK-577 / F1): when the
+    gateway injects no routing chain, it FAILS CLOSED instead of substituting a
+    provider order. Day-1 routing is DB-sourced (SYSTEM TenantTtsConfig)."""
+
+    def test_resolve_chain_raises_when_en_unconfigured(self) -> None:
+        router = _router({"kokoro": FakeEngine("kokoro")})
+        with pytest.raises(TtsRoutingUnconfiguredError):
+            router.resolve_chain("en-US")
+
+    def test_resolve_chain_raises_when_ml_unconfigured(self) -> None:
+        router = _router({"indic_parler": FakeEngine("indic_parler")})
+        with pytest.raises(TtsRoutingUnconfiguredError):
+            router.resolve_chain("ml-IN")
+
+    def test_resolve_chain_raises_on_empty_injected_chain(self) -> None:
+        router = _router({"kokoro": FakeEngine("kokoro")})
+        with pytest.raises(TtsRoutingUnconfiguredError):
+            router.resolve_chain("en-US", routing_en=[])
+
+    @pytest.mark.asyncio
+    async def test_synthesize_fails_closed_without_routing(self) -> None:
+        # No injected chain and NO vendor fallback → fail closed, never azure.
+        azure, kokoro = FakeEngine("azure"), FakeEngine("kokoro")
+        router = _router({"azure": azure, "kokoro": kokoro})
+        with pytest.raises(TtsRoutingUnconfiguredError):
+            async for _ in router.synthesize(voice_id="en-female-1", text="Hi."):
+                pass
+        assert azure.calls == 0 and kokoro.calls == 0
+
+    @pytest.mark.asyncio
+    async def test_injected_builtin_chain_synthesizes_via_kokoro_not_azure(self) -> None:
+        # The SYSTEM default (built-in-first) injects ["kokoro"] — synthesis
+        # goes to the local engine, and azure is never touched.
+        azure, kokoro = FakeEngine("azure"), FakeEngine("kokoro", chunks=2)
+        router = _router({"azure": azure, "kokoro": kokoro})
+        chunks = [
+            c
+            async for c in router.synthesize(
+                voice_id="en-female-1", text="Hi.", routing_en=["kokoro"]
+            )
+        ]
+        assert kokoro.calls == 1 and azure.calls == 0
+        assert len(chunks) == 2
+
+    def test_fail_closed_error_maps_to_provider_unavailable_at_boundary(self) -> None:
+        # TtsRoutingUnconfiguredError is a specialization of
+        # AllProvidersUnavailableError so the endpoints' existing 503 / WS
+        # provider-unavailable handlers cover it with no extra wiring.
+        assert issubclass(TtsRoutingUnconfiguredError, AllProvidersUnavailableError)

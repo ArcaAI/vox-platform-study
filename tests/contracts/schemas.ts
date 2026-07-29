@@ -18,10 +18,15 @@ export const SttHealthResponseSchema = z.object({
   status: z.enum(['healthy', 'degraded', 'unhealthy']),
   timestamp: z.number().optional(),
   message: z.string().optional(),
-  components: z.record(z.string(), z.object({
-    status: z.string(),
-    message: z.string().optional(),
-  })).optional(),
+  components: z
+    .record(
+      z.string(),
+      z.object({
+        status: z.string(),
+        message: z.string().optional(),
+      }),
+    )
+    .optional(),
 });
 
 /**
@@ -31,11 +36,13 @@ export const SttStartSessionRequestSchema = z.object({
   session_id: z.string(),
   language: z.string().default('en-US'),
   provider: z.enum(['azure', 'whisper']).optional(),
-  audioSettings: z.object({
-    sampleRate: z.number().optional(),
-    channels: z.number().optional(),
-    bitDepth: z.number().optional(),
-  }).optional(),
+  audioSettings: z
+    .object({
+      sampleRate: z.number().optional(),
+      channels: z.number().optional(),
+      bitDepth: z.number().optional(),
+    })
+    .optional(),
   num_speakers: z.number().optional(),
 });
 
@@ -97,11 +104,13 @@ export const SmrHealthResponseSchema = z.object({
 export const SmrSyncSummaryRequestSchema = z.object({
   session_data: z.object({
     session_id: z.string(),
-    conversation_segments: z.array(z.object({
-      speaker: z.string(),
-      text: z.string(),
-      timestamp: z.string().optional(),
-    })),
+    conversation_segments: z.array(
+      z.object({
+        speaker: z.string(),
+        text: z.string(),
+        timestamp: z.string().optional(),
+      }),
+    ),
     patient_info: z.object({}).passthrough().optional(),
     test_results_text: z.string().optional(),
     previous_visits_text: z.string().optional(),
@@ -129,11 +138,13 @@ export const SmrSummaryResponseSchema = z.object({
   summary: z.any(), // Complex nested structure
   created_at: z.string(),
   processing_time_ms: z.number(),
-  token_usage: z.object({
-    prompt_tokens: z.number(),
-    completion_tokens: z.number(),
-    total_tokens: z.number(),
-  }).optional(),
+  token_usage: z
+    .object({
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      total_tokens: z.number(),
+    })
+    .optional(),
   llm_provider: z.string().optional(),
   model_name: z.string().optional(),
   confidence_score: z.number().nullable().optional(),

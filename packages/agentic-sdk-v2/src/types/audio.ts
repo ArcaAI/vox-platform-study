@@ -297,6 +297,49 @@ export interface AudioStartOptions {
 }
 
 // =============================================================================
+// Streaming STT connection / provider state (TASK-567 Phase F)
+// =============================================================================
+
+/**
+ * Live connection health of the streaming STT session.
+ *   - `connected`         — transport open, transcribing on the active pipeline.
+ *   - `reconnecting`      — the WebSocket dropped and the client is re-attempting
+ *                           (or a degraded on-the-fly provider switch is rebuilding).
+ *   - `switched_fallback` — the backend swapped the session's ASR engine to the
+ *                           tenant fallback (auto on outage OR user-triggered).
+ *                           The durable "we are on the fallback" signal lives on
+ *                           {@link ActivePipelineInfo.isFallback}; this value is
+ *                           the momentary switch acknowledgement.
+ *   - `error`             — reconnection budget exhausted; the session is gone.
+ */
+export type SttConnectionState = 'connected' | 'reconnecting' | 'switched_fallback' | 'error';
+
+/** The ASR pipeline the live streaming session is currently transcribing on. */
+export interface ActivePipelineInfo {
+  /** Pipeline UUID or slug. */
+  id: string;
+  /** Human-readable name (best-effort; falls back to the id when unresolved). */
+  name: string;
+  /** True once the session has switched to the tenant fallback pipeline. */
+  isFallback: boolean;
+}
+
+/**
+ * Payload of a backend `provider_switched` status result (TASK-567 §3.4),
+ * surfaced from the streaming STT `status` frame to the hook/store.
+ */
+export interface ProviderSwitchInfo {
+  /** Pipeline the session switched away from. */
+  fromPipeline: string;
+  /** Pipeline the session is now transcribing on (the fallback). */
+  toPipeline: string;
+  /** Trigger: `auto` (outage/exception) or `user` (clinician-initiated). */
+  reason: string;
+  /** Utterance ordinal at which the swap happened, when the backend reports it. */
+  utteranceIndex?: number;
+}
+
+// =============================================================================
 // Default Values
 // =============================================================================
 

@@ -45,9 +45,7 @@ def _resolve_model_source(config: IndicParlerConfig) -> tuple[str, dict[str, boo
     return config.hf_model, {}
 
 
-def _resolve_desc_source(
-    config: IndicParlerConfig, baked_id: str
-) -> tuple[str, dict[str, bool]]:
+def _resolve_desc_source(config: IndicParlerConfig, baked_id: str) -> tuple[str, dict[str, bool]]:
     """Where to load the description (flan-t5) tokenizer from.
 
     Parler bakes ``google/flan-t5-large`` as a Hub id in its config, so it is
@@ -135,9 +133,9 @@ class IndicParlerProvider:
 
         device = self._config.device
         model_source, model_kwargs = _resolve_model_source(self._config)
-        model = ParlerTTSForConditionalGeneration.from_pretrained(
-            model_source, **model_kwargs
-        ).to(device)
+        model = ParlerTTSForConditionalGeneration.from_pretrained(model_source, **model_kwargs).to(
+            device
+        )
         tokenizer = AutoTokenizer.from_pretrained(model_source, **model_kwargs)
         desc_source, desc_kwargs = _resolve_desc_source(
             self._config, model.config.text_encoder._name_or_path

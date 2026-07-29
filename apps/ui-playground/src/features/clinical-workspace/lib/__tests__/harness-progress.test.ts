@@ -49,9 +49,7 @@ describe('reduceHarnessProgressMessage', () => {
   });
 
   it('classifies the terminal payload as closed', () => {
-    const message = reduceHarnessProgressMessage(
-      JSON.stringify(event({ closed: true, stages: [stage({ status: 'completed' })] })),
-    );
+    const message = reduceHarnessProgressMessage(JSON.stringify(event({ closed: true, stages: [stage({ status: 'completed' })] })));
 
     expect(message.kind).toBe('closed');
     if (message.kind !== 'closed') throw new Error('expected closed');
@@ -100,10 +98,7 @@ describe('normalizeHarnessProgressEvent', () => {
   it('coerces an unknown status to pending and keeps stages sorted by ordinal', () => {
     const normalized = normalizeHarnessProgressEvent(
       event({
-        stages: [
-          stage({ stage: 'b', ordinal: 2, status: 'exploded' }),
-          stage({ stage: 'a', ordinal: 1, status: 'completed' }),
-        ],
+        stages: [stage({ stage: 'b', ordinal: 2, status: 'exploded' }), stage({ stage: 'a', ordinal: 1, status: 'completed' })],
       }) as Record<string, unknown>,
     );
 

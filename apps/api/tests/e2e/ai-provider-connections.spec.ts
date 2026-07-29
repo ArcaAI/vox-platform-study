@@ -2,8 +2,15 @@
  * AI provider connections e2e.
  *
  * Live-stack requirement: the dev stack (`pnpm test:api:up`) plus a seeded
- * database (`pnpm db:seed`), which supplies the eight DISABLED SYSTEM
- * `AiProviderConnection` rows.
+ * database (`pnpm db:seed`), which supplies the eleven SYSTEM `llm`
+ * `AiProviderConnection` rows (ollama, lm-studio, azure, bedrock, built-in,
+ * sarvam, openai, anthropic, vertex, vllm, llama-cpp — see
+ * seed/17-ai-provider-connection.ts; the legacy `/admin/ai-providers` alias
+ * hard-pins `service='llm'`, so `stt`/`tts` rows never show up here).
+ * Seed-authoritative posture (TASK-578): the five built-in-local engines
+ * (ollama, lm-studio, built-in, vllm, llama-cpp) seed ENABLED as the Day-1
+ * default; the six cloud/BYO providers (azure, bedrock, sarvam, openai,
+ * anthropic, vertex) seed DISABLED until a tenant brings a key. All seed keyless.
  *
  * What these specs prove that unit tests cannot:
  *   1. The OCC chain really is wired end to end through the gateway —
@@ -31,16 +38,25 @@ test.describe('AI provider connections', () => {
 
   const auth = () => ({ Authorization: `Bearer ${globalAdminToken}` });
 
-  test('seeds eight SYSTEM connections, all disabled and all keyless', async ({ request }) => {
+  test('seeds eleven SYSTEM llm connections: built-in-local enabled, cloud disabled, all keyless', async ({ request }) => {
     const res = await request.get(`/api/v1/admin/ai-providers?tenantId=${SYSTEM_TENANT_ID}`, { headers: auth() });
     expect(res.status()).toBe(200);
 
+    // Seed-authoritative (TASK-578): the built-in-local engines are the enabled
+    // Day-1 default; cloud/BYO providers stay disabled until a tenant keys them.
+    const BUILTIN_LOCAL = new Set(['ollama', 'lm-studio', 'built-in', 'vllm', 'llama-cpp']);
+
     const rows = await res.json();
-    expect(rows).toHaveLength(8);
+    expect(rows).toHaveLength(11);
     for (const row of rows) {
-      expect(row.enabled, `${row.provider} must seed disabled`).toBe(false);
       expect(row.hasKey, `${row.provider} must seed keyless`).toBe(false);
+      expect(row.enabled, `${row.provider} enabled-state must match built-in-local posture`).toBe(BUILTIN_LOCAL.has(row.provider));
     }
+    const enabled = rows
+      .filter((r: { enabled: boolean }) => r.enabled)
+      .map((r: { provider: string }) => r.provider)
+      .sort();
+    expect(enabled).toEqual([...BUILTIN_LOCAL].sort());
   });
 
   test('never returns ciphertext on the wire (raw-body assertion)', async ({ request }) => {

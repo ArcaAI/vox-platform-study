@@ -6,11 +6,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  AudioBufferManager,
-  DEFAULT_BUFFER_OPTIONS,
-  type AudioBufferManagerOptions,
-} from '../core/AudioBufferManager.js';
+import { AudioBufferManager, DEFAULT_BUFFER_OPTIONS, type AudioBufferManagerOptions } from '../core/AudioBufferManager.js';
 import { WHISPER_SAMPLE_RATE } from '../utils/audioResampler.js';
 
 describe('AudioBufferManager', () => {
@@ -24,9 +20,7 @@ describe('AudioBufferManager', () => {
     it('should initialize with default options', () => {
       expect(bufferManager.getSampleRate()).toBe(DEFAULT_BUFFER_OPTIONS.sampleRate);
       expect(bufferManager.getChunkDuration()).toBe(DEFAULT_BUFFER_OPTIONS.chunkLengthS);
-      expect(bufferManager.getChunkSamples()).toBe(
-        DEFAULT_BUFFER_OPTIONS.chunkLengthS * DEFAULT_BUFFER_OPTIONS.sampleRate
-      );
+      expect(bufferManager.getChunkSamples()).toBe(DEFAULT_BUFFER_OPTIONS.chunkLengthS * DEFAULT_BUFFER_OPTIONS.sampleRate);
     });
 
     it('should accept custom options', () => {

@@ -7,9 +7,11 @@ Welcome to the HOPE API Gateway documentation. This directory contains comprehen
 ### 📚 Core Documentation
 
 #### [01 - Implementation Status](./01-implementation-status.md)
+
 **Audience**: Project Managers, Developers, Stakeholders
 
 Track the current state of API Gateway features:
+
 - ✅ Completed features and endpoints
 - 🔄 Work in progress
 - 🟡 Planned enhancements
@@ -20,9 +22,11 @@ Track the current state of API Gateway features:
 ---
 
 #### [02 - Development Guide](./02-development-guide.md)
+
 **Audience**: Backend Developers, New Team Members
 
 Comprehensive guide for local development:
+
 - Environment setup (Node.js, PostgreSQL, Redis)
 - Creating new features and endpoints
 - Working with database migrations
@@ -36,9 +40,11 @@ Comprehensive guide for local development:
 ---
 
 #### [03 - Usage Guide](./03-usage-guide.md)
+
 **Audience**: Frontend Developers, Integration Partners, API Consumers
 
 Practical API usage examples:
+
 - Authentication methods (JWT, API Key, OIDC)
 - Complete endpoint reference with examples
 - Request/response formats
@@ -53,9 +59,11 @@ Practical API usage examples:
 ---
 
 #### [04 - Deployment Guide](./04-deployment-guide.md)
+
 **Audience**: DevOps Engineers, System Administrators, Platform Engineers
 
 Production deployment instructions:
+
 - Infrastructure requirements
 - Docker deployment
 - Single server setup with systemd
@@ -71,9 +79,11 @@ Production deployment instructions:
 ---
 
 #### [05 - API Reference](./05-api-reference.md)
+
 **Audience**: Backend Developers, Technical Architects
 
 Internal architecture reference:
+
 - Guards and authentication mechanisms
 - Custom decorators
 - Interceptors and filters
@@ -92,20 +102,24 @@ Internal architecture reference:
 ### 🎯 I want to...
 
 #### Use the API
+
 → Start with [Usage Guide](./03-usage-guide.md)
 → Try interactive docs at http://localhost:8868/api/v1/docs (in dev mode)
 
 #### Develop new features
+
 → Read [Development Guide](./02-development-guide.md)
 → Check [Implementation Status](./01-implementation-status.md) for existing features
 → Reference [API Reference](./05-api-reference.md) for architecture details
 
 #### Deploy to production
+
 → Follow [Deployment Guide](./04-deployment-guide.md)
 → Review security checklist in deployment guide
 → Set up monitoring as described
 
 #### Understand what's available
+
 → Check [Implementation Status](./01-implementation-status.md)
 → Browse [API Reference](./05-api-reference.md) for technical details
 
@@ -118,17 +132,19 @@ Internal architecture reference:
 All code examples follow these conventions:
 
 **TypeScript/JavaScript:**
+
 ```typescript
 // Clear variable names
 // Type annotations included
 // Comments for complex logic
 const session = await client.sessions.create({
   patientId: 'patient_123',
-  sessionType: 'CONSULTATION'
+  sessionType: 'CONSULTATION',
 });
 ```
 
 **cURL:**
+
 ```bash
 # Include all necessary headers
 # Use readable formatting
@@ -192,17 +208,20 @@ Located in `/docs/` (project root):
 All API Gateway development follows these standards:
 
 ### Backend Standards
+
 - NestJS best practices
 - Module organization
 - Error handling patterns
 - Security guidelines
 
 ### Database Standards
+
 - Prisma schema conventions
 - Migration workflows
 - Data modeling principles
 
 ### API Gateway Standards
+
 - Controller patterns
 - Service implementation
 - Authentication strategies
@@ -238,6 +257,7 @@ All API Gateway development follows these standards:
 ### When to Update
 
 Update documentation when:
+
 - Adding new features or endpoints
 - Changing existing functionality
 - Fixing bugs that affect usage
@@ -264,14 +284,14 @@ Update documentation when:
 
 ## Document Versions
 
-| Document | Version | Last Updated | Maintained By |
-|----------|---------|--------------|---------------|
-| [README](../README.md) | 1.0 | 2025-01-10 | HOPE Team |
-| [Implementation Status](./01-implementation-status.md) | 1.0 | 2025-01-10 | Dev Team |
-| [Development Guide](./02-development-guide.md) | 1.0 | 2025-01-10 | Dev Team |
-| [Usage Guide](./03-usage-guide.md) | 1.0 | 2025-01-10 | Dev Team |
-| [Deployment Guide](./04-deployment-guide.md) | 1.0 | 2025-01-10 | DevOps Team |
-| [API Reference](./05-api-reference.md) | 1.0 | 2025-01-10 | Dev Team |
+| Document                                               | Version | Last Updated | Maintained By |
+| ------------------------------------------------------ | ------- | ------------ | ------------- |
+| [README](../README.md)                                 | 1.0     | 2025-01-10   | HOPE Team     |
+| [Implementation Status](./01-implementation-status.md) | 1.0     | 2025-01-10   | Dev Team      |
+| [Development Guide](./02-development-guide.md)         | 1.0     | 2025-01-10   | Dev Team      |
+| [Usage Guide](./03-usage-guide.md)                     | 1.0     | 2025-01-10   | Dev Team      |
+| [Deployment Guide](./04-deployment-guide.md)           | 1.0     | 2025-01-10   | DevOps Team   |
+| [API Reference](./05-api-reference.md)                 | 1.0     | 2025-01-10   | Dev Team      |
 
 ---
 
@@ -288,4 +308,3 @@ Found an issue or have a suggestion for improving the documentation?
 **Last Updated**: 2025-01-10
 **Documentation Version**: 1.0
 **Maintained By**: HOPE Development Team
-

@@ -1,4 +1,4 @@
-""" D6 (dead-config sweep) — ``use_gpu`` on TextClassificationConfig,
+"""D6 (dead-config sweep) — ``use_gpu`` on TextClassificationConfig,
 TokenClassificationConfig and MedicalSuggesterConfig was defined but never
 read; every ``initialize()`` unconditionally auto-detects CUDA
 (``device=0 if torch.cuda.is_available() else -1``), so an operator setting
@@ -31,14 +31,18 @@ class TestTextClassifierUseGpu:
         when CUDA is reported available, regardless of config."""
         from nlp.services.text_classifier import TransformerTextClassifier
 
-        config = TextClassificationConfig(model_name="some-org/clinical-doctype-model", use_gpu=False)
+        config = TextClassificationConfig(
+            model_name="some-org/clinical-doctype-model", use_gpu=False
+        )
         classifier = TransformerTextClassifier(config=config)
 
         with (
             patch("nlp.services.text_classifier.AutoTokenizer"),
             patch("nlp.services.text_classifier.AutoModelForSequenceClassification"),
             patch("nlp.services.text_classifier.torch.cuda.is_available", return_value=True),
-            patch("nlp.services.text_classifier.pipeline", return_value=MagicMock()) as mock_pipeline,
+            patch(
+                "nlp.services.text_classifier.pipeline", return_value=MagicMock()
+            ) as mock_pipeline,
         ):
             await classifier.initialize()
 
@@ -58,7 +62,9 @@ class TestTextClassifierUseGpu:
             patch("nlp.services.text_classifier.AutoTokenizer"),
             patch("nlp.services.text_classifier.AutoModelForSequenceClassification"),
             patch("nlp.services.text_classifier.torch.cuda.is_available", return_value=True),
-            patch("nlp.services.text_classifier.pipeline", return_value=MagicMock()) as mock_pipeline,
+            patch(
+                "nlp.services.text_classifier.pipeline", return_value=MagicMock()
+            ) as mock_pipeline,
         ):
             await classifier.initialize()
 
@@ -79,7 +85,9 @@ class TestTokenClassifierUseGpu:
             patch("nlp.services.token_classifier.AutoTokenizer"),
             patch("nlp.services.token_classifier.AutoModelForTokenClassification") as mock_model,
             patch("nlp.services.token_classifier.torch.cuda.is_available", return_value=True),
-            patch("nlp.services.token_classifier.pipeline", return_value=MagicMock()) as mock_pipeline,
+            patch(
+                "nlp.services.token_classifier.pipeline", return_value=MagicMock()
+            ) as mock_pipeline,
         ):
             mock_model.from_pretrained.return_value.config.id2label = {}
             await classifier.initialize()
@@ -100,7 +108,9 @@ class TestTokenClassifierUseGpu:
             patch("nlp.services.token_classifier.AutoTokenizer"),
             patch("nlp.services.token_classifier.AutoModelForTokenClassification") as mock_model,
             patch("nlp.services.token_classifier.torch.cuda.is_available", return_value=True),
-            patch("nlp.services.token_classifier.pipeline", return_value=MagicMock()) as mock_pipeline,
+            patch(
+                "nlp.services.token_classifier.pipeline", return_value=MagicMock()
+            ) as mock_pipeline,
         ):
             mock_model.from_pretrained.return_value.config.id2label = {}
             await classifier.initialize()
@@ -122,7 +132,9 @@ class TestMedicalSuggesterUseGpu:
             patch("nlp.services.medical_suggester.AutoTokenizer"),
             patch("nlp.services.medical_suggester.AutoModelForSequenceClassification"),
             patch("nlp.services.medical_suggester.torch.cuda.is_available", return_value=True),
-            patch("nlp.services.medical_suggester.pipeline", return_value=MagicMock()) as mock_pipeline,
+            patch(
+                "nlp.services.medical_suggester.pipeline", return_value=MagicMock()
+            ) as mock_pipeline,
         ):
             await suggester.initialize()
 
@@ -142,7 +154,9 @@ class TestMedicalSuggesterUseGpu:
             patch("nlp.services.medical_suggester.AutoTokenizer"),
             patch("nlp.services.medical_suggester.AutoModelForSequenceClassification"),
             patch("nlp.services.medical_suggester.torch.cuda.is_available", return_value=True),
-            patch("nlp.services.medical_suggester.pipeline", return_value=MagicMock()) as mock_pipeline,
+            patch(
+                "nlp.services.medical_suggester.pipeline", return_value=MagicMock()
+            ) as mock_pipeline,
         ):
             await suggester.initialize()
 

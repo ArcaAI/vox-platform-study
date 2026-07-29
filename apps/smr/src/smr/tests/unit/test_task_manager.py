@@ -32,6 +32,7 @@ class TestTaskManagerCreate:
     @pytest.mark.asyncio
     async def test_create_task_returns_state(self, mock_redis):
         from smr.services.task_manager import TaskManager
+
         tm = TaskManager(redis=mock_redis)
         state = await tm.create_task(provider="ollama", model="llama3.2:latest")
         assert isinstance(state, TaskState)
@@ -41,6 +42,7 @@ class TestTaskManagerCreate:
     @pytest.mark.asyncio
     async def test_create_task_generates_unique_id(self, mock_redis):
         from smr.services.task_manager import TaskManager
+
         tm = TaskManager(redis=mock_redis)
         s1 = await tm.create_task(provider="ollama", model="m")
         s2 = await tm.create_task(provider="ollama", model="m")
@@ -49,6 +51,7 @@ class TestTaskManagerCreate:
     @pytest.mark.asyncio
     async def test_create_task_stores_in_redis(self, mock_redis):
         from smr.services.task_manager import TaskManager
+
         tm = TaskManager(redis=mock_redis)
         state = await tm.create_task(provider="ollama", model="m")
         mock_redis.set.assert_called_once()
@@ -61,6 +64,7 @@ class TestTaskManagerGet:
     async def test_get_existing_task(self, mock_redis):
 
         from smr.services.task_manager import TaskManager
+
         task_data = TaskState(
             task_id="abc", status=TaskStatus.RUNNING, provider="ollama", model="m"
         ).model_dump_json()
@@ -73,6 +77,7 @@ class TestTaskManagerGet:
     @pytest.mark.asyncio
     async def test_get_nonexistent_task_returns_none(self, mock_redis):
         from smr.services.task_manager import TaskManager
+
         mock_redis.get = AsyncMock(return_value=None)
         tm = TaskManager(redis=mock_redis)
         state = await tm.get_task("nonexistent")
@@ -83,6 +88,7 @@ class TestTaskManagerUpdate:
     @pytest.mark.asyncio
     async def test_update_status(self, mock_redis):
         from smr.services.task_manager import TaskManager
+
         updated_state = TaskState(
             task_id="abc", status=TaskStatus.RUNNING, provider="ollama", model="m"
         )
@@ -95,6 +101,7 @@ class TestTaskManagerUpdate:
     @pytest.mark.asyncio
     async def test_update_nonexistent_returns_none(self, mock_redis):
         from smr.services.task_manager import TaskManager
+
         mock_redis.eval = AsyncMock(return_value=None)
         tm = TaskManager(redis=mock_redis)
         result = await tm.update_task("nope", status=TaskStatus.RUNNING)
@@ -105,6 +112,7 @@ class TestTaskManagerStreamChunks:
     @pytest.mark.asyncio
     async def test_append_chunk(self, mock_redis):
         from smr.services.task_manager import TaskManager
+
         tm = TaskManager(redis=mock_redis)
         chunk = StreamChunk(type="chunk", content="Hello")
         await tm.append_chunk("task-1", chunk)
@@ -113,10 +121,13 @@ class TestTaskManagerStreamChunks:
     @pytest.mark.asyncio
     async def test_get_chunks(self, mock_redis):
         from smr.services.task_manager import TaskManager
-        mock_redis.xrange = AsyncMock(return_value=[
-            (b"1-0", {b"data": b'{"type":"chunk","content":"Hello"}'}),
-            (b"2-0", {b"data": b'{"type":"chunk","content":" world"}'}),
-        ])
+
+        mock_redis.xrange = AsyncMock(
+            return_value=[
+                (b"1-0", {b"data": b'{"type":"chunk","content":"Hello"}'}),
+                (b"2-0", {b"data": b'{"type":"chunk","content":" world"}'}),
+            ]
+        )
         tm = TaskManager(redis=mock_redis)
         chunks = await tm.get_chunks("task-1")
         assert len(chunks) == 2
@@ -125,9 +136,12 @@ class TestTaskManagerStreamChunks:
     @pytest.mark.asyncio
     async def test_get_chunks_from_offset(self, mock_redis):
         from smr.services.task_manager import TaskManager
-        mock_redis.xrange = AsyncMock(return_value=[
-            (b"2-0", {b"data": b'{"type":"chunk","content":"world"}'}),
-        ])
+
+        mock_redis.xrange = AsyncMock(
+            return_value=[
+                (b"2-0", {b"data": b'{"type":"chunk","content":"world"}'}),
+            ]
+        )
         tm = TaskManager(redis=mock_redis)
         chunks = await tm.get_chunks("task-1", after_id="1-0")
         assert len(chunks) == 1
@@ -137,6 +151,7 @@ class TestTaskManagerCancel:
     @pytest.mark.asyncio
     async def test_cancel_task(self, mock_redis):
         from smr.services.task_manager import TaskManager
+
         cancelled_state = TaskState(
             task_id="abc", status=TaskStatus.CANCELLED, provider="ollama", model="m"
         )

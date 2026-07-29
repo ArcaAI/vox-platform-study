@@ -109,7 +109,10 @@ const GOOD_CREDS = (name: string) => ({ password: GOOD_PASSWORD, confirmationNam
 
 function breakGlassAudits(m: ReturnType<typeof makeMocks>) {
   return m.eventEmitter.emit.mock.calls
-    .filter(([type, payload]) => type === SysEventType.ResourceViewed && (payload as { data?: { action?: string } })?.data?.action === RBAC_BREAK_GLASS_AUDIT_ACTION)
+    .filter(
+      ([type, payload]) =>
+        type === SysEventType.ResourceViewed && (payload as { data?: { action?: string } })?.data?.action === RBAC_BREAK_GLASS_AUDIT_ACTION,
+    )
     .map(([, payload]) => payload as Record<string, never> & { data: Record<string, unknown>; forceAuditLog?: boolean; tenantId?: string });
 }
 

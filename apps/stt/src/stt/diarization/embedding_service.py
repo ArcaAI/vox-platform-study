@@ -24,6 +24,7 @@ from .dto import SpeakerEmbedding
 
 logger = logging.getLogger(__name__)
 
+
 def _resolve_hf_token(settings: Any) -> str | None:
     """Resolve HuggingFace auth token from settings or local cache."""
     hf_token = settings.huggingface_token

@@ -154,9 +154,7 @@ describe('HarnessPolicyChange WORM enforcement (REVOKE UPDATE, DELETE)', () => {
         // privilege check, not a "no rows matched" no-op.
         await admin.query(sql, params);
         await admin.query(`SET LOCAL ROLE ${TEST_ROLE}`);
-        await expect(
-          admin.query(`UPDATE ${TABLE} SET "reason" = 'tampered' WHERE id = $1`, [rowId]),
-        ).rejects.toMatchObject({ code: '42501' });
+        await expect(admin.query(`UPDATE ${TABLE} SET "reason" = 'tampered' WHERE id = $1`, [rowId])).rejects.toMatchObject({ code: '42501' });
       } finally {
         // The failed UPDATE aborts the txn; ROLLBACK both discards the seed row
         // (no DELETE needed) and resets the LOCAL role.
@@ -174,9 +172,7 @@ describe('HarnessPolicyChange WORM enforcement (REVOKE UPDATE, DELETE)', () => {
       try {
         await admin.query(sql, params);
         await admin.query(`SET LOCAL ROLE ${TEST_ROLE}`);
-        await expect(
-          admin.query(`DELETE FROM ${TABLE} WHERE id = $1`, [rowId]),
-        ).rejects.toMatchObject({ code: '42501' });
+        await expect(admin.query(`DELETE FROM ${TABLE} WHERE id = $1`, [rowId])).rejects.toMatchObject({ code: '42501' });
       } finally {
         await admin.query('ROLLBACK');
       }

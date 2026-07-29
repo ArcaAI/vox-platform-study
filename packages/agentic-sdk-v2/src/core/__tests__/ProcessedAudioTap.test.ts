@@ -115,13 +115,9 @@ describe('createProcessedAudioTap', () => {
     const micTrack = fakeTrack('mic');
     const tap = await createProcessedAudioTap(fakeStream([micTrack]));
 
-    expect(nf.createNoiseFilter).toHaveBeenCalledWith(
-      expect.objectContaining({ noiseCancellation: true, noiseCancellationLevel: 'high' }),
-    );
+    expect(nf.createNoiseFilter).toHaveBeenCalledWith(expect.objectContaining({ noiseCancellation: true, noiseCancellationLevel: 'high' }));
     expect(ownedContexts).toHaveLength(1);
-    expect(nf.processor.init).toHaveBeenCalledWith(
-      expect.objectContaining({ track: micTrack, audioContext: ownedContexts[0], kind: 'audio' }),
-    );
+    expect(nf.processor.init).toHaveBeenCalledWith(expect.objectContaining({ track: micTrack, audioContext: ownedContexts[0], kind: 'audio' }));
     expect(tap.track).toBe(nf.processor.processedTrack);
     expect(tap.stream.getAudioTracks()).toContain(nf.processor.processedTrack);
 

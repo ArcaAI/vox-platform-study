@@ -18,7 +18,7 @@ export const TTS_AI_MODELS: AiModelSeed[] = [
     name: 'Azure Neural Voices',
     slug: 'azure-neural-voices',
     description:
-      'Azure Cognitive Services neural TTS voices (cloud). Credentials via platform env/Vault or tenant BYO (TenantTtsProviderCredential).',
+      'Azure Cognitive Services neural TTS voices (cloud). Credentials via platform env/Vault or tenant BYO (AiProviderConnection, service=tts).',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.TEXT_TO_SPEECH,
     modelType: ModelType.BASE_MODEL,

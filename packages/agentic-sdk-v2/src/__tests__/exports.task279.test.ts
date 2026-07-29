@@ -18,24 +18,24 @@
 import { describe, it, expect } from 'vitest';
 
 describe('ADMIN_USER_ROLES_ENDPOINTS exported from package barrel', () => {
-    it('should export ADMIN_USER_ROLES_ENDPOINTS from core.ts', async () => {
-        const core = await import('../core.js');
-        expect(core.ADMIN_USER_ROLES_ENDPOINTS).toBeDefined();
-        expect(typeof core.ADMIN_USER_ROLES_ENDPOINTS).toBe('object');
-    });
+  it('should export ADMIN_USER_ROLES_ENDPOINTS from core.ts', async () => {
+    const core = await import('../core.js');
+    expect(core.ADMIN_USER_ROLES_ENDPOINTS).toBeDefined();
+    expect(typeof core.ADMIN_USER_ROLES_ENDPOINTS).toBe('object');
+  });
 
-    it('LIST builder returns the admin URL', async () => {
-        const core = await import('../core.js');
-        expect(core.ADMIN_USER_ROLES_ENDPOINTS.LIST('u-1')).toBe('/admin/users/u-1/roles');
-    });
+  it('LIST builder returns the admin URL', async () => {
+    const core = await import('../core.js');
+    expect(core.ADMIN_USER_ROLES_ENDPOINTS.LIST('u-1')).toBe('/admin/users/u-1/roles');
+  });
 
-    it('ASSIGN builder returns the admin URL', async () => {
-        const core = await import('../core.js');
-        expect(core.ADMIN_USER_ROLES_ENDPOINTS.ASSIGN('u-1')).toBe('/admin/users/u-1/roles');
-    });
+  it('ASSIGN builder returns the admin URL', async () => {
+    const core = await import('../core.js');
+    expect(core.ADMIN_USER_ROLES_ENDPOINTS.ASSIGN('u-1')).toBe('/admin/users/u-1/roles');
+  });
 
-    it('REMOVE builder returns the admin URL with assignmentId', async () => {
-        const core = await import('../core.js');
-        expect(core.ADMIN_USER_ROLES_ENDPOINTS.REMOVE('u-1', 'a-9')).toBe('/admin/users/u-1/roles/a-9');
-    });
+  it('REMOVE builder returns the admin URL with assignmentId', async () => {
+    const core = await import('../core.js');
+    expect(core.ADMIN_USER_ROLES_ENDPOINTS.REMOVE('u-1', 'a-9')).toBe('/admin/users/u-1/roles/a-9');
+  });
 });

@@ -13,47 +13,47 @@ export type McpTransport = 'streamable-http';
 export type McpPhiBoundary = 'external' | 'in-boundary';
 
 export interface McpServer {
-    id: string;
-    tenantId: string;
-    name: string;
-    description?: string | null;
-    baseUrl: string;
-    transport: string;
-    /** Vault path only (never a credential). Null when the server needs no auth. */
-    authRef?: string | null;
-    toolAllowlist?: string[] | null;
-    phiBoundary: string;
-    enabled: boolean;
-    resourceStatus?: string;
-    version: number;
-    createdAt?: string;
-    updatedAt?: string;
+  id: string;
+  tenantId: string;
+  name: string;
+  description?: string | null;
+  baseUrl: string;
+  transport: string;
+  /** Vault path only (never a credential). Null when the server needs no auth. */
+  authRef?: string | null;
+  toolAllowlist?: string[] | null;
+  phiBoundary: string;
+  enabled: boolean;
+  resourceStatus?: string;
+  version: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface McpServerListResponse {
-    items: McpServer[];
-    total: number;
+  items: McpServer[];
+  total: number;
 }
 
 export interface CreateMcpServerRequest {
-    name: string;
-    description?: string;
-    baseUrl: string;
-    transport?: McpTransport;
-    authRef?: string;
-    toolAllowlist?: string[];
-    phiBoundary?: McpPhiBoundary;
-    enabled?: boolean;
+  name: string;
+  description?: string;
+  baseUrl: string;
+  transport?: McpTransport;
+  authRef?: string;
+  toolAllowlist?: string[];
+  phiBoundary?: McpPhiBoundary;
+  enabled?: boolean;
 }
 
 export interface UpdateMcpServerRequest {
-    name?: string;
-    description?: string;
-    baseUrl?: string;
-    transport?: McpTransport;
-    authRef?: string;
-    toolAllowlist?: string[];
-    phiBoundary?: McpPhiBoundary;
-    enabled?: boolean;
-    expectedVersion?: number;
+  name?: string;
+  description?: string;
+  baseUrl?: string;
+  transport?: McpTransport;
+  authRef?: string;
+  toolAllowlist?: string[];
+  phiBoundary?: McpPhiBoundary;
+  enabled?: boolean;
+  expectedVersion?: number;
 }

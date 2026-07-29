@@ -1,4 +1,12 @@
-import { ResourceType, SysEventType, TenantBucketFactory, TenantBucketPurpose, TenantBucketRepository, TenantPlan, TenantRepository } from '@arcaai/domains';
+import {
+  ResourceType,
+  SysEventType,
+  TenantBucketFactory,
+  TenantBucketPurpose,
+  TenantBucketRepository,
+  TenantPlan,
+  TenantRepository,
+} from '@arcaai/domains';
 import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';

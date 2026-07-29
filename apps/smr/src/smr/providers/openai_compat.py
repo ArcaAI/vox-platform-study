@@ -157,7 +157,11 @@ class OpenAICompatProvider:
 
             message = response.choices[0].message
             content = message.content or ""
-            reasoning = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None) or ""
+            reasoning = (
+                getattr(message, "reasoning_content", None)
+                or getattr(message, "reasoning", None)
+                or ""
+            )
             finish_reason = response.choices[0].finish_reason
             usage_obj = getattr(response, "usage", None)
             usage = {
@@ -233,7 +237,9 @@ class OpenAICompatProvider:
                 delta = chunk.choices[0].delta
                 if chunk.choices[0].finish_reason:
                     finish_reason = chunk.choices[0].finish_reason
-                reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+                reasoning = getattr(delta, "reasoning_content", None) or getattr(
+                    delta, "reasoning", None
+                )
                 if isinstance(reasoning, str) and reasoning:
                     if ttft_ms is None:
                         ttft_ms = int((time.monotonic() - start) * 1000)
@@ -268,7 +274,9 @@ class OpenAICompatProvider:
             logger.warning("health_check.failed", provider=self._provider_name, error=str(exc))
             return False
         except Exception as exc:
-            logger.error("health_check.unexpected_error", provider=self._provider_name, error=str(exc))
+            logger.error(
+                "health_check.unexpected_error", provider=self._provider_name, error=str(exc)
+            )
             return False
 
     async def _lm_studio_native_models(self) -> dict[str, dict[str, Any]]:
@@ -293,7 +301,9 @@ class OpenAICompatProvider:
                 return {}
             return {m["id"]: m for m in resp.json().get("data", []) if m.get("id")}
         except Exception as exc:  # noqa: BLE001 — best-effort enrichment
-            logger.warning("get_info.native_probe_failed", provider=self._provider_name, error=str(exc))
+            logger.warning(
+                "get_info.native_probe_failed", provider=self._provider_name, error=str(exc)
+            )
             return {}
 
     async def get_info(self) -> ProviderInfo:

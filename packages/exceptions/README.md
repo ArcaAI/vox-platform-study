@@ -8,11 +8,11 @@ Last updated: 2026-07-04
 
 `@arcaai/exceptions` is a leaf dependency with no HOPE-internal dependencies (only `nestjs-cls`). It is consumed by every backend layer:
 
-| Consumer | Typical usage |
-|---|---|
-| `packages/domains` | Repositories throw `DataNotFoundException`, `DataCreationException`, `OptimisticConcurrencyException`; entities throw `BusinessException` |
-| `packages/applications` | Services throw application exceptions (`ArgumentInvalidException`, `QuotaExceededException`, ...) |
-| `apps/api` | Exception filters map codes to HTTP status codes |
+| Consumer                | Typical usage                                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/domains`      | Repositories throw `DataNotFoundException`, `DataCreationException`, `OptimisticConcurrencyException`; entities throw `BusinessException` |
+| `packages/applications` | Services throw application exceptions (`ArgumentInvalidException`, `QuotaExceededException`, ...)                                         |
+| `apps/api`              | Exception filters map codes to HTTP status codes                                                                                          |
 
 ## Directory structure
 
@@ -32,24 +32,24 @@ src/
 
 ## Exception catalog
 
-| Class | Code | Layer |
-|---|---|---|
-| `ArgumentInvalidException` | `GENERIC.ARGUMENT_INVALID` | backend/application |
-| `ArgumentNotProvidedException` | `GENERIC.ARGUMENT_NOT_PROVIDED` | backend/application |
-| `ArgumentOutOfRangeException` | `GENERIC.ARGUMENT_OUT_OF_RANGE` | backend/application |
-| `ConflictException` | `GENERIC.CONFLICT` | backend/application |
-| `InternalServerErrorException` | `GENERIC.INTERNAL_SERVER_ERROR` | backend/application |
-| `NotFoundException` | `GENERIC.NOT_FOUND` | backend/application |
-| `UnauthorizedException` | `UNAUTHORIZED` | backend/application |
-| `DataConflictException` | `PERSISTENCE.DATA_CONFLICT` | backend/persistence |
-| `DataCreationException` | `PERSISTENCE.DATA_CREATION_FAILED` | backend/persistence |
-| `DataNotFoundException` | `PERSISTENCE.DATA_NOT_FOUND` | backend/persistence |
-| `DatabaseConnectionException` | `PERSISTENCE.DATABASE_CONNECTION_FAILED` | backend/persistence |
-| `OptimisticConcurrencyException` | `PERSISTENCE.CONCURRENCY_CONFLICT` | backend/persistence |
-| `QueryFailedException` | `PERSISTENCE.QUERY_FAILED` | backend/persistence |
-| `TransactionFailedException` | `PERSISTENCE.TRANSACTION_FAILED` | backend/persistence |
-| `BusinessException` | `DOMAIN.BUSINESS` | domain |
-| `QuotaExceededException` | `DOMAIN.QUOTA_EXCEEDED` | domain |
+| Class                            | Code                                     | Layer               |
+| -------------------------------- | ---------------------------------------- | ------------------- |
+| `ArgumentInvalidException`       | `GENERIC.ARGUMENT_INVALID`               | backend/application |
+| `ArgumentNotProvidedException`   | `GENERIC.ARGUMENT_NOT_PROVIDED`          | backend/application |
+| `ArgumentOutOfRangeException`    | `GENERIC.ARGUMENT_OUT_OF_RANGE`          | backend/application |
+| `ConflictException`              | `GENERIC.CONFLICT`                       | backend/application |
+| `InternalServerErrorException`   | `GENERIC.INTERNAL_SERVER_ERROR`          | backend/application |
+| `NotFoundException`              | `GENERIC.NOT_FOUND`                      | backend/application |
+| `UnauthorizedException`          | `UNAUTHORIZED`                           | backend/application |
+| `DataConflictException`          | `PERSISTENCE.DATA_CONFLICT`              | backend/persistence |
+| `DataCreationException`          | `PERSISTENCE.DATA_CREATION_FAILED`       | backend/persistence |
+| `DataNotFoundException`          | `PERSISTENCE.DATA_NOT_FOUND`             | backend/persistence |
+| `DatabaseConnectionException`    | `PERSISTENCE.DATABASE_CONNECTION_FAILED` | backend/persistence |
+| `OptimisticConcurrencyException` | `PERSISTENCE.CONCURRENCY_CONFLICT`       | backend/persistence |
+| `QueryFailedException`           | `PERSISTENCE.QUERY_FAILED`               | backend/persistence |
+| `TransactionFailedException`     | `PERSISTENCE.TRANSACTION_FAILED`         | backend/persistence |
+| `BusinessException`              | `DOMAIN.BUSINESS`                        | domain              |
+| `QuotaExceededException`         | `DOMAIN.QUOTA_EXCEEDED`                  | domain              |
 
 `QuotaExceededException` carries a typed `QuotaExceededMetadata` payload (`capability`, `limit`, `used`, `requested`, `tenantId`) so the API gateway can render a machine-readable 409/429 body.
 
@@ -105,12 +105,12 @@ Note: HTTP-only errors such as NestJS `BadRequestException` / `ForbiddenExceptio
 
 ## Commands
 
-| Command | package.json script | From repo root |
-|---|---|---|
-| Build | `tsc` | `pnpm --filter @arcaai/exceptions build` |
-| Watch | `tsc -w` | `pnpm --filter @arcaai/exceptions dev` |
-| Lint | `eslint "src/**/*.ts*" --max-warnings 0` | `pnpm --filter @arcaai/exceptions lint` |
-| Clean | `rimraf dist tsconfig.tsbuildinfo` | `pnpm --filter @arcaai/exceptions clean` |
+| Command | package.json script                      | From repo root                           |
+| ------- | ---------------------------------------- | ---------------------------------------- |
+| Build   | `tsc`                                    | `pnpm --filter @arcaai/exceptions build` |
+| Watch   | `tsc -w`                                 | `pnpm --filter @arcaai/exceptions dev`   |
+| Lint    | `eslint "src/**/*.ts*" --max-warnings 0` | `pnpm --filter @arcaai/exceptions lint`  |
+| Clean   | `rimraf dist tsconfig.tsbuildinfo`       | `pnpm --filter @arcaai/exceptions clean` |
 
 There is no per-package test script. The unit test in `src/backend/persistence/__tests__/optimisticConcurrency.exception.test.ts` runs as part of the root `pnpm test:unit` sweep.
 

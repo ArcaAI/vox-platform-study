@@ -112,7 +112,9 @@ function timed(label: string, ops: number, fn: () => void): Timing {
 function report(t: Timing): void {
   const opsPerSec = t.ops / (t.ms / 1000);
   const usPerOp = (t.ms * 1000) / t.ops;
-  console.log(`  ${t.label.padEnd(38)} ${t.ops.toLocaleString().padStart(8)} ops  ${t.ms.toFixed(1).padStart(9)} ms  ${opsPerSec.toLocaleString(undefined, { maximumFractionDigits: 0 }).padStart(12)} ops/s  ${usPerOp.toFixed(2).padStart(8)} µs/op`);
+  console.log(
+    `  ${t.label.padEnd(38)} ${t.ops.toLocaleString().padStart(8)} ops  ${t.ms.toFixed(1).padStart(9)} ms  ${opsPerSec.toLocaleString(undefined, { maximumFractionDigits: 0 }).padStart(12)} ops/s  ${usPerOp.toFixed(2).padStart(8)} µs/op`,
+  );
 }
 
 // ── Vault (optional) ────────────────────────────────────────────────────────
@@ -160,7 +162,9 @@ async function transitEncrypt(client: VaultClientLike, cfg: BenchArgs, plaintext
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
   console.log(`\nTASK-369 Phase 3D — AuditLog envelope-encryption benchmark`);
-  console.log(`rows=${args.rows} withDb=${args.withDb}(db-rows=${args.dbRows}) withPerRowTransit=${args.withPerRowTransit}(${args.perRowTransitRows})\n`);
+  console.log(
+    `rows=${args.rows} withDb=${args.withDb}(db-rows=${args.dbRows}) withPerRowTransit=${args.withPerRowTransit}(${args.perRowTransitRows})\n`,
+  );
 
   // Pre-build payloads + DEK so the timed loops measure only crypto/serialize.
   const payloads = Array.from({ length: args.rows }, (_, i) => samplePayload(i));
@@ -170,27 +174,33 @@ async function main(): Promise<void> {
 
   console.log(`(1) CRYPTO OVERHEAD per row — avg payload ${avgBytes} bytes; each row encrypts BOTH data + previousData\n`);
   // Plaintext baseline: stringify data + previousData (what every audit write already does).
-  report(timed('plaintext: stringify ×2', args.rows, () => {
-    for (let i = 0; i < args.rows; i++) {
-      void JSON.stringify(payloads[i]);
-      void JSON.stringify(payloads[i]);
-    }
-  }));
+  report(
+    timed('plaintext: stringify ×2', args.rows, () => {
+      for (let i = 0; i < args.rows; i++) {
+        void JSON.stringify(payloads[i]);
+        void JSON.stringify(payloads[i]);
+      }
+    }),
+  );
   // Envelope encrypt: stringify + local GCM, for data + previousData.
   const ciphertexts: Buffer[] = new Array(args.rows);
-  report(timed('envelope: stringify+GCM encrypt ×2', args.rows, () => {
-    for (let i = 0; i < args.rows; i++) {
-      ciphertexts[i] = gcmEncrypt(JSON.stringify(payloads[i]), dek);
-      void gcmEncrypt(JSON.stringify(payloads[i]), dek);
-    }
-  }));
+  report(
+    timed('envelope: stringify+GCM encrypt ×2', args.rows, () => {
+      for (let i = 0; i < args.rows; i++) {
+        ciphertexts[i] = gcmEncrypt(JSON.stringify(payloads[i]), dek);
+        void gcmEncrypt(JSON.stringify(payloads[i]), dek);
+      }
+    }),
+  );
   // Envelope decrypt (read path): local GCM + parse, for data + previousData.
-  report(timed('envelope: GCM decrypt+parse ×2', args.rows, () => {
-    for (let i = 0; i < args.rows; i++) {
-      void JSON.parse(gcmDecrypt(ciphertexts[i], dek));
-      void JSON.parse(gcmDecrypt(ciphertexts[i], dek));
-    }
-  }));
+  report(
+    timed('envelope: GCM decrypt+parse ×2', args.rows, () => {
+      for (let i = 0; i < args.rows; i++) {
+        void JSON.parse(gcmDecrypt(ciphertexts[i], dek));
+        void JSON.parse(gcmDecrypt(ciphertexts[i], dek));
+      }
+    }),
+  );
 
   // (2)+(3) Vault-dependent measurements. Resilient: a missing hope-phi key or
   // ACL grant (provisioned by a separate worker) degrades to a PENDING note
@@ -270,9 +280,9 @@ async function runDbBenchmark(args: BenchArgs, dek: Buffer): Promise<void> {
 
         // Read back + locally decrypt the envelope rows.
         const r0 = process.hrtime.bigint();
-        const rows = (await tx.$queryRawUnsafe(
-          `SELECT "encryptedData" FROM bench_auditlog WHERE id LIKE 'e-%'`,
-        )) as Array<{ encryptedData: Buffer | Uint8Array }>;
+        const rows = (await tx.$queryRawUnsafe(`SELECT "encryptedData" FROM bench_auditlog WHERE id LIKE 'e-%'`)) as Array<{
+          encryptedData: Buffer | Uint8Array;
+        }>;
         let decoded = 0;
         for (const row of rows) {
           void JSON.parse(gcmDecrypt(Buffer.from(row.encryptedData), dek));

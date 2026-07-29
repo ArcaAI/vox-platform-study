@@ -83,8 +83,6 @@ describe('AppSettingsService — sys-event cache invalidation (F-007)', () => {
 
     repo.findAll.mockRejectedValueOnce(new Error('db unreachable'));
 
-    await expect(
-      svc.handleGlobalSettingUpdated(buildResourceUpdatedEvent(ResourceType.GlobalSetting)),
-    ).resolves.toBeUndefined();
+    await expect(svc.handleGlobalSettingUpdated(buildResourceUpdatedEvent(ResourceType.GlobalSetting))).resolves.toBeUndefined();
   });
 });

@@ -29,7 +29,14 @@ MIN_TEXT_LAYER_CHARS = 1
 
 _PDF_CONTENT_TYPES = {"application/pdf"}
 _PDF_EXTENSIONS = {"pdf"}
-_IMAGE_CONTENT_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/tiff", "image/bmp"}
+_IMAGE_CONTENT_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/tiff",
+    "image/bmp",
+}
 _IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "tiff", "tif", "bmp"}
 
 
@@ -53,7 +60,9 @@ class DocumentExtractor:
     def __init__(self) -> None:
         self._ocr_engine: Any | None = None
 
-    def extract(self, content: bytes, filename: str | None = None, content_type: str | None = None) -> ExtractionResult:
+    def extract(
+        self, content: bytes, filename: str | None = None, content_type: str | None = None
+    ) -> ExtractionResult:
         """Extract text from raw bytes. Never raises — returns an empty result on
         unsupported types or any parse/OCR failure (graceful degradation)."""
         kind = self._classify(filename, content_type, content)
@@ -67,7 +76,9 @@ class DocumentExtractor:
             logger.warning(f"Document extraction failed (kind={kind}): {exc}")
             return ExtractionResult("", 0, False)
 
-        logger.info(f"Unsupported document type for extraction (filename={filename!r}, content_type={content_type!r})")
+        logger.info(
+            f"Unsupported document type for extraction (filename={filename!r}, content_type={content_type!r})"
+        )
         return ExtractionResult("", 0, False)
 
     def _classify(self, filename: str | None, content_type: str | None, content: bytes) -> str:

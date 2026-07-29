@@ -15,17 +15,29 @@ import { ErrorState } from '@/shared/state/error-state';
 import { useDeleteProviderConnection, useProviderConnection, usePutProviderConnection } from '../api/providers-hooks';
 import type { CloudByoProvider } from '../api/providers-types';
 
-/** One editable text field on a provider card (azure and bedrock differ). */
+/** A field backed by a first-class connection column. */
+type ColumnFieldName = 'baseUrl' | 'region' | 'apiVersion' | 'deploymentName';
+
+/**
+ * One editable text field on a provider card. Most map 1:1 to a connection
+ * column (`store: 'column'`, the default); a field with `store: 'extra'` writes
+ * into `extraJson[name]` instead (Vertex `project` — the connection table has no
+ * dedicated column for it).
+ */
 interface ProviderField {
-  name: 'baseUrl' | 'region' | 'apiVersion' | 'deploymentName';
+  name: ColumnFieldName | 'project';
   label: string;
   placeholder: string;
+  store?: 'column' | 'extra';
 }
 
 export interface ProviderMeta {
   id: CloudByoProvider;
   label: string;
   fields: readonly ProviderField[];
+  /** Overrides for the secret input (Vertex uploads a service-account JSON, not a key). */
+  keyLabel?: string;
+  keyPlaceholder?: string;
 }
 
 export const CLOUD_PROVIDERS: readonly ProviderMeta[] = [
@@ -42,6 +54,26 @@ export const CLOUD_PROVIDERS: readonly ProviderMeta[] = [
     id: 'bedrock',
     label: 'Amazon Bedrock',
     fields: [{ name: 'region', label: 'Region', placeholder: 'us-east-1' }],
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    fields: [{ name: 'baseUrl', label: 'Base URL', placeholder: 'https://api.openai.com/v1' }],
+  },
+  {
+    id: 'anthropic',
+    label: 'Anthropic',
+    fields: [{ name: 'baseUrl', label: 'Base URL', placeholder: 'https://api.anthropic.com' }],
+  },
+  {
+    id: 'vertex',
+    label: 'Google Vertex AI',
+    keyLabel: 'Service account JSON',
+    keyPlaceholder: 'Paste the service-account key JSON',
+    fields: [
+      { name: 'project', label: 'Project', placeholder: 'my-gcp-project', store: 'extra' },
+      { name: 'region', label: 'Location', placeholder: 'us-central1' },
+    ],
   },
 ];
 
@@ -97,13 +129,31 @@ export function ByoCredentialCard({ meta }: { meta: ProviderMeta }) {
   const etag = query.data.etag;
   const hasKey = current.hasKey;
   const enabled = enabledDraft ?? current.enabled;
-  const valueOf = (name: ProviderField['name']) => draft?.[name] ?? current[name] ?? '';
+
+  /** Stored value for a field: a column reads its column, an `extra` field reads `extraJson[name]`. */
+  const storedValue = (field: ProviderField): string => {
+    if (field.store === 'extra') {
+      const raw = current.extraJson?.[field.name];
+      return typeof raw === 'string' ? raw : '';
+    }
+    return current[field.name as ColumnFieldName] ?? '';
+  };
+  const valueOf = (field: ProviderField) => draft?.[field.name] ?? storedValue(field);
 
   function handleSave() {
     if (apiKey.trim().length === 0) return;
     const body: Record<string, unknown> = { apiKey: apiKey.trim(), enabled };
+    const extra: Record<string, unknown> = {};
     for (const field of meta.fields) {
-      body[field.name] = valueOf(field.name).trim() || null;
+      const value = valueOf(field).trim() || null;
+      if (field.store === 'extra') {
+        extra[field.name] = value;
+      } else {
+        body[field.name] = value;
+      }
+    }
+    if (Object.keys(extra).length > 0) {
+      body.extraJson = extra;
     }
     putMutation.mutate(
       { provider: meta.id, body, etag },
@@ -152,7 +202,7 @@ export function ByoCredentialCard({ meta }: { meta: ProviderMeta }) {
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`${uid}-key`} className="text-muted-foreground text-xs font-medium">
-          API key {hasKey ? '(enter to rotate)' : ''}
+          {meta.keyLabel ?? 'API key'} {hasKey ? '(enter to rotate)' : ''}
         </Label>
         <Input
           id={`${uid}-key`}
@@ -160,7 +210,7 @@ export function ByoCredentialCard({ meta }: { meta: ProviderMeta }) {
           autoComplete="off"
           value={apiKey}
           onChange={(event) => setApiKey(event.target.value)}
-          placeholder={hasKey ? '•••••••• (write-only — never shown)' : 'Paste the provider API key'}
+          placeholder={hasKey ? '•••••••• (write-only — never shown)' : (meta.keyPlaceholder ?? 'Paste the provider API key')}
           className="h-8 font-mono text-xs"
         />
         <p className="text-muted-foreground text-xs">Encrypted at rest via Vault Transit; the key is never returned by any read.</p>
@@ -173,7 +223,7 @@ export function ByoCredentialCard({ meta }: { meta: ProviderMeta }) {
           </Label>
           <Input
             id={`${uid}-${field.name}`}
-            value={valueOf(field.name)}
+            value={valueOf(field)}
             onChange={(event) => setDraft((prev) => ({ ...prev, [field.name]: event.target.value }))}
             placeholder={field.placeholder}
             className="h-8 font-mono text-xs"

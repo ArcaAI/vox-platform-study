@@ -52,18 +52,53 @@ function makeServiceWithEditBurden(): HarnessObservabilityService {
 /** Build a valid 3-event chain: c1 GENERATE → c1 GATE_DECISION → c2 GENERATE. */
 function buildChain() {
   const base = { tenantId: TENANT, modelName: 'gpt', modelVersion: '1', sensorScores: {}, citations: [] };
-  const e1 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c1', action: HarnessAuditAction.GENERATE, prevHash: GENESIS_PREV_HASH });
-  const e2 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c1', action: HarnessAuditAction.GATE_DECISION, gateDecision: 'APPROVE', prevHash: e1.hash });
-  const e3 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c2', action: HarnessAuditAction.GENERATE, prevHash: e2.hash });
+  const e1 = HarnessAuditEventFactory.CreateHarnessAuditEvent({
+    ...base,
+    consultationId: 'c1',
+    action: HarnessAuditAction.GENERATE,
+    prevHash: GENESIS_PREV_HASH,
+  });
+  const e2 = HarnessAuditEventFactory.CreateHarnessAuditEvent({
+    ...base,
+    consultationId: 'c1',
+    action: HarnessAuditAction.GATE_DECISION,
+    gateDecision: 'APPROVE',
+    prevHash: e1.hash,
+  });
+  const e3 = HarnessAuditEventFactory.CreateHarnessAuditEvent({
+    ...base,
+    consultationId: 'c2',
+    action: HarnessAuditAction.GENERATE,
+    prevHash: e2.hash,
+  });
   return [e1, e2, e3];
 }
 
 /** A valid 3-event chain with explicit (Jan/Feb/Mar 2026) timestamps for range filtering. */
 function buildDatedChain() {
   const base = { tenantId: TENANT, modelName: 'gpt', modelVersion: '1', sensorScores: {}, citations: [] };
-  const e1 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c1', action: HarnessAuditAction.GENERATE, prevHash: GENESIS_PREV_HASH, createdAt: new Date('2026-01-15T00:00:00.000Z') });
-  const e2 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c1', action: HarnessAuditAction.GATE_DECISION, gateDecision: 'APPROVE', prevHash: e1.hash, createdAt: new Date('2026-02-15T00:00:00.000Z') });
-  const e3 = HarnessAuditEventFactory.CreateHarnessAuditEvent({ ...base, consultationId: 'c2', action: HarnessAuditAction.GENERATE, prevHash: e2.hash, createdAt: new Date('2026-03-15T00:00:00.000Z') });
+  const e1 = HarnessAuditEventFactory.CreateHarnessAuditEvent({
+    ...base,
+    consultationId: 'c1',
+    action: HarnessAuditAction.GENERATE,
+    prevHash: GENESIS_PREV_HASH,
+    createdAt: new Date('2026-01-15T00:00:00.000Z'),
+  });
+  const e2 = HarnessAuditEventFactory.CreateHarnessAuditEvent({
+    ...base,
+    consultationId: 'c1',
+    action: HarnessAuditAction.GATE_DECISION,
+    gateDecision: 'APPROVE',
+    prevHash: e1.hash,
+    createdAt: new Date('2026-02-15T00:00:00.000Z'),
+  });
+  const e3 = HarnessAuditEventFactory.CreateHarnessAuditEvent({
+    ...base,
+    consultationId: 'c2',
+    action: HarnessAuditAction.GENERATE,
+    prevHash: e2.hash,
+    createdAt: new Date('2026-03-15T00:00:00.000Z'),
+  });
   return [e1, e2, e3];
 }
 
@@ -225,7 +260,19 @@ describe('HarnessObservabilityService', () => {
     it('returns a run with its per-case scores', async () => {
       evalRunRepository.findAll.mockResolvedValue([run]);
       evalScoreRepository.getByEvalRun.mockResolvedValue([
-        { id: 's1', tenantId: TENANT, evalRunId: 'run-1', goldenCaseId: 'gc1', metric: 'pdsqi', score: 4, maxScore: 5, rationale: 'ok', judgeModel: 'judge', details: null, createdAt: new Date('2026-01-01T00:30:00Z') },
+        {
+          id: 's1',
+          tenantId: TENANT,
+          evalRunId: 'run-1',
+          goldenCaseId: 'gc1',
+          metric: 'pdsqi',
+          score: 4,
+          maxScore: 5,
+          rationale: 'ok',
+          judgeModel: 'judge',
+          details: null,
+          createdAt: new Date('2026-01-01T00:30:00Z'),
+        },
       ]);
 
       const result = await service.getEvalRun(TENANT, 'run-1');
@@ -250,10 +297,10 @@ describe('HarnessObservabilityService', () => {
       policyRepository.findActiveForTenant.mockResolvedValue(
         HarnessPolicyFactory.CreateHarnessPolicy({ tenantId: TENANT, gateSlaSeconds: 100, gateEscalationSeconds: 50 }),
       );
-      consultationRepository.findPendingReviewForTenant.mockResolvedValue([{ id: 'c1', status: 'PENDING_REVIEW', updatedAt: new Date(now - 999_000) }]);
-      auditRepository.getChainForTenant.mockResolvedValue([
-        { action: HarnessAuditAction.GENERATE, consultationId: 'c1', createdAt: pendingSince },
+      consultationRepository.findPendingReviewForTenant.mockResolvedValue([
+        { id: 'c1', status: 'PENDING_REVIEW', updatedAt: new Date(now - 999_000) },
       ]);
+      auditRepository.getChainForTenant.mockResolvedValue([{ action: HarnessAuditAction.GENERATE, consultationId: 'c1', createdAt: pendingSince }]);
 
       const result = await service.gateQueue(TENANT);
 
@@ -403,9 +450,7 @@ describe('HarnessObservabilityService', () => {
     });
 
     it('exposes no note content in the response — PHI stays out', async () => {
-      auditRepository.getByConsultation.mockResolvedValue([
-        { action: HarnessAuditAction.GENERATE, gateDecision: null, createdAt: delivered },
-      ]);
+      auditRepository.getByConsultation.mockResolvedValue([{ action: HarnessAuditAction.GENERATE, gateDecision: null, createdAt: delivered }]);
       contextItemRepository.findLatestRawSummary.mockResolvedValue({ encryptedContent: Buffer.from('ct'), content: null });
       contextItemRepository.findLatestModifiedSummary.mockResolvedValue({ encryptedContent: Buffer.from('ct'), content: null });
       contextItemRepository.decryptContentFromEntity

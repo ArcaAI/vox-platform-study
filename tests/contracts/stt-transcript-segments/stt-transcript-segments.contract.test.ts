@@ -32,9 +32,7 @@ interface FixtureCase {
   segments: Record<string, unknown>[];
 }
 
-const fixture = JSON.parse(
-  readFileSync(join(__dirname, 'transcript-segments.fixture.json'), 'utf-8'),
-) as Record<string, FixtureCase>;
+const fixture = JSON.parse(readFileSync(join(__dirname, 'transcript-segments.fixture.json'), 'utf-8')) as Record<string, FixtureCase>;
 
 /** Every field the harness evidence chain needs must survive ingest. */
 const expectFullyGrounded = (rows: ReturnType<typeof computeSegmentOffsets>) => {

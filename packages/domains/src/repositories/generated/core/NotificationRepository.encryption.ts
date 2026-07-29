@@ -34,21 +34,13 @@ declare module './NotificationRepository' {
      * it is safe to call unconditionally on a partial row. The transient
      * plaintext stays in memory for the request; only ciphertext persists.
      */
-    encryptFieldsIntoEntity(
-      this: NotificationRepository,
-      entity: NotificationEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<void>;
+    encryptFieldsIntoEntity(this: NotificationRepository, entity: NotificationEntity, secrets: SecretsServiceLike): Promise<void>;
 
     /**
      * Decrypt all ciphertext columns (ciphertext-only; the plaintext columns
      * were dropped in Phase 6).
      */
-    decryptFieldsFromEntity(
-      this: NotificationRepository,
-      entity: NotificationEntity,
-      secrets: SecretsServiceLike,
-    ): Promise<NotificationPlaintext>;
+    decryptFieldsFromEntity(this: NotificationRepository, entity: NotificationEntity, secrets: SecretsServiceLike): Promise<NotificationPlaintext>;
 
     /** findById + decryptFieldsFromEntity in one shot (generic findById never decrypts). */
     findByIdWithDecryptedFields(

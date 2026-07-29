@@ -62,7 +62,7 @@ export class UserVoiceProfileRepository extends Repository<UserVoiceProfileEntit
   }
 
   async createWithEmbedding(entity: UserVoiceProfileEntity, embedding: number[]): Promise<UserVoiceProfileEntity> {
-    if (!embedding.every(n => typeof n === 'number' && Number.isFinite(n))) {
+    if (!embedding.every((n) => typeof n === 'number' && Number.isFinite(n))) {
       throw new Error('Invalid embedding: all values must be finite numbers');
     }
     const vectorStr = `[${embedding.join(',')}]`;

@@ -6,12 +6,12 @@ Last updated: 2026-07-04
 
 ## Where it fits
 
-| Direction | Package | Relationship |
-|---|---|---|
-| Consumed by | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Implement `BaseProcessor` and attach to an `AudioTrack` |
-| Consumed by | `@arcaai/med-ner` | Type-only (`TrackProcessor`, `ProcessorOptions`) |
-| Consumed by | `@arcaai/vox` (`packages/agentic-sdk-v2`) | `TranscriptionPipeline` wires processors onto room tracks |
-| Consumed by | `apps/ui-playground` (deprecated) | Via `@arcaai/vox` |
+| Direction   | Package                                              | Relationship                                              |
+| ----------- | ---------------------------------------------------- | --------------------------------------------------------- |
+| Consumed by | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Implement `BaseProcessor` and attach to an `AudioTrack`   |
+| Consumed by | `@arcaai/med-ner`                                    | Type-only (`TrackProcessor`, `ProcessorOptions`)          |
+| Consumed by | `@arcaai/vox` (`packages/agentic-sdk-v2`)            | `TranscriptionPipeline` wires processors onto room tracks |
+| Consumed by | `apps/ui-playground` (deprecated)                    | Via `@arcaai/vox`                                         |
 
 Runtime dependency: `eventemitter3`. Peer dependency: `react` `^18.3.0 || ^19.0.4`.
 
@@ -62,9 +62,7 @@ function AudioRecorder() {
 
   return (
     <div>
-      <button onClick={isCapturing ? stopCapture : startCapture}>
-        {isCapturing ? 'Stop' : 'Start'}
-      </button>
+      <button onClick={isCapturing ? stopCapture : startCapture}>{isCapturing ? 'Stop' : 'Start'}</button>
       <div>Level: {(level * 100).toFixed(0)}%</div>
       <div>Speaking: {isSpeaking ? 'Yes' : 'No'}</div>
     </div>
@@ -78,7 +76,7 @@ function AudioRecorder() {
 import { Room, AudioFeature } from '@arcaai/room';
 
 const room = new Room({ webAudioMix: true });
-await room.connect();                      // initializes the AudioContext
+await room.connect(); // initializes the AudioContext
 
 const track = await room.createLocalTrack({
   noiseSuppression: true,
@@ -93,15 +91,15 @@ await room.disconnect();
 
 ### Key exports
 
-| Group | Exports |
-|---|---|
-| Core classes | `Room`, `AudioTrack`, `AudioContextManager`, `ProcessorPipeline`, `AudioMixer` |
-| Processors | `BaseProcessor`, `BaseTextProcessor`, `NativeProcessor`, `TrackProcessor` (interface) |
-| Components | `RoomProvider`, `AudioTrackRenderer` |
-| Hooks | `useRoom`, `useRoomSafe`, `useAudioTrack`, `useAudioLevel`, `useMediaStreamAudioLevel`, `useDevices`, `useProcessors`, `useAudioMixer`, `useBrowserCapabilities` |
-| Events | `TrackEvent`, `ProcessorEvent`, `TypedEventEmitter` |
-| Errors | `RoomError`, `RoomPermissionError`, `RoomDeviceError`, `RoomSampleRateMismatchError`, `mapGetUserMediaError`, ... |
-| Utils | `getBrowserSupport`, `getBrowserCapabilities`, `buildAudioConstraints`, `createWorkletLoader`, `debugLog`, `debugLogConfig`, `debugLogTranscript`, audio level math |
+| Group        | Exports                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Core classes | `Room`, `AudioTrack`, `AudioContextManager`, `ProcessorPipeline`, `AudioMixer`                                                                                      |
+| Processors   | `BaseProcessor`, `BaseTextProcessor`, `NativeProcessor`, `TrackProcessor` (interface)                                                                               |
+| Components   | `RoomProvider`, `AudioTrackRenderer`                                                                                                                                |
+| Hooks        | `useRoom`, `useRoomSafe`, `useAudioTrack`, `useAudioLevel`, `useMediaStreamAudioLevel`, `useDevices`, `useProcessors`, `useAudioMixer`, `useBrowserCapabilities`    |
+| Events       | `TrackEvent`, `ProcessorEvent`, `TypedEventEmitter`                                                                                                                 |
+| Errors       | `RoomError`, `RoomPermissionError`, `RoomDeviceError`, `RoomSampleRateMismatchError`, `mapGetUserMediaError`, ...                                                   |
+| Utils        | `getBrowserSupport`, `getBrowserCapabilities`, `buildAudioConstraints`, `createWorkletLoader`, `debugLog`, `debugLogConfig`, `debugLogTranscript`, audio level math |
 
 `AudioMixer` merges multiple `MediaStream` inputs into one output via Web Audio `GainNode` summation with `1/sqrt(N)` master-gain normalization; pair it with `useAudioMixer`.
 
@@ -156,11 +154,11 @@ try {
 }
 ```
 
-| `requireSampleRate` | `allowMismatch` | Behaviour on mismatch |
-|---|---|---|
-| unset | — | no-op (backwards-compatible default) |
-| `48000` | `false` (default) | throws `RoomSampleRateMismatchError` (`code: 'sample_rate_mismatch'`) |
-| `48000` | `true` | logs a `console.warn` and resolves with the context |
+| `requireSampleRate` | `allowMismatch`   | Behaviour on mismatch                                                 |
+| ------------------- | ----------------- | --------------------------------------------------------------------- |
+| unset               | —                 | no-op (backwards-compatible default)                                  |
+| `48000`             | `false` (default) | throws `RoomSampleRateMismatchError` (`code: 'sample_rate_mismatch'`) |
+| `48000`             | `true`            | logs a `console.warn` and resolves with the context                   |
 
 ## Runtime requirements
 
@@ -172,14 +170,14 @@ try {
 
 From this directory:
 
-| Command | Action |
-|---|---|
-| `pnpm build` | tsup build (ESM `.mjs` + CJS `.cjs` + types) |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests |
-| `pnpm test:e2e` | Playwright browser tests (`e2e/`); `:headed`, `:debug`, `:chromium`, `:firefox`, `:webkit` variants exist |
-| `pnpm lint` | ESLint (`--max-warnings 0`) |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
+| Command                                                | Action                                                                                                    |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                                           | tsup build (ESM `.mjs` + CJS `.cjs` + types)                                                              |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests                                                                                         |
+| `pnpm test:e2e`                                        | Playwright browser tests (`e2e/`); `:headed`, `:debug`, `:chromium`, `:firefox`, `:webkit` variants exist |
+| `pnpm lint`                                            | ESLint (`--max-warnings 0`)                                                                               |
+| `pnpm typecheck`                                       | `tsc --noEmit`                                                                                            |
+| `pnpm clean` / `pnpm clean:all`                        | Remove build output (nuke also removes `node_modules`)                                                    |
 
 From the repo root: `pnpm --filter @arcaai/room build` (same pattern for `test`, `lint`, etc.).
 

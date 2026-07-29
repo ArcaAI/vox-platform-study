@@ -32,7 +32,12 @@ class TestBatch:
     async def test_batch_pcm(self, client_with_azure):
         r = await client_with_azure.post(
             "/api/v1/audio/speech",
-            json={"input": "Hello.", "voice": "en-female-1", "response_format": "pcm"},
+            json={
+                "input": "Hello.",
+                "voice": "en-female-1",
+                "response_format": "pcm",
+                "routing_en": ["azure", "kokoro"],
+            },
         )
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("audio/pcm")
@@ -42,7 +47,12 @@ class TestBatch:
     async def test_batch_mp3_content_type(self, client_with_azure):
         r = await client_with_azure.post(
             "/api/v1/audio/speech",
-            json={"input": "Hi.", "voice": "en-female-1", "response_format": "mp3"},
+            json={
+                "input": "Hi.",
+                "voice": "en-female-1",
+                "response_format": "mp3",
+                "routing_en": ["azure", "kokoro"],
+            },
         )
         assert r.status_code == 200
         assert r.headers["content-type"].startswith("audio/mpeg")
@@ -53,7 +63,12 @@ class TestStreaming:
     async def test_stream_audio_chunks(self, client_with_azure):
         r = await client_with_azure.post(
             "/api/v1/audio/speech",
-            json={"input": "Hi.", "voice": "en-female-1", "stream_format": "audio"},
+            json={
+                "input": "Hi.",
+                "voice": "en-female-1",
+                "stream_format": "audio",
+                "routing_en": ["azure", "kokoro"],
+            },
         )
         assert r.status_code == 200
         assert r.content == b"PCMDATA" * 2
@@ -63,7 +78,12 @@ class TestStreaming:
     async def test_stream_sse_events(self, client_with_azure):
         r = await client_with_azure.post(
             "/api/v1/audio/speech",
-            json={"input": "Hi.", "voice": "en-female-1", "stream_format": "sse"},
+            json={
+                "input": "Hi.",
+                "voice": "en-female-1",
+                "stream_format": "sse",
+                "routing_en": ["azure", "kokoro"],
+            },
         )
         assert r.status_code == 200
         body = r.text
@@ -103,9 +123,7 @@ class TestUnavailable:
     async def test_no_provider_returns_503(self):
         app = _app()  # no providers registered
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-            r = await c.post(
-                "/api/v1/audio/speech", json={"input": "Hi.", "voice": "en-female-1"}
-            )
+            r = await c.post("/api/v1/audio/speech", json={"input": "Hi.", "voice": "en-female-1"})
         assert r.status_code == 503
 
 

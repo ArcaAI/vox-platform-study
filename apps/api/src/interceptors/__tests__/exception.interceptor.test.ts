@@ -14,7 +14,13 @@ import { firstValueFrom, throwError } from 'rxjs';
 import { Counter } from 'prom-client';
 
 import { ExceptionInterceptor } from '../exception.interceptor';
-import { ArgumentInvalidException, DataNotFoundException, OptimisticConcurrencyException, BaseException, QuotaExceededException } from '@arcaai/exceptions';
+import {
+  ArgumentInvalidException,
+  DataNotFoundException,
+  OptimisticConcurrencyException,
+  BaseException,
+  QuotaExceededException,
+} from '@arcaai/exceptions';
 import { PrismaClientKnownRequestError } from '@arcaai/database';
 import { optimisticLockConflictTotal } from '../../observability/metrics';
 
@@ -142,9 +148,7 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412', () =>
 
       let caught: unknown;
       try {
-        await firstValueFrom(
-          interceptor.intercept(createMockContext(), createErrorHandler(dnf)),
-        );
+        await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(dnf)));
       } catch (e) {
         caught = e;
       }
@@ -164,9 +168,7 @@ describe('ExceptionInterceptor — OptimisticConcurrencyException -> 412', () =>
 
       let caught: unknown;
       try {
-        await firstValueFrom(
-          interceptor.intercept(createMockContext(), createErrorHandler(dnf)),
-        );
+        await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(dnf)));
       } catch (e) {
         caught = e;
       }
@@ -235,9 +237,7 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
   }
 
   it('maps a QUANTITY capability (maxUsers) to 409 Conflict', async () => {
-    const caught = await catchHttp(
-      new QuotaExceededException('limit', { capability: 'maxUsers', limit: 5, used: 5, requested: 1, tenantId: 't-1' }),
-    );
+    const caught = await catchHttp(new QuotaExceededException('limit', { capability: 'maxUsers', limit: 5, used: 5, requested: 1, tenantId: 't-1' }));
     expect(caught.getStatus()).toBe(HttpStatus.CONFLICT);
   });
 
@@ -287,9 +287,7 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter', () =
 
   async function counterValue(model: string, route: string): Promise<number> {
     const value = await (optimisticLockConflictTotal as Counter<'model' | 'route'>).get();
-    const match = value.values.find(
-      (v) => v.labels?.['model'] === model && v.labels?.['route'] === route,
-    );
+    const match = value.values.find((v) => v.labels?.['model'] === model && v.labels?.['route'] === route);
     return match?.value ?? 0;
   }
 
@@ -335,10 +333,7 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter', () =
 
     try {
       await firstValueFrom(
-        interceptor.intercept(
-          createMockContext({ method: 'PATCH', routePath: '/api/v1/global-settings/:id' }),
-          createErrorHandler(occ),
-        ),
+        interceptor.intercept(createMockContext({ method: 'PATCH', routePath: '/api/v1/global-settings/:id' }), createErrorHandler(occ)),
       );
     } catch {
       /* expected — interceptor rethrows as 412 */
@@ -395,7 +390,7 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter', () =
     expect(await counterValue('PromptTemplate', 'PATCH /api/v1/prompt-templates/tpl-1?force=true')).toBe(0);
   });
 
-  it('uses the exception\'s `model` field (not message parsing) so renames of the OCC message do not break the metric', async () => {
+  it("uses the exception's `model` field (not message parsing) so renames of the OCC message do not break the metric", async () => {
     const occ = new OptimisticConcurrencyException('Webhook', 'wh-1', {
       expectedVersion: 1,
       currentVersion: 2,
@@ -407,10 +402,7 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter', () =
     (occ as { message: string }).message = 'munged — should not affect labels';
 
     await firstValueFrom(
-      interceptor.intercept(
-        createMockContext({ method: 'PATCH', routePath: '/api/v1/webhooks/:id' }),
-        createErrorHandler(occ),
-      ),
+      interceptor.intercept(createMockContext({ method: 'PATCH', routePath: '/api/v1/webhooks/:id' }), createErrorHandler(occ)),
     ).catch(() => undefined);
 
     expect(await counterValue('Webhook', 'PATCH /api/v1/webhooks/:id')).toBe(1);
@@ -423,10 +415,7 @@ describe('ExceptionInterceptor — optimistic_lock_conflict_total counter', () =
     const generic = new GenericException('not an OCC');
 
     await firstValueFrom(
-      interceptor.intercept(
-        createMockContext({ method: 'PATCH', routePath: '/api/v1/global-settings/:id' }),
-        createErrorHandler(generic),
-      ),
+      interceptor.intercept(createMockContext({ method: 'PATCH', routePath: '/api/v1/global-settings/:id' }), createErrorHandler(generic)),
     ).catch(() => undefined);
 
     // No model label exists yet → no series at all.
@@ -467,11 +456,7 @@ describe('Prisma error sanitisation (audit)', () => {
     return { handle: () => throwError(() => err) };
   }
 
-  function makePrismaError(opts: {
-    code: string;
-    meta: Record<string, unknown>;
-    message: string;
-  }): PrismaClientKnownRequestError {
+  function makePrismaError(opts: { code: string; meta: Record<string, unknown>; message: string }): PrismaClientKnownRequestError {
     const err = Object.assign(new Error(opts.message), {
       code: opts.code,
       meta: opts.meta,
@@ -494,9 +479,7 @@ describe('Prisma error sanitisation (audit)', () => {
 
     let caught: HttpException | undefined;
     try {
-      await firstValueFrom(
-        interceptor.intercept(createMockContext(), createErrorHandler(err)),
-      );
+      await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err)));
     } catch (e) {
       caught = e as HttpException;
     }
@@ -518,9 +501,7 @@ describe('Prisma error sanitisation (audit)', () => {
 
     let caught: HttpException | undefined;
     try {
-      await firstValueFrom(
-        interceptor.intercept(createMockContext(), createErrorHandler(err)),
-      );
+      await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err)));
     } catch (e) {
       caught = e as HttpException;
     }
@@ -540,9 +521,7 @@ describe('Prisma error sanitisation (audit)', () => {
 
     let caught: HttpException | undefined;
     try {
-      await firstValueFrom(
-        interceptor.intercept(createMockContext(), createErrorHandler(err)),
-      );
+      await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err)));
     } catch (e) {
       caught = e as HttpException;
     }
@@ -562,9 +541,7 @@ describe('Prisma error sanitisation (audit)', () => {
     const errorSpy = vi.spyOn((interceptor as any).logger, 'error').mockImplementation(() => undefined);
 
     try {
-      await firstValueFrom(
-        interceptor.intercept(createMockContext(), createErrorHandler(err)),
-      );
+      await firstValueFrom(interceptor.intercept(createMockContext(), createErrorHandler(err)));
     } catch {
       /* expected */
     }
@@ -619,11 +596,7 @@ describe('Prisma error code → HTTP status mapping', () => {
   function createErrorHandler(err: unknown): CallHandler {
     return { handle: () => throwError(() => err) };
   }
-  function makePrismaError(opts: {
-    code: string;
-    meta: Record<string, unknown>;
-    message: string;
-  }): PrismaClientKnownRequestError {
+  function makePrismaError(opts: { code: string; meta: Record<string, unknown>; message: string }): PrismaClientKnownRequestError {
     const err = Object.assign(new Error(opts.message), {
       code: opts.code,
       meta: opts.meta,
@@ -643,9 +616,7 @@ describe('Prisma error code → HTTP status mapping', () => {
   }
 
   it('maps P2002 (unique constraint) to 409 Conflict + "Unique constraint violation"', async () => {
-    const caught = await catchHttp(
-      makePrismaError({ code: 'P2002', meta: { target: ['email'] }, message: 'm' }),
-    );
+    const caught = await catchHttp(makePrismaError({ code: 'P2002', meta: { target: ['email'] }, message: 'm' }));
     expect(caught.getStatus()).toBe(HttpStatus.CONFLICT);
     const body = caught.getResponse() as Record<string, unknown>;
     expect(body.statusCode).toBe(HttpStatus.CONFLICT);
@@ -654,9 +625,7 @@ describe('Prisma error code → HTTP status mapping', () => {
   });
 
   it('maps P2025 (record not found) to 404 Not Found + "Not found"', async () => {
-    const caught = await catchHttp(
-      makePrismaError({ code: 'P2025', meta: { cause: 'x' }, message: 'm' }),
-    );
+    const caught = await catchHttp(makePrismaError({ code: 'P2025', meta: { cause: 'x' }, message: 'm' }));
     expect(caught.getStatus()).toBe(HttpStatus.NOT_FOUND);
     const body = caught.getResponse() as Record<string, unknown>;
     expect(body.statusCode).toBe(HttpStatus.NOT_FOUND);
@@ -664,9 +633,7 @@ describe('Prisma error code → HTTP status mapping', () => {
   });
 
   it('maps P2003 (foreign key) to 400 Bad Request + "Foreign key constraint violation"', async () => {
-    const caught = await catchHttp(
-      makePrismaError({ code: 'P2003', meta: { field_name: 'fk' }, message: 'm' }),
-    );
+    const caught = await catchHttp(makePrismaError({ code: 'P2003', meta: { field_name: 'fk' }, message: 'm' }));
     expect(caught.getStatus()).toBe(HttpStatus.BAD_REQUEST);
     const body = caught.getResponse() as Record<string, unknown>;
     expect(body.statusCode).toBe(HttpStatus.BAD_REQUEST);
@@ -674,9 +641,7 @@ describe('Prisma error code → HTTP status mapping', () => {
   });
 
   it('maps P2014 (required relation) to 400 Bad Request + "Required relation violation"', async () => {
-    const caught = await catchHttp(
-      makePrismaError({ code: 'P2014', meta: { relation_name: 'rel' }, message: 'm' }),
-    );
+    const caught = await catchHttp(makePrismaError({ code: 'P2014', meta: { relation_name: 'rel' }, message: 'm' }));
     expect(caught.getStatus()).toBe(HttpStatus.BAD_REQUEST);
     const body = caught.getResponse() as Record<string, unknown>;
     expect(body.statusCode).toBe(HttpStatus.BAD_REQUEST);
@@ -684,9 +649,7 @@ describe('Prisma error code → HTTP status mapping', () => {
   });
 
   it('falls back to 400 Bad Request for any other Prisma error code (legacy default preserved)', async () => {
-    const caught = await catchHttp(
-      makePrismaError({ code: 'P9999', meta: {}, message: 'm' }),
-    );
+    const caught = await catchHttp(makePrismaError({ code: 'P9999', meta: {}, message: 'm' }));
     expect(caught.getStatus()).toBe(HttpStatus.BAD_REQUEST);
     const body = caught.getResponse() as Record<string, unknown>;
     expect(body.statusCode).toBe(HttpStatus.BAD_REQUEST);

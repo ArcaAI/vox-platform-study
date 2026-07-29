@@ -23,9 +23,7 @@ export class ConsultationDtoMapper {
     const columnStatus = entity.status as string | undefined;
     const metaStatus = metadata?.status as string | undefined;
     const status =
-      columnStatus && columnStatus !== CONSULTATION_STATUS.OPEN
-        ? columnStatus
-        : (metaStatus ?? columnStatus ?? CONSULTATION_STATUS.OPEN);
+      columnStatus && columnStatus !== CONSULTATION_STATUS.OPEN ? columnStatus : (metaStatus ?? columnStatus ?? CONSULTATION_STATUS.OPEN);
 
     return {
       id: entity.id,

@@ -204,9 +204,7 @@ class OpenAICompatProvider:
 
     async def _analyze_comprehensive(self, text: str) -> dict[str, Any]:
         """Combined pass: run the three checks and merge their verdicts."""
-        results = await asyncio.gather(
-            *[self.analyze_content(text, t) for t in _GRANITE_TYPES]
-        )
+        results = await asyncio.gather(*[self.analyze_content(text, t) for t in _GRANITE_TYPES])
 
         safe = True
         issues: list[str] = []
@@ -352,7 +350,10 @@ class OpenAICompatGuardianProvider:
                 "model": self.model,
                 "messages": [
                     {"role": "system", "content": self.medical_validation_prompt},
-                    {"role": "user", "content": f"Analyze this text for medical context:\n\n{text_sample}"},
+                    {
+                        "role": "user",
+                        "content": f"Analyze this text for medical context:\n\n{text_sample}",
+                    },
                 ],
                 "temperature": self.guardian_temperature,
                 "max_tokens": self.guardian_max_tokens,
@@ -436,14 +437,44 @@ class OpenAICompatGuardianProvider:
         """Fallback keyword-based medical context validation."""
 
         medical_keywords = [
-            'patient', 'diagnosis', 'treatment', 'medication', 'clinical',
-            'medical', 'doctor', 'physician', 'nurse', 'hospital', 'clinic',
-            'symptom', 'condition', 'prescription', 'therapy', 'examination',
-            'vital signs', 'chief complaint', 'history of present illness',
-            'assessment', 'plan', 'transcript', 'case note', 'summary',
-            'referral', 'visit', 'encounter', 'procedure', 'surgery',
-            'lab', 'imaging', 'radiology', 'pathology', 'biopsy',
-            'discharge', 'admission', 'consultation', 'follow-up'
+            "patient",
+            "diagnosis",
+            "treatment",
+            "medication",
+            "clinical",
+            "medical",
+            "doctor",
+            "physician",
+            "nurse",
+            "hospital",
+            "clinic",
+            "symptom",
+            "condition",
+            "prescription",
+            "therapy",
+            "examination",
+            "vital signs",
+            "chief complaint",
+            "history of present illness",
+            "assessment",
+            "plan",
+            "transcript",
+            "case note",
+            "summary",
+            "referral",
+            "visit",
+            "encounter",
+            "procedure",
+            "surgery",
+            "lab",
+            "imaging",
+            "radiology",
+            "pathology",
+            "biopsy",
+            "discharge",
+            "admission",
+            "consultation",
+            "follow-up",
         ]
 
         text_lower = text.lower()

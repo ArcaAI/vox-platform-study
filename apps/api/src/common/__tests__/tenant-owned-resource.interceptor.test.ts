@@ -27,10 +27,7 @@ import { NotFoundException, type ExecutionContext, type CallHandler } from '@nes
 import { Reflector } from '@nestjs/core';
 import { DataNotFoundException } from '@arcaai/exceptions';
 import { of, firstValueFrom } from 'rxjs';
-import {
-  TenantOwnedResource,
-  TENANT_OWNED_RESOURCE_KEY,
-} from '../tenant-owned-resource.decorator';
+import { TenantOwnedResource, TENANT_OWNED_RESOURCE_KEY } from '../tenant-owned-resource.decorator';
 import { TenantOwnedResourceInterceptor } from '../tenant-owned-resource.interceptor';
 
 const NEXT_VALUE = Symbol('passthrough');
@@ -52,11 +49,7 @@ interface MockServices {
   streamSessionTenantBinding: { lookup: ReturnType<typeof vi.fn> };
 }
 
-function buildHarness(opts: {
-  reflectorReturns?: unknown;
-  clsState?: Record<string, unknown>;
-  params?: Record<string, string>;
-}) {
+function buildHarness(opts: { reflectorReturns?: unknown; clsState?: Record<string, unknown>; params?: Record<string, string> }) {
   const reflector = {
     getAllAndOverride: vi.fn().mockReturnValue(opts.reflectorReturns ?? undefined),
   } as unknown as Reflector;
@@ -165,9 +158,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         tenantId: SENTINEL_TENANT_B,
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       try {
         await harness.interceptor.intercept(harness.ctx, harness.next);
       } catch (err) {
@@ -183,9 +174,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         params: { id: 'bucket-1' },
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       expect(harness.repos.tenantBucket.findById).not.toHaveBeenCalled();
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
@@ -234,9 +223,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         params: {},
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
 
     it('throws 404 when the repository returns null', async () => {
@@ -247,9 +234,7 @@ describe('TenantOwnedResourceInterceptor', () => {
       });
       harness.repos.tenantBucket.findById.mockResolvedValueOnce(null);
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
 
     it('throws 404 when the repository throws DataNotFoundException', async () => {
@@ -258,13 +243,9 @@ describe('TenantOwnedResourceInterceptor', () => {
         clsState: { tenantId: SENTINEL_TENANT_A },
         params: { id: 'bucket-1' },
       });
-      harness.repos.tenantBucket.findById.mockRejectedValueOnce(
-        new DataNotFoundException('TenantBucket', 'bucket-1'),
-      );
+      harness.repos.tenantBucket.findById.mockRejectedValueOnce(new DataNotFoundException('TenantBucket', 'bucket-1'));
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -300,9 +281,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         tenantId: SENTINEL_TENANT_B,
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -341,9 +320,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         userId: 'victim-user',
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
 
@@ -354,9 +331,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         params: { id: 'vp-1' },
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       expect(harness.repos.userVoiceProfile.findById).not.toHaveBeenCalled();
     });
   });
@@ -392,9 +367,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         userId: 'attacker',
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
 
     it('throws 404 when the job status is null (missing or expired)', async () => {
@@ -405,9 +378,7 @@ describe('TenantOwnedResourceInterceptor', () => {
       });
       harness.services.consultationJob.getJobStatus.mockResolvedValueOnce(null);
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -439,9 +410,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         tenantId: SENTINEL_TENANT_B,
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -526,9 +495,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         userId: 'victim-user',
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
 
@@ -551,9 +518,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         userId: 'user-1',
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
 
@@ -573,9 +538,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         userId: 'user-1',
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
 
     it('throws 404 when scope:"creator" but the job status carries no userId (pre-W7.A.12 Redis row)', async () => {
@@ -598,9 +561,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         tenantId: SENTINEL_TENANT_A,
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -636,9 +597,7 @@ describe('TenantOwnedResourceInterceptor', () => {
       });
       harness.services.streamSessionTenantBinding.lookup.mockResolvedValueOnce(SENTINEL_TENANT_B);
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
 
@@ -650,9 +609,7 @@ describe('TenantOwnedResourceInterceptor', () => {
       });
       harness.services.streamSessionTenantBinding.lookup.mockResolvedValueOnce(null);
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       expect(harness.next.handle).not.toHaveBeenCalled();
     });
 
@@ -663,9 +620,7 @@ describe('TenantOwnedResourceInterceptor', () => {
         params: { sessionId: 'sess-1' },
       });
 
-      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(harness.interceptor.intercept(harness.ctx, harness.next)).rejects.toThrow(NotFoundException);
       expect(harness.services.streamSessionTenantBinding.lookup).not.toHaveBeenCalled();
     });
   });

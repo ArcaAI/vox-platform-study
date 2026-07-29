@@ -126,7 +126,9 @@ describe('C-1: prompt wiring -> Whisper initial_prompt', () => {
       return (initCall[0] as { id: string }).id;
     }
 
-    function findTranscribeCall(worker: WorkerLike): { type: string; id: string; payload: { audio: Float32Array; options?: { prompt?: string } } } | undefined {
+    function findTranscribeCall(
+      worker: WorkerLike,
+    ): { type: string; id: string; payload: { audio: Float32Array; options?: { prompt?: string } } } | undefined {
       const call = worker.postMessage.mock.calls.find((c) => (c[0] as { type: string }).type === 'transcribe');
       return call?.[0] as never;
     }
@@ -241,7 +243,10 @@ describe('C-1: prompt wiring -> Whisper initial_prompt', () => {
       vi.resetModules();
     });
 
-    async function waitForMessage(predicate: (msg: { type: string; id: string }) => boolean, attempts = 50): Promise<{ type: string; id: string; payload: unknown }> {
+    async function waitForMessage(
+      predicate: (msg: { type: string; id: string }) => boolean,
+      attempts = 50,
+    ): Promise<{ type: string; id: string; payload: unknown }> {
       for (let i = 0; i < attempts; i++) {
         const found = postedMessages.find((m) => predicate(m as { type: string; id: string }));
         if (found) return found as { type: string; id: string; payload: unknown };

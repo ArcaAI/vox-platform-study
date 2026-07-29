@@ -16,43 +16,43 @@ import { NotFoundException } from '@nestjs/common';
 // ============================================================================
 
 interface HeartbeatRecord {
-    timestamp: string;
-    status: 'up' | 'down';
-    responseTime: number;
+  timestamp: string;
+  status: 'up' | 'down';
+  responseTime: number;
 }
 
 type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'unknown';
 
 interface ServiceUptime {
-    status: ServiceStatus;
-    uptime: number;
-    responseTime: number;
-    lastCheck: string;
-    heartbeats: HeartbeatRecord[];
+  status: ServiceStatus;
+  uptime: number;
+  responseTime: number;
+  lastCheck: string;
+  heartbeats: HeartbeatRecord[];
 }
 
 interface UptimeResponse {
-    services: Record<string, ServiceUptime>;
-    refreshedAt: string;
+  services: Record<string, ServiceUptime>;
+  refreshedAt: string;
 }
 
 interface SessionsResponse {
-    services: {
-        smr: { active: number };
-        stt: { active: number };
-        nlp: { active: number };
-        guardrail: { active: number };
-        harness: { active: number };
-    };
-    totalUsers: number;
-    refreshedAt: string;
+  services: {
+    smr: { active: number };
+    stt: { active: number };
+    nlp: { active: number };
+    guardrail: { active: number };
+    harness: { active: number };
+  };
+  totalUsers: number;
+  refreshedAt: string;
 }
 
 interface IServiceHealthMonitoringService {
-    getUptime(): Promise<UptimeResponse>;
-    getServiceUptime(serviceName: string): Promise<ServiceUptime | null>;
-    getHeartbeatHistory(serviceName: string): Promise<HeartbeatRecord[]>;
-    getSessionCounts(): Promise<SessionsResponse>;
+  getUptime(): Promise<UptimeResponse>;
+  getServiceUptime(serviceName: string): Promise<ServiceUptime | null>;
+  getHeartbeatHistory(serviceName: string): Promise<HeartbeatRecord[]>;
+  getSessionCounts(): Promise<SessionsResponse>;
 }
 
 // ============================================================================
@@ -60,29 +60,27 @@ interface IServiceHealthMonitoringService {
 // ============================================================================
 
 class TestMonitoringController {
-    constructor(
-        private readonly monitoringService: IServiceHealthMonitoringService,
-    ) {}
+  constructor(private readonly monitoringService: IServiceHealthMonitoringService) {}
 
-    async getUptime(): Promise<UptimeResponse> {
-        return this.monitoringService.getUptime();
-    }
+  async getUptime(): Promise<UptimeResponse> {
+    return this.monitoringService.getUptime();
+  }
 
-    async getServiceUptime(service: string): Promise<ServiceUptime> {
-        const result = await this.monitoringService.getServiceUptime(service);
-        if (!result) {
-            throw new NotFoundException(`Service '${service}' not found`);
-        }
-        return result;
+  async getServiceUptime(service: string): Promise<ServiceUptime> {
+    const result = await this.monitoringService.getServiceUptime(service);
+    if (!result) {
+      throw new NotFoundException(`Service '${service}' not found`);
     }
+    return result;
+  }
 
-    async getHeartbeats(service: string): Promise<HeartbeatRecord[]> {
-        return this.monitoringService.getHeartbeatHistory(service);
-    }
+  async getHeartbeats(service: string): Promise<HeartbeatRecord[]> {
+    return this.monitoringService.getHeartbeatHistory(service);
+  }
 
-    async getSessions(): Promise<SessionsResponse> {
-        return this.monitoringService.getSessionCounts();
-    }
+  async getSessions(): Promise<SessionsResponse> {
+    return this.monitoringService.getSessionCounts();
+  }
 }
 
 // ============================================================================
@@ -90,21 +88,21 @@ class TestMonitoringController {
 // ============================================================================
 
 const createMockMonitoringService = (): IServiceHealthMonitoringService => ({
-    getUptime: vi.fn(),
-    getServiceUptime: vi.fn(),
-    getHeartbeatHistory: vi.fn(),
-    getSessionCounts: vi.fn(),
+  getUptime: vi.fn(),
+  getServiceUptime: vi.fn(),
+  getHeartbeatHistory: vi.fn(),
+  getSessionCounts: vi.fn(),
 });
 
 function createMockUptime(overrides: Partial<ServiceUptime> = {}): ServiceUptime {
-    return {
-        status: 'healthy',
-        uptime: 99.5,
-        responseTime: 42,
-        lastCheck: new Date().toISOString(),
-        heartbeats: [],
-        ...overrides,
-    };
+  return {
+    status: 'healthy',
+    uptime: 99.5,
+    responseTime: 42,
+    lastCheck: new Date().toISOString(),
+    heartbeats: [],
+    ...overrides,
+  };
 }
 
 // ============================================================================
@@ -112,127 +110,123 @@ function createMockUptime(overrides: Partial<ServiceUptime> = {}): ServiceUptime
 // ============================================================================
 
 describe('MonitoringController', () => {
-    let controller: TestMonitoringController;
-    let mockService: ReturnType<typeof createMockMonitoringService>;
+  let controller: TestMonitoringController;
+  let mockService: ReturnType<typeof createMockMonitoringService>;
 
-    beforeEach(() => {
-        vi.clearAllMocks();
-        mockService = createMockMonitoringService();
-        controller = new TestMonitoringController(mockService);
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockService = createMockMonitoringService();
+    controller = new TestMonitoringController(mockService);
+  });
+
+  describe('getUptime', () => {
+    it('should delegate to monitoringService.getUptime', async () => {
+      const expected: UptimeResponse = {
+        services: {
+          stt: createMockUptime(),
+          guardrail: createMockUptime(),
+          smr: createMockUptime(),
+        },
+        refreshedAt: new Date().toISOString(),
+      };
+      (mockService.getUptime as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
+
+      const result = await controller.getUptime();
+
+      expect(result).toEqual(expected);
+      expect(mockService.getUptime).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('getServiceUptime', () => {
+    it('should return uptime for a known service', async () => {
+      const expected = createMockUptime({ status: 'healthy', uptime: 100 });
+      (mockService.getServiceUptime as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
+
+      const result = await controller.getServiceUptime('stt');
+
+      expect(result).toEqual(expected);
+      expect(mockService.getServiceUptime).toHaveBeenCalledWith('stt');
     });
 
-    describe('getUptime', () => {
-        it('should delegate to monitoringService.getUptime', async () => {
-            const expected: UptimeResponse = {
-                services: {
-                    stt: createMockUptime(),
-                    guardrail: createMockUptime(),
-                    smr: createMockUptime(),
-                },
-                refreshedAt: new Date().toISOString(),
-            };
-            (mockService.getUptime as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
+    it('should throw NotFoundException for unknown service', async () => {
+      (mockService.getServiceUptime as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
-            const result = await controller.getUptime();
-
-            expect(result).toEqual(expected);
-            expect(mockService.getUptime).toHaveBeenCalledOnce();
-        });
+      await expect(controller.getServiceUptime('nonexistent')).rejects.toThrow(NotFoundException);
     });
 
-    describe('getServiceUptime', () => {
-        it('should return uptime for a known service', async () => {
-            const expected = createMockUptime({ status: 'healthy', uptime: 100 });
-            (mockService.getServiceUptime as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
+    it('should include service name in the NotFoundException message', async () => {
+      (mockService.getServiceUptime as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
-            const result = await controller.getServiceUptime('stt');
+      await expect(controller.getServiceUptime('foo')).rejects.toThrow("Service 'foo' not found");
+    });
+  });
 
-            expect(result).toEqual(expected);
-            expect(mockService.getServiceUptime).toHaveBeenCalledWith('stt');
-        });
+  describe('getHeartbeats', () => {
+    it('should delegate to monitoringService.getHeartbeatHistory', async () => {
+      const expected: HeartbeatRecord[] = [{ timestamp: new Date().toISOString(), status: 'up', responseTime: 50 }];
+      (mockService.getHeartbeatHistory as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
 
-        it('should throw NotFoundException for unknown service', async () => {
-            (mockService.getServiceUptime as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+      const result = await controller.getHeartbeats('stt');
 
-            await expect(controller.getServiceUptime('nonexistent')).rejects.toThrow(NotFoundException);
-        });
-
-        it('should include service name in the NotFoundException message', async () => {
-            (mockService.getServiceUptime as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-
-            await expect(controller.getServiceUptime('foo')).rejects.toThrow(
-                "Service 'foo' not found",
-            );
-        });
+      expect(result).toEqual(expected);
+      expect(mockService.getHeartbeatHistory).toHaveBeenCalledWith('stt');
     });
 
-    describe('getHeartbeats', () => {
-        it('should delegate to monitoringService.getHeartbeatHistory', async () => {
-            const expected: HeartbeatRecord[] = [
-                { timestamp: new Date().toISOString(), status: 'up', responseTime: 50 },
-            ];
-            (mockService.getHeartbeatHistory as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
+    it('should return empty array when no heartbeats exist', async () => {
+      (mockService.getHeartbeatHistory as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
-            const result = await controller.getHeartbeats('stt');
+      const result = await controller.getHeartbeats('stt');
 
-            expect(result).toEqual(expected);
-            expect(mockService.getHeartbeatHistory).toHaveBeenCalledWith('stt');
-        });
+      expect(result).toEqual([]);
+    });
+  });
 
-        it('should return empty array when no heartbeats exist', async () => {
-            (mockService.getHeartbeatHistory as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  describe('getSessions', () => {
+    it('should delegate to monitoringService.getSessionCounts', async () => {
+      const expected: SessionsResponse = {
+        services: {
+          smr: { active: 0 },
+          stt: { active: 5 },
+          nlp: { active: 0 },
+          guardrail: { active: 0 },
+          harness: { active: 0 },
+        },
+        totalUsers: 5,
+        refreshedAt: new Date().toISOString(),
+      };
+      (mockService.getSessionCounts as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
 
-            const result = await controller.getHeartbeats('stt');
+      const result = await controller.getSessions();
 
-            expect(result).toEqual([]);
-        });
+      expect(result).toEqual(expected);
+      expect(mockService.getSessionCounts).toHaveBeenCalledOnce();
     });
 
-    describe('getSessions', () => {
-        it('should delegate to monitoringService.getSessionCounts', async () => {
-            const expected: SessionsResponse = {
-                services: {
-                    smr: { active: 0 },
-                    stt: { active: 5 },
-                    nlp: { active: 0 },
-                    guardrail: { active: 0 },
-                    harness: { active: 0 },
-                },
-                totalUsers: 5,
-                refreshedAt: new Date().toISOString(),
-            };
-            (mockService.getSessionCounts as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
+    // Sessions cover the real downstream services so the surface stays
+    // aligned with uptime/health.
+    it('returns stt, nlp, guardrail and harness session counts alongside smr', async () => {
+      const expected: SessionsResponse = {
+        services: {
+          smr: { active: 0 },
+          stt: { active: 0 },
+          nlp: { active: 0 },
+          guardrail: { active: 0 },
+          harness: { active: 0 },
+        },
+        totalUsers: 0,
+        refreshedAt: new Date().toISOString(),
+      };
+      (mockService.getSessionCounts as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
 
-            const result = await controller.getSessions();
+      const result = await controller.getSessions();
 
-            expect(result).toEqual(expected);
-            expect(mockService.getSessionCounts).toHaveBeenCalledOnce();
-        });
-
-        // Sessions cover the real downstream services so the surface stays
-        // aligned with uptime/health.
-        it('returns stt, nlp, guardrail and harness session counts alongside smr', async () => {
-            const expected: SessionsResponse = {
-                services: {
-                    smr: { active: 0 },
-                    stt: { active: 0 },
-                    nlp: { active: 0 },
-                    guardrail: { active: 0 },
-                    harness: { active: 0 },
-                },
-                totalUsers: 0,
-                refreshedAt: new Date().toISOString(),
-            };
-            (mockService.getSessionCounts as ReturnType<typeof vi.fn>).mockResolvedValue(expected);
-
-            const result = await controller.getSessions();
-
-            expect(result.services.stt).toEqual({ active: 0 });
-            expect(result.services.nlp).toEqual({ active: 0 });
-            expect(result.services.guardrail).toEqual({ active: 0 });
-            expect(result.services.harness).toEqual({ active: 0 });
-        });
+      expect(result.services.stt).toEqual({ active: 0 });
+      expect(result.services.nlp).toEqual({ active: 0 });
+      expect(result.services.guardrail).toEqual({ active: 0 });
+      expect(result.services.harness).toEqual({ active: 0 });
     });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -247,17 +241,17 @@ describe('MonitoringController', () => {
 //   metadata check needs the actual decorated class).
 // ─────────────────────────────────────────────────────────────────────────
 describe('monitoring admin-gating', () => {
-    const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
-    const PERMISSION_MODE_KEY = 'permission_mode';
+  const REQUIRED_PERMISSIONS_KEY = 'required_permissions';
+  const PERMISSION_MODE_KEY = 'permission_mode';
 
-    it('accepts EITHER `manage all` (global-admin) OR `read TenantTelemetry` (tenant-admin)', async () => {
-        const { MonitoringController } = await import('../monitoring.controller');
-        const required = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, MonitoringController);
-        const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, MonitoringController);
-        expect(required).toEqual([
-            { action: 'manage', subject: 'all' },
-            { action: 'read', subject: 'TenantTelemetry' },
-        ]);
-        expect(mode).toBe('OR');
-    });
+  it('accepts EITHER `manage all` (global-admin) OR `read TenantTelemetry` (tenant-admin)', async () => {
+    const { MonitoringController } = await import('../monitoring.controller');
+    const required = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, MonitoringController);
+    const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, MonitoringController);
+    expect(required).toEqual([
+      { action: 'manage', subject: 'all' },
+      { action: 'read', subject: 'TenantTelemetry' },
+    ]);
+    expect(mode).toBe('OR');
+  });
 });

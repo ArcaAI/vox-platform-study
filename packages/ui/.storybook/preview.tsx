@@ -1,7 +1,7 @@
-import type { Preview } from '@storybook/react-vite'
+import type { Preview } from '@storybook/react-vite';
 
 // Import Tailwind CSS styles
-import '../src/styles/globals.css'
+import '../src/styles/globals.css';
 
 const preview: Preview = {
   parameters: {
@@ -34,19 +34,19 @@ const preview: Preview = {
   },
   decorators: [
     (Story, context) => {
-      const theme = context.globals.theme || 'light'
+      const theme = context.globals.theme || 'light';
 
       // Apply theme class to the document
-      document.documentElement.classList.remove('light', 'dark')
-      document.documentElement.classList.add(theme)
+      document.documentElement.classList.remove('light', 'dark');
+      document.documentElement.classList.add(theme);
 
       return (
         <div className={`min-h-screen bg-background text-foreground p-4 ${theme}`}>
           <Story />
         </div>
-      )
+      );
     },
   ],
-}
+};
 
-export default preview
+export default preview;

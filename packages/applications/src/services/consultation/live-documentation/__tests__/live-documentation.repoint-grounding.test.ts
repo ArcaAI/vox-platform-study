@@ -46,7 +46,12 @@ function nerEntitiesFor(text: string) {
   for (const term of NER_VOCAB) {
     const at = lower.indexOf(term);
     if (at >= 0) {
-      ents.push({ entity_type: TYPE_OF[term], text: text.slice(at, at + term.length), confidence: 0.9, position: { start: at, end: at + term.length } });
+      ents.push({
+        entity_type: TYPE_OF[term],
+        text: text.slice(at, at + term.length),
+        confidence: 0.9,
+        position: { start: at, end: at + term.length },
+      });
     }
   }
   return ents;

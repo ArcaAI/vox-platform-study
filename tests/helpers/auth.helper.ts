@@ -36,10 +36,7 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 /**
  * Generate a JWT token for a test user
  */
-export function generateTestToken(
-  user: TestUser,
-  options: { expiresIn?: string } = {}
-): string {
+export function generateTestToken(user: TestUser, options: { expiresIn?: string } = {}): string {
   const payload: Omit<TokenPayload, 'iat' | 'exp'> = {
     sub: user.id,
     email: user.email,
@@ -119,10 +116,7 @@ export function createSuperAdminUser(overrides: Partial<TestUser> = {}): TestUse
 /**
  * Create a test user with specific permissions
  */
-export function createUserWithPermissions(
-  permissions: string[],
-  overrides: Partial<TestUser> = {}
-): TestUser {
+export function createUserWithPermissions(permissions: string[], overrides: Partial<TestUser> = {}): TestUser {
   return createTestUser({
     permissions,
     ...overrides,

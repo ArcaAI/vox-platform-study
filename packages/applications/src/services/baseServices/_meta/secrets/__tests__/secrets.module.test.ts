@@ -60,9 +60,7 @@ describe('SecretsModule', () => {
     process.env.SECRETS_PROVIDER = 'vault';
     process.env.VAULT_ROLE_ID = 'rid';
     process.env.VAULT_SECRET_ID = 'sid';
-    await expect(
-      Test.createTestingModule({ imports: [SecretsModule.forRoot()] }).compile(),
-    ).rejects.toThrow(/VAULT_ADDR/);
+    await expect(Test.createTestingModule({ imports: [SecretsModule.forRoot()] }).compile()).rejects.toThrow(/VAULT_ADDR/);
   });
 
   // Read-from-file AppRole creds. Production (systemd-creds /
@@ -113,9 +111,7 @@ describe('SecretsModule', () => {
       // Prove the inline value actually won — not just that construction
       // succeeded (the file value 'rid-from-file' would also build a valid
       // provider, so the type check alone can't distinguish the two).
-      expect((provider as unknown as { config: { roleId: string } }).config.roleId).toBe(
-        'rid-inline',
-      );
+      expect((provider as unknown as { config: { roleId: string } }).config.roleId).toBe('rid-inline');
     });
 
     it('throws a clear error when VAULT_ROLE_ID_FILE points at a missing file', async () => {
@@ -124,9 +120,7 @@ describe('SecretsModule', () => {
       process.env.VAULT_ROLE_ID_FILE = join(dir, 'does-not-exist');
       process.env.VAULT_SECRET_ID = 'sid';
 
-      await expect(
-        Test.createTestingModule({ imports: [SecretsModule.forRoot()] }).compile(),
-      ).rejects.toThrow(/VAULT_ROLE_ID_FILE/);
+      await expect(Test.createTestingModule({ imports: [SecretsModule.forRoot()] }).compile()).rejects.toThrow(/VAULT_ROLE_ID_FILE/);
     });
   });
 

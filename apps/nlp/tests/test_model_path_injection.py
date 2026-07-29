@@ -33,9 +33,7 @@ class TestSchemaCarriesModelPath:
         assert req.model_path == "/opt/models/cls"
 
     def test_diagnosis_request_accepts_model_path(self) -> None:
-        req = DiagnosisSuggestionRequest(
-            text="x", model_name="org/dx", model_path="/opt/models/dx"
-        )
+        req = DiagnosisSuggestionRequest(text="x", model_name="org/dx", model_path="/opt/models/dx")
         assert req.model_path == "/opt/models/dx"
 
     def test_model_path_defaults_to_none(self) -> None:
@@ -99,9 +97,7 @@ class TestCacheKeyIncludesPath:
     async def test_path_change_creates_a_new_cache_entry(self) -> None:
         from nlp.dependencies import _model_cache_key
 
-        assert _model_cache_key("org/ner", None) != _model_cache_key(
-            "org/ner", "/opt/models/ner"
-        )
+        assert _model_cache_key("org/ner", None) != _model_cache_key("org/ner", "/opt/models/ner")
         assert _model_cache_key("org/ner", "/a") != _model_cache_key("org/ner", "/b")
 
     def test_same_identity_is_a_cache_hit(self) -> None:

@@ -48,7 +48,11 @@ vi.mock('../../api/departments', () => ({
 // ── heavy/Radix UI stubs (avoid portals); @arcaai/ui/form stays REAL ──
 vi.mock('@arcaai/ui/multi-column-layout', () => ({
   MultiColumnLayout: ({ columns }: any) => (
-    <div>{columns.map((c: any) => <div key={c.id}>{c.headerActions}</div>)}</div>
+    <div>
+      {columns.map((c: any) => (
+        <div key={c.id}>{c.headerActions}</div>
+      ))}
+    </div>
   ),
 }));
 vi.mock('@arcaai/ui/dialog', () => ({
@@ -62,7 +66,9 @@ vi.mock('@arcaai/ui/dialog', () => ({
 }));
 vi.mock('@arcaai/ui/button', () => ({
   Button: ({ children, onClick, disabled, type }: any) => (
-    <button type={type ?? 'button'} onClick={onClick} disabled={disabled}>{children}</button>
+    <button type={type ?? 'button'} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
   ),
 }));
 vi.mock('@arcaai/ui/input', () => ({ Input: (props: any) => <input {...props} /> }));

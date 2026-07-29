@@ -78,11 +78,20 @@ class AzureSpeechLoader(BaseModelLoader):
     def supported_formats(self) -> list[AiModelFormat]:
         return [AiModelFormat.AZURE_SPEECH]
 
-    async def load(self, model_config: AiModelConfig) -> LoadedModel:
+    async def load(
+        self,
+        model_config: AiModelConfig,
+        provider_overrides: dict[str, object] | None = None,
+    ) -> LoadedModel:
         """Validate credentials and return a ``SpeechConfig`` handle.
 
         Args:
             model_config: Model configuration (from DB or inline YAML).
+            provider_overrides: Optional per-tenant credential map (gateway
+                wire shape). The ``azure-speech`` entry (``api_key``/``region``/
+                ``endpoint``), when present, takes precedence over the inline
+                config and env credentials (TASK-567 BYOK). Env fallback
+                preserved.
 
         Returns:
             ``LoadedModel`` with ``model`` set to a ``SpeechConfig``.
@@ -92,14 +101,29 @@ class AzureSpeechLoader(BaseModelLoader):
         """
         settings = get_settings()
 
-        # Resolve credentials: inline config overrides > environment settings
-        speech_key = (
-            model_config.compute_type  # Re-purpose compute_type field for key
-            if model_config.compute_type and model_config.compute_type.startswith("key:")
-            else None
-        ) or (settings.azure_speech_key.get_secret_value() if settings.azure_speech_key else None)
+        override = None
+        if provider_overrides:
+            entry = provider_overrides.get("azure-speech")
+            if isinstance(entry, dict) and entry:
+                override = entry
 
-        speech_region = self._resolve_region(model_config) or settings.azure_speech_region
+        override_key = override.get("api_key") if override else None
+        override_region = (override.get("region") or override.get("endpoint")) if override else None
+
+        # Resolve credentials: per-tenant override > inline config > env settings
+        speech_key = (
+            override_key
+            or (
+                model_config.compute_type  # Re-purpose compute_type field for key
+                if model_config.compute_type and model_config.compute_type.startswith("key:")
+                else None
+            )
+            or (settings.azure_speech_key.get_secret_value() if settings.azure_speech_key else None)
+        )
+
+        speech_region = (
+            override_region or self._resolve_region(model_config) or settings.azure_speech_region
+        )
 
         if not speech_key or not speech_region:
             raise CloudASRAuthError(

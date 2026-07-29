@@ -6,13 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  buildAudioConstraints,
-  getTrackFeatures,
-  applyFeatureConstraint,
-  isFeatureSupported,
-  getSupportedFeatures,
-} from '../utils/constraints.js';
+import { buildAudioConstraints, getTrackFeatures, applyFeatureConstraint, isFeatureSupported, getSupportedFeatures } from '../utils/constraints.js';
 import { AudioFeature, DEFAULT_AUDIO_OPTIONS } from '../types/index.js';
 
 // ============================================================================
@@ -110,9 +104,7 @@ describe('buildAudioConstraints', () => {
       voiceIsolation: true,
     });
 
-    expect(
-      (constraints as MediaTrackConstraints & { voiceIsolation?: boolean }).voiceIsolation
-    ).toBe(true);
+    expect((constraints as MediaTrackConstraints & { voiceIsolation?: boolean }).voiceIsolation).toBe(true);
   });
 
   it('should merge partial options with defaults', () => {
@@ -197,7 +189,7 @@ describe('applyFeatureConstraint', () => {
     expect(track.applyConstraints).toHaveBeenCalledWith(
       expect.objectContaining({
         echoCancellation: true,
-      })
+      }),
     );
   });
 
@@ -207,7 +199,7 @@ describe('applyFeatureConstraint', () => {
     expect(track.applyConstraints).toHaveBeenCalledWith(
       expect.objectContaining({
         noiseSuppression: true,
-      })
+      }),
     );
   });
 
@@ -217,7 +209,7 @@ describe('applyFeatureConstraint', () => {
     expect(track.applyConstraints).toHaveBeenCalledWith(
       expect.objectContaining({
         autoGainControl: true,
-      })
+      }),
     );
   });
 
@@ -227,7 +219,7 @@ describe('applyFeatureConstraint', () => {
     expect(track.applyConstraints).toHaveBeenCalledWith(
       expect.objectContaining({
         voiceIsolation: true,
-      })
+      }),
     );
   });
 
@@ -237,7 +229,7 @@ describe('applyFeatureConstraint', () => {
     expect(track.applyConstraints).toHaveBeenCalledWith(
       expect.objectContaining({
         echoCancellation: false,
-      })
+      }),
     );
   });
 
@@ -255,7 +247,7 @@ describe('applyFeatureConstraint', () => {
         deviceId: 'my-device',
         sampleRate: 48000,
         echoCancellation: true,
-      })
+      }),
     );
   });
 });

@@ -66,9 +66,7 @@ class TestRequestIDMiddleware:
     @pytest.mark.asyncio
     async def test_request_id_propagated_from_header(self, client):
         """When X-Request-ID is sent, the same value appears in the response."""
-        resp = await client.get(
-            "/api/v1/health", headers={"X-Request-ID": "abc-123"}
-        )
+        resp = await client.get("/api/v1/health", headers={"X-Request-ID": "abc-123"})
         assert resp.status_code == 200
         assert resp.headers["x-request-id"] == "abc-123"
 
@@ -100,9 +98,7 @@ class TestRequestIDMiddleware:
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            resp = await c.get(
-                "/api/v1/_test_ctx", headers={"X-Request-ID": "ctx-test-id"}
-            )
+            resp = await c.get("/api/v1/_test_ctx", headers={"X-Request-ID": "ctx-test-id"})
 
         assert resp.status_code == 200
         assert captured_ctx.get("request_id") == "ctx-test-id"
@@ -114,9 +110,7 @@ class TestRequestIDMiddleware:
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            await c.get(
-                "/api/v1/health", headers={"X-Request-ID": "should-be-cleared"}
-            )
+            await c.get("/api/v1/health", headers={"X-Request-ID": "should-be-cleared"})
 
         ctx_after = structlog.contextvars.get_contextvars()
         assert "request_id" not in ctx_after

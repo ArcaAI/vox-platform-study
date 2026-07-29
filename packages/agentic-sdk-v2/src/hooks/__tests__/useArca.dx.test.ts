@@ -315,9 +315,7 @@ describe('Stream F: DX Polish', () => {
     });
 
     it('fetchTranscriptions should call GET /consultations/:id/context/transcriptions', async () => {
-      const mockGet = vi.fn().mockResolvedValue([
-        { id: 't1', type: 'transcription', content: 'Hello' },
-      ]);
+      const mockGet = vi.fn().mockResolvedValue([{ id: 't1', type: 'transcription', content: 'Hello' }]);
 
       currentMockStore = {
         ...currentMockStore,
@@ -337,9 +335,7 @@ describe('Stream F: DX Polish', () => {
     });
 
     it('fetchCaseNotes should call GET /consultations/:id/context/case-notes', async () => {
-      const mockGet = vi.fn().mockResolvedValue([
-        { id: 'cn1', type: 'case_note', content: 'Patient note' },
-      ]);
+      const mockGet = vi.fn().mockResolvedValue([{ id: 'cn1', type: 'case_note', content: 'Patient note' }]);
 
       currentMockStore = {
         ...currentMockStore,
@@ -370,7 +366,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.context.fetchTranscriptions();
-        })
+        }),
       ).rejects.toThrow('No active consultation');
     });
 
@@ -386,7 +382,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.context.fetchCaseNotes();
-        })
+        }),
       ).rejects.toThrow('No active consultation');
     });
 
@@ -402,7 +398,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.context.fetchTranscriptions();
-        })
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
@@ -418,7 +414,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.context.fetchCaseNotes();
-        })
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
@@ -476,7 +472,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.context.fetchTranscriptions();
-        })
+        }),
       ).rejects.toThrow('Server error');
     });
   });
@@ -493,9 +489,7 @@ describe('Stream F: DX Polish', () => {
     });
 
     it('loadSummaries should fetch from GET /consultations/:id/summary', async () => {
-      const summaries = [
-        { id: 's1', type: 'summary', content: 'Summary text' },
-      ];
+      const summaries = [{ id: 's1', type: 'summary', content: 'Summary text' }];
       const mockGet = vi.fn().mockResolvedValue(summaries);
       const setSummaries = vi.fn();
 
@@ -528,7 +522,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.summary.loadSummaries();
-        })
+        }),
       ).rejects.toThrow('No active consultation');
     });
 
@@ -544,7 +538,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.summary.loadSummaries();
-        })
+        }),
       ).rejects.toThrow('SDK not initialized');
     });
 
@@ -612,7 +606,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.summary.loadSummaries();
-        })
+        }),
       ).rejects.toThrow('500 Internal');
 
       expect(setSummaries).not.toHaveBeenCalled();
@@ -683,7 +677,7 @@ describe('Stream F: DX Polish', () => {
       await expect(
         act(async () => {
           await result.current.withRetry(fn, { maxRetries: 3, delayMs: 0 });
-        })
+        }),
       ).rejects.toThrow('Not a network error');
 
       // Should not retry — only called once

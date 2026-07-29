@@ -258,7 +258,7 @@
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         paths:
-          - .env.example
+          - .env.sample
           - apps/**/*
           - packages/**/*
           - scripts/env-sync.mts
@@ -268,7 +268,7 @@
     - if: $PIPELINE_TYPE == "dev"
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
-        - .env.example
+        - .env.sample
         - apps/**/*
         - packages/**/*
         - scripts/env-sync.mts

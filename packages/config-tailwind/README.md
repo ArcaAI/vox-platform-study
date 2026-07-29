@@ -9,13 +9,13 @@ Last updated: 2026-07-04
 `main` points to [tailwind.config.ts](./tailwind.config.ts):
 
 ```typescript
-import type { Config } from "tailwindcss";
+import type { Config } from 'tailwindcss';
 
-const sharedConfig: Omit<Config, "content"> = {
-    theme: {
-        extend: {},
-    },
-    plugins: [],
+const sharedConfig: Omit<Config, 'content'> = {
+  theme: {
+    extend: {},
+  },
+  plugins: [],
 };
 
 export default sharedConfig;

@@ -157,7 +157,7 @@ describe('OTelTransport', () => {
         createLogEntry({
           level: 'info',
           message: 'Test OTLP message',
-        })
+        }),
       );
 
       await transport.flush();
@@ -205,7 +205,7 @@ describe('OTelTransport', () => {
             spanId: 'span123456789012',
             traceFlags: 1,
           },
-        })
+        }),
       );
 
       await transport.flush();
@@ -227,7 +227,7 @@ describe('OTelTransport', () => {
             traceId: 'abc-123-def', // Short with dashes
             spanId: 'span123',
           },
-        })
+        }),
       );
 
       await transport.flush();
@@ -247,7 +247,7 @@ describe('OTelTransport', () => {
             traceId: 'abc123def456abc123def456abc12345',
             spanId: 'short',
           },
-        })
+        }),
       );
 
       await transport.flush();
@@ -300,7 +300,7 @@ describe('OTelTransport', () => {
             objAttr: { nested: 'value' },
           },
           tags: ['tag1', 'tag2'],
-        })
+        }),
       );
 
       await transport.flush();
@@ -323,7 +323,7 @@ describe('OTelTransport', () => {
             code: 'ERR_TEST',
             stack: 'Error: test\n  at test.ts:1:1',
           },
-        })
+        }),
       );
 
       await transport.flush();
@@ -343,7 +343,7 @@ describe('OTelTransport', () => {
       transport.log(
         createLogEntry({
           attributes: { str: 'test' },
-        })
+        }),
       );
 
       await transport.flush();
@@ -359,7 +359,7 @@ describe('OTelTransport', () => {
       transport.log(
         createLogEntry({
           attributes: { num: 42 },
-        })
+        }),
       );
 
       await transport.flush();
@@ -375,7 +375,7 @@ describe('OTelTransport', () => {
       transport.log(
         createLogEntry({
           attributes: { float: 3.14 },
-        })
+        }),
       );
 
       await transport.flush();
@@ -391,7 +391,7 @@ describe('OTelTransport', () => {
       transport.log(
         createLogEntry({
           attributes: { bool: true },
-        })
+        }),
       );
 
       await transport.flush();
@@ -416,7 +416,7 @@ describe('OTelTransport', () => {
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
           }),
-        })
+        }),
       );
     });
 
@@ -430,10 +430,7 @@ describe('OTelTransport', () => {
       trailingSlashTransport.log(createLogEntry());
       await trailingSlashTransport.flush();
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:4318/v1/logs',
-        expect.any(Object)
-      );
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:4318/v1/logs', expect.any(Object));
     });
 
     it('should not flush if buffer is empty', async () => {
@@ -487,7 +484,7 @@ describe('OTelTransport', () => {
           headers: expect.objectContaining({
             'X-Custom-Header': 'custom-value',
           }),
-        })
+        }),
       );
     });
   });
@@ -651,23 +648,13 @@ describe('OTelTransport', () => {
 
     it('exposes isAllowedToActivate as a pure static predicate', () => {
       process.env.NODE_ENV = 'development';
-      expect(
-        OTelTransport.isAllowedToActivate({ enabled: true, endpoint: 'http://l:4318' })
-      ).toBe(true);
-      expect(
-        OTelTransport.isAllowedToActivate({ enabled: false, endpoint: 'http://l:4318' })
-      ).toBe(false);
-      expect(
-        OTelTransport.isAllowedToActivate({ enabled: true, endpoint: '' })
-      ).toBe(false);
-      expect(
-        OTelTransport.isAllowedToActivate({ enabled: true, endpoint: '   ' })
-      ).toBe(false);
+      expect(OTelTransport.isAllowedToActivate({ enabled: true, endpoint: 'http://l:4318' })).toBe(true);
+      expect(OTelTransport.isAllowedToActivate({ enabled: false, endpoint: 'http://l:4318' })).toBe(false);
+      expect(OTelTransport.isAllowedToActivate({ enabled: true, endpoint: '' })).toBe(false);
+      expect(OTelTransport.isAllowedToActivate({ enabled: true, endpoint: '   ' })).toBe(false);
 
       process.env.NODE_ENV = 'production';
-      expect(
-        OTelTransport.isAllowedToActivate({ enabled: true, endpoint: 'http://l:4318' })
-      ).toBe(false);
+      expect(OTelTransport.isAllowedToActivate({ enabled: true, endpoint: 'http://l:4318' })).toBe(false);
     });
   });
 });

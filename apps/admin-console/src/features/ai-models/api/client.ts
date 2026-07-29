@@ -2,46 +2,39 @@
 
 import { deleteJson, getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
 import type { ListParams, WithEtag } from '@/shared/api';
-import type {
-    AiModel,
-    CreateModelRequest,
-    DiscoveryResponse,
-    PaginatedModels,
-    RegisterDiscoveredModelRequest,
-    UpdateModelRequest,
-} from './types';
+import type { AiModel, CreateModelRequest, DiscoveryResponse, PaginatedModels, RegisterDiscoveredModelRequest, UpdateModelRequest } from './types';
 
 const BASE = 'admin/ai-models';
 
 /** All rows, un-paginated (the gateway's fetchAll). */
 export function listModels(): Promise<AiModel[]> {
-    return getJson(BASE);
+  return getJson(BASE);
 }
 
 /** Paginated variant — note the custom envelope with total/totalPages. */
 export function listModelsPaginated(params?: ListParams): Promise<PaginatedModels> {
-    return getJson(`${BASE}/list`, params);
+  return getJson(`${BASE}/list`, params);
 }
 
 export function getModel(id: string): Promise<WithEtag<AiModel | null>> {
-    return getWithEtag(`${BASE}/${encodeURIComponent(id)}`);
+  return getWithEtag(`${BASE}/${encodeURIComponent(id)}`);
 }
 
 export function getModelBySlug(slug: string): Promise<WithEtag<AiModel | null>> {
-    return getWithEtag(`${BASE}/slug/${encodeURIComponent(slug)}`);
+  return getWithEtag(`${BASE}/slug/${encodeURIComponent(slug)}`);
 }
 
 export function createModel(body: CreateModelRequest): Promise<AiModel> {
-    return postJson(BASE, body);
+  return postJson(BASE, body);
 }
 
 /** OCC PATCH: If-Match + body expectedVersion derived from the read ETag. */
 export function updateModel(id: string, patch: UpdateModelRequest, etag: string): Promise<WithEtag<AiModel>> {
-    return patchWithEtag(`${BASE}/${encodeURIComponent(id)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+  return patchWithEtag(`${BASE}/${encodeURIComponent(id)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
 export function deleteModel(id: string): Promise<void> {
-    return deleteJson(`${BASE}/${encodeURIComponent(id)}`);
+  return deleteJson(`${BASE}/${encodeURIComponent(id)}`);
 }
 
 /**
@@ -51,10 +44,10 @@ export function deleteModel(id: string): Promise<void> {
  * page load.
  */
 export function discoverModels(provider?: string): Promise<DiscoveryResponse> {
-    return getJson(`${BASE}/discovery`, provider ? { provider } : undefined);
+  return getJson(`${BASE}/discovery`, provider ? { provider } : undefined);
 }
 
 /** Explicit `discovered` → `registered` transition; the only mutating discovery path. */
 export function registerDiscoveredModel(body: RegisterDiscoveredModelRequest): Promise<AiModel> {
-    return postJson(`${BASE}/discovery/register`, body);
+  return postJson(`${BASE}/discovery/register`, body);
 }

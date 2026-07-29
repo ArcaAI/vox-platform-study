@@ -50,7 +50,9 @@ def _client(handler, **overrides) -> GraniteGuardianClient:
 def _openai_response(verdict: str) -> httpx.Response:
     return httpx.Response(
         200,
-        json={"choices": [{"message": {"role": "assistant", "content": f"<score>{verdict}</score>"}}]},
+        json={
+            "choices": [{"message": {"role": "assistant", "content": f"<score>{verdict}</score>"}}]
+        },
     )
 
 

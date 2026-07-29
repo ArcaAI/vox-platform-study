@@ -33,11 +33,7 @@ describe('EvalPromotionGateService', () => {
       failures: [],
       aggregates: { pdsqi_mean: 4.5 },
     });
-    service = new EvalPromotionGateService(
-      mockAgentRepository as never,
-      mockEvalRunService as never,
-      mockEffectiveSettings as never,
-    );
+    service = new EvalPromotionGateService(mockAgentRepository as never, mockEvalRunService as never, mockEffectiveSettings as never);
   });
 
   it('runs the eval for a bound agent’s golden set and passes it through', async () => {
@@ -94,10 +90,7 @@ describe('EvalPromotionGateService', () => {
   });
 
   it('scopes to a single agent for a pin re-point', async () => {
-    mockAgentRepository.findAll.mockResolvedValue([
-      agent({ id: 'agent-1', goldenSetId: 'set-1' }),
-      agent({ id: 'agent-2', goldenSetId: 'set-2' }),
-    ]);
+    mockAgentRepository.findAll.mockResolvedValue([agent({ id: 'agent-1', goldenSetId: 'set-1' }), agent({ id: 'agent-2', goldenSetId: 'set-2' })]);
     await service.evaluatePromotion({ tenantId: TENANT, promptTemplateId: TPL, agentId: 'agent-2', trigger: 'pin' });
     expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledTimes(1);
     expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledWith(expect.objectContaining({ goldenSetId: 'set-2' }));

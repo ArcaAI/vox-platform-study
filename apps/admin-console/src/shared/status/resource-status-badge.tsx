@@ -10,14 +10,14 @@ import type { ResourceStatus } from '@/shared/api';
  * (queue health, job states...) map their own roles and reuse StatusBadge.
  */
 export const RESOURCE_STATUS_META: Record<ResourceStatus, { label: string; role: StatusColorRole }> = {
-    ENABLED: { label: 'Active', role: 'success' },
-    DISABLED: { label: 'Disabled', role: 'neutral' },
-    SUSPENDED: { label: 'Suspended', role: 'warning' },
-    ARCHIVED: { label: 'Archived', role: 'neutral' },
-    DELETED: { label: 'Deleted', role: 'destructive' },
+  ENABLED: { label: 'Active', role: 'success' },
+  DISABLED: { label: 'Disabled', role: 'neutral' },
+  SUSPENDED: { label: 'Suspended', role: 'warning' },
+  ARCHIVED: { label: 'Archived', role: 'neutral' },
+  DELETED: { label: 'Deleted', role: 'destructive' },
 };
 
 export function ResourceStatusBadge({ status }: { status: ResourceStatus | string | null | undefined }) {
-    const meta = (status && RESOURCE_STATUS_META[status as ResourceStatus]) || { label: status ?? 'Unknown', role: 'neutral' as StatusColorRole };
-    return <StatusBadge label={meta.label} colorRole={meta.role} icon={<StatusDot colorRole={meta.role} size="sm" />} />;
+  const meta = (status && RESOURCE_STATUS_META[status as ResourceStatus]) || { label: status ?? 'Unknown', role: 'neutral' as StatusColorRole };
+  return <StatusBadge label={meta.label} colorRole={meta.role} icon={<StatusDot colorRole={meta.role} size="sm" />} />;
 }

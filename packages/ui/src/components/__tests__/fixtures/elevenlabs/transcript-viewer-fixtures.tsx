@@ -4,7 +4,7 @@ import {
   TranscriptViewerAudio,
   TranscriptViewerPlayPauseButton,
   TranscriptViewerScrubBar,
-} from '../../../elevenlabs/transcript-viewer'
+} from '../../../elevenlabs/transcript-viewer';
 
 const mockAlignment = {
   characters: ['H', 'e', 'l', 'l', 'o'],
@@ -12,7 +12,7 @@ const mockAlignment = {
   character_end_times_seconds: [0.1, 0.2, 0.3, 0.4, 0.5],
   characterStartTimesSeconds: [0, 0.1, 0.2, 0.3, 0.4],
   characterEndTimesSeconds: [0.1, 0.2, 0.3, 0.4, 0.5],
-}
+};
 
 export function BasicTranscriptViewer() {
   return (
@@ -28,7 +28,7 @@ export function BasicTranscriptViewer() {
         <TranscriptViewerScrubBar className="flex-1" />
       </div>
     </TranscriptViewerContainer>
-  )
+  );
 }
 
 export function TranscriptViewerPlayOnly() {
@@ -41,5 +41,5 @@ export function TranscriptViewerPlayOnly() {
       <TranscriptViewerAudio />
       <TranscriptViewerPlayPauseButton data-testid="play-pause" />
     </TranscriptViewerContainer>
-  )
+  );
 }

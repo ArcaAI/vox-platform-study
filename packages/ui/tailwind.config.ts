@@ -1,4 +1,4 @@
-import type { Config } from "tailwindcss";
+import type { Config } from 'tailwindcss';
 
 /**
  * Tailwind CSS v4 Configuration for @arcaai/ui
@@ -8,9 +8,7 @@ import type { Config } from "tailwindcss";
  * Theme configuration is in src/styles.css
  */
 const config: Config = {
-  content: [
-    "./src/**/*.{ts,tsx}",
-  ],
+  content: ['./src/**/*.{ts,tsx}'],
   // DaisyUI is configured via @plugin directive in styles.css for Tailwind v4
 };
 

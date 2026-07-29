@@ -23,10 +23,7 @@ from .source_resolver import resolve_weights_or_hf_id
 
 logger = logging.getLogger(__name__)
 
-_INSTALL_HINT = (
-    "faster-whisper not installed. Install with: "
-    "pip install 'faster-whisper>=1.2.1'"
-)
+_INSTALL_HINT = "faster-whisper not installed. Install with: " "pip install 'faster-whisper>=1.2.1'"
 
 
 class FasterWhisperLoader(BaseModelLoader):
@@ -63,8 +60,7 @@ class FasterWhisperLoader(BaseModelLoader):
             model_path = await resolve_weights_or_hf_id(model_config, get_settings())
 
             logger.info(
-                "Loading faster-whisper model %s (path=%s, device=%s:%d, "
-                "compute_type=%s)",
+                "Loading faster-whisper model %s (path=%s, device=%s:%d, " "compute_type=%s)",
                 model_config.slug,
                 model_path,
                 device,
@@ -137,9 +133,7 @@ class FasterWhisperLoader(BaseModelLoader):
             gc.collect()
             cleanup_accelerator_memory()
 
-            logger.info(
-                "Unloaded faster-whisper model %s", loaded_model.model_slug
-            )
+            logger.info("Unloaded faster-whisper model %s", loaded_model.model_slug)
         except Exception as e:
             logger.warning("Error during faster-whisper model unload: %s", e)
 

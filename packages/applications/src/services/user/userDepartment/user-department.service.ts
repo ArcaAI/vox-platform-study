@@ -247,8 +247,7 @@ export class UserDepartmentService extends BaseService implements IUserDepartmen
 
     // Enforce the single-primary invariant: clear every primary, then set the
     // requested one (ignored when it is not part of the target set).
-    const primaryDepartmentId =
-      dto.primaryDepartmentId && targetIds.includes(dto.primaryDepartmentId) ? dto.primaryDepartmentId : undefined;
+    const primaryDepartmentId = dto.primaryDepartmentId && targetIds.includes(dto.primaryDepartmentId) ? dto.primaryDepartmentId : undefined;
     await this.demoteExistingPrimaries(tenantId, userId);
     if (primaryDepartmentId) {
       const [primaryRow] = await this.userDepartmentRepository.findAll({

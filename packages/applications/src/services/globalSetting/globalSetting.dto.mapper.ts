@@ -22,7 +22,18 @@ const SECRET_NAMESPACE = 'secrets';
  * `contains` clauses of {@link buildSecretSettingFilter} — the mask and the
  * server-side "Secrets only" facet can never diverge.
  */
-const SECRET_KEY_MARKERS = ['secret', 'password', 'token', 'credential', 'api_key', 'api-key', 'apikey', 'private_key', 'private-key', 'privatekey'] as const;
+const SECRET_KEY_MARKERS = [
+  'secret',
+  'password',
+  'token',
+  'credential',
+  'api_key',
+  'api-key',
+  'apikey',
+  'private_key',
+  'private-key',
+  'privatekey',
+] as const;
 const SECRET_KEY_PATTERN = new RegExp(SECRET_KEY_MARKERS.join('|'), 'i');
 
 /**

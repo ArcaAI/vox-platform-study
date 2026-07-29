@@ -72,9 +72,7 @@ async def test_db_config_enabled_overrides_model_from_tenant() -> None:
     settings = Settings()
     settings.db.db_config_enabled = True
     env_provider = _env_provider(settings)
-    resolver = _StubResolver(
-        GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x")
-    )
+    resolver = _StubResolver(GuardrailTenantConfig(provider="lm-studio", model="tenant-guardian-x"))
 
     state = SimpleNamespace(
         settings=settings,

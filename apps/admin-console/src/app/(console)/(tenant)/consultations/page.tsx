@@ -9,5 +9,5 @@ export const metadata: Metadata = { title: 'Consultations' };
  * cross-tenant aggregate view (the documented row 33 exception).
  */
 export default function ConsultationsPage() {
-    return <ConsultationsScreen />;
+  return <ConsultationsScreen />;
 }

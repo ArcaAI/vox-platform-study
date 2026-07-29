@@ -172,8 +172,7 @@ async def capture(out_path: Path, *, scenario: str = "happy") -> None:
             verdicts=["PASS"],
             inferential_verdicts=["SAFE"],
             redaction_text=(
-                '{"subjective": "s-redacted", "objective": "o", '
-                '"assessment": "a", "plan": "p"}'
+                '{"subjective": "s-redacted", "objective": "o", ' '"assessment": "a", "plan": "p"}'
             ),
         )
     elif scenario == "assemble-reuse":

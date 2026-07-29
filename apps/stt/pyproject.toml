@@ -147,9 +147,15 @@ ml = [
     # whisper.cpp ASR engine. Prebuilt manylinux + macOS wheels,
     # no torch dependency. Lazy-imported in stt.models.whisper_cpp_loader.
     "pywhispercpp>=1.5.0",
-    # DeepFilterNet3 denoise engine. Lazy-imported in
-    # stt.processors.denoise_engines.
-    "deepfilternet>=0.5.6",
+    # NOTE: DeepFilterNet3 (deepfilternet) is intentionally NOT installed.
+    # Its latest release (0.5.6) hard-pins numpy>=1.22,<2.0 and packaging<24.0,
+    # which are incompatible with this stack's numpy 2.x (torch 2.8, scipy 1.17,
+    # librosa) — pip cannot resolve it and it has no numpy-2.x release upstream.
+    # rnnoise (pyrnnoise, above) is the frame-accurate default denoise engine;
+    # the `deepfilternet3` engine option degrades gracefully to a no-op with a
+    # warning when the package is absent (see preprocessing.py /
+    # streaming/deepfilternet_denoiser.py). Re-add here only if a numpy-2.x
+    # compatible deepfilternet ships upstream.
 ]
 
 nemo = [

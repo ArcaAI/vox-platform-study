@@ -24,10 +24,7 @@ class TestEngine extends BaseEngine {
     this.initialized = true;
   }
 
-  async transcribe(
-    audio: Float32Array,
-    options?: TranscribeOptions
-  ): Promise<TranscriptionResult> {
+  async transcribe(audio: Float32Array, options?: TranscribeOptions): Promise<TranscriptionResult> {
     this.transcribing = true;
     const startTime = performance.now();
 
@@ -57,11 +54,7 @@ class TestEngine extends BaseEngine {
     this.recordTranscription(latencyMs);
   }
 
-  public testGetModelId(
-    model: string,
-    language: string,
-    quantized: boolean
-  ): string {
+  public testGetModelId(model: string, language: string, quantized: boolean): string {
     return this.getModelId(model, language, quantized);
   }
 

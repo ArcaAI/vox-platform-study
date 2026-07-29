@@ -68,18 +68,12 @@ class MockEventSource {
     this.withCredentials = init?.withCredentials ?? false;
   }
 
-  addEventListener(
-    type: string,
-    listener: MockEventSourceListener | MockErrorListener,
-  ): void {
+  addEventListener(type: string, listener: MockEventSourceListener | MockErrorListener): void {
     if (!this.listeners[type]) this.listeners[type] = [];
     this.listeners[type].push(listener as MockEventSourceListener);
   }
 
-  removeEventListener(
-    type: string,
-    listener: MockEventSourceListener | MockErrorListener,
-  ): void {
+  removeEventListener(type: string, listener: MockEventSourceListener | MockErrorListener): void {
     if (this.listeners[type]) {
       this.listeners[type] = this.listeners[type].filter((l) => l !== listener);
     }
@@ -197,9 +191,7 @@ describe('SSEClient', () => {
       client.connect('https://api.example.com/stream');
       await flushMicrotasks();
       lastMockES!.simulateOpen();
-      expect(() => client.connect('https://api.example.com/stream')).toThrow(
-        /already connected/i,
-      );
+      expect(() => client.connect('https://api.example.com/stream')).toThrow(/already connected/i);
     });
 
     it('should accept a URL built from STT_ENDPOINTS.JOB_STREAM', async () => {
@@ -255,10 +247,7 @@ describe('SSEClient', () => {
       client.connect('https://api.example.com/stream');
       await flushMicrotasks();
       lastMockES!.simulateOpen();
-      lastMockES!.simulateNamedEvent(
-        'transcript',
-        JSON.stringify({ text: 'Hello', isFinal: true }),
-      );
+      lastMockES!.simulateNamedEvent('transcript', JSON.stringify({ text: 'Hello', isFinal: true }));
       expect(onTranscript).toHaveBeenCalledTimes(1);
       const parsed = JSON.parse(onTranscript.mock.calls[0][0]);
       expect(parsed.text).toBe('Hello');
@@ -426,10 +415,7 @@ describe('SSEClient', () => {
         lastMockES!.simulateOpen();
 
         // Filter to reconnect-sized delays (>=500ms) to ignore microtask schedulers.
-        const reconnectDelays = (): number[] =>
-          setTimeoutSpy.mock.calls
-            .map((c) => c[1] as number)
-            .filter((d) => typeof d === 'number' && d >= 500);
+        const reconnectDelays = (): number[] => setTimeoutSpy.mock.calls.map((c) => c[1] as number).filter((d) => typeof d === 'number' && d >= 500);
 
         lastMockES!.simulateError();
         await vi.advanceTimersByTimeAsync(0);
@@ -604,7 +590,7 @@ describe('SSEClient', () => {
   describe('legacy authToken option is no longer honored', () => {
     it('does NOT append `?token=` even when caller passes a legacy authToken', async () => {
       client.connect('https://api.example.com/stream', {
-        ...(({ authToken: 'jwt-token-123' } as unknown) as any),
+        ...({ authToken: 'jwt-token-123' } as unknown as any),
       });
       await flushMicrotasks();
       expect(lastMockES!.url).not.toContain('token=jwt-token-123');

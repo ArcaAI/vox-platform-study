@@ -49,14 +49,11 @@ describe('TenantEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it.each(['__SYSTEM__', '__GLOBAL__', 'ARCAAI'])(
-      'should accept seed-style key %s',
-      (key) => {
-        const entity = new TenantEntity(createValidInit({ key }));
+    it.each(['__SYSTEM__', '__GLOBAL__', 'ARCAAI'])('should accept seed-style key %s', (key) => {
+      const entity = new TenantEntity(createValidInit({ key }));
 
-        expect(() => entity.validate()).not.toThrow();
-      },
-    );
+      expect(() => entity.validate()).not.toThrow();
+    });
   });
 
   describe('name', () => {

@@ -11,11 +11,7 @@ describe('App Sidebar Navigation Structure', () => {
     '/summarization/summary',
   ];
 
-  const REMOVED_ROUTES = [
-    '/summarization/overview',
-    '/summarization/live-demo',
-    '/summarization/history',
-  ];
+  const REMOVED_ROUTES = ['/summarization/overview', '/summarization/live-demo', '/summarization/history'];
 
   describe('Playground section', () => {
     it('should include Pre-Summary in Playground items', () => {
@@ -27,14 +23,9 @@ describe('App Sidebar Navigation Structure', () => {
     });
 
     it('should not have a separate Summarization section', () => {
-      const summarizationOnlyRoutes = PLAYGROUND_ROUTES.filter(
-        (r) => r.startsWith('/summarization/') && !REMOVED_ROUTES.includes(r),
-      );
+      const summarizationOnlyRoutes = PLAYGROUND_ROUTES.filter((r) => r.startsWith('/summarization/') && !REMOVED_ROUTES.includes(r));
       expect(summarizationOnlyRoutes.length).toBe(2);
-      expect(summarizationOnlyRoutes).toEqual([
-        '/summarization/pre-summary',
-        '/summarization/summary',
-      ]);
+      expect(summarizationOnlyRoutes).toEqual(['/summarization/pre-summary', '/summarization/summary']);
     });
   });
 

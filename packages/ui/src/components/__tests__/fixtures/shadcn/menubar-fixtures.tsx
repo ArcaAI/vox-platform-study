@@ -7,7 +7,7 @@ import {
   MenubarSeparator,
   MenubarShortcut,
   MenubarLabel,
-} from '../../../shadcn/menubar'
+} from '../../../shadcn/menubar';
 
 export function BasicMenubar() {
   return (
@@ -32,7 +32,7 @@ export function BasicMenubar() {
         </MenubarContent>
       </MenubarMenu>
     </Menubar>
-  )
+  );
 }
 
 export function MenubarWithCustomClass() {
@@ -45,5 +45,5 @@ export function MenubarWithCustomClass() {
         </MenubarContent>
       </MenubarMenu>
     </Menubar>
-  )
+  );
 }

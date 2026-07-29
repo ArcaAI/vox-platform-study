@@ -12,9 +12,7 @@ if TYPE_CHECKING:
     from structlog.typing import EventDict, WrappedLogger
 
 
-def _add_otel_context(
-    logger: WrappedLogger, method_name: str, event_dict: EventDict
-) -> EventDict:
+def _add_otel_context(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
     """Inject OpenTelemetry trace context into every log entry.
 
     When OTel is not active the import succeeds but ``get_current_span()``

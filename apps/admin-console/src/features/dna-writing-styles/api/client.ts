@@ -7,24 +7,24 @@
 import { getJson, getWithEtag, patchWithEtag, postJson, versionFromEtag } from '@/shared/api';
 import type { Paginated, WithEtag } from '@/shared/api';
 import type {
-    DnaDashboard,
-    DnaJob,
-    DnaJobStatus,
-    DnaReport,
-    DnaVersion,
-    GenerateDnaReportRequest,
-    ListDnaReportsParams,
-    UpdateDnaReportRequest,
+  DnaDashboard,
+  DnaJob,
+  DnaJobStatus,
+  DnaReport,
+  DnaVersion,
+  GenerateDnaReportRequest,
+  ListDnaReportsParams,
+  UpdateDnaReportRequest,
 } from './types';
 
 const BASE = 'admin/dna-writing-styles';
 
 export function listDnaReports(params?: ListDnaReportsParams): Promise<Paginated<DnaReport>> {
-    return getJson(BASE, params);
+  return getJson(BASE, params);
 }
 
 export function getDnaDashboard(): Promise<DnaDashboard> {
-    return getJson(`${BASE}/dashboard`);
+  return getJson(`${BASE}/dashboard`);
 }
 
 /**
@@ -32,28 +32,28 @@ export function getDnaDashboard(): Promise<DnaDashboard> {
  * doctor reads stay tenant-pinned even for global admins (404 across tenants).
  */
 export function getDoctorReport(doctorId: string): Promise<WithEtag<DnaReport>> {
-    return getWithEtag(`${BASE}/doctor/${encodeURIComponent(doctorId)}`);
+  return getWithEtag(`${BASE}/doctor/${encodeURIComponent(doctorId)}`);
 }
 
 /** OCC PATCH: If-Match header + body expectedVersion derived from the ETag. */
 export async function updateDnaReport(reportId: string, patch: UpdateDnaReportRequest, etag: string): Promise<WithEtag<DnaReport>> {
-    return patchWithEtag(`${BASE}/${encodeURIComponent(reportId)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
+  return patchWithEtag(`${BASE}/${encodeURIComponent(reportId)}`, { ...patch, expectedVersion: versionFromEtag(etag) }, etag);
 }
 
 /** Queues a generation job; progress is tracked via jobs/:jobId (+ stream). */
 export function generateDnaReport(doctorId: string, body: GenerateDnaReportRequest = {}): Promise<DnaJob> {
-    return postJson(`${BASE}/generate/${encodeURIComponent(doctorId)}`, body);
+  return postJson(`${BASE}/generate/${encodeURIComponent(doctorId)}`, body);
 }
 
 export function listDnaVersions(reportId: string): Promise<DnaVersion[]> {
-    return getJson(`${BASE}/${encodeURIComponent(reportId)}/versions`);
+  return getJson(`${BASE}/${encodeURIComponent(reportId)}/versions`);
 }
 
 export function getDnaJobStatus(jobId: string): Promise<DnaJobStatus> {
-    return getJson(`${BASE}/jobs/${encodeURIComponent(jobId)}`);
+  return getJson(`${BASE}/jobs/${encodeURIComponent(jobId)}`);
 }
 
 /** Gateway-relative SSE path for a job — pair with scope `dna_job:<jobId>`. */
 export function dnaJobStreamPath(jobId: string): string {
-    return `${BASE}/jobs/${encodeURIComponent(jobId)}/stream`;
+  return `${BASE}/jobs/${encodeURIComponent(jobId)}/stream`;
 }

@@ -141,9 +141,7 @@ class TestEveryRegenSiteRespectsTheBudget:
         assert sites, "no regen branch found — did the guard expression get renamed?"
 
         unguarded = [
-            i + 1
-            for i in sites
-            if "budget_stopped" not in "\n".join(lines[max(0, i - 6) : i + 7])
+            i + 1 for i in sites if "budget_stopped" not in "\n".join(lines[max(0, i - 6) : i + 7])
         ]
         assert not unguarded, (
             f"regen branch(es) at line(s) {unguarded} do not consult `budget_stopped`; "
@@ -160,9 +158,7 @@ class TestEveryRegenSiteRespectsTheBudget:
         assert regen_calls, "no `_regen_compute()` call site found"
 
         unaccounted = [
-            i + 1
-            for i in regen_calls
-            if "tokens_used" not in "\n".join(lines[i : i + 6])
+            i + 1 for i in regen_calls if "tokens_used" not in "\n".join(lines[i : i + 6])
         ]
         assert not unaccounted, (
             f"`_regen_compute()` at line(s) {unaccounted} does not accumulate `tokens_used` "

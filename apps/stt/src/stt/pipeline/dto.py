@@ -53,6 +53,12 @@ class AiModelFormat(StrEnum):
     # whisper.cpp (ggml runtime, ggml-org/whisper.cpp) for GGUF
     # whisper-large-v3-turbo. CPU/Metal/CUDA, via the pywhispercpp binding.
     WHISPER_CPP = "WHISPER_CPP"
+    # Cloud BYOK speech providers (REST, no local model). TASK-567 tenant
+    # fallback engines. Superset of the Prisma AiModelFormat enum (like KSERVE
+    # on AiModelSource) — reachable via the `provider :: model` YAML shorthand,
+    # not a DB `format` value, so no Prisma enum migration is implied.
+    SARVAM = "SARVAM"  # Sarvam AI speech-to-text (saaras family)
+    OPENAI = "OPENAI"  # OpenAI speech-to-text (gpt-4o-transcribe family)
 
 
 class AiModelDownloadStatus(StrEnum):
@@ -395,6 +401,10 @@ class ModelRef:
         "azure-foundry": "AZURE_FOUNDRY",
         "parakeet.cpp": "PARAKEET_CPP",
         "whisper.cpp": "WHISPER_CPP",
+        # Cloud BYOK speech providers (TASK-567). Shorthand examples:
+        # `sarvam :: saaras-v3`, `openai :: gpt-4o-transcribe`.
+        "sarvam": "SARVAM",
+        "openai": "OPENAI",
         # Denoise models (RNNoise et al.) load via the ONNX runtime path.
         "rnnoise": "ONNX",
     }
@@ -425,9 +435,7 @@ class ModelRef:
                         + ", ".join(sorted(cls._PROVIDER_ALIASES))
                     )
                 if not model_id:
-                    raise ValueError(
-                        f"'{value}' is missing the model id after '::'"
-                    )
+                    raise ValueError(f"'{value}' is missing the model id after '::'")
                 return cls.from_value(
                     {
                         "hf_model_id": model_id,
@@ -474,6 +482,8 @@ class ModelRef:
                 "WHISPER_CPP": AiModelFormat.WHISPER_CPP,
                 "WHISPER-CPP": AiModelFormat.WHISPER_CPP,
                 "WHISPER.CPP": AiModelFormat.WHISPER_CPP,
+                "SARVAM": AiModelFormat.SARVAM,
+                "OPENAI": AiModelFormat.OPENAI,
             }
             # Unknown engine strings are a hard error. The old silent
             # SAFETENSOR default turned a typo into a different engine that

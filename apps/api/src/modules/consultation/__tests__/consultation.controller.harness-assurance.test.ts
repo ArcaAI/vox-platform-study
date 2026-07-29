@@ -11,10 +11,7 @@ import { PATH_METADATA, METHOD_METADATA, SSE_METADATA } from '@nestjs/common/con
 import { RequestMethod } from '@nestjs/common';
 import { of } from 'rxjs';
 import { ConsultationController } from '../consultation.controller';
-import {
-  TENANT_OWNED_RESOURCE_KEY,
-  type TenantOwnedResourceOptions,
-} from '../../../common/tenant-owned-resource.decorator';
+import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../../../common/tenant-owned-resource.decorator';
 import { STREAM_SCOPE_METADATA, type StreamScopeConfig } from '../../auth/decorators/stream-scope.decorator';
 
 describe('ConsultationController harness-assurance stream (Slice 5d)', () => {
@@ -41,18 +38,14 @@ describe('ConsultationController harness-assurance stream (Slice 5d)', () => {
   });
 
   it('carries @TenantOwnedResource(Consultation/id) so cross-tenant probes 404 pre-stream', () => {
-    const meta = Reflect.getMetadata(
-      TENANT_OWNED_RESOURCE_KEY,
-      ConsultationController.prototype.streamHarnessAssurance as object,
-    ) as TenantOwnedResourceOptions | undefined;
+    const meta = Reflect.getMetadata(TENANT_OWNED_RESOURCE_KEY, ConsultationController.prototype.streamHarnessAssurance as object) as
+      TenantOwnedResourceOptions | undefined;
     expect(meta).toEqual({ modelName: 'Consultation', paramName: 'id' });
   });
 
   it('carries its OWN @StreamScope(consultation_harness_assurance/id) one-shot-ticket namespace', () => {
-    const meta = Reflect.getMetadata(
-      STREAM_SCOPE_METADATA,
-      ConsultationController.prototype.streamHarnessAssurance as object,
-    ) as StreamScopeConfig | undefined;
+    const meta = Reflect.getMetadata(STREAM_SCOPE_METADATA, ConsultationController.prototype.streamHarnessAssurance as object) as
+      StreamScopeConfig | undefined;
     expect(meta).toEqual({ namespace: 'consultation_harness_assurance', param: 'id' });
   });
 });

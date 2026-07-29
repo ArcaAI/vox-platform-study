@@ -1,9 +1,5 @@
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-} from '../../../elevenlabs/conversation'
-import { Message, MessageContent } from '../../../elevenlabs/message'
+import { Conversation, ConversationContent, ConversationEmptyState } from '../../../elevenlabs/conversation';
+import { Message, MessageContent } from '../../../elevenlabs/message';
 
 export function EmptyConversation() {
   return (
@@ -14,7 +10,7 @@ export function EmptyConversation() {
         </ConversationContent>
       </Conversation>
     </div>
-  )
+  );
 }
 
 export function CustomEmptyConversation() {
@@ -22,14 +18,11 @@ export function CustomEmptyConversation() {
     <div style={{ height: '400px' }}>
       <Conversation data-testid="conversation">
         <ConversationContent>
-          <ConversationEmptyState
-            title="Custom Title"
-            description="Custom description text"
-          />
+          <ConversationEmptyState title="Custom Title" description="Custom description text" />
         </ConversationContent>
       </Conversation>
     </div>
-  )
+  );
 }
 
 export function ConversationWithMessages() {
@@ -46,5 +39,5 @@ export function ConversationWithMessages() {
         </ConversationContent>
       </Conversation>
     </div>
-  )
+  );
 }

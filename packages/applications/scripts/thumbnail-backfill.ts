@@ -75,9 +75,7 @@ async function main(): Promise<void> {
       const original = await getObjectBytes(s3, location.bucket, location.key);
       const thumbnail = await thumbnailer.generateWebpThumbnail(original);
       await putObject(s3, location.bucket, thumbnailKey, thumbnail, 'image/webp');
-      console.log(
-        `[gen]  ${media.id} — generated ${location.bucket}/${thumbnailKey} (${thumbnail.length}B from ${original.length}B)`,
-      );
+      console.log(`[gen]  ${media.id} — generated ${location.bucket}/${thumbnailKey} (${thumbnail.length}B from ${original.length}B)`);
       generated++;
     } catch (error) {
       console.warn(`[fail] ${media.id} — ${error instanceof Error ? error.message : String(error)}`);
@@ -89,9 +87,7 @@ async function main(): Promise<void> {
   s3.destroy();
 
   console.log('\n===== THUMBNAIL BACKFILL RESULT =====');
-  console.log(
-    JSON.stringify({ scanned: images.length, generated, alreadyHad, skipped, failed }, null, 2),
-  );
+  console.log(JSON.stringify({ scanned: images.length, generated, alreadyHad, skipped, failed }, null, 2));
   console.log('====================================');
 }
 

@@ -76,10 +76,7 @@ export class PromptVersionRepository extends Repository<PromptVersionEntity, Pro
    * insert + CAS it guards (mirrors the `create(entity, tx)` /
    * `updateWithVersion(..., tx)` contract).
    */
-  async findMaxVersionNumber(
-    templateId: string,
-    tx?: Prisma.TransactionClient | any,
-  ): Promise<number> {
+  async findMaxVersionNumber(templateId: string, tx?: Prisma.TransactionClient | any): Promise<number> {
     const model: any = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
     const result = await model.aggregate({
       where: { promptTemplateId: templateId },

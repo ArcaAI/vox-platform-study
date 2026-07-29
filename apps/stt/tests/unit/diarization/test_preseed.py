@@ -151,9 +151,7 @@ async def test_preseed_returns_failure_dict_when_tracker_at_capacity():
             ),
         ),
     ):
-        result = await preseed_speaker(
-            tracker, consultation_id="cons-1", user_id="user-uuid-1"
-        )
+        result = await preseed_speaker(tracker, consultation_id="cons-1", user_id="user-uuid-1")
 
     assert result == {"success": False, "profile_id": None, "model_id": None}
 

@@ -17,6 +17,8 @@ from .huggingface_loader import HuggingFaceLoader
 from .nemo_adapter import NemoAsrAdapter
 from .nemo_loader import NeMoLoader
 from .onnx_loader import ONNXLoader
+from .openai_loader import OpenAILoader
+from .sarvam_loader import SarvamLoader
 
 __all__ = [
     # Base
@@ -27,6 +29,8 @@ __all__ = [
     "FasterWhisperLoader",
     "HuggingFaceLoader",
     "ONNXLoader",
+    "OpenAILoader",
+    "SarvamLoader",
     "NeMoLoader",
     "NemoAsrAdapter",
     # Cache

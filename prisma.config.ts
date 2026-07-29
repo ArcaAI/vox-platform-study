@@ -36,16 +36,16 @@ if (plan.envFilePath) {
 }
 
 export default defineConfig({
-    // Path to the schema directory (multi-file schema)
-    schema: path.join('packages', 'database', 'src', 'prisma', 'db_main'),
+  // Path to the schema directory (multi-file schema)
+  schema: path.join('packages', 'database', 'src', 'prisma', 'db_main'),
 
-    // Migrations configuration
-    migrations: {
-        path: path.join('packages', 'database', 'src', 'prisma', 'db_main', 'migrations'),
-    },
+  // Migrations configuration
+  migrations: {
+    path: path.join('packages', 'database', 'src', 'prisma', 'db_main', 'migrations'),
+  },
 
-    // Database connection URL from environment
-    datasource: {
-        url: env('DATABASE_URL'),
-    },
+  // Database connection URL from environment
+  datasource: {
+    url: env('DATABASE_URL'),
+  },
 });

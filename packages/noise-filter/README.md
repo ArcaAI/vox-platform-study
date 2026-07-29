@@ -6,11 +6,11 @@ Last updated: 2026-07-04
 
 ## Where it fits
 
-| Direction | Package | Relationship |
-|---|---|---|
-| Depends on | `@arcaai/room` (peer, `^0.1.0`) | Extends `BaseProcessor`; attaches to an `AudioTrack` |
-| Depends on | `@jitsi/rnnoise-wasm` | Source of the `rnnoise.wasm` binary (copied at build time) |
-| Consumed by | `@arcaai/vox` | First stage of `TranscriptionPipeline` (NoiseFilter → VAD → STT) |
+| Direction   | Package                         | Relationship                                                     |
+| ----------- | ------------------------------- | ---------------------------------------------------------------- |
+| Depends on  | `@arcaai/room` (peer, `^0.1.0`) | Extends `BaseProcessor`; attaches to an `AudioTrack`             |
+| Depends on  | `@jitsi/rnnoise-wasm`           | Source of the `rnnoise.wasm` binary (copied at build time)       |
+| Consumed by | `@arcaai/vox`                   | First stage of `TranscriptionPipeline` (NoiseFilter → VAD → STT) |
 
 `react` is an optional peer dependency (only needed for the `useNoiseFilter` hook).
 
@@ -48,21 +48,20 @@ function AudioRecorder() {
     echoCancellation: true,
   });
 
-  const { isEnabled, noiseLevel, noiseReductionDb, toggle, setLevel, error } =
-    useNoiseFilter({
-      track,
-      noiseCancellation: true,
-      noiseCancellationLevel: 'high',
-      autoAttach: true,
-      enableStats: true,
-    });
+  const { isEnabled, noiseLevel, noiseReductionDb, toggle, setLevel, error } = useNoiseFilter({
+    track,
+    noiseCancellation: true,
+    noiseCancellationLevel: 'high',
+    autoAttach: true,
+    enableStats: true,
+  });
 
   return (
     <div>
-      <button onClick={isCapturing ? stopCapture : startCapture}>
-        {isCapturing ? 'Stop' : 'Start Recording'}
-      </button>
-      <div>Filter: {isEnabled ? 'ON' : 'OFF'} ({noiseLevel})</div>
+      <button onClick={isCapturing ? stopCapture : startCapture}>{isCapturing ? 'Stop' : 'Start Recording'}</button>
+      <div>
+        Filter: {isEnabled ? 'ON' : 'OFF'} ({noiseLevel})
+      </div>
       <div>Noise reduction: {noiseReductionDb.toFixed(1)} dB</div>
       <button onClick={() => toggle()}>Toggle</button>
       {error && <div>{error.message}</div>}
@@ -98,17 +97,17 @@ await track.setProcessor(noiseFilter);
 
 ### Options (`NoiseFilterOptions`)
 
-| Option | Default | Description |
-|---|---|---|
-| `noiseCancellation` | `true` | Enable RNNoise processing |
-| `noiseCancellationLevel` | `'medium'` | Intensity: `'low' \| 'medium' \| 'high'` |
-| `echoCancellation` | `true` | WebRTC-native echo cancellation on the source |
-| `autoGainControl` | `true` | WebRTC-native AGC on the source |
-| `wasmPath` | bundled asset | Override the RNNoise WASM URL (self-hosting) |
-| `processingMode` | `'quality'` | `'quality' \| 'performance'` |
-| `sampleRate` | `48000` | RNNoise operates at 48 kHz |
-| `enableStats` / `statsInterval` | `false` / `1000` | Emit `noise-stats` data events |
-| `debugMode` | `false` | Log configuration with the `[ARCAAI:DEBUG]` prefix |
+| Option                          | Default          | Description                                        |
+| ------------------------------- | ---------------- | -------------------------------------------------- |
+| `noiseCancellation`             | `true`           | Enable RNNoise processing                          |
+| `noiseCancellationLevel`        | `'medium'`       | Intensity: `'low' \| 'medium' \| 'high'`           |
+| `echoCancellation`              | `true`           | WebRTC-native echo cancellation on the source      |
+| `autoGainControl`               | `true`           | WebRTC-native AGC on the source                    |
+| `wasmPath`                      | bundled asset    | Override the RNNoise WASM URL (self-hosting)       |
+| `processingMode`                | `'quality'`      | `'quality' \| 'performance'`                       |
+| `sampleRate`                    | `48000`          | RNNoise operates at 48 kHz                         |
+| `enableStats` / `statsInterval` | `false` / `1000` | Emit `noise-stats` data events                     |
+| `debugMode`                     | `false`          | Log configuration with the `[ARCAAI:DEBUG]` prefix |
 
 Key `NoiseFilterProcessor` methods: `setNoiseLevel(level)`, `getNoiseLevel()`, `getStats()`, `isUsingFallback()`, `updateOptions(options)`, plus the inherited `enable()` / `disable()` / `destroy()` lifecycle.
 
@@ -143,14 +142,14 @@ Invariants all three encode: preallocated WASM I/O pointers, the exact import ob
 
 From this directory:
 
-| Command | Action |
-|---|---|
-| `pnpm build` | tsup build (main bundle + worklet, syncs WASM asset) |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests |
-| `pnpm test:e2e` | Playwright browser tests; `:ui`, `:headed`, `:chromium` variants exist |
-| `pnpm lint` | ESLint (`--max-warnings 0`) |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
+| Command                                                | Action                                                                 |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `pnpm build`                                           | tsup build (main bundle + worklet, syncs WASM asset)                   |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests                                                      |
+| `pnpm test:e2e`                                        | Playwright browser tests; `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint`                                            | ESLint (`--max-warnings 0`)                                            |
+| `pnpm typecheck`                                       | `tsc --noEmit`                                                         |
+| `pnpm clean` / `pnpm clean:all`                        | Remove build output (nuke also removes `node_modules`)                 |
 
 From the repo root: `pnpm --filter @arcaai/noise-filter build` (same pattern for `test`, `lint`, etc.).
 

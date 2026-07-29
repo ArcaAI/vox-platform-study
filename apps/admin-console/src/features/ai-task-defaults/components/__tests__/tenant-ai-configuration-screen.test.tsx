@@ -6,7 +6,7 @@
  *     each with its winning cascade tier. No pickers — the global-admin-only
  *     write posture is untouched.
  *   - "Cloud credentials": BYO Azure/Bedrock write-only key cards over the
- * `admin/ai-providers` routes, with OCC (If-Match) on save.
+ * `admin/providers/llm` routes, with OCC (If-Match) on save.
  *
  * §5 tests 12-15: loading skeletons, populated table, credential Configured/None
  * cards, error+retry, axe 0 violations per tab in BOTH themes, the working-tenant
@@ -20,8 +20,8 @@ import { renderWithProviders } from '@/test/render';
 import { AI_TASK_KEYS } from '../../api/types';
 import type { EffectiveAiTaskDefault } from '../../api/types';
 import type { ProviderConnection } from '../../api/providers-types';
+import { CLOUD_PROVIDERS } from '../byo-credential-card';
 import { TenantAiConfigurationScreen } from '../tenant-ai-configuration-screen';
-
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -156,7 +156,9 @@ function stubFetch({ session = TENANT_SESSION, connections = {}, effectiveFails,
       if (call.method === 'GET' && url.pathname === '/api/hope/admin/harness/policy') {
         return Response.json(harnessPolicySummary());
       }
-      if (call.method === 'GET' && url.pathname.startsWith('/api/hope/admin/ai-providers/')) {
+      // Unified plane (TASK-572): the console reads LLM credentials at
+      // `admin/providers/llm/:provider`.
+      if (call.method === 'GET' && url.pathname.startsWith('/api/hope/admin/providers/llm/')) {
         const provider = url.pathname.split('/').pop() as string;
         const row = connections[provider] ?? connectionOf(provider);
         return Response.json(row, { headers: row.version > 0 ? { etag: `"${row.version}"` } : {} });
@@ -230,12 +232,17 @@ describe('TenantAiConfigurationScreen — cloud credentials tab', () => {
 
     expect(await screen.findByText('Azure OpenAI')).toBeDefined();
     expect(await screen.findByText('Amazon Bedrock')).toBeDefined();
+    expect(await screen.findByText('OpenAI')).toBeDefined();
+    expect(await screen.findByText('Anthropic')).toBeDefined();
+    expect(await screen.findByText('Google Vertex AI')).toBeDefined();
     expect(await screen.findByText(/configured · v4/i)).toBeDefined();
-    expect(await screen.findByText('not configured')).toBeDefined();
+    // Every provider EXCEPT the configured azure reads "not configured".
+    expect((await screen.findAllByText('not configured')).length).toBe(CLOUD_PROVIDERS.length - 1);
 
-    // The key input is a write-only password field with no value ever read back.
+    // The key input is a write-only password field with no value ever read back —
+    // one per provider card (Vertex's is the service-account-JSON field).
     const keyInputs = document.querySelectorAll('input[type="password"]');
-    expect(keyInputs.length).toBe(2);
+    expect(keyInputs.length).toBe(CLOUD_PROVIDERS.length);
     keyInputs.forEach((input) => expect((input as HTMLInputElement).value).toBe(''));
   });
 
@@ -243,7 +250,7 @@ describe('TenantAiConfigurationScreen — cloud credentials tab', () => {
     const calls = stubFetch({
       connections: { azure: connectionOf('azure', { hasKey: true, keyVersion: 4, enabled: true, version: 3 }) },
       custom: (call) => {
-        if (call.method === 'PUT' && call.url.includes('/ai-providers/azure')) {
+        if (call.method === 'PUT' && call.url.includes('/providers/llm/azure')) {
           return Response.json(connectionOf('azure', { hasKey: true, keyVersion: 5, enabled: true, version: 4 }), {
             headers: { etag: '"4"' },
           });
@@ -273,8 +280,9 @@ describe('TenantAiConfigurationScreen — cloud credentials tab', () => {
     });
     renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=credentials' });
 
-    // Both cards load independently — wait for the second (bedrock) to mount.
-    await waitFor(async () => expect((await screen.findAllByLabelText(/API key/i)).length).toBe(2));
+    // Cards load independently — wait for the bedrock card (index 1) to mount,
+    // then save its key. Bedrock is the second CLOUD_PROVIDERS entry.
+    await screen.findByText('Amazon Bedrock');
     const inputs = await screen.findAllByLabelText(/API key/i);
     fireEvent.change(inputs[1], { target: { value: 'aws-secret' } });
     fireEvent.click(screen.getAllByRole('button', { name: /save key/i })[1]);

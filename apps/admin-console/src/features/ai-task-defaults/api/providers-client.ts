@@ -9,7 +9,10 @@ import { deleteJson, getWithEtag, request, versionFromEtag } from '@/shared/api'
 import type { WithEtag } from '@/shared/api';
 import type { CloudByoProvider, ProviderConnection, UpsertProviderConnectionRequest } from './providers-types';
 
-const BASE = 'admin/ai-providers';
+// The unified provider plane is keyed by service (C3); LLM credentials live at
+// `admin/providers/llm/*`. The legacy `admin/ai-providers/*` routes remain a
+// one-release alias on the gateway, so this cutover is alias-safe.
+const BASE = 'admin/providers/llm';
 
 /**
  * PUT is `@RequiresIfMatch()` even on create (no row → version 0 → no ETag).

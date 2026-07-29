@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Entitlements & Plans' };
 
 /** Frame 13 — Entitlements & plans (tier 10-19). */
 export default function EntitlementsPage() {
-    return <EntitlementsScreen />;
+  return <EntitlementsScreen />;
 }

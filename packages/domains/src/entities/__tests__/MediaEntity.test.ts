@@ -142,9 +142,7 @@ describe('MediaEntity.validate()', () => {
     });
 
     it('should throw when size is not a finite number', () => {
-      const entity = new MediaEntity(
-        createValidInit({ size: Number.NaN as unknown as number }),
-      );
+      const entity = new MediaEntity(createValidInit({ size: Number.NaN as unknown as number }));
 
       expect(() => entity.validate()).toThrow('Media size must be a non-negative number');
     });

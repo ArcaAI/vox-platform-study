@@ -17,227 +17,189 @@ const mockSetOnUnauthorized = vi.fn();
 const mockPostFn = vi.fn();
 const mockGetAccessToken = vi.fn();
 const mockApiClient = {
-    setOnUnauthorized: mockSetOnUnauthorized,
-    updateAccessToken: mockUpdateAccessToken,
-    // TASK-340 — the refresh listener keeps the SDK's stashed admin token fresh
-    // during impersonation so admin-plane SDK requests don't use a stale token.
-    updateImpersonationOriginalToken: mockUpdateImpersonationOriginalToken,
-    post: mockPostFn,
-    getAccessToken: mockGetAccessToken,
+  setOnUnauthorized: mockSetOnUnauthorized,
+  updateAccessToken: mockUpdateAccessToken,
+  // TASK-340 — the refresh listener keeps the SDK's stashed admin token fresh
+  // during impersonation so admin-plane SDK requests don't use a stale token.
+  updateImpersonationOriginalToken: mockUpdateImpersonationOriginalToken,
+  post: mockPostFn,
+  getAccessToken: mockGetAccessToken,
 };
 
 vi.mock('@arcaai/vox', () => ({
-    useAuth: () => ({ refreshToken: vi.fn() }),
-    useArcaStore: (selector?: (s: { apiClient: typeof mockApiClient }) => unknown) => {
-        const state = { apiClient: mockApiClient };
-        return selector ? selector(state) : state;
-    },
+  useAuth: () => ({ refreshToken: vi.fn() }),
+  useArcaStore: (selector?: (s: { apiClient: typeof mockApiClient }) => unknown) => {
+    const state = { apiClient: mockApiClient };
+    return selector ? selector(state) : state;
+  },
 }));
 
 import { renderHook, cleanup } from '@testing-library/react';
 import { useAutoRefresh } from '../use-auto-refresh';
 
 const mockSuperAdmin = {
-    id: '70000000-0000-0000-0000-000000000001',
-    email: 'admin@test.com',
-    username: 'super_admin',
-    roles: ['GLOBAL_ADMIN'],
-    permissions: [],
+  id: '70000000-0000-0000-0000-000000000001',
+  email: 'admin@test.com',
+  username: 'super_admin',
+  roles: ['GLOBAL_ADMIN'],
+  permissions: [],
 };
 
 const mockDoctor = {
-    id: '70000000-0000-0000-0000-000000000010',
-    email: 'doctor@test.com',
-    username: 'doctor',
-    roles: ['DOCTOR'],
-    permissions: [],
+  id: '70000000-0000-0000-0000-000000000010',
+  email: 'doctor@test.com',
+  username: 'doctor',
+  roles: ['DOCTOR'],
+  permissions: [],
 };
 
 const TENANT_UUID = '50000000-0000-0000-0000-000000000001';
 
 describe('useAutoRefresh — impersonation 401 handling (TASK-235)', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        localStorage.clear();
-        useAuthStore.getState().logout();
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    useAuthStore.getState().logout();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('should refresh base token then re-impersonate when 401 occurs during impersonation', async () => {
+    useAuthStore.getState().setCredentialsAuth('admin-access-token', mockSuperAdmin, TENANT_UUID, 'acme', 'refresh_admin_123_abc');
+    useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ token: 'fresh-admin-token', refreshToken: 'new-refresh' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    mockPostFn.mockResolvedValueOnce({
+      user: mockDoctor,
+      token: 'fresh-impersonation-token',
+      impersonatedBy: mockSuperAdmin.id,
     });
 
-    afterEach(() => {
-        cleanup();
+    renderHook(() => useAutoRefresh());
+
+    const handler = mockSetOnUnauthorized.mock.calls[0][0];
+    const result = await handler();
+
+    expect(result).toBe(true);
+
+    expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/auth/refresh'), expect.objectContaining({ method: 'POST' }));
+
+    // TASK-331 doc-05 F-3 — the re-impersonation POST forwards the active
+    // tenant (set on the store during impersonation) as targetTenantId.
+    expect(mockPostFn).toHaveBeenCalledWith('/auth/impersonate', { targetUserId: mockDoctor.id, targetTenantId: TENANT_UUID });
+
+    expect(mockUpdateAccessToken).toHaveBeenCalledWith('fresh-impersonation-token');
+
+    expect(useAuthStore.getState().impersonationToken).toBe('fresh-impersonation-token');
+
+    // TASK-340 — the refreshed admin token is mirrored into the SDK stash so
+    // admin-plane SDK requests keep a fresh admin JWT mid-impersonation.
+    expect(mockUpdateImpersonationOriginalToken).toHaveBeenCalledWith('fresh-admin-token');
+
+    fetchSpy.mockRestore();
+  });
+
+  it('TASK-331 F-10/F-3: resolves tenantId from data.user.tenantId (no atob) and re-keys the store tenant', async () => {
+    useAuthStore.getState().setCredentialsAuth('admin-access-token', mockSuperAdmin, TENANT_UUID, 'acme', 'refresh_admin_123_abc');
+    useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ token: 'fresh-admin-token', refreshToken: 'new-refresh' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const RESOLVED_TENANT = '50000000-0000-0000-0000-000000000099';
+    // Non-JWT token on purpose: the old atob fallback would have thrown on
+    // it. The handler must trust data.user.tenantId instead.
+    mockPostFn.mockResolvedValueOnce({
+      user: { ...mockDoctor, tenantId: RESOLVED_TENANT },
+      token: 'not-a-jwt',
+      impersonatedBy: mockSuperAdmin.id,
     });
 
-    it('should refresh base token then re-impersonate when 401 occurs during impersonation', async () => {
-        useAuthStore.getState().setCredentialsAuth(
-            'admin-access-token',
-            mockSuperAdmin,
-            TENANT_UUID,
-            'acme',
-            'refresh_admin_123_abc',
-        );
-        useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
+    renderHook(() => useAutoRefresh());
 
-        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-            new Response(
-                JSON.stringify({ token: 'fresh-admin-token', refreshToken: 'new-refresh' }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } },
-            ),
-        );
+    const handler = mockSetOnUnauthorized.mock.calls[0][0];
+    const result = await handler();
 
-        mockPostFn.mockResolvedValueOnce({
-            user: mockDoctor,
-            token: 'fresh-impersonation-token',
-            impersonatedBy: mockSuperAdmin.id,
-        });
+    expect(result).toBe(true);
+    expect(useAuthStore.getState().tenantId).toBe(RESOLVED_TENANT);
+    expect(useAuthStore.getState().impersonationToken).toBe('not-a-jwt');
 
-        renderHook(() => useAutoRefresh());
+    fetchSpy.mockRestore();
+  });
 
-        const handler = mockSetOnUnauthorized.mock.calls[0][0];
-        const result = await handler();
+  it('should end impersonation and fall back to admin token when re-impersonation fails', async () => {
+    useAuthStore.getState().setCredentialsAuth('admin-access-token', mockSuperAdmin, TENANT_UUID, 'acme', 'refresh_admin_123_abc');
+    useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
 
-        expect(result).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ token: 'fresh-admin-token', refreshToken: 'new-refresh' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
 
-        expect(fetchSpy).toHaveBeenCalledWith(
-            expect.stringContaining('/auth/refresh'),
-            expect.objectContaining({ method: 'POST' }),
-        );
+    mockPostFn.mockRejectedValueOnce(new Error('Impersonation failed'));
 
-        // TASK-331 doc-05 F-3 — the re-impersonation POST forwards the active
-        // tenant (set on the store during impersonation) as targetTenantId.
-        expect(mockPostFn).toHaveBeenCalledWith(
-            '/auth/impersonate',
-            { targetUserId: mockDoctor.id, targetTenantId: TENANT_UUID },
-        );
+    renderHook(() => useAutoRefresh());
 
-        expect(mockUpdateAccessToken).toHaveBeenCalledWith('fresh-impersonation-token');
+    const handler = mockSetOnUnauthorized.mock.calls[0][0];
+    const result = await handler();
 
-        expect(useAuthStore.getState().impersonationToken).toBe('fresh-impersonation-token');
+    expect(result).toBe(true);
+    expect(useAuthStore.getState().isImpersonating).toBe(false);
+    expect(mockUpdateAccessToken).toHaveBeenCalledWith('fresh-admin-token');
 
-        // TASK-340 — the refreshed admin token is mirrored into the SDK stash so
-        // admin-plane SDK requests keep a fresh admin JWT mid-impersonation.
-        expect(mockUpdateImpersonationOriginalToken).toHaveBeenCalledWith('fresh-admin-token');
+    fetchSpy.mockRestore();
+  });
 
-        fetchSpy.mockRestore();
-    });
+  it('should logout when base token refresh fails during impersonation', async () => {
+    useAuthStore.getState().setCredentialsAuth('admin-access-token', mockSuperAdmin, TENANT_UUID, 'acme', 'refresh_admin_123_abc');
+    useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
 
-    it('TASK-331 F-10/F-3: resolves tenantId from data.user.tenantId (no atob) and re-keys the store tenant', async () => {
-        useAuthStore.getState().setCredentialsAuth(
-            'admin-access-token',
-            mockSuperAdmin,
-            TENANT_UUID,
-            'acme',
-            'refresh_admin_123_abc',
-        );
-        useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Invalid' }), { status: 401 }));
 
-        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-            new Response(
-                JSON.stringify({ token: 'fresh-admin-token', refreshToken: 'new-refresh' }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } },
-            ),
-        );
+    renderHook(() => useAutoRefresh());
 
-        const RESOLVED_TENANT = '50000000-0000-0000-0000-000000000099';
-        // Non-JWT token on purpose: the old atob fallback would have thrown on
-        // it. The handler must trust data.user.tenantId instead.
-        mockPostFn.mockResolvedValueOnce({
-            user: { ...mockDoctor, tenantId: RESOLVED_TENANT },
-            token: 'not-a-jwt',
-            impersonatedBy: mockSuperAdmin.id,
-        });
+    const handler = mockSetOnUnauthorized.mock.calls[0][0];
+    const result = await handler();
 
-        renderHook(() => useAutoRefresh());
+    expect(result).toBe(false);
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
 
-        const handler = mockSetOnUnauthorized.mock.calls[0][0];
-        const result = await handler();
+    fetchSpy.mockRestore();
+  });
 
-        expect(result).toBe(true);
-        expect(useAuthStore.getState().tenantId).toBe(RESOLVED_TENANT);
-        expect(useAuthStore.getState().impersonationToken).toBe('not-a-jwt');
+  it('should use normal refresh flow when NOT impersonating', async () => {
+    useAuthStore.getState().setCredentialsAuth('old-access', mockSuperAdmin, TENANT_UUID, 'acme', 'refresh_admin_123_abc');
 
-        fetchSpy.mockRestore();
-    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify({ token: 'new-access', refreshToken: 'new-refresh' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
 
-    it('should end impersonation and fall back to admin token when re-impersonation fails', async () => {
-        useAuthStore.getState().setCredentialsAuth(
-            'admin-access-token',
-            mockSuperAdmin,
-            TENANT_UUID,
-            'acme',
-            'refresh_admin_123_abc',
-        );
-        useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
+    renderHook(() => useAutoRefresh());
 
-        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-            new Response(
-                JSON.stringify({ token: 'fresh-admin-token', refreshToken: 'new-refresh' }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } },
-            ),
-        );
+    const handler = mockSetOnUnauthorized.mock.calls[0][0];
+    const result = await handler();
 
-        mockPostFn.mockRejectedValueOnce(new Error('Impersonation failed'));
+    expect(result).toBe(true);
+    expect(mockPostFn).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().accessToken).toBe('new-access');
 
-        renderHook(() => useAutoRefresh());
-
-        const handler = mockSetOnUnauthorized.mock.calls[0][0];
-        const result = await handler();
-
-        expect(result).toBe(true);
-        expect(useAuthStore.getState().isImpersonating).toBe(false);
-        expect(mockUpdateAccessToken).toHaveBeenCalledWith('fresh-admin-token');
-
-        fetchSpy.mockRestore();
-    });
-
-    it('should logout when base token refresh fails during impersonation', async () => {
-        useAuthStore.getState().setCredentialsAuth(
-            'admin-access-token',
-            mockSuperAdmin,
-            TENANT_UUID,
-            'acme',
-            'refresh_admin_123_abc',
-        );
-        useAuthStore.getState().startImpersonation(mockDoctor, 'expired-impersonation-token');
-
-        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-            new Response(JSON.stringify({ message: 'Invalid' }), { status: 401 }),
-        );
-
-        renderHook(() => useAutoRefresh());
-
-        const handler = mockSetOnUnauthorized.mock.calls[0][0];
-        const result = await handler();
-
-        expect(result).toBe(false);
-        expect(useAuthStore.getState().isAuthenticated).toBe(false);
-
-        fetchSpy.mockRestore();
-    });
-
-    it('should use normal refresh flow when NOT impersonating', async () => {
-        useAuthStore.getState().setCredentialsAuth(
-            'old-access',
-            mockSuperAdmin,
-            TENANT_UUID,
-            'acme',
-            'refresh_admin_123_abc',
-        );
-
-        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-            new Response(
-                JSON.stringify({ token: 'new-access', refreshToken: 'new-refresh' }),
-                { status: 200, headers: { 'Content-Type': 'application/json' } },
-            ),
-        );
-
-        renderHook(() => useAutoRefresh());
-
-        const handler = mockSetOnUnauthorized.mock.calls[0][0];
-        const result = await handler();
-
-        expect(result).toBe(true);
-        expect(mockPostFn).not.toHaveBeenCalled();
-        expect(useAuthStore.getState().accessToken).toBe('new-access');
-
-        fetchSpy.mockRestore();
-    });
+    fetchSpy.mockRestore();
+  });
 });

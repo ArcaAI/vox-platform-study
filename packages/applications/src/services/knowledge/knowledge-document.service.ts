@@ -2,12 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { uuidv7 } from 'uuidv7';
-import {
-  JobQueue,
-  KnowledgeDocumentEntity,
-  KnowledgeDocumentFactory,
-  KnowledgeDocumentRepository,
-} from '@arcaai/domains';
+import { JobQueue, KnowledgeDocumentEntity, KnowledgeDocumentFactory, KnowledgeDocumentRepository } from '@arcaai/domains';
 import { InternalServerErrorException } from '@arcaai/exceptions';
 import { assertEqualTenants } from '../../common';
 import type { IngestKnowledgeDocumentJobPayload } from './ingest-knowledge-document.processor';

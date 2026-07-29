@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import { BentoGrid, BentoCard } from '../../../registries/magicui/bento-grid'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { BentoGrid, BentoCard } from '../../../registries/magicui/bento-grid';
 
 describe('BentoGrid', () => {
   it('renders without crashing', () => {
@@ -15,8 +15,8 @@ describe('BentoGrid', () => {
           cta="Learn more"
           background={<div />}
         />
-      </BentoGrid>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </BentoGrid>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

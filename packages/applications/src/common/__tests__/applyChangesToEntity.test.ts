@@ -125,9 +125,13 @@ describe('applyChangesToEntity — pre-existing behavior is unchanged', () => {
   it('applies a custom field handler result', async () => {
     const entity = makeEntity();
 
-    await applyChangesToEntity(entity as never, { name: 'value' } as never, {
-      name: ({ value }: { value: string }) => value.toUpperCase(),
-    } as never);
+    await applyChangesToEntity(
+      entity as never,
+      { name: 'value' } as never,
+      {
+        name: ({ value }: { value: string }) => value.toUpperCase(),
+      } as never,
+    );
 
     expect(entity.name).toBe('VALUE');
   });
@@ -145,9 +149,13 @@ describe('applyChangesToEntity — pre-existing behavior is unchanged', () => {
   it('lets a custom resourceStatus handler win over the lifecycle routing', async () => {
     const entity = makeEntity();
 
-    await applyChangesToEntity(entity as never, { resourceStatus: ResourceStatusType.SUSPENDED } as never, {
-      resourceStatus: () => undefined,
-    } as never);
+    await applyChangesToEntity(
+      entity as never,
+      { resourceStatus: ResourceStatusType.SUSPENDED } as never,
+      {
+        resourceStatus: () => undefined,
+      } as never,
+    );
 
     expect(entity.suspend).not.toHaveBeenCalled();
   });

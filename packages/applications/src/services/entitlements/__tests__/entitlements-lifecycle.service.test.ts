@@ -146,13 +146,22 @@ describe('EntitlementsLifecycleService.triggerDowngrade', () => {
         findUnique: vi.fn().mockResolvedValue({ id: 't-1', plan: TenantPlan.ENTERPRISE, key: 'acme' }),
         update: vi.fn().mockResolvedValue({}),
       },
-      department: { findMany: vi.fn().mockResolvedValue([{ id: 'd1', createdAt: PAST }, { id: 'd2', createdAt: PAST }, { id: 'd3', createdAt: FUTURE }]), updateMany: vi.fn() },
+      department: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'd1', createdAt: PAST },
+          { id: 'd2', createdAt: PAST },
+          { id: 'd3', createdAt: FUTURE },
+        ]),
+        updateMany: vi.fn(),
+      },
     });
     const { service } = makeService(baseClient, { enforcement: false });
 
     const report = await service.triggerDowngrade('t-1', TenantPlan.STARTER);
 
-    expect(baseClient.tenant.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 't-1' }, data: expect.objectContaining({ plan: TenantPlan.STARTER }) }));
+    expect(baseClient.tenant.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 't-1' }, data: expect.objectContaining({ plan: TenantPlan.STARTER }) }),
+    );
     expect(report.totalDisabled).toBe(0);
     expect(baseClient.department.updateMany).not.toHaveBeenCalled();
   });
@@ -203,7 +212,10 @@ describe('EntitlementsLifecycleService.triggerDowngrade', () => {
     expect(report.totalDisabled).toBe(2);
     const deptGroup = report.disabled.find((g) => g.capability === 'maxDepartments');
     expect(deptGroup).toMatchObject({ disabledCount: 1, ids: ['d3'] });
-    expect(eventEmitter.emit).toHaveBeenCalledWith(ENTITLEMENTS_DOWNGRADE_APPLIED_EVENT, expect.objectContaining({ tenantId: 't-1', totalDisabled: 2 }));
+    expect(eventEmitter.emit).toHaveBeenCalledWith(
+      ENTITLEMENTS_DOWNGRADE_APPLIED_EVENT,
+      expect.objectContaining({ tenantId: 't-1', totalDisabled: 2 }),
+    );
   });
 
   it('grandfathers within-limit resources (no disable) under enforcement', async () => {
@@ -214,7 +226,10 @@ describe('EntitlementsLifecycleService.triggerDowngrade', () => {
       },
       // 2 departments, limit 2 → nothing to disable.
       department: {
-        findMany: vi.fn().mockResolvedValue([{ id: 'd1', createdAt: PAST }, { id: 'd2', createdAt: FUTURE }]),
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'd1', createdAt: PAST },
+          { id: 'd2', createdAt: FUTURE },
+        ]),
         updateMany: vi.fn(),
       },
     });

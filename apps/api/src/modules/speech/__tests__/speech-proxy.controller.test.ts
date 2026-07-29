@@ -155,13 +155,23 @@ describe('SpeechProxyController', () => {
 
     const makeTenantTtsConfig = (voiceBindings: Record<string, Record<string, string>>) => ({
       getEffective: vi.fn().mockResolvedValue(makeEffective(voiceBindings)),
-      resolveProviderOverrides: vi.fn().mockResolvedValue({}),
+    });
+
+    const makeProviderConnectionService = (overrides: Record<string, unknown> = {}) => ({
+      resolveTenantCloudOverrides: vi.fn().mockResolvedValue(overrides),
     });
 
     const makeCls = () => ({ get: vi.fn((key: string) => (key === 'tenantId' ? 't1' : undefined)) });
 
-    const buildController = (tenantTtsConfig: unknown) =>
-      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, tenantTtsConfig as any, makeCls() as any);
+    const buildController = (tenantTtsConfig: unknown, providerConnectionService: unknown = makeProviderConnectionService()) =>
+      new SpeechProxyController(
+        http as any,
+        config as any,
+        createMockSecrets('svc-token') as any,
+        tenantTtsConfig as any,
+        providerConnectionService as any,
+        makeCls() as any,
+      );
 
     it('injects voice_bindings from the effective config when non-empty', async () => {
       const tenantTtsConfig = makeTenantTtsConfig(BINDINGS);
@@ -189,10 +199,50 @@ describe('SpeechProxyController', () => {
       expect('voice_bindings' in body).toBe(false);
     });
 
+    // TASK-570 — provider_overrides now resolves through the unified
+    // IProviderConnectionService (`service='tts'`) instead of
+    // TenantTtsConfigService.resolveProviderOverrides. The injected
+    // provider_overrides SHAPE is unchanged (C4 — byte-identical body).
+    it('injects provider_overrides via IProviderConnectionService.resolveTenantCloudOverrides("tts", tenantId)', async () => {
+      const OVERRIDES = { azure: { api_key: 'THE-KEY', region: 'eastus' } };
+      const providerConnectionService = makeProviderConnectionService(OVERRIDES);
+      const ctrl = buildController(makeTenantTtsConfig({}), providerConnectionService);
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+
+      expect(providerConnectionService.resolveTenantCloudOverrides).toHaveBeenCalledWith('tts', 't1');
+      const body = http.axiosRef.post.mock.calls[0][1];
+      // Byte-identical shape to the pre-unification TtsProviderOverrides body.
+      expect(body.provider_overrides).toEqual(OVERRIDES);
+    });
+
+    it('omits provider_overrides when the resolved map is empty', async () => {
+      const ctrl = buildController(makeTenantTtsConfig({}), makeProviderConnectionService({}));
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+
+      const body = http.axiosRef.post.mock.calls[0][1];
+      expect('provider_overrides' in body).toBe(false);
+    });
+
+    it('falls back to no overrides when IProviderConnectionService is absent (positional/internal construction)', async () => {
+      const ctrl = buildController(makeTenantTtsConfig({}), undefined);
+      http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+
+      const body = http.axiosRef.post.mock.calls[0][1];
+      expect('provider_overrides' in body).toBe(false);
+    });
+
     it('FAILS OPEN — a config resolve error forwards the body without bindings', async () => {
       const tenantTtsConfig = {
         getEffective: vi.fn().mockRejectedValue(new Error('config db down')),
-        resolveProviderOverrides: vi.fn().mockResolvedValue({}),
       };
       const ctrl = buildController(tenantTtsConfig);
       http.axiosRef.post.mockResolvedValue({ headers: { 'content-type': 'audio/pcm' }, data: makeStream() });

@@ -38,7 +38,9 @@ function makeProvider(overrides: Record<string, unknown> = {}) {
 
 function makeFakeClient() {
   return {
-    authorizationUrl: vi.fn((params: Record<string, unknown>) => `https://acme.okta.com/authorize?${new URLSearchParams(params as never).toString()}`),
+    authorizationUrl: vi.fn(
+      (params: Record<string, unknown>) => `https://acme.okta.com/authorize?${new URLSearchParams(params as never).toString()}`,
+    ),
     callback: vi.fn(),
   };
 }
@@ -210,9 +212,7 @@ describe('FederatedAuthService.buildAuthorizeUrl (HRD with explicit tenant fallb
     const ctx = makeService();
     ctx.tenantRepository.findFirst.mockResolvedValue({ id: TENANT, key: 'acme' });
     ctx.providerRepository.findEnabledByTenantAndProtocol.mockResolvedValue(null);
-    await expect(
-      ctx.svc.buildAuthorizeUrl({ tenantKey: 'acme', redirectUri: REDIRECT_URI }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(ctx.svc.buildAuthorizeUrl({ tenantKey: 'acme', redirectUri: REDIRECT_URI })).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
@@ -221,9 +221,9 @@ describe('FederatedAuthService.verifyOidcCallback — state verification', () =>
 
   it('throws UnauthorizedException on an invalid/tampered state', async () => {
     const ctx = makeService();
-    await expect(
-      ctx.svc.verifyOidcCallback({ code: 'abc', state: 'not-a-real-jwt', redirectUri: REDIRECT_URI }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(ctx.svc.verifyOidcCallback({ code: 'abc', state: 'not-a-real-jwt', redirectUri: REDIRECT_URI })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 });
 
@@ -272,9 +272,9 @@ describe('FederatedAuthService.verifyOidcCallback — existing FederatedIdentity
     ctx.userRepository.findById.mockResolvedValue({ id: 'user-1', username: 'oidc:x', resourceStatus: ResourceStatusType.ENABLED });
     ctx.userRoleAssignmentService.findActiveAssignmentForUserInTenant.mockResolvedValue(null);
 
-    await expect(
-      ctx.svc.verifyOidcCallback({ code: 'auth-code', state: signState(provider.id), redirectUri: REDIRECT_URI }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(ctx.svc.verifyOidcCallback({ code: 'auth-code', state: signState(provider.id), redirectUri: REDIRECT_URI })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 });
 
@@ -315,10 +315,7 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning', () => {
     const deptCallArg = ctx.userDepartmentRepository.create.mock.calls[0][0];
     expect(deptCallArg.departmentId).toBe('dept-default');
     expect(ctx.federatedIdentityRepository.create).toHaveBeenCalledOnce();
-    expect(ctx.userProfileService.upsertByUserId).toHaveBeenCalledWith(
-      session.id,
-      expect.objectContaining({ email: 'newdoc@acme.com' }),
-    );
+    expect(ctx.userProfileService.upsertByUserId).toHaveBeenCalledWith(session.id, expect.objectContaining({ email: 'newdoc@acme.com' }));
   });
 
   it('maps an IdP group claim to a HOPE role via Role.externalName, overriding the default role', async () => {
@@ -358,9 +355,9 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning', () => {
     setupUnlinkedCallback(ctx, provider, { sub: 'okta-sub-new' });
     ctx.roleFindUnique.mockResolvedValue({ name: 'GLOBAL_ADMIN' });
 
-    await expect(
-      ctx.svc.verifyOidcCallback({ code: 'auth-code', state: signState(provider.id), redirectUri: REDIRECT_URI }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(ctx.svc.verifyOidcCallback({ code: 'auth-code', state: signState(provider.id), redirectUri: REDIRECT_URI })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(ctx.userRoleAssignmentRepository.create).not.toHaveBeenCalled();
   });
 
@@ -377,9 +374,9 @@ describe('FederatedAuthService.verifyOidcCallback — JIT provisioning', () => {
     });
     setupUnlinkedCallback(ctx, provider, { sub: 'okta-sub-new' });
 
-    await expect(
-      ctx.svc.verifyOidcCallback({ code: 'auth-code', state: signState(provider.id), redirectUri: REDIRECT_URI }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(ctx.svc.verifyOidcCallback({ code: 'auth-code', state: signState(provider.id), redirectUri: REDIRECT_URI })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     expect(ctx.userRepository.create).not.toHaveBeenCalled();
   });
 });
@@ -449,9 +446,9 @@ describe('FederatedAuthService.verifySamlResponse', () => {
     const ctx = makeService();
     ctx.tenantRepository.findFirst.mockResolvedValue({ id: TENANT, key: 'acme' });
     ctx.providerRepository.findEnabledByTenantAndProtocol.mockResolvedValue(null);
-    await expect(
-      ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('throws UnauthorizedException when the library rejects the response (tampered/invalid)', async () => {
@@ -463,9 +460,9 @@ describe('FederatedAuthService.verifySamlResponse', () => {
     client.validatePostResponseAsync.mockRejectedValue(new Error('Invalid signature'));
     ctx.idpResolver.resolveSamlByProviderId.mockResolvedValue({ client, provider });
 
-    await expect(
-      ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('throws UnauthorizedException when the response carries no assertion profile (e.g. a logout message)', async () => {
@@ -477,9 +474,9 @@ describe('FederatedAuthService.verifySamlResponse', () => {
     client.validatePostResponseAsync.mockResolvedValue({ profile: null, loggedOut: false });
     ctx.idpResolver.resolveSamlByProviderId.mockResolvedValue({ client, provider });
 
-    await expect(
-      ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('logs in an already-linked SAML user without creating a new one', async () => {
@@ -550,9 +547,9 @@ describe('FederatedAuthService.verifySamlResponse', () => {
     ctx.userRepository.findById.mockResolvedValue({ id: 'user-1', username: 'saml:x', resourceStatus: ResourceStatusType.ENABLED });
     ctx.userRoleAssignmentService.findActiveAssignmentForUserInTenant.mockResolvedValue(null);
 
-    await expect(
-      ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('replay defense: rejects a second use of the same assertion ID when Redis is available', async () => {
@@ -574,9 +571,9 @@ describe('FederatedAuthService.verifySamlResponse', () => {
     const first = await ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL });
     expect(first.id).toBe('user-1');
 
-    await expect(
-      ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('skips the replay check (does not throw) when Redis is unavailable', async () => {
@@ -595,8 +592,6 @@ describe('FederatedAuthService.verifySamlResponse', () => {
     );
     ctx.userRepository.findById.mockResolvedValue({ id: 'user-1', username: 'saml:x', resourceStatus: ResourceStatusType.ENABLED });
 
-    await expect(
-      ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL }),
-    ).resolves.toBeDefined();
+    await expect(ctx.svc.verifySamlResponse({ tenantKey: 'acme', samlResponse: 'base64response', acsUrl: ACS_URL })).resolves.toBeDefined();
   });
 });

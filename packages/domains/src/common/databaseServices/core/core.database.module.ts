@@ -59,8 +59,8 @@ import { TenantIdentityProviderRepository } from '../../../repositories/generate
 import { TenantIdentityProviderDomainRepository } from '../../../repositories/generated/core/TenantIdentityProviderDomainRepository';
 import { TenantRepository } from '../../../repositories/generated/core/TenantRepository';
 import { TenantStorageConfigRepository } from '../../../repositories/generated/core/TenantStorageConfigRepository';
+import { TenantSttConfigRepository } from '../../../repositories/generated/core/TenantSttConfigRepository';
 import { TenantTtsConfigRepository } from '../../../repositories/generated/core/TenantTtsConfigRepository';
-import { TenantTtsProviderCredentialRepository } from '../../../repositories/generated/core/TenantTtsProviderCredentialRepository';
 import { TenantUsageMeterRepository } from '../../../repositories/generated/core/TenantUsageMeterRepository';
 import { TranscriptionJobRepository } from '../../../repositories/generated/core/TranscriptionJobRepository';
 import { TranscriptSegmentRepository } from '../../../repositories/generated/core/TranscriptSegmentRepository';
@@ -164,9 +164,14 @@ const repositories = [
   TenantStorageConfigRepository,
   // Voice profile domain
   UserVoiceProfileRepository,
-  // Per-tenant TTS configuration
+  // Per-tenant STT configuration (credential rows live in the unified
+  // AiProviderConnection plane, service='stt' — TASK-576 dropped
+  // TenantSttProviderCredential)
+  TenantSttConfigRepository,
+  // Per-tenant TTS configuration (credential rows live in the unified
+  // AiProviderConnection plane, service='tts' — TASK-576 dropped
+  // TenantTtsProviderCredential)
   TenantTtsConfigRepository,
-  TenantTtsProviderCredentialRepository,
   // Clinical documentation harness domain
   GoldenSetRepository,
   GoldenCaseRepository,

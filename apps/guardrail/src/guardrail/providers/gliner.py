@@ -21,25 +21,52 @@ logger = get_logger(__name__)
 SAFETY_LABELS = ["safe", "unsafe"]
 
 PII_LABELS = [
-    "person", "first_name", "last_name", "email", "phone",
-    "address", "city", "country", "card_number", "bank_account",
-    "crypto_wallet", "passport", "national_id", "date_of_birth",
+    "person",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "address",
+    "city",
+    "country",
+    "card_number",
+    "bank_account",
+    "crypto_wallet",
+    "passport",
+    "national_id",
+    "date_of_birth",
 ]
 
 ADVERSARIAL_LABELS = [
-    "jailbreak_persona", "jailbreak_hypothetical", "jailbreak_roleplay",
-    "prompt_injection", "indirect_prompt_injection", "instruction_override",
-    "data_exfiltration", "system_prompt_extraction",
-    "context_manipulation", "token_manipulation",
-    "tool_abuse", "social_engineering", "multi_turn_escalation",
-    "schema_poisoning", "none",
+    "jailbreak_persona",
+    "jailbreak_hypothetical",
+    "jailbreak_roleplay",
+    "prompt_injection",
+    "indirect_prompt_injection",
+    "instruction_override",
+    "data_exfiltration",
+    "system_prompt_extraction",
+    "context_manipulation",
+    "token_manipulation",
+    "tool_abuse",
+    "social_engineering",
+    "multi_turn_escalation",
+    "schema_poisoning",
+    "none",
 ]
 
 HARMFUL_LABELS = [
-    "harassment", "hate_speech", "discrimination",
-    "violence", "dangerous_instructions", "weapons",
-    "sexual_content", "child_exploitation",
-    "fraud", "scam", "misinformation",
+    "harassment",
+    "hate_speech",
+    "discrimination",
+    "violence",
+    "dangerous_instructions",
+    "weapons",
+    "sexual_content",
+    "child_exploitation",
+    "fraud",
+    "scam",
+    "misinformation",
     "none",
 ]
 
@@ -121,7 +148,10 @@ class GlinerProvider:
 
         if run_harmful:
             harmful_scores = self.runtime.classify(
-                text, HARMFUL_LABELS, threshold=threshold, multi_label=True,
+                text,
+                HARMFUL_LABELS,
+                threshold=threshold,
+                multi_label=True,
             )
             active = [f for f in (harmful_scores or {}) if f != "none"]
             if active:
@@ -131,7 +161,10 @@ class GlinerProvider:
 
         if run_adversarial:
             adv_scores = self.runtime.classify(
-                text, ADVERSARIAL_LABELS, threshold=threshold, multi_label=True,
+                text,
+                ADVERSARIAL_LABELS,
+                threshold=threshold,
+                multi_label=True,
             )
             active = [f for f in (adv_scores or {}) if f != "none"]
             if active:
@@ -148,9 +181,7 @@ class GlinerProvider:
                 confidence_scores.append(max(e.score for e in pii))
 
         confidence = (
-            round(sum(confidence_scores) / len(confidence_scores), 3)
-            if confidence_scores
-            else 0.8
+            round(sum(confidence_scores) / len(confidence_scores), 3) if confidence_scores else 0.8
         )
 
         return {

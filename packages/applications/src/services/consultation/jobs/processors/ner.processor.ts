@@ -107,9 +107,7 @@ export class NerProcessor extends WorkerHost {
         for (const entity of nlpResponse.entities) {
           const namedEntity = NamedEntityFactory.CreateNamedEntity(namedEntityPropsFromNlp(entity, { tenantId, contextItemId }));
 
-          await this.encryptBestEffort('NamedEntity', () =>
-            this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
-          );
+          await this.encryptBestEffort('NamedEntity', () => this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!));
           const saved = await this.namedEntityRepository.create(namedEntity);
           savedEntities.push({
             id: saved.id,

@@ -57,4 +57,3 @@ export interface UpdateMeetingInput {
   participants?: string[];
   tags?: string[];
 }
-

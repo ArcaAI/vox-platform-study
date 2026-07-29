@@ -100,18 +100,12 @@ export class ResourceSubscriptionEntity extends BaseTaggedEntity {
       throw new BusinessException('Resource subscription subscriptionType is required.');
     }
     if (!Object.values(Enums.ResourceSubscriptionType).includes(this._subscriptionType)) {
-      throw new BusinessException(
-        `Resource subscription subscriptionType is invalid: ${String(this._subscriptionType)}.`,
-      );
+      throw new BusinessException(`Resource subscription subscriptionType is invalid: ${String(this._subscriptionType)}.`);
     }
     if (!this._targetUserId || this._targetUserId.trim().length === 0) {
       throw new BusinessException('Resource subscription targetUserId is required.');
     }
-    if (
-      this._resourceId !== null &&
-      this._resourceId !== undefined &&
-      this._resourceId.trim().length === 0
-    ) {
+    if (this._resourceId !== null && this._resourceId !== undefined && this._resourceId.trim().length === 0) {
       throw new BusinessException('Resource subscription resourceId must not be empty when provided.');
     }
     if (this._resourceTypeName && this._resourceTypeName.length > 255) {

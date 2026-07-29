@@ -1,15 +1,33 @@
 import {
   CreateAudioRecordRequest,
   CreateTranscriptRequest,
+  IActiveUserContext,
   InternalCompleteJobRequest,
   InternalCreateMediaRequest,
   InternalFailJobRequest,
   InternalStartJobRequest,
   InternalUpdateProgressRequest,
+  ITenantSttConfigService,
   SttInternalService,
 } from '@arcaai/applications';
-import { Body, Controller, Get, Headers, Param, Patch, Post, Req, UnauthorizedException } from '@nestjs/common';
+import type { SttProviderOverrides } from '@arcaai/applications';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Inject,
+  Optional,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ApiExcludeController, ApiOperation, ApiParam, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 import { Authorize } from '../../decorators';
 import type { RequestWithAuth } from '../../types/request-with-auth';
 
@@ -19,7 +37,16 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 @Authorize()
 @Controller('internal/stt')
 export class SttInternalController {
-  constructor(private readonly sttInternalService: SttInternalService) {}
+  constructor(
+    private readonly sttInternalService: SttInternalService,
+    // Resolves a tenant's decrypted BYO provider overrides for the batch-worker
+    // PULL path (TASK-567 D-3). Optional so positional test construction still
+    // works; the pull route rejects (500-class) when unwired in prod.
+    @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
+    // Re-establishes a SYSTEM-free CLS tenant context around the tenant-scoped
+    // credential read (service-to-service calls carry no user/tenant CLS).
+    @Optional() private readonly cls?: ClsService<IActiveUserContext>,
+  ) {}
 
   // Typed `RequestWithAuth` replaces the earlier
   // `request['apiKey']` bracket lookup. The typed dot-access means a
@@ -99,5 +126,36 @@ export class SttInternalController {
   async createMedia(@Req() request: RequestWithAuth, @Body() dto: InternalCreateMediaRequest) {
     this.ensureInternalApiKey(request);
     return this.sttInternalService.createMedia(dto);
+  }
+
+  /**
+   * The batch-worker PULL path for BYO provider credentials (TASK-567 D-3).
+   * Injecting a decrypted key into the Dramatiq queue message is prohibited
+   * (PHI posture — secrets never at rest outside Vault ciphertext), so the
+   * separate worker process pulls the tenant's decrypted overrides at execution
+   * time instead. Service-to-service only (`X-Internal-Service-Key`, same gate
+   * as every other route on this controller); never reachable by a browser.
+   *
+   * The call carries no user/tenant CLS, and the credential model is
+   * tenant-scoped (its Prisma extension fails closed without a tenant context),
+   * so CLS is re-established pinned to the requested tenant — the same tenant the
+   * repository query filters on. Fails OPEN per credential inside the service; a
+   * broken/absent key simply drops out of the map (worker falls back to env).
+   */
+  @Get('provider-overrides')
+  @ApiOperation({ summary: 'Resolve a tenant’s decrypted BYO STT provider overrides (batch-worker pull)' })
+  async getProviderOverrides(@Req() request: RequestWithAuth, @Query('tenantId') tenantId?: string): Promise<SttProviderOverrides> {
+    this.ensureInternalApiKey(request);
+    if (!tenantId?.trim()) {
+      throw new BadRequestException('tenantId query parameter is required');
+    }
+    if (!this.sttConfig || !this.cls) {
+      throw new BadRequestException('STT provider-override resolution is not configured on this gateway');
+    }
+    const scopedTenantId = tenantId.trim();
+    return this.cls.run(async () => {
+      this.cls!.set('tenantId', scopedTenantId);
+      return this.sttConfig!.resolveProviderOverrides(scopedTenantId);
+    });
   }
 }

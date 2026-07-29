@@ -12,15 +12,15 @@ import { PersonaControl } from './persona-control';
  * session rather than receiving it from a route-group server layout.
  */
 export function PlaygroundPersonaBar() {
-    const { data: session } = useSession();
+  const { data: session } = useSession();
 
-    if (!session) {
-        return <Skeleton className="mb-4 h-9 w-64" />;
-    }
+  if (!session) {
+    return <Skeleton className="mb-4 h-9 w-64" />;
+  }
 
-    return (
-        <div className="mb-4">
-            <PersonaControl session={session} />
-        </div>
-    );
+  return (
+    <div className="mb-4">
+      <PersonaControl session={session} />
+    </div>
+  );
 }

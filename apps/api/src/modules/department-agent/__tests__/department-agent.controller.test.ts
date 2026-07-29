@@ -28,7 +28,10 @@ describe('DepartmentAgentController — authorization metadata', () => {
   });
 
   it('update requires If-Match (OCC)', () => {
-    const meta = Reflect.getMetadata(REQUIRES_IF_MATCH_KEY, (DepartmentAgentController.prototype as never as Record<string, unknown>).update as object);
+    const meta = Reflect.getMetadata(
+      REQUIRES_IF_MATCH_KEY,
+      (DepartmentAgentController.prototype as never as Record<string, unknown>).update as object,
+    );
     expect(meta).toBeTruthy();
   });
 });

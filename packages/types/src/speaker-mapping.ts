@@ -152,8 +152,8 @@ export enum ConfidenceLevel {
  * Get confidence level from score
  */
 export function getConfidenceLevel(confidence: number): ConfidenceLevel {
-  if (confidence < 0.50) return ConfidenceLevel.VERY_LOW;
-  if (confidence < 0.70) return ConfidenceLevel.LOW;
+  if (confidence < 0.5) return ConfidenceLevel.VERY_LOW;
+  if (confidence < 0.7) return ConfidenceLevel.LOW;
   if (confidence < 0.85) return ConfidenceLevel.MEDIUM;
   return ConfidenceLevel.HIGH;
 }
@@ -187,4 +187,3 @@ export const SPEAKER_MAPPING_ERROR_MESSAGES: Record<SpeakerMappingErrorCode, str
   [SpeakerMappingErrorCode.INVALID_CORRECTION]: 'Invalid manual correction data.',
   [SpeakerMappingErrorCode.INVALID_CONFIG]: 'Invalid recognition configuration.',
 };
-

@@ -14,7 +14,14 @@ import { BaseService } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { IEntitlementsService } from '../../entitlements/IEntitlementsService';
 import { IPipelineService } from './IPipelineService';
-import { ClonePipelineRequest, CreatePipelineRequest, PaginatedPipelineResponse, PipelineResponse, PipelineVersionResponse, UpdatePipelineRequest } from './dto';
+import {
+  ClonePipelineRequest,
+  CreatePipelineRequest,
+  PaginatedPipelineResponse,
+  PipelineResponse,
+  PipelineVersionResponse,
+  UpdatePipelineRequest,
+} from './dto';
 import { PipelineDtoMapper } from './pipeline.dto.mapper';
 
 /**
@@ -257,11 +264,7 @@ export class PipelineService extends BaseService implements IPipelineService {
 
     const saved = await this.pipelineRepository.create(clone);
 
-    await this.snapshotVersion(
-      saved,
-      `Cloned from pipeline '${source.slug}' (TASK-531)`,
-      userId ?? undefined,
-    );
+    await this.snapshotVersion(saved, `Cloned from pipeline '${source.slug}' (TASK-531)`, userId ?? undefined);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -280,7 +283,11 @@ export class PipelineService extends BaseService implements IPipelineService {
   /**
    * Persist a config-YAML snapshot as the next AsrPipelineVersion.
    */
-  private async snapshotVersion(pipeline: { id: string; name: string; description?: string | null; configYaml: string; tenantId?: string | null }, changeReason?: string, changedBy?: string): Promise<void> {
+  private async snapshotVersion(
+    pipeline: { id: string; name: string; description?: string | null; configYaml: string; tenantId?: string | null },
+    changeReason?: string,
+    changedBy?: string,
+  ): Promise<void> {
     const versionNumber = await this.versionRepository.getNextVersionNumber(pipeline.id);
     const version = AsrPipelineVersionFactory.CreateAsrPipelineVersion({
       asrPipelineId: pipeline.id,
@@ -316,9 +323,7 @@ export class PipelineService extends BaseService implements IPipelineService {
       throw new BadRequestException('tenantId is required');
     }
     if (targetTenantId !== tenantId) {
-      throw new BadRequestException(
-        'Cross-tenant pipeline assignment is not supported; a pipeline can only be assigned within its owning tenant.',
-      );
+      throw new BadRequestException('Cross-tenant pipeline assignment is not supported; a pipeline can only be assigned within its owning tenant.');
     }
 
     // Same-tenant assignment → persist by promoting the pipeline to the tenant
@@ -653,9 +658,7 @@ export class PipelineService extends BaseService implements IPipelineService {
     }
   }
 
-  private async validateYamlRemotely(
-    yaml: string,
-  ): Promise<{ valid: boolean; errors?: string[] } | null> {
+  private async validateYamlRemotely(yaml: string): Promise<{ valid: boolean; errors?: string[] } | null> {
     try {
       // URL resolution mirrors serviceHealthMonitoring.service.ts; stt is
       // gateway-fronted and carries no service-token middleware.

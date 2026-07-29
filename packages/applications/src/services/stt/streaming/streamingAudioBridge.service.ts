@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } f
 import Redis from 'ioredis';
 import { Observable, Subject, finalize } from 'rxjs';
 import { IConfigService } from '../../baseServices/_meta/config';
-import { StreamingTranscriptMessage } from './dto';
+import { StreamingTranscriptMessage, StreamingServerMessage } from './dto';
 import { deriveSpeakerLabel } from './speaker-label';
 
 /**
@@ -306,8 +306,8 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    *
    * @param sessionId - Streaming session identifier
    */
-  subscribeToResults(sessionId: string, options?: SubscribeResultOptions): Observable<StreamingTranscriptMessage> {
-    const subject = new Subject<StreamingTranscriptMessage>();
+  subscribeToResults(sessionId: string, options?: SubscribeResultOptions): Observable<StreamingServerMessage> {
+    const subject = new Subject<StreamingServerMessage>();
     const ctrl: ResultSubscriberCtrl = { abort: false };
 
     let controllers = this.activeSubscriptions.get(sessionId);
@@ -426,7 +426,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
 
   private async readResultStream(
     streamKey: string,
-    subject: Subject<StreamingTranscriptMessage>,
+    subject: Subject<StreamingServerMessage>,
     ctrl: ResultSubscriberCtrl,
     reader: Redis,
     group: string,
@@ -553,7 +553,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     streamKey: string,
     group: string,
     consumer: string,
-    subject: Subject<StreamingTranscriptMessage>,
+    subject: Subject<StreamingServerMessage>,
   ): Promise<void> {
     try {
       const res = (await reader.xautoclaim(streamKey, group, consumer, RESULT_CLAIM_MIN_IDLE_MS, '0-0', 'COUNT', 100)) as XAutoClaimReply;
@@ -620,7 +620,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * session's last spoken utterance would never reach the client. Non-terminal
    * status entries are skipped (never emitted) and the reader keeps reading.
    */
-  private parseAndEmitResult(subject: Subject<StreamingTranscriptMessage>, fields: string[]): boolean {
+  private parseAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[]): boolean {
     // Parse fields array into key-value pairs
     const data: Record<string, string> = {};
     for (let i = 0; i < fields.length; i += 2) {
@@ -630,6 +630,21 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     // Terminal only on a true end-of-session status. `finalizing` is a progress
     // marker that PRECEDES the tail final — treating it as terminal drops it.
     if (data.type === 'status') {
+      // provider_switched (TASK-567 §3.4) is a NON-terminal status result: relay
+      // it so the ASR-engine swap reaches the client on the existing status
+      // frame (zero WS protocol change), then keep reading. All other
+      // non-terminal statuses stay unemitted (progress-only, as before).
+      if (data.status === 'provider_switched') {
+        const utterance = data.utterance_index != null && data.utterance_index !== '' ? Number.parseInt(data.utterance_index, 10) : undefined;
+        subject.next({
+          type: 'status',
+          status: 'provider_switched',
+          ...(data.from_pipeline ? { from_pipeline: data.from_pipeline } : {}),
+          ...(data.to_pipeline ? { to_pipeline: data.to_pipeline } : {}),
+          ...(data.reason ? { reason: data.reason } : {}),
+          ...(utterance != null && Number.isFinite(utterance) && utterance >= 0 ? { utterance_index: utterance } : {}),
+        });
+      }
       return data.status === 'closed' || data.status === 'cancelled';
     }
 

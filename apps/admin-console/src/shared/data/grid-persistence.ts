@@ -31,9 +31,9 @@ export const UI_DATA_GRID_MAX_BYTES = 16384;
 
 /** Minimal shape of a `GET user/me/settings` row (a subset of the feature `UserSetting`). */
 interface UserSettingRow {
-    namespace?: string;
-    key: string;
-    value: string;
+  namespace?: string;
+  key: string;
+  value: string;
 }
 
 const encoder = new TextEncoder();
@@ -42,74 +42,74 @@ const encoder = new TextEncoder();
 export const SETTINGS_CACHE_TTL_MS = 30_000;
 
 export function createGridLayoutPersistenceAdapter(): GridLayoutPersistenceAdapter & { invalidate: () => void } {
-    let warnedOversize = false;
-    /** One GET shared by all concurrent loads (N grids mounting on one page). */
-    let pending: Promise<UserSettingRow[]> | null = null;
-    let cached: { rows: UserSettingRow[]; at: number } | null = null;
-    /** Bumped by invalidate(): an in-flight GET from a previous identity must not populate the cache. */
-    let generation = 0;
+  let warnedOversize = false;
+  /** One GET shared by all concurrent loads (N grids mounting on one page). */
+  let pending: Promise<UserSettingRow[]> | null = null;
+  let cached: { rows: UserSettingRow[]; at: number } | null = null;
+  /** Bumped by invalidate(): an in-flight GET from a previous identity must not populate the cache. */
+  let generation = 0;
 
-    async function fetchRows(): Promise<UserSettingRow[]> {
-        if (cached && Date.now() - cached.at <= SETTINGS_CACHE_TTL_MS) return cached.rows;
-        if (!pending) {
-            const startedGeneration = generation;
-            const request = getJson<UserSettingRow[]>('user/me/settings')
-                .then((rows) => {
-                    const list = Array.isArray(rows) ? rows : [];
-                    if (startedGeneration === generation) cached = { rows: list, at: Date.now() };
-                    return list;
-                })
-                .finally(() => {
-                    // Success is served from `cached`; failure must not stick, so
-                    // the in-flight slot clears either way and the next load
-                    // retries (unless invalidate() already replaced it).
-                    if (pending === request) pending = null;
-                });
-            pending = request;
-        }
-        return pending;
+  async function fetchRows(): Promise<UserSettingRow[]> {
+    if (cached && Date.now() - cached.at <= SETTINGS_CACHE_TTL_MS) return cached.rows;
+    if (!pending) {
+      const startedGeneration = generation;
+      const request = getJson<UserSettingRow[]>('user/me/settings')
+        .then((rows) => {
+          const list = Array.isArray(rows) ? rows : [];
+          if (startedGeneration === generation) cached = { rows: list, at: Date.now() };
+          return list;
+        })
+        .finally(() => {
+          // Success is served from `cached`; failure must not stick, so
+          // the in-flight slot clears either way and the next load
+          // retries (unless invalidate() already replaced it).
+          if (pending === request) pending = null;
+        });
+      pending = request;
     }
+    return pending;
+  }
 
-    return {
-        /** Drop cache + in-flight read — the session identity changed. */
-        invalidate(): void {
-            generation += 1;
-            cached = null;
-            pending = null;
-        },
+  return {
+    /** Drop cache + in-flight read — the session identity changed. */
+    invalidate(): void {
+      generation += 1;
+      cached = null;
+      pending = null;
+    },
 
-        async load(namespace: string, key: string): Promise<GridLayoutState | null> {
-            try {
-                const rows = await fetchRows();
-                const row = rows.find((entry) => entry?.namespace === namespace && entry?.key === key);
-                if (!row || typeof row.value !== 'string') return null;
-                return JSON.parse(row.value) as GridLayoutState;
-            } catch {
-                return null;
-            }
-        },
+    async load(namespace: string, key: string): Promise<GridLayoutState | null> {
+      try {
+        const rows = await fetchRows();
+        const row = rows.find((entry) => entry?.namespace === namespace && entry?.key === key);
+        if (!row || typeof row.value !== 'string') return null;
+        return JSON.parse(row.value) as GridLayoutState;
+      } catch {
+        return null;
+      }
+    },
 
-        async save(namespace: string, key: string, state: GridLayoutState): Promise<void> {
-            const serialized = JSON.stringify(state);
-            if (encoder.encode(serialized).length > UI_DATA_GRID_MAX_BYTES) {
-                if (!warnedOversize) {
-                    warnedOversize = true;
-                    console.warn(
-                        `[grid-persistence] layout "${key}" exceeds the ${UI_DATA_GRID_MAX_BYTES}B cap; skipping server save (personalization stays in-memory).`,
-                    );
-                }
-                return;
-            }
-            try {
-                await patchJson(`user/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, { value: serialized });
-                // The server rows changed — drop the cache so the next screen's
-                // grid loads the layout just saved here.
-                cached = null;
-            } catch {
-                // Best-effort: a failed persist must never surface to the grid.
-            }
-        },
-    };
+    async save(namespace: string, key: string, state: GridLayoutState): Promise<void> {
+      const serialized = JSON.stringify(state);
+      if (encoder.encode(serialized).length > UI_DATA_GRID_MAX_BYTES) {
+        if (!warnedOversize) {
+          warnedOversize = true;
+          console.warn(
+            `[grid-persistence] layout "${key}" exceeds the ${UI_DATA_GRID_MAX_BYTES}B cap; skipping server save (personalization stays in-memory).`,
+          );
+        }
+        return;
+      }
+      try {
+        await patchJson(`user/me/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, { value: serialized });
+        // The server rows changed — drop the cache so the next screen's
+        // grid loads the layout just saved here.
+        cached = null;
+      } catch {
+        // Best-effort: a failed persist must never surface to the grid.
+      }
+    },
+  };
 }
 
 /**
@@ -129,7 +129,7 @@ export const sharedGridLayoutPersistence: GridLayoutPersistenceAdapter = sharedA
  * is user-keyed, so it does not need this.
  */
 export function invalidateGridLayoutCache(): void {
-    sharedAdapter.invalidate();
+  sharedAdapter.invalidate();
 }
 
 /**
@@ -139,5 +139,5 @@ export function invalidateGridLayoutCache(): void {
  * not by the URL query-state, so multiple grids on one route never collide).
  */
 export function gridPersistence(gridId: string, enabled = true) {
-    return { key: gridId, namespace: UI_DATA_GRID_NAMESPACE, adapter: sharedGridLayoutPersistence, enabled };
+  return { key: gridId, namespace: UI_DATA_GRID_NAMESPACE, adapter: sharedGridLayoutPersistence, enabled };
 }

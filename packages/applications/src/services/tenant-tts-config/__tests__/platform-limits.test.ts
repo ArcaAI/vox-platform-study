@@ -19,10 +19,7 @@ describe('resolveEffectiveTtsConfig', () => {
   });
 
   it('tenant row overrides the SYSTEM default; SYSTEM overrides code default', () => {
-    const eff = resolveEffectiveTtsConfig(
-      { defaultVoiceEn: 'en-male-1', defaultSpeed: 1.5 },
-      { defaultSpeed: 2.0 },
-    );
+    const eff = resolveEffectiveTtsConfig({ defaultVoiceEn: 'en-male-1', defaultSpeed: 1.5 }, { defaultSpeed: 2.0 });
     expect(eff.defaultVoiceEn).toBe('en-male-1'); // inherited from SYSTEM (tenant unset)
     expect(eff.defaultSpeed).toBe(2.0); // tenant wins
   });

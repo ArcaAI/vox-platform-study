@@ -44,12 +44,7 @@ const makeDelegate = (nodes: Record<string, Node>) => {
       const parentIds: string[] = where.parentConsultationId.in;
       const status: ResourceStatusType | undefined = where.resourceStatus;
       return Promise.resolve(
-        all.filter(
-          (n) =>
-            n.parentConsultationId != null &&
-            parentIds.includes(n.parentConsultationId) &&
-            (!status || n.resourceStatus === status),
-        ),
+        all.filter((n) => n.parentConsultationId != null && parentIds.includes(n.parentConsultationId) && (!status || n.resourceStatus === status)),
       );
     }),
   };

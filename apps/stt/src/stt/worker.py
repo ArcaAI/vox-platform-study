@@ -79,7 +79,6 @@ async def initialize_services() -> None:
     except Exception as e:
         logger.warning(f"VAD service initialization failed (non-fatal): {e}")
 
-
     # --- Diarization: pyannote embedding model (heavier, optional) ---
     try:
         from stt.diarization.embedding_service import get_embedding_service

@@ -85,7 +85,9 @@ def test_unsupported_type_returns_empty_200(client):
 
 
 def test_corrupt_pdf_never_5xx(client):
-    resp = client.post(API, files={"file": ("broken.pdf", b"%PDF-1.7 not really a pdf", "application/pdf")})
+    resp = client.post(
+        API, files={"file": ("broken.pdf", b"%PDF-1.7 not really a pdf", "application/pdf")}
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["text"] == ""

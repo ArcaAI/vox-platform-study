@@ -316,7 +316,10 @@ describe('L-2: translation task wiring -> Whisper task option', () => {
       vi.resetModules();
     });
 
-    async function waitForMessage(predicate: (msg: { type: string; id: string }) => boolean, attempts = 50): Promise<{ type: string; id: string; payload: unknown }> {
+    async function waitForMessage(
+      predicate: (msg: { type: string; id: string }) => boolean,
+      attempts = 50,
+    ): Promise<{ type: string; id: string; payload: unknown }> {
       for (let i = 0; i < attempts; i++) {
         const found = postedMessages.find((m) => predicate(m as { type: string; id: string }));
         if (found) return found as { type: string; id: string; payload: unknown };

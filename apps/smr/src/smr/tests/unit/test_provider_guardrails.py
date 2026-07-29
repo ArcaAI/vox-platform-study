@@ -19,6 +19,7 @@ from smr.models.requests import GenerateRequest
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def bedrock_config_with_guardrail():
     return BedrockConfig(
@@ -52,12 +53,11 @@ def azure_config():
 # Task 1.11 — Bedrock Guardrails
 # ===========================================================================
 
+
 class TestBedrockGuardrailConfig:
     """Verify guardrailConfig is injected into converse params."""
 
-    def test_bedrock_guardrail_config_added_when_id_set(
-        self, bedrock_config_with_guardrail
-    ):
+    def test_bedrock_guardrail_config_added_when_id_set(self, bedrock_config_with_guardrail):
         from smr.providers.bedrock import BedrockProvider
 
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
@@ -71,9 +71,7 @@ class TestBedrockGuardrailConfig:
         assert params["guardrailConfig"]["guardrailIdentifier"] == "gr-123"
         assert params["guardrailConfig"]["guardrailVersion"] == "1"
 
-    def test_bedrock_guardrail_config_absent_when_id_empty(
-        self, bedrock_config_no_guardrail
-    ):
+    def test_bedrock_guardrail_config_absent_when_id_empty(self, bedrock_config_no_guardrail):
         from smr.providers.bedrock import BedrockProvider
 
         with patch("smr.providers.bedrock.boto3") as mock_boto3:
@@ -98,19 +96,13 @@ class TestBedrockGuardrailIntervened:
     """Verify guardrail_intervened stop reason is logged and handled."""
 
     @pytest.mark.asyncio
-    async def test_bedrock_guardrail_intervened_logged(
-        self, bedrock_config_with_guardrail
-    ):
+    async def test_bedrock_guardrail_intervened_logged(self, bedrock_config_with_guardrail):
         from smr.providers.bedrock import BedrockProvider
 
         mock_client = MagicMock()
         mock_client.converse.return_value = {
             "output": {
-                "message": {
-                    "content": [
-                        {"text": "Sorry, I cannot help with that request."}
-                    ]
-                }
+                "message": {"content": [{"text": "Sorry, I cannot help with that request."}]}
             },
             "usage": {"inputTokens": 10, "outputTokens": 5},
             "stopReason": "guardrail_intervened",
@@ -122,7 +114,11 @@ class TestBedrockGuardrailIntervened:
 
         with patch("smr.providers.bedrock.logger") as mock_logger:
             content, _reasoning, stats = await provider.generate(
-                GenerateRequest(prompt="bad prompt", provider="bedrock")
+                GenerateRequest(
+                    prompt="bad prompt",
+                    provider="bedrock",
+                    model="anthropic.claude-3-sonnet-20240229-v1:0",
+                )
             )
 
             mock_logger.warning.assert_called_once()
@@ -140,6 +136,7 @@ class TestBedrockGuardrailIntervened:
 # ===========================================================================
 # Task 1.12 — Azure Content Safety
 # ===========================================================================
+
 
 class TestAzureContentFilterConfig:
     """Verify content_filter_severity config field exists with correct default."""
@@ -199,9 +196,7 @@ class TestAzureContentFilterErrorHandling:
             assert "content_filter" in call_args[0][0]
 
     @pytest.mark.asyncio
-    async def test_azure_non_content_filter_error_not_logged_as_filter(
-        self, azure_config
-    ):
+    async def test_azure_non_content_filter_error_not_logged_as_filter(self, azure_config):
         """Non-content-filter BadRequestError should NOT trigger filter logging."""
         from openai import BadRequestError
 
@@ -226,8 +221,6 @@ class TestAzureContentFilterErrorHandling:
 
         with patch("smr.providers.azure_openai.logger") as mock_logger:
             with pytest.raises(BadRequestError):
-                await provider.generate(
-                    GenerateRequest(prompt="hello", provider="azure_openai")
-                )
+                await provider.generate(GenerateRequest(prompt="hello", provider="azure_openai"))
 
             mock_logger.warning.assert_not_called()

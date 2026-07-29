@@ -66,7 +66,9 @@ class StoragePathResolver:
         safe_filename = self._sanitize_filename(filename)
 
         if consultation_id:
-            return f"{year}/{month}/{day}/consultations/{consultation_id}/{job_id}/raw/{safe_filename}"
+            return (
+                f"{year}/{month}/{day}/consultations/{consultation_id}/{job_id}/raw/{safe_filename}"
+            )
         else:
             return f"{year}/{month}/{day}/jobs/{job_id}/raw/{safe_filename}"
 
@@ -166,9 +168,7 @@ class StoragePathResolver:
         filename = f"transcript.{format}"
 
         if consultation_id:
-            return (
-                f"{year}/{month}/{day}/consultations/{consultation_id}/{job_id}/{filename}"
-            )
+            return f"{year}/{month}/{day}/consultations/{consultation_id}/{job_id}/{filename}"
         else:
             return f"{year}/{month}/{day}/jobs/{job_id}/{filename}"
 

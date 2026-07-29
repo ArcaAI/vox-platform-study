@@ -34,7 +34,13 @@ def _load_fixture() -> dict[str, Any]:
     """Locate the shared contract fixture by walking up to the repo root."""
     here = Path(__file__).resolve()
     for parent in here.parents:
-        candidate = parent / "tests" / "contracts" / "stt-transcript-segments" / "transcript-segments.fixture.json"
+        candidate = (
+            parent
+            / "tests"
+            / "contracts"
+            / "stt-transcript-segments"
+            / "transcript-segments.fixture.json"
+        )
         if candidate.is_file():
             return json.loads(candidate.read_text(encoding="utf-8"))
     raise AssertionError("shared transcript-segment contract fixture not found")
@@ -71,10 +77,34 @@ class TestStreamingProducerContract:
         )
         session = StreamSession(metadata=metadata, redis=MagicMock(), persist_interval_s=5.0)
         session.results = [
-            SegmentResult(text="Patient reports chest pain.", speaker_id="doctor", start_time=0.0, end_time=1.5, is_final=True),
-            SegmentResult(text="No shortness", speaker_id="patient", start_time=1.5, end_time=2.0, is_final=False),
-            SegmentResult(text="No shortness of breath.", speaker_id="patient", start_time=1.5, end_time=3.0, is_final=True),
-            SegmentResult(text="Start amlodipine 5mg daily.", speaker_id="doctor", start_time=3.1, end_time=5.0, is_final=True),
+            SegmentResult(
+                text="Patient reports chest pain.",
+                speaker_id="doctor",
+                start_time=0.0,
+                end_time=1.5,
+                is_final=True,
+            ),
+            SegmentResult(
+                text="No shortness",
+                speaker_id="patient",
+                start_time=1.5,
+                end_time=2.0,
+                is_final=False,
+            ),
+            SegmentResult(
+                text="No shortness of breath.",
+                speaker_id="patient",
+                start_time=1.5,
+                end_time=3.0,
+                is_final=True,
+            ),
+            SegmentResult(
+                text="Start amlodipine 5mg daily.",
+                speaker_id="doctor",
+                start_time=3.1,
+                end_time=5.0,
+                is_final=True,
+            ),
         ]
         return session
 
@@ -105,9 +135,15 @@ class TestBatchProducerContract:
             # Diarization lives on the VAD segments, which carry NO text — the
             # speaker must be joined onto the sentences by temporal overlap.
             segments=[
-                AudioSegment(start_time=0.0, end_time=1.4, speaker_id="doctor", speaker_confidence=0.91),
-                AudioSegment(start_time=1.5, end_time=3.0, speaker_id="patient", speaker_confidence=0.88),
-                AudioSegment(start_time=3.1, end_time=5.0, speaker_id="doctor", speaker_confidence=0.93),
+                AudioSegment(
+                    start_time=0.0, end_time=1.4, speaker_id="doctor", speaker_confidence=0.91
+                ),
+                AudioSegment(
+                    start_time=1.5, end_time=3.0, speaker_id="patient", speaker_confidence=0.88
+                ),
+                AudioSegment(
+                    start_time=3.1, end_time=5.0, speaker_id="doctor", speaker_confidence=0.93
+                ),
             ],
         )
 
@@ -130,7 +166,9 @@ class TestBatchProducerContract:
     def test_speaker_is_none_when_no_vad_segment_overlaps(self) -> None:
         result = TranscriptionResult(
             text="Isolated sentence.",
-            sentence_timestamps=[SentenceTimestamp(text="Isolated sentence.", start_time=10.0, end_time=11.0)],
+            sentence_timestamps=[
+                SentenceTimestamp(text="Isolated sentence.", start_time=10.0, end_time=11.0)
+            ],
             segments=[AudioSegment(start_time=0.0, end_time=1.0, speaker_id="doctor")],
         )
 
@@ -140,9 +178,11 @@ class TestBatchProducerContract:
         """A sentence straddling a speaker change is attributed to the dominant one."""
         result = TranscriptionResult(
             text="Straddling sentence.",
-            sentence_timestamps=[SentenceTimestamp(text="Straddling sentence.", start_time=1.0, end_time=4.0)],
+            sentence_timestamps=[
+                SentenceTimestamp(text="Straddling sentence.", start_time=1.0, end_time=4.0)
+            ],
             segments=[
-                AudioSegment(start_time=0.0, end_time=1.5, speaker_id="doctor"),   # 0.5s overlap
+                AudioSegment(start_time=0.0, end_time=1.5, speaker_id="doctor"),  # 0.5s overlap
                 AudioSegment(start_time=1.5, end_time=4.0, speaker_id="patient"),  # 2.5s overlap
             ],
         )

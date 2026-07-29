@@ -11,9 +11,12 @@ import dramatiq
 
 from ...core.api_client.gateway import get_api_client
 from ...core.config.settings import get_settings
+from ...core.effective_config import get_effective_config_client
 from ...core.exceptions import (
+    CloudASRError,
     JobCancelledError,
     JobTerminalError,
+    ModelError,
     NotFoundError,
     TranscriptionError,
 )
@@ -45,6 +48,7 @@ def transcribe_file(
     audio_bucket_name: str | None = None,
     user_id: str | None = None,
     storage: dict[str, Any] | None = None,
+    fallback_pipeline_id: str | None = None,
 ) -> None:
     """
     Dramatiq actor for batch file transcription.
@@ -100,6 +104,7 @@ def transcribe_file(
                 audio_bucket_name=audio_bucket_name,
                 user_id=user_id,
                 storage=storage,
+                fallback_pipeline_id=fallback_pipeline_id,
             )
         )
 
@@ -116,6 +121,7 @@ async def _transcribe_file_async(
     audio_bucket_name: str | None = None,
     user_id: str | None = None,
     storage: dict[str, Any] | None = None,
+    fallback_pipeline_id: str | None = None,
 ) -> None:
     """Async implementation of file transcription.
 
@@ -279,18 +285,46 @@ async def _transcribe_file_async(
 
         audio_filename = audio_uri.rsplit("/", 1)[-1] if audio_uri else None
 
-        result = await batch_service.transcribe(
-            job_id=job_id,
-            audio_bytes=audio_bytes,
-            pipeline_config=pipeline_config,
-            progress_callback=schedule_progress,
-            chunk_callback=on_chunk,
-            tenant_id=tenant_id,
-            consultation_id=consultation_id,
-            blob_service=blob_service,
-            audio_filename=audio_filename,
-            user_id=user_id,
-        )
+        # TASK-567 — PULL the tenant's decrypted BYO provider overrides at
+        # execution time (injecting a key into the Dramatiq queue message is
+        # prohibited — D-3). Fail-open: {} on any error ⇒ env creds.
+        provider_overrides = await get_effective_config_client().get_provider_overrides(tenant_id)
+
+        async def _do_transcribe(pc: Any) -> Any:
+            return await batch_service.transcribe(
+                job_id=job_id,
+                audio_bytes=audio_bytes,
+                pipeline_config=pc,
+                progress_callback=schedule_progress,
+                chunk_callback=on_chunk,
+                tenant_id=tenant_id,
+                consultation_id=consultation_id,
+                blob_service=blob_service,
+                audio_filename=audio_filename,
+                user_id=user_id,
+                provider_overrides=provider_overrides,
+            )
+
+        try:
+            result = await _do_transcribe(pipeline_config)
+        except (CloudASRError, ModelError) as asr_exc:
+            # TASK-567 — batch fallback dispatch. On a cloud-ASR/model failure
+            # with a configured fallback, re-run ONCE on the fallback pipeline
+            # within this same Dramatiq attempt (CloudASRAuthError → straight to
+            # fallback; retrying a bad key is pointless). No fallback configured
+            # ⇒ re-raise, byte-identical to today (Dramatiq retry/skip taxonomy).
+            if not fallback_pipeline_id:
+                raise
+            logger.warning(
+                f"[{job_id}] Primary ASR failed ({type(asr_exc).__name__}); "
+                f"re-dispatching on fallback pipeline {fallback_pipeline_id}"
+            )
+            fb_pipeline_config = await pipeline_reader.get_pipeline(fallback_pipeline_id)
+            if language is not None:
+                fb_pipeline_config.spec.inference.language = language
+            result = await _do_transcribe(fb_pipeline_config)
+            # Auditability: record which fallback actually produced the result.
+            result.metadata["usedFallbackPipelineId"] = fallback_pipeline_id
 
         # Await pending progress tasks before publishing final events
         if _pending_progress_tasks:

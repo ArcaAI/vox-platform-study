@@ -5,15 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  isValidEmail,
-  isValidUrl,
-  isEmpty,
-  isDefined,
-  isValidUUID,
-  isInRange,
-  isValidLength,
-} from '../validation.js';
+import { isValidEmail, isValidUrl, isEmpty, isDefined, isValidUUID, isInRange, isValidLength } from '../validation.js';
 
 describe('validation utilities', () => {
   describe('isValidEmail', () => {

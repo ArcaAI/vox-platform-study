@@ -1,11 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  GlassBreadcrumb,
-  GlassBreadcrumbList,
-  GlassBreadcrumbItem,
-  GlassBreadcrumbPage,
-} from '@/components/registries/einui/glass-breadcrumb'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { GlassBreadcrumb, GlassBreadcrumbList, GlassBreadcrumbItem, GlassBreadcrumbPage } from '@/components/registries/einui/glass-breadcrumb';
 
 describe('GlassBreadcrumb', () => {
   it('renders without crashing', () => {
@@ -17,7 +12,7 @@ describe('GlassBreadcrumb', () => {
           </GlassBreadcrumbItem>
         </GlassBreadcrumbList>
       </GlassBreadcrumb>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

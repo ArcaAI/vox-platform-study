@@ -17,15 +17,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  UserSettingsEntity,
-  IUserSettingsEntity,
-} from '../generated/core/UserSettingsEntity';
+import { UserSettingsEntity, IUserSettingsEntity } from '../generated/core/UserSettingsEntity';
 import { ResourceStatusType, ValueType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<IUserSettingsEntity> = {},
-): IUserSettingsEntity {
+function createValidInit(overrides: Partial<IUserSettingsEntity> = {}): IUserSettingsEntity {
   return {
     id: 'us-test-id',
     name: 'theme',
@@ -62,16 +57,11 @@ describe('UserSettingsEntity.validate()', () => {
       expect(() => entity.validate()).not.toThrow('Method not implemented.');
     });
 
-    it.each(Object.values(ValueType))(
-      'should accept dataType %s (track-only on value)',
-      (dataType) => {
-        const entity = new UserSettingsEntity(
-          createValidInit({ dataType, value: 'anything' }),
-        );
+    it.each(Object.values(ValueType))('should accept dataType %s (track-only on value)', (dataType) => {
+      const entity = new UserSettingsEntity(createValidInit({ dataType, value: 'anything' }));
 
-        expect(() => entity.validate()).not.toThrow();
-      },
-    );
+      expect(() => entity.validate()).not.toThrow();
+    });
   });
 
   describe('name', () => {
@@ -88,13 +78,9 @@ describe('UserSettingsEntity.validate()', () => {
     });
 
     it('should throw when name exceeds 255 characters', () => {
-      const entity = new UserSettingsEntity(
-        createValidInit({ name: 'x'.repeat(256) }),
-      );
+      const entity = new UserSettingsEntity(createValidInit({ name: 'x'.repeat(256) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User settings name must not exceed 255 characters',
-      );
+      expect(() => entity.validate()).toThrow('User settings name must not exceed 255 characters');
     });
   });
 
@@ -112,35 +98,23 @@ describe('UserSettingsEntity.validate()', () => {
     });
 
     it('should throw when key exceeds 100 characters', () => {
-      const entity = new UserSettingsEntity(
-        createValidInit({ key: 'x'.repeat(101) }),
-      );
+      const entity = new UserSettingsEntity(createValidInit({ key: 'x'.repeat(101) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User settings key must not exceed 100 characters',
-      );
+      expect(() => entity.validate()).toThrow('User settings key must not exceed 100 characters');
     });
   });
 
   describe('value', () => {
     it('should throw when value is undefined', () => {
-      const entity = new UserSettingsEntity(
-        createValidInit({ value: undefined as unknown as string }),
-      );
+      const entity = new UserSettingsEntity(createValidInit({ value: undefined as unknown as string }));
 
-      expect(() => entity.validate()).toThrow(
-        'User settings value must be a string',
-      );
+      expect(() => entity.validate()).toThrow('User settings value must be a string');
     });
 
     it('should throw when value is null', () => {
-      const entity = new UserSettingsEntity(
-        createValidInit({ value: null as unknown as string }),
-      );
+      const entity = new UserSettingsEntity(createValidInit({ value: null as unknown as string }));
 
-      expect(() => entity.validate()).toThrow(
-        'User settings value must be a string',
-      );
+      expect(() => entity.validate()).toThrow('User settings value must be a string');
     });
 
     it('should accept empty string value', () => {
@@ -152,43 +126,29 @@ describe('UserSettingsEntity.validate()', () => {
 
   describe('dataType', () => {
     it('should throw when dataType is undefined', () => {
-      const entity = new UserSettingsEntity(
-        createValidInit({ dataType: undefined as unknown as ValueType }),
-      );
+      const entity = new UserSettingsEntity(createValidInit({ dataType: undefined as unknown as ValueType }));
 
-      expect(() => entity.validate()).toThrow(
-        'User settings dataType is required',
-      );
+      expect(() => entity.validate()).toThrow('User settings dataType is required');
     });
 
     it('should throw when dataType is not a member of ValueType', () => {
-      const entity = new UserSettingsEntity(
-        createValidInit({ dataType: 'NotAValueType' as unknown as ValueType }),
-      );
+      const entity = new UserSettingsEntity(createValidInit({ dataType: 'NotAValueType' as unknown as ValueType }));
 
-      expect(() => entity.validate()).toThrow(
-        'User settings dataType is invalid',
-      );
+      expect(() => entity.validate()).toThrow('User settings dataType is invalid');
     });
   });
 
   describe('namespace', () => {
     it('should accept null namespace', () => {
-      const entity = new UserSettingsEntity(
-        createValidInit({ namespace: null }),
-      );
+      const entity = new UserSettingsEntity(createValidInit({ namespace: null }));
 
       expect(() => entity.validate()).not.toThrow();
     });
 
     it('should throw when namespace exceeds 100 characters', () => {
-      const entity = new UserSettingsEntity(
-        createValidInit({ namespace: 'x'.repeat(101) }),
-      );
+      const entity = new UserSettingsEntity(createValidInit({ namespace: 'x'.repeat(101) }));
 
-      expect(() => entity.validate()).toThrow(
-        'User settings namespace must not exceed 100 characters',
-      );
+      expect(() => entity.validate()).toThrow('User settings namespace must not exceed 100 characters');
     });
   });
 

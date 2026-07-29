@@ -109,9 +109,7 @@ class TestNeMoLoaderRewrite:
         cls, instance = fake_nemo
         loader = NeMoLoader()
         with patch.object(loader, "_get_device", return_value="cpu"):
-            loaded = await loader.load(
-                _make_config(source_uri="nvidia/parakeet-tdt-0.6b-v2")
-            )
+            loaded = await loader.load(_make_config(source_uri="nvidia/parakeet-tdt-0.6b-v2"))
         cls.from_pretrained.assert_called_once()
         called_args, called_kwargs = cls.from_pretrained.call_args
         # Either positional or keyword model_name should match
@@ -133,16 +131,12 @@ class TestNeMoLoaderRewrite:
         cls, _instance = fake_nemo
         loader = NeMoLoader()
         with patch.object(loader, "_get_device", return_value="cpu"):
-            loaded = await loader.load(
-                _make_config(source_uri="nvidia/parakeet-tdt-1.1b")
-            )
+            loaded = await loader.load(_make_config(source_uri="nvidia/parakeet-tdt-1.1b"))
         assert loaded.format == AiModelFormat.NEMO
         cls.from_pretrained.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_load_falls_back_to_local_path_when_present(
-        self, fake_nemo, tmp_path
-    ):
+    async def test_load_falls_back_to_local_path_when_present(self, fake_nemo, tmp_path):
         cls, instance = fake_nemo
         ckpt = tmp_path / "model.nemo"
         ckpt.write_bytes(b"fake")
@@ -166,7 +160,11 @@ class TestNeMoLoaderRewrite:
                 monkeypatch.delitem(sys.modules, k, raising=False)
 
         # Block import of nemo
-        real_import = __builtins__["__import__"] if isinstance(__builtins__, dict) else __builtins__.__import__
+        real_import = (
+            __builtins__["__import__"]
+            if isinstance(__builtins__, dict)
+            else __builtins__.__import__
+        )
 
         def fake_import(name, *args, **kwargs):
             if name == "nemo" or name.startswith("nemo."):

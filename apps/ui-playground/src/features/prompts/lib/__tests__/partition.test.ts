@@ -37,7 +37,11 @@ describe('partitionAvailablePrompts', () => {
 describe('findCategoryDefault', () => {
   it('finds a non-personal default sharing the personal prompt category', () => {
     const personal = mk({ id: 'p', scope: 'USER_PERSONAL', category: 'SUMMARY' });
-    const list = [personal, mk({ id: 'd', scope: 'TENANT_DEFAULT', category: 'SUMMARY' }), mk({ id: 'o', scope: 'TENANT_DEFAULT', category: 'CUSTOM' })];
+    const list = [
+      personal,
+      mk({ id: 'd', scope: 'TENANT_DEFAULT', category: 'SUMMARY' }),
+      mk({ id: 'o', scope: 'TENANT_DEFAULT', category: 'CUSTOM' }),
+    ];
     expect(findCategoryDefault(personal, list)?.id).toBe('d');
   });
 

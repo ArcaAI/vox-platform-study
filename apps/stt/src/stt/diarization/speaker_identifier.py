@@ -56,10 +56,14 @@ class SpeakerIdentifier:
             new_id = self._tracker.register(embed)
             if new_id is None:
                 return SpeakerIdentification(
-                    speaker_id="unknown", confidence=None, is_new_speaker=False,
+                    speaker_id="unknown",
+                    confidence=None,
+                    is_new_speaker=False,
                 )
             return SpeakerIdentification(
-                speaker_id=new_id, confidence=None, is_new_speaker=True,
+                speaker_id=new_id,
+                confidence=None,
+                is_new_speaker=True,
             )
 
         # Case 2: Confident match
@@ -67,7 +71,9 @@ class SpeakerIdentifier:
             if confidence >= cfg.min_update_confidence:
                 self._tracker.update_reference(best_id, embed)
             return SpeakerIdentification(
-                speaker_id=best_id, confidence=confidence, is_new_speaker=False,
+                speaker_id=best_id,
+                confidence=confidence,
+                is_new_speaker=False,
             )
 
         # Case 3: Confident new speaker
@@ -76,10 +82,14 @@ class SpeakerIdentifier:
             if new_id is None:
                 # At capacity -- fallback to best match
                 return SpeakerIdentification(
-                    speaker_id=best_id, confidence=confidence, is_new_speaker=False,
+                    speaker_id=best_id,
+                    confidence=confidence,
+                    is_new_speaker=False,
                 )
             return SpeakerIdentification(
-                speaker_id=new_id, confidence=None, is_new_speaker=True,
+                speaker_id=new_id,
+                confidence=None,
+                is_new_speaker=True,
             )
 
         # Case 4: Ambiguous zone
@@ -92,7 +102,9 @@ class SpeakerIdentifier:
         ):
             try:
                 sub_segments = await self._segmentation_service.detect_speaker_turns(
-                    samples, sample_rate, min_segment_s=0.5,
+                    samples,
+                    sample_rate,
+                    min_segment_s=0.5,
                 )
                 if len(sub_segments) > 1:
                     results: list[DiarizedSegment] = []
@@ -104,19 +116,23 @@ class SpeakerIdentifier:
                             continue
 
                         sub_emb = await self._embedding_service.extract_from_samples(
-                            sub_audio, sample_rate,
+                            sub_audio,
+                            sample_rate,
                         )
                         sub_result = await self.identify(
-                            sub_emb, _depth=1,
+                            sub_emb,
+                            _depth=1,
                         )
                         if isinstance(sub_result, SpeakerIdentification):
-                            results.append(DiarizedSegment(
-                                text="",
-                                start_time=sub_start,
-                                end_time=sub_end,
-                                speaker_id=sub_result.speaker_id,
-                                speaker_confidence=sub_result.confidence,
-                            ))
+                            results.append(
+                                DiarizedSegment(
+                                    text="",
+                                    start_time=sub_start,
+                                    end_time=sub_end,
+                                    speaker_id=sub_result.speaker_id,
+                                    speaker_confidence=sub_result.confidence,
+                                )
+                            )
                     if results:
                         return results
             except Exception:
@@ -127,5 +143,7 @@ class SpeakerIdentifier:
 
         # Fallback: assign to best match
         return SpeakerIdentification(
-            speaker_id=best_id, confidence=confidence, is_new_speaker=False,
+            speaker_id=best_id,
+            confidence=confidence,
+            is_new_speaker=False,
         )

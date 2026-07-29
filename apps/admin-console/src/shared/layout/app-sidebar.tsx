@@ -4,16 +4,16 @@ import { IconHeartRateMonitor } from '@tabler/icons-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-    Sidebar,
-    SidebarContent,
-    SidebarGroup,
-    SidebarGroupContent,
-    SidebarGroupLabel,
-    SidebarHeader,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    SidebarRail,
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
 } from '@arcaai/ui/components/shadcn/sidebar';
 import { usePermissions, useSession } from '@/shared/auth/hooks';
 import { matchNavEntry, NAV_SECTIONS, visibleNavEntries } from '@/shared/navigation/nav-config';
@@ -28,63 +28,59 @@ import { matchNavEntry, NAV_SECTIONS, visibleNavEntries } from '@/shared/navigat
  * and the rail keeps scrolling on short viewports.
  */
 export function AppSidebar() {
-    const pathname = usePathname();
-    const { data: rules } = usePermissions();
-    const { data: session } = useSession();
-    const entries = visibleNavEntries(rules, session?.user.roles);
-    const activeEntry = matchNavEntry(pathname, entries);
+  const pathname = usePathname();
+  const { data: rules } = usePermissions();
+  const { data: session } = useSession();
+  const entries = visibleNavEntries(rules, session?.user.roles);
+  const activeEntry = matchNavEntry(pathname, entries);
 
-    return (
-        <Sidebar collapsible="icon">
-            <SidebarHeader>
+  return (
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" tooltip="HOPE Admin" asChild>
+              <Link href="/dashboard">
+                {/* Fixed square keeps the brand mark centered in the collapsed rail. */}
+                <div aria-hidden className="flex size-8 shrink-0 items-center justify-center">
+                  <IconHeartRateMonitor className="size-5" />
+                </div>
+                <span className="truncate text-base font-semibold">HOPE Admin</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent role="navigation" aria-label="Main">
+        {NAV_SECTIONS.map((section) => {
+          const sectionEntries = entries.filter((entry) => entry.tier === section.tier);
+          if (sectionEntries.length === 0) return null;
+          return (
+            <SidebarGroup key={section.tier}>
+              <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
                 <SidebarMenu>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" tooltip="HOPE Admin" asChild>
-                            <Link href="/dashboard">
-                                {/* Fixed square keeps the brand mark centered in the collapsed rail. */}
-                                <div aria-hidden className="flex size-8 shrink-0 items-center justify-center">
-                                    <IconHeartRateMonitor className="size-5" />
-                                </div>
-                                <span className="truncate text-base font-semibold">HOPE Admin</span>
-                            </Link>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
-                </SidebarMenu>
-            </SidebarHeader>
-            <SidebarContent role="navigation" aria-label="Main">
-                {NAV_SECTIONS.map((section) => {
-                    const sectionEntries = entries.filter((entry) => entry.tier === section.tier);
-                    if (sectionEntries.length === 0) return null;
+                  {sectionEntries.map((entry) => {
+                    const Icon = entry.icon;
+                    const isCurrent = pathname === entry.route;
                     return (
-                        <SidebarGroup key={section.tier}>
-                            <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
-                            <SidebarGroupContent>
-                                <SidebarMenu>
-                                    {sectionEntries.map((entry) => {
-                                        const Icon = entry.icon;
-                                        const isCurrent = pathname === entry.route;
-                                        return (
-                                            <SidebarMenuItem key={entry.route}>
-                                                <SidebarMenuButton
-                                                    asChild
-                                                    tooltip={entry.label}
-                                                    isActive={entry === activeEntry}
-                                                >
-                                                    <Link href={entry.route} aria-current={isCurrent ? 'page' : undefined}>
-                                                        <Icon aria-hidden />
-                                                        <span>{entry.label}</span>
-                                                    </Link>
-                                                </SidebarMenuButton>
-                                            </SidebarMenuItem>
-                                        );
-                                    })}
-                                </SidebarMenu>
-                            </SidebarGroupContent>
-                        </SidebarGroup>
+                      <SidebarMenuItem key={entry.route}>
+                        <SidebarMenuButton asChild tooltip={entry.label} isActive={entry === activeEntry}>
+                          <Link href={entry.route} aria-current={isCurrent ? 'page' : undefined}>
+                            <Icon aria-hidden />
+                            <span>{entry.label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
                     );
-                })}
-            </SidebarContent>
-            <SidebarRail />
-        </Sidebar>
-    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
+      </SidebarContent>
+      <SidebarRail />
+    </Sidebar>
+  );
 }

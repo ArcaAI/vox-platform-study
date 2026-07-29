@@ -46,8 +46,7 @@ _EOS = "</s>"
 
 # Published model-card reference pair (lytang/MiniCheck-Flan-T5-Large) for the calibration gate.
 _CAL_DOC = (
-    "A group of students gather in the school library to study for their "
-    "upcoming final exams."
+    "A group of students gather in the school library to study for their " "upcoming final exams."
 )
 _CAL_SUPPORTED_CLAIM = "The students are preparing for an examination."
 _CAL_UNSUPPORTED_CLAIM = "The students are on vacation."

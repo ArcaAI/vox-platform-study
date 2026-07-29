@@ -32,11 +32,13 @@ def mock_http_client():
 class TestOllamaProviderInit:
     def test_creates_with_config(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
+
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
         assert provider is not None
 
     def test_default_model_from_config(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
+
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)
         assert provider._default_model == "llama3.2:latest"
 
@@ -48,6 +50,7 @@ class TestOllamaGenerate:
     @pytest.mark.asyncio
     async def test_generate_returns_text(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
+
         response_data = {"model": "llama3.2:latest", "response": "Hello there!", "done": True}
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -65,6 +68,7 @@ class TestOllamaGenerate:
     @pytest.mark.asyncio
     async def test_generate_uses_correct_endpoint(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"response": "ok", "done": True}
@@ -80,6 +84,7 @@ class TestOllamaGenerate:
     @pytest.mark.asyncio
     async def test_generate_sends_model_and_prompt(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"response": "ok", "done": True}
@@ -97,6 +102,7 @@ class TestOllamaGenerate:
     @pytest.mark.asyncio
     async def test_generate_raises_on_http_error(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
+
         mock_response = MagicMock()
         mock_response.status_code = 500
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -128,11 +134,13 @@ class TestOllamaGenerateStream:
         mock_response.raise_for_status = MagicMock()
 
         def _aiter_lines():
-            return _async_iter([
-                json.dumps({"response": "Hello", "done": False}),
-                json.dumps({"response": " world", "done": False}),
-                json.dumps({"response": "", "done": True}),
-            ])
+            return _async_iter(
+                [
+                    json.dumps({"response": "Hello", "done": False}),
+                    json.dumps({"response": " world", "done": False}),
+                    json.dumps({"response": "", "done": True}),
+                ]
+            )
 
         mock_response.aiter_lines = _aiter_lines
 
@@ -157,9 +165,11 @@ class TestOllamaGenerateStream:
         mock_response.raise_for_status = MagicMock()
 
         def _aiter_lines():
-            return _async_iter([
-                json.dumps({"response": "", "done": True}),
-            ])
+            return _async_iter(
+                [
+                    json.dumps({"response": "", "done": True}),
+                ]
+            )
 
         mock_response.aiter_lines = _aiter_lines
         mock_http_client.stream = _mock_stream_context(mock_response)
@@ -179,7 +189,9 @@ class TestOllamaGenerateStream:
         assert captured["kwargs"]["json"]["think"] is True
 
     @pytest.mark.asyncio
-    async def test_stream_yields_reasoning_chunks_from_thinking_field(self, ollama_config, mock_http_client):
+    async def test_stream_yields_reasoning_chunks_from_thinking_field(
+        self, ollama_config, mock_http_client
+    ):
         from smr.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -187,11 +199,13 @@ class TestOllamaGenerateStream:
         mock_response.raise_for_status = MagicMock()
 
         def _aiter_lines():
-            return _async_iter([
-                json.dumps({"thinking": "Let me think", "response": "", "done": False}),
-                json.dumps({"thinking": "", "response": "Answer", "done": False}),
-                json.dumps({"response": "", "done": True}),
-            ])
+            return _async_iter(
+                [
+                    json.dumps({"thinking": "Let me think", "response": "", "done": False}),
+                    json.dumps({"thinking": "", "response": "Answer", "done": False}),
+                    json.dumps({"response": "", "done": True}),
+                ]
+            )
 
         mock_response.aiter_lines = _aiter_lines
         mock_http_client.stream = _mock_stream_context(mock_response)
@@ -209,7 +223,9 @@ class TestOllamaGenerateStream:
         assert content_chunks[0].content == "Answer"
 
     @pytest.mark.asyncio
-    async def test_stream_parses_inline_think_tags_when_no_native_thinking_field(self, ollama_config, mock_http_client):
+    async def test_stream_parses_inline_think_tags_when_no_native_thinking_field(
+        self, ollama_config, mock_http_client
+    ):
         from smr.providers.ollama import OllamaProvider
 
         mock_response = MagicMock()
@@ -217,14 +233,16 @@ class TestOllamaGenerateStream:
         mock_response.raise_for_status = MagicMock()
 
         def _aiter_lines():
-            return _async_iter([
-                json.dumps({"response": "<think>", "done": False}),
-                json.dumps({"response": "Let me ", "done": False}),
-                json.dumps({"response": "think", "done": False}),
-                json.dumps({"response": "</think>", "done": False}),
-                json.dumps({"response": "Answer", "done": False}),
-                json.dumps({"response": "", "done": True}),
-            ])
+            return _async_iter(
+                [
+                    json.dumps({"response": "<think>", "done": False}),
+                    json.dumps({"response": "Let me ", "done": False}),
+                    json.dumps({"response": "think", "done": False}),
+                    json.dumps({"response": "</think>", "done": False}),
+                    json.dumps({"response": "Answer", "done": False}),
+                    json.dumps({"response": "", "done": True}),
+                ]
+            )
 
         mock_response.aiter_lines = _aiter_lines
         mock_http_client.stream = _mock_stream_context(mock_response)
@@ -248,10 +266,12 @@ class TestOllamaGenerateStream:
         mock_response.raise_for_status = MagicMock()
 
         def _aiter_lines():
-            return _async_iter([
-                json.dumps({"response": "Hi", "done": False}),
-                json.dumps({"response": "", "done": True}),
-            ])
+            return _async_iter(
+                [
+                    json.dumps({"response": "Hi", "done": False}),
+                    json.dumps({"response": "", "done": True}),
+                ]
+            )
 
         mock_response.aiter_lines = _aiter_lines
         mock_http_client.stream = _mock_stream_context(mock_response)
@@ -272,6 +292,7 @@ class TestOllamaHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_returns_true_when_up(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_http_client.get.return_value = mock_response
@@ -282,6 +303,7 @@ class TestOllamaHealthCheck:
     @pytest.mark.asyncio
     async def test_health_check_returns_false_when_down(self, ollama_config, mock_http_client):
         from smr.providers.ollama import OllamaProvider
+
         mock_http_client.get.side_effect = httpx.ConnectError("Connection refused")
 
         provider = OllamaProvider(config=ollama_config, http_client=mock_http_client)

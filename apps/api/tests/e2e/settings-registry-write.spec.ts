@@ -48,7 +48,12 @@ test.describe('settings registry write lane', () => {
 
     const body = await res.json();
     expect(body.tier).toBe('global-kv');
-    expect(['global-kv', 'code-default']).toContain(body.sourceScope);
+    // sourceScope names WHICH row answered the tenant->SYSTEM->code-default
+    // cascade (SettingSourceScope: 'tenant' | 'system' | 'code-default'), not
+    // the descriptor's tier — 'global-kv' never appears here. This test does
+    // not control what's currently stored for this key, so accept the full
+    // valid set rather than assume a specific row answered.
+    expect(['tenant', 'system', 'code-default']).toContain(body.sourceScope);
   });
 
   test('404s an unknown registry key on the path', async ({ request }) => {

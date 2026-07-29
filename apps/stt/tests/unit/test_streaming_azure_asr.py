@@ -32,6 +32,7 @@ from stt.streaming.azure_asr import (
 # Helpers
 # =============================================================================
 
+
 def _make_samples(duration_s: float = 0.5, sample_rate: int = 16000) -> np.ndarray:
     """Generate a short sine wave as float32 samples."""
     t = np.linspace(0, duration_s, int(sample_rate * duration_s), endpoint=False)
@@ -242,7 +243,7 @@ class TestExtractWordTimestamps:
         assert len(timestamps) == 2
         assert timestamps[0]["word"] == "hello"
         assert timestamps[0]["start"] == pytest.approx(0.5)  # 5_000_000 / 10_000_000
-        assert timestamps[0]["end"] == pytest.approx(0.8)    # (5M + 3M) / 10M
+        assert timestamps[0]["end"] == pytest.approx(0.8)  # (5M + 3M) / 10M
         assert timestamps[1]["word"] == "world"
 
     def test_empty_json_returns_empty_list(self) -> None:

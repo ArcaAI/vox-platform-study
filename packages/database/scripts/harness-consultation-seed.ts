@@ -109,19 +109,21 @@ async function main() {
   });
 
   console.log('\n===== SEED RESULT =====');
-  console.log(JSON.stringify(
-    {
-      consultationId: CONSULTATION_ID,
-      transcriptContextItemId: TRANSCRIPT_CTX_ID,
-      tenantId: TENANT_A,
-      doctorId: DOCTOR_A,
-      hypertensionDocId: HYPERTENSION_DOC_ID,
-      hypertensionChunkCount: chunks.length,
-      hypertensionChunks: chunks,
-    },
-    null,
-    2,
-  ));
+  console.log(
+    JSON.stringify(
+      {
+        consultationId: CONSULTATION_ID,
+        transcriptContextItemId: TRANSCRIPT_CTX_ID,
+        tenantId: TENANT_A,
+        doctorId: DOCTOR_A,
+        hypertensionDocId: HYPERTENSION_DOC_ID,
+        hypertensionChunkCount: chunks.length,
+        hypertensionChunks: chunks,
+      },
+      null,
+      2,
+    ),
+  );
 
   await prisma.$disconnect();
 }

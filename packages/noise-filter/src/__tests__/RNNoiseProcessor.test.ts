@@ -8,11 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  RNNoiseProcessor,
-  RNNOISE_FRAME_SIZE,
-  RNNOISE_SAMPLE_RATE,
-} from '../processors/RNNoiseProcessor.js';
+import { RNNoiseProcessor, RNNOISE_FRAME_SIZE, RNNOISE_SAMPLE_RATE } from '../processors/RNNoiseProcessor.js';
 
 describe('RNNoiseProcessor', () => {
   let processor: RNNoiseProcessor;

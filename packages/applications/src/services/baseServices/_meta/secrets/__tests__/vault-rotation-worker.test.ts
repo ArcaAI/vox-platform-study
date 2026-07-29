@@ -34,9 +34,7 @@ describe('VaultRotationWorker.handleAuditLine (Phase 6 Task 6.3)', () => {
       request: { operation: 'update', path: 'secret/data/hope/JWT_SECRET_KEY' },
     });
     await w.handleAuditLine(line);
-    expect(pub.calls).toEqual([
-      ['arca:secrets:invalidate', JSON.stringify({ key: 'JWT_SECRET_KEY' })],
-    ]);
+    expect(pub.calls).toEqual([['arca:secrets:invalidate', JSON.stringify({ key: 'JWT_SECRET_KEY' })]]);
   });
 
   it('publishes for create as well as update', async () => {
@@ -47,9 +45,7 @@ describe('VaultRotationWorker.handleAuditLine (Phase 6 Task 6.3)', () => {
       request: { operation: 'create', path: 'secret/data/hope/API_KEY_PEPPER' },
     });
     await w.handleAuditLine(line);
-    expect(pub.calls).toEqual([
-      ['arca:secrets:invalidate', JSON.stringify({ key: 'API_KEY_PEPPER' })],
-    ]);
+    expect(pub.calls).toEqual([['arca:secrets:invalidate', JSON.stringify({ key: 'API_KEY_PEPPER' })]]);
   });
 
   it('ignores read operations (no eviction needed on get)', async () => {

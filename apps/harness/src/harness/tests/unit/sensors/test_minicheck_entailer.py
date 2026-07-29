@@ -108,7 +108,5 @@ def test_factory_defaults_to_deterministic_when_no_model_path() -> None:
 def test_factory_falls_back_to_deterministic_on_model_load_failure() -> None:
     # A configured-but-unloadable model (missing llama-cpp-python or a bad path) must fall
     # back to the SAFE model-free entailer — never crash the sensor.
-    entailer = _atomic_fact_entailer(
-        Settings(atomic_fact_model_path="/nonexistent/minicheck.gguf")
-    )
+    entailer = _atomic_fact_entailer(Settings(atomic_fact_model_path="/nonexistent/minicheck.gguf"))
     assert isinstance(entailer, DeterministicOverlapEntailer)

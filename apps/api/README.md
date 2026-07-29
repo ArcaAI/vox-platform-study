@@ -112,18 +112,18 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 
 ## Technology Stack
 
-| Category | Technology | Version | Purpose |
-|----------|-----------|---------|---------|
-| **Framework** | NestJS | 11.x | Enterprise Node.js framework |
-| **Language** | TypeScript | 5.4 | Type-safe development |
-| **Runtime** | Node.js | 18+ | JavaScript runtime |
-| **ORM** | Prisma | 6.8.2 | Database access layer |
-| **Queue** | BullMQ | 5.42.0 | Background job processing |
-| **WebSocket** | Socket.io | 4.8.1 | Real-time communication |
-| **Validation** | class-validator | 0.14.1 | Request validation |
-| **Documentation** | Swagger | 7.3.0 | OpenAPI documentation |
-| **Monitoring** | Prometheus | Latest | Metrics collection |
-| **Tracing** | Sentry | 9.14.0 | Error tracking |
+| Category          | Technology      | Version | Purpose                      |
+| ----------------- | --------------- | ------- | ---------------------------- |
+| **Framework**     | NestJS          | 11.x    | Enterprise Node.js framework |
+| **Language**      | TypeScript      | 5.4     | Type-safe development        |
+| **Runtime**       | Node.js         | 18+     | JavaScript runtime           |
+| **ORM**           | Prisma          | 6.8.2   | Database access layer        |
+| **Queue**         | BullMQ          | 5.42.0  | Background job processing    |
+| **WebSocket**     | Socket.io       | 4.8.1   | Real-time communication      |
+| **Validation**    | class-validator | 0.14.1  | Request validation           |
+| **Documentation** | Swagger         | 7.3.0   | OpenAPI documentation        |
+| **Monitoring**    | Prometheus      | Latest  | Metrics collection           |
+| **Tracing**       | Sentry          | 9.14.0  | Error tracking               |
 
 ## Getting Started
 
@@ -138,17 +138,20 @@ The HOPE API Gateway serves as the central entry point for all client requests i
 ### Installation
 
 1. **Clone the repository**
+
 ```bash
 cd /path/to/HOPE/monorepo
 ```
 
 2. **Install dependencies**
+
 ```bash
 # Install all dependencies using pnpm workspace
 pnpm install
 ```
 
 3. **Set up environment variables**
+
 ```bash
 cd apps/api
 cp env.example .env
@@ -156,6 +159,7 @@ cp env.example .env
 ```
 
 4. **Set up the database**
+
 ```bash
 # Run Prisma migrations
 cd ../../packages/database
@@ -167,6 +171,7 @@ pnpm seed
 ```
 
 5. **Start the development server**
+
 ```bash
 cd ../../apps/api
 pnpm dev
@@ -246,9 +251,9 @@ the TASK-301 §P0-1 cross-tenant cache collision: when two rows share a
 key, the `Map<key, entity>` cache silently picks the last writer and
 downstream consumers see non-deterministic config.
 
-| Env var | Default | When honoured |
-|---|---|---|
-| `APP_SETTINGS_BOOT_INVARIANT` | unset | Only when `NODE_ENV=development`. In `staging`/`production` the invariant runs unconditionally. |
+| Env var                       | Default | When honoured                                                                                   |
+| ----------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
+| `APP_SETTINGS_BOOT_INVARIANT` | unset   | Only when `NODE_ENV=development`. In `staging`/`production` the invariant runs unconditionally. |
 
 To bypass during a local rebase (dev only):
 
@@ -270,11 +275,11 @@ The Prisma adapter (`@prisma/adapter-pg`) owns pool sizing in Prisma 7
 — the v6 `connection_limit` URL parameter is ignored. Three env vars
 wire `packages/database/src/client.ts` and `packages/database/prisma.config.ts`:
 
-| Env var          | Default | Consumed by                                                                     | Notes |
-|------------------|---------|---------------------------------------------------------------------------------|-------|
-| `DATABASE_URL`   | —       | `client.ts` → `new PrismaPg({ connectionString })`                              | Runtime queries. In prod points at pgbouncer (`:6432`, txn mode). |
-| `DIRECT_URL`     | unset   | `prisma.config.ts` → `resolveMigrationUrl()` (migrations only)                  | Required in prod/staging. Un-pooled endpoint (`:5432` direct, or `:5000` HAProxy R/W). Bypasses the pooler so Prisma Migrate's advisory locks survive. |
-| `PRISMA_PG_MAX`  | `5`     | `client.ts` → `new PrismaPg({ max })`                                           | Per-pod pool size. See budget rule below. |
+| Env var         | Default | Consumed by                                                    | Notes                                                                                                                                                  |
+| --------------- | ------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`  | —       | `client.ts` → `new PrismaPg({ connectionString })`             | Runtime queries. In prod points at pgbouncer (`:6432`, txn mode).                                                                                      |
+| `DIRECT_URL`    | unset   | `prisma.config.ts` → `resolveMigrationUrl()` (migrations only) | Required in prod/staging. Un-pooled endpoint (`:5432` direct, or `:5000` HAProxy R/W). Bypasses the pooler so Prisma Migrate's advisory locks survive. |
+| `PRISMA_PG_MAX` | `5`     | `client.ts` → `new PrismaPg({ max })`                          | Per-pod pool size. See budget rule below.                                                                                                              |
 
 **Budget rule** (do not exceed):
 
@@ -326,19 +331,20 @@ See the canonical plan at
 ### Interactive Documentation
 
 When running in development mode, access Swagger UI at:
+
 - **Swagger UI**: http://localhost:8868/api/v1/docs
 
 ### Route Convention
 
 All public API endpoints follow the pattern `/api/v1/<domain>`:
 
-| Prefix | Purpose | Example |
-|--------|---------|---------|
-| `/api/v1/audio/...` | STT (Speech-to-Text) | `/api/v1/audio/transcription-jobs` |
-| `/api/v1/text/...` | SMR (Summarization) | `/api/v1/text/generate` |
-| `/api/v1/admin/...` | Tenant admin endpoints | `/api/v1/admin/settings` |
-| `/api/v1/user/me/...` | Current user endpoints | `/api/v1/user/me/settings` |
-| `/internal/...` | Internal service-to-service | `/internal/stt` |
+| Prefix                | Purpose                     | Example                            |
+| --------------------- | --------------------------- | ---------------------------------- |
+| `/api/v1/audio/...`   | STT (Speech-to-Text)        | `/api/v1/audio/transcription-jobs` |
+| `/api/v1/text/...`    | SMR (Summarization)         | `/api/v1/text/generate`            |
+| `/api/v1/admin/...`   | Tenant admin endpoints      | `/api/v1/admin/settings`           |
+| `/api/v1/user/me/...` | Current user endpoints      | `/api/v1/user/me/settings`         |
+| `/internal/...`       | Internal service-to-service | `/internal/stt`                    |
 
 ### API Endpoints
 
@@ -409,18 +415,21 @@ GET/PATCH /api/v1/user/me/settings/...     # User settings
 The API supports three authentication methods:
 
 #### 1. JWT Bearer Token
+
 ```bash
 curl -H "Authorization: Bearer <jwt_token>" \
   http://localhost:8868/api/v1/sessions
 ```
 
 #### 2. API Key
+
 ```bash
 curl -H "X-API-Key: <api_key>" \
   http://localhost:8868/api/v1/sessions
 ```
 
 #### 3. OIDC (OpenID Connect)
+
 ```bash
 # Redirects to OIDC provider
 GET /auth/oidc/login
@@ -524,6 +533,7 @@ pnpm format
 ### Adding a New Feature
 
 1. **Create the module structure**
+
 ```typescript
 // src/modules/example/example.module.ts
 import { Module } from '@nestjs/common';
@@ -536,6 +546,7 @@ export class ExampleModule {}
 ```
 
 2. **Create the controller**
+
 ```typescript
 // src/modules/example/example.controller.ts
 import { Controller, Get, UseGuards } from '@nestjs/common';
@@ -552,6 +563,7 @@ export class ExampleController {
 ```
 
 3. **Register in app.module.ts**
+
 ```typescript
 import { ExampleModule } from './modules/example/example.module';
 
@@ -623,6 +635,7 @@ The API Gateway is designed for containerized deployment:
 ### Environment-Specific Configuration
 
 #### Production Checklist
+
 - [ ] Set `NODE_ENV=production`
 - [ ] Use strong `SESSION_SECRET_KEY`
 - [ ] Configure `SENTRY_DSN_API` for error tracking
@@ -662,6 +675,7 @@ The API Gateway implements multiple authentication strategies:
 ### Security Headers
 
 The API Gateway automatically applies security headers:
+
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `X-XSS-Protection: 1; mode=block`
@@ -670,6 +684,7 @@ The API Gateway automatically applies security headers:
 ### Rate Limiting
 
 Configurable rate limiting per:
+
 - IP address
 - User account
 - API key
@@ -776,4 +791,3 @@ Structured JSON logging with correlation IDs:
 ## License
 
 Copyright © 2024-2026 ARCAAI. All rights reserved.
-

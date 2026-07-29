@@ -27,6 +27,9 @@ class TestSessionManagerDenoiserWiring:
         mgr._inference_workers = {}
         mgr._dual_capture = {}
         mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -66,8 +69,8 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
             # Bind the REAL shared assembly (session wiring moved out of
             # create/recover into _assemble_session_runtime).
-            mgr._assemble_session_runtime = (
-                lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+            mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(
+                mgr, **kw
             )
             mgr._redis = AsyncMock()
             mgr._worker_id = "test-worker"
@@ -110,6 +113,9 @@ class TestSessionManagerDenoiserWiring:
         mgr._inference_workers = {}
         mgr._dual_capture = {}
         mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -150,8 +156,8 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_pipeline_config = AsyncMock(return_value=pipeline_config)
             mgr._load_vad_service = AsyncMock(return_value=MagicMock())
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
-            mgr._assemble_session_runtime = (
-                lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+            mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(
+                mgr, **kw
             )
             mgr._redis = AsyncMock()
             mgr._worker_id = "test-worker"
@@ -192,6 +198,9 @@ class TestSessionManagerDenoiserWiring:
         mgr._inference_workers = {}
         mgr._dual_capture = {}
         mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -225,8 +234,8 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
             # Bind the REAL shared assembly (session wiring moved out of
             # create/recover into _assemble_session_runtime).
-            mgr._assemble_session_runtime = (
-                lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+            mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(
+                mgr, **kw
             )
             mgr._redis = AsyncMock()
             mgr._worker_id = "test-worker"
@@ -267,6 +276,9 @@ class TestSessionManagerDenoiserWiring:
         mgr._inference_workers = {}
         mgr._dual_capture = {}
         mgr._commit_policies = {}
+        mgr._switch_controllers = {}
+        mgr._provider_overrides = {}
+        mgr._fallback_pipeline_ids = {}
 
         pipeline_config = MagicMock()
         pipeline_config.preprocessing.vad.enabled = True
@@ -294,7 +306,9 @@ class TestSessionManagerDenoiserWiring:
             patch("stt.streaming.session_manager.ControlListener") as mock_cl,
             patch("stt.diarization.speaker_tracker.SpeakerTracker") as mock_tracker_cls,
             patch("stt.diarization.speaker_identifier.SpeakerIdentifier"),
-            patch("stt.diarization.embedding_service.get_embedding_service", return_value=MagicMock()),
+            patch(
+                "stt.diarization.embedding_service.get_embedding_service", return_value=MagicMock()
+            ),
         ):
 
             mock_ic.return_value.start = AsyncMock()
@@ -310,8 +324,8 @@ class TestSessionManagerDenoiserWiring:
             mgr._load_asr_pipeline = AsyncMock(return_value=(MagicMock(), None))
             # Bind the REAL shared assembly (session wiring moved out of
             # create/recover into _assemble_session_runtime).
-            mgr._assemble_session_runtime = (
-                lambda **kw: SessionManager._assemble_session_runtime(mgr, **kw)
+            mgr._assemble_session_runtime = lambda **kw: SessionManager._assemble_session_runtime(
+                mgr, **kw
             )
             mgr._redis = AsyncMock()
             mgr._worker_id = "test-worker"

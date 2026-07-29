@@ -2,5 +2,5 @@ import { MonitoringScreenSkeleton } from '@/features/monitoring/components/monit
 
 /** Mirrors the loaded monitoring layout (rule 10). */
 export default function MonitoringLoading() {
-    return <MonitoringScreenSkeleton />;
+  return <MonitoringScreenSkeleton />;
 }

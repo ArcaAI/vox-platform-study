@@ -326,9 +326,7 @@ class TenantConfigResolver:
             source_revision=_clean(keys.get(KEY_SOURCE_REVISION)),
         )
 
-    async def resolve_model_source(
-        self, tenant_id: str | None, task_key: str
-    ) -> Any | None:
+    async def resolve_model_source(self, tenant_id: str | None, task_key: str) -> Any | None:
         """The weight identity behind a task key (`None` if unselected)."""
         from .model_source import ModelWeightIdentity
 
@@ -459,7 +457,9 @@ class TenantConfigResolver:
             rows = result.all()
 
         # Prefer SYSTEM catalog model row over a tenant-owned copy of the same slug.
-        row = min(rows, key=lambda r: (0 if r.model_tenant_id == SYSTEM_TENANT_ID else 1), default=None)
+        row = min(
+            rows, key=lambda r: (0 if r.model_tenant_id == SYSTEM_TENANT_ID else 1), default=None
+        )
         if row is None:
             return {}
 
@@ -498,9 +498,7 @@ class TenantConfigResolver:
                 )
         return keys
 
-    async def _load_model_by_slug(
-        self, slug: str, model_scope: list[str]
-    ) -> dict[str, str]:
+    async def _load_model_by_slug(self, slug: str, model_scope: list[str]) -> dict[str, str]:
         """Read one ENABLED `AiModel` row by slug (no task-key join)."""
         async with self._session_factory() as session:
             result = await session.execute(

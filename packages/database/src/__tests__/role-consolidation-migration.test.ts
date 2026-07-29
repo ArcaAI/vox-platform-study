@@ -23,13 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
-const MIGRATIONS_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'prisma',
-  'db_main',
-  'migrations',
-);
+const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'prisma', 'db_main', 'migrations');
 
 const MIGRATION_SUFFIX = '_task_417_consolidate_super_admin_into_global_admin';
 
@@ -111,9 +105,7 @@ describe('role-consolidation migration', () => {
     it('reassigns user-role assignments guarded on the (userId, roleId, tenantId) unique key', () => {
       const code = stripSqlComments(readMigrationSql());
       expect(code).toMatch(/INSERT\s+INTO\s+core\."UserRoleAssignment"/i);
-      expect(code).toMatch(
-        /ON\s+CONFLICT\s*\(\s*"userId"\s*,\s*"roleId"\s*,\s*"tenantId"\s*\)\s*DO\s+NOTHING/i,
-      );
+      expect(code).toMatch(/ON\s+CONFLICT\s*\(\s*"userId"\s*,\s*"roleId"\s*,\s*"tenantId"\s*\)\s*DO\s+NOTHING/i);
     });
 
     it('excludes already-DELETED rows from both soft-delete UPDATEs (re-run is a no-op)', () => {

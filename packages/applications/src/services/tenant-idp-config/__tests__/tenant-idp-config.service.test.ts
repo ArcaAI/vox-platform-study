@@ -29,13 +29,7 @@ function makeService(opts: { withVault?: boolean } = { withVault: true }) {
   const emitter = { emit: vi.fn() };
   const cls = { get: vi.fn((k: string) => (k === 'user' ? { id: 'u1' } : k === 'tenantId' ? TENANT : undefined)) };
   const secrets = opts.withVault ? fakeSecrets() : undefined;
-  const svc = new TenantIdpConfigService(
-    repo as never,
-    resolver as never,
-    emitter as never,
-    cls as never,
-    secrets as never,
-  );
+  const svc = new TenantIdpConfigService(repo as never, resolver as never, emitter as never, cls as never, secrets as never);
   return { svc, repo, resolver, emitter, secrets };
 }
 
@@ -212,9 +206,7 @@ describe('TenantIdpConfigService.update', () => {
     const row = existingRow();
     repo.findById.mockResolvedValue(row);
     repo.updateWithVersion.mockRejectedValue(new OptimisticConcurrencyException('TenantIdentityProvider', row.id, {}));
-    await expect(svc.update(TENANT, row.id, { displayName: 'renamed', expectedVersion: 1 })).rejects.toBeInstanceOf(
-      OptimisticConcurrencyException,
-    );
+    await expect(svc.update(TENANT, row.id, { displayName: 'renamed', expectedVersion: 1 })).rejects.toBeInstanceOf(OptimisticConcurrencyException);
   });
 });
 
@@ -336,9 +328,7 @@ describe('TenantIdpConfigService.create — SAML branch', () => {
 
   it('rejects a SAML create with no samlConfig', async () => {
     const { svc } = makeService();
-    await expect(
-      svc.create(TENANT, { protocol: IdpProtocol.SAML, displayName: 'Acme AD FS' } as never),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc.create(TENANT, { protocol: IdpProtocol.SAML, displayName: 'Acme AD FS' } as never)).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('generates and seals an SP key pair, persists DRAFT with the cert in config, and never returns the private key', async () => {
@@ -364,9 +354,7 @@ describe('TenantIdpConfigService.create — SAML branch', () => {
     const { svc, repo } = makeService();
     repo.create.mockImplementation(async (e: unknown) => e);
 
-    await expect(
-      svc.create(TENANT, { protocol: IdpProtocol.SAML, displayName: 'Acme AD FS', samlConfig: validSamlConfig() }),
-    ).resolves.toBeDefined();
+    await expect(svc.create(TENANT, { protocol: IdpProtocol.SAML, displayName: 'Acme AD FS', samlConfig: validSamlConfig() })).resolves.toBeDefined();
   });
 });
 

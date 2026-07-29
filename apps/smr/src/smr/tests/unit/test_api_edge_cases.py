@@ -22,7 +22,9 @@ from smr.providers.base import ProviderRegistry
 
 @pytest.fixture
 def settings():
-    return Settings(host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False)
+    return Settings(
+        host="127.0.0.1", port=5099, debug=True, log_level="debug", metrics_enabled=False
+    )
 
 
 def _make_provider(*, generate_exc=None, health_result=True, health_exc=None, info=None):
@@ -31,32 +33,61 @@ def _make_provider(*, generate_exc=None, health_result=True, health_exc=None, in
     if generate_exc:
         p.generate = AsyncMock(side_effect=generate_exc)
     else:
-        p.generate = AsyncMock(return_value=("ok", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}))
+        p.generate = AsyncMock(
+            return_value=("ok", "", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
+        )
     if health_exc:
         p.health_check = AsyncMock(side_effect=health_exc)
     else:
         p.health_check = AsyncMock(return_value=health_result)
-    p.get_info = AsyncMock(return_value=info or ProviderInfo(
-        name="test", display_name="Test", status="available",
-        default_model="m", models=[], supports_streaming=True,
-    ))
+    p.get_info = AsyncMock(
+        return_value=info
+        or ProviderInfo(
+            name="test",
+            display_name="Test",
+            status="available",
+            default_model="m",
+            models=[],
+            supports_streaming=True,
+        )
+    )
     return p
 
 
 def _make_task_manager(**overrides):
     tm = AsyncMock()
-    tm.create_task = AsyncMock(return_value=TaskState(
-        task_id="t-1", status=TaskStatus.PENDING, provider="test", model="m",
-    ))
-    tm.get_task = AsyncMock(return_value=TaskState(
-        task_id="t-1", status=TaskStatus.COMPLETED, provider="test", model="m",
-    ))
-    tm.update_task = AsyncMock(return_value=TaskState(
-        task_id="t-1", status=TaskStatus.RUNNING, provider="test", model="m",
-    ))
-    tm.cancel_task = AsyncMock(return_value=TaskState(
-        task_id="t-1", status=TaskStatus.CANCELLED, provider="test", model="m",
-    ))
+    tm.create_task = AsyncMock(
+        return_value=TaskState(
+            task_id="t-1",
+            status=TaskStatus.PENDING,
+            provider="test",
+            model="m",
+        )
+    )
+    tm.get_task = AsyncMock(
+        return_value=TaskState(
+            task_id="t-1",
+            status=TaskStatus.COMPLETED,
+            provider="test",
+            model="m",
+        )
+    )
+    tm.update_task = AsyncMock(
+        return_value=TaskState(
+            task_id="t-1",
+            status=TaskStatus.RUNNING,
+            provider="test",
+            model="m",
+        )
+    )
+    tm.cancel_task = AsyncMock(
+        return_value=TaskState(
+            task_id="t-1",
+            status=TaskStatus.CANCELLED,
+            provider="test",
+            model="m",
+        )
+    )
     tm.get_chunks = AsyncMock(return_value=[])
     tm.read_chunks_blocking = AsyncMock(return_value=[])
     tm.append_chunk = AsyncMock()
@@ -67,6 +98,7 @@ def _make_task_manager(**overrides):
 
 def _build_app(settings, registry, task_manager):
     from smr.main import create_app
+
     app = create_app(settings_override=settings)
     app.state.provider_registry = registry
     app.state.task_manager = task_manager
@@ -92,7 +124,9 @@ class TestGenerateProviderError:
 
     @pytest.mark.asyncio
     async def test_generate_returns_502_on_provider_exception(self, client):
-        resp = await client.post("/api/v1/generate", json={"prompt": "hi", "provider": "broken", "model": "test-model"})
+        resp = await client.post(
+            "/api/v1/generate", json={"prompt": "hi", "provider": "broken", "model": "test-model"}
+        )
         assert resp.status_code == 502
         assert "internal error" in resp.json()["detail"].lower()
 
@@ -105,7 +139,10 @@ class TestGenerateProviderError:
         app = _build_app(settings, registry, tm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
-            await c.post("/api/v1/generate", json={"prompt": "hi", "provider": "broken", "model": "test-model"})
+            await c.post(
+                "/api/v1/generate",
+                json={"prompt": "hi", "provider": "broken", "model": "test-model"},
+            )
         tm.update_task.assert_any_call("t-1", status=TaskStatus.FAILED, error="bad")
 
 
@@ -129,8 +166,9 @@ class TestGenerateValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_json_returns_422(self, client):
-        resp = await client.post("/api/v1/generate", content=b"not json",
-                                  headers={"content-type": "application/json"})
+        resp = await client.post(
+            "/api/v1/generate", content=b"not json", headers={"content-type": "application/json"}
+        )
         assert resp.status_code == 422
 
     @pytest.mark.asyncio
@@ -231,10 +269,20 @@ class TestTasksEdgeCases:
     @pytest.mark.asyncio
     async def test_get_task_returns_all_fields(self, settings):
         """Verify the response includes all task state fields."""
-        tm = _make_task_manager(get_task=AsyncMock(return_value=TaskState(
-            task_id="t-1", status=TaskStatus.RUNNING, provider="ollama", model="m",
-            retry_count=1, max_retries=3, total_chunks=50, total_tokens=1000,
-        )))
+        tm = _make_task_manager(
+            get_task=AsyncMock(
+                return_value=TaskState(
+                    task_id="t-1",
+                    status=TaskStatus.RUNNING,
+                    provider="ollama",
+                    model="m",
+                    retry_count=1,
+                    max_retries=3,
+                    total_chunks=50,
+                    total_tokens=1000,
+                )
+            )
+        )
         app = _build_app(settings, ProviderRegistry(), tm)
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:

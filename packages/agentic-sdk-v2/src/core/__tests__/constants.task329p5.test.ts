@@ -12,16 +12,16 @@ import { describe, it, expect } from 'vitest';
 import { DNA_STYLE_ENDPOINTS } from '../constants';
 
 describe('DNA_STYLE_ENDPOINTS additions', () => {
-    it('SET_DEFAULT should build the owner-scoped default path', () => {
-        expect(typeof DNA_STYLE_ENDPOINTS.SET_DEFAULT).toBe('function');
-        expect(DNA_STYLE_ENDPOINTS.SET_DEFAULT('report-1')).toBe('/dna-writing-styles/report-1/default');
-    });
+  it('SET_DEFAULT should build the owner-scoped default path', () => {
+    expect(typeof DNA_STYLE_ENDPOINTS.SET_DEFAULT).toBe('function');
+    expect(DNA_STYLE_ENDPOINTS.SET_DEFAULT('report-1')).toBe('/dna-writing-styles/report-1/default');
+  });
 
-    it('SET_DEFAULT should encode the report id', () => {
-        expect(DNA_STYLE_ENDPOINTS.SET_DEFAULT('a/b')).toBe('/dna-writing-styles/a%2Fb/default');
-    });
+  it('SET_DEFAULT should encode the report id', () => {
+    expect(DNA_STYLE_ENDPOINTS.SET_DEFAULT('a/b')).toBe('/dna-writing-styles/a%2Fb/default');
+  });
 
-    it('MINE should point to the owner-scoped report list', () => {
-        expect(DNA_STYLE_ENDPOINTS.MINE).toBe('/dna-writing-styles/mine');
-    });
+  it('MINE should point to the owner-scoped report list', () => {
+    expect(DNA_STYLE_ENDPOINTS.MINE).toBe('/dna-writing-styles/mine');
+  });
 });

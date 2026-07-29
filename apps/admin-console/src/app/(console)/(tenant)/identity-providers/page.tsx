@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Identity Providers' };
 
 /** Tenant-scoped external identity provider (OIDC) administration (tier 30-49). */
 export default function IdentityProvidersPage() {
-    return <IdentityProvidersScreen />;
+  return <IdentityProvidersScreen />;
 }

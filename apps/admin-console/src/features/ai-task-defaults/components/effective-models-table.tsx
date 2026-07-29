@@ -93,8 +93,8 @@ export function EffectiveModelsTable() {
           Effective models ({AI_TASK_KEYS.length})
         </h2>
         <p className="text-muted-foreground text-sm">
-          The model that actually serves each AI task for this tenant, and which tier decided it. Model selection is managed by global
-          administrators &mdash; this view is read-only.
+          The model that actually serves each AI task for this tenant, and which tier decided it. Model selection is managed by global administrators
+          &mdash; this view is read-only.
         </p>
       </div>
       <div className="overflow-x-auto">

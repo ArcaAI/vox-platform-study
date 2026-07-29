@@ -516,9 +516,7 @@ class PipelineYamlParser:
         if isinstance(resample_data, dict) and resample_data:
             resample_enabled = bool(resample_data.get("enabled", True))
             target_sample_rate = int(
-                resample_data.get(
-                    "target_sample_rate", data.get("target_sample_rate", 16000)
-                )
+                resample_data.get("target_sample_rate", data.get("target_sample_rate", 16000))
             )
         elif isinstance(resample_data, bool):
             # bool shorthand parity with `normalize:` (`resample: false`
@@ -544,9 +542,7 @@ class PipelineYamlParser:
         # Declarative diarization feature-extraction marker.
         dfe_data = data.get("diar_feature_extraction")
         if isinstance(dfe_data, dict):
-            diar_feature_extraction_enabled: bool | None = bool(
-                dfe_data.get("enabled", True)
-            )
+            diar_feature_extraction_enabled: bool | None = bool(dfe_data.get("enabled", True))
         elif dfe_data is not None:
             diar_feature_extraction_enabled = bool(dfe_data)
         else:
@@ -713,9 +709,7 @@ class PipelineYamlParser:
         segment_merge_data = data.get("segment_merge") or {}
         segment_merge = SegmentMergeConfig(
             enabled=(
-                bool(segment_merge_data["enabled"])
-                if "enabled" in segment_merge_data
-                else None
+                bool(segment_merge_data["enabled"]) if "enabled" in segment_merge_data else None
             ),
             gap_threshold_s=(
                 float(segment_merge_data["gap_threshold_s"])

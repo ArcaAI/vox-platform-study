@@ -6,11 +6,11 @@ Last updated: 2026-07-04
 
 ## Where it fits
 
-| Direction | Package | Relationship |
-|---|---|---|
-| Depends on | `@arcaai/room` (peer, `^0.1.0`) | Extends `BaseProcessor`; attaches to an `AudioTrack` |
-| Depends on | `@ricky0123/vad-web` | Wraps its `MicVAD` runtime (Silero ONNX models + worklet) |
-| Consumed by | `@arcaai/vox` | Middle stage of `TranscriptionPipeline` (NoiseFilter → VAD → STT); segments gate STT |
+| Direction   | Package                         | Relationship                                                                         |
+| ----------- | ------------------------------- | ------------------------------------------------------------------------------------ |
+| Depends on  | `@arcaai/room` (peer, `^0.1.0`) | Extends `BaseProcessor`; attaches to an `AudioTrack`                                 |
+| Depends on  | `@ricky0123/vad-web`            | Wraps its `MicVAD` runtime (Silero ONNX models + worklet)                            |
+| Consumed by | `@arcaai/vox`                   | Middle stage of `TranscriptionPipeline` (NoiseFilter → VAD → STT); segments gate STT |
 
 `react` is an optional peer dependency (only needed for `useVAD`).
 
@@ -59,9 +59,7 @@ function VoiceRecorder() {
 
   return (
     <div>
-      <button onClick={isCapturing ? stopCapture : startCapture}>
-        {isCapturing ? 'Stop' : 'Start'}
-      </button>
+      <button onClick={isCapturing ? stopCapture : startCapture}>{isCapturing ? 'Stop' : 'Start'}</button>
       <div>Speaking: {isSpeaking ? 'Yes' : 'No'}</div>
       <div>Probability: {(speechProbability * 100).toFixed(1)}%</div>
       <div>Segments: {stats?.speechSegmentsDetected ?? 0}</div>
@@ -81,15 +79,15 @@ const vad = createVAD({ model: 'v5', positiveSpeechThreshold: 0.5 });
 
 vad.on('data', (payload) => {
   switch (payload.type) {
-    case 'vad-speech-start':      // speech onset detected
+    case 'vad-speech-start': // speech onset detected
     case 'vad-speech-real-start': // confirmed (exceeded minSpeechMs)
       break;
     case 'vad-speech-end':
       // payload.data.audio: Float32Array @ 16 kHz, plus segment timing metadata
       break;
-    case 'vad-misfire':           // segment shorter than minSpeechMs
-    case 'vad-frame':             // per-frame probability
-    case 'vad-stats':             // when enableStats: true
+    case 'vad-misfire': // segment shorter than minSpeechMs
+    case 'vad-frame': // per-frame probability
+    case 'vad-stats': // when enableStats: true
       break;
   }
 });
@@ -99,20 +97,20 @@ await audioTrack.setProcessor(vad);
 
 ### Options (`VADOptions`)
 
-| Option | Default | Description |
-|---|---|---|
-| `model` | `'v5'` | `'v5'` (512-sample frames) or `'legacy'` (1536-sample frames) |
-| `positiveSpeechThreshold` | `0.5` | Probability above which a frame counts as speech |
-| `negativeSpeechThreshold` | `0.35` | Probability below which a frame counts as non-speech |
-| `preSpeechPadMs` / `postSpeechPadMs` | `300` / `300` | Audio padding around detected speech |
-| `minSpeechMs` | `250` | Segments shorter than this fire `vad-misfire` |
-| `redemptionMs` | `1400` | Contiguous non-speech required to end a segment |
-| `silenceResetMs` | `5000` | Rebuild MicVAD after this much silence to reset the Silero LSTM state; `0` disables |
-| `sampleRate` | `16000` | Output rate for speech-end audio (model always runs at 16 kHz) |
-| `baseAssetPath` / `onnxWASMBasePath` | pinned jsDelivr CDN | Self-host the vad-web assets / ORT WASM binaries |
-| `submitUserSpeechOnPause` | `false` | Emit the in-flight segment when pausing |
-| `enableStats` / `statsInterval` | `false` / `1000` | Emit `vad-stats` data events |
-| `debugMode` | `false` | Log configuration with the `[ARCAAI:DEBUG]` prefix |
+| Option                               | Default             | Description                                                                         |
+| ------------------------------------ | ------------------- | ----------------------------------------------------------------------------------- |
+| `model`                              | `'v5'`              | `'v5'` (512-sample frames) or `'legacy'` (1536-sample frames)                       |
+| `positiveSpeechThreshold`            | `0.5`               | Probability above which a frame counts as speech                                    |
+| `negativeSpeechThreshold`            | `0.35`              | Probability below which a frame counts as non-speech                                |
+| `preSpeechPadMs` / `postSpeechPadMs` | `300` / `300`       | Audio padding around detected speech                                                |
+| `minSpeechMs`                        | `250`               | Segments shorter than this fire `vad-misfire`                                       |
+| `redemptionMs`                       | `1400`              | Contiguous non-speech required to end a segment                                     |
+| `silenceResetMs`                     | `5000`              | Rebuild MicVAD after this much silence to reset the Silero LSTM state; `0` disables |
+| `sampleRate`                         | `16000`             | Output rate for speech-end audio (model always runs at 16 kHz)                      |
+| `baseAssetPath` / `onnxWASMBasePath` | pinned jsDelivr CDN | Self-host the vad-web assets / ORT WASM binaries                                    |
+| `submitUserSpeechOnPause`            | `false`             | Emit the in-flight segment when pausing                                             |
+| `enableStats` / `statsInterval`      | `false` / `1000`    | Emit `vad-stats` data events                                                        |
+| `debugMode`                          | `false`             | Log configuration with the `[ARCAAI:DEBUG]` prefix                                  |
 
 Key `VADProcessor` methods: `isSpeaking()`, `getSpeechProbability()`, `getStats()`, `getModel()`, `getOptions()`, `updateOptions(options)`, `updateThresholds(pos, neg)`, `pause()`, `start()`, `reset()` (force-rebuild MicVAD / LSTM state), `resetStats()`, plus inherited `enable()` / `disable()` / `destroy()`.
 
@@ -140,14 +138,14 @@ For production, prefer self-hosting: copy the `@ricky0123/vad-web` dist assets a
 
 From this directory:
 
-| Command | Action |
-|---|---|
-| `pnpm build` | tsup build; `pnpm build:e2e` also copies `dist/` into `e2e/fixtures/` |
-| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests |
-| `pnpm test:e2e` | Playwright browser tests; `:ui`, `:headed`, `:chromium` variants exist |
-| `pnpm lint` | ESLint (`--max-warnings 0`) |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm clean` / `pnpm clean:all` | Remove build output (nuke also removes `node_modules`) |
+| Command                                                | Action                                                                 |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `pnpm build`                                           | tsup build; `pnpm build:e2e` also copies `dist/` into `e2e/fixtures/`  |
+| `pnpm test` / `pnpm test:watch` / `pnpm test:unit:cov` | Vitest unit tests                                                      |
+| `pnpm test:e2e`                                        | Playwright browser tests; `:ui`, `:headed`, `:chromium` variants exist |
+| `pnpm lint`                                            | ESLint (`--max-warnings 0`)                                            |
+| `pnpm typecheck`                                       | `tsc --noEmit`                                                         |
+| `pnpm clean` / `pnpm clean:all`                        | Remove build output (nuke also removes `node_modules`)                 |
 
 From the repo root: `pnpm --filter @arcaai/vad build` (same pattern for `test`, `lint`, etc.).
 

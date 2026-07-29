@@ -67,5 +67,4 @@ export class DnaUsageRecordEntity extends BaseTenantEntity {
   set departmentId(value: IDnaUsageRecordEntity['departmentId']) {
     this.setProperty('departmentId', value);
   }
-
 }

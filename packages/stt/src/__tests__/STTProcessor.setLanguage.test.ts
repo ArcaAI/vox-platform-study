@@ -39,9 +39,7 @@ describe('STTProcessor.setLanguage', () => {
     (processor as unknown as { provider: LocalSTTProvider | null }).provider = fakeProvider;
     (processor as unknown as { resolvedProviderType: string }).resolvedProviderType = 'local';
 
-    const initSpy = vi
-      .spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider')
-      .mockResolvedValue();
+    const initSpy = vi.spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider').mockResolvedValue();
 
     await processor.setLanguage('th-TH');
 
@@ -54,9 +52,7 @@ describe('STTProcessor.setLanguage', () => {
     (processor as unknown as { provider: LocalSTTProvider | null }).provider = fakeProvider;
     (processor as unknown as { resolvedProviderType: string }).resolvedProviderType = 'local';
 
-    const initSpy = vi
-      .spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider')
-      .mockResolvedValue();
+    const initSpy = vi.spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider').mockResolvedValue();
 
     await processor.setLanguage('en-US'); // same as initial language
 
@@ -67,9 +63,7 @@ describe('STTProcessor.setLanguage', () => {
     (processor as unknown as { resolvedProviderType: string }).resolvedProviderType = 'local';
     (processor as unknown as { provider: null }).provider = null;
 
-    const initSpy = vi
-      .spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider')
-      .mockResolvedValue();
+    const initSpy = vi.spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider').mockResolvedValue();
 
     await processor.setLanguage('th-TH');
 
@@ -81,9 +75,7 @@ describe('STTProcessor.setLanguage', () => {
     (processor as unknown as { resolvedProviderType: string }).resolvedProviderType = 'remote';
     (processor as unknown as { provider: { name: string } }).provider = { name: 'remote-stub' };
 
-    const initSpy = vi
-      .spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider')
-      .mockResolvedValue();
+    const initSpy = vi.spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider').mockResolvedValue();
 
     await processor.setLanguage('th-TH');
 
@@ -96,10 +88,9 @@ describe('STTProcessor.setLanguage', () => {
     (processor as unknown as { provider: LocalSTTProvider | null }).provider = fakeProvider;
     (processor as unknown as { resolvedProviderType: string }).resolvedProviderType = 'local';
 
-    vi.spyOn(
-      processor as unknown as { initializeLocalProvider(): Promise<void> },
-      'initializeLocalProvider',
-    ).mockRejectedValue(new Error('model load failed'));
+    vi.spyOn(processor as unknown as { initializeLocalProvider(): Promise<void> }, 'initializeLocalProvider').mockRejectedValue(
+      new Error('model load failed'),
+    );
 
     await expect(processor.setLanguage('ja-JP')).rejects.toThrow(/Failed to switch local STT language to "ja-JP"/);
   });

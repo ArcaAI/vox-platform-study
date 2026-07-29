@@ -122,7 +122,9 @@ async def test_linking_respects_confidence_floor():
     classifier = _classifier_with_pipeline(
         [{"entity_group": "MEDICATION", "score": 0.10, "word": "metformin", "start": 0, "end": 9}]
     )
-    classifier.linker_config = OntologyLinkerConfig(linker_enabled=True, linker_confidence_floor=0.5)
+    classifier.linker_config = OntologyLinkerConfig(
+        linker_enabled=True, linker_confidence_floor=0.5
+    )
 
     resp = await classifier.process(TokenClassificationRequest(text="metformin"))
 

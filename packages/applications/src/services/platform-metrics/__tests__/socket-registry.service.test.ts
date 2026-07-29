@@ -60,7 +60,7 @@ describe('SocketRegistryService (#17)', () => {
   // (concurrency) — per-tenant open-socket aggregation.
   describe('per-tenant concurrency', () => {
     it('publishes THIS instance per-tenant map under a TTL-bounded key', async () => {
-      await service.publishLocalTenantCounts({ 't1': 2, 't2': 3 });
+      await service.publishLocalTenantCounts({ t1: 2, t2: 3 });
       expect(cache.setex).toHaveBeenCalledTimes(1);
       const { key, ttl, map } = parseTenantMapCall(cache.setex.mock.calls[0] as [string, number, string]);
       expect(key).toContain('hope:platform:sockets:tmap:');
@@ -76,9 +76,7 @@ describe('SocketRegistryService (#17)', () => {
 
     it('sums one tenant across every instance map', async () => {
       cache.scan.mockResolvedValue(['hope:platform:sockets:tmap:a', 'hope:platform:sockets:tmap:b']);
-      cache.get.mockImplementation(async (key: string) =>
-        key.endsWith('a') ? JSON.stringify({ t1: 3, t2: 1 }) : JSON.stringify({ t1: 5 }),
-      );
+      cache.get.mockImplementation(async (key: string) => (key.endsWith('a') ? JSON.stringify({ t1: 3, t2: 1 }) : JSON.stringify({ t1: 5 })));
       expect(await service.getTenantAggregateCount('t1')).toBe(8);
       expect(await service.getTenantAggregateCount('t2')).toBe(1);
     });

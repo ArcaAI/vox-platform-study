@@ -6,15 +6,16 @@
  */
 
 /**
- * Providers a tenant may hold its own connection row for. Mirrors
- * `CLOUD_BYO_PROVIDERS` in @arcaai/applications — anything else is a self-host
- * engine whose endpoint is platform infrastructure (tenant write → 403).
+ * LLM providers a tenant may hold its own connection row for. Mirrors
+ * `CLOUD_BYO_PROVIDERS.llm` in @arcaai/applications — anything else is a
+ * self-host engine whose endpoint is platform infrastructure (tenant write →
+ * 403). `openai` / `anthropic` / `vertex` were added by TASK-572.
  */
-export const CLOUD_BYO_PROVIDERS = ['azure', 'bedrock'] as const;
+export const CLOUD_BYO_PROVIDERS = ['azure', 'bedrock', 'openai', 'anthropic', 'vertex'] as const;
 export type CloudByoProvider = (typeof CLOUD_BYO_PROVIDERS)[number];
 
 /**
- * GET admin/ai-providers/:provider — the MASKED row. There is deliberately no
+ * GET admin/providers/llm/:provider — the MASKED row. There is deliberately no
  * key field and no reveal route: presence is `hasKey` + `keyVersion` only.
  */
 export interface ProviderConnection {
@@ -33,13 +34,19 @@ export interface ProviderConnection {
   updatedAt?: string;
 }
 
-/** PUT admin/ai-providers/:provider body. `apiKey` is write-only. */
+/** PUT admin/providers/llm/:provider body. `apiKey` is write-only. */
 export interface UpsertProviderConnectionRequest {
   apiKey?: string;
   baseUrl?: string | null;
   region?: string | null;
   apiVersion?: string | null;
   deploymentName?: string | null;
+  /**
+   * Provider-specific extras. Vertex stores its GCP `project` here (its
+   * `location` reuses the `region` column); azure/bedrock/openai/anthropic leave
+   * it null.
+   */
+  extraJson?: Record<string, unknown> | null;
   enabled?: boolean;
   /** OCC token from the read ETag; 0 creates. */
   expectedVersion: number;

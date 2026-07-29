@@ -16,10 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  CrossTabHmacKeyManager,
-  __resetSessionHmacSecretForTests,
-} from '../CrossTabHmacKeyManager';
+import { CrossTabHmacKeyManager, __resetSessionHmacSecretForTests } from '../CrossTabHmacKeyManager';
 import { deriveTenantHmacKey } from '../CrossTabHmacSharedWorker';
 
 // =============================================================================
@@ -33,9 +30,7 @@ type Req =
   | { id: string; op: 'verify'; payload: ArrayBuffer; hmac: ArrayBuffer; tenantId?: string }
   | { id: string; op: 'reset' };
 
-type Res =
-  | { id: string; ok: true; result: ArrayBuffer | boolean | null }
-  | { id: string; ok: false; error: string };
+type Res = { id: string; ok: true; result: ArrayBuffer | boolean | null } | { id: string; ok: false; error: string };
 
 class MockSharedWorkerImpl {
   private secret: Uint8Array | null = null;
@@ -55,13 +50,10 @@ class MockSharedWorkerImpl {
 
   private async getKey(): Promise<CryptoKey> {
     if (this.keyPromise === null) {
-      this.keyPromise = crypto.subtle.importKey(
-        'raw',
-        this.ensureSecret() as unknown as ArrayBuffer,
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign', 'verify'],
-      );
+      this.keyPromise = crypto.subtle.importKey('raw', this.ensureSecret() as unknown as ArrayBuffer, { name: 'HMAC', hash: 'SHA-256' }, false, [
+        'sign',
+        'verify',
+      ]);
     }
     return this.keyPromise;
   }
@@ -177,8 +169,7 @@ describe('CrossTabHmacKeyManager', () => {
   beforeEach(() => {
     MockSharedWorker.reset();
     __resetSessionHmacSecretForTests();
-    (globalThis as unknown as { SharedWorker: typeof MockSharedWorker }).SharedWorker =
-      MockSharedWorker;
+    (globalThis as unknown as { SharedWorker: typeof MockSharedWorker }).SharedWorker = MockSharedWorker;
   });
 
   afterEach(() => {

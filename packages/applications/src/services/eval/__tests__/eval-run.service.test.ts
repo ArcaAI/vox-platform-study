@@ -38,9 +38,7 @@ function harnessResult(over: Record<string, unknown> = {}) {
     thresholds: { pdsqi_mean: 4.0 },
     passed: true,
     failures: [],
-    caseScores: [
-      { caseId: 'c0', metric: 'pdsqi_mean', score: 4.5, maxScore: 5.0, judgeModel: 'stub-judge' },
-    ],
+    caseScores: [{ caseId: 'c0', metric: 'pdsqi_mean', score: 4.5, maxScore: 5.0, judgeModel: 'stub-judge' }],
     ...over,
   };
 }
@@ -50,9 +48,7 @@ describe('EvalRunService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockClsService.get.mockImplementation((key: string) =>
-      key === 'user' ? { id: 'admin-1' } : key === 'tenantId' ? TENANT : null,
-    );
+    mockClsService.get.mockImplementation((key: string) => (key === 'user' ? { id: 'admin-1' } : key === 'tenantId' ? TENANT : null));
     mockGoldenSetRepository.findAll.mockResolvedValue([goldenSet()]);
     mockGoldenCaseRepository.findAll.mockResolvedValue([goldenCase('c0')]);
     mockGoldenCaseRepository.decryptFieldsFromEntity.mockResolvedValue({
@@ -114,16 +110,11 @@ describe('EvalRunService', () => {
     expect(scoresArg[0]).toMatchObject({ goldenCaseId: 'c0', metric: 'pdsqi_mean', score: 4.5 });
 
     // Sys-event broadcast (ResourceCreated for the EvalRun).
-    expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-      SysEventType.ResourceCreated,
-      expect.objectContaining({ resourceId: 'run-1' }),
-    );
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceCreated, expect.objectContaining({ resourceId: 'run-1' }));
   });
 
   it('flags a failing gate without throwing (run persisted, passed=false)', async () => {
-    mockHarnessGateway.runEval.mockResolvedValue(
-      harnessResult({ passed: false, failures: ['pdsqi_accurate=2.0000 < 4.0'] }),
-    );
+    mockHarnessGateway.runEval.mockResolvedValue(harnessResult({ passed: false, failures: ['pdsqi_accurate=2.0000 < 4.0'] }));
 
     const outcome = await service.runGoldenSet({ goldenSetId: SET_ID, tenantId: TENANT, triggerType: 'PROMOTION' });
 
@@ -136,9 +127,9 @@ describe('EvalRunService', () => {
 
   it('404s when the golden set is not the tenant’s', async () => {
     mockGoldenSetRepository.findAll.mockResolvedValue([]);
-    await expect(
-      service.runGoldenSet({ goldenSetId: 'nope', tenantId: TENANT, triggerType: 'MANUAL' }),
-    ).rejects.toBeInstanceOf(DataNotFoundException);
+    await expect(service.runGoldenSet({ goldenSetId: 'nope', tenantId: TENANT, triggerType: 'MANUAL' })).rejects.toBeInstanceOf(
+      DataNotFoundException,
+    );
     expect(mockHarnessGateway.runEval).not.toHaveBeenCalled();
   });
 

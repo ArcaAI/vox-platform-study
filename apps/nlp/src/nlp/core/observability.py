@@ -126,7 +126,11 @@ def setup_opentelemetry(app: FastAPI) -> None:
 
     logger.info(
         "OpenTelemetry initialized",
-        extra={"otlp_endpoint": otlp_endpoint, "traces": settings.service.traces_enabled, "metrics": settings.service.metrics_enabled},
+        extra={
+            "otlp_endpoint": otlp_endpoint,
+            "traces": settings.service.traces_enabled,
+            "metrics": settings.service.metrics_enabled,
+        },
     )
 
 
@@ -158,6 +162,8 @@ def setup_prometheus(app: FastAPI) -> None:
         env_var_name="ENABLE_METRICS",
         inprogress_name="fastapi_inprogress",
         inprogress_labels=True,
-    ).add(prometheus_metrics.default(), prometheus_metrics.combined_size()).instrument(app=app, metric_namespace="nlp").expose(
+    ).add(prometheus_metrics.default(), prometheus_metrics.combined_size()).instrument(
+        app=app, metric_namespace="nlp"
+    ).expose(
         app=app, should_gzip=True
     )

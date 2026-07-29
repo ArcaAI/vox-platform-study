@@ -4,14 +4,7 @@ import { createByteCounter, type ByteCounterHandle } from '@/lib/byte-counter';
 import type { TranscriptEntry } from '@/store/audio-store';
 import { usePlaygroundStore } from '@/store/playground-store';
 import { createAudioCapture, float32ToInt16, type AudioCaptureHandle } from '@arcaai/stt';
-import {
-  StreamingSessionManager,
-  SttWebSocketClient,
-  useArcaStore,
-  type AgenticClient,
-  type ISDKLogger,
-  type WsTranscriptResult,
-} from '@arcaai/vox';
+import { StreamingSessionManager, SttWebSocketClient, useArcaStore, type AgenticClient, type ISDKLogger, type WsTranscriptResult } from '@arcaai/vox';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type RealtimeStatus = 'idle' | 'creating_session' | 'connecting' | 'streaming' | 'reconnecting' | 'stopping' | 'error';

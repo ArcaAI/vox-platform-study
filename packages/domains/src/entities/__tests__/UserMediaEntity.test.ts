@@ -11,15 +11,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  UserMediaEntity,
-  IUserMediaEntity,
-} from '../generated/core/UserMediaEntity';
+import { UserMediaEntity, IUserMediaEntity } from '../generated/core/UserMediaEntity';
 import { ResourceStatusType } from '../../enums';
 
-function createValidInit(
-  overrides: Partial<IUserMediaEntity> = {},
-): IUserMediaEntity {
+function createValidInit(overrides: Partial<IUserMediaEntity> = {}): IUserMediaEntity {
   return {
     id: 'um-test-id',
     tenantId: '50000000-0000-0000-0000-000000000000',
@@ -58,9 +53,7 @@ describe('UserMediaEntity.validate()', () => {
     });
 
     it('should accept a populated sharedAt (track-only)', () => {
-      const entity = new UserMediaEntity(
-        createValidInit({ sharedAt: new Date('2026-05-01') }),
-      );
+      const entity = new UserMediaEntity(createValidInit({ sharedAt: new Date('2026-05-01') }));
 
       expect(() => entity.validate()).not.toThrow();
     });

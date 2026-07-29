@@ -206,10 +206,7 @@ export function knownModelNames(): string[] {
   return ['AuditLog', ...Object.keys(MODEL_REGISTRY)].sort();
 }
 
-export function validateInvocation(
-  args: ParsedArgs,
-  env: NodeJS.ProcessEnv,
-): { ok: true } | { ok: false; code: number; message: string } {
+export function validateInvocation(args: ParsedArgs, env: NodeJS.ProcessEnv): { ok: true } | { ok: false; code: number; message: string } {
   if (env.SECRETS_PROVIDER !== 'vault') {
     return { ok: false, code: 2, message: 'SECRETS_PROVIDER=vault is required (this tool decrypts real PHI via Vault Transit).' };
   }
@@ -237,11 +234,7 @@ export interface DecryptedField {
  * Decrypt one per-field ciphertext column, falling back to the retained
  * plaintext column (dual-read soak) when the ciphertext is null. PURE.
  */
-export async function decryptField(
-  row: Record<string, unknown>,
-  spec: FieldSpec,
-  decrypt: DecryptFn,
-): Promise<DecryptedField> {
+export async function decryptField(row: Record<string, unknown>, spec: FieldSpec, decrypt: DecryptFn): Promise<DecryptedField> {
   const ctRaw = row[spec.ciphertext] as Buffer | Uint8Array | null | undefined;
   if (ctRaw && ctRaw.length > 0) {
     const ct = Buffer.from(ctRaw).toString('utf8');
@@ -324,7 +317,11 @@ export async function decryptAuditLogRow(
       out.push({ field: f, source: 'ciphertext', value: JSON.parse(localDecrypt(Buffer.from(ctRaw).toString('utf8'), dekKey)) });
     } else {
       const plain = row[f];
-      out.push(plain !== null && plain !== undefined ? { field: f, source: 'plaintext-fallback', value: plain } : { field: f, source: 'absent', value: null });
+      out.push(
+        plain !== null && plain !== undefined
+          ? { field: f, source: 'plaintext-fallback', value: plain }
+          : { field: f, source: 'absent', value: null },
+      );
     }
   }
   return out;
@@ -393,7 +390,9 @@ function stringifyValue(value: unknown): string {
 function printResults(model: string, id: string, results: DecryptedField[], asJson: boolean): void {
   for (const r of results) {
     if (r.source !== 'ciphertext') {
-      console.error(` (note) ${r.field}: ${r.source === 'plaintext-fallback' ? 'no ciphertext — plaintext-column fallback (dual-read soak)' : 'empty (no ciphertext, no plaintext)'}`);
+      console.error(
+        ` (note) ${r.field}: ${r.source === 'plaintext-fallback' ? 'no ciphertext — plaintext-column fallback (dual-read soak)' : 'empty (no ciphertext, no plaintext)'}`,
+      );
     }
   }
   if (asJson) {
@@ -412,7 +411,7 @@ function printResults(model: string, id: string, results: DecryptedField[], asJs
 function printUsage(): void {
   console.log(
     [
-      'decrypt-row — READ-ONLY admin/dev tool to decrypt a row\'s encrypted PHI field(s).',
+      "decrypt-row — READ-ONLY admin/dev tool to decrypt a row's encrypted PHI field(s).",
       '',
       'Usage:',
       '  pnpm --filter @arcaai/database decrypt:row -- --model <ModelName> --id <rowId> [--field <name>] [--json]',

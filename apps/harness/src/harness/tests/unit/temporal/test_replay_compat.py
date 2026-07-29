@@ -329,6 +329,4 @@ class TestReplayCompatibility:
             workflows=[HarnessDocWorkflow],
             data_converter=pydantic_data_converter,
         )
-        await replayer.replay_workflow(
-            _history("doc_workflow_post_task553_assemble_reuse_history")
-        )
+        await replayer.replay_workflow(_history("doc_workflow_post_task553_assemble_reuse_history"))

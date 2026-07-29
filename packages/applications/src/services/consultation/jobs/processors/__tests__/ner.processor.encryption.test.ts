@@ -64,7 +64,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockNamedEntityRepository.encryptFieldsIntoEntity.mockResolvedValue(undefined);
   mockContextItemRepository.findById.mockResolvedValue({ id: 'ctx-1', tenantId: 'tenant-1', content: 'Patient takes aspirin' });
-  mockNamedEntityRepository.create.mockResolvedValue({ id: 'ne-1', className: 'DRUG', text: 'aspirin', confidence: 0.9, startOffset: 14, endOffset: 21 });
+  mockNamedEntityRepository.create.mockResolvedValue({
+    id: 'ne-1',
+    className: 'DRUG',
+    text: 'aspirin',
+    confidence: 0.9,
+    startOffset: 14,
+    endOffset: 21,
+  });
   mockHttpService.axiosRef.post.mockResolvedValue({
     data: { entities: [{ type: 'DRUG', value: 'aspirin', confidence: 0.9, start: 14, end: 21 }] },
   });
@@ -76,10 +83,7 @@ describe('NerProcessor.process — encrypts NamedEntity before create (Phase 3C)
     await processor.process(job);
 
     expect(mockNamedEntityRepository.encryptFieldsIntoEntity).toHaveBeenCalledTimes(1);
-    expect(mockNamedEntityRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(
-      expect.objectContaining({ text: 'aspirin' }),
-      mockSecretsService,
-    );
+    expect(mockNamedEntityRepository.encryptFieldsIntoEntity).toHaveBeenCalledWith(expect.objectContaining({ text: 'aspirin' }), mockSecretsService);
     const encOrder = mockNamedEntityRepository.encryptFieldsIntoEntity.mock.invocationCallOrder[0];
     const createOrder = mockNamedEntityRepository.create.mock.invocationCallOrder[0];
     expect(encOrder).toBeLessThan(createOrder);

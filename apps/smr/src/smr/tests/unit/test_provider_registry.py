@@ -15,18 +15,22 @@ import pytest
 class TestLLMProviderProtocol:
     def test_protocol_defines_generate(self):
         from smr.providers.base import LLMProvider
+
         assert hasattr(LLMProvider, "generate")
 
     def test_protocol_defines_generate_stream(self):
         from smr.providers.base import LLMProvider
+
         assert hasattr(LLMProvider, "generate_stream")
 
     def test_protocol_defines_get_info(self):
         from smr.providers.base import LLMProvider
+
         assert hasattr(LLMProvider, "get_info")
 
     def test_protocol_defines_health_check(self):
         from smr.providers.base import LLMProvider
+
         assert hasattr(LLMProvider, "health_check")
 
 
@@ -36,6 +40,7 @@ class TestLLMProviderProtocol:
 class TestProviderRegistry:
     def test_register_provider(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         mock_provider = AsyncMock()
         registry.register("ollama", mock_provider)
@@ -43,6 +48,7 @@ class TestProviderRegistry:
 
     def test_get_registered_provider(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         mock_provider = AsyncMock()
         registry.register("ollama", mock_provider)
@@ -50,12 +56,14 @@ class TestProviderRegistry:
 
     def test_get_unknown_provider_raises(self):
         from smr.providers.base import ProviderNotFoundError, ProviderRegistry
+
         registry = ProviderRegistry()
         with pytest.raises(ProviderNotFoundError):
             registry.get("nonexistent")
 
     def test_list_providers(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         mock1 = AsyncMock()
         mock2 = AsyncMock()
@@ -66,6 +74,7 @@ class TestProviderRegistry:
 
     def test_unregister_provider(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         mock_provider = AsyncMock()
         registry.register("ollama", mock_provider)
@@ -74,11 +83,13 @@ class TestProviderRegistry:
 
     def test_unregister_nonexistent_is_noop(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         registry.unregister("nonexistent")
 
     def test_overwrite_provider(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         mock1 = AsyncMock()
         mock2 = AsyncMock()
@@ -92,6 +103,7 @@ class TestProviderRegistryLazyFactories:
 
     def test_factory_makes_provider_available_but_not_built(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         registry.register_factory("ollama", AsyncMock)
         assert "ollama" in registry.list_providers()
@@ -99,6 +111,7 @@ class TestProviderRegistryLazyFactories:
 
     def test_get_builds_and_memoizes_on_first_use(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         calls: list[int] = []
 
@@ -115,6 +128,7 @@ class TestProviderRegistryLazyFactories:
 
     def test_unknown_provider_without_factory_fails_closed(self):
         from smr.providers.base import ProviderNotFoundError, ProviderRegistry
+
         registry = ProviderRegistry()
         # No instance AND no factory (missing connection config) ⇒ fail closed.
         with pytest.raises(ProviderNotFoundError):
@@ -122,6 +136,7 @@ class TestProviderRegistryLazyFactories:
 
     def test_eager_instance_wins_over_factory(self):
         from smr.providers.base import ProviderRegistry
+
         registry = ProviderRegistry()
         eager = AsyncMock()
         registry.register("ollama", eager)
@@ -130,6 +145,7 @@ class TestProviderRegistryLazyFactories:
 
     def test_unregister_removes_factory_too(self):
         from smr.providers.base import ProviderNotFoundError, ProviderRegistry
+
         registry = ProviderRegistry()
         registry.register_factory("ollama", AsyncMock)
         registry.unregister("ollama")

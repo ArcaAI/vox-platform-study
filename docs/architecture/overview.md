@@ -233,6 +233,7 @@ Key mechanics:
 - The gateway keeps a 200-message resume buffer per session for reconnect replay, and applies egress backpressure (drops partials, queues finals) above a 512 KiB WS buffer watermark.
 - `LiveDocumentationService` (TASK-339/340) debounces final segments (default: 3 segments or 5 s idle), calls SMR for a bounded running note and NLP for entities, and republishes over the consultation live-summary SSE stream. Kill switch: `LIVE_DOC_ENABLED`.
 - STT calls back into the gateway's internal surface (`/api/v1/internal/stt/*`: transcripts, job lifecycle, audio-records, media) authenticated by service token.
+- Per-tenant STT fallback (TASK-567): the session-create request carries an optional `provider_overrides` (BYOK) + `fallback_pipeline_id`; on a classified ASR outage (or a user-triggered `POST stream/session/:sessionId/switch-to-fallback`), `SessionManager`'s `EngineSwitchController` swaps the session's ASR engine one-way and publishes a `status`/`provider_switched` result over `stt:result:{sessionId}` — the gateway relays it on the existing WS `status` frame with zero protocol change. Batch jobs re-dispatch once on the fallback within the same Dramatiq attempt.
 
 ### 3.2 Batch transcription
 
@@ -382,6 +383,7 @@ HOPE resolves *which model runs a task, where its provider lives, how it is auth
 | Model lifecycle / retention | load-on-first-request, idle-TTL eviction (default 600 s, pinned models never evicted), set via `global-kv` settings, served over `internal/effective-config` (~60 s apply) |
 | Pipeline governance | `AsrPipeline` template lineage — SYSTEM templates cloned per tenant; locked copies are read-only (clone to customize); resync fast-forwards pristine copies |
 | Per-tenant TTS / identity / tools | `TenantTtsConfig` (+ BYO credential), `TenantIdentityProvider` (OIDC federation), `McpServer` (harness external-tool registry, Vault-path auth only) |
+| Per-tenant STT fallback / BYOK | `TenantSttConfig` (`fallbackPipelineId`, `autoSwitchEnabled`) + `TenantSttProviderCredential` (`azure-speech`/`sarvam`/`openai`, Vault-Transit ciphertext); streaming credentials injected at session-create, batch credentials pulled by the worker via `GET /internal/stt/provider-overrides` (TASK-567) |
 
 Runtime services stay stateless with respect to this plane: the config plane degrades safely — an unreachable control plane leaves each service on its own env/bootstrap defaults.
 
@@ -394,7 +396,7 @@ Infrastructure in containers; application services run on the host (Node via pnp
 - Base: `infrastructure/docker/docker-compose.yml` — `hope-postgres` (TimescaleDB pg18 image), `hope-minio` (+ bucket setup), `hope-redis`.
 - Dev overlay: `infrastructure/docker/docker-compose.dev.yml` — profile tiers (TASK-555): base `vault` (+`vault-init`) + `temporal` (+`temporal-ui`) + `rag` (`hope-reranker` TEI); `-o` adds `prometheus`/`observability` (Prometheus + Grafana); `-e` adds `inference` (vLLM / llama.cpp / TEI embed). Qdrant (+collection init) starts unprofiled with core.
 - Entry points: `pnpm setup:dev` / `dev:setup-o` / `dev:setup-e` (bootstrap tiers), `pnpm infra:dev:up` (`-- -o` / `-- -e`), `pnpm stack:dev` / `dev:stack-o` / `dev:stack-e` (ensure infra then spawn api/stt/smr/guardrail/nlp/harness/worker/admin), `pnpm stack:dev:doctor` (health checks). The admin console runs as its own Next.js dev server (`apps/admin-console`, `next dev -p 5176`); tts runs via `pnpm tts:dev`.
-- Env files: `.env.dev` (dev), `.env.test` (isolated test infra: PG 5433, Redis 6380, MinIO 9002), `.env.example` (canonical template). Host env always wins; production loads host env only.
+- Env files: `.env.dev` (dev, gitignored, generated), `.env.test` (isolated test infra: PG 5433, Redis 6380, MinIO 9002; gitignored, generated), `.env.sample` (the single tracked template both are created from — `pnpm setup:dev`/`pnpm setup:test`; generated end to end by `pnpm env:sync`, its first section is the bootstrap floor). Host env always wins; production loads host env only (per-service `.env.prod` files are ops reference, not loaded).
 
 ### 7.2 Cluster (k3s + ArgoCD) — primary deployment target
 

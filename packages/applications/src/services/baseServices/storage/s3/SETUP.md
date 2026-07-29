@@ -16,10 +16,10 @@ import { Module } from '@nestjs/common';
 import { S3ServiceModule } from '@arcaai/applications/baseServices/storage/s3';
 
 @Module({
-    imports: [
-        S3ServiceModule.forRoot(), // Includes all dependencies
-    ],
-    // ... other configuration
+  imports: [
+    S3ServiceModule.forRoot(), // Includes all dependencies
+  ],
+  // ... other configuration
 })
 export class AppModule {}
 ```
@@ -35,10 +35,10 @@ import { Module } from '@nestjs/common';
 import { S3ServiceModule } from '@arcaai/applications/baseServices/storage/s3';
 
 @Module({
-    imports: [
-        S3ServiceModule.forRoot(), // All dependencies included
-        // ... other modules
-    ],
+  imports: [
+    S3ServiceModule.forRoot(), // All dependencies included
+    // ... other modules
+  ],
 })
 export class AppModule {}
 ```
@@ -53,11 +53,11 @@ import { AppSettingsModule } from '@arcaai/applications/baseServices/_meta/appSe
 import { S3ServiceModule } from '@arcaai/applications/baseServices/storage/s3';
 
 @Module({
-    imports: [
-        AppSettingsModule.forRoot(), // Global import
-        S3ServiceModule.forFeature(), // Uses global AppSettings
-        // ... other modules
-    ],
+  imports: [
+    AppSettingsModule.forRoot(), // Global import
+    S3ServiceModule.forFeature(), // Uses global AppSettings
+    // ... other modules
+  ],
 })
 export class AppModule {}
 ```
@@ -72,11 +72,11 @@ import { AppSettingsModule } from '@arcaai/applications/baseServices/_meta/appSe
 import { S3ServiceModule } from '@arcaai/applications/baseServices/storage/s3';
 
 @Module({
-    imports: [
-        AppSettingsModule.forRoot(), // Global import
-        S3ServiceModule, // Simple import
-        // ... other modules
-    ],
+  imports: [
+    AppSettingsModule.forRoot(), // Global import
+    S3ServiceModule, // Simple import
+    // ... other modules
+  ],
 })
 export class AppModule {}
 ```
@@ -116,11 +116,11 @@ import { S3ServiceModule } from '@arcaai/applications/baseServices/storage/s3';
 import { MyFeatureService } from './my-feature.service';
 
 @Module({
-    imports: [
-        S3ServiceModule.forRoot(), // Self-contained
-    ],
-    providers: [MyFeatureService],
-    exports: [MyFeatureService],
+  imports: [
+    S3ServiceModule.forRoot(), // Self-contained
+  ],
+  providers: [MyFeatureService],
+  exports: [MyFeatureService],
 })
 export class MyFeatureModule {}
 ```
@@ -133,11 +133,11 @@ import { S3ServiceModule } from '@arcaai/applications/baseServices/storage/s3';
 import { MyFeatureService } from './my-feature.service';
 
 @Module({
-    imports: [
-        S3ServiceModule.forFeature(), // Assumes global AppSettings
-    ],
-    providers: [MyFeatureService],
-    exports: [MyFeatureService],
+  imports: [
+    S3ServiceModule.forFeature(), // Assumes global AppSettings
+  ],
+  providers: [MyFeatureService],
+  exports: [MyFeatureService],
 })
 export class MyFeatureModule {}
 ```
@@ -152,40 +152,40 @@ import { IS3Service, S3HealthService } from '@arcaai/applications/baseServices/s
 
 @Injectable()
 export class MyFeatureService {
-    private readonly logger = new Logger(MyFeatureService.name);
+  private readonly logger = new Logger(MyFeatureService.name);
 
-    constructor(
-        private readonly s3Service: IS3Service,
-        private readonly s3HealthService: S3HealthService,
-    ) {}
+  constructor(
+    private readonly s3Service: IS3Service,
+    private readonly s3HealthService: S3HealthService,
+  ) {}
 
-    async uploadFile(file: Buffer, filename: string): Promise<void> {
-        try {
-            // Check if S3 is healthy before using
-            const health = await this.s3HealthService.quickCheck();
-            if (!health) {
-                throw new Error('S3 service is not available');
-            }
+  async uploadFile(file: Buffer, filename: string): Promise<void> {
+    try {
+      // Check if S3 is healthy before using
+      const health = await this.s3HealthService.quickCheck();
+      if (!health) {
+        throw new Error('S3 service is not available');
+      }
 
-            // Get bucket name
-            const bucket = this.s3Service.getPublicBucketName();
-            if (!bucket) {
-                throw new Error('No public bucket configured');
-            }
+      // Get bucket name
+      const bucket = this.s3Service.getPublicBucketName();
+      if (!bucket) {
+        throw new Error('No public bucket configured');
+      }
 
-            // Upload file
-            await this.s3Service.putFile(bucket, filename, file, 'application/octet-stream');
-            this.logger.log(`File uploaded successfully: ${filename}`);
-        } catch (error) {
-            this.logger.error('Failed to upload file:', error);
-            throw error;
-        }
+      // Upload file
+      await this.s3Service.putFile(bucket, filename, file, 'application/octet-stream');
+      this.logger.log(`File uploaded successfully: ${filename}`);
+    } catch (error) {
+      this.logger.error('Failed to upload file:', error);
+      throw error;
     }
+  }
 
-    async checkS3Health(): Promise<void> {
-        const healthStatus = await this.s3HealthService.checkHealth();
-        this.logger.log('S3 Health Status:', healthStatus);
-    }
+  async checkS3Health(): Promise<void> {
+    const healthStatus = await this.s3HealthService.checkHealth();
+    this.logger.log('S3 Health Status:', healthStatus);
+  }
 }
 ```
 

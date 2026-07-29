@@ -26,7 +26,10 @@ describe('Phase 0 Item 1 — global ValidationPipe must strip + reject unknown k
   it('throws BadRequestException naming the smuggled property on unknown keys', async () => {
     const pipe = new ValidationPipe(pipeCfg);
     const evil = plainToInstance(FakeDto, {
-      id: 'gs-1', value: 'v', key: 'JWT_SECRET_KEY', locked: true,
+      id: 'gs-1',
+      value: 'v',
+      key: 'JWT_SECRET_KEY',
+      locked: true,
     });
 
     let caught: unknown;
@@ -52,7 +55,10 @@ describe('Phase 0 Item 1 — global ValidationPipe must strip + reject unknown k
   it('strips unknown keys silently when forbidNonWhitelisted is OFF (stage 1 baseline)', async () => {
     const pipe = new ValidationPipe({ transform: true, whitelist: true });
     const evil = plainToInstance(FakeDto, {
-      id: 'gs-1', value: 'v', key: 'JWT_SECRET_KEY', locked: true,
+      id: 'gs-1',
+      value: 'v',
+      key: 'JWT_SECRET_KEY',
+      locked: true,
     });
 
     const out = await pipe.transform(evil, { type: 'body', metatype: FakeDto } as never);

@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/classify", tags=["NLP REST Classify"])
 
+
 @router.post("/text", response_model=TextClassificationResponse)
 async def classify_text(
     request: TextClassificationRequest,
@@ -34,7 +35,9 @@ async def classify_text(
     try:
         async with pinned_text_classifier(request.model_name, request.model_path) as service:
             if not service.is_initialized:
-                raise HTTPException(status_code=503, detail="Text classification model not available")
+                raise HTTPException(
+                    status_code=503, detail="Text classification model not available"
+                )
 
             # Bound concurrent inference. The semaphore wraps
             # only the model call, NOT the pin: waiting for capacity must not hold
@@ -45,7 +48,9 @@ async def classify_text(
             return result
     except ModelUnavailableError as e:
         logger.error(f"Text classification model load failed: {str(e)}")
-        raise HTTPException(status_code=503, detail="Text classification model not available") from e
+        raise HTTPException(
+            status_code=503, detail="Text classification model not available"
+        ) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -72,7 +77,9 @@ async def classify_tokens(
     try:
         async with pinned_token_classifier(request.model_name, request.model_path) as service:
             if not service.is_initialized:
-                raise HTTPException(status_code=503, detail="Token classification model not available")
+                raise HTTPException(
+                    status_code=503, detail="Token classification model not available"
+                )
 
             # Bound concurrent inference.
             async with inference_bound:
@@ -81,7 +88,9 @@ async def classify_tokens(
             return result
     except ModelUnavailableError as e:
         logger.error(f"Token classification model load failed: {str(e)}")
-        raise HTTPException(status_code=503, detail="Token classification model not available") from e
+        raise HTTPException(
+            status_code=503, detail="Token classification model not available"
+        ) from e
     except HTTPException:
         raise
     except Exception as e:

@@ -23,6 +23,7 @@ def mock_embedding_service():
         vec = np.random.RandomState(42).randn(256).astype(np.float32)
         vec = vec / np.linalg.norm(vec)
         from stt.diarization.dto import SpeakerEmbedding
+
         return SpeakerEmbedding(
             embedding=vec.tolist(),
             segment_start=start_time,
@@ -107,6 +108,7 @@ class TestExtractionServiceCrossSampleConsistency:
 
         async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
             from stt.diarization.dto import SpeakerEmbedding
+
             return SpeakerEmbedding(
                 embedding=vec.tolist(),
                 segment_start=start_time,
@@ -125,6 +127,7 @@ class TestExtractionServiceCrossSampleConsistency:
 
         async def fake_extract(samples, sample_rate=16000, start_time=0.0, end_time=None):
             from stt.diarization.dto import SpeakerEmbedding
+
             vec = next(iterator)
             return SpeakerEmbedding(
                 embedding=vec.tolist(),

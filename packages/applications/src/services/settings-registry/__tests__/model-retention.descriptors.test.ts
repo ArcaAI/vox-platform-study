@@ -6,11 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { HOPE_SETTINGS_REGISTRY } from '../registry';
-import {
-  MODEL_CACHE_SERVICES,
-  SERVICE_RUNTIME_DEFAULTS,
-  ServiceRuntimeKey,
-} from '../descriptors/service-runtime.descriptors';
+import { MODEL_CACHE_SERVICES, SERVICE_RUNTIME_DEFAULTS, ServiceRuntimeKey } from '../descriptors/service-runtime.descriptors';
 
 const DESCRIPTORS = HOPE_SETTINGS_REGISTRY.list();
 const registryByKey = new Map(DESCRIPTORS.map((d) => [d.key, d]));

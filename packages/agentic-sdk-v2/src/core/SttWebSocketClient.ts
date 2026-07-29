@@ -869,8 +869,12 @@ export class SttWebSocketClient {
     if (!msg || typeof msg !== 'object') {
       return false;
     }
+    // `status` is the only required field. `message` is optional: structured
+    // status results (e.g. `provider_switched`, TASK-567) carry typed fields
+    // instead of a human message, so requiring `message` here silently dropped
+    // the provider-switch notification.
     const candidate = msg as { status?: unknown; message?: unknown };
-    return typeof candidate.status === 'string' && typeof candidate.message === 'string';
+    return typeof candidate.status === 'string' && (candidate.message === undefined || typeof candidate.message === 'string');
   }
 
   private static isValidError(msg: unknown): msg is WsErrorMessage {

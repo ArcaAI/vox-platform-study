@@ -8,7 +8,7 @@ import { GatewayError } from './http';
  * refresh+retry, so it is not retried here either.
  */
 export function retryQuery(failureCount: number, error: unknown): boolean {
-    if (failureCount >= 1) return false;
-    if (error instanceof GatewayError && error.status >= 400 && error.status < 500) return false;
-    return true;
+  if (failureCount >= 1) return false;
+  if (error instanceof GatewayError && error.status >= 400 && error.status < 500) return false;
+  return true;
 }

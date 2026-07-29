@@ -129,4 +129,3 @@ export interface ServiceModelOptions {
   /** Force re-download even if cached */
   forceDownload?: boolean;
 }
-

@@ -40,12 +40,7 @@ const mockCacheService = {
 };
 
 // Helper to create mock role with policies
-const createMockRole = (
-  id: string,
-  name: string,
-  rules: PolicyRule[],
-  parentRole?: { id: string; name: string; rules: PolicyRule[] }
-) => ({
+const createMockRole = (id: string, name: string, rules: PolicyRule[], parentRole?: { id: string; name: string; rules: PolicyRule[] }) => ({
   id,
   name,
   resourceStatus: 'ENABLED',
@@ -185,9 +180,7 @@ describe('PolicyEngine', () => {
         tenantId: 'tenant-456',
       };
 
-      const mockRole = createMockRole('admin-role', 'admin', [
-        { action: 'manage', subject: 'all' },
-      ]);
+      const mockRole = createMockRole('admin-role', 'admin', [{ action: 'manage', subject: 'all' }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -217,16 +210,11 @@ describe('PolicyEngine', () => {
         tenantId: 'tenant-456',
       };
 
-      const mockRole = createMockRole(
-        'child-role',
-        'child',
-        [{ action: 'read', subject: 'Document' }],
-        {
-          id: 'parent-role',
-          name: 'parent',
-          rules: [{ action: 'read', subject: 'User' }],
-        }
-      );
+      const mockRole = createMockRole('child-role', 'child', [{ action: 'read', subject: 'Document' }], {
+        id: 'parent-role',
+        name: 'parent',
+        rules: [{ action: 'read', subject: 'User' }],
+      });
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -350,9 +338,7 @@ describe('PolicyEngine', () => {
       };
 
       mockCacheService.isConnected.mockReturnValue(true);
-      mockCacheService.get.mockResolvedValue(
-        JSON.stringify([{ action: 'read', subject: 'CachedResource' }])
-      );
+      mockCacheService.get.mockResolvedValue(JSON.stringify([{ action: 'read', subject: 'CachedResource' }]));
 
       const ability = await policyEngine.buildAbility(context);
 
@@ -370,9 +356,7 @@ describe('PolicyEngine', () => {
       mockCacheService.isConnected.mockReturnValue(true);
       mockCacheService.get.mockResolvedValue(null); // Cache miss
 
-      const mockRole = createMockRole('role-1', 'reader', [
-        { action: 'read', subject: 'User' },
-      ]);
+      const mockRole = createMockRole('role-1', 'reader', [{ action: 'read', subject: 'User' }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -398,13 +382,9 @@ describe('PolicyEngine', () => {
         tenantId: 'tenant-456',
       };
 
-      const mockRole1 = createMockRole('role-1', 'reader', [
-        { action: 'read', subject: 'User' },
-      ]);
+      const mockRole1 = createMockRole('role-1', 'reader', [{ action: 'read', subject: 'User' }]);
 
-      const mockRole2 = createMockRole('role-2', 'writer', [
-        { action: 'create', subject: 'Document' },
-      ]);
+      const mockRole2 = createMockRole('role-2', 'writer', [{ action: 'create', subject: 'Document' }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -440,9 +420,7 @@ describe('PolicyEngine', () => {
         tenantId: 'tenant-456',
       };
 
-      const mockRole = createMockRole('global-role', 'global', [
-        { action: 'read', subject: 'GlobalResource' },
-      ]);
+      const mockRole = createMockRole('global-role', 'global', [{ action: 'read', subject: 'GlobalResource' }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -468,9 +446,7 @@ describe('PolicyEngine', () => {
     it('should check permissions correctly', async () => {
       const context: PolicyContext = { userId: 'user-123' };
 
-      const mockRole = createMockRole('role-1', 'reader', [
-        { action: 'read', subject: 'User' },
-      ]);
+      const mockRole = createMockRole('role-1', 'reader', [{ action: 'read', subject: 'User' }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -496,9 +472,7 @@ describe('PolicyEngine', () => {
     it('should check permissions with conditions', async () => {
       const context: PolicyContext = { userId: 'user-123' };
 
-      const mockRole = createMockRole('role-1', 'self-access', [
-        { action: 'read', subject: 'User', conditions: { id: 'user-123' } },
-      ]);
+      const mockRole = createMockRole('role-1', 'self-access', [{ action: 'read', subject: 'User', conditions: { id: 'user-123' } }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -528,9 +502,7 @@ describe('PolicyEngine', () => {
     it('should return accessible filter for Prisma queries', async () => {
       const context: PolicyContext = { userId: 'user-123' };
 
-      const mockRole = createMockRole('role-1', 'reader', [
-        { action: 'read', subject: 'User' },
-      ]);
+      const mockRole = createMockRole('role-1', 'reader', [{ action: 'read', subject: 'User' }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -556,9 +528,7 @@ describe('PolicyEngine', () => {
     it('should return permitted fields when defined', async () => {
       const context: PolicyContext = { userId: 'user-123' };
 
-      const mockRole = createMockRole('role-1', 'limited-reader', [
-        { action: 'read', subject: 'User', fields: ['id', 'name', 'email'] },
-      ]);
+      const mockRole = createMockRole('role-1', 'limited-reader', [{ action: 'read', subject: 'User', fields: ['id', 'name', 'email'] }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
         {
@@ -612,25 +582,16 @@ describe('PolicyEngine', () => {
     });
 
     it('should invalidate user cache', async () => {
-      mockCacheService.keys.mockResolvedValue([
-        'policy:ability:user-123:tenant-1',
-        'policy:ability:user-123:tenant-2',
-      ]);
+      mockCacheService.keys.mockResolvedValue(['policy:ability:user-123:tenant-1', 'policy:ability:user-123:tenant-2']);
 
       await policyEngine.invalidateUser('user-123');
 
       expect(mockCacheService.keys).toHaveBeenCalledWith('policy:ability:user-123:*');
-      expect(mockCacheService.delMany).toHaveBeenCalledWith([
-        'policy:ability:user-123:tenant-1',
-        'policy:ability:user-123:tenant-2',
-      ]);
+      expect(mockCacheService.delMany).toHaveBeenCalledWith(['policy:ability:user-123:tenant-1', 'policy:ability:user-123:tenant-2']);
     });
 
     it('should invalidate role cache for all users with direct assignments', async () => {
-      mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([
-        { userId: 'user-1' },
-        { userId: 'user-2' },
-      ]);
+      mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([{ userId: 'user-1' }, { userId: 'user-2' }]);
 
       mockCacheService.keys.mockResolvedValue([]);
 
@@ -643,10 +604,7 @@ describe('PolicyEngine', () => {
     });
 
     it('should invalidate policy cache', async () => {
-      mockPrismaClient.rolePolicy.findMany.mockResolvedValue([
-        { roleId: 'role-1' },
-        { roleId: 'role-2' },
-      ]);
+      mockPrismaClient.rolePolicy.findMany.mockResolvedValue([{ roleId: 'role-1' }, { roleId: 'role-2' }]);
 
       mockPrismaClient.userRoleAssignment.findMany.mockResolvedValue([]);
 
@@ -659,10 +617,7 @@ describe('PolicyEngine', () => {
     });
 
     it('should invalidate tenant cache', async () => {
-      mockCacheService.keys.mockResolvedValue([
-        'policy:ability:user-1:tenant-456',
-        'policy:ability:user-2:tenant-456',
-      ]);
+      mockCacheService.keys.mockResolvedValue(['policy:ability:user-1:tenant-456', 'policy:ability:user-2:tenant-456']);
 
       await policyEngine.invalidateTenant('tenant-456');
 
@@ -671,10 +626,7 @@ describe('PolicyEngine', () => {
     });
 
     it('should invalidate all cache', async () => {
-      mockCacheService.keys.mockResolvedValue([
-        'policy:ability:user-1:tenant-1',
-        'policy:ability:user-2:tenant-2',
-      ]);
+      mockCacheService.keys.mockResolvedValue(['policy:ability:user-1:tenant-1', 'policy:ability:user-2:tenant-2']);
 
       await policyEngine.invalidateAll();
 
@@ -727,9 +679,7 @@ describe('PolicyEngine', () => {
     it('should handle database errors gracefully', async () => {
       const context: PolicyContext = { userId: 'user-123' };
 
-      mockPrismaClient.userRoleAssignment.findMany.mockRejectedValue(
-        new Error('Database connection failed')
-      );
+      mockPrismaClient.userRoleAssignment.findMany.mockRejectedValue(new Error('Database connection failed'));
 
       // Should throw or return empty ability
       await expect(policyEngine.buildAbility(context)).rejects.toThrow();

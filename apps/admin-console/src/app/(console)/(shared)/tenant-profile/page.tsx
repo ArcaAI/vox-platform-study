@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Tenant Profile' };
 
 /** Frame 25 (tenant half) — Tenant profile (tier 20-29, shared). */
 export default function TenantProfilePage() {
-    return <TenantProfileScreen />;
+  return <TenantProfileScreen />;
 }

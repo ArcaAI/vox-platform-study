@@ -26,7 +26,7 @@ const mockUserDepartmentRepository = { create: vi.fn() };
 const mockDatabaseService = { baseClient: { $transaction: vi.fn() } };
 const mockUserProfileService = { upsertByUserId: vi.fn() };
 const mockCryptoService = { hash: vi.fn(async (pw: string) => `hashed::${pw}`), verify: vi.fn() };
-const mockAppSettings = { getValueWithDefault: vi.fn(<T,>(_k: string, d: T): T => d) };
+const mockAppSettings = { getValueWithDefault: vi.fn(<T>(_k: string, d: T): T => d) };
 
 const mockJwtRevocationService = {
   revoke: vi.fn().mockResolvedValue(undefined),
@@ -98,18 +98,15 @@ describe('UserService — token revocation on status change', () => {
   });
 
   describe('update()', () => {
-    it.each(['DISABLED', 'SUSPENDED', 'ARCHIVED', 'DELETED'])(
-      'revokes every live token when resourceStatus moves to %s',
-      async (status) => {
-        const entity = makeUserEntity('user-1');
-        mockUserRepository.findById.mockResolvedValue(entity);
-        mockUserRepository.update.mockResolvedValue(entity);
+    it.each(['DISABLED', 'SUSPENDED', 'ARCHIVED', 'DELETED'])('revokes every live token when resourceStatus moves to %s', async (status) => {
+      const entity = makeUserEntity('user-1');
+      mockUserRepository.findById.mockResolvedValue(entity);
+      mockUserRepository.update.mockResolvedValue(entity);
 
-        await service.update('user-1', { resourceStatus: status } as never);
+      await service.update('user-1', { resourceStatus: status } as never);
 
-        expect(mockJwtRevocationService.revokeAllForUser).toHaveBeenCalledWith('user-1');
-      },
-    );
+      expect(mockJwtRevocationService.revokeAllForUser).toHaveBeenCalledWith('user-1');
+    });
 
     it('does NOT revoke when the status transition is back to ENABLED', async () => {
       const entity = makeUserEntity('user-1');

@@ -59,9 +59,7 @@ def _without_rag_extra(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestImportSurfaceWithoutOptionalExtras:
-    def test_app_and_worker_import_without_optional_extras(
-        self, _without_rag_extra: None
-    ) -> None:
+    def test_app_and_worker_import_without_optional_extras(self, _without_rag_extra: None) -> None:
         """create_app() and harness.temporal.worker import cleanly sans qdrant_client/fastembed."""
         import harness.main as harness_main
 

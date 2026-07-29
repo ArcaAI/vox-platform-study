@@ -46,7 +46,9 @@ from .faster_whisper_loader import FasterWhisperLoader
 from .huggingface_loader import HuggingFaceLoader
 from .nemo_loader import NeMoLoader
 from .onnx_loader import ONNXLoader
+from .openai_loader import OpenAILoader
 from .parakeet_cpp_loader import ParakeetCppLoader
+from .sarvam_loader import SarvamLoader
 from .whisper_cpp_loader import WhisperCppLoader
 
 logger = logging.getLogger(__name__)
@@ -270,6 +272,9 @@ class ModelCache(SharedModelCache[LoadedModel]):
             AiModelFormat.PARAKEET_CPP: ParakeetCppLoader(),
             # whisper.cpp (lazy at load time).
             AiModelFormat.WHISPER_CPP: WhisperCppLoader(),
+            # Cloud BYOK speech engines (REST, TASK-567).
+            AiModelFormat.SARVAM: SarvamLoader(),
+            AiModelFormat.OPENAI: OpenAILoader(),
         }
 
         logger.info(

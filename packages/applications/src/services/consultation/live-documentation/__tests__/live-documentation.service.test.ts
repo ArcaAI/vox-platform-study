@@ -79,7 +79,9 @@ function buildHttpMock() {
       post: vi.fn().mockImplementation((url: string) => {
         if (url.includes('/classify/tokens')) {
           // Canonical NLP wire shape (apps/nlp schemas/common.py Entity): text / entity_type / position.{start,end}.
-          return Promise.resolve({ data: { entities: [{ entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.92, position: { start: 3, end: 13 } }] } });
+          return Promise.resolve({
+            data: { entities: [{ entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.92, position: { start: 3, end: 13 } }] },
+          });
         }
         if (url.includes('/generate')) {
           return Promise.resolve({ data: { summary: 'Pt on amlodipine for HTN.' } });
@@ -365,7 +367,11 @@ describe('LiveDocumentationService', () => {
               const text = body?.text ?? '';
               const start = text.indexOf('amlodipine');
               return Promise.resolve({
-                data: { entities: [{ entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.9, position: { start, end: start + 'amlodipine'.length } }] },
+                data: {
+                  entities: [
+                    { entity_type: 'MEDICATION', text: 'amlodipine', confidence: 0.9, position: { start, end: start + 'amlodipine'.length } },
+                  ],
+                },
               });
             }
             if (url.includes('/generate')) return Promise.resolve({ data: { summary: SOAP } });
@@ -788,7 +794,11 @@ describe('LiveDocumentationService', () => {
         service.ingestSegment(CID, { text: `seg ${i}`, isFinal: true, segmentId: `s${i}` });
       }
 
-      const capWarn = warnSpy.mock.calls.filter((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('transcriptparts'));
+      const capWarn = warnSpy.mock.calls.filter((c) =>
+        String((c[0] as { message?: string })?.message ?? '')
+          .toLowerCase()
+          .includes('transcriptparts'),
+      );
       expect(capWarn).toHaveLength(1);
     });
 
@@ -801,7 +811,11 @@ describe('LiveDocumentationService', () => {
         service.ingestSegment(CID, { text: `seg ${i}`, isFinal: true, segmentId: `s${i}` });
       }
 
-      const capWarn = warnSpy.mock.calls.filter((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('transcriptparts'));
+      const capWarn = warnSpy.mock.calls.filter((c) =>
+        String((c[0] as { message?: string })?.message ?? '')
+          .toLowerCase()
+          .includes('transcriptparts'),
+      );
       expect(capWarn).toHaveLength(0);
     });
 
@@ -817,7 +831,11 @@ describe('LiveDocumentationService', () => {
       const session = (service as unknown as { sessions: Map<string, { transcriptParts: string[] }> }).sessions.get(CID)!;
       expect(session.transcriptParts.length).toBe(50_000);
 
-      const capError = errorSpy.mock.calls.filter((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('transcriptparts'));
+      const capError = errorSpy.mock.calls.filter((c) =>
+        String((c[0] as { message?: string })?.message ?? '')
+          .toLowerCase()
+          .includes('transcriptparts'),
+      );
       expect(capError).toHaveLength(1);
     });
 
@@ -900,7 +918,11 @@ describe('LiveDocumentationService', () => {
       ingestOversizedBacklog(service);
       await service.flush(CID);
 
-      const truncWarn = warnSpy.mock.calls.find((c) => String((c[0] as { message?: string })?.message ?? '').toLowerCase().includes('truncat'));
+      const truncWarn = warnSpy.mock.calls.find((c) =>
+        String((c[0] as { message?: string })?.message ?? '')
+          .toLowerCase()
+          .includes('truncat'),
+      );
       expect(truncWarn).toBeDefined();
       // PHI-safe: the truncation log carries counts/sizes only, never transcript text.
       expect(JSON.stringify(truncWarn![0])).not.toContain(HEAD_MARKER);
@@ -948,9 +970,13 @@ describe('LiveDocumentationService', () => {
       expect(result).toBeNull();
       const publishes = cacheService.publish.mock.calls.map((c: unknown[]) => [c[0] as string, JSON.parse(c[1] as string)]);
       // terminal closed on the main channel
-      expect(publishes.some(([ch, p]: [string, { closed?: boolean }]) => ch === 'consultation:live-summary:other-cid' && p.closed === true)).toBe(true);
+      expect(publishes.some(([ch, p]: [string, { closed?: boolean }]) => ch === 'consultation:live-summary:other-cid' && p.closed === true)).toBe(
+        true,
+      );
       // stop signal on the control channel (so an owner on another instance tears down)
-      expect(publishes.some(([ch, p]: [string, { type?: string }]) => ch === 'consultation:live-summary:other-cid:control' && p.type === 'stop')).toBe(true);
+      expect(
+        publishes.some(([ch, p]: [string, { type?: string }]) => ch === 'consultation:live-summary:other-cid:control' && p.type === 'stop'),
+      ).toBe(true);
       // Owner lock release is FENCED (C5-06): a non-owner never blindly `del`s the
       // lock — it runs the compare-and-delete Lua so only the real owner's lock is freed.
       expect(cacheService.eval).toHaveBeenCalledWith(

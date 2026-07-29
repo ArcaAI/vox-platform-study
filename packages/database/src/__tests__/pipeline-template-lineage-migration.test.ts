@@ -19,13 +19,7 @@ import { dirname, join } from 'node:path';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { ASR_TEMPLATE_SLUGS } from '../prisma/db_main/seed/06-stt';
 
-const MIGRATIONS_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'prisma',
-  'db_main',
-  'migrations',
-);
+const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'prisma', 'db_main', 'migrations');
 
 const SCHEMA_SUFFIX = '_task_531_pipeline_template_lineage';
 const BACKFILL_SUFFIX = '_task_531_pipeline_template_lineage_backfill';
@@ -84,7 +78,7 @@ describe('pipeline template lineage — backfill migration', () => {
     expect(dir).toMatch(/^\d{14}_task_531_pipeline_template_lineage_backfill$/);
   });
 
-  it('inlines exactly the exported ASR_TEMPLATE_SLUGS set', () => {
+  it('inlines the frozen TASK-531 template set, all still real templates', () => {
     const sql = stripSqlComments(readMigrationSql(BACKFILL_SUFFIX));
 
     // The slug list is declared exactly once, as the `template_slugs` ARRAY[…]
@@ -95,15 +89,21 @@ describe('pipeline template lineage — backfill migration', () => {
 
     const slugsInSql = (arrayBlock![1].match(/'([^']+)'/g) ?? []).map((s) => s.slice(1, -1));
 
-    expect(slugsInSql.sort()).toEqual([...ASR_TEMPLATE_SLUGS].sort());
+    // The 531 backfill is HISTORICAL: it locked clones of the templates that
+    // existed when it shipped (the frozen 9). A tenant could not have cloned a
+    // template before it existed, so post-531 additions (e.g. the TASK-567
+    // sarvam/openai fallback templates) are deliberately NOT in this migration's
+    // literal — and the committed migration SQL is immutable. The drift gate is
+    // therefore: the migration inlines exactly its frozen 9, and every one of
+    // them is still a real exported template (a removal would break this).
+    expect(slugsInSql).toHaveLength(9);
+    slugsInSql.forEach((slug) => expect(ASR_TEMPLATE_SLUGS).toContain(slug));
   });
 
   it('never locks SYSTEM-owned rows (the templates themselves)', () => {
     const sql = stripSqlComments(readMigrationSql(BACKFILL_SUFFIX));
     // The SYSTEM tenant id is bound once and every candidate predicate excludes it.
-    expect(sql).toMatch(
-      /system_tenant\s+CONSTANT\s+TEXT\s*:=\s*'00000000-0000-0000-0000-000000000000'/i,
-    );
+    expect(sql).toMatch(/system_tenant\s+CONSTANT\s+TEXT\s*:=\s*'00000000-0000-0000-0000-000000000000'/i);
     const exclusions = sql.match(/"tenantId"\s*<>\s*system_tenant/gi) ?? [];
     // One per candidate scan: provenance, lock, ambiguous-report.
     expect(exclusions.length).toBeGreaterThanOrEqual(3);

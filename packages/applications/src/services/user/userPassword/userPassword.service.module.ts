@@ -19,10 +19,7 @@ import { createPasswordResetMailer } from './msgraph-mailer';
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, CryptoServiceModule],
-  providers: [
-    UserPasswordService,
-    { provide: IPasswordResetMailer, useFactory: () => createPasswordResetMailer() },
-  ],
+  providers: [UserPasswordService, { provide: IPasswordResetMailer, useFactory: () => createPasswordResetMailer() }],
   exports: [UserPasswordService],
 })
 export class UserPasswordServiceModule {}

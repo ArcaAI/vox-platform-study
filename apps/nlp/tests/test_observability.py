@@ -41,6 +41,7 @@ _TEST_RESOURCE = Resource({SERVICE_NAME: "test-nlp"})
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _clean_otel_handlers():
     """Remove OTel LoggingHandlers from root logger."""
     root = logging.getLogger()
@@ -61,6 +62,7 @@ def _reset_otel_globals():
         metrics._internal._METER_PROVIDER = None  # type: ignore[attr-defined]
 
     from opentelemetry._logs import _internal as logs_internal
+
     if hasattr(logs_internal, "_LOGGER_PROVIDER_SET_ONCE"):
         logs_internal._LOGGER_PROVIDER_SET_ONCE._done = False  # type: ignore[attr-defined]
     if hasattr(logs_internal, "_LOGGER_PROVIDER"):
@@ -107,8 +109,13 @@ def _make_tracer_provider():
 def _make_log_record(msg: str = "test", **extra_attrs):
     """Create a bare ``logging.LogRecord`` with optional OTel attributes."""
     record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0,
-        msg=msg, args=None, exc_info=None,
+        name="test",
+        level=logging.INFO,
+        pathname="",
+        lineno=0,
+        msg=msg,
+        args=None,
+        exc_info=None,
     )
     for k, v in extra_attrs.items():
         setattr(record, k, v)
@@ -118,6 +125,7 @@ def _make_log_record(msg: str = "test", **extra_attrs):
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _otel_reset():
@@ -161,6 +169,7 @@ def in_memory_log_exporter():
 def fastapi_app():
     """Minimal FastAPI app for testing setup_opentelemetry."""
     from fastapi import FastAPI
+
     app = FastAPI()
     app.state._state = {}
     return app
@@ -169,6 +178,7 @@ def fastapi_app():
 # ---------------------------------------------------------------------------
 # Test Group 1: LoggerProvider Setup
 # ---------------------------------------------------------------------------
+
 
 class TestLoggerProviderSetup:
     """Verify setup_opentelemetry creates and wires the LoggerProvider."""
@@ -191,7 +201,9 @@ class TestLoggerProviderSetup:
             try:
                 root = logging.getLogger()
                 otel_handlers = [h for h in root.handlers if isinstance(h, LoggingHandler)]
-                assert len(otel_handlers) >= 1, "Root logger must have at least one OTel LoggingHandler"
+                assert (
+                    len(otel_handlers) >= 1
+                ), "Root logger must have at least one OTel LoggingHandler"
             finally:
                 shutdown_opentelemetry(fastapi_app)
 
@@ -201,8 +213,10 @@ class TestLoggerProviderSetup:
         with _patched_otel_settings(otel_enabled=True, otlp_endpoint=None):
             setup_opentelemetry(fastapi_app)
 
-            assert not hasattr(fastapi_app.state, "logger_provider") or \
-                fastapi_app.state.logger_provider is None
+            assert (
+                not hasattr(fastapi_app.state, "logger_provider")
+                or fastapi_app.state.logger_provider is None
+            )
 
     def test_shutdown_flushes_logger_provider(self, fastapi_app):
         """shutdown_opentelemetry must call .shutdown() on the LoggerProvider."""
@@ -220,6 +234,7 @@ class TestLoggerProviderSetup:
 # ---------------------------------------------------------------------------
 # Test Group 2: Log Export via OTLP
 # ---------------------------------------------------------------------------
+
 
 class TestLogExportOTLP:
     """Verify that Python log records become OTel log records."""
@@ -275,8 +290,9 @@ class TestLogExportOTLP:
         records = in_memory_log_exporter.get_finished_logs()
         severity_texts = [r.log_record.severity_text for r in records]
         assert "INFO" in severity_texts, f"Expected 'INFO' in {severity_texts}"
-        assert any(s in severity_texts for s in ("WARNING", "WARN")), \
-            f"Expected 'WARNING' or 'WARN' in {severity_texts}"
+        assert any(
+            s in severity_texts for s in ("WARNING", "WARN")
+        ), f"Expected 'WARNING' or 'WARN' in {severity_texts}"
         assert "ERROR" in severity_texts
 
     def test_log_record_body_contains_message(self, in_memory_log_exporter):
@@ -286,13 +302,15 @@ class TestLogExportOTLP:
 
         records = in_memory_log_exporter.get_finished_logs()
         bodies = [str(r.log_record.body) for r in records]
-        assert any("unique-marker-12345" in b for b in bodies), \
-            f"Expected 'unique-marker-12345' in log record bodies, got {bodies}"
+        assert any(
+            "unique-marker-12345" in b for b in bodies
+        ), f"Expected 'unique-marker-12345' in log record bodies, got {bodies}"
 
 
 # ---------------------------------------------------------------------------
 # Test Group 3: JsonFormatter Trace Correlation (stdout path)
 # ---------------------------------------------------------------------------
+
 
 class TestJsonFormatterTraceCorrelation:
     """Verify that JsonFormatter includes OTel trace context in JSON output."""
@@ -306,8 +324,11 @@ class TestJsonFormatterTraceCorrelation:
         tracer = trace.get_tracer("test")
         with tracer.start_as_current_span("fmt-span") as span:
             expected = format(span.get_span_context().trace_id, "032x")
-            record = _make_log_record("trace test", otelTraceID=expected,
-                                      otelSpanID=format(span.get_span_context().span_id, "016x"))
+            record = _make_log_record(
+                "trace test",
+                otelTraceID=expected,
+                otelSpanID=format(span.get_span_context().span_id, "016x"),
+            )
             data = json.loads(self._formatter.format(record))
             assert data.get("traceId") == expected
         provider.shutdown()
@@ -319,9 +340,11 @@ class TestJsonFormatterTraceCorrelation:
         tracer = trace.get_tracer("test")
         with tracer.start_as_current_span("span-test") as span:
             expected = format(span.get_span_context().span_id, "016x")
-            record = _make_log_record("span test",
-                                      otelTraceID=format(span.get_span_context().trace_id, "032x"),
-                                      otelSpanID=expected)
+            record = _make_log_record(
+                "span test",
+                otelTraceID=format(span.get_span_context().trace_id, "032x"),
+                otelSpanID=expected,
+            )
             data = json.loads(self._formatter.format(record))
             assert data.get("spanId") == expected
         provider.shutdown()
@@ -338,8 +361,7 @@ class TestJsonFormatterTraceCorrelation:
         """Timestamp must end with +00:00 (UTC timezone indicator)."""
         record = _make_log_record("utc test")
         data = json.loads(self._formatter.format(record))
-        assert data["timestamp"].endswith("+00:00"), \
-            f"Timestamp not UTC: {data['timestamp']}"
+        assert data["timestamp"].endswith("+00:00"), f"Timestamp not UTC: {data['timestamp']}"
 
     def test_json_formatter_includes_service_name(self):
         """When OTel is active, JSON output must contain service.name field."""
@@ -351,6 +373,7 @@ class TestJsonFormatterTraceCorrelation:
 # ---------------------------------------------------------------------------
 # Test Group 4: Config Parsing
 # ---------------------------------------------------------------------------
+
 
 class TestConfigParsing:
     """Verify NLPServiceConfig parses OTel-related env vars correctly."""
@@ -407,6 +430,7 @@ class TestConfigParsing:
 # Test Group 5: PHI Sanitization
 # ---------------------------------------------------------------------------
 
+
 class TestPHISanitization:
     """Verify _phi_sanitization_hook redacts sensitive span attributes."""
 
@@ -451,6 +475,7 @@ class TestPHISanitization:
 # Test Group 6: Metrics (OTel export)
 # ---------------------------------------------------------------------------
 
+
 class TestMetrics:
     """Verify MeterProvider setup and NLPMetrics instrumentation."""
 
@@ -473,6 +498,7 @@ class TestMetrics:
         metrics.set_meter_provider(provider)
 
         from nlp.core.metrics import NLPMetrics
+
         test_metrics = NLPMetrics(meter_name="test-nlp-metrics")
 
         with test_metrics.track_inference("test-model"):
@@ -486,16 +512,19 @@ class TestMetrics:
                 for m in sm.metrics:
                     metric_names.append(m.name)
 
-        assert "nlp.inference.total" in metric_names, \
-            f"Expected 'nlp.inference.total' in {metric_names}"
-        assert "nlp.inference.duration_ms" in metric_names, \
-            f"Expected 'nlp.inference.duration_ms' in {metric_names}"
+        assert (
+            "nlp.inference.total" in metric_names
+        ), f"Expected 'nlp.inference.total' in {metric_names}"
+        assert (
+            "nlp.inference.duration_ms" in metric_names
+        ), f"Expected 'nlp.inference.duration_ms' in {metric_names}"
         provider.shutdown()
 
 
 # ---------------------------------------------------------------------------
 # Test Group 7: OTel Master Switch — NLP_OTEL_ENABLED
 # ---------------------------------------------------------------------------
+
 
 class TestOtelMasterSwitch:
     """Verify the NLP_OTEL_ENABLED master switch gates traces, metrics, AND logs."""
@@ -507,33 +536,45 @@ class TestOtelMasterSwitch:
         with _patched_otel_settings(otel_enabled=False):
             setup_opentelemetry(fastapi_app)
 
-            assert not hasattr(fastapi_app.state, "tracer_provider") or \
-                fastapi_app.state.tracer_provider is None
-            assert not hasattr(fastapi_app.state, "meter_provider") or \
-                fastapi_app.state.meter_provider is None
-            assert not hasattr(fastapi_app.state, "logger_provider") or \
-                fastapi_app.state.logger_provider is None
+            assert (
+                not hasattr(fastapi_app.state, "tracer_provider")
+                or fastapi_app.state.tracer_provider is None
+            )
+            assert (
+                not hasattr(fastapi_app.state, "meter_provider")
+                or fastapi_app.state.meter_provider is None
+            )
+            assert (
+                not hasattr(fastapi_app.state, "logger_provider")
+                or fastapi_app.state.logger_provider is None
+            )
 
             root = logging.getLogger()
             otel_handlers = [h for h in root.handlers if isinstance(h, LoggingHandler)]
             assert otel_handlers == [], "No OTel LoggingHandler may be added when disabled"
 
-            assert getattr(fastapi_app, "_is_instrumented_by_opentelemetry", False) is False, \
-                "FastAPI app must not be instrumented when otel_enabled=False"
+            assert (
+                getattr(fastapi_app, "_is_instrumented_by_opentelemetry", False) is False
+            ), "FastAPI app must not be instrumented when otel_enabled=False"
 
     def test_disabled_switch_logs_single_info_line(self, fastapi_app, caplog):
         """A2: the disabled path logs one info-level line and no warning."""
-        with _patched_otel_settings(otel_enabled=False), \
-                caplog.at_level(logging.INFO, logger="observability"):
+        with (
+            _patched_otel_settings(otel_enabled=False),
+            caplog.at_level(logging.INFO, logger="observability"),
+        ):
             setup_opentelemetry(fastapi_app)
 
         disabled_infos = [
-            r for r in caplog.records
-            if r.name == "observability" and r.levelno == logging.INFO
+            r
+            for r in caplog.records
+            if r.name == "observability"
+            and r.levelno == logging.INFO
             and "NLP_OTEL_ENABLED" in r.getMessage()
         ]
-        assert len(disabled_infos) == 1, \
-            f"Expected exactly one 'disabled' info log, got {[r.getMessage() for r in caplog.records]}"
+        assert (
+            len(disabled_infos) == 1
+        ), f"Expected exactly one 'disabled' info log, got {[r.getMessage() for r in caplog.records]}"
 
     def test_enabled_switch_creates_all_providers(self, fastapi_app):
         """A3: endpoint set + otel_enabled=True → tracer/meter/logger providers created
@@ -554,14 +595,19 @@ class TestOtelMasterSwitch:
     def test_enabled_without_endpoint_stays_disabled(self, fastapi_app, caplog):
         """A4: otel_enabled=True + endpoint unset → disabled; the existing
         misconfiguration warning is still emitted."""
-        with _patched_otel_settings(otel_enabled=True, otlp_endpoint=None), \
-                caplog.at_level(logging.WARNING, logger="observability"):
+        with (
+            _patched_otel_settings(otel_enabled=True, otlp_endpoint=None),
+            caplog.at_level(logging.WARNING, logger="observability"),
+        ):
             setup_opentelemetry(fastapi_app)
 
-        assert not hasattr(fastapi_app.state, "logger_provider") or \
-            fastapi_app.state.logger_provider is None
+        assert (
+            not hasattr(fastapi_app.state, "logger_provider")
+            or fastapi_app.state.logger_provider is None
+        )
         warnings = [
-            r for r in caplog.records
+            r
+            for r in caplog.records
             if r.levelno == logging.WARNING and "OTEL_EXPORTER_OTLP_ENDPOINT" in r.getMessage()
         ]
         assert warnings, "Expected the endpoint-missing warning when enabled but unconfigured"

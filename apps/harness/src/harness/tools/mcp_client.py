@@ -130,9 +130,7 @@ class McpToolClient:
             from mcp import ClientSession
             from mcp.client.streamable_http import streamablehttp_client
         except ImportError as exc:  # the extra is absent — surface as a coarse failure
-            raise McpClientError(
-                "mcp SDK not installed (optional 'mcp-tools' extra)"
-            ) from exc
+            raise McpClientError("mcp SDK not installed (optional 'mcp-tools' extra)") from exc
 
         try:
             async with asyncio.timeout(self._timeout_s):
@@ -145,8 +143,9 @@ class McpToolClient:
                         await session.initialize()
                         result = await session.call_tool(tool, arguments=args)
         except TimeoutError as exc:
-            raise McpClientError(f"mcp tool call timed out after {self._timeout_s}s",
-                                 is_timeout=True) from exc
+            raise McpClientError(
+                f"mcp tool call timed out after {self._timeout_s}s", is_timeout=True
+            ) from exc
         except McpClientError:
             raise
         except Exception as exc:  # noqa: BLE001 — normalize any transport/protocol error

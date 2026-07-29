@@ -266,9 +266,7 @@ async def _resolve_hf(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_s3(
-    identity: ModelWeightIdentity, uri: str, config: ModelSourceConfig
-) -> Path:
+async def _resolve_s3(identity: ModelWeightIdentity, uri: str, config: ModelSourceConfig) -> Path:
     parsed = urlparse(uri)
     bucket = parsed.netloc
     prefix = parsed.path.lstrip("/")
@@ -286,23 +284,15 @@ async def _resolve_s3(
             if identity.checksum and not (target / _VERIFIED_MARKER).exists():
                 # A pre-existing cache entry is verified on FIRST use — a
                 # poisoned cache must not be trusted just because it is warm.
-                await asyncio.to_thread(
-                    _verify_dir_checksum, target, identity, uri, True
-                )
-            logger.debug(
-                "guardrail.model_source.s3_cache_hit", slug=identity.slug, uri=uri
-            )
+                await asyncio.to_thread(_verify_dir_checksum, target, identity, uri, True)
+            logger.debug("guardrail.model_source.s3_cache_hit", slug=identity.slug, uri=uri)
             return target
 
         tmp = target.with_name(f"{target.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}")
         try:
-            await asyncio.to_thread(
-                _download_s3_prefix, config, bucket, prefix, tmp, identity, uri
-            )
+            await asyncio.to_thread(_download_s3_prefix, config, bucket, prefix, tmp, identity, uri)
             if identity.checksum:
-                await asyncio.to_thread(
-                    _verify_dir_checksum, tmp, identity, uri, False
-                )
+                await asyncio.to_thread(_verify_dir_checksum, tmp, identity, uri, False)
             os.replace(tmp, target)
         except Exception:
             shutil.rmtree(tmp, ignore_errors=True)
@@ -341,8 +331,7 @@ def _download_s3_prefix(
         raise
     except Exception as exc:
         raise ModelSourceError(
-            f"Failed to download S3 model source {uri!r} for model "
-            f"'{identity.slug}': {exc}"
+            f"Failed to download S3 model source {uri!r} for model " f"'{identity.slug}': {exc}"
         ) from exc
 
     if downloaded == 0:
@@ -364,9 +353,7 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _verify_checksum_sync(
-    path: Path, identity: ModelWeightIdentity, uri: str
-) -> None:
+def _verify_checksum_sync(path: Path, identity: ModelWeightIdentity, uri: str) -> None:
     """Verify a single-file artifact. Mismatch is a HARD error."""
     actual = _sha256(path)
     if actual.lower() != (identity.checksum or "").lower():
@@ -443,9 +430,7 @@ async def resolve_groundedness_model_path(
     would otherwise have loaded.
     """
     try:
-        identity = await tenant_config.resolve_model_source(
-            tenant_id, TASK_KEY_GROUNDEDNESS
-        )
+        identity = await tenant_config.resolve_model_source(tenant_id, TASK_KEY_GROUNDEDNESS)
     except Exception as exc:  # noqa: BLE001 — never lose the staged env weights
         logger.warning(
             "guardrail.model_source.registry_unavailable",
@@ -459,9 +444,7 @@ async def resolve_groundedness_model_path(
         return env_path
 
     try:
-        resolved = await resolve_model_dir(
-            identity, config=config, allow_network=False
-        )
+        resolved = await resolve_model_dir(identity, config=config, allow_network=False)
         return str(resolved)
     except ModelSourceError as exc:
         logger.warning(

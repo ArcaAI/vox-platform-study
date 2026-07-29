@@ -142,7 +142,9 @@ async def test_transient_terminated_is_retried_then_succeeds(build_client):
     client = build_client(transient_retries=3, transient_retry_backoff_s=0.0)
     captured: dict = {}
     client._client.chat.completions.create = _flaky_create(
-        captured, fail_times=2, error="Error code: 400 - {'error': 'terminated'}",
+        captured,
+        fail_times=2,
+        error="Error code: 400 - {'error': 'terminated'}",
         content='{"succinct": 3}',
     )
     out = await client.complete([{"role": "user", "content": "hi"}])
@@ -160,7 +162,10 @@ async def test_transient_failure_aborts_after_retries_exhausted(build_client):
     client = build_client(transient_retries=2, transient_retry_backoff_s=0.0)
     captured: dict = {}
     client._client.chat.completions.create = _flaky_create(
-        captured, fail_times=99, error="{'error': 'terminated'}", content="unused",
+        captured,
+        fail_times=99,
+        error="{'error': 'terminated'}",
+        content="unused",
     )
     with pytest.raises(JudgeConnectionError):
         await client.complete([{"role": "user", "content": "hi"}])
@@ -177,7 +182,10 @@ async def test_non_transient_error_is_not_retried(build_client):
     client = build_client(transient_retries=3, transient_retry_backoff_s=0.0)
     captured: dict = {}
     client._client.chat.completions.create = _flaky_create(
-        captured, fail_times=99, error="invalid 'messages': bad shape", content="unused",
+        captured,
+        fail_times=99,
+        error="invalid 'messages': bad shape",
+        content="unused",
     )
     with pytest.raises(JudgeConnectionError):
         await client.complete([{"role": "user", "content": "hi"}])
@@ -208,9 +216,7 @@ async def test_judge_respects_shared_endpoint_concurrency_cap(monkeypatch):
             state["in_flight"] -= 1
 
     client._client.chat.completions.create = create
-    await asyncio.gather(
-        *(client.complete([{"role": "user", "content": "hi"}]) for _ in range(8))
-    )
+    await asyncio.gather(*(client.complete([{"role": "user", "content": "hi"}]) for _ in range(8)))
     assert state["peak"] == 2  # fanned out 8, capped at 2 in flight
 
 

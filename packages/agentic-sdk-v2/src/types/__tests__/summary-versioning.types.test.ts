@@ -8,11 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import type {
-  UpdateSummaryOptions,
-  SummaryVersionEntry,
-  SummaryMeta,
-} from '../summary';
+import type { UpdateSummaryOptions, SummaryVersionEntry, SummaryMeta } from '../summary';
 
 // =============================================================================
 // UpdateSummaryOptions
@@ -31,10 +27,8 @@ describe('Summary versioning types', () => {
     });
 
     it('should accept all valid change sources', () => {
-      const sources: UpdateSummaryOptions['changeSource'][] = [
-        'doctor_edit', 'ai_regeneration', 'system',
-      ];
-      sources.forEach(source => {
+      const sources: UpdateSummaryOptions['changeSource'][] = ['doctor_edit', 'ai_regeneration', 'system'];
+      sources.forEach((source) => {
         const options: UpdateSummaryOptions = { changeSource: source };
         expect(options.changeSource).toBe(source);
       });

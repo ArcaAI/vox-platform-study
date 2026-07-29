@@ -1390,6 +1390,23 @@ class TestSessionManager:
 
         assert captured == [300]
 
+    def test_inference_stop_timeout_configurable_via_env(self, monkeypatch):
+        """STREAMING_INFERENCE_STOP_TIMEOUT_S must actually control
+        SessionManager._inference_stop_timeout_s. It was a phantom knob:
+        streaming_inference_stop_timeout_s was never declared on Settings, so
+        getattr() always fell back to the hardcoded 30.0 default regardless
+        of env."""
+        from stt.core.config.settings import get_settings
+
+        monkeypatch.setenv("LOG_LEVEL", "INFO")
+        monkeypatch.setenv("STREAMING_INFERENCE_STOP_TIMEOUT_S", "7.5")
+        get_settings.cache_clear()
+        try:
+            mgr = self._make_manager()
+            assert mgr._inference_stop_timeout_s == 7.5
+        finally:
+            get_settings.cache_clear()
+
 
 # ---------------------------------------------------------------------------
 # Settings Tests (streaming fields)
@@ -1420,6 +1437,9 @@ class TestStreamingSettings:
         assert s.streaming_transcript_persist_backoff_s == 0.5
         assert s.streaming_transcript_outbox_max_attempts == 10
         assert s.streaming_inference_drain_timeout_s == 60.0
+        # Previously a getattr fallback (phantom knob — no env var could
+        # ever change it); now a real setting.
+        assert s.streaming_inference_stop_timeout_s == 30.0
         assert s.streaming_worker_heartbeat_s == 10
         assert s.streaming_worker_heartbeat_ttl_s == 30
         # Audio bound reconciled to the single source of
@@ -1436,6 +1456,8 @@ class TestStreamingSettings:
         monkeypatch.setenv("LOG_LEVEL", "INFO")
         monkeypatch.setenv("STREAMING_MAX_CONCURRENT", "42")
         monkeypatch.setenv("STREAMING_EMBEDDING_DEVICE", "cuda:1")
+        monkeypatch.setenv("STREAMING_INFERENCE_STOP_TIMEOUT_S", "12.5")
         s = Settings()
         assert s.streaming_max_concurrent == 42
         assert s.streaming_embedding_device == "cuda:1"
+        assert s.streaming_inference_stop_timeout_s == 12.5

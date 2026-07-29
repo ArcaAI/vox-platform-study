@@ -206,9 +206,7 @@ describe('useMedNER', () => {
   describe('callbacks', () => {
     it('should accept onEntitiesExtracted callback', () => {
       const onEntitiesExtracted = vi.fn();
-      const { result } = renderHook(() =>
-        useMedNER({ autoInit: false, onEntitiesExtracted })
-      );
+      const { result } = renderHook(() => useMedNER({ autoInit: false, onEntitiesExtracted }));
 
       // Hook should be usable with callback
       expect(typeof result.current.extract).toBe('function');
@@ -239,7 +237,7 @@ describe('useMedNER', () => {
           model: 'biomedical',
           threshold: 0.7,
           entityTypes: [MedicalEntityType.DISEASE],
-        })
+        }),
       );
 
       // Hook should be usable with options

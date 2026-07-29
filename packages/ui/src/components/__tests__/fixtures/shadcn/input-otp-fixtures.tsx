@@ -1,9 +1,4 @@
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-  InputOTPSeparator,
-} from '../../../shadcn/input-otp'
+import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from '../../../shadcn/input-otp';
 
 export function BasicOTP() {
   return (
@@ -20,7 +15,7 @@ export function BasicOTP() {
         <InputOTPSlot index={5} />
       </InputOTPGroup>
     </InputOTP>
-  )
+  );
 }
 
 export function SingleGroupOTP() {
@@ -33,7 +28,7 @@ export function SingleGroupOTP() {
         <InputOTPSlot index={3} />
       </InputOTPGroup>
     </InputOTP>
-  )
+  );
 }
 
 export function OTPWithCustomClass() {
@@ -46,5 +41,5 @@ export function OTPWithCustomClass() {
         <InputOTPSlot index={3} />
       </InputOTPGroup>
     </InputOTP>
-  )
+  );
 }

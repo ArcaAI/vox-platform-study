@@ -103,9 +103,13 @@ class RateLimitTracker:
         now = time.monotonic()
         if now < self._rate_limited_until:
             return self._rate_limited_until - now
-        rpm_wait = self._rpm_counter.seconds_until_capacity(self.rpm_limit, 1) if self.rpm_limit else 0.0
+        rpm_wait = (
+            self._rpm_counter.seconds_until_capacity(self.rpm_limit, 1) if self.rpm_limit else 0.0
+        )
         tpm_wait = (
-            self._tpm_counter.seconds_until_capacity(self.tpm_limit, estimated_tokens) if self.tpm_limit else 0.0
+            self._tpm_counter.seconds_until_capacity(self.tpm_limit, estimated_tokens)
+            if self.tpm_limit
+            else 0.0
         )
         return max(rpm_wait, tpm_wait)
 

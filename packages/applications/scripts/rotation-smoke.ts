@@ -56,9 +56,7 @@ function parseArgs(argv: string[]): Args {
   const pass = get('--pass');
   const overlapSec = parseInt(get('--overlap-sec') ?? '60', 10);
   if (!baseUrl || !vaultAddr || !user || !pass) {
-    throw new Error(
-      'rotation-smoke: required flags: --base-url, --vault-addr, --user, --pass',
-    );
+    throw new Error('rotation-smoke: required flags: --base-url, --vault-addr, --user, --pass');
   }
   return { baseUrl, vaultAddr, user, pass, overlapSec };
 }
@@ -141,9 +139,7 @@ async function main(): Promise<void> {
   const waitDeadline = Date.now() + 10_000;
   while (Date.now() < waitDeadline && invalidations === 0) await sleep(100);
   if (invalidations === 0) {
-    throw new Error(
-      'rotation-smoke: no invalidation event received within 10s — rotation worker offline?',
-    );
+    throw new Error('rotation-smoke: no invalidation event received within 10s — rotation worker offline?');
   }
   console.log(`[smoke] invalidation observed (${invalidations} events, keys=${observed.join(',')})`);
 
@@ -153,9 +149,7 @@ async function main(): Promise<void> {
   console.log('[smoke] step 6: verify old JWT now rejected (cache evicted)');
   const oldRes = await api.whoami(oldJwt);
   if (oldRes.ok) {
-    throw new Error(
-      `rotation-smoke: old JWT still accepted (status=${oldRes.status}); rotation did not propagate`,
-    );
+    throw new Error(`rotation-smoke: old JWT still accepted (status=${oldRes.status}); rotation did not propagate`);
   }
   console.log(`[smoke] old JWT correctly rejected (status=${oldRes.status})`);
 
@@ -172,8 +166,7 @@ async function main(): Promise<void> {
   console.log('[smoke] PASS');
 }
 
-const invokedDirectly =
-  typeof process.argv[1] === 'string' && /rotation-smoke/.test(process.argv[1]);
+const invokedDirectly = typeof process.argv[1] === 'string' && /rotation-smoke/.test(process.argv[1]);
 if (invokedDirectly) {
   main().catch((err) => {
     // Never echo the rotated value — defensive even though this script

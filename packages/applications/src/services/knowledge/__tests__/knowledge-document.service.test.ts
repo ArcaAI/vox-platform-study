@@ -96,9 +96,7 @@ describe('KnowledgeDocumentService', () => {
     });
     knowledgeDocumentRepository.findById.mockResolvedValue(foreign);
 
-    await expect(
-      service.approveDocument(foreign.id, { tenantId: TENANT_A, text: 'x' }),
-    ).rejects.toThrow(NotFoundException);
+    await expect(service.approveDocument(foreign.id, { tenantId: TENANT_A, text: 'x' })).rejects.toThrow(NotFoundException);
     expect(ingestQueue.add).not.toHaveBeenCalled();
   });
 

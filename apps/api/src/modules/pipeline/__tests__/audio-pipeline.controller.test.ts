@@ -91,9 +91,7 @@ describe('AudioPipelineController authorization metadata', () => {
   it('uses [manage, AsrPipeline] (tenant admins can self-serve), not [manage, all]', () => {
     const meta = Reflect.getMetadata('required_permissions', AudioPipelineController);
     expect(meta).toBeDefined();
-    expect(meta).toEqual(
-      expect.arrayContaining([{ action: 'manage', subject: 'AsrPipeline' }]),
-    );
+    expect(meta).toEqual(expect.arrayContaining([{ action: 'manage', subject: 'AsrPipeline' }]));
     expect(JSON.stringify(meta)).not.toContain('"all"');
   });
 });
@@ -121,9 +119,7 @@ describe('AudioPipelineController assignTenant', () => {
     const result = await controller.assignTenant('p-1', { tenantId: 't-1' });
 
     expect(assignToTenant).toHaveBeenCalledWith('p-1', 't-1');
-    expect(result).toEqual(
-      expect.objectContaining({ pipelineId: 'p-1', tenantId: 't-1' }),
-    );
+    expect(result).toEqual(expect.objectContaining({ pipelineId: 'p-1', tenantId: 't-1' }));
     expect(typeof result.message).toBe('string');
   });
 

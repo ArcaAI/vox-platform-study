@@ -56,9 +56,7 @@ class TestDedupOverlapShared:
 
 class TestForcedBoundaryDedup:
     async def test_overlapping_finals_dedup_carried_words(self):
-        worker = _make_worker(
-            ["the patient reports severe pain", "severe pain in the chest"]
-        )
+        worker = _make_worker(["the patient reports severe pain", "severe pain in the chest"])
         # Final 1: 0..10 s. Final 2 starts at 9.5 s (0.5 s hard-split carry).
         r1 = await worker.process_utterance("s1", _utt(0.0, 10.0, 0))
         r2 = await worker.process_utterance("s1", _utt(9.5, 20.0, 1))
@@ -78,9 +76,7 @@ class TestForcedBoundaryDedup:
 
     async def test_overlap_window_bounds_match_length(self):
         # 0.25 s overlap → at most 2 words may be stripped even if more match.
-        worker = _make_worker(
-            ["alpha beta gamma delta epsilon", "gamma delta epsilon zeta"]
-        )
+        worker = _make_worker(["alpha beta gamma delta epsilon", "gamma delta epsilon zeta"])
         await worker.process_utterance("s1", _utt(0.0, 10.0, 0))
         r2 = await worker.process_utterance("s1", _utt(9.75, 15.0, 1))
 
@@ -114,9 +110,7 @@ class TestP1ReviewFixes:
             {"word": "the", "start": 0.9, "end": 1.0},
             {"word": "chest", "start": 1.0, "end": 1.4},
         ]
-        out = StreamingInferenceWorker._trim_dedup_word_timestamps(
-            ts, ["severe", "pain"]
-        )
+        out = StreamingInferenceWorker._trim_dedup_word_timestamps(ts, ["severe", "pain"])
         words = [e["word"] for e in out]
         assert "severe" not in words
         assert "pain," not in words

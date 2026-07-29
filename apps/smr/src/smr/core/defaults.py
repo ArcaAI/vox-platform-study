@@ -17,7 +17,15 @@ GENERATION_DEFAULTS: dict[str, float | int] = {
 def resolve_request_defaults(request: GenerateRequest) -> dict[str, float | int]:
     """Return resolved hyperparameters, using defaults only for None values."""
     return {
-        "temperature": request.temperature if request.temperature is not None else GENERATION_DEFAULTS["temperature"],
-        "max_tokens": request.max_tokens if request.max_tokens is not None else GENERATION_DEFAULTS["max_tokens"],
+        "temperature": (
+            request.temperature
+            if request.temperature is not None
+            else GENERATION_DEFAULTS["temperature"]
+        ),
+        "max_tokens": (
+            request.max_tokens
+            if request.max_tokens is not None
+            else GENERATION_DEFAULTS["max_tokens"]
+        ),
         "top_p": request.top_p if request.top_p is not None else GENERATION_DEFAULTS["top_p"],
     }

@@ -6,84 +6,84 @@ import type { BaseResource } from '@/shared/api';
  * strings and `resourceStatus` is restricted to ENABLED/DISABLED).
  */
 export interface Department {
-    id: string;
-    code?: string;
-    name?: string;
-    description?: string;
-    parentDepartmentId?: string;
-    isRootDepartment: boolean;
-    createdAt: string;
-    updatedAt: string;
-    defaultSummaryTemplate?: string;
-    preSummaryPromptId?: string;
-    newPatientPromptId?: string;
-    revisitPromptId?: string;
-    dnaWritingStylePromptId?: string;
-    promptConfig?: Record<string, unknown>;
-    resourceStatus?: 'ENABLED' | 'DISABLED';
-    /** OCC row version — echoed back as If-Match/`expectedVersion` on PATCH. */
-    version: number;
+  id: string;
+  code?: string;
+  name?: string;
+  description?: string;
+  parentDepartmentId?: string;
+  isRootDepartment: boolean;
+  createdAt: string;
+  updatedAt: string;
+  defaultSummaryTemplate?: string;
+  preSummaryPromptId?: string;
+  newPatientPromptId?: string;
+  revisitPromptId?: string;
+  dnaWritingStylePromptId?: string;
+  promptConfig?: Record<string, unknown>;
+  resourceStatus?: 'ENABLED' | 'DISABLED';
+  /** OCC row version — echoed back as If-Match/`expectedVersion` on PATCH. */
+  version: number;
 }
 
 /** GET /admin/departments accepts ONLY this flag (no pagination/search). */
 export interface ListDepartmentsParams {
-    includeDisabled?: boolean;
-    [key: string]: string | number | boolean | undefined | null;
+  includeDisabled?: boolean;
+  [key: string]: string | number | boolean | undefined | null;
 }
 
 /** Role assignment nested on a member row (UserRoleAssignmentResponse). */
 export interface DepartmentMemberRole extends BaseResource {
-    userId: string;
-    roleId: string;
-    roleName?: string;
-    tenantId: string | null;
+  userId: string;
+  roleId: string;
+  roleName?: string;
+  tenantId: string | null;
 }
 
 /** GET /admin/departments/:id/users rows (UserResponse; `isLead` marks the department lead). */
 export interface DepartmentMember extends BaseResource {
-    username: string;
-    lastLoginAt?: string;
-    lastActiveAt?: string;
-    externalId?: string;
-    isServiceAccount: boolean;
-    /** True for the department's lead member (server-side membership flag). */
-    isLead?: boolean;
-    UserRoleAssignments?: DepartmentMemberRole[];
+  username: string;
+  lastLoginAt?: string;
+  lastActiveAt?: string;
+  externalId?: string;
+  isServiceAccount: boolean;
+  /** True for the department's lead member (server-side membership flag). */
+  isLead?: boolean;
+  UserRoleAssignments?: DepartmentMemberRole[];
 }
 
 /** Minimal prompt-template shape for the prompt-config Select catalog (id + name). */
 export interface PromptTemplateOption {
-    id: string;
-    name: string;
+  id: string;
+  name: string;
 }
 
 export interface CreateDepartmentRequest {
-    code?: string;
-    name?: string;
-    description?: string;
-    parentDepartmentId?: string;
-    defaultSummaryTemplate?: string;
+  code?: string;
+  name?: string;
+  description?: string;
+  parentDepartmentId?: string;
+  defaultSummaryTemplate?: string;
 }
 
 /** PATCH :id body — If-Match route; `expectedVersion` is added by the client. */
 export interface UpdateDepartmentRequest {
-    code?: string;
-    name?: string;
-    description?: string;
-    /** null re-roots the department (removes its parent). */
-    parentDepartmentId?: string | null;
-    defaultSummaryTemplate?: string;
-    preSummaryPromptId?: string;
-    newPatientPromptId?: string;
-    revisitPromptId?: string;
-    promptConfig?: Record<string, unknown>;
-    resourceStatus?: 'ENABLED' | 'DISABLED';
+  code?: string;
+  name?: string;
+  description?: string;
+  /** null re-roots the department (removes its parent). */
+  parentDepartmentId?: string | null;
+  defaultSummaryTemplate?: string;
+  preSummaryPromptId?: string;
+  newPatientPromptId?: string;
+  revisitPromptId?: string;
+  promptConfig?: Record<string, unknown>;
+  resourceStatus?: 'ENABLED' | 'DISABLED';
 }
 
 /** PATCH :id/prompt-config body — If-Match route, version added by the client. */
 export interface UpdateDepartmentPromptConfigRequest {
-    preSummaryPromptId?: string;
-    newPatientPromptId?: string;
-    revisitPromptId?: string;
-    dnaWritingStylePromptId?: string;
+  preSummaryPromptId?: string;
+  newPatientPromptId?: string;
+  revisitPromptId?: string;
+  dnaWritingStylePromptId?: string;
 }

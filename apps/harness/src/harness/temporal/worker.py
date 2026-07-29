@@ -180,9 +180,7 @@ async def run_worker() -> None:
     loop = asyncio.get_running_loop()
     for sig in _SHUTDOWN_SIGNALS:
         try:
-            loop.add_signal_handler(
-                sig, functools.partial(_request_shutdown, sig, interrupt_event)
-            )
+            loop.add_signal_handler(sig, functools.partial(_request_shutdown, sig, interrupt_event))
         except NotImplementedError:
             # add_signal_handler is unavailable on some platforms (e.g. Windows);
             # fall back to the KeyboardInterrupt path handled in main().
@@ -193,9 +191,7 @@ async def run_worker() -> None:
         task_queue=settings.temporal.task_queue,
         workflows=[HarnessPingWorkflow, HarnessDocWorkflow],
         activities=[ping_activity, *DOCUMENT_ACTIVITIES],
-        graceful_shutdown_timeout=timedelta(
-            seconds=settings.temporal.graceful_shutdown_timeout_s
-        ),
+        graceful_shutdown_timeout=timedelta(seconds=settings.temporal.graceful_shutdown_timeout_s),
         # F-29 — admission cap coordinated with the LLM concurrency governor
         # (HARNESS_LLM_MAX_CONCURRENCY, core/llm_concurrency.py): without this,
         # Temporal admits unbounded concurrent activities, which just queue behind

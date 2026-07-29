@@ -18,7 +18,9 @@ class RecordingProvider(OllamaProvider):
         self.calls: list[str] = []
         self.delay_s = 0.0
 
-    async def analyze_content(self, text: str, guardrail_type: str = "comprehensive") -> dict[str, object]:
+    async def analyze_content(
+        self, text: str, guardrail_type: str = "comprehensive"
+    ) -> dict[str, object]:
         self.calls.append(text)
         if self.delay_s:
             await asyncio.sleep(self.delay_s)
@@ -68,7 +70,9 @@ async def test_claim_pending_jobs_prioritizes_high_priority(processor: JobProces
 
 
 @pytest.mark.asyncio
-async def test_cancel_job_removes_pending_job_from_queues(processor: JobProcessor, redis_client) -> None:
+async def test_cancel_job_removes_pending_job_from_queues(
+    processor: JobProcessor, redis_client
+) -> None:
     job_id = await processor.submit_job("cancel-me", request_id="job-cancel")
 
     cancelled = await processor.cancel_job(job_id)
@@ -84,7 +88,9 @@ async def test_cancel_job_removes_pending_job_from_queues(processor: JobProcesso
 
 
 @pytest.mark.asyncio
-async def test_requeue_stale_jobs_returns_processing_job_to_pending(processor: JobProcessor, redis_client) -> None:
+async def test_requeue_stale_jobs_returns_processing_job_to_pending(
+    processor: JobProcessor, redis_client
+) -> None:
     job_id = await processor.submit_job("stale-job", request_id="job-stale")
     claimed = await processor._claim_pending_jobs()
     assert claimed == [job_id]
@@ -109,7 +115,9 @@ async def test_requeue_stale_jobs_returns_processing_job_to_pending(processor: J
 
 
 @pytest.mark.asyncio
-async def test_process_job_completes_and_persists_result(processor: JobProcessor, redis_client, provider: RecordingProvider) -> None:
+async def test_process_job_completes_and_persists_result(
+    processor: JobProcessor, redis_client, provider: RecordingProvider
+) -> None:
     job_id = await processor.submit_job("process-me", request_id="job-process", priority="high")
     claimed = await processor._claim_pending_jobs()
 
@@ -131,7 +139,9 @@ async def test_process_job_completes_and_persists_result(processor: JobProcessor
 
 
 @pytest.mark.asyncio
-async def test_cancelled_job_is_not_processed(processor: JobProcessor, provider: RecordingProvider, redis_client) -> None:
+async def test_cancelled_job_is_not_processed(
+    processor: JobProcessor, provider: RecordingProvider, redis_client
+) -> None:
     job_id = await processor.submit_job("do-not-run", request_id="job-skip")
     claimed = await processor._claim_pending_jobs()
     assert claimed == [job_id]

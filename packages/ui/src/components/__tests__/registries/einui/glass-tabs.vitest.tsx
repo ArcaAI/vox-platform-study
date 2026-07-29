@@ -1,11 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  GlassTabs,
-  GlassTabsList,
-  GlassTabsTrigger,
-  GlassTabsContent,
-} from '@/components/registries/einui/glass-tabs'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { GlassTabs, GlassTabsList, GlassTabsTrigger, GlassTabsContent } from '@/components/registries/einui/glass-tabs';
 
 describe('GlassTabs', () => {
   it('renders without crashing', () => {
@@ -16,7 +11,7 @@ describe('GlassTabs', () => {
         </GlassTabsList>
         <GlassTabsContent value="tab1">Content</GlassTabsContent>
       </GlassTabs>,
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

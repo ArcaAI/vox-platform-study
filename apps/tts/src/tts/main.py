@@ -51,9 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         azure_provider = AzureSpeechProvider(settings.azure)
         registry.register("azure", azure_provider)
-        logger.info(
-            "tts.provider_registered", provider="azure", region=settings.azure.region
-        )
+        logger.info("tts.provider_registered", provider="azure", region=settings.azure.region)
         try:
             await azure_provider.prewarm()
         except Exception as exc:  # noqa: BLE001 — prewarm is best-effort
@@ -96,7 +94,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await register_local_provider(
                 registry,
                 "indic_parler",
-                IndicParlerProvider(settings.indic_parler, ttl_seconds=settings.model_cache_ttl_seconds),
+                IndicParlerProvider(
+                    settings.indic_parler, ttl_seconds=settings.model_cache_ttl_seconds
+                ),
                 warmup=warmup,
                 logger=logger,
             )

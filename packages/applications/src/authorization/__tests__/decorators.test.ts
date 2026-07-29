@@ -20,11 +20,7 @@ import {
   CanAny,
   CanAll,
 } from '../decorators';
-import {
-  REQUIRED_PERMISSIONS_KEY,
-  SKIP_AUTH_KEY,
-  PERMISSION_MODE_KEY,
-} from '../authorization.guard';
+import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY } from '../authorization.guard';
 
 const GUARDS_METADATA = '__guards__';
 
@@ -32,10 +28,10 @@ const GUARDS_METADATA = '__guards__';
 const getMetadata = (decorator: ClassDecorator | MethodDecorator, key: string) => {
   const target = {};
   const descriptor = { value: () => {} };
-  
+
   // Apply decorator
   (decorator as any)(target, 'testMethod', descriptor);
-  
+
   // Get metadata
   return Reflect.getMetadata(key, descriptor.value);
 };
@@ -46,9 +42,9 @@ describe('Authorization Decorators', () => {
       const decorator = Public();
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       const metadata = Reflect.getMetadata(SKIP_AUTH_KEY, descriptor.value);
       expect(metadata).toBe(true);
     });
@@ -59,9 +55,9 @@ describe('Authorization Decorators', () => {
       const decorator = SetPermissions(['read', 'User'], ['create', 'Document']);
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       const metadata = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
       expect(metadata).toEqual([
         { action: 'read', subject: 'User' },
@@ -73,9 +69,9 @@ describe('Authorization Decorators', () => {
       const decorator = SetPermissions(['read', 'User']);
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       const metadata = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
       expect(metadata).toEqual([{ action: 'read', subject: 'User' }]);
     });
@@ -86,9 +82,9 @@ describe('Authorization Decorators', () => {
       const decorator = SetPermissionMode('AND');
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       const metadata = Reflect.getMetadata(PERMISSION_MODE_KEY, descriptor.value);
       expect(metadata).toBe('AND');
     });
@@ -97,9 +93,9 @@ describe('Authorization Decorators', () => {
       const decorator = SetPermissionMode('OR');
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       const metadata = Reflect.getMetadata(PERMISSION_MODE_KEY, descriptor.value);
       expect(metadata).toBe('OR');
     });
@@ -110,12 +106,12 @@ describe('Authorization Decorators', () => {
       const decorator = Authorize(['read', 'User'], ['read', 'Tenant']);
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
       const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, descriptor.value);
-      
+
       expect(permissions).toEqual([
         { action: 'read', subject: 'User' },
         { action: 'read', subject: 'Tenant' },
@@ -127,9 +123,9 @@ describe('Authorization Decorators', () => {
       const decorator = Authorize(['manage', 'User']);
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
       expect(permissions).toEqual([{ action: 'manage', subject: 'User' }]);
     });
@@ -138,9 +134,9 @@ describe('Authorization Decorators', () => {
       const decorator = Authorize(['read', 'User']);
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       // @Authorize() is metadata-only. The global UnifiedAuthGuard
       // (APP_GUARD) reads REQUIRED_PERMISSIONS_KEY; the decorator must NOT
       // re-apply @UseGuards(UnifiedAuthGuard), which previously ran the guard
@@ -155,12 +151,12 @@ describe('Authorization Decorators', () => {
       const decorator = AuthorizeAny(['manage', 'User'], ['read', 'AuditLog']);
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
       const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, descriptor.value);
-      
+
       expect(permissions).toEqual([
         { action: 'manage', subject: 'User' },
         { action: 'read', subject: 'AuditLog' },
@@ -172,9 +168,9 @@ describe('Authorization Decorators', () => {
       const decorator = AuthorizeAny(['manage', 'User'], ['read', 'AuditLog']);
       const target = {};
       const descriptor = { value: () => {} };
-      
+
       (decorator as any)(target, 'testMethod', descriptor);
-      
+
       // Like @Authorize(), @AuthorizeAny() is metadata-only.
       const guards = Reflect.getMetadata(GUARDS_METADATA, descriptor.value);
       expect(guards).toBeUndefined();
@@ -187,9 +183,9 @@ describe('Authorization Decorators', () => {
         const decorator = CanRead('User');
         const target = {};
         const descriptor = { value: () => {} };
-        
+
         (decorator as any)(target, 'testMethod', descriptor);
-        
+
         const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
         expect(permissions).toEqual([{ action: 'read', subject: 'User' }]);
       });
@@ -200,9 +196,9 @@ describe('Authorization Decorators', () => {
         const decorator = CanList('Document');
         const target = {};
         const descriptor = { value: () => {} };
-        
+
         (decorator as any)(target, 'testMethod', descriptor);
-        
+
         const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
         expect(permissions).toEqual([{ action: 'list', subject: 'Document' }]);
       });
@@ -213,9 +209,9 @@ describe('Authorization Decorators', () => {
         const decorator = CanCreate('User');
         const target = {};
         const descriptor = { value: () => {} };
-        
+
         (decorator as any)(target, 'testMethod', descriptor);
-        
+
         const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
         expect(permissions).toEqual([{ action: 'create', subject: 'User' }]);
       });
@@ -226,9 +222,9 @@ describe('Authorization Decorators', () => {
         const decorator = CanUpdate('User');
         const target = {};
         const descriptor = { value: () => {} };
-        
+
         (decorator as any)(target, 'testMethod', descriptor);
-        
+
         const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
         expect(permissions).toEqual([{ action: 'update', subject: 'User' }]);
       });
@@ -239,9 +235,9 @@ describe('Authorization Decorators', () => {
         const decorator = CanDelete('User');
         const target = {};
         const descriptor = { value: () => {} };
-        
+
         (decorator as any)(target, 'testMethod', descriptor);
-        
+
         const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
         expect(permissions).toEqual([{ action: 'delete', subject: 'User' }]);
       });
@@ -252,9 +248,9 @@ describe('Authorization Decorators', () => {
         const decorator = CanManage('Tenant');
         const target = {};
         const descriptor = { value: () => {} };
-        
+
         (decorator as any)(target, 'testMethod', descriptor);
-        
+
         const permissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, descriptor.value);
         expect(permissions).toEqual([{ action: 'manage', subject: 'Tenant' }]);
       });
@@ -265,9 +261,9 @@ describe('Authorization Decorators', () => {
         const decorator = CanAny(['read', 'User'], ['read', 'Tenant']);
         const target = {};
         const descriptor = { value: () => {} };
-        
+
         (decorator as any)(target, 'testMethod', descriptor);
-        
+
         const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, descriptor.value);
         expect(mode).toBe('OR');
       });
@@ -278,9 +274,9 @@ describe('Authorization Decorators', () => {
         const decorator = CanAll(['read', 'User'], ['read', 'Tenant']);
         const target = {};
         const descriptor = { value: () => {} };
-        
+
         (decorator as any)(target, 'testMethod', descriptor);
-        
+
         const mode = Reflect.getMetadata(PERMISSION_MODE_KEY, descriptor.value);
         expect(mode).toBe('AND');
       });
@@ -297,10 +293,7 @@ describe('Authorization Decorators', () => {
       }
 
       // Method-level decorator should be applied
-      const methodPermissions = Reflect.getMetadata(
-        REQUIRED_PERMISSIONS_KEY,
-        TestController.prototype.findDocuments
-      );
+      const methodPermissions = Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, TestController.prototype.findDocuments);
       expect(methodPermissions).toEqual([{ action: 'read', subject: 'Document' }]);
     });
   });

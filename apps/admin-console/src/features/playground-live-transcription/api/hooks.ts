@@ -2,12 +2,12 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    cancelTranscriptionJob,
-    getTranscriptionJob,
-    listMyTranscriptionJobs,
-    listPlaygroundPipelines,
-    retryTranscriptionJob,
-    uploadBatchAudio,
+  cancelTranscriptionJob,
+  getTranscriptionJob,
+  listMyTranscriptionJobs,
+  listPlaygroundPipelines,
+  retryTranscriptionJob,
+  uploadBatchAudio,
 } from './client';
 import { liveTranscriptionKeys } from './keys';
 import { TERMINAL_JOB_STATUSES } from './types';
@@ -19,16 +19,16 @@ const REFRESH_MS = 30_000;
 const JOB_POLL_MS = 5_000;
 
 export function usePlaygroundPipelines() {
-    return useQuery({ queryKey: liveTranscriptionKeys.pipelines(), queryFn: listPlaygroundPipelines });
+  return useQuery({ queryKey: liveTranscriptionKeys.pipelines(), queryFn: listPlaygroundPipelines });
 }
 
 export function useMyTranscriptionJobs(params?: { page?: number; limit?: number }) {
-    return useQuery({
-        queryKey: liveTranscriptionKeys.jobs(params),
-        queryFn: () => listMyTranscriptionJobs(params),
-        refetchInterval: REFRESH_MS,
-        placeholderData: keepPreviousData,
-    });
+  return useQuery({
+    queryKey: liveTranscriptionKeys.jobs(params),
+    queryFn: () => listMyTranscriptionJobs(params),
+    refetchInterval: REFRESH_MS,
+    placeholderData: keepPreviousData,
+  });
 }
 
 /**
@@ -37,39 +37,39 @@ export function useMyTranscriptionJobs(params?: { page?: number; limit?: number 
  * on `error` until the job settles (the documented fallback).
  */
 export function usePlaygroundJob(id: string | null, pollAsFallback = false) {
-    return useQuery({
-        queryKey: liveTranscriptionKeys.job(id ?? ''),
-        queryFn: () => getTranscriptionJob(id as string),
-        enabled: !!id,
-        refetchInterval: (query) => {
-            if (!pollAsFallback) return false;
-            const status = query.state.data?.status;
-            if (status && TERMINAL_JOB_STATUSES.includes(status)) return false;
-            return JOB_POLL_MS;
-        },
-    });
+  return useQuery({
+    queryKey: liveTranscriptionKeys.job(id ?? ''),
+    queryFn: () => getTranscriptionJob(id as string),
+    enabled: !!id,
+    refetchInterval: (query) => {
+      if (!pollAsFallback) return false;
+      const status = query.state.data?.status;
+      if (status && TERMINAL_JOB_STATUSES.includes(status)) return false;
+      return JOB_POLL_MS;
+    },
+  });
 }
 
 export function useBatchUpload() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: uploadBatchAudio,
-        onSuccess: () => void queryClient.invalidateQueries({ queryKey: liveTranscriptionKeys.root }),
-    });
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: uploadBatchAudio,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: liveTranscriptionKeys.root }),
+  });
 }
 
 export function useCancelJob() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: cancelTranscriptionJob,
-        onSuccess: () => void queryClient.invalidateQueries({ queryKey: liveTranscriptionKeys.root }),
-    });
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: cancelTranscriptionJob,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: liveTranscriptionKeys.root }),
+  });
 }
 
 export function useRetryJob() {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: retryTranscriptionJob,
-        onSuccess: () => void queryClient.invalidateQueries({ queryKey: liveTranscriptionKeys.root }),
-    });
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: retryTranscriptionJob,
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: liveTranscriptionKeys.root }),
+  });
 }

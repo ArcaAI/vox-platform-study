@@ -48,7 +48,7 @@ The S3Service uses the following configuration keys from AppSettingsService:
 | `S3_PUBLIC_BUCKET`        | string  | `''`        | Default public bucket name                 |
 | `S3_PRIVATE_BUCKET`       | string  | `''`        | Default private bucket name                |
 | `S3_FORCE_PATH_STYLE`     | boolean | `true`      | Force path-style URLs (required for MinIO) |
-| `S3_REJECT_UNAUTHORIZED`  | boolean | `false`     | Reject unauthorized SSL certificates        |
+| `S3_REJECT_UNAUTHORIZED`  | boolean | `false`     | Reject unauthorized SSL certificates       |
 | `S3_PRESIGNED_URL_EXPIRY` | number  | `3600`      | Presigned URL expiry in seconds            |
 
 ## Features
@@ -86,10 +86,10 @@ import { S3ServiceModule } from './path/to/s3.service.module';
 import { AppSettingsModule } from './path/to/appSettings.module';
 
 @Module({
-    imports: [
-        AppSettingsModule.forRoot(), // Must be imported first
-        S3ServiceModule,
-    ],
+  imports: [
+    AppSettingsModule.forRoot(), // Must be imported first
+    S3ServiceModule,
+  ],
 })
 export class AppModule {}
 ```
@@ -102,28 +102,28 @@ import { IS3Service } from './path/to/IS3Service';
 
 @Injectable()
 export class FileService {
-    constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
+  constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
 
-    async uploadFile(file: Buffer, filename: string): Promise<void> {
-        // Check if S3 is configured
-        if (!(await this.s3Service.isConfigured())) {
-            throw new Error('S3 storage is not configured');
-        }
-
-        // Upload to public bucket
-        const bucketName = this.s3Service.getPublicBucketName();
-        await this.s3Service.putFile(bucketName, filename, file, 'image/jpeg');
+  async uploadFile(file: Buffer, filename: string): Promise<void> {
+    // Check if S3 is configured
+    if (!(await this.s3Service.isConfigured())) {
+      throw new Error('S3 storage is not configured');
     }
 
-    async downloadFile(filename: string): Promise<Buffer> {
-        const bucketName = this.s3Service.getPublicBucketName();
-        return await this.s3Service.getFile(bucketName, filename);
-    }
+    // Upload to public bucket
+    const bucketName = this.s3Service.getPublicBucketName();
+    await this.s3Service.putFile(bucketName, filename, file, 'image/jpeg');
+  }
 
-    async generateDownloadUrl(filename: string): Promise<string> {
-        const bucketName = this.s3Service.getPublicBucketName();
-        return await this.s3Service.signUrl(bucketName, filename, 'get');
-    }
+  async downloadFile(filename: string): Promise<Buffer> {
+    const bucketName = this.s3Service.getPublicBucketName();
+    return await this.s3Service.getFile(bucketName, filename);
+  }
+
+  async generateDownloadUrl(filename: string): Promise<string> {
+    const bucketName = this.s3Service.getPublicBucketName();
+    return await this.s3Service.signUrl(bucketName, filename, 'get');
+  }
 }
 ```
 
@@ -194,12 +194,12 @@ INSERT INTO global_settings (key, value, description) VALUES
 
 ```typescript
 try {
-    await s3Service.putFile('bucket', 'key', buffer);
+  await s3Service.putFile('bucket', 'key', buffer);
 } catch (error) {
-    if (error.message.includes('S3 configuration validation failed')) {
-        // Handle missing configuration
-        console.error('S3 not configured:', error.message);
-    }
+  if (error.message.includes('S3 configuration validation failed')) {
+    // Handle missing configuration
+    console.error('S3 not configured:', error.message);
+  }
 }
 ```
 
@@ -208,7 +208,7 @@ try {
 ```typescript
 // Test connection before operations
 if (!(await s3Service.testConnection())) {
-    throw new Error('S3 service is not available');
+  throw new Error('S3 service is not available');
 }
 ```
 
@@ -216,15 +216,15 @@ if (!(await s3Service.testConnection())) {
 
 ```typescript
 try {
-    const file = await s3Service.getFile('bucket', 'nonexistent-file');
+  const file = await s3Service.getFile('bucket', 'nonexistent-file');
 } catch (error) {
-    if (error instanceof NotFoundException) {
-        // Handle file not found
-        console.log('File not found');
-    } else {
-        // Handle other S3 errors
-        console.error('S3 operation failed:', error);
-    }
+  if (error instanceof NotFoundException) {
+    // Handle file not found
+    console.log('File not found');
+  } else {
+    // Handle other S3 errors
+    console.error('S3 operation failed:', error);
+  }
 }
 ```
 
@@ -235,33 +235,33 @@ try {
 ```typescript
 @Injectable()
 export class S3HealthIndicator {
-    constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
+  constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
 
-    async isHealthy(): Promise<boolean> {
-        try {
-            // Check configuration
-            if (!(await this.s3Service.isConfigured())) {
-                return false;
-            }
+  async isHealthy(): Promise<boolean> {
+    try {
+      // Check configuration
+      if (!(await this.s3Service.isConfigured())) {
+        return false;
+      }
 
-            // Test connectivity
-            return await this.s3Service.testConnection();
-        } catch {
-            return false;
-        }
+      // Test connectivity
+      return await this.s3Service.testConnection();
+    } catch {
+      return false;
     }
+  }
 
-    async getHealthDetails() {
-        const isConfigured = await this.s3Service.isConfigured();
-        const isConnected = isConfigured ? await this.s3Service.testConnection() : false;
+  async getHealthDetails() {
+    const isConfigured = await this.s3Service.isConfigured();
+    const isConnected = isConfigured ? await this.s3Service.testConnection() : false;
 
-        return {
-            configured: isConfigured,
-            connected: isConnected,
-            publicBucket: this.s3Service.getPublicBucketName(),
-            privateBucket: this.s3Service.getPrivateBucketName(),
-        };
-    }
+    return {
+      configured: isConfigured,
+      connected: isConnected,
+      publicBucket: this.s3Service.getPublicBucketName(),
+      privateBucket: this.s3Service.getPrivateBucketName(),
+    };
+  }
 }
 ```
 
@@ -270,29 +270,29 @@ export class S3HealthIndicator {
 ```typescript
 @Injectable()
 export class S3MetricsService {
-    private uploadCount = 0;
-    private downloadCount = 0;
-    private errorCount = 0;
+  private uploadCount = 0;
+  private downloadCount = 0;
+  private errorCount = 0;
 
-    constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
+  constructor(@Inject(IS3Service) private readonly s3Service: IS3Service) {}
 
-    async uploadWithMetrics(bucket: string, key: string, data: Buffer): Promise<void> {
-        try {
-            await this.s3Service.putFile(bucket, key, data);
-            this.uploadCount++;
-        } catch (error) {
-            this.errorCount++;
-            throw error;
-        }
+  async uploadWithMetrics(bucket: string, key: string, data: Buffer): Promise<void> {
+    try {
+      await this.s3Service.putFile(bucket, key, data);
+      this.uploadCount++;
+    } catch (error) {
+      this.errorCount++;
+      throw error;
     }
+  }
 
-    getMetrics() {
-        return {
-            uploads: this.uploadCount,
-            downloads: this.downloadCount,
-            errors: this.errorCount,
-        };
-    }
+  getMetrics() {
+    return {
+      uploads: this.uploadCount,
+      downloads: this.downloadCount,
+      errors: this.errorCount,
+    };
+  }
 }
 ```
 
@@ -380,23 +380,23 @@ export class S3MetricsService {
 
 ```typescript
 async function migrateS3Configuration() {
-    // Read from environment variables
-    const envConfig = {
-        S3_ENDPOINT: process.env.S3_ENDPOINT,
-        S3_ACCESS_KEY: process.env.S3_ACCESS_KEY,
-        S3_SECRET_KEY: process.env.S3_SECRET_KEY,
-        // ... other config
-    };
+  // Read from environment variables
+  const envConfig = {
+    S3_ENDPOINT: process.env.S3_ENDPOINT,
+    S3_ACCESS_KEY: process.env.S3_ACCESS_KEY,
+    S3_SECRET_KEY: process.env.S3_SECRET_KEY,
+    // ... other config
+  };
 
-    // Create database records
-    for (const [key, value] of Object.entries(envConfig)) {
-        if (value) {
-            await globalSettingRepository.create({
-                key,
-                value,
-                description: `S3 configuration: ${key}`,
-            });
-        }
+  // Create database records
+  for (const [key, value] of Object.entries(envConfig)) {
+    if (value) {
+      await globalSettingRepository.create({
+        key,
+        value,
+        description: `S3 configuration: ${key}`,
+      });
     }
+  }
 }
 ```

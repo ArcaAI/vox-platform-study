@@ -14,174 +14,174 @@ import type { ModelDefinition } from '../../types';
 
 // Mock the store
 vi.mock('../../store/agenticStore', async (importOriginal) => {
-    const actual = await importOriginal<typeof import('../../store/agenticStore')>();
-    return {
-        ...actual,
-        useAgenticStore: vi.fn(),
-    };
+  const actual = await importOriginal<typeof import('../../store/agenticStore')>();
+  return {
+    ...actual,
+    useAgenticStore: vi.fn(),
+  };
 });
 
 describe('useArcaConfig', () => {
-    let mockLogger: ReturnType<typeof createMockLogger>;
-    let mockStore: any;
-    let mockPersonalizationManager: any;
-    let mockModelRegistry: any;
+  let mockLogger: ReturnType<typeof createMockLogger>;
+  let mockStore: any;
+  let mockPersonalizationManager: any;
+  let mockModelRegistry: any;
 
-    beforeEach(() => {
-        mockLogger = createMockLogger();
+  beforeEach(() => {
+    mockLogger = createMockLogger();
 
-        mockPersonalizationManager = {
-            getPreferences: vi.fn().mockReturnValue({ language: 'en', theme: 'light' }),
-            updatePreferences: vi.fn().mockResolvedValue(undefined),
-            reset: vi.fn().mockResolvedValue(undefined),
-        };
+    mockPersonalizationManager = {
+      getPreferences: vi.fn().mockReturnValue({ language: 'en', theme: 'light' }),
+      updatePreferences: vi.fn().mockResolvedValue(undefined),
+      reset: vi.fn().mockResolvedValue(undefined),
+    };
 
-        const mockModels: ModelDefinition[] = [
-            { id: 'whisper-tiny', name: 'Whisper Tiny', type: 'stt', source: 'huggingface' },
-            { id: 'whisper-base', name: 'Whisper Base', type: 'stt', source: 'huggingface' },
-            { id: 'silero-vad', name: 'Silero VAD', type: 'vad', source: 'huggingface' },
-        ];
+    const mockModels: ModelDefinition[] = [
+      { id: 'whisper-tiny', name: 'Whisper Tiny', type: 'stt', source: 'huggingface' },
+      { id: 'whisper-base', name: 'Whisper Base', type: 'stt', source: 'huggingface' },
+      { id: 'silero-vad', name: 'Silero VAD', type: 'vad', source: 'huggingface' },
+    ];
 
-        mockModelRegistry = {
-            getModelsByType: vi.fn((type: string) => mockModels.filter(m => m.type === type)),
-            getSelected: vi.fn().mockReturnValue({ stt: 'whisper-tiny' }),
-            selectModel: vi.fn(),
-        };
+    mockModelRegistry = {
+      getModelsByType: vi.fn((type: string) => mockModels.filter((m) => m.type === type)),
+      getSelected: vi.fn().mockReturnValue({ stt: 'whisper-tiny' }),
+      selectModel: vi.fn(),
+    };
 
-        mockStore = {
-            preferences: { language: 'en', theme: 'light' },
-            personalizationManager: mockPersonalizationManager,
-            modelRegistry: mockModelRegistry,
-            logger: mockLogger,
-            // Mutations are gated on configReady.
-            configReady: true,
-            updatePreferences: vi.fn(),
-            setPreferences: vi.fn(),
-            incrementModelRegistryVersion: vi.fn(),
-        };
+    mockStore = {
+      preferences: { language: 'en', theme: 'light' },
+      personalizationManager: mockPersonalizationManager,
+      modelRegistry: mockModelRegistry,
+      logger: mockLogger,
+      // Mutations are gated on configReady.
+      configReady: true,
+      updatePreferences: vi.fn(),
+      setPreferences: vi.fn(),
+      incrementModelRegistryVersion: vi.fn(),
+    };
 
-        // The hook reads via discrete selectors
-        // (useAgenticStore(selectX)), so apply the selector to the backing
-        // store rather than returning the whole store for every call.
-        (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
+    // The hook reads via discrete selectors
+    // (useAgenticStore(selectX)), so apply the selector to the backing
+    // store rather than returning the whole store for every call.
+    (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('initial state', () => {
+    it('should return preferences', () => {
+      const { result } = renderHook(() => useArcaConfig());
+
+      expect(result.current.preferences).toEqual({ language: 'en', theme: 'light' });
     });
 
-    afterEach(() => {
-        vi.clearAllMocks();
+    it('should return models grouped by type', () => {
+      const { result } = renderHook(() => useArcaConfig());
+
+      expect(result.current.models.stt).toHaveLength(2);
+      expect(result.current.models.vad).toHaveLength(1);
+      expect(result.current.models.ner).toHaveLength(0);
+      expect(result.current.models.selected.stt).toBe('whisper-tiny');
     });
 
-    describe('initial state', () => {
-        it('should return preferences', () => {
-            const { result } = renderHook(() => useArcaConfig());
+    it('should return empty models when registry not available', () => {
+      mockStore.modelRegistry = null;
+      (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
 
-            expect(result.current.preferences).toEqual({ language: 'en', theme: 'light' });
-        });
+      const { result } = renderHook(() => useArcaConfig());
 
-        it('should return models grouped by type', () => {
-            const { result } = renderHook(() => useArcaConfig());
+      expect(result.current.models.stt).toEqual([]);
+      expect(result.current.models.vad).toEqual([]);
+      expect(result.current.models.ner).toEqual([]);
+      expect(result.current.models.selected).toEqual({});
+    });
+  });
 
-            expect(result.current.models.stt).toHaveLength(2);
-            expect(result.current.models.vad).toHaveLength(1);
-            expect(result.current.models.ner).toHaveLength(0);
-            expect(result.current.models.selected.stt).toBe('whisper-tiny');
-        });
+  describe('get', () => {
+    it('should return specific preference value', () => {
+      const { result } = renderHook(() => useArcaConfig());
 
-        it('should return empty models when registry not available', () => {
-            mockStore.modelRegistry = null;
-            (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
+      expect(result.current.get('language')).toBe('en');
+      expect(result.current.get('theme')).toBe('light');
+    });
+  });
 
-            const { result } = renderHook(() => useArcaConfig());
+  describe('update', () => {
+    it('should update preferences via manager', async () => {
+      const { result } = renderHook(() => useArcaConfig());
 
-            expect(result.current.models.stt).toEqual([]);
-            expect(result.current.models.vad).toEqual([]);
-            expect(result.current.models.ner).toEqual([]);
-            expect(result.current.models.selected).toEqual({});
-        });
+      await act(async () => {
+        await result.current.update({ language: 'th' });
+      });
+
+      expect(mockPersonalizationManager.updatePreferences).toHaveBeenCalledWith({ language: 'th' });
+      expect(mockStore.setPreferences).toHaveBeenCalled();
     });
 
-    describe('get', () => {
-        it('should return specific preference value', () => {
-            const { result } = renderHook(() => useArcaConfig());
+    it('should fallback to local update when manager not available', async () => {
+      mockStore.personalizationManager = null;
+      (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
 
-            expect(result.current.get('language')).toBe('en');
-            expect(result.current.get('theme')).toBe('light');
-        });
+      const { result } = renderHook(() => useArcaConfig());
+
+      await act(async () => {
+        await result.current.update({ language: 'th' });
+      });
+
+      expect(mockStore.updatePreferences).toHaveBeenCalledWith({ language: 'th' });
+    });
+  });
+
+  describe('reset', () => {
+    it('should reset preferences to defaults', async () => {
+      const { result } = renderHook(() => useArcaConfig());
+
+      await act(async () => {
+        await result.current.reset();
+      });
+
+      expect(mockPersonalizationManager.reset).toHaveBeenCalled();
+      expect(mockStore.setPreferences).toHaveBeenCalled();
     });
 
-    describe('update', () => {
-        it('should update preferences via manager', async () => {
-            const { result } = renderHook(() => useArcaConfig());
+    it('should do nothing when manager not available', async () => {
+      mockStore.personalizationManager = null;
+      (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
 
-            await act(async () => {
-                await result.current.update({ language: 'th' });
-            });
+      const { result } = renderHook(() => useArcaConfig());
 
-            expect(mockPersonalizationManager.updatePreferences).toHaveBeenCalledWith({ language: 'th' });
-            expect(mockStore.setPreferences).toHaveBeenCalled();
-        });
+      await act(async () => {
+        await result.current.reset();
+      });
 
-        it('should fallback to local update when manager not available', async () => {
-            mockStore.personalizationManager = null;
-            (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
+      expect(mockStore.setPreferences).not.toHaveBeenCalled();
+    });
+  });
 
-            const { result } = renderHook(() => useArcaConfig());
+  describe('selectModel', () => {
+    it('should select model via registry', () => {
+      const { result } = renderHook(() => useArcaConfig());
 
-            await act(async () => {
-                await result.current.update({ language: 'th' });
-            });
+      act(() => {
+        result.current.selectModel('stt', 'whisper-base');
+      });
 
-            expect(mockStore.updatePreferences).toHaveBeenCalledWith({ language: 'th' });
-        });
+      expect(mockModelRegistry.selectModel).toHaveBeenCalledWith('stt', 'whisper-base');
     });
 
-    describe('reset', () => {
-        it('should reset preferences to defaults', async () => {
-            const { result } = renderHook(() => useArcaConfig());
+    it('should do nothing when registry not available', () => {
+      mockStore.modelRegistry = null;
+      (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
 
-            await act(async () => {
-                await result.current.reset();
-            });
+      const { result } = renderHook(() => useArcaConfig());
 
-            expect(mockPersonalizationManager.reset).toHaveBeenCalled();
-            expect(mockStore.setPreferences).toHaveBeenCalled();
-        });
+      act(() => {
+        result.current.selectModel('stt', 'whisper-base');
+      });
 
-        it('should do nothing when manager not available', async () => {
-            mockStore.personalizationManager = null;
-            (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
-
-            const { result } = renderHook(() => useArcaConfig());
-
-            await act(async () => {
-                await result.current.reset();
-            });
-
-            expect(mockStore.setPreferences).not.toHaveBeenCalled();
-        });
+      // Should not throw
     });
-
-    describe('selectModel', () => {
-        it('should select model via registry', () => {
-            const { result } = renderHook(() => useArcaConfig());
-
-            act(() => {
-                result.current.selectModel('stt', 'whisper-base');
-            });
-
-            expect(mockModelRegistry.selectModel).toHaveBeenCalledWith('stt', 'whisper-base');
-        });
-
-        it('should do nothing when registry not available', () => {
-            mockStore.modelRegistry = null;
-            (useAgenticStore as any).mockImplementation((selector: any) => selector(mockStore));
-
-            const { result } = renderHook(() => useArcaConfig());
-
-            act(() => {
-                result.current.selectModel('stt', 'whisper-base');
-            });
-
-            // Should not throw
-        });
-    });
+  });
 });

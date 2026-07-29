@@ -8,10 +8,10 @@ Last updated: 2026-07-04
 
 `@arcaai/types` is a leaf package. Current workspace consumers:
 
-| Consumer | What it uses |
-|---|---|
+| Consumer               | What it uses                                                                                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@arcaai/applications` | `StorageProvider`, `StorageTopology` (from `cloud-storage.ts`) in the blob-storage provider factory (`src/services/baseServices/storage/providers/`) |
-| `@arcaai/utils` | `Timestamp` (date helpers), `ModelMetadata`, `ModelCategory`, `ModelPriority` (model registry) |
+| `@arcaai/utils`        | `Timestamp` (date helpers), `ModelMetadata`, `ModelCategory`, `ModelPriority` (model registry)                                                       |
 
 ## Directory structure
 
@@ -36,21 +36,21 @@ src/
 
 ## Module overview
 
-| Module | Contents |
-|---|---|
-| `common` | `ApiResponse<T>`, `ApiError`, `PaginationParams`, `PaginatedResponse<T>`, `Timestamp`, `UUID`, `AsyncStatus` |
-| `audio` | Audio formats/encodings, capture configuration, `AudioCaptureSource`/`State`/`ErrorCode` enums, recording metadata |
-| `transcription` | `TranscriptionSegment`, `Word`, `Speaker`, `TranscriptionResult`, `TranscriptionOptions`, `TranscriptionJob` |
-| `diarization` | Speaker segmentation and clustering types, `DiarizationResult`, progress and error types |
-| `voice-recognition` | `VoiceProfile`, `VoiceEmbedding`, enrollment sessions/samples, audio quality thresholds |
-| `speaker-mapping` | Speaker-to-role mapping, recognition confidence (`ConfidenceLevel`, `getConfidenceLevel`), `DEFAULT_RECOGNITION_CONFIG` |
-| `vad` | `VADConfig`, `VADPreset` (`aggressive`/`balanced`/`permissive`), speech segments, VAD state machine |
-| `llm` | `LLMProvider` (`ollama`, `azure-openai`, `lm-studio`, `openai-compat`), chat message/response shapes, summary types |
-| `model-management` | `ModelMetadata`, `ModelCategory`/`ModelPriority`/`ModelStatus` enums, download progress and storage info |
-| `storage` | Browser-side storage records (audio files, settings, cleanup policies) and `StorageErrorCode` |
-| `cloud-storage` | `StorageProvider` and `StorageTopology` enums used by the backend blob-storage abstraction |
-| `stepper` | Voice-enrollment step unions and `StepperConfig<T>` |
-| `meeting` | Consultation-session (`Meeting`) types |
+| Module              | Contents                                                                                                                |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `common`            | `ApiResponse<T>`, `ApiError`, `PaginationParams`, `PaginatedResponse<T>`, `Timestamp`, `UUID`, `AsyncStatus`            |
+| `audio`             | Audio formats/encodings, capture configuration, `AudioCaptureSource`/`State`/`ErrorCode` enums, recording metadata      |
+| `transcription`     | `TranscriptionSegment`, `Word`, `Speaker`, `TranscriptionResult`, `TranscriptionOptions`, `TranscriptionJob`            |
+| `diarization`       | Speaker segmentation and clustering types, `DiarizationResult`, progress and error types                                |
+| `voice-recognition` | `VoiceProfile`, `VoiceEmbedding`, enrollment sessions/samples, audio quality thresholds                                 |
+| `speaker-mapping`   | Speaker-to-role mapping, recognition confidence (`ConfidenceLevel`, `getConfidenceLevel`), `DEFAULT_RECOGNITION_CONFIG` |
+| `vad`               | `VADConfig`, `VADPreset` (`aggressive`/`balanced`/`permissive`), speech segments, VAD state machine                     |
+| `llm`               | `LLMProvider` (`ollama`, `azure-openai`, `lm-studio`, `openai-compat`), chat message/response shapes, summary types     |
+| `model-management`  | `ModelMetadata`, `ModelCategory`/`ModelPriority`/`ModelStatus` enums, download progress and storage info                |
+| `storage`           | Browser-side storage records (audio files, settings, cleanup policies) and `StorageErrorCode`                           |
+| `cloud-storage`     | `StorageProvider` and `StorageTopology` enums used by the backend blob-storage abstraction                              |
+| `stepper`           | Voice-enrollment step unions and `StepperConfig<T>`                                                                     |
+| `meeting`           | Consultation-session (`Meeting`) types                                                                                  |
 
 `global.ts` contains only browser-API global declarations and is intentionally excluded from the barrel export.
 
@@ -74,10 +74,10 @@ Because the package is types-first, prefer `import type` where possible; runtime
 
 ## Commands
 
-| Command | package.json script | From repo root |
-|---|---|---|
-| Build | `tsc --build` | `pnpm --filter @arcaai/types build` |
-| Clean | `rm -rf dist *.tsbuildinfo` | `pnpm --filter @arcaai/types clean` |
+| Command | package.json script         | From repo root                      |
+| ------- | --------------------------- | ----------------------------------- |
+| Build   | `tsc --build`               | `pnpm --filter @arcaai/types build` |
+| Clean   | `rm -rf dist *.tsbuildinfo` | `pnpm --filter @arcaai/types clean` |
 
 There are no test or lint scripts; the package compiles to declaration-heavy ESM output (`dist/`) consumed via the package `exports` map.
 

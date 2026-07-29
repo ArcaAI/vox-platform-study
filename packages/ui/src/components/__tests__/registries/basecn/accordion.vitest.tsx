@@ -1,11 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from '../../../registries/basecn/accordion'
+import { describe, it, expect } from 'vitest';
+import { render } from '@testing-library/react';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../../../registries/basecn/accordion';
 
 describe('Accordion', () => {
   it('renders without crashing', () => {
@@ -15,8 +10,8 @@ describe('Accordion', () => {
           <AccordionTrigger>Question</AccordionTrigger>
           <AccordionContent>Answer</AccordionContent>
         </AccordionItem>
-      </Accordion>
-    )
-    expect(container.firstChild).toBeTruthy()
-  })
-})
+      </Accordion>,
+    );
+    expect(container.firstChild).toBeTruthy();
+  });
+});

@@ -16,7 +16,7 @@ import { ClaimMappingsDto } from './oidc-provider-config.dto';
  * `true` in `IdpResolverService.buildSamlClient`), not a tenant-admin knob.
  */
 export class SamlProviderConfigDto {
-  @ApiProperty({ description: "IdP entityID (Issuer)", example: 'https://adfs.acme.com/adfs/services/trust' })
+  @ApiProperty({ description: 'IdP entityID (Issuer)', example: 'https://adfs.acme.com/adfs/services/trust' })
   @IsString()
   @MaxLength(2048)
   idpEntityId!: string;

@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { QueueAdminService } from '../queue-admin.service';
 import { JobQueue } from '@arcaai/domains';
 
-const createMockQueue = (overrides: Partial<{
-  isPaused: boolean;
-  jobCounts: Record<string, number>;
-}> = {}) => ({
+const createMockQueue = (
+  overrides: Partial<{
+    isPaused: boolean;
+    jobCounts: Record<string, number>;
+  }> = {},
+) => ({
   name: 'TestQueue',
   isPaused: vi.fn().mockResolvedValue(overrides.isPaused ?? false),
   getJobCounts: vi.fn().mockResolvedValue({
@@ -128,12 +130,7 @@ describe('QueueAdminService', () => {
       mockQueue.clean.mockResolvedValue(['job-1', 'job-2']);
       mockModuleRef.get.mockReturnValue(mockQueue);
 
-      const result = await service.cleanQueue(
-        JobQueue.AuditLog,
-        'completed',
-        60_000,
-        500,
-      );
+      const result = await service.cleanQueue(JobQueue.AuditLog, 'completed', 60_000, 500);
 
       expect(mockQueue.clean).toHaveBeenCalledWith(60_000, 500, 'completed');
       expect(result).toEqual(['job-1', 'job-2']);
@@ -154,12 +151,7 @@ describe('QueueAdminService', () => {
   // frame `15` health strip). Reads via the first registered queue's shared
   // ioredis connection: PING → latency, INFO → server stats. Never throws.
   describe('getRedisHealth', () => {
-    const REDIS_INFO = [
-      'redis_version:7.2.5',
-      'uptime_in_seconds:86400',
-      'connected_clients:12',
-      'used_memory_human:48.31M',
-    ].join('\r\n');
+    const REDIS_INFO = ['redis_version:7.2.5', 'uptime_in_seconds:86400', 'connected_clients:12', 'used_memory_human:48.31M'].join('\r\n');
 
     const createMockClient = (overrides: Partial<{ ping: () => Promise<string>; info: () => Promise<string> }> = {}) => ({
       ping: vi.fn(overrides.ping ?? (() => Promise.resolve('PONG'))),
@@ -197,9 +189,7 @@ describe('QueueAdminService', () => {
 
     it('reports unhealthy (never throws) when the connection errors', async () => {
       const mockQueue = createMockQueue();
-      (mockQueue as Record<string, unknown>).client = Promise.resolve(
-        createMockClient({ ping: () => Promise.reject(new Error('ECONNREFUSED')) }),
-      );
+      (mockQueue as Record<string, unknown>).client = Promise.resolve(createMockClient({ ping: () => Promise.reject(new Error('ECONNREFUSED')) }));
       mockModuleRef.get.mockReturnValue(mockQueue);
 
       const result = await service.getRedisHealth();
@@ -221,9 +211,7 @@ describe('QueueAdminService', () => {
 
     it('tolerates a partial INFO payload with safe fallbacks', async () => {
       const mockQueue = createMockQueue();
-      (mockQueue as Record<string, unknown>).client = Promise.resolve(
-        createMockClient({ info: () => Promise.resolve('redis_version:7.0.0') }),
-      );
+      (mockQueue as Record<string, unknown>).client = Promise.resolve(createMockClient({ info: () => Promise.resolve('redis_version:7.0.0') }));
       mockModuleRef.get.mockReturnValue(mockQueue);
 
       const result = await service.getRedisHealth();

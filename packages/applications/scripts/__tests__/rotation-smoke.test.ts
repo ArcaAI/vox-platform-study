@@ -30,36 +30,16 @@ describe('rotation-smoke parseArgs (Phase 6 Task 6.7)', () => {
   });
 
   it('defaults overlap-sec to 60', () => {
-    const out = parseArgs([
-      'tsx',
-      'rotation-smoke.ts',
-      '--base-url',
-      'a',
-      '--vault-addr',
-      'b',
-      '--user',
-      'u',
-      '--pass',
-      'p',
-    ]);
+    const out = parseArgs(['tsx', 'rotation-smoke.ts', '--base-url', 'a', '--vault-addr', 'b', '--user', 'u', '--pass', 'p']);
     expect(out.overlapSec).toBe(60);
   });
 
   it('accepts --flag=value form', () => {
-    const out = parseArgs([
-      'tsx',
-      'rotation-smoke.ts',
-      '--base-url=https://api',
-      '--vault-addr=https://vault',
-      '--user=u',
-      '--pass=p',
-    ]);
+    const out = parseArgs(['tsx', 'rotation-smoke.ts', '--base-url=https://api', '--vault-addr=https://vault', '--user=u', '--pass=p']);
     expect(out.baseUrl).toBe('https://api');
   });
 
   it('throws when a required flag is missing', () => {
-    expect(() =>
-      parseArgs(['tsx', 'rotation-smoke.ts', '--base-url', 'x']),
-    ).toThrow(/required flags/i);
+    expect(() => parseArgs(['tsx', 'rotation-smoke.ts', '--base-url', 'x'])).toThrow(/required flags/i);
   });
 });

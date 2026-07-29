@@ -48,7 +48,7 @@ yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
 # --- 1. Pre-flight checks ---------------------------------------------------
 
 if [ ! -f "${ENV_FILE}" ]; then
-  red "ERROR: ${ENV_FILE} not found. Run from a freshly cloned repo? Copy .env.example to .env.dev first."
+  red "ERROR: ${ENV_FILE} not found. Run 'pnpm setup:dev' (creates it from .env.sample), or manually: cp .env.sample .env.dev"
   exit 1
 fi
 

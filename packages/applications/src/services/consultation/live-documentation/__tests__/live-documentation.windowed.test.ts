@@ -109,11 +109,7 @@ describe('LiveDocumentationService — windowed transcript', () => {
   });
 
   it('whole mode keeps the OLDEST content on overflow (unchanged)', async () => {
-    const { http } = await flushWith({ 'transcript.mode': 'whole', 'liveDelta.maxChars': 30 }, [
-      'a'.repeat(25),
-      'b'.repeat(25),
-      'c'.repeat(25),
-    ]);
+    const { http } = await flushWith({ 'transcript.mode': 'whole', 'liveDelta.maxChars': 30 }, ['a'.repeat(25), 'b'.repeat(25), 'c'.repeat(25)]);
 
     const prompt = generatePrompt(http);
     expect(prompt).toContain('a'.repeat(25));
@@ -121,11 +117,7 @@ describe('LiveDocumentationService — windowed transcript', () => {
   });
 
   it('windowed mode keeps the NEWEST content on overflow', async () => {
-    const { http } = await flushWith({ 'transcript.mode': 'windowed', 'liveDelta.maxChars': 30 }, [
-      'a'.repeat(25),
-      'b'.repeat(25),
-      'c'.repeat(25),
-    ]);
+    const { http } = await flushWith({ 'transcript.mode': 'windowed', 'liveDelta.maxChars': 30 }, ['a'.repeat(25), 'b'.repeat(25), 'c'.repeat(25)]);
 
     const prompt = generatePrompt(http);
     expect(prompt).toContain('c'.repeat(25));
@@ -135,11 +127,7 @@ describe('LiveDocumentationService — windowed transcript', () => {
   it('windowed mode tells the model that earlier transcript was elided', async () => {
     // Silently dropping clinical content would be unsafe — the model must know
     // the window is partial so it does not treat it as the whole encounter.
-    const { http } = await flushWith({ 'transcript.mode': 'windowed', 'liveDelta.maxChars': 30 }, [
-      'a'.repeat(25),
-      'b'.repeat(25),
-      'c'.repeat(25),
-    ]);
+    const { http } = await flushWith({ 'transcript.mode': 'windowed', 'liveDelta.maxChars': 30 }, ['a'.repeat(25), 'b'.repeat(25), 'c'.repeat(25)]);
 
     expect(generatePrompt(http)).toMatch(/earlier transcript/i);
   });

@@ -40,30 +40,21 @@ interface TestResults {
 
 // Helper to get test results from page
 async function getTestResults(page: Page): Promise<TestResults> {
-  return page.evaluate(
-    () => (window as unknown as { testResults: TestResults }).testResults
-  );
+  return page.evaluate(() => (window as unknown as { testResults: TestResults }).testResults);
 }
 
 // Helper to call test helper functions
-async function callTestHelper(
-  page: Page,
-  fn: string,
-  ...args: unknown[]
-): Promise<unknown> {
+async function callTestHelper(page: Page, fn: string, ...args: unknown[]): Promise<unknown> {
   return page.evaluate(
     ({ fn, args }) => {
       const helpers = (
         window as unknown as {
-          noiseFilterTestHelpers: Record<
-            string,
-            (...args: unknown[]) => Promise<unknown>
-          >;
+          noiseFilterTestHelpers: Record<string, (...args: unknown[]) => Promise<unknown>>;
         }
       ).noiseFilterTestHelpers;
       return helpers[fn](...args);
     },
-    { fn, args }
+    { fn, args },
   );
 }
 
@@ -74,8 +65,7 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
 
     // Wait for page to load and check browser support
     await page.waitForFunction(() => {
-      const results = (window as unknown as { testResults: TestResults })
-        .testResults;
+      const results = (window as unknown as { testResults: TestResults }).testResults;
       return results.browserSupport !== null;
     });
   });
@@ -94,16 +84,11 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
       expect(results.browserSupport!.audioContext).toBe(true);
     });
 
-    test('should detect AudioWorklet or ScriptProcessor support', async ({
-      page,
-    }) => {
+    test('should detect AudioWorklet or ScriptProcessor support', async ({ page }) => {
       const results = await getTestResults(page);
 
       // At least one should be supported
-      expect(
-        results.browserSupport!.audioWorklet ||
-          results.browserSupport!.scriptProcessor
-      ).toBe(true);
+      expect(results.browserSupport!.audioWorklet || results.browserSupport!.scriptProcessor).toBe(true);
     });
 
     test('should detect MediaStreamTrack support', async ({ page }) => {
@@ -119,33 +104,20 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
       const expectedSupport =
         results.browserSupport!.webAssembly &&
         results.browserSupport!.audioContext &&
-        (results.browserSupport!.audioWorklet ||
-          results.browserSupport!.scriptProcessor);
+        (results.browserSupport!.audioWorklet || results.browserSupport!.scriptProcessor);
 
       expect(results.browserSupport!.rnnoiseSupported).toBe(expectedSupport);
     });
 
-    test('should have browser support status displayed in UI', async ({
-      page,
-    }) => {
-      await expect(page.locator('#wasm-support')).toContainText(
-        /Supported|Not supported/
-      );
-      await expect(page.locator('#audio-context-support')).toContainText(
-        /Supported|Not supported/
-      );
-      await expect(page.locator('#audio-worklet-support')).toContainText(
-        /Supported|Not supported/
-      );
-      await expect(page.locator('#rnnoise-support')).toContainText(
-        /Supported|Not supported/
-      );
+    test('should have browser support status displayed in UI', async ({ page }) => {
+      await expect(page.locator('#wasm-support')).toContainText(/Supported|Not supported/);
+      await expect(page.locator('#audio-context-support')).toContainText(/Supported|Not supported/);
+      await expect(page.locator('#audio-worklet-support')).toContainText(/Supported|Not supported/);
+      await expect(page.locator('#rnnoise-support')).toContainText(/Supported|Not supported/);
     });
 
     test('should show recommended processing mode', async ({ page }) => {
-      await expect(page.locator('#recommended-mode')).toContainText(
-        /quality|performance/
-      );
+      await expect(page.locator('#recommended-mode')).toContainText(/quality|performance/);
     });
   });
 
@@ -156,12 +128,9 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
           const module = await import('/dist/index.js');
           return {
             hasCreateNoiseFilter: typeof module.createNoiseFilter === 'function',
-            hasNoiseFilterProcessor:
-              typeof module.NoiseFilterProcessor === 'function',
-            hasBrowserSupport:
-              typeof module.getNoiseFilterBrowserSupport === 'function',
-            hasRNNoiseProcessor:
-              typeof module.RNNoiseProcessor === 'function',
+            hasNoiseFilterProcessor: typeof module.NoiseFilterProcessor === 'function',
+            hasBrowserSupport: typeof module.getNoiseFilterBrowserSupport === 'function',
+            hasRNNoiseProcessor: typeof module.RNNoiseProcessor === 'function',
             exports: Object.keys(module),
           };
         } catch (error) {
@@ -260,12 +229,7 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
       await page.click('#btn-create');
 
       // Wait for processor creation
-      await page.waitForFunction(
-        () =>
-          (window as unknown as { testResults: TestResults }).testResults
-            .created,
-        { timeout: 30000 }
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.created, { timeout: 30000 });
 
       const afterCreate = await getTestResults(page);
       expect(afterCreate.created).toBe(true);
@@ -303,11 +267,7 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
         mode: 'performance',
       });
 
-      await page.waitForFunction(
-        () =>
-          (window as unknown as { testResults: TestResults }).testResults
-            .created
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.created);
 
       // Verify level was set
       await expect(page.locator('#current-level')).toHaveText('high');
@@ -336,11 +296,7 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
 
       // Create processor first
       await page.click('#btn-create');
-      await page.waitForFunction(
-        () =>
-          (window as unknown as { testResults: TestResults }).testResults
-            .created
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.created);
     });
 
     test('should change noise level to low', async ({ page }) => {
@@ -404,20 +360,12 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
 
       // Create
       await page.click('#btn-create');
-      await page.waitForFunction(
-        () =>
-          (window as unknown as { testResults: TestResults }).testResults
-            .created
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.created);
       await expect(page.locator('#processor-state')).toHaveText('created');
 
       // Destroy
       await page.click('#btn-destroy');
-      await page.waitForFunction(
-        () =>
-          !(window as unknown as { testResults: TestResults }).testResults
-            .created
-      );
+      await page.waitForFunction(() => !(window as unknown as { testResults: TestResults }).testResults.created);
       await expect(page.locator('#processor-state')).toHaveText('destroyed');
 
       const afterDestroy = await getTestResults(page);
@@ -425,9 +373,7 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
       expect(afterDestroy.noiseFilterProcessor).toBeNull();
     });
 
-    test('should allow recreating processor after destroy', async ({
-      page,
-    }) => {
+    test('should allow recreating processor after destroy', async ({ page }) => {
       const results = await getTestResults(page);
       if (!results.browserSupport?.rnnoiseSupported) {
         test.skip();
@@ -448,26 +394,14 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
 
       // Create -> Destroy -> Create
       await page.click('#btn-create');
-      await page.waitForFunction(
-        () =>
-          (window as unknown as { testResults: TestResults }).testResults
-            .created
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.created);
 
       await page.click('#btn-destroy');
-      await page.waitForFunction(
-        () =>
-          !(window as unknown as { testResults: TestResults }).testResults
-            .created
-      );
+      await page.waitForFunction(() => !(window as unknown as { testResults: TestResults }).testResults.created);
 
       // Should be able to create again
       await page.click('#btn-create');
-      await page.waitForFunction(
-        () =>
-          (window as unknown as { testResults: TestResults }).testResults
-            .created
-      );
+      await page.waitForFunction(() => (window as unknown as { testResults: TestResults }).testResults.created);
 
       const afterRecreate = await getTestResults(page);
       expect(afterRecreate.created).toBe(true);
@@ -494,9 +428,7 @@ test.describe('@arcaai/noise-filter E2E Tests', () => {
 });
 
 test.describe('@arcaai/noise-filter Audio Processing Tests', () => {
-  test('should create AudioContext with 48kHz sample rate', async ({
-    page,
-  }) => {
+  test('should create AudioContext with 48kHz sample rate', async ({ page }) => {
     await page.goto('http://localhost:3334/');
 
     const audioInfo = await page.evaluate(() => {
@@ -550,9 +482,7 @@ test.describe('@arcaai/noise-filter Audio Processing Tests', () => {
     }
   });
 
-  test('should be able to create MediaStreamAudioSourceNode', async ({
-    page,
-  }) => {
+  test('should be able to create MediaStreamAudioSourceNode', async ({ page }) => {
     await page.goto('http://localhost:3334/');
 
     const sourceResult = await page.evaluate(async () => {
@@ -586,9 +516,7 @@ test.describe('@arcaai/noise-filter Audio Processing Tests', () => {
     }
   });
 
-  test('should be able to create MediaStreamAudioDestinationNode', async ({
-    page,
-  }) => {
+  test('should be able to create MediaStreamAudioDestinationNode', async ({ page }) => {
     await page.goto('http://localhost:3334/');
 
     const destResult = await page.evaluate(async () => {
@@ -628,9 +556,7 @@ test.describe('@arcaai/noise-filter WebAssembly Tests', () => {
     const wasmResult = await page.evaluate(async () => {
       try {
         // Minimal WASM module (8 bytes magic header)
-        const wasmBytes = new Uint8Array([
-          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-        ]);
+        const wasmBytes = new Uint8Array([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
         const module = await WebAssembly.compile(wasmBytes);
 
         return {
@@ -703,10 +629,7 @@ test.describe('@arcaai/noise-filter AudioWorklet Tests', () => {
     await page.goto('http://localhost:3334/');
 
     const workletSupport = await page.evaluate(() => {
-      const AudioContextCtor =
-        window.AudioContext ||
-        (window as { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
+      const AudioContextCtor = window.AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
       if (!AudioContextCtor) return { supported: false, reason: 'No AudioContext' };
 
@@ -772,10 +695,7 @@ test.describe('@arcaai/noise-filter Error Handling', () => {
         const { NoiseFilterError, NoiseFilterErrorCode } = module;
 
         // Create an error
-        const error = new NoiseFilterError(
-          NoiseFilterErrorCode.NOT_SUPPORTED,
-          'Test error'
-        );
+        const error = new NoiseFilterError(NoiseFilterErrorCode.NOT_SUPPORTED, 'Test error');
 
         return {
           isError: error instanceof Error,

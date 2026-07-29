@@ -35,7 +35,7 @@ import type {
   DiffResult,
 } from '../types';
 import type { SummaryGenerationOptions } from '../types/summary';
-import type { TranscriptSegment, AudioStartOptions } from '../types/audio';
+import type { TranscriptSegment, AudioStartOptions, SttConnectionState, ActivePipelineInfo } from '../types/audio';
 import { CONSULTATION_ENDPOINTS, CONTEXT_ENDPOINTS, SUMMARY_ENDPOINTS, ENTITY_ENDPOINTS } from '../core/constants';
 import { computeSummaryDiff } from '../utils/diffUtils';
 import { withRetry as withRetryUtil, type RetryOptions } from '../utils/errorUtils';
@@ -124,6 +124,18 @@ export interface UseArcaAudio {
   audioLostThisSession: boolean;
   /** Live outbound audio uplink bitrate (bits/sec) over the last ~1s window; 0 when not streaming. */
   uplinkBitrate: number;
+  /**
+   * Live connection health of the streaming STT session (TASK-567 Phase F).
+   * `connected` is nominal; drive a reconnecting/error/switched banner off the
+   * non-`connected` values.
+   */
+  sttConnectionState: SttConnectionState;
+  /**
+   * The ASR pipeline the streaming session is currently transcribing on, with a
+   * durable `isFallback` flag once switched to the tenant fallback. `null` when
+   * not streaming on a backend pipeline (local STT / idle).
+   */
+  activePipeline: ActivePipelineInfo | null;
   start: (options?: AudioStartOptions) => Promise<void>;
   /**
    * Start capture from the user's persisted preferences
@@ -131,6 +143,13 @@ export interface UseArcaAudio {
    */
   startFromPreferences: () => Promise<void>;
   stop: () => Promise<void>;
+  /**
+   * Switch the live streaming session to the tenant fallback pipeline (R4).
+   * Primary path swaps the ASR engine in place (session survives); pass
+   * `fallbackPipelineId` to enable the degraded destroy/recreate path on a
+   * backend that predates the in-place switch route (surfaced as reconnecting).
+   */
+  switchToFallback: (fallbackPipelineId?: string) => Promise<void>;
   mute: () => void;
   unmute: () => void;
   toggleNoiseFilter: (enabled?: boolean) => void;

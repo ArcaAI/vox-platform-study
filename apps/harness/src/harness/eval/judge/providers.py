@@ -55,7 +55,12 @@ _OPENAI_WIRE_STOP: dict[str, str] = {
     "tool_calls": "tool_call",
     "function_call": "tool_call",
 }
-_OLLAMA_STOP: dict[str, str] = {"stop": "stop", "length": "length", "load": "other", "unload": "other"}
+_OLLAMA_STOP: dict[str, str] = {
+    "stop": "stop",
+    "length": "length",
+    "load": "other",
+    "unload": "other",
+}
 _BEDROCK_STOP: dict[str, str] = {
     "end_turn": "stop",
     "stop_sequence": "stop",
@@ -116,7 +121,11 @@ def build_llm_call_stats(
 
     tps = tokens_per_second
     if tps is None and predicted and total_ms_int > 0:
-        decode_ms = total_ms_int - ttft_ms if ttft_ms is not None and total_ms_int > ttft_ms else total_ms_int
+        decode_ms = (
+            total_ms_int - ttft_ms
+            if ttft_ms is not None and total_ms_int > ttft_ms
+            else total_ms_int
+        )
         if decode_ms > 0:
             tps = round(predicted / (decode_ms / 1000.0), 3)
 
@@ -148,7 +157,9 @@ def _openai_usage_dict(usage: Any) -> dict[str, Any] | None:
     }
 
 
-def _stats_from_openai_response(resp: Any, *, provider: str, model: str, total_ms: int) -> dict[str, Any]:
+def _stats_from_openai_response(
+    resp: Any, *, provider: str, model: str, total_ms: int
+) -> dict[str, Any]:
     """Build AD-1 stats from an OpenAI-wire chat-completion response (null-safe)."""
     usage = _openai_usage_dict(getattr(resp, "usage", None)) or {}
     choices = getattr(resp, "choices", None) or []
@@ -380,7 +391,9 @@ class AzureOpenAIJudgeClient:
             raise JudgeConnectionError(f"azure judge call failed: {exc}") from exc
         # capture the native usage/finish-reason stats for this call.
         self.last_stats = _stats_from_openai_response(
-            resp, provider="azure", model=self.model,
+            resp,
+            provider="azure",
+            model=self.model,
             total_ms=int((time.monotonic() - started) * 1000),
         )
         # Same reasoning-aware fallback as the OpenAI-compatible client: prefer

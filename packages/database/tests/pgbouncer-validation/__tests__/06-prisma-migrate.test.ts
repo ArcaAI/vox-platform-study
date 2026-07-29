@@ -25,10 +25,7 @@ const directHost = '127.0.0.1';
 const directPort = 5532;
 const adminDb = 'postgres';
 const testDb = `hope_mig_t1`;
-const migrationDir = path.resolve(
-  __dirname,
-  '../../../src/prisma/db_main/migrations',
-);
+const migrationDir = path.resolve(__dirname, '../../../src/prisma/db_main/migrations');
 const monorepoRoot = path.resolve(__dirname, '../../../../..');
 
 async function withAdmin<T>(fn: (client: Client) => Promise<T>): Promise<T> {
@@ -53,10 +50,7 @@ async function ensureFreshTestDatabase(): Promise<void> {
   // skip creation; if not we create it. The test verifies a brand-new
   // schema is created within the migrations test below.
   await withAdmin(async (client) => {
-    const exists = await client.query<{ datname: string }>(
-      `SELECT datname FROM pg_database WHERE datname = $1`,
-      [testDb],
-    );
+    const exists = await client.query<{ datname: string }>(`SELECT datname FROM pg_database WHERE datname = $1`, [testDb]);
     if (exists.rows.length === 0) {
       // identifier is a literal hard-coded above; safe to inline.
       await client.query(`CREATE DATABASE "${testDb}"`);
@@ -79,26 +73,22 @@ describe('PgBouncer txn-mode — Prisma Migrate via DIRECT_URL (Task 1.12)', () 
 
     // `prisma migrate deploy` is non-interactive and intended for prod-style
     // deployment. We invoke it via pnpm so the workspace resolution works.
-    const out = execFileSync(
-      'pnpm',
-      ['--filter', '@arcaai/database', 'exec', 'prisma', 'migrate', 'deploy'],
-      {
-        cwd: monorepoRoot,
-        env: {
-          ...process.env,
-          // Override DATABASE_URL for the migrate process so prisma.config.ts
-          // uses our isolated `hope_mig_t1` DB through the direct port.
-          DATABASE_URL: targetUrl,
-          // prisma.config.ts also accepts DIRECT_URL (Phase 0 mandate); set
-          // both to be explicit.
-          DIRECT_URL: targetUrl,
-          NODE_ENV: 'test',
-        },
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 60_000,
+    const out = execFileSync('pnpm', ['--filter', '@arcaai/database', 'exec', 'prisma', 'migrate', 'deploy'], {
+      cwd: monorepoRoot,
+      env: {
+        ...process.env,
+        // Override DATABASE_URL for the migrate process so prisma.config.ts
+        // uses our isolated `hope_mig_t1` DB through the direct port.
+        DATABASE_URL: targetUrl,
+        // prisma.config.ts also accepts DIRECT_URL (Phase 0 mandate); set
+        // both to be explicit.
+        DIRECT_URL: targetUrl,
+        NODE_ENV: 'test',
       },
-    );
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 60_000,
+    });
 
     expect(out).toMatch(/migrations have been successfully applied|No pending migrations to apply/);
 
@@ -123,11 +113,7 @@ describe('PgBouncer txn-mode — Prisma Migrate via DIRECT_URL (Task 1.12)', () 
          WHERE schemaname = 'core' AND tablename IN ('Consultation', 'GlobalSetting', 'AuditLog')
          ORDER BY tablename`,
       );
-      expect(tableCheck.rows.map((r) => r.tablename)).toEqual([
-        'AuditLog',
-        'Consultation',
-        'GlobalSetting',
-      ]);
+      expect(tableCheck.rows.map((r) => r.tablename)).toEqual(['AuditLog', 'Consultation', 'GlobalSetting']);
     } finally {
       await verify.end();
     }

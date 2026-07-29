@@ -51,24 +51,33 @@ describe('Phase 3 — secrets migration grep', () => {
   });
 });
 
-// apps/api/.env.production must carry NO plaintext secret
+// apps/api/.env.prod must carry NO plaintext secret
 // material. All secrets resolve from Vault (warmup keys + dynamic DB creds);
 // AppRole credentials arrive via file mounts. Pin the secret-free shape so a
 // future edit can't silently reintroduce a plaintext secret.
-describe('apps/api/.env.production is Vault-backed and secret-free', () => {
-  const env = readSource('apps/api/.env.production');
+//
+// TASK-584: this file now also carries the K8s-posture section (relocated
+// from the monorepo-root `.env.production`), whose keys are declared empty
+// with a trailing inline comment (`KEY=                # explanation`) —
+// the regexes below require a NON-whitespace character immediately after
+// `=` so an empty-with-trailing-comment line does not false-positive as a
+// real inlined secret.
+describe('apps/api/.env.prod is Vault-backed and secret-free', () => {
+  const env = readSource('apps/api/.env.prod');
 
   it('has no inline SESSION_SECRET_KEY value (resolved from Vault)', () => {
-    expect(env).not.toMatch(/^SESSION_SECRET_KEY=.+/m);
+    expect(env).not.toMatch(/^SESSION_SECRET_KEY=\S/m);
   });
 
   it('has no inline REDIS_PASS value (resolved from Vault)', () => {
-    expect(env).not.toMatch(/^REDIS_PASS=.+/m);
+    expect(env).not.toMatch(/^REDIS_PASS=\S/m);
   });
 
   it('embeds no DB password in a connection string', () => {
-    // No `postgres://user:password@host` style URLs.
-    expect(env).not.toMatch(/postgres(?:ql)?:\/\/[^:\s/]+:[^@\s]+@/);
+    // No `postgres://user:password@host` style URLs. A masked example
+    // (`user:****@host`, an all-asterisk placeholder) is documentation, not
+    // a leaked credential — the negative lookahead excludes only that shape.
+    expect(env).not.toMatch(/postgres(?:ql)?:\/\/[^:\s/]+:(?!\*+@)[^@\s]+@/);
   });
 
   it('is wired for Vault: provider, file-based AppRole creds, dynamic DB creds, audit path', () => {

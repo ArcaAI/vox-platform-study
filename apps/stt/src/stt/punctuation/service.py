@@ -215,7 +215,9 @@ async def punctuate(text: str, model_name: str | None = None) -> str:
 
 
 async def punctuate_batch(
-    texts: list[str], batch_size: int = 8, model_name: str | None = None,
+    texts: list[str],
+    batch_size: int = 8,
+    model_name: str | None = None,
 ) -> list[str]:
     """Punctuate a list of texts. Runs sync model in executor."""
     if not texts:
@@ -235,7 +237,9 @@ async def punctuate_batch(
 
 
 def punctuate_sync(
-    texts: list[str], batch_size: int = 8, model_name: str | None = None,
+    texts: list[str],
+    batch_size: int = 8,
+    model_name: str | None = None,
 ) -> list[str]:
     """Punctuate a list of texts synchronously (for batch pipeline)."""
     if not texts:

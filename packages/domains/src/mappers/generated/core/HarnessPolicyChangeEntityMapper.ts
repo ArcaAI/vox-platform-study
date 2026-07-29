@@ -44,10 +44,7 @@ export class HarnessPolicyChangeEntityMapper extends BaseMapper<Entities.Harness
   }
 }
 
-export const HarnessPolicyChangeEntityMapperHandlers = createMapperHandlers<
-  Entities.HarnessPolicyChangeEntity,
-  Models.HarnessPolicyChange
->({
+export const HarnessPolicyChangeEntityMapperHandlers = createMapperHandlers<Entities.HarnessPolicyChangeEntity, Models.HarnessPolicyChange>({
   $toPersistence: {
     // Preserve the raw Buffer for the Prisma Bytes write path
     // (the generic auto-mapper would destructure a typed array into a byte map).

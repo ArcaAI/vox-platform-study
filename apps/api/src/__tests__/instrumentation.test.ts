@@ -62,9 +62,7 @@ describe('instrumentation', () => {
 
   /** SIGTERM/SIGINT registrations made through process.on during the current test. */
   const signalRegistrations = () =>
-    (processOnSpy.mock.calls as unknown as [string | symbol, () => void][]).filter(
-      ([event]) => event === 'SIGTERM' || event === 'SIGINT',
-    );
+    (processOnSpy.mock.calls as unknown as [string | symbol, () => void][]).filter(([event]) => event === 'SIGTERM' || event === 'SIGINT');
 
   beforeEach(() => {
     vi.clearAllMocks();

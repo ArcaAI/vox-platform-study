@@ -410,11 +410,7 @@ export class NamedEntityEntity extends BaseTenantEntity {
    * provenance pointer (so summaries can cite the source offsets).
    */
   get hasTranscriptSpan(): boolean {
-    return (
-      this._transcriptContextItemId != null &&
-      this._transcriptStartOffset != null &&
-      this._transcriptEndOffset != null
-    );
+    return this._transcriptContextItemId != null && this._transcriptStartOffset != null && this._transcriptEndOffset != null;
   }
 
   public override validate(): void {

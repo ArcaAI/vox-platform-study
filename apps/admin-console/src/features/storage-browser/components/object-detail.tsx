@@ -12,24 +12,19 @@ import { SelectedObjectActions } from './object-actions-panel';
  * deep-link — opens it; folder rows still navigate the prefix.
  */
 export function ObjectDetailDrawer({
-    bucketName,
-    object,
-    onOpenChange,
-    onDeleted,
+  bucketName,
+  object,
+  onOpenChange,
+  onDeleted,
 }: {
-    bucketName: string;
-    object: StorageObject | null;
-    onOpenChange: (open: boolean) => void;
-    onDeleted: () => void;
+  bucketName: string;
+  object: StorageObject | null;
+  onOpenChange: (open: boolean) => void;
+  onDeleted: () => void;
 }) {
-    return (
-        <DetailDrawer
-            open={object !== null}
-            onOpenChange={onOpenChange}
-            size="md"
-            title={object ? objectBasename(object.key) : 'Object'}
-        >
-            {object ? <SelectedObjectActions key={object.key} bucketName={bucketName} object={object} onDeleted={onDeleted} /> : null}
-        </DetailDrawer>
-    );
+  return (
+    <DetailDrawer open={object !== null} onOpenChange={onOpenChange} size="md" title={object ? objectBasename(object.key) : 'Object'}>
+      {object ? <SelectedObjectActions key={object.key} bucketName={bucketName} object={object} onDeleted={onDeleted} /> : null}
+    </DetailDrawer>
+  );
 }

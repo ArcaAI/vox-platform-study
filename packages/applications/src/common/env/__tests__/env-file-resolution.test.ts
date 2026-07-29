@@ -10,14 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  ENV_FILE_MAP,
-  ENV_FILE_OVERRIDES_HOST_ENV,
-  getNodeEnv,
-  isCI,
-  planEnvFileLoad,
-  shouldLoadEnvFile,
-} from '../env-file-resolution';
+import { ENV_FILE_MAP, ENV_FILE_OVERRIDES_HOST_ENV, getNodeEnv, isCI, planEnvFileLoad, shouldLoadEnvFile } from '../env-file-resolution';
 
 /** Build a throwaway "monorepo root" containing the given env files. */
 function makeRoot(files: Record<string, string>): string {

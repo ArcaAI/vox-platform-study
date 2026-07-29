@@ -29,7 +29,15 @@ def test_init_ready_then_binary_frames_then_done():
     app = _app(providers={"azure": FakeEngine("azure", native_streaming=False, chunks=1)})
     with TestClient(app) as client:
         with client.websocket_connect("/api/v1/audio/stream") as ws:
-            ws.send_json({"type": "init", "voice": "en-female-1", "format": "pcm"})
+            # routing chain is gateway-injected on the init frame (TASK-577).
+            ws.send_json(
+                {
+                    "type": "init",
+                    "voice": "en-female-1",
+                    "format": "pcm",
+                    "routing_en": ["azure", "kokoro"],
+                }
+            )
             ready = ws.receive_json()
             assert ready["type"] == "ready"
             assert ready["sample_rate"] == 24000 and ready["channels"] == 1
@@ -97,5 +105,12 @@ def test_valid_service_token_accepted():
         with client.websocket_connect(
             "/api/v1/audio/stream", headers={"x-service-token": "s3cret"}
         ) as ws:
-            ws.send_json({"type": "init", "voice": "en-female-1", "format": "pcm"})
+            ws.send_json(
+                {
+                    "type": "init",
+                    "voice": "en-female-1",
+                    "format": "pcm",
+                    "routing_en": ["azure", "kokoro"],
+                }
+            )
             assert ws.receive_json()["type"] == "ready"

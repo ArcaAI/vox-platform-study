@@ -20,7 +20,9 @@ export class ResetPasswordRequest extends BaseRequest {
 
   // Complexity is enforced by the configurable service policy (clear
   // 400 with the unmet rules) — no static @MinLength that would mask it.
-  @ApiPropertyOptional({ description: 'Explicit temporary password (mode=temporary; validated against the complexity policy). Generated when omitted.' })
+  @ApiPropertyOptional({
+    description: 'Explicit temporary password (mode=temporary; validated against the complexity policy). Generated when omitted.',
+  })
   @IsOptional()
   @IsString()
   temporaryPassword?: string;

@@ -97,13 +97,9 @@ describe('StreamingBackendSTTProvider', () => {
       });
 
       expect(session.createSession).toHaveBeenCalledTimes(1);
-      expect(session.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ pipelineId: 'pipeline-doctor-default' }),
-      );
+      expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipeline-doctor-default' }));
       expect(session.getWebSocketUrl).toHaveBeenCalled();
-      expect(wsClient.connect).toHaveBeenCalledWith(
-        'wss://api.test/ws/stt/stream?sessionId=sess-1&ticket=T-abc',
-      );
+      expect(wsClient.connect).toHaveBeenCalledWith('wss://api.test/ws/stt/stream?sessionId=sess-1&ticket=T-abc');
       expect(provider.isReady()).toBe(true);
     });
 

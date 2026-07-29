@@ -32,7 +32,14 @@ import { HarnessAuditService } from '../../harness-audit';
 import { ConfigResolver } from '../../config-resolver';
 import { diffContent } from './content-diff.util';
 import { ISummaryService } from './ISummaryService';
-import { GenerateSummaryRequest, GeneratePreSummaryRequest, UpdateSummaryRequest, SummaryResponse, SummaryProvenanceResponse, CitedSegmentResponse } from './dto';
+import {
+  GenerateSummaryRequest,
+  GeneratePreSummaryRequest,
+  UpdateSummaryRequest,
+  SummaryResponse,
+  SummaryProvenanceResponse,
+  CitedSegmentResponse,
+} from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryResponse } from './smr-generate';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
@@ -214,9 +221,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // dropped by the PHI field-encryption migration, so an unencrypted create
     // silently loses the clinical text at rest (mirrors context.service.ts
     // `encryptContent`).
-    await this.encryptBestEffort('ContextItem content', () =>
-      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
-    );
+    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     const savedContext = await this.contextItemRepository.create(contextItem);
 
@@ -243,9 +248,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       summaryMeta.ttftMs = smrResponse.stats.ttft_ms ?? null;
       summaryMeta.tokensPerSecond = smrResponse.stats.tokens_per_second ?? null;
     }
-    await this.encryptBestEffort('SummaryMeta', () =>
-      this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
-    );
+    await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
     await this.summaryMetaRepository.create(summaryMeta);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -353,9 +356,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // before persistence — the plaintext `content` column was dropped by the
     // PHI field-encryption migration, so an unencrypted create silently loses
     // the clinical text at rest (mirrors context.service.ts `encryptContent`).
-    await this.encryptBestEffort('ContextItem content', () =>
-      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
-    );
+    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     const savedContext = await this.contextItemRepository.create(contextItem);
 
@@ -382,9 +383,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       summaryMeta.ttftMs = smrResponse.stats.ttft_ms ?? null;
       summaryMeta.tokensPerSecond = smrResponse.stats.tokens_per_second ?? null;
     }
-    await this.encryptBestEffort('SummaryMeta', () =>
-      this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!),
-    );
+    await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
     await this.summaryMetaRepository.create(summaryMeta);
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
@@ -414,7 +413,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
- * §2C — emit ONE LLM_CALL trajectory step for a summary generation.
+   * §2C — emit ONE LLM_CALL trajectory step for a summary generation.
    * sessionKind=SUMMARY_JOB, sessionId=the generated summary's contextItem id
    * (stable job id), runId="" (non-Temporal sentinel), seq=0 (one step per job).
    * Fire-and-forget: any failure is swallowed + logged so telemetry never rolls
@@ -523,9 +522,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // invisible to the change-tracked persistence mapper (no such column), so
     // skipping this call silently drops the clinician's edit at rest (mirrors
     // context.service.ts `encryptContent`).
-    await this.encryptBestEffort('ContextItem content', () =>
-      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
-    );
+    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     const updated = await this.contextItemRepository.update(contextItemId, contextItem);
 
@@ -752,9 +749,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     // path running the same cipher call closes off the whole class of "some
     // future edit here forgets to encrypt" regressions (mirrors the other
     // ContextItem write lanes in this service).
-    await this.encryptBestEffort('ContextItem content', () =>
-      this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!),
-    );
+    await this.encryptBestEffort('ContextItem content', () => this.contextItemRepository.encryptContentIntoEntity(contextItem, this.secretsService!));
 
     await this.contextItemRepository.update(contextItemId, contextItem);
 
@@ -823,9 +818,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     const safety = (decisions as Record<string, unknown>).safety ?? (decisions as Record<string, unknown>).SAFETY;
     if (safety == null) return false;
     const verdict =
-      typeof safety === 'string'
-        ? safety
-        : ((safety as Record<string, unknown>).decision ?? (safety as Record<string, unknown>).verdict);
+      typeof safety === 'string' ? safety : ((safety as Record<string, unknown>).decision ?? (safety as Record<string, unknown>).verdict);
     return String(verdict).toUpperCase() === 'FLAG';
   }
 
@@ -951,9 +944,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       try {
         const namedEntity = NamedEntityFactory.CreateNamedEntity(namedEntityPropsFromNlp(entity as NlpNamedEntity, { tenantId, contextItemId }));
 
-        await this.encryptBestEffort('NamedEntity', () =>
-          this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!),
-        );
+        await this.encryptBestEffort('NamedEntity', () => this.namedEntityRepository.encryptFieldsIntoEntity(namedEntity, this.secretsService!));
         await this.namedEntityRepository.create(namedEntity);
         savedCount++;
       } catch (error) {
@@ -1090,7 +1081,7 @@ export class SummaryService extends BaseService implements ISummaryService {
   }
 
   /**
- * read the AD-1 GenerationStats headline fields off the
+   * read the AD-1 GenerationStats headline fields off the
    * SMR `/generate` response. Returns `null` when the `stats` block is absent
    * (legacy response) or null (idempotency-cache hit) so the caller persists
    * nothing extra. Null-safe per field — never throws over missing/odd stats.
@@ -1104,8 +1095,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     return {
       stop_reason: typeof stats.stop_reason === 'string' ? stats.stop_reason : null,
       ttft_ms: typeof stats.ttft_ms === 'number' && Number.isFinite(stats.ttft_ms) ? stats.ttft_ms : null,
-      tokens_per_second:
-        typeof stats.tokens_per_second === 'number' && Number.isFinite(stats.tokens_per_second) ? stats.tokens_per_second : null,
+      tokens_per_second: typeof stats.tokens_per_second === 'number' && Number.isFinite(stats.tokens_per_second) ? stats.tokens_per_second : null,
     };
   }
 

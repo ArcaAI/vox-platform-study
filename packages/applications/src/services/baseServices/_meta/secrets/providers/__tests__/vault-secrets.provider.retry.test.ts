@@ -5,10 +5,7 @@
 // it must NOT retry 4xx (auth/not-found) — those have to fail fast. Fake timers
 // drive the backoff so the suite stays sub-millisecond.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  VaultSecretsProvider,
-  VaultProviderConfig,
-} from '../vault-secrets.provider';
+import { VaultSecretsProvider, VaultProviderConfig } from '../vault-secrets.provider';
 
 function cfg(overrides: Partial<VaultProviderConfig> = {}): VaultProviderConfig {
   return {
