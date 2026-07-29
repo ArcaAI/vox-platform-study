@@ -37,7 +37,7 @@ export function ModelSelector({ label, models, selectedModelId, onChange, isLoad
         onValueChange={(v) => onChange(v === '__none__' ? '' : v)}
         disabled={isLoading}
       >
-        <SelectTrigger className="w-full">
+        <SelectTrigger aria-label={label} className="w-full">
           <SelectValue placeholder={isLoading ? 'Loading...' : 'Select a model'}>
             {selectedModelId && selectedModel ? (
               <span className="flex items-center gap-2">

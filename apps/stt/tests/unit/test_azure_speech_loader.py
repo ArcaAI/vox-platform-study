@@ -500,6 +500,13 @@ class TestResolveRegion:
         result = AzureSpeechLoader._resolve_region(config)
         assert result == "centralindia"
 
+    def test_generic_source_revision_is_not_used_as_region(self):
+        config = create_azure_model_config(
+            source_uri="azure://speech-to-text",
+            source_revision="main",
+        )
+        assert AzureSpeechLoader._resolve_region(config) is None
+
     def test_empty_source_uri_uses_revision(self):
         """Test empty source_uri falls back to revision."""
         config = create_azure_model_config(

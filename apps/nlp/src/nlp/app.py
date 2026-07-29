@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from nlp.api import api_router
 from nlp.core.config import settings
 from nlp.core.logging import get_logger
+from nlp.core.observability import setup_prometheus
 from nlp.lifespan import lifespan
 from nlp.utils import is_production
 
@@ -44,6 +45,8 @@ def get_app() -> FastAPI:
         allow_methods=settings.security.cors_methods,
         allow_headers=["*"],
     )
+
+    setup_prometheus(app)
 
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(Exception, general_exception_handler)

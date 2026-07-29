@@ -11,7 +11,7 @@ type TranscriptMessage = {
 type LiveTranscriptionDemoProps = {
   apiBaseUrl: string;
   pipelineId?: string;
-  authToken?: string;
+  apiKey?: string;
   tenantId?: string;
 };
 
@@ -19,11 +19,17 @@ type StreamSessionResponse = {
   sessionId: string;
   status: string;
   wsUrl: string;
+  ticket: string;
   maxConcurrent?: number;
   currentActive?: number;
 };
 
-export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ apiBaseUrl, pipelineId, authToken, tenantId }) => {
+export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({
+  apiBaseUrl,
+  pipelineId,
+  apiKey,
+  tenantId,
+}) => {
   const [status, setStatus] = useState<string>('Idle');
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [transcript, setTranscript] = useState<string>('');
@@ -36,12 +42,12 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ ap
   const sessionIdRef = useRef<string | null>(null);
   const isStoppingRef = useRef<boolean>(false);
 
-  const buildWebSocketUrl = useCallback((baseUrl: string, wsPath: string, sessionId: string) => {
+  const buildWebSocketUrl = useCallback((baseUrl: string, wsPath: string, sessionId: string, ticket: string) => {
     const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
     const normalizedWsPath = wsPath.startsWith('/') ? wsPath : `/${wsPath}`;
     const wsBaseUrl = normalizedBaseUrl.replace(/^http/, 'ws');
 
-    return `${wsBaseUrl}${normalizedWsPath}?sessionId=${encodeURIComponent(sessionId)}`;
+    return `${wsBaseUrl}${normalizedWsPath}?sessionId=${encodeURIComponent(sessionId)}&ticket=${encodeURIComponent(ticket)}`;
   }, []);
 
   const appendTranscript = useCallback((line: string) => {
@@ -93,8 +99,8 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ ap
       'Content-Type': 'application/json',
     };
 
-    if (authToken) {
-      headers.Authorization = `Bearer ${authToken}`;
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
     }
 
     if (tenantId) {
@@ -102,7 +108,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ ap
     }
 
     return headers;
-  }, [authToken, tenantId]);
+  }, [apiKey, tenantId]);
 
   const deleteStreamSession = useCallback(async () => {
     const sessionId = sessionIdRef.current;
@@ -186,8 +192,8 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ ap
         throw new Error('Missing pipelineId');
       }
 
-      if (!authToken) {
-        throw new Error('Missing authToken');
+      if (!apiKey) {
+        throw new Error('Missing apiKey');
       }
 
       if (!tenantId) {
@@ -211,7 +217,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ ap
       console.log('Streaming session response', session);
       sessionIdRef.current = session.sessionId;
 
-      const wsUrl = buildWebSocketUrl(apiBaseUrl, session.wsUrl, session.sessionId);
+      const wsUrl = buildWebSocketUrl(apiBaseUrl, session.wsUrl, session.sessionId, session.ticket);
 
       setStatus(`Connecting WebSocket for session ${session.sessionId}...`);
       const ws = new WebSocket(wsUrl);
@@ -303,7 +309,7 @@ export const LiveTranscriptionDemo: React.FC<LiveTranscriptionDemoProps> = ({ ap
   }, [
     apiBaseUrl,
     appendTranscript,
-    authToken,
+    apiKey,
     buildRequestHeaders,
     buildWebSocketUrl,
     convertFloat32ToInt16,

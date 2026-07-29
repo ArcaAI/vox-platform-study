@@ -88,6 +88,7 @@ function buildSyncPayload(request: SMRRequest, fallbackSessionId?: string): Reco
       session_id: request.sessionId ?? fallbackSessionId ?? `smr-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
       patient_id: request.patientId ?? null,
       provider_id: request.doctorId ?? null,
+      session_type: request.visitType ?? null,
       created_at: new Date().toISOString(),
       conversation_segments: buildConversationSegments(request),
       patient_info: request.patientInfo ?? (request.patientName ? { name: request.patientName } : null),
