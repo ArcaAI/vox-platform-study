@@ -90,6 +90,11 @@ yarn-error.log*
 .env.staging
 .env.prod
 .env.production
+# Generated production secret bundle (scripts/generate-prod-secrets.sh). Holds
+# real credential material for a Vault seed handoff — must NEVER be committed.
+.env.prod.secrets
+*.env.prod.secrets
+.env.*.secrets
 !**/.env.example
 !apps/*/.env.prod
 !.env.sample

@@ -142,7 +142,7 @@ export interface SettingDescriptor {
    * Compose's `postgres:postgres@localhost:5432`, Vault dev-mode's fixed
    * `root` token) — never for anything that varies per install or per
    * environment. The registry refuses to assemble a `secret` descriptor that
-   * sets this (governance test), and the generator's `<CHANGE_ME>` redaction
+   * sets this (governance test), and the generator's `CHANGE_ME` redaction
    * for secrets always wins over it regardless.
    */
   sampleValue?: unknown;
