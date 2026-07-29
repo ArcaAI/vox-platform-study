@@ -130,7 +130,8 @@ describe('STT Service Contract', () => {
       const result = SttStartSessionRequestSchema.safeParse(minimalRequest);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.language).toBe('en-US'); // Default value
+        expect(result.data.language).toBe('en-US');
+        expect(result.data.provider).toBe('azure');
       }
     });
 
@@ -158,6 +159,15 @@ describe('STT Service Contract', () => {
         session_id: 'test-session',
         provider: 'whisper' as const,
         num_speakers: 2,
+      };
+
+      const result = SttStartSessionRequestSchema.safeParse(request);
+      expect(result.success).toBe(true);
+    });
+    it('should validate sarvam provider', () => {
+      const request = {
+        session_id: 'test-session',
+        provider: 'sarvam' as const,
       };
 
       const result = SttStartSessionRequestSchema.safeParse(request);

@@ -426,11 +426,13 @@ class ResultPublisher:
             return self._maxlen
         return get_settings().streaming_result_stream_maxlen
 
-    async def publish(self, result: SegmentResult) -> str:
+    async def publish(self, result: SegmentResult) -> str | None:
         """Write a ``SegmentResult`` to the result stream.
 
         Returns the Redis Stream entry ID.
         """
+        if not result.text or not result.text.strip():
+            return None
         key = result_stream_key(self._session_id)
         entry_id = await self._redis.xadd(
             key,
