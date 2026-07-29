@@ -86,6 +86,18 @@ class WhisperCppLoader(BaseModelLoader):
                 f"from '{gguf_path}': {exc}"
             ) from exc
 
+        # pywhispercpp does NOT raise when whisper.cpp fails to load the weights
+        # (e.g. a non-whisper.cpp GGUF -> "invalid model data (bad magic)"): it
+        # returns a handle whose `_ctx` is null. Caching that dead handle lets the
+        # first transcribe segfault the whole process, so reject it here.
+        if getattr(handle, "_ctx", None) is None:
+            raise ModelLoadError(
+                f"whisper.cpp failed to load model '{model_config.slug}' from "
+                f"'{gguf_path}' (null context — the file is not a whisper.cpp GGUF, "
+                f"e.g. a generic/transformers GGUF conversion). Point at a "
+                f"whisper.cpp-format .gguf."
+            )
+
         return LoadedModel(
             model_id=model_config.id,
             model_slug=model_config.slug,
@@ -115,6 +127,17 @@ class WhisperCppLoader(BaseModelLoader):
                 f"No .gguf file found for whisper.cpp model '{model_config.slug}' "
                 f"(source_uri={model_config.source_uri!r}, dir={repo_dir})"
             )
+
+        # Some GGUF repos (e.g. oxide-lab/whisper-large-v3-turbo-GGUF) ship BOTH a
+        # top-level generic GGUF conversion AND the whisper.cpp-format weights in
+        # a `whisper.cpp/` subdirectory. Only the latter load in the ggml runtime
+        # — the top-level files fail whisper.cpp's magic check ("invalid model
+        # data (bad magic)") and segfault pywhispercpp at transcribe time. When
+        # that subdirectory exists, select from it exclusively.
+        whisper_cpp_dir = f"{os.sep}whisper.cpp{os.sep}"
+        subfolder = [c for c in candidates if whisper_cpp_dir in c]
+        if subfolder:
+            candidates = subfolder
 
         quant = (model_config.compute_type or "").lower()
         if quant:
