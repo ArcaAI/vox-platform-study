@@ -1,9 +1,10 @@
-import { Authorize, IActiveUserContext, IConfigService, SecretsService } from '@arcaai/applications';
+import { Authorize, HarnessPolicyService, IActiveUserContext, IConfigService, SecretsService } from '@arcaai/applications';
 import { HttpService } from '@nestjs/axios';
-import { Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post } from '@nestjs/common';
+import { Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import { ClsService } from 'nestjs-cls';
+import type { RequestWithAuth } from '../../types/request-with-auth';
 import { PreSummaryRequest } from './dto/pre-summary.request';
 import type { PreSummaryResponse, SummaryResponse, TokenUsage } from './dto/summary.response';
 import { SyncSummaryRequest } from './dto/sync-summary.request';
@@ -28,6 +29,8 @@ interface SmrResponseFormat {
 interface SmrGenerateRequest {
   prompt: string;
   system_prompt?: string;
+  provider?: string;
+  model?: string;
   temperature?: number;
   max_tokens?: number;
   response_format?: SmrResponseFormat;
@@ -36,6 +39,7 @@ interface SmrGenerateRequest {
 // The subset of SMR `GenerateResponse` (apps/smr models/responses.py) this shim
 // reads. Provider internals are intentionally NOT surfaced to the client.
 interface SmrGenerateResponse {
+  task_id?: string;
   content: string;
   latency_ms?: number;
   finish_reason?: string;
@@ -65,13 +69,14 @@ export class SmrCompatController {
     private readonly httpService: HttpService,
     @Inject(IConfigService) private readonly configService: IConfigService,
     private readonly clsService: ClsService<IActiveUserContext>,
+    private readonly harnessPolicyService: HarnessPolicyService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
   @Post('summary/sync')
   @Authorize()
   @ApiOperation({ summary: 'v1-compatible synchronous medical summary (stateless shim over SMR /generate)' })
-  async summarySync(@Body() body: SyncSummaryRequest): Promise<SummaryResponse> {
+  async summarySync(@Body() body: SyncSummaryRequest, @Req() request?: RequestWithAuth): Promise<SummaryResponse> {
     const sessionData = body.session_data;
     const language = this.resolveLanguage(sessionData.session_metadata);
     // Enrichment logic (SMR_Summary_Endpoints.md §3.1): enabled when the flag is
@@ -99,12 +104,14 @@ export class SmrCompatController {
         strict: true,
       },
     };
+    await this.applySmrModelSelection(smrRequest, request);
 
     const generated = await this.callSmrGenerate(smrRequest, 'Summary generation');
 
     try {
       return mapGenerateToV1Summary(generated.content, {
         sessionId: sessionData.session_id,
+        summaryId: generated.task_id,
         useEnhanced,
         latencyMs: generated.latency_ms,
         finishReason: generated.finish_reason,
@@ -125,7 +132,7 @@ export class SmrCompatController {
   @Post('presummary')
   @Authorize()
   @ApiOperation({ summary: 'v1-compatible department-aware pre-summary (stateless shim over SMR /generate)' })
-  async presummary(@Body() body: PreSummaryRequest): Promise<PreSummaryResponse> {
+  async presummary(@Body() body: PreSummaryRequest, @Req() request?: RequestWithAuth): Promise<PreSummaryResponse> {
     const { system, user } = buildPreSummaryPrompt(body);
 
     const smrRequest: SmrGenerateRequest = {
@@ -134,6 +141,7 @@ export class SmrCompatController {
       temperature: body.temperature ?? PRE_SUMMARY_DEFAULT_TEMPERATURE,
       max_tokens: body.max_tokens ?? PRE_SUMMARY_DEFAULT_MAX_TOKENS,
     };
+    await this.applySmrModelSelection(smrRequest, request);
 
     const generated = await this.callSmrGenerate(smrRequest, 'Pre-summary generation');
 
@@ -148,6 +156,12 @@ export class SmrCompatController {
   private resolveLanguage(metadata?: Record<string, unknown>): string {
     const language = metadata?.language;
     return typeof language === 'string' && language.trim() ? language.trim() : 'en';
+  }
+  private async applySmrModelSelection(request: SmrGenerateRequest, authRequest?: RequestWithAuth): Promise<void> {
+    const tenantId = this.clsService.get('tenantId') ?? authRequest?.apiKey?.tenantId ?? undefined;
+    const selection = await this.harnessPolicyService.resolveSmrSelection(tenantId);
+    request.provider = selection.provider;
+    request.model = selection.model;
   }
 
   private getSmrBaseUrl(): string {
@@ -173,12 +187,6 @@ export class SmrCompatController {
     return typeof code === 'string' && CONNECT_PHASE_CODES.has(code);
   }
 
-  /**
-   * POST the assembled request to SMR `/api/v1/generate`. Provider/model are
-   * omitted so SMR resolves the tenant/system default. Retries ONLY on
-   * connect-phase failures (single-delivery guarantee for the billable,
-   * non-idempotent call). Maps transport failures to the v1 error shapes.
-   */
   private async callSmrGenerate(request: SmrGenerateRequest, label: string): Promise<SmrGenerateResponse> {
     const base = this.getSmrBaseUrl();
     const maxRetries = 2;

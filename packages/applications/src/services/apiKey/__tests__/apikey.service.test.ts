@@ -1658,6 +1658,11 @@ describe('ApiKeyService', () => {
       const request = { headers: {}, url: '/ws?api-key=url-key-2' };
       expect(service.extractApiKeyFromWebSocket(request)).toBe('url-key-2');
     });
+    // v1-compatibility
+    it('should return key from the legacy URL query param key', () => {
+      const request = { headers: {}, url: '/ws?key=legacy-key' };
+      expect(service.extractApiKeyFromWebSocket(request)).toBe('legacy-key');
+    });
 
     it('should return null when no key present', () => {
       const request = { headers: {} };

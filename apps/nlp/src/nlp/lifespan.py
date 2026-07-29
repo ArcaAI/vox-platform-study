@@ -32,7 +32,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     setup_opentelemetry(app)
-    setup_prometheus(app)
 
     await websocket_service.initialize()
 

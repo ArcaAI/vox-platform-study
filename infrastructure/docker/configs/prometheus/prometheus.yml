@@ -11,10 +11,15 @@
 #   the compose service maps it to `host-gateway`).
 #
 # Label strategy:
-#   We deliberately do NOT set a `service` target label. The cross-service
-#   per-model metrics already carry their own {service,model} labels, and a
-#   target `service` label would collide (Prometheus would rename theirs to
-#   `exported_service`). Per-service HTTP metrics are distinguished by `job`.
+#   We deliberately do NOT set a target-level `service` label (static_configs
+#   labels:) — the cross-service per-model metrics already carry their own
+#   {service,model} labels, and a target-level `service` label would collide
+#   (Prometheus renames theirs to `exported_service`).
+#   Instead each job carries a per-metric `metric_relabel_configs` rule scoped
+#   to `__name__ =~ "http_.*"` that stamps `service` onto the HTTP metrics only,
+#   leaving model_* series untouched. This keeps PlatformMetricsService's
+#   `sum by (service) (...)` queries correct without a job→service naming
+#   coincidence (job name != service name is fine now).
 #
 # Canonical contract: docs/implementation/TASK-386-Platform-Metrics-Backend/METRIC-CONTRACT.md
 # ============================================================================
@@ -40,6 +45,11 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8868"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "http_.*"
+        target_label: service
+        replacement: api-gateway
 
   # ---- STT (FastAPI) ----------------------------------------------------
   # http_* (instrumentator) + stt_* domain metrics + model_* per-model
@@ -48,6 +58,11 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8861"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "http_.*"
+        target_label: service
+        replacement: stt
 
   # ---- SMR (FastAPI) ----------------------------------------------------
   # http_* + smr_* domain metrics + model_* (service="smr", model="gemma-4-e4b").
@@ -55,25 +70,40 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8862"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "http_.*"
+        target_label: service
+        replacement: smr
 
   # ---- Guardrail (FastAPI) -------------------------------------------------
-  # model_* per-model (service="guardrail", model="granite-guardian-4.1-8b").
-  # NOTE: guardrail serves /metrics via generate_latest() with NO HTTP
-  # middleware, so it emits NO http_* metrics (per-service request health for
-  # guardrail comes from the API gateway). See contract gap list.
+  # model_* per-model (service="guardrail", model="granite-guardian-4.1-8b")
+  # + http_* (FastAPI instrumentator, added to close the former "no http_*"
+  # gap — previously /metrics only ran generate_latest() with no middleware).
   - job_name: guardrail
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8863"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "http_.*"
+        target_label: service
+        replacement: guardrail
 
   # ---- NLP (FastAPI) -------------------------------------------------------
-  # nlp_http_* (namespaced instrumentator) + model_* (service="nlp",
-  # model in {Medical-NER, symps-disease-bert}). Domain metrics use OTel/OTLP
+  # http_* (FastAPI instrumentator, un-namespaced — was nlp_http_* until
+  # aligned with the rest of the fleet) + model_* (service="nlp", model in
+  # {Medical-NER, symps-disease-bert}). Domain metrics use OTel/OTLP
   # (NOT scraped here).
   - job_name: nlp
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8864"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "http_.*"
+        target_label: service
+        replacement: nlp
 
   # ---- Harness (FastAPI + Temporal worker) ---------------------------------
   # http_* only — the harness orchestrates the model services and runs no local
@@ -82,3 +112,8 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8866"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "http_.*"
+        target_label: service
+        replacement: harness

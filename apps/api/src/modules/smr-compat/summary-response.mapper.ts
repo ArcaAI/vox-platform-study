@@ -4,6 +4,7 @@ const DEFAULT_PRE_SUMMARY_TITLE = 'Pre-Summary of Medical History';
 
 export interface SummaryMappingMeta {
   sessionId: string;
+  summaryId?: string;
   useEnhanced: boolean;
   latencyMs?: number | null;
   finishReason?: string;
@@ -70,6 +71,7 @@ export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta
   const summary = parseSummaryContent(content);
 
   return {
+    summary_id: meta.summaryId,
     session_id: meta.sessionId,
     summary,
     created_at: meta.createdAt.toISOString(),
