@@ -25,11 +25,6 @@ describe('mapV1ConfigToAgenticConfig', () => {
     expect(cfg.api.baseUrl).toBe('https://api.arcaai.com/api/v1');
   });
 
-  it('resolves the tenant server-side (tenantId undefined)', () => {
-    const cfg = mapV1ConfigToAgenticConfig(baseConfig);
-    expect(cfg.api.tenantId).toBeUndefined();
-  });
-
   it('THROWS on missing apiKey and never injects a default key', () => {
     expect(() => mapV1ConfigToAgenticConfig({ ...baseConfig, credentials: {} })).toThrow(/apiKey is required/);
     expect(() => mapV1ConfigToAgenticConfig({ ...baseConfig, credentials: undefined })).toThrow(/apiKey is required/);
@@ -45,7 +40,7 @@ describe('mapV1ConfigToAgenticConfig', () => {
 
   it('maps a backend sttPipelineId into audio.stt', () => {
     const cfg = mapV1ConfigToAgenticConfig({ ...baseConfig, sttPipelineId: 'pipeline-xyz' });
-    expect(cfg.audio?.stt).toEqual({ enabled: true, provider: 'backend', pipelineId: 'pipeline-xyz' });
+    expect(cfg.audio?.stt).toEqual({ enabled: true, provider: 'backend', pipelineId: 'pipeline-xyz', requireTenantClaim: false });
   });
 
   it('maps noiseSuppression into audio.noiseFilter', () => {

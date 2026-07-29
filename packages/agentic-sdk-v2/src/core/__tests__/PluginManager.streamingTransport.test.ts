@@ -77,6 +77,14 @@ describe('PluginManager.buildStreamingTransport', () => {
     expect(transport.consultationId).toBeUndefined();
   });
 
+  it('passes the tenant claim setting to the streaming client', () => {
+    const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend', requireTenantClaim: false }, 'pipe-1') as {
+      wsClient: { reconnectOptions: { requireTenantClaim: boolean } };
+    };
+
+    expect(transport.wsClient.reconnectOptions.requireTenantClaim).toBe(false);
+  });
+
   it('forwards consultationId from runtime options when set', () => {
     manager.setRuntimeOptions({ pipelineId: 'pipe-A', consultationId: 'cons-7' });
     const transport = manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-A') as {

@@ -250,7 +250,7 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   private resolveSpeakerId(message: Record<string, unknown>): string {
     const speakerId = this.firstPresent(message.speakerId, message.speaker_id, message.speakerLabel);
-    return typeof speakerId === 'string' ? speakerId : '';
+    return typeof speakerId === 'string' ? speakerId.trim() || 'Unknown' : 'Unknown';
   }
 
   private firstPresent(...values: unknown[]): unknown {

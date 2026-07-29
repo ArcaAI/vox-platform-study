@@ -86,13 +86,13 @@ export class StartSessionRequest {
   @IsObject()
   audioSettings: AudioSettingsDto;
 
-  @ApiProperty({
-    description: 'STT provider (omit for default; azure and whisper are legacy aliases that resolve to default)',
-    example: 'default',
-    required: false,
-    enum: ['default', 'sarvam', 'azure', 'whisper'],
+  @ApiPropertyOptional({
+    description: 'STT provider',
+    example: 'azure',
+    default: 'azure',
+    enum: ['azure', 'whisper', 'sarvam'],
   })
   @IsOptional()
-  @IsIn(['default', 'sarvam', 'azure', 'whisper'])
-  provider?: 'default' | 'sarvam' | 'azure' | 'whisper';
+  @IsIn(['azure', 'whisper', 'sarvam'])
+  provider?: 'azure' | 'whisper' | 'sarvam';
 }

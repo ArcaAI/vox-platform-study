@@ -9,7 +9,7 @@ const controller = new SttCompatController();
 const request = (overrides: Partial<StartSessionRequest['audioSettings']> = {}): StartSessionRequest => ({
   session_id: 'session_123456789',
   language: 'en-US',
-  provider: 'default',
+  provider: 'azure',
   audioSettings: {
     sampleRate: 44100,
     format: 'pcm',
@@ -30,7 +30,7 @@ describe('SttCompatController.startSession', () => {
       message: 'Session started',
       session_id: 'session_123456789',
       status: 'active',
-      provider: 'default',
+      provider: 'azure',
       audio_config: {
         sampleRate: 44100,
         format: 'pcm',
@@ -53,25 +53,26 @@ describe('SttCompatController.startSession', () => {
     expect(res.audio_config.noiseCancellation).toBe(true);
   });
 
-  it('normalizes legacy azure and whisper providers to default', async () => {
-    expect((await controller.startSession({ ...request(), provider: 'azure' })).provider).toBe('default');
-    expect((await controller.startSession({ ...request(), provider: 'whisper' })).provider).toBe('default');
+  it('maps Whisper to Azure and preserves other providers', async () => {
+    for (const provider of ['azure', 'whisper', 'sarvam'] as const) {
+      const expectedProvider = provider === 'whisper' ? 'azure' : provider;
+      await expect(controller.startSession({ ...request(), provider })).resolves.toMatchObject({ provider: expectedProvider });
+    }
   });
 
-  it('echoes session_id and keeps the sarvam provider', async () => {
-    const res = await controller.startSession({ ...request(), session_id: 'sess-xyz', provider: 'sarvam' });
+  it('echoes session_id', async () => {
+    const res = await controller.startSession({ ...request(), session_id: 'sess-xyz' });
     expect(res.session_id).toBe('sess-xyz');
-    expect(res.provider).toBe('sarvam');
   });
 
-  it('defaults to the default provider when none is supplied', async () => {
+  it('defaults to Azure when no provider is supplied', async () => {
     const { provider: _omit, ...noProvider } = request();
     const res = await controller.startSession(noProvider as StartSessionRequest);
-    expect(res.provider).toBe('default');
+    expect(res.provider).toBe('azure');
   });
 });
 describe('SttCompatController streaming integration', () => {
-  it('creates and binds a v2 streaming session using the requested provider pipeline', async () => {
+  it('creates and binds a v2 streaming session after normalizing Whisper to Azure', async () => {
     const pipelineService = {
       getAll: vi
         .fn()
@@ -107,7 +108,8 @@ describe('SttCompatController streaming integration', () => {
       sessionMetadata as any,
     );
 
-    await integrated.startSession({ ...request(), provider: 'azure' }, { headers: { 'x-api-key': 'legacy-key' } });
+    const response = await integrated.startSession({ ...request(), provider: 'whisper' }, { headers: { 'x-api-key': 'legacy-key' } });
+    expect(response.provider).toBe('azure');
 
     expect(apiKeyService.authenticateByRawKey).toHaveBeenCalledWith('legacy-key', undefined);
     expect(cls.run).toHaveBeenCalledTimes(1);
@@ -180,13 +182,20 @@ describe('StartSessionRequest validation', () => {
     },
   });
 
-  it('accepts a body with no provider (client omits it for the default provider)', async () => {
+  it('accepts a body with no provider (Azure is the default)', async () => {
     const dto = plainToInstance(StartSessionRequest, base());
     expect(await validate(dto)).toHaveLength(0);
   });
   it('accepts null language for auto-detect mode', async () => {
     const dto = plainToInstance(StartSessionRequest, { ...base(), language: null });
     expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('accepts every supported provider value', async () => {
+    for (const provider of ['azure', 'whisper', 'sarvam'] as const) {
+      const dto = plainToInstance(StartSessionRequest, { ...base(), provider });
+      expect(await validate(dto)).toHaveLength(0);
+    }
   });
 
   it('rejects an unknown provider value', async () => {
