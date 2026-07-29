@@ -122,15 +122,18 @@ export const BOOTSTRAP_ENV_SETTINGS: SettingDescriptor[] = [
   envFloor('redis.port', 'number', 'Bootstrap', 'Redis port', 'Redis port, used when `REDIS_URL` is unset.', 'open-to-default', 6379),
 
   // ── Authenticating to Vault (the other half of the floor) ─────────────────
-  envFloor(
-    'secretsProvider',
-    'enum',
-    'Bootstrap',
-    'Secrets provider',
-    'Selects the secrets backend (`env` | `vault` | …). It decides where every `vault-kv` descriptor is actually read from, so it necessarily precedes all of them.',
-    'open-to-default',
-    'env',
-  ),
+  {
+    ...envFloor(
+      'secretsProvider',
+      'enum',
+      'Bootstrap',
+      'Secrets provider',
+      'Selects the secrets backend (`env` | `vault` | …). It decides where every `vault-kv` descriptor is actually read from, so it necessarily precedes all of them.',
+      'open-to-default',
+      'env',
+    ),
+    sampleValue: 'vault',
+  },
   envFloor(
     'vault.addr',
     'string',
