@@ -78,6 +78,24 @@ describe('useSMR', () => {
     expect(body.session_data.conversation_segments[0].speaker).toBe('Doctor');
   });
 
+  it('sends session_data.session_type from visitType (v1 parity, gateway-whitelisted)', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarize({ text: 'a', visitType: 'Follow-up' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.session_data.session_type).toBe('Follow-up');
+  });
+
+  it('never sends previous_visit_summary (gateway forbids the undeclared key)', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarize({ text: 'a' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect('previous_visit_summary' in body.session_data).toBe(false);
+  });
+
   it('preSummarize POSTs to /api/smr/api/v1/presummary', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

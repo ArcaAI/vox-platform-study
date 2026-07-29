@@ -60,13 +60,18 @@ def get_db_url(sync: bool = False) -> str:
 def _convert_url(url: str, sync: bool) -> str:
     """Convert database URL to sync or async driver format."""
     if sync:
-        # Use psycopg2 for sync
-        return url.replace("postgresql+asyncpg://", "postgresql://")
-    else:
-        # Use asyncpg for async
-        if "asyncpg" not in url:
-            return url.replace("postgresql://", "postgresql+asyncpg://")
-        return url
+        url = url.replace("postgresql+asyncpg://", "postgresql://")
+    elif "asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://")
+
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+    parsed = urlparse(url)
+    if parsed.query:
+        params = parse_qs(parsed.query)
+        params.pop("schema", None)
+        url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+    return url
 
 
 def get_redis_url() -> str:

@@ -58,15 +58,23 @@ def _mock_client_raising(exc: Exception):
 
 
 class TestSarvamRecognize:
+    @pytest.mark.parametrize(
+        ("language", "expected"),
+        [
+            ("en-IN", "en-IN"),
+            ("en", "en-IN"),
+            ("en-US", "en-IN"),
+            ("ml", "ml-IN"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_happy_path(self):
+    async def test_happy_path(self, language, expected):
         client = _mock_client(status_code=200, text="ok", payload={"transcript": "hello"})
         with patch("stt.streaming.sarvam_asr.httpx.AsyncClient", return_value=client):
-            result = await sarvam_recognize_utterance(_config("sarvam"), SAMPLES, SR, "en-IN")
+            result = await sarvam_recognize_utterance(_config("sarvam"), SAMPLES, SR, language)
         assert result == {"text": "hello", "word_timestamps": []}
-        # language_code forwarded, key sent in header
         _, kwargs = client.post.call_args
-        assert kwargs["data"]["language_code"] == "en-IN"
+        assert kwargs["data"]["language_code"] == expected
         assert kwargs["headers"]["api-subscription-key"] == "secret-key"
 
     @pytest.mark.asyncio
