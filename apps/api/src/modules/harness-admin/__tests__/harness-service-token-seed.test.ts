@@ -48,7 +48,7 @@ describe('HARNESS_SERVICE_TOKEN dev provisioning', () => {
   it('apps/api/.env.sample declares HARNESS_SERVICE_TOKEN as a placeholder, never a real token', () => {
     const documented = readEnvExampleValue(API_ENV_EXAMPLE, 'HARNESS_SERVICE_TOKEN');
     expect(documented, 'apps/api/.env.sample must document HARNESS_SERVICE_TOKEN — run `pnpm env:sync`').toBeTruthy();
-    expect(documented, 'a committed example file must never carry a real service token').toBe('<CHANGE_ME>');
+    expect(documented, 'a committed example file must never carry a real service token').toBe('CHANGE_ME');
   });
 
   it('dev-init.sh, not a committed example file, owns the dev token value', () => {
