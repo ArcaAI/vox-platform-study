@@ -261,6 +261,16 @@ describe('SttWebSocketClient', () => {
       expect(client.isConnected()).toBe(true);
     });
 
+    it('uses the constructor tenant claim setting for streaming clients', async () => {
+      const compatClient = new SttWebSocketClient(mockLogger, { enabled: false, requireTenantClaim: false });
+      const connectPromise = compatClient.connect('wss://no-claim.example/ws');
+      expect(lastMockWs).not.toBeNull();
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+      expect(compatClient.isConnected()).toBe(true);
+      compatClient.disconnect();
+    });
+
     // --- explicit opt-in ----------------
     it('rejects connect() when requireTenantClaim is explicitly true but no claim is resolvable', async () => {
       const connectPromise = client.connect('wss://no-claim.example/ws', { requireTenantClaim: true });

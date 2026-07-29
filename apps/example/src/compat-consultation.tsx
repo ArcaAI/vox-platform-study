@@ -33,7 +33,7 @@ interface TranscriptLine {
   /** Delivered metadata off onTranscript (TASK-564 §5.2, normalized §4.3). */
   meta?: Record<string, unknown>;
 }
-type SttProvider = 'default' | 'sarvam';
+type SttProvider = 'azure' | 'sarvam';
 
 interface CompatConsultationProps {
   provider?: SttProvider;
@@ -41,7 +41,7 @@ interface CompatConsultationProps {
   apiKey?: string;
 }
 
-export function CompatConsultation({ provider: initialProvider = 'default', apiBaseUrl, apiKey }: CompatConsultationProps) {
+export function CompatConsultation({ provider: initialProvider = 'azure', apiBaseUrl, apiKey }: CompatConsultationProps) {
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [interim, setInterim] = useState('');
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -109,12 +109,12 @@ export function CompatConsultation({ provider: initialProvider = 'default', apiB
       return;
     }
 
-    const nextProvider: SttProvider = selectedProvider === 'sarvam' ? 'default' : 'sarvam';
+    const nextProvider: SttProvider = selectedProvider === 'sarvam' ? 'azure' : 'sarvam';
     setSelectedProvider(nextProvider);
-    setSwitchBanner(`Provider selected: ${nextProvider === 'sarvam' ? 'Sarvam' : 'Default'}`);
+    setSwitchBanner(`Provider selected: ${nextProvider === 'sarvam' ? 'Sarvam' : 'Azure'}`);
   };
 
-  const selectedProviderLabel = selectedProvider === 'default' ? 'Default' : 'Sarvam';
+  const selectedProviderLabel = selectedProvider === 'azure' ? 'Azure' : 'Sarvam';
   const activeProviderLabel = provider.activeProvider?.name ?? selectedProviderLabel;
 
   // 4. Summary — same path + x-api-key as v1; sends real per-turn segments.
@@ -141,7 +141,7 @@ export function CompatConsultation({ provider: initialProvider = 'default', apiB
           echoCancellation: true,
           autoGainControl: false,
         },
-        provider: selectedProvider === 'sarvam' ? 'sarvam' : 'default',
+        provider: selectedProvider,
       }),
     });
     if (!res.ok) {
@@ -228,16 +228,13 @@ export function CompatConsultation({ provider: initialProvider = 'default', apiB
         <button onClick={summarize} disabled={isStarting || capture.isRecording || lines.length === 0 || smr.loading}>
           {smr.loading ? 'Summarizing…' : 'Generate summary'}
         </button>
-        <button
-          onClick={switchProvider}
-          disabled={isStarting || (capture.isRecording && provider.switchStatus === 'switching')}
-        >
+        <button onClick={switchProvider} disabled={isStarting || (capture.isRecording && provider.switchStatus === 'switching')}>
           {capture.isRecording
             ? provider.switchStatus === 'switching'
               ? 'Switching…'
               : 'Switch provider'
             : selectedProvider === 'sarvam'
-              ? 'Use Default'
+              ? 'Use Azure'
               : 'Use Sarvam'}
         </button>
       </div>

@@ -22,7 +22,7 @@ const SDK_CONFIG_OPTIONS: V1SdkConfig = {
   apiEndpoint: API_BASE_URL,
   websocketUrl: WEBSOCKET_BASE_URL,
   // REQUIRED — there is NO default API key (the adapter throws if omitted).
-  credentials: { apiKey: import.meta.env.VITE_ARCA_API_KEY ?? '' },
+  credentials: { apiKey: import.meta.env.VITE_API_KEY ?? '' },
   // Enables live backend streaming transcription (omit → local STT).
   sttPipelineId: import.meta.env.VITE_PIPELINE_ID,
   audioSettings: { noiseSuppression: true },
@@ -32,7 +32,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <ArcaCompatProvider options={SDK_CONFIG_OPTIONS}>
       <CompatConsultation
-        provider={import.meta.env.VITE_STT_PROVIDER === 'sarvam' ? 'sarvam' : 'default'}
+        provider={import.meta.env.VITE_STT_PROVIDER === 'sarvam' ? 'sarvam' : 'azure'}
         apiBaseUrl={API_BASE_URL}
         apiKey={SDK_CONFIG_OPTIONS.credentials?.apiKey}
       />

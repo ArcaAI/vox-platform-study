@@ -35,7 +35,7 @@ export const SttHealthResponseSchema = z.object({
 export const SttStartSessionRequestSchema = z.object({
   session_id: z.string(),
   language: z.string().default('en-US'),
-  provider: z.enum(['azure', 'whisper']).optional(),
+  provider: z.enum(['azure', 'whisper', 'sarvam']).default('azure'),
   audioSettings: z
     .object({
       sampleRate: z.number().optional(),
