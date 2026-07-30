@@ -174,7 +174,8 @@ class Settings(BaseSettings):
 
     # HuggingFace
     huggingface_cache_dir: str = Field(
-        default_factory=lambda: os.environ.get("HF_HOME") or "/models/hf-cache",
+        default_factory=lambda: os.environ.get("HF_HOME")
+        or os.path.expanduser("~/.cache/huggingface/hub"),
         description="HuggingFace model cache directory",
     )
     huggingface_token: SecretStr | None = Field(
@@ -221,7 +222,7 @@ class Settings(BaseSettings):
         default) when the configured value is missing or blank.
         """
         if v is None or not str(v).strip():
-            return os.environ.get("HF_HOME") or "/models/hf-cache"
+            return os.environ.get("HF_HOME") or os.path.expanduser("~/.cache/huggingface/hub")
         return str(v).strip()
 
     @field_validator("huggingface_token", mode="before")
