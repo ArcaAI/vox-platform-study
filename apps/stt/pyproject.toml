@@ -252,7 +252,7 @@ warn_return_any = true
 # are intentionally NOT listed here so mypy type-checks their usage against the
 # stubs.
 [[tool.mypy.overrides]]
-module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "scipy.*", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn", "faster_whisper", "pywhispercpp", "pywhispercpp.*", "deepfilterlib", "df", "df.*"]
+module = ["transformers", "torch", "torchaudio", "soundfile", "librosa", "scipy.*", "minio", "dramatiq", "nemo_toolkit", "nemo", "nemo.*", "pyannote.*", "azure.*", "speechbrain.*", "optimum.*", "pyrnnoise", "onnxruntime", "cadence", "accelerate", "flash_attn", "faster_whisper", "pywhispercpp", "pywhispercpp.*", "_pywhispercpp", "deepfilterlib", "df", "df.*"]
 ignore_missing_imports = true
 
 # pytest configuration
