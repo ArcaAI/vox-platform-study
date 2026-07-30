@@ -1033,6 +1033,18 @@ class TestResultPublisher:
         assert call_kwargs["maxlen"] is not None and call_kwargs["maxlen"] > 0
         assert call_kwargs["approximate"] is True
 
+    async def test_publish_skips_empty_text(self):
+        from stt.streaming.redis_streams import ResultPublisher
+        from stt.streaming.schemas import SegmentResult
+
+        redis_mock = AsyncMock()
+        publisher = ResultPublisher(redis=redis_mock, session_id="s1")
+
+        entry_id = await publisher.publish(SegmentResult(text="", is_final=True))
+
+        assert entry_id is None
+        redis_mock.xadd.assert_not_called()
+
     async def test_publish_uses_explicit_maxlen_when_given(self):
         from stt.streaming.redis_streams import ResultPublisher
         from stt.streaming.schemas import SegmentResult
