@@ -7,10 +7,44 @@ demonstrates the end-user **ON/OFF STT provider toggle** (ON = the
 SDK-configured pipeline, OFF = the tenant admin's default provider) switching
 in real time, mid-session, with no reconnect.
 
-It is deliberately narrower than `apps/example`'s
-[`compat-consultation.tsx`](../example/src/compat-consultation.tsx) demo (no
-SMR summary step) — the one thing this app exists to show off is the provider
-toggle.
+It also carries a **pre-summarization → summarization** surface (TASK-592
+Workstream B): pick a real tenant department, add clinical context, pre-summarize,
+then summarize the transcript with the pre-summary folded into context — wired to
+the v1-compat SMR API through `useSMR()`.
+
+## Summarization (TASK-592 Workstream B)
+
+[`src/components/SummaryCard.tsx`](./src/components/SummaryCard.tsx) renders below
+the live transcript (column 3) and drives `useSMR()` from `@arcaai/vox/compat`:
+
+- **Department picker** — fetches the tenant's departments from
+  `GET {apiEndpoint}/api/v1/admin/departments` (header `x-api-key`, the same
+  credential the provider uses). Renders a `<Select>` of departments; on a
+  `401`/`403`, a network error, or an empty list it gracefully falls back to a
+  free-text input (a `<Skeleton>` shows while the fetch is in flight). The
+  gateway (Workstream A) resolves the submitted department string against the
+  tenant's real `Department` rows — by code, name, or v1 synonym — to select a
+  governed instruction template; unmatched names fall back to static steering.
+- **Visit type** — `New Patient` / `Revisit` / `Referral` (normalized
+  server-side), plus a `Custom…` free-text override.
+- **Clinical context** — age, DOB, gender, vitals, test results, previous
+  visits, feeding the `PreSummaryRequest`.
+- **Transcript source** — the live transcript lines accumulated in the workspace,
+  or a paste-in textarea (the paste wins when non-empty).
+- **Pre-summarize** calls `preSummarize(...)` and stores the returned
+  `pre_summary`; **Summarize** calls `summarizeSync({ text, departmentId,
+  visitType, preSummaryText, includePreSummaryInContext: true, useEnhancedFormat })`
+  and renders the Enhanced / Simplified / SOAP result. Summarize is disabled with
+  a visible reason until a transcript is present.
+
+Last-used department and visit type persist to localStorage
+([`src/lib/config-store.ts`](./src/lib/config-store.ts)) — same as the rest of the
+config, never the URL.
+
+It is a superset of `apps/example`'s
+[`compat-consultation.tsx`](../example/src/compat-consultation.tsx) demo — that
+one hardcodes the department/visit type and skips the pre-summary step; this app
+adds real inputs, the department picker, and the pre-summary → summary chain.
 
 ## Status — depends on TASK-586 Lane C/D
 
@@ -62,6 +96,15 @@ pnpm compat:dev
 
 Or scoped to this package: `pnpm --filter @arcaai/compat-playground dev`.
 
+## Tests
+
+Component tests (Vitest + Testing Library, `happy-dom`) live in colocated
+`__tests__/*.test.tsx` files:
+
+```bash
+pnpm --filter @arcaai/compat-playground test
+```
+
 ## Layout — two tabs
 
 The app is a two-tab interface:
@@ -76,7 +119,8 @@ The app is a two-tab interface:
      recording controls, and the metadata simulator.
    - **Column 3 — Live results**: one timeline split into two aligned tracks —
      the transcription (with timestamp) on the left, and the metadata that
-     round-tripped with it (TASK-564 passthrough) on the right, row by row.
+     round-tripped with it (TASK-564 passthrough) on the right, row by row —
+     with the **Summarization** card (TASK-592 Workstream B) stacked below it.
 
    Columns 2 and 3 live inside `<ArcaCompatProvider>` and are rendered by
    `SessionWorkspace`, which owns the session state they share and returns them

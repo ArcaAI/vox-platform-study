@@ -227,7 +227,7 @@ postprocessing:
   whisper_turbo_gguf_default: `version: "2.0"
 
 # TASK-507 matrix #2 — [whisper-large-v3-turbo gguf] Transcription only.
-# No pre-processing stages, whisper.cpp GGUF ASR + diarization + stabilizer, no post.
+# VAD pre-processing enabled (Silero); whisper.cpp GGUF ASR + diarization + stabilizer, no post.
 
 models:
   asr: "whisper-large-v3-turbo-gguf"
@@ -245,13 +245,17 @@ preprocessing:
     enabled: true            # runtime floor: VAD/ASR require the target rate
     target_sample_rate: 16000
   vad:
-    enabled: false           # streaming falls back to energy framing
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 100
+    min_silence_duration_ms: 700
+    padding_ms: 200
 
 inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null
+  language: "ml"          # Malayalam-primary default (code-switch capable). initial_prompt is derived from this by the engine.
 
 diarization:
   enabled: true
@@ -280,8 +284,8 @@ postprocessing:
   arcaai_ml_en_gguf: `version: "2.0"
 
 # Matrix #10 — [arcaai-whisper-large-ml-en gguf] Transcription only.
-# No pre-processing stages, whisper.cpp GGUF ASR (ArcaAI ML-EN code-switch
-# full fine-tune) + diarization + stabilizer, no post.
+# VAD pre-processing enabled (Silero); whisper.cpp GGUF ASR (ArcaAI ML-EN
+# code-switch full fine-tune) + diarization + stabilizer, no post.
 
 models:
   asr: "arcaai-whisper-large-ml-en-gguf"
@@ -299,13 +303,17 @@ preprocessing:
     enabled: true            # runtime floor: VAD/ASR require the target rate
     target_sample_rate: 16000
   vad:
-    enabled: false           # streaming falls back to energy framing
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 100
+    min_silence_duration_ms: 700
+    padding_ms: 200
 
 inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null
+  language: "ml"
 
 diarization:
   enabled: true
@@ -332,8 +340,8 @@ postprocessing:
   arcaai_ml_en_gguf_q8_0: `version: "2.0"
 
 # Matrix #10 (q8_0) — [arcaai-whisper-large-ml-en gguf q8_0] Transcription only.
-# No pre-processing stages, whisper.cpp GGUF ASR (ArcaAI ML-EN code-switch
-# full fine-tune, q8_0) + diarization + stabilizer, no post.
+# VAD pre-processing enabled (Silero); whisper.cpp GGUF ASR (ArcaAI ML-EN
+# code-switch full fine-tune, q8_0) + diarization + stabilizer, no post.
 
 models:
   asr: "arcaai-whisper-large-ml-en-gguf-q8_0"
@@ -351,13 +359,17 @@ preprocessing:
     enabled: true            # runtime floor: VAD/ASR require the target rate
     target_sample_rate: 16000
   vad:
-    enabled: false           # streaming falls back to energy framing
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 100
+    min_silence_duration_ms: 700
+    padding_ms: 200
 
 inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null
+  language: "ml"
 
 diarization:
   enabled: true
@@ -385,8 +397,8 @@ postprocessing:
   arcaai_ml_en_transformer: `version: "2.0"
 
 # Matrix #9 shape — [arcaai-whisper-large-ml-en] Transcription only.
-# No pre-processing stages, transformers-runtime ASR (ArcaAI ML-EN code-switch
-# fp16 safetensor) + diarization + stabilizer, no post.
+# VAD pre-processing enabled (Silero); transformers-runtime ASR (ArcaAI ML-EN
+# code-switch fp16 safetensor) + diarization + stabilizer, no post.
 
 models:
   asr: "arcaai-whisper-large-ml-en"
@@ -404,13 +416,17 @@ preprocessing:
     enabled: true            # runtime floor: VAD/ASR require the target rate
     target_sample_rate: 16000
   vad:
-    enabled: false           # streaming falls back to energy framing
+    enabled: true
+    threshold: 0.5
+    min_speech_duration_ms: 100
+    min_silence_duration_ms: 700
+    padding_ms: 200
 
 inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: null
+  language: "ml"
 
 diarization:
   enabled: true

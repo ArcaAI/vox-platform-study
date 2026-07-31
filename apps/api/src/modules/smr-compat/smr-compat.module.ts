@@ -1,7 +1,9 @@
 import { HttpModule } from '@nestjs/axios';
-import { HarnessPolicyServiceModule } from '@arcaai/applications';
+import { HarnessPolicyServiceModule, PromptResolutionServiceModule } from '@arcaai/applications';
+import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { SmrCompatController } from './smr-compat.controller';
+import { SmrCompatTemplateService } from './smr-compat-template.service';
 
 /**
  * v1-compatible SMR summary gateway shims (TASK-562).
@@ -18,7 +20,11 @@ import { SmrCompatController } from './smr-compat.controller';
       maxRedirects: 3,
     }),
     HarnessPolicyServiceModule,
+    // TASK-592: real tenant Department → governed instruction-template resolution.
+    PromptResolutionServiceModule,
+    CoreDatabaseModule,
   ],
   controllers: [SmrCompatController],
+  providers: [SmrCompatTemplateService],
 })
 export class SmrCompatModule {}

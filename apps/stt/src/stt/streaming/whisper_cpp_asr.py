@@ -58,6 +58,33 @@ from stt.pipeline.dto import AiModelFormat
 
 logger = structlog.get_logger(__name__)
 
+# --- Clinical-consultation priming prompt (language-derived) ------------------
+# whisper.cpp's ``initial_prompt`` is decoder prior-context (≤224 tokens), NOT a
+# chat instruction. A short domain-context line in the target language biases
+# decoding toward clinical-consultation vocabulary and, for a code-switch GGUF,
+# frames the ml/en mixture — without the instruction-style degradation that took
+# the old priming prompt offline (see
+# ``stt.pipeline.language_modes.WHISPER_CPP_PRIMING_PROMPT_ENABLED``). The prompt
+# is keyed on the pipeline's configured ``inference.language``.
+_CONSULTATION_PROMPT_ML = (
+    "ഇത് ഒരു consultation ആണ്, ഒരു doctor നും ഒരു രോഗിക്കും തമ്മിലുള്ളത്."
+)
+_CONSULTATION_PROMPT_EN = "This is a consultation between a doctor and a patient"
+
+
+def consultation_prompt_for_language(language: str | None) -> str:
+    """Clinical-consultation priming prompt for whisper.cpp, keyed on the
+    pipeline's configured language.
+
+    Malayalam (``"ml"``) gets the Malayalam line; English (``"en"``) or an
+    unset/auto language gets the English line. The comparison uses the primary
+    subtag only (e.g. ``"ml-en"`` → ``"ml"``).
+    """
+    if language and language.split("-")[0].lower() == "ml":
+        return _CONSULTATION_PROMPT_ML
+    return _CONSULTATION_PROMPT_EN
+
+
 # Substrings that mark a poisoned ggml/Metal backend in whisper.cpp's native log.
 _POISON_MARKERS = (
     "failed to encode",
@@ -160,6 +187,10 @@ class WhisperCppAsrAdapter:
         self._loaded = loaded_model
         lang = getattr(inference_config, "language", None)
         self._language: str | None = lang.split("-")[0].lower() if lang else None
+        # Language-derived consultation context, always fed as whisper.cpp's
+        # ``initial_prompt`` (prepended before any per-utterance carry-forward
+        # text). Derived from the resolved pipeline language above.
+        self._context_prompt: str = consultation_prompt_for_language(self._language)
         # Shared per-context lock — the main and english-gloss adapters over one
         # cached LoadedModel MUST serialize (same underlying whisper context).
         self._lock = _get_model_lock(loaded_model.model_id)
@@ -201,6 +232,11 @@ class WhisperCppAsrAdapter:
         """Run one decode while capturing whisper.cpp's native log for this
         thread. Must be called with ``self._lock`` held."""
         model = self._loaded.model
+        # The language-derived consultation context always leads; any per-utterance
+        # carry-forward/template ``prompt`` follows it as additional prior context.
+        effective_prompt = (
+            f"{self._context_prompt} {prompt}" if prompt else self._context_prompt
+        )
         prev = getattr(_tls, "buffer", None)
         _tls.buffer = []
         try:
@@ -211,7 +247,7 @@ class WhisperCppAsrAdapter:
                 split_on_word=True,
                 max_len=1,
                 **({"language": self._language} if self._language else {}),
-                **({"initial_prompt": prompt} if prompt else {}),
+                **({"initial_prompt": effective_prompt} if effective_prompt else {}),
             )
         finally:
             logs = _tls.buffer

@@ -20,7 +20,12 @@ import pytest
 from stt.models.base_loader import LoadedModel
 from stt.pipeline.dto import AiModelFormat
 from stt.streaming import whisper_cpp_asr
-from stt.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
+from stt.streaming.whisper_cpp_asr import (
+    _CONSULTATION_PROMPT_EN,
+    _CONSULTATION_PROMPT_ML,
+    WhisperCppAsrAdapter,
+    consultation_prompt_for_language,
+)
 
 
 def _loaded_model(model: object, model_id: str = "m1") -> LoadedModel:
@@ -34,8 +39,73 @@ def _loaded_model(model: object, model_id: str = "m1") -> LoadedModel:
     )
 
 
-def _cfg() -> SimpleNamespace:
-    return SimpleNamespace(language=None)
+def _cfg(language: str | None = None) -> SimpleNamespace:
+    return SimpleNamespace(language=language)
+
+
+class _CapturingModel:
+    """Fake pywhispercpp model that records the kwargs of each transcribe call."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def transcribe(self, audio: np.ndarray, **kwargs: object) -> list:
+        self.calls.append(kwargs)
+        return []
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [
+        ("ml", _CONSULTATION_PROMPT_ML),
+        ("ML", _CONSULTATION_PROMPT_ML),
+        ("ml-en", _CONSULTATION_PROMPT_ML),
+        ("en", _CONSULTATION_PROMPT_EN),
+        ("vi", _CONSULTATION_PROMPT_EN),
+        (None, _CONSULTATION_PROMPT_EN),
+        ("", _CONSULTATION_PROMPT_EN),
+    ],
+)
+def test_consultation_prompt_for_language(language: str | None, expected: str) -> None:
+    """Malayalam pins the Malayalam line; everything else (incl. unset) is English."""
+    assert consultation_prompt_for_language(language) == expected
+
+
+def test_default_language_feeds_english_consultation_prompt() -> None:
+    """With no configured language, whisper.cpp is primed with the English
+    consultation context as ``initial_prompt``."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg())
+
+    adapter(_audio(), 16000)
+
+    assert model.calls[0]["initial_prompt"] == _CONSULTATION_PROMPT_EN
+    # No language pinned when the pipeline leaves it null.
+    assert "language" not in model.calls[0]
+
+
+def test_ml_language_feeds_malayalam_prompt_and_pins_language() -> None:
+    """A ``language: "ml"`` pipeline pins ml AND primes the Malayalam context."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
+
+    adapter(_audio(), 16000)
+
+    assert model.calls[0]["initial_prompt"] == _CONSULTATION_PROMPT_ML
+    assert model.calls[0]["language"] == "ml"
+
+
+def test_carry_forward_prompt_follows_consultation_context() -> None:
+    """A per-utterance carry-forward prompt is appended AFTER the context line."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
+
+    adapter(_audio(), 16000, prompt="previous transcript text")
+
+    assert (
+        model.calls[0]["initial_prompt"]
+        == f"{_CONSULTATION_PROMPT_ML} previous transcript text"
+    )
 
 
 def _seg(text: str, t0: int, t1: int, prob: float) -> SimpleNamespace:

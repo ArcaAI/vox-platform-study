@@ -49,6 +49,11 @@
     }
   },
   "sideEffects": false,
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup && pnpm build:dts",
     "build:dts": "tsc -p tsconfig.json --emitDeclarationOnly --declaration",
@@ -125,5 +130,13 @@
     "plugin",
     "personalization"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArcaAI/project-hope.git"
+  }
 }

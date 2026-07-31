@@ -24,6 +24,16 @@ export interface PlaygroundConfig {
    * to fetch the real catalog) — this field only seeds its initial value.
    */
   languageMode: string;
+  /**
+   * Last-used SMR department (code or name) — seeds the SummaryCard picker
+   * (Workstream B). Optional: absent for configs saved before this field existed.
+   */
+  department?: string;
+  /**
+   * Last-used SMR visit type (e.g. `New Patient`) — seeds the SummaryCard
+   * selector. Optional for the same backward-compat reason as `department`.
+   */
+  visitType?: string;
 }
 
 const STORAGE_KEY = 'hope-compat-playground:config';
@@ -57,5 +67,7 @@ export function defaultConfig(): PlaygroundConfig {
     tenantId: stored.tenantId ?? import.meta.env.VITE_TENANT_ID ?? '',
     pipelineId: stored.pipelineId ?? import.meta.env.VITE_PIPELINE_ID ?? '',
     languageMode: stored.languageMode ?? import.meta.env.VITE_LANGUAGE_MODE ?? 'en',
+    department: stored.department ?? import.meta.env.VITE_DEPARTMENT ?? '',
+    visitType: stored.visitType ?? import.meta.env.VITE_VISIT_TYPE ?? '',
   };
 }

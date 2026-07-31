@@ -10,6 +10,7 @@ import { type SttLanguageModeOption } from '@arcaai/ui';
 import { toast } from 'sonner';
 import { ControllerColumn } from './ControllerColumn';
 import { TranscriptColumn, type TranscriptLine } from './TranscriptColumn';
+import { SummaryCard } from './SummaryCard';
 import { saveStoredConfig, type PlaygroundConfig } from '../lib/config-store';
 
 interface SessionWorkspaceProps {
@@ -184,7 +185,11 @@ export function SessionWorkspace({ config }: SessionWorkspaceProps) {
         onSendMetadata={handleSendMetadata}
         lastSentMetadata={lastSentMetadata}
       />
-      <TranscriptColumn lines={lines} interim={interim} isPreSession={isPreSession} />
+      {/* Column 3 — live results stacked above the summarization surface. */}
+      <div className="flex min-w-0 flex-col gap-4">
+        <TranscriptColumn lines={lines} interim={interim} isPreSession={isPreSession} />
+        <SummaryCard config={config} transcriptLines={lines.map((l) => l.text)} />
+      </div>
     </>
   );
 }

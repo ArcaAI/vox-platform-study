@@ -7,33 +7,16 @@ import { ScreenTemplate } from '@/shared/page/screen-template';
 import { StatusFooter } from '@/shared/page/status-footer';
 import { TenantScopeBanner } from '@/shared/tenant-scope/tenant-scope-banner';
 import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
-import { ByoCredentialCard, CLOUD_PROVIDERS } from './byo-credential-card';
+import { ByoCredentialSummary } from './byo-credential-summary';
 import { EffectiveHarnessPolicyCard } from './effective-harness-policy-card';
 import { EffectiveModelsTable } from './effective-models-table';
+import { PlatformManagedTextGenSummary } from './platform-managed-textgen-summary';
 import { SmrModelsSection } from './smr-models-section';
 
 const TAB_VALUES = ['effective', 'smr', 'credentials'] as const;
 
 /** Tabs whose content mutates tenant data — they pin the "Acting on «Tenant»" banner. */
-const MUTATING_TABS = new Set<string>(['smr', 'credentials']);
-
-/** BYO credentials tab: one write-only, OCC-guarded card per cloud provider. */
-function CredentialsTab() {
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-muted-foreground text-sm">
-        Bring your own Azure OpenAI or Amazon Bedrock account. Keys are encrypted at rest via Vault Transit, are never returned by any read, and there
-        is no reveal flow. An enabled credential is used for this tenant&apos;s generation requests; a disabled or removed one falls back to the
-        platform credentials.
-      </p>
-      <div className="grid gap-4 lg:grid-cols-2">
-        {CLOUD_PROVIDERS.map((meta) => (
-          <ByoCredentialCard key={meta.id} meta={meta} />
-        ))}
-      </div>
-    </div>
-  );
-}
+const MUTATING_TABS = new Set<string>(['smr']);
 
 /**
  * Tenant "AI Configuration" screen (/ai-configuration, tier 30-49).
@@ -48,13 +31,16 @@ function CredentialsTab() {
  *    edited from `/harness/policy` (the one authoritative editor, rule 13) —
  *    there are deliberately no pickers or save controls here; the tenant
  *    sees which model/value serves each task and which tier decided it.
- *  - "SMR models" — the tenant's OWN summarization selection (TASK-588): primary
- *    + optional fallback model per live/finalize route, saved with OCC and
- *    CLS-pinned to the working tenant. This tab mutates, so the "Acting on
+ *  - "SMR models" — the tenant's OWN text-generation selection (TASK-588/592): a
+ *    one-action default provider control over the tenant-editable text-gen keys,
+ *    the primary + optional fallback per-key cards, and a read-only summary of
+ *    the platform-locked (guardrail/nlp/harness) text-gen selections. Saved with
+ *    OCC, CLS-pinned to the working tenant. This tab mutates, so the "Acting on
  *    «Tenant»" banner is pinned.
- *  - "Cloud credentials" — the tenant's OWN write surface:
- *    BYO Azure/Bedrock endpoints + write-only keys. This tab mutates, so the
- *    "Acting on «Tenant»" banner is pinned for elevated callers (rule 13).
+ *  - "Cloud credentials" — a READ-ONLY status summary of the tenant's BYO LLM
+ *    credentials (TASK-592). `/ai-providers` is the one authoritative editor
+ *    (rule 13); this tab was demoted from a duplicate editor to a masked
+ *    Configured/None summary + a deep link, so it no longer mutates.
  */
 export function TenantAiConfigurationScreen() {
   const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('effective'));
@@ -85,7 +71,7 @@ export function TenantAiConfigurationScreen() {
             <StatusFooter
               end={
                 <span aria-hidden className="font-mono">
-                  guardrail/nlp/harness: platform-managed · smr + credentials: tenant-owned
+                  guardrail/nlp/harness: platform-managed · smr: tenant-owned · credentials: managed in AI Providers
                 </span>
               }
             />
@@ -95,11 +81,12 @@ export function TenantAiConfigurationScreen() {
             <EffectiveModelsTable />
             <EffectiveHarnessPolicyCard />
           </TabsContent>
-          <TabsContent value="smr">
+          <TabsContent value="smr" className="flex flex-col gap-6">
             <SmrModelsSection />
+            <PlatformManagedTextGenSummary />
           </TabsContent>
           <TabsContent value="credentials">
-            <CredentialsTab />
+            <ByoCredentialSummary />
           </TabsContent>
         </ScreenTemplate>
       </Tabs>

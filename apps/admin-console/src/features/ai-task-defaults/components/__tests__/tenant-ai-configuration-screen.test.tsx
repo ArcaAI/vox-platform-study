@@ -15,14 +15,14 @@
  * the working-tenant gate + "Acting on" banner, and the OCC conflict path.
  */
 
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { axe } from 'vitest-axe';
 import { renderWithProviders } from '@/test/render';
 import { AI_TASK_KEYS, READ_ONLY_TASK_KEYS, SMR_FALLBACK_TASK_KEYS, SMR_PRIMARY_TASK_KEYS } from '../../api/types';
 import type { EffectiveAiTaskDefault, TaskModelOption } from '../../api/types';
 import type { ProviderConnection } from '../../api/providers-types';
-import { CLOUD_PROVIDERS } from '../byo-credential-card';
+import { LLM_BYO_PROVIDERS } from '../byo-credential-summary';
 import { TenantAiConfigurationScreen } from '../tenant-ai-configuration-screen';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -251,8 +251,8 @@ describe('TenantAiConfigurationScreen — effective models tab', () => {
   });
 });
 
-describe('TenantAiConfigurationScreen — cloud credentials tab', () => {
-  it('renders a Configured card and a None card, and never exposes key material', async () => {
+describe('TenantAiConfigurationScreen — cloud credentials tab (read-only summary, TASK-592)', () => {
+  it('renders a masked Configured/None status summary and exposes no editor or key material', async () => {
     stubFetch({
       connections: {
         azure: connectionOf('azure', { hasKey: true, keyVersion: 4, enabled: true, version: 3, baseUrl: 'https://acme.openai.azure.com' }),
@@ -260,82 +260,32 @@ describe('TenantAiConfigurationScreen — cloud credentials tab', () => {
     });
     renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=credentials' });
 
-    expect(await screen.findByText('Azure OpenAI')).toBeDefined();
-    expect(await screen.findByText('Amazon Bedrock')).toBeDefined();
-    expect(await screen.findByText('OpenAI')).toBeDefined();
-    expect(await screen.findByText('Anthropic')).toBeDefined();
-    expect(await screen.findByText('Google Vertex AI')).toBeDefined();
+    for (const { label } of LLM_BYO_PROVIDERS) {
+      expect(await screen.findByText(label)).toBeDefined();
+    }
     expect(await screen.findByText(/configured · v4/i)).toBeDefined();
     // Every provider EXCEPT the configured azure reads "not configured".
-    expect((await screen.findAllByText('not configured')).length).toBe(CLOUD_PROVIDERS.length - 1);
+    expect((await screen.findAllByText('not configured')).length).toBe(LLM_BYO_PROVIDERS.length - 1);
 
-    // The key input is a write-only password field with no value ever read back —
-    // one per provider card (Vertex's is the service-account-JSON field).
-    const keyInputs = document.querySelectorAll('input[type="password"]');
-    expect(keyInputs.length).toBe(CLOUD_PROVIDERS.length);
-    keyInputs.forEach((input) => expect((input as HTMLInputElement).value).toBe(''));
+    // Read-only: no write-only key inputs and no save/rotate/remove controls.
+    expect(document.querySelectorAll('input[type="password"]').length).toBe(0);
+    expect(screen.queryByRole('button', { name: /save key|rotate key|remove/i })).toBeNull();
   });
 
-  it('sends If-Match from the row ETag on save (OCC) and clears the key field', async () => {
-    const calls = stubFetch({
-      connections: { azure: connectionOf('azure', { hasKey: true, keyVersion: 4, enabled: true, version: 3 }) },
-      custom: (call) => {
-        if (call.method === 'PUT' && call.url.includes('/providers/llm/azure')) {
-          return Response.json(connectionOf('azure', { hasKey: true, keyVersion: 5, enabled: true, version: 4 }), {
-            headers: { etag: '"4"' },
-          });
-        }
-        return undefined;
-      },
-    });
+  it('deep-links to the one authoritative editor at /ai-providers (rule 13 dedup)', async () => {
+    stubFetch();
     renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=credentials' });
 
-    const input = (await screen.findAllByLabelText(/API key/i))[0];
-    fireEvent.change(input, { target: { value: 'sk-tenant-secret' } });
-    fireEvent.click(screen.getByRole('button', { name: /rotate key/i }));
-
-    await waitFor(() => {
-      const put = calls.find((c) => c.method === 'PUT');
-      expect(put).toBeDefined();
-      expect(put!.headers.get('if-match')).toBe('"3"');
-      expect((put!.body as Record<string, unknown>).expectedVersion).toBe(3);
-      expect((put!.body as Record<string, unknown>).apiKey).toBe('sk-tenant-secret');
-    });
+    const link = await screen.findByRole('link', { name: /manage credentials in ai providers/i });
+    expect(link.getAttribute('href')).toBe('/ai-providers');
   });
 
-  it('sends If-Match "0" when creating the first credential row', async () => {
-    const calls = stubFetch({
-      custom: (call) =>
-        call.method === 'PUT' ? Response.json(connectionOf('bedrock', { hasKey: true, version: 1 }), { headers: { etag: '"1"' } }) : undefined,
-    });
+  it('does not pin the "Acting on" banner — the credentials tab no longer mutates', async () => {
+    stubFetch({ session: ELEVATED_WITH_TENANT_SESSION });
     renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=credentials' });
 
-    // Cards load independently — wait for the bedrock card (index 1) to mount,
-    // then save its key. Bedrock is the second CLOUD_PROVIDERS entry.
-    await screen.findByText('Amazon Bedrock');
-    const inputs = await screen.findAllByLabelText(/API key/i);
-    fireEvent.change(inputs[1], { target: { value: 'aws-secret' } });
-    fireEvent.click(screen.getAllByRole('button', { name: /save key/i })[1]);
-
-    await waitFor(() => {
-      const put = calls.find((c) => c.method === 'PUT');
-      expect(put!.headers.get('if-match')).toBe('"0"');
-      expect((put!.body as Record<string, unknown>).expectedVersion).toBe(0);
-    });
-  });
-
-  it('surfaces the OCC conflict alert when the PUT returns 412', async () => {
-    stubFetch({
-      connections: { azure: connectionOf('azure', { hasKey: true, enabled: true, version: 3 }) },
-      custom: (call) => (call.method === 'PUT' ? new Response('conflict', { status: 412 }) : undefined),
-    });
-    renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=credentials' });
-
-    const input = (await screen.findAllByLabelText(/API key/i))[0];
-    fireEvent.change(input, { target: { value: 'sk-new' } });
-    fireEvent.click(screen.getByRole('button', { name: /rotate key/i }));
-
-    expect(await screen.findByText(/changed by another admin after you loaded it/i)).toBeDefined();
+    await screen.findByRole('link', { name: /manage credentials in ai providers/i });
+    expect(screen.queryByText(/Sunrise Medical Group/)).toBeNull();
   });
 });
 
@@ -348,9 +298,20 @@ describe('TenantAiConfigurationScreen — SMR models tab (TASK-588)', () => {
     for (const key of [...SMR_PRIMARY_TASK_KEYS, ...SMR_FALLBACK_TASK_KEYS]) {
       expect(await screen.findByText(key)).toBeDefined();
     }
-    // Editable, unlike the read-only effective table: a picker + an If-Match save per card.
-    expect((await screen.findAllByRole('combobox')).length).toBe(4);
+    // Editable, unlike the read-only effective table: a picker + an If-Match save per card,
+    // plus the default-control's 2 pickers (primary + fallback) at the top (TASK-592).
+    expect((await screen.findAllByRole('combobox')).length).toBe(6);
     expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(4);
+  });
+
+  it('renders the platform-managed text-gen read-only summary below the editable cards (TASK-592)', async () => {
+    stubFetch();
+    renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=smr' });
+
+    expect(await screen.findByRole('heading', { name: /Platform-managed text generation/i })).toBeDefined();
+    // Locked keys shown read-only, controlled by global admins.
+    expect(await screen.findByText('guardrail.safety')).toBeDefined();
+    expect((await screen.findAllByText('global admin')).length).toBe(READ_ONLY_TASK_KEYS.length);
   });
 
   it('labels the fallback cards as optional / used when the primary fails', async () => {
@@ -381,7 +342,8 @@ describe('TenantAiConfigurationScreen — tenant scoping', () => {
 
   it('shows the "Acting on" banner for an elevated session with a working tenant', async () => {
     stubFetch({ session: ELEVATED_WITH_TENANT_SESSION });
-    renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=credentials' });
+    // The SMR tab mutates tenant data, so it pins the banner (credentials is read-only now).
+    renderWithProviders(<TenantAiConfigurationScreen />, { searchParams: '?tab=smr' });
 
     expect(await screen.findByText(/Sunrise Medical Group/)).toBeDefined();
   });

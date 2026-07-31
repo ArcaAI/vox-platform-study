@@ -91,6 +91,19 @@ describe('buildSummaryPrompt', () => {
     const { system } = buildSummaryPrompt(baseSession(), { department: 'Cardiology', visitType: 'New Referral' });
     expect(system).not.toContain('Department-specific documentation focus');
   });
+
+  it('injects the governed instruction and suppresses the static dept guidance (TASK-592)', () => {
+    const { system } = buildSummaryPrompt(baseSession(), {
+      department: 'Surgery',
+      visitType: 'New Referral',
+      governedInstruction: 'Capture fitness for surgery and pre-operative optimization.',
+    });
+    expect(system).toContain('Capture fitness for surgery and pre-operative optimization');
+    // The tenant's governed template supersedes the static v1 field-set steering.
+    expect(system).not.toContain('Department-specific documentation focus');
+    // The v1 wire directive is still present so the response shape is unchanged.
+    expect(system).toContain('single JSON object');
+  });
 });
 
 describe('buildPreSummaryPrompt', () => {
@@ -120,5 +133,10 @@ describe('buildPreSummaryPrompt', () => {
     const { system } = buildPreSummaryPrompt({} as PreSummaryRequest);
     expect(system).toContain('General');
     expect(system).toContain('Medical examination');
+  });
+
+  it('folds the governed pre-summary instruction when provided (TASK-592)', () => {
+    const { system } = buildPreSummaryPrompt(req(), { governedInstruction: 'Highlight cardiac risk stratification.' });
+    expect(system).toContain('Highlight cardiac risk stratification');
   });
 });
