@@ -273,6 +273,60 @@ postprocessing:
     enabled: false
 `,
 
+  // ArcaAI Malayalam+English code-switch full fine-tune, whisper.cpp GGUF
+  // (f16). Same shape as `whisper_turbo_gguf_default` (matrix #2 —
+  // Transcription only: no pre-processing, ASR + diarization + stabilizer, no
+  // post) but bound to the in-house arcaai-whisper-large-ml-en-gguf engine.
+  arcaai_ml_en_gguf: `version: "2.0"
+
+# Matrix #10 — [arcaai-whisper-large-ml-en gguf] Transcription only.
+# No pre-processing stages, whisper.cpp GGUF ASR (ArcaAI ML-EN code-switch
+# full fine-tune) + diarization + stabilizer, no post.
+
+models:
+  asr: "arcaai-whisper-large-ml-en-gguf"
+  vad: "silero-vad"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+
   // Lightweight CPU pipeline (v1.1 — slug-based model ref)
   lightweight: `version: "1.1"
 
@@ -918,6 +972,18 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     description: 'TASK-567 — bare OpenAI speech-to-text (gpt-4o-transcribe, cloud REST). Tenant BYOK fallback candidate.',
     configYaml: PIPELINE_CONFIGS.openai_transcription,
     tags: ['cloud', 'openai', 'byok', 'fallback'],
+  },
+  {
+    // Matrix #10 — ArcaAI in-house Malayalam+English code-switch full
+    // fine-tune, whisper.cpp GGUF (f16). Transcription-only shape.
+    id: '81000000-0000-0000-0001-000000000018',
+    tenantId: DEFAULT_TENANT_ID,
+    name: '[arcaai-whisper-large-ml-en gguf] Transcription Only',
+    slug: 'arcaai-whisper-large-ml-en-gguf',
+    description:
+      'Matrix #10 — no pre-processing, ArcaAI ML-EN code-switch whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing.',
+    configYaml: PIPELINE_CONFIGS.arcaai_ml_en_gguf,
+    tags: ['streaming', 'real-time', 'malayalam', 'english', 'code-switch', 'whisper.cpp'],
   },
   // Code-switching / language templates retired from the product
   // matrix of 9 (soft-disabled by retireRetiredAsrPipelines).

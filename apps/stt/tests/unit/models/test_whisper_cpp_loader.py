@@ -108,6 +108,29 @@ def test_falls_back_to_toplevel_when_no_whisper_cpp_subfolder(tmp_path):
     assert selected.endswith("model-q8_0.gguf")
 
 
+def test_selects_ggml_bin_when_no_gguf(tmp_path):
+    """Classic whisper.cpp `ggml-*.bin` weights are valid — pick them, honouring quant."""
+    repo = str(tmp_path)
+    _touch(os.path.join(repo, "ggml-whisper-turbo-ml-en-codeswitch-f16.bin"))
+    _touch(os.path.join(repo, "ggml-whisper-turbo-ml-en-codeswitch-q5_0.bin"))
+    _touch(os.path.join(repo, "ggml-whisper-turbo-ml-en-codeswitch-q8_0.bin"))
+
+    selected = WhisperCppLoader._select_gguf_file(repo, _config("f16"))
+
+    assert selected.endswith("ggml-whisper-turbo-ml-en-codeswitch-f16.bin")
+
+
+def test_ignores_appledouble_sidecars(tmp_path):
+    """macOS AppleDouble forks ("._name.bin") must never be selected as weights."""
+    repo = str(tmp_path)
+    _touch(os.path.join(repo, "._ggml-whisper-turbo-ml-en-codeswitch-q8_0.bin"))
+    _touch(os.path.join(repo, "ggml-whisper-turbo-ml-en-codeswitch-q8_0.bin"))
+
+    selected = WhisperCppLoader._select_gguf_file(repo, _config("q8_0"))
+
+    assert os.path.basename(selected) == "ggml-whisper-turbo-ml-en-codeswitch-q8_0.bin"
+
+
 def test_no_gguf_raises(tmp_path):
     with pytest.raises(ModelLoadError):
         WhisperCppLoader._select_gguf_file(str(tmp_path), _config("q8_0"))

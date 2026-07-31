@@ -115,16 +115,26 @@ class WhisperCppLoader(BaseModelLoader):
 
     @staticmethod
     def _select_gguf_file(repo_dir: str, model_config: AiModelConfig) -> str:
-        """Pick the ``.gguf`` file inside an already-resolved weights directory.
+        """Pick the ggml weights file inside an already-resolved weights directory.
 
-        Prefers a filename containing the configured quantization (e.g.
-        ``q8_0``) when the directory ships more than one quantized variant.
-        Fetching is the resolver's job; this is only the selection tail.
+        Accepts both extensions whisper.cpp ships ggml weights under: the modern
+        ``.gguf`` and the classic ``ggml-*.bin`` naming (e.g.
+        ``ggml-whisper-turbo-…-q8_0.bin``) — pywhispercpp loads either by path.
+        Prefers a filename containing the configured quantization (e.g. ``q8_0``)
+        when the directory ships more than one quantized variant. Fetching is the
+        resolver's job; this is only the selection tail.
         """
-        candidates = sorted(glob.glob(os.path.join(repo_dir, "**", "*.gguf"), recursive=True))
+        candidates = sorted(
+            c
+            for ext in ("*.gguf", "*.bin")
+            for c in glob.glob(os.path.join(repo_dir, "**", ext), recursive=True)
+            # Skip macOS AppleDouble sidecars ("._name.bin") that shadow real
+            # weights on some filesystems — they are tiny metadata forks, not models.
+            if not os.path.basename(c).startswith("._")
+        )
         if not candidates:
             raise ModelLoadError(
-                f"No .gguf file found for whisper.cpp model '{model_config.slug}' "
+                f"No .gguf/.bin ggml file found for whisper.cpp model '{model_config.slug}' "
                 f"(source_uri={model_config.source_uri!r}, dir={repo_dir})"
             )
 
