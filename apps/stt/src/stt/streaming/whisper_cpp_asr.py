@@ -54,7 +54,7 @@ import numpy as np
 import structlog
 
 from stt.models.base_loader import LoadedModel
-from stt.pipeline.dto import AiModelFormat
+from stt.pipeline.dto import AiModelFormat, primary_language_subtag
 
 logger = structlog.get_logger(__name__)
 
@@ -185,8 +185,12 @@ class WhisperCppAsrAdapter:
                 f"got {loaded_model.format}"
             )
         self._loaded = loaded_model
-        lang = getattr(inference_config, "language", None)
-        self._language: str | None = lang.split("-")[0].lower() if lang else None
+        # whisper.cpp pins a SINGLE decode language: a code-switch pair or
+        # BCP-47 tag (``"ml-en"`` / ``"ml-IN"``) collapses to its first subtag
+        # (``"ml"``) — the fine-tuned ml-en GGUF still code-switches natively.
+        self._language: str | None = primary_language_subtag(
+            getattr(inference_config, "language", None)
+        )
         # Language-derived consultation context, always fed as whisper.cpp's
         # ``initial_prompt`` (prepended before any per-utterance carry-forward
         # text). Derived from the resolved pipeline language above.

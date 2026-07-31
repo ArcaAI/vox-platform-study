@@ -255,7 +255,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml"          # Malayalam-primary default (code-switch capable). initial_prompt is derived from this by the engine.
+  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp pins the FIRST subtag (ml). initial_prompt is derived from it.
 
 diarization:
   enabled: true
@@ -313,7 +313,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml"
+  language: "ml-en"       # Malayalam+English code-switch pair; the engine pins the FIRST subtag (ml).
 
 diarization:
   enabled: true
@@ -369,7 +369,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml"
+  language: "ml-en"       # Malayalam+English code-switch pair; the engine pins the FIRST subtag (ml).
 
 diarization:
   enabled: true
@@ -426,7 +426,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml"
+  language: "ml-en"       # Malayalam+English code-switch pair; the engine pins the FIRST subtag (ml).
 
 diarization:
   enabled: true
@@ -995,10 +995,10 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     name: '[whisper-large-v3-turbo gguf] Transcription Only',
     slug: 'production-whisper-large-v3-turbo-gguf',
     description:
-      'TASK-507 matrix #2 — no pre-processing, whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing. New platform default (replaces production-whisper-large-v3).',
+      'TASK-507 matrix #2 — no pre-processing, whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing. Registered but NO LONGER the platform default: the generic whisper-turbo GGUF pinned to ml produces garbage Malayalam, so the ArcaAI ml-en GGUF fine-tune (arcaai-whisper-large-ml-en-gguf) is the default.',
     configYaml: PIPELINE_CONFIGS.whisper_turbo_gguf_default,
-    isDefault: true,
-    tags: ['production', 'streaming', 'real-time', 'fast', 'recommended'],
+    isDefault: false,
+    tags: ['production', 'streaming', 'real-time', 'fast'],
   },
   // Retired from the product matrix of 9 base pipelines:
   // lightweight-whisper-small (soft-disabled by retireRetiredAsrPipelines).
@@ -1095,14 +1095,18 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
   {
     // Matrix #10 — ArcaAI in-house Malayalam+English code-switch full
     // fine-tune, whisper.cpp GGUF (f16). Transcription-only shape.
+    // PLATFORM DEFAULT: the generic whisper-turbo GGUF pinned to ml
+    // hallucinates on Malayalam; this in-house ml-en fine-tune transcribes
+    // Malayalam + English code-switch cleanly, so it is the default.
     id: '81000000-0000-0000-0001-000000000018',
     tenantId: DEFAULT_TENANT_ID,
     name: '[arcaai-whisper-large-ml-en gguf] Transcription Only',
     slug: 'arcaai-whisper-large-ml-en-gguf',
     description:
-      'Matrix #10 — no pre-processing, ArcaAI ML-EN code-switch whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing.',
+      'Matrix #10 — no pre-processing, ArcaAI ML-EN code-switch whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing. Platform default.',
     configYaml: PIPELINE_CONFIGS.arcaai_ml_en_gguf,
-    tags: ['streaming', 'real-time', 'malayalam', 'english', 'code-switch', 'whisper.cpp'],
+    isDefault: true,
+    tags: ['production', 'streaming', 'real-time', 'malayalam', 'english', 'code-switch', 'whisper.cpp', 'recommended'],
   },
   {
     // Matrix #10 (q8_0) — same as the row above but the q8_0 quantization.
@@ -1195,8 +1199,10 @@ const deriveRemainingTenantPipelines = (
     id: `81000000-0000-0000-0001-000000000${discriminator}${String(10 + i).padStart(2, '0')}`,
     tenantId,
     name: `${namePrefix} ${p.name}`,
-    // Only the hand-authored production row is the tenant default.
-    isDefault: false,
+    // The ArcaAI ml-en GGUF fine-tune is the tenant default (derived here);
+    // every other derived pipeline is non-default. (The hand-authored
+    // production-gguf rows above are now isDefault:false.)
+    isDefault: p.slug === 'arcaai-whisper-large-ml-en-gguf',
   }));
 
 // =============================================================================
@@ -1223,9 +1229,10 @@ const EXPLICIT_TENANT_PIPELINE_SLUGS = new Set([
   'production-whisper-large-v3',
   'turbo-whisper-large-v3',
   'production-faster-whisper-turbo-int8',
-  // New default pipeline; its id is referenced by the tenant
-  // `default-stt-pipeline` GlobalSetting, so it's hand-authored per tenant
-  // like the three above.
+  // Kept hand-authored (stable ids …104/…404) for id continuity. No longer
+  // the tenant default — the ArcaAI ml-en GGUF fine-tune
+  // (arcaai-whisper-large-ml-en-gguf) is, and it is referenced by the tenant
+  // `default-stt-pipeline` GlobalSetting via its DERIVED Global id (…417).
   'production-whisper-large-v3-turbo-gguf',
 ]);
 
@@ -1271,10 +1278,10 @@ export const CUSTOMER_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     name: 'ArcaAI Production Pipeline (Whisper Large V3 Turbo GGUF)',
     slug: 'production-whisper-large-v3-turbo-gguf',
-    description: 'ArcaAI default production pipeline: whisper.cpp GGUF ASR, no pre/post-processing, low-latency streaming.',
+    description: 'ArcaAI whisper.cpp GGUF pipeline (generic whisper-turbo), no pre/post-processing, low-latency streaming. No longer the tenant default (ArcaAI ml-en GGUF fine-tune is default).',
     configYaml: PIPELINE_CONFIGS.whisper_turbo_gguf_default,
-    isDefault: true,
-    tags: ['production', 'streaming', 'real-time', 'fast', 'recommended'],
+    isDefault: false,
+    tags: ['production', 'streaming', 'real-time', 'fast'],
   },
   // --- ArcaAI: remaining SYSTEM pipelines (full-parity policy) ---
   ...deriveRemainingTenantPipelines(SEED_CUSTOMER_TENANT_IDS.ARCAAI, '1', 'ArcaAI', EXPLICIT_TENANT_PIPELINE_SLUGS),
@@ -1348,10 +1355,10 @@ export const GLOBAL_TENANT_ASR_PIPELINES: AsrPipelineSeed[] = asTemplateCopies([
     name: 'Global Production Pipeline (Whisper Large V3 Turbo GGUF)',
     slug: 'production-whisper-large-v3-turbo-gguf',
     description:
-      'Global tenant default production pipeline: whisper.cpp GGUF ASR, no pre/post-processing, low-latency streaming. Referenced by the tenant `default-stt-pipeline` setting.',
+      'Global tenant whisper.cpp GGUF pipeline (generic whisper-turbo), no pre/post-processing, low-latency streaming. No longer the tenant default (the ArcaAI ml-en GGUF fine-tune is default and is what `default-stt-pipeline` now points at).',
     configYaml: PIPELINE_CONFIGS.whisper_turbo_gguf_default,
-    isDefault: true,
-    tags: ['production', 'streaming', 'real-time', 'fast', 'recommended'],
+    isDefault: false,
+    tags: ['production', 'streaming', 'real-time', 'fast'],
   },
   // --- Global: remaining SYSTEM pipelines (full-parity policy) ---
   ...deriveRemainingTenantPipelines(SEED_TENANT_ID, '4', 'Global', EXPLICIT_TENANT_PIPELINE_SLUGS),
@@ -1530,11 +1537,12 @@ export const DEFAULT_STT_SETTINGS = [
     namespace: 'stt.config',
     name: 'defaults',
     key: 'batch_pipeline_slug',
-    // Batch + streaming defaults point at the new whisper.cpp
-    // GGUF pipeline (production-whisper-large-v3-turbo-gguf), replacing
-    // production-whisper-large-v3.
-    value: 'production-whisper-large-v3-turbo-gguf',
-    defaultValue: 'production-whisper-large-v3-turbo-gguf',
+    // Batch + streaming defaults point at the ArcaAI ml-en GGUF fine-tune
+    // (arcaai-whisper-large-ml-en-gguf) — the generic whisper-turbo GGUF
+    // pinned to ml produced garbage Malayalam, so the in-house code-switch
+    // fine-tune is the default.
+    value: 'arcaai-whisper-large-ml-en-gguf',
+    defaultValue: 'arcaai-whisper-large-ml-en-gguf',
     dataType: ValueType.String,
     description: 'Default pipeline slug for batch transcription',
   },
@@ -1545,8 +1553,8 @@ export const DEFAULT_STT_SETTINGS = [
     name: 'defaults',
     key: 'streaming_pipeline_slug',
     // See batch_pipeline_slug note above.
-    value: 'production-whisper-large-v3-turbo-gguf',
-    defaultValue: 'production-whisper-large-v3-turbo-gguf',
+    value: 'arcaai-whisper-large-ml-en-gguf',
+    defaultValue: 'arcaai-whisper-large-ml-en-gguf',
     dataType: ValueType.String,
     description: 'Default pipeline slug for streaming transcription',
   },
@@ -1797,10 +1805,13 @@ export const seedAsrPipelines = async (client: CorePrismaClient) => {
   return { success: true, count: allPipelines.length };
 };
 
-// Matrix #2 (whisper.cpp GGUF "Transcription Only") is the new
-// platform default, replacing `production-whisper-large-v3` (matrix #1).
-const STT_OLD_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3';
-const STT_NEW_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3-turbo-gguf';
+// The ArcaAI ml-en GGUF fine-tune is the platform default, replacing the
+// generic whisper-turbo GGUF (`production-whisper-large-v3-turbo-gguf`), which
+// hallucinated on Malayalam when pinned to ml. The reconciler below promotes
+// the fine-tune and demotes the generic GGUF (now the "old" default slug),
+// while still respecting an admin who picked some OTHER default.
+const STT_OLD_DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3-turbo-gguf';
+const STT_NEW_DEFAULT_PIPELINE_SLUG = 'arcaai-whisper-large-ml-en-gguf';
 
 /** Tenants that carry a full ASR pipeline catalog (mirrors seedAsrPipelines). */
 const STT_DEFAULT_PIPELINE_BACKFILL_TENANTS = [

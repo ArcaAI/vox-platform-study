@@ -46,25 +46,26 @@ It is a superset of `apps/example`'s
 one hardcodes the department/visit type and skips the pre-summary step; this app
 adds real inputs, the department picker, and the pre-summary → summary chain.
 
-## Status — depends on TASK-586 Lane C/D
+## Status — TASK-586 shipped
 
-This app is built against the **frozen TASK-586 contracts**, not the code as
-shipped today:
+The ON/OFF STT provider toggle is fully implemented and wired against the real
+SDK surface — not a forward-compat placeholder:
 
-- **C3 — `POST /api/stt/switch`** (the backend route the SDK calls when you
-  flip the toggle) has not landed yet.
-- **C5 — the `useArcaSttProvider()` ON/OFF surface** (`usePipeline`,
+- **`POST /api/stt/switch`** (the backend route the SDK calls when you flip
+  the toggle) is live (`core/StreamingSessionManager.ts`'s compat mode).
+- **The `useArcaSttProvider()` ON/OFF surface** (`usePipeline`,
   `switchToPipeline()`, `switchToDefault()`, and `ArcaCompatProviderProps.
-  enableProviderSwitch`) does not exist on the shipped hook yet — it only
-  exposes `switchToFallback()` (TASK-567/568) today.
+  enableProviderSwitch`) ships in `@arcaai/vox/compat` and is bidirectional —
+  it's no longer limited to the one-way `switchToFallback()` from TASK-567/568.
 
 [`src/components/ProviderToggle.tsx`](./src/components/ProviderToggle.tsx) and
-[`src/App.tsx`](./src/App.tsx) each carry a `TASK-586 Lane F/C5 forward-compat
-shim` comment: a local TypeScript interface mirroring the frozen contract,
-applied with a safe cast so the app **type-checks and builds today**. At
-runtime, toggling the switch will throw until Lane C/D ships the real hook
-surface. Once it lands, delete the shim types/casts named in those comments —
-the rest of the component should already be correct.
+[`src/App.tsx`](./src/App.tsx) call `useArcaSttProvider()` and pass
+`enableProviderSwitch`/`tenantId` directly against the real `@arcaai/vox/compat`
+types — the local forward-compat shim interfaces and casts they used to carry
+were removed once TASK-586 Lane C/D landed (see
+[`docs/implementation/TASK-586-Compat-Runtime-Provider-Switch/README.md`](../../docs/implementation/TASK-586-Compat-Runtime-Provider-Switch/README.md)
+§"Integration pass"). Toggling the switch works end-to-end today against a real
+gateway, mid-session, with no reconnect.
 
 Everything else (session lifecycle, mic capture, live transcript rendering)
 runs against hooks that are already shipped and works today against a real
@@ -142,10 +143,10 @@ convenience across reloads; use "Forget saved config" to clear them.
 |---|---|---|
 | API endpoint | `V1SdkConfig.apiEndpoint` | REST origin, e.g. `http://localhost:8868`. `websocketUrl` is derived automatically (`http` → `ws`). |
 | API key | `V1SdkConfig.credentials.apiKey` | **Required** — there is no default tenant key. |
-| Tenant ID | `tenantId` (Lane C/D addition — see Status above) | e.g. `50000000-0000-0000-0000-000000000000`. |
+| Tenant ID | `tenantId` (TASK-586 addition to `V1SdkConfig`) | e.g. `50000000-0000-0000-0000-000000000000`. |
 | Pipeline ID | `V1SdkConfig.sttPipelineId` | Streaming STT pipeline id. This is the "ON" (pipeline) state of the toggle; leaving it empty means there is no SDK pipeline to switch to. |
 
-On connect, `App.tsx` maps these into a `V1SdkConfig` (plus the forward-compat
+On connect, `App.tsx` maps these into a `V1SdkConfig` (including the
 `tenantId`/`enableProviderSwitch` fields — see Status above) and wraps the tree
 in `<ArcaCompatProvider options={...}>`.
 
@@ -188,7 +189,7 @@ src/
 │   ├── SessionWorkspace.tsx      # session state; renders cols 2 + 3 as a fragment
 │   ├── ControllerColumn.tsx      # col 2 — language, engine toggle, recording, metadata sim
 │   ├── TranscriptColumn.tsx      # col 3 — the two-track (transcript | metadata) timeline
-│   ├── ProviderToggle.tsx        # the ON/OFF STT engine toggle (C5 contract)
+│   ├── ProviderToggle.tsx        # the ON/OFF STT engine toggle (useArcaSttProvider)
 │   ├── DisconnectedColumns.tsx   # pre-connect placeholders for cols 2 + 3
 │   └── ExampleCode.tsx           # tab 2 — real source loaded via import.meta.glob(?raw)
 └── lib/
