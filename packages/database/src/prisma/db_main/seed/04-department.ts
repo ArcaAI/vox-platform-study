@@ -480,10 +480,11 @@ export const seedDepartment = async (client: CorePrismaClient) => {
   try {
     const allDepartments = [...DEFAULT_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS];
     for (const dept of allDepartments) {
+      const { id, ...department } = dept;
       await client.department.upsert({
-        where: { id: dept.id },
-        update: dept,
-        create: dept,
+        where: { tenantId_code: { tenantId: dept.tenantId, code: dept.code } },
+        update: department,
+        create: { id, ...department },
       });
     }
 
