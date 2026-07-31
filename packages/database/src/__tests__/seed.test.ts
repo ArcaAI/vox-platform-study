@@ -1321,11 +1321,11 @@ describe('STT Seed Data', () => {
         expect(turbo?.tags).toContain('fast');
       });
 
-      it('SYSTEM catalog has exactly 12 base pipelines with one isDefault', () => {
+      it('SYSTEM catalog has exactly 13 base pipelines with one isDefault', () => {
         // 9 TASK-505/507 matrix pipelines + 2 TASK-567 cloud BYOK
         // fallback candidates (sarvam-transcription, openai-transcription)
-        // + 1 ArcaAI ML-EN code-switch GGUF (matrix #10).
-        expect(DEFAULT_ASR_PIPELINES).toHaveLength(12);
+        // + 2 ArcaAI ML-EN code-switch GGUF (matrix #10: f16 + q8_0).
+        expect(DEFAULT_ASR_PIPELINES).toHaveLength(13);
         const defaults = DEFAULT_ASR_PIPELINES.filter((p) => p.isDefault === true);
         expect(defaults).toHaveLength(1);
         expect(defaults[0]?.slug).toBe('production-whisper-large-v3-turbo-gguf');

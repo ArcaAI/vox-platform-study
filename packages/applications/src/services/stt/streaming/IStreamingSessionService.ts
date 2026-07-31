@@ -1,4 +1,4 @@
-import { CreateStreamingSessionRequest, StreamingSessionStatus, StreamingAvailability } from './dto';
+import { CreateStreamingSessionRequest, StreamingSessionStatus, StreamingAvailability, SttLanguageModeCatalog } from './dto';
 
 /**
  * Interface for the streaming session management service.
@@ -11,6 +11,12 @@ export interface IStreamingSessionService {
    * Check if the STT streaming module is available and has capacity.
    */
   checkAvailability(): Promise<StreamingAvailability>;
+
+  /**
+   * Fetch the STT language-mode catalog + per-mode supported engines (TASK-587).
+   * Backend-authoritative source of truth for the end-user language picker.
+   */
+  getLanguageModes(): Promise<SttLanguageModeCatalog>;
 
   /**
    * Create a new streaming session on STT.
@@ -29,7 +35,19 @@ export interface IStreamingSessionService {
   getSessionStatus(sessionId: string): Promise<StreamingSessionStatus | null>;
 
   /**
-   * Trigger a mid-session switch to the tenant's fallback pipeline (TASK-567).
+   * Trigger a mid-session engine switch (TASK-567 R4, TASK-586).
+   *
+   * Bidirectional for user-initiated switches: `'fallback'` swaps to the
+   * tenant's fallback pipeline, `'primary'` swaps back to the primary. POSTs
+   * `{ target }` to the STT internal switch route.
+   *
+   * @param sessionId - The session identifier
+   * @param target - The engine to switch to ('primary' | 'fallback')
+   */
+  switchProvider(sessionId: string, target: 'primary' | 'fallback'): Promise<void>;
+
+  /**
+   * Back-compat alias for `switchProvider(sessionId, 'fallback')` (TASK-567).
    *
    * @param sessionId - The session identifier
    */

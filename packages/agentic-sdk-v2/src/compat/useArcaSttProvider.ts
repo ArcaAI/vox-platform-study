@@ -5,32 +5,45 @@
  *
  * The ONE compat import with NO v1 ancestor (TASK-568 §3 D-1). v1 never had STT
  * provider switching, so this is a compat-NATIVE extension: it lets a migrated
- * v1 app build the "switch transcription provider" control flow (TASK-567 R4)
- * with a single hook — no v2 store knowledge, no `useArcaAudio` adoption, no WS
- * awareness.
+ * v1 app build the "switch transcription provider" control flow with a single
+ * hook — no v2 store knowledge, no `useArcaAudio` adoption, no WS awareness.
+ *
+ * TASK-586 Lane D generalizes the original TASK-567/568 one-way switch into a
+ * BIDIRECTIONAL toggle: ON = the SDK-configured pipeline (primary), OFF = the
+ * tenant-admin default provider (fallback). `switchToFallback` is kept as an
+ * alias of the new `switchToDefault` — every pre-586 caller keeps compiling
+ * and behaving exactly as before.
  *
  * It is a THIN adapter over the public v2 surface `useArcaAudio()` provides
- * (`activePipeline`, `sttConnectionState`, `switchToFallback()`), so the compat
+ * (`activePipeline`, `sttConnectionState`, `switchProvider()`), so the compat
  * invariant (adapters consume ONLY the public v2 API) holds. It owns no client,
  * no store internals.
  *
  * Notifications:
- *  - `onProviderSwitched` fires on EVERY switch (auto outage-driven OR user),
- *    derived from the store's `activePipeline.isFallback` flip.
+ *  - `onProviderSwitched` fires on EVERY switch in EITHER direction (auto
+ *    outage-driven OR user), derived from the store's `activePipeline.isFallback`
+ *    flip (true→false now fires too, not just false→true).
  *  - `onSwitchFailed` fires when a user-requested switch rejects.
  *
  * Degraded posture (deployment predates TASK-567 — no fallback / no switch
  * route): `activePipeline` stays `null` for a non-backend session, so
- * `fallbackAvailable` is `false` and `switchToFallback()` rejects cleanly with
- * `FALLBACK_UNAVAILABLE` — never a crash or a silent no-op resolution.
+ * `fallbackAvailable` is `false` and `switchToDefault()`/`switchToPipeline()`
+ * reject cleanly — never a crash or a silent no-op resolution. Switching back
+ * to the primary pipeline additionally requires `enableProviderSwitch: true`
+ * in the `<ArcaCompatProvider>` config (TASK-586 §C3) — without it, the native
+ * streaming route has no primary-direction endpoint and `switchToPipeline()`
+ * rejects with `SWITCH_FAILED`.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useArcaAudio } from '../hooks/useArcaAudio';
+import { useCompatFeatureFlags } from './ArcaCompatProvider';
 import type { ErrorInfo, ProviderSwitchInfo } from './types';
 
+type ProviderSwitchTarget = 'primary' | 'fallback';
+
 export interface UseArcaSttProviderProps {
-  /** Fired on EVERY switch (auto or user) — the toast/banner hook point. */
+  /** Fired on EVERY switch (auto or user), in either direction — the toast/banner hook point. */
   onProviderSwitched?: (info: ProviderSwitchInfo) => void;
   /** Fired when a user-requested switch fails. Reuses the frozen v1 ErrorInfo. */
   onSwitchFailed?: (error: ErrorInfo) => void;
@@ -42,17 +55,49 @@ export interface UseArcaSttProviderReturn {
   /** True when a live backend session can switch to a fallback (and isn't already on it). */
   fallbackAvailable: boolean;
   isFallbackActive: boolean;
+  /**
+   * True when the session is transcribing on the SDK-configured (primary)
+   * pipeline; false when it's on the tenant-admin default (fallback). This is
+   * the bidirectional-toggle read (TASK-586 Lane D) — `true` before any
+   * capture session exists (primary is the nominal/default state).
+   */
+  usePipeline: boolean;
   switchStatus: 'idle' | 'switching' | 'switched' | 'failed';
   /**
-   * User control flow entry point (TASK-567 R4). Idempotent — a call while
+   * User control flow entry point (TASK-567/568 R4). Alias of
+   * {@link UseArcaSttProviderReturn.switchToDefault} — kept so every pre-586
+   * caller keeps compiling and behaving identically. Idempotent — a call while
    * already on the fallback resolves without a second v2 call. Rejects with an
    * {@link ErrorInfo} (code `FALLBACK_UNAVAILABLE`) when no fallback is
    * available, or (code `SWITCH_FAILED`) when the v2 switch rejects.
    */
   switchToFallback: () => Promise<void>;
+  /**
+   * Switch (back) to the SDK-configured primary pipeline (TASK-586 Lane D).
+   * Idempotent — a call while already on the pipeline resolves without a
+   * second v2 call. Requires `enableProviderSwitch: true` on
+   * `<ArcaCompatProvider>` — without it this rejects with `SWITCH_FAILED`
+   * (the native streaming route has no primary-direction endpoint).
+   */
+  switchToPipeline: () => Promise<void>;
+  /**
+   * Switch to the tenant-admin default (fallback) provider (TASK-586 Lane D).
+   * Same underlying call as {@link UseArcaSttProviderReturn.switchToFallback} —
+   * the two names exist so a migrating app can read `switchToDefault` as the
+   * bidirectional-toggle counterpart of `switchToPipeline`.
+   */
+  switchToDefault: () => Promise<void>;
 }
 
-function unavailableError(): ErrorInfo {
+function unavailableError(target: ProviderSwitchTarget): ErrorInfo {
+  if (target === 'primary') {
+    return {
+      code: 'PIPELINE_UNAVAILABLE',
+      message: 'No live streaming session to switch back to the primary pipeline.',
+      severity: 'medium',
+      category: 'processing',
+    };
+  }
   return {
     code: 'FALLBACK_UNAVAILABLE',
     message: 'No fallback STT provider is available to switch to (none configured, or no live streaming session).',
@@ -73,6 +118,7 @@ function switchFailedError(err: unknown): ErrorInfo {
 export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArcaSttProviderReturn {
   const { onProviderSwitched, onSwitchFailed } = props;
   const audio = useArcaAudio();
+  const { enableProviderSwitch } = useCompatFeatureFlags();
   const activePipeline = audio.activePipeline ?? null;
 
   // Keep callbacks fresh without re-subscribing the switch-detect effect.
@@ -83,9 +129,10 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
 
   const [switchStatus, setSwitchStatus] = useState<'idle' | 'switching' | 'switched' | 'failed'>('idle');
 
-  // Transition detector for the fallback flip (fires onProviderSwitched for BOTH
-  // auto and user switches). `prevPipelineRef` keeps the pre-flip pipeline so the
-  // delivered info carries a real `fromPipeline`.
+  // Transition detector for the fallback flip (fires onProviderSwitched for
+  // BOTH directions — primary→fallback AND fallback→primary — and for both
+  // auto and user switches). `prevPipelineRef` keeps the pre-flip pipeline so
+  // the delivered info carries a real `fromPipeline`.
   const prevIsFallbackRef = useRef<boolean>(activePipeline?.isFallback ?? false);
   const prevPipelineRef = useRef<{ id: string; name?: string } | null>(activePipeline ? { id: activePipeline.id, name: activePipeline.name } : null);
   // True while a user-initiated switch is in flight — distinguishes the reason.
@@ -104,7 +151,7 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
 
   useEffect(() => {
     const isFallback = activePipeline?.isFallback ?? false;
-    if (isFallback && !prevIsFallbackRef.current && activePipeline) {
+    if (activePipeline && isFallback !== prevIsFallbackRef.current) {
       const base = captureStartMsRef.current;
       const info: ProviderSwitchInfo = {
         fromPipeline: prevPipelineRef.current ?? { id: activePipeline.id, name: activePipeline.name },
@@ -120,37 +167,48 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
     prevPipelineRef.current = activePipeline ? { id: activePipeline.id, name: activePipeline.name } : null;
   }, [activePipeline]);
 
-  const switchToFallback = useCallback(async (): Promise<void> => {
-    const current = audio.activePipeline ?? null;
-    // Already on the fallback → idempotent no-op (no duplicate v2 call).
-    if (current?.isFallback) {
-      setSwitchStatus('switched');
-      return;
-    }
-    // No live backend session / no pipeline to switch from → unavailable.
-    if (!current) {
-      return Promise.reject(unavailableError());
-    }
-    setSwitchStatus('switching');
-    pendingUserSwitchRef.current = true;
-    try {
-      await audio.switchToFallback();
-      // Success is confirmed asynchronously by the backend `provider_switched`
-      // frame, which the effect above turns into onProviderSwitched + 'switched'.
-    } catch (err) {
-      pendingUserSwitchRef.current = false;
-      setSwitchStatus('failed');
-      const info = switchFailedError(err);
-      onSwitchFailedRef.current?.(info);
-      return Promise.reject(info);
-    }
-  }, [audio]);
+  const switchTo = useCallback(
+    async (target: ProviderSwitchTarget): Promise<void> => {
+      const current = audio.activePipeline ?? null;
+      // No live backend session / no pipeline to switch from → unavailable.
+      if (!current) {
+        return Promise.reject(unavailableError(target));
+      }
+      const isCurrentlyFallback = current.isFallback === true;
+      const alreadyThere = target === 'fallback' ? isCurrentlyFallback : !isCurrentlyFallback;
+      // Already on the requested side → idempotent no-op (no duplicate v2 call).
+      if (alreadyThere) {
+        setSwitchStatus('switched');
+        return;
+      }
+      setSwitchStatus('switching');
+      pendingUserSwitchRef.current = true;
+      try {
+        await audio.switchProvider(target, { useCompatEndpoint: enableProviderSwitch });
+        // Success is confirmed asynchronously by the backend `provider_switched`
+        // frame, which the effect above turns into onProviderSwitched + 'switched'.
+      } catch (err) {
+        pendingUserSwitchRef.current = false;
+        setSwitchStatus('failed');
+        const info = switchFailedError(err);
+        onSwitchFailedRef.current?.(info);
+        return Promise.reject(info);
+      }
+    },
+    [audio, enableProviderSwitch],
+  );
+
+  const switchToDefault = useCallback(() => switchTo('fallback'), [switchTo]);
+  const switchToPipeline = useCallback(() => switchTo('primary'), [switchTo]);
 
   return {
     activeProvider: activePipeline ? { pipelineId: activePipeline.id, name: activePipeline.name, isFallback: activePipeline.isFallback } : null,
     fallbackAvailable: activePipeline != null && !activePipeline.isFallback,
     isFallbackActive: activePipeline?.isFallback === true,
+    usePipeline: !(activePipeline?.isFallback === true),
     switchStatus,
-    switchToFallback,
+    switchToFallback: switchToDefault,
+    switchToPipeline,
+    switchToDefault,
   };
 }

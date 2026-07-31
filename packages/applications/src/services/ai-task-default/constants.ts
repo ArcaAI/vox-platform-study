@@ -10,6 +10,10 @@ import { ModelTaskType } from '@arcaai/domains';
 // `smr.live` / `smr.finalize` route the two SMR generation
 // flows (live-documentation delta vs. final/comprehensive summary). They are the
 // AiTaskDefault-first precedence source for `HarnessPolicyService.resolveSmrSelection`.
+// `smr.live.fallback` / `smr.finalize.fallback` (TASK-588) are the per-tenant,
+// opt-in fallback selections `resolveSmrFallbackSelection` reads (fail-OPEN: no
+// row ⇒ no fallback). SMR selection is tenant-admin configurable (NOT in
+// `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`).
 // additive keys moving the last env-selected surfaces into the DB
 // control plane: `guardrail.safety` (GLiNER content-safety detector),
 // `guardrail.groundedness` (MiniCheck NLI fact-checker), `harness.judge`
@@ -24,6 +28,8 @@ export const AI_TASK_KEYS = [
   'nlp.diagnosis',
   'smr.live',
   'smr.finalize',
+  'smr.live.fallback',
+  'smr.finalize.fallback',
   'harness.judge',
 ] as const;
 
@@ -47,6 +53,9 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
   // SMR generation models are text-generation models in the registry.
   'smr.live': ModelTaskType.TEXT_GENERATION,
   'smr.finalize': ModelTaskType.TEXT_GENERATION,
+  // per-tenant SMR fallback selections (TASK-588) — same task type.
+  'smr.live.fallback': ModelTaskType.TEXT_GENERATION,
+  'smr.finalize.fallback': ModelTaskType.TEXT_GENERATION,
   // the harness LLM-as-judge is a text-generation model.
   'harness.judge': ModelTaskType.TEXT_GENERATION,
 };
@@ -57,11 +66,15 @@ export const AI_TASK_MODEL_TASK_TYPES: Record<AiTaskKey, ModelTaskType> = {
  * Runtime reads ignore per-tenant override rows and use the SYSTEM row only
  * (tenants may only *use* platform defaults for these surfaces).
  *  - `guardrail.` (owner directive 2026-07-17)
- * - `smr.`
  * - `nlp.`
  * - `harness.`
+ *
+ * NOTE: `smr.` is intentionally NOT here (TASK-588). SMR summarization model
+ * selection — primary (`smr.live` / `smr.finalize`) AND per-tenant fallback
+ * (`smr.<task>.fallback`) — is tenant-admin configurable: `getEffective`
+ * honours per-tenant override rows and `upsertRow` permits tenant writes.
  */
-export const GLOBAL_ADMIN_ONLY_TASK_PREFIXES = ['guardrail.', 'smr.', 'nlp.', 'harness.'] as const;
+export const GLOBAL_ADMIN_ONLY_TASK_PREFIXES = ['guardrail.', 'nlp.', 'harness.'] as const;
 
 /** @deprecated Use {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}. Retained for back-compat. */
 export const GLOBAL_ADMIN_ONLY_TASK_PREFIX = 'guardrail.';

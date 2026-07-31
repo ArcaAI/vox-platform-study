@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 
 class AudioSettingsDto {
   @ApiProperty({
@@ -85,6 +85,15 @@ export class StartSessionRequest {
   })
   @IsObject()
   audioSettings: AudioSettingsDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Explicit STT pipeline id to run this session on. When supplied it is used directly (bypassing the `provider`-enum pipeline selection); when omitted, the pipeline is selected from `provider`.',
+    example: '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
+  })
+  @IsOptional()
+  @IsUUID()
+  pipelineId?: string;
 
   @ApiPropertyOptional({
     description: 'STT provider',

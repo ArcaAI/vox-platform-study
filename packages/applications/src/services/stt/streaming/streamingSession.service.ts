@@ -3,7 +3,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
 import { IConfigService } from '../../baseServices/_meta/config';
 import { IStreamingSessionService } from './IStreamingSessionService';
-import { CreateStreamingSessionRequest, StreamingAvailability, StreamingSessionStatus } from './dto';
+import { CreateStreamingSessionRequest, SttLanguageModeCatalog, StreamingAvailability, StreamingSessionStatus } from './dto';
 
 /**
  * StreamingSessionService
@@ -59,6 +59,28 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
+   * Fetch the STT language-mode catalog + per-mode supported engines (TASK-587).
+   *
+   * Backend-authoritative source of truth for the SDK picker. The catalog is
+   * static, so a short timeout + a safe empty fallback keep this read cheap and
+   * non-fatal when STT is briefly unreachable.
+   */
+  async getLanguageModes(): Promise<SttLanguageModeCatalog> {
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.get<SttLanguageModeCatalog>(`${this.sttBaseUrl}/internal/streaming/language-modes`, { timeout: 5000 }),
+      );
+      return { modes: data?.modes ?? [] };
+    } catch (error) {
+      this.logger.warn({
+        message: 'Failed to fetch STT language modes',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { modes: [] };
+    }
+  }
+
+  /**
    * Create a new streaming session on STT.
    *
    * @returns Session status, or null if at capacity (503)
@@ -77,6 +99,9 @@ export class StreamingSessionService implements IStreamingSessionService {
             microphone_id: dto.microphoneId,
             user_id: dto.userId,
             language: dto.language ?? null,
+            // End-user language mode (TASK-587); STT resolves it against the
+            // session engine and 422s a mode no configured engine can serve.
+            language_mode: dto.languageMode ?? null,
             audio_bucket_name: dto.audioBucketName,
             // Per-tenant storage descriptor (DEDICATED tenants only; null/omitted
             // for SHARED). snake_case keys already match the Python worker schema.
@@ -156,16 +181,25 @@ export class StreamingSessionService implements IStreamingSessionService {
   }
 
   /**
-   * Trigger a mid-session switch to the tenant's fallback pipeline (TASK-567 R4).
-   * POSTs to the apps/stt internal switch route, which XADDs a
-   * `SWITCH_TO_FALLBACK` control message onto the session's control stream; the
-   * in-session `EngineSwitchController` performs the seamless engine swap. Idempotent
-   * from the gateway's view — 404 (unknown session) and 409 (no fallback / already
-   * switched) are surfaced to the caller.
+   * Trigger a mid-session engine switch (TASK-567 R4, TASK-586).
+   *
+   * Bidirectional for user-initiated switches: POSTs `{ target }` to the apps/stt
+   * internal switch route, which XADDs a `SWITCH_TO_FALLBACK` control message
+   * (carrying the target) onto the session's control stream; the in-session
+   * `EngineSwitchController` performs the seamless engine swap. 404 (unknown
+   * session) and 409 (target unavailable — no fallback, primary never loaded, or
+   * already on that engine) are surfaced to the caller.
+   */
+  async switchProvider(sessionId: string, target: 'primary' | 'fallback'): Promise<void> {
+    await firstValueFrom(this.httpService.post(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}/switch`, { target }, { timeout: 5000 }));
+    this.logger.log({ message: 'Streaming session engine switch requested', sessionId, target });
+  }
+
+  /**
+   * Back-compat alias for `switchProvider(sessionId, 'fallback')` (TASK-567 native path).
    */
   async switchToFallback(sessionId: string): Promise<void> {
-    await firstValueFrom(this.httpService.post(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}/switch`, {}, { timeout: 5000 }));
-    this.logger.log({ message: 'Streaming session switch-to-fallback requested', sessionId });
+    await this.switchProvider(sessionId, 'fallback');
   }
 
   /**

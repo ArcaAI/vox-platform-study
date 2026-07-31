@@ -68,6 +68,12 @@ export interface AgenticState {
   currentTranscript: string;
   transcriptSegments: TranscriptSegment[];
   audioLanguage: string;
+  /**
+   * End-user STT language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`,
+   * `'auto'`. Undefined ⇒ no mode selected (pipeline default). Re-applied on a
+   * reconnect/fallback restart, alongside `audioLanguage`.
+   */
+  sttLanguageMode?: string;
   audioPlugins: AudioPluginStates;
   audioError: Error | null;
   activeStream: MediaStream | null;
@@ -199,6 +205,7 @@ export interface AgenticActions {
   setTranscriptSegments: (segments: TranscriptSegment[]) => void;
   addTranscriptSegment: (segment: TranscriptSegment) => void;
   setAudioLanguage: (language: string) => void;
+  setSttLanguageMode: (mode: string | undefined) => void;
   setAudioPlugins: (plugins: AudioPluginStates) => void;
   setAudioError: (error: Error | null) => void;
   setActiveStream: (stream: MediaStream | null) => void;
@@ -329,6 +336,7 @@ const initialState: AgenticState = {
   currentTranscript: '',
   transcriptSegments: [],
   audioLanguage: 'en',
+  sttLanguageMode: undefined,
   audioPlugins: DEFAULT_AUDIO_PLUGIN_STATES,
   audioError: null,
   activeStream: null,
@@ -487,6 +495,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   setTranscriptSegments: (segments) => set({ transcriptSegments: segments }),
   addTranscriptSegment: (segment) => set((state) => ({ transcriptSegments: [...state.transcriptSegments, segment] })),
   setAudioLanguage: (language) => set({ audioLanguage: language }),
+  setSttLanguageMode: (mode) => set({ sttLanguageMode: mode }),
   setAudioPlugins: (plugins) => set({ audioPlugins: plugins }),
   setAudioError: (error) => set({ audioError: error }),
   setActiveStream: (stream) => set({ activeStream: stream }),

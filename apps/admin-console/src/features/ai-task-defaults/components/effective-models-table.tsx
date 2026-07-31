@@ -5,7 +5,7 @@ import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { ErrorState } from '@/shared/state/error-state';
 import { useEffectiveTaskDefaults } from '../api/hooks';
-import { AI_TASK_KEYS } from '../api/types';
+import { READ_ONLY_TASK_KEYS } from '../api/types';
 import type { EffectiveAiTaskDefault } from '../api/types';
 
 /** `source` badge copy per the cascade tier (null = the service env bootstrap). */
@@ -54,7 +54,7 @@ function TableSkeleton() {
   return (
     <div className="flex flex-col gap-2" aria-hidden>
       <Skeleton className="h-8 w-full" />
-      {AI_TASK_KEYS.map((key) => (
+      {READ_ONLY_TASK_KEYS.map((key) => (
         <div key={key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto_auto] items-center gap-4">
           <Skeleton className="h-4 w-32 max-w-full" />
           <Skeleton className="h-4 w-56 max-w-full" />
@@ -71,9 +71,10 @@ function TableSkeleton() {
  *
  * ONE `GET admin/ai-task-defaults` round-trip returns the resolved default for
  * every task key. This surface is deliberately READ-ONLY: model selection for
- * guardrail/nlp/smr/harness is a GLOBAL_ADMIN-only write,
- * so a tenant admin sees which model serves each task and which cascade tier
- * decided it — visibility, not control.
+ * guardrail/nlp/harness is a GLOBAL_ADMIN-only write, so a tenant admin sees
+ * which model serves each of those tasks and which cascade tier decided it —
+ * visibility, not control. SMR selection is now tenant-editable (TASK-588) and
+ * lives in the "SMR models" section, so it is excluded from this table.
  */
 export function EffectiveModelsTable() {
   const uid = useId();
@@ -90,11 +91,12 @@ export function EffectiveModelsTable() {
     <section aria-labelledby={`${uid}-title`} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h2 id={`${uid}-title`} className="text-base font-semibold">
-          Effective models ({AI_TASK_KEYS.length})
+          Effective models ({READ_ONLY_TASK_KEYS.length})
         </h2>
         <p className="text-muted-foreground text-sm">
-          The model that actually serves each AI task for this tenant, and which tier decided it. Model selection is managed by global administrators
-          &mdash; this view is read-only.
+          The model that actually serves each guardrail, NLP and harness task for this tenant, and which tier decided it. Selection for these tasks is
+          managed by global administrators &mdash; this view is read-only. Summarization (SMR) models are configured in the &ldquo;SMR models&rdquo;
+          tab.
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -117,7 +119,7 @@ export function EffectiveModelsTable() {
             </tr>
           </thead>
           <tbody>
-            {AI_TASK_KEYS.map((key) => {
+            {READ_ONLY_TASK_KEYS.map((key) => {
               const row = byKey.get(key);
               return (
                 <EffectiveRow

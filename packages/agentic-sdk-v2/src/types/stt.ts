@@ -83,6 +83,15 @@ export interface CreateStreamingSessionRequest {
   /** ISO 639-1 language code (e.g., "en", "th") */
   language?: string;
   /**
+   * End-user language mode id (TASK-587), e.g. `"en"`, `"ml"`, `"ml-en"`
+   * (Malayalam+English code-switch), `"auto"`. POSTed verbatim to the gateway
+   * (`languageMode`), which forwards it to STT. STT resolves it against the
+   * session engine and returns 422 when no configured engine can serve it.
+   * Takes precedence over `language`. Selectable modes come from
+   * `GET /audio/transcription-jobs/language-modes` (see {@link LanguageMode}).
+   */
+  languageMode?: string;
+  /**
    * Allow mid-utterance language switching.
    *
    * Maps to `InferenceConfig.code_switching` in stt (default `false`), which is
@@ -95,6 +104,32 @@ export interface CreateStreamingSessionRequest {
   codeSwitching?: boolean;
   /** Microphone device identifier */
   microphoneId?: string;
+}
+
+/**
+ * A selectable STT language mode + the catalog-wide set of engines that can
+ * serve it (TASK-587). Mirrors an entry of
+ * `GET /audio/transcription-jobs/language-modes`. The backend owns this
+ * capability matrix; the SDK only renders it (see `useArcaSttLanguageModes`).
+ */
+export interface LanguageMode {
+  /** Stable mode id passed to `audio.start({ languageMode })`. */
+  id: string;
+  /** Human-readable label, e.g. "Malayalam + English". */
+  label: string;
+  /** `single` language, bilingual `code_switch`, or `auto`-detect. */
+  kind: 'single' | 'code_switch' | 'auto';
+  /** ISO 639-1 primary language, or null for auto-detect. */
+  primaryLanguage: string | null;
+  /** Secondary language for `code_switch` modes (e.g. "en"), else null. */
+  secondaryLanguage: string | null;
+  /** Engine `format` values (catalog-wide) that can serve this mode. */
+  supportedEngines: string[];
+}
+
+/** Response of `GET /audio/transcription-jobs/language-modes` (TASK-587). */
+export interface LanguageModeCatalog {
+  modes: LanguageMode[];
 }
 
 /**
@@ -343,6 +378,14 @@ export interface WsStatusMessage {
   reason?: string;
   /** Utterance ordinal at which the swap happened (string on the wire, coerced by consumers). */
   utterance_index?: number | string;
+  /**
+   * Engine now transcribing after the swap (TASK-586: bidirectional). Present on
+   * a backend that supports the compat pipeline↔default toggle so consumers can
+   * tell a switch BACK to primary from the one-way primary→fallback switch.
+   */
+  active?: 'primary' | 'fallback';
+  /** True when the session is now on the fallback engine; false after a switch back to primary. */
+  is_fallback?: boolean;
 }
 
 /**

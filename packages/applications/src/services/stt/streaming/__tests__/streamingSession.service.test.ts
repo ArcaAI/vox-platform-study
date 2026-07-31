@@ -120,6 +120,48 @@ describe('StreamingSessionService', () => {
     });
   });
 
+  it('switchProvider POSTs { target: "fallback" } to the switch route', async () => {
+    httpService.post.mockReturnValue(of({ data: { switched: true, active: 'fallback' } }));
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    await service.switchProvider('s-4', 'fallback');
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/sessions/s-4/switch',
+      { target: 'fallback' },
+      { timeout: 5000 },
+    );
+  });
+
+  it('switchProvider POSTs { target: "primary" } for a switch back', async () => {
+    httpService.post.mockReturnValue(of({ data: { switched: true, active: 'primary' } }));
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    await service.switchProvider('s-5', 'primary');
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/sessions/s-5/switch',
+      { target: 'primary' },
+      { timeout: 5000 },
+    );
+  });
+
+  it('switchToFallback is a thin alias posting { target: "fallback" }', async () => {
+    httpService.post.mockReturnValue(of({ data: { switched: true, active: 'fallback' } }));
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    await service.switchToFallback('s-6');
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/sessions/s-6/switch',
+      { target: 'fallback' },
+      { timeout: 5000 },
+    );
+  });
+
   it('forwards audio_bucket_name in createSession POST body when provided', async () => {
     httpService.post.mockReturnValue(
       of({
@@ -148,5 +190,72 @@ describe('StreamingSessionService', () => {
       }),
       { timeout: 15000 },
     );
+  });
+
+  it('forwards language_mode (snake_case) in createSession POST body (TASK-587)', async () => {
+    httpService.post.mockReturnValue(
+      of({ data: { session_id: 's-7', status: 'active', max_concurrent: 4, current_active: 1 } }),
+    );
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    await service.createSession({
+      sessionId: 's-7',
+      tenantId: 'tenant-1',
+      pipelineId: 'pipeline-1',
+      languageMode: 'ml-en',
+    });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/sessions',
+      expect.objectContaining({ language_mode: 'ml-en' }),
+      { timeout: 15000 },
+    );
+  });
+
+  it('createSession sends language_mode: null when unset (TASK-587)', async () => {
+    httpService.post.mockReturnValue(
+      of({ data: { session_id: 's-8', status: 'active', max_concurrent: 4, current_active: 1 } }),
+    );
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    await service.createSession({ sessionId: 's-8', tenantId: 'tenant-1', pipelineId: 'pipeline-1' });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/sessions',
+      expect.objectContaining({ language_mode: null }),
+      { timeout: 15000 },
+    );
+  });
+
+  it('getLanguageModes fetches the STT catalog (TASK-587)', async () => {
+    httpService.get.mockReturnValue(
+      of({
+        data: {
+          modes: [
+            { id: 'en', label: 'English', kind: 'single', primaryLanguage: 'en', secondaryLanguage: null, supportedEngines: ['OPENAI'] },
+            { id: 'ml-en', label: 'Malayalam + English', kind: 'code_switch', primaryLanguage: 'ml', secondaryLanguage: 'en', supportedEngines: ['SARVAM'] },
+          ],
+        },
+      }),
+    );
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    const result = await service.getLanguageModes();
+
+    expect(httpService.get).toHaveBeenCalledWith('http://stt.internal:9000/internal/streaming/language-modes', { timeout: 5000 });
+    expect(result.modes.map((m) => m.id)).toEqual(['en', 'ml-en']);
+  });
+
+  it('getLanguageModes returns an empty catalog when STT is unreachable (TASK-587)', async () => {
+    httpService.get.mockReturnValue(throwError(() => new Error('ECONNREFUSED')));
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    const result = await service.getLanguageModes();
+
+    expect(result).toEqual({ modes: [] });
   });
 });

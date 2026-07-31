@@ -17,6 +17,12 @@ export interface SummaryMappingMeta {
   encounterType?: string | null;
   /** Set only when enrichment was applied — echoed into metadata. */
   preSummaryText?: string | null;
+  /** v1-parity display labels (TASK-560 item 4) — cosmetic, no logic consumes them. */
+  llmProvider?: string | null;
+  modelName?: string | null;
+  parsingMethod?: string | null;
+  /** The raw LLM content string (same text parsed into `summary`). */
+  rawLlmContent?: string | null;
   createdAt: Date;
 }
 
@@ -87,76 +93,105 @@ export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta
       language: meta.language,
       specialty: meta.specialty ?? null,
       encounter_type: meta.encounterType ?? null,
+      // v1-parity display labels (TASK-560 item 4).
+      llm_provider: meta.llmProvider ?? null,
+      model_name: meta.modelName ?? null,
+      parsing_method: meta.parsingMethod ?? null,
+      raw_llm_content: meta.rawLlmContent ?? null,
       ...(meta.preSummaryText ? { pre_summary_text: meta.preSummaryText } : {}),
     },
   };
 }
 
 /**
- * Parse markdown pre-summary text into `StructuredPreSummary` sections.
- * Recognizes `#`-style headings and bold-only heading lines (`**Heading**`),
- * collecting `-`/`*` bullet items beneath each. Returns `null` when no sections
- * are detected so callers can fall back to `{ title, sections: [] }`.
+ * The 5 canonical pre-summary section titles, IN ORDER, recognized verbatim by
+ * v1 (`previous_visit_service.py:215-221`). Only these exact titles are treated
+ * as section headers; the structured output always carries all five, in order.
  */
-export function parseSections(markdown: string): StructuredPreSummary | null {
-  const lines = (markdown ?? '').split(/\r?\n/);
-  const sections: StructuredPreSummary['sections'] = [];
-  let title = DEFAULT_PRE_SUMMARY_TITLE;
-  let current: StructuredPreSummary['sections'][number] | null = null;
-  let sawTitle = false;
+export const PRE_SUMMARY_DISPLAY_TITLES = [
+  'Confirmed & Provisional Diagnoses',
+  'Plan of Care (Latest Department Note)',
+  'Investigations (Latest Department Note)',
+  'Medications Prescribed (Latest Department Note)',
+  'Diagnostics & Trends',
+] as const;
 
-  const headingMatch = (line: string): string | null => {
-    const trimmed = line.trim();
-    const hash = /^#{1,6}\s+(.+?)\s*$/.exec(trimmed);
-    if (hash) return hash[1].replace(/[*:]+$/g, '').trim();
-    const bold = /^\*\*(.+?)\*\*:?\s*$/.exec(trimmed);
-    if (bold) return bold[1].trim();
-    return null;
-  };
+const PRE_SUMMARY_NOT_AVAILABLE = 'Not available';
 
-  const bulletMatch = (line: string): string | null => {
-    const trimmed = line.trim();
-    const bullet = /^[-*]\s+(.+?)\s*$/.exec(trimmed);
-    if (bullet) return bullet[1].replace(/^\*\*(.+?)\*\*$/, '$1').trim();
-    return null;
-  };
+/**
+ * v1 header normalization (`previous_visit_service.py:227-242`): strip a leading
+ * `- ` bullet, surrounding `**…**`, and a trailing `:` (plus dangling `**`), to
+ * compare a line against the canonical display titles.
+ */
+function normalizePreSummaryHeader(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith('- ')) s = s.slice(2);
+  if (s.startsWith('**') && s.endsWith('**')) s = s.slice(2, -2);
+  if (s.endsWith(':')) s = s.slice(0, -1);
+  if (s.startsWith('**')) s = s.slice(2);
+  if (s.endsWith('**')) s = s.slice(0, -2);
+  return s.trim();
+}
 
-  for (const line of lines) {
-    const heading = headingMatch(line);
-    if (heading) {
-      // The first heading matching the canonical document title becomes the
-      // title rather than a section.
-      if (!sawTitle && heading.toLowerCase() === DEFAULT_PRE_SUMMARY_TITLE.toLowerCase()) {
-        title = heading;
-        sawTitle = true;
-        continue;
-      }
-      sawTitle = true;
-      current = { title: heading, items: [] };
-      sections.push(current);
+/** v1 item cleanup (`previous_visit_service.py:266-273`): drop the `- ` bullet and all `**`. */
+function cleanPreSummaryItem(line: string): string {
+  let s = line.trim();
+  if (s.startsWith('- ')) s = s.slice(2);
+  return s.replace(/\*\*/g, '').trim();
+}
+
+/**
+ * Parse a v1 pre-summary markdown into the 5 canonical sections, IN ORDER,
+ * filling any missing (or empty) section with a single `Not available` item.
+ * Faithful port of `PreviousVisitService.generate_pre_summary`
+ * (`previous_visit_service.py:214-294`). Never returns `null` — the 5-section
+ * shape is a guarantee.
+ */
+export function parseSections(markdown: string): StructuredPreSummary {
+  const displayTitles = PRE_SUMMARY_DISPLAY_TITLES as readonly string[];
+  const collected = new Map<string, StructuredPreSummary['sections'][number]['items']>();
+  let currentTitle: string | null = null;
+
+  for (const rawLine of (markdown ?? '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const normalized = normalizePreSummaryHeader(line);
+    if (displayTitles.includes(normalized)) {
+      currentTitle = normalized;
+      if (!collected.has(normalized)) collected.set(normalized, []);
       continue;
     }
-    const bullet = bulletMatch(line);
-    if (bullet && current) {
-      current.items.push({ text: bullet });
+
+    if (currentTitle) {
+      const cleaned = cleanPreSummaryItem(line);
+      if (cleaned) collected.get(currentTitle)!.push({ text: cleaned });
     }
   }
 
-  if (sections.length === 0) return null;
-  return { title, sections };
+  // Emit all 5 sections in canonical order; missing/empty → single Not available.
+  const sections = displayTitles.map((title) => {
+    const items = collected.get(title);
+    return { title, items: items && items.length > 0 ? items : [{ text: PRE_SUMMARY_NOT_AVAILABLE }] };
+  });
+
+  return { title: DEFAULT_PRE_SUMMARY_TITLE, sections };
 }
 
 /**
  * Wrap the LLM `content` (markdown pre-summary) in the v1 `PreSummaryResponse`.
- * `pre_summary` carries the full markdown (the client's source of truth);
- * `structured_data.sections` is `[]` when no sections could be parsed.
+ * `pre_summary` carries the full markdown (the client's source of truth), with
+ * v1's title prepended when absent (`previous_visit_service.py:212-213`);
+ * `structured_data` always carries the 5 canonical sections in order.
  */
 export function mapGenerateToV1PreSummary(content: string, createdAt: Date): PreSummaryResponse {
-  const preSummary = (content ?? '').trim();
-  const structured = parseSections(preSummary) ?? { title: DEFAULT_PRE_SUMMARY_TITLE, sections: [] };
+  let preSummary = (content ?? '').trim();
+  if (!preSummary.startsWith(`**${DEFAULT_PRE_SUMMARY_TITLE}**`)) {
+    preSummary = `**${DEFAULT_PRE_SUMMARY_TITLE}**\n\n${preSummary}`;
+  }
   return {
     pre_summary: preSummary,
-    structured_data: structured,
+    structured_data: parseSections(preSummary),
     created_at: createdAt.toISOString(),
   };
 }

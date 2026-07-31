@@ -1,9 +1,18 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getSttCredentials, getSttEffective, getSttFallbackCandidates, getSttRow, putSttRow, removeSttCredential, setSttCredential } from './client';
+import {
+  getSttCredentials,
+  getSttEffective,
+  getSttFallbackCandidates,
+  getSttRow,
+  putSttRow,
+  removeSttCredential,
+  setSttCredential,
+  testSttCredential,
+} from './client';
 import { sttConfigKeys } from './keys';
-import type { SetSttCredentialRequest, SetSttFallbackRequest, SttProvider } from './types';
+import type { SetSttCredentialRequest, SetSttFallbackRequest, SttProvider, TestSttCredentialRequest } from './types';
 
 export function useSttEffective() {
   return useQuery({ queryKey: sttConfigKeys.effective(), queryFn: getSttEffective });
@@ -45,5 +54,12 @@ export function useRemoveSttCredential() {
   return useMutation({
     mutationFn: (provider: SttProvider) => removeSttCredential(provider),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: sttConfigKeys.credentials() }),
+  });
+}
+
+/** Ephemeral probe — no cache to invalidate; the result lives only on the mutation. */
+export function useTestSttCredential() {
+  return useMutation({
+    mutationFn: ({ provider, body }: { provider: SttProvider; body: TestSttCredentialRequest }) => testSttCredential(provider, body),
   });
 }

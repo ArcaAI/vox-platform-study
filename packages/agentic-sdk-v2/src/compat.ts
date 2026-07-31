@@ -53,6 +53,16 @@ export type { UseSMROptions, UseSMRReturn } from './compat/useSMR';
 export { useArcaSttProvider } from './compat/useArcaSttProvider';
 export type { UseArcaSttProviderProps, UseArcaSttProviderReturn } from './compat/useArcaSttProvider';
 
+// STT language-mode catalog (TASK-587) — a v2-native hook with NO v1 ancestor,
+// re-exported here so compat apps import it from the SAME entry bundle as
+// `<ArcaCompatProvider>`. The store React context does NOT cross entry-point
+// bundles (tsup `splitting: false` gives each entry its own copy), so importing
+// this from `@arcaai/vox/core` while the provider comes from `@arcaai/vox/compat`
+// makes `useStoreApi()` read a different context instance and throw.
+export { useArcaSttLanguageModes } from './hooks/useArcaSttLanguageModes';
+export type { UseArcaSttLanguageModesReturn } from './hooks/useArcaSttLanguageModes';
+export type { LanguageMode, LanguageModeCatalog } from './types/stt';
+
 // v1 type surface (TASK-560 §5)
 export type {
   V1SdkConfig,

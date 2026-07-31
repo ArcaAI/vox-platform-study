@@ -268,6 +268,14 @@ export interface DualCaptureResult {
  */
 export interface AudioStartOptions {
   language?: string;
+  /**
+   * End-user STT language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`
+   * (Malayalam+English code-switch), `'auto'`. Forwarded to the backend STT
+   * session, which resolves it against the session engine and rejects (422) a
+   * mode no configured engine can serve. Takes precedence over `language` on
+   * the backend path. Fetch the selectable modes with `useArcaSttLanguageModes`.
+   */
+  languageMode?: string;
   pipelineId?: string;
   /**
    * Primary microphone deviceId. Forwarded as
@@ -337,6 +345,14 @@ export interface ProviderSwitchInfo {
   reason: string;
   /** Utterance ordinal at which the swap happened, when the backend reports it. */
   utteranceIndex?: number;
+  /**
+   * Engine now transcribing after the swap (TASK-586: bidirectional toggle).
+   * `fallback` after a primary→fallback switch, `primary` after a switch back.
+   * Absent on a pre-586 backend that only reports the one-way switch.
+   */
+  active?: 'primary' | 'fallback';
+  /** True when now on the fallback engine; false after a switch back to primary. Absent ⇒ pre-586 backend. */
+  isFallback?: boolean;
 }
 
 // =============================================================================

@@ -108,6 +108,8 @@ export interface TranscriptionPipelineConfig {
     transcriptionMode?: 'LOCAL' | 'BACKEND';
     /** Language */
     language?: string;
+    /** End-user language mode id (TASK-587); forwarded to the backend STT session. */
+    languageMode?: string;
     /** Model ID for local processing */
     modelId?: string;
     /** WebSocket URL for remote processing */

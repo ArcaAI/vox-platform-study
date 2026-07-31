@@ -1,3 +1,4 @@
+import { humanizeField, selectDeptTemplate } from './dept-templates';
 import type { PreSummaryRequest } from './dto/pre-summary.request';
 import type { PreviousVisitRecordDto, SessionDataDto, TestResultDto } from './dto/session-data.dto';
 
@@ -100,6 +101,20 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
   ];
   if (specialty) systemLines.push(`Specialty context: ${specialty}.`);
   if (encounterType) systemLines.push(`Encounter type: ${encounterType}.`);
+
+  // v1 department×visit steering (TASK-560 item 2). For the 6 non-medicine
+  // departments the v1 `DEPT_VISIT_SCHEMAS` field set becomes prompt guidance
+  // ("capture these department-relevant areas"), while the wire response stays
+  // the generic Simplified/Enhanced object (v1 normalizes dept keys back to it).
+  // General/Medicine and unknown departments keep the generic path (null here).
+  const deptTemplate = selectDeptTemplate(options.department, options.visitType);
+  if (deptTemplate) {
+    const sections = deptTemplate.fields.map(humanizeField).join(', ');
+    systemLines.push(
+      `Department-specific documentation focus for this ${department} encounter: where documented in the transcript or context, ensure the summary captures ${sections}. Map that clinical content into the generic summary fields defined by the schema; do not add fields outside the schema.`,
+    );
+  }
+
   systemLines.push(
     'Base the summary strictly on the provided transcript and context; do not fabricate findings.',
     'Respond with a single JSON object that conforms to the provided schema. Output JSON only — no prose, no markdown fences.',

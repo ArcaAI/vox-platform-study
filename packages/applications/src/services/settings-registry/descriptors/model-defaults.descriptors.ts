@@ -5,10 +5,12 @@
 // `AiTaskDefault` table (tier `db-config`, tenant → SYSTEM cascade resolved by
 // `AiTaskDefaultService.getEffective`).
 //
-// Governance: `guardrail.*`, `smr.*`, and `nlp.*` keys are
+// Governance: `guardrail.*`, `nlp.*`, and `harness.*` keys are
 // GLOBAL-ADMIN-ONLY — `editableBy` points at the global-admin resource
 // (`'all'`, the CASL manage-everything subject) and the descriptor is flagged
-// `globalOnly`.
+// `globalOnly`. `smr.*` is tenant-admin configurable (TASK-588): its
+// descriptors resolve to the tenant-editable `AiTaskDefault` resource and are
+// NOT flagged `globalOnly` (driven by `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`).
 
 import { AI_TASK_KEYS, AiTaskKey, GLOBAL_ADMIN_ONLY_TASK_PREFIXES } from '../../ai-task-default/constants';
 import { SettingDescriptor } from '../registry.types';
@@ -40,14 +42,24 @@ const META: Record<AiTaskKey, { label: string; description: string }> = {
     label: 'Diagnosis suggestion model',
     description: 'Default text-classification model used for symptom→disease diagnosis suggestions (global admins only).',
   },
-  // SMR generation routing (global admins only).
+  // SMR generation routing (tenant-admin configurable — TASK-588).
   'smr.live': {
     label: 'SMR live-summary model',
-    description: 'Default text-generation model for the live-documentation delta summariser (global admins only).',
+    description: 'Default text-generation model for the live-documentation delta summariser.',
   },
   'smr.finalize': {
     label: 'SMR final-summary model',
-    description: 'Default text-generation model for the final/comprehensive summary generator (global admins only).',
+    description: 'Default text-generation model for the final/comprehensive summary generator.',
+  },
+  // per-tenant SMR fallback selections (opt-in — TASK-588). No SYSTEM default;
+  // when unset, no fallback runs (`resolveSmrFallbackSelection` returns null).
+  'smr.live.fallback': {
+    label: 'SMR live-summary fallback model',
+    description: 'Fallback text-generation model for the live-documentation delta summariser when the primary provider fails.',
+  },
+  'smr.finalize.fallback': {
+    label: 'SMR final-summary fallback model',
+    description: 'Fallback text-generation model for the final/comprehensive summary generator when the primary provider fails.',
   },
   // harness LLM-as-judge model (global admins only).
   'harness.judge': {

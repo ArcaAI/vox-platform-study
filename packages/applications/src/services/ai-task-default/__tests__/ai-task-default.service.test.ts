@@ -223,13 +223,42 @@ describe('AiTaskDefaultService — GLOBAL_ADMIN-only governance', () => {
     expect(res.modelSlug).toBe('medical-ner');
   });
 
-  it('rejects an smr.* write from a tenant admin with ForbiddenException', async () => {
+  it('accepts an smr.* write from a tenant admin (SMR routing is now tenant-configurable)', async () => {
     const ctx = makeService({ roles: ['TENANT_ADMIN'] });
     ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
+    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    ctx.repo.create.mockImplementation(async (e: unknown) => e);
 
-    await expect(ctx.svc.upsertRow('smr.live', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    const res = await ctx.svc.upsertRow('smr.live', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
+
+    expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts an smr.finalize write from a tenant admin for their own tenant', async () => {
+    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
+    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    ctx.repo.create.mockImplementation(async (e: unknown) => e);
+
+    const res = await ctx.svc.upsertRow('smr.finalize', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
+
+    expect(res.tenantId).toBe(TENANT);
+    expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    // Same-tenant caller → scoped path (no cross-tenant base-client lane).
+    expect(ctx.repo.create).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }), undefined);
+  });
+
+  it('accepts an smr.finalize.fallback write from a tenant admin', async () => {
+    const ctx = makeService({ roles: ['TENANT_ADMIN'] });
+    ctx.modelRepo.findBySlug.mockResolvedValue(makeModel({ slug: 'lms-gemma-4-e2b-it-qat', taskType: ModelTaskType.TEXT_GENERATION }));
+    ctx.repo.findByTenantAndTaskKey.mockResolvedValue(null);
+    ctx.repo.create.mockImplementation(async (e: unknown) => e);
+
+    const res = await ctx.svc.upsertRow('smr.finalize.fallback', { modelSlug: 'lms-gemma-4-e2b-it-qat', expectedVersion: 0 });
+
+    expect(res.modelSlug).toBe('lms-gemma-4-e2b-it-qat');
+    expect(ctx.repo.create).toHaveBeenCalledTimes(1);
   });
 });
 

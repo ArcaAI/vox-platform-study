@@ -1,4 +1,9 @@
-import type { IActiveUserContext, IBlobStorageService as IBlobStorageServiceType, StorageDescriptor } from '@arcaai/applications';
+import type {
+  IActiveUserContext,
+  IBlobStorageService as IBlobStorageServiceType,
+  StorageDescriptor,
+  SttLanguageModeCatalog,
+} from '@arcaai/applications';
 import {
   Authorize,
   CreateBatchJobRequest,
@@ -344,6 +349,15 @@ export class TranscriptionJobController {
     return this.jobService.getByConsultationForOwner(this.getUserId(), consultationId);
   }
 
+  @Get('language-modes')
+  @ApiOperation({ summary: 'List selectable STT language modes + per-mode supported engines (TASK-587)' })
+  @ApiResponse({ status: 200, description: 'Language-mode catalog' })
+  async getLanguageModes(): Promise<SttLanguageModeCatalog> {
+    // Backend-authoritative catalog (STT owns the capability matrix). Read-only,
+    // not tenant-scoped; the class-level `@Authorize()` gate is sufficient.
+    return this.sessionService.getLanguageModes();
+  }
+
   @Post('stream/session')
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a WebSocket streaming session' })
@@ -400,6 +414,7 @@ export class TranscriptionJobController {
       consultationId: body.consultationId,
       sampleRate,
       language: body.language,
+      languageMode: body.languageMode,
       userId: user?.id,
       audioBucketName,
       storage,
@@ -550,6 +565,45 @@ export class TranscriptionJobController {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
         throw new ConflictException('Session is already on the fallback pipeline, or no fallback is available');
+      }
+      if (status === 404) {
+        throw new NotFoundException(`Streaming session ${sessionId} not found`);
+      }
+      throw err;
+    }
+    return { switched: true };
+  }
+
+  /**
+   * Manual mid-session switch BACK to the SDK-configured primary pipeline
+   * (TASK-586 Lane H) — the primary-direction counterpart of
+   * `switchStreamSessionToFallback`, so native SDK consumers get a 2-way
+   * pipeline↔default toggle. Guarded exactly like `closeStreamSession`
+   * (`@TenantOwnedResource` 404s cross-tenant probes with no existence leak).
+   * No fallback-config precheck applies here — that is a fallback-direction
+   * concern; the primary pipeline is whatever the session was created with.
+   * The seamless swap runs in apps/stt's `EngineSwitchController`; a 409 from
+   * there (already on primary / the primary engine was never loaded) is
+   * surfaced as a 409, a 404 (unknown session) as a 404.
+   */
+  @Post('stream/session/:sessionId/switch-to-primary')
+  @HttpCode(200)
+  @TenantOwnedResource({ modelName: 'StreamSession', paramName: 'sessionId', lookup: 'session' })
+  @ApiOperation({ summary: 'Switch a live streaming session back to its primary pipeline' })
+  @ApiParam({ name: 'sessionId', description: 'Streaming session ID' })
+  @ApiResponse({ status: 200, description: 'Switch requested; the session continues on the primary engine.' })
+  @ApiResponse({ status: 409, description: 'The session is already on the primary pipeline, or the primary engine was never loaded.' })
+  async switchStreamSessionToPrimary(@Param('sessionId') sessionId: string): Promise<{ switched: true }> {
+    if (!sessionId?.trim()) {
+      throw new BadRequestException('sessionId is required');
+    }
+
+    try {
+      await this.sessionService.switchProvider(sessionId, 'primary');
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        throw new ConflictException('Session is already on the primary pipeline, or the primary engine is not available');
       }
       if (status === 404) {
         throw new NotFoundException(`Streaming session ${sessionId} not found`);
