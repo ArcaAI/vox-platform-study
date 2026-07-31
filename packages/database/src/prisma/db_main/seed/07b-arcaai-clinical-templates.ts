@@ -51,6 +51,18 @@ import {
 
 const ARCAAI_TENANT_ID = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
+const ARCAAI_DEPARTMENT_ID_BY_CODE = {
+  GEN: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
+  SURG: SEED_DEPARTMENT_IDS.SURG_ARCAAI,
+  RHEUM: SEED_DEPARTMENT_IDS.RHEUM_ARCAAI,
+  NEUR: SEED_DEPARTMENT_IDS.NEUR_ARCAAI,
+  ORTH: SEED_DEPARTMENT_IDS.ORTH_ARCAAI,
+  HEME: SEED_DEPARTMENT_IDS.HEME_ARCAAI,
+  BREN: SEED_DEPARTMENT_IDS.BREN_ARCAAI,
+} as const;
+
+const ARCAAI_DEPARTMENT_CODES = Object.keys(ARCAAI_DEPARTMENT_ID_BY_CODE) as Array<keyof typeof ARCAAI_DEPARTMENT_ID_BY_CODE>;
+
 /**
  * ArcaAI clinical template ids. Exported so 04-department.ts can wire the
  * legacy Department prompt-id columns to them.
@@ -272,7 +284,29 @@ export const ARCAAI_CLINICAL_VERSIONS = ARCAAI_CLINICAL_TEMPLATES.map((tpl) => (
 export const seedArcaaiClinicalTemplates = async (client: CorePrismaClient) => {
   console.log('Seeding ArcaAI clinical prompt library (TASK-592 Workstream D)...');
 
-  for (const template of ARCAAI_CLINICAL_TEMPLATES) {
+  const departments = await client.department.findMany({
+    where: {
+      tenantId: ARCAAI_TENANT_ID,
+      code: { in: ARCAAI_DEPARTMENT_CODES },
+    },
+    select: { id: true, code: true },
+  });
+  const persistedDepartmentIdBySeedId = new Map<string, string>();
+  for (const department of departments) {
+    const seedId = ARCAAI_DEPARTMENT_ID_BY_CODE[department.code as keyof typeof ARCAAI_DEPARTMENT_ID_BY_CODE];
+    if (seedId) persistedDepartmentIdBySeedId.set(seedId, department.id);
+  }
+
+  const templates = ARCAAI_CLINICAL_TEMPLATES.map((template) => {
+    if (!template.departmentId) return template;
+    const departmentId = persistedDepartmentIdBySeedId.get(template.departmentId);
+    if (!departmentId) {
+      throw new Error(`Missing ArcaAI department for seeded department ID ${template.departmentId}`);
+    }
+    return { ...template, departmentId };
+  });
+
+  for (const template of templates) {
     const { variables, ...rest } = template;
     const data = {
       ...rest,
