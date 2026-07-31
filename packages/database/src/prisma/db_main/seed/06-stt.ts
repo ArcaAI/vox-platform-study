@@ -379,6 +379,59 @@ postprocessing:
     enabled: false
 `,
 
+  // ArcaAI ML-EN code-switch fine-tune served via the transformers runtime
+  // (fp16 safetensor). Same transcription-only shape as the GGUF variants but
+  // bound to the arcaai-whisper-large-ml-en engine (matrix #9 / turbo shape).
+  arcaai_ml_en_transformer: `version: "2.0"
+
+# Matrix #9 shape — [arcaai-whisper-large-ml-en] Transcription only.
+# No pre-processing stages, transformers-runtime ASR (ArcaAI ML-EN code-switch
+# fp16 safetensor) + diarization + stabilizer, no post.
+
+models:
+  asr: "arcaai-whisper-large-ml-en"
+  vad: "silero-vad"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+
   // Lightweight CPU pipeline (v1.1 — slug-based model ref)
   lightweight: `version: "1.1"
 
@@ -1045,6 +1098,17 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
       'Matrix #10 (q8_0) — no pre-processing, ArcaAI ML-EN code-switch whisper.cpp GGUF ASR (q8_0) + diarization + stabilizer, no post-processing.',
     configYaml: PIPELINE_CONFIGS.arcaai_ml_en_gguf_q8_0,
     tags: ['streaming', 'real-time', 'malayalam', 'english', 'code-switch', 'whisper.cpp', 'q8_0'],
+  },
+  {
+    // ArcaAI ML-EN code-switch, transformers runtime (fp16 safetensor).
+    id: '81000000-0000-0000-0001-000000000020',
+    tenantId: DEFAULT_TENANT_ID,
+    name: '[arcaai-whisper-large-ml-en] Transcription Only',
+    slug: 'arcaai-whisper-large-ml-en',
+    description:
+      'Matrix #9 shape — no pre-processing, ArcaAI ML-EN code-switch transformers-runtime ASR (fp16 safetensor) + diarization + stabilizer, no post-processing.',
+    configYaml: PIPELINE_CONFIGS.arcaai_ml_en_transformer,
+    tags: ['streaming', 'real-time', 'malayalam', 'english', 'code-switch', 'transformer'],
   },
   // Code-switching / language templates retired from the product
   // matrix of 9 (soft-disabled by retireRetiredAsrPipelines).

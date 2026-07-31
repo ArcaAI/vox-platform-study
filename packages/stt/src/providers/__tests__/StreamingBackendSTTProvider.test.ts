@@ -438,6 +438,31 @@ describe('StreamingBackendSTTProvider', () => {
       expect(result.words).toBeUndefined();
     });
 
+    // TASK-591 — the per-utterance stream-relative offset (seconds) MUST reach the
+    // SDK as `vadStreamStartSec`/`vadStreamEndSec`, the fields `useArcaAudio` reads
+    // to stamp `segment.startTime`. Collapsing them into `duration` only (the old
+    // behavior) left those fields undefined on the streaming path, so the hook fell
+    // back to `Date.now()` (epoch ms) and the compat playground rendered a garbage
+    // `mm:ss` timestamp.
+    it('propagates the utterance start/end offset as vadStreamStartSec/vadStreamEndSec', () => {
+      const cb = vi.fn();
+      provider.onTranscription(cb);
+
+      wsClient.__emitTranscript({
+        type: 'transcript',
+        text: 'tendency is good',
+        startTime: 40.5,
+        endTime: 43.25,
+        isFinal: true,
+      });
+
+      const result = cb.mock.calls[0]![0];
+      expect(result.vadStreamStartSec).toBe(40.5);
+      expect(result.vadStreamEndSec).toBe(43.25);
+      // duration stays derived from the same offsets (unchanged behavior).
+      expect(result.duration).toBeCloseTo(2.75, 5);
+    });
+
     it('forwards WS errors to the error callback', () => {
       const errCb = vi.fn();
       provider.onError(errCb);

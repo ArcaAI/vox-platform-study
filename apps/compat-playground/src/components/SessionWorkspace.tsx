@@ -75,6 +75,10 @@ export function SessionWorkspace({ config }: SessionWorkspaceProps) {
   const stt = useArcaSpeechToText({
     sessionId: mgr.session?.id ?? '',
     language: languageMode,
+    // The stream-relative time already shows on the first line (the `mm:ss.mmm`
+    // label), so drop `{timestamp}` from the templated transcript line to avoid
+    // rendering the raw seconds twice. Speaker + text only (TASK-591).
+    transcriptTemplate: '{speaker_id}: {text}',
     // End-user language mode (TASK-587) forwarded via the frozen v1 `options`
     // bag; takes precedence over `language` on the backend path.
     options: { pipelineId: config.pipelineId.trim() || undefined, languageMode },

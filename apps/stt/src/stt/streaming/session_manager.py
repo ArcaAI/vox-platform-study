@@ -1652,6 +1652,7 @@ class SessionManager:
         # cannot serve the mode, raise so create_session falls through to a
         # compatible fallback (or surfaces a 422 when none qualifies).
         mode_id = self._session_language_modes.get(session_id)
+        code_switch_prompt: str | None = None
         if mode_id:
             from stt.pipeline.language_modes import resolve_mode_for_engine
 
@@ -1659,6 +1660,9 @@ class SessionManager:
             inference_config.language = resolved.language
             inference_config.code_switching = resolved.code_switching
             inference_config.streaming_english_gloss = resolved.streaming_english_gloss
+            # whisper.cpp code-switch: a bilingual priming prompt (the engine has
+            # no translate gloss); applied to the session's initial_prompt below.
+            code_switch_prompt = resolved.initial_prompt
 
         initial_prompt: str | None = None
         initial_prompt_id = getattr(inference_config, "initial_prompt", None)
@@ -1666,6 +1670,13 @@ class SessionManager:
             from stt.core.initial_prompt import get_initial_prompt
 
             initial_prompt = await get_initial_prompt(initial_prompt_id)
+        # TASK-587 — prepend the code-switch priming prompt ahead of any
+        # template-configured initial prompt; the inference worker further
+        # composes this with per-utterance carry-forward text each utterance.
+        if code_switch_prompt:
+            from stt.core.initial_prompt import compose_prompt
+
+            initial_prompt = compose_prompt(code_switch_prompt, initial_prompt)
 
         # Create the callable ASR pipeline
         asr_pipeline = self._make_asr_callable(

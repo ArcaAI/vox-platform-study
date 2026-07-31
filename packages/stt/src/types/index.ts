@@ -499,6 +499,20 @@ export interface TranscriptionResult {
   duration?: number;
 
   /**
+   * Start time in seconds relative to the audio-stream start, for the
+   * backend-streaming path (mirrors the sdk-side `TranscriptionResult`
+   * field the SDK hook reads to stamp `segment.startTime`). Distinct from
+   * the epoch-based clocks — this is a small stream-relative offset.
+   */
+  vadStreamStartSec?: number;
+
+  /**
+   * End time in seconds relative to the audio-stream start (see
+   * {@link TranscriptionResult.vadStreamStartSec}).
+   */
+  vadStreamEndSec?: number;
+
+  /**
    * Processing latency in milliseconds.
    */
   latencyMs?: number;
