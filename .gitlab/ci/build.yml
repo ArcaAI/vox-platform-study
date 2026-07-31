@@ -51,7 +51,7 @@ warm-up-base-images:
       echo "All base images warm"
   rules:
     - !reference [.build-common-rules, rules]
-    - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(SMR|STT|GUARD|TTS|HARNESS|NLP|COMPAT|ALL)-/
 
 # ── Shared Python base image ─────────────────────────────────────────────────
 # Single base image consumed by ALL Python service builds (guardrail, nlp, smr,
@@ -128,6 +128,24 @@ build-admin-console:
   rules:
     - !reference [.build-common-rules, rules]
     - if: $CI_COMMIT_TAG =~ /^ADMIN-/ || $CI_COMMIT_TAG =~ /^ALL-/
+
+build-compat-playground:
+  extends: .build-template
+  needs:
+    - job: warm-up-base-images
+      optional: true
+    - job: test-compat-playground
+      optional: true
+    - job: typecheck
+      optional: true
+  variables:
+    SERVICE_NAME: compat-playground
+    DOCKER_CONTEXT: "."
+    DOCKERFILE: apps/compat-playground/Dockerfile
+    BUILD_ARGS: "--build-arg VITE_API_BASE_URL=$NEXT_PUBLIC_API_HOST"
+  rules:
+    - !reference [.build-common-rules, rules]
+    - if: $CI_COMMIT_TAG =~ /^COMPAT-/ || $CI_COMMIT_TAG =~ /^ALL-/
 
 # ── NLP ──────────────────────────────────────────────────────────────────────
 

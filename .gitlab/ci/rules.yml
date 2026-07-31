@@ -33,7 +33,7 @@
     - if: $CI_COMMIT_TAG =~ /^v\d+/
     # Release tags (<SVC>-<ver> / ALL-<ver>) and prod-* branches run the full
     # test suite so a build/release is only cut from a green commit.
-    - if: $CI_COMMIT_TAG =~ /^(SDK|SMR|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|ALL)-/
+    - if: $CI_COMMIT_TAG =~ /^(SDK|SMR|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|COMPAT|ALL)-/
     - if: $PIPELINE_TYPE == "prod"
 
 # ── cicd branch: always run everything ──────────────────────────────────────
@@ -108,6 +108,38 @@
     - if: $PIPELINE_TYPE == "feature"
       changes:
         - apps/admin-console/**/*
+        - packages/ui/**/*
+
+.rules-compat-playground:
+  rules:
+    - !reference [.rules-always, rules]
+    - !reference [.rules-cicd-always, rules]
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths:
+          - apps/compat-playground/**/*
+          - packages/ui/**/*
+          - packages/room/**/*
+          - packages/stt/**/*
+          - packages/vad/**/*
+          - packages/noise-filter/**/*
+          - packages/agentic-sdk-v2/**/*
+          - packages/med-ner/**/*
+        compare_to: refs/heads/main
+    - if: $PIPELINE_TYPE == "dev"
+    - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main"
+      changes:
+        - apps/compat-playground/**/*
+        - packages/ui/**/*
+        - packages/room/**/*
+        - packages/stt/**/*
+        - packages/vad/**/*
+        - packages/noise-filter/**/*
+        - packages/agentic-sdk-v2/**/*
+        - packages/med-ner/**/*
+    - if: $PIPELINE_TYPE == "feature"
+      changes:
+        - apps/compat-playground/**/*
         - packages/ui/**/*
 
 # ── STT (Speech-to-Text) ─────────────────────────────────────────────────
@@ -297,6 +329,7 @@
       changes:
         paths:
           - apps/api/**/*
+          - apps/compat-playground/**/*
           - packages/**/*
           - "*.json"
         compare_to: refs/heads/main
@@ -304,6 +337,7 @@
     - if: $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
       changes:
         - apps/api/**/*
+        - apps/compat-playground/**/*
         - packages/**/*
     - if: $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground"
 
