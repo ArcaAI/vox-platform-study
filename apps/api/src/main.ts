@@ -100,6 +100,7 @@ async function bootstrap() {
       { path: 'api/smr/api/v1/presummary', method: RequestMethod.POST },
       { path: 'api/stt/start_session', method: RequestMethod.POST },
       { path: 'api/stt/stop_session', method: RequestMethod.POST },
+      { path: 'api/stt/switch', method: RequestMethod.POST },
     ],
   });
 
