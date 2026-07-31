@@ -121,6 +121,36 @@ describe('TranscriptionJobController.createStreamSession — STT fallback inject
     const payload = mocks.sessionService.createSession.mock.calls[0][0];
     expect(payload.languageMode).toBe('ml-en');
   });
+
+  it('forwards startOn into the session payload (TASK-586 C7)', async () => {
+    const { controller, mocks } = build();
+    await controller.createStreamSession({ pipelineId: 'primary-pipe', startOn: 'fallback' } as never);
+    const payload = mocks.sessionService.createSession.mock.calls[0][0];
+    expect(payload.startOn).toBe('fallback');
+  });
+
+  it('omits startOn when not requested (TASK-586 C7)', async () => {
+    const { controller, mocks } = build();
+    await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
+    const payload = mocks.sessionService.createSession.mock.calls[0][0];
+    expect('startOn' in payload).toBe(false);
+  });
+
+  it('is fail-closed: startOn=fallback with no configured fallback → 409 (TASK-586 C7)', async () => {
+    const sttConfig = createMockSttConfig();
+    sttConfig.getEffective.mockResolvedValue({
+      tenantId: 'tenant-1',
+      fallbackPipelineId: null,
+      autoSwitchEnabled: true,
+      consecutiveFailureThreshold: 2,
+    });
+    sttConfig.resolveProviderOverrides.mockResolvedValue({});
+    const { controller, mocks } = build(sttConfig);
+    await expect(controller.createStreamSession({ pipelineId: 'primary-pipe', startOn: 'fallback' } as never)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(mocks.sessionService.createSession).not.toHaveBeenCalled();
+  });
 });
 
 describe('TranscriptionJobController.getLanguageModes (TASK-587)', () => {

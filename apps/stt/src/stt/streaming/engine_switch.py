@@ -204,6 +204,25 @@ class EngineSwitchController:
             self._consecutive_failures = 0
             await self._emit_switch(_FALLBACK, REASON_AUTO, utterance_index)
 
+    async def note_started_on_fallback(self) -> None:
+        """Record a user-selected start-on-fallback (TASK-586 C9): the session
+        opened directly on the fallback because the caller asked for it
+        (``start_on='fallback'``), NOT because the primary failed to load.
+
+        Unlike :meth:`note_switched_at_create`, the primary stays available
+        (``_primary_available`` remains ``True``) so — given a wired
+        ``build_primary`` — ``can_switch_to_primary`` is ``True`` and a later
+        switch-back to the primary works.
+
+        It emits NO ``provider_switched`` event: there is no transition to
+        announce (the session started here), and the client already reflects
+        ``isFallback`` from the start option. So no ``_emit_switch`` call."""
+        async with self._lock:
+            if self.switched:
+                return
+            self._active = _FALLBACK
+            self._consecutive_failures = 0
+
     async def _switch_to(
         self, target: str, reason: str, utterance_index: int | None
     ) -> bool:

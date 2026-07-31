@@ -107,7 +107,9 @@ class Settings(BaseSettings):
         instead of passing "" straight to the MinIO client.
         """
         if isinstance(v, str) and not v.strip():
-            return cls.model_fields["minio_endpoint"].default
+            default = cls.model_fields["minio_endpoint"].default
+            assert isinstance(default, str)
+            return default
         return v
 
     # Object storage provider (platform default for the no-descriptor path).

@@ -25,11 +25,16 @@ import { describe, it, expect, beforeEach, afterEach, vi, expectTypeOf } from 'v
 import { renderHook, act } from '@testing-library/react';
 import { useArcaSttProvider, type UseArcaSttProviderReturn } from '../useArcaSttProvider';
 import { useArcaAudio } from '../../hooks/useArcaAudio';
+import { useAgenticStore } from '../../store/agenticStore';
 import { useCompatFeatureFlags } from '../ArcaCompatProvider';
 import * as compat from '../../compat';
 import type { ErrorInfo } from '../types';
 
 vi.mock('../../hooks/useArcaAudio', () => ({ useArcaAudio: vi.fn() }));
+vi.mock('../../store/agenticStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../store/agenticStore')>();
+  return { ...actual, useAgenticStore: vi.fn() };
+});
 vi.mock('../ArcaCompatProvider', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../ArcaCompatProvider')>();
   return { ...actual, useCompatFeatureFlags: vi.fn(() => ({ enableProviderSwitch: false })) };
@@ -61,15 +66,31 @@ function installFeatureFlags(enableProviderSwitch: boolean) {
   (useCompatFeatureFlags as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ enableProviderSwitch });
 }
 
+// Reactive store mock for the TASK-586 pre-start selection. `setPendingSttProvider`
+// mutates the SAME object so a `rerender()` reads the updated value.
+let storeState: { pendingSttProvider: 'primary' | 'fallback' | null; setPendingSttProvider: (v: 'primary' | 'fallback' | null) => void };
+function installStore() {
+  storeState = {
+    pendingSttProvider: null,
+    setPendingSttProvider: vi.fn((v: 'primary' | 'fallback' | null) => {
+      storeState.pendingSttProvider = v;
+    }),
+  };
+  (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+    (selector: (s: typeof storeState) => unknown) => selector(storeState),
+  );
+}
+
 describe('useArcaSttProvider', () => {
   beforeEach(() => {
     installAudio();
     installFeatureFlags(false);
+    installStore();
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('before capture: no active provider, no fallback, switchToFallback rejects FALLBACK_UNAVAILABLE, switchToPipeline rejects PIPELINE_UNAVAILABLE', async () => {
-    const { result } = renderHook(() => useArcaSttProvider());
+  it('before capture (TASK-586 Lane K): switchToDefault records a pending pre-start selection (resolves, no reject), flips usePipeline; switchToPipeline resets it', async () => {
+    const { result, rerender } = renderHook(() => useArcaSttProvider());
 
     expect(result.current.activeProvider).toBeNull();
     expect(result.current.fallbackAvailable).toBe(false);
@@ -77,23 +98,27 @@ describe('useArcaSttProvider', () => {
     expect(result.current.usePipeline).toBe(true);
     expect(result.current.switchStatus).toBe('idle');
 
-    let rejected: ErrorInfo | undefined;
+    // Pre-start pick of the default (fallback) provider — resolves (no reject),
+    // records the pending selection, and reads as fallback BEFORE any session.
     await act(async () => {
-      await result.current.switchToFallback().catch((e: ErrorInfo) => {
-        rejected = e;
-      });
+      await result.current.switchToDefault();
     });
-    expect(rejected).toMatchObject({ code: 'FALLBACK_UNAVAILABLE', category: 'processing' });
+    expect(storeState.setPendingSttProvider).toHaveBeenLastCalledWith('fallback');
     expect(audioMock.switchProvider).not.toHaveBeenCalled();
+    expect(result.current.switchStatus).toBe('switched');
+    act(() => rerender());
+    expect(result.current.usePipeline).toBe(false);
+    expect(result.current.isFallbackActive).toBe(true);
 
-    let rejectedPipeline: ErrorInfo | undefined;
+    // Reset back to the primary pipeline pre-start.
     await act(async () => {
-      await result.current.switchToPipeline().catch((e: ErrorInfo) => {
-        rejectedPipeline = e;
-      });
+      await result.current.switchToPipeline();
     });
-    expect(rejectedPipeline).toMatchObject({ code: 'PIPELINE_UNAVAILABLE', category: 'processing' });
+    expect(storeState.setPendingSttProvider).toHaveBeenLastCalledWith('primary');
     expect(audioMock.switchProvider).not.toHaveBeenCalled();
+    act(() => rerender());
+    expect(result.current.usePipeline).toBe(true);
+    expect(result.current.isFallbackActive).toBe(false);
   });
 
   it('user switch to fallback: idle → switching → switched, onProviderSwitched reason "user", idempotent second call', async () => {

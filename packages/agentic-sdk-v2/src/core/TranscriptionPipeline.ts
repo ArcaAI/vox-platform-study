@@ -187,6 +187,9 @@ export class TranscriptionPipeline {
             // End-user language mode (TASK-587) — the backend resolves it per
             // engine; the local path ignores it.
             ...(this.config.stt.languageMode ? { languageMode: this.config.stt.languageMode } : {}),
+            // Pre-start engine selection (TASK-586) — the backend opens the
+            // session on the fallback engine when 'fallback'; local path ignores it.
+            ...(this.config.stt.startOn ? { startOn: this.config.stt.startOn } : {}),
           },
           features: {
             provider: runtimeProvider,

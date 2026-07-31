@@ -54,6 +54,8 @@ export interface StreamingTranscriptPayload {
   endTime: number;
   isFinal: boolean;
   englishText?: string;
+  /** Per-utterance detected language (e.g. `ml-IN`) when the engine reports one. */
+  language?: string;
   speakerId?: string;
   speakerLabel?: string;
   speakerConfidence?: number;
@@ -114,6 +116,8 @@ export interface StreamingSessionLike {
     sampleRate?: number;
     language?: string;
     languageMode?: string;
+    /** Pre-start STT engine selection (TASK-586); default 'primary'. */
+    startOn?: 'primary' | 'fallback';
     microphoneId?: string;
   }): Promise<{
     sessionId: string;
@@ -206,6 +210,9 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       language: streamingConfig.language,
       // End-user language mode (TASK-587); the backend resolves it per engine.
       languageMode: streamingConfig.languageMode,
+      // Pre-start engine selection (TASK-586); opens the session on the
+      // tenant-admin default provider when 'fallback'.
+      startOn: streamingConfig.startOn,
       microphoneId: streamingConfig.microphoneId,
     });
 
@@ -337,7 +344,9 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     const result: TranscriptionResult = {
       text: payload.text,
       isFinal: payload.isFinal,
-      language: this.config?.language ?? 'en-US',
+      // Prefer the ASR engine's per-utterance detected language (Sarvam/OpenAI);
+      // fall back to the session-configured language only when none was detected.
+      language: payload.language ?? this.config?.language ?? 'en-US',
       duration: Math.max(0, payload.endTime - payload.startTime),
     };
     if (payload.speakerId) {

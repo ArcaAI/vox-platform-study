@@ -101,4 +101,8 @@ async def sarvam_recognize_utterance(
         raise_for_cloud_transport("sarvam", type(exc).__name__)
 
     text = (payload.get("transcript") or payload.get("text") or "").strip()
-    return {"text": text, "word_timestamps": []}
+    # Sarvam's saaras STT echoes the detected source language (e.g. ``ml-IN``)
+    # in ``language_code`` — surface it so the per-utterance detected language
+    # flows to the transcript metadata instead of an echo of the requested mode.
+    detected_language = payload.get("language_code") or None
+    return {"text": text, "word_timestamps": [], "language": detected_language}

@@ -523,6 +523,30 @@ describe('StreamingAudioBridgeService', () => {
       });
     });
 
+    it('surfaces the wire `language` as camelCase detectedLanguage (Sarvam/OpenAI)', async () => {
+      mockXreadgroup
+        .mockResolvedValueOnce([
+          ['stt:result:s-1', [['1-0', ['text', 'ഒരു', 'start_time', '0', 'end_time', '1', 'is_final', '1', 'language', 'ml-IN']]]],
+        ])
+        .mockResolvedValue(null);
+
+      const obs = service.subscribeToResults('s-1');
+      const result = (await firstValueFrom(obs.pipe(take(1)))) as { detectedLanguage?: string };
+
+      expect(result.detectedLanguage).toBe('ml-IN');
+    });
+
+    it('omits detectedLanguage when the wire has no language (engine did not detect one)', async () => {
+      mockXreadgroup
+        .mockResolvedValueOnce([['stt:result:s-1', [['1-0', ['text', 'hi', 'start_time', '0', 'end_time', '1', 'is_final', '1']]]]])
+        .mockResolvedValue(null);
+
+      const obs = service.subscribeToResults('s-1');
+      const result = await firstValueFrom(obs.pipe(take(1)));
+
+      expect('detectedLanguage' in result).toBe(false);
+    });
+
     it('should emit a provider_switched status result (non-terminal) so the swap reaches the client', async () => {
       // apps/stt publishes an ASR-engine swap as a `status`/`provider_switched`
       // result (TASK-567). Previously the bridge swallowed every non-terminal

@@ -116,6 +116,15 @@ export class SttCompatController {
       // or absent config must never block session creation).
       const { providerOverrides, fallbackPipelineId } = await this.resolveSttFallbackConfig(tenantId);
 
+      // Pre-start default-provider selection (TASK-586 C7b). Map the compat
+      // vocabulary (pipeline≡primary, default≡fallback) to the applications
+      // `startOn`. Fail-closed: opening on the default engine requires a
+      // resolved fallback pipeline (mirrors the C3 switch guard).
+      const startOn = body.startOn === 'default' ? 'fallback' : body.startOn === 'pipeline' ? 'primary' : undefined;
+      if (startOn === 'fallback' && !fallbackPipelineId) {
+        throw new ConflictException('No fallback pipeline configured for this tenant');
+      }
+
       const session = await sessionService.createSession({
         sessionId: body.session_id,
         tenantId,
@@ -125,6 +134,7 @@ export class SttCompatController {
         language: body.language ?? undefined,
         providerOverrides,
         fallbackPipelineId,
+        ...(startOn ? { startOn } : {}),
       });
       if (!session) {
         throw new BadRequestException('STT streaming service is at capacity');

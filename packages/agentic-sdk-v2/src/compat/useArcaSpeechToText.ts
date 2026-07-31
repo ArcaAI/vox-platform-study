@@ -109,6 +109,11 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   // fallback — makes the outcome order-independent. (TASK-587)
   const setAudioLanguage = useAgenticStore((s) => s.setAudioLanguage);
   const setSttLanguageMode = useAgenticStore((s) => s.setSttLanguageMode);
+  // Pre-start engine selection (TASK-586) chosen via `useArcaSttProvider` before
+  // capture — applied to `audio.start` and cleared (order-independent with
+  // `useAudioCapture`, mirroring the languageMode store-fallback pattern).
+  const pendingSttProvider = useAgenticStore((s) => s.pendingSttProvider);
+  const setPendingSttProvider = useAgenticStore((s) => s.setPendingSttProvider);
   useEffect(() => {
     setAudioLanguage(language);
     setSttLanguageMode(languageMode);
@@ -197,14 +202,21 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
       setError(null);
       // Anchor the capture-relative timeline base at capture start.
       if (captureStartMsRef.current === undefined) captureStartMsRef.current = Date.now();
-      await audio.start({ language, ...(pipelineId ? { pipelineId } : {}), ...(languageMode ? { languageMode } : {}) });
+      await audio.start({
+        language,
+        ...(pipelineId ? { pipelineId } : {}),
+        ...(languageMode ? { languageMode } : {}),
+        ...(pendingSttProvider ? { startOn: pendingSttProvider } : {}),
+      });
+      // Consume the pre-start selection (order-independent with useAudioCapture).
+      if (pendingSttProvider) setPendingSttProvider(null);
     } catch (err) {
       const info = toErrorInfo(err);
       setError(info);
       onError?.(info);
       throw err;
     }
-  }, [audio, language, pipelineId, languageMode, onError]);
+  }, [audio, language, pipelineId, languageMode, pendingSttProvider, setPendingSttProvider, onError]);
 
   const stopTranscription = useCallback(async (): Promise<void> => {
     if (!audio.isCapturing) return;

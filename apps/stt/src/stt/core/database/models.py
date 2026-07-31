@@ -57,6 +57,8 @@ AiModelFormatType = ENUM(
     "PARAKEET_CPP",
     "CLOUD_API",
     "WHISPER_CPP",
+    "SARVAM",
+    "OPENAI",
     name="AiModelFormat",
     schema="core",
     create_type=False,

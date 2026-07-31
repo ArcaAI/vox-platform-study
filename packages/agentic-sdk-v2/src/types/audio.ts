@@ -276,6 +276,15 @@ export interface AudioStartOptions {
    * the backend path. Fetch the selectable modes with `useArcaSttLanguageModes`.
    */
   languageMode?: string;
+  /**
+   * Pre-start STT engine selection (TASK-586). Default `'primary'`. `'fallback'`
+   * opens the session on the tenant-admin default provider from the start while
+   * keeping the primary switchable (so a later `switchToPipeline()` returns to
+   * it). Threaded exactly like {@link AudioStartOptions.languageMode}. The
+   * backend fail-closes (409) when `'fallback'` is requested but no fallback is
+   * configured.
+   */
+  startOn?: 'primary' | 'fallback';
   pipelineId?: string;
   /**
    * Primary microphone deviceId. Forwarded as

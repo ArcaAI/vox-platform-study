@@ -364,3 +364,60 @@ async def test_build_failure_propagates_and_stays_on_primary():
     assert ctrl.switched is False
     assert rec.applied == []
     assert rec.published == []
+
+
+@pytest.mark.asyncio
+async def test_note_started_on_fallback_keeps_primary_switchable_and_emits_nothing():
+    """User-selected start-on-fallback (TASK-586 C9): the session opens on the
+    fallback by deliberate choice, so unlike a create-time load failure the
+    primary stays available/switchable and NO provider_switched event is
+    emitted (there is no transition to announce)."""
+    rec = _Recorder()
+    ctrl = _make_controller(rec)
+
+    await ctrl.note_started_on_fallback()
+
+    assert ctrl.active_engine == "fallback"
+    assert ctrl.switched is True
+    # Deliberate choice — primary is untouched and remains switchable.
+    assert ctrl._primary_available is True
+    assert ctrl.can_switch_to_primary is True
+    # No build, no apply, and crucially no publish/emit.
+    assert rec.build_calls == 0
+    assert rec.applied == []
+    assert rec.published == []
+
+
+@pytest.mark.asyncio
+async def test_note_started_on_fallback_allows_switch_back_to_primary():
+    """A subsequent manual switch back to the primary must succeed."""
+    rec = _Recorder()
+    ctrl = _make_controller(rec)
+
+    await ctrl.note_started_on_fallback()
+    assert ctrl.active_engine == "fallback"
+
+    assert await ctrl.switch_manual("primary") is True
+    assert ctrl.active_engine == "primary"
+    assert rec.primary_build_calls == 1
+    assert rec.published == [
+        {
+            "from": "fb-pipe",
+            "to": "primary-pipe",
+            "reason": "user",
+            "active": "primary",
+            "utterance_index": None,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_note_started_on_fallback_is_noop_when_already_switched():
+    rec = _Recorder()
+    ctrl = _make_controller(rec)
+
+    await ctrl.note_started_on_fallback()
+    await ctrl.note_started_on_fallback()  # second call is a no-op
+
+    assert ctrl.active_engine == "fallback"
+    assert rec.published == []

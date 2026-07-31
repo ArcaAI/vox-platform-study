@@ -92,6 +92,13 @@ export interface CreateStreamingSessionRequest {
    */
   languageMode?: string;
   /**
+   * Pre-start STT engine selection (TASK-586). Default `'primary'`. POSTed
+   * verbatim (camelCase `startOn`) to the gateway; `'fallback'` opens the
+   * session on the tenant-admin default provider. Fail-closed on the gateway
+   * (409) when no fallback is configured.
+   */
+  startOn?: 'primary' | 'fallback';
+  /**
    * Allow mid-utterance language switching.
    *
    * Maps to `InferenceConfig.code_switching` in stt (default `false`), which is
@@ -270,6 +277,12 @@ export interface WsTranscriptResult {
   seq?: number;
   /** English translation for code-switching output, if available */
   englishText?: string;
+  /**
+   * Per-utterance detected language (e.g. `ml-IN`) when the ASR engine reports
+   * one (Sarvam/OpenAI cloud STT). Absent for engines that don't detect a
+   * language; consumers then fall back to the session-configured language.
+   */
+  language?: string;
   /** Speaker identifier from diarization, if available */
   speakerId?: string;
   /** Human-readable speaker label, if provided by backend */
@@ -321,6 +334,9 @@ export interface WsTranscriptWirePayload {
   seq?: unknown;
   englishText?: unknown;
   english_text?: unknown;
+  detectedLanguage?: unknown;
+  detected_language?: unknown;
+  language?: unknown;
   speakerId?: unknown;
   speaker_id?: unknown;
   speakerLabel?: unknown;

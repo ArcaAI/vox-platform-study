@@ -72,10 +72,22 @@ class TestSarvamRecognize:
         client = _mock_client(status_code=200, text="ok", payload={"transcript": "hello"})
         with patch("stt.streaming.sarvam_asr.httpx.AsyncClient", return_value=client):
             result = await sarvam_recognize_utterance(_config("sarvam"), SAMPLES, SR, language)
-        assert result == {"text": "hello", "word_timestamps": []}
+        # No `language_code` in the payload → detected language is absent (None).
+        assert result == {"text": "hello", "word_timestamps": [], "language": None}
         _, kwargs = client.post.call_args
         assert kwargs["data"]["language_code"] == expected
         assert kwargs["headers"]["api-subscription-key"] == "secret-key"
+
+    @pytest.mark.asyncio
+    async def test_detected_language_code_is_surfaced(self):
+        # Sarvam echoes the detected source language in `language_code`; it must
+        # flow into the result so downstream metadata reports the REAL language.
+        client = _mock_client(
+            status_code=200, text="ok", payload={"transcript": "ഒരു", "language_code": "ml-IN"}
+        )
+        with patch("stt.streaming.sarvam_asr.httpx.AsyncClient", return_value=client):
+            result = await sarvam_recognize_utterance(_config("sarvam"), SAMPLES, SR, "ml-en")
+        assert result["language"] == "ml-IN"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -113,11 +125,20 @@ class TestOpenAIRecognize:
         client = _mock_client(status_code=200, text="ok", payload={"text": "world"})
         with patch("stt.streaming.openai_asr.httpx.AsyncClient", return_value=client):
             result = await openai_recognize_utterance(_config("openai"), SAMPLES, SR, "en-US")
-        assert result == {"text": "world", "word_timestamps": []}
+        # Default json response carries no `language` → detected language is None.
+        assert result == {"text": "world", "word_timestamps": [], "language": None}
         _, kwargs = client.post.call_args
         # BCP-47 reduced to ISO-639-1 primary, bearer auth
         assert kwargs["data"]["language"] == "en"
         assert kwargs["headers"]["Authorization"] == "Bearer secret-key"
+
+    @pytest.mark.asyncio
+    async def test_detected_language_is_surfaced_when_present(self):
+        # verbose_json responses include `language`; carry it through.
+        client = _mock_client(status_code=200, text="ok", payload={"text": "hola", "language": "es"})
+        with patch("stt.streaming.openai_asr.httpx.AsyncClient", return_value=client):
+            result = await openai_recognize_utterance(_config("openai"), SAMPLES, SR, "en-US")
+        assert result["language"] == "es"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

@@ -64,6 +64,15 @@ class CreateStreamingSessionRequest(BaseModel):
             "classified outage, or a user-initiated switch."
         ),
     )
+    start_on: str | None = Field(
+        default=None,
+        description=(
+            "'primary' (default) or 'fallback' — open the session directly on the "
+            "tenant fallback engine while keeping the primary switchable "
+            "(TASK-586). When 'fallback' but no fallback is configured, the "
+            "session proceeds on the primary (fail-open)."
+        ),
+    )
 
 
 class SwitchProviderRequest(BaseModel):

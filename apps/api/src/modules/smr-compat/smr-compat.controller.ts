@@ -4,6 +4,7 @@ import { Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, 
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
+import { randomUUID } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { ClsService } from 'nestjs-cls';
 import type { RequestWithAuth } from '../../types/request-with-auth';
@@ -168,6 +169,10 @@ export class SmrCompatController {
     buildResponse: (content: string, generated: Partial<SmrGenerateResponse>, req: SmrGenerateRequest) => SummaryResponse;
   } {
     const sessionData = body.session_data;
+    // A consultation/session is NOT required to summarize. `session_id` is an
+    // optional correlation string echoed back on the response; synthesize one
+    // when the caller omits it so `SummaryResponse.session_id` stays a valid id.
+    const sessionId = sessionData.session_id?.trim() ? sessionData.session_id : `smr-${randomUUID()}`;
     const language = this.resolveLanguage(sessionData.session_metadata);
     // Enrichment logic (SMR_Summary_Endpoints.md §3.1): enabled when the flag is
     // set OR when pre_summary_text is present (the documented safety net).
@@ -205,7 +210,7 @@ export class SmrCompatController {
     // streaming path it is empty and only the accumulated `content` is available.
     const buildResponse = (content: string, generated: Partial<SmrGenerateResponse>, req: SmrGenerateRequest): SummaryResponse =>
       mapGenerateToV1Summary(content, {
-        sessionId: sessionData.session_id,
+        sessionId,
         summaryId: generated.task_id,
         useEnhanced,
         latencyMs: generated.latency_ms,

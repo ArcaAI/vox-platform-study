@@ -436,6 +436,7 @@ class StreamingInferenceWorker:
         result = SegmentResult(
             text=text,
             english_text=inference_out.english_text,
+            language=inference_out.language,
             start_time=utterance.start_time,
             end_time=utterance.end_time,
             is_final=utterance.is_final,

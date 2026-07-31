@@ -96,6 +96,36 @@ describe('TranscriptionPipeline: local transcription disabled (TASK-545)', () =>
     expect(createSTT).toHaveBeenCalledWith(expect.objectContaining({ features: expect.objectContaining({ provider: 'remote' }) }));
   });
 
+  it('threads the pre-start startOn into the createSTT audio config (TASK-586)', async () => {
+    const transport = { sessionManager: {}, wsClient: {}, pipelineId: 'pipe-1' };
+    const pipeline = new TranscriptionPipeline({
+      noiseFilter: { enabled: false, location: 'skip' },
+      vad: { enabled: false, location: 'browser' },
+      stt: { enabled: true, location: 'auto', provider: 'auto', streamingTransport: transport, startOn: 'fallback' },
+    });
+
+    await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
+
+    expect(createSTT).toHaveBeenCalledWith(
+      expect.objectContaining({ audio: expect.objectContaining({ startOn: 'fallback' }) }),
+    );
+  });
+
+  it('omits startOn from the createSTT audio config when not selected (TASK-586)', async () => {
+    const transport = { sessionManager: {}, wsClient: {}, pipelineId: 'pipe-1' };
+    const pipeline = new TranscriptionPipeline({
+      noiseFilter: { enabled: false, location: 'skip' },
+      vad: { enabled: false, location: 'browser' },
+      stt: { enabled: true, location: 'auto', provider: 'auto', streamingTransport: transport },
+    });
+
+    await pipeline.start({ track: mockTrack, audioContext: mockAudioContext });
+
+    expect(createSTT).toHaveBeenCalledWith(
+      expect.objectContaining({ audio: expect.not.objectContaining({ startOn: expect.anything() }) }),
+    );
+  });
+
   it('returns remote when only a legacy sttSocket is configured', async () => {
     const pipeline = new TranscriptionPipeline({
       noiseFilter: { enabled: false, location: 'skip' },

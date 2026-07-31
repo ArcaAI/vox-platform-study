@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
+import { IsBoolean, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
 export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -83,6 +83,16 @@ export class CreateStreamSessionRequest {
   @IsString()
   @IsOptional()
   languageMode?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Pre-start default-provider selection (TASK-586 C7). 'fallback' opens the session directly on the tenant-admin default (fallback) engine; " +
+      "'primary' (default) opens on the configured pipeline. Fail-closed: 'fallback' with no configured fallback pipeline → 409.",
+    enum: ['primary', 'fallback'],
+  })
+  @IsIn(['primary', 'fallback'])
+  @IsOptional()
+  startOn?: 'primary' | 'fallback';
 }
 
 export class StreamSessionResponse {

@@ -795,6 +795,7 @@ class SessionManager:
         provider_overrides: dict[str, Any] | None = None,
         fallback_pipeline_id: str | None = None,
         language_mode: str | None = None,
+        start_on: str = "primary",
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -827,6 +828,14 @@ class SessionManager:
                 precedence over ``language``. If the primary engine cannot serve
                 the mode a configured fallback is tried; if none qualifies the
                 create raises ``LanguageModeUnsupportedError`` (mapped to 422).
+            start_on: ``'primary'`` (default) or ``'fallback'`` (TASK-586 C9).
+                When ``'fallback'`` AND a ``fallback_pipeline_id`` is configured,
+                the runtime is assembled on the fallback pipeline_config from the
+                start while ``primary_pipeline_id`` stays wired, so a later
+                switch-back to the primary builds it lazily. This is a deliberate
+                user choice (the primary is NOT attempted at create) and is
+                distinct from the load-failure ``created_on_fallback`` path. If
+                no fallback is configured, the create fails open on the primary.
         """
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
@@ -869,45 +878,32 @@ class SessionManager:
             if language_mode:
                 self._session_language_modes[session_id] = language_mode
 
+            # TASK-586 C9 — a user-selected start-on-fallback assembles the
+            # fallback pipeline_config directly (the primary is NOT attempted at
+            # create), while the primary stays wired for a later switch-back.
+            # Fail-open: if no fallback is configured, proceed on the primary.
+            started_on_fallback = start_on == "fallback" and bool(fallback_pipeline_id)
+            created_on_fallback = False
+
             # Load pipeline config for VAD and ASR model wiring.
             # Pass tenant_id so STT refuses to load
             # a pipeline owned by a different tenant (defense in depth).
-            pipeline_config = await self._load_pipeline_config(pipeline_id, tenant_id=tenant_id)
+            initial_pipeline_id = fallback_pipeline_id if started_on_fallback else pipeline_id
+            pipeline_config = await self._load_pipeline_config(
+                initial_pipeline_id, tenant_id=tenant_id
+            )
 
             if language is not None and pipeline_config:
                 pipeline_config.inference.language = language
 
-            # One shared assembly for creation AND recovery. TASK-567 create-time
-            # trigger: if the PRIMARY assembly fails (e.g. the primary ASR
-            # engine's credentials/load) and a fallback is configured, open the
-            # session directly on the fallback instead of rolling back + raising.
-            created_on_fallback = False
-            try:
-                runtime = await self._assemble_session_runtime(
-                    session_id=session_id,
-                    tenant_id=tenant_id,
-                    consultation_id=consultation_id,
-                    user_id=user_id,
-                    sample_rate=sample_rate,
-                    pipeline_config=pipeline_config,
-                    build_speaker_identifier=True,
-                    provider_overrides=provider_overrides,
-                )
-            except Exception as primary_exc:
-                if not fallback_pipeline_id:
-                    raise
-                logger.warning(
-                    "Primary ASR pipeline failed at create; opening session on fallback",
+            if started_on_fallback:
+                # User chose the fallback engine up front — assemble it directly.
+                logger.info(
+                    "Opening session on tenant fallback by request (start_on=fallback)",
                     session_id=session_id,
                     pipeline_id=pipeline_id,
                     fallback_pipeline_id=fallback_pipeline_id,
-                    error=str(primary_exc),
                 )
-                pipeline_config = await self._load_pipeline_config(
-                    fallback_pipeline_id, tenant_id=tenant_id
-                )
-                if language is not None and pipeline_config:
-                    pipeline_config.inference.language = language
                 runtime = await self._assemble_session_runtime(
                     session_id=session_id,
                     tenant_id=tenant_id,
@@ -918,7 +914,49 @@ class SessionManager:
                     build_speaker_identifier=True,
                     provider_overrides=provider_overrides,
                 )
-                created_on_fallback = True
+            else:
+                # One shared assembly for creation AND recovery. TASK-567
+                # create-time trigger: if the PRIMARY assembly fails (e.g. the
+                # primary ASR engine's credentials/load) and a fallback is
+                # configured, open the session directly on the fallback instead
+                # of rolling back + raising.
+                try:
+                    runtime = await self._assemble_session_runtime(
+                        session_id=session_id,
+                        tenant_id=tenant_id,
+                        consultation_id=consultation_id,
+                        user_id=user_id,
+                        sample_rate=sample_rate,
+                        pipeline_config=pipeline_config,
+                        build_speaker_identifier=True,
+                        provider_overrides=provider_overrides,
+                    )
+                except Exception as primary_exc:
+                    if not fallback_pipeline_id:
+                        raise
+                    logger.warning(
+                        "Primary ASR pipeline failed at create; opening session on fallback",
+                        session_id=session_id,
+                        pipeline_id=pipeline_id,
+                        fallback_pipeline_id=fallback_pipeline_id,
+                        error=str(primary_exc),
+                    )
+                    pipeline_config = await self._load_pipeline_config(
+                        fallback_pipeline_id, tenant_id=tenant_id
+                    )
+                    if language is not None and pipeline_config:
+                        pipeline_config.inference.language = language
+                    runtime = await self._assemble_session_runtime(
+                        session_id=session_id,
+                        tenant_id=tenant_id,
+                        consultation_id=consultation_id,
+                        user_id=user_id,
+                        sample_rate=sample_rate,
+                        pipeline_config=pipeline_config,
+                        build_speaker_identifier=True,
+                        provider_overrides=provider_overrides,
+                    )
+                    created_on_fallback = True
             publisher = runtime.publisher
             preprocessor = runtime.preprocessor
             inference_worker = runtime.inference_worker
@@ -976,8 +1014,14 @@ class SessionManager:
             self._switch_controllers[session_id] = switch_controller
             # If the primary ASR failed and we opened on the fallback, record the
             # create-time switch so it is observable (status result + metric).
+            # These two flags are mutually exclusive: created_on_fallback is the
+            # load-failure path, started_on_fallback is the user-selected one.
             if created_on_fallback:
                 await switch_controller.note_switched_at_create()
+            elif started_on_fallback:
+                # TASK-586 C9 — deliberate user choice: primary stays switchable
+                # and no provider_switched event is emitted.
+                await switch_controller.note_started_on_fallback()
 
             # Start consuming
             await consumer.start()
@@ -992,6 +1036,8 @@ class SessionManager:
                 has_asr=runtime.asr_pipeline is not None,
                 has_denoiser=runtime.denoiser is not None,
                 on_fallback=created_on_fallback,
+                start_on=start_on,
+                started_on_fallback=started_on_fallback,
                 active_sessions=self.active_session_count,
             )
             return session

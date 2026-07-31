@@ -171,6 +171,10 @@ class SegmentResult:
     stable_chars: int | None = None
     utterance_index: int | None = None
     result_type: str = "segment"
+    # Per-utterance detected language (e.g. ``ml-IN``) when the ASR engine
+    # reports one — Sarvam/OpenAI cloud STT echo it. ``None`` for engines that
+    # don't detect (the field is then omitted from the wire dict).
+    language: str | None = None
 
     def to_redis_dict(self) -> dict[str, str]:
         """Serialize to Redis Stream field dict for ``XADD``."""
@@ -196,6 +200,8 @@ class SegmentResult:
             )
         if self.stable_chars is not None:
             d["stable_chars"] = str(self.stable_chars)
+        if self.language:
+            d["language"] = self.language
         return d
 
     @classmethod
@@ -242,6 +248,7 @@ class SegmentResult:
             stable_chars=stable_chars,
             utterance_index=utterance_index,
             result_type=_get("type") or "segment",
+            language=_get("language") or None,
         )
 
 

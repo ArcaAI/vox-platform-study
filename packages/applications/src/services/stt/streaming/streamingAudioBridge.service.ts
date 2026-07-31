@@ -655,6 +655,11 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     const speakerLabel = deriveSpeakerLabel(speakerId);
     const speakerConfidence = data.speaker_confidence ? parseFloat(data.speaker_confidence) : undefined;
     const englishText = data.english_text || data.englishText || undefined;
+    // Per-utterance detected language (e.g. `ml-IN`) when the ASR engine reports
+    // one (Sarvam/OpenAI). Surfaced as camelCase `detectedLanguage` so both the
+    // v2 client and the v1-compat gateway read a REAL detection instead of an
+    // echo of the requested language/mode.
+    const detectedLanguage = data.language || data.detected_language || undefined;
 
     // Additive committed-prefix length on partials.
     // Only relayed when present and a valid non-negative integer.
@@ -704,6 +709,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       ...(utteranceIndex != null ? { utteranceIndex } : {}),
       ...(resultType ? { resultType } : {}),
       ...(englishText ? { englishText } : {}),
+      ...(detectedLanguage ? { detectedLanguage } : {}),
       ...(speakerId ? { speakerId } : {}),
       ...(speakerLabel ? { speakerLabel } : {}),
       ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),

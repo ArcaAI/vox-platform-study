@@ -17,11 +17,24 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useArcaAudio } from '../hooks/useArcaAudio';
+import { useAgenticStore } from '../store/agenticStore';
 import type { AudioDeviceStatus, ErrorInfo, V1SdkConfig } from './types';
 
 export interface UseAudioCaptureProps {
   options?: Partial<V1SdkConfig>;
   autoStart?: boolean;
+  /**
+   * End-user STT language + TASK-587 language mode, chosen BEFORE start. v1's
+   * `useAudioCapture` had no language (its STT WS was language-flat); v2 pins the
+   * language on `audio.start(...)`. This hook and `useArcaSpeechToText` both drive
+   * the SAME `useArcaAudio()` and whichever calls `audio.start` FIRST wins — the
+   * playground starts the mic here BEFORE `startTranscription()`, so a
+   * language-blind start here would drop the selection to the pipeline/default
+   * locale. Forwarding it makes the outcome order-independent. Additive + optional
+   * — omit to keep the frozen v1 behavior.
+   */
+  language?: string;
+  languageMode?: string;
   /** Retained for source-compat only — NEVER invoked (v2 owns PCM transport). */
   onAudioData?: (data: ArrayBuffer) => void;
   onError?: (error: ErrorInfo) => void;
@@ -47,8 +60,13 @@ function toErrorInfo(err: unknown): ErrorInfo {
 }
 
 export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptureReturn {
-  const { options, autoStart = false, onError } = props;
+  const { options, autoStart = false, language, languageMode, onError } = props;
   const audio = useArcaAudio();
+  // Pre-start engine selection (TASK-586) chosen via `useArcaSttProvider` before
+  // capture — applied to `audio.start` and cleared, mirroring the languageMode
+  // store-fallback pattern (order-independent with `useArcaSpeechToText`).
+  const pendingSttProvider = useAgenticStore((s) => s.pendingSttProvider);
+  const setPendingSttProvider = useAgenticStore((s) => s.setPendingSttProvider);
 
   const [deviceStatus, setDeviceStatus] = useState<AudioDeviceStatus | null>(null);
   const [error, setError] = useState<ErrorInfo | null>(null);
@@ -59,14 +77,22 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     if (audio.isCapturing) return;
     try {
       setError(null);
-      await audio.start({ pipelineId: options?.sttPipelineId });
+      await audio.start({
+        pipelineId: options?.sttPipelineId,
+        ...(language ? { language } : {}),
+        ...(languageMode ? { languageMode } : {}),
+        ...(pendingSttProvider ? { startOn: pendingSttProvider } : {}),
+      });
+      // Consume the pre-start selection so a later re-open starts on primary
+      // unless re-selected (order-independent with useArcaSpeechToText).
+      if (pendingSttProvider) setPendingSttProvider(null);
     } catch (err) {
       const info = toErrorInfo(err);
       setError(info);
       onError?.(info);
       throw err;
     }
-  }, [audio, options?.sttPipelineId, onError]);
+  }, [audio, options?.sttPipelineId, language, languageMode, pendingSttProvider, setPendingSttProvider, onError]);
 
   const stopRecording = useCallback(async (): Promise<void> => {
     if (!audio.isCapturing) return;

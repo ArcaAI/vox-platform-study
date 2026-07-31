@@ -50,6 +50,12 @@ export interface PluginManagerRuntimeOptions {
    * `language` on the backend path.
    */
   languageMode?: string;
+  /**
+   * Optional pre-start STT engine selection (TASK-586), `'primary'` (default)
+   * or `'fallback'`. Start-time only — forwarded to the STT session so it opens
+   * on the tenant-admin default provider when `'fallback'`.
+   */
+  startOn?: 'primary' | 'fallback';
   /** Optional microphone identifier surfaced in transcripts. */
   microphoneId?: string;
 }
@@ -614,6 +620,9 @@ export class PluginManager {
         ...((this.runtimeOptions.languageMode ?? sttConfig.languageMode)
           ? { languageMode: this.runtimeOptions.languageMode ?? sttConfig.languageMode }
           : {}),
+        // Pre-start engine selection (TASK-586). Start-time only — there is no
+        // static sttConfig.startOn — so it comes solely from the runtime option.
+        ...(this.runtimeOptions.startOn ? { startOn: this.runtimeOptions.startOn } : {}),
         modelId: localConfig?.stt?.modelId ?? sttConfig.modelId,
         sttSocket: sttConfig.sttSocket,
         pipelineId: effectivePipelineId,

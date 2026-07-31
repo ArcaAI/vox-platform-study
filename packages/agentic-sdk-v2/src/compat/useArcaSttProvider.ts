@@ -37,6 +37,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useArcaAudio } from '../hooks/useArcaAudio';
+import { useAgenticStore } from '../store/agenticStore';
 import { useCompatFeatureFlags } from './ArcaCompatProvider';
 import type { ErrorInfo, ProviderSwitchInfo } from './types';
 
@@ -89,23 +90,6 @@ export interface UseArcaSttProviderReturn {
   switchToDefault: () => Promise<void>;
 }
 
-function unavailableError(target: ProviderSwitchTarget): ErrorInfo {
-  if (target === 'primary') {
-    return {
-      code: 'PIPELINE_UNAVAILABLE',
-      message: 'No live streaming session to switch back to the primary pipeline.',
-      severity: 'medium',
-      category: 'processing',
-    };
-  }
-  return {
-    code: 'FALLBACK_UNAVAILABLE',
-    message: 'No fallback STT provider is available to switch to (none configured, or no live streaming session).',
-    severity: 'medium',
-    category: 'processing',
-  };
-}
-
 function switchFailedError(err: unknown): ErrorInfo {
   return {
     code: 'SWITCH_FAILED',
@@ -120,6 +104,10 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
   const audio = useArcaAudio();
   const { enableProviderSwitch } = useCompatFeatureFlags();
   const activePipeline = audio.activePipeline ?? null;
+  // Pre-start selection (TASK-586): remembered in the store when the user picks
+  // a provider BEFORE capture exists, then applied + cleared at `audio.start`.
+  const pendingSttProvider = useAgenticStore((s) => s.pendingSttProvider);
+  const setPendingSttProvider = useAgenticStore((s) => s.setPendingSttProvider);
 
   // Keep callbacks fresh without re-subscribing the switch-detect effect.
   const onProviderSwitchedRef = useRef(onProviderSwitched);
@@ -170,9 +158,15 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
   const switchTo = useCallback(
     async (target: ProviderSwitchTarget): Promise<void> => {
       const current = audio.activePipeline ?? null;
-      // No live backend session / no pipeline to switch from → unavailable.
+      // No live backend session yet → record a PRE-START selection (TASK-586)
+      // instead of rejecting. The pending pick is applied at `audio.start` by
+      // whichever start hook runs first (order-independent, mirroring the
+      // `languageMode` store-fallback pattern) and reflected in the read state
+      // below. Once a session is live the in-place switch path (below) runs.
       if (!current) {
-        return Promise.reject(unavailableError(target));
+        setPendingSttProvider(target);
+        setSwitchStatus('switched');
+        return;
       }
       const isCurrentlyFallback = current.isFallback === true;
       const alreadyThere = target === 'fallback' ? isCurrentlyFallback : !isCurrentlyFallback;
@@ -195,17 +189,22 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
         return Promise.reject(info);
       }
     },
-    [audio, enableProviderSwitch],
+    [audio, enableProviderSwitch, setPendingSttProvider],
   );
 
   const switchToDefault = useCallback(() => switchTo('fallback'), [switchTo]);
   const switchToPipeline = useCallback(() => switchTo('primary'), [switchTo]);
 
+  // Before a session exists, reflect the pending pre-start selection (TASK-586)
+  // so the toggle reads the right side from the first render; once live, the
+  // durable `activePipeline.isFallback` is authoritative.
+  const pendingIsFallback = pendingSttProvider === 'fallback';
+
   return {
     activeProvider: activePipeline ? { pipelineId: activePipeline.id, name: activePipeline.name, isFallback: activePipeline.isFallback } : null,
     fallbackAvailable: activePipeline != null && !activePipeline.isFallback,
-    isFallbackActive: activePipeline?.isFallback === true,
-    usePipeline: !(activePipeline?.isFallback === true),
+    isFallbackActive: activePipeline ? activePipeline.isFallback === true : pendingIsFallback,
+    usePipeline: activePipeline ? !(activePipeline.isFallback === true) : !pendingIsFallback,
     switchStatus,
     switchToFallback: switchToDefault,
     switchToPipeline,

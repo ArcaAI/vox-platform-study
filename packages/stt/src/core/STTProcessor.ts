@@ -761,6 +761,9 @@ export class STTProcessor extends BaseProcessor {
       // resolves it against the session engine and 422s an unservable mode.
       // Read from options directly (the default config carries no mode).
       languageMode: this.options.audio?.languageMode,
+      // Pre-start engine selection (TASK-586) — the backend opens the session
+      // on the tenant-admin default provider when 'fallback'.
+      startOn: this.options.audio?.startOn,
       sampleRate: audio.sampleRate ?? WHISPER_SAMPLE_RATE,
       channels: audio.channels ?? 1,
       chunkLengthS: audio.chunkLengthS ?? 30,

@@ -162,6 +162,42 @@ describe('useArcaAudio — provider switch + connection state (TASK-567)', () =>
     });
   });
 
+  it('forwards startOn to the plugin manager runtime options and marks the active pipeline as fallback (TASK-586)', async () => {
+    const { result } = renderHook(() => useArcaAudio());
+
+    await act(async () => {
+      await result.current.start({ pipelineId: 'primary', startOn: 'fallback' });
+    });
+
+    // Pre-start selection threaded into the streaming transport build.
+    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ startOn: 'fallback' }),
+    );
+    // And the durable active-pipeline flag reflects it from frame 1.
+    expect(mockStoreData.setActivePipeline).toHaveBeenCalledWith({
+      id: 'primary',
+      name: 'primary',
+      isFallback: true,
+    });
+  });
+
+  it('defaults the active pipeline to primary (isFallback false) when startOn is omitted (TASK-586)', async () => {
+    const { result } = renderHook(() => useArcaAudio());
+
+    await act(async () => {
+      await result.current.start({ pipelineId: 'primary' });
+    });
+
+    expect(mockStoreData.pluginManager.setRuntimeOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ startOn: undefined }),
+    );
+    expect(mockStoreData.setActivePipeline).toHaveBeenCalledWith({
+      id: 'primary',
+      name: 'primary',
+      isFallback: false,
+    });
+  });
+
   it('clears the active pipeline on start with no backend pipeline (local STT)', async () => {
     const { result } = renderHook(() => useArcaAudio());
 
