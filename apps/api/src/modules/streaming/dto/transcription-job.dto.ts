@@ -74,6 +74,15 @@ export class CreateStreamSessionRequest {
   @IsString()
   @IsOptional()
   language?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "End-user language mode id (TASK-587), e.g. 'en', 'ml', 'ml-en' (Malayalam+English code-switch), 'auto'. " +
+      'Resolved by STT against the session engine; a mode no configured engine can serve is rejected (422). Takes precedence over `language`.',
+  })
+  @IsString()
+  @IsOptional()
+  languageMode?: string;
 }
 
 export class StreamSessionResponse {

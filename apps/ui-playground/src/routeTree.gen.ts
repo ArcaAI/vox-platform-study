@@ -8,437 +8,474 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root';
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route';
-import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index';
-import { Route as AuthenticatedVoiceProfileRouteImport } from './routes/_authenticated/voice-profile';
-import { Route as AuthenticatedPromptsRouteImport } from './routes/_authenticated/prompts';
-import { Route as errors500RouteImport } from './routes/(errors)/500';
-import { Route as errors404RouteImport } from './routes/(errors)/404';
-import { Route as errors403RouteImport } from './routes/(errors)/403';
-import { Route as errors401RouteImport } from './routes/(errors)/401';
-import { Route as authLoginRouteImport } from './routes/(auth)/login';
-import { Route as AuthenticatedIntroductionIndexRouteImport } from './routes/_authenticated/introduction/index';
-import { Route as AuthenticatedInstallationIndexRouteImport } from './routes/_authenticated/installation/index';
-import { Route as AuthenticatedDnaWritingStyleIndexRouteImport } from './routes/_authenticated/dna-writing-style/index';
-import { Route as AuthenticatedConsultationIndexRouteImport } from './routes/_authenticated/consultation/index';
-import { Route as AuthenticatedClinicalWorkspaceIndexRouteImport } from './routes/_authenticated/clinical-workspace/index';
-import { Route as AuthenticatedSummarizationSummaryRouteImport } from './routes/_authenticated/summarization/summary';
-import { Route as AuthenticatedSummarizationPreSummaryRouteImport } from './routes/_authenticated/summarization/pre-summary';
-import { Route as AuthenticatedPlaygroundOverviewRouteImport } from './routes/_authenticated/playground/overview';
-import { Route as AuthenticatedInstallationVadRouteImport } from './routes/_authenticated/installation/vad';
-import { Route as AuthenticatedInstallationSttRouteImport } from './routes/_authenticated/installation/stt';
-import { Route as AuthenticatedInstallationRoomRouteImport } from './routes/_authenticated/installation/room';
-import { Route as AuthenticatedInstallationNoiseFilterRouteImport } from './routes/_authenticated/installation/noise-filter';
-import { Route as AuthenticatedConsultationIdRouteImport } from './routes/_authenticated/consultation/$id';
-import { Route as AuthenticatedAudioLiveTranscriptionRouteImport } from './routes/_authenticated/audio/live-transcription';
-import { Route as AuthenticatedAudioJobTranscriptionRouteImport } from './routes/_authenticated/audio/job-transcription';
-import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users';
-import { Route as AuthenticatedAdminTenantsRouteImport } from './routes/_authenticated/admin/tenants';
-import { Route as AuthenticatedAdminSystemHealthRouteImport } from './routes/_authenticated/admin/system-health';
-import { Route as AuthenticatedAdminStudioRouteImport } from './routes/_authenticated/admin/studio';
-import { Route as AuthenticatedAdminStorageRouteImport } from './routes/_authenticated/admin/storage';
-import { Route as AuthenticatedAdminRateLimitsRouteImport } from './routes/_authenticated/admin/rate-limits';
-import { Route as AuthenticatedAdminQueuesRouteImport } from './routes/_authenticated/admin/queues';
-import { Route as AuthenticatedAdminPromptsRouteImport } from './routes/_authenticated/admin/prompts';
-import { Route as AuthenticatedAdminJobsRouteImport } from './routes/_authenticated/admin/jobs';
-import { Route as AuthenticatedAdminDnaReportsRouteImport } from './routes/_authenticated/admin/dna-reports';
-import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_authenticated/admin/departments';
-import { Route as AuthenticatedAdminConfigurationsRouteImport } from './routes/_authenticated/admin/configurations';
-import { Route as AuthenticatedAdminAuditLogsRouteImport } from './routes/_authenticated/admin/audit-logs';
-import { Route as AuthenticatedAdminAudioPipelinesRouteImport } from './routes/_authenticated/admin/audio-pipelines';
-import { Route as AuthenticatedAdminAiModelsRouteImport } from './routes/_authenticated/admin/ai-models';
-import { Route as AuthenticatedAdminHarnessRouteRouteImport } from './routes/_authenticated/admin/harness/route';
-import { Route as AuthenticatedAdminHarnessIndexRouteImport } from './routes/_authenticated/admin/harness/index';
-import { Route as AuthenticatedAdminHarnessWorkflowsRouteImport } from './routes/_authenticated/admin/harness/workflows';
-import { Route as AuthenticatedAdminHarnessPolicyRouteImport } from './routes/_authenticated/admin/harness/policy';
-import { Route as AuthenticatedAdminHarnessOverviewRouteImport } from './routes/_authenticated/admin/harness/overview';
-import { Route as AuthenticatedAdminHarnessLiveRouteImport } from './routes/_authenticated/admin/harness/live';
-import { Route as AuthenticatedAdminHarnessEvalsRouteImport } from './routes/_authenticated/admin/harness/evals';
-import { Route as AuthenticatedAdminHarnessAuditRouteImport } from './routes/_authenticated/admin/harness/audit';
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
+import { Route as AuthenticatedVoiceProfileRouteImport } from './routes/_authenticated/voice-profile'
+import { Route as AuthenticatedPromptsRouteImport } from './routes/_authenticated/prompts'
+import { Route as errors500RouteImport } from './routes/(errors)/500'
+import { Route as errors404RouteImport } from './routes/(errors)/404'
+import { Route as errors403RouteImport } from './routes/(errors)/403'
+import { Route as errors401RouteImport } from './routes/(errors)/401'
+import { Route as authLoginRouteImport } from './routes/(auth)/login'
+import { Route as AuthenticatedIntroductionIndexRouteImport } from './routes/_authenticated/introduction/index'
+import { Route as AuthenticatedInstallationIndexRouteImport } from './routes/_authenticated/installation/index'
+import { Route as AuthenticatedDnaWritingStyleIndexRouteImport } from './routes/_authenticated/dna-writing-style/index'
+import { Route as AuthenticatedConsultationIndexRouteImport } from './routes/_authenticated/consultation/index'
+import { Route as AuthenticatedClinicalWorkspaceIndexRouteImport } from './routes/_authenticated/clinical-workspace/index'
+import { Route as AuthenticatedSummarizationSummaryRouteImport } from './routes/_authenticated/summarization/summary'
+import { Route as AuthenticatedSummarizationPreSummaryRouteImport } from './routes/_authenticated/summarization/pre-summary'
+import { Route as AuthenticatedPlaygroundOverviewRouteImport } from './routes/_authenticated/playground/overview'
+import { Route as AuthenticatedInstallationVadRouteImport } from './routes/_authenticated/installation/vad'
+import { Route as AuthenticatedInstallationSttRouteImport } from './routes/_authenticated/installation/stt'
+import { Route as AuthenticatedInstallationRoomRouteImport } from './routes/_authenticated/installation/room'
+import { Route as AuthenticatedInstallationNoiseFilterRouteImport } from './routes/_authenticated/installation/noise-filter'
+import { Route as AuthenticatedConsultationIdRouteImport } from './routes/_authenticated/consultation/$id'
+import { Route as AuthenticatedAudioLiveTranscriptionRouteImport } from './routes/_authenticated/audio/live-transcription'
+import { Route as AuthenticatedAudioJobTranscriptionRouteImport } from './routes/_authenticated/audio/job-transcription'
+import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
+import { Route as AuthenticatedAdminTenantsRouteImport } from './routes/_authenticated/admin/tenants'
+import { Route as AuthenticatedAdminSystemHealthRouteImport } from './routes/_authenticated/admin/system-health'
+import { Route as AuthenticatedAdminStudioRouteImport } from './routes/_authenticated/admin/studio'
+import { Route as AuthenticatedAdminStorageRouteImport } from './routes/_authenticated/admin/storage'
+import { Route as AuthenticatedAdminRateLimitsRouteImport } from './routes/_authenticated/admin/rate-limits'
+import { Route as AuthenticatedAdminQueuesRouteImport } from './routes/_authenticated/admin/queues'
+import { Route as AuthenticatedAdminPromptsRouteImport } from './routes/_authenticated/admin/prompts'
+import { Route as AuthenticatedAdminJobsRouteImport } from './routes/_authenticated/admin/jobs'
+import { Route as AuthenticatedAdminDnaReportsRouteImport } from './routes/_authenticated/admin/dna-reports'
+import { Route as AuthenticatedAdminDepartmentsRouteImport } from './routes/_authenticated/admin/departments'
+import { Route as AuthenticatedAdminConfigurationsRouteImport } from './routes/_authenticated/admin/configurations'
+import { Route as AuthenticatedAdminAuditLogsRouteImport } from './routes/_authenticated/admin/audit-logs'
+import { Route as AuthenticatedAdminAudioPipelinesRouteImport } from './routes/_authenticated/admin/audio-pipelines'
+import { Route as AuthenticatedAdminAiModelsRouteImport } from './routes/_authenticated/admin/ai-models'
+import { Route as AuthenticatedAdminHarnessRouteRouteImport } from './routes/_authenticated/admin/harness/route'
+import { Route as AuthenticatedAdminHarnessIndexRouteImport } from './routes/_authenticated/admin/harness/index'
+import { Route as AuthenticatedAdminHarnessWorkflowsRouteImport } from './routes/_authenticated/admin/harness/workflows'
+import { Route as AuthenticatedAdminHarnessPolicyRouteImport } from './routes/_authenticated/admin/harness/policy'
+import { Route as AuthenticatedAdminHarnessOverviewRouteImport } from './routes/_authenticated/admin/harness/overview'
+import { Route as AuthenticatedAdminHarnessLiveRouteImport } from './routes/_authenticated/admin/harness/live'
+import { Route as AuthenticatedAdminHarnessEvalsRouteImport } from './routes/_authenticated/admin/harness/evals'
+import { Route as AuthenticatedAdminHarnessAuditRouteImport } from './routes/_authenticated/admin/harness/audit'
 
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedVoiceProfileRoute = AuthenticatedVoiceProfileRouteImport.update({
-  id: '/voice-profile',
-  path: '/voice-profile',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
+} as any)
+const AuthenticatedVoiceProfileRoute =
+  AuthenticatedVoiceProfileRouteImport.update({
+    id: '/voice-profile',
+    path: '/voice-profile',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPromptsRoute = AuthenticatedPromptsRouteImport.update({
   id: '/prompts',
   path: '/prompts',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
+} as any)
 const errors500Route = errors500RouteImport.update({
   id: '/(errors)/500',
   path: '/500',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const errors404Route = errors404RouteImport.update({
   id: '/(errors)/404',
   path: '/404',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const errors403Route = errors403RouteImport.update({
   id: '/(errors)/403',
   path: '/403',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const errors401Route = errors401RouteImport.update({
   id: '/(errors)/401',
   path: '/401',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const authLoginRoute = authLoginRouteImport.update({
   id: '/(auth)/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
-} as any);
-const AuthenticatedIntroductionIndexRoute = AuthenticatedIntroductionIndexRouteImport.update({
-  id: '/introduction/',
-  path: '/introduction/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedInstallationIndexRoute = AuthenticatedInstallationIndexRouteImport.update({
-  id: '/installation/',
-  path: '/installation/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedDnaWritingStyleIndexRoute = AuthenticatedDnaWritingStyleIndexRouteImport.update({
-  id: '/dna-writing-style/',
-  path: '/dna-writing-style/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedConsultationIndexRoute = AuthenticatedConsultationIndexRouteImport.update({
-  id: '/consultation/',
-  path: '/consultation/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedClinicalWorkspaceIndexRoute = AuthenticatedClinicalWorkspaceIndexRouteImport.update({
-  id: '/clinical-workspace/',
-  path: '/clinical-workspace/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedSummarizationSummaryRoute = AuthenticatedSummarizationSummaryRouteImport.update({
-  id: '/summarization/summary',
-  path: '/summarization/summary',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedSummarizationPreSummaryRoute = AuthenticatedSummarizationPreSummaryRouteImport.update({
-  id: '/summarization/pre-summary',
-  path: '/summarization/pre-summary',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedPlaygroundOverviewRoute = AuthenticatedPlaygroundOverviewRouteImport.update({
-  id: '/playground/overview',
-  path: '/playground/overview',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedInstallationVadRoute = AuthenticatedInstallationVadRouteImport.update({
-  id: '/installation/vad',
-  path: '/installation/vad',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedInstallationSttRoute = AuthenticatedInstallationSttRouteImport.update({
-  id: '/installation/stt',
-  path: '/installation/stt',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedInstallationRoomRoute = AuthenticatedInstallationRoomRouteImport.update({
-  id: '/installation/room',
-  path: '/installation/room',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedInstallationNoiseFilterRoute = AuthenticatedInstallationNoiseFilterRouteImport.update({
-  id: '/installation/noise-filter',
-  path: '/installation/noise-filter',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedConsultationIdRoute = AuthenticatedConsultationIdRouteImport.update({
-  id: '/consultation/$id',
-  path: '/consultation/$id',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAudioLiveTranscriptionRoute = AuthenticatedAudioLiveTranscriptionRouteImport.update({
-  id: '/audio/live-transcription',
-  path: '/audio/live-transcription',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAudioJobTranscriptionRoute = AuthenticatedAudioJobTranscriptionRouteImport.update({
-  id: '/audio/job-transcription',
-  path: '/audio/job-transcription',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
+} as any)
+const AuthenticatedIntroductionIndexRoute =
+  AuthenticatedIntroductionIndexRouteImport.update({
+    id: '/introduction/',
+    path: '/introduction/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedInstallationIndexRoute =
+  AuthenticatedInstallationIndexRouteImport.update({
+    id: '/installation/',
+    path: '/installation/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedDnaWritingStyleIndexRoute =
+  AuthenticatedDnaWritingStyleIndexRouteImport.update({
+    id: '/dna-writing-style/',
+    path: '/dna-writing-style/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedConsultationIndexRoute =
+  AuthenticatedConsultationIndexRouteImport.update({
+    id: '/consultation/',
+    path: '/consultation/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedClinicalWorkspaceIndexRoute =
+  AuthenticatedClinicalWorkspaceIndexRouteImport.update({
+    id: '/clinical-workspace/',
+    path: '/clinical-workspace/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSummarizationSummaryRoute =
+  AuthenticatedSummarizationSummaryRouteImport.update({
+    id: '/summarization/summary',
+    path: '/summarization/summary',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSummarizationPreSummaryRoute =
+  AuthenticatedSummarizationPreSummaryRouteImport.update({
+    id: '/summarization/pre-summary',
+    path: '/summarization/pre-summary',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPlaygroundOverviewRoute =
+  AuthenticatedPlaygroundOverviewRouteImport.update({
+    id: '/playground/overview',
+    path: '/playground/overview',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedInstallationVadRoute =
+  AuthenticatedInstallationVadRouteImport.update({
+    id: '/installation/vad',
+    path: '/installation/vad',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedInstallationSttRoute =
+  AuthenticatedInstallationSttRouteImport.update({
+    id: '/installation/stt',
+    path: '/installation/stt',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedInstallationRoomRoute =
+  AuthenticatedInstallationRoomRouteImport.update({
+    id: '/installation/room',
+    path: '/installation/room',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedInstallationNoiseFilterRoute =
+  AuthenticatedInstallationNoiseFilterRouteImport.update({
+    id: '/installation/noise-filter',
+    path: '/installation/noise-filter',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedConsultationIdRoute =
+  AuthenticatedConsultationIdRouteImport.update({
+    id: '/consultation/$id',
+    path: '/consultation/$id',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAudioLiveTranscriptionRoute =
+  AuthenticatedAudioLiveTranscriptionRouteImport.update({
+    id: '/audio/live-transcription',
+    path: '/audio/live-transcription',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAudioJobTranscriptionRoute =
+  AuthenticatedAudioJobTranscriptionRouteImport.update({
+    id: '/audio/job-transcription',
+    path: '/audio/job-transcription',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminTenantsRoute = AuthenticatedAdminTenantsRouteImport.update({
-  id: '/admin/tenants',
-  path: '/admin/tenants',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminSystemHealthRoute = AuthenticatedAdminSystemHealthRouteImport.update({
-  id: '/admin/system-health',
-  path: '/admin/system-health',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminStudioRoute = AuthenticatedAdminStudioRouteImport.update({
-  id: '/admin/studio',
-  path: '/admin/studio',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminStorageRoute = AuthenticatedAdminStorageRouteImport.update({
-  id: '/admin/storage',
-  path: '/admin/storage',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminRateLimitsRoute = AuthenticatedAdminRateLimitsRouteImport.update({
-  id: '/admin/rate-limits',
-  path: '/admin/rate-limits',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminQueuesRoute = AuthenticatedAdminQueuesRouteImport.update({
-  id: '/admin/queues',
-  path: '/admin/queues',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminPromptsRoute = AuthenticatedAdminPromptsRouteImport.update({
-  id: '/admin/prompts',
-  path: '/admin/prompts',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
+} as any)
+const AuthenticatedAdminTenantsRoute =
+  AuthenticatedAdminTenantsRouteImport.update({
+    id: '/admin/tenants',
+    path: '/admin/tenants',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminSystemHealthRoute =
+  AuthenticatedAdminSystemHealthRouteImport.update({
+    id: '/admin/system-health',
+    path: '/admin/system-health',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminStudioRoute =
+  AuthenticatedAdminStudioRouteImport.update({
+    id: '/admin/studio',
+    path: '/admin/studio',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminStorageRoute =
+  AuthenticatedAdminStorageRouteImport.update({
+    id: '/admin/storage',
+    path: '/admin/storage',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminRateLimitsRoute =
+  AuthenticatedAdminRateLimitsRouteImport.update({
+    id: '/admin/rate-limits',
+    path: '/admin/rate-limits',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminQueuesRoute =
+  AuthenticatedAdminQueuesRouteImport.update({
+    id: '/admin/queues',
+    path: '/admin/queues',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminPromptsRoute =
+  AuthenticatedAdminPromptsRouteImport.update({
+    id: '/admin/prompts',
+    path: '/admin/prompts',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminJobsRoute = AuthenticatedAdminJobsRouteImport.update({
   id: '/admin/jobs',
   path: '/admin/jobs',
   getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminDnaReportsRoute = AuthenticatedAdminDnaReportsRouteImport.update({
-  id: '/admin/dna-reports',
-  path: '/admin/dna-reports',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminDepartmentsRoute = AuthenticatedAdminDepartmentsRouteImport.update({
-  id: '/admin/departments',
-  path: '/admin/departments',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminConfigurationsRoute = AuthenticatedAdminConfigurationsRouteImport.update({
-  id: '/admin/configurations',
-  path: '/admin/configurations',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminAuditLogsRoute = AuthenticatedAdminAuditLogsRouteImport.update({
-  id: '/admin/audit-logs',
-  path: '/admin/audit-logs',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminAudioPipelinesRoute = AuthenticatedAdminAudioPipelinesRouteImport.update({
-  id: '/admin/audio-pipelines',
-  path: '/admin/audio-pipelines',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminAiModelsRoute = AuthenticatedAdminAiModelsRouteImport.update({
-  id: '/admin/ai-models',
-  path: '/admin/ai-models',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminHarnessRouteRoute = AuthenticatedAdminHarnessRouteRouteImport.update({
-  id: '/admin/harness',
-  path: '/admin/harness',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any);
-const AuthenticatedAdminHarnessIndexRoute = AuthenticatedAdminHarnessIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
-} as any);
-const AuthenticatedAdminHarnessWorkflowsRoute = AuthenticatedAdminHarnessWorkflowsRouteImport.update({
-  id: '/workflows',
-  path: '/workflows',
-  getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
-} as any);
-const AuthenticatedAdminHarnessPolicyRoute = AuthenticatedAdminHarnessPolicyRouteImport.update({
-  id: '/policy',
-  path: '/policy',
-  getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
-} as any);
-const AuthenticatedAdminHarnessOverviewRoute = AuthenticatedAdminHarnessOverviewRouteImport.update({
-  id: '/overview',
-  path: '/overview',
-  getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
-} as any);
-const AuthenticatedAdminHarnessLiveRoute = AuthenticatedAdminHarnessLiveRouteImport.update({
-  id: '/live',
-  path: '/live',
-  getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
-} as any);
-const AuthenticatedAdminHarnessEvalsRoute = AuthenticatedAdminHarnessEvalsRouteImport.update({
-  id: '/evals',
-  path: '/evals',
-  getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
-} as any);
-const AuthenticatedAdminHarnessAuditRoute = AuthenticatedAdminHarnessAuditRouteImport.update({
-  id: '/audit',
-  path: '/audit',
-  getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
-} as any);
+} as any)
+const AuthenticatedAdminDnaReportsRoute =
+  AuthenticatedAdminDnaReportsRouteImport.update({
+    id: '/admin/dna-reports',
+    path: '/admin/dna-reports',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminDepartmentsRoute =
+  AuthenticatedAdminDepartmentsRouteImport.update({
+    id: '/admin/departments',
+    path: '/admin/departments',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminConfigurationsRoute =
+  AuthenticatedAdminConfigurationsRouteImport.update({
+    id: '/admin/configurations',
+    path: '/admin/configurations',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminAuditLogsRoute =
+  AuthenticatedAdminAuditLogsRouteImport.update({
+    id: '/admin/audit-logs',
+    path: '/admin/audit-logs',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminAudioPipelinesRoute =
+  AuthenticatedAdminAudioPipelinesRouteImport.update({
+    id: '/admin/audio-pipelines',
+    path: '/admin/audio-pipelines',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminAiModelsRoute =
+  AuthenticatedAdminAiModelsRouteImport.update({
+    id: '/admin/ai-models',
+    path: '/admin/ai-models',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessRouteRoute =
+  AuthenticatedAdminHarnessRouteRouteImport.update({
+    id: '/admin/harness',
+    path: '/admin/harness',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessIndexRoute =
+  AuthenticatedAdminHarnessIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessWorkflowsRoute =
+  AuthenticatedAdminHarnessWorkflowsRouteImport.update({
+    id: '/workflows',
+    path: '/workflows',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessPolicyRoute =
+  AuthenticatedAdminHarnessPolicyRouteImport.update({
+    id: '/policy',
+    path: '/policy',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessOverviewRoute =
+  AuthenticatedAdminHarnessOverviewRouteImport.update({
+    id: '/overview',
+    path: '/overview',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessLiveRoute =
+  AuthenticatedAdminHarnessLiveRouteImport.update({
+    id: '/live',
+    path: '/live',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessEvalsRoute =
+  AuthenticatedAdminHarnessEvalsRouteImport.update({
+    id: '/evals',
+    path: '/evals',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
+const AuthenticatedAdminHarnessAuditRoute =
+  AuthenticatedAdminHarnessAuditRouteImport.update({
+    id: '/audit',
+    path: '/audit',
+    getParentRoute: () => AuthenticatedAdminHarnessRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof AuthenticatedIndexRoute;
-  '/login': typeof authLoginRoute;
-  '/401': typeof errors401Route;
-  '/403': typeof errors403Route;
-  '/404': typeof errors404Route;
-  '/500': typeof errors500Route;
-  '/prompts': typeof AuthenticatedPromptsRoute;
-  '/voice-profile': typeof AuthenticatedVoiceProfileRoute;
-  '/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren;
-  '/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute;
-  '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute;
-  '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute;
-  '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute;
-  '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute;
-  '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute;
-  '/admin/jobs': typeof AuthenticatedAdminJobsRoute;
-  '/admin/prompts': typeof AuthenticatedAdminPromptsRoute;
-  '/admin/queues': typeof AuthenticatedAdminQueuesRoute;
-  '/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute;
-  '/admin/storage': typeof AuthenticatedAdminStorageRoute;
-  '/admin/studio': typeof AuthenticatedAdminStudioRoute;
-  '/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute;
-  '/admin/tenants': typeof AuthenticatedAdminTenantsRoute;
-  '/admin/users': typeof AuthenticatedAdminUsersRoute;
-  '/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute;
-  '/audio/live-transcription': typeof AuthenticatedAudioLiveTranscriptionRoute;
-  '/consultation/$id': typeof AuthenticatedConsultationIdRoute;
-  '/installation/noise-filter': typeof AuthenticatedInstallationNoiseFilterRoute;
-  '/installation/room': typeof AuthenticatedInstallationRoomRoute;
-  '/installation/stt': typeof AuthenticatedInstallationSttRoute;
-  '/installation/vad': typeof AuthenticatedInstallationVadRoute;
-  '/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute;
-  '/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute;
-  '/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute;
-  '/clinical-workspace/': typeof AuthenticatedClinicalWorkspaceIndexRoute;
-  '/consultation/': typeof AuthenticatedConsultationIndexRoute;
-  '/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute;
-  '/installation/': typeof AuthenticatedInstallationIndexRoute;
-  '/introduction/': typeof AuthenticatedIntroductionIndexRoute;
-  '/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute;
-  '/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute;
-  '/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute;
-  '/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute;
-  '/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute;
-  '/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute;
-  '/admin/harness/': typeof AuthenticatedAdminHarnessIndexRoute;
+  '/': typeof AuthenticatedIndexRoute
+  '/login': typeof authLoginRoute
+  '/401': typeof errors401Route
+  '/403': typeof errors403Route
+  '/404': typeof errors404Route
+  '/500': typeof errors500Route
+  '/prompts': typeof AuthenticatedPromptsRoute
+  '/voice-profile': typeof AuthenticatedVoiceProfileRoute
+  '/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren
+  '/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute
+  '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
+  '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
+  '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
+  '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
+  '/admin/jobs': typeof AuthenticatedAdminJobsRoute
+  '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
+  '/admin/queues': typeof AuthenticatedAdminQueuesRoute
+  '/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute
+  '/admin/storage': typeof AuthenticatedAdminStorageRoute
+  '/admin/studio': typeof AuthenticatedAdminStudioRoute
+  '/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
+  '/admin/tenants': typeof AuthenticatedAdminTenantsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
+  '/audio/live-transcription': typeof AuthenticatedAudioLiveTranscriptionRoute
+  '/consultation/$id': typeof AuthenticatedConsultationIdRoute
+  '/installation/noise-filter': typeof AuthenticatedInstallationNoiseFilterRoute
+  '/installation/room': typeof AuthenticatedInstallationRoomRoute
+  '/installation/stt': typeof AuthenticatedInstallationSttRoute
+  '/installation/vad': typeof AuthenticatedInstallationVadRoute
+  '/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute
+  '/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute
+  '/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute
+  '/clinical-workspace/': typeof AuthenticatedClinicalWorkspaceIndexRoute
+  '/consultation/': typeof AuthenticatedConsultationIndexRoute
+  '/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute
+  '/installation/': typeof AuthenticatedInstallationIndexRoute
+  '/introduction/': typeof AuthenticatedIntroductionIndexRoute
+  '/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
+  '/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute
+  '/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
+  '/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
+  '/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
+  '/admin/harness/': typeof AuthenticatedAdminHarnessIndexRoute
 }
 export interface FileRoutesByTo {
-  '/login': typeof authLoginRoute;
-  '/401': typeof errors401Route;
-  '/403': typeof errors403Route;
-  '/404': typeof errors404Route;
-  '/500': typeof errors500Route;
-  '/prompts': typeof AuthenticatedPromptsRoute;
-  '/voice-profile': typeof AuthenticatedVoiceProfileRoute;
-  '/': typeof AuthenticatedIndexRoute;
-  '/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute;
-  '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute;
-  '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute;
-  '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute;
-  '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute;
-  '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute;
-  '/admin/jobs': typeof AuthenticatedAdminJobsRoute;
-  '/admin/prompts': typeof AuthenticatedAdminPromptsRoute;
-  '/admin/queues': typeof AuthenticatedAdminQueuesRoute;
-  '/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute;
-  '/admin/storage': typeof AuthenticatedAdminStorageRoute;
-  '/admin/studio': typeof AuthenticatedAdminStudioRoute;
-  '/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute;
-  '/admin/tenants': typeof AuthenticatedAdminTenantsRoute;
-  '/admin/users': typeof AuthenticatedAdminUsersRoute;
-  '/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute;
-  '/audio/live-transcription': typeof AuthenticatedAudioLiveTranscriptionRoute;
-  '/consultation/$id': typeof AuthenticatedConsultationIdRoute;
-  '/installation/noise-filter': typeof AuthenticatedInstallationNoiseFilterRoute;
-  '/installation/room': typeof AuthenticatedInstallationRoomRoute;
-  '/installation/stt': typeof AuthenticatedInstallationSttRoute;
-  '/installation/vad': typeof AuthenticatedInstallationVadRoute;
-  '/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute;
-  '/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute;
-  '/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute;
-  '/clinical-workspace': typeof AuthenticatedClinicalWorkspaceIndexRoute;
-  '/consultation': typeof AuthenticatedConsultationIndexRoute;
-  '/dna-writing-style': typeof AuthenticatedDnaWritingStyleIndexRoute;
-  '/installation': typeof AuthenticatedInstallationIndexRoute;
-  '/introduction': typeof AuthenticatedIntroductionIndexRoute;
-  '/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute;
-  '/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute;
-  '/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute;
-  '/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute;
-  '/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute;
-  '/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute;
-  '/admin/harness': typeof AuthenticatedAdminHarnessIndexRoute;
+  '/login': typeof authLoginRoute
+  '/401': typeof errors401Route
+  '/403': typeof errors403Route
+  '/404': typeof errors404Route
+  '/500': typeof errors500Route
+  '/prompts': typeof AuthenticatedPromptsRoute
+  '/voice-profile': typeof AuthenticatedVoiceProfileRoute
+  '/': typeof AuthenticatedIndexRoute
+  '/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute
+  '/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
+  '/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
+  '/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
+  '/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
+  '/admin/jobs': typeof AuthenticatedAdminJobsRoute
+  '/admin/prompts': typeof AuthenticatedAdminPromptsRoute
+  '/admin/queues': typeof AuthenticatedAdminQueuesRoute
+  '/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute
+  '/admin/storage': typeof AuthenticatedAdminStorageRoute
+  '/admin/studio': typeof AuthenticatedAdminStudioRoute
+  '/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
+  '/admin/tenants': typeof AuthenticatedAdminTenantsRoute
+  '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
+  '/audio/live-transcription': typeof AuthenticatedAudioLiveTranscriptionRoute
+  '/consultation/$id': typeof AuthenticatedConsultationIdRoute
+  '/installation/noise-filter': typeof AuthenticatedInstallationNoiseFilterRoute
+  '/installation/room': typeof AuthenticatedInstallationRoomRoute
+  '/installation/stt': typeof AuthenticatedInstallationSttRoute
+  '/installation/vad': typeof AuthenticatedInstallationVadRoute
+  '/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute
+  '/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute
+  '/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute
+  '/clinical-workspace': typeof AuthenticatedClinicalWorkspaceIndexRoute
+  '/consultation': typeof AuthenticatedConsultationIndexRoute
+  '/dna-writing-style': typeof AuthenticatedDnaWritingStyleIndexRoute
+  '/installation': typeof AuthenticatedInstallationIndexRoute
+  '/introduction': typeof AuthenticatedIntroductionIndexRoute
+  '/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
+  '/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute
+  '/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
+  '/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
+  '/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
+  '/admin/harness': typeof AuthenticatedAdminHarnessIndexRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren;
-  '/(auth)/login': typeof authLoginRoute;
-  '/(errors)/401': typeof errors401Route;
-  '/(errors)/403': typeof errors403Route;
-  '/(errors)/404': typeof errors404Route;
-  '/(errors)/500': typeof errors500Route;
-  '/_authenticated/prompts': typeof AuthenticatedPromptsRoute;
-  '/_authenticated/voice-profile': typeof AuthenticatedVoiceProfileRoute;
-  '/_authenticated/': typeof AuthenticatedIndexRoute;
-  '/_authenticated/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren;
-  '/_authenticated/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute;
-  '/_authenticated/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute;
-  '/_authenticated/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute;
-  '/_authenticated/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute;
-  '/_authenticated/admin/departments': typeof AuthenticatedAdminDepartmentsRoute;
-  '/_authenticated/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute;
-  '/_authenticated/admin/jobs': typeof AuthenticatedAdminJobsRoute;
-  '/_authenticated/admin/prompts': typeof AuthenticatedAdminPromptsRoute;
-  '/_authenticated/admin/queues': typeof AuthenticatedAdminQueuesRoute;
-  '/_authenticated/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute;
-  '/_authenticated/admin/storage': typeof AuthenticatedAdminStorageRoute;
-  '/_authenticated/admin/studio': typeof AuthenticatedAdminStudioRoute;
-  '/_authenticated/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute;
-  '/_authenticated/admin/tenants': typeof AuthenticatedAdminTenantsRoute;
-  '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute;
-  '/_authenticated/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute;
-  '/_authenticated/audio/live-transcription': typeof AuthenticatedAudioLiveTranscriptionRoute;
-  '/_authenticated/consultation/$id': typeof AuthenticatedConsultationIdRoute;
-  '/_authenticated/installation/noise-filter': typeof AuthenticatedInstallationNoiseFilterRoute;
-  '/_authenticated/installation/room': typeof AuthenticatedInstallationRoomRoute;
-  '/_authenticated/installation/stt': typeof AuthenticatedInstallationSttRoute;
-  '/_authenticated/installation/vad': typeof AuthenticatedInstallationVadRoute;
-  '/_authenticated/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute;
-  '/_authenticated/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute;
-  '/_authenticated/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute;
-  '/_authenticated/clinical-workspace/': typeof AuthenticatedClinicalWorkspaceIndexRoute;
-  '/_authenticated/consultation/': typeof AuthenticatedConsultationIndexRoute;
-  '/_authenticated/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute;
-  '/_authenticated/installation/': typeof AuthenticatedInstallationIndexRoute;
-  '/_authenticated/introduction/': typeof AuthenticatedIntroductionIndexRoute;
-  '/_authenticated/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute;
-  '/_authenticated/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute;
-  '/_authenticated/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute;
-  '/_authenticated/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute;
-  '/_authenticated/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute;
-  '/_authenticated/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute;
-  '/_authenticated/admin/harness/': typeof AuthenticatedAdminHarnessIndexRoute;
+  __root__: typeof rootRouteImport
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/(auth)/login': typeof authLoginRoute
+  '/(errors)/401': typeof errors401Route
+  '/(errors)/403': typeof errors403Route
+  '/(errors)/404': typeof errors404Route
+  '/(errors)/500': typeof errors500Route
+  '/_authenticated/prompts': typeof AuthenticatedPromptsRoute
+  '/_authenticated/voice-profile': typeof AuthenticatedVoiceProfileRoute
+  '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/admin/harness': typeof AuthenticatedAdminHarnessRouteRouteWithChildren
+  '/_authenticated/admin/ai-models': typeof AuthenticatedAdminAiModelsRoute
+  '/_authenticated/admin/audio-pipelines': typeof AuthenticatedAdminAudioPipelinesRoute
+  '/_authenticated/admin/audit-logs': typeof AuthenticatedAdminAuditLogsRoute
+  '/_authenticated/admin/configurations': typeof AuthenticatedAdminConfigurationsRoute
+  '/_authenticated/admin/departments': typeof AuthenticatedAdminDepartmentsRoute
+  '/_authenticated/admin/dna-reports': typeof AuthenticatedAdminDnaReportsRoute
+  '/_authenticated/admin/jobs': typeof AuthenticatedAdminJobsRoute
+  '/_authenticated/admin/prompts': typeof AuthenticatedAdminPromptsRoute
+  '/_authenticated/admin/queues': typeof AuthenticatedAdminQueuesRoute
+  '/_authenticated/admin/rate-limits': typeof AuthenticatedAdminRateLimitsRoute
+  '/_authenticated/admin/storage': typeof AuthenticatedAdminStorageRoute
+  '/_authenticated/admin/studio': typeof AuthenticatedAdminStudioRoute
+  '/_authenticated/admin/system-health': typeof AuthenticatedAdminSystemHealthRoute
+  '/_authenticated/admin/tenants': typeof AuthenticatedAdminTenantsRoute
+  '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/audio/job-transcription': typeof AuthenticatedAudioJobTranscriptionRoute
+  '/_authenticated/audio/live-transcription': typeof AuthenticatedAudioLiveTranscriptionRoute
+  '/_authenticated/consultation/$id': typeof AuthenticatedConsultationIdRoute
+  '/_authenticated/installation/noise-filter': typeof AuthenticatedInstallationNoiseFilterRoute
+  '/_authenticated/installation/room': typeof AuthenticatedInstallationRoomRoute
+  '/_authenticated/installation/stt': typeof AuthenticatedInstallationSttRoute
+  '/_authenticated/installation/vad': typeof AuthenticatedInstallationVadRoute
+  '/_authenticated/playground/overview': typeof AuthenticatedPlaygroundOverviewRoute
+  '/_authenticated/summarization/pre-summary': typeof AuthenticatedSummarizationPreSummaryRoute
+  '/_authenticated/summarization/summary': typeof AuthenticatedSummarizationSummaryRoute
+  '/_authenticated/clinical-workspace/': typeof AuthenticatedClinicalWorkspaceIndexRoute
+  '/_authenticated/consultation/': typeof AuthenticatedConsultationIndexRoute
+  '/_authenticated/dna-writing-style/': typeof AuthenticatedDnaWritingStyleIndexRoute
+  '/_authenticated/installation/': typeof AuthenticatedInstallationIndexRoute
+  '/_authenticated/introduction/': typeof AuthenticatedIntroductionIndexRoute
+  '/_authenticated/admin/harness/audit': typeof AuthenticatedAdminHarnessAuditRoute
+  '/_authenticated/admin/harness/evals': typeof AuthenticatedAdminHarnessEvalsRoute
+  '/_authenticated/admin/harness/live': typeof AuthenticatedAdminHarnessLiveRoute
+  '/_authenticated/admin/harness/overview': typeof AuthenticatedAdminHarnessOverviewRoute
+  '/_authenticated/admin/harness/policy': typeof AuthenticatedAdminHarnessPolicyRoute
+  '/_authenticated/admin/harness/workflows': typeof AuthenticatedAdminHarnessWorkflowsRoute
+  '/_authenticated/admin/harness/': typeof AuthenticatedAdminHarnessIndexRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
+  fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
@@ -485,8 +522,8 @@ export interface FileRouteTypes {
     | '/admin/harness/overview'
     | '/admin/harness/policy'
     | '/admin/harness/workflows'
-    | '/admin/harness/';
-  fileRoutesByTo: FileRoutesByTo;
+    | '/admin/harness/'
+  fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/401'
@@ -532,7 +569,7 @@ export interface FileRouteTypes {
     | '/admin/harness/overview'
     | '/admin/harness/policy'
     | '/admin/harness/workflows'
-    | '/admin/harness';
+    | '/admin/harness'
   id:
     | '__root__'
     | '/_authenticated'
@@ -581,418 +618,423 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/harness/overview'
     | '/_authenticated/admin/harness/policy'
     | '/_authenticated/admin/harness/workflows'
-    | '/_authenticated/admin/harness/';
-  fileRoutesById: FileRoutesById;
+    | '/_authenticated/admin/harness/'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren;
-  authLoginRoute: typeof authLoginRoute;
-  errors401Route: typeof errors401Route;
-  errors403Route: typeof errors403Route;
-  errors404Route: typeof errors404Route;
-  errors500Route: typeof errors500Route;
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  authLoginRoute: typeof authLoginRoute
+  errors401Route: typeof errors401Route
+  errors403Route: typeof errors403Route
+  errors404Route: typeof errors404Route
+  errors500Route: typeof errors500Route
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
     '/_authenticated': {
-      id: '/_authenticated';
-      path: '';
-      fullPath: '/';
-      preLoaderRoute: typeof AuthenticatedRouteRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/': {
-      id: '/_authenticated/';
-      path: '/';
-      fullPath: '/';
-      preLoaderRoute: typeof AuthenticatedIndexRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/voice-profile': {
-      id: '/_authenticated/voice-profile';
-      path: '/voice-profile';
-      fullPath: '/voice-profile';
-      preLoaderRoute: typeof AuthenticatedVoiceProfileRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/voice-profile'
+      path: '/voice-profile'
+      fullPath: '/voice-profile'
+      preLoaderRoute: typeof AuthenticatedVoiceProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/prompts': {
-      id: '/_authenticated/prompts';
-      path: '/prompts';
-      fullPath: '/prompts';
-      preLoaderRoute: typeof AuthenticatedPromptsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/prompts'
+      path: '/prompts'
+      fullPath: '/prompts'
+      preLoaderRoute: typeof AuthenticatedPromptsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/(errors)/500': {
-      id: '/(errors)/500';
-      path: '/500';
-      fullPath: '/500';
-      preLoaderRoute: typeof errors500RouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/(errors)/500'
+      path: '/500'
+      fullPath: '/500'
+      preLoaderRoute: typeof errors500RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(errors)/404': {
-      id: '/(errors)/404';
-      path: '/404';
-      fullPath: '/404';
-      preLoaderRoute: typeof errors404RouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/(errors)/404'
+      path: '/404'
+      fullPath: '/404'
+      preLoaderRoute: typeof errors404RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(errors)/403': {
-      id: '/(errors)/403';
-      path: '/403';
-      fullPath: '/403';
-      preLoaderRoute: typeof errors403RouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/(errors)/403'
+      path: '/403'
+      fullPath: '/403'
+      preLoaderRoute: typeof errors403RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(errors)/401': {
-      id: '/(errors)/401';
-      path: '/401';
-      fullPath: '/401';
-      preLoaderRoute: typeof errors401RouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/(errors)/401'
+      path: '/401'
+      fullPath: '/401'
+      preLoaderRoute: typeof errors401RouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(auth)/login': {
-      id: '/(auth)/login';
-      path: '/login';
-      fullPath: '/login';
-      preLoaderRoute: typeof authLoginRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/(auth)/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof authLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/introduction/': {
-      id: '/_authenticated/introduction/';
-      path: '/introduction';
-      fullPath: '/introduction/';
-      preLoaderRoute: typeof AuthenticatedIntroductionIndexRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/introduction/'
+      path: '/introduction'
+      fullPath: '/introduction/'
+      preLoaderRoute: typeof AuthenticatedIntroductionIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/installation/': {
-      id: '/_authenticated/installation/';
-      path: '/installation';
-      fullPath: '/installation/';
-      preLoaderRoute: typeof AuthenticatedInstallationIndexRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/installation/'
+      path: '/installation'
+      fullPath: '/installation/'
+      preLoaderRoute: typeof AuthenticatedInstallationIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dna-writing-style/': {
-      id: '/_authenticated/dna-writing-style/';
-      path: '/dna-writing-style';
-      fullPath: '/dna-writing-style/';
-      preLoaderRoute: typeof AuthenticatedDnaWritingStyleIndexRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/dna-writing-style/'
+      path: '/dna-writing-style'
+      fullPath: '/dna-writing-style/'
+      preLoaderRoute: typeof AuthenticatedDnaWritingStyleIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/consultation/': {
-      id: '/_authenticated/consultation/';
-      path: '/consultation';
-      fullPath: '/consultation/';
-      preLoaderRoute: typeof AuthenticatedConsultationIndexRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/consultation/'
+      path: '/consultation'
+      fullPath: '/consultation/'
+      preLoaderRoute: typeof AuthenticatedConsultationIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/clinical-workspace/': {
-      id: '/_authenticated/clinical-workspace/';
-      path: '/clinical-workspace';
-      fullPath: '/clinical-workspace/';
-      preLoaderRoute: typeof AuthenticatedClinicalWorkspaceIndexRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/clinical-workspace/'
+      path: '/clinical-workspace'
+      fullPath: '/clinical-workspace/'
+      preLoaderRoute: typeof AuthenticatedClinicalWorkspaceIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/summarization/summary': {
-      id: '/_authenticated/summarization/summary';
-      path: '/summarization/summary';
-      fullPath: '/summarization/summary';
-      preLoaderRoute: typeof AuthenticatedSummarizationSummaryRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/summarization/summary'
+      path: '/summarization/summary'
+      fullPath: '/summarization/summary'
+      preLoaderRoute: typeof AuthenticatedSummarizationSummaryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/summarization/pre-summary': {
-      id: '/_authenticated/summarization/pre-summary';
-      path: '/summarization/pre-summary';
-      fullPath: '/summarization/pre-summary';
-      preLoaderRoute: typeof AuthenticatedSummarizationPreSummaryRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/summarization/pre-summary'
+      path: '/summarization/pre-summary'
+      fullPath: '/summarization/pre-summary'
+      preLoaderRoute: typeof AuthenticatedSummarizationPreSummaryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/playground/overview': {
-      id: '/_authenticated/playground/overview';
-      path: '/playground/overview';
-      fullPath: '/playground/overview';
-      preLoaderRoute: typeof AuthenticatedPlaygroundOverviewRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/playground/overview'
+      path: '/playground/overview'
+      fullPath: '/playground/overview'
+      preLoaderRoute: typeof AuthenticatedPlaygroundOverviewRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/installation/vad': {
-      id: '/_authenticated/installation/vad';
-      path: '/installation/vad';
-      fullPath: '/installation/vad';
-      preLoaderRoute: typeof AuthenticatedInstallationVadRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/installation/vad'
+      path: '/installation/vad'
+      fullPath: '/installation/vad'
+      preLoaderRoute: typeof AuthenticatedInstallationVadRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/installation/stt': {
-      id: '/_authenticated/installation/stt';
-      path: '/installation/stt';
-      fullPath: '/installation/stt';
-      preLoaderRoute: typeof AuthenticatedInstallationSttRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/installation/stt'
+      path: '/installation/stt'
+      fullPath: '/installation/stt'
+      preLoaderRoute: typeof AuthenticatedInstallationSttRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/installation/room': {
-      id: '/_authenticated/installation/room';
-      path: '/installation/room';
-      fullPath: '/installation/room';
-      preLoaderRoute: typeof AuthenticatedInstallationRoomRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/installation/room'
+      path: '/installation/room'
+      fullPath: '/installation/room'
+      preLoaderRoute: typeof AuthenticatedInstallationRoomRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/installation/noise-filter': {
-      id: '/_authenticated/installation/noise-filter';
-      path: '/installation/noise-filter';
-      fullPath: '/installation/noise-filter';
-      preLoaderRoute: typeof AuthenticatedInstallationNoiseFilterRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/installation/noise-filter'
+      path: '/installation/noise-filter'
+      fullPath: '/installation/noise-filter'
+      preLoaderRoute: typeof AuthenticatedInstallationNoiseFilterRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/consultation/$id': {
-      id: '/_authenticated/consultation/$id';
-      path: '/consultation/$id';
-      fullPath: '/consultation/$id';
-      preLoaderRoute: typeof AuthenticatedConsultationIdRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/consultation/$id'
+      path: '/consultation/$id'
+      fullPath: '/consultation/$id'
+      preLoaderRoute: typeof AuthenticatedConsultationIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/audio/live-transcription': {
-      id: '/_authenticated/audio/live-transcription';
-      path: '/audio/live-transcription';
-      fullPath: '/audio/live-transcription';
-      preLoaderRoute: typeof AuthenticatedAudioLiveTranscriptionRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/audio/live-transcription'
+      path: '/audio/live-transcription'
+      fullPath: '/audio/live-transcription'
+      preLoaderRoute: typeof AuthenticatedAudioLiveTranscriptionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/audio/job-transcription': {
-      id: '/_authenticated/audio/job-transcription';
-      path: '/audio/job-transcription';
-      fullPath: '/audio/job-transcription';
-      preLoaderRoute: typeof AuthenticatedAudioJobTranscriptionRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/audio/job-transcription'
+      path: '/audio/job-transcription'
+      fullPath: '/audio/job-transcription'
+      preLoaderRoute: typeof AuthenticatedAudioJobTranscriptionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/users': {
-      id: '/_authenticated/admin/users';
-      path: '/admin/users';
-      fullPath: '/admin/users';
-      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/tenants': {
-      id: '/_authenticated/admin/tenants';
-      path: '/admin/tenants';
-      fullPath: '/admin/tenants';
-      preLoaderRoute: typeof AuthenticatedAdminTenantsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/tenants'
+      path: '/admin/tenants'
+      fullPath: '/admin/tenants'
+      preLoaderRoute: typeof AuthenticatedAdminTenantsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/system-health': {
-      id: '/_authenticated/admin/system-health';
-      path: '/admin/system-health';
-      fullPath: '/admin/system-health';
-      preLoaderRoute: typeof AuthenticatedAdminSystemHealthRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/system-health'
+      path: '/admin/system-health'
+      fullPath: '/admin/system-health'
+      preLoaderRoute: typeof AuthenticatedAdminSystemHealthRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/studio': {
-      id: '/_authenticated/admin/studio';
-      path: '/admin/studio';
-      fullPath: '/admin/studio';
-      preLoaderRoute: typeof AuthenticatedAdminStudioRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/studio'
+      path: '/admin/studio'
+      fullPath: '/admin/studio'
+      preLoaderRoute: typeof AuthenticatedAdminStudioRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/storage': {
-      id: '/_authenticated/admin/storage';
-      path: '/admin/storage';
-      fullPath: '/admin/storage';
-      preLoaderRoute: typeof AuthenticatedAdminStorageRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/storage'
+      path: '/admin/storage'
+      fullPath: '/admin/storage'
+      preLoaderRoute: typeof AuthenticatedAdminStorageRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/rate-limits': {
-      id: '/_authenticated/admin/rate-limits';
-      path: '/admin/rate-limits';
-      fullPath: '/admin/rate-limits';
-      preLoaderRoute: typeof AuthenticatedAdminRateLimitsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/rate-limits'
+      path: '/admin/rate-limits'
+      fullPath: '/admin/rate-limits'
+      preLoaderRoute: typeof AuthenticatedAdminRateLimitsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/queues': {
-      id: '/_authenticated/admin/queues';
-      path: '/admin/queues';
-      fullPath: '/admin/queues';
-      preLoaderRoute: typeof AuthenticatedAdminQueuesRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/queues'
+      path: '/admin/queues'
+      fullPath: '/admin/queues'
+      preLoaderRoute: typeof AuthenticatedAdminQueuesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/prompts': {
-      id: '/_authenticated/admin/prompts';
-      path: '/admin/prompts';
-      fullPath: '/admin/prompts';
-      preLoaderRoute: typeof AuthenticatedAdminPromptsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/prompts'
+      path: '/admin/prompts'
+      fullPath: '/admin/prompts'
+      preLoaderRoute: typeof AuthenticatedAdminPromptsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/jobs': {
-      id: '/_authenticated/admin/jobs';
-      path: '/admin/jobs';
-      fullPath: '/admin/jobs';
-      preLoaderRoute: typeof AuthenticatedAdminJobsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/jobs'
+      path: '/admin/jobs'
+      fullPath: '/admin/jobs'
+      preLoaderRoute: typeof AuthenticatedAdminJobsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/dna-reports': {
-      id: '/_authenticated/admin/dna-reports';
-      path: '/admin/dna-reports';
-      fullPath: '/admin/dna-reports';
-      preLoaderRoute: typeof AuthenticatedAdminDnaReportsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/dna-reports'
+      path: '/admin/dna-reports'
+      fullPath: '/admin/dna-reports'
+      preLoaderRoute: typeof AuthenticatedAdminDnaReportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/departments': {
-      id: '/_authenticated/admin/departments';
-      path: '/admin/departments';
-      fullPath: '/admin/departments';
-      preLoaderRoute: typeof AuthenticatedAdminDepartmentsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/departments'
+      path: '/admin/departments'
+      fullPath: '/admin/departments'
+      preLoaderRoute: typeof AuthenticatedAdminDepartmentsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/configurations': {
-      id: '/_authenticated/admin/configurations';
-      path: '/admin/configurations';
-      fullPath: '/admin/configurations';
-      preLoaderRoute: typeof AuthenticatedAdminConfigurationsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/configurations'
+      path: '/admin/configurations'
+      fullPath: '/admin/configurations'
+      preLoaderRoute: typeof AuthenticatedAdminConfigurationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/audit-logs': {
-      id: '/_authenticated/admin/audit-logs';
-      path: '/admin/audit-logs';
-      fullPath: '/admin/audit-logs';
-      preLoaderRoute: typeof AuthenticatedAdminAuditLogsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/audit-logs'
+      path: '/admin/audit-logs'
+      fullPath: '/admin/audit-logs'
+      preLoaderRoute: typeof AuthenticatedAdminAuditLogsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/audio-pipelines': {
-      id: '/_authenticated/admin/audio-pipelines';
-      path: '/admin/audio-pipelines';
-      fullPath: '/admin/audio-pipelines';
-      preLoaderRoute: typeof AuthenticatedAdminAudioPipelinesRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/audio-pipelines'
+      path: '/admin/audio-pipelines'
+      fullPath: '/admin/audio-pipelines'
+      preLoaderRoute: typeof AuthenticatedAdminAudioPipelinesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/ai-models': {
-      id: '/_authenticated/admin/ai-models';
-      path: '/admin/ai-models';
-      fullPath: '/admin/ai-models';
-      preLoaderRoute: typeof AuthenticatedAdminAiModelsRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/ai-models'
+      path: '/admin/ai-models'
+      fullPath: '/admin/ai-models'
+      preLoaderRoute: typeof AuthenticatedAdminAiModelsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/harness': {
-      id: '/_authenticated/admin/harness';
-      path: '/admin/harness';
-      fullPath: '/admin/harness';
-      preLoaderRoute: typeof AuthenticatedAdminHarnessRouteRouteImport;
-      parentRoute: typeof AuthenticatedRouteRoute;
-    };
+      id: '/_authenticated/admin/harness'
+      path: '/admin/harness'
+      fullPath: '/admin/harness'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/harness/': {
-      id: '/_authenticated/admin/harness/';
-      path: '/';
-      fullPath: '/admin/harness/';
-      preLoaderRoute: typeof AuthenticatedAdminHarnessIndexRouteImport;
-      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute;
-    };
+      id: '/_authenticated/admin/harness/'
+      path: '/'
+      fullPath: '/admin/harness/'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
     '/_authenticated/admin/harness/workflows': {
-      id: '/_authenticated/admin/harness/workflows';
-      path: '/workflows';
-      fullPath: '/admin/harness/workflows';
-      preLoaderRoute: typeof AuthenticatedAdminHarnessWorkflowsRouteImport;
-      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute;
-    };
+      id: '/_authenticated/admin/harness/workflows'
+      path: '/workflows'
+      fullPath: '/admin/harness/workflows'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessWorkflowsRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
     '/_authenticated/admin/harness/policy': {
-      id: '/_authenticated/admin/harness/policy';
-      path: '/policy';
-      fullPath: '/admin/harness/policy';
-      preLoaderRoute: typeof AuthenticatedAdminHarnessPolicyRouteImport;
-      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute;
-    };
+      id: '/_authenticated/admin/harness/policy'
+      path: '/policy'
+      fullPath: '/admin/harness/policy'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessPolicyRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
     '/_authenticated/admin/harness/overview': {
-      id: '/_authenticated/admin/harness/overview';
-      path: '/overview';
-      fullPath: '/admin/harness/overview';
-      preLoaderRoute: typeof AuthenticatedAdminHarnessOverviewRouteImport;
-      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute;
-    };
+      id: '/_authenticated/admin/harness/overview'
+      path: '/overview'
+      fullPath: '/admin/harness/overview'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessOverviewRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
     '/_authenticated/admin/harness/live': {
-      id: '/_authenticated/admin/harness/live';
-      path: '/live';
-      fullPath: '/admin/harness/live';
-      preLoaderRoute: typeof AuthenticatedAdminHarnessLiveRouteImport;
-      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute;
-    };
+      id: '/_authenticated/admin/harness/live'
+      path: '/live'
+      fullPath: '/admin/harness/live'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessLiveRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
     '/_authenticated/admin/harness/evals': {
-      id: '/_authenticated/admin/harness/evals';
-      path: '/evals';
-      fullPath: '/admin/harness/evals';
-      preLoaderRoute: typeof AuthenticatedAdminHarnessEvalsRouteImport;
-      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute;
-    };
+      id: '/_authenticated/admin/harness/evals'
+      path: '/evals'
+      fullPath: '/admin/harness/evals'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessEvalsRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
     '/_authenticated/admin/harness/audit': {
-      id: '/_authenticated/admin/harness/audit';
-      path: '/audit';
-      fullPath: '/admin/harness/audit';
-      preLoaderRoute: typeof AuthenticatedAdminHarnessAuditRouteImport;
-      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute;
-    };
+      id: '/_authenticated/admin/harness/audit'
+      path: '/audit'
+      fullPath: '/admin/harness/audit'
+      preLoaderRoute: typeof AuthenticatedAdminHarnessAuditRouteImport
+      parentRoute: typeof AuthenticatedAdminHarnessRouteRoute
+    }
   }
 }
 
 interface AuthenticatedAdminHarnessRouteRouteChildren {
-  AuthenticatedAdminHarnessAuditRoute: typeof AuthenticatedAdminHarnessAuditRoute;
-  AuthenticatedAdminHarnessEvalsRoute: typeof AuthenticatedAdminHarnessEvalsRoute;
-  AuthenticatedAdminHarnessLiveRoute: typeof AuthenticatedAdminHarnessLiveRoute;
-  AuthenticatedAdminHarnessOverviewRoute: typeof AuthenticatedAdminHarnessOverviewRoute;
-  AuthenticatedAdminHarnessPolicyRoute: typeof AuthenticatedAdminHarnessPolicyRoute;
-  AuthenticatedAdminHarnessWorkflowsRoute: typeof AuthenticatedAdminHarnessWorkflowsRoute;
-  AuthenticatedAdminHarnessIndexRoute: typeof AuthenticatedAdminHarnessIndexRoute;
+  AuthenticatedAdminHarnessAuditRoute: typeof AuthenticatedAdminHarnessAuditRoute
+  AuthenticatedAdminHarnessEvalsRoute: typeof AuthenticatedAdminHarnessEvalsRoute
+  AuthenticatedAdminHarnessLiveRoute: typeof AuthenticatedAdminHarnessLiveRoute
+  AuthenticatedAdminHarnessOverviewRoute: typeof AuthenticatedAdminHarnessOverviewRoute
+  AuthenticatedAdminHarnessPolicyRoute: typeof AuthenticatedAdminHarnessPolicyRoute
+  AuthenticatedAdminHarnessWorkflowsRoute: typeof AuthenticatedAdminHarnessWorkflowsRoute
+  AuthenticatedAdminHarnessIndexRoute: typeof AuthenticatedAdminHarnessIndexRoute
 }
 
-const AuthenticatedAdminHarnessRouteRouteChildren: AuthenticatedAdminHarnessRouteRouteChildren = {
-  AuthenticatedAdminHarnessAuditRoute: AuthenticatedAdminHarnessAuditRoute,
-  AuthenticatedAdminHarnessEvalsRoute: AuthenticatedAdminHarnessEvalsRoute,
-  AuthenticatedAdminHarnessLiveRoute: AuthenticatedAdminHarnessLiveRoute,
-  AuthenticatedAdminHarnessOverviewRoute: AuthenticatedAdminHarnessOverviewRoute,
-  AuthenticatedAdminHarnessPolicyRoute: AuthenticatedAdminHarnessPolicyRoute,
-  AuthenticatedAdminHarnessWorkflowsRoute: AuthenticatedAdminHarnessWorkflowsRoute,
-  AuthenticatedAdminHarnessIndexRoute: AuthenticatedAdminHarnessIndexRoute,
-};
+const AuthenticatedAdminHarnessRouteRouteChildren: AuthenticatedAdminHarnessRouteRouteChildren =
+  {
+    AuthenticatedAdminHarnessAuditRoute: AuthenticatedAdminHarnessAuditRoute,
+    AuthenticatedAdminHarnessEvalsRoute: AuthenticatedAdminHarnessEvalsRoute,
+    AuthenticatedAdminHarnessLiveRoute: AuthenticatedAdminHarnessLiveRoute,
+    AuthenticatedAdminHarnessOverviewRoute:
+      AuthenticatedAdminHarnessOverviewRoute,
+    AuthenticatedAdminHarnessPolicyRoute: AuthenticatedAdminHarnessPolicyRoute,
+    AuthenticatedAdminHarnessWorkflowsRoute:
+      AuthenticatedAdminHarnessWorkflowsRoute,
+    AuthenticatedAdminHarnessIndexRoute: AuthenticatedAdminHarnessIndexRoute,
+  }
 
-const AuthenticatedAdminHarnessRouteRouteWithChildren = AuthenticatedAdminHarnessRouteRoute._addFileChildren(
-  AuthenticatedAdminHarnessRouteRouteChildren,
-);
+const AuthenticatedAdminHarnessRouteRouteWithChildren =
+  AuthenticatedAdminHarnessRouteRoute._addFileChildren(
+    AuthenticatedAdminHarnessRouteRouteChildren,
+  )
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedPromptsRoute: typeof AuthenticatedPromptsRoute;
-  AuthenticatedVoiceProfileRoute: typeof AuthenticatedVoiceProfileRoute;
-  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute;
-  AuthenticatedAdminHarnessRouteRoute: typeof AuthenticatedAdminHarnessRouteRouteWithChildren;
-  AuthenticatedAdminAiModelsRoute: typeof AuthenticatedAdminAiModelsRoute;
-  AuthenticatedAdminAudioPipelinesRoute: typeof AuthenticatedAdminAudioPipelinesRoute;
-  AuthenticatedAdminAuditLogsRoute: typeof AuthenticatedAdminAuditLogsRoute;
-  AuthenticatedAdminConfigurationsRoute: typeof AuthenticatedAdminConfigurationsRoute;
-  AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute;
-  AuthenticatedAdminDnaReportsRoute: typeof AuthenticatedAdminDnaReportsRoute;
-  AuthenticatedAdminJobsRoute: typeof AuthenticatedAdminJobsRoute;
-  AuthenticatedAdminPromptsRoute: typeof AuthenticatedAdminPromptsRoute;
-  AuthenticatedAdminQueuesRoute: typeof AuthenticatedAdminQueuesRoute;
-  AuthenticatedAdminRateLimitsRoute: typeof AuthenticatedAdminRateLimitsRoute;
-  AuthenticatedAdminStorageRoute: typeof AuthenticatedAdminStorageRoute;
-  AuthenticatedAdminStudioRoute: typeof AuthenticatedAdminStudioRoute;
-  AuthenticatedAdminSystemHealthRoute: typeof AuthenticatedAdminSystemHealthRoute;
-  AuthenticatedAdminTenantsRoute: typeof AuthenticatedAdminTenantsRoute;
-  AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute;
-  AuthenticatedAudioJobTranscriptionRoute: typeof AuthenticatedAudioJobTranscriptionRoute;
-  AuthenticatedAudioLiveTranscriptionRoute: typeof AuthenticatedAudioLiveTranscriptionRoute;
-  AuthenticatedConsultationIdRoute: typeof AuthenticatedConsultationIdRoute;
-  AuthenticatedInstallationNoiseFilterRoute: typeof AuthenticatedInstallationNoiseFilterRoute;
-  AuthenticatedInstallationRoomRoute: typeof AuthenticatedInstallationRoomRoute;
-  AuthenticatedInstallationSttRoute: typeof AuthenticatedInstallationSttRoute;
-  AuthenticatedInstallationVadRoute: typeof AuthenticatedInstallationVadRoute;
-  AuthenticatedPlaygroundOverviewRoute: typeof AuthenticatedPlaygroundOverviewRoute;
-  AuthenticatedSummarizationPreSummaryRoute: typeof AuthenticatedSummarizationPreSummaryRoute;
-  AuthenticatedSummarizationSummaryRoute: typeof AuthenticatedSummarizationSummaryRoute;
-  AuthenticatedClinicalWorkspaceIndexRoute: typeof AuthenticatedClinicalWorkspaceIndexRoute;
-  AuthenticatedConsultationIndexRoute: typeof AuthenticatedConsultationIndexRoute;
-  AuthenticatedDnaWritingStyleIndexRoute: typeof AuthenticatedDnaWritingStyleIndexRoute;
-  AuthenticatedInstallationIndexRoute: typeof AuthenticatedInstallationIndexRoute;
-  AuthenticatedIntroductionIndexRoute: typeof AuthenticatedIntroductionIndexRoute;
+  AuthenticatedPromptsRoute: typeof AuthenticatedPromptsRoute
+  AuthenticatedVoiceProfileRoute: typeof AuthenticatedVoiceProfileRoute
+  AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAdminHarnessRouteRoute: typeof AuthenticatedAdminHarnessRouteRouteWithChildren
+  AuthenticatedAdminAiModelsRoute: typeof AuthenticatedAdminAiModelsRoute
+  AuthenticatedAdminAudioPipelinesRoute: typeof AuthenticatedAdminAudioPipelinesRoute
+  AuthenticatedAdminAuditLogsRoute: typeof AuthenticatedAdminAuditLogsRoute
+  AuthenticatedAdminConfigurationsRoute: typeof AuthenticatedAdminConfigurationsRoute
+  AuthenticatedAdminDepartmentsRoute: typeof AuthenticatedAdminDepartmentsRoute
+  AuthenticatedAdminDnaReportsRoute: typeof AuthenticatedAdminDnaReportsRoute
+  AuthenticatedAdminJobsRoute: typeof AuthenticatedAdminJobsRoute
+  AuthenticatedAdminPromptsRoute: typeof AuthenticatedAdminPromptsRoute
+  AuthenticatedAdminQueuesRoute: typeof AuthenticatedAdminQueuesRoute
+  AuthenticatedAdminRateLimitsRoute: typeof AuthenticatedAdminRateLimitsRoute
+  AuthenticatedAdminStorageRoute: typeof AuthenticatedAdminStorageRoute
+  AuthenticatedAdminStudioRoute: typeof AuthenticatedAdminStudioRoute
+  AuthenticatedAdminSystemHealthRoute: typeof AuthenticatedAdminSystemHealthRoute
+  AuthenticatedAdminTenantsRoute: typeof AuthenticatedAdminTenantsRoute
+  AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedAudioJobTranscriptionRoute: typeof AuthenticatedAudioJobTranscriptionRoute
+  AuthenticatedAudioLiveTranscriptionRoute: typeof AuthenticatedAudioLiveTranscriptionRoute
+  AuthenticatedConsultationIdRoute: typeof AuthenticatedConsultationIdRoute
+  AuthenticatedInstallationNoiseFilterRoute: typeof AuthenticatedInstallationNoiseFilterRoute
+  AuthenticatedInstallationRoomRoute: typeof AuthenticatedInstallationRoomRoute
+  AuthenticatedInstallationSttRoute: typeof AuthenticatedInstallationSttRoute
+  AuthenticatedInstallationVadRoute: typeof AuthenticatedInstallationVadRoute
+  AuthenticatedPlaygroundOverviewRoute: typeof AuthenticatedPlaygroundOverviewRoute
+  AuthenticatedSummarizationPreSummaryRoute: typeof AuthenticatedSummarizationPreSummaryRoute
+  AuthenticatedSummarizationSummaryRoute: typeof AuthenticatedSummarizationSummaryRoute
+  AuthenticatedClinicalWorkspaceIndexRoute: typeof AuthenticatedClinicalWorkspaceIndexRoute
+  AuthenticatedConsultationIndexRoute: typeof AuthenticatedConsultationIndexRoute
+  AuthenticatedDnaWritingStyleIndexRoute: typeof AuthenticatedDnaWritingStyleIndexRoute
+  AuthenticatedInstallationIndexRoute: typeof AuthenticatedInstallationIndexRoute
+  AuthenticatedIntroductionIndexRoute: typeof AuthenticatedIntroductionIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPromptsRoute: AuthenticatedPromptsRoute,
   AuthenticatedVoiceProfileRoute: AuthenticatedVoiceProfileRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
-  AuthenticatedAdminHarnessRouteRoute: AuthenticatedAdminHarnessRouteRouteWithChildren,
+  AuthenticatedAdminHarnessRouteRoute:
+    AuthenticatedAdminHarnessRouteRouteWithChildren,
   AuthenticatedAdminAiModelsRoute: AuthenticatedAdminAiModelsRoute,
   AuthenticatedAdminAudioPipelinesRoute: AuthenticatedAdminAudioPipelinesRoute,
   AuthenticatedAdminAuditLogsRoute: AuthenticatedAdminAuditLogsRoute,
@@ -1008,24 +1050,32 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminSystemHealthRoute: AuthenticatedAdminSystemHealthRoute,
   AuthenticatedAdminTenantsRoute: AuthenticatedAdminTenantsRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
-  AuthenticatedAudioJobTranscriptionRoute: AuthenticatedAudioJobTranscriptionRoute,
-  AuthenticatedAudioLiveTranscriptionRoute: AuthenticatedAudioLiveTranscriptionRoute,
+  AuthenticatedAudioJobTranscriptionRoute:
+    AuthenticatedAudioJobTranscriptionRoute,
+  AuthenticatedAudioLiveTranscriptionRoute:
+    AuthenticatedAudioLiveTranscriptionRoute,
   AuthenticatedConsultationIdRoute: AuthenticatedConsultationIdRoute,
-  AuthenticatedInstallationNoiseFilterRoute: AuthenticatedInstallationNoiseFilterRoute,
+  AuthenticatedInstallationNoiseFilterRoute:
+    AuthenticatedInstallationNoiseFilterRoute,
   AuthenticatedInstallationRoomRoute: AuthenticatedInstallationRoomRoute,
   AuthenticatedInstallationSttRoute: AuthenticatedInstallationSttRoute,
   AuthenticatedInstallationVadRoute: AuthenticatedInstallationVadRoute,
   AuthenticatedPlaygroundOverviewRoute: AuthenticatedPlaygroundOverviewRoute,
-  AuthenticatedSummarizationPreSummaryRoute: AuthenticatedSummarizationPreSummaryRoute,
-  AuthenticatedSummarizationSummaryRoute: AuthenticatedSummarizationSummaryRoute,
-  AuthenticatedClinicalWorkspaceIndexRoute: AuthenticatedClinicalWorkspaceIndexRoute,
+  AuthenticatedSummarizationPreSummaryRoute:
+    AuthenticatedSummarizationPreSummaryRoute,
+  AuthenticatedSummarizationSummaryRoute:
+    AuthenticatedSummarizationSummaryRoute,
+  AuthenticatedClinicalWorkspaceIndexRoute:
+    AuthenticatedClinicalWorkspaceIndexRoute,
   AuthenticatedConsultationIndexRoute: AuthenticatedConsultationIndexRoute,
-  AuthenticatedDnaWritingStyleIndexRoute: AuthenticatedDnaWritingStyleIndexRoute,
+  AuthenticatedDnaWritingStyleIndexRoute:
+    AuthenticatedDnaWritingStyleIndexRoute,
   AuthenticatedInstallationIndexRoute: AuthenticatedInstallationIndexRoute,
   AuthenticatedIntroductionIndexRoute: AuthenticatedIntroductionIndexRoute,
-};
+}
 
-const AuthenticatedRouteRouteWithChildren = AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren);
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
@@ -1034,5 +1084,7 @@ const rootRouteChildren: RootRouteChildren = {
   errors403Route: errors403Route,
   errors404Route: errors404Route,
   errors500Route: errors500Route,
-};
-export const routeTree = rootRouteImport._addFileChildren(rootRouteChildren)._addFileTypes<FileRouteTypes>();
+}
+export const routeTree = rootRouteImport
+  ._addFileChildren(rootRouteChildren)
+  ._addFileTypes<FileRouteTypes>()

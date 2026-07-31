@@ -10,8 +10,12 @@ import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { ByoCredentialCard, CLOUD_PROVIDERS } from './byo-credential-card';
 import { EffectiveHarnessPolicyCard } from './effective-harness-policy-card';
 import { EffectiveModelsTable } from './effective-models-table';
+import { SmrModelsSection } from './smr-models-section';
 
-const TAB_VALUES = ['effective', 'credentials'] as const;
+const TAB_VALUES = ['effective', 'smr', 'credentials'] as const;
+
+/** Tabs whose content mutates tenant data — they pin the "Acting on «Tenant»" banner. */
+const MUTATING_TABS = new Set<string>(['smr', 'credentials']);
 
 /** BYO credentials tab: one write-only, OCC-guarded card per cloud provider. */
 function CredentialsTab() {
@@ -35,15 +39,19 @@ function CredentialsTab() {
  * Tenant "AI Configuration" screen (/ai-configuration, tier 30-49).
  *
  * Replaces the dead-end EmptyState that used to live at
- * `/ai-model-defaults`. Two tabs, two different postures:
+ * `/ai-model-defaults`. Three tabs, three postures:
  *
- *  - "Effective models" — READ-ONLY visibility over all 9 AI task keys, PLUS
- *    (TASK-547 requirement 4 / OD-2) the effective HarnessPolicy knobs with
- *    a per-key "who controls this" label. Model selection stays a
- *    GLOBAL_ADMIN-only write and HarnessPolicy's tenant-tier knobs are
+ *  - "Effective models" — READ-ONLY visibility over the guardrail/nlp/harness
+ *    task keys, PLUS (TASK-547 requirement 4 / OD-2) the effective HarnessPolicy
+ *    knobs with a per-key "who controls this" label. Selection for these tasks
+ *    stays a GLOBAL_ADMIN-only write and HarnessPolicy's tenant-tier knobs are
  *    edited from `/harness/policy` (the one authoritative editor, rule 13) —
  *    there are deliberately no pickers or save controls here; the tenant
  *    sees which model/value serves each task and which tier decided it.
+ *  - "SMR models" — the tenant's OWN summarization selection (TASK-588): primary
+ *    + optional fallback model per live/finalize route, saved with OCC and
+ *    CLS-pinned to the working tenant. This tab mutates, so the "Acting on
+ *    «Tenant»" banner is pinned.
  *  - "Cloud credentials" — the tenant's OWN write surface:
  *    BYO Azure/Bedrock endpoints + write-only keys. This tab mutates, so the
  *    "Acting on «Tenant»" banner is pinned for elevated callers (rule 13).
@@ -63,12 +71,13 @@ export function TenantAiConfigurationScreen() {
     >
       <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'effective' ? null : next)}>
         <ScreenTemplate
-          header={<PageHeader title="AI Configuration" meta={<span>effective models &amp; bring-your-own cloud credentials</span>} />}
-          // The credentials tab mutates tenant data — name the tenant it acts on.
-          statusBanner={tab === 'credentials' ? <TenantScopeBanner /> : undefined}
+          header={<PageHeader title="AI Configuration" meta={<span>effective models, summarization selection &amp; bring-your-own cloud credentials</span>} />}
+          // The SMR and credentials tabs mutate tenant data — name the tenant they act on.
+          statusBanner={MUTATING_TABS.has(tab) ? <TenantScopeBanner /> : undefined}
           tabs={
             <TabsList variant="line">
               <TabsTrigger value="effective">Effective models</TabsTrigger>
+              <TabsTrigger value="smr">SMR models</TabsTrigger>
               <TabsTrigger value="credentials">Cloud credentials</TabsTrigger>
             </TabsList>
           }
@@ -76,7 +85,7 @@ export function TenantAiConfigurationScreen() {
             <StatusFooter
               end={
                 <span aria-hidden className="font-mono">
-                  models: platform-managed · credentials: tenant-owned
+                  guardrail/nlp/harness: platform-managed · smr + credentials: tenant-owned
                 </span>
               }
             />
@@ -85,6 +94,9 @@ export function TenantAiConfigurationScreen() {
           <TabsContent value="effective" className="flex flex-col gap-6">
             <EffectiveModelsTable />
             <EffectiveHarnessPolicyCard />
+          </TabsContent>
+          <TabsContent value="smr">
+            <SmrModelsSection />
           </TabsContent>
           <TabsContent value="credentials">
             <CredentialsTab />

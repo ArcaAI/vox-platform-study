@@ -12,7 +12,7 @@
  * interceptor + the cross-tenant e2e spec, not here.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TranscriptionJobController } from '../transcription-job.controller';
 
 const createMockJobService = () => ({ createBatchJob: vi.fn(), failJob: vi.fn() });
@@ -21,6 +21,8 @@ const createMockSessionService = () => ({
   createSession: vi.fn().mockResolvedValue({ sessionId: 'sess-1', status: 'active', maxConcurrent: 10, currentActive: 1 }),
   removeSession: vi.fn(),
   switchToFallback: vi.fn().mockResolvedValue(undefined),
+  switchProvider: vi.fn().mockResolvedValue(undefined),
+  getLanguageModes: vi.fn().mockResolvedValue({ modes: [] }),
 });
 const createMockCls = () => ({ get: vi.fn().mockReturnValue({ id: 'user-1', tenantId: 'tenant-1' }) });
 const createMockBlobStorage = () => ({ resolveDescriptor: vi.fn().mockResolvedValue(null), putObject: vi.fn() });
@@ -112,6 +114,27 @@ describe('TranscriptionJobController.createStreamSession — STT fallback inject
     expect('providerOverrides' in payload).toBe(false);
     expect('fallbackPipelineId' in payload).toBe(false);
   });
+
+  it('forwards the end-user languageMode to the session payload (TASK-587)', async () => {
+    const { controller, mocks } = build();
+    await controller.createStreamSession({ pipelineId: 'primary-pipe', languageMode: 'ml-en' } as never);
+    const payload = mocks.sessionService.createSession.mock.calls[0][0];
+    expect(payload.languageMode).toBe('ml-en');
+  });
+});
+
+describe('TranscriptionJobController.getLanguageModes (TASK-587)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('delegates to the streaming session service catalog', async () => {
+    const catalog = {
+      modes: [{ id: 'ml-en', label: 'Malayalam + English', kind: 'code_switch', primaryLanguage: 'ml', secondaryLanguage: 'en', supportedEngines: ['SARVAM'] }],
+    };
+    const { controller, mocks } = build();
+    mocks.sessionService.getLanguageModes.mockResolvedValue(catalog);
+    await expect(controller.getLanguageModes()).resolves.toEqual(catalog);
+    expect(mocks.sessionService.getLanguageModes).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('TranscriptionJobController.switchStreamSessionToFallback', () => {
@@ -140,5 +163,33 @@ describe('TranscriptionJobController.switchStreamSessionToFallback', () => {
     const { controller, mocks } = build();
     mocks.sessionService.switchToFallback.mockRejectedValue({ response: { status: 409 } });
     await expect(controller.switchStreamSessionToFallback('sess-1')).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('TranscriptionJobController.switchStreamSessionToPrimary (TASK-586 Lane H)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('requests the primary-direction switch and returns {switched:true} on the happy path', async () => {
+    const { controller, mocks } = build();
+    await expect(controller.switchStreamSessionToPrimary('sess-1')).resolves.toEqual({ switched: true });
+    expect(mocks.sessionService.switchProvider).toHaveBeenCalledWith('sess-1', 'primary');
+  });
+
+  it('needs no fallback-config precheck (never reads sttConfig.getEffective)', async () => {
+    const { controller, mocks } = build();
+    await controller.switchStreamSessionToPrimary('sess-1');
+    expect(mocks.sttConfig.getEffective).not.toHaveBeenCalled();
+  });
+
+  it('maps an apps/stt 409 (already on primary / primary never loaded) to a ConflictException', async () => {
+    const { controller, mocks } = build();
+    mocks.sessionService.switchProvider.mockRejectedValue({ response: { status: 409 } });
+    await expect(controller.switchStreamSessionToPrimary('sess-1')).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('maps an apps/stt 404 (unknown session) to a NotFoundException', async () => {
+    const { controller, mocks } = build();
+    mocks.sessionService.switchProvider.mockRejectedValue({ response: { status: 404 } });
+    await expect(controller.switchStreamSessionToPrimary('sess-1')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

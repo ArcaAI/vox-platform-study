@@ -351,6 +351,76 @@ describe('HarnessPolicyService', () => {
     });
   });
 
+  // TASK-588 — tenant-configurable SMR fallback selection (fail-OPEN).
+  describe('resolveSmrFallbackSelection', () => {
+    it('resolves the smr.finalize.fallback key to {provider, sourceUri} when a model is enabled', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockResolvedValue({
+        taskKey: 'smr.finalize.fallback',
+        modelSlug: 'lms-gemma-4-e2b-it-qat',
+        source: 'tenant',
+        model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
+      });
+
+      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.finalize.fallback', 'tenant-1');
+      expect(result).toEqual({ provider: 'lm-studio', model: 'gemma-4-e2b-it-qat' });
+      // Fallback resolution never consults the legacy policy cascade.
+      expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
+    });
+
+    it('maps the live task to the smr.live.fallback key', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockResolvedValue({
+        model: { provider: 'lm-studio', sourceUri: 'gemma-4-e2b-it-qat' },
+      });
+
+      await svc.resolveSmrFallbackSelection('tenant-1', 'live');
+
+      expect(aiTaskDefaultService.getEffective).toHaveBeenCalledWith('smr.live.fallback', 'tenant-1');
+    });
+
+    it('normalizes an azure provider to azure-openai', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockResolvedValue({
+        model: { provider: 'azure', sourceUri: 'gpt-4o-mini' },
+      });
+
+      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+
+      expect(result).toEqual({ provider: 'azure-openai', model: 'gpt-4o-mini' });
+    });
+
+    it('returns null (fail-open) when the fallback key resolves to no enabled model', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockResolvedValue({ model: null });
+
+      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+
+      expect(result).toBeNull();
+      // Fail-OPEN: the legacy cascade is NOT a fallback for the fallback key.
+      expect(policyRepository.findForExactTenant).not.toHaveBeenCalled();
+    });
+
+    it('returns null (fail-open) when the AiTaskDefault lookup throws — never propagates', async () => {
+      const svc = makeServiceWithAiTaskDefault();
+      aiTaskDefaultService.getEffective.mockRejectedValue(new Error('unknown task key'));
+
+      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null when the AiTaskDefault service is not wired (fixtures)', async () => {
+      const svc = makeService();
+
+      const result = await svc.resolveSmrFallbackSelection('tenant-1');
+
+      expect(result).toBeNull();
+    });
+  });
+
   // agentic loop knob cascade (null ⇒ env default).
   describe('agentic loop knobs', () => {
     it('defaults every agentic knob to null on the code-default response', async () => {

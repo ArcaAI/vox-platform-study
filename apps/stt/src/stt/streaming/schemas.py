@@ -254,14 +254,21 @@ class SegmentResult:
 class SessionControl:
     """A control command sent via ``stt:control:{session_id}``.
 
-    Actions: finalize, pause, resume, cancel.
+    Actions: finalize, pause, resume, cancel, switch_to_fallback.
+
+    ``target`` (TASK-586) is only meaningful for ``switch_to_fallback`` and
+    names the engine to switch to (``'primary'`` or ``'fallback'``). It defaults
+    to ``'fallback'`` so an older producer that omits the field (or any
+    non-switch action) is read as a switch to the fallback — the original
+    one-way behaviour.
     """
 
     action: ControlAction
+    target: str = "fallback"
 
     def to_redis_dict(self) -> dict[str, str]:
         """Serialize to Redis Stream field dict for ``XADD``."""
-        return {"action": self.action.value}
+        return {"action": self.action.value, "target": self.target}
 
     @classmethod
     def from_redis_dict(cls, d: dict[str | bytes, str | bytes]) -> SessionControl:
@@ -275,7 +282,11 @@ class SessionControl:
             raw = d.get(b"action")
         if raw is None:
             raise KeyError("Missing required field: action")
-        return cls(action=ControlAction(_str(raw)))
+        raw_target = d.get("target")
+        if raw_target is None:
+            raw_target = d.get(b"target")
+        target = _str(raw_target) if raw_target is not None else "fallback"
+        return cls(action=ControlAction(_str(raw)), target=target)
 
 
 # ---------------------------------------------------------------------------

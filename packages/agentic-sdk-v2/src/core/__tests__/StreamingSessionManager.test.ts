@@ -678,4 +678,41 @@ describe('StreamingSessionManager', () => {
       await expect(manager.switchToFallback()).rejects.toMatchObject({ code: 'NOT_FOUND' });
     });
   });
+
+  // ===========================================================================
+  // switchProvider('primary') — native 2-way switch (TASK-586 Lane H)
+  // ===========================================================================
+
+  describe("switchProvider('primary') — native primary-direction switch", () => {
+    async function createSession(): Promise<void> {
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({ sessionId: 'sess-switch', wsUrl: '/ws/stt/stream', status: 'active', maxConcurrent: 5, currentActive: 1 }),
+      );
+      await manager.createSession({ pipelineId: 'primary' });
+    }
+
+    it('no longer throws in native mode — POSTs the switch-to-primary endpoint', async () => {
+      await createSession();
+      mockFetch.mockClear();
+      mockFetch.mockResolvedValueOnce(createMockResponse({ switched: true }));
+
+      await manager.switchProvider('primary');
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toContain(STT_ENDPOINTS.SWITCH_TO_PRIMARY('sess-switch'));
+    });
+
+    it('throws when there is no active session', async () => {
+      await expect(manager.switchProvider('primary')).rejects.toThrow(/no active streaming session/i);
+    });
+
+    it('propagates a backend error so the caller can classify it', async () => {
+      await createSession();
+      mockFetch.mockClear();
+      mockFetch.mockResolvedValueOnce(createMockErrorResponse(404, 'Not Found'));
+
+      await expect(manager.switchProvider('primary')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    });
+  });
 });

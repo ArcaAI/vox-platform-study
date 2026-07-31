@@ -19,8 +19,18 @@ import { AiProviderConnectionResponse, IProviderConnectionService, UpsertAiProvi
 import { PipelineResponse, PipelineService } from '../stt/pipeline';
 import { ITenantSttConfigService } from './ITenantSttConfigService';
 import { TenantSttConfigDtoMapper } from './tenant-stt-config.dto.mapper';
-import { EffectiveSttConfigResponse, SetSttCredentialRequest, SetSttFallbackRequest, SttCredentialResponse, TenantSttConfigResponse } from './dto';
 import {
+  EffectiveSttConfigResponse,
+  SetSttCredentialRequest,
+  SetSttFallbackRequest,
+  SttCredentialResponse,
+  TenantSttConfigResponse,
+  TestSttCredentialRequest,
+  TestSttCredentialResponse,
+} from './dto';
+import {
+  BATCH_ONLY_STT_FORMATS,
+  BATCH_ONLY_STT_PROVIDERS,
   BYO_STT_PROVIDERS,
   CLOUD_STT_FORMATS,
   CLOUD_STT_PROVIDERS,
@@ -31,6 +41,12 @@ import {
 
 /** The capability discriminator this service resolves credentials under (C1/C2/C5). */
 const STT_SERVICE = 'stt' as const;
+
+/** "Test connection" probe timeout — generous enough for a slow link, short enough for a synchronous admin click. */
+const TEST_CONNECTION_TIMEOUT_MS = 5_000;
+
+/** Loopback / RFC1918 / link-local hostnames a tenant-supplied test target may not resolve to literally. */
+const PRIVATE_HOST_PATTERN = /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|0\.0\.0\.0$|\[?::1]?$|localhost$)/i;
 
 @Injectable()
 export class TenantSttConfigService extends BaseService implements ITenantSttConfigService {
@@ -167,6 +183,11 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
       if (!CLOUD_STT_PROVIDERS.has(provider)) {
         throw new BadRequestException(`Fallback pipeline '${pipeline.slug}' provider '${provider}' is not a cloud STT engine`);
       }
+      if (BATCH_ONLY_STT_PROVIDERS.has(provider)) {
+        throw new BadRequestException(
+          `Fallback pipeline '${pipeline.slug}' provider '${provider}' is batch-only and cannot be a live-streaming fallback`,
+        );
+      }
       return;
     }
     // Slug reference — resolve the AiModel (tenant copy, else SYSTEM catalog).
@@ -178,14 +199,21 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
     if (!isCloud) {
       throw new BadRequestException(`Fallback pipeline '${pipeline.slug}' is not cloud-engine-backed (ASR '${asrRef}')`);
     }
+    if (BATCH_ONLY_STT_FORMATS.has(model.format)) {
+      throw new BadRequestException(
+        `Fallback pipeline '${pipeline.slug}' engine (ASR '${asrRef}') is batch-only and cannot be a live-streaming fallback`,
+      );
+    }
   }
 
   /**
    * Non-throwing counterpart of {@link assertCloudBacked}: `true` when the
-   * pipeline's ASR engine is cloud-backed. Used to filter the fallback-candidate
-   * list (the picker should only offer valid targets, not raise on the invalid
-   * ones). Same classification rules — `provider::model` prefix or the resolved
-   * AiModel's compute type/format.
+   * pipeline's ASR engine is a valid live-streaming fallback — cloud-backed AND
+   * NOT batch-only. Used to filter the fallback-candidate list (the picker should
+   * only offer valid targets, not raise on the invalid ones). Same classification
+   * rules — `provider::model` prefix or the resolved AiModel's compute type/format
+   * — plus the batch-only exclusion (e.g. Azure Foundry / MAI-Transcribe), so a
+   * batch-only engine never appears as a live fallback the switch can't perform.
    */
   private async isPipelineCloudBacked(tenantId: string, pipeline: PipelineResponse): Promise<boolean> {
     const asrRef = this.extractAsrRef(pipeline.configYaml);
@@ -194,13 +222,14 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
     }
     if (asrRef.includes('::')) {
       const provider = asrRef.split('::')[0].trim().toLowerCase();
-      return CLOUD_STT_PROVIDERS.has(provider);
+      return CLOUD_STT_PROVIDERS.has(provider) && !BATCH_ONLY_STT_PROVIDERS.has(provider);
     }
     const model = (await this.aiModelRepository.findBySlug(tenantId, asrRef)) ?? (await this.aiModelRepository.findBySlug(SYSTEM_TENANT_ID, asrRef));
     if (!model) {
       return false;
     }
-    return model.computeType === 'cloud' || CLOUD_STT_FORMATS.has(model.format);
+    const isCloud = model.computeType === 'cloud' || CLOUD_STT_FORMATS.has(model.format);
+    return isCloud && !BATCH_ONLY_STT_FORMATS.has(model.format);
   }
 
   /**
@@ -305,6 +334,139 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
    */
   async removeCredential(tenantId: string, provider: string): Promise<void> {
     await this.providerConnectionService.deleteRow(STT_SERVICE, provider, tenantId);
+  }
+
+  // ─────────────────────── ephemeral "Test connection" probe ───────────────────────
+
+  /**
+   * Validate an apiKey/region/endpoint combination against the live provider
+   * BEFORE it is saved. Never persists anything, never touches Vault, never
+   * logs the key. Mirrors `TenantIdpConfigService.testConnection`'s house
+   * pattern: a real auth-only probe where the provider exposes one (OpenAI's
+   * `/models`, classic Azure Speech's STS token issuance), a reachability-only
+   * "config-consistency smoke test" where it doesn't (Azure Foundry, Sarvam —
+   * both require a real audio payload to verify the key, per
+   * `apps/stt/src/stt/streaming/{sarvam,openai}_asr.py` /
+   * `apps/stt/src/stt/models/azure_foundry_loader.py`).
+   */
+  async testCredential(tenantId: string, provider: string, dto: TestSttCredentialRequest): Promise<TestSttCredentialResponse> {
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    if (!(BYO_STT_PROVIDERS as readonly string[]).includes(provider)) {
+      throw new BadRequestException(`Unsupported BYO provider '${provider}'. Expected: ${BYO_STT_PROVIDERS.join(', ')}`);
+    }
+    switch (provider) {
+      case 'openai':
+        return this.testOpenAiConnection(dto);
+      case 'azure-speech':
+        return this.testAzureSpeechConnection(dto);
+      case 'sarvam':
+        return this.testSarvamConnection(dto);
+      default:
+        throw new BadRequestException(`Unsupported BYO provider '${provider}'`);
+    }
+  }
+
+  /** Real auth-only probe: `GET {base_url}/models` with the bearer key. */
+  private async testOpenAiConnection(dto: TestSttCredentialRequest): Promise<TestSttCredentialResponse> {
+    const base = this.assertPublicHttpsUrl(dto.endpoint?.trim() || 'https://api.openai.com/v1', 'endpoint');
+    const target = new URL(`${base.origin}${base.pathname.replace(/\/$/, '')}/models`);
+    try {
+      const response = await fetch(target, {
+        headers: { Authorization: `Bearer ${dto.apiKey}` },
+        signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
+      });
+      if (response.ok) return { ok: true, message: 'Connected — key accepted' };
+      if (response.status === 401 || response.status === 403) return { ok: false, message: 'Rejected — invalid API key' };
+      return { ok: false, message: `Provider responded ${response.status}` };
+    } catch (error) {
+      return { ok: false, message: `Could not reach provider: ${this.probeErrorMessage(error)}` };
+    }
+  }
+
+  /**
+   * Classic Azure Speech (region present): a real auth-only probe via the STS
+   * token-issuance endpoint. Azure Foundry (endpoint present, no region): no
+   * auth-only route exists (the transcribe endpoint requires real audio), so
+   * this degrades to a reachability-only smoke test.
+   */
+  private async testAzureSpeechConnection(dto: TestSttCredentialRequest): Promise<TestSttCredentialResponse> {
+    const region = dto.region?.trim();
+    if (region) {
+      if (!/^[a-z0-9-]+$/i.test(region)) {
+        throw new BadRequestException('region must be a simple region slug (e.g. eastus)');
+      }
+      const target = `https://${region}.api.cognitive.microsoft.com/sts/v1.0/issuetoken`;
+      try {
+        const response = await fetch(target, {
+          method: 'POST',
+          headers: { 'Ocp-Apim-Subscription-Key': dto.apiKey, 'Content-Length': '0' },
+          signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
+        });
+        if (response.ok) return { ok: true, message: 'Connected — subscription key accepted' };
+        if (response.status === 401 || response.status === 403) return { ok: false, message: 'Rejected — invalid subscription key or region' };
+        return { ok: false, message: `Provider responded ${response.status}` };
+      } catch (error) {
+        return { ok: false, message: `Could not reach provider: ${this.probeErrorMessage(error)}` };
+      }
+    }
+
+    const endpoint = dto.endpoint?.trim();
+    if (endpoint) {
+      const url = this.assertPublicHttpsUrl(endpoint, 'endpoint');
+      try {
+        await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS) });
+        return { ok: true, message: 'Endpoint reachable — Foundry has no auth-only probe; the key is verified on first transcription' };
+      } catch (error) {
+        return { ok: false, message: `Could not reach endpoint: ${this.probeErrorMessage(error)}` };
+      }
+    }
+
+    throw new BadRequestException('Provide a region (classic Azure Speech) or an endpoint (Azure Foundry) to test');
+  }
+
+  /** No auth-only route is documented for Sarvam — reachability-only smoke test. */
+  private async testSarvamConnection(dto: TestSttCredentialRequest): Promise<TestSttCredentialResponse> {
+    const url = this.assertPublicHttpsUrl(dto.endpoint?.trim() || 'https://api.sarvam.ai', 'endpoint');
+    try {
+      const response = await fetch(url, {
+        method: 'HEAD',
+        headers: { 'api-subscription-key': dto.apiKey },
+        signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
+      });
+      if (response.status >= 500) return { ok: false, message: `Provider responded ${response.status}` };
+      return { ok: true, message: 'Endpoint reachable — Sarvam has no auth-only probe; the key is verified on first transcription' };
+    } catch (error) {
+      return { ok: false, message: `Could not reach provider: ${this.probeErrorMessage(error)}` };
+    }
+  }
+
+  /**
+   * SSRF guard for a tenant-supplied probe target: https only, and the
+   * hostname may not be a loopback/private/link-local address. Best-effort —
+   * it inspects the literal hostname, not DNS resolution — but this is an
+   * admin (tenant-manage-scoped) self-service probe of the TENANT'S OWN
+   * configuration, not attacker-controlled input from an untrusted caller.
+   */
+  private assertPublicHttpsUrl(raw: string, fieldLabel: string): URL {
+    let url: URL;
+    try {
+      url = new URL(raw);
+    } catch {
+      throw new BadRequestException(`${fieldLabel} must be a valid URL`);
+    }
+    if (url.protocol !== 'https:') {
+      throw new BadRequestException(`${fieldLabel} must use https`);
+    }
+    if (PRIVATE_HOST_PATTERN.test(url.hostname)) {
+      throw new BadRequestException(`${fieldLabel} may not target a private/loopback address`);
+    }
+    return url;
+  }
+
+  private probeErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   /**

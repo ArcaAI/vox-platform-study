@@ -116,6 +116,55 @@ describe('SttCompatGateway', () => {
     });
   });
 
+  it('forwards a provider_switched status frame, passing active and mapping is_fallback → isFallback', async () => {
+    const client = createSocket();
+    const results = new Subject();
+    const apiKeyService = {
+      extractApiKeyFromWebSocket: vi.fn().mockReturnValue('legacy-key'),
+      authenticateByRawKey: vi.fn().mockResolvedValue({ tenantId: 'tenant-1' }),
+    };
+    const sessionService = { getSessionStatus: vi.fn().mockResolvedValue({ sessionId: 'session-1', status: 'active' }) };
+    const bridgeService = {
+      subscribeToResults: vi.fn().mockReturnValue(results.asObservable()),
+      writeAudioFrame: vi.fn().mockResolvedValue(undefined),
+      writeControlCommand: vi.fn().mockResolvedValue(undefined),
+    };
+    const sessionBinding = {
+      lookup: vi.fn().mockResolvedValue('tenant-1'),
+      lookupSessionMeta: vi.fn().mockResolvedValue({ sampleRate: 16000 }),
+    };
+    const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
+
+    await gateway.handleConnection(client as any, {
+      url: '/stt?sessionId=session-1&key=legacy-key',
+      headers: {},
+      socket: { remoteAddress: '127.0.0.1' },
+    } as any);
+    (client.send as any).mockClear();
+
+    results.next({
+      type: 'status',
+      status: 'provider_switched',
+      from_pipeline: 'azure_speech_transcription',
+      to_pipeline: 'sarvam_transcription',
+      reason: 'user',
+      active: 'fallback',
+      is_fallback: '1',
+    });
+
+    const status = client.send.mock.calls
+      .map((call: unknown[]) => JSON.parse(call[0] as string))
+      .find((p: { data?: { status?: string } }) => p.data?.status === 'provider_switched');
+    expect(status.data).toMatchObject({
+      type: 'status',
+      status: 'provider_switched',
+      active: 'fallback',
+      is_fallback: '1',
+      isFallback: true,
+      session_id: 'session-1',
+    });
+  });
+
   it('rejects a socket when session ownership cannot be proven', async () => {
     const client = createSocket();
     const apiKeyService = {

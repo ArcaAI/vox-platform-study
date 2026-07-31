@@ -1,26 +1,39 @@
 /**
  * @vitest-environment jsdom
  *
- * TASK-568 — `useArcaSttProvider` (compat-native STT provider-switch surface).
+ * TASK-568 / TASK-586 Lane D — `useArcaSttProvider` (compat-native STT
+ * provider-switch surface, now a BIDIRECTIONAL toggle).
  *
- * Covers the §5 TDD plan for the new hook:
+ * Covers:
  *  1. pre-capture: fallbackAvailable false / activeProvider null; switchToFallback
- *     rejects FALLBACK_UNAVAILABLE (frozen ErrorInfo shape).
- *  2. user switch: idle → switching → switched; onProviderSwitched reason 'user';
- *     idempotent second call (no duplicate v2 call).
- *  3. v2 rejection: switchStatus 'failed'; onSwitchFailed SWITCH_FAILED; recoverable.
- *  4. auto switch (unsolicited fallback flip): onProviderSwitched reason 'auto'.
- *  5. append-only export surface + return-shape lock.
+ *     rejects FALLBACK_UNAVAILABLE (frozen ErrorInfo shape); switchToPipeline
+ *     rejects PIPELINE_UNAVAILABLE.
+ *  2. user switch to fallback: idle → switching → switched; onProviderSwitched
+ *     reason 'user'; idempotent second call (no duplicate v2 call).
+ *  3. user switch BACK to primary (TASK-586): idle → switching → switched;
+ *     onProviderSwitched fires for the fallback→primary direction too;
+ *     idempotent second call.
+ *  4. v2 rejection: switchStatus 'failed'; onSwitchFailed SWITCH_FAILED; recoverable.
+ *  5. auto switch (unsolicited fallback flip): onProviderSwitched reason 'auto'.
+ *  6. guarded when `enableProviderSwitch` is off: switchToPipeline still calls
+ *     through (the gating lives in `StreamingSessionManager`/`useArcaAudio`),
+ *     and a rejection from that layer surfaces as SWITCH_FAILED, not a crash.
+ *  7. append-only export surface + return-shape lock (additive members only).
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, expectTypeOf } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useArcaSttProvider, type UseArcaSttProviderReturn } from '../useArcaSttProvider';
 import { useArcaAudio } from '../../hooks/useArcaAudio';
+import { useCompatFeatureFlags } from '../ArcaCompatProvider';
 import * as compat from '../../compat';
 import type { ErrorInfo } from '../types';
 
 vi.mock('../../hooks/useArcaAudio', () => ({ useArcaAudio: vi.fn() }));
+vi.mock('../ArcaCompatProvider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../ArcaCompatProvider')>();
+  return { ...actual, useCompatFeatureFlags: vi.fn(() => ({ enableProviderSwitch: false })) };
+});
 
 type Pipeline = { id: string; name?: string; isFallback: boolean } | null;
 
@@ -28,7 +41,7 @@ interface AudioMock {
   isCapturing: boolean;
   activePipeline: Pipeline;
   sttConnectionState: string;
-  switchToFallback: ReturnType<typeof vi.fn>;
+  switchProvider: ReturnType<typeof vi.fn>;
 }
 
 let audioMock: AudioMock;
@@ -38,22 +51,30 @@ function installAudio(overrides: Partial<AudioMock> = {}) {
     isCapturing: false,
     activePipeline: null,
     sttConnectionState: 'connected',
-    switchToFallback: vi.fn().mockResolvedValue(undefined),
+    switchProvider: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   (useArcaAudio as unknown as ReturnType<typeof vi.fn>).mockReturnValue(audioMock);
 }
 
+function installFeatureFlags(enableProviderSwitch: boolean) {
+  (useCompatFeatureFlags as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ enableProviderSwitch });
+}
+
 describe('useArcaSttProvider', () => {
-  beforeEach(() => installAudio());
+  beforeEach(() => {
+    installAudio();
+    installFeatureFlags(false);
+  });
   afterEach(() => vi.restoreAllMocks());
 
-  it('before capture: no active provider, no fallback, switchToFallback rejects FALLBACK_UNAVAILABLE', async () => {
+  it('before capture: no active provider, no fallback, switchToFallback rejects FALLBACK_UNAVAILABLE, switchToPipeline rejects PIPELINE_UNAVAILABLE', async () => {
     const { result } = renderHook(() => useArcaSttProvider());
 
     expect(result.current.activeProvider).toBeNull();
     expect(result.current.fallbackAvailable).toBe(false);
     expect(result.current.isFallbackActive).toBe(false);
+    expect(result.current.usePipeline).toBe(true);
     expect(result.current.switchStatus).toBe('idle');
 
     let rejected: ErrorInfo | undefined;
@@ -63,22 +84,33 @@ describe('useArcaSttProvider', () => {
       });
     });
     expect(rejected).toMatchObject({ code: 'FALLBACK_UNAVAILABLE', category: 'processing' });
-    expect(audioMock.switchToFallback).not.toHaveBeenCalled();
+    expect(audioMock.switchProvider).not.toHaveBeenCalled();
+
+    let rejectedPipeline: ErrorInfo | undefined;
+    await act(async () => {
+      await result.current.switchToPipeline().catch((e: ErrorInfo) => {
+        rejectedPipeline = e;
+      });
+    });
+    expect(rejectedPipeline).toMatchObject({ code: 'PIPELINE_UNAVAILABLE', category: 'processing' });
+    expect(audioMock.switchProvider).not.toHaveBeenCalled();
   });
 
-  it('user switch: idle → switching → switched, onProviderSwitched reason "user", idempotent second call', async () => {
+  it('user switch to fallback: idle → switching → switched, onProviderSwitched reason "user", idempotent second call', async () => {
     const onProviderSwitched = vi.fn();
     installAudio({ isCapturing: true, activePipeline: { id: 'primary', name: 'Primary', isFallback: false } });
 
     const { result, rerender } = renderHook(() => useArcaSttProvider({ onProviderSwitched }));
     expect(result.current.fallbackAvailable).toBe(true);
+    expect(result.current.usePipeline).toBe(true);
 
     await act(async () => {
       await result.current.switchToFallback();
     });
     // Backend confirmation not observed yet — still 'switching'.
     expect(result.current.switchStatus).toBe('switching');
-    expect(audioMock.switchToFallback).toHaveBeenCalledTimes(1);
+    expect(audioMock.switchProvider).toHaveBeenCalledTimes(1);
+    expect(audioMock.switchProvider).toHaveBeenCalledWith('fallback', { useCompatEndpoint: false });
 
     // Backend `provider_switched` frame lands: the store flips activePipeline.
     audioMock.activePipeline = { id: 'fallback', name: 'Fallback', isFallback: true };
@@ -86,6 +118,7 @@ describe('useArcaSttProvider', () => {
 
     expect(result.current.switchStatus).toBe('switched');
     expect(result.current.isFallbackActive).toBe(true);
+    expect(result.current.usePipeline).toBe(false);
     expect(result.current.activeProvider).toEqual({ pipelineId: 'fallback', name: 'Fallback', isFallback: true });
     expect(result.current.fallbackAvailable).toBe(false);
     expect(onProviderSwitched).toHaveBeenCalledTimes(1);
@@ -102,13 +135,51 @@ describe('useArcaSttProvider', () => {
     await act(async () => {
       await result.current.switchToFallback();
     });
-    expect(audioMock.switchToFallback).toHaveBeenCalledTimes(1);
+    expect(audioMock.switchProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it('user switch BACK to primary (TASK-586): idle → switching → switched, onProviderSwitched fires, idempotent second call', async () => {
+    const onProviderSwitched = vi.fn();
+    installAudio({ isCapturing: true, activePipeline: { id: 'fallback', name: 'Fallback', isFallback: true } });
+    installFeatureFlags(true);
+
+    const { result, rerender } = renderHook(() => useArcaSttProvider({ onProviderSwitched }));
+    expect(result.current.usePipeline).toBe(false);
+    expect(result.current.isFallbackActive).toBe(true);
+
+    await act(async () => {
+      await result.current.switchToPipeline();
+    });
+    expect(result.current.switchStatus).toBe('switching');
+    expect(audioMock.switchProvider).toHaveBeenCalledTimes(1);
+    expect(audioMock.switchProvider).toHaveBeenCalledWith('primary', { useCompatEndpoint: true });
+
+    // Backend `provider_switched` frame lands, un-latched back to primary.
+    audioMock.activePipeline = { id: 'primary', name: 'Primary', isFallback: false };
+    act(() => rerender());
+
+    expect(result.current.switchStatus).toBe('switched');
+    expect(result.current.isFallbackActive).toBe(false);
+    expect(result.current.usePipeline).toBe(true);
+    expect(result.current.fallbackAvailable).toBe(true);
+    expect(onProviderSwitched).toHaveBeenCalledTimes(1);
+    expect(onProviderSwitched.mock.calls[0][0]).toMatchObject({
+      fromPipeline: { id: 'fallback' },
+      toPipeline: { id: 'primary' },
+      reason: 'user',
+    });
+
+    // Idempotent: already on the primary pipeline → no second v2 call.
+    await act(async () => {
+      await result.current.switchToPipeline();
+    });
+    expect(audioMock.switchProvider).toHaveBeenCalledTimes(1);
   });
 
   it('v2 rejection: switchStatus "failed", onSwitchFailed SWITCH_FAILED, recoverable (retry allowed)', async () => {
     const onSwitchFailed = vi.fn();
     installAudio({ isCapturing: true, activePipeline: { id: 'primary', isFallback: false } });
-    audioMock.switchToFallback.mockRejectedValueOnce(new Error('boom'));
+    audioMock.switchProvider.mockRejectedValueOnce(new Error('boom'));
 
     const { result } = renderHook(() => useArcaSttProvider({ onSwitchFailed }));
 
@@ -141,7 +212,32 @@ describe('useArcaSttProvider', () => {
 
     expect(onProviderSwitched).toHaveBeenCalledTimes(1);
     expect(onProviderSwitched.mock.calls[0][0]).toMatchObject({ reason: 'auto', toPipeline: { id: 'fallback' } });
-    expect(audioMock.switchToFallback).not.toHaveBeenCalled();
+    expect(audioMock.switchProvider).not.toHaveBeenCalled();
+  });
+
+  it('guarded when enableProviderSwitch is off: switchToPipeline still calls through useArcaAudio, and a downstream rejection surfaces as SWITCH_FAILED (not a crash)', async () => {
+    const onSwitchFailed = vi.fn();
+    installAudio({ isCapturing: true, activePipeline: { id: 'fallback', isFallback: true } });
+    installFeatureFlags(false);
+    // Without the compat endpoint enabled, the native session manager has no
+    // primary-direction route — useArcaAudio/StreamingSessionManager reject.
+    audioMock.switchProvider.mockRejectedValueOnce(
+      Object.assign(new Error('Switching back to the primary pipeline requires the compat provider-switch endpoint'), { code: 'NOT_SUPPORTED' }),
+    );
+
+    const { result } = renderHook(() => useArcaSttProvider({ onSwitchFailed }));
+
+    let rejected: ErrorInfo | undefined;
+    await act(async () => {
+      await result.current.switchToPipeline().catch((e: ErrorInfo) => {
+        rejected = e;
+      });
+    });
+
+    expect(audioMock.switchProvider).toHaveBeenCalledWith('primary', { useCompatEndpoint: false });
+    expect(rejected).toMatchObject({ code: 'SWITCH_FAILED', category: 'processing' });
+    expect(result.current.switchStatus).toBe('failed');
+    expect(onSwitchFailed).toHaveBeenCalledWith(expect.objectContaining({ code: 'SWITCH_FAILED' }));
   });
 
   it('export surface is append-only and the hook return shape is locked', () => {
@@ -160,6 +256,8 @@ describe('useArcaSttProvider', () => {
     // … plus the new compat-native addition.
     expect(typeof compat.useArcaSttProvider).toBe('function');
 
+    // Every TASK-568 member is still present with its original signature —
+    // TASK-586 only ADDS members (usePipeline/switchToPipeline/switchToDefault).
     expectTypeOf<UseArcaSttProviderReturn['fallbackAvailable']>().toEqualTypeOf<boolean>();
     expectTypeOf<UseArcaSttProviderReturn['isFallbackActive']>().toEqualTypeOf<boolean>();
     expectTypeOf<UseArcaSttProviderReturn['switchStatus']>().toEqualTypeOf<'idle' | 'switching' | 'switched' | 'failed'>();
@@ -169,5 +267,10 @@ describe('useArcaSttProvider', () => {
       name?: string;
       isFallback: boolean;
     } | null>();
+
+    // New TASK-586 members.
+    expectTypeOf<UseArcaSttProviderReturn['usePipeline']>().toEqualTypeOf<boolean>();
+    expectTypeOf<UseArcaSttProviderReturn['switchToPipeline']>().returns.resolves.toBeVoid();
+    expectTypeOf<UseArcaSttProviderReturn['switchToDefault']>().returns.resolves.toBeVoid();
   });
 });

@@ -1,10 +1,10 @@
 /**
- * "AI Providers" screen (TASK-575, non-wired/gated — see the file-header
- * design-gate comment in `ai-providers-screen.tsx`): the tabbed data flow
- * (LLM / STT / TTS) over the unified `admin/providers/:service/:provider`
- * route, masked Configured/None credential cards, OCC (If-Match) save +
- * 412 reload-merge, the working-tenant gate + "Acting on" banner, and axe 0
- * violations per tab in BOTH themes.
+ * "AI Providers" screen (TASK-575, wired into nav under TASK-586 Lane J):
+ * the tabbed data flow (LLM / STT / TTS) over the unified
+ * `admin/providers/:service/:provider` route, masked Configured/None
+ * credential cards, OCC (If-Match) save + 412 reload-merge, the
+ * working-tenant gate + "Acting on" banner, and axe 0 violations per tab in
+ * BOTH themes.
  */
 
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
@@ -121,7 +121,6 @@ describe('AiProvidersScreen — tab structure', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'AI Providers' })).toBeDefined();
     expect(await screen.findByText('Azure OpenAI')).toBeDefined();
-    expect(screen.getByText(/DESIGN GATE OPEN \(rule 12\)/)).toBeDefined();
   });
 
   it('switches to the STT tab and renders its provider set', async () => {

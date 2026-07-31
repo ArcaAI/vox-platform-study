@@ -14,11 +14,17 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from fastapi import APIRouter, HTTPException
 
+from stt.pipeline.language_modes import (
+    LanguageModeUnsupportedError,
+    language_mode_catalog_payload,
+)
 from stt.streaming._runtime import get_session_manager
 from stt.streaming.api.schemas import (
     CreateStreamingSessionRequest,
     StreamingAvailabilityResponse,
     StreamingSessionResponse,
+    SwitchProviderRequest,
+    SwitchProviderResponse,
 )
 
 if TYPE_CHECKING:
@@ -38,6 +44,25 @@ def _require_session_manager() -> SessionManager:
             detail="Streaming module not initialized",
         )
     return mgr
+
+
+# -------------------------------------------------------------------------
+# GET /internal/streaming/language-modes — STT language-mode catalog (TASK-587)
+# -------------------------------------------------------------------------
+
+
+@router.get(
+    "/language-modes",
+    responses={200: {"description": "Language-mode catalog + per-mode supported engines"}},
+)
+async def get_language_modes() -> dict[str, Any]:
+    """Return the closed language-mode catalog and, per mode, the catalog-wide
+    set of engines that can serve it.
+
+    Backend-authoritative source of truth for the SDK picker — no session
+    manager required (the catalog is static).
+    """
+    return {"modes": language_mode_catalog_payload()}
 
 
 # -------------------------------------------------------------------------
@@ -85,7 +110,27 @@ async def create_streaming_session(
             storage=request.storage,
             provider_overrides=request.provider_overrides,
             fallback_pipeline_id=request.fallback_pipeline_id,
+            language_mode=request.language_mode,
         )
+    except LanguageModeUnsupportedError as exc:
+        # TASK-587 — the selected mode fits none of the session's engines
+        # (primary + configured fallback). Surface a 422 that names the modes
+        # the engine CAN serve, so the client can re-select.
+        logger.warning(
+            "Language mode unsupported by session engine(s)",
+            session_id=request.session_id,
+            language_mode=exc.mode_id,
+            engine=exc.engine.value,
+        )
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": str(exc),
+                "languageMode": exc.mode_id,
+                "engine": exc.engine.value,
+                "supportedModes": exc.supported_mode_ids,
+            },
+        ) from exc
     except Exception as exc:
         logger.error(
             "Failed to create streaming session",
@@ -237,33 +282,45 @@ async def end_active_streaming_session(session_id: str) -> dict[str, Any]:
 
 @router.post(
     "/sessions/{session_id}/switch",
+    response_model=SwitchProviderResponse,
     status_code=200,
     responses={
-        200: {"description": "Switch-to-fallback requested"},
+        200: {"description": "Switch requested"},
         404: {"description": "Session not found"},
-        409: {"description": "No fallback configured or already switched"},
+        409: {"description": "Target unavailable (no fallback, primary never loaded, or already active)"},
         503: {"description": "Streaming not initialized"},
     },
 )
-async def switch_streaming_session_to_fallback(session_id: str) -> dict[str, Any]:
-    """Request a mid-session switch to the tenant's fallback pipeline (TASK-567 R4).
+async def switch_streaming_session(
+    session_id: str,
+    request: SwitchProviderRequest | None = None,
+) -> SwitchProviderResponse:
+    """Request a mid-session engine switch (TASK-567 R4, TASK-586).
 
-    Called by the API Gateway's ``switch-to-fallback`` endpoint. XADDs a
-    ``SWITCH_TO_FALLBACK`` control message onto the session's control stream; the
-    in-session ``EngineSwitchController`` performs the seamless engine swap.
+    Body ``{"target": "primary" | "fallback"}``; absent ⇒ ``"fallback"``
+    (back-compat). Called by the API Gateway's switch endpoint. XADDs a
+    ``SWITCH_TO_FALLBACK`` control message (carrying the target) onto the
+    session's control stream; the in-session ``EngineSwitchController`` performs
+    the seamless engine swap at the next utterance boundary and emits the
+    authoritative ``provider_switched`` result frame.
+
+    Returns ``{switched, active}``. ``409`` when the target is unavailable
+    (fallback not configured, primary never loaded, or already on that engine);
+    ``404`` for an unknown session.
     """
     mgr = _require_session_manager()
+    target = request.target if request is not None else "fallback"
 
     try:
-        await mgr.request_switch_to_fallback(session_id)
+        await mgr.request_switch(session_id, target)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Session not found") from exc
     except ValueError as exc:
-        # no_fallback_configured / already_switched
+        # no_fallback_configured / primary_unavailable / already_on_* / invalid_target
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    logger.info("Switch-to-fallback requested via API", session_id=session_id)
-    return {"status": "ok", "session_id": session_id}
+    logger.info("Engine switch requested via API", session_id=session_id, target=target)
+    return SwitchProviderResponse(switched=True, active=target)
 
 
 # -------------------------------------------------------------------------

@@ -96,6 +96,12 @@ export type { Pipeline, CreatePipelineInput, UpdatePipelineInput, PipelineValida
 // Health check hook
 export { useHealthCheck, type UseHealthCheckReturn } from './useHealthCheck';
 
+// STT language-mode catalog hook (TASK-587)
+export { useArcaSttLanguageModes, type UseArcaSttLanguageModesReturn } from './useArcaSttLanguageModes';
+
+// Native 2-way STT provider toggle — pipeline (primary) ↔ default (fallback) (TASK-586 Lane H)
+export { useSttProviderToggle, type UseSttProviderToggleReturn } from './useSttProviderToggle';
+
 // Global settings hook
 export { useGlobalSettings, type UseGlobalSettingsReturn } from './useGlobalSettings';
 

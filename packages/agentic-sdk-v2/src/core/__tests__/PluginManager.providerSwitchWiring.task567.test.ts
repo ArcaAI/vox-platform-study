@@ -104,6 +104,46 @@ describe('PluginManager — provider-switch / connection wiring (TASK-567)', () 
     });
   });
 
+  it('forwards the bidirectional active/is_fallback fields on a primary→fallback frame (TASK-586)', () => {
+    captured.onStatus?.({
+      type: 'status',
+      status: 'provider_switched',
+      from_pipeline: 'pipe-1',
+      to_pipeline: 'sarvam_transcription',
+      reason: 'user',
+      active: 'fallback',
+      is_fallback: true,
+    });
+
+    expect(onProviderSwitched).toHaveBeenCalledWith({
+      fromPipeline: 'pipe-1',
+      toPipeline: 'sarvam_transcription',
+      reason: 'user',
+      active: 'fallback',
+      isFallback: true,
+    });
+  });
+
+  it('forwards active=primary / is_fallback=false on a switch BACK to primary (TASK-586)', () => {
+    captured.onStatus?.({
+      type: 'status',
+      status: 'provider_switched',
+      from_pipeline: 'sarvam_transcription',
+      to_pipeline: 'pipe-1',
+      reason: 'user',
+      active: 'primary',
+      is_fallback: false,
+    });
+
+    expect(onProviderSwitched).toHaveBeenCalledWith({
+      fromPipeline: 'sarvam_transcription',
+      toPipeline: 'pipe-1',
+      reason: 'user',
+      active: 'primary',
+      isFallback: false,
+    });
+  });
+
   it('ignores non-switch status frames', () => {
     captured.onStatus?.({ type: 'status', status: 'finalizing', message: 'wrapping up' });
     expect(onProviderSwitched).not.toHaveBeenCalled();

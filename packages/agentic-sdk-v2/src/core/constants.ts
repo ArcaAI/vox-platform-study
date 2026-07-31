@@ -373,6 +373,8 @@ export const MY_TENANT_ENDPOINTS = {
 export const STT_ENDPOINTS = {
   /** Create a streaming session — returns sessionId + wsUrl */
   CREATE_SESSION: '/audio/transcription-jobs/stream/session',
+  /** List selectable STT language modes + per-mode supported engines (TASK-587) */
+  LANGUAGE_MODES: '/audio/transcription-jobs/language-modes',
   /** Close/delete a streaming session */
   CLOSE_SESSION: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}`,
   /**
@@ -388,6 +390,13 @@ export const STT_ENDPOINTS = {
    * session is already on the fallback; 404 on a backend without the route.
    */
   SWITCH_TO_FALLBACK: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/switch-to-fallback`,
+  /**
+   * Switch a live streaming session BACK to its primary pipeline (TASK-586 Lane H).
+   * The primary-direction counterpart of `SWITCH_TO_FALLBACK` — gives native SDK
+   * consumers a 2-way pipeline↔default toggle. 409 when already on the primary or
+   * the primary engine was never loaded; 404 on a backend without the route.
+   */
+  SWITCH_TO_PRIMARY: (sessionId: string) => `/audio/transcription-jobs/stream/session/${encodeURIComponent(sessionId)}/switch-to-primary`,
   /** WebSocket path for real-time audio streaming (absolute, not API-prefixed) */
   WS_STREAM: '/ws/stt/stream',
   /** Create a generic transcription job */

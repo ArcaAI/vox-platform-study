@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 /**
  * v1 `PreSummaryRequest` for `POST /api/smr/api/v1/presummary`.
@@ -68,4 +68,12 @@ export class PreSummaryRequest {
   @Min(1)
   @Max(32000)
   max_tokens?: number;
+
+  @ApiPropertyOptional({
+    description: 'true → stream the pre-summary as text/event-stream (delta* + terminal result); default false → single JSON body',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  stream?: boolean;
 }

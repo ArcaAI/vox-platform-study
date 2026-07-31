@@ -18,6 +18,12 @@
  * F2 fix (TASK-560 §6): the request sends REAL per-turn `conversation_segments`
  * — from `request.segments` when provided, else split from `request.text` into
  * per-line turns — never one collapsed `speaker:'user'` blob.
+ *
+ * Streaming (TASK-589): `{ stream: true, onDelta }` on `SMRRequest`/`PreSummaryRequest`
+ * opts into SSE — `event: delta` (`data:{text}`) fires `onDelta(delta, accumulated)`,
+ * the terminal `event: result` resolves the promise with the same v1-shaped body the
+ * non-streaming path returns, and `event: error` rejects with `data.detail`. Omitting
+ * `stream` keeps the request byte-identical to the single-JSON-response path.
  */
 
 import { useCallback, useState } from 'react';
@@ -43,6 +49,27 @@ export interface UseSMRReturn {
 /** Strip the trailing `/api/v1` from the REST base to reach the origin. */
 function smrOrigin(client: AgenticClient): string {
   return client.getBaseUrl().replace(/\/api\/v1\/?$/, '');
+}
+
+/** One parsed SSE frame (`event: <name>` + one or more `data:` lines, joined with `\n`). */
+interface ParsedSseFrame {
+  event: string;
+  data: string;
+}
+
+/** Parse a single `\n`-delimited SSE frame (no trailing blank line) into its event name + data payload. */
+function parseSseFrame(frame: string): ParsedSseFrame | null {
+  let event = 'message';
+  const dataLines: string[] = [];
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) {
+      event = line.slice('event:'.length).trim();
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice('data:'.length).trim());
+    }
+  }
+  if (dataLines.length === 0) return null;
+  return { event, data: dataLines.join('\n') };
 }
 
 /**
@@ -83,7 +110,8 @@ function buildConversationSegments(request: SMRRequest): Array<Record<string, un
 
 function buildSyncPayload(request: SMRRequest, fallbackSessionId?: string): Record<string, unknown> {
   const language = request.language ?? 'en';
-  return {
+  const encounterType = request.encounter_type ?? request.encounterType;
+  const payload: Record<string, unknown> = {
     session_data: {
       session_id: request.sessionId ?? fallbackSessionId ?? `smr-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
       patient_id: request.patientId ?? null,
@@ -95,6 +123,8 @@ function buildSyncPayload(request: SMRRequest, fallbackSessionId?: string): Reco
       session_metadata: {
         template: request.template,
         language,
+        // canonical key the gateway resolver reads first; department_id kept for the older provider-path interpretation
+        department: request.departmentId,
         department_id: request.departmentId,
         visit_type: request.visitType,
         doctor_id: request.doctorId,
@@ -113,6 +143,10 @@ function buildSyncPayload(request: SMRRequest, fallbackSessionId?: string): Reco
     visit_type: request.visitType ?? undefined,
     include_pre_summary_in_context: request.includePreSummaryInContext ?? false,
   };
+  // Optional indicators — forwarded top-level ONLY when provided (backward-compatible).
+  if (request.specialty !== undefined) payload.specialty = request.specialty;
+  if (encounterType !== undefined) payload.encounter_type = encounterType;
+  return payload;
 }
 
 export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
@@ -146,12 +180,99 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
     [client],
   );
 
+  /**
+   * SSE variant of `request()` (TASK-589). Sends `stream:true` + `Accept:
+   * text/event-stream`, reads the response body as a stream, and parses
+   * `\n\n`-delimited SSE frames: `delta` invokes `onDelta`, `result` resolves
+   * with the terminal v1-shaped body, `error` throws with `data.detail`.
+   */
+  const requestStream = useCallback(
+    async <T>(path: string, body: Record<string, unknown>, onDelta?: (delta: string, accumulated: string) => void): Promise<T> => {
+      if (!client) {
+        throw new Error('[@arcaai/vox/compat] useSMR: SDK not initialized. Wrap your app in <ArcaCompatProvider>.');
+      }
+      const apiKey = client.getApiKey();
+      const url = `${smrOrigin(client)}/api/smr/api/v1/${path}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+          ...(apiKey ? { 'x-api-key': apiKey } : {}),
+        },
+        body: JSON.stringify({ ...body, stream: true }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        throw new Error(data.error ?? data.message ?? `HTTP ${res.status}`);
+      }
+      if (!res.body) {
+        throw new Error('[@arcaai/vox/compat] useSMR: stream response has no body');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulated = '';
+      let result: T | undefined;
+      let resultSeen = false;
+
+      const processFrame = (frame: string) => {
+        const parsed = parseSseFrame(frame);
+        if (!parsed) return;
+        if (parsed.event === 'delta') {
+          const { text = '' } = JSON.parse(parsed.data) as { text?: string };
+          accumulated += text;
+          onDelta?.(text, accumulated);
+        } else if (parsed.event === 'result') {
+          result = JSON.parse(parsed.data) as T;
+          resultSeen = true;
+        } else if (parsed.event === 'error') {
+          const { detail } = JSON.parse(parsed.data) as { detail?: string };
+          throw new Error(detail ?? 'stream error');
+        }
+      };
+
+      const drainFrames = (flushRemainder: boolean) => {
+        let idx: number;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          processFrame(buffer.slice(0, idx));
+          buffer = buffer.slice(idx + 2);
+        }
+        if (flushRemainder && buffer.trim()) {
+          processFrame(buffer);
+          buffer = '';
+        }
+      };
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (value) buffer += decoder.decode(value, { stream: true });
+        if (done) {
+          buffer += decoder.decode();
+          drainFrames(true);
+          break;
+        }
+        drainFrames(false);
+      }
+
+      if (!resultSeen) {
+        throw new Error('[@arcaai/vox/compat] useSMR: stream ended without a result event');
+      }
+      return result as T;
+    },
+    [client],
+  );
+
   const runSync = useCallback(
     async (smrRequest: SMRRequest): Promise<SummaryResponse> => {
       setLoading(true);
       setError(null);
       try {
-        const result = await request<SummaryResponse>('summary/sync', buildSyncPayload(smrRequest, sessionId));
+        const payload = buildSyncPayload(smrRequest, sessionId);
+        const result = smrRequest.stream
+          ? await requestStream<SummaryResponse>('summary/sync', payload, smrRequest.onDelta)
+          : await request<SummaryResponse>('summary/sync', payload);
         onComplete?.(result);
         return result;
       } catch (err) {
@@ -163,7 +284,7 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
         setLoading(false);
       }
     },
-    [request, sessionId, onComplete, onError],
+    [request, requestStream, sessionId, onComplete, onError],
   );
 
   const summarizeAsync = useCallback(
@@ -202,7 +323,9 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
           temperature: preRequest.temperature ?? 0.2,
           max_tokens: preRequest.max_tokens ?? 800,
         };
-        return await request<PreSummaryResponse>('presummary', payload);
+        return preRequest.stream
+          ? await requestStream<PreSummaryResponse>('presummary', payload, preRequest.onDelta)
+          : await request<PreSummaryResponse>('presummary', payload);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Pre-summary failed';
         setError(message);
@@ -212,7 +335,7 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
         setLoading(false);
       }
     },
-    [request, onError],
+    [request, requestStream, onError],
   );
 
   return {

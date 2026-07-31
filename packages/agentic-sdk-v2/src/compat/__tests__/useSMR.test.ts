@@ -25,6 +25,20 @@ function installClient(client: unknown) {
 
 const fetchMock = vi.fn();
 
+/** Build a mock fetch Response whose `body` streams the given raw SSE frame text. */
+function sseResponse(rawFrames: string[]): { ok: true; status: 200; body: ReadableStream<Uint8Array>; json: () => Promise<unknown> } {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of rawFrames) {
+        controller.enqueue(encoder.encode(frame));
+      }
+      controller.close();
+    },
+  });
+  return { ok: true, status: 200, body: stream, json: async () => ({}) };
+}
+
 describe('useSMR', () => {
   beforeEach(() => {
     installClient(mockClient);
@@ -96,6 +110,64 @@ describe('useSMR', () => {
     expect('previous_visit_summary' in body.session_data).toBe(false);
   });
 
+  it('writes the CANONICAL session_metadata.department key (=departmentId) alongside department_id', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarize({ text: 'a', departmentId: 'Cardiology', visitType: 'Follow-up' });
+    });
+    const meta = JSON.parse(fetchMock.mock.calls[0][1].body).session_data.session_metadata;
+    // canonical key the gateway resolver reads first
+    expect(meta.department).toBe('Cardiology');
+    // legacy key kept for the older provider-path interpretation
+    expect(meta.department_id).toBe('Cardiology');
+    // visit_type stays canonical too
+    expect(meta.visit_type).toBe('Follow-up');
+  });
+
+  it('forwards top-level specialty + encounter_type ONLY when provided', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarize({ text: 'a', specialty: 'Interventional Cardiology', encounter_type: 'inpatient' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.specialty).toBe('Interventional Cardiology');
+    expect(body.encounter_type).toBe('inpatient');
+  });
+
+  it('accepts the camelCase encounterType alias for encounter_type', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarize({ text: 'a', encounterType: 'outpatient' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.encounter_type).toBe('outpatient');
+  });
+
+  it('omits specialty/encounter_type keys entirely when not provided (backward-compatible)', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarize({ text: 'a' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect('specialty' in body).toBe(false);
+    expect('encounter_type' in body).toBe(false);
+  });
+
+  it('preSummarize still sends current_department + visit_type (presummary contract unchanged)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ pre_summary: 'x', structured_data: { title: '', sections: [] }, created_at: 'now' }),
+    });
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.preSummarize({ current_department: 'Cardiology', visit_type: 'Follow Up' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.current_department).toBe('Cardiology');
+    expect(body.visit_type).toBe('Follow Up');
+  });
+
   it('preSummarize POSTs to /api/smr/api/v1/presummary', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -124,5 +196,89 @@ describe('useSMR', () => {
     installClient(null);
     const { result } = renderHook(() => useSMR());
     await expect(result.current.summarize({ text: 'hi' })).rejects.toThrow(/SDK not initialized/);
+  });
+
+  // ---------------------------------------------------------------------
+  // Streaming (TASK-589) — `stream:true` + `onDelta`
+  // ---------------------------------------------------------------------
+
+  describe('streaming (TASK-589)', () => {
+    it('summarizeSync({stream:true, onDelta}) parses SSE deltas + terminal result, resolves and fires onComplete', async () => {
+      const finalResult = { session_id: 's1', summary: { subjective: 'x', objective: '', assessment: '', plan: '' }, created_at: 'now' };
+      fetchMock.mockResolvedValue(
+        sseResponse(['event: delta\ndata: {"text":"He"}\n\n', 'event: delta\ndata: {"text":"llo"}\n\n', `event: result\ndata: ${JSON.stringify(finalResult)}\n\n`]),
+      );
+
+      const onDelta = vi.fn();
+      const onComplete = vi.fn();
+      const { result } = renderHook(() => useSMR({ onComplete }));
+
+      let out: unknown;
+      await act(async () => {
+        out = await result.current.summarizeSync({ text: 'hi', stream: true, onDelta });
+      });
+
+      expect(onDelta).toHaveBeenNthCalledWith(1, 'He', 'He');
+      expect(onDelta).toHaveBeenNthCalledWith(2, 'llo', 'Hello');
+      expect(out).toEqual(finalResult);
+      expect(onComplete).toHaveBeenCalledWith(finalResult);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.arcaai.com/api/smr/api/v1/summary/sync');
+      expect(init.headers['accept']).toBe('text/event-stream');
+      const body = JSON.parse(init.body);
+      expect(body.stream).toBe(true);
+      expect('onDelta' in body).toBe(false);
+    });
+
+    it('preSummarize({stream:true, onDelta}) parses SSE deltas + terminal result for PreSummaryResponse', async () => {
+      const finalResult = { pre_summary: 'x', structured_data: { title: '', sections: [] }, created_at: 'now' };
+      fetchMock.mockResolvedValue(sseResponse(['event: delta\ndata: {"text":"## Pre"}\n\n', `event: result\ndata: ${JSON.stringify(finalResult)}\n\n`]));
+
+      const onDelta = vi.fn();
+      const { result } = renderHook(() => useSMR());
+
+      let out: unknown;
+      await act(async () => {
+        out = await result.current.preSummarize({ current_department: 'Cardiology', visit_type: 'Follow Up', stream: true, onDelta });
+      });
+
+      expect(onDelta).toHaveBeenCalledWith('## Pre', '## Pre');
+      expect(out).toEqual(finalResult);
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.arcaai.com/api/smr/api/v1/presummary');
+      expect(init.headers['accept']).toBe('text/event-stream');
+      const body = JSON.parse(init.body);
+      expect(body.stream).toBe(true);
+      expect('onDelta' in body).toBe(false);
+    });
+
+    it('rejects with the detail message and fires onError on an SSE error event', async () => {
+      fetchMock.mockResolvedValue(sseResponse(['event: error\ndata: {"detail":"SMR unavailable"}\n\n']));
+
+      const onError = vi.fn();
+      const { result } = renderHook(() => useSMR({ onError }));
+
+      await expect(result.current.summarizeSync({ text: 'hi', stream: true })).rejects.toThrow(/SMR unavailable/);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('SMR unavailable') }));
+    });
+
+    it('stream omitted stays on the unchanged JSON path — no Accept: text/event-stream header (regression)', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ session_id: 's1', summary: {}, created_at: 'now' }),
+      });
+      const { result } = renderHook(() => useSMR());
+      await act(async () => {
+        await result.current.summarizeSync({ text: 'hi' });
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      expect(init.headers['accept']).toBeUndefined();
+      const body = JSON.parse(init.body);
+      expect('stream' in body).toBe(false);
+    });
   });
 });

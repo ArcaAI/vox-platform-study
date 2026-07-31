@@ -1,17 +1,16 @@
 'use client';
 
 /**
- * ⚠️ DESIGN GATE OPEN (rule 12) — DO NOT MERGE TO NAV until an approved
- * Figma frame or recorded owner waiver exists.
- *
- * This screen (TASK-575) is built and tested but deliberately in a
- * NON-WIRED posture: it is not linked from `nav-config.ts`, and the three
- * existing screens it would eventually consolidate (`/ai-configuration`,
- * `/stt-config`, `/tts-config`) are untouched and keep serving traffic. See
+ * "AI Providers" screen (TASK-575, wired into nav under TASK-586 Lane J —
+ * the rule-12 design gate was waived by the owner). This is the unified
+ * tabbed surface (LLM / STT / TTS) over `admin/providers/:service/:provider`.
+ * It coexists with the three existing per-capability screens
+ * (`/ai-configuration`, `/stt-config`, `/tts-config`), which stay live and
+ * unchanged — see `nav-config.ts` for the known-follow-up note on the
+ * credential-tab overlap. See
  * docs/implementation/TASK-575-Unified-AI-Providers-Console/README.md.
  */
 
-import { IconAlertTriangle } from '@tabler/icons-react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
 import { PageHeader } from '@/shared/page/page-header';
@@ -31,24 +30,7 @@ const TAB_LABEL: Record<ProviderService, string> = {
 };
 
 /**
- * Persistent rule-12 design-gate notice, pinned at the top of the page via
- * `ScreenTemplate`'s `statusBanner` slot — see the file header comment for
- * the full posture.
- */
-function DesignGateBanner() {
-  return (
-    <div role="status" className="bg-warning/10 text-foreground flex items-center gap-2 px-4 py-1.5 text-sm">
-      <IconAlertTriangle aria-hidden className="text-warning size-4 shrink-0" />
-      <span className="min-w-0">
-        <strong className="font-medium">DESIGN GATE OPEN (rule 12)</strong> — DO NOT MERGE TO NAV until an approved Figma frame or recorded owner
-        waiver exists.
-      </span>
-    </div>
-  );
-}
-
-/**
- * Tenant "AI Providers" screen (`/ai-providers`, tier 30-49) — the optional
+ * Tenant "AI Providers" screen (`/ai-providers`, tier 30-49) — the
  * TASK-575 consolidation of the three per-capability BYO surfaces
  * (`ai-configuration` LLM cards, `stt-config`, `tts-config`) into one
  * service-tabbed screen against the unified `admin/providers/:service` plane
@@ -72,12 +54,7 @@ export function AiProvidersScreen() {
       <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'llm' ? null : next)}>
         <ScreenTemplate
           header={<PageHeader title="AI Providers" meta={<span>bring-your-own cloud credentials, one screen per service</span>} />}
-          statusBanner={
-            <div className="flex flex-col gap-2">
-              <DesignGateBanner />
-              <TenantScopeBanner />
-            </div>
-          }
+          statusBanner={<TenantScopeBanner />}
           tabs={
             <TabsList variant="line">
               {SERVICE_TABS.map((service) => (

@@ -40,6 +40,18 @@ const SMR_TASK_KEY: Record<SmrRoutingTask, string> = {
 };
 
 /**
+ * TASK-588 — the per-tenant, opt-in SMR fallback selection keys. Tenant-admin
+ * configurable (the `smr.` prefix is NOT in `GLOBAL_ADMIN_ONLY_TASK_PREFIXES`);
+ * `resolveSmrFallbackSelection` reads these fail-OPEN (no row ⇒ null ⇒ no
+ * fallback runs — the same effect as the removed `SMR_FALLBACK_*` env being
+ * unset). No SYSTEM default is seeded.
+ */
+const SMR_FALLBACK_TASK_KEY: Record<SmrRoutingTask, string> = {
+  live: 'smr.live.fallback',
+  finalize: 'smr.finalize.fallback',
+};
+
+/**
  * the SYSTEM-only AiTaskDefault key that selects the harness
  * LLM-as-judge. GLOBAL_ADMIN-managed (the `harness.` prefix is global-admin-only
  * in {@link GLOBAL_ADMIN_ONLY_TASK_PREFIXES}); tenants can only USE the platform
@@ -545,6 +557,38 @@ export class HarnessPolicyService {
       );
     }
     return { provider: effective.smrProvider, model: effective.smrModel };
+  }
+
+  /**
+   * TASK-588 — resolve the tenant's per-tenant SMR FALLBACK selection for a task
+   * (`smr.<task>.fallback`) via `AiTaskDefault`. Mirrors `resolveSmrSelection`'s
+   * provider/model derivation (the model's `sourceUri` is the provider-native id
+   * SMR expects; `azure` normalises to `azure-openai`), but is fail-OPEN by
+   * contract: it returns `null` — never throws — when the AiTaskDefault service
+   * is un-wired, the key resolves to no enabled model, or the lookup errors.
+   * A `null` means the caller runs no fallback (the same effect as the removed
+   * `SMR_FALLBACK_*` env being unset). Fallback is per-tenant opt-in: there is
+   * NO SYSTEM default, so an un-configured tenant gets `null`.
+   */
+  async resolveSmrFallbackSelection(tenantId?: string, task: SmrRoutingTask = 'finalize'): Promise<{ provider: string; model: string } | null> {
+    if (!this.aiTaskDefaultService) return null;
+    try {
+      const eff = await this.aiTaskDefaultService.getEffective(SMR_FALLBACK_TASK_KEY[task], tenantId);
+      const model = eff.model;
+      if (model?.provider && model.sourceUri) {
+        // Catalog seeds `azure`; SMR registers `azure-openai` (mirrors resolveSmrSelection).
+        const provider = model.provider === 'azure' ? 'azure-openai' : model.provider;
+        return { provider, model: model.sourceUri };
+      }
+    } catch (error) {
+      // Fail-OPEN: a misconfigured/unknown fallback key must never sink the
+      // caller — no fallback simply runs.
+      this.logger.warn({
+        message: `AiTaskDefault SMR fallback lookup failed for '${SMR_FALLBACK_TASK_KEY[task]}' — no fallback will run`,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return null;
   }
 
   /** The SYSTEM-tenant GLOBAL-DEFAULT policy (platform editor reads this). */

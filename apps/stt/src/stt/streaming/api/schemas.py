@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,16 @@ class CreateStreamingSessionRequest(BaseModel):
     )
     language: str | None = Field(
         default=None, description="Override pipeline language (ISO 639-1/639-3 code)"
+    )
+    language_mode: str | None = Field(
+        default=None,
+        description=(
+            "End-user language mode id (TASK-587), e.g. 'en', 'ml', 'ml-en' "
+            "(Malayalam+English code-switch), 'auto'. Resolved against the "
+            "session's engine into language/code_switching/streaming_english_gloss. "
+            "Takes precedence over 'language'. An engine that cannot serve the "
+            "mode is excluded from the session chain; if none qualifies, 422."
+        ),
     )
     audio_bucket_name: str | None = Field(
         default=None,
@@ -53,6 +63,28 @@ class CreateStreamingSessionRequest(BaseModel):
             "can swap its live ASR engine to it on create-time load failure, "
             "classified outage, or a user-initiated switch."
         ),
+    )
+
+
+class SwitchProviderRequest(BaseModel):
+    """Request body for ``POST /internal/streaming/sessions/{id}/switch`` (TASK-586).
+
+    ``target`` names the engine to switch to. Absent ⇒ ``'fallback'`` (one-way
+    back-compat with the original switch-to-fallback route).
+    """
+
+    target: Literal["primary", "fallback"] = Field(
+        default="fallback",
+        description="Engine to switch to: 'primary' or 'fallback' (default 'fallback').",
+    )
+
+
+class SwitchProviderResponse(BaseModel):
+    """Response for ``POST /internal/streaming/sessions/{id}/switch`` (TASK-586)."""
+
+    switched: bool = Field(..., description="Whether the requested switch was accepted")
+    active: Literal["primary", "fallback"] = Field(
+        ..., description="The engine that will be live after the accepted switch"
     )
 
 

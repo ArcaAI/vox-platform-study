@@ -91,6 +91,16 @@ export interface AudioSourceConfig {
   language?: LanguageLocale;
 
   /**
+   * End-user language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`
+   * (Malayalam+English code-switch), `'auto'`. When set on the streaming
+   * (backend) path it is forwarded to the STT session, which resolves it
+   * against the session engine and rejects a mode no configured engine can
+   * serve. Takes precedence over `language` on the backend. Ignored by the
+   * local (browser) STT path.
+   */
+  languageMode?: string;
+
+  /**
    * Audio sample rate in Hz.
    * @default 16000 (Whisper standard)
    */
@@ -119,7 +129,10 @@ export interface AudioSourceConfig {
 /**
  * Default audio source configuration.
  */
-export const DEFAULT_AUDIO_CONFIG: Required<AudioSourceConfig> = {
+// `languageMode` (TASK-587) is genuinely optional — absent means "no mode
+// selected; use the pipeline default" — so it is excluded from the required set
+// rather than given a meaningless placeholder.
+export const DEFAULT_AUDIO_CONFIG: Required<Omit<AudioSourceConfig, 'languageMode'>> = {
   language: DEFAULT_LANGUAGE_LOCALE,
   sampleRate: 16000,
   channels: 1,
@@ -808,6 +821,13 @@ export interface ProviderConfig {
    * Language locale for transcription.
    */
   language: LanguageLocale;
+
+  /**
+   * End-user language mode id (TASK-587). Forwarded to the STT session on the
+   * streaming/backend path; takes precedence over `language` there. Ignored by
+   * local providers.
+   */
+  languageMode?: string;
 
   /**
    * Sample rate of input audio.
