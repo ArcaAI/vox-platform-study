@@ -235,6 +235,27 @@ test-admin-console:
       when: never
     - !reference [.rules-admin-console, rules]
 
+test-compat-playground:
+  stage: test
+  extends: .test-node-base
+  needs:
+    - job: install-node
+      optional: true
+    - job: lint-ts
+      optional: true
+      artifacts: false
+  variables:
+    <<: *test-env-vars
+  script:
+    - pnpm turbo build --filter=@arcaai/compat-playground^...
+    - pnpm --filter @arcaai/compat-playground test
+  rules:
+    - if: $SKIP_TESTS == "true"
+      when: never
+    - if: $SKIP_TESTS_TS == "true"
+      when: never
+    - !reference [.rules-compat-playground, rules]
+
 # ── UI component tests (Playwright Component Testing) ───────────────────────
 #
 # TASK-324 — @arcaai/ui ships 84 Playwright-CT specs (1729 cases) that mount

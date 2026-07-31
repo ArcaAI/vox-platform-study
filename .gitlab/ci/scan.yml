@@ -91,6 +91,19 @@ scan-nlp:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-nlp, rules]
 
+scan-compat-playground:
+  extends: .trivy-scan
+  needs:
+    - job: build-compat-playground
+      artifacts: true
+  variables:
+    SCAN_IMAGE: $IMAGE
+  rules:
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
+      when: never
+    - !reference [.skip-on-dev-2-1, rules]
+    - !reference [.rules-compat-playground, rules]
+
 # ── Filesystem scan (source code SAST) — runs on ALL pipelines ───────────────
 
 scan-source:
