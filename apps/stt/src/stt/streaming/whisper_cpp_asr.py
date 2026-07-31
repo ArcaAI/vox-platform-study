@@ -174,6 +174,39 @@ def _is_poisoned(logs: list[str]) -> bool:
     return any(any(marker in line for marker in _POISON_MARKERS) for line in logs)
 
 
+# Greedy decoding (no temperature fallback) can degenerate into a repetition loop
+# on a hard chunk (e.g. "അത് അത് അത് …" repeated dozens of times). A run of the
+# SAME token longer than this many times is collapsed to a single occurrence — a
+# loop guard that leaves genuine short repetitions ("no no no") untouched.
+_REPEAT_RUN_LIMIT = 3
+_EDGE_PUNCT_RE = re.compile(r"^[\W_]+|[\W_]+$", re.UNICODE)
+
+
+def _norm_token(token: str) -> str:
+    return _EDGE_PUNCT_RE.sub("", token.lower())
+
+
+def _collapse_repeats(text: str) -> str:
+    """Collapse a degenerate run of >``_REPEAT_RUN_LIMIT`` identical consecutive
+    tokens to a single token (greedy repetition-loop guard)."""
+    tokens = text.split()
+    if len(tokens) <= _REPEAT_RUN_LIMIT:
+        return text
+    out: list[str] = []
+    i = 0
+    while i < len(tokens):
+        j = i
+        key = _norm_token(tokens[i])
+        while j < len(tokens) and _norm_token(tokens[j]) == key:
+            j += 1
+        if key and (j - i) > _REPEAT_RUN_LIMIT:
+            out.append(tokens[i])  # collapse the loop to one occurrence
+        else:
+            out.extend(tokens[i:j])
+        i = j
+    return " ".join(out)
+
+
 class WhisperCppAsrAdapter:
     """Synchronous callable wrapping a loaded whisper.cpp (pywhispercpp) model."""
 
@@ -215,10 +248,17 @@ class WhisperCppAsrAdapter:
         # ``whisper_cpp_consultation_prompt_enabled`` (default OFF: measured to
         # inject spurious tokens and break grapheme clusters on the code-switch
         # fine-tune). A/B-togglable; kept off until an eval shows it helps.
+        settings = get_settings()
         self._context_prompt: str = (
             consultation_prompt_for_language(self._language)
-            if get_settings().whisper_cpp_consultation_prompt_enabled
+            if settings.whisper_cpp_consultation_prompt_enabled
             else ""
+        )
+        # Max audio length per decode — longer utterances are split at silence
+        # troughs (the fine-tune truncates on long audio; VAD does not segment
+        # continuous clinical speech). 0 disables the guard.
+        self._max_audio_seconds: float = float(
+            getattr(settings, "whisper_cpp_max_audio_seconds", 0.0) or 0.0
         )
         # Shared per-context lock — the main and english-gloss adapters over one
         # cached LoadedModel MUST serialize (same underlying whisper context).
@@ -234,26 +274,128 @@ class WhisperCppAsrAdapter:
     ) -> dict[str, Any]:
         audio = np.asarray(samples, dtype=np.float32)
 
+        spans = self._split_spans(audio, sample_rate)
         with self._lock:
-            segments, logs = self._decode_capturing(audio, prompt)
-            if _is_poisoned(logs):
-                logger.warning(
-                    "whisper.cpp Metal backend poisoned; recreating context",
-                    model_slug=self._loaded.model_slug,
+            sub_results = [
+                self._build_result(
+                    self._decode_recover_locked(audio[s:e], prompt),
+                    audio[s:e],
+                    sample_rate,
                 )
-                if self._rebuild_locked():
-                    segments, logs = self._decode_capturing(audio, prompt)
-                    if _is_poisoned(logs):
-                        logger.error(
-                            "whisper.cpp still failing after backend recreate; "
-                            "returning empty transcription",
-                            model_slug=self._loaded.model_slug,
-                        )
-                        segments = []
-                else:
-                    segments = []
+                for (s, e) in spans
+            ]
+        return self._merge_results(sub_results, spans, audio, sample_rate)
 
-        return self._build_result(segments, audio, sample_rate)
+    def _decode_recover_locked(self, audio: np.ndarray, prompt: str | None) -> list[Any]:
+        """Decode one buffer with Metal-poison auto-recovery. Lock must be held."""
+        segments, logs = self._decode_capturing(audio, prompt)
+        if _is_poisoned(logs):
+            logger.warning(
+                "whisper.cpp Metal backend poisoned; recreating context",
+                model_slug=self._loaded.model_slug,
+            )
+            if self._rebuild_locked():
+                segments, logs = self._decode_capturing(audio, prompt)
+                if _is_poisoned(logs):
+                    logger.error(
+                        "whisper.cpp still failing after backend recreate; "
+                        "returning empty transcription",
+                        model_slug=self._loaded.model_slug,
+                    )
+                    return []
+            else:
+                return []
+        return segments
+
+    def _split_spans(self, audio: np.ndarray, sample_rate: int) -> list[tuple[int, int]]:
+        """Split *audio* into ``[start, end)`` sample spans no longer than
+        ``max_audio_seconds``, cutting at the quietest point (a word gap / silence
+        trough) near each target boundary. Returns a single whole-buffer span when
+        the guard is disabled or the audio already fits."""
+        n = len(audio)
+        if self._max_audio_seconds <= 0 or sample_rate <= 0:
+            return [(0, n)]
+        max_len = int(self._max_audio_seconds * sample_rate)
+        if n <= max_len:
+            return [(0, n)]
+        # Greedy forward: from the current position, cut at the DEEPEST silence
+        # (global RMS minimum = the clearest pause) within the allowed window
+        # ``[pos + min_len, pos + max_len]``. Snapping to a real pause avoids
+        # mid-word cuts that make a chunk mis-decode. ``min_len`` keeps chunks from
+        # becoming tiny.
+        min_len = max(1, int(max_len * 0.5))
+        spans: list[tuple[int, int]] = []
+        i = 0
+        while i < n:
+            if n - i <= max_len:
+                spans.append((i, n))
+                break
+            lo = i + min_len
+            hi = i + max_len
+            cut = self._quietest_in_range(audio, lo, hi)
+            if cut <= i:  # safety — never stall
+                cut = hi
+            spans.append((i, cut))
+            i = cut
+        return spans or [(0, n)]
+
+    @staticmethod
+    def _quietest_in_range(audio: np.ndarray, lo: int, hi: int) -> int:
+        """Sample index of the lowest-RMS 30 ms frame in ``[lo, hi)`` — the
+        clearest silence trough / word gap to cut at."""
+        n = len(audio)
+        lo = max(1, min(lo, n - 1))
+        hi = max(lo + 1, min(hi, n))
+        win = 480  # 30 ms @ 16 kHz
+        step = win // 2 or 1
+        best_i, best_e = hi, float("inf")
+        for j in range(lo, hi, step):
+            frame = audio[j : j + win]
+            e = float(np.mean(frame * frame)) if frame.size else float("inf")
+            if e < best_e:
+                best_e, best_i = e, j
+        return best_i
+
+    def _merge_results(
+        self,
+        sub_results: list[dict[str, Any]],
+        spans: list[tuple[int, int]],
+        audio: np.ndarray,
+        sample_rate: int,
+    ) -> dict[str, Any]:
+        """Stitch per-chunk results: join texts, offset+concatenate word
+        timestamps, apply the repetition loop-guard, and emit one utterance-level
+        result. A single span is returned as-is (fast path)."""
+        if len(sub_results) == 1:
+            sub_results[0]["text"] = _collapse_repeats(sub_results[0]["text"])
+            if sub_results[0]["segments"]:
+                sub_results[0]["segments"][0]["text"] = sub_results[0]["text"]
+            return sub_results[0]
+
+        text_parts: list[str] = []
+        word_timestamps: list[dict[str, Any]] = []
+        for (start_sample, _end), res in zip(spans, sub_results, strict=True):
+            if res["text"]:
+                text_parts.append(res["text"])
+            offset = start_sample / float(sample_rate) if sample_rate else 0.0
+            for w in res["word_timestamps"]:
+                word_timestamps.append(
+                    {
+                        **w,
+                        "start": round(w["start"] + offset, 4),
+                        "end": round(w["end"] + offset, 4),
+                    }
+                )
+        text = _collapse_repeats(" ".join(text_parts))
+        duration = len(audio) / float(sample_rate) if sample_rate else 0.0
+        start = word_timestamps[0]["start"] if word_timestamps else 0.0
+        end = word_timestamps[-1]["end"] if word_timestamps else duration
+        return {
+            "text": text,
+            "language": self._language,
+            "word_timestamps": word_timestamps,
+            "segments": ([{"text": text, "start": start, "end": end}] if text else []),
+        }
 
     def _decode_capturing(
         self, audio: np.ndarray, prompt: str | None

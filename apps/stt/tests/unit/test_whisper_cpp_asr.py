@@ -245,6 +245,56 @@ def _audio() -> np.ndarray:
     return np.zeros(16000, dtype=np.float32)
 
 
+# --- Length guard: chunk long audio at silence troughs -----------------------
+
+
+def test_short_audio_is_not_chunked() -> None:
+    """Audio within the stable window is decoded in a single pass."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"))
+    adapter._max_audio_seconds = 7.0
+
+    adapter(np.zeros(5 * 16000, dtype=np.float32), 16000)  # 5 s < 7 s
+
+    assert len(model.calls) == 1
+
+
+def test_long_audio_is_split_into_multiple_decodes() -> None:
+    """Audio beyond the stable window is split into multiple bounded decodes and
+    the per-chunk transcripts are stitched together."""
+    model = _CapturingModel_returning([_seg(" piece", 0, 40, 0.9)])
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"))
+    adapter._max_audio_seconds = 3.0
+
+    result = adapter(np.zeros(10 * 16000, dtype=np.float32), 16000)  # 10 s
+
+    assert len(model.calls) >= 3  # ~ceil(10/3)
+    assert "piece" in result["text"]
+
+
+def test_chunking_disabled_when_setting_zero() -> None:
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"))
+    adapter._max_audio_seconds = 0.0
+
+    adapter(np.zeros(30 * 16000, dtype=np.float32), 16000)
+
+    assert len(model.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("അത് അത് അത് അത് അത് അത്", "അത്"),  # degenerate loop -> one
+        ("no no no", "no no no"),  # genuine triple survives (run == limit)
+        ("the patient has a fever", "the patient has a fever"),  # normal untouched
+        ("", ""),
+    ],
+)
+def test_collapse_repeats_loop_guard(text: str, expected: str) -> None:
+    assert whisper_cpp_asr._collapse_repeats(text) == expected
+
+
 def test_serializes_concurrent_decode_on_shared_context() -> None:
     """Two adapters over the SAME loaded model must never run
     ``transcribe`` concurrently — that is what corrupts the Metal command

@@ -103,7 +103,10 @@ Changed files:
   re-enabled the degrading instruction prompt and left 2 tests red).
 - `apps/stt/tests/unit/test_whisper_cpp_asr.py` — rewritten to the new contract
   (pinning single vs unpinned pair, prompt off-by-default + opt-in, clean vs
-  word-timestamp decode + reconstruction).
+  word-timestamp decode + reconstruction, chunking trigger + loop-guard).
+- `apps/stt/scripts/mlen_scorecard.py` — reusable ml-en CER scorecard tool.
+- Length guard (`whisper_cpp_max_audio_seconds`, greedy deepest-silence split, loop
+  guard) — see the "Length-bounding" section below.
 
 Evidence (arcaenv python):
 - `pytest test_whisper_cpp_asr.py` → **22 passed**.
@@ -112,14 +115,39 @@ Evidence (arcaenv python):
 - ruff clean; mypy clean.
 - Real-audio verification via the offline VAD harness — see table above.
 
+## Length-bounding (chunker) — implemented + tuned against the 7-clip scorecard
+
+Added a whisper.cpp-local length guard: if an utterance exceeds
+`whisper_cpp_max_audio_seconds` (default **7.0 s**, env `WHISPER_CPP_MAX_AUDIO_SECONDS`,
+0 disables), it is split greedily into `<=`-that-many-second chunks, cutting at the
+**deepest silence trough** (global RMS minimum) in each `[pos+50%, pos+100%]` window —
+snapping to real pauses avoids mid-word cuts. Each chunk decodes independently and the
+transcripts are stitched; a **repetition loop-guard** (`_collapse_repeats`) collapses a
+run of >3 identical tokens (greedy-with-no-fallback can loop) to one. Text/word-timestamp
+offsets are handled per chunk.
+
+Reusable scorecard: `apps/stt/scripts/mlen_scorecard.py` (per-clip + mean CER, JSON out;
+audio not committed — it's PHI). Threshold sweep over the 7 labeled clips (CER, mean):
+
+| threshold | mean | note |
+|---|---|---|
+| 5.5 | 0.088 | chunks the clean 6.3 s clip (slight regression) |
+| 6.0 | 0.133 | 6.3 s clip spikes to 0.520 (bad cut) |
+| **7.0 (shipped)** | 0.135 | protects all `<=`6.3 s clips whole; chunks before the observed 8.7 s failure |
+| 8.0 | 0.088 | best on this set but leaves the untested 6.3–8 s range un-chunked |
+
+Shipped **7.0** for conservative generalization (chunk before the known failure point,
+never touch known-good short clips). Per-clip at 7.0: test_1 0.025, test-2 0.239,
+test-3 0.355, test-4 0.117, test-5 0.023, test-6 0.020, test-7 0.167 → **mean 0.135**
+(vs 0.273 un-chunked). Re-tune as the labeled set grows.
+
 ## Open / follow-up
-- **Phase 3 (now the priority): length-bounding / windowing, eval-driven.** Build the
-  ml-en scorecard (transliteration-normalized CER/MER) over the user's labeled clips,
-  then tune a "chunk only when the utterance exceeds the fine-tune's stable window,
-  split at silence troughs, with a repetition-loop guard" strategy against it. Do NOT
-  ship blind chunking (regresses short clips; can loop).
-- The fine-tune (f16) is the platform default but is fragile on long continuous audio;
-  the eval harness should also compare q8_0 and the non-GGUF transformer variant.
+- Re-tune `WHISPER_CPP_MAX_AUDIO_SECONDS` and compare model variants (q8_0, non-GGUF
+  transformer) as more labeled ml-en clips arrive.
+- Partial-window churn (symptom B) is still the fixed 8 s sliding tail — a separate
+  low-latency follow-up (grow-and-trim at confirmed boundaries).
+- Live end-to-end through the WS gateway (this pass verified via the offline
+  Silero+preprocessor+adapter harness).
 
 ## Change History
 
@@ -128,3 +156,11 @@ Evidence (arcaenv python):
 - 2026-07-31 — Phase 1 implemented (native-concat text fix + prompt-gate setting +
   3 TDD tests). Gates green for changed files. Noted concurrent `e5d2e967` priming-flag
   flip + its 2 unrelated red tests.
+- 2026-07-31 — Real-audio investigation overturned the text-corruption theory (see
+  "Real-audio findings"): shipped greedy decode (no temperature fallback), code-switch
+  pair→auto language, consultation prompt OFF by default, mode-aware reconstruction,
+  and reverted the concurrent priming-flag flip. Verified via offline VAD harness.
+- 2026-07-31 — Length guard implemented + tuned against a 7-clip ml-en scorecard
+  (`mlen_scorecard.py`): greedy deepest-silence chunking (default 7.0 s) + repetition
+  loop-guard. Mean CER 0.273 → 0.135; long clips fixed, no short-clip regression.
+  29 adapter tests / 479 streaming+wiring+loader tests green; ruff + mypy clean.
