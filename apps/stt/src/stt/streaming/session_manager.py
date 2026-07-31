@@ -1678,6 +1678,17 @@ class SessionManager:
 
             initial_prompt = compose_prompt(code_switch_prompt, initial_prompt)
 
+        # Whether this pipeline consumes per-word timestamps — only then does the
+        # whisper.cpp adapter incur the lossy ``max_len=1`` word-splitting decode;
+        # otherwise it runs a clean sentence-level decode (see
+        # ``WhisperCppAsrAdapter``). Stashed for ``_make_whisper_cpp_callable`` to
+        # read (threading it through the shared engine interface would touch every
+        # engine adapter).
+        timestamps_cfg = getattr(getattr(pipeline_config, "postprocessing", None), "timestamps", None)
+        self._pending_want_word_timestamps = bool(
+            getattr(timestamps_cfg, "word_timestamps", False)
+        )
+
         # Create the callable ASR pipeline
         asr_pipeline = self._make_asr_callable(
             asr_model,
@@ -1923,7 +1934,11 @@ class SessionManager:
         """
         from stt.streaming.whisper_cpp_asr import WhisperCppAsrAdapter
 
-        adapter = WhisperCppAsrAdapter(loaded_model, inference_config)
+        adapter = WhisperCppAsrAdapter(
+            loaded_model,
+            inference_config,
+            want_word_timestamps=getattr(self, "_pending_want_word_timestamps", False),
+        )
 
         async def run_whisper_cpp_inference(
             samples: np.ndarray,

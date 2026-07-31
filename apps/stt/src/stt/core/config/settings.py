@@ -322,6 +322,16 @@ class Settings(BaseSettings):
         default=4,
         description="CPU threads for whisper.cpp inference",
     )
+    whisper_cpp_consultation_prompt_enabled: bool = Field(
+        default=False,
+        description=(
+            "Whether the whisper.cpp adapter prepends its language-derived "
+            "clinical-consultation initial_prompt (exemplar prior-context, not an "
+            "instruction). Default OFF — measured to inject spurious tokens and "
+            "break grapheme clusters on the ml-en code-switch fine-tune. Toggle on "
+            "only if an eval shows it helps. env WHISPER_CPP_CONSULTATION_PROMPT_ENABLED"
+        ),
+    )
 
     # VAD — Silero v5 ONNX
     vad_model_path: str | None = Field(

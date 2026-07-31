@@ -45,7 +45,7 @@ function platformDefaults(): {
   region: string;
   forcePathStyle: boolean;
 } {
-  const raw = (process.env.MINIO_ENDPOINT ?? 'localhost:9000').trim();
+  const raw = process.env.MINIO_ENDPOINT?.trim() || 'localhost:9000';
   const useSsl = (process.env.MINIO_USE_SSL ?? 'false').trim().toLowerCase() === 'true';
   const endpoint = /^https?:\/\//i.test(raw) ? raw : `${useSsl ? 'https' : 'http'}://${raw}`;
 

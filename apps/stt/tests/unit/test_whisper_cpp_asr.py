@@ -54,6 +54,18 @@ class _CapturingModel:
         return []
 
 
+class _CapturingModel_returning(_CapturingModel):
+    """Records kwargs AND returns a fixed segment list from each transcribe."""
+
+    def __init__(self, segments: list) -> None:
+        super().__init__()
+        self._segments = segments
+
+    def transcribe(self, audio: np.ndarray, **kwargs: object) -> list:
+        self.calls.append(kwargs)
+        return self._segments
+
+
 @pytest.mark.parametrize(
     ("language", "expected"),
     [
@@ -71,53 +83,158 @@ def test_consultation_prompt_for_language(language: str | None, expected: str) -
     assert consultation_prompt_for_language(language) == expected
 
 
-def test_default_language_feeds_english_consultation_prompt() -> None:
-    """With no configured language, whisper.cpp is primed with the English
-    consultation context as ``initial_prompt``."""
+# --- Language pinning: single pinned, code-switch pair unpinned (auto) --------
+
+
+def test_default_no_language_and_no_prompt() -> None:
+    """No configured language + prompt OFF by default → clean decode with no
+    ``language`` and no ``initial_prompt`` pinned."""
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg())
 
     adapter(_audio(), 16000)
 
-    assert model.calls[0]["initial_prompt"] == _CONSULTATION_PROMPT_EN
-    # No language pinned when the pipeline leaves it null.
+    assert "language" not in model.calls[0]
+    assert "initial_prompt" not in model.calls[0]
+
+
+@pytest.mark.parametrize("language", ["ml", "en", "vi"])
+def test_single_language_is_pinned(language: str) -> None:
+    """A genuine single language is pinned as whisper.cpp's decode language."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg(language))
+
+    adapter(_audio(), 16000)
+
+    assert model.calls[0]["language"] == language
+
+
+@pytest.mark.parametrize("pair", ["ml-en", "vi-en"])
+def test_code_switch_pair_is_unpinned(pair: str) -> None:
+    """A code-switch PAIR resolves to auto (no pinned language) — pinning the
+    primary subtag over-biases toward its script and degrades the other
+    language on the code-switch fine-tune (measured)."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg(pair))
+
+    adapter(_audio(), 16000)
+
     assert "language" not in model.calls[0]
 
 
-def test_ml_language_feeds_malayalam_prompt_and_pins_language() -> None:
-    """A ``language: "ml"`` pipeline pins ml AND primes the Malayalam context."""
+# --- Consultation prompt: OFF by default, opt-in via setting ------------------
+
+
+def _settings(*, prompt_enabled: bool) -> SimpleNamespace:
+    return SimpleNamespace(whisper_cpp_consultation_prompt_enabled=prompt_enabled)
+
+
+def test_prompt_disabled_by_default_but_carry_forward_flows() -> None:
+    """Default (setting OFF): no context ``initial_prompt``; a per-utterance
+    carry-forward prompt still flows through on its own (no leading space)."""
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
 
     adapter(_audio(), 16000)
+    assert "initial_prompt" not in model.calls[0]
 
+    adapter(_audio(), 16000, prompt="carry forward")
+    assert model.calls[1]["initial_prompt"] == "carry forward"
+
+
+def test_prompt_enabled_prepends_consultation_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With the setting ON, the language-derived consultation context leads and a
+    carry-forward prompt is appended after it."""
+    monkeypatch.setattr(
+        whisper_cpp_asr, "get_settings", lambda: _settings(prompt_enabled=True)
+    )
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
+
+    adapter(_audio(), 16000)
     assert model.calls[0]["initial_prompt"] == _CONSULTATION_PROMPT_ML
-    assert model.calls[0]["language"] == "ml"
+
+    adapter(_audio(), 16000, prompt="previous transcript text")
+    assert (
+        model.calls[1]["initial_prompt"]
+        == f"{_CONSULTATION_PROMPT_ML} previous transcript text"
+    )
 
 
-def test_code_switch_pair_pins_first_subtag_and_malayalam_prompt() -> None:
-    """A ``language: "ml-en"`` pair pins the FIRST subtag (ml) on whisper.cpp
-    and still primes the Malayalam consultation context."""
+# --- Decode mode: clean (default) vs word-timestamp -------------------------
+
+
+def test_clean_decode_omits_word_split_kwargs() -> None:
+    """Default (no word timestamps requested) → clean sentence-level decode:
+    the lossy ``max_len=1``/``split_on_word``/``token_timestamps`` params are NOT
+    passed."""
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"))
 
     adapter(_audio(), 16000)
 
-    assert model.calls[0]["language"] == "ml"
-    assert model.calls[0]["initial_prompt"] == _CONSULTATION_PROMPT_ML
+    kw = model.calls[0]
+    assert "max_len" not in kw
+    assert "split_on_word" not in kw
+    assert "token_timestamps" not in kw
 
 
-def test_carry_forward_prompt_follows_consultation_context() -> None:
-    """A per-utterance carry-forward prompt is appended AFTER the context line."""
-    model = _CapturingModel()
-    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
-
-    adapter(_audio(), 16000, prompt="previous transcript text")
-
-    assert (
-        model.calls[0]["initial_prompt"]
-        == f"{_CONSULTATION_PROMPT_ML} previous transcript text"
+def test_word_timestamp_mode_splits_and_space_joins() -> None:
+    """When word timestamps ARE requested: word-split decode is used, per-word
+    timings are emitted, and the transcript is SPACE-joined (correct for the
+    space-trimmed word segments)."""
+    model = _CapturingModel_returning(
+        [_seg("Hello", 0, 40, 0.9), _seg("there", 40, 80, 0.8)]
     )
+    adapter = WhisperCppAsrAdapter(
+        _loaded_model(model), _cfg("en"), want_word_timestamps=True
+    )
+
+    result = adapter(_audio(), 16000)
+
+    assert model.calls[0]["max_len"] == 1
+    assert model.calls[0]["split_on_word"] is True
+    assert result["text"] == "Hello there"
+    assert [w["word"] for w in result["word_timestamps"]] == ["Hello", "there"]
+    assert result["word_timestamps"][0]["start"] == 0.0
+
+
+# --- Native-spacing text reconstruction (Malayalam corruption fix) ------------
+
+
+def test_malayalam_clean_decode_preserves_native_spacing() -> None:
+    """Clean-decode (default) Malayalam: native concatenation of segment text
+    preserves whisper's own (near-zero) inter-word spacing — no spurious spaces,
+    grapheme clusters intact. Space-joining would corrupt it."""
+    # A clean sentence-level decode of "നമസ്കാരം ഡോക്ടർ" — Malayalam word has no
+    # internal spaces; whisper attaches a leading space at the real word break.
+    segments = [_seg("നമസ്കാരം", 0, 60, 0.9), _seg(" ഡോക്ടർ", 60, 90, 0.9)]
+    model = _CapturingModel_returning(segments)
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"))
+
+    result = adapter(_audio(), 16000)
+
+    assert result["text"] == "നമസ്കാരം ഡോക്ടർ"
+    assert result["word_timestamps"] == []  # no word timings in clean mode
+
+
+def test_english_segments_preserve_native_word_spacing() -> None:
+    """English word segments carry whisper's leading-space byte; native
+    concatenation therefore yields correctly-spaced text (and whitespace is
+    normalized to single spaces, stripped)."""
+    segments = [
+        _seg(" Hello", 0, 40, 0.9),
+        _seg(" there", 40, 80, 0.9),
+        _seg(" doctor", 80, 120, 0.9),
+    ]
+    model = SimpleNamespace(transcribe=lambda audio, **kw: segments)
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("en"))
+
+    result = adapter(_audio(), 16000)
+
+    assert result["text"] == "Hello there doctor"
 
 
 def _seg(text: str, t0: int, t1: int, prob: float) -> SimpleNamespace:
