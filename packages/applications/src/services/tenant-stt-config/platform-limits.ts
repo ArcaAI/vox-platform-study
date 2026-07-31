@@ -40,10 +40,11 @@ export const CLOUD_STT_FORMATS: ReadonlySet<string> = new Set<string>([
   AiModelFormat.AZURE_SPEECH,
   AiModelFormat.AZURE_FOUNDRY,
   AiModelFormat.CLOUD_API,
-  // Phase E adds SARVAM / OPENAI members; string-literal them for forward-tolerance
-  // so a fallback pointing at a Sarvam/OpenAI pipeline validates before the enum lands.
-  'SARVAM',
-  'OPENAI',
+  // TASK-586: SARVAM / OPENAI are now first-class AiModelFormat members, so a
+  // bare-slug fallback pipeline pointing at the Sarvam/OpenAI catalog row resolves
+  // to a cloud format here exactly like Azure.
+  AiModelFormat.SARVAM,
+  AiModelFormat.OPENAI,
 ]);
 
 /**

@@ -179,11 +179,37 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
     );
   });
 
-  it('getFallbackCandidates excludes the batch-only Azure Foundry pipeline, keeping the streaming cloud ones', async () => {
+  it('accepts a Sarvam fallback via a BARE SLUG ref (TASK-586 canonical shape — like Azure) resolved to the SARVAM AiModel format', async () => {
+    // The seeded Sarvam pipeline now uses `asr: "sarvam-saaras-v3"` (bare slug),
+    // identical in shape to the Azure Speech pipeline. The slug resolves to the
+    // AiModel whose format is the first-class SARVAM (a cloud STT format).
+    ctx.pipelineService.getById.mockResolvedValue(cloudPipeline({ configYaml: 'models:\n  asr: "sarvam-saaras-v3"\n' }));
+    ctx.aiModelRepo.findBySlug.mockResolvedValue({ computeType: 'cloud', format: 'SARVAM' });
+    ctx.configRepo.findByTenantId.mockResolvedValue(null);
+    ctx.configRepo.create.mockImplementation(async (e: unknown) => e);
+    const res = await ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-fallback-1', expectedVersion: 0 });
+    expect(res.fallbackPipelineId).toBe('pl-fallback-1');
+  });
+
+  it('accepts a Sarvam fallback defined by the INLINE engine block (no `::` shorthand, no DB slug)', async () => {
+    // The seeded Sarvam pipeline binds the engine inline (`engine: "sarvam"` +
+    // `hf_model_id`), not via the `sarvam::model` shorthand, and Sarvam has no
+    // AiModel slug row — extractAsrRef must surface the `engine` field.
+    ctx.pipelineService.getById.mockResolvedValue(
+      cloudPipeline({ configYaml: 'models:\n  asr:\n    hf_model_id: "saaras:v3"\n    engine: "sarvam"\n' }),
+    );
+    ctx.configRepo.findByTenantId.mockResolvedValue(null);
+    ctx.configRepo.create.mockImplementation(async (e: unknown) => e);
+    const res = await ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-fallback-1', expectedVersion: 0 });
+    expect(res.fallbackPipelineId).toBe('pl-fallback-1');
+    expect(ctx.aiModelRepo.findBySlug).not.toHaveBeenCalled();
+  });
+
+  it('getFallbackCandidates keeps the inline-engine Sarvam pipeline + Azure Speech, excludes batch-only Azure Foundry', async () => {
     ctx.pipelineService.getAll.mockResolvedValue([
-      { id: 'pl-speech', slug: 'azure-speech-transcription', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr: "azure-speech::stt"\n' },
+      { id: 'pl-speech', slug: 'azure-speech-transcription', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr: "azure-speech-stt"\n' },
       { id: 'pl-foundry', slug: 'azure-foundry-mai-transcribe', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr: "azure-foundry::mai-transcribe-1.5"\n' },
-      { id: 'pl-sarvam', slug: 'sarvam-transcription', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr: "sarvam::saaras-v3"\n' },
+      { id: 'pl-sarvam', slug: 'sarvam-transcription', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr:\n    hf_model_id: "saaras:v3"\n    engine: "sarvam"\n' },
     ]);
     const slugs = (await ctx.svc.getFallbackCandidates(TENANT)).map((c) => c.slug);
     expect(slugs).toContain('azure-speech-transcription');

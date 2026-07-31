@@ -130,10 +130,10 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
   },
   {
     // TASK-567 — tenant BYOK fallback engine (cloud REST). Catalog metadata for
-    // the fallback-candidate picker; the pipeline YAML reaches the engine via
-    // the `sarvam :: model` shorthand (Python AiModelFormat.SARVAM, a superset
-    // of the Prisma enum), so this row's Prisma `format` is the generic
-    // CLOUD_API value (mirrors the sarvam-bulbul TTS catalog row).
+    // the fallback-candidate picker. TASK-586: `format` is now the first-class
+    // AiModelFormat.SARVAM (previously the generic CLOUD_API), so the pipeline
+    // binds this engine via a BARE SLUG ref (`asr: "sarvam-saaras-v3"`) exactly
+    // like the Azure Speech row — no inline `engine:`/`sarvam::` override needed.
     id: '80000000-0000-0000-0001-000000000016',
     tenantId: SYSTEM_TENANT_ID,
     name: 'Sarvam Saaras v3 (STT)',
@@ -146,7 +146,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     source: AiModelSource.LOCAL,
     sourceUri: 'saaras:v3',
     sourceRevision: 'main',
-    format: AiModelFormat.CLOUD_API,
+    format: AiModelFormat.SARVAM,
     provider: 'sarvam',
     architecture: null,
     memorySizeMb: 0,
@@ -155,7 +155,9 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
   },
   {
     // TASK-567 — tenant BYOK fallback engine (cloud REST). See the sarvam row
-    // above; reached via the `openai :: model` shorthand at pipeline load.
+    // above. TASK-586: `format` is now the first-class AiModelFormat.OPENAI, so a
+    // bare-slug pipeline ref (`asr: "openai-gpt4o-transcribe"`) binds this engine
+    // like Azure Speech — no `openai::` shorthand override required.
     id: '80000000-0000-0000-0001-000000000017',
     tenantId: SYSTEM_TENANT_ID,
     name: 'OpenAI GPT-4o Transcribe (STT)',
@@ -168,7 +170,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     source: AiModelSource.LOCAL,
     sourceUri: 'gpt-4o-transcribe',
     sourceRevision: 'main',
-    format: AiModelFormat.CLOUD_API,
+    format: AiModelFormat.OPENAI,
     provider: 'openai',
     architecture: null,
     memorySizeMb: 0,
