@@ -14,19 +14,22 @@
  *     department, `templateLocked: false` (the golden rows ARE the templates;
  *     the lock applies to tenant CLONES only).
  *
- * The two fixture tenants are expressed as CLONES of the golden set via
+ * The Global fixture tenant is expressed as CLONES of the golden set via
  * `asAgentTemplateCopies` (mirrors 06-stt.ts `asTemplateCopies`): every
  * fixture-tenant agent is `templateLocked: true`, carries
  * `sourceAgentTemplateSlug` lineage, and stamps
  * `metaData.sourceTemplateVersionNumber` so the resync sweep
- * (`AgentTemplateResyncService`) can prove it pristine.
+ * (`AgentTemplateResyncService`) can prove it pristine. (TASK-592 Workstream D:
+ * the ArcaAI fixture tenant NO LONGER gets seeded default agents — its clinical
+ * departments resolve via the visit-type-faithful legacy prompt-id columns; see
+ * 07b-arcaai-clinical-templates.ts.)
  *
  * ID blocks (documented in 00-constants.ts):
  *   70000000-…-0002-…  SYSTEM golden departments
  *   71000000-…-0002-…  SYSTEM golden prompt templates
  *   72000000-…-0002-…  SYSTEM golden prompt versions
  *   78000000-…-XXXX-…  Department agents (0002 SYSTEM golden, 0000 Global
- *                      tenant clones, 0001 ArcaAI clones)
+ *                      tenant clones; ArcaAI 0001 block retired in Workstream D)
  *
  * SYSTEM_SHARED_READ_MODELS decision (plan §1): Department / PromptTemplate /
  * DepartmentAgent are deliberately NOT widened to SYSTEM-shared reads — doing
@@ -40,7 +43,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory } from '../../../generated/core-prisma-client/enums';
-import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 import { DEFAULT_DEPARTMENTS } from './04-department';
 import { DEFAULT_PROMPT_TEMPLATES, TEMPLATE_IDS } from './07-prompt-template';
 
@@ -51,7 +54,6 @@ const goldenTemplateId = (n: number): string => `71000000-0000-0000-0002-${pad(n
 const goldenVersionId = (n: number): string => `72000000-0000-0000-0002-${pad(n)}`;
 const goldenAgentId = (n: number): string => `78000000-0000-0000-0002-${pad(n)}`;
 const globalAgentId = (n: number): string => `78000000-0000-0000-0000-${pad(n)}`;
-const arcaaiAgentId = (n: number): string => `78000000-0000-0000-0001-${pad(n)}`;
 
 /**
  * Which fixture template each department's golden default agent documents
@@ -265,85 +267,17 @@ export const GLOBAL_TENANT_AGENTS: AgentSeedRow[] = asAgentTemplateCopies(
   }),
 );
 
-/**
- * ArcaAI customer tenant: needs tenant-owned content snapshots (its existing
- * fixture templates carry ArcaAI-specific content, which would read as DRIFT).
- * One APPROVED snapshot per agent — exactly what `provisionTenantAgentCatalog`
- * produces for a real tenant.
- */
-const ARCAAI_SNAPSHOT_SPECS = [
-  { deptCode: 'GEN', departmentId: SEED_DEPARTMENT_IDS.GEN_ARCAAI, templateId: '71000000-0000-0000-0001-000000000005' },
-  { deptCode: 'CARD', departmentId: SEED_DEPARTMENT_IDS.CARD_ARCAAI, templateId: '71000000-0000-0000-0001-000000000006' },
-  { deptCode: 'ER', departmentId: SEED_DEPARTMENT_IDS.ER_ARCAAI, templateId: '71000000-0000-0000-0001-000000000007' },
-] as const;
-
-export const ARCAAI_AGENT_TEMPLATE_SNAPSHOTS = ARCAAI_SNAPSHOT_SPECS.map((spec) => {
-  const sourceId = sourceIdForCode(spec.deptCode);
-  const source = fixtureTemplateById.get(sourceId);
-  if (!source) {
-    throw new Error(`Golden library source template ${sourceId} missing from DEFAULT_PROMPT_TEMPLATES`);
-  }
-  const golden = goldenAgentByCode.get(spec.deptCode);
-  if (!golden) {
-    throw new Error(`No golden agent for department code ${spec.deptCode}`);
-  }
-  return {
-    id: spec.templateId,
-    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    // Name after the AGENT (unique per department), NOT the shared source
-    // template: the catch-all backs several departments, so naming a
-    // per-agent snapshot after the template would collide on the
-    // PromptTemplate `(tenantId, name)` unique index (GEN + ER both use it).
-    name: golden.name,
-    description: source.description,
-    content: source.content,
-    category: source.category,
-    status: 'APPROVED' as const,
-    variables: source.variables ?? null,
-    currentVersionNumber: 1,
-    departmentId: spec.departmentId,
-    tags: source.tags,
-    // Provenance for the inventory-lock test (NOT persisted).
-    sourceFixtureTemplateId: sourceId,
-  };
-});
-
-// Initial version id reuses the template UUID with the `72…` prefix — the
-// deterministic cross-reference convention from 07-prompt-template.ts.
-export const ARCAAI_AGENT_TEMPLATE_VERSIONS = ARCAAI_AGENT_TEMPLATE_SNAPSHOTS.map((tpl) => ({
-  id: `72${tpl.id.slice(2)}`,
-  tenantId: tpl.tenantId,
-  promptTemplateId: tpl.id,
-  versionNumber: 1,
-  content: tpl.content,
-  variables: tpl.variables,
-  changeReason: 'Cloned from SYSTEM agent golden library (seed)',
-  changedBy: SYSTEM_USER_ID,
-}));
-
-export const ARCAAI_TENANT_AGENTS: AgentSeedRow[] = asAgentTemplateCopies(
-  ARCAAI_SNAPSHOT_SPECS.map((spec, i) => {
-    const golden = goldenAgentByCode.get(spec.deptCode);
-    if (!golden) {
-      throw new Error(`No golden agent for department code ${spec.deptCode}`);
-    }
-    return {
-      id: arcaaiAgentId(i + 1),
-      tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-      departmentId: spec.departmentId,
-      name: golden.name,
-      slug: golden.slug,
-      description: golden.description,
-      promptTemplateId: spec.templateId,
-      pinnedVersionNumber: null,
-      isDefault: true,
-      sourceAgentTemplateSlug: null,
-      templateLocked: false,
-      metaData: null,
-      tags: ['golden-library'],
-    };
-  }),
-);
+// NOTE (TASK-592 Workstream D): the ArcaAI customer tenant NO LONGER receives
+// seeded default DepartmentAgents. Its departments are the 7 v1 clinical
+// departments (04-department.ts), wired via the legacy Department prompt-id
+// columns to per-visit-type APPROVED templates (07b-arcaai-clinical-templates.ts).
+// A default agent resolves ONE template per department and ignores visit type,
+// which would collapse v1's new-referral vs follow-up split — so the ArcaAI
+// departments MUST have no default agent (the resolver then uses the
+// visit-type-faithful tier-1 legacy path). The former ArcaAI golden clones
+// (ARCAAI_SNAPSHOT_SPECS / ARCAAI_AGENT_TEMPLATE_SNAPSHOTS /
+// ARCAAI_AGENT_TEMPLATE_VERSIONS / ARCAAI_TENANT_AGENTS) were removed here.
+// The SYSTEM golden library and the Global-tenant clones are unchanged.
 
 // =============================================================================
 // Seed function — idempotent upsert-by-id. Runs AFTER 04-department and
@@ -363,7 +297,7 @@ export const seedAgentGoldenLibrary = async (client: CorePrismaClient) => {
     }
     console.log(`Seeded ${GOLDEN_DEPARTMENTS.length} golden departments`);
 
-    const templates = [...GOLDEN_PROMPT_TEMPLATES, ...ARCAAI_AGENT_TEMPLATE_SNAPSHOTS];
+    const templates = [...GOLDEN_PROMPT_TEMPLATES];
     for (const template of templates) {
       const { sourceFixtureTemplateId: _source, variables, ...rest } = template;
       const data = {
@@ -380,7 +314,7 @@ export const seedAgentGoldenLibrary = async (client: CorePrismaClient) => {
     }
     console.log(`Seeded ${templates.length} golden/snapshot prompt templates`);
 
-    const versions = [...GOLDEN_PROMPT_VERSIONS, ...ARCAAI_AGENT_TEMPLATE_VERSIONS];
+    const versions = [...GOLDEN_PROMPT_VERSIONS];
     for (const version of versions) {
       const { variables, ...rest } = version;
       const data = {
@@ -395,7 +329,7 @@ export const seedAgentGoldenLibrary = async (client: CorePrismaClient) => {
     }
     console.log(`Seeded ${versions.length} golden/snapshot prompt versions`);
 
-    const agents = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS, ...ARCAAI_TENANT_AGENTS];
+    const agents = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS];
     for (const agent of agents) {
       const { metaData, ...rest } = agent;
       const data = {

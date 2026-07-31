@@ -63,6 +63,20 @@ Tests: new `department-match.test.ts`, `smr-compat-template.service.test.ts`; ex
 - Deferred: unifying the two mirrored BYO type modules (cross-feature; would need `src/shared` relocation) — recommend a scoped follow-up.
 - Colocated tests + axe scans; `pnpm build`/`typecheck`/`lint` clean, 1269 tests pass.
 
+### Workstream D — Port v1 agent instruction templates into the ArcaAI seed ✅ (890 db tests pass)
+
+Added after the initial three workstreams (user request). v1 has exactly **two** visit-type categories (`new_referral`, `followup`) normalized from free-form strings; 7 clinical departments × 2 = 14 summary templates + 1 shared pre-summary. Ported them into the v2 seed for the **ArcaAI tenant** (`50000000-…0001`) via the **legacy Department prompt-id columns** (visit-type-faithful) with **no default DepartmentAgent** (so the resolver's tier-1 honors visit type). The playground `SummaryCard` visit-type select was reconciled to the two canonical options.
+
+`packages/database/src/prisma/db_main/seed/`:
+- New `07b-arcaai-clinical-content.ts` (15 content strings, **byte-exact verbatim** from v1 `prompts_<dept>_<visit>.py` `CONTENT` + the `previous_visit_service.py` pre-summary body, context interpolations statified) + `07b-arcaai-clinical-templates.ts` (15 APPROVED `PromptTemplate` + 15 `PromptVersion` rows, ArcaAI-owned, `approvedVersionNumber: 1`; 14 `DEPARTMENT_DEFAULT`, 1 shared `TENANT_DEFAULT` pre-summary). Registered in `index.ts` Phase 3.
+- `04-department.ts` — ArcaAI departments replaced with the **7 v1 clinical departments** (Surgery, General Medicine [retains `GEN_ARCAAI` id], Rheumatology, Neurology, Orthopedics, Hematology, Breast & Endocrine), each wiring `newPatientPromptId`/`revisitPromptId`/`preSummaryPromptId`.
+- `00-constants.ts` — ArcaAI dept-id block updated (kept `GEN_ARCAAI`, added 6, retired `CARD_ARCAAI`/`ER_ARCAAI`).
+- `07a-agent-golden-library.ts` — removed the ArcaAI DepartmentAgent blocks (SYSTEM golden library untouched) so tier-1a is empty for ArcaAI.
+- `07-prompt-template.ts` — the `ARCAAI_CARD` demo template's `departmentId` repointed to `null` (retired dept FK).
+- Tests updated: `seed.test.ts` (dept count 21→25; new ArcaAI clinical-department + prompt-library blocks incl. a resolver-wiring assertion that each department's 3 prompt-id columns resolve to APPROVED ArcaAI templates and new≠revisit), `agent-golden-library-seed.test.ts`, `seed-impersonation-coverage.test.ts`.
+
+Verified: `pnpm --filter @arcaai/database typecheck` clean; full db suite 27 files / 890 tests pass (independently re-confirmed: seed tests 6 files / 80 pass).
+
 ## Verification
 
 - A: `cd apps/api && npx vitest run src/modules/smr-compat` → 6 files / 95 tests pass. `pnpm --filter @arcaai/api typecheck` clean; `eslint src/modules/smr-compat/**/*.ts` clean.
@@ -71,7 +85,8 @@ Tests: new `department-match.test.ts`, `smr-compat-template.service.test.ts`; ex
 
 ## Change History
 
-- **2026-07-31** — Ticket created. All three workstreams implemented and gate-verified: A (gateway, 95 tests + typecheck + lint), B (playground, typecheck + 2 component tests), C (admin, build + typecheck + lint + 1269 tests). Status → Review. Staged/uncommitted; owner tails below.
+- **2026-07-31** — Ticket created. Workstreams A–C implemented and gate-verified: A (gateway, 95 tests + typecheck + lint), B (playground, typecheck + 2 component tests), C (admin, build + typecheck + lint + 1269 tests). Status → Review. Staged/uncommitted.
+- **2026-07-31** — Added Workstream D (user request): confirmed v1 has 2 visit-type categories; ported v1's 14 department×visit summary templates + 1 pre-summary into the ArcaAI seed via legacy Department prompt-id columns (7 v1 clinical departments replacing GEN/CARD/ER; no default agent); reconciled the playground visit-type select to the 2 canonical options. `@arcaai/database` typecheck clean, 890 tests pass.
 
 ## Owner Tails
 
@@ -81,3 +96,6 @@ Tests: new `department-match.test.ts`, `smr-compat-template.service.test.ts`; ex
 - **Figma design gate (rule 12)** for the new playground `SummaryCard` and the admin default-provider control — waive-or-approve consistent with prior compat tickets (586/588 waived it).
 - **Deferred follow-up:** unify the two mirrored BYO provider type modules in the admin console (relocate to `src/shared`).
 - **env:sync** if any new runtime env var is introduced (none added by this ticket).
+- **Seed (Workstream D) live apply:** run `pnpm db:seed` (dev) / `pnpm test:db:seed` (isolated test DB) to apply the ArcaAI clinical templates. On a re-seed of an EXISTING DB the previously-seeded ArcaAI DepartmentAgent rows (`78…-0001-…`) and the retired `CARD`/`ER` departments **linger** (seed is upsert-only, never deletes) — a live cutover wants a manual soft-delete of those rows. Fresh seed is clean. Once applied, the compat department resolver (Workstream A) picks up these APPROVED templates automatically.
+- **Concurrency:** a parallel session (TASK-593 ArcaAI production seed) edits `05-tenant.ts`/`14-pipeline-policy.ts` in the same tree — disjoint from Workstream D's `04`/`07`/`07a`/`00-constants`; combined db suite is green. Commit promptly to avoid uncommitted-work loss.
+- Stale doc comment (out of scope): `packages/applications/src/services/tenant/departmentDefaults.ts:9` names the removed `CUSTOMER_TENANT_GEN_DEPARTMENTS` in a comment only.

@@ -176,89 +176,11 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 
 ## Migrating from v1 (`@arcaai/vox/compat`)
 
-`@arcaai/vox/compat` lets a HOPE v1 app (`@arcaai/agentic-sdk`) move to this SDK by changing an import specifier and adding one provider — no rewrite of call sites. Compat hooks are thin adapters that **only consume the public v2 API** (the hooks/store/clients documented above); they never reach into v2 internals. Every compat module carries `"use client"`.
+`@arcaai/vox/compat` lets a HOPE v1 app (`@arcaai/agentic-sdk`) move to this SDK by changing an import specifier and adding one provider (`ArcaCompatProvider`) — no rewrite of call sites. It ships six hooks: `useArcaSessionManager`, `useAudioCapture`, `useArcaSpeechToText`, `useSMR`, `useArcaSttProvider`, and `useArcaSttLanguageModes`. Compat hooks are thin adapters that **only consume the public v2 API** (the hooks/store/clients documented above) — they never reach into v2 internals.
 
-**Full migration walkthrough:** [`docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md`](../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md) — 3-step checklist, side-by-side hook table, endpoint-parity table, full before/after code sample, verification checklist.
-**Frozen API contract:** [`docs/implementation/TASK-560-v1-v2-consultation-migration/README.md`](../../docs/implementation/TASK-560-v1-v2-consultation-migration/README.md) §5 (canonical v1 shapes) and §6 (v1 defects/anti-patterns deliberately **not** reproduced — hardcoded default API keys, collapsed conversation segments, binary WS frame corruption, and others).
-**Live-transcript metadata contract:** [`docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md`](../../docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md).
-
-### Setup
-
-```tsx
-import { ArcaCompatProvider } from '@arcaai/vox/compat';
-
-const v1Config = {
-  apiEndpoint: 'https://api.arcaai.example.com', // bare origin, NOT /api/v1 — the adapter normalizes it
-  websocketUrl: 'wss://api.arcaai.example.com',
-  credentials: { apiKey: 'your-api-key' }, // REQUIRED — mapV1ConfigToAgenticConfig throws without it
-  tenantId: 'tenant-id',
-  sttPipelineId: 'pipeline-id',
-  enableProviderSwitch: true, // required only if you use useArcaSttProvider().switchToPipeline()
-};
-
-<ArcaCompatProvider options={v1Config}>
-  <ConsultationPage />
-</ArcaCompatProvider>;
-```
-
-`ArcaCompatProvider` maps `options` via `mapV1ConfigToAgenticConfig` and renders `AgenticProvider` underneath — it's a drop-in replacement for a v1 provider, not a second store. Unlike v1, it does **not** fall back to a hardcoded default API key/encryption key when `credentials.apiKey` is missing — it throws instead (a deliberate fix, not a bug).
-
-### Hook reference
-
-| v1 hook | Adapts | Purpose | Key gotchas |
-| --- | --- | --- | --- |
-| `useArcaSessionManager` | `useArcaSession` | Session CRUD (`createSession`, `startSession`, `pauseSession`, `resumeSession`, `endSession`, `loadSession`, `updateSession`) | `createSession` + `startSession` collapse onto **one** idempotent `session.open(...)` — calling both never double-opens. `doctorId` is never sent to the server (preserved only in `session.metadata.legacyDoctorId`); v2 derives the provider from auth. `pauseSession`/`resumeSession` are **local-only** — no backend call exists for them. |
-| `useAudioCapture` | `useArcaAudio` | Mic capture (`startRecording`, `stopRecording`, `getDeviceStatus`) | `onAudioData` is accepted for source-compat but **never invoked** — v2 owns the full capture→mix→noise→VAD→STT pipeline internally. Shares one `useArcaAudio()` instance with `useArcaSpeechToText`, so pairing both (as v1 apps do) never double-starts the mic. |
-| `useArcaSpeechToText` | v2's pull-state transcript model | Live transcription (`startTranscription`, `stopTranscription`, `sendAudioData`, `onTranscript` callback) | The **most nuanced compat hook** — see "Live transcription metadata" below. `sendAudioData` is a **metadata-only sink**; it never transmits audio (v2 owns transport). `uploadAudioFile`/`getTranscriptionStatus` throw — explicitly unsupported, use `FileTranscriptionService` or read `transcriptSegments` directly. |
-| `useSMR` | the gateway's v1-compat SMR shim | Summarization (`summarize`/`summarizeSync`, `summarizeAsync`, `preSummarize`) | Calls literal v1 paths (`POST /api/smr/api/v1/summary/sync` etc.) **outside** the `/api/v1` prefix via a raw `fetch`, not `AgenticClient.post`. Builds real per-turn `conversation_segments` (v1 collapsed the whole transcript into one blob — a fixed defect). `summarizeAsync` is best-effort, not part of the frozen v1 shim contract — prefer `summarizeSync`. Tenant context is mandatory; there is no SYSTEM-default fallback. Pass `{ stream: true, onDelta }` to consume incremental SSE deltas instead of waiting for the full result. |
-| `useArcaSttProvider` | `useArcaAudio`'s `activePipeline`/`switchProvider()` | Runtime STT engine toggle (no v1 ancestor — an additive capability) | `switchToPipeline()` (back to the SDK-configured primary) requires `enableProviderSwitch: true` on the provider, or it rejects with `SWITCH_FAILED`. `switchToFallback`/`switchToDefault` always work. Both directions are idempotent; a switch requested before any capture session exists is queued (`pendingSttProvider`) and applied at the next `audio.start(...)`. |
-| `useArcaSttLanguageModes` | — (v2-native) | Language/mode picker (`modes`, `refresh`) feeding `audio.start({ languageMode })` | Re-exported from `/compat` purely so it shares a bundle with `ArcaCompatProvider` (see the entry-bundle note above) — import it from `/compat`, not `/core`, inside a compat tree. |
-
-### Live transcription metadata (`useArcaSpeechToText`)
-
-This hook reproduces v1's push-style `onTranscript(text, isFinal, metadata)` callback over v2's pull-based `transcriptSegments`/`currentTranscript` store state by diffing them on every render. Details that matter when integrating it:
-
-- **Final text is templated** (`transcriptTemplate`, default `"{timestamp} {speaker_id}: {text}"`); **interim text is delivered raw** (no speaker/timestamp exists yet for an in-progress utterance).
-- **`sendAudioData(data, metadata)` never transmits `data`** — it records `metadata` onto a bounded (256-entry, drop-oldest) capture-relative timeline for later correlation with finalized segments. Metadata over 8 KiB (`JSON.stringify(metadata).length > 8192`) throws, matching v1's `MAX_METADATA_BYTES` guard.
-- **Delivered-metadata precedence** (lowest → highest): v2 enrichments (`speaker_id`, `confidence`, `language`, `startTime`, `endTime`, `isFinal`) are overridden by your own metadata keys, which are in turn overridden by `chunk_id`/`detected_language` when present. In short: **your metadata wins over the hook's enrichments** — set `speaker_id`/`language`/etc. yourself if you need a specific value.
-- **Correlation is coarse, not byte-exact**: a final transcript picks the timeline entry closest to (but not after) its start time; interim transcripts always use the most recent entry. This matches v1's own documented guarantee.
-
-### Working example
-
-`apps/compat-playground` (port 5177) is a full runnable reference — `ArcaCompatProvider` setup, session + mic + live transcript + summary + provider toggle wiring, and a "view source" tab reading its own components. Its `SessionWorkspace.tsx` shows the canonical pattern:
-
-```tsx
-import {
-  useArcaSessionManager,
-  useAudioCapture,
-  useArcaSpeechToText,
-} from '@arcaai/vox/compat';
-
-const mgr = useArcaSessionManager({ doctorId, doctorName, patientId, patientName });
-const capture = useAudioCapture({ language: languageMode, languageMode });
-const stt = useArcaSpeechToText({
-  sessionId: mgr.session?.id ?? '',
-  language: languageMode,
-  transcriptTemplate: '{speaker_id}: {text}',
-  options: { pipelineId, languageMode },
-  onTranscript: (text, isFinal, metadata) => {
-    if (isFinal) appendLine(text, metadata);
-    else setInterim(text);
-  },
-  onError: (err) => toast.error(`STT error: ${err.message}`),
-});
-
-async function start() {
-  await capture.startRecording();
-  await stt.startTranscription();
-}
-async function stop() {
-  await stt.stopTranscription();
-  await capture.stopRecording();
-}
-```
-
-A smaller, stripped-down example lives at `apps/example/src/compat-consultation.tsx` (hardcodes department/visit type, skips the pre-summary step).
+**Full compat API reference (setup, every hook's signature and gotchas, the metadata-precedence contract, reproduced v1 types):** [`docs/Compat-API-Reference.md`](docs/Compat-API-Reference.md).
+**Migration walkthrough:** [`docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md`](../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md) — 3-step checklist, side-by-side hook table, full before/after code sample, verification checklist.
+**Working example:** `apps/compat-playground` (port 5177) — a full runnable reference exercising every compat hook end to end.
 
 ## Hooks overview
 

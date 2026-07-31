@@ -26,7 +26,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { SEED_USERS, PRIMARY_DEPARTMENT_CODE_BY_USERNAME } from '../prisma/db_main/seed/91-user';
-import { DEFAULT_DEPARTMENTS, CUSTOMER_TENANT_GEN_DEPARTMENTS, CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS } from '../prisma/db_main/seed/04-department';
+import { DEFAULT_DEPARTMENTS, ARCAAI_CLINICAL_DEPARTMENTS } from '../prisma/db_main/seed/04-department';
 import { SEED_CUSTOMER_TENANT_IDS, SYSTEM_TENANT_ID } from '../prisma/db_main/seed/00-constants';
 
 const CUSTOMER_TENANTS = [{ label: 'ArcaAI', tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI }] as const;
@@ -34,7 +34,7 @@ const CUSTOMER_TENANTS = [{ label: 'ArcaAI', tenantId: SEED_CUSTOMER_TENANT_IDS.
 // `${tenantId}:${code}` for every department the seed actually creates, used to
 // confirm a clinical user's mapped department code resolves within its tenant.
 const SEEDED_DEPARTMENT_KEYS = new Set(
-  [...DEFAULT_DEPARTMENTS, ...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].map((d) => `${d.tenantId}:${d.code}`),
+  [...DEFAULT_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS].map((d) => `${d.tenantId}:${d.code}`),
 );
 
 const usersInTenantWithRole = (tenantId: string, role: string) => SEED_USERS.filter((u) => u.tenantId === tenantId && u.roleNames.includes(role));

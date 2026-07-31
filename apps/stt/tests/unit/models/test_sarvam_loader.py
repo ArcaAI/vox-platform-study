@@ -24,7 +24,7 @@ from stt.pipeline.dto import (
 )
 
 
-def _config(source_uri: str | None = "saaras:v3") -> AiModelConfig:
+def _config(source_uri: str | None = "saaras:v4") -> AiModelConfig:
     return AiModelConfig(
         id="m-sarvam-1",
         tenant_id="t-1",
@@ -77,7 +77,7 @@ class TestSarvamLoaderLoad:
         cfg = result.model
         assert isinstance(cfg, CloudRestConfig)
         assert cfg.api_key.get_secret_value() == "env-sarvam-key"
-        assert cfg.model_name == "saaras:v3"
+        assert cfg.model_name == "saaras:v4"
 
     @pytest.mark.asyncio
     async def test_override_key_wins_over_env(self):

@@ -1,7 +1,7 @@
 import type { CorePrismaClient } from '../../../client';
 import { Prisma } from '../../../generated/core-prisma-client/client';
 import type { PromptTemplateCategory, PromptTemplateStatus } from '../../../generated/core-prisma-client/enums';
-import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from './00-constants';
+import { SEED_CUSTOMER_TENANT_IDS } from './00-constants';
 
 /**
  * Publication baseline.
@@ -2258,7 +2258,11 @@ export const CUSTOMER_PROMPT_TEMPLATES = [
       ecg_results: { type: 'string', required: false },
     },
     currentVersionNumber: 1,
-    departmentId: SEED_DEPARTMENT_IDS.CARD_ARCAAI,
+    // departmentId is null: the former ArcaAI CARD department was retired in
+    // TASK-592 Workstream D (the ArcaAI tenant now carries the 7 v1 clinical
+    // departments). This demo cross-tenant-switcher template stays as a
+    // tenant-level CUSTOM cardiology prompt with no department binding.
+    departmentId: null,
     tags: ['arcaai', 'cardiology'],
   },
 ];

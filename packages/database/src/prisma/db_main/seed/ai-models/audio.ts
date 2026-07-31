@@ -136,15 +136,15 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // like the Azure Speech row — no inline `engine:`/`sarvam::` override needed.
     id: '80000000-0000-0000-0001-000000000016',
     tenantId: SYSTEM_TENANT_ID,
-    name: 'Sarvam Saaras v3 (STT)',
+    name: 'Sarvam Saaras v4 (STT)',
     slug: 'sarvam-saaras-v3',
     description:
-      'Sarvam AI speech-to-text (saaras:v3, code-switch capable, 10+ Indic languages + English). Cloud REST; per-tenant BYOK via the STT provider credential (TASK-567) or SARVAM_API_KEY.',
+      'Sarvam AI speech-to-text (saaras:v4, code-switch capable, 10+ Indic languages + English). Cloud REST; per-tenant BYOK via the STT provider credential (TASK-567) or SARVAM_API_KEY.',
     category: ModelCategory.AUDIO,
     taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
     modelType: ModelType.BASE_MODEL,
     source: AiModelSource.LOCAL,
-    sourceUri: 'saaras:v3',
+    sourceUri: 'saaras:v4',
     sourceRevision: 'main',
     format: AiModelFormat.SARVAM,
     provider: 'sarvam',

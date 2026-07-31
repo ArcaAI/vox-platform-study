@@ -1998,6 +1998,7 @@ class SessionManager:
 
         config = loaded_model.model
         language = getattr(inference_config, "language", None)
+        code_switching = getattr(inference_config, "code_switching", False)
 
         async def run_sarvam_inference(
             samples: np.ndarray,
@@ -2005,7 +2006,9 @@ class SessionManager:
             *,
             prompt: str | None = None,  # noqa: ARG001 — not used by Sarvam REST
         ) -> dict[str, Any]:
-            return await sarvam_recognize_utterance(config, samples, sample_rate, language)
+            return await sarvam_recognize_utterance(
+                config, samples, sample_rate, language, code_switching=code_switching
+            )
 
         return run_sarvam_inference
 

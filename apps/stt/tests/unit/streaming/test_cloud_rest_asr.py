@@ -78,6 +78,32 @@ class TestSarvamRecognize:
         assert kwargs["data"]["language_code"] == expected
         assert kwargs["headers"]["api-subscription-key"] == "secret-key"
 
+    @pytest.mark.parametrize("language", ["ml", "ml-IN", "ml-en"])
+    @pytest.mark.asyncio
+    async def test_code_switching_malayalam_pins_ml_in_with_codemix(self, language):
+        # A Malayalam code-switch pipeline (ml / ml-*) must select Saaras'
+        # code-mixed output (mode="codemix") and pin language_code="ml-IN".
+        client = _mock_client(status_code=200, text="ok", payload={"transcript": "hello"})
+        with patch("stt.streaming.sarvam_asr.httpx.AsyncClient", return_value=client):
+            await sarvam_recognize_utterance(
+                _config("sarvam"), SAMPLES, SR, language, code_switching=True
+            )
+        _, kwargs = client.post.call_args
+        assert kwargs["data"]["mode"] == "codemix"
+        assert kwargs["data"]["language_code"] == "ml-IN"
+
+    @pytest.mark.asyncio
+    async def test_code_switching_without_language_falls_back_to_unknown(self):
+        # Defensive: no pipeline language -> codemix with auto-detect.
+        client = _mock_client(status_code=200, text="ok", payload={"transcript": "hello"})
+        with patch("stt.streaming.sarvam_asr.httpx.AsyncClient", return_value=client):
+            await sarvam_recognize_utterance(
+                _config("sarvam"), SAMPLES, SR, None, code_switching=True
+            )
+        _, kwargs = client.post.call_args
+        assert kwargs["data"]["mode"] == "codemix"
+        assert kwargs["data"]["language_code"] == "unknown"
+
     @pytest.mark.asyncio
     async def test_detected_language_code_is_surfaced(self):
         # Sarvam echoes the detected source language in `language_code`; it must

@@ -68,10 +68,20 @@ async def sarvam_recognize_utterance(
     samples: np.ndarray,
     sample_rate: int,
     language: str | None = None,
+    *,
+    code_switching: bool = False,
 ) -> dict[str, Any]:
     """Transcribe ``samples`` via Sarvam speech-to-text REST.
 
     Returns ``{"text": str, "word_timestamps": list[dict]}``.
+
+    Args:
+        code_switching: When ``True`` (a bilingual "X + English" mode), request
+            Sarvam's automatic language detection by sending
+            ``language_code="unknown"`` instead of a pinned language. Saaras then
+            detects language switches within the utterance and transcribes the
+            code-mixed audio natively; pinning a single language would suppress
+            the other one.
 
     Raises:
         CloudASRAuthError: 401/403.
@@ -82,7 +92,18 @@ async def sarvam_recognize_utterance(
 
     data: dict[str, str] = {"model": config.model_name}
     lang = _normalize_language_for_sarvam(language or config.language_default)
-    if lang:
+    if code_switching:
+        # Sarvam Saaras code-switch (code-mixed audio, e.g. Malayalam + English):
+        #   * mode="codemix" — Saaras' dedicated code-switch output mode: emit
+        #     natural code-mixed text (English words in Latin script, Indic words
+        #     in native script) instead of forcing everything into one script.
+        #   * language_code — pin the pipeline's primary language, normalized to
+        #     Sarvam's BCP-47 form (a "ml" / "ml-*" pipeline -> "ml-IN"), so the
+        #     model anchors on it; fall back to "unknown" (auto-detect) only when
+        #     the pipeline carried no language at all.
+        data["mode"] = "codemix"
+        data["language_code"] = lang or "unknown"
+    elif lang:
         data["language_code"] = lang
 
     files = {"file": ("audio.wav", wav, "audio/wav")}

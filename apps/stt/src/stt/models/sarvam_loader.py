@@ -23,7 +23,7 @@ from .cloud_asr import CloudRestConfig, resolve_override_key
 logger = logging.getLogger(__name__)
 
 # Sarvam speech-to-text default model (saaras family, code-switch capable).
-DEFAULT_SARVAM_MODEL = "saaras:v3"
+DEFAULT_SARVAM_MODEL = "saaras:v4"
 # The provider key under which a per-tenant override arrives (gateway wire).
 SARVAM_OVERRIDE_KEY = "sarvam"
 

@@ -61,6 +61,14 @@ export const PRIMARY_DEPARTMENT_CODE_BY_USERNAME: Record<string, string> = {
   // Per-customer-tenant impersonatable clinical users.
   arcaai_doctor: 'GEN',
   arcaai_nurse: 'GEN',
+  // One resident DOCTOR per remaining ArcaAI clinical department (arcaai_doctor
+  // covers GEN). Codes resolve to the ArcaAI-tenant department by (tenantId, code).
+  arcaai_doctor_surg: 'SURG',
+  arcaai_doctor_rheum: 'RHEUM',
+  arcaai_doctor_neur: 'NEUR',
+  arcaai_doctor_orth: 'ORTH',
+  arcaai_doctor_heme: 'HEME',
+  arcaai_doctor_bren: 'BREN',
 };
 
 // =========================================================================

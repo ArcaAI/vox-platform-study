@@ -45,7 +45,7 @@ const PROVIDERS: readonly ProviderMeta[] = [
     label: 'Sarvam',
     fields: [
       { key: 'endpoint', label: 'Base URL (optional)', placeholder: 'https://api.sarvam.ai' },
-      { key: 'model', label: 'Model (optional)', placeholder: 'saaras:v3' },
+      { key: 'model', label: 'Model (optional)', placeholder: 'saaras:v4' },
     ],
   },
   {

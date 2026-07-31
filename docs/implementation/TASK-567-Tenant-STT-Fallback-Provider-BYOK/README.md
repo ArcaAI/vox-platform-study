@@ -81,7 +81,7 @@ Credential fields per provider (all keys write-only, masked reads `hasKey`+`keyV
 | Provider | Secret | Non-secret config |
 |---|---|---|
 | `azure-speech` | subscription key | `region` (classic) or `endpoint` (Foundry resource); optional `foundryModel` (e.g. `mai-transcribe-1.5`) in `extraJson` |
-| `sarvam` | api-subscription-key | optional `model` (default `saaras:v3` / `saarika` family), `languageCode` default in `extraJson` |
+| `sarvam` | api-subscription-key | optional `model` (default `saaras:v4` / `saarika` family), `languageCode` default in `extraJson` |
 | `openai` | API key | optional `baseUrl` (Azure-OpenAI-compatible endpoints), `model` (default `gpt-4o-transcribe`; `gpt-4o-mini-transcribe` for latency) |
 
 ### 3.2 D-2 Fallback selection: tenant-level pointer to a pipeline, on `TenantSttConfig`
@@ -149,7 +149,7 @@ Descriptors registered in `packages/applications/src/services/settings-registry/
 ### 3.8 Provider API research notes (2026-07, external)
 
 - **Azure**: real-time via Speech SDK/WebSocket + fast-transcription REST for batch; Foundry hosts both classic Speech and MAI-Transcribe models; 140+ languages. Already integrated in HOPE — BYOK override is the only delta.
-- **Sarvam**: `wss://api.sarvam.ai/speech-to-text/ws`, `saaras:v3` default (modes: transcribe/translate/verbatim/translit/codemix), **WAV/PCM16 only, sample rate must match actual audio**, built-in VAD with sensitivity control, `api-subscription-key` auth, 10+ Indic languages + English — strong fit for HOPE's en+ml posture.
+- **Sarvam**: `wss://api.sarvam.ai/speech-to-text/ws`, `saaras:v4` default (modes: transcribe/translate/verbatim/translit/codemix), **WAV/PCM16 only, sample rate must match actual audio**, built-in VAD with sensitivity control, `api-subscription-key` auth, 10+ Indic languages + English — strong fit for HOPE's en+ml posture.
 - **OpenAI**: `gpt-4o-transcribe` / `gpt-4o-mini-transcribe` (better WER than whisper-1), REST `/v1/audio/transcriptions` + Realtime WS transcription sessions; `gpt-realtime-whisper` offers latency/quality-tradeoff delay settings.
 - **Industry failover practice** (matches the design): classify errors before switching (auth/quota = immediate, transient = threshold), fail open on credential degradation but closed on selection, one-way switch per session to avoid flapping, always emit an observable event on switch, and never silently change the model family mid-transcript without telling the user (clinical-quality concern — hence the status frame + UI banner are REQUIRED, not optional).
 
