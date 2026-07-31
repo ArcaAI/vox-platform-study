@@ -219,6 +219,30 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     computeType: 'q8_0',
     tags: ['multilingual', 'fast', 'ggml', 'whisper.cpp'],
   },
+  {
+    // ArcaAI in-house Malayalam+English code-switch full fine-tune of
+    // whisper-large-v3-turbo, GGUF-quantized (f16) for the whisper.cpp ggml
+    // runtime (pywhispercpp binding). Pre-converted GGUF repo — no separate
+    // conversion step required.
+    id: '80000000-0000-0000-0001-000000000018',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large ML-EN Code-Switch (whisper.cpp GGUF)',
+    slug: 'arcaai-whisper-large-ml-en-gguf',
+    description:
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF-quantized (f16) for the whisper.cpp ggml runtime via the pywhispercpp binding.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.HUGGINGFACE,
+    sourceUri: 'taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF',
+    sourceRevision: 'main',
+    format: AiModelFormat.WHISPER_CPP,
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 1700, // ~f16 GGUF, larger than the q8_0 turbo row
+    computeType: 'f16',
+    tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp'],
+  },
 
   // =========================================================================
   // VAD (Voice Activity Detection)
