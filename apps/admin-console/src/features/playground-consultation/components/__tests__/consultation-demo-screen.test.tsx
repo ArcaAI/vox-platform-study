@@ -33,6 +33,7 @@ vi.mock('@arcaai/vox', () => ({
   useStoreApi: () => sdk.storeApi,
   useUserSettings: () => sdk.userSettings,
   useArcaLiveSummary: () => sdk.liveSummary,
+  useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn(async () => undefined) }),
 }));
 
 const CONSULTATIONS = [
