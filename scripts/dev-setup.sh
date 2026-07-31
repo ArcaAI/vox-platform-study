@@ -6,12 +6,20 @@
 # `pnpm api:dev` boots cleanly against Vault with dynamic Postgres creds.
 #
 # Sequence:
-#   0. Create .env.dev from .env.sample if it doesn't already exist (TASK-583)
+#   0. Create/overwrite .env.dev from .env.sample              (TASK-583)
 #   1. Start infrastructure (core + vault + temporal + rag; optional -o/-e)
-#   2. Wait for Postgres + Vault (and the vault-init AppRole bootstrap)
-#   3. Apply Prisma migrations + seed         (pnpm db:all)
+#   2. Wait for Postgres + Vault (and the vault-init AppRole bootstrap) to be ready
+#   3. Apply Prisma migrations + seed                            (pnpm db:all)
 #   4. Refresh Vault AppRole creds in .env.dev (so the app can authenticate)
-#   5. Bootstrap Vault dynamic DB credentials  (vault_admin + DB engine)
+#   5. Bootstrap Vault dynamic DB credentials    (vault_admin + DB engine)
+#   6. Finalize the env — build the settings registry and reconcile Vault
+#      kv-v2 secrets with .env.dev (scripts/vault-seed-secrets.sh), so a
+#      service booted with SECRETS_PROVIDER=vault reads the SAME values
+#      .env.dev has. Without this, dev-init.sh's hardcoded placeholder seed
+#      (e.g. MINIO_ACCESS_KEY=minio_admin) silently diverges from whatever
+#      .env.dev actually carries (e.g. a freshly generated MINIO_ACCESS_KEY),
+#      and only the service that happens to read Vault notices — at request
+#      time, not setup time.
 #
 # USAGE:
 #   pnpm setup:dev          # base: core + vault + temporal + rag
@@ -64,7 +72,7 @@ for f in "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"; do
   esac
 done
 
-bold "── Step 0/5: ensuring .env.dev exists ────────────────────────────────"
+bold "── Step 0/6: ensuring .env.dev exists ────────────────────────────────"
 # shellcheck source=./generate-env-file.sh
 source "$SCRIPT_DIR/generate-env-file.sh"
 ensure_env_file "$REPO_ROOT/.env.dev" dev
@@ -72,12 +80,12 @@ ensure_env_file "$REPO_ROOT/.env.dev" dev
 ROOT_TOKEN="$(read_env VAULT_DEV_ROOT_TOKEN root)"
 PG_SUPERUSER="$(read_env POSTGRES_USER postgres)"
 
-bold "── Step 1/5: starting infrastructure ($TIER_LABEL) ──────"
+bold "── Step 1/6: starting infrastructure ($TIER_LABEL) ──────"
 # Use the full dev-infra wrapper so Temporal + rag (and optional -o/-e) come up
 # alongside core + vault.
 "$SCRIPT_DIR/dev-infra.sh" up "${INFRA_FLAGS[@]+"${INFRA_FLAGS[@]}"}"
 
-bold "── Step 2/5: waiting for Postgres + Vault to be ready ───────────────"
+bold "── Step 2/6: waiting for Postgres + Vault to be ready ───────────────"
 ready=0
 for _ in $(seq 1 90); do
   if docker exec "$PG_CONTAINER" pg_isready -U "$PG_SUPERUSER" >/dev/null 2>&1 \
@@ -95,14 +103,21 @@ if [ "$ready" != "1" ]; then
 fi
 green "→ Postgres ready; Vault AppRole bootstrap complete."
 
-bold "── Step 3/5: applying migrations + seed (pnpm db:all) ───────────────"
+bold "── Step 3/6: applying migrations + seed (pnpm db:all) ───────────────"
 pnpm db:all
 
-bold "── Step 4/5: refreshing Vault AppRole creds in .env.dev ─────────────"
+bold "── Step 4/6: refreshing Vault AppRole creds in .env.dev ─────────────"
 "$SCRIPT_DIR/refresh-vault-creds.sh"
 
-bold "── Step 5/5: bootstrapping Vault dynamic DB credentials ─────────────"
+bold "── Step 5/6: bootstrapping Vault dynamic DB credentials ─────────────"
 "$SCRIPT_DIR/setup-dev-vault-db.sh"
+
+bold "── Step 6/6: finalizing the env (syncing Vault kv-v2 secrets) ───────"
+# vault-seed-secrets.sh derives its key list from the built settings registry
+# (no hardcoded fallback list — that's the drift TASK-558 removed), so the
+# registry must be compiled before it can run.
+pnpm --filter @arcaai/applications build
+"$SCRIPT_DIR/vault-seed-secrets.sh" --env-file "$REPO_ROOT/.env.dev"
 
 green ""
 green "✔ Local dev environment is ready."

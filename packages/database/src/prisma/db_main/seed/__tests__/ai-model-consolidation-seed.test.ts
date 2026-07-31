@@ -112,6 +112,10 @@ const TASK_524_NEW_SLUGS = [
 // `provider :: model` shorthand, so their Prisma `format` is CLOUD_API).
 const TASK_567_NEW_SLUGS = ['sarvam-saaras-v3', 'openai-gpt4o-transcribe'] as const;
 
+// ArcaAI in-house Malayalam+English code-switch full fine-tune of
+// whisper-large-v3-turbo, served via whisper.cpp GGUF (matrix #10).
+const ARCAAI_ML_EN_NEW_SLUGS = ['arcaai-whisper-large-ml-en-gguf', 'arcaai-whisper-large-ml-en-gguf-q8_0'] as const;
+
 const EXPECTED_CATALOG_SLUGS = [
   ...KEEPER_SLUGS,
   ...NEW_LLM_SLUGS,
@@ -121,6 +125,7 @@ const EXPECTED_CATALOG_SLUGS = [
   ...TASK_515_NEW_SLUGS,
   ...TASK_524_NEW_SLUGS,
   ...TASK_567_NEW_SLUGS,
+  ...ARCAAI_ML_EN_NEW_SLUGS,
 ] as const;
 
 // The 50 slugs that must be RETIRED (previous 60 minus the 10 keepers).
@@ -199,6 +204,8 @@ const PIPELINE_REFERENCED_SLUGS = [
   'azure-speech-stt',
   'mai-transcribe-1.5',
   'nemotron-3.5-asr-streaming-0.6b',
+  'arcaai-whisper-large-ml-en-gguf',
+  'arcaai-whisper-large-ml-en-gguf-q8_0',
 ] as const;
 
 type SeedModel = (typeof DEFAULT_AI_MODELS)[number] & {
@@ -216,10 +223,10 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // =============================================================================
 
 describe('consolidated AI model catalog (26 rows) + extensions', () => {
-  it('is exactly the 37 expected slugs (26 + 2 + 9 extensions)', () => {
+  it('is exactly the 41 expected slugs (26 + 2 + 9 extensions + 2 ArcaAI ML-EN)', () => {
     const slugs = catalog.map((m) => m.slug).sort();
     expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-    expect(catalog.length).toBe(39);
+    expect(catalog.length).toBe(41);
   });
 
   it('has unique ids and unique slugs', () => {

@@ -28,6 +28,13 @@ export interface CreateStreamingSessionRequest {
   userId?: string;
   /** Override pipeline language (ISO 639-1 code) */
   language?: string;
+  /**
+   * End-user language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`
+   * (Malayalam+English code-switch), `'auto'`. Forwarded to STT, which resolves
+   * it against the session's engine and rejects (422) a mode no configured
+   * engine can serve. Takes precedence over `language`.
+   */
+  languageMode?: string;
   /** Tenant-scoped audio bucket name forwarded to STT-v2 for storage isolation */
   audioBucketName?: string;
   /**
@@ -66,6 +73,26 @@ export interface StreamingSessionStatus {
   maxConcurrent: number;
   /** Number of currently active sessions */
   currentActive: number;
+}
+
+/**
+ * A selectable STT language mode + the catalog-wide set of engines that can
+ * serve it (TASK-587). Mirrors the STT `/internal/streaming/language-modes`
+ * payload. `kind` distinguishes a single language, a bilingual code-switch
+ * mode, and auto-detect.
+ */
+export interface SttLanguageMode {
+  id: string;
+  label: string;
+  kind: 'single' | 'code_switch' | 'auto';
+  primaryLanguage: string | null;
+  secondaryLanguage: string | null;
+  /** Engine `format` values (catalog-wide) that can serve this mode. */
+  supportedEngines: string[];
+}
+
+export interface SttLanguageModeCatalog {
+  modes: SttLanguageMode[];
 }
 
 export interface StreamingAvailability {

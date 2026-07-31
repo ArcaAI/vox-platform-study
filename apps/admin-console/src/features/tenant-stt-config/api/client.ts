@@ -7,7 +7,7 @@
  * Paths are gateway-relative; the shared core prepends the BFF proxy mount.
  */
 
-import { deleteJson, getJson, getWithEtag, request } from '@/shared/api';
+import { deleteJson, getJson, getWithEtag, postJson, request } from '@/shared/api';
 import type { WithEtag } from '@/shared/api';
 import type {
   EffectiveSttConfig,
@@ -17,6 +17,8 @@ import type {
   SttCredential,
   SttPipelineCandidate,
   SttProvider,
+  TestSttCredentialRequest,
+  TestSttCredentialResult,
 } from './types';
 
 const BASE = 'admin/stt-config';
@@ -76,4 +78,9 @@ export function setSttCredential(
 /** Remove a provider's BYO credential (soft delete → 204). */
 export function removeSttCredential(provider: SttProvider): Promise<void> {
   return deleteJson(`${BASE}/credentials/${provider}`);
+}
+
+/** Ephemeral "Test connection" probe — never persisted, no OCC. Validates before (or independent of) saving. */
+export function testSttCredential(provider: SttProvider, body: TestSttCredentialRequest): Promise<TestSttCredentialResult> {
+  return postJson(`${BASE}/credentials/${provider}/test`, body);
 }

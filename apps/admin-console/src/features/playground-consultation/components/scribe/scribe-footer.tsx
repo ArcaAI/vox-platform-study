@@ -13,6 +13,7 @@
  */
 
 import { ModelSelector, type ModelOption } from '@arcaai/ui/components/custom/model-selector';
+import { SttLanguageModePicker, type SttLanguageModeOption } from '@arcaai/ui/components/custom/stt-language-mode-picker';
 import { StatCard } from '@arcaai/ui/components/metrics/stat-card';
 
 export interface ScribeMetrics {
@@ -40,6 +41,11 @@ export interface ScribeFooterProps {
   selectedTranscriptionId: string;
   onTranscriptionChange: (id: string) => void;
   transcriptionLoading: boolean;
+  /** Selectable STT language modes (TASK-587). */
+  languageModes: SttLanguageModeOption[];
+  selectedLanguageMode: string;
+  onLanguageModeChange: (id: string) => void;
+  languageModesLoading: boolean;
   noteModels: ModelOption[];
   selectedNoteId: string;
   onNoteChange: (id: string) => void;
@@ -51,6 +57,10 @@ export function ScribeFooter({
   selectedTranscriptionId,
   onTranscriptionChange,
   transcriptionLoading,
+  languageModes,
+  selectedLanguageMode,
+  onLanguageModeChange,
+  languageModesLoading,
   noteModels,
   selectedNoteId,
   onNoteChange,
@@ -65,6 +75,14 @@ export function ScribeFooter({
           selectedModelId={selectedTranscriptionId}
           onChange={onTranscriptionChange}
           isLoading={transcriptionLoading}
+        />
+      </div>
+      <div className="bg-background min-w-44 flex-1 rounded-lg border p-2.5">
+        <SttLanguageModePicker
+          modes={languageModes}
+          value={selectedLanguageMode || undefined}
+          onValueChange={onLanguageModeChange}
+          isLoading={languageModesLoading}
         />
       </div>
       <div className="bg-background min-w-52 flex-1 rounded-lg border p-2.5">

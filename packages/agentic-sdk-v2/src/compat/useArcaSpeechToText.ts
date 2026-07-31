@@ -89,9 +89,30 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   // the compat surface always fell back to the default pipeline). Does NOT touch
   // the TASK-564/565 metadata timeline.
   const pipelineId = typeof options?.pipelineId === 'string' ? options.pipelineId : undefined;
+  // End-user language mode (TASK-587) — accepted through the v1 `options` bag
+  // (same additive pattern as `pipelineId`), so the frozen v1 signature is
+  // unchanged. When set it is forwarded to `audio.start` and takes precedence
+  // over the v1 `language` string on the backend path.
+  const languageMode = typeof options?.languageMode === 'string' ? options.languageMode : undefined;
 
   const segments = useAgenticStore(selectTranscriptSegments);
   const currentTranscript = useAgenticStore(selectCurrentTranscript);
+
+  // Publish the selected language + mode into the store so the choice survives
+  // the compat start-coordination race. `useAudioCapture.startRecording()` and
+  // this hook's `startTranscription()` both drive the SAME `useArcaAudio()` and
+  // both call `audio.start(...)` guarded by `audio.isCapturing`; whichever runs
+  // FIRST wins. `useAudioCapture` starts with only `{ pipelineId }` (it has no
+  // language), so if it wins the language-bearing start here is skipped and the
+  // selection is lost (the pipeline default language is used instead). Backing
+  // the selection with the store — which `useArcaAudio.startAudio` reads as a
+  // fallback — makes the outcome order-independent. (TASK-587)
+  const setAudioLanguage = useAgenticStore((s) => s.setAudioLanguage);
+  const setSttLanguageMode = useAgenticStore((s) => s.setSttLanguageMode);
+  useEffect(() => {
+    setAudioLanguage(language);
+    setSttLanguageMode(languageMode);
+  }, [language, languageMode, setAudioLanguage, setSttLanguageMode]);
 
   const [error, setError] = useState<ErrorInfo | null>(null);
 
@@ -176,14 +197,14 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
       setError(null);
       // Anchor the capture-relative timeline base at capture start.
       if (captureStartMsRef.current === undefined) captureStartMsRef.current = Date.now();
-      await audio.start({ language, ...(pipelineId ? { pipelineId } : {}) });
+      await audio.start({ language, ...(pipelineId ? { pipelineId } : {}), ...(languageMode ? { languageMode } : {}) });
     } catch (err) {
       const info = toErrorInfo(err);
       setError(info);
       onError?.(info);
       throw err;
     }
-  }, [audio, language, pipelineId, onError]);
+  }, [audio, language, pipelineId, languageMode, onError]);
 
   const stopTranscription = useCallback(async (): Promise<void> => {
     if (!audio.isCapturing) return;

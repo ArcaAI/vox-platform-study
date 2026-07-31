@@ -73,3 +73,16 @@ export interface SetSttCredentialRequest {
   enabled?: boolean;
   expectedVersion: number;
 }
+
+/** Ephemeral "Test connection" probe body — never persisted, no OCC. */
+export interface TestSttCredentialRequest {
+  apiKey: string;
+  region?: string;
+  endpoint?: string;
+}
+
+/** Result of an ephemeral BYO-provider probe. */
+export interface TestSttCredentialResult {
+  ok: boolean;
+  message: string;
+}

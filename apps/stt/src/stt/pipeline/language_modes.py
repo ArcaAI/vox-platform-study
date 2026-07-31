@@ -1,0 +1,251 @@
+"""Language-mode catalog and per-engine capability matrix (TASK-587).
+
+The gateway/SDK let an end user pick a *language mode* for the STT pipeline —
+a single language ("English", "Malayalam"), a bilingual code-switch mode
+("Malayalam + English"), or auto-detect. Because the STT engines diverge
+sharply on what they can serve (e.g. NEMO/Parakeet-v3 has no Malayalam and
+ignores code-switching; OpenAI is single-language; Sarvam code-switches at the
+model level; Azure via an auto-detect flag; Whisper via a separate translate
+gloss), a raw language string cannot be validated uniformly.
+
+This module is the **single, backend-authoritative source of truth**:
+
+* ``LANGUAGE_MODE_CATALOG`` — the closed set of selectable modes.
+* ``engine_supports_mode`` / ``engines_supporting_mode`` /
+  ``modes_supported_by_engine`` — the capability matrix, derived from the facts
+  already encoded in :mod:`stt.pipeline.dto` (``is_valid_language_for_engine``,
+  ``VALID_WHISPER_LANGUAGES``, ``VALID_PARAKEET_V3_LANGUAGES``) plus each
+  engine's code-switch behaviour.
+* ``resolve_mode_for_engine`` — translates a mode into the existing
+  :class:`~stt.pipeline.dto.InferenceConfig` fields (``language``,
+  ``code_switching``, ``streaming_english_gloss``) for a concrete engine, or
+  raises :class:`LanguageModeUnsupportedError` when the engine cannot serve it.
+
+"Selection constrains providers": at session-create the mode is resolved
+against the engine that will actually serve the session. An engine that cannot
+serve the mode is excluded from the session's chain (the fallback path picks it
+up); if no configured engine qualifies, the create request is rejected (422).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+from stt.pipeline.dto import AiModelFormat, is_valid_language_for_engine
+
+LanguageModeKind = Literal["single", "code_switch", "auto"]
+
+# --- Code-switch capability per engine ---------------------------------------
+# How each engine realises a bilingual "X + English" mode:
+#   "native" — the model handles mixed-language audio itself (no flag needed).
+#   "flag"   — enable an auto-detect / code-switch flag on the engine.
+#   "gloss"  — native transcript + a second English-translation pass
+#              (``streaming_english_gloss``); only meaningful when the secondary
+#              language is English.
+#   None     — the engine cannot code-switch at all.
+CodeSwitchCapability = Literal["native", "flag", "gloss"]
+
+_WHISPER_FAMILY: frozenset[AiModelFormat] = frozenset(
+    {
+        AiModelFormat.SAFETENSOR,
+        AiModelFormat.PYTORCH,
+        AiModelFormat.ONNX,
+        AiModelFormat.ONNX_OPTIMUM,
+        AiModelFormat.CTRANSLATE2,
+        AiModelFormat.FASTER_WHISPER,
+    }
+)
+
+# Sarvam (saaras) is Indic + English ONLY — it is NOT a Whisper-set superset, so
+# the generic Whisper-set proxy in `is_valid_language_for_engine` would wrongly
+# claim e.g. Vietnamese support. Keep this in sync with
+# `_SARVAM_LANGUAGE_ALIASES` in `streaming/sarvam_asr.py` (its keys + 'en').
+_SARVAM_LANGUAGES: frozenset[str] = frozenset(
+    {
+        "as", "bn", "brx", "doi", "en", "gu", "hi", "kn", "kok", "ks", "mai",
+        "ml", "mni", "mr", "ne", "od", "pa", "sa", "sat", "sd", "ta", "te", "ur",
+    }
+)
+
+_CODE_SWITCH_CAPABILITY: dict[AiModelFormat, CodeSwitchCapability] = {
+    # Sarvam saaras:v3 handles bilingual audio natively (sarvam_loader.py).
+    AiModelFormat.SARVAM: "native",
+    # Azure Speech: code_switching -> AutoDetectSourceLanguageConfig (azure_asr.py).
+    AiModelFormat.AZURE_SPEECH: "flag",
+    # Whisper family: native transcript + English gloss via task=translate.
+    **dict.fromkeys(_WHISPER_FAMILY, "gloss"),
+    # NEMO/Parakeet ignore code_switching; parakeet.cpp/whisper.cpp have no
+    # translate; OpenAI is single-language; Azure Foundry is batch/preview.
+    # (absent => not code-switch capable)
+}
+
+# Every engine format in the platform catalog. The "entire engine catalog"
+# scope intersects mode support across ALL of these.
+CATALOG_ENGINES: tuple[AiModelFormat, ...] = tuple(AiModelFormat)
+
+
+@dataclass(frozen=True)
+class LanguageMode:
+    """A selectable STT language mode."""
+
+    id: str
+    label: str
+    kind: LanguageModeKind
+    primary_language: str | None = None  # ISO 639-1; None for auto
+    secondary_language: str | None = None  # for code_switch (e.g. "en")
+
+
+# --- The closed catalog ------------------------------------------------------
+# Extending this is DATA, not code. Ordering is display order.
+LANGUAGE_MODE_CATALOG: tuple[LanguageMode, ...] = (
+    LanguageMode(id="en", label="English", kind="single", primary_language="en"),
+    LanguageMode(id="ml", label="Malayalam", kind="single", primary_language="ml"),
+    LanguageMode(
+        id="ml-en",
+        label="Malayalam + English",
+        kind="code_switch",
+        primary_language="ml",
+        secondary_language="en",
+    ),
+    LanguageMode(id="vi", label="Vietnamese", kind="single", primary_language="vi"),
+    LanguageMode(
+        id="vi-en",
+        label="Vietnamese + English",
+        kind="code_switch",
+        primary_language="vi",
+        secondary_language="en",
+    ),
+    LanguageMode(id="auto", label="Auto-detect", kind="auto"),
+)
+
+LANGUAGE_MODES_BY_ID: dict[str, LanguageMode] = {m.id: m for m in LANGUAGE_MODE_CATALOG}
+
+
+@dataclass(frozen=True)
+class ResolvedInference:
+    """The InferenceConfig fields a mode resolves to for a concrete engine."""
+
+    language: str | None
+    code_switching: bool
+    streaming_english_gloss: bool
+
+
+class LanguageModeUnsupportedError(Exception):
+    """Raised when an engine cannot serve the requested language mode.
+
+    Carries the engines/modes context so the caller can build a 422 that tells
+    the client which modes ARE available.
+    """
+
+    def __init__(self, mode_id: str, engine: AiModelFormat) -> None:
+        self.mode_id = mode_id
+        self.engine = engine
+        self.supported_mode_ids = modes_supported_by_engine(engine)
+        super().__init__(
+            f"Language mode '{mode_id}' is not supported by the "
+            f"{engine.value} engine. Supported modes: "
+            f"{', '.join(self.supported_mode_ids) or '(none)'}"
+        )
+
+
+def get_language_mode(mode_id: str) -> LanguageMode:
+    """Return the catalog mode for *mode_id* or raise ``KeyError``."""
+    return LANGUAGE_MODES_BY_ID[mode_id]
+
+
+def _engine_serves_language(language: str, engine: AiModelFormat) -> bool:
+    """Whether *engine* can transcribe *language* (primary subtag).
+
+    Special-cases Sarvam (Indic + English only) against its real language set;
+    all other engines defer to the shared `is_valid_language_for_engine`.
+    """
+    if engine == AiModelFormat.SARVAM:
+        return language.split("-")[0].lower() in _SARVAM_LANGUAGES
+    return is_valid_language_for_engine(language, engine)
+
+
+def engine_supports_mode(mode: LanguageMode, engine: AiModelFormat) -> bool:
+    """Whether *engine* can serve *mode*."""
+    if mode.kind == "auto":
+        # Every engine can run without a pinned language (its own LID/default).
+        return True
+    if mode.kind == "single":
+        assert mode.primary_language is not None
+        return _engine_serves_language(mode.primary_language, engine)
+    # code_switch
+    capability = _CODE_SWITCH_CAPABILITY.get(engine)
+    if capability is None:
+        return False
+    assert mode.primary_language is not None and mode.secondary_language is not None
+    if capability == "gloss":
+        # Whisper translate produces English; only "... + English" is meaningful.
+        return mode.secondary_language == "en" and _engine_serves_language(
+            mode.primary_language, engine
+        )
+    # native / flag: both languages must be servable by the engine.
+    return _engine_serves_language(mode.primary_language, engine) and _engine_serves_language(
+        mode.secondary_language, engine
+    )
+
+
+def resolve_mode_for_engine(mode_id: str, engine: AiModelFormat) -> ResolvedInference:
+    """Resolve *mode_id* to InferenceConfig fields for *engine*.
+
+    Raises
+    ------
+    KeyError
+        If *mode_id* is not in the catalog.
+    LanguageModeUnsupportedError
+        If *engine* cannot serve the mode.
+    """
+    mode = get_language_mode(mode_id)
+    if not engine_supports_mode(mode, engine):
+        raise LanguageModeUnsupportedError(mode_id, engine)
+
+    if mode.kind == "auto":
+        return ResolvedInference(language=None, code_switching=False, streaming_english_gloss=False)
+    if mode.kind == "single":
+        return ResolvedInference(
+            language=mode.primary_language, code_switching=False, streaming_english_gloss=False
+        )
+    # code_switch — realise per the engine's capability.
+    capability = _CODE_SWITCH_CAPABILITY[engine]
+    if capability == "flag":
+        return ResolvedInference(
+            language=mode.primary_language, code_switching=True, streaming_english_gloss=False
+        )
+    if capability == "gloss":
+        return ResolvedInference(
+            language=mode.primary_language, code_switching=False, streaming_english_gloss=True
+        )
+    # native — the model handles the mix; pin the primary language.
+    return ResolvedInference(
+        language=mode.primary_language, code_switching=False, streaming_english_gloss=False
+    )
+
+
+def engines_supporting_mode(mode_id: str) -> list[str]:
+    """Engine ``.value`` names (catalog-wide) that can serve *mode_id*."""
+    mode = get_language_mode(mode_id)
+    return [e.value for e in CATALOG_ENGINES if engine_supports_mode(mode, e)]
+
+
+def modes_supported_by_engine(engine: AiModelFormat) -> list[str]:
+    """Catalog mode ids that *engine* can serve (catalog display order)."""
+    return [m.id for m in LANGUAGE_MODE_CATALOG if engine_supports_mode(m, engine)]
+
+
+def language_mode_catalog_payload() -> list[dict[str, object]]:
+    """Serialisable catalog + per-mode supported engines, for the capability API."""
+    return [
+        {
+            "id": m.id,
+            "label": m.label,
+            "kind": m.kind,
+            "primaryLanguage": m.primary_language,
+            "secondaryLanguage": m.secondary_language,
+            "supportedEngines": engines_supporting_mode(m.id),
+        }
+        for m in LANGUAGE_MODE_CATALOG
+    ]

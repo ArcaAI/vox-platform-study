@@ -4,12 +4,10 @@ import { TenantSttConfigScreen } from '@/features/tenant-stt-config/components/t
 export const metadata: Metadata = { title: 'STT Configuration' };
 
 /**
- * Tenant STT configuration (tier 30-49, working tenant).
- *
- * ⚠️ DESIGN GATE OPEN (rule 12) — DO NOT MERGE. No approved Figma frame and no
- * recorded owner waiver exist yet. The route is intentionally NOT wired into the
- * sidebar nav; it is reachable only by direct URL until the owner grants a frame
- * or records a waiver. See the ticket README (Phase G).
+ * Tenant STT configuration (tier 30-49, working tenant). Composed from the
+ * already-approved patterns (ScreenTemplate, WorkingTenantGate + acting-on
+ * gate, the TTS CredentialCard tab shape, OccConflictAlert) — the Figma
+ * design gate for this screen was explicitly waived by the owner.
  */
 export default function SttConfigPage() {
   return <TenantSttConfigScreen />;

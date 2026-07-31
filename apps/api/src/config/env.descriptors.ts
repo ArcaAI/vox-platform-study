@@ -245,13 +245,16 @@ const VAULT_CLIENT: SettingDescriptor[] = [
   ),
   envKnob('vault.transitKeyPhi', 'string', 'Secrets', 'Transit key (PHI)', 'Transit key that wraps PHI columns.', 'hope-phi'),
   envKnob('vault.requestTimeoutMs', 'number', 'Secrets', 'Vault request timeout (ms)', 'Per-request timeout of the Vault HTTP client.', 5000),
-  envKnob(
-    'vault.auditLogPath',
-    'string',
-    'Secrets',
-    'Vault audit-log path',
-    'File the rotation worker tails for Vault audit events. Unset disables the worker.',
-  ),
+  {
+    ...envKnob(
+      'vault.auditLogPath',
+      'string',
+      'Secrets',
+      'Vault audit-log path',
+      'File the rotation worker tails for Vault audit events. Unset disables the worker.',
+    ),
+    sampleValue: './temp/vault.log',
+  },
   envKnob('vault.token', 'string', 'Secrets', 'Vault token', 'Direct Vault token. Operator/CLI path only — services authenticate with AppRole.'),
   {
     ...envKnob(

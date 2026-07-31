@@ -27,12 +27,14 @@ import {
   type UseAudioCaptureReturn,
   type UseArcaSpeechToTextReturn,
   type UseSMRReturn,
+  type UseArcaSttProviderReturn,
   type MedicalSession,
   type SessionStatus,
   type SummaryResponse,
   type PreSummaryResponse,
   type SMRRequest,
   type PreSummaryRequest,
+  type V1SdkConfig,
 } from '../../compat';
 import { useAgenticStore } from '../../store/agenticStore';
 
@@ -156,6 +158,49 @@ describe('mapV2StatusToV1 (TASK-560 §5.2)', () => {
     expect(mapV2StatusToV1('CLOSED')).toBe('TERMINATED');
     expect(mapV2StatusToV1('CANCELLED')).toBe('TERMINATED');
     expect(mapV2StatusToV1(undefined)).toBe('IDLE');
+  });
+});
+
+// ===========================================================================
+// Type-level: TASK-568/TASK-586 STT provider-switch hook — ADDITIVE-ONLY.
+//
+// `UseArcaSttProviderReturn` has no v1 ancestor (TASK-568 §3 D-1), so nothing
+// here is "frozen" in the v1 sense — but TASK-586 Lane D generalized it into a
+// bidirectional toggle, and this lock proves that generalization only ADDED
+// members (`usePipeline`/`switchToPipeline`/`switchToDefault`) onto the
+// TASK-568 shape rather than renaming/removing any of it. Likewise
+// `V1SdkConfig` gained `enableProviderSwitch` as a new optional field — every
+// v1-frozen field on it (asserted elsewhere via `mapV1ConfigToAgenticConfig`
+// usage) is untouched.
+// ===========================================================================
+describe('useArcaSttProvider return shape (TASK-568, generalized additively by TASK-586)', () => {
+  it('keeps every TASK-568 member with its original signature', () => {
+    expectTypeOf<UseArcaSttProviderReturn['activeProvider']>().toEqualTypeOf<{
+      pipelineId: string;
+      name?: string;
+      isFallback: boolean;
+    } | null>();
+    expectTypeOf<UseArcaSttProviderReturn['fallbackAvailable']>().toEqualTypeOf<boolean>();
+    expectTypeOf<UseArcaSttProviderReturn['isFallbackActive']>().toEqualTypeOf<boolean>();
+    expectTypeOf<UseArcaSttProviderReturn['switchStatus']>().toEqualTypeOf<'idle' | 'switching' | 'switched' | 'failed'>();
+    expectTypeOf<UseArcaSttProviderReturn['switchToFallback']>().parameters.toEqualTypeOf<[]>();
+    expectTypeOf<UseArcaSttProviderReturn['switchToFallback']>().returns.resolves.toBeVoid();
+  });
+
+  it('TASK-586 Lane D members are additive — the bidirectional toggle', () => {
+    expectTypeOf<UseArcaSttProviderReturn['usePipeline']>().toEqualTypeOf<boolean>();
+    expectTypeOf<UseArcaSttProviderReturn['switchToPipeline']>().parameters.toEqualTypeOf<[]>();
+    expectTypeOf<UseArcaSttProviderReturn['switchToPipeline']>().returns.resolves.toBeVoid();
+    expectTypeOf<UseArcaSttProviderReturn['switchToDefault']>().parameters.toEqualTypeOf<[]>();
+    expectTypeOf<UseArcaSttProviderReturn['switchToDefault']>().returns.resolves.toBeVoid();
+  });
+
+  it('V1SdkConfig.enableProviderSwitch is additive (optional, no v1 default)', () => {
+    expectTypeOf<V1SdkConfig>().toHaveProperty('enableProviderSwitch');
+    expectTypeOf<V1SdkConfig['enableProviderSwitch']>().toEqualTypeOf<boolean | undefined>();
+    // Still v1-frozen and REQUIRED exactly as before.
+    expectTypeOf<V1SdkConfig['apiEndpoint']>().toEqualTypeOf<string>();
+    expectTypeOf<V1SdkConfig['websocketUrl']>().toEqualTypeOf<string>();
   });
 });
 

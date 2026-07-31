@@ -15,7 +15,16 @@ export interface TokenUsage {
   total_tokens?: number | null;
 }
 
-/** Non-secret provider/format details echoed back. NEVER carries `raw_llm_content`. */
+/**
+ * Non-secret provider/format details echoed back.
+ *
+ * v1-parity labels (TASK-560 item 4): `llm_provider` / `model_name` /
+ * `parsing_method` / `raw_llm_content` mirror v1's frontend-sanitized metadata
+ * (`summary_service.py:_sanitize_response_for_frontend`, which explicitly keeps
+ * `raw_llm_content` and `parsing_method`). They are cosmetic display labels — no
+ * gateway logic consumes them. `raw_llm_content` is the same LLM text already
+ * parsed into `summary`, so it exposes nothing beyond the returned summary.
+ */
 export interface SummaryResponseMetadata {
   finish_reason?: string;
   temperature?: number | null;
@@ -26,6 +35,14 @@ export interface SummaryResponseMetadata {
   encounter_type?: string | null;
   /** Present only when pre-summary enrichment was applied. */
   pre_summary_text?: string;
+  /** v1 label: the provider that generated the summary (or the Foundry fallback). */
+  llm_provider?: string | null;
+  /** v1 label: the model/deployment that generated the summary. */
+  model_name?: string | null;
+  /** v1 label: how the LLM output was parsed. */
+  parsing_method?: string | null;
+  /** v1 label: the raw LLM content string (same text parsed into `summary`). */
+  raw_llm_content?: string | null;
 }
 
 /** v1 `SummaryResponse` (HTTP 200) for `/summary/sync`. */

@@ -277,6 +277,9 @@ export type {
   CreateStreamingSessionRequest,
   StreamingSessionResponse,
   StreamingSessionStatus,
+  // Language modes (TASK-587)
+  LanguageMode,
+  LanguageModeCatalog,
   // Transcription jobs
   TranscriptionJobResponse,
   TranscriptionJobStatusCounts,

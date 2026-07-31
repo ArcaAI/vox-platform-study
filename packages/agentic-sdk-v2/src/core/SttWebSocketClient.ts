@@ -98,6 +98,8 @@ export interface WsReconnectOptions {
    * ticket. When the callback returns null / throws, the attempt is aborted.
    */
   refreshTicket?: () => Promise<string>;
+  // v1-compatibility
+  requireTenantClaim?: boolean;
 }
 
 /**
@@ -204,6 +206,7 @@ export class SttWebSocketClient {
       baseDelayMs: reconnect?.baseDelayMs ?? 1000,
       maxDelayMs: reconnect?.maxDelayMs ?? 30_000,
       refreshTicket: reconnect?.refreshTicket ?? null,
+      requireTenantClaim: reconnect?.requireTenantClaim ?? true,
     };
     this.backpressureOptions = {
       maxQueueSize: backpressure?.maxQueueSize ?? SttWebSocketClient.DEFAULT_MAX_QUEUE_SIZE,
@@ -227,7 +230,7 @@ export class SttWebSocketClient {
     // The guard is now ON BY DEFAULT (`requireTenantClaim` defaults to `true`);
     // callers opt out explicitly with `requireTenantClaim: false`. Reject
     // BEFORE creating a socket when enforcement is active and no claim resolves.
-    const requireTenantClaim = options?.requireTenantClaim ?? true;
+    const requireTenantClaim = options?.requireTenantClaim ?? this.reconnectOptions.requireTenantClaim;
     if (requireTenantClaim && SttWebSocketClient.resolveTenantClaim(url, options) === null) {
       this.logger?.error('WebSocket connect blocked: no tenant claim resolvable from connect context', {
         operation: 'connect',

@@ -19,7 +19,7 @@
 
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AgenticProvider, useArca, useArcaLiveSummary, useStoreApi } from '@arcaai/vox';
+import { AgenticProvider, useArca, useArcaLiveSummary, useArcaSttLanguageModes, useStoreApi } from '@arcaai/vox';
 import { toast } from 'sonner';
 import type { ModelOption } from '@arcaai/ui/components/custom/model-selector';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@arcaai/ui/components/shadcn/resizable';
@@ -196,6 +196,10 @@ function ScribeWorkspace() {
   const [captureBusy, setCaptureBusy] = useState(false);
   const [approved, setApproved] = useState(false);
   const [pipelineChoice, setPipelineChoice] = useState('');
+  // TASK-587 — end-user STT language mode. Empty ⇒ pipeline default. The
+  // backend guarantees the chosen mode fits the session's engines (422 otherwise).
+  const [languageMode, setLanguageMode] = useState('');
+  const languageModes = useArcaSttLanguageModes();
   // TASK-552 Lane C — the citation currently highlighted in the live-session
   // column's transcript-review pane (click-to-source from the case-note
   // column's evidence panel).
@@ -306,7 +310,7 @@ function ScribeWorkspace() {
     if (!consultation) return;
     setCaptureBusy(true);
     try {
-      await audio.start({ pipelineId: pipelineId || undefined });
+      await audio.start({ pipelineId: pipelineId || undefined, ...(languageMode ? { languageMode } : {}) });
       const sessionId = (await resolveStreamingSessionId(storeApi)) ?? undefined;
       const state = await recordingStart.mutateAsync({ consultationId: consultation.id, sessionId });
       setConsultation((previous) => (previous ? { ...previous, status: state.status } : previous));
@@ -470,6 +474,10 @@ function ScribeWorkspace() {
         selectedTranscriptionId={pipelineId}
         onTranscriptionChange={setPipelineChoice}
         transcriptionLoading={pipelines.isLoading}
+        languageModes={languageModes.modes}
+        selectedLanguageMode={languageMode}
+        onLanguageModeChange={setLanguageMode}
+        languageModesLoading={languageModes.isLoading}
         noteModels={noteModels}
         selectedNoteId={noteModelName ?? ''}
         onNoteChange={() => undefined}

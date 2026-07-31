@@ -130,10 +130,10 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
   },
   {
     // TASK-567 — tenant BYOK fallback engine (cloud REST). Catalog metadata for
-    // the fallback-candidate picker; the pipeline YAML reaches the engine via
-    // the `sarvam :: model` shorthand (Python AiModelFormat.SARVAM, a superset
-    // of the Prisma enum), so this row's Prisma `format` is the generic
-    // CLOUD_API value (mirrors the sarvam-bulbul TTS catalog row).
+    // the fallback-candidate picker. TASK-586: `format` is now the first-class
+    // AiModelFormat.SARVAM (previously the generic CLOUD_API), so the pipeline
+    // binds this engine via a BARE SLUG ref (`asr: "sarvam-saaras-v3"`) exactly
+    // like the Azure Speech row — no inline `engine:`/`sarvam::` override needed.
     id: '80000000-0000-0000-0001-000000000016',
     tenantId: SYSTEM_TENANT_ID,
     name: 'Sarvam Saaras v3 (STT)',
@@ -146,7 +146,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     source: AiModelSource.LOCAL,
     sourceUri: 'saaras:v3',
     sourceRevision: 'main',
-    format: AiModelFormat.CLOUD_API,
+    format: AiModelFormat.SARVAM,
     provider: 'sarvam',
     architecture: null,
     memorySizeMb: 0,
@@ -155,7 +155,9 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
   },
   {
     // TASK-567 — tenant BYOK fallback engine (cloud REST). See the sarvam row
-    // above; reached via the `openai :: model` shorthand at pipeline load.
+    // above. TASK-586: `format` is now the first-class AiModelFormat.OPENAI, so a
+    // bare-slug pipeline ref (`asr: "openai-gpt4o-transcribe"`) binds this engine
+    // like Azure Speech — no `openai::` shorthand override required.
     id: '80000000-0000-0000-0001-000000000017',
     tenantId: SYSTEM_TENANT_ID,
     name: 'OpenAI GPT-4o Transcribe (STT)',
@@ -168,7 +170,7 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     source: AiModelSource.LOCAL,
     sourceUri: 'gpt-4o-transcribe',
     sourceRevision: 'main',
-    format: AiModelFormat.CLOUD_API,
+    format: AiModelFormat.OPENAI,
     provider: 'openai',
     architecture: null,
     memorySizeMb: 0,
@@ -218,6 +220,53 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     memorySizeMb: 900,
     computeType: 'q8_0',
     tags: ['multilingual', 'fast', 'ggml', 'whisper.cpp'],
+  },
+  {
+    // ArcaAI in-house Malayalam+English code-switch full fine-tune of
+    // whisper-large-v3-turbo, GGUF-quantized (f16) for the whisper.cpp ggml
+    // runtime (pywhispercpp binding). Pre-converted GGUF repo — no separate
+    // conversion step required.
+    id: '80000000-0000-0000-0001-000000000018',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large ML-EN Code-Switch (whisper.cpp GGUF)',
+    slug: 'arcaai-whisper-large-ml-en-gguf',
+    description:
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF-quantized (f16) for the whisper.cpp ggml runtime via the pywhispercpp binding.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.HUGGINGFACE,
+    sourceUri: 'taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF',
+    sourceRevision: 'main',
+    format: AiModelFormat.WHISPER_CPP,
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 1700, // ~f16 GGUF, larger than the q8_0 turbo row
+    computeType: 'f16',
+    tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp'],
+  },
+  {
+    // Same repo/fine-tune as the f16 row above, but the q8_0 quantization
+    // (~874MB vs ~1.6GB f16). `computeType` drives whisper_cpp_loader's
+    // filename selection, so this row resolves ggml-…-q8_0.bin from the repo.
+    id: '80000000-0000-0000-0001-000000000019',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large ML-EN Code-Switch (whisper.cpp GGUF q8_0)',
+    slug: 'arcaai-whisper-large-ml-en-gguf-q8_0',
+    description:
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo, GGUF-quantized (q8_0) for the whisper.cpp ggml runtime via the pywhispercpp binding.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.QUANTIZED_MODEL,
+    source: AiModelSource.HUGGINGFACE,
+    sourceUri: 'taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF',
+    sourceRevision: 'main',
+    format: AiModelFormat.WHISPER_CPP,
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 900, // ~q8_0 GGUF
+    computeType: 'q8_0',
+    tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp'],
   },
 
   // =========================================================================

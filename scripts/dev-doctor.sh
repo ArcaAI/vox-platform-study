@@ -112,10 +112,19 @@ http_check optional "guardrail (8863)" "http://localhost:${GUARDRAIL_PORT:-8863}
 
 # SMR must not just be up — it must have at least one LLM provider registered
 # (the silent live-summary killer: SMR up, zero providers, every generate 404s).
-providers="$(curl -s --connect-timeout 2 --max-time 5 "http://localhost:${SMR_PORT:-8862}/api/v1/providers" 2>/dev/null)" || providers=""
+# /api/v1/providers sits behind the X-Service-Token middleware (only /health is
+# exempt), so resolve the same token the service reads (host env > .env.dev)
+# before probing it — otherwise every call 401s and reads as "zero providers".
+smr_token="${SMR_SERVICE_TOKEN:-}"
+if [ -z "$smr_token" ] && [ -f .env.dev ]; then
+    smr_token="$(grep -m1 '^SMR_SERVICE_TOKEN=' .env.dev | cut -d= -f2-)"
+fi
+providers="$(curl -s --connect-timeout 2 --max-time 5 -H "X-Service-Token: ${smr_token}" "http://localhost:${SMR_PORT:-8862}/api/v1/providers" 2>/dev/null)" || providers=""
 if printf '%s' "$providers" | grep -q '"name"'; then
     # top-level provider entries are the ones carrying a display_name
     pass "smr providers registered" "$(printf '%s' "$providers" | grep -oE '"name":"[^"]*","display_name"' | cut -d'"' -f4 | sort -u | tr '\n' ' ')"
+elif printf '%s' "$providers" | grep -q 'service token'; then
+    fail "smr providers registered" "SMR_SERVICE_TOKEN mismatch — doctor's .env.dev value doesn't match the running SMR process's"
 else
     fail "smr providers registered" "none — start SMR via 'pnpm smr:dev' (registers the LM Studio provider)"
 fi

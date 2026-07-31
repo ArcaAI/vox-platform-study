@@ -19,12 +19,16 @@ import { SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
  * Resolution at runtime (AiTaskDefaultService.getEffective): tenant row →
  * SYSTEM row → consuming service's env fallback.
  *
- * Governance (owner decision 2026-07-17): ALL task-key prefixes are
- * GLOBAL-ADMIN-ONLY (service-level isSuperAdmin guard on writes) —
- * `guardrail.`, `smr.`, `nlp.`, `harness.` per GLOBAL_ADMIN_ONLY_TASK_PREFIXES
- * in packages/applications/src/services/ai-task-default/constants.ts. Tenants
- * only CONSUME the SYSTEM-row platform default; no task key is tenant-admin
- * editable, and runtime resolution ignores per-tenant override rows.
+ * Governance: the `guardrail.`, `nlp.`, and `harness.` task-key prefixes are
+ * GLOBAL-ADMIN-ONLY (service-level isSuperAdmin guard on writes) per
+ * GLOBAL_ADMIN_ONLY_TASK_PREFIXES in
+ * packages/applications/src/services/ai-task-default/constants.ts. For those,
+ * tenants only CONSUME the SYSTEM-row platform default and runtime resolution
+ * ignores per-tenant override rows. EXCEPTION (TASK-588): the `smr.` prefix is
+ * tenant-admin configurable — the SYSTEM rows below are still seeded as the
+ * platform default, but tenants may override them with their own rows. The
+ * per-tenant `smr.live.fallback` / `smr.finalize.fallback` keys are opt-in and
+ * deliberately have NO SYSTEM seed row (unset ⇒ no fallback runs).
  *
  * CREATE-ONLY: an existing (tenantId, taskKey) row is NEVER overwritten — the
  * platform default is admin-tunable at runtime and a re-seed must not clobber
@@ -75,8 +79,10 @@ export const SYSTEM_AI_TASK_DEFAULTS: AiTaskDefaultSeed[] = [
   // SMR generation routing, mapped to the CURRENT SMR
   // default (HarnessPolicy SYSTEM smrProvider/smrModel = lm-studio /
   // gemma-4-e2b-it-qat, registry slug `lms-gemma-4-e2b-it-qat`). Both live and
-  // finalize point at the same platform default today; a global admin may
-  // split them later. `resolveSmrSelection` consults these keys FIRST.
+  // finalize point at the same platform default today; a global admin OR a
+  // tenant admin (TASK-588) may split or override them later.
+  // `resolveSmrSelection` consults these keys FIRST. NOTE: the per-tenant
+  // `smr.<task>.fallback` keys are opt-in and intentionally NOT seeded here.
   {
     id: '86000000-0000-0000-0000-000000000004',
     tenantId: SYSTEM_TENANT_ID,

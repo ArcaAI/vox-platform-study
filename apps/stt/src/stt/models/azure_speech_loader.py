@@ -40,6 +40,7 @@ _LANGUAGE_ALIASES: dict[str, str] = {
     "ja": "ja-JP",
     "ko": "ko-KR",
     "zh": "zh-CN",
+    "vi": "vi-VN",
 }
 
 

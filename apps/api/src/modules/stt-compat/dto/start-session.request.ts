@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 
 class AudioSettingsDto {
   @ApiProperty({
@@ -86,13 +86,22 @@ export class StartSessionRequest {
   @IsObject()
   audioSettings: AudioSettingsDto;
 
-  @ApiProperty({
-    description: 'STT provider (omit for default; azure and whisper are legacy aliases that resolve to default)',
-    example: 'default',
-    required: false,
-    enum: ['default', 'sarvam', 'azure', 'whisper'],
+  @ApiPropertyOptional({
+    description:
+      'Explicit STT pipeline id to run this session on. When supplied it is used directly (bypassing the `provider`-enum pipeline selection); when omitted, the pipeline is selected from `provider`.',
+    example: '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b',
   })
   @IsOptional()
-  @IsIn(['default', 'sarvam', 'azure', 'whisper'])
-  provider?: 'default' | 'sarvam' | 'azure' | 'whisper';
+  @IsUUID()
+  pipelineId?: string;
+
+  @ApiPropertyOptional({
+    description: 'STT provider',
+    example: 'azure',
+    default: 'azure',
+    enum: ['azure', 'whisper', 'sarvam'],
+  })
+  @IsOptional()
+  @IsIn(['azure', 'whisper', 'sarvam'])
+  provider?: 'azure' | 'whisper' | 'sarvam';
 }

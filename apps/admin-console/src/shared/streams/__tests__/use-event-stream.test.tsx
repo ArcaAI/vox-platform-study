@@ -74,6 +74,7 @@ afterEach(() => {
 });
 
 const OPTIONS = { path: 'admin/dna-writing-styles/jobs/j-1/stream', scope: 'dna_job:j-1' };
+const EXPECTED_API_HOST = process.env.NEXT_PUBLIC_API_HOST ?? 'http://localhost:8868';
 
 describe('useEventStream', () => {
   it('mints a scope-bound ticket via the BFF and connects directly to the gateway with ?ticket=', async () => {
@@ -85,7 +86,7 @@ describe('useEventStream', () => {
     expect(mintCalls[0].body).toEqual({ scope: 'dna_job:j-1' });
     // Direct gateway origin (NEXT_PUBLIC_API_HOST) — never the BFF proxy;
     // the ticket is the only credential in the URL (no JWT).
-    expect(FakeEventSource.instances[0].url).toBe('http://localhost:8868/api/v1/admin/dna-writing-styles/jobs/j-1/stream?ticket=tkt-1');
+    expect(FakeEventSource.instances[0].url).toBe(`${EXPECTED_API_HOST}/api/v1/admin/dna-writing-styles/jobs/j-1/stream?ticket=tkt-1`);
     expect(FakeEventSource.instances[0].url).not.toContain('Bearer');
 
     act(() => FakeEventSource.instances[0].open());

@@ -185,6 +185,9 @@ class SessionManager:
         self._switch_controllers: dict[str, EngineSwitchController] = {}
         self._provider_overrides: dict[str, dict[str, Any]] = {}
         self._fallback_pipeline_ids: dict[str, str] = {}
+        # TASK-587 — per-session end-user language mode id, resolved against the
+        # session's ASR engine at load time.
+        self._session_language_modes: dict[str, str] = {}
         self._publishers: dict[str, ResultPublisher] = {}
         self._preprocessors: dict[str, StreamingPreprocessor] = {}
         self._inference_workers: dict[str, StreamingInferenceWorker] = {}
@@ -791,6 +794,7 @@ class SessionManager:
         storage: dict[str, Any] | None = None,
         provider_overrides: dict[str, Any] | None = None,
         fallback_pipeline_id: str | None = None,
+        language_mode: str | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -817,6 +821,12 @@ class SessionManager:
             fallback_pipeline_id: Optional tenant fallback pipeline. When set, a
                 per-session ``EngineSwitchController`` can swap the live ASR
                 engine to it (create-time / auto-outage / manual triggers).
+            language_mode: Optional end-user language mode id (TASK-587). Resolved
+                against the session's ASR engine at load time into the inference
+                config's language/code_switching/streaming_english_gloss. Takes
+                precedence over ``language``. If the primary engine cannot serve
+                the mode a configured fallback is tried; if none qualifies the
+                create raises ``LanguageModeUnsupportedError`` (mapped to 422).
         """
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
@@ -854,6 +864,10 @@ class SessionManager:
             self._provider_overrides[session_id] = dict(provider_overrides or {})
             if fallback_pipeline_id:
                 self._fallback_pipeline_ids[session_id] = fallback_pipeline_id
+            # TASK-587 — stash the end-user language mode so both the primary and
+            # any create-time fallback assembly resolve it against their engine.
+            if language_mode:
+                self._session_language_modes[session_id] = language_mode
 
             # Load pipeline config for VAD and ASR model wiring.
             # Pass tenant_id so STT refuses to load
@@ -1004,32 +1018,56 @@ class SessionManager:
         """Retrieve the engine-switch controller for a session (TASK-567)."""
         return self._switch_controllers.get(session_id)
 
-    async def request_switch_to_fallback(self, session_id: str) -> None:
-        """Request a manual mid-session switch to the fallback (TASK-567 R4).
+    async def request_switch(self, session_id: str, target: str = "fallback") -> None:
+        """Request a manual mid-session engine switch (TASK-567 R4, TASK-586).
 
         Called by the internal ``POST /internal/streaming/sessions/{id}/switch``
-        route. XADDs a ``SWITCH_TO_FALLBACK`` control message onto the session's
-        control stream — the same cross-process channel finalize/cancel use — so
-        the ``ControlListener`` routes it to the ``EngineSwitchController``.
+        route with ``target`` ∈ {``'primary'``, ``'fallback'``}. XADDs a
+        ``SWITCH_TO_FALLBACK`` control message (carrying ``target``) onto the
+        session's control stream — the same cross-process channel finalize/cancel
+        use — so the ``ControlListener`` routes it to the
+        ``EngineSwitchController`` and the swap lands at an utterance boundary,
+        in order with the audio.
+
+        The pre-checks below reject illegal transitions (→ 409) synchronously so
+        the route can acknowledge the accepted switch; the authoritative signal
+        that the swap landed is the ``provider_switched`` result frame.
 
         Raises
         ------
         KeyError
             The session is unknown on this worker (→ 404).
         ValueError
-            No fallback is configured, or the session already switched (→ 409).
+            The target is unavailable — no fallback configured, primary never
+            loaded, an unknown target, or already on the requested engine (→ 409).
         """
         if session_id not in self._sessions:
             raise KeyError(session_id)
         controller = self._switch_controllers.get(session_id)
-        if controller is None or not controller.has_fallback:
+        if controller is None:
             raise ValueError("no_fallback_configured")
-        if controller.switched:
-            raise ValueError("already_switched")
+        if target == "fallback":
+            if not controller.has_fallback:
+                raise ValueError("no_fallback_configured")
+            if controller.active_engine == "fallback":
+                raise ValueError("already_on_fallback")
+        elif target == "primary":
+            if not controller.can_switch_to_primary:
+                raise ValueError("primary_unavailable")
+            if controller.active_engine == "primary":
+                raise ValueError("already_on_primary")
+        else:
+            raise ValueError("invalid_target")
         await self._redis.xadd(
             control_stream_key(session_id),
-            SessionControl(action=ControlAction.SWITCH_TO_FALLBACK).to_redis_dict(),
+            SessionControl(
+                action=ControlAction.SWITCH_TO_FALLBACK, target=target
+            ).to_redis_dict(),
         )
+
+    async def request_switch_to_fallback(self, session_id: str) -> None:
+        """Back-compat alias for ``request_switch(session_id, 'fallback')``."""
+        await self.request_switch(session_id, "fallback")
 
     def _make_switch_controller(
         self,
@@ -1051,6 +1089,14 @@ class SessionManager:
                 session_id, fallback_pipeline_id, tenant_id
             )
 
+        async def _build_primary() -> StreamingAsrCallable:
+            # TASK-586 — rebuild the PRIMARY ASR callable so a user-initiated
+            # switch BACK to the primary engine is possible. Symmetric to the
+            # fallback builder; reuses the session's in-memory BYO overrides.
+            return await self._build_primary_asr_callable(
+                session_id, primary_pipeline_id, tenant_id
+            )
+
         def _apply(new_callable: StreamingAsrCallable) -> None:
             worker = self._inference_workers.get(session_id)
             if worker is not None:
@@ -1062,6 +1108,7 @@ class SessionManager:
             from_pipeline: str,
             to_pipeline: str,
             reason: str,
+            active: str,
             utterance_index: int | None,
         ) -> None:
             publisher = self._publishers.get(session_id)
@@ -1070,6 +1117,7 @@ class SessionManager:
                     from_pipeline=from_pipeline,
                     to_pipeline=to_pipeline,
                     reason=reason,
+                    active=active,
                     utterance_index=utterance_index,
                 )
 
@@ -1079,6 +1127,7 @@ class SessionManager:
             primary_pipeline_id=primary_pipeline_id,
             fallback_pipeline_id=fallback_pipeline_id,
             build_fallback=_build_fallback,
+            build_primary=_build_primary,
             apply_callable=_apply,
             publish_switch=_publish,
         )
@@ -1105,6 +1154,30 @@ class SessionManager:
         if asr_callable is None:
             raise RuntimeError(
                 f"Fallback pipeline '{fallback_pipeline_id}' produced no ASR callable"
+            )
+        return asr_callable
+
+    async def _build_primary_asr_callable(
+        self,
+        session_id: str,
+        primary_pipeline_id: str,
+        tenant_id: str | None,
+    ) -> StreamingAsrCallable:
+        """Load the primary pipeline and build a warm ASR callable (TASK-586).
+
+        Symmetric to ``_build_fallback_asr_callable`` — used when a user switches
+        BACK to the primary engine. Resolved LAZILY (only when a switch-back
+        actually fires). Reuses the session's in-memory BYO ``provider_overrides``
+        so the primary engine honours the tenant's key.
+        """
+        p_config = await self._load_pipeline_config(primary_pipeline_id, tenant_id=tenant_id)
+        overrides = self._provider_overrides.get(session_id)
+        asr_callable, _ = await self._load_asr_pipeline(
+            p_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
+        )
+        if asr_callable is None:
+            raise RuntimeError(
+                f"Primary pipeline '{primary_pipeline_id}' produced no ASR callable"
             )
         return asr_callable
 
@@ -1205,6 +1278,7 @@ class SessionManager:
         self._switch_controllers.pop(session_id, None)
         self._provider_overrides.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
+        self._session_language_modes.pop(session_id, None)
         # Drop the per-session finalize lock (a queued waiter
         # already holds its own reference and will no-op on the CLOSED guard).
         self._finalize_locks.pop(session_id, None)
@@ -1526,6 +1600,19 @@ class SessionManager:
 
         # Use pipeline inference config directly
         inference_config = pipeline_config.inference
+
+        # TASK-587 — resolve the end-user language mode against the engine that
+        # actually loaded. "Selection constrains providers": if this engine
+        # cannot serve the mode, raise so create_session falls through to a
+        # compatible fallback (or surfaces a 422 when none qualifies).
+        mode_id = self._session_language_modes.get(session_id)
+        if mode_id:
+            from stt.pipeline.language_modes import resolve_mode_for_engine
+
+            resolved = resolve_mode_for_engine(mode_id, asr_model.format)
+            inference_config.language = resolved.language
+            inference_config.code_switching = resolved.code_switching
+            inference_config.streaming_english_gloss = resolved.streaming_english_gloss
 
         initial_prompt: str | None = None
         initial_prompt_id = getattr(inference_config, "initial_prompt", None)
@@ -2616,8 +2703,10 @@ class SessionManager:
             elif control.action == ControlAction.CANCEL:
                 await self._cancel_session(session)
             elif control.action == ControlAction.SWITCH_TO_FALLBACK:
-                # TASK-567 R4 — user-initiated mid-session switch to the tenant's
-                # fallback pipeline. Same seamless swap as the auto-outage path.
+                # TASK-567 R4 / TASK-586 — user-initiated mid-session switch. The
+                # control frame's ``target`` names the engine to switch to
+                # (``'fallback'`` by default; ``'primary'`` switches back). Same
+                # seamless swap as the auto-outage path.
                 controller = self._switch_controllers.get(session.session_id)
                 if controller is None or not controller.has_fallback:
                     logger.info(
@@ -2626,11 +2715,14 @@ class SessionManager:
                     )
                     return
                 try:
-                    await controller.switch_manual(utterance_index=session.utterance_count)
+                    await controller.switch_manual(
+                        control.target, utterance_index=session.utterance_count
+                    )
                 except Exception as exc:
                     logger.error(
-                        "Manual engine switch failed; staying on primary",
+                        "Manual engine switch failed; staying on current engine",
                         session_id=session.session_id,
+                        target=control.target,
                         error=str(exc),
                     )
             elif control.action in (ControlAction.PAUSE, ControlAction.RESUME):

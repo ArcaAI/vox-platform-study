@@ -84,4 +84,12 @@ export class SyncSummaryRequest {
   @IsOptional()
   @IsBoolean()
   include_previous_visit_summary?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'true → stream the summary as text/event-stream (delta* + terminal result); default false → single JSON body',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  stream?: boolean;
 }

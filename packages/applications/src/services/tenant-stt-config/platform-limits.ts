@@ -40,11 +40,26 @@ export const CLOUD_STT_FORMATS: ReadonlySet<string> = new Set<string>([
   AiModelFormat.AZURE_SPEECH,
   AiModelFormat.AZURE_FOUNDRY,
   AiModelFormat.CLOUD_API,
-  // Phase E adds SARVAM / OPENAI members; string-literal them for forward-tolerance
-  // so a fallback pointing at a Sarvam/OpenAI pipeline validates before the enum lands.
-  'SARVAM',
-  'OPENAI',
+  // TASK-586: SARVAM / OPENAI are now first-class AiModelFormat members, so a
+  // bare-slug fallback pipeline pointing at the Sarvam/OpenAI catalog row resolves
+  // to a cloud format here exactly like Azure.
+  AiModelFormat.SARVAM,
+  AiModelFormat.OPENAI,
 ]);
+
+/**
+ * Cloud engines that are BATCH-ONLY and therefore CANNOT serve as a live
+ * fallback: the runtime fallback is a mid-session streaming engine swap, so a
+ * batch-only engine (e.g. Azure AI Foundry / MAI-Transcribe 1.5 — PREVIEW,
+ * batch-only per TASK-505 D4) would fail at switch time. These are cloud-backed
+ * but must be excluded from the fallback picker AND rejected on write, so a
+ * tenant never points `fallbackPipelineId` at a target that can't stream.
+ * Classified by both the `provider::model` shorthand prefix and the AiModel
+ * format, matching the two resolution paths in the service.
+ */
+export const BATCH_ONLY_STT_PROVIDERS: ReadonlySet<string> = new Set(['azure-foundry']);
+
+export const BATCH_ONLY_STT_FORMATS: ReadonlySet<string> = new Set<string>([AiModelFormat.AZURE_FOUNDRY]);
 
 /** Nullable spec shape (a tenant OR the SYSTEM-default row). null = inherit. */
 export interface SttSpecInput {

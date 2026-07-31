@@ -273,6 +273,112 @@ postprocessing:
     enabled: false
 `,
 
+  // ArcaAI Malayalam+English code-switch full fine-tune, whisper.cpp GGUF
+  // (f16). Same shape as `whisper_turbo_gguf_default` (matrix #2 —
+  // Transcription only: no pre-processing, ASR + diarization + stabilizer, no
+  // post) but bound to the in-house arcaai-whisper-large-ml-en-gguf engine.
+  arcaai_ml_en_gguf: `version: "2.0"
+
+# Matrix #10 — [arcaai-whisper-large-ml-en gguf] Transcription only.
+# No pre-processing stages, whisper.cpp GGUF ASR (ArcaAI ML-EN code-switch
+# full fine-tune) + diarization + stabilizer, no post.
+
+models:
+  asr: "arcaai-whisper-large-ml-en-gguf"
+  vad: "silero-vad"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+
+  // Same as arcaai_ml_en_gguf but the q8_0 quantization
+  // (arcaai-whisper-large-ml-en-gguf-q8_0 engine) — smaller/faster weight.
+  arcaai_ml_en_gguf_q8_0: `version: "2.0"
+
+# Matrix #10 (q8_0) — [arcaai-whisper-large-ml-en gguf q8_0] Transcription only.
+# No pre-processing stages, whisper.cpp GGUF ASR (ArcaAI ML-EN code-switch
+# full fine-tune, q8_0) + diarization + stabilizer, no post.
+
+models:
+  asr: "arcaai-whisper-large-ml-en-gguf-q8_0"
+  vad: "silero-vad"
+  embedding:
+    hf_model_id: "speechbrain/spkrec-ecapa-voxceleb"
+    engine: "pytorch"
+
+preprocessing:
+  normalize:
+    enabled: false
+  denoise:
+    enabled: false
+  resample:
+    enabled: true            # runtime floor: VAD/ASR require the target rate
+    target_sample_rate: 16000
+  vad:
+    enabled: false           # streaming falls back to energy framing
+
+inference:
+  batch_size: 1
+  compute_type: auto
+  device: auto
+  language: null
+
+diarization:
+  enabled: true
+  backend: embedding
+  max_speakers: 2
+
+streaming:
+  commit_policy: local_agreement_2
+
+postprocessing:
+  timestamps:
+    word_timestamps: false
+    sentence_timestamps: false
+  punctuation:
+    enabled: false
+  remove_disfluencies: false
+  lowercase: false
+  segment_merge:
+    enabled: false
+`,
+
   // Lightweight CPU pipeline (v1.1 — slug-based model ref)
   lightweight: `version: "1.1"
 
@@ -514,15 +620,13 @@ postprocessing:
   sarvam_transcription: `version: "2.0"
 
 # TASK-567 — [sarvam] Sarvam AI speech-to-text (saaras:v3), cloud REST.
-# BYOK: per-tenant SARVAM credential (TASK-567) or SARVAM_API_KEY env. The ASR
-# ref is an INLINE definition binding the SARVAM engine (a superset of the
-# Prisma AiModelFormat enum, equivalent to the "sarvam :: saaras:v3" shorthand),
-# so no DB slug is required for the superset engine.
+# BYOK: per-tenant SARVAM credential (TASK-567) or SARVAM_API_KEY env. TASK-586:
+# SARVAM is now a first-class AiModelFormat, so the ASR is a BARE SLUG ref to the
+# "sarvam-saaras-v3" catalog row — identical in shape to the Azure Speech pipeline
+# (no inline engine block or provider shorthand needed).
 
 models:
-  asr:
-    hf_model_id: "saaras:v3"
-    engine: "sarvam"
+  asr: "sarvam-saaras-v3"
 
 preprocessing:
   normalize:
@@ -918,6 +1022,29 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     description: 'TASK-567 — bare OpenAI speech-to-text (gpt-4o-transcribe, cloud REST). Tenant BYOK fallback candidate.',
     configYaml: PIPELINE_CONFIGS.openai_transcription,
     tags: ['cloud', 'openai', 'byok', 'fallback'],
+  },
+  {
+    // Matrix #10 — ArcaAI in-house Malayalam+English code-switch full
+    // fine-tune, whisper.cpp GGUF (f16). Transcription-only shape.
+    id: '81000000-0000-0000-0001-000000000018',
+    tenantId: DEFAULT_TENANT_ID,
+    name: '[arcaai-whisper-large-ml-en gguf] Transcription Only',
+    slug: 'arcaai-whisper-large-ml-en-gguf',
+    description:
+      'Matrix #10 — no pre-processing, ArcaAI ML-EN code-switch whisper.cpp GGUF ASR + diarization + stabilizer, no post-processing.',
+    configYaml: PIPELINE_CONFIGS.arcaai_ml_en_gguf,
+    tags: ['streaming', 'real-time', 'malayalam', 'english', 'code-switch', 'whisper.cpp'],
+  },
+  {
+    // Matrix #10 (q8_0) — same as the row above but the q8_0 quantization.
+    id: '81000000-0000-0000-0001-000000000019',
+    tenantId: DEFAULT_TENANT_ID,
+    name: '[arcaai-whisper-large-ml-en gguf q8_0] Transcription Only',
+    slug: 'arcaai-whisper-large-ml-en-gguf-q8_0',
+    description:
+      'Matrix #10 (q8_0) — no pre-processing, ArcaAI ML-EN code-switch whisper.cpp GGUF ASR (q8_0) + diarization + stabilizer, no post-processing.',
+    configYaml: PIPELINE_CONFIGS.arcaai_ml_en_gguf_q8_0,
+    tags: ['streaming', 'real-time', 'malayalam', 'english', 'code-switch', 'whisper.cpp', 'q8_0'],
   },
   // Code-switching / language templates retired from the product
   // matrix of 9 (soft-disabled by retireRetiredAsrPipelines).

@@ -23,10 +23,23 @@ vi.mock('../../store/agenticStore', async (importOriginal) => {
   return { ...actual, useAgenticStore: vi.fn() };
 });
 
-type MockState = { transcriptSegments: unknown[]; currentTranscript: string };
+type MockState = {
+  transcriptSegments: unknown[];
+  currentTranscript: string;
+  // TASK-587 — useArcaSpeechToText publishes the selected language/mode into the
+  // store; `installStore` fills these action selectors (optional so tests can
+  // declare the state with just the transcript fields).
+  setAudioLanguage?: (language: string) => void;
+  setSttLanguageMode?: (mode: string | undefined) => void;
+};
 
-function installStore(state: MockState) {
-  (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (s: MockState) => unknown) => selector(state));
+function installStore(state: Pick<MockState, 'transcriptSegments' | 'currentTranscript'> & Partial<MockState>) {
+  // Augment the SAME object in place (do NOT copy) — several tests reassign
+  // `state.transcriptSegments` after install and rerender, relying on the mock
+  // reading the live reference.
+  state.setAudioLanguage ??= vi.fn();
+  state.setSttLanguageMode ??= vi.fn();
+  (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (s: MockState) => unknown) => selector(state as MockState));
 }
 
 const audioMock = {
@@ -156,6 +169,20 @@ describe('useArcaSpeechToText', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('publishes language + languageMode to the store so a capture-first start honors the selection (TASK-587)', () => {
+    const state: MockState = { transcriptSegments: [], currentTranscript: '' } as MockState;
+    installStore(state);
+
+    renderHook(() =>
+      useArcaSpeechToText({ ...baseProps, language: 'en', options: { languageMode: 'en' } }),
+    );
+
+    // The store is the order-independent channel `useArcaAudio.startAudio` reads
+    // as a fallback when `useAudioCapture` wins the `audio.start` race.
+    expect(state.setAudioLanguage).toHaveBeenCalledWith('en');
+    expect(state.setSttLanguageMode).toHaveBeenCalledWith('en');
   });
 
   it('fires onTranscript(text, true, meta) for a new final segment (default template applied)', () => {

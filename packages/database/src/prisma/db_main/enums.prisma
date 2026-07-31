@@ -305,6 +305,8 @@ enum AiModelFormat {
   PARAKEET_CPP // parakeet.cpp ggml runtime (Parakeet/Nemotron)
   CLOUD_API // Generic cloud-API engine (Sarvam TTS, Azure OpenAI catalog rows)
   WHISPER_CPP // whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF)
+  SARVAM // Cloud — Sarvam AI speech-to-text (saaras family, code-switch). First-class so a slug ref binds it like AZURE_SPEECH (TASK-586).
+  OPENAI // Cloud — OpenAI speech-to-text (gpt-4o-transcribe). First-class so a slug ref binds it like AZURE_SPEECH (TASK-586).
 
   @@schema("core")
 }

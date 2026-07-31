@@ -60,6 +60,9 @@ export {
   // Read-only Clinical Documentation Harness admin surface
   useHarnessAdmin,
   useHealthCheck,
+  useArcaSttLanguageModes,
+  // Native 2-way STT provider toggle (pipeline ↔ default)
+  useSttProviderToggle,
   useMonitoring,
   usePipelines,
   usePlatformMetrics,
@@ -172,6 +175,8 @@ export type {
   HarnessWorkflow,
   HarnessWorkflowList,
   UseHealthCheckReturn,
+  UseArcaSttLanguageModesReturn,
+  UseSttProviderToggleReturn,
   UseMonitoringReturn,
   UsePipelinesReturn,
   UsePlatformMetricsReturn,
@@ -406,6 +411,8 @@ export type {
   AiModelResponse,
   AsrPipelineResponse,
   CreateStreamingSessionRequest,
+  LanguageMode,
+  LanguageModeCatalog,
   StreamingSessionResponse,
   StreamingSessionStatus,
   TranscriptionJobResponse,

@@ -8,7 +8,7 @@
 import { useMemo, useCallback, useRef } from 'react';
 import { useAgenticStore } from '../store';
 import type { ContextItem, TranscriptionResult } from '../types';
-import type { TranscriptSegment, AudioStartOptions, DualCaptureResult } from '../types/audio';
+import type { TranscriptSegment, AudioStartOptions, DualCaptureResult, ProviderSwitchInfo } from '../types/audio';
 import { CONTEXT_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
 import { AudioContextManager, AudioMixer } from '@arcaai/room';
@@ -16,6 +16,24 @@ import { DualStreamRecorder } from '../core/DualStreamRecorder';
 
 // Re-export the interface from useArca.ts
 export type { UseArcaAudio } from './useArca';
+
+/**
+ * Structural (duck-typed) view of the streaming session manager reachable via
+ * `pluginManager.getTranscriptionPipeline().getStreamingSessionManager()`.
+ * `TranscriptionPipeline.getStreamingSessionManager()` (in `@arcaai/vox`
+ * core, outside this file's edit scope) declares only the pre-586
+ * `getSessionId`/`switchToFallback` members; this WIDENS that view locally so
+ * `switchProvider` can reach the TASK-586 Lane D additions
+ * (`switchProvider`/`setCompatSwitchEnabled`) on the real
+ * `StreamingSessionManager` instance without changing the shared duck-typed
+ * interface.
+ */
+type StreamingSessionManagerLike = {
+  getSessionId(): string | null;
+  switchToFallback?(): Promise<void>;
+  switchProvider?(target: 'primary' | 'fallback'): Promise<void>;
+  setCompatSwitchEnabled?(enabled: boolean): void;
+};
 
 /**
  * Vox-path mirror of the canonical `deriveSpeakerLabel`
@@ -104,6 +122,11 @@ export function useArcaAudio() {
       if (options?.language) {
         store.setAudioLanguage(options.language);
       }
+      // TASK-587 — remember the end-user language mode so a reconnect/fallback
+      // restart re-applies it (mirrors how `audioLanguage` is used on line 564).
+      if (options?.languageMode) {
+        store.setSttLanguageMode(options.languageMode);
+      }
 
       // Forward per-capture options to the plugin manager
       // BEFORE initialize so the streaming transport can be built for the
@@ -112,6 +135,13 @@ export function useArcaAudio() {
         pipelineId: options?.pipelineId,
         consultationId: consultation?.id,
         language: options?.language,
+        // Fall back to the store-held mode so a start triggered WITHOUT a
+        // languageMode (e.g. compat `useAudioCapture.startRecording()`, which
+        // only knows the pipelineId) still honours the user's selection
+        // published by `useArcaSpeechToText`. The backend resolves the mode to
+        // the actual language, so this alone is sufficient. (TASK-587 compat
+        // start-coordination fix.)
+        languageMode: options?.languageMode ?? store.sttLanguageMode,
       });
 
       const timer = logger?.startOperation('startAudio', {
@@ -307,15 +337,27 @@ export function useArcaAudio() {
           onSttConnectionState: (state) => {
             store.setSttConnectionState(state);
           },
-          // The backend swapped the session's ASR engine to the tenant fallback.
-          // Mark the momentary switch + the durable active-pipeline fallback flag.
+          // The backend swapped the session's ASR engine (TASK-586 Lane D:
+          // BIDIRECTIONAL — primary→fallback OR fallback→primary). Prefer the
+          // frame's explicit `active`/`isFallback` fields when present (a
+          // backend that supports the compat bidirectional toggle reports
+          // both directions); fall back to the pre-586 always-fallback
+          // inference for a backend that only ever reports the one-way
+          // primary→fallback switch, so this handler stays byte-compatible
+          // with every pre-586 caller.
           onProviderSwitched: (info) => {
-            store.setSttConnectionState('switched_fallback');
-            store.setActivePipeline({ id: info.toPipeline, name: info.toPipeline, isFallback: true });
-            logger?.info('Streaming provider switched to fallback', {
+            const raw = info as ProviderSwitchInfo & { active?: 'primary' | 'fallback'; isFallback?: boolean };
+            const isFallback = raw.isFallback !== undefined ? raw.isFallback : raw.active !== undefined ? raw.active === 'fallback' : true;
+            // A switch BACK to primary un-latches the durable fallback flag and
+            // returns the connection to the nominal `connected` state — the
+            // TASK-568 durable latch was one-way by construction; this is the
+            // explicit un-latch path for the new primary-direction frame.
+            store.setSttConnectionState(isFallback ? 'switched_fallback' : 'connected');
+            store.setActivePipeline({ id: info.toPipeline, name: info.toPipeline, isFallback });
+            logger?.info('Streaming provider switched', {
               operation: 'onProviderSwitched',
               component: 'useArcaAudio',
-              attributes: { from: info.fromPipeline, to: info.toPipeline, reason: info.reason },
+              attributes: { from: info.fromPipeline, to: info.toPipeline, reason: info.reason, isFallback },
             });
           },
         });
@@ -517,53 +559,78 @@ export function useArcaAudio() {
   }, [store, getLogger]);
 
   /**
-   * Switch the live streaming session to the tenant fallback pipeline (R4).
+   * Switch the live streaming session's ASR engine (TASK-586 Lane D —
+   * generalized from the TASK-567 R4 one-way `switchToFallback`).
    *
-   * Primary path: POST the in-place-switch route via the streaming session
-   * manager; the backend swaps the ASR engine while the WebSocket/session
-   * survive, and the client learns the new pipeline from the `provider_switched`
-   * status frame (which updates `activePipeline` / `sttConnectionState`).
+   * Primary path: POST the switch route via the streaming session manager
+   * (`target: 'fallback'` hits the native or compat route depending on how
+   * the manager was configured; `target: 'primary'` requires compat mode —
+   * see `StreamingSessionManager.switchProvider`). The backend swaps the ASR
+   * engine while the WebSocket/session survive, and the client learns the new
+   * pipeline from the `provider_switched` status frame (which updates
+   * `activePipeline` / `sttConnectionState` — see the `onProviderSwitched`
+   * callback above, which now un-latches on an explicit primary frame too).
    *
-   * Degraded path: on a backend without the route (404), if the caller supplies
-   * `fallbackPipelineId` the session is rebuilt on it (destroy/recreate) — a
-   * reconnect-shaped fallback surfaced honestly as `reconnecting`. Without an id
-   * to rebuild on, the NOT_FOUND error propagates.
+   * Degraded path (fallback direction only): on a backend without the
+   * in-place route (404), if the caller supplies `opts.fallbackPipelineId`
+   * the session is rebuilt on it (destroy/recreate) — a reconnect-shaped
+   * fallback surfaced honestly as `reconnecting`. Symmetric rebuild support
+   * for the primary direction via `opts.primaryPipelineId`. Without an id to
+   * rebuild on, the NOT_FOUND error propagates.
+   *
+   * `opts.useCompatEndpoint` (compat layer only) opts the session manager
+   * into the `/api/stt/switch` shim route for this call via
+   * `sessionManager.setCompatSwitchEnabled()` — native SDK consumers never
+   * set this, so their `switchToFallback()` keeps hitting the native route.
    */
-  const switchToFallback = useCallback(
-    async (fallbackPipelineId?: string): Promise<void> => {
+  const switchProvider = useCallback(
+    async (
+      target: 'primary' | 'fallback',
+      opts?: { fallbackPipelineId?: string; primaryPipelineId?: string; useCompatEndpoint?: boolean },
+    ): Promise<void> => {
       const { pluginManager } = store;
       const logger = getLogger();
       if (!pluginManager) throw new Error('SDK not initialized');
 
-      const sessionManager = pluginManager.getTranscriptionPipeline?.()?.getStreamingSessionManager?.();
+      const sessionManager = pluginManager.getTranscriptionPipeline?.()?.getStreamingSessionManager?.() as
+        StreamingSessionManagerLike | null | undefined;
       const sessionId = sessionManager?.getSessionId?.() ?? null;
       if (!sessionManager || !sessionId) {
-        throw new Error('No active streaming session to switch to fallback');
+        throw new Error(`No active streaming session to switch to ${target}`);
       }
 
-      logger?.info('Switching streaming session to fallback', {
-        operation: 'switchToFallback',
+      if (opts?.useCompatEndpoint) {
+        sessionManager.setCompatSwitchEnabled?.(true);
+      }
+
+      logger?.info('Switching streaming session provider', {
+        operation: 'switchProvider',
         component: 'useArcaAudio',
-        attributes: { sessionId },
+        attributes: { sessionId, target },
       });
 
       try {
-        await sessionManager.switchToFallback?.();
+        if (target === 'fallback') {
+          await sessionManager.switchToFallback?.();
+        } else {
+          await sessionManager.switchProvider?.('primary');
+        }
         // Success is confirmed asynchronously by the backend `provider_switched`
         // status frame; nothing to set optimistically here.
       } catch (err) {
         const code = (err as { code?: string })?.code;
-        if (code === 'NOT_FOUND' && fallbackPipelineId) {
-          logger?.warn('Seamless switch unsupported by backend — rebuilding on the fallback pipeline', {
-            operation: 'switchToFallback',
+        const rebuildPipelineId = target === 'fallback' ? opts?.fallbackPipelineId : opts?.primaryPipelineId;
+        if (code === 'NOT_FOUND' && rebuildPipelineId) {
+          logger?.warn('Seamless switch unsupported by backend — rebuilding on the target pipeline', {
+            operation: 'switchProvider',
             component: 'useArcaAudio',
-            attributes: { fallbackPipelineId },
+            attributes: { target, rebuildPipelineId },
           });
           store.setSttConnectionState('reconnecting');
           await stopAudio();
-          await startAudio({ pipelineId: fallbackPipelineId, language: store.audioLanguage });
-          store.setSttConnectionState('switched_fallback');
-          store.setActivePipeline({ id: fallbackPipelineId, name: fallbackPipelineId, isFallback: true });
+          await startAudio({ pipelineId: rebuildPipelineId, language: store.audioLanguage });
+          store.setSttConnectionState(target === 'fallback' ? 'switched_fallback' : 'connected');
+          store.setActivePipeline({ id: rebuildPipelineId, name: rebuildPipelineId, isFallback: target === 'fallback' });
           return;
         }
         store.setSttConnectionState('error');
@@ -571,6 +638,16 @@ export function useArcaAudio() {
       }
     },
     [store, getLogger, stopAudio, startAudio],
+  );
+
+  /**
+   * Switch the live streaming session to the tenant fallback pipeline (R4).
+   * Alias for `switchProvider('fallback', { fallbackPipelineId })` — kept for
+   * native callers (backward compatibility; zero behavior change).
+   */
+  const switchToFallback = useCallback(
+    (fallbackPipelineId?: string): Promise<void> => switchProvider('fallback', { fallbackPipelineId }),
+    [switchProvider],
   );
 
   const muteAudio = useCallback(() => {
@@ -696,6 +773,7 @@ export function useArcaAudio() {
       startFromPreferences,
       stop: stopAudio,
       switchToFallback,
+      switchProvider,
       mute: muteAudio,
       unmute: unmuteAudio,
       toggleNoiseFilter,
@@ -721,6 +799,7 @@ export function useArcaAudio() {
       startFromPreferences,
       stopAudio,
       switchToFallback,
+      switchProvider,
       muteAudio,
       unmuteAudio,
       toggleNoiseFilter,

@@ -228,10 +228,16 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
     }
 
     if (message.type === 'status') {
-      this.sendLegacyMessage(session.client, session.sessionId, {
-        ...message,
-        session_id: session.sessionId,
-      });
+      // Forward every status frame (never swallow a non-terminal status — the
+      // TASK-568 Phase-F bug class). TASK-586: the `provider_switched` frame
+      // carries snake_case `active` + `is_fallback` in BOTH switch directions —
+      // pass `active` through untouched and surface a camelCase `isFallback` for
+      // the compat client.
+      const payload: Record<string, unknown> = { ...message, session_id: session.sessionId };
+      if (message.is_fallback !== undefined) {
+        payload.isFallback = message.is_fallback === '1' || message.is_fallback === 1 || message.is_fallback === true;
+      }
+      this.sendLegacyMessage(session.client, session.sessionId, payload);
       return;
     }
 
@@ -250,7 +256,7 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
 
   private resolveSpeakerId(message: Record<string, unknown>): string {
     const speakerId = this.firstPresent(message.speakerId, message.speaker_id, message.speakerLabel);
-    return typeof speakerId === 'string' ? speakerId : '';
+    return typeof speakerId === 'string' ? speakerId.trim() || 'Unknown' : 'Unknown';
   }
 
   private firstPresent(...values: unknown[]): unknown {
