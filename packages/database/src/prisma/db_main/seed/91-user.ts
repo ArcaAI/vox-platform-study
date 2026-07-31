@@ -567,6 +567,116 @@ export const SEED_USERS = [
     lastLoginAt: null,
     lastActiveAt: null,
   },
+  // -----------------------------------------------------------------
+  // One resident DOCTOR per remaining ArcaAI clinical department, so
+  // every ArcaAI department (Surgery, Rheumatology, Neurology,
+  // Orthopedics, Hematology, Breast & Endocrine) has a clinician on
+  // day-1. arcaai_doctor (Olivia Tan, above) covers General Medicine.
+  // Primary department is resolved by (tenantId, code) through
+  // PRIMARY_DEPARTMENT_CODE_BY_USERNAME.
+  // -----------------------------------------------------------------
+  {
+    id: SEED_USER_IDS.ARCAAI_DOCTOR_SURG,
+    username: 'arcaai_doctor_surg',
+    password: null,
+    isServiceAccount: false,
+    roleNames: ['DOCTOR'],
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    profile: {
+      firstName: 'Marcus',
+      lastName: 'Ng',
+      email: 'doctor.ng@arcaai.com',
+      phone: '+6591234603',
+    },
+    tags: ['clinical', 'doctor', 'arcaai', 'surgery'],
+    lastLoginAt: null,
+    lastActiveAt: null,
+  },
+  {
+    id: SEED_USER_IDS.ARCAAI_DOCTOR_RHEUM,
+    username: 'arcaai_doctor_rheum',
+    password: null,
+    isServiceAccount: false,
+    roleNames: ['DOCTOR'],
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    profile: {
+      firstName: 'Priya',
+      lastName: 'Nair',
+      email: 'doctor.nair@arcaai.com',
+      phone: '+6591234604',
+    },
+    tags: ['clinical', 'doctor', 'arcaai', 'rheumatology'],
+    lastLoginAt: null,
+    lastActiveAt: null,
+  },
+  {
+    id: SEED_USER_IDS.ARCAAI_DOCTOR_NEUR,
+    username: 'arcaai_doctor_neur',
+    password: null,
+    isServiceAccount: false,
+    roleNames: ['DOCTOR'],
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    profile: {
+      firstName: 'Daniel',
+      lastName: 'Wong',
+      email: 'doctor.wong@arcaai.com',
+      phone: '+6591234605',
+    },
+    tags: ['clinical', 'doctor', 'arcaai', 'neurology'],
+    lastLoginAt: null,
+    lastActiveAt: null,
+  },
+  {
+    id: SEED_USER_IDS.ARCAAI_DOCTOR_ORTH,
+    username: 'arcaai_doctor_orth',
+    password: null,
+    isServiceAccount: false,
+    roleNames: ['DOCTOR'],
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    profile: {
+      firstName: 'Rachel',
+      lastName: 'Goh',
+      email: 'doctor.goh@arcaai.com',
+      phone: '+6591234606',
+    },
+    tags: ['clinical', 'doctor', 'arcaai', 'orthopedics'],
+    lastLoginAt: null,
+    lastActiveAt: null,
+  },
+  {
+    id: SEED_USER_IDS.ARCAAI_DOCTOR_HEME,
+    username: 'arcaai_doctor_heme',
+    password: null,
+    isServiceAccount: false,
+    roleNames: ['DOCTOR'],
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    profile: {
+      firstName: 'Arjun',
+      lastName: 'Rao',
+      email: 'doctor.rao@arcaai.com',
+      phone: '+6591234607',
+    },
+    tags: ['clinical', 'doctor', 'arcaai', 'hematology'],
+    lastLoginAt: null,
+    lastActiveAt: null,
+  },
+  {
+    id: SEED_USER_IDS.ARCAAI_DOCTOR_BREN,
+    username: 'arcaai_doctor_bren',
+    password: null,
+    isServiceAccount: false,
+    roleNames: ['DOCTOR'],
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    profile: {
+      firstName: 'Sophia',
+      lastName: 'Lee',
+      email: 'doctor.lee@arcaai.com',
+      phone: '+6591234608',
+    },
+    tags: ['clinical', 'doctor', 'arcaai', 'breast_endocrine'],
+    lastLoginAt: null,
+    lastActiveAt: null,
+  },
 
   // =================================================================
   // SERVICE ACCOUNTS

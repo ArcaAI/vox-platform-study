@@ -47,14 +47,17 @@ from __future__ import annotations
 
 import gc
 import math
+import re
 import threading
 from typing import Any
 
 import numpy as np
 import structlog
 
+from stt.core.config.settings import get_settings
 from stt.models.base_loader import LoadedModel
 from stt.pipeline.dto import AiModelFormat, primary_language_subtag
+from stt.pipeline.language_modes import LANGUAGE_MODES_BY_ID
 
 logger = structlog.get_logger(__name__)
 
@@ -178,6 +181,8 @@ class WhisperCppAsrAdapter:
         self,
         loaded_model: LoadedModel,
         inference_config: Any,
+        *,
+        want_word_timestamps: bool = False,
     ) -> None:
         if loaded_model.format != AiModelFormat.WHISPER_CPP:
             raise ValueError(
@@ -185,16 +190,36 @@ class WhisperCppAsrAdapter:
                 f"got {loaded_model.format}"
             )
         self._loaded = loaded_model
-        # whisper.cpp pins a SINGLE decode language: a code-switch pair or
-        # BCP-47 tag (``"ml-en"`` / ``"ml-IN"``) collapses to its first subtag
-        # (``"ml"``) — the fine-tuned ml-en GGUF still code-switches natively.
-        self._language: str | None = primary_language_subtag(
-            getattr(inference_config, "language", None)
-        )
-        # Language-derived consultation context, always fed as whisper.cpp's
+        # Decode language. A code-switch PAIR (``"ml-en"`` / ``"vi-en"``) resolves
+        # to None (auto) — measured to beat pinning the primary subtag on the
+        # in-house code-switch fine-tune (pinning ``ml`` over-biases toward the
+        # Malayalam script and degrades the English spans). A genuine single
+        # language (``"ml"`` / ``"en"``) or a region-tagged single (``"ml-IN"`` →
+        # ``"ml"``) is still pinned. Code-switch pairs are recognized from the
+        # closed language-mode catalog, matching ``resolve_mode_for_engine``.
+        raw_language = getattr(inference_config, "language", None)
+        mode = LANGUAGE_MODES_BY_ID.get(raw_language) if raw_language else None
+        if mode is not None and mode.kind == "code_switch":
+            self._language = None
+        else:
+            self._language = primary_language_subtag(raw_language)
+        # Whether this pipeline consumes per-word timestamps. When False (the
+        # default / the ml-en pipeline) whisper.cpp runs a CLEAN sentence-level
+        # decode and the transcript is rebuilt by native concatenation — the
+        # ``max_len=1`` word-splitting is a lossy, script-corrupting hack we only
+        # incur when word timings are actually needed.
+        self._want_word_timestamps = want_word_timestamps
+        # Language-derived consultation context, fed as whisper.cpp's
         # ``initial_prompt`` (prepended before any per-utterance carry-forward
-        # text). Derived from the resolved pipeline language above.
-        self._context_prompt: str = consultation_prompt_for_language(self._language)
+        # text) — an exemplar prior-context line, NOT an instruction. Gated by
+        # ``whisper_cpp_consultation_prompt_enabled`` (default OFF: measured to
+        # inject spurious tokens and break grapheme clusters on the code-switch
+        # fine-tune). A/B-togglable; kept off until an eval shows it helps.
+        self._context_prompt: str = (
+            consultation_prompt_for_language(self._language)
+            if get_settings().whisper_cpp_consultation_prompt_enabled
+            else ""
+        )
         # Shared per-context lock — the main and english-gloss adapters over one
         # cached LoadedModel MUST serialize (same underlying whisper context).
         self._lock = _get_model_lock(loaded_model.model_id)
@@ -236,10 +261,20 @@ class WhisperCppAsrAdapter:
         """Run one decode while capturing whisper.cpp's native log for this
         thread. Must be called with ``self._lock`` held."""
         model = self._loaded.model
-        # The language-derived consultation context always leads; any per-utterance
-        # carry-forward/template ``prompt`` follows it as additional prior context.
-        effective_prompt = (
-            f"{self._context_prompt} {prompt}" if prompt else self._context_prompt
+        # The language-derived consultation context (when enabled) leads; any
+        # per-utterance carry-forward/template ``prompt`` follows it as additional
+        # prior context. Join only the non-empty parts so a disabled context prompt
+        # leaves the carry-forward prompt untouched (no leading space).
+        effective_prompt = " ".join(p for p in (self._context_prompt, prompt) if p)
+        # Word-timestamp mode forces near-word-sized segments (``max_len=1``,
+        # ``split_on_word``) so each segment carries its own (t0, t1). This is
+        # only requested when the pipeline consumes word timings; otherwise a
+        # clean sentence-level decode is both faster and avoids the space-joining
+        # corruption of non-space-delimited scripts (Malayalam).
+        word_ts_kwargs: dict[str, Any] = (
+            {"token_timestamps": True, "split_on_word": True, "max_len": 1}
+            if self._want_word_timestamps
+            else {}
         )
         prev = getattr(_tls, "buffer", None)
         _tls.buffer = []
@@ -247,9 +282,16 @@ class WhisperCppAsrAdapter:
             segments = model.transcribe(
                 audio,
                 extract_probability=True,
-                token_timestamps=True,
-                split_on_word=True,
-                max_len=1,
+                # Pure greedy, NO temperature fallback. whisper.cpp's default
+                # fallback (temperature_inc=0.2) re-decodes with rising temperature
+                # when a segment fails its entropy/logprob check — on this
+                # code-switch fine-tune that reliably spirals into SAMPLED GARBAGE
+                # (e.g. "eurysmbalination …") rather than recovering. Disabling the
+                # fallback keeps the deterministic greedy hypothesis, which is
+                # measured strictly better on real ml-en clinical audio.
+                temperature=0.0,
+                temperature_inc=0.0,
+                **word_ts_kwargs,
                 **({"language": self._language} if self._language else {}),
                 **({"initial_prompt": effective_prompt} if effective_prompt else {}),
             )
@@ -292,29 +334,45 @@ class WhisperCppAsrAdapter:
     def _build_result(
         self, segments: list[Any], audio: np.ndarray, sample_rate: int
     ) -> dict[str, Any]:
-        word_timestamps: list[dict[str, Any]] = []
-        for seg in segments:
-            word = str(seg.text or "").strip()
-            if not word:
-                continue
-            probability = seg.probability
-            confidence = (
-                1.0 if probability is None or math.isnan(probability) else float(probability)
-            )
-            word_timestamps.append(
-                {
-                    "word": word,
-                    # pywhispercpp t0/t1 are whisper.cpp's raw 10ms units.
-                    "start": seg.t0 / 100.0,
-                    "end": seg.t1 / 100.0,
-                    "confidence": confidence,
-                }
-            )
-
-        text = " ".join(w["word"] for w in word_timestamps)
         duration = len(audio) / float(sample_rate) if sample_rate else 0.0
-        start = word_timestamps[0]["start"] if word_timestamps else 0.0
-        end = word_timestamps[-1]["end"] if word_timestamps else duration
+
+        if self._want_word_timestamps:
+            # Word-timestamp mode: each segment is one space-trimmed word (from
+            # ``split_on_word``/``max_len=1``). Emit per-word timings AND rebuild
+            # the transcript by SPACE-joining the trimmed words — the correct
+            # reconstruction for this segmentation (whisper.cpp consumed the
+            # boundary whitespace as the split point).
+            word_timestamps: list[dict[str, Any]] = []
+            for seg in segments:
+                word = str(seg.text or "").strip()
+                if not word:
+                    continue
+                probability = seg.probability
+                confidence = (
+                    1.0 if probability is None or math.isnan(probability) else float(probability)
+                )
+                word_timestamps.append(
+                    {
+                        "word": word,
+                        # pywhispercpp t0/t1 are whisper.cpp's raw 10ms units.
+                        "start": seg.t0 / 100.0,
+                        "end": seg.t1 / 100.0,
+                        "confidence": confidence,
+                    }
+                )
+            text = " ".join(w["word"] for w in word_timestamps)
+            start = word_timestamps[0]["start"] if word_timestamps else 0.0
+            end = word_timestamps[-1]["end"] if word_timestamps else duration
+        else:
+            # Clean sentence-level decode: rebuild the transcript by NATIVE
+            # concatenation of segment text, preserving whisper's own spacing (its
+            # byte-BPE attaches a leading space to word-initial tokens). This is the
+            # ONLY correct reconstruction for non-space-delimited scripts like
+            # Malayalam — space-joining segments would inject spurious spaces and
+            # split grapheme clusters. No per-word timings in this mode.
+            text = re.sub(r"\s+", " ", "".join(str(seg.text or "") for seg in segments)).strip()
+            word_timestamps = []
+            start, end = 0.0, duration
 
         return {
             "text": text,

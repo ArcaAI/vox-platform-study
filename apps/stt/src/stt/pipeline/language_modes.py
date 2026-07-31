@@ -189,7 +189,7 @@ def build_single_language_prompt(language: str) -> str:
 # already code-switches natively. Disabled while we evaluate quality. whisper.cpp
 # STILL serves the modes (no cloud fallback); it just resolves to the language
 # settings with NO prompt. Flip to True to re-enable the priming-prompt path.
-WHISPER_CPP_PRIMING_PROMPT_ENABLED = True
+WHISPER_CPP_PRIMING_PROMPT_ENABLED = False
 
 
 def _is_prompt_capable(engine: AiModelFormat) -> bool:

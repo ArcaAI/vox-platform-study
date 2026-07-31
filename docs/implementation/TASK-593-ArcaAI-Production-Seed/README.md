@@ -57,7 +57,32 @@ work is split to avoid clobbering shared uncommitted files (notably
    `packages/database/src/__tests__/seed.test.ts` (create-count 2 → 3,
    idempotent + only-missing cases, new `arcaai` assertions).
 
-### Phase B — full demo-data clone (DEFERRED; blocked on the department agent)
+### Phase B — one resident doctor per ArcaAI department (DONE)
+
+Re-scoped by the owner after the department agent re-created the ArcaAI clinical
+config (7 departments — GEN/SURG/RHEUM/NEUR/ORTH/HEME/BREN — each wired to
+verbatim v1 visit-type templates via `07b-arcaai-clinical-*.ts`). Decision:
+**leave Global untouched; give ArcaAI one DOCTOR per department**, seeded in all
+envs (no new demo gate).
+
+- `00-constants.ts` — added `ARCAAI_DOCTOR_{SURG,RHEUM,NEUR,ORTH,HEME,BREN}` user
+  ids (`…042–…047`). `ARCAAI_DOCTOR` (…040, Olivia Tan) already covers GEN.
+- `91-user.ts` — 6 new DOCTOR users (tenant ArcaAI) + 6 entries in
+  `PRIMARY_DEPARTMENT_CODE_BY_USERNAME`. Primary department resolves by
+  `(tenantId, code)`, so each maps to its ArcaAI department. Result: 1 doctor per
+  ArcaAI department (7 total), plus the existing admin + nurse.
+
+Deliberately NOT done (owner scope): cloning Global's consultations / DNA /
+audit / voice profiles / API-key fixtures. Can be added later if a richer
+per-doctor dataset is wanted.
+
+#### Verification (Phase B)
+- `tsc --noEmit -p tsconfig.json` (packages/database) → clean (exit 0).
+- static coherence `seed/__tests__/seed.test.ts` → 8 passed (incl. globally
+  unique usernames across `SEED_USERS` + DNA seed).
+- `seed-impersonation-coverage.test.ts` → 6 passed.
+
+### (Superseded) original Phase B — full demo-data clone
 Runs only after the department agent's ArcaAI department set is final and its
 `00-constants.ts` edits are staged/committed (never edit `00-constants.ts`
 concurrently). Clone Global → ArcaAI, mapping every Global department reference
@@ -103,3 +128,8 @@ onto the corresponding ArcaAI department:
 - 2026-07-31 — Phase A implemented + verified (frontend config clone + harness
   override + tests). Phase B (full demo-data clone) deferred pending the
   concurrent department-seed agent to avoid `00-constants.ts` collisions.
+- 2026-07-31 — Reviewed the department agent's re-created ArcaAI clinical config
+  (7 depts + verbatim v1 templates via `07b-*`, no dangling CARD/ER refs). Phase
+  B re-scoped by owner to "one doctor per ArcaAI department" (Global left
+  untouched, no demo gate). Implemented 6 new ArcaAI DOCTOR users + dept mapping;
+  status Review. Still uncommitted.
