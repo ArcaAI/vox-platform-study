@@ -29,6 +29,7 @@ from stt.pipeline.dto import (
     VadConfig,
     ValidationResult,
     is_valid_language_code,
+    primary_language_subtag,
 )
 
 # =============================================================================
@@ -880,6 +881,26 @@ class TestIsValidLanguageCode:
     def test_bcp47_with_invalid_primary(self):
         """Test BCP-47 tag with invalid primary subtag."""
         assert is_valid_language_code("xx-US") is False
+
+
+class TestPrimaryLanguageSubtag:
+    """A code-switch pair / BCP-47 tag collapses to its FIRST subtag."""
+
+    def test_code_switch_pair_picks_first(self):
+        assert primary_language_subtag("ml-en") == "ml"
+
+    def test_bcp47_tag_picks_primary(self):
+        assert primary_language_subtag("ml-IN") == "ml"
+
+    def test_bare_code_unchanged(self):
+        assert primary_language_subtag("en") == "en"
+
+    def test_case_normalised(self):
+        assert primary_language_subtag("ML-EN") == "ml"
+
+    def test_none_and_empty_are_none(self):
+        assert primary_language_subtag(None) is None
+        assert primary_language_subtag("") is None
 
 
 class TestInferenceConfigCodeSwitching:

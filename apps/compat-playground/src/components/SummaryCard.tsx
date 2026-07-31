@@ -37,8 +37,14 @@ interface SummaryCardProps {
   transcriptLines: string[];
 }
 
-/** The preset visit types. The gateway normalizes these server-side. */
-const VISIT_TYPE_PRESETS = ['New Patient', 'Revisit', 'Referral'] as const;
+/**
+ * The preset visit types. v1 recognizes exactly TWO canonical categories —
+ * new-referral and follow-up — and the gateway normalizes any string into one of
+ * them server-side (`new`/`referral`/`initial`/… → new-referral; `follow`/`review`/
+ * `revisit` → follow-up). These two labels mirror that model; free text is still
+ * accepted for anything else.
+ */
+const VISIT_TYPE_PRESETS = ['New / Referral', 'Follow-up / Review'] as const;
 /** Sentinel value for the "custom / free text" option in the visit-type select. */
 const CUSTOM_VISIT = '__custom__';
 /** Sentinel value for the "custom / free text" option in the department select. */
@@ -156,7 +162,7 @@ export function SummaryCard({ config, transcriptLines }: SummaryCardProps) {
   const [deptIsCustom, setDeptIsCustom] = useState(false);
 
   // Visit type.
-  const seededVisit = config.visitType ?? 'New Patient';
+  const seededVisit = config.visitType ?? 'New / Referral';
   const seededIsPreset = (VISIT_TYPE_PRESETS as readonly string[]).includes(seededVisit);
   const [visitType, setVisitType] = useState(seededIsPreset ? seededVisit : 'New Patient');
   const [visitIsCustom, setVisitIsCustom] = useState(!seededIsPreset && seededVisit !== '');

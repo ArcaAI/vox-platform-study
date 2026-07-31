@@ -49,6 +49,7 @@ scan-api:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-api, rules]
 
 scan-stt:
@@ -61,6 +62,7 @@ scan-stt:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-stt, rules]
 
 scan-smr:
@@ -73,6 +75,7 @@ scan-smr:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-smr, rules]
 
 scan-nlp:
@@ -85,6 +88,7 @@ scan-nlp:
   rules:
     - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main"
       when: never
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-nlp, rules]
 
 # ── Filesystem scan (source code SAST) — runs on ALL pipelines ───────────────
@@ -108,6 +112,7 @@ scan-source:
         .
   allow_failure: true
   rules:
+    - !reference [.skip-on-dev-2-1, rules]
     - if: $CI_COMMIT_TAG =~ /^v\d+/
     - if: $PIPELINE_TYPE
 

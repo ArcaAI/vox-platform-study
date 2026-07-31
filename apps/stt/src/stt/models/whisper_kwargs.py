@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from stt.pipeline.dto import primary_language_subtag
+
 
 def build_whisper_generate_kwargs(
     config: Any,
@@ -26,6 +28,8 @@ def build_whisper_generate_kwargs(
     Semantics (locked by ``tests/unit/test_batch_inference_kwargs.py``):
     - ``language`` is pinned only when not None (a configured
       language is always pinned, including with code_switching; null = auto-LID).
+      A paired / BCP-47 value collapses to its primary subtag first
+      (``"ml-en"`` / ``"ml-IN"`` → ``"ml"``): transformers pins one language.
     - ``beam_size`` > 1 → ``num_beams`` (1/0/None omitted).
     - ``temperature``: scalar normalized to a 1-list; single value emits a
       scalar plus ``do_sample`` (> 0.0); a schedule emits a tuple (no
@@ -38,6 +42,7 @@ def build_whisper_generate_kwargs(
         "return_timestamps": return_timestamps,
     }
 
+    language = primary_language_subtag(language)
     if language is not None:
         generate_kwargs["language"] = language
 

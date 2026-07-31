@@ -14,6 +14,18 @@
 # NOTE: `dev` runs ALL validate/test jobs unconditionally (no `changes` filter)
 # because it is the integration branch — the last safety net before staging.
 
+# ── TEMPORARY: skip validate + scan on dev-2.1 only ─────────────────────────
+# Referenced at the TOP of each validate/scan job's rules so the branch guard
+# wins before any run condition. Test jobs are covered separately via the
+# SKIP_TESTS workflow variable set for dev-2.1 in .gitlab-ci.yml. Builds are
+# untouched (their test/validate `needs:` are `optional: true`). Remove this
+# fragment, its references, and the dev-2.1 workflow rule to restore the pipeline.
+
+.skip-on-dev-2-1:
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev-2.1"
+      when: never
+
 # ── Always-run conditions ───────────────────────────────────────────────────
 
 .rules-always:

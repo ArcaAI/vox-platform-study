@@ -198,6 +198,17 @@ class TestCodeSwitchLanguagePinning:
         kwargs = _assemble_generate_kwargs(config, return_timestamps=True)
         assert "language" not in kwargs
 
+    def test_code_switch_pair_collapses_to_first_subtag(self):
+        # A code-switch pair pins the FIRST language (transformers pins one).
+        config = _make_config(language="ml-en", code_switching=False)
+        kwargs = _assemble_generate_kwargs(config, return_timestamps=True)
+        assert kwargs["language"] == "ml"
+
+    def test_bcp47_tag_collapses_to_primary_subtag(self):
+        config = _make_config(language="ml-IN", code_switching=True)
+        kwargs = _assemble_generate_kwargs(config, return_timestamps=True)
+        assert kwargs["language"] == "ml"
+
 
 # =========================================================================
 # Threshold triad — ensures YAML-configurable knobs land in generate kwargs

@@ -203,6 +203,21 @@ def is_valid_language_code(code: str) -> bool:
     return primary in VALID_WHISPER_LANGUAGES
 
 
+def primary_language_subtag(code: str | None) -> str | None:
+    """First language subtag of a (possibly paired or BCP-47) code.
+
+    Whisper.cpp and the transformers Whisper runtime pin a SINGLE decode
+    language, so a code-switch pair (``"ml-en"``) or a BCP-47 tag (``"ml-IN"``)
+    collapses to its primary subtag (``"ml"``): the pipeline may carry
+    ``language: "ml-en"`` to signal the code-switch pair, and the engine pins the
+    FIRST language (``"ml"``) — a code-switch-capable model then still emits the
+    paired language. Empty / ``None`` stays ``None`` (auto-detect / LID).
+    """
+    if not code:
+        return None
+    return code.split("-")[0].lower() or None
+
+
 VALID_PARAKEET_V3_LANGUAGES: set[str] = {
     "bg",
     "hr",

@@ -1291,15 +1291,19 @@ describe('STT Seed Data', () => {
         expect(production?.tags).toContain('high-quality');
       });
 
-      // production-whisper-large-v3-turbo-gguf is the new
-      // platform default (matrix #2); it carries the 'production'/
-      // 'recommended' tags production-whisper-large-v3 used to carry.
-      it('should include the new default GGUF pipeline', () => {
-        const ggufDefault = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'production-whisper-large-v3-turbo-gguf');
-        expect(ggufDefault).toBeDefined();
-        expect(ggufDefault?.isDefault).toBe(true);
-        expect(ggufDefault?.tags).toContain('production');
-        expect(ggufDefault?.tags).toContain('recommended');
+      // arcaai-whisper-large-ml-en-gguf is the platform default: the generic
+      // whisper-turbo GGUF pinned to ml hallucinated on Malayalam, so the
+      // in-house ml-en code-switch fine-tune is the default and carries the
+      // 'production'/'recommended' tags.
+      it('should make the ArcaAI ml-en GGUF fine-tune the default', () => {
+        const arcaaiDefault = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'arcaai-whisper-large-ml-en-gguf');
+        expect(arcaaiDefault).toBeDefined();
+        expect(arcaaiDefault?.isDefault).toBe(true);
+        expect(arcaaiDefault?.tags).toContain('production');
+        expect(arcaaiDefault?.tags).toContain('recommended');
+        // The generic whisper-turbo GGUF is registered but no longer default.
+        const genericGguf = DEFAULT_ASR_PIPELINES.find((p) => p.slug === 'production-whisper-large-v3-turbo-gguf');
+        expect(genericGguf?.isDefault).toBe(false);
       });
 
       // The DEFAULT (isDefault) pipeline must also carry the
@@ -1328,7 +1332,7 @@ describe('STT Seed Data', () => {
         expect(DEFAULT_ASR_PIPELINES).toHaveLength(14);
         const defaults = DEFAULT_ASR_PIPELINES.filter((p) => p.isDefault === true);
         expect(defaults).toHaveLength(1);
-        expect(defaults[0]?.slug).toBe('production-whisper-large-v3-turbo-gguf');
+        expect(defaults[0]?.slug).toBe('arcaai-whisper-large-ml-en-gguf');
         // Retired from the product matrix.
         const slugs = DEFAULT_ASR_PIPELINES.map((p) => p.slug);
         expect(slugs).not.toContain('lightweight-whisper-small');
@@ -1593,18 +1597,18 @@ describe('ASR Pipeline isDefault invariant', () => {
     });
   });
 
-  it('should make the whisper.cpp GGUF pipeline the system isDefault one', () => {
-    // The SYSTEM default is production-whisper-large-v3-turbo-gguf
-    // (id …0014); production-whisper-large-v3 (id …0001, the former
-    // default) is registered but no longer the seeded default.
-    const systemDefault = DEFAULT_ASR_PIPELINES.find((p) => p.id === '81000000-0000-0000-0001-000000000014');
+  it('should make the ArcaAI ml-en GGUF fine-tune the system isDefault one', () => {
+    // The SYSTEM default is arcaai-whisper-large-ml-en-gguf (id …0018); the
+    // generic whisper-turbo GGUF (id …0014, the former default) is registered
+    // but no longer the seeded default.
+    const systemDefault = DEFAULT_ASR_PIPELINES.find((p) => p.id === '81000000-0000-0000-0001-000000000018');
     expect(systemDefault).toBeDefined();
-    expect(systemDefault?.slug).toBe('production-whisper-large-v3-turbo-gguf');
+    expect(systemDefault?.slug).toBe('arcaai-whisper-large-ml-en-gguf');
     expect(systemDefault?.isDefault).toBe(true);
 
-    // The old default is not a seeded default anymore, so there is exactly one.
-    const oldDefault = DEFAULT_ASR_PIPELINES.find((p) => p.id === '81000000-0000-0000-0001-000000000001');
-    expect(oldDefault?.slug).toBe('production-whisper-large-v3');
+    // The former GGUF default is not a seeded default anymore, so there is exactly one.
+    const oldDefault = DEFAULT_ASR_PIPELINES.find((p) => p.id === '81000000-0000-0000-0001-000000000014');
+    expect(oldDefault?.slug).toBe('production-whisper-large-v3-turbo-gguf');
     expect(oldDefault?.isDefault).toBe(false);
   });
 
@@ -1719,7 +1723,7 @@ describe('Guardrail default moved off GlobalSetting (AiTaskDefault is authoritat
 describe('Phase 2 — STT default (CT2 registered; whisper.cpp GGUF effective default)', () => {
   const CT2_MODEL_SLUG = 'faster-whisper-large-v3-turbo-int8';
   const CT2_PIPELINE_SLUG = 'production-faster-whisper-turbo-int8';
-  const DEFAULT_PIPELINE_SLUG = 'production-whisper-large-v3-turbo-gguf';
+  const DEFAULT_PIPELINE_SLUG = 'arcaai-whisper-large-ml-en-gguf';
 
   it('mirrors the CTRANSLATE2 format in the seed enum mirror', () => {
     expect(AiModelFormat.CTRANSLATE2).toBe('CTRANSLATE2');

@@ -95,6 +95,18 @@ def test_ml_language_feeds_malayalam_prompt_and_pins_language() -> None:
     assert model.calls[0]["language"] == "ml"
 
 
+def test_code_switch_pair_pins_first_subtag_and_malayalam_prompt() -> None:
+    """A ``language: "ml-en"`` pair pins the FIRST subtag (ml) on whisper.cpp
+    and still primes the Malayalam consultation context."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"))
+
+    adapter(_audio(), 16000)
+
+    assert model.calls[0]["language"] == "ml"
+    assert model.calls[0]["initial_prompt"] == _CONSULTATION_PROMPT_ML
+
+
 def test_carry_forward_prompt_follows_consultation_context() -> None:
     """A per-utterance carry-forward prompt is appended AFTER the context line."""
     model = _CapturingModel()

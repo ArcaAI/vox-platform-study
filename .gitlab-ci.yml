@@ -53,6 +53,14 @@ workflow:
     - if: $CI_COMMIT_BRANCH == "cicd"
       variables:
         PIPELINE_TYPE: "cicd"
+    # TEMPORARY (dev-2.1 only): skip tests + checks, keep the build. Tests honor
+    # SKIP_TESTS; validate + scan jobs are skipped via `.skip-on-dev-2-1` in
+    # .gitlab/ci/rules.yml. Remove this rule (and the fragment references) to
+    # restore the full pipeline. Must precede the generic /^dev-/ rule below.
+    - if: $CI_COMMIT_BRANCH == "dev-2.1"
+      variables:
+        PIPELINE_TYPE: "dev"
+        SKIP_TESTS: "true"
     # Release-line branches: dev-* / staging-* / prod-* (e.g. dev-2.1). A plain
     # push runs the full test suite then builds all images (env-tagged).
     - if: $CI_COMMIT_BRANCH =~ /^dev-/

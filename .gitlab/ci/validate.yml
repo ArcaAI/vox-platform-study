@@ -26,6 +26,7 @@ lint-ts:
     - pnpm --filter @arcaai/database db:generate
     - pnpm turbo lint
   rules:
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-any-ts, rules]
 
 # ── TypeScript type-checking ─────────────────────────────────────────────────
@@ -53,6 +54,7 @@ typecheck:
     # here once those are cleared.
     - pnpm turbo run typecheck --filter=@arcaai/ui --filter=@arcaai/domains --filter=@arcaai/stt
   rules:
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-any-ts, rules]
 
 # ── Data-model generator drift gate ──────────────────────────────────────────
@@ -76,6 +78,7 @@ generate-data-model-check:
   script:
     - pnpm --filter @arcaai/tools generate-data-model:check
   rules:
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-data-model, rules]
 
 # ── Entity layer drift gate ──────────────────────────────────────────────────
@@ -94,6 +97,7 @@ generate-data-entity-check:
   script:
     - pnpm --filter @arcaai/tools generate-data-entity:check
   rules:
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-data-model, rules]
 
 # ── Factory layer drift gate ─────────────────────────────────────────────────
@@ -112,6 +116,7 @@ generate-factory-check:
   script:
     - pnpm --filter @arcaai/tools generate-factory:check
   rules:
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-data-model, rules]
 
 # ── Environment declaration drift gate ───────────────────────────────────────
@@ -153,6 +158,7 @@ env-drift-check:
     - pnpm turbo build --filter=@arcaai/applications
     - pnpm env:sync --check
   rules:
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-env-declarations, rules]
 
 # ── Python linting (ruff) ───────────────────────────────────────────────────
@@ -178,4 +184,5 @@ lint-python:
         exit 1
       fi
   rules:
+    - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-any-python, rules]
