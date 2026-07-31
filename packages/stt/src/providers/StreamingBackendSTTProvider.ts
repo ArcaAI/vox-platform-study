@@ -348,6 +348,12 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       // fall back to the session-configured language only when none was detected.
       language: payload.language ?? this.config?.language ?? 'en-US',
       duration: Math.max(0, payload.endTime - payload.startTime),
+      // Preserve the per-utterance stream-relative offset (seconds) so the SDK
+      // hook can stamp `segment.startTime` with a real timeline position instead
+      // of falling back to an epoch-ms wall clock (TASK-591). The backend emits
+      // these as seconds since stream start; keep them as-is.
+      vadStreamStartSec: payload.startTime,
+      vadStreamEndSec: payload.endTime,
     };
     if (payload.speakerId) {
       result.speakerId = payload.speakerId;

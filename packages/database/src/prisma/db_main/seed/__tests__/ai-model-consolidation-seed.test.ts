@@ -114,7 +114,11 @@ const TASK_567_NEW_SLUGS = ['sarvam-saaras-v3', 'openai-gpt4o-transcribe'] as co
 
 // ArcaAI in-house Malayalam+English code-switch full fine-tune of
 // whisper-large-v3-turbo, served via whisper.cpp GGUF (matrix #10).
-const ARCAAI_ML_EN_NEW_SLUGS = ['arcaai-whisper-large-ml-en-gguf', 'arcaai-whisper-large-ml-en-gguf-q8_0'] as const;
+const ARCAAI_ML_EN_NEW_SLUGS = [
+  'arcaai-whisper-large-ml-en-gguf',
+  'arcaai-whisper-large-ml-en-gguf-q8_0',
+  'arcaai-whisper-large-ml-en',
+] as const;
 
 const EXPECTED_CATALOG_SLUGS = [
   ...KEEPER_SLUGS,
@@ -206,6 +210,7 @@ const PIPELINE_REFERENCED_SLUGS = [
   'nemotron-3.5-asr-streaming-0.6b',
   'arcaai-whisper-large-ml-en-gguf',
   'arcaai-whisper-large-ml-en-gguf-q8_0',
+  'arcaai-whisper-large-ml-en',
 ] as const;
 
 type SeedModel = (typeof DEFAULT_AI_MODELS)[number] & {
@@ -223,10 +228,10 @@ const bySlug = (slug: string) => catalog.find((m) => m.slug === slug);
 // =============================================================================
 
 describe('consolidated AI model catalog (26 rows) + extensions', () => {
-  it('is exactly the 41 expected slugs (26 + 2 + 9 extensions + 2 ArcaAI ML-EN)', () => {
+  it('is exactly the 42 expected slugs (26 + 2 + 9 extensions + 3 ArcaAI ML-EN)', () => {
     const slugs = catalog.map((m) => m.slug).sort();
     expect(slugs).toEqual([...EXPECTED_CATALOG_SLUGS].sort());
-    expect(catalog.length).toBe(41);
+    expect(catalog.length).toBe(42);
   });
 
   it('has unique ids and unique slugs', () => {

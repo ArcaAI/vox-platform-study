@@ -43,8 +43,11 @@ LanguageModeKind = Literal["single", "code_switch", "auto"]
 #   "gloss"  — native transcript + a second English-translation pass
 #              (``streaming_english_gloss``); only meaningful when the secondary
 #              language is English.
+#   "prompt" — prime the decoder with a bilingual ``initial_prompt`` to elicit
+#              native code-switch transcription (whisper.cpp: no task=translate
+#              gloss, but pywhispercpp accepts an initial_prompt).
 #   None     — the engine cannot code-switch at all.
-CodeSwitchCapability = Literal["native", "flag", "gloss"]
+CodeSwitchCapability = Literal["native", "flag", "gloss", "prompt"]
 
 _WHISPER_FAMILY: frozenset[AiModelFormat] = frozenset(
     {
@@ -73,10 +76,15 @@ _CODE_SWITCH_CAPABILITY: dict[AiModelFormat, CodeSwitchCapability] = {
     AiModelFormat.SARVAM: "native",
     # Azure Speech: code_switching -> AutoDetectSourceLanguageConfig (azure_asr.py).
     AiModelFormat.AZURE_SPEECH: "flag",
+    # whisper.cpp (pywhispercpp) has no task=translate gloss, but DOES accept an
+    # initial_prompt (whisper_cpp_asr.py passes it into model.transcribe). A
+    # bilingual priming prompt elicits native code-switch transcription from a
+    # code-switch-capable GGUF — e.g. the seeded ArcaAI ml-en model.
+    AiModelFormat.WHISPER_CPP: "prompt",
     # Whisper family: native transcript + English gloss via task=translate.
     **dict.fromkeys(_WHISPER_FAMILY, "gloss"),
-    # NEMO/Parakeet ignore code_switching; parakeet.cpp/whisper.cpp have no
-    # translate; OpenAI is single-language; Azure Foundry is batch/preview.
+    # NEMO/Parakeet ignore code_switching; parakeet.cpp has no translate/prompt;
+    # OpenAI is single-language; Azure Foundry is batch/preview.
     # (absent => not code-switch capable)
 }
 
@@ -122,6 +130,64 @@ LANGUAGE_MODE_CATALOG: tuple[LanguageMode, ...] = (
 LANGUAGE_MODES_BY_ID: dict[str, LanguageMode] = {m.id: m for m in LANGUAGE_MODE_CATALOG}
 
 
+# ISO 639-1 → human-readable language name, for the code-switch priming prompt.
+# Covers every language used by the catalog above.
+_LANGUAGE_DISPLAY_NAMES: dict[str, str] = {
+    "en": "English",
+    "ml": "Malayalam",
+    "vi": "Vietnamese",
+}
+
+# Priming prompt used to elicit code-switch transcription from prompt-capable
+# engines (whisper.cpp). Whisper's ``initial_prompt`` is decoder prior-context
+# (≤224 tokens), NOT a chat system prompt — but a concise bilingual instruction
+# reliably biases the model to transcribe (not translate) each language and to
+# not commit to a single language on mixed audio. Kept short so it stays well
+# within the token budget once per-utterance carry-forward text is appended.
+_CODE_SWITCH_PROMPT_TEMPLATE = (
+    "You are a professional transcriber, fluent in {primary} and {secondary}. "
+    "You are listening to a recording in which a person is potentially speaking "
+    "both {primary} and {secondary}, and no other languages. They may be "
+    "speaking only one of these languages. They may have a strong accent. You "
+    "are to transcribe utterances of each language accordingly."
+)
+
+
+def _language_name(code: str) -> str:
+    """Human-readable language name for *code* (falls back to the code itself)."""
+    return _LANGUAGE_DISPLAY_NAMES.get(code.split("-")[0].lower(), code)
+
+
+def build_code_switch_prompt(primary_language: str, secondary_language: str) -> str:
+    """Build the bilingual code-switch priming prompt for a prompt-capable engine."""
+    return _CODE_SWITCH_PROMPT_TEMPLATE.format(
+        primary=_language_name(primary_language),
+        secondary=_language_name(secondary_language),
+    )
+
+
+# Single-language priming prompt — the one-language counterpart of the bilingual
+# template above. Emitted for single-language modes (e.g. "English only") on
+# prompt-capable engines so a code-switch-fine-tuned GGUF is told to stay in the
+# chosen language rather than drifting into the other one.
+_SINGLE_LANGUAGE_PROMPT_TEMPLATE = (
+    "You are a professional transcriber, fluent in {language}. You are listening "
+    "to a recording in which a person is speaking {language}, and no other "
+    "language. They may have a strong accent. You are to transcribe their speech "
+    "in {language} accurately."
+)
+
+
+def build_single_language_prompt(language: str) -> str:
+    """Build the single-language priming prompt for a prompt-capable engine."""
+    return _SINGLE_LANGUAGE_PROMPT_TEMPLATE.format(language=_language_name(language))
+
+
+def _is_prompt_capable(engine: AiModelFormat) -> bool:
+    """Whether *engine* is primed via an ``initial_prompt`` (whisper.cpp)."""
+    return _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
+
+
 @dataclass(frozen=True)
 class ResolvedInference:
     """The InferenceConfig fields a mode resolves to for a concrete engine."""
@@ -129,6 +195,9 @@ class ResolvedInference:
     language: str | None
     code_switching: bool
     streaming_english_gloss: bool
+    # Bilingual priming prompt for prompt-capable engines (whisper.cpp); None for
+    # every other engine/mode. Threaded into the session's initial_prompt.
+    initial_prompt: str | None = None
 
 
 class LanguageModeUnsupportedError(Exception):
@@ -206,8 +275,20 @@ def resolve_mode_for_engine(mode_id: str, engine: AiModelFormat) -> ResolvedInfe
     if mode.kind == "auto":
         return ResolvedInference(language=None, code_switching=False, streaming_english_gloss=False)
     if mode.kind == "single":
+        assert mode.primary_language is not None
+        # Prompt-capable engines (whisper.cpp) also get a single-language priming
+        # prompt so a code-switch model stays in the chosen language; every other
+        # engine relies on the pinned language token alone.
+        single_prompt = (
+            build_single_language_prompt(mode.primary_language)
+            if _is_prompt_capable(engine)
+            else None
+        )
         return ResolvedInference(
-            language=mode.primary_language, code_switching=False, streaming_english_gloss=False
+            language=mode.primary_language,
+            code_switching=False,
+            streaming_english_gloss=False,
+            initial_prompt=single_prompt,
         )
     # code_switch — realise per the engine's capability.
     capability = _CODE_SWITCH_CAPABILITY[engine]
@@ -218,6 +299,21 @@ def resolve_mode_for_engine(mode_id: str, engine: AiModelFormat) -> ResolvedInfe
     if capability == "gloss":
         return ResolvedInference(
             language=mode.primary_language, code_switching=False, streaming_english_gloss=True
+        )
+    if capability == "prompt":
+        # whisper.cpp: a *pair* is "may speak either/both", so do NOT pin a
+        # language — pinning the primary would bias the secondary language toward
+        # the primary's script. Leave language unset and let the native
+        # code-switch model, primed by the bilingual prompt, transcribe each
+        # language. No translate gloss.
+        assert mode.primary_language is not None and mode.secondary_language is not None
+        return ResolvedInference(
+            language=None,
+            code_switching=False,
+            streaming_english_gloss=False,
+            initial_prompt=build_code_switch_prompt(
+                mode.primary_language, mode.secondary_language
+            ),
         )
     # native — the model handles the mix; pin the primary language.
     return ResolvedInference(

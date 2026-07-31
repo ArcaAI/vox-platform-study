@@ -268,6 +268,30 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     computeType: 'q8_0',
     tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'ggml', 'whisper.cpp'],
   },
+  {
+    // Same fine-tune as the GGUF rows above, but the fp16 safetensor
+    // checkpoint served via the transformers runtime (WhisperLoader) — no
+    // ggml conversion. Parallels whisper-large-v3-turbo (transformer) vs
+    // whisper-large-v3-turbo-gguf.
+    id: '80000000-0000-0000-0001-000000000020',
+    tenantId: SYSTEM_TENANT_ID,
+    name: 'ArcaAI Whisper Large ML-EN Code-Switch (transformer)',
+    slug: 'arcaai-whisper-large-ml-en',
+    description:
+      'ArcaAI Malayalam+English code-switch full fine-tune of Whisper Large V3 Turbo (fp16 safetensor) served via the transformers runtime.',
+    category: ModelCategory.AUDIO,
+    taskType: ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
+    modelType: ModelType.BASE_MODEL,
+    source: AiModelSource.HUGGINGFACE,
+    sourceUri: 'taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16',
+    sourceRevision: 'main',
+    format: AiModelFormat.SAFETENSOR,
+    provider: 'built-in',
+    architecture: 'whisper',
+    memorySizeMb: 3584, // ~3.5GB VRAM, matches whisper-large-v3-turbo
+    computeType: 'float16',
+    tags: ['multilingual', 'malayalam', 'english', 'code-switch', 'transformer'],
+  },
 
   // =========================================================================
   // VAD (Voice Activity Detection)

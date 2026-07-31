@@ -124,6 +124,66 @@ def test_modes_supported_by_engine_openai_excludes_code_switch() -> None:
     assert "vi" in openai_modes
 
 
+def test_whisper_cpp_code_switch_via_prompt() -> None:
+    # whisper.cpp has no task=translate gloss, but primes code-switch via a
+    # bilingual initial_prompt — so it DOES serve ml-en / vi-en (the platform's
+    # default ml-en GGUF model is a code-switch model).
+    assert engine_supports_mode(get_language_mode("ml-en"), AiModelFormat.WHISPER_CPP) is True
+    assert engine_supports_mode(get_language_mode("vi-en"), AiModelFormat.WHISPER_CPP) is True
+    supported = set(modes_supported_by_engine(AiModelFormat.WHISPER_CPP))
+    assert {"en", "ml", "ml-en", "vi", "vi-en", "auto"} <= supported
+    assert AiModelFormat.WHISPER_CPP.value in engines_supporting_mode("ml-en")
+    assert AiModelFormat.WHISPER_CPP.value in engines_supporting_mode("vi-en")
+
+
+def test_resolve_whisper_cpp_pair_unpinned_bilingual_prompt() -> None:
+    resolved = resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
+    # Pair: do NOT pin a language — let the native code-switch model + the
+    # bilingual prompt govern (pinning would bias English toward Malayalam script).
+    assert resolved.language is None
+    assert resolved.code_switching is False
+    assert resolved.streaming_english_gloss is False
+    assert resolved.initial_prompt is not None
+    assert "Malayalam" in resolved.initial_prompt
+    assert "English" in resolved.initial_prompt
+
+    vi = resolve_mode_for_engine("vi-en", AiModelFormat.WHISPER_CPP)
+    assert vi.language is None
+    assert vi.initial_prompt is not None
+    assert "Vietnamese" in vi.initial_prompt
+    assert "English" in vi.initial_prompt
+
+
+def test_resolve_whisper_cpp_single_pins_and_primes() -> None:
+    # Single: pin the chosen language AND emit a single-language priming prompt
+    # so the code-switch model does not drift into the other language.
+    en = resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
+    assert en.language == "en"
+    assert en.initial_prompt is not None
+    assert "English" in en.initial_prompt
+    assert "Malayalam" not in en.initial_prompt
+
+    ml = resolve_mode_for_engine("ml", AiModelFormat.WHISPER_CPP)
+    assert ml.language == "ml"
+    assert ml.initial_prompt is not None
+    assert "Malayalam" in ml.initial_prompt
+
+    # auto: no pin, no prompt.
+    auto = resolve_mode_for_engine("auto", AiModelFormat.WHISPER_CPP)
+    assert auto.language is None
+    assert auto.initial_prompt is None
+
+
+def test_single_language_prompt_only_for_prompt_capable_engines() -> None:
+    # Non-prompt engines keep the plain single-language behavior: pin, no prompt.
+    fw = resolve_mode_for_engine("en", AiModelFormat.FASTER_WHISPER)
+    assert fw.language == "en"
+    assert fw.initial_prompt is None
+    openai = resolve_mode_for_engine("en", AiModelFormat.OPENAI)
+    assert openai.language == "en"
+    assert openai.initial_prompt is None
+
+
 def test_catalog_payload_shape() -> None:
     payload = language_mode_catalog_payload()
     assert [m["id"] for m in payload] == ["en", "ml", "ml-en", "vi", "vi-en", "auto"]

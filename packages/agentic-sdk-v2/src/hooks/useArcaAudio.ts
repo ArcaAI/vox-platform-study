@@ -241,11 +241,14 @@ export function useArcaAudio() {
             if (result.isFinal) {
               store.setCurrentTranscript('');
 
-              const fallbackTime = Date.now();
+              // `startTime`/`endTime` are seconds relative to stream start. When
+              // a result carries no VAD/streaming offset, fall back to 0 — NOT
+              // `Date.now()`, whose epoch-millisecond magnitude would be
+              // mis-rendered as an absurd `mm:ss` timestamp downstream (TASK-591).
               const segment: TranscriptSegment = {
                 text: result.text,
-                startTime: result.vadStreamStartSec ?? fallbackTime,
-                endTime: result.vadStreamEndSec ?? fallbackTime,
+                startTime: result.vadStreamStartSec ?? 0,
+                endTime: result.vadStreamEndSec ?? 0,
                 isFinal: true,
                 // Derive the canonical display label instead of
                 // surfacing the raw diarizer id (so the `"unknown"` sentinel
