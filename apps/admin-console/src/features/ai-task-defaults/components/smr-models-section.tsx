@@ -2,6 +2,7 @@
 
 import { useId } from 'react';
 import { SMR_FALLBACK_TASK_KEYS, SMR_PRIMARY_TASK_KEYS } from '../api/types';
+import { SmrDefaultProviderControl } from './smr-default-provider-control';
 import { TaskDefaultCard } from './task-default-card';
 
 /** Per-key card copy for the primary summarization selections. */
@@ -29,9 +30,11 @@ const FALLBACK_META: Record<(typeof SMR_FALLBACK_TASK_KEYS)[number], { title: st
 };
 
 /**
- * Tenant-editable "SMR models" section (TASK-588, /ai-configuration).
+ * Tenant-editable "SMR models" section (TASK-588 / TASK-592, /ai-configuration).
  *
- * Four `TaskDefaultCard`s grouped Primary / Fallback. `tenantId` is OMITTED on
+ * A one-action `SmrDefaultProviderControl` at the top applies a single
+ * provider/model across the tenant-editable text-gen keys, above four per-key
+ * `TaskDefaultCard`s grouped Primary / Fallback. `tenantId` is OMITTED on
  * every card, so each OCC save (`PUT admin/ai-task-defaults/row?taskKey=`) is
  * CLS-pinned to the caller's working tenant — never the SYSTEM platform rows.
  *
@@ -44,6 +47,9 @@ export function SmrModelsSection() {
   const uid = useId();
   return (
     <div className="flex flex-col gap-6">
+      {/* TASK-592: one-action default across the tenant-editable text-gen (summarization) keys. */}
+      <SmrDefaultProviderControl />
+
       <section aria-labelledby={`${uid}-primary`} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <h2 id={`${uid}-primary`} className="text-base font-semibold">

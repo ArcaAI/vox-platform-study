@@ -78,8 +78,19 @@ describe('SmrModelsSection', () => {
     for (const key of [...SMR_PRIMARY_TASK_KEYS, ...SMR_FALLBACK_TASK_KEYS]) {
       expect(await screen.findByText(key)).toBeDefined();
     }
-    expect((await screen.findAllByRole('combobox')).length).toBe(4);
+    // 4 per-key card pickers + 2 default-control pickers (primary + fallback).
+    expect((await screen.findAllByRole('combobox')).length).toBe(6);
     expect((await screen.findAllByRole('button', { name: /save .* if-match/i })).length).toBe(4);
+  });
+
+  it('renders the one-action default text-generation provider control above the per-key cards (TASK-592)', async () => {
+    stubFetch();
+    renderWithProviders(<SmrModelsSection />);
+
+    expect(await screen.findByRole('heading', { name: /Default text-generation provider/i })).toBeDefined();
+    expect(await screen.findByRole('button', { name: /apply the default text-generation provider/i })).toBeDefined();
+    // Copy is honest that the tenant-editable text-gen surface is summarization only.
+    expect(await screen.findByText(/this default covers summarization/i)).toBeDefined();
   });
 
   it('groups the cards Primary / Fallback and marks fallback optional', async () => {

@@ -21,6 +21,14 @@ export interface SummaryPromptOptions {
    * builder folds `session_data.pre_summary_text` in ONLY when this is true.
    */
   includePreSummary?: boolean;
+  /**
+   * The tenant department's governed instruction template content (an APPROVED,
+   * version-pinned `PromptVersion` snapshot resolved via `PromptResolutionService`,
+   * TASK-592). When present it becomes the authoritative clinical steering and
+   * REPLACES the static dept×visit field-set guidance; the v1 wire-schema
+   * directive is still appended so the response shape stays Simplified/Enhanced.
+   */
+  governedInstruction?: string;
 }
 
 const LANGUAGE_INSTRUCTION: Record<string, string> = {
@@ -102,17 +110,29 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
   if (specialty) systemLines.push(`Specialty context: ${specialty}.`);
   if (encounterType) systemLines.push(`Encounter type: ${encounterType}.`);
 
-  // v1 department×visit steering (TASK-560 item 2). For the 6 non-medicine
-  // departments the v1 `DEPT_VISIT_SCHEMAS` field set becomes prompt guidance
-  // ("capture these department-relevant areas"), while the wire response stays
-  // the generic Simplified/Enhanced object (v1 normalizes dept keys back to it).
-  // General/Medicine and unknown departments keep the generic path (null here).
-  const deptTemplate = selectDeptTemplate(options.department, options.visitType);
-  if (deptTemplate) {
-    const sections = deptTemplate.fields.map(humanizeField).join(', ');
+  // TASK-592: when the tenant's real Department resolves to a governed,
+  // APPROVED instruction template, that content is the authoritative clinical
+  // steering — it supersedes the static v1 dept×visit field set. The wire
+  // response still stays Simplified/Enhanced (enforced at `response_format`), so
+  // we append the schema directive below just as in the static path.
+  const governed = options.governedInstruction?.trim();
+  if (governed) {
     systemLines.push(
-      `Department-specific documentation focus for this ${department} encounter: where documented in the transcript or context, ensure the summary captures ${sections}. Map that clinical content into the generic summary fields defined by the schema; do not add fields outside the schema.`,
+      `Follow this department's clinical documentation instruction where the transcript or context supports it, and map the resulting content into the generic summary fields defined by the schema (do not add fields outside the schema):\n${governed}`,
     );
+  } else {
+    // v1 department×visit steering (TASK-560 item 2) — the fallback when no real
+    // tenant department/governed template resolved. For the 6 non-medicine
+    // departments the v1 `DEPT_VISIT_SCHEMAS` field set becomes prompt guidance
+    // ("capture these department-relevant areas"); General/Medicine and unknown
+    // departments keep the generic path (null here).
+    const deptTemplate = selectDeptTemplate(options.department, options.visitType);
+    if (deptTemplate) {
+      const sections = deptTemplate.fields.map(humanizeField).join(', ');
+      systemLines.push(
+        `Department-specific documentation focus for this ${department} encounter: where documented in the transcript or context, ensure the summary captures ${sections}. Map that clinical content into the generic summary fields defined by the schema; do not add fields outside the schema.`,
+      );
+    }
   }
 
   systemLines.push(
@@ -147,21 +167,41 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
 }
 
 /**
- * Build the pre-summary `{ system, user }` prompt from a v1 `PreSummaryRequest`.
- * Department/visit-type aware; folds explicit pre-formatted context strings.
- * (SMR_Summary_Endpoints.md §4; frozen TASK-560 §5.5.)
+ * Options for `buildPreSummaryPrompt`.
  */
-export function buildPreSummaryPrompt(req: PreSummaryRequest): AssembledPrompt {
+export interface PreSummaryPromptOptions {
+  /**
+   * The tenant department's governed pre-summary instruction template content
+   * (an APPROVED, version-pinned snapshot resolved via `PromptResolutionService`
+   * with `promptType: 'pre-summary'`, TASK-592). When present it steers the
+   * pre-summary in addition to the base markdown/format directives.
+   */
+  governedInstruction?: string;
+}
+
+/**
+ * Build the pre-summary `{ system, user }` prompt from a v1 `PreSummaryRequest`.
+ * Department/visit-type aware; folds explicit pre-formatted context strings, and
+ * (TASK-592) the tenant department's governed pre-summary instruction when one
+ * resolves. (SMR_Summary_Endpoints.md §4; frozen TASK-560 §5.5.)
+ */
+export function buildPreSummaryPrompt(req: PreSummaryRequest, options: PreSummaryPromptOptions = {}): AssembledPrompt {
   const department = req.current_department?.trim() || 'General';
   const visitType = req.visit_type?.trim() || 'Medical examination';
 
   const systemLines = [
     'You are a clinical documentation assistant.',
     `Generate a concise, department-aware pre-summary of a patient's medical history for a ${department} ${visitType}.`,
+  ];
+  const governed = options.governedInstruction?.trim();
+  if (governed) {
+    systemLines.push(`Follow this department's pre-summary instruction where the provided context supports it:\n${governed}`);
+  }
+  systemLines.push(
     'Organize the pre-summary as markdown with clear section headings and bullet points.',
     'Base it strictly on the provided context; do not fabricate findings.',
     languageDirective(req.language),
-  ];
+  );
 
   const userSections: string[] = [];
 

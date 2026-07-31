@@ -87,6 +87,14 @@ const createMockHarnessPolicy = () => ({
   resolveSmrFallbackSelection: vi.fn(async (): Promise<{ provider: string; model: string } | null> => null),
 });
 
+// TASK-592: department→governed-template resolver. Default returns undefined
+// (no real tenant department matched) so every pre-existing test keeps the
+// static dept×visit steering path unchanged.
+const createMockTemplateService = () => ({
+  toSummaryPromptType: vi.fn((visitType?: string | null) => (/follow|review|revisit|\bfu\b|\brv\b/i.test(visitType ?? '') ? 'revisit' : 'new-patient')),
+  resolveGovernedInstruction: vi.fn(async (): Promise<string | undefined> => undefined),
+});
+
 const syncRequest = (overrides: Partial<SyncSummaryRequest> = {}): SyncSummaryRequest =>
   ({
     session_data: {
@@ -183,6 +191,7 @@ describe('SmrCompatController', () => {
   let cls: ReturnType<typeof createMockClsService>;
   let secrets: ReturnType<typeof createMockSecrets>;
   let policy: ReturnType<typeof createMockHarnessPolicy>;
+  let template: ReturnType<typeof createMockTemplateService>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -191,7 +200,8 @@ describe('SmrCompatController', () => {
     cls = createMockClsService();
     secrets = createMockSecrets();
     policy = createMockHarnessPolicy();
-    controller = new SmrCompatController(http as any, config as any, cls as any, policy as any, secrets as any);
+    template = createMockTemplateService();
+    controller = new SmrCompatController(http as any, config as any, cls as any, policy as any, template as any, secrets as any);
   });
 
   // Drive the real (thin-router) handler with a mock `res`. Non-stream success →
@@ -430,6 +440,63 @@ describe('SmrCompatController', () => {
       const [, body] = http.axiosRef.post.mock.calls[0];
       expect(body.temperature).toBe(0.7);
       expect(body.max_tokens).toBe(1200);
+    });
+  });
+
+  describe('Department-aware governed template steering (TASK-592)', () => {
+    it('resolves the governed instruction for the resolved tenant + department/visit and injects it into the SMR system_prompt', async () => {
+      template.resolveGovernedInstruction.mockResolvedValue('Cardiology instruction: capture ejection fraction and rhythm.');
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+
+      await invokeSummary(syncRequest({ department: 'Cardiology', visit_type: 'Follow-up' }));
+
+      expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'revisit');
+      const [, body] = http.axiosRef.post.mock.calls[0];
+      expect(body.system_prompt).toContain('capture ejection fraction and rhythm');
+    });
+
+    it('falls back to the static steering (no governed instruction) when no tenant department matches', async () => {
+      template.resolveGovernedInstruction.mockResolvedValue(undefined);
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+
+      await invokeSummary(syncRequest({ department: 'Rheumatology', visit_type: 'New Referral' }));
+
+      const [, body] = http.axiosRef.post.mock.calls[0];
+      // Static rheumatology×new_referral steering still applies (v1 field set).
+      expect(body.system_prompt).toContain('Department-specific documentation focus');
+    });
+
+    it('resolves the pre-summary governed template with the pre-summary prompt type', async () => {
+      template.resolveGovernedInstruction.mockResolvedValue('Cardiology pre-summary instruction.');
+      http.axiosRef.post.mockResolvedValue({ data: { content: '**Confirmed & Provisional Diagnoses**\n- HTN' } });
+
+      await invokePresummary({ current_department: 'Cardiology', visit_type: 'New Referral' } as PreSummaryRequest);
+
+      expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'pre-summary');
+      const [, body] = http.axiosRef.post.mock.calls[0];
+      expect(body.system_prompt).toContain('Cardiology pre-summary instruction');
+    });
+
+    it('pre-summary retries the tenant fallback provider on a provider-side failure (parity with summary)', async () => {
+      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      http.axiosRef.post
+        .mockRejectedValueOnce({ response: { status: 500 } }) // primary provider error
+        .mockResolvedValueOnce({ data: { content: '**Confirmed & Provisional Diagnoses**\n- HTN' } }); // fallback ok
+
+      const res = await invokePresummary({ current_department: 'Cardiology' } as PreSummaryRequest);
+
+      expect(policy.resolveSmrFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
+      expect(http.axiosRef.post).toHaveBeenCalledTimes(2);
+      expect(http.axiosRef.post.mock.calls[1][1].provider).toBe('azure-openai');
+      expect(res.pre_summary).toContain('HTN');
+    });
+
+    it('pre-summary does not fall back when SMR is unreachable (connect-phase failure)', async () => {
+      policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
+      http.axiosRef.post.mockRejectedValue({ code: 'ECONNREFUSED' });
+
+      await expect(invokePresummary({ current_department: 'Cardiology' } as PreSummaryRequest)).rejects.toBeInstanceOf(HttpException);
+      expect(policy.resolveSmrFallbackSelection).not.toHaveBeenCalled();
     });
   });
 

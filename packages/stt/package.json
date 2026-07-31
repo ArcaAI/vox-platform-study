@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/stt",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Speech-to-text plugin for @arcaai/room with local Whisper and backend fallback support",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -84,5 +84,13 @@
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArcaAI/project-hope.git"
   }
 }

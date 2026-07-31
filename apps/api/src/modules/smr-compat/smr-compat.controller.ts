@@ -11,6 +11,7 @@ import type { RequestWithAuth } from '../../types/request-with-auth';
 import { PreSummaryRequest } from './dto/pre-summary.request';
 import type { PreSummaryResponse, SummaryResponse, TokenUsage } from './dto/summary.response';
 import { SyncSummaryRequest } from './dto/sync-summary.request';
+import { SmrCompatTemplateService } from './smr-compat-template.service';
 import { buildPreSummaryPrompt, buildSummaryPrompt } from './summary-prompt.builder';
 import { mapGenerateToV1PreSummary, mapGenerateToV1Summary } from './summary-response.mapper';
 import { ENHANCED_SUMMARY_SCHEMA, SIMPLIFIED_SUMMARY_SCHEMA } from './summary-schemas';
@@ -140,6 +141,8 @@ export class SmrCompatController {
     @Inject(IConfigService) private readonly configService: IConfigService,
     private readonly clsService: ClsService<IActiveUserContext>,
     private readonly harnessPolicyService: HarnessPolicyService,
+    // TASK-592: resolves the tenant's real Department → governed instruction template.
+    private readonly templateService: SmrCompatTemplateService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {}
 
@@ -164,7 +167,10 @@ export class SmrCompatController {
    * provider/model actually produced it. Shared by the sync and streaming paths
    * so the terminal body is byte-identical.
    */
-  private prepareSummary(body: SyncSummaryRequest): {
+  private prepareSummary(
+    body: SyncSummaryRequest,
+    governedInstruction?: string,
+  ): {
     baseRequest: SmrGenerateRequest;
     buildResponse: (content: string, generated: Partial<SmrGenerateResponse>, req: SmrGenerateRequest) => SummaryResponse;
   } {
@@ -190,6 +196,7 @@ export class SmrCompatController {
       encounterType: body.encounter_type,
       language,
       includePreSummary,
+      governedInstruction,
     });
 
     const baseRequest: SmrGenerateRequest = {
@@ -234,12 +241,25 @@ export class SmrCompatController {
   }
 
   /**
+   * TASK-592: resolve the tenant's governed department instruction template for
+   * this summary request, or `undefined` when no real tenant department matches
+   * (→ the builder uses the static dept×visit steering). The visit type maps to
+   * the resolver's `new-patient` / `revisit` prompt bucket. Never throws.
+   */
+  private async resolveSummaryGoverned(body: SyncSummaryRequest, tenantId: string): Promise<string | undefined> {
+    const { department, visitType } = resolveDepartmentVisit(body, body.session_data);
+    const promptType = this.templateService.toSummaryPromptType(visitType);
+    return this.templateService.resolveGovernedInstruction(tenantId, department, promptType);
+  }
+
+  /**
    * Non-streaming summary path — returns the v1 `SummaryResponse`. Extracted so
    * the thin `@Post` router can share it with the streaming branch and the unit
    * suite can drive it directly.
    */
   private async computeSummary(body: SyncSummaryRequest, tenantId: string): Promise<SummaryResponse> {
-    const { baseRequest, buildResponse } = this.prepareSummary(body);
+    const governed = await this.resolveSummaryGoverned(body, tenantId);
+    const { baseRequest, buildResponse } = this.prepareSummary(body, governed);
     await this.applySmrModelSelection(baseRequest, tenantId);
 
     // Primary attempt: post + parse. A parse failure is captured here too so the
@@ -295,7 +315,8 @@ export class SmrCompatController {
    * restarted, so mid-stream failures surface as a single `error` event.
    */
   private async streamSummary(res: Response, body: SyncSummaryRequest, tenantId: string, _request: RequestWithAuth): Promise<void> {
-    const { baseRequest, buildResponse } = this.prepareSummary(body);
+    const governed = await this.resolveSummaryGoverned(body, tenantId);
+    const { baseRequest, buildResponse } = this.prepareSummary(body, governed);
     await this.applySmrModelSelection(baseRequest, tenantId);
 
     await this.streamGenerate(
@@ -357,8 +378,8 @@ export class SmrCompatController {
   }
 
   /** Build the pre-summary `SmrGenerateRequest` (shared by sync + streaming). */
-  private buildPreSummaryRequest(body: PreSummaryRequest): SmrGenerateRequest {
-    const { system, user } = buildPreSummaryPrompt(body);
+  private buildPreSummaryRequest(body: PreSummaryRequest, governedInstruction?: string): SmrGenerateRequest {
+    const { system, user } = buildPreSummaryPrompt(body, { governedInstruction });
     return {
       system_prompt: system,
       prompt: user,
@@ -367,33 +388,81 @@ export class SmrCompatController {
     };
   }
 
-  /** Non-streaming pre-summary path — returns the v1 `PreSummaryResponse`. */
+  /**
+   * Non-streaming pre-summary path — returns the v1 `PreSummaryResponse`.
+   * TASK-592: department-aware (governed template) AND provider-fallback parity
+   * with the summary path — ONE retry against the tenant's configured fallback
+   * for a provider-side failure (LLM error / unparseable content), fail-open when
+   * no fallback is configured. `mapSummaryError` routes transport vs parse to the
+   * same v1 error shapes the summary path uses.
+   */
   private async computePreSummary(body: PreSummaryRequest, tenantId: string): Promise<PreSummaryResponse> {
-    const smrRequest = this.buildPreSummaryRequest(body);
+    const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary');
+    const smrRequest = this.buildPreSummaryRequest(body, governed);
     await this.applySmrModelSelection(smrRequest, tenantId);
 
-    let generated: SmrGenerateResponse;
+    let primaryError: unknown;
     try {
-      generated = await this.postGenerate(smrRequest, 'Pre-summary generation');
-    } catch (err) {
-      throw this.buildUpstreamFailure('Pre-summary generation', err);
-    }
-
-    try {
+      const generated = await this.postGenerate(smrRequest, 'Pre-summary generation');
       return mapGenerateToV1PreSummary(generated.content, new Date());
     } catch (err) {
-      throw this.buildGenerationFailure('Pre-summary generation', err);
+      primaryError = err;
     }
+
+    if (this.isFallbackEligible(primaryError)) {
+      const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
+      if (fallback && fallback.provider !== smrRequest.provider) {
+        const fallbackRequest: SmrGenerateRequest = { ...smrRequest, provider: fallback.provider, model: fallback.model };
+        try {
+          const generated = await this.postGenerate(fallbackRequest, 'Pre-summary generation (tenant fallback)');
+          this.logger.warn({
+            message: 'Primary SMR pre-summary generation failed; served via tenant-configured fallback',
+            fallbackProvider: fallback.provider,
+            correlationId: this.clsService.getId(),
+          });
+          return mapGenerateToV1PreSummary(generated.content, new Date());
+        } catch (fallbackErr) {
+          this.logger.warn({
+            message: 'Tenant-configured SMR fallback also failed for pre-summary generation',
+            correlationId: this.clsService.getId(),
+            fallbackError: fallbackErr instanceof Error ? fallbackErr.message : undefined,
+          });
+        }
+      }
+    }
+
+    throw this.mapSummaryError('Pre-summary generation', primaryError);
   }
 
   /**
-   * Streaming pre-summary path. Pre-summary has no TASK-588 fallback today — keep
-   * parity: no fallback resolver, a START failure surfaces as a single `error`.
+   * Streaming pre-summary path. TASK-592: department-aware (governed template)
+   * AND, at parity with the summary stream, a pre-stream START failure may retry
+   * ONCE on the tenant's configured fallback provider; a half-emitted stream
+   * cannot restart, so mid-stream failures surface as a single `error` event.
    */
   private async streamPreSummary(res: Response, body: PreSummaryRequest, tenantId: string): Promise<void> {
-    const smrRequest = this.buildPreSummaryRequest(body);
+    const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary');
+    const smrRequest = this.buildPreSummaryRequest(body, governed);
     await this.applySmrModelSelection(smrRequest, tenantId);
-    await this.streamGenerate(res, smrRequest, 'Pre-summary generation', (content) => mapGenerateToV1PreSummary(content, new Date()));
+    await this.streamGenerate(
+      res,
+      smrRequest,
+      'Pre-summary generation',
+      (content) => mapGenerateToV1PreSummary(content, new Date()),
+      async (primaryError, primaryRequest) => {
+        if (!this.isFallbackEligible(primaryError)) return null;
+        const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
+        if (fallback && fallback.provider !== primaryRequest.provider) {
+          this.logger.warn({
+            message: 'Primary SMR pre-summary stream start failed; retrying via tenant-configured fallback',
+            fallbackProvider: fallback.provider,
+            correlationId: this.clsService.getId(),
+          });
+          return { ...primaryRequest, provider: fallback.provider, model: fallback.model };
+        }
+        return null;
+      },
+    );
   }
 
   /** `session_metadata.language` ("en"/"ml") drives output language; default "en". */
