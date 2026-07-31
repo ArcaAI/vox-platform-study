@@ -104,4 +104,14 @@ export class StartSessionRequest {
   @IsOptional()
   @IsIn(['azure', 'whisper', 'sarvam'])
   provider?: 'azure' | 'whisper' | 'sarvam';
+
+  @ApiPropertyOptional({
+    description:
+      "Pre-start default-provider selection (TASK-586 C7b). 'pipeline' (≡primary, default) opens the session on the configured pipeline; " +
+      "'default' (≡fallback) opens directly on the tenant-admin default provider. Fail-closed: 'default' with no configured fallback pipeline → 409.",
+    enum: ['pipeline', 'default'],
+  })
+  @IsOptional()
+  @IsIn(['pipeline', 'default'])
+  startOn?: 'pipeline' | 'default';
 }

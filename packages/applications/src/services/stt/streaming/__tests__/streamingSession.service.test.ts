@@ -229,6 +229,43 @@ describe('StreamingSessionService', () => {
     );
   });
 
+  it('forwards start_on (snake_case) in createSession POST body (TASK-586 C8)', async () => {
+    httpService.post.mockReturnValue(
+      of({ data: { session_id: 's-9', status: 'active', max_concurrent: 4, current_active: 1 } }),
+    );
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    await service.createSession({
+      sessionId: 's-9',
+      tenantId: 'tenant-1',
+      pipelineId: 'pipeline-1',
+      startOn: 'fallback',
+    });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/sessions',
+      expect.objectContaining({ start_on: 'fallback' }),
+      { timeout: 15000 },
+    );
+  });
+
+  it('createSession sends start_on: null when unset (TASK-586 C8)', async () => {
+    httpService.post.mockReturnValue(
+      of({ data: { session_id: 's-10', status: 'active', max_concurrent: 4, current_active: 1 } }),
+    );
+
+    const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+    await service.createSession({ sessionId: 's-10', tenantId: 'tenant-1', pipelineId: 'pipeline-1' });
+
+    expect(httpService.post).toHaveBeenCalledWith(
+      'http://stt.internal:9000/internal/streaming/sessions',
+      expect.objectContaining({ start_on: null }),
+      { timeout: 15000 },
+    );
+  });
+
   it('getLanguageModes fetches the STT catalog (TASK-587)', async () => {
     httpService.get.mockReturnValue(
       of({

@@ -31,6 +31,9 @@ type MockState = {
   // declare the state with just the transcript fields).
   setAudioLanguage?: (language: string) => void;
   setSttLanguageMode?: (mode: string | undefined) => void;
+  // TASK-586 — the pre-start engine selection consumed at `audio.start`.
+  pendingSttProvider?: 'primary' | 'fallback' | null;
+  setPendingSttProvider?: (v: 'primary' | 'fallback' | null) => void;
 };
 
 function installStore(state: Pick<MockState, 'transcriptSegments' | 'currentTranscript'> & Partial<MockState>) {
@@ -39,6 +42,10 @@ function installStore(state: Pick<MockState, 'transcriptSegments' | 'currentTran
   // reading the live reference.
   state.setAudioLanguage ??= vi.fn();
   state.setSttLanguageMode ??= vi.fn();
+  state.pendingSttProvider ??= null;
+  state.setPendingSttProvider ??= vi.fn((v: 'primary' | 'fallback' | null) => {
+    state.pendingSttProvider = v;
+  });
   (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (s: MockState) => unknown) => selector(state as MockState));
 }
 
@@ -183,6 +190,34 @@ describe('useArcaSpeechToText', () => {
     // as a fallback when `useAudioCapture` wins the `audio.start` race.
     expect(state.setAudioLanguage).toHaveBeenCalledWith('en');
     expect(state.setSttLanguageMode).toHaveBeenCalledWith('en');
+  });
+
+  it('startTranscription passes the pending pre-start provider as startOn and clears it (TASK-586)', async () => {
+    const state: MockState = { transcriptSegments: [], currentTranscript: '', pendingSttProvider: 'fallback' } as MockState;
+    installStore(state);
+
+    const { result } = renderHook(() =>
+      useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'p1' } }),
+    );
+    await act(async () => {
+      await result.current.startTranscription();
+    });
+
+    expect(audioMock.start).toHaveBeenCalledWith(expect.objectContaining({ startOn: 'fallback' }));
+    expect(state.setPendingSttProvider).toHaveBeenCalledWith(null);
+  });
+
+  it('startTranscription omits startOn when no pre-start selection is pending (TASK-586)', async () => {
+    const state: MockState = { transcriptSegments: [], currentTranscript: '' } as MockState;
+    installStore(state);
+
+    const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'p1' } }));
+    await act(async () => {
+      await result.current.startTranscription();
+    });
+
+    expect(audioMock.start).toHaveBeenCalledWith(expect.not.objectContaining({ startOn: expect.anything() }));
+    expect(state.setPendingSttProvider).not.toHaveBeenCalled();
   });
 
   it('fires onTranscript(text, true, meta) for a new final segment (default template applied)', () => {

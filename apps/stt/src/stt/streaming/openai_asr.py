@@ -65,4 +65,8 @@ async def openai_recognize_utterance(
         raise_for_cloud_transport("openai", type(exc).__name__)
 
     text = (payload.get("text") or "").strip()
-    return {"text": text, "word_timestamps": []}
+    # OpenAI returns ``language`` only on verbose_json responses; carry it through
+    # when present (``None`` for the default json format) so a detected language
+    # reaches the transcript metadata rather than an echo of the requested mode.
+    detected_language = payload.get("language") or None
+    return {"text": text, "word_timestamps": [], "language": detected_language}

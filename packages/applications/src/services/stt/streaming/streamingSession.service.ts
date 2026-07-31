@@ -102,6 +102,10 @@ export class StreamingSessionService implements IStreamingSessionService {
             // End-user language mode (TASK-587); STT resolves it against the
             // session engine and 422s a mode no configured engine can serve.
             language_mode: dto.languageMode ?? null,
+            // Pre-start default-provider selection (TASK-586 C8). STT opens the
+            // session on the fallback engine when 'fallback' and a fallback is
+            // configured; otherwise proceeds on primary (fail-open).
+            start_on: dto.startOn ?? null,
             audio_bucket_name: dto.audioBucketName,
             // Per-tenant storage descriptor (DEDICATED tenants only; null/omitted
             // for SHARED). snake_case keys already match the Python worker schema.

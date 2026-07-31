@@ -74,6 +74,13 @@ export interface AgenticState {
    * reconnect/fallback restart, alongside `audioLanguage`.
    */
   sttLanguageMode?: string;
+  /**
+   * Pre-start STT engine selection (TASK-586). `null` ⇒ no pending selection
+   * (session opens on the primary engine). Set by the compat provider-switch
+   * hook when the user picks the default (fallback) provider BEFORE capture
+   * starts; consumed and cleared by whichever start hook calls `audio.start`.
+   */
+  pendingSttProvider: 'primary' | 'fallback' | null;
   audioPlugins: AudioPluginStates;
   audioError: Error | null;
   activeStream: MediaStream | null;
@@ -206,6 +213,7 @@ export interface AgenticActions {
   addTranscriptSegment: (segment: TranscriptSegment) => void;
   setAudioLanguage: (language: string) => void;
   setSttLanguageMode: (mode: string | undefined) => void;
+  setPendingSttProvider: (provider: 'primary' | 'fallback' | null) => void;
   setAudioPlugins: (plugins: AudioPluginStates) => void;
   setAudioError: (error: Error | null) => void;
   setActiveStream: (stream: MediaStream | null) => void;
@@ -337,6 +345,7 @@ const initialState: AgenticState = {
   transcriptSegments: [],
   audioLanguage: 'en',
   sttLanguageMode: undefined,
+  pendingSttProvider: null,
   audioPlugins: DEFAULT_AUDIO_PLUGIN_STATES,
   audioError: null,
   activeStream: null,
@@ -496,6 +505,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   addTranscriptSegment: (segment) => set((state) => ({ transcriptSegments: [...state.transcriptSegments, segment] })),
   setAudioLanguage: (language) => set({ audioLanguage: language }),
   setSttLanguageMode: (mode) => set({ sttLanguageMode: mode }),
+  setPendingSttProvider: (provider) => set({ pendingSttProvider: provider }),
   setAudioPlugins: (plugins) => set({ audioPlugins: plugins }),
   setAudioError: (error) => set({ audioError: error }),
   setActiveStream: (stream) => set({ activeStream: stream }),

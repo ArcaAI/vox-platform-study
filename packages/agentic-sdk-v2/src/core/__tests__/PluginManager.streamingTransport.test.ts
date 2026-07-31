@@ -135,6 +135,18 @@ describe('PluginManager.getTranscriptionPipelineConfig', () => {
     expect(cfg.stt.language).toBe('th');
   });
 
+  it('threads the pre-start startOn runtime option into the stt config (TASK-586)', () => {
+    manager.setRuntimeOptions({ pipelineId: 'p', startOn: 'fallback' });
+    const cfg = manager.getTranscriptionPipelineConfig();
+    expect((cfg.stt as { startOn?: 'primary' | 'fallback' }).startOn).toBe('fallback');
+  });
+
+  it('omits startOn from the stt config when no runtime selection is set (TASK-586)', () => {
+    manager.setRuntimeOptions({ pipelineId: 'p' });
+    const cfg = manager.getTranscriptionPipelineConfig();
+    expect((cfg.stt as { startOn?: 'primary' | 'fallback' }).startOn).toBeUndefined();
+  });
+
   it('clearRuntimeOptions() wipes runtime overrides', () => {
     manager.setRuntimeOptions({ pipelineId: 'p', consultationId: 'c', language: 'th' });
     manager.clearRuntimeOptions();

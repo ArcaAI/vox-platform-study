@@ -407,6 +407,13 @@ export class TranscriptionJobController {
     // fallback (transcription proceeds on platform env creds) — never a 500.
     const { providerOverrides, fallbackPipelineId } = await this.resolveSttFallbackConfig(tenantId);
 
+    // Pre-start default-provider selection (TASK-586 C7). Fail-closed: opening
+    // directly on the fallback engine requires a resolved fallback pipeline —
+    // never silently start on primary (mirrors the C3 switch guard).
+    if (body.startOn === 'fallback' && !fallbackPipelineId) {
+      throw new ConflictException('No fallback pipeline configured for this tenant');
+    }
+
     const sessionPayload = {
       sessionId,
       tenantId,
@@ -420,6 +427,7 @@ export class TranscriptionJobController {
       storage,
       ...(providerOverrides ? { providerOverrides } : {}),
       ...(fallbackPipelineId ? { fallbackPipelineId } : {}),
+      ...(body.startOn ? { startOn: body.startOn } : {}),
     } as Parameters<StreamingSessionService['createSession']>[0];
 
     const result = await this.sessionService.createSession(sessionPayload);

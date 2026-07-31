@@ -134,7 +134,15 @@ export function useArcaAudio() {
       pluginManager.setRuntimeOptions?.({
         pipelineId: options?.pipelineId,
         consultationId: consultation?.id,
-        language: options?.language,
+        // Order-independent language: mirror the `languageMode` store fallback
+        // below so a capture-first start (compat `useAudioCapture` starting the
+        // mic before `useArcaSpeechToText.startTranscription()` runs) still pins
+        // the end-user's selection published to the store. The LOCAL STT path
+        // reads `language` (not `languageMode`), so without this a non-default
+        // pick would degrade to the DEFAULT locale there. `audioLanguage` is the
+        // per-capture SDK language, so this honours the documented
+        // `runtimeOptions > userPreferences` precedence. (TASK-587)
+        language: options?.language ?? store.audioLanguage,
         // Fall back to the store-held mode so a start triggered WITHOUT a
         // languageMode (e.g. compat `useAudioCapture.startRecording()`, which
         // only knows the pipelineId) still honours the user's selection
@@ -142,6 +150,9 @@ export function useArcaAudio() {
         // the actual language, so this alone is sufficient. (TASK-587 compat
         // start-coordination fix.)
         languageMode: options?.languageMode ?? store.sttLanguageMode,
+        // Pre-start engine selection (TASK-586). Start-time only — the session
+        // opens on the tenant-admin default provider when 'fallback'.
+        startOn: options?.startOn,
       });
 
       const timer = logger?.startOperation('startAudio', {
@@ -371,9 +382,15 @@ export function useArcaAudio() {
 
         // Reset the streaming STT connection signal for the new session and
         // record the active pipeline (backend workflow only — local STT has no
-        // pipeline). `isFallback` starts false; a later provider_switched flips it.
+        // pipeline). `isFallback` reflects the pre-start `startOn` selection
+        // (TASK-586) so the compat hook reads the right side from frame 1; a
+        // later provider_switched still flips it mid-session.
         store.setSttConnectionState('connected');
-        store.setActivePipeline(options?.pipelineId ? { id: options.pipelineId, name: options.pipelineId, isFallback: false } : null);
+        store.setActivePipeline(
+          options?.pipelineId
+            ? { id: options.pipelineId, name: options.pipelineId, isFallback: options?.startOn === 'fallback' }
+            : null,
+        );
 
         // Uplink-bitrate poll — the streaming STT stage exists after initialize().
         // Sample cumulative bytes-sent each second; publish the delta as bits/sec.

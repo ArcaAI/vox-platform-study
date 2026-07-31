@@ -68,7 +68,10 @@ export function SessionWorkspace({ config }: SessionWorkspaceProps) {
     patientId: 'compat-playground-patient',
     patientName: 'Demo Patient',
   });
-  const capture = useAudioCapture();
+  // Forward the end-user language selection to the capture hook too: it starts
+  // the mic BEFORE `stt.startTranscription()` and wins the shared-audio start
+  // race, so the language must ride along here or the pick is dropped (TASK-587).
+  const capture = useAudioCapture({ language: languageMode, languageMode });
   const stt = useArcaSpeechToText({
     sessionId: mgr.session?.id ?? '',
     language: languageMode,
@@ -98,14 +101,14 @@ export function SessionWorkspace({ config }: SessionWorkspaceProps) {
     setLastSentMetadata(null);
     captureStartRef.current = Date.now();
     try {
-      await mgr.createSession();
-      await mgr.startSession();
+      // No consultation is opened: STT (recording + live transcription) does not
+      // require a consultation session. We go straight to capture + streaming STT;
+      // `consultationId` is simply absent on the stream.
       await capture.startRecording();
       await stt.startTranscription();
-      toast.success('Consultation started — recording live.');
+      toast.success('Recording live.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to start consultation');
-      await mgr.endSession().catch(() => undefined);
+      toast.error(error instanceof Error ? error.message : 'Failed to start recording');
     } finally {
       setIsStarting(false);
     }
@@ -114,9 +117,8 @@ export function SessionWorkspace({ config }: SessionWorkspaceProps) {
   const stop = async () => {
     await stt.stopTranscription();
     await capture.stopRecording();
-    await mgr.endSession();
     captureStartRef.current = null;
-    toast.success('Consultation stopped.');
+    toast.success('Recording stopped.');
   };
 
   const handleLanguageModeChange = (modeId: string) => {

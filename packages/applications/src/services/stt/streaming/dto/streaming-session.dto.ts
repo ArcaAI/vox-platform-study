@@ -35,6 +35,13 @@ export interface CreateStreamingSessionRequest {
    * engine can serve. Takes precedence over `language`.
    */
   languageMode?: string;
+  /**
+   * Pre-start default-provider selection (TASK-586 C8). `'fallback'` opens the
+   * session directly on the tenant-admin default (fallback) engine from frame 1
+   * (the primary stays switchable back); `'primary'` (default) opens on the
+   * SDK-configured pipeline. Forwarded to STT as `start_on`.
+   */
+  startOn?: 'primary' | 'fallback';
   /** Tenant-scoped audio bucket name forwarded to STT-v2 for storage isolation */
   audioBucketName?: string;
   /**
@@ -170,6 +177,12 @@ export interface StreamingTranscriptMessage {
   resultType?: 'segment' | 'gloss';
   /** English translation for code-switching output, if available */
   englishText?: string;
+  /**
+   * Per-utterance detected language (e.g. `ml-IN`) when the ASR engine reports
+   * one (Sarvam/OpenAI cloud STT). Absent for engines that don't detect a
+   * language. Consumers prefer this over the session-configured language/mode.
+   */
+  detectedLanguage?: string;
   /** Speaker identifier from diarization, if available */
   speakerId?: string;
   /**

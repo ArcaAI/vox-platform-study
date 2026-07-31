@@ -122,6 +122,25 @@ describe('StreamingBackendSTTProvider', () => {
       expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ languageMode: 'ml-en' }));
     });
 
+    it('forwards the pre-start startOn selection to createSession (TASK-586)', async () => {
+      await provider.init({
+        sessionId: 'x',
+        language: 'en',
+        startOn: 'fallback',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 2,
+        pipelineId: 'pipeline-doctor-default',
+      });
+
+      expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ startOn: 'fallback' }));
+    });
+
     it('throws when pipelineId is missing', async () => {
       await expect(
         provider.init({
@@ -324,6 +343,41 @@ describe('StreamingBackendSTTProvider', () => {
       expect(result.text).toBe('hello world');
       expect(result.isFinal).toBe(true);
       expect(result.speakerId).toBe('speaker-1');
+    });
+
+    // The engine-detected language (Sarvam/OpenAI) must win over the
+    // session-configured language, so metadata reports the REAL language
+    // (e.g. Malayalam under an ml-en code-switch mode) not the config echo.
+    it('prefers the payload detected language over the configured language', () => {
+      const cb = vi.fn();
+      provider.onTranscription(cb);
+
+      wsClient.__emitTranscript({
+        type: 'transcript',
+        text: 'ഒരു',
+        startTime: 0,
+        endTime: 1,
+        isFinal: true,
+        language: 'ml-IN',
+      });
+
+      expect(cb.mock.calls[0]![0].language).toBe('ml-IN');
+    });
+
+    // Absent detection degrades to the configured language (init used 'en-US').
+    it('falls back to the configured language when the payload omits one', () => {
+      const cb = vi.fn();
+      provider.onTranscription(cb);
+
+      wsClient.__emitTranscript({
+        type: 'transcript',
+        text: 'hello',
+        startTime: 0,
+        endTime: 1,
+        isFinal: true,
+      });
+
+      expect(cb.mock.calls[0]![0].language).toBe('en-US');
     });
 
     // Word-level timestamps must survive normalizeTranscript so the SDK

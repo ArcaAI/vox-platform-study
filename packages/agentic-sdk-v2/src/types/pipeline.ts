@@ -110,6 +110,8 @@ export interface TranscriptionPipelineConfig {
     language?: string;
     /** End-user language mode id (TASK-587); forwarded to the backend STT session. */
     languageMode?: string;
+    /** Pre-start STT engine selection (TASK-586); forwarded to the backend STT session. */
+    startOn?: 'primary' | 'fallback';
     /** Model ID for local processing */
     modelId?: string;
     /** WebSocket URL for remote processing */

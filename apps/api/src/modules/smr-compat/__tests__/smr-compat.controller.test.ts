@@ -157,6 +157,23 @@ describe('SyncSummaryRequest validation', () => {
 
     expect((transformed as SyncSummaryRequest).session_data.previous_visit_summary).toBeNull();
   });
+
+  it('accepts session_data with no session_id (consultation-free summarization)', async () => {
+    const base = syncRequest();
+    delete (base.session_data as { session_id?: string }).session_id;
+    const pipe = new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      forbidUnknownValues: true,
+    });
+    const transformed = (await pipe.transform(base, {
+      type: 'body',
+      metatype: SyncSummaryRequest,
+    } as never)) as SyncSummaryRequest;
+
+    expect(transformed.session_data.session_id).toBeUndefined();
+  });
 });
 
 describe('SmrCompatController', () => {
@@ -240,6 +257,15 @@ describe('SmrCompatController', () => {
       const res = await invokeSummary(syncRequest());
       expect(res.session_id).toBe('sess-1');
       expect(res.processing_time_ms).toBe(777);
+      expect(res.summary.summary).toBe('y');
+    });
+
+    it('summarizes with no session_id (no consultation required), synthesizing a smr- id', async () => {
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      const body = syncRequest();
+      delete (body.session_data as { session_id?: string }).session_id;
+      const res = await invokeSummary(body);
+      expect(res.session_id).toMatch(/^smr-/);
       expect(res.summary.summary).toBe('y');
     });
 

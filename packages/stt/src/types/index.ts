@@ -101,6 +101,14 @@ export interface AudioSourceConfig {
   languageMode?: string;
 
   /**
+   * Pre-start STT engine selection (TASK-586), `'primary'` (default) or
+   * `'fallback'`. Forwarded to the STT session on the streaming/backend path so
+   * it opens on the tenant-admin default provider when `'fallback'`. Ignored by
+   * the local (browser) STT path.
+   */
+  startOn?: 'primary' | 'fallback';
+
+  /**
    * Audio sample rate in Hz.
    * @default 16000 (Whisper standard)
    */
@@ -129,10 +137,10 @@ export interface AudioSourceConfig {
 /**
  * Default audio source configuration.
  */
-// `languageMode` (TASK-587) is genuinely optional — absent means "no mode
-// selected; use the pipeline default" — so it is excluded from the required set
-// rather than given a meaningless placeholder.
-export const DEFAULT_AUDIO_CONFIG: Required<Omit<AudioSourceConfig, 'languageMode'>> = {
+// `languageMode` (TASK-587) and `startOn` (TASK-586) are genuinely optional —
+// absent means "use the pipeline default / start on primary" — so they are
+// excluded from the required set rather than given a meaningless placeholder.
+export const DEFAULT_AUDIO_CONFIG: Required<Omit<AudioSourceConfig, 'languageMode' | 'startOn'>> = {
   language: DEFAULT_LANGUAGE_LOCALE,
   sampleRate: 16000,
   channels: 1,
@@ -828,6 +836,13 @@ export interface ProviderConfig {
    * local providers.
    */
   languageMode?: string;
+
+  /**
+   * Pre-start STT engine selection (TASK-586). Forwarded to the STT session on
+   * the streaming/backend path so it opens on the tenant-admin default provider
+   * when `'fallback'`. Ignored by local providers.
+   */
+  startOn?: 'primary' | 'fallback';
 
   /**
    * Sample rate of input audio.

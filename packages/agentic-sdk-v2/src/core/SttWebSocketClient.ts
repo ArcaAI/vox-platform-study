@@ -789,6 +789,22 @@ export class SttWebSocketClient {
       normalized.englishText = englishText;
     }
 
+    // Per-utterance detected language (Sarvam/OpenAI). The gateway relays it as
+    // `detectedLanguage`; raw wire payloads may carry `detected_language`/`language`.
+    // Additive — absent on engines that don't detect, so it degrades to the
+    // session-configured language downstream.
+    const detectedLanguage =
+      typeof msg.detectedLanguage === 'string'
+        ? msg.detectedLanguage
+        : typeof msg.detected_language === 'string'
+          ? msg.detected_language
+          : typeof msg.language === 'string'
+            ? msg.language
+            : undefined;
+    if (detectedLanguage && detectedLanguage.trim().length > 0) {
+      normalized.language = detectedLanguage;
+    }
+
     const speakerId = typeof msg.speakerId === 'string' ? msg.speakerId : typeof msg.speaker_id === 'string' ? msg.speaker_id : undefined;
     if (speakerId && speakerId.trim().length > 0) {
       normalized.speakerId = speakerId;

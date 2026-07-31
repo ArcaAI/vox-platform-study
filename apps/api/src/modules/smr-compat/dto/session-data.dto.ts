@@ -124,9 +124,14 @@ export class PreviousVisitRecordDto {
  * (SMR_Summary_Endpoints.md §3.1.1; frozen TASK-560 §5.4.)
  */
 export class SessionDataDto {
-  @ApiProperty({ description: 'Unique session identifier' })
+  // No consultation/session is required to summarize: `session_id` is an OPTIONAL
+  // free-form correlation string, echoed back on `SummaryResponse.session_id`.
+  // When the caller omits it, the controller synthesizes a `smr-…` value so the
+  // response contract still carries a valid id. It is NOT a v2 Consultation id.
+  @ApiPropertyOptional({ description: 'Optional session correlation id (echoed back; a `smr-…` value is generated when omitted)' })
+  @IsOptional()
   @IsString()
-  session_id!: string;
+  session_id?: string;
 
   @ApiPropertyOptional({ description: 'Patient identifier' })
   @IsOptional()

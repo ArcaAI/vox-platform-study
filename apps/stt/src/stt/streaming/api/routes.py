@@ -111,6 +111,7 @@ async def create_streaming_session(
             provider_overrides=request.provider_overrides,
             fallback_pipeline_id=request.fallback_pipeline_id,
             language_mode=request.language_mode,
+            start_on=request.start_on or "primary",
         )
     except LanguageModeUnsupportedError as exc:
         # TASK-587 — the selected mode fits none of the session's engines
