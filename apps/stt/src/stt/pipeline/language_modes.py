@@ -183,9 +183,26 @@ def build_single_language_prompt(language: str) -> str:
     return _SINGLE_LANGUAGE_PROMPT_TEMPLATE.format(language=_language_name(language))
 
 
+# TEMPORARY kill-switch: the whisper.cpp priming prompt is an instruction-style
+# ``initial_prompt``, which degrades raw whisper.cpp decoding — Whisper conditions
+# on it as prior context, not as an instruction, and the fine-tuned ml-en GGUF
+# already code-switches natively. Disabled while we evaluate quality. whisper.cpp
+# STILL serves the modes (no cloud fallback); it just resolves to the language
+# settings with NO prompt. Flip to True to re-enable the priming-prompt path.
+WHISPER_CPP_PRIMING_PROMPT_ENABLED = False
+
+
 def _is_prompt_capable(engine: AiModelFormat) -> bool:
-    """Whether *engine* is primed via an ``initial_prompt`` (whisper.cpp)."""
-    return _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
+    """Whether *engine* is primed via an ``initial_prompt`` (whisper.cpp).
+
+    Gated by :data:`WHISPER_CPP_PRIMING_PROMPT_ENABLED` — while the prompt is
+    temporarily disabled this returns ``False`` for every engine, so single-mode
+    resolution emits no prompt (the capability matrix itself is unaffected: the
+    engine still SERVES the code-switch modes).
+    """
+    return (
+        WHISPER_CPP_PRIMING_PROMPT_ENABLED and _CODE_SWITCH_CAPABILITY.get(engine) == "prompt"
+    )
 
 
 @dataclass(frozen=True)
@@ -307,13 +324,16 @@ def resolve_mode_for_engine(mode_id: str, engine: AiModelFormat) -> ResolvedInfe
         # code-switch model, primed by the bilingual prompt, transcribe each
         # language. No translate gloss.
         assert mode.primary_language is not None and mode.secondary_language is not None
+        pair_prompt = (
+            build_code_switch_prompt(mode.primary_language, mode.secondary_language)
+            if WHISPER_CPP_PRIMING_PROMPT_ENABLED
+            else None
+        )
         return ResolvedInference(
             language=None,
             code_switching=False,
             streaming_english_gloss=False,
-            initial_prompt=build_code_switch_prompt(
-                mode.primary_language, mode.secondary_language
-            ),
+            initial_prompt=pair_prompt,
         )
     # native — the model handles the mix; pin the primary language.
     return ResolvedInference(

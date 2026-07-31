@@ -136,45 +136,57 @@ def test_whisper_cpp_code_switch_via_prompt() -> None:
     assert AiModelFormat.WHISPER_CPP.value in engines_supporting_mode("vi-en")
 
 
-def test_resolve_whisper_cpp_pair_unpinned_bilingual_prompt() -> None:
+def test_resolve_whisper_cpp_pair_unpinned_prompt_disabled() -> None:
+    # Priming prompt is TEMPORARILY disabled (WHISPER_CPP_PRIMING_PROMPT_ENABLED
+    # is False): the pair still resolves (no cloud fallback) but emits NO prompt —
+    # the native code-switch GGUF handles the mix. Pair: do NOT pin a language.
     resolved = resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
-    # Pair: do NOT pin a language — let the native code-switch model + the
-    # bilingual prompt govern (pinning would bias English toward Malayalam script).
     assert resolved.language is None
     assert resolved.code_switching is False
     assert resolved.streaming_english_gloss is False
-    assert resolved.initial_prompt is not None
-    assert "Malayalam" in resolved.initial_prompt
-    assert "English" in resolved.initial_prompt
+    assert resolved.initial_prompt is None
 
     vi = resolve_mode_for_engine("vi-en", AiModelFormat.WHISPER_CPP)
     assert vi.language is None
-    assert vi.initial_prompt is not None
-    assert "Vietnamese" in vi.initial_prompt
-    assert "English" in vi.initial_prompt
+    assert vi.initial_prompt is None
 
 
-def test_resolve_whisper_cpp_single_pins_and_primes() -> None:
-    # Single: pin the chosen language AND emit a single-language priming prompt
-    # so the code-switch model does not drift into the other language.
+def test_resolve_whisper_cpp_single_pins_prompt_disabled() -> None:
+    # Single: pin the chosen language; no priming prompt while disabled.
     en = resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
     assert en.language == "en"
-    assert en.initial_prompt is not None
-    assert "English" in en.initial_prompt
-    assert "Malayalam" not in en.initial_prompt
+    assert en.initial_prompt is None
 
     ml = resolve_mode_for_engine("ml", AiModelFormat.WHISPER_CPP)
     assert ml.language == "ml"
-    assert ml.initial_prompt is not None
-    assert "Malayalam" in ml.initial_prompt
+    assert ml.initial_prompt is None
 
-    # auto: no pin, no prompt.
     auto = resolve_mode_for_engine("auto", AiModelFormat.WHISPER_CPP)
     assert auto.language is None
     assert auto.initial_prompt is None
 
 
-def test_single_language_prompt_only_for_prompt_capable_engines() -> None:
+def test_whisper_cpp_priming_prompt_when_reenabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Guard the prompt-building path so flipping the kill-switch back on is a
+    # one-line, still-tested change.
+    import stt.pipeline.language_modes as lm
+
+    monkeypatch.setattr(lm, "WHISPER_CPP_PRIMING_PROMPT_ENABLED", True)
+
+    pair = lm.resolve_mode_for_engine("ml-en", AiModelFormat.WHISPER_CPP)
+    assert pair.language is None
+    assert pair.initial_prompt is not None
+    assert "Malayalam" in pair.initial_prompt
+    assert "English" in pair.initial_prompt
+
+    single = lm.resolve_mode_for_engine("en", AiModelFormat.WHISPER_CPP)
+    assert single.language == "en"
+    assert single.initial_prompt is not None
+    assert "English" in single.initial_prompt
+    assert "Malayalam" not in single.initial_prompt
+
+
+def test_single_language_never_prompts_non_prompt_engines() -> None:
     # Non-prompt engines keep the plain single-language behavior: pin, no prompt.
     fw = resolve_mode_for_engine("en", AiModelFormat.FASTER_WHISPER)
     assert fw.language == "en"

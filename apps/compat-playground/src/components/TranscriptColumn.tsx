@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react';
+
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Skeleton } from '@arcaai/ui';
 
 export interface TranscriptLine {
@@ -47,6 +49,14 @@ function MetadataCell({ meta }: { meta?: Record<string, unknown> }) {
 export function TranscriptColumn({ lines, interim, isPreSession }: TranscriptColumnProps) {
   const hasContent = lines.length > 0 || interim !== '';
 
+  // Keep the newest transcript in view — scroll the results body to the bottom
+  // whenever a new line arrives or the interim text grows.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lines, interim]);
+
   return (
     <Card className="flex min-h-0 flex-col">
       <CardHeader>
@@ -63,7 +73,7 @@ export function TranscriptColumn({ lines, interim, isPreSession }: TranscriptCol
           <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Returned metadata</span>
         </div>
 
-        <div className="max-h-[62vh] overflow-y-auto">
+        <div ref={scrollRef} className="max-h-[62vh] overflow-y-auto">
           {isPreSession ? (
             <div className="flex flex-col gap-2 pt-3">
               <Skeleton className="h-4 w-full" />
