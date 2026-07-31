@@ -36,6 +36,10 @@ export const AiModelFormat = {
   CLOUD_API: 'CLOUD_API',
   // whisper.cpp ggml runtime (whisper-large-v3-turbo GGUF).
   WHISPER_CPP: 'WHISPER_CPP',
+  // First-class cloud STT engines (TASK-586) — a bare-slug pipeline ref binds
+  // them like AZURE_SPEECH (no inline engine / provider-shorthand override).
+  SARVAM: 'SARVAM',
+  OPENAI: 'OPENAI',
 } as const;
 
 export const ModelCategory = {

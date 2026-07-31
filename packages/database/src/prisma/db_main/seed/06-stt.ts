@@ -620,15 +620,13 @@ postprocessing:
   sarvam_transcription: `version: "2.0"
 
 # TASK-567 — [sarvam] Sarvam AI speech-to-text (saaras:v3), cloud REST.
-# BYOK: per-tenant SARVAM credential (TASK-567) or SARVAM_API_KEY env. The ASR
-# ref is an INLINE definition binding the SARVAM engine (a superset of the
-# Prisma AiModelFormat enum, equivalent to the "sarvam :: saaras:v3" shorthand),
-# so no DB slug is required for the superset engine.
+# BYOK: per-tenant SARVAM credential (TASK-567) or SARVAM_API_KEY env. TASK-586:
+# SARVAM is now a first-class AiModelFormat, so the ASR is a BARE SLUG ref to the
+# "sarvam-saaras-v3" catalog row — identical in shape to the Azure Speech pipeline
+# (no inline engine block or provider shorthand needed).
 
 models:
-  asr:
-    hf_model_id: "saaras:v3"
-    engine: "sarvam"
+  asr: "sarvam-saaras-v3"
 
 preprocessing:
   normalize:

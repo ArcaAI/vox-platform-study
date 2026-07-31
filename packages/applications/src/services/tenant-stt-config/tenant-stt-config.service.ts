@@ -264,6 +264,18 @@ export class TenantSttConfigService extends BaseService implements ITenantSttCon
     }
     const asrObj = this.asRecord(asr);
     if (asrObj) {
+      // Inline engine definition (e.g. Sarvam: `engine: "sarvam"` + `hf_model_id`).
+      // The `engine` field names the provider DIRECTLY, so surface it as the
+      // `provider::model` shorthand — the superset cloud engines (Sarvam/OpenAI)
+      // have NO AiModel slug row, so the slug-lookup path below can never resolve
+      // them and they'd be wrongly dropped from the fallback picker.
+      const engine = asrObj['engine'];
+      if (typeof engine === 'string' && engine.trim().length > 0) {
+        const model = ['hf_model_id', 'model_id', 'model', 'slug', 'name', 'id']
+          .map((k) => asrObj[k])
+          .find((v): v is string => typeof v === 'string' && v.trim().length > 0);
+        return `${engine.trim().toLowerCase()}::${(model ?? '').trim()}`;
+      }
       for (const key of ['slug', 'model_id', 'hf_model_id', 'name', 'id']) {
         const candidate = asrObj[key];
         if (typeof candidate === 'string' && candidate.trim().length > 0) {
