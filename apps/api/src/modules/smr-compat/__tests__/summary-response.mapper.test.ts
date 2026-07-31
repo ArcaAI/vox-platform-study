@@ -69,9 +69,28 @@ describe('mapGenerateToV1Summary', () => {
     expect(withoutPre.metadata).not.toHaveProperty('pre_summary_text');
   });
 
-  it('never leaks raw_llm_content into metadata', () => {
+  it('echoes v1-parity labels (llm_provider / model_name / parsing_method / raw_llm_content) when provided', () => {
+    const res = mapGenerateToV1Summary(simplifiedContent, {
+      sessionId: 's',
+      useEnhanced: false,
+      llmProvider: 'azure-openai',
+      modelName: 'gpt-4o',
+      parsingMethod: 'json_schema',
+      rawLlmContent: simplifiedContent,
+      createdAt: CREATED,
+    });
+    expect(res.metadata.llm_provider).toBe('azure-openai');
+    expect(res.metadata.model_name).toBe('gpt-4o');
+    expect(res.metadata.parsing_method).toBe('json_schema');
+    expect(res.metadata.raw_llm_content).toBe(simplifiedContent);
+  });
+
+  it('nulls the v1-parity labels when not supplied (present, never undefined)', () => {
     const res = mapGenerateToV1Summary(simplifiedContent, { sessionId: 's', useEnhanced: false, createdAt: CREATED });
-    expect(res.metadata).not.toHaveProperty('raw_llm_content');
+    expect(res.metadata.llm_provider).toBeNull();
+    expect(res.metadata.model_name).toBeNull();
+    expect(res.metadata.parsing_method).toBeNull();
+    expect(res.metadata.raw_llm_content).toBeNull();
   });
 
   it('throws (→ 500) on non-JSON content', () => {
@@ -84,42 +103,67 @@ describe('mapGenerateToV1Summary', () => {
   });
 });
 
-describe('parseSections / mapGenerateToV1PreSummary', () => {
-  const markdown = [
-    '## Pre-Summary of Medical History',
-    '',
+describe('parseSections / mapGenerateToV1PreSummary (v1 5-section guarantee)', () => {
+  const EXPECTED_TITLES = [
+    'Confirmed & Provisional Diagnoses',
+    'Plan of Care (Latest Department Note)',
+    'Investigations (Latest Department Note)',
+    'Medications Prescribed (Latest Department Note)',
+    'Diagnostics & Trends',
+  ];
+
+  const allPresent = [
     '**Confirmed & Provisional Diagnoses**',
     '- Essential hypertension, on amlodipine 5mg',
     '- Hyperlipidemia',
-    '',
-    '**Plan of Care**',
+    '**Plan of Care (Latest Department Note):**',
     '- Continue current medications',
+    '**Investigations (Latest Department Note)**',
+    '- ECG normal',
+    '**Medications Prescribed (Latest Department Note)**',
+    '- Amlodipine 5mg OD',
+    '**Diagnostics & Trends**',
+    '- Weight stable',
   ].join('\n');
 
-  it('parses headings and bullet items into structured sections', () => {
-    const structured = parseSections(markdown);
-    expect(structured).not.toBeNull();
-    expect(structured!.title).toBe('Pre-Summary of Medical History');
-    expect(structured!.sections).toHaveLength(2);
-    expect(structured!.sections[0].title).toBe('Confirmed & Provisional Diagnoses');
-    expect(structured!.sections[0].items).toEqual([{ text: 'Essential hypertension, on amlodipine 5mg' }, { text: 'Hyperlipidemia' }]);
+  it('emits all 5 canonical sections IN ORDER when all are present', () => {
+    const structured = parseSections(allPresent);
+    expect(structured.sections.map((s) => s.title)).toEqual(EXPECTED_TITLES);
+    expect(structured.sections[0].items).toEqual([{ text: 'Essential hypertension, on amlodipine 5mg' }, { text: 'Hyperlipidemia' }]);
+    expect(structured.sections[3].items).toEqual([{ text: 'Amlodipine 5mg OD' }]);
   });
 
-  it('returns null when there are no recognizable sections', () => {
-    expect(parseSections('just a paragraph of plain prose with no headings')).toBeNull();
+  it('fills missing sections with a single "Not available" item, preserving order', () => {
+    const someMissing = ['**Confirmed & Provisional Diagnoses**', '- Hypertension', '**Diagnostics & Trends**', '- Weight stable'].join('\n');
+    const structured = parseSections(someMissing);
+    expect(structured.sections.map((s) => s.title)).toEqual(EXPECTED_TITLES);
+    expect(structured.sections[0].items).toEqual([{ text: 'Hypertension' }]);
+    // The 3 unparsed sections are filled.
+    expect(structured.sections[1].items).toEqual([{ text: 'Not available' }]);
+    expect(structured.sections[2].items).toEqual([{ text: 'Not available' }]);
+    expect(structured.sections[3].items).toEqual([{ text: 'Not available' }]);
+    expect(structured.sections[4].items).toEqual([{ text: 'Weight stable' }]);
   });
 
-  it('maps to PreSummaryResponse with pre_summary as the source of truth', () => {
-    const res = mapGenerateToV1PreSummary(markdown, CREATED);
+  it('returns all 5 sections as "Not available" when nothing parses', () => {
+    const structured = parseSections('just a paragraph of plain prose with no headings');
+    expect(structured.sections.map((s) => s.title)).toEqual(EXPECTED_TITLES);
+    for (const section of structured.sections) {
+      expect(section.items).toEqual([{ text: 'Not available' }]);
+    }
+  });
+
+  it('maps to PreSummaryResponse with pre_summary as the source of truth and 5 sections', () => {
+    const res = mapGenerateToV1PreSummary(allPresent, CREATED);
     expect(res.pre_summary).toContain('Essential hypertension');
-    expect(res.structured_data.sections).toHaveLength(2);
+    expect(res.structured_data.title).toBe('Pre-Summary of Medical History');
+    expect(res.structured_data.sections).toHaveLength(5);
     expect(res.created_at).toBe(CREATED.toISOString());
   });
 
-  it('falls back to empty sections when the markdown has none', () => {
+  it('prepends the v1 title to pre_summary when absent', () => {
     const res = mapGenerateToV1PreSummary('plain prose without headings', CREATED);
-    expect(res.pre_summary).toBe('plain prose without headings');
-    expect(res.structured_data.title).toBe('Pre-Summary of Medical History');
-    expect(res.structured_data.sections).toEqual([]);
+    expect(res.pre_summary.startsWith('**Pre-Summary of Medical History**')).toBe(true);
+    expect(res.structured_data.sections).toHaveLength(5);
   });
 });

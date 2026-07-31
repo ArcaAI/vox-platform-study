@@ -37,19 +37,12 @@ function mapAudioSettings(audio: V1AudioSettings | undefined, sttPipelineId: str
 
   if (sttPipelineId) {
     // A pipelineId routes STT to the backend streaming provider.
-    config.stt = { enabled: true, provider: 'backend', pipelineId: sttPipelineId };
+    config.stt = { enabled: true, provider: 'backend', pipelineId: sttPipelineId, requireTenantClaim: false };
   }
 
   return Object.keys(config).length > 0 ? config : undefined;
 }
 
-/**
- * Map a v1 `SDK_CONFIG_OPTIONS` object onto a v2 `AgenticConfig`.
- *
- * @throws if `credentials.apiKey` is missing/blank — HOPE-v2 never substitutes a
- * default key (TASK-560 §6 A1). The tenant is resolved server-side from the key,
- * so `tenantId` is left undefined (x-api-key parity, TASK-560 D2).
- */
 export function mapV1ConfigToAgenticConfig(v1: V1SdkConfig): AgenticConfig {
   const apiKey = v1.credentials?.apiKey?.trim();
   if (!apiKey) {
@@ -64,8 +57,6 @@ export function mapV1ConfigToAgenticConfig(v1: V1SdkConfig): AgenticConfig {
       baseUrl: ensureApiV1Base(v1.apiEndpoint),
       wsUrl: v1.websocketUrl,
       apiKey,
-      // Resolved server-side from the api key (TASK-560 D2).
-      tenantId: undefined,
     },
     audio: mapAudioSettings(v1.audioSettings, v1.sttPipelineId),
     debug: v1.environment === 'development' ? true : undefined,

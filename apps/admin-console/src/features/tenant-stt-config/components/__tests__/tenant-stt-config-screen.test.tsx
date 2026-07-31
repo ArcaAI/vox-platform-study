@@ -1,12 +1,10 @@
 /**
  * STT Configuration screen tests: effective resolve + OCC fallback-row editor
  * render, the If-Match save with expectedVersion, the 412 reload-merge alert,
- * the write-only BYO credentials tab (OCC per credential), the loading/empty/
- * error states, and axe cleanliness per tab in both themes — against a
- * URL-branching fetch stub covering the BFF session route.
- *
- * ⚠️ The screen under test is design-gate-OPEN (rule 12); these tests lock the
- * behaviour so a later ratified frame can only tweak layout, not contract.
+ * the write-only BYO credentials tab (OCC per credential), the ephemeral
+ * pre-save "Test connection" probe, the loading/empty/error states, and axe
+ * cleanliness per tab in both themes — against a URL-branching fetch stub
+ * covering the BFF session route.
  */
 
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -264,6 +262,71 @@ describe('TenantSttConfigScreen', () => {
     expect(put?.url).toBe('/api/hope/admin/stt-config/credentials/openai');
     expect(put?.headers.get('if-match')).toBe('"0"');
     expect(put?.body).toEqual({ apiKey: 'sk-openai', enabled: true, expectedVersion: 0 });
+  });
+
+  it('renders a Base URL field for Sarvam alongside the write-only key', async () => {
+    stubFetch();
+    renderWithProviders(<TenantSttConfigScreen />, { searchParams: '?tab=credentials' });
+
+    await screen.findByText('Sarvam');
+    const sarvamCard = screen.getByRole('heading', { name: 'Sarvam' }).closest('[data-slot="card"]') as HTMLElement;
+    expect(within(sarvamCard).getByLabelText('Base URL (optional)')).toBeDefined();
+  });
+
+  it('disables Test connection until a key is typed', async () => {
+    stubFetch();
+    renderWithProviders(<TenantSttConfigScreen />, { searchParams: '?tab=credentials' });
+
+    await screen.findByText('OpenAI');
+    const openaiCard = screen.getByRole('heading', { name: 'OpenAI' }).closest('[data-slot="card"]') as HTMLElement;
+    const testButton = within(openaiCard).getByRole('button', { name: /Test connection/ }) as HTMLButtonElement;
+    expect(testButton.disabled).toBe(true);
+  });
+
+  it('tests the typed key via the ephemeral probe (never the saved key, never persisted) and shows the inline result', async () => {
+    const calls = stubFetch({
+      custom: (call) => {
+        if (call.method === 'POST' && call.url === '/api/hope/admin/stt-config/credentials/azure-speech/test') {
+          return Response.json({ ok: true, message: 'Connected — subscription key accepted' });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<TenantSttConfigScreen />, { searchParams: '?tab=credentials' });
+
+    await screen.findByText(/configured · v1/);
+    const azureCard = screen.getByRole('heading', { name: 'Azure Speech' }).closest('[data-slot="card"]') as HTMLElement;
+    fireEvent.change(within(azureCard).getByLabelText('API key (enter to rotate)'), { target: { value: 'fresh-key' } });
+    fireEvent.click(within(azureCard).getByRole('button', { name: /Test connection/ }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST')).toBe(true));
+    const probe = calls.find((call) => call.method === 'POST');
+    expect(probe?.url).toBe('/api/hope/admin/stt-config/credentials/azure-speech/test');
+    expect(probe?.body).toEqual({ apiKey: 'fresh-key', region: 'eastus' });
+    expect(await screen.findByText('Connected — subscription key accepted')).toBeDefined();
+    // The probe never touches the saved credential.
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
+  });
+
+  it('shows a failed probe result inline without saving anything', async () => {
+    const calls = stubFetch({
+      custom: (call) => {
+        if (call.method === 'POST' && call.url === '/api/hope/admin/stt-config/credentials/openai/test') {
+          return Response.json({ ok: false, message: 'Rejected — invalid API key' });
+        }
+        return undefined;
+      },
+    });
+    renderWithProviders(<TenantSttConfigScreen />, { searchParams: '?tab=credentials' });
+
+    await screen.findByText('OpenAI');
+    const openaiCard = screen.getByRole('heading', { name: 'OpenAI' }).closest('[data-slot="card"]') as HTMLElement;
+    const keyInput = openaiCard.querySelector('input[type="password"]') as HTMLInputElement;
+    fireEvent.change(keyInput, { target: { value: 'bad-key' } });
+    fireEvent.click(within(openaiCard).getByRole('button', { name: /Test connection/ }));
+
+    expect(await within(openaiCard).findByText('Rejected — invalid API key')).toBeDefined();
+    expect(calls.some((call) => call.method === 'PUT')).toBe(false);
   });
 
   it('surfaces a block error with retry when the effective read fails', async () => {

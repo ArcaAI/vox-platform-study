@@ -426,11 +426,13 @@ class ResultPublisher:
             return self._maxlen
         return get_settings().streaming_result_stream_maxlen
 
-    async def publish(self, result: SegmentResult) -> str:
+    async def publish(self, result: SegmentResult) -> str | None:
         """Write a ``SegmentResult`` to the result stream.
 
         Returns the Redis Stream entry ID.
         """
+        if not result.text or not result.text.strip():
+            return None
         key = result_stream_key(self._session_id)
         entry_id = await self._redis.xadd(
             key,
@@ -477,15 +479,22 @@ class ResultPublisher:
         from_pipeline: str,
         to_pipeline: str,
         reason: str,
+        active: str = "fallback",
         utterance_index: int | None = None,
     ) -> str:
-        """Publish a ``provider_switched`` status result (TASK-567 §3.4).
+        """Publish a ``provider_switched`` status result (TASK-567 §3.4, TASK-586).
 
         Reuses the ``status`` result type so the API gateway forwards it as the
         existing ``status`` WS frame with ZERO protocol changes; the client
         distinguishes it by ``status == 'provider_switched'``. Carries the
         from/to pipeline ids, the trigger reason (``auto``|``user``), and the
         utterance ordinal at which the swap happened so the UI can correlate.
+
+        ``active`` (TASK-586) names the now-live engine (``'primary'`` or
+        ``'fallback'``); ``is_fallback`` is the boolean convenience flag. Both
+        are carried so clients can tell which engine is live in BOTH directions
+        of a switch (the switch is now bidirectional for user requests). The
+        gateway maps ``is_fallback`` → the client ``isFallback`` field.
         """
         fields: dict[str, str] = {
             "type": "status",
@@ -493,6 +502,8 @@ class ResultPublisher:
             "from_pipeline": from_pipeline,
             "to_pipeline": to_pipeline,
             "reason": reason,
+            "active": active,
+            "is_fallback": "1" if active == "fallback" else "0",
         }
         if utterance_index is not None:
             fields["utterance_index"] = str(utterance_index)

@@ -108,7 +108,14 @@ export interface StreamingWsClientLike {
  * Duck-typed surface of `@arcaai/vox`'s `StreamingSessionManager`.
  */
 export interface StreamingSessionLike {
-  createSession(req: { pipelineId: string; consultationId?: string; sampleRate?: number; language?: string; microphoneId?: string }): Promise<{
+  createSession(req: {
+    pipelineId: string;
+    consultationId?: string;
+    sampleRate?: number;
+    language?: string;
+    languageMode?: string;
+    microphoneId?: string;
+  }): Promise<{
     sessionId: string;
     wsUrl: string;
     ticket?: string;
@@ -197,6 +204,8 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
       consultationId: streamingConfig.consultationId,
       sampleRate: streamingConfig.sampleRate,
       language: streamingConfig.language,
+      // End-user language mode (TASK-587); the backend resolves it per engine.
+      languageMode: streamingConfig.languageMode,
       microphoneId: streamingConfig.microphoneId,
     });
 

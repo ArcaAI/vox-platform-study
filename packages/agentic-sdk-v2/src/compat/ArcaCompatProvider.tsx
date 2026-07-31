@@ -9,7 +9,7 @@
  * `<AgenticProvider>`.
  */
 
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { AgenticProvider } from '../providers';
 import { mapV1ConfigToAgenticConfig } from './config-adapter';
 import type { V1SdkConfig } from './types';
@@ -18,6 +18,30 @@ export interface ArcaCompatProviderProps {
   /** v1 `SDK_CONFIG_OPTIONS`. Its `credentials.apiKey` is REQUIRED. */
   options: V1SdkConfig;
   children: ReactNode;
+}
+
+/**
+ * Compat-only feature flags (TASK-586 Lane D). These have no v1 ancestor and
+ * are NOT part of the v2 `AgenticConfig` — they only matter to compat hooks,
+ * so they ride a small compat-local context instead of widening the shared
+ * `AgenticConfig`/`AudioPluginConfig` types.
+ */
+interface CompatFeatureFlags {
+  /** See `V1SdkConfig.enableProviderSwitch`. */
+  enableProviderSwitch: boolean;
+}
+
+const DEFAULT_COMPAT_FEATURE_FLAGS: CompatFeatureFlags = { enableProviderSwitch: false };
+
+const CompatFeatureFlagsContext = createContext<CompatFeatureFlags>(DEFAULT_COMPAT_FEATURE_FLAGS);
+
+/**
+ * @internal Consumed by `useArcaSttProvider` to learn whether the app opted
+ * into the bidirectional provider-switch shim. Not part of the public compat
+ * surface (not exported from the `compat` barrel).
+ */
+export function useCompatFeatureFlags(): CompatFeatureFlags {
+  return useContext(CompatFeatureFlagsContext);
 }
 
 /**
@@ -32,5 +56,10 @@ export interface ArcaCompatProviderProps {
  */
 export function ArcaCompatProvider({ options, children }: ArcaCompatProviderProps) {
   const config = mapV1ConfigToAgenticConfig(options);
-  return <AgenticProvider config={config}>{children}</AgenticProvider>;
+  const flags: CompatFeatureFlags = { enableProviderSwitch: options.enableProviderSwitch === true };
+  return (
+    <AgenticProvider config={config}>
+      <CompatFeatureFlagsContext.Provider value={flags}>{children}</CompatFeatureFlagsContext.Provider>
+    </AgenticProvider>
+  );
 }

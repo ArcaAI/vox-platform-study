@@ -103,6 +103,25 @@ describe('StreamingBackendSTTProvider', () => {
       expect(provider.isReady()).toBe(true);
     });
 
+    it('forwards the end-user languageMode to createSession (TASK-587)', async () => {
+      await provider.init({
+        sessionId: 'x',
+        language: 'ml',
+        languageMode: 'ml-en',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 2,
+        pipelineId: 'pipeline-doctor-default',
+      });
+
+      expect(session.createSession).toHaveBeenCalledWith(expect.objectContaining({ languageMode: 'ml-en' }));
+    });
+
     it('throws when pipelineId is missing', async () => {
       await expect(
         provider.init({

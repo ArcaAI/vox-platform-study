@@ -184,8 +184,8 @@ follows TASK-560 §2.2 / §5 / §6.
 
 | v1 endpoint | Reproduced in v2? | Path in v2 | Auth | Notes |
 |---|---|---|---|---|
-| `POST /api/smr/api/v1/summary/sync` | **Yes** (TASK-562) | **identical** `POST /api/smr/api/v1/summary/sync` | `x-api-key` (or Bearer) | Stateless shim over SMR `/api/v1/generate`; returns the v1 `SummaryResponse` (§5.4). |
-| `POST /api/smr/api/v1/presummary` | **Yes** (TASK-562) | **identical** `POST /api/smr/api/v1/presummary` | `x-api-key` (or Bearer) | Returns the v1 `PreSummaryResponse` (§5.5); `structured_data.sections` may be `[]` with `pre_summary` as the source of truth. |
+| `POST /api/smr/api/v1/summary/sync` | **Yes** (TASK-562) | **identical** `POST /api/smr/api/v1/summary/sync` | `x-api-key` (or Bearer) | Stateless shim over SMR `/api/v1/generate`; returns the v1 `SummaryResponse` (§5.4). Optional `stream:true` → SSE (TASK-589). Tenant mandatory (see below). |
+| `POST /api/smr/api/v1/presummary` | **Yes** (TASK-562) | **identical** `POST /api/smr/api/v1/presummary` | `x-api-key` (or Bearer) | Returns the v1 `PreSummaryResponse` (§5.5); `structured_data.sections` may be `[]` with `pre_summary` as the source of truth. Optional `stream:true` → SSE (TASK-589). Tenant mandatory (see below). |
 | `POST /api/smr/api/v1/summary/async` | Not part of the shim set | — | — | Prefer `summarizeSync`. |
 | `POST /api/sessions` (raw session CRUD) | **No** — handled by the SDK | `POST /api/v1/consultations/open` (internal) | Bearer/api-key | The compat session hook drives v2's native ticketed flow; you don't call this directly. |
 | `WS /stt?sessionId=&key=` (raw STT socket) | **No** — handled by the SDK | ticketed `WS /ws/stt/stream` (internal) | stream ticket | Two-step ticketed handshake is hidden behind `useArcaSpeechToText`. Never put a JWT in a WS URL. |
@@ -194,6 +194,80 @@ follows TASK-560 §2.2 / §5 / §6.
 these two routes are declared `@Controller('api/smr/api/v1')` **and excluded from
 the global prefix** (TASK-560 §5.6). Point your existing v1 base URL at the v2
 gateway and the summary calls "just work" with no URL edits.
+
+---
+
+## Streaming summaries & pre-summaries (opt-in — TASK-589)
+
+Both `summary/sync` and `presummary` accept an optional **`stream: boolean`** in the
+request body. Default `false` → the single JSON body you get today. `true` → the
+response is `text/event-stream` (SSE) with three event types:
+
+- `event: delta` — `data: {"text":"<incremental content>"}` — progress. For the
+  **summary** these are strict-JSON fragments (not display text); for the
+  **pre-summary** they are clean markdown you can render as they arrive.
+- `event: result` — `data: <the exact same v1 JSON body>` the non-streaming call
+  returns (`SummaryResponse` / `PreSummaryResponse`). **Streaming and non-streaming
+  converge on an identical final object.**
+- `event: error` — `data: {"detail":"…"}` — PHI-redacted; raw upstream/LLM content is
+  never placed on the wire.
+
+### SDK
+`useSMR` takes `stream` + an `onDelta` callback per call; the promise still resolves
+with the final structured object and `onComplete` still fires with it:
+
+```tsx
+const smr = useSMR({ onComplete: (s) => setSummary(s) });
+
+// summary — deltas are JSON fragments, use them only for a progress indicator
+await smr.summarizeSync({
+  text, departmentId: 'Medicine', visitType: 'New Referral',
+  stream: true,
+  onDelta: (_delta, accumulated) => setProgressChars(accumulated.length),
+});
+
+// pre-summary — deltas are markdown, safe to render progressively
+await smr.preSummarize({
+  current_department: 'Medicine', visit_type: 'New Referral',
+  stream: true,
+  onDelta: (delta) => appendMarkdown(delta),
+});
+```
+
+### Raw API
+```
+POST /api/smr/api/v1/summary/sync
+x-api-key: <tenant-scoped key>
+Content-Type: application/json
+
+{ "session_data": { … }, "stream": true }
+```
+Response `Content-Type: text/event-stream`:
+```
+event: delta
+data: {"text":"{\"presenting_complaints\":"}
+
+event: result
+data: {"summary_id":"…","session_id":"…","summary":{…},"metadata":{…}}
+```
+
+**Fallback caveat (summary only):** the per-tenant SMR fallback applies only if the
+stream fails to *start*; once bytes are flowing, a mid-stream provider failure surfaces
+as a single `event: error` — a half-emitted stream cannot be restarted.
+
+---
+
+## Tenant context is mandatory (TASK-589)
+
+v2 **rejects** a summary / pre-summary call that has no resolvable tenant with
+`401 "Tenant context is required"`. There is **no v1-style SYSTEM-default fallback**.
+
+- A **tenant-scoped `x-api-key`** already carries its tenant — nothing to add.
+- A **global-admin key** must send `X-Tenant-Id: <tenant>` for the working tenant.
+- The tenant must have SMR provider/model configured (`smr.*` AI task defaults);
+  selection **fails closed** if unconfigured (v1's env-based default is gone).
+
+This applies to both the streaming and non-streaming forms.
 
 ---
 

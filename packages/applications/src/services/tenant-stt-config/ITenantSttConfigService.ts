@@ -1,5 +1,13 @@
 import { PipelineResponse } from '../stt/pipeline';
-import { EffectiveSttConfigResponse, SetSttCredentialRequest, SetSttFallbackRequest, SttCredentialResponse, TenantSttConfigResponse } from './dto';
+import {
+  EffectiveSttConfigResponse,
+  SetSttCredentialRequest,
+  SetSttFallbackRequest,
+  SttCredentialResponse,
+  TenantSttConfigResponse,
+  TestSttCredentialRequest,
+  TestSttCredentialResponse,
+} from './dto';
 import { SttProviderOverrides } from './platform-limits';
 
 /**
@@ -39,6 +47,14 @@ export abstract class ITenantSttConfigService {
 
   /** Remove a tenant's BYO credential for a provider. */
   abstract removeCredential(tenantId: string, provider: string): Promise<void>;
+
+  /**
+   * Ephemeral "Test connection" probe: validates an apiKey/region/endpoint
+   * combination BEFORE it is saved (or independent of whether it ever is —
+   * the saved key is write-only and never returned for re-testing). Never
+   * persisted, never logged, never touches Vault.
+   */
+  abstract testCredential(tenantId: string, provider: string, dto: TestSttCredentialRequest): Promise<TestSttCredentialResponse>;
 
   /** Decrypt enabled BYO credentials into the gateway-injectable overrides map. */
   abstract resolveProviderOverrides(tenantId: string): Promise<SttProviderOverrides>;

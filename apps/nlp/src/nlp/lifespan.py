@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from nlp.core.config import settings
 from nlp.core.effective_config import EffectiveConfigClient
 from nlp.core.logging import get_logger
-from nlp.core.observability import setup_opentelemetry, setup_prometheus, shutdown_opentelemetry
+from nlp.core.observability import setup_opentelemetry, shutdown_opentelemetry
 from nlp.dependencies import get_websocket_manager
 
 logger = get_logger(__name__)

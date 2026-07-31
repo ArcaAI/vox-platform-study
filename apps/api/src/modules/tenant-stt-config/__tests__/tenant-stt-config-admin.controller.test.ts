@@ -24,6 +24,7 @@ function makeController(ctx: Ctx) {
     getCredentials: vi.fn(),
     setCredential: vi.fn(),
     removeCredential: vi.fn(),
+    testCredential: vi.fn(),
     resolveProviderOverrides: vi.fn(),
   };
   const cls = { get: vi.fn((key: string) => (ctx as Record<string, unknown>)[key]) };
@@ -116,5 +117,29 @@ describe('TenantSttConfigAdminController — BYO credentials', () => {
   it('rejects a tenant admin managing credentials for another tenant', async () => {
     const { controller } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
     await expect(controller.getCredentials('t2')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('TenantSttConfigAdminController — test connection (ephemeral, no OCC)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('delegates to testCredential scoped to the caller tenant', async () => {
+    const { controller, service } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    service.testCredential.mockResolvedValue({ ok: true, message: 'Connected — key accepted' });
+    const result = await controller.testCredential('openai', { apiKey: 'sk-test' }, undefined);
+    expect(result).toEqual({ ok: true, message: 'Connected — key accepted' });
+    expect(service.testCredential).toHaveBeenCalledWith('t1', 'openai', { apiKey: 'sk-test' });
+  });
+
+  it('rejects a tenant admin testing a credential for another tenant', async () => {
+    const { controller } = makeController({ user: TENANT_ADMIN('t1'), tenantId: 't1' });
+    await expect(controller.testCredential('openai', { apiKey: 'sk-test' }, 't2')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('lets a global admin test a credential for any tenant via ?tenantId=', async () => {
+    const { controller, service } = makeController({ user: SUPER });
+    service.testCredential.mockResolvedValue({ ok: false, message: 'Rejected — invalid API key' });
+    await controller.testCredential('azure-speech', { apiKey: 'bad', region: 'eastus' }, 't9');
+    expect(service.testCredential).toHaveBeenCalledWith('t9', 'azure-speech', { apiKey: 'bad', region: 'eastus' });
   });
 });

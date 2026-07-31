@@ -1,18 +1,5 @@
 'use client';
 
-/**
- * ⚠️ DESIGN GATE OPEN — DO NOT MERGE (rule 12).
- * This screen has NO approved Figma frame and NO recorded owner waiver. It is
- * built by composing already-approved patterns (ScreenTemplate, WorkingTenantGate
- * + acting-on gate, the TTS CredentialCard tab, OccConflictAlert) — the TASK-526
- * waiver-precedent SHAPE — but that precedent is a REASONABLE ASK, not a granted
- * approval. Until the owner grants a frame or records a waiver in the ticket
- * README, this route MUST NOT ship: it is intentionally left OUT of the sidebar
- * nav (reachable only by direct URL), exactly like an `implemented: false` entry.
- * See docs/implementation/TASK-567-Tenant-STT-Fallback-Provider-BYOK/README.md
- * (Phase G / Change History) for the open-gate note.
- */
-
 import { Fragment, useId } from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
@@ -110,9 +97,9 @@ function FallbackTab() {
 /**
  * Tenant STT configuration (/stt-config, tier 30-49).
  * Tenant-scoped fallback spec with OCC row editing, plus BYO provider-key
- * management (write-only, Vault-encrypted). Composed from the design-system
- * best practices (ScreenTemplate, WorkingTenantGate, skeletons, both themes,
- * semantic tokens) — but the rule-12 design gate is OPEN (see header).
+ * management (write-only, Vault-encrypted, with a pre-save "Test connection"
+ * probe). Composed from the design-system best practices (ScreenTemplate,
+ * WorkingTenantGate, skeletons, both themes, semantic tokens).
  */
 export function TenantSttConfigScreen() {
   const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('fallback'));

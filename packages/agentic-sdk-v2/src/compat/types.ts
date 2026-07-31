@@ -42,6 +42,24 @@ export interface V1SdkConfig {
    * STT to the backend streaming provider. Optional — omit for local STT.
    */
   sttPipelineId?: string;
+  /**
+   * Tenant id the developer provisions alongside the API key and pipeline id
+   * (TASK-586). Accepted for API parity and for raw-compat-API symmetry; the
+   * v2 gateway resolves tenancy AUTHORITATIVELY from the API key, so a value
+   * here is never trusted over the key and must match it. Optional.
+   */
+  tenantId?: string;
+  /**
+   * Opt into the BIDIRECTIONAL STT provider-switch toggle (TASK-586 Lane D).
+   * v1 had no provider-switch concept at all (TASK-568 §3 D-1 — compat-native,
+   * no v1 ancestor), so this is a new, additive field with no v1 default.
+   * `false`/omitted (default): `useArcaSttProvider` only supports the
+   * one-way TASK-567/568 switch to the tenant fallback (native route).
+   * `true`: `useArcaSttProvider().switchToPipeline()` can also switch back to
+   * the SDK-configured pipeline, routed through the compat gateway's
+   * `POST /api/stt/switch` shim rather than the native fallback-only route.
+   */
+  enableProviderSwitch?: boolean;
 }
 
 // =============================================================================
@@ -363,6 +381,16 @@ export interface SMRRequest {
   doctorName?: string;
   doctorRole?: string;
   visitType?: string;
+  /**
+   * Optional clinical specialty indicator. Forwarded top-level to the gateway
+   * ONLY when provided; department/visit templating stays entirely gateway-side.
+   * Optional and append-only — existing callers are unaffected.
+   */
+  specialty?: string;
+  /** Optional encounter-type indicator (snake_case, forwarded top-level when provided). */
+  encounter_type?: string;
+  /** camelCase alias for `encounter_type` (normalized to `encounter_type` on the wire). */
+  encounterType?: string;
   departmentContext?: Record<string, unknown>;
   testResults?: TestResult[];
   previousVisits?: PreviousVisitRecord[];
@@ -371,6 +399,18 @@ export interface SMRRequest {
   preSummaryText?: string;
   includePreSummaryInContext?: boolean;
   useEnhancedFormat?: boolean;
+  /**
+   * Client-only (TASK-589): opt into SSE streaming on `summary/sync`. Only
+   * `stream` itself is sent on the wire (as `stream:true`); when omitted/false
+   * the request is byte-identical to today's single-JSON-response path.
+   */
+  stream?: boolean;
+  /**
+   * Client-only (TASK-589): fired for each SSE `delta` event when `stream:true`.
+   * NEVER sent on the wire — stripped from the request payload. `accumulated`
+   * is the running concatenation of every delta seen so far, including this one.
+   */
+  onDelta?: (delta: string, accumulated: string) => void;
 }
 
 // =============================================================================
@@ -389,6 +429,18 @@ export interface PreSummaryRequest {
   language?: string;
   temperature?: number;
   max_tokens?: number;
+  /**
+   * Client-only (TASK-589): opt into SSE streaming on `presummary`. Only
+   * `stream` itself is sent on the wire (as `stream:true`); when omitted/false
+   * the request is byte-identical to today's single-JSON-response path.
+   */
+  stream?: boolean;
+  /**
+   * Client-only (TASK-589): fired for each SSE `delta` event when `stream:true`
+   * (clean markdown for pre-summary). NEVER sent on the wire. `accumulated` is
+   * the running concatenation of every delta seen so far, including this one.
+   */
+  onDelta?: (delta: string, accumulated: string) => void;
 }
 
 export interface PreSummarySectionItem {

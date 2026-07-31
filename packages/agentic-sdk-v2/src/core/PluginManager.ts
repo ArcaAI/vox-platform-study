@@ -44,6 +44,12 @@ export interface PluginManagerRuntimeOptions {
   consultationId?: string;
   /** Optional language override (forwarded to createSession). */
   language?: string;
+  /**
+   * Optional end-user language mode id (TASK-587), e.g. `'en'`, `'ml'`,
+   * `'ml-en'`, `'auto'`. Forwarded to the STT session; takes precedence over
+   * `language` on the backend path.
+   */
+  languageMode?: string;
   /** Optional microphone identifier surfaced in transcripts. */
   microphoneId?: string;
 }
@@ -603,6 +609,11 @@ export class PluginManager {
         location: sttConfig.provider === 'local' ? 'browser' : sttConfig.provider === 'backend' ? 'backend' : 'auto',
         provider: sttConfig.provider ?? DEFAULT_STT_CONFIG.provider,
         language: this.runtimeOptions.language ?? prefs?.language ?? sttConfig.language ?? DEFAULT_STT_CONFIG.language,
+        // End-user language mode (TASK-587). Runtime option wins; else the
+        // AudioPluginConfig default. Undefined ⇒ pipeline default (no override).
+        ...((this.runtimeOptions.languageMode ?? sttConfig.languageMode)
+          ? { languageMode: this.runtimeOptions.languageMode ?? sttConfig.languageMode }
+          : {}),
         modelId: localConfig?.stt?.modelId ?? sttConfig.modelId,
         sttSocket: sttConfig.sttSocket,
         pipelineId: effectivePipelineId,
@@ -760,6 +771,8 @@ export class PluginManager {
       {
         enabled: true,
         refreshTicket: async () => sessionManager.refreshTicket(),
+        // v1-compatibility
+        requireTenantClaim: sttConfig.requireTenantClaim,
       },
       this._debugMode,
     );
@@ -781,6 +794,11 @@ export class PluginManager {
           fromPipeline: status.from_pipeline ?? '',
           toPipeline: status.to_pipeline ?? '',
           reason: status.reason ?? 'auto',
+          // TASK-586: forward the bidirectional-toggle direction so a switch BACK
+          // to primary un-latches the durable fallback flag (useArcaAudio reads
+          // these). Absent on a pre-586 backend ⇒ consumers infer fallback.
+          ...(status.active != null ? { active: status.active } : {}),
+          ...(status.is_fallback != null ? { isFallback: status.is_fallback } : {}),
           ...(status.utterance_index != null && status.utterance_index !== '' ? { utteranceIndex: Number(status.utterance_index) } : {}),
         });
       }

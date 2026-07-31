@@ -7,8 +7,10 @@ import {
   SetSttFallbackRequest,
   SttCredentialResponse,
   TenantSttConfigResponse,
+  TestSttCredentialRequest,
+  TestSttCredentialResponse,
 } from '@arcaai/applications';
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ClsService } from 'nestjs-cls';
 import { resolveScopedTenantId } from '../../shared/tenant-scope';
@@ -33,6 +35,8 @@ import { Authorize, ExpectedVersion, RequiresIfMatch } from '../../decorators';
  *  - `GET/PUT/DELETE 'credentials/:provider'` → masked BYO credentials; the key
  *    is write-only (Vault-encrypted, never returned). PUT is OCC-guarded too
  *    (TASK-526 credential-OCC divergence).
+ *  - `POST 'credentials/:provider/test'` → ephemeral "Test connection" probe of
+ *    an apiKey/region/endpoint BEFORE it is saved. Never persisted, no OCC.
  *
  * Tenant admins are pinned to their CLS tenant; global-admins (`isSuperAdmin`)
  * act cross-tenant — incl. the SYSTEM-tenant platform default — via `?tenantId=`.
@@ -164,6 +168,26 @@ export class TenantSttConfigAdminController {
   @ApiResponse({ status: 404, description: 'No credential for this provider.' })
   async removeCredential(@Param('provider') provider: string, @Query('tenantId') tenantId?: string): Promise<void> {
     return this.configService.removeCredential(this.resolveTenantId(tenantId), provider);
+  }
+
+  @Post('credentials/:provider/test')
+  @Authorize(['manage', 'TenantSttConfig'])
+  @ApiOperation({
+    summary: 'Test an apiKey/region/endpoint combination against the live provider BEFORE saving it',
+    description:
+      'Ephemeral probe — never persisted, no Vault write, no OCC. Lets a tenant admin validate a key before (or independent of) saving it, ' +
+      'since the saved key is write-only and never returned for re-testing.',
+  })
+  @ApiParam({ name: 'provider', enum: ['azure-speech', 'sarvam', 'openai'] })
+  @ApiQuery({ name: 'tenantId', required: false, description: 'Platform-admin only: target tenant.' })
+  @ApiResponse({ status: 200, type: TestSttCredentialResponse })
+  @ApiResponse({ status: 400, description: 'Unsupported provider, or the supplied endpoint failed URL/SSRF validation.' })
+  async testCredential(
+    @Param('provider') provider: string,
+    @Body() body: TestSttCredentialRequest,
+    @Query('tenantId') tenantId?: string,
+  ): Promise<TestSttCredentialResponse> {
+    return this.configService.testCredential(this.resolveTenantId(tenantId), provider, body);
   }
 
   /** Tenant admins → own tenant; global-admins → `?tenantId=` (or CLS tenant). */

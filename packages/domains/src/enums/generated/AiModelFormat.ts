@@ -17,4 +17,6 @@ export enum AiModelFormat {
   PARAKEET_CPP = 'PARAKEET_CPP',
   CLOUD_API = 'CLOUD_API',
   WHISPER_CPP = 'WHISPER_CPP',
+  SARVAM = 'SARVAM',
+  OPENAI = 'OPENAI',
 }

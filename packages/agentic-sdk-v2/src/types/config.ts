@@ -198,12 +198,20 @@ export interface STTPluginConfig {
   provider?: 'local' | 'backend' | 'auto';
   /** Language code (e.g., 'en', 'th') */
   language?: string;
+  /**
+   * End-user language mode id (TASK-587), e.g. `'en'`, `'ml'`, `'ml-en'`,
+   * `'auto'`. Default for the backend STT session; a per-capture
+   * `audio.start({ languageMode })` overrides it.
+   */
+  languageMode?: string;
   /** Model ID from model registry */
   modelId?: string;
   /** Backend ASR pipeline ID or slug (required for provider: 'backend') */
   pipelineId?: string;
   /** WebSocket URL for backend STT streaming (overrides api.wsUrl + default path) */
   sttSocket?: string;
+  // v1-compatibility
+  requireTenantClaim?: boolean;
   /** Enable speaker diarization */
   diarization?: boolean;
   /** Expected number of speakers when diarization is enabled */

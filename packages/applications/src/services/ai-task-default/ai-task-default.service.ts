@@ -23,12 +23,15 @@ import { AiTaskDefaultResponse, EffectiveAiTaskDefaultResponse, UpsertAiTaskDefa
 /**
  * "Default model for task X" service.
  *
- * Effective resolution for GLOBAL_ADMIN-only keys (`guardrail.*`, `smr.*`,
- * `nlp.*`) is SYSTEM-row-only (tenant override rows are ignored at read time).
- * Writes to those prefixes require GLOBAL_ADMIN → `ForbiddenException` (403).
- * This is deliberately NOT the 404-over-403 tenancy posture: the rule is a
- * privilege boundary on a key the caller can already read, not a cross-tenant
- * existence probe.
+ * Effective resolution for GLOBAL_ADMIN-only keys (`guardrail.*`, `nlp.*`,
+ * `harness.*`) is SYSTEM-row-only (tenant override rows are ignored at read
+ * time). Writes to those prefixes require GLOBAL_ADMIN → `ForbiddenException`
+ * (403). This is deliberately NOT the 404-over-403 tenancy posture: the rule
+ * is a privilege boundary on a key the caller can already read, not a
+ * cross-tenant existence probe.
+ *
+ * `smr.*` is tenant-admin configurable (TASK-588): those keys honour per-tenant
+ * override rows at read time and accept tenant writes.
  */
 @Injectable()
 export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultService {
@@ -86,9 +89,10 @@ export class AiTaskDefaultService extends BaseService implements IAiTaskDefaultS
   async upsertRow(taskKey: string, dto: UpsertAiTaskDefaultRequest, tenantId?: string): Promise<AiTaskDefaultResponse> {
     this.assertKnownTaskKey(taskKey);
 
-    // GOVERNANCE: guardrail and SMR model routing are exclusively
-    // global-admin-managed. A privilege rule — 403,
-    // not 404 (the caller can already READ these keys; only writes are gated).
+    // GOVERNANCE: guardrail / nlp / harness model routing is exclusively
+    // global-admin-managed (SMR is tenant-configurable — TASK-588). A privilege
+    // rule — 403, not 404 (the caller can already READ these keys; only writes
+    // are gated).
     if (GLOBAL_ADMIN_ONLY_TASK_PREFIXES.some((p) => taskKey.startsWith(p)) && !isSuperAdmin(this.requestUser)) {
       throw new ForbiddenException(`AI task '${taskKey}' is managed by global administrators only.`);
     }

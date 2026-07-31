@@ -757,6 +757,10 @@ export class STTProcessor extends BaseProcessor {
     await provider.init({
       sessionId: this.sessionId,
       language: audio.language ?? DEFAULT_LANGUAGE_LOCALE,
+      // End-user language mode (TASK-587) — forwarded to the STT session, which
+      // resolves it against the session engine and 422s an unservable mode.
+      // Read from options directly (the default config carries no mode).
+      languageMode: this.options.audio?.languageMode,
       sampleRate: audio.sampleRate ?? WHISPER_SAMPLE_RATE,
       channels: audio.channels ?? 1,
       chunkLengthS: audio.chunkLengthS ?? 30,

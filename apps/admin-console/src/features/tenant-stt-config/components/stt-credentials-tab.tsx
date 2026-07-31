@@ -1,7 +1,9 @@
 'use client';
 
 import { useId, useState } from 'react';
+import { IconCircleCheck, IconCircleX, IconPlugConnected } from '@tabler/icons-react';
 import { toast } from 'sonner';
+import { cn } from '@arcaai/ui';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card } from '@arcaai/ui/components/shadcn/card';
@@ -13,7 +15,7 @@ import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { GatewayError } from '@/shared/api';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 import { ErrorState } from '@/shared/state/error-state';
-import { useRemoveSttCredential, useSetSttCredential, useSttCredentials, type SttCredential, type SttProvider } from '../api';
+import { useRemoveSttCredential, useSetSttCredential, useSttCredentials, useTestSttCredential, type SttCredential, type SttProvider } from '../api';
 
 interface TextField {
   key: 'region' | 'endpoint' | 'model';
@@ -41,7 +43,10 @@ const PROVIDERS: readonly ProviderMeta[] = [
   {
     id: 'sarvam',
     label: 'Sarvam',
-    fields: [{ key: 'model', label: 'Model (optional)', placeholder: 'saaras:v3' }],
+    fields: [
+      { key: 'endpoint', label: 'Base URL (optional)', placeholder: 'https://api.sarvam.ai' },
+      { key: 'model', label: 'Model (optional)', placeholder: 'saaras:v3' },
+    ],
   },
   {
     id: 'openai',
@@ -62,6 +67,7 @@ function CredentialCard({ meta, current }: { meta: ProviderMeta; current: SttCre
   const uid = useId();
   const setMutation = useSetSttCredential();
   const removeMutation = useRemoveSttCredential();
+  const testMutation = useTestSttCredential();
   const [apiKey, setApiKey] = useState('');
   const [fields, setFields] = useState<Record<string, string>>({
     region: current?.region ?? '',
@@ -91,6 +97,32 @@ function CredentialCard({ meta, current }: { meta: ProviderMeta; current: SttCre
         onError: (error) => {
           if (!isOccError(error)) toast.error(error.message);
         },
+      },
+    );
+  }
+
+  /**
+   * Ephemeral probe of the CURRENTLY TYPED key/region/endpoint — never the
+   * saved value (the saved key is write-only and never returned to the
+   * client). Independent of `handleSave`: an admin can test before saving, or
+   * skip testing and save directly.
+   */
+  function handleTest() {
+    const key = apiKey.trim();
+    if (key.length === 0) return;
+    const body: { apiKey: string; region?: string; endpoint?: string } = { apiKey: key };
+    const region = fields.region?.trim();
+    const endpoint = fields.endpoint?.trim();
+    if (region) body.region = region;
+    if (endpoint) body.endpoint = endpoint;
+    testMutation.mutate(
+      { provider: meta.id, body },
+      {
+        onSuccess: (result) => {
+          if (result.ok) toast.success(result.message);
+          else toast.error(result.message);
+        },
+        onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not test the connection.'),
       },
     );
   }
@@ -150,6 +182,20 @@ function CredentialCard({ meta, current }: { meta: ProviderMeta; current: SttCre
           />
         </div>
       ))}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={apiKey.trim().length === 0 || testMutation.isPending} onClick={handleTest}>
+          {testMutation.isPending ? <Spinner /> : <IconPlugConnected aria-hidden className="size-4" />}
+          Test connection
+        </Button>
+        {testMutation.data ? (
+          <span className={cn('flex items-center gap-1.5 text-xs', testMutation.data.ok ? 'text-success' : 'text-destructive')}>
+            {testMutation.data.ok ? <IconCircleCheck aria-hidden className="size-4" /> : <IconCircleX aria-hidden className="size-4" />}
+            {testMutation.data.message}
+          </span>
+        ) : null}
+      </div>
+      <p className="text-muted-foreground text-xs">Tests the key typed above (never the saved key) &mdash; independent of Save.</p>
 
       <div className="flex items-center gap-2">
         <Switch id={`${uid}-enabled`} checked={enabled} onCheckedChange={setEnabled} />

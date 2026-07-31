@@ -16,12 +16,38 @@ const TENANT_ADMIN_RULES: PermissionRule[] = [
 ];
 
 describe('NAV_ENTRIES (capabilities-matrix section 3, reviewed 2026-07-04; playground tier)', () => {
-  it('covers the full 43-route map across the four tiers', () => {
-    expect(NAV_ENTRIES).toHaveLength(43);
+  it('covers the full 45-route map across the four tiers (TASK-586 Lane J adds /ai-providers)', () => {
+    expect(NAV_ENTRIES).toHaveLength(45);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '10-19')).toHaveLength(17);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '20-29')).toHaveLength(7);
-    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(14);
+    expect(NAV_ENTRIES.filter((entry) => entry.tier === '30-49')).toHaveLength(16);
     expect(NAV_ENTRIES.filter((entry) => entry.tier === '50-59')).toHaveLength(5);
+  });
+
+  it('wires /ai-providers (TASK-575 unified LLM/STT/TTS credentials) into nav, tenant-scoped and gated on GlobalSetting read/manage (TASK-586 Lane J)', () => {
+    const aiProviders = NAV_ENTRIES.find((entry) => entry.route === '/ai-providers');
+    expect(aiProviders?.label).toBe('AI providers');
+    expect(aiProviders?.tier).toBe('30-49');
+    expect(aiProviders?.required).toEqual([
+      ['read', 'GlobalSetting'],
+      ['manage', 'GlobalSetting'],
+    ]);
+    expect(aiProviders?.implemented).toBe(true);
+    // The three existing per-capability screens stay wired too.
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/ai-configuration')).toBe(true);
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/stt-config')).toBe(true);
+    expect(NAV_ENTRIES.some((entry) => entry.route === '/tts-config')).toBe(true);
+  });
+
+  it('adds /stt-config beside /tts-config, tenant-scoped and gated on TenantSttConfig read/manage (TASK-586 Lane E)', () => {
+    const sttConfig = NAV_ENTRIES.find((entry) => entry.route === '/stt-config');
+    expect(sttConfig?.label).toBe('STT configuration');
+    expect(sttConfig?.tier).toBe('30-49');
+    expect(sttConfig?.required).toEqual([
+      ['read', 'TenantSttConfig'],
+      ['manage', 'TenantSttConfig'],
+    ]);
+    expect(sttConfig?.implemented).toBe(true);
   });
 
   it('tiers the task-default surfaces: platform defaults global-only, tenant AI configuration tenant-scoped', () => {

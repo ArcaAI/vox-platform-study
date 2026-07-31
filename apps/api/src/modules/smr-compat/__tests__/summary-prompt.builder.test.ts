@@ -65,6 +65,32 @@ describe('buildSummaryPrompt', () => {
     const { system } = buildSummaryPrompt(baseSession());
     expect(system.toLowerCase()).toContain('json');
   });
+
+  it('injects v1 department-specific section guidance for the 6 non-medicine departments', () => {
+    const { system } = buildSummaryPrompt(baseSession(), { department: 'Surgery', visitType: 'New Referral' });
+    // Guidance derived from DEPT_VISIT_SCHEMAS[surgery:new_referral] field set.
+    expect(system).toContain('Department-specific documentation focus');
+    expect(system).toContain('Presenting Complaints');
+    expect(system).toContain('Fitness For Surgery');
+  });
+
+  it('normalizes the visit type before selecting the department template (Review → followup)', () => {
+    const { system } = buildSummaryPrompt(baseSession(), { department: 'Orthopedics', visitType: 'Review' });
+    expect(system).toContain('Department-specific documentation focus');
+    expect(system).toContain('Next Review Date');
+  });
+
+  it('keeps General/Medicine on the generic conversational path (no dept guidance)', () => {
+    const general = buildSummaryPrompt(baseSession(), { department: 'General', visitType: 'New Referral' });
+    expect(general.system).not.toContain('Department-specific documentation focus');
+    const medicine = buildSummaryPrompt(baseSession(), { department: 'Medicine', visitType: 'Follow-up' });
+    expect(medicine.system).not.toContain('Department-specific documentation focus');
+  });
+
+  it('adds no dept guidance for a department without a v1 template', () => {
+    const { system } = buildSummaryPrompt(baseSession(), { department: 'Cardiology', visitType: 'New Referral' });
+    expect(system).not.toContain('Department-specific documentation focus');
+  });
 });
 
 describe('buildPreSummaryPrompt', () => {

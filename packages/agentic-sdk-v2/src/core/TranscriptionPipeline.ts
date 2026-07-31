@@ -184,6 +184,9 @@ export class TranscriptionPipeline {
           ...(runtimeProvider === 'remote' && sttSocket ? { sttSocket } : {}),
           audio: {
             language: this.getSTTLanguage(),
+            // End-user language mode (TASK-587) — the backend resolves it per
+            // engine; the local path ignores it.
+            ...(this.config.stt.languageMode ? { languageMode: this.config.stt.languageMode } : {}),
           },
           features: {
             provider: runtimeProvider,
