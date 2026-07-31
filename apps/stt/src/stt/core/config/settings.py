@@ -322,6 +322,17 @@ class Settings(BaseSettings):
         default=4,
         description="CPU threads for whisper.cpp inference",
     )
+    whisper_cpp_max_audio_seconds: float = Field(
+        default=7.0,
+        description=(
+            "Max audio length (s) fed to whisper.cpp in one decode. The ml-en "
+            "code-switch fine-tune is accurate up to ~6-7s but truncates/garbles "
+            "on longer audio (VAD does not segment continuous clinical speech), so "
+            "longer utterances are split into <=this-many-second chunks at silence "
+            "troughs, decoded independently, and stitched. 0 disables chunking. "
+            "env WHISPER_CPP_MAX_AUDIO_SECONDS"
+        ),
+    )
     whisper_cpp_consultation_prompt_enabled: bool = Field(
         default=False,
         description=(
