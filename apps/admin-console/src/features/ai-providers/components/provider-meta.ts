@@ -75,7 +75,7 @@ const STT_PROVIDERS: readonly ProviderMeta[] = [
   {
     id: 'sarvam',
     label: 'Sarvam',
-    fields: [{ name: 'model', label: 'Model (optional)', placeholder: 'saaras:v3', store: 'extra' }],
+    fields: [{ name: 'model', label: 'Model (optional)', placeholder: 'saaras:v4', store: 'extra' }],
   },
   {
     id: 'openai',

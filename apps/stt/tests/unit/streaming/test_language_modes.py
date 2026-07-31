@@ -50,11 +50,12 @@ def test_code_switch_only_on_capable_engines() -> None:
 
 
 def test_resolve_code_switch_per_engine() -> None:
-    # Sarvam native: pin primary, no flags.
+    # Sarvam native: signal code_switching so the integration requests
+    # auto-detect (language_code="unknown") for the code-mixed audio.
     sarvam = resolve_mode_for_engine("ml-en", AiModelFormat.SARVAM)
     assert (sarvam.language, sarvam.code_switching, sarvam.streaming_english_gloss) == (
         "ml",
-        False,
+        True,
         False,
     )
     # Azure flag: pin primary + code_switching.

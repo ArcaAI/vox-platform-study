@@ -91,6 +91,16 @@ export const TENANT_FRONTEND_CONFIGS = [
     vad: true,
     voiceEnrollment: false,
     diarization: false,
+    // ArcaAI is a production-ready day-1 tenant and mirrors the Global tenant's
+    // realtime posture exactly: BACKEND is the default transcription pipeline and
+    // it is LOCKED so an impersonated doctor's per-user `workflowMode` cannot fall
+    // back to the browser-local pipeline (server-authoritative; see
+    // UserPreferencesService resolveEffectiveTranscriptionMode). Dual-capture
+    // (`captureRawAudio`) is enabled alongside the platform capability
+    // `enable-local-raw-capture`.
+    transcriptionMode: TranscriptionMode.BACKEND,
+    transcriptionModeLocked: true,
+    captureRawAudio: true,
     configJson: {},
   },
 ];

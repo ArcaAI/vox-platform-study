@@ -1,5 +1,6 @@
 import type { CorePrismaClient } from '../../../client';
 import { SEED_CUSTOMER_TENANT_IDS, SEED_DEPARTMENT_IDS } from './00-constants';
+import { ARCAAI_CLINICAL_TEMPLATE_IDS } from './07b-arcaai-clinical-templates';
 
 // Default tenant ID for seed data
 export const DEFAULT_TENANT_ID = '50000000-0000-0000-0000-000000000000';
@@ -337,75 +338,138 @@ export const DEFAULT_DEPARTMENTS = [
   },
 ];
 
-// Per-customer-tenant General Practice departments.
+// ArcaAI customer-tenant CLINICAL departments (TASK-592 Workstream D).
 //
 // The DEFAULT_DEPARTMENTS above all belong to the Global customer tenant
-// (DEFAULT_TENANT_ID). The ArcaAI customer tenant needs at least a GEN
-// department of its own so its non-exempt admins can satisfy the
-// role + department membership invariant enforced at login. Prompt IDs are
-// intentionally null here — they reference Global-tenant prompt templates.
+// (DEFAULT_TENANT_ID). The ArcaAI customer tenant carries the 7 v1 clinical
+// departments — Surgery, General Medicine, Rheumatology, Neurology,
+// Orthopedics, Hematology, Breast & Endocrine — each wired via the LEGACY
+// Department prompt-id columns (newPatientPromptId / revisitPromptId /
+// preSummaryPromptId, plain String, no FK) to its own APPROVED, per-visit-type
+// `PromptTemplate`s owned by the ArcaAI tenant (see
+// 07b-arcaai-clinical-templates.ts).
+//
+// These departments deliberately carry NO default `DepartmentAgent`, so the
+// prompt resolver skips tier-1a and uses these visit-type-faithful legacy
+// columns (an agent resolves ONE template per department and ignores visit
+// type, which would collapse v1's new-referral vs follow-up split).
+//
+// GEN_ARCAAI is RETAINED (existing consultation / user / DNA / audit seed
+// references) and REPURPOSED as General Medicine; the former CARD_ARCAAI /
+// ER_ARCAAI demo departments were retired.
 //
 // Exported for testing purposes.
-export const CUSTOMER_TENANT_GEN_DEPARTMENTS = [
+export const ARCAAI_CLINICAL_DEPARTMENTS = [
   {
     id: SEED_DEPARTMENT_IDS.GEN_ARCAAI,
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
     code: 'GEN',
-    name: 'General Practice',
-    description: 'General medical consultations and primary care',
-    defaultSummaryTemplate: 'SOAP',
-    preSummaryPromptId: null,
-    newPatientPromptId: null,
-    revisitPromptId: null,
+    name: 'General Medicine',
+    description: 'Internal medicine and general medical consultations',
+    defaultSummaryTemplate: 'Medicine-Structured',
+    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_FOLLOWUP,
     promptConfig: {
       contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
-      preferredSections: ['Chief Complaint', 'HPI', 'Assessment', 'Plan'],
+      preferredSections: ['Presenting Complaints', 'Past History', 'Drug History', 'General Examination & Vitals', 'Current Diagnosis', 'Plan of Care'],
       abbreviationDensity: 'low',
     },
   },
-];
-
-// Per-customer-tenant specialty departments.
-//
-// In addition to the bare GEN above, the ArcaAI customer tenant gets a small
-// realistic specialty catalog — Cardiology (`CARD`) and Emergency (`ER`) —
-// so cross-tenant demos look like real hospitals rather than empty shells.
-// Shapes mirror the Global-tenant `CARD`/`ER` entries in DEFAULT_DEPARTMENTS,
-// but prompt IDs are intentionally null (they reference Global-tenant prompt
-// templates).
-//
-// Exported for testing purposes.
-export const CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS = [
   {
-    id: SEED_DEPARTMENT_IDS.CARD_ARCAAI,
+    id: SEED_DEPARTMENT_IDS.SURG_ARCAAI,
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    code: 'CARD',
-    name: 'Cardiology',
-    description: 'Heart and cardiovascular system specialists',
-    defaultSummaryTemplate: 'SOAP',
-    preSummaryPromptId: null,
-    newPatientPromptId: null,
-    revisitPromptId: null,
+    code: 'SURG',
+    name: 'Surgery',
+    description: 'General surgery and surgical specialties',
+    defaultSummaryTemplate: 'Surgery-Structured',
+    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_FOLLOWUP,
     promptConfig: {
-      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'ECG Results'],
-      preferredSections: ['Chief Complaint', 'Cardiac History', 'Physical Examination', 'Investigations', 'Assessment', 'Plan'],
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+      preferredSections: ['BIODATA', 'Presenting Complaints', 'Comorbidities', 'Investigations', 'Current Diagnosis', 'Plan of Care', 'Fitness for Surgery'],
       abbreviationDensity: 'medium',
     },
   },
   {
-    id: SEED_DEPARTMENT_IDS.ER_ARCAAI,
+    id: SEED_DEPARTMENT_IDS.RHEUM_ARCAAI,
     tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
-    code: 'ER',
-    name: 'Emergency',
-    description: 'Emergency and urgent care services',
-    defaultSummaryTemplate: 'ER-Triage',
-    preSummaryPromptId: null,
-    newPatientPromptId: null,
-    revisitPromptId: null,
+    code: 'RHEUM',
+    name: 'Rheumatology',
+    description: 'Autoimmune and musculoskeletal disease specialists',
+    defaultSummaryTemplate: 'Rheumatology-Structured',
+    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_FOLLOWUP,
     promptConfig: {
-      contextVariables: ['Triage Assessment', 'Recent Vitals', 'Allergies'],
-      preferredSections: ['Chief Complaint', 'Triage Category', 'HPI', 'Examination', 'Investigations', 'Disposition'],
-      abbreviationDensity: 'high',
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+      preferredSections: ['Symptoms', 'Current Issues', 'Local Examination', 'Impression', 'Plan', 'Lab Reports'],
+      abbreviationDensity: 'medium',
+    },
+  },
+  {
+    id: SEED_DEPARTMENT_IDS.NEUR_ARCAAI,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    code: 'NEUR',
+    name: 'Neurology',
+    description: 'Brain and nervous system specialists',
+    defaultSummaryTemplate: 'Neurology-Structured',
+    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_FOLLOWUP,
+    promptConfig: {
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'Neurological Assessment'],
+      preferredSections: ['Chief Complaint', 'Neurological History', 'Examination', 'Investigations', 'Assessment', 'Plan'],
+      abbreviationDensity: 'medium',
+    },
+  },
+  {
+    id: SEED_DEPARTMENT_IDS.ORTH_ARCAAI,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    code: 'ORTH',
+    name: 'Orthopedics',
+    description: 'Musculoskeletal system and bone specialists',
+    defaultSummaryTemplate: 'Orthopedics-Structured',
+    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_REVIEW,
+    promptConfig: {
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals', 'Imaging Results'],
+      preferredSections: ['Chief Complaint', 'History', 'MSK Examination', 'Imaging', 'Assessment', 'Plan'],
+      abbreviationDensity: 'medium',
+    },
+  },
+  {
+    id: SEED_DEPARTMENT_IDS.HEME_ARCAAI,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    code: 'HEME',
+    name: 'Hematology',
+    description: 'Blood disorders and hematology-oncology specialists',
+    defaultSummaryTemplate: 'Hematology-Structured',
+    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_REVISIT,
+    promptConfig: {
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+      preferredSections: ['Presenting Complaints', 'Treatment History', 'Investigations', 'Diagnosis', 'Plan of Care'],
+      abbreviationDensity: 'medium',
+    },
+  },
+  {
+    id: SEED_DEPARTMENT_IDS.BREN_ARCAAI,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    code: 'BREN',
+    name: 'Breast & Endocrine',
+    description: 'Breast and endocrine surgery specialists',
+    defaultSummaryTemplate: 'BreastEndocrine-Structured',
+    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_NEW_REFERRAL,
+    revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_FOLLOWUP,
+    promptConfig: {
+      contextVariables: ['PREVIOUS CASE NOTES SUMMARY', 'Recent Vitals'],
+      preferredSections: ['Patient Demographics', 'Presenting Complaints', 'Physical Examination', 'Investigations', 'Diagnosis', 'Plan of Care'],
+      abbreviationDensity: 'medium',
     },
   },
 ];
@@ -414,7 +478,7 @@ export const seedDepartment = async (client: CorePrismaClient) => {
   console.log('Seeding departments...');
 
   try {
-    const allDepartments = [...DEFAULT_DEPARTMENTS, ...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS];
+    const allDepartments = [...DEFAULT_DEPARTMENTS, ...ARCAAI_CLINICAL_DEPARTMENTS];
     for (const dept of allDepartments) {
       await client.department.upsert({
         where: { id: dept.id },

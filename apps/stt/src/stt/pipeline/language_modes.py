@@ -72,7 +72,7 @@ _SARVAM_LANGUAGES: frozenset[str] = frozenset(
 )
 
 _CODE_SWITCH_CAPABILITY: dict[AiModelFormat, CodeSwitchCapability] = {
-    # Sarvam saaras:v3 handles bilingual audio natively (sarvam_loader.py).
+    # Sarvam saaras:v4 handles bilingual audio natively (sarvam_loader.py).
     AiModelFormat.SARVAM: "native",
     # Azure Speech: code_switching -> AutoDetectSourceLanguageConfig (azure_asr.py).
     AiModelFormat.AZURE_SPEECH: "flag",
@@ -189,7 +189,7 @@ def build_single_language_prompt(language: str) -> str:
 # already code-switches natively. Disabled while we evaluate quality. whisper.cpp
 # STILL serves the modes (no cloud fallback); it just resolves to the language
 # settings with NO prompt. Flip to True to re-enable the priming-prompt path.
-WHISPER_CPP_PRIMING_PROMPT_ENABLED = False
+WHISPER_CPP_PRIMING_PROMPT_ENABLED = True
 
 
 def _is_prompt_capable(engine: AiModelFormat) -> bool:
@@ -335,9 +335,13 @@ def resolve_mode_for_engine(mode_id: str, engine: AiModelFormat) -> ResolvedInfe
             streaming_english_gloss=False,
             initial_prompt=pair_prompt,
         )
-    # native — the model handles the mix; pin the primary language.
+    # native — the model handles the mix itself (Sarvam Saaras). Signal
+    # code_switching so the Sarvam integration requests code-mixed output
+    # (mode="codemix"). `language` is retained (the primary, e.g. "ml") and the
+    # Sarvam call pins it as the normalized language_code ("ml" -> "ml-IN")
+    # alongside codemix mode.
     return ResolvedInference(
-        language=mode.primary_language, code_switching=False, streaming_english_gloss=False
+        language=mode.primary_language, code_switching=True, streaming_english_gloss=False
     )
 
 

@@ -13,7 +13,12 @@
  *   70000000-xxxx  →  Users (0001-0009 admin, 0010-0029 clinical, 0030+ service)
  *   70000000-xxxx  →  Departments (separate entity, same prefix range but dept block)
  *   71000000-xxxx  →  Prompt Templates
+ *   71000000-…-0001-0000000000XX  →  ArcaAI-tenant prompt templates
+ *                     (001-004 demo cross-tenant set; 010-024 = the 15
+ *                     ArcaAI clinical templates — TASK-592 Workstream D)
  *   72000000-xxxx  →  Prompt Versions
+ *   72000000-…-0001-0000000000XX  →  ArcaAI-tenant prompt versions (mirror of
+ *                     the template slot above)
  *   73000000-xxxx  →  DNA Writing Style Reports
  *   74000000-xxxx  →  DNA Writing Style Versions
  *   75000000-xxxx  →  DNA Usage Records
@@ -165,6 +170,17 @@ export const SEED_USER_IDS = {
   // ArcaAI needs its own non-admin clinical users to impersonate.
   ARCAAI_DOCTOR: '70000000-0000-0000-0000-000000000040',
   ARCAAI_NURSE: '70000000-0000-0000-0000-000000000041',
+  // One DOCTOR per ArcaAI clinical department (day-1 production coverage).
+  // ARCAAI_DOCTOR (Olivia Tan, above) covers General Medicine (GEN); these six
+  // cover the remaining ArcaAI departments so every ArcaAI department has a
+  // resident clinician. Primary department resolves by (tenantId, code) via
+  // PRIMARY_DEPARTMENT_CODE_BY_USERNAME in 91-user.ts.
+  ARCAAI_DOCTOR_SURG: '70000000-0000-0000-0000-000000000042',
+  ARCAAI_DOCTOR_RHEUM: '70000000-0000-0000-0000-000000000043',
+  ARCAAI_DOCTOR_NEUR: '70000000-0000-0000-0000-000000000044',
+  ARCAAI_DOCTOR_ORTH: '70000000-0000-0000-0000-000000000045',
+  ARCAAI_DOCTOR_HEME: '70000000-0000-0000-0000-000000000046',
+  ARCAAI_DOCTOR_BREN: '70000000-0000-0000-0000-000000000047',
 } as const;
 
 // =============================================================================
@@ -190,20 +206,32 @@ export const SEED_DEPARTMENT_IDS = {
   DIET: '70000000-0000-0000-0000-000000000016',
   NEPH: '70000000-0000-0000-0000-000000000017',
   SONC: '70000000-0000-0000-0000-000000000018',
-  // Per-customer-tenant General Practice departments.
-  // The 18 departments above belong to the Global customer tenant
-  // (SEED_TENANT_ID, 50000000-…0000). The ArcaAI customer tenant needs its
-  // own GEN department so its non-exempt admins can satisfy the
-  // role + department membership invariant enforced at login.
+  // ArcaAI customer-tenant CLINICAL departments (TASK-592 Workstream D).
+  //
+  // The ArcaAI tenant carries the 7 v1 clinical departments — Surgery,
+  // General Medicine, Rheumatology, Neurology, Orthopedics, Hematology,
+  // Breast & Endocrine — each wired via the LEGACY Department prompt-id
+  // columns (newPatientPromptId / revisitPromptId / preSummaryPromptId) to
+  // its own APPROVED, per-visit-type `PromptTemplate`s (see
+  // 07b-arcaai-clinical-templates.ts). These departments deliberately have NO
+  // default `DepartmentAgent`, so the prompt resolver skips tier-1a and uses
+  // the visit-type-faithful legacy columns (an agent resolves ONE template per
+  // department and ignores visit type, which would collapse the v1 new-referral
+  // vs follow-up split).
+  //
+  // GEN_ARCAAI is RETAINED (existing consultation / user / DNA / audit seed
+  // references point at it) and REPURPOSED as General Medicine. The former
+  // CARD_ARCAAI / ER_ARCAAI demo departments were retired.
+  //
+  // 4th UUID group 0001 = ArcaAI tenant; trailing slot 001 = General Medicine
+  // (kept), 010-015 = the six new specialty departments.
   GEN_ARCAAI: '70000000-0000-0000-0001-000000000001',
-  // Enrich the ArcaAI customer tenant with a small
-  // realistic specialty catalog (Cardiology + Emergency) alongside the
-  // existing GEN so cross-tenant demos look real. The 4th UUID group encodes
-  // the tenant (0001=ArcaAI); the trailing group encodes the department slot
-  // within that tenant (001=GEN, 002=CARD, 003=ER). Prompt IDs stay null on
-  // these rows (they reference Global-tenant templates).
-  CARD_ARCAAI: '70000000-0000-0000-0001-000000000002',
-  ER_ARCAAI: '70000000-0000-0000-0001-000000000003',
+  SURG_ARCAAI: '70000000-0000-0000-0001-000000000010',
+  RHEUM_ARCAAI: '70000000-0000-0000-0001-000000000011',
+  NEUR_ARCAAI: '70000000-0000-0000-0001-000000000012',
+  ORTH_ARCAAI: '70000000-0000-0000-0001-000000000013',
+  HEME_ARCAAI: '70000000-0000-0000-0001-000000000014',
+  BREN_ARCAAI: '70000000-0000-0000-0001-000000000015',
 } as const;
 
 // =============================================================================

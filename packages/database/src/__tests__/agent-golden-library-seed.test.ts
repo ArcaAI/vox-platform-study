@@ -13,9 +13,6 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_DEPARTMENTS } from '../prisma/db_main/seed/04-department';
 import { DEFAULT_PROMPT_TEMPLATES } from '../prisma/db_main/seed/07-prompt-template';
 import {
-  ARCAAI_AGENT_TEMPLATE_SNAPSHOTS,
-  ARCAAI_AGENT_TEMPLATE_VERSIONS,
-  ARCAAI_TENANT_AGENTS,
   GLOBAL_TENANT_AGENTS,
   GOLDEN_AGENTS,
   GOLDEN_DEPARTMENTS,
@@ -23,7 +20,7 @@ import {
   GOLDEN_PROMPT_VERSIONS,
   GOLDEN_TEMPLATE_SOURCE_BY_CODE,
 } from '../prisma/db_main/seed/07a-agent-golden-library';
-import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../prisma/db_main/seed/00-constants';
+import { SEED_TENANT_ID, SYSTEM_TENANT_ID } from '../prisma/db_main/seed/00-constants';
 
 const fixtureTemplateById = new Map(DEFAULT_PROMPT_TEMPLATES.map((t) => [t.id, t]));
 const goldenTemplateById = new Map(GOLDEN_PROMPT_TEMPLATES.map((t) => [t.id, t]));
@@ -140,28 +137,13 @@ describe('Agent Golden Library seed (TASK-548)', () => {
       });
     });
 
-    it('ArcaAI gets locked clones for its 3 departments backed by APPROVED content snapshots', () => {
-      expect(ARCAAI_TENANT_AGENTS).toHaveLength(3);
-      expect(ARCAAI_AGENT_TEMPLATE_SNAPSHOTS).toHaveLength(3);
-      expect(ARCAAI_AGENT_TEMPLATE_VERSIONS).toHaveLength(3);
-
-      const snapshotById = new Map(ARCAAI_AGENT_TEMPLATE_SNAPSHOTS.map((t) => [t.id, t]));
-      ARCAAI_TENANT_AGENTS.forEach((agent) => {
-        expect(agent.tenantId).toBe(SEED_CUSTOMER_TENANT_IDS.ARCAAI);
-        expect(agent.templateLocked).toBe(true);
-        expect(agent.sourceAgentTemplateSlug).toBe(agent.slug);
-        expect(agent.metaData).toEqual({ sourceTemplateVersionNumber: 1 });
-        const snapshot = snapshotById.get(agent.promptTemplateId);
-        expect(snapshot).toBeDefined();
-        expect(snapshot?.status).toBe('APPROVED');
-        // Snapshot content is a verbatim copy of the golden source content.
-        const source = fixtureTemplateById.get(snapshot!.sourceFixtureTemplateId);
-        expect(snapshot?.content).toBe(source?.content);
-      });
-    });
+    // TASK-592 Workstream D: the ArcaAI fixture tenant no longer receives
+    // seeded default agents (its clinical departments resolve via the
+    // visit-type-faithful legacy prompt-id columns), so the golden library only
+    // clones into the Global fixture tenant now.
 
     it('every seeded tenant keeps exactly one default agent per department', () => {
-      const all = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS, ...ARCAAI_TENANT_AGENTS];
+      const all = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS];
       const defaultsByDept = new Map<string, number>();
       all.forEach((agent) => {
         if (!agent.isDefault) return;
@@ -177,7 +159,7 @@ describe('Agent Golden Library seed (TASK-548)', () => {
     });
 
     it('agent ids are unique and use the reserved 78… block', () => {
-      const all = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS, ...ARCAAI_TENANT_AGENTS];
+      const all = [...GOLDEN_AGENTS, ...GLOBAL_TENANT_AGENTS];
       const ids = all.map((a) => a.id);
       expect(new Set(ids).size).toBe(ids.length);
       ids.forEach((id) => expect(id.startsWith('78000000-')).toBe(true));

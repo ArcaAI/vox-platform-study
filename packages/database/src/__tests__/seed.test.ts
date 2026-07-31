@@ -21,12 +21,12 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { DEFAULT_POLICIES, PolicyScope } from '../prisma/db_main/seed/01-policy';
 import { SYSTEM_ROLES, TENANT_EXTENDABLE_ROLES, DEFAULT_ROLES } from '../prisma/db_main/seed/03-role';
+import { DEFAULT_DEPARTMENTS, DEFAULT_TENANT_ID, ARCAAI_CLINICAL_DEPARTMENTS } from '../prisma/db_main/seed/04-department';
 import {
-  DEFAULT_DEPARTMENTS,
-  DEFAULT_TENANT_ID,
-  CUSTOMER_TENANT_GEN_DEPARTMENTS,
-  CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS,
-} from '../prisma/db_main/seed/04-department';
+  ARCAAI_CLINICAL_TEMPLATES,
+  ARCAAI_CLINICAL_VERSIONS,
+  ARCAAI_CLINICAL_TEMPLATE_IDS,
+} from '../prisma/db_main/seed/07b-arcaai-clinical-templates';
 import {
   DEFAULT_AI_MODELS,
   DEFAULT_ASR_PIPELINES,
@@ -44,7 +44,12 @@ import {
 } from '../prisma/db_main/seed/06-stt';
 import { ALL_SETTINGS, PLATFORM_SETTINGS } from '../prisma/db_main/seed/11-global-setting';
 import { seedHarnessPolicy, SYSTEM_HARNESS_POLICY_SMR_DEFAULTS } from '../prisma/db_main/seed/13-harness-policy';
-import { seedPipelinePolicy, SYSTEM_PIPELINE_POLICY_DEFAULTS, DEMO_PIPELINE_POLICY_OVERRIDE } from '../prisma/db_main/seed/14-pipeline-policy';
+import {
+  seedPipelinePolicy,
+  SYSTEM_PIPELINE_POLICY_DEFAULTS,
+  DEMO_PIPELINE_POLICY_OVERRIDE,
+  ARCAAI_PIPELINE_POLICY_OVERRIDE,
+} from '../prisma/db_main/seed/14-pipeline-policy';
 import { TENANT_FRONTEND_CONFIGS } from '../prisma/db_main/seed/05-tenant';
 import { DEFAULT_PROMPT_TEMPLATES, DEFAULT_PROMPT_VERSIONS } from '../prisma/db_main/seed/07-prompt-template';
 import {
@@ -84,17 +89,23 @@ describe('Seed Constants (00-constants)', () => {
     expect(SEED_USER_IDS.SYSTEM).toBe(SYSTEM_USER_ID);
   });
 
-  it('should define 21 department IDs (18 Global-tenant + 1 ArcaAI GEN + 2 ArcaAI specialty, Phase F)', () => {
-    expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(21);
+  it('should define 25 department IDs (18 Global-tenant + 7 ArcaAI clinical, TASK-592 Workstream D)', () => {
+    expect(Object.keys(SEED_DEPARTMENT_IDS).length).toBe(25);
   });
 
-  it('should define a per-customer-tenant GEN department ID for the ArcaAI tenant (Phase F)', () => {
+  it('should define the 7 ArcaAI clinical department IDs (GEN retained as General Medicine + 6 specialties)', () => {
     expect(SEED_DEPARTMENT_IDS.GEN_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.SURG_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.RHEUM_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.NEUR_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.ORTH_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.HEME_ARCAAI).toBeDefined();
+    expect(SEED_DEPARTMENT_IDS.BREN_ARCAAI).toBeDefined();
   });
 
-  it('should define CARD + ER specialty department IDs for the ArcaAI tenant', () => {
-    expect(SEED_DEPARTMENT_IDS.CARD_ARCAAI).toBeDefined();
-    expect(SEED_DEPARTMENT_IDS.ER_ARCAAI).toBeDefined();
+  it('should have retired the ArcaAI CARD + ER demo department IDs (TASK-592 Workstream D)', () => {
+    expect((SEED_DEPARTMENT_IDS as Record<string, string>).CARD_ARCAAI).toBeUndefined();
+    expect((SEED_DEPARTMENT_IDS as Record<string, string>).ER_ARCAAI).toBeUndefined();
   });
 
   it('should include DIET, NEPH, SONC department IDs', () => {
@@ -675,45 +686,126 @@ describe('Department Seed Data', () => {
 });
 
 // =============================================================================
-// CUSTOMER-TENANT DEPARTMENT CATALOG
+// ARCAAI CLINICAL DEPARTMENT CATALOG (TASK-592 Workstream D)
 // =============================================================================
 
-describe('Customer-Tenant Department Seed Data', () => {
-  const customerTenantIds = [SEED_CUSTOMER_TENANT_IDS.ARCAAI];
+describe('ArcaAI Clinical Department Seed Data', () => {
+  const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
 
-  it('should define 2 specialty rows (CARD + ER for the ArcaAI customer tenant)', () => {
-    expect(CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS.length).toBe(2);
+  it('should define the 7 v1 clinical departments for the ArcaAI tenant', () => {
+    expect(ARCAAI_CLINICAL_DEPARTMENTS.length).toBe(7);
+    const codes = ARCAAI_CLINICAL_DEPARTMENTS.map((d) => d.code).sort();
+    expect(codes).toEqual(['BREN', 'GEN', 'HEME', 'NEUR', 'ORTH', 'RHEUM', 'SURG'].sort());
   });
 
-  it('should add CARD and ER to every customer tenant alongside the existing GEN', () => {
-    customerTenantIds.forEach((tenantId) => {
-      const codes = CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS.filter((d) => d.tenantId === tenantId).map((d) => d.code);
-      expect(codes).toEqual(expect.arrayContaining(['CARD', 'ER']));
+  it('should repurpose the retained GEN_ARCAAI id as General Medicine', () => {
+    const gen = ARCAAI_CLINICAL_DEPARTMENTS.find((d) => d.id === SEED_DEPARTMENT_IDS.GEN_ARCAAI);
+    expect(gen).toBeDefined();
+    expect(gen?.code).toBe('GEN');
+    expect(gen?.name).toBe('General Medicine');
+  });
+
+  it('should bind every ArcaAI clinical department to the ArcaAI tenant', () => {
+    ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
+      expect(dept.tenantId).toBe(ARCAAI);
     });
   });
 
-  it('should keep prompt IDs null on customer-tenant departments (they reference Global templates)', () => {
-    [...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].forEach((dept) => {
-      expect(dept.preSummaryPromptId).toBeNull();
-      expect(dept.newPatientPromptId).toBeNull();
-      expect(dept.revisitPromptId).toBeNull();
-    });
-  });
-
-  it('should have unique department IDs across all customer-tenant rows', () => {
-    const ids = [...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].map((d) => d.id);
+  it('should have unique, valid-UUID department IDs across all ArcaAI clinical rows', () => {
+    const ids = ARCAAI_CLINICAL_DEPARTMENTS.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
+    ids.forEach((id) => expect(id).toMatch(UUID_REGEX));
   });
 
-  it('should have valid UUID format for all customer-tenant department IDs', () => {
-    [...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].forEach((dept) => {
-      expect(dept.id).toMatch(UUID_REGEX);
+  it('should wire all three prompt-id columns on every ArcaAI clinical department', () => {
+    ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
+      expect(dept.preSummaryPromptId).not.toBeNull();
+      expect(dept.newPatientPromptId).not.toBeNull();
+      expect(dept.revisitPromptId).not.toBeNull();
+      // new-referral and revisit MUST differ — the visit-type split is the
+      // whole reason legacy columns are used instead of a single agent.
+      expect(dept.newPatientPromptId).not.toBe(dept.revisitPromptId);
     });
   });
 
-  it('should bind every customer-tenant department to a known customer tenant id', () => {
-    [...CUSTOMER_TENANT_GEN_DEPARTMENTS, ...CUSTOMER_TENANT_SPECIALTY_DEPARTMENTS].forEach((dept) => {
-      expect(customerTenantIds).toContain(dept.tenantId);
+  it('should point every ArcaAI clinical department prompt-id column at an APPROVED ArcaAI template', () => {
+    // Mirrors the resolver tier-1 legacy contract: Department.{preSummary,new,revisit}PromptId
+    // must resolve to an APPROVED PromptTemplate owned by the ArcaAI tenant.
+    const approvedById = new Map(ARCAAI_CLINICAL_TEMPLATES.filter((t) => t.status === 'APPROVED').map((t) => [t.id, t]));
+    ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
+      [dept.preSummaryPromptId, dept.newPatientPromptId, dept.revisitPromptId].forEach((promptId) => {
+        const tpl = approvedById.get(promptId);
+        expect(tpl, `${dept.code} → ${promptId} must be an APPROVED ArcaAI template`).toBeDefined();
+        expect(tpl?.tenantId).toBe(ARCAAI);
+      });
+    });
+  });
+
+  it('should share the single pre-summary template across all ArcaAI clinical departments', () => {
+    const preSummaryIds = new Set(ARCAAI_CLINICAL_DEPARTMENTS.map((d) => d.preSummaryPromptId));
+    expect(preSummaryIds.size).toBe(1);
+    expect([...preSummaryIds][0]).toBe(ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+  });
+});
+
+// =============================================================================
+// ARCAAI CLINICAL PROMPT LIBRARY (TASK-592 Workstream D)
+// =============================================================================
+
+describe('ArcaAI Clinical Prompt Library Seed Data', () => {
+  const ARCAAI = SEED_CUSTOMER_TENANT_IDS.ARCAAI;
+
+  it('should define 15 templates (14 dept × visit-type + 1 shared pre-summary)', () => {
+    expect(ARCAAI_CLINICAL_TEMPLATES.length).toBe(15);
+  });
+
+  it('should own every template + version by the ArcaAI tenant', () => {
+    ARCAAI_CLINICAL_TEMPLATES.forEach((t) => expect(t.tenantId).toBe(ARCAAI));
+    ARCAAI_CLINICAL_VERSIONS.forEach((v) => expect(v.tenantId).toBe(ARCAAI));
+  });
+
+  it('should seed every template APPROVED, SUMMARY, and pinned at approvedVersionNumber 1', () => {
+    ARCAAI_CLINICAL_TEMPLATES.forEach((t) => {
+      expect(t.status).toBe('APPROVED');
+      expect(t.category).toBe('SUMMARY');
+      expect(t.currentVersionNumber).toBe(1);
+      expect(t.approvedVersionNumber).toBe(1);
+    });
+  });
+
+  it('should scope the 14 department templates DEPARTMENT_DEFAULT and the pre-summary TENANT_DEFAULT', () => {
+    const preSummary = ARCAAI_CLINICAL_TEMPLATES.find((t) => t.id === ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+    expect(preSummary?.scope).toBe('TENANT_DEFAULT');
+    expect(preSummary?.departmentId).toBeNull();
+    ARCAAI_CLINICAL_TEMPLATES.filter((t) => t.id !== ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY).forEach((t) => {
+      expect(t.scope).toBe('DEPARTMENT_DEFAULT');
+      expect(t.departmentId).not.toBeNull();
+    });
+  });
+
+  it('should carry non-empty verbatim content on every template', () => {
+    ARCAAI_CLINICAL_TEMPLATES.forEach((t) => {
+      expect(typeof t.content).toBe('string');
+      expect(t.content.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('should have unique template ids, all in the ArcaAI 71…-0001- block', () => {
+    const ids = ARCAAI_CLINICAL_TEMPLATES.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    ids.forEach((id) => {
+      expect(id).toMatch(UUID_REGEX);
+      expect(id.startsWith('71000000-0000-0000-0001-')).toBe(true);
+    });
+  });
+
+  it('should have exactly one version per template with byte-identical content', () => {
+    expect(ARCAAI_CLINICAL_VERSIONS.length).toBe(ARCAAI_CLINICAL_TEMPLATES.length);
+    const contentById = new Map(ARCAAI_CLINICAL_TEMPLATES.map((t) => [t.id, t.content]));
+    ARCAAI_CLINICAL_VERSIONS.forEach((v) => {
+      expect(v.versionNumber).toBe(1);
+      expect(v.content).toBe(contentById.get(v.promptTemplateId));
+      expect(v.id.startsWith('72000000-0000-0000-0001-')).toBe(true);
     });
   });
 });
@@ -2621,15 +2713,24 @@ describe('Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
     expect(DEMO_PIPELINE_POLICY_OVERRIDE.harnessEnabled).toBe(true);
   });
 
-  it('creates BOTH the SYSTEM default + demo override rows (each with a beforeJson=null WORM change)', async () => {
-    const { client, created, changes } = makeMockClient({ [SYSTEM_TENANT_ID]: null, [SEED_TENANT_ID]: null });
+  it('exposes the ArcaAI-tenant override that routes ArcaAI through the harness', () => {
+    expect(ARCAAI_PIPELINE_POLICY_OVERRIDE.harnessEnabled).toBe(true);
+  });
+
+  it('creates the SYSTEM default + demo override + ArcaAI override rows (each with a beforeJson=null WORM change)', async () => {
+    const { client, created, changes } = makeMockClient({
+      [SYSTEM_TENANT_ID]: null,
+      [SEED_TENANT_ID]: null,
+      [SEED_CUSTOMER_TENANT_IDS.ARCAAI]: null,
+    });
     const result = await seedPipelinePolicy(client as never);
 
     expect(result.success).toBe(true);
     expect(result.system).toBe('created');
     expect(result.demo).toBe('created');
+    expect(result.arcaai).toBe('created');
 
-    expect(client.pipelinePolicy.create).toHaveBeenCalledTimes(2);
+    expect(client.pipelinePolicy.create).toHaveBeenCalledTimes(3);
     const systemRow = created.find((c) => c.data.tenantId === SYSTEM_TENANT_ID)!.data;
     expect(systemRow.scope).toBe('TENANT');
     expect(systemRow.scopeId ?? null).toBeNull();
@@ -2640,38 +2741,49 @@ describe('Phase 5 — seedPipelinePolicy (cascade defaults + WORM)', () => {
     expect(demoRow.scope).toBe('TENANT');
     expect(demoRow.harnessEnabled).toBe(true);
 
+    const arcaaiRow = created.find((c) => c.data.tenantId === SEED_CUSTOMER_TENANT_IDS.ARCAAI)!.data;
+    expect(arcaaiRow.scope).toBe('TENANT');
+    expect(arcaaiRow.scopeId ?? null).toBeNull();
+    expect(arcaaiRow.harnessEnabled).toBe(true);
+
     // One WORM change per created row, before=null (creation), changedBy=SYSTEM.
-    expect(client.pipelinePolicyChange.create).toHaveBeenCalledTimes(2);
+    expect(client.pipelinePolicyChange.create).toHaveBeenCalledTimes(3);
     for (const change of changes) {
       expect(change.data.beforeJson).toBeNull();
       expect(change.data.changedBy).toBe(SYSTEM_USER_ID);
     }
     const demoChange = changes.find((c) => c.data.tenantId === SEED_TENANT_ID)!.data;
     expect((demoChange.afterJson as Record<string, unknown>).harnessEnabled).toBe(true);
+    const arcaaiChange = changes.find((c) => c.data.tenantId === SEED_CUSTOMER_TENANT_IDS.ARCAAI)!.data;
+    expect((arcaaiChange.afterJson as Record<string, unknown>).harnessEnabled).toBe(true);
   });
 
-  it('is idempotent — no write/WORM when both rows already exist', async () => {
+  it('is idempotent — no write/WORM when all rows already exist', async () => {
     const { client } = makeMockClient({
       [SYSTEM_TENANT_ID]: { id: 'sys', tenantId: SYSTEM_TENANT_ID, scope: 'TENANT', harnessEnabled: false },
       [SEED_TENANT_ID]: { id: 'demo', tenantId: SEED_TENANT_ID, scope: 'TENANT', harnessEnabled: true },
+      [SEED_CUSTOMER_TENANT_IDS.ARCAAI]: { id: 'arcaai', tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI, scope: 'TENANT', harnessEnabled: true },
     });
     const result = await seedPipelinePolicy(client as never);
 
     expect(result.system).toBe('noop');
     expect(result.demo).toBe('noop');
+    expect(result.arcaai).toBe('noop');
     expect(client.pipelinePolicy.create).not.toHaveBeenCalled();
     expect(client.pipelinePolicyChange.create).not.toHaveBeenCalled();
   });
 
-  it('creates ONLY the missing row when the other already exists (demo present, SYSTEM absent)', async () => {
+  it('creates ONLY the missing row when the others already exist (demo + ArcaAI present, SYSTEM absent)', async () => {
     const { client, created } = makeMockClient({
       [SYSTEM_TENANT_ID]: null,
       [SEED_TENANT_ID]: { id: 'demo', tenantId: SEED_TENANT_ID, scope: 'TENANT', harnessEnabled: true },
+      [SEED_CUSTOMER_TENANT_IDS.ARCAAI]: { id: 'arcaai', tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI, scope: 'TENANT', harnessEnabled: true },
     });
     const result = await seedPipelinePolicy(client as never);
 
     expect(result.system).toBe('created');
     expect(result.demo).toBe('noop');
+    expect(result.arcaai).toBe('noop');
     expect(client.pipelinePolicy.create).toHaveBeenCalledTimes(1);
     expect(created[0].data.tenantId).toBe(SYSTEM_TENANT_ID);
   });

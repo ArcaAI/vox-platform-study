@@ -1,5 +1,5 @@
 import type { CorePrismaClient } from '../../../client';
-import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
+import { SEED_CUSTOMER_TENANT_IDS, SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants';
 
 /**
  * PipelinePolicy Seed (Realtime cascade)
@@ -21,6 +21,12 @@ import { SEED_TENANT_ID, SYSTEM_TENANT_ID, SYSTEM_USER_ID } from './00-constants
  *     `harnessEnabled = true` so the clinical-workspace walkthrough keeps routing
  *     through the documentation harness after the UI hard-code is removed. The
  *     other toggles stay NULL (inherit the SYSTEM default).
+ *
+ *  3. ArcaAI-tenant OVERRIDE (`SEED_CUSTOMER_TENANT_IDS.ARCAAI`) — ArcaAI is a
+ *     production-ready day-1 tenant and mirrors the Global tenant: it pins
+ *     `harnessEnabled = true` so its consultations route through the documentation
+ *     harness rather than the legacy pipeline. Other toggles stay NULL (inherit
+ *     the SYSTEM default).
  *
  * The migration also bootstraps the SYSTEM default (a fixed-id INSERT … ON CONFLICT
  * DO NOTHING), so on a migrated database this step is a no-op for the SYSTEM row;
@@ -59,8 +65,17 @@ export const DEMO_PIPELINE_POLICY_OVERRIDE = {
   dnaStyleEnabled: null,
 } as const satisfies PipelineToggleSnapshot;
 
+/** ArcaAI-tenant override — production day-1 tenant routes through the harness (others inherit). */
+export const ARCAAI_PIPELINE_POLICY_OVERRIDE = {
+  autoSummaryEnabled: null,
+  autoNerEnabled: null,
+  harnessEnabled: true,
+  dnaStyleEnabled: null,
+} as const satisfies PipelineToggleSnapshot;
+
 const SYSTEM_REASON = 'TASK-356 Phase 5 seed: SYSTEM pipeline cascade default (auto on, harness off — legacy platform behavior)';
 const DEMO_REASON = 'TASK-356 Phase 5 seed: demo-tenant harness override (preserves clinical-workspace harness after UI hard-code removal)';
+const ARCAAI_REASON = 'Seed: ArcaAI production day-1 harness override (routes ArcaAI consultations through the documentation harness, mirroring the Global tenant)';
 
 /** Full toggle snapshot from a (possibly partial) row, defaulting absent toggles to null. */
 function snapshotToggles(row: Record<string, unknown>): PipelineToggleSnapshot {
@@ -115,15 +130,17 @@ async function ensureTenantRow(
 }
 
 /**
- * Seed the SYSTEM pipeline-cascade default + the demo-tenant harness override.
+ * Seed the SYSTEM pipeline-cascade default + the demo-tenant and ArcaAI-tenant
+ * harness overrides.
  *
  * Returns the per-row action so callers/tests can assert behavior:
  *   - system: 'created' | 'noop'
  *   - demo:   'created' | 'noop'
+ *   - arcaai: 'created' | 'noop'
  */
 export const seedPipelinePolicy = async (
   client: CorePrismaClient,
-): Promise<{ success: true; system: 'created' | 'noop'; demo: 'created' | 'noop' }> => {
+): Promise<{ success: true; system: 'created' | 'noop'; demo: 'created' | 'noop'; arcaai: 'created' | 'noop' }> => {
   console.log('Seeding PipelinePolicy cascade defaults (TASK-356 Phase 5)...');
 
   const system = await ensureTenantRow(client, SYSTEM_TENANT_ID, SYSTEM_PIPELINE_POLICY_DEFAULTS, SYSTEM_REASON);
@@ -132,5 +149,8 @@ export const seedPipelinePolicy = async (
   const demo = await ensureTenantRow(client, SEED_TENANT_ID, DEMO_PIPELINE_POLICY_OVERRIDE, DEMO_REASON);
   console.log(`  Demo-tenant harness override: ${demo}`);
 
-  return { success: true, system, demo };
+  const arcaai = await ensureTenantRow(client, SEED_CUSTOMER_TENANT_IDS.ARCAAI, ARCAAI_PIPELINE_POLICY_OVERRIDE, ARCAAI_REASON);
+  console.log(`  ArcaAI-tenant harness override: ${arcaai}`);
+
+  return { success: true, system, demo, arcaai };
 };

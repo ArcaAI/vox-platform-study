@@ -196,7 +196,7 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
     // `hf_model_id`), not via the `sarvam::model` shorthand, and Sarvam has no
     // AiModel slug row — extractAsrRef must surface the `engine` field.
     ctx.pipelineService.getById.mockResolvedValue(
-      cloudPipeline({ configYaml: 'models:\n  asr:\n    hf_model_id: "saaras:v3"\n    engine: "sarvam"\n' }),
+      cloudPipeline({ configYaml: 'models:\n  asr:\n    hf_model_id: "saaras:v4"\n    engine: "sarvam"\n' }),
     );
     ctx.configRepo.findByTenantId.mockResolvedValue(null);
     ctx.configRepo.create.mockImplementation(async (e: unknown) => e);
@@ -209,7 +209,7 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
     ctx.pipelineService.getAll.mockResolvedValue([
       { id: 'pl-speech', slug: 'azure-speech-transcription', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr: "azure-speech-stt"\n' },
       { id: 'pl-foundry', slug: 'azure-foundry-mai-transcribe', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr: "azure-foundry::mai-transcribe-1.5"\n' },
-      { id: 'pl-sarvam', slug: 'sarvam-transcription', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr:\n    hf_model_id: "saaras:v3"\n    engine: "sarvam"\n' },
+      { id: 'pl-sarvam', slug: 'sarvam-transcription', resourceStatus: ResourceStatusType.ENABLED, configYaml: 'models:\n  asr:\n    hf_model_id: "saaras:v4"\n    engine: "sarvam"\n' },
     ]);
     const slugs = (await ctx.svc.getFallbackCandidates(TENANT)).map((c) => c.slug);
     expect(slugs).toContain('azure-speech-transcription');
@@ -330,7 +330,7 @@ describe('TenantSttConfigService — resolveProviderOverrides (delegated to IPro
     });
     ctx.providerConnectionService.list.mockResolvedValue([
       connectionRow({ provider: 'azure-speech', region: 'eastus' }),
-      connectionRow({ provider: 'sarvam', baseUrl: 'https://api.sarvam.ai', extraJson: { model: 'saaras:v3' } }),
+      connectionRow({ provider: 'sarvam', baseUrl: 'https://api.sarvam.ai', extraJson: { model: 'saaras:v4' } }),
     ]);
 
     const overrides = await ctx.svc.resolveProviderOverrides(TENANT);
@@ -338,7 +338,7 @@ describe('TenantSttConfigService — resolveProviderOverrides (delegated to IPro
     expect(ctx.providerConnectionService.resolveTenantCloudOverrides).toHaveBeenCalledWith('stt', TENANT);
     expect(overrides).toEqual({
       'azure-speech': { api_key: 'AZ-KEY', region: 'eastus' },
-      sarvam: { api_key: 'SV-KEY', base_url: 'https://api.sarvam.ai', model: 'saaras:v3' },
+      sarvam: { api_key: 'SV-KEY', base_url: 'https://api.sarvam.ai', model: 'saaras:v4' },
     });
   });
 

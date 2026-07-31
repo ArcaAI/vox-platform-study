@@ -688,7 +688,7 @@ postprocessing:
 
   sarvam_transcription: `version: "2.0"
 
-# TASK-567 — [sarvam] Sarvam AI speech-to-text (saaras:v3), cloud REST.
+# TASK-567 — [sarvam] Sarvam AI speech-to-text (saaras:v4), cloud REST.
 # BYOK: per-tenant SARVAM credential (TASK-567) or SARVAM_API_KEY env. TASK-586:
 # SARVAM is now a first-class AiModelFormat, so the ASR is a BARE SLUG ref to the
 # "sarvam-saaras-v3" catalog row — identical in shape to the Azure Speech pipeline
@@ -1078,7 +1078,7 @@ export const DEFAULT_ASR_PIPELINES: AsrPipelineSeed[] = [
     tenantId: DEFAULT_TENANT_ID,
     name: '[sarvam] Sarvam Speech-to-Text',
     slug: 'sarvam-transcription',
-    description: 'TASK-567 — bare Sarvam AI speech-to-text (saaras:v3, cloud REST). Tenant BYOK fallback candidate.',
+    description: 'TASK-567 — bare Sarvam AI speech-to-text (saaras:v4, cloud REST). Tenant BYOK fallback candidate.',
     configYaml: PIPELINE_CONFIGS.sarvam_transcription,
     tags: ['cloud', 'sarvam', 'byok', 'fallback'],
   },

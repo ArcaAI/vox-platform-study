@@ -235,13 +235,13 @@ describe('AiProvidersScreen — credential cards', () => {
     fireEvent.change(inputs[1], { target: { value: 'sarvam-secret' } });
     // "Model (optional)" is a field on all three STT provider cards (index 1 = sarvam).
     const modelField = (await screen.findAllByLabelText('Model (optional)'))[1];
-    fireEvent.change(modelField, { target: { value: 'saaras:v3' } });
+    fireEvent.change(modelField, { target: { value: 'saaras:v4' } });
     fireEvent.click(screen.getAllByRole('button', { name: /save key/i })[1]);
 
     await waitFor(() => {
       const put = calls.find((c) => c.method === 'PUT' && c.url.includes('/providers/stt/sarvam'));
       expect(put).toBeDefined();
-      expect((put!.body as Record<string, unknown>).extraJson).toEqual({ model: 'saaras:v3' });
+      expect((put!.body as Record<string, unknown>).extraJson).toEqual({ model: 'saaras:v4' });
     });
   });
 });

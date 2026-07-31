@@ -13,6 +13,7 @@ import { provisionTenantBuckets } from './05b-tenant-bucket-provision';
 import { seedPlatformStorageConfig } from './05c-platform-storage-config';
 import { seedStt } from './06-stt';
 import { seedPromptTemplate } from './07-prompt-template';
+import { seedArcaaiClinicalTemplates } from './07b-arcaai-clinical-templates';
 import { seedAgentGoldenLibrary } from './07a-agent-golden-library';
 import { seedDnaWritingStyle } from './08-dna-writing-style';
 import { seedConsultation } from './09-consultation';
@@ -140,6 +141,14 @@ export const seed = async () => {
 
     // Phase 3: Depends on Phase 2 (PromptTemplate.departmentId → Department)
     await seedPromptTemplate(client);
+    console.log('');
+    // ArcaAI clinical prompt library (TASK-592 Workstream D): the 7 ArcaAI
+    // clinical departments' per-visit-type summary templates + a shared
+    // pre-summary, all APPROVED and owned by the ArcaAI tenant. The ArcaAI
+    // departments (04-department) reference these via their legacy prompt-id
+    // columns and carry NO default DepartmentAgent (07a seeds none for ArcaAI),
+    // so the resolver uses the visit-type-faithful tier-1 legacy path.
+    await seedArcaaiClinicalTemplates(client);
     console.log('');
     // Agent Golden Library (TASK-548): SYSTEM golden departments +
     // APPROVED prompt templates + one default agent per department, plus the
