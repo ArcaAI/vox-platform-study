@@ -130,6 +130,27 @@ export function useArcaAudio() {
       const logger = getLogger();
       if (!pluginManager) throw new Error('SDK not initialized');
 
+      // CALL-TIME idempotence (TASK-597 follow-up). The compat layer drives ONE
+      // audio graph through TWO hooks (`useAudioCapture.startRecording` and
+      // `useArcaSpeechToText.startTranscription`), each guarded only by a
+      // RENDER-TIME `isCapturing` snapshot — so a consumer that starts both in
+      // one handler lands here twice, and the second pass would (a) OVERWRITE
+      // `runtimeOptions` with its own option set (dropping e.g. the drain knobs
+      // only the first caller carries) and (b) open a SECOND capture source via
+      // getUserMedia. `pluginManager.initialized` is shared state flipped
+      // synchronously with the capture lifecycle (true after `initialize`,
+      // false after `destroy`), so it is the cross-hook truth the stale
+      // closures are not. Optional-chained: test doubles without the getter
+      // keep the pre-guard behaviour.
+      if (pluginManager.initialized === true) {
+        logger?.info('startAudio ignored — capture already active (coordinated dual-hook start)', {
+          operation: 'startAudio',
+          component: 'useArcaAudio',
+          attributes: { language: options?.language, pipelineId: options?.pipelineId },
+        });
+        return;
+      }
+
       // A new capture session starts with a clean audio-drop signal.
       // Reset BEFORE audio flows (the session-sticky latch clears on start/stop
       // only, so it survives reconnect but never leaks across capture sessions).

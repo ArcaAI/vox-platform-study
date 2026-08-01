@@ -531,6 +531,25 @@ export class SttWebSocketClient {
     drainTimeoutMs: number = this.drainOptions.timeoutMs,
     quietWindowMsOverride: number = this.drainOptions.quietWindowMs,
   ): Promise<void> {
+    // ALWAYS log the effective drain options, including whether each came from
+    // the caller or fell back to this client's default. This is the one
+    // runtime-observable record of what the drain will actually do — a
+    // threading defect anywhere in the option chain (hook → PluginManager →
+    // transport → provider → here) is otherwise invisible in a browser: the
+    // socket just closes at the default quiet window and the tail final
+    // silently never arrives (TASK-597/594 field defect — a stale @arcaai/stt
+    // bundle dropped both values and nothing logged it).
+    this.logger?.info('stopAndDrain: effective drain options', {
+      operation: 'stopAndDrain',
+      component: 'SttWebSocketClient',
+      attributes: {
+        drainTimeoutMs,
+        quietWindowMs: quietWindowMsOverride,
+        drainTimeoutIsDefault: drainTimeoutMs === this.drainOptions.timeoutMs,
+        quietWindowIsDefault: quietWindowMsOverride === this.drainOptions.quietWindowMs,
+        earlyResolveDisabled: quietWindowMsOverride <= 0,
+      },
+    });
     this.intentionalDisconnect = true;
     this.cancelReconnect();
 
