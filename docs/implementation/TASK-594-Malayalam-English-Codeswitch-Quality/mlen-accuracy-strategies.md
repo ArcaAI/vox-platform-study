@@ -931,3 +931,392 @@ fixtures held outside git.
 **What moves the needle next:** the fine-tune — longer training segments, consistent
 Malayalam word spacing, Latin-script preservation for English clinical terms — not the
 streaming loop.
+
+---
+
+## 9. whisper.cpp + GGUF performance best practices
+
+Sections 1–8 are about **accuracy**. This section is about **cost** — load time, memory,
+decode latency, and concurrency — for the specific runtime this path uses: whisper.cpp
+through the `pywhispercpp` binding on Apple Silicon / Metal.
+
+### 9.0 Reading conventions for this section
+
+Same rules as the rest of the document, plus one addition. Claims here fall into three
+buckets and are labelled:
+
+- **Measured** — a number that exists in this repo or was produced by a run recorded here.
+- **Structural** — provable by reading code or inspecting the shipped binary; no number.
+- **Unverified** — plausible mechanism, not checked. Never act on one without measuring.
+
+Binary-level claims are cited as `<library> (<how it was checked>)`. Everything was
+checked by static inspection (`ls`, `strings`, `nm -u`) — **no model was loaded and no
+inference was run** while writing this section.
+
+### 9.1 The runtime that is actually in play
+
+Pinning this down first, because most whisper.cpp advice on the internet is version-
+specific and does not apply to an old or a new build.
+
+| Layer | Version | Source |
+|---|---|---|
+| Binding declared | `pywhispercpp>=1.5.0` | `apps/stt/pyproject.toml:149` |
+| Binding resolved | **1.5.0** | `uv.lock:5324-5326` |
+| whisper.cpp bundled in the wheel | **libwhisper 1.8.4** | `pywhispercpp/.dylibs/libwhisper.1.8.4.dylib` (filename) |
+| ggml bundled | **0.9.8**, incl. a Metal backend | `pywhispercpp/.dylibs/libggml{,-base,-cpu,-blas,-metal}.0.9.8.dylib` |
+
+The wheel ships its own prebuilt whisper.cpp + ggml + Metal. There is no local build, no
+compile flags to tune, and `whisper_cpp_library_path` (`settings.py:317-320`) is declared
+but **never read by the whisper.cpp loader** — `WhisperCppLoader.load` imports
+`pywhispercpp.model.Model` directly (`whisper_cpp_loader.py:51`, `:74-82`) and never
+consults that setting. *(Structural.)* Anyone who sets `WHISPER_CPP_LIBRARY_PATH`
+expecting to swap in a custom whisper.cpp build will see no effect.
+
+### 9.2 What this codebase already does
+
+#### 9.2.1 Thread count — one setting, two construction sites
+
+| Concern | Where |
+|---|---|
+| Setting | `whisper_cpp_num_threads`, default **4** (`settings.py:321-324`) |
+| Env name | bare `WHISPER_CPP_NUM_THREADS` — the stt `Settings` class carries **no `env_prefix`** (`settings.py:26-31`, note at `:190-192`), so it is *not* `STT_WHISPER_CPP_NUM_THREADS` |
+| Load path | `num_threads = settings.whisper_cpp_num_threads` → `Model(n_threads=num_threads, …)` (`whisper_cpp_loader.py:72`, `:74-82`) |
+| Recorded for recovery | `extra={"num_threads": num_threads}` (`whisper_cpp_loader.py:109-113`) |
+| Recovery path | `_construct_whisper_model(model_path, extra.get("num_threads"), …)` — passes `n_threads` only when not `None` (`whisper_cpp_asr.py:191-204`, called at `:564-568`) |
+
+*Structural note:* the shipped default **4** is the same value `pywhispercpp` would choose
+on its own — its documented default is `min(4, hardware_concurrency())`
+(`pywhispercpp/model.py:117`; `constants.py:63-69`). So on any ≥4-core machine the
+setting is currently a no-op relative to the binding default. It is a real knob only if
+raised.
+
+*Unverified:* whether raising it helps on Apple Silicon. `n_threads` drives the **CPU**
+ggml path; with `use_gpu=True` the encoder/decoder matmuls run on Metal, so extra threads
+buy proportionally less than they would on a CPU-only host, and on Apple Silicon threads
+above the performance-core count land on efficiency cores. No thread sweep exists in this
+repo. Do not raise it without running the §6.3 gate plus a wall-clock measurement.
+
+*Divergence worth knowing:* `mlen_scorecard.py` builds its `Model` **without** `n_threads`
+(`mlen_scorecard.py:120-121`), so the scorecard uses the binding default while production
+uses the setting. Identical today (both 4); they diverge the moment the setting is
+changed, and the scorecard would then no longer reproduce production timing.
+
+#### 9.2.2 GPU / Metal context params — exactly one key is set
+
+Both construction sites pass a single context param:
+
+```python
+context_params={"use_gpu": use_gpu}
+```
+`whisper_cpp_loader.py:79` (load) and `whisper_cpp_asr.py:198` (recovery rebuild).
+
+`use_gpu` is derived from the model config, not from the platform:
+`use_gpu = (model_config.device or "auto") != "cpu"` (`whisper_cpp_loader.py:71`), and the
+`LoadedModel` records `device="cpu" if not use_gpu else "auto"` (`:107`) so the rebuild
+path reconstructs with the same GPU setting (`whisper_cpp_asr.py:568`). *(Structural.)*
+
+**Everything else in `ContextParams` is left at `whisper_context_default_params()`**
+(`pywhispercpp/model.py:334-351`). The full accepted key set is
+`use_gpu`, `flash_attn`, `gpu_device`, `dtw_token_timestamps`, `dtw_aheads_preset`,
+`dtw_n_top`, `dtw_mem_size` (`pywhispercpp/model.py:33-43`; `model.pyi:11-18`) — see §9.4
+for which of those are worth touching.
+
+*Diagnostics caveat (structural):* whisper.cpp prints its resolved context configuration
+at init (`%s: flash attn = %d`, `%s: use gpu    = %d`, `%s: gpu_device = %d`, `%s: dtw
+= %d` — all present in `libwhisper.1.8.4.dylib`, checked with `strings`). Those lines are
+**swallowed** in this service: `_dispatch_log` only forwards a message when a decode-local
+capture buffer is active or the text matches a poison marker (`whisper_cpp_asr.py:116-129`),
+and context init happens with no buffer installed. So there is currently **no log evidence
+of what the Metal context was actually configured with.** That is why several claims below
+must stay "unverified" — the observability to settle them is not wired up.
+
+#### 9.2.3 Greedy decode — and the part of it that is *not* explicit
+
+Covered for accuracy in §3.2. The performance-relevant additions:
+
+- `temperature=0.0, temperature_inc=0.0` (`whisper_cpp_asr.py:540-541`) removes the
+  temperature-fallback **re-decode** loop. Its default is `temperature_inc=0.2`
+  (`pywhispercpp/constants.py:269-274`), and each fallback step is a whole additional
+  decode of the segment. So the accuracy fix in §3.2 is also a worst-case-latency fix:
+  a segment can no longer silently cost several decodes. *(Structural; the accuracy delta
+  is the measured 0.778 → 0.025 from §3.2.)*
+- The **sampling strategy** is never passed. `Model.__init__(params_sampling_strategy=0)`
+  defaults to `WHISPER_SAMPLING_GREEDY` (`pywhispercpp/model.py:90`, `:102-103`, `:163-164`),
+  and neither construction site overrides it (`whisper_cpp_loader.py:74-82`;
+  `whisper_cpp_asr.py:196-204`). Greedy is therefore in force **by default, not by
+  decision** — nothing in this repo states the intent, so a future refactor that starts
+  passing `params_sampling_strategy` could silently switch to beam search. Worth an
+  explicit `params_sampling_strategy=0` with a comment. *(Structural.)*
+- `greedy={"best_of": 5}` is the binding's documented default
+  (`pywhispercpp/constants.py:293-298`) and is never overridden. **Unverified:** whether
+  `best_of > 1` costs anything when `temperature_inc == 0`. Do not "optimize" it to 1
+  without measuring — it may already be free.
+
+#### 9.2.4 One warm context, reused — the single biggest structural win
+
+There is exactly **one** `pywhispercpp.model.Model` per model slug per process, and it
+outlives every session that uses it. Three mechanisms combine:
+
+| Mechanism | Where |
+|---|---|
+| Process-level model cache — LRU + idle TTL + memory budget + **single-flight load** | `models/cache.py:204-255` (composed from `hope_runtime_models.ModelCache`), `get_or_load` at `:415-446`, singleton at `:575-580` |
+| Per-streaming-session **pin** of every pipeline model slug, so idle TTL cannot evict a model out from under a live session | `session_manager.py:1462-1532` (`_warm_and_pin_pipeline_models`, `pin_many` at `:1525-1526`), ASR slug pinned at `:1640-1649`, registry `:177-178` |
+| **Unpin** on session removal, so TTL can apply again | `session_manager.py:1339-1348` |
+
+`get_or_load` runs the expensive `loader.load()` **outside** the cache lock but shares one
+in-flight future per slug (`cache.py:415-446`), so N sessions starting simultaneously on a
+cold model perform one load, not N. *(Structural.)*
+
+Consequence: after the first session, whisper context creation — the expensive part,
+because there is no mmap (§9.2.7) — is paid **zero** times. Every adapter instance
+(`WhisperCppAsrAdapter.__init__`, `whisper_cpp_asr.py:319-372`) is a thin wrapper over the
+shared `LoadedModel`; constructing one allocates no ggml state.
+
+The same `LoadedModel` is shared by the streaming adapter (`session_manager.py:1941-1945`),
+the batch adapter (`batch_service.py:2745`) and the English-gloss callable
+(`session_manager.py:1750-1786`). That sharing is deliberate and is what §9.2.5/§9.2.6
+exist to make safe — and what the sticky-parameter anti-pattern in §9.5 makes risky.
+
+#### 9.2.5 Per-context lock — required, and it is a throughput ceiling
+
+`whisper_full` uses the context's single internal state and is not concurrency-safe
+(`whisper_cpp_asr.py:19-44`). The adapter therefore serializes every decode on a lock
+keyed by `model_id` (`_get_model_lock`, `:182-188`; registry `:105-106`; acquired at
+`:384`). All adapters over one `LoadedModel` share that lock, so streaming + gloss + batch
+all queue on it.
+
+Two performance facts that follow, both structural:
+
+1. **The lock is held across every chunk of an utterance, not per chunk.** `__call__`
+   computes the spans first and then takes the lock **once** for the whole list
+   comprehension (`whisper_cpp_asr.py:383-393`). A 20 s utterance = 3 sequential decodes
+   with no interleaving point. This is correct (it keeps one utterance's chunks
+   contiguous) but it means a long utterance blocks *every* other session on that model
+   for its full decode time, not for one chunk's worth.
+2. **Per-model, not global.** Two different slugs (e.g. f16 and q8_0 rows) get independent
+   locks and can decode concurrently — on one GPU, which is its own contention story.
+   *(Unverified: whether concurrent Metal decodes across two contexts are faster than
+   serial. Note the whole §9.2.6 failure mode was caused by concurrency on **one** context;
+   two contexts is a different case and is not exercised today.)*
+
+Only the span **computation** is outside the lock (`_split_spans` / `_quietest_in_range`,
+`:416-463`) — pure NumPy over the buffer, so lock hold time is decode time.
+
+#### 9.2.6 Metal poison recovery
+
+Fully described in §3.14. Restating only the parts that are performance-relevant:
+
+- The failure mode is *not* slow, it is **silent and total**: a poisoned ggml/Metal
+  backend returns zero segments forever, and `pywhispercpp` discards `whisper_full`'s
+  return code, so it is indistinguishable from silence at the Python layer
+  (`whisper_cpp_asr.py:19-44`).
+- Recovery **recreates the whole context** (`_rebuild_locked`, `:551-580`) — that is a
+  full model load again (no mmap, §9.2.7), so a poison event costs a cold-start.
+  Recovery mutates the shared `LoadedModel.model` in place (`:576-579`) so every sharer
+  recovers from one rebuild rather than N.
+- Detection depends on the native log sink (`_ensure_log_capture_installed`, `:156-179`).
+  If the `_pywhispercpp` import or `whisper_log_set` fails, the adapter logs a warning and
+  **runs without auto-recovery** (`:171-178`) — the lock still prevents the corruption, but
+  a poison event from any other cause becomes permanent for the process lifetime.
+
+#### 9.2.7 Load behaviour: **whisper.cpp does not mmap the weights**
+
+The task framing assumed pywhispercpp inherits mmap behaviour from whisper.cpp. **It does
+not**, in this build:
+
+- `nm -u pywhispercpp/.dylibs/libwhisper.1.8.4.dylib` → no `mmap` / `madvise` import.
+- `nm -u pywhispercpp/.dylibs/libggml-base.0.9.8.dylib` → same.
+- `strings` on both → no `mmap` / `use_mmap` / "memory map" text.
+
+*(Structural, from binary inspection. This is whisper.cpp, not llama.cpp — llama.cpp's
+`use_mmap` has no counterpart here.)*
+
+Practical consequences, all structural:
+
+- **Model init reads the whole file.** Load time scales with file size on disk, and on a
+  cold page cache with the weights on an external volume (which is where the snapshot
+  lives — see §9.3) that read is the dominant cost of session #1.
+- **Resident memory ≈ weight size**, not "shared, lazily paged". Two contexts over the
+  same file cost two copies. The cache's memory budget is expressed against
+  `memorySizeMb` from the catalog row (`cache.py:334`, `whisper_cpp_loader.py:176-181`),
+  which is why those rows are set slightly above the file size (§9.3).
+- **Every rebuild in `_rebuild_locked` re-reads the file from scratch.** There is no
+  cheap "reset the backend" path.
+
+#### 9.2.8 Clean decode vs `max_len=1` word-split — a latency knob as well as a quality one
+
+The gating is described for accuracy in §3.4/§3.5. Its cost side:
+
+```python
+word_ts_kwargs = ({"token_timestamps": True, "split_on_word": True, "max_len": 1}
+                  if self._want_word_timestamps else {})
+```
+`whisper_cpp_asr.py:522-526`.
+
+- `token_timestamps` is flagged `[EXPERIMENTAL]` in the binding's own schema
+  (`pywhispercpp/constants.py:136-142`), and `max_len` "needs `token_timestamps` to be set
+  to True for this to work" (`:155-160`).
+- The adapter's own comment states the clean decode is "both faster and avoids the
+  space-joining corruption" (`whisper_cpp_asr.py:518-521`). **No measured timing delta
+  exists in this repo** — treat "faster" as structural, not measured.
+- The production ml-en pipelines set `word_timestamps: false` (`06-stt.ts:331-333`), so
+  the shipped path never pays it. Turning it on for a downstream feature costs both
+  accuracy (§4.7) and, per the adapter's claim, time.
+
+### 9.3 Quantization: measured accuracy parity, unmeasured speed
+
+#### 9.3.1 What is on disk
+
+Snapshot directory (external volume):
+`/Volumes/aillusion/huggingface/models--taphuynh--whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-GGUF/snapshots/b3e97b3e657ea3fb3e9dee32457f238b0fdfe861/`
+
+| File | Bytes (`ls -la`) | ≈ | vs f16 | Catalog row |
+|---|---|---|---|---|
+| `ggml-whisper-turbo-ml-en-codeswitch-f16.bin` | 1,624,555,275 | 1.62 GB (1549 MiB) | 100 % | `arcaai-whisper-large-ml-en-gguf`, `computeType: 'f16'`, `memorySizeMb: 1700` (`audio.ts:224-247`) |
+| `ggml-whisper-turbo-ml-en-codeswitch-q8_0.bin` | 874,188,075 | 874 MB (834 MiB) | **53.8 %** | `arcaai-whisper-large-ml-en-gguf-q8_0`, `computeType: 'q8_0'`, `memorySizeMb: 900` (`audio.ts:248-270`) |
+| `ggml-whisper-turbo-ml-en-codeswitch-q5_0.bin` | 574,041,195 | 574 MB (547 MiB) | **35.3 %** | **none — no catalog row exists** |
+
+Two things follow directly (structural, given §9.2.7's no-mmap finding):
+
+- **Load time and resident memory track these numbers almost 1:1.** q8_0 halves both;
+  q5_0 would cut them to about a third. The catalog `memorySizeMb` values (1700 / 900) are
+  ~5–8 % above the file sizes, i.e. deliberately conservative headroom for the cache's
+  memory budget — they are consistent with the files, not stale.
+- **q5_0 is unreachable today.** `_select_gguf_file` picks by `computeType` substring
+  (`whisper_cpp_loader.py:152-156`); with no `computeType: 'q5_0'` row in the seed, nothing
+  can select it. Adding one is a seed row, not code.
+
+*Also confirmed on this snapshot:* the directory contains macOS AppleDouble sidecars
+(`._ggml-…-f16.bin` etc., 4096 B each). The `._`-prefix skip in `_select_gguf_file`
+(`whisper_cpp_loader.py:131-134`) is therefore **load-bearing on this exact volume**, not a
+theoretical guard — without it a 4 KB metadata fork can sort ahead of the real weights.
+
+#### 9.3.2 Accuracy: quantization is free at batch on this fine-tune
+
+> **Measured 2026-08-01, 23-clip corpus, whole-clip (single-utterance) harness:**
+> **f16 → mean CER 0.325** and **q8_0 → mean CER 0.325.** Identical to three decimal
+> places at the aggregate level.
+
+f16 is also the committed baseline (`mlen_scorecard_baseline.json:3`, `mean_cer` 0.325 —
+§6.4), so this run reproduces the baseline exactly and puts q8_0 on top of it.
+
+Interpretation, stated carefully:
+
+- **What this licenses:** switching the batch/scorecard path to q8_0 for a ~46 % smaller
+  file, ~46 % less resident memory and a correspondingly faster cold load, at **no measured
+  aggregate accuracy cost**. This closes the "compare model variants (q8_0 …)" follow-up in
+  §7.6 for the f16-vs-q8_0 half of it.
+- **What it does not license:** (a) q5_0 — **untested**, no measurement exists, and 5-bit is
+  where whisper quantization is normally expected to start costing accuracy; (b) the
+  *streaming* path — this is the single-utterance harness, and §4.2's lesson ("the
+  single-utterance scorecard is not the streaming path") applies to quantization exactly as
+  it applied to `force_emit`; (c) per-clip stability — the aggregate matching does not by
+  itself prove no clip moved. Re-run `test_no_clip_regresses_past_baseline`
+  (`test_mlen_quality_gate.py:131-142`) against a q8_0 run before treating q8_0 as
+  drop-in.
+- The transformer (`SAFETENSOR`, `memorySizeMb: 3584`, `audio.ts:271-294`) third variant
+  remains uncompared.
+
+#### 9.3.3 `TBD(decode-timing)` — per-quant decode speed
+
+> **`TBD(decode-timing)`** — to be filled in from the streaming-run manifest analysis.
+> Nothing in this repo currently records whisper.cpp decode wall-clock. Fill in per
+> quantization (f16 / q8_0 / q5_0-if-added), reporting at minimum:
+>
+> | Quant | Cold load (s) | Decode s / audio s (RTF) — 7 s chunk | RTF — 20 s utterance (3 chunks) | Peak RSS (MB) | Mean CER |
+> |---|---|---|---|---|---|
+> | f16 | TBD | TBD | TBD | TBD | 0.325 (measured) |
+> | q8_0 | TBD | TBD | TBD | TBD | 0.325 (measured) |
+> | q5_0 | TBD | TBD | TBD | TBD | **not measured — no catalog row** |
+>
+> Measure through the real adapter (so the §3.8 chunker and the §9.2.5 lock are in the
+> path), on a machine with no competing GPU work, and report the *median of ≥5 runs after
+> one warm-up decode* — the first decode after context creation is not representative.
+> Note that on Apple Silicon a smaller quant is not automatically faster: on a
+> memory-bandwidth-bound decode it usually is, but dequantization overhead can offset it.
+> **Do not assume the size ratio is the speed ratio.**
+
+Until that table exists, the honest position is: **q8_0's benefit is proven for size and
+memory, and unproven for speed.**
+
+### 9.4 Upstream whisper.cpp practices — and what `pywhispercpp` 1.5.0 can actually set
+
+The rule for this table: a knob is only worth discussing if the binding in use can set it.
+Recommending an unreachable knob is how whisper.cpp advice usually goes wrong.
+
+| Upstream practice | Exposed by `pywhispercpp` 1.5.0? | This repo | Verdict |
+|---|---|---|---|
+| **Reuse one warm context; never re-init per utterance** | n/a — a usage pattern | Done: shared `LoadedModel` + LRU cache + per-session pin (§9.2.4) | **Already correct.** The highest-value practice, already in place |
+| **Never run two decodes on one context** | n/a — a usage pattern | Done: per-`model_id` lock (§9.2.5) | **Already correct** — and here it is a correctness requirement, not just a perf one |
+| **`n_threads` tuning** | Yes — `Model(n_threads=…)` (`model.py:117`) | Set to 4 (§9.2.1) | Reachable; **unmeasured**. Lower ceiling with Metal on than on CPU |
+| **`flash_attn`** | **Yes** — `ContextParams.flash_attn` (`model.py:33-43`) | **Never set** — only `use_gpu` is passed | Available and unexplored. The bundled build supports it: `libggml-metal.0.9.8.dylib` contains flash-attention Metal kernels (`FC_flash_attn_ext_*`, via `strings`) and `libwhisper` logs `flash attn = %d`. **Unverified:** the default value in this build, and any speed/quality effect. See the hard constraint below |
+| **DTW token timestamps** (`dtw_token_timestamps`, `dtw_aheads_preset`, `dtw_n_top`, `dtw_mem_size`) | **Yes** — all four are `ContextParams` keys (`model.py:33-43`), and the binding exports `WHISPER_AHEADS_LARGE_V3_TURBO` (`strings _pywhispercpp.cpython-311-darwin.so`) | **Never set**; word timings come from the `max_len=1` hack instead | **The most interesting unexplored capability in this stack** — see below |
+| **`audio_ctx` (shorten the encoder context)** | Yes — `audio_ctx`, default 0 = full (`constants.py:179-184`; `model.pyi:128`) | Never set | The classic whisper.cpp latency knob, and **unexplored here**. Whisper always pads to its full mel window, so a 7 s chunk (§3.8) currently pays full-window encode cost. **Unverified** speed gain, **known** quality risk — must go through the §6.3 gate |
+| **`single_segment` ("useful for streaming")** | Yes (`constants.py:106-111`) | Never set | Low priority: the clean path already concatenates all segments natively (§3.4), so single-segment buys structure the adapter does not need |
+| **`no_context` semantics** | Yes; binding default **`True`** (`constants.py:94-99`; `model.pyi:62`) | Never set → stays `True` | **Already the desired behaviour.** `no_context=True` means whisper does not carry the previous decode's tokens forward, which is exactly the posture §3.10 arrived at independently by setting `prev_text_context_words: 0`. Worth knowing the two are *not* the same lever: §3.10 controls the *application's* carry-forward prompt; `no_context` controls whisper's *internal* one. Both are off |
+| **`carry_initial_prompt`** | Yes, default `False` (`constants.py:209-214`) | Never set | Correct as-is — both prompt paths are off (§3.6) |
+| **`whisper_full_parallel` / `n_processors`** | Yes — `transcribe(n_processors=…)` (`model.py:181`, `:414-415`) | Never set → single-process `whisper_full` | **Do not use.** See §9.5 |
+| **KV / compute buffer reuse across decodes** | **No** — not exposed. Buffer lifetime is whisper.cpp's, controlled by the context | n/a | Nothing to tune. It is handled by keeping one context alive (§9.2.4) |
+| **Custom build flags (Accelerate, Metal on/off, BLAS)** | **No** — the wheel ships prebuilt dylibs | n/a | Unreachable without replacing the wheel. `whisper_cpp_library_path` does **not** provide this (§9.1) |
+| **Model quantization at load time** | **No** — whisper.cpp consumes an already-quantized ggml file | Handled by shipping three `.bin` variants (§9.3) | Correct approach |
+
+**Hard constraint, from the shipped binary:** `libwhisper.1.8.4.dylib` contains the string
+
+> `%s: dtw_token_timestamps is not supported with flash_attn - disabling`
+
+*(via `strings`).* So **`flash_attn` and DTW token timestamps are mutually exclusive** in
+this build — whisper.cpp silently disables DTW when flash attention is on. Any future work
+that wants both must pick one. Given §4.1, that is a real fork in the road, not a footnote.
+
+**Why DTW matters here specifically.** §4.1 rejected the LocalAgreement-2 committed-stream
+redesign for two reasons, the second of which was that it *requires* the `max_len=1`
+word-split decode — which is itself lossy on Malayalam (§3.4). §7.6 lists "accurate word
+timestamps in the base" as the thing that would reopen it. whisper.cpp's DTW alignment-head
+mechanism is a **different** way to get word timings — it aligns using cross-attention
+rather than by chopping the decode into near-word segments — and the binding exposes it
+with an alignment-head preset for exactly this model family
+(`WHISPER_AHEADS_LARGE_V3_TURBO`, matching the large-v3-turbo full fine-tune of §3.1).
+
+That is a genuine, cheap-to-try lead that this ticket has not tried. Caveats, stated
+honestly:
+
+- **Unverified** that DTW timings would be good enough to align on — and §1.2's core
+  objection stands regardless: Malayalam has no reliable *word* units to align, whatever
+  produces the timings. DTW would remove the §3.4 corruption tax from the redesign; it
+  would **not** remove the no-word-boundaries problem. A char-level or timestamp-DTW-aligned
+  variant (already the disposition in §4.1) is the only shape that could work.
+- **Unverified** that DTW's cost is acceptable — it allocates alignment-head masks and an
+  extra buffer (`dtw_mem_size`), and `libwhisper` carries explicit failure paths for both
+  (`aheads_masks_init() failed …`, `failed to allocate memory for aheads_masks`).
+- It would force `flash_attn` off (above).
+
+### 9.5 Anti-patterns
+
+Each is tied to evidence in this repo where evidence exists.
+
+| # | Anti-pattern | Why it is wrong | Evidence / status here |
+|---|---|---|---|
+| 1 | **Re-initializing the model per utterance / per session** | No mmap (§9.2.7), so every init re-reads 0.57–1.6 GB and rebuilds the Metal context. It is the single most expensive thing in this stack | **Not done.** Shared `LoadedModel` + single-flight LRU + per-session pin (§9.2.4). The only re-init is deliberate poison recovery (`whisper_cpp_asr.py:551-580`) |
+| 2 | **Letting two sessions decode on one context without the lock** | Corrupts the Metal command buffer *permanently* — zero segments forever, silently, because `pywhispercpp` discards the return code | **Fixed** by the per-`model_id` lock (`whisper_cpp_asr.py:182-188`, `:384`), commit `d6ca581b`. This is the documented origin story (`whisper_cpp_asr.py:19-44`), not a hypothetical |
+| 3 | **Word-split (`max_len=1`) decode when word timings are not consumed** | Pays a lossy, script-corrupting decode to produce data that is then discarded | **Fixed** by the `want_word_timestamps` gate (`whisper_cpp_asr.py:350`, `:522-526`; `session_manager.py:1691-1694`, `:1941-1945`), commit `8b33267e`. The original defect discarded the timings at `inference.py:427-432` (§3.4) |
+| 4 | **Beam search on this fine-tune** | Multiplies decode cost by the beam width *and* is not the configuration any of §3's measurements were taken under. §4.5 already found decode-parameter tuning to be a dead end on this model | **Not done — but only by default.** `params_sampling_strategy` is never passed, so greedy is inherited rather than declared (§9.2.3). Make it explicit |
+| 5 | **`whisper_full_parallel` / `n_processors > 1` to speed up a long utterance** | It splits the audio into N pieces and decodes them concurrently — i.e. it creates exactly the **mid-phrase hard cuts** that §4.2 measured as the dominant failure of this fine-tune (`force_emit 6000` → CER 0.232), with cut points chosen by arithmetic instead of by the deepest-silence search of §3.8. It would also reintroduce concurrent decoding on one context (anti-pattern 2) | **Not done** — `transcribe()` is called without `n_processors` (`whisper_cpp_asr.py:530-545`), so it takes the single-process `whisper_full` path (`pywhispercpp/model.py:414-417`). Keep it that way |
+| 6 | **Relying on an *omitted* kwarg to mean "auto"** | `Model.transcribe(**params)` calls `_set_params`, which `setattr`s **only the keys passed** (`pywhispercpp/model.py:210`, `:389-401`) — the binding's docstring is explicit that overrides "remain active for future calls" (`:198-199`). An omitted key does not reset; it inherits whatever the params object currently holds | **Live risk.** The adapter omits `language` when it is `None` (`whisper_cpp_asr.py:543`), omits `initial_prompt` when empty (`:544`), and omits the word-timestamp trio when not wanted (`:522-526`). On a **fresh** context that is fine (binding schema: `language` default `""`, documented as auto-detect — `constants.py:215-220`), and the §3.3 measurement (pair 0.05 vs explicit `en` 0.78, both via `mlen_scorecard.py --language`) confirms the omitted path is not equivalent to `en`. But the context is **shared** (§9.2.4), so a sibling adapter that sets `language`/`max_len`/`initial_prompt` leaves them set for the next decode of the adapter that omits them. **Fix: pass the neutral value explicitly** (`language="auto"`, `max_len=0`, `split_on_word=False`, `token_timestamps=False`, `initial_prompt=""`) instead of omitting. See §9.6 |
+| 7 | **Tuning threads/quantization on the single-utterance scorecard alone** | §4.2's lesson generalizes: two changes that scored well on the scorecard were regressions in the real streaming loop | The §9.3.2 q8_0 parity result is a **scorecard** result and carries this caveat explicitly |
+| 8 | **Setting `WHISPER_CPP_LIBRARY_PATH` and expecting a different whisper.cpp** | The setting exists but the whisper.cpp loader never reads it | `settings.py:317-320` vs `whisper_cpp_loader.py:51`, `:74-82` (§9.1) |
+| 9 | **Assuming whisper.cpp mmaps like llama.cpp** | It does not, in this build — so "the file is big but it's mmapped, it's fine" is false for both load time and RSS | `nm -u` on `libwhisper.1.8.4.dylib` / `libggml-base.0.9.8.dylib` (§9.2.7) |
+
+### 9.6 What this section adds to the open list
+
+Additions to §7.6, in rough value order. None is measured; all are cheap.
+
+| Item | Kind | Note |
+|---|---|---|
+| Make the shared-context param inheritance safe — pass neutral values instead of omitting kwargs | **Correctness bug risk**, structural | Anti-pattern 6. Currently latent because the ml-en pipelines are uniform; it becomes real the moment one pipeline on the same model slug pins a language or wants word timestamps. Cheap to fix, cheap to unit-test (extend `tests/unit/test_whisper_cpp_asr.py:172-199`, which today asserts the kwargs are *absent* — it would assert they are present-and-neutral) |
+| Promote q8_0 to the default GGUF row | Measured accuracy parity, unmeasured speed | §9.3.2. Gate on a per-clip gate run, not just the aggregate |
+| Fill in `TBD(decode-timing)` | Measurement | §9.3.3 |
+| Route whisper.cpp's context-init log line into the service logger | Observability | §9.2.2 — without it, `flash attn = %d` / `use gpu = %d` are invisible and several claims above cannot be settled |
+| Evaluate `audio_ctx` for the 7 s chunk path | Latency experiment | §9.4. Highest-leverage unexplored latency knob; must go through the §6.3 gate |
+| Evaluate DTW token timestamps as the word-timing source | Reopens §4.1 partially | §9.4. Removes the §3.4 corruption tax but **not** the no-word-boundaries objection of §1.2 |
+| Declare `params_sampling_strategy=0` explicitly | Robustness | §9.2.3 — greedy is currently inherited, not stated |
+| Add a `computeType: 'q5_0'` catalog row *if and only if* it is evaluated first | Optional | §9.3.1 — the file ships; nothing can select it today |
