@@ -88,15 +88,18 @@ def test_consultation_prompt_for_language(language: str | None, expected: str) -
 
 
 def test_default_no_language_and_no_prompt() -> None:
-    """No configured language + prompt OFF by default → clean decode with no
-    ``language`` and no ``initial_prompt`` pinned."""
+    """No configured language + prompt OFF by default → clean decode with
+    ``language`` explicitly neutral (None → binding auto-detect) and
+    ``initial_prompt`` explicitly empty. The kwargs must be PRESENT: pywhispercpp
+    persists params across calls on the shared context, so an omitted kwarg
+    would inherit whatever a sibling adapter set last."""
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg())
 
     adapter(_audio(), 16000)
 
-    assert "language" not in model.calls[0]
-    assert "initial_prompt" not in model.calls[0]
+    assert model.calls[0]["language"] is None
+    assert model.calls[0]["initial_prompt"] == ""
 
 
 @pytest.mark.parametrize("language", ["ml", "en", "vi"])
@@ -120,7 +123,7 @@ def test_code_switch_pair_is_unpinned(pair: str) -> None:
 
     adapter(_audio(), 16000)
 
-    assert "language" not in model.calls[0]
+    assert model.calls[0]["language"] is None
 
 
 # --- Consultation prompt: OFF by default, opt-in via setting ------------------
@@ -131,13 +134,14 @@ def _settings(*, prompt_enabled: bool) -> SimpleNamespace:
 
 
 def test_prompt_disabled_by_default_but_carry_forward_flows() -> None:
-    """Default (setting OFF): no context ``initial_prompt``; a per-utterance
-    carry-forward prompt still flows through on its own (no leading space)."""
+    """Default (setting OFF): ``initial_prompt`` is explicitly empty (the
+    binding's neutral — it rejects None); a per-utterance carry-forward prompt
+    still flows through on its own (no leading space)."""
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml"))
 
     adapter(_audio(), 16000)
-    assert "initial_prompt" not in model.calls[0]
+    assert model.calls[0]["initial_prompt"] == ""
 
     adapter(_audio(), 16000, prompt="carry forward")
     assert model.calls[1]["initial_prompt"] == "carry forward"
@@ -167,19 +171,39 @@ def test_prompt_enabled_prepends_consultation_context(
 # --- Decode mode: clean (default) vs word-timestamp -------------------------
 
 
-def test_clean_decode_omits_word_split_kwargs() -> None:
+def test_clean_decode_passes_neutral_word_split_kwargs() -> None:
     """Default (no word timestamps requested) → clean sentence-level decode:
-    the lossy ``max_len=1``/``split_on_word``/``token_timestamps`` params are NOT
-    passed."""
+    the ``max_len``/``split_on_word``/``token_timestamps`` params are passed
+    EXPLICITLY at their neutral values. Omitting them would let a sibling
+    adapter's word-split settings (``max_len=1``) leak into this decode via the
+    shared, param-persisting whisper context."""
     model = _CapturingModel()
     adapter = WhisperCppAsrAdapter(_loaded_model(model), _cfg("ml-en"))
 
     adapter(_audio(), 16000)
 
     kw = model.calls[0]
-    assert "max_len" not in kw
-    assert "split_on_word" not in kw
-    assert "token_timestamps" not in kw
+    assert kw["max_len"] == 0
+    assert kw["split_on_word"] is False
+    assert kw["token_timestamps"] is False
+
+
+@pytest.mark.parametrize("want_word_ts", [False, True])
+def test_leak_prone_params_always_passed_explicitly(want_word_ts: bool) -> None:
+    """Every param the adapter relies on at a neutral/auto value must be in the
+    kwargs of EVERY transcribe call, in both decode modes — pywhispercpp's
+    ``_set_params`` only setattrs the kwargs it receives, and the params object
+    persists across calls on a context shared with the batch/gloss adapters."""
+    model = _CapturingModel()
+    adapter = WhisperCppAsrAdapter(
+        _loaded_model(model), _cfg("ml-en"), want_word_timestamps=want_word_ts
+    )
+
+    adapter(_audio(), 16000)
+
+    kw = model.calls[0]
+    for key in ("language", "initial_prompt", "token_timestamps", "split_on_word", "max_len"):
+        assert key in kw, f"{key} omitted — would inherit a sibling adapter's value"
 
 
 def test_word_timestamp_mode_splits_and_space_joins() -> None:

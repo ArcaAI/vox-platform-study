@@ -519,11 +519,13 @@ class WhisperCppAsrAdapter:
         # only requested when the pipeline consumes word timings; otherwise a
         # clean sentence-level decode is both faster and avoids the space-joining
         # corruption of non-space-delimited scripts (Malayalam).
-        word_ts_kwargs: dict[str, Any] = (
-            {"token_timestamps": True, "split_on_word": True, "max_len": 1}
-            if self._want_word_timestamps
-            else {}
-        )
+        #
+        # Every param below is passed EXPLICITLY on every call, never omitted.
+        # pywhispercpp's ``_set_params`` setattrs only the kwargs it receives
+        # onto a params object that persists across calls, and the whisper
+        # context is shared with the batch/gloss adapters — an omitted kwarg
+        # would silently inherit whatever a sibling adapter set last (e.g. a
+        # pinned ``language="en"`` or ``max_len=1``).
         prev = getattr(_tls, "buffer", None)
         _tls.buffer = []
         try:
@@ -539,9 +541,16 @@ class WhisperCppAsrAdapter:
                 # measured strictly better on real ml-en clinical audio.
                 temperature=0.0,
                 temperature_inc=0.0,
-                **word_ts_kwargs,
-                **({"language": self._language} if self._language else {}),
-                **({"initial_prompt": effective_prompt} if effective_prompt else {}),
+                token_timestamps=self._want_word_timestamps,
+                split_on_word=self._want_word_timestamps,
+                max_len=1 if self._want_word_timestamps else 0,
+                # ``None`` is coerced to ``""`` by the binding's setter — both
+                # mean auto-detect, which is the measured, load-bearing
+                # behaviour for code-switch pairs (TASK-594).
+                language=self._language if self._language else None,
+                # The setter rejects ``None`` for ``initial_prompt``; ``""`` is
+                # its neutral (tokenizes to nothing).
+                initial_prompt=effective_prompt,
             )
         finally:
             logs = _tls.buffer
