@@ -217,6 +217,33 @@ word-timestamp alignment), which needs LIVE verification — partials are wall-c
 cannot be exercised by offline fast-replay. Owner decision pending on the trade-off point vs
 investing in the redesign.
 
+## whisper_streaming redesign — BUILT, VALIDATED, REJECTED (negative result)
+
+User approved building the committed-stream redesign. Implemented the core as
+`local_agreement_streamer.py` (growing buffer, re-decode-from-start, LocalAgreement-2
+commit, buffer trim, script-aware join) with 6 unit tests. **Validated offline against
+the labeled clips with the real adapter's word timestamps: CER ~0.59 vs ~0.32 for the
+shipped adapter path — a clear regression.** Root causes:
+- LocalAgreement-2 aligns consecutive hypotheses by WORD; Malayalam has no reliable word
+  boundaries, so alignment fails and duplication creeps in (content committed twice).
+- It requires the `max_len=1` word-timestamp decode mode, which is itself lower quality
+  than the clean decode.
+
+**Decision: do NOT integrate.** The component is kept (marked EXPERIMENTAL) for a possible
+future char-level / timestamp-DTW-aligned variant. This validation-before-integration is
+exactly why we didn't ship a regression.
+
+## Quality ceiling (honest current state)
+
+On the user's 23 labeled clips (many 20–30 s continuous clinical speech) the shipped path
+(greedy + language auto + clean decode + deepest-silence chunker + loop-guard + polish,
+force-emit 20000) scores **mean CER 0.325** (best 0.032, worst 0.558; short/cleaner clips
+0.03–0.17, long pause-free clips 0.4–0.56). The streaming architecture is now near its
+ceiling for this fine-tune — the dominant remaining error source is the FINE-TUNE's
+robustness on long continuous ml-en speech, not the streaming loop. Further gains need
+model-side work (more long-form + code-switch training data, better long-audio decoding),
+which is outside this ticket.
+
 ## Open / follow-up
 - Re-tune `WHISPER_CPP_MAX_AUDIO_SECONDS` and compare model variants (q8_0, non-GGUF
   transformer) as more labeled ml-en clips arrive.
