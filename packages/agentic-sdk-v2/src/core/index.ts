@@ -86,7 +86,7 @@ export type {
 export { TranscriptionJobStatus, TranscriptionJobType } from '../types/stt';
 
 // STT streaming clients
-export { SttWebSocketClient, type WsConnectOptions, type WsReconnectOptions } from './SttWebSocketClient';
+export { SttWebSocketClient, type WsConnectOptions, type WsReconnectOptions, type WsDrainOptions } from './SttWebSocketClient';
 export { StreamingSessionManager, type SessionManagerStatus } from './StreamingSessionManager';
 export { FileTranscriptionService, type FileTranscribeOptions } from './FileTranscriptionService';
 export { SSEClient, type SSEConnectOptions } from './SSEClient';

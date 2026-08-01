@@ -192,12 +192,52 @@ def _norm_token(token: str) -> str:
 _CHAR_LOOP_RE = re.compile(r"(.{1,12}?)\1{3,}", re.UNICODE)
 
 
+# Longest PHRASE (in tokens) checked for a back-to-back repetition loop. Greedy
+# decoding loops on multi-word phrases too — e.g.
+# "ചെയ്യുന്നതിന് നമുക്ക് protein ചെയ്യുന്നതിന് നമുക്ക് protein …" — which neither
+# the single-token run guard nor the short-character guard can see.
+_MAX_PHRASE_TOKENS = 8
+
+
+def _collapse_phrase_loops(tokens: list[str]) -> list[str]:
+    """Collapse a phrase (2..``_MAX_PHRASE_TOKENS`` tokens) repeated back-to-back
+    to a single occurrence. Longest phrase wins, so a 3-token loop is not
+    mis-collapsed as three 1-token ones. Single-token runs are left to the
+    run-limit guard (natural speech repeats single words; it rarely repeats a
+    whole multi-word phrase verbatim, so 2 consecutive copies signal a loop)."""
+    norm = [_norm_token(t) for t in tokens]
+    out: list[str] = []
+    i = 0
+    n = len(tokens)
+    while i < n:
+        collapsed = False
+        # Longest phrase first — a 3-gram loop must not be read as 1-gram loops.
+        for size in range(min(_MAX_PHRASE_TOKENS, (n - i) // 2), 1, -1):
+            unit = norm[i : i + size]
+            if not any(unit):  # all-punctuation unit — not a real phrase
+                continue
+            reps = 1
+            while norm[i + reps * size : i + (reps + 1) * size] == unit:
+                reps += 1
+            if reps >= 2:
+                out.extend(tokens[i : i + size])  # keep ONE occurrence
+                i += reps * size
+                collapsed = True
+                break
+        if not collapsed:
+            out.append(tokens[i])
+            i += 1
+    return out
+
+
 def _collapse_repeats(text: str) -> str:
     """Collapse degenerate greedy-decode repetition loops to a single occurrence.
 
-    Two passes: (1) a whitespace-token run of >``_REPEAT_RUN_LIMIT`` identical
-    tokens ("അത് അത് അത് …"); (2) a repeated short CHARACTER unit for
-    non-space-delimited scripts ("ക്രക്രക്ര…"). Genuine short repetitions survive.
+    Three passes: (1) a whitespace-token run of >``_REPEAT_RUN_LIMIT`` identical
+    tokens ("അത് അത് അത് …"); (2) a repeated multi-token PHRASE
+    ("… നമുക്ക് protein … നമുക്ക് protein …"); (3) a repeated short CHARACTER unit
+    for non-space-delimited scripts ("ക്രക്രക്ര…"). Genuine short repetitions
+    ("no no no") survive.
     """
     tokens = text.split()
     if len(tokens) > _REPEAT_RUN_LIMIT:
@@ -213,8 +253,10 @@ def _collapse_repeats(text: str) -> str:
             else:
                 out.extend(tokens[i:j])
             i = j
-        text = " ".join(out)
-    return _CHAR_LOOP_RE.sub(r"\1", text)
+        tokens = out
+    if len(tokens) >= 4:
+        tokens = _collapse_phrase_loops(tokens)
+    return _CHAR_LOOP_RE.sub(r"\1", " ".join(tokens))
 
 
 # Whisper often prepends a stray punctuation token (a leading "," or ".") to a
@@ -224,8 +266,17 @@ _EDGE_JUNK_RE = re.compile(r"^[\s,.।;:!?\-–—]+|[\s,.।;:\-–—]+$", re.
 
 
 def _polish(text: str) -> str:
-    """Final cleanup: repetition loop-guard + strip leading/trailing punctuation."""
-    return _EDGE_JUNK_RE.sub("", _collapse_repeats(text)).strip()
+    """Final cleanup: drop U+FFFD, repetition loop-guard, strip edge punctuation.
+
+    U+FFFD (``�``) appears when whisper.cpp splits a multi-byte character across
+    two segments — pywhispercpp decodes each segment independently with
+    ``errors="replace"``, so the character is already unrecoverable by the time it
+    reaches us. Dropping the marker is the only correct handling: it is never
+    meaningful text.
+    """
+    cleaned = text.replace("�", "")
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return _EDGE_JUNK_RE.sub("", _collapse_repeats(cleaned)).strip()
 
 
 class WhisperCppAsrAdapter:

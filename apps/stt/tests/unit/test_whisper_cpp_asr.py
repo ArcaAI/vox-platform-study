@@ -304,10 +304,42 @@ def test_collapse_repeats_loop_guard(text: str, expected: str) -> None:
         (". അപ്പോ ഇത്", "അപ്പോ ഇത്"),  # leading period
         ("Hello there,", "Hello there"),  # trailing comma
         ("ഒരു അത് അത് അത് അത് അത്", "ഒരു അത്"),  # loop-guard still runs via _polish
+        # U+FFFD: whisper.cpp split a multi-byte char across segments — the marker
+        # is never meaningful text and must not reach the transcript.
+        ("ചെയ്യുന്നതി�", "ചെയ്യുന്നതി"),
     ],
 )
 def test_polish_strips_edge_junk_and_collapses(text: str, expected: str) -> None:
     assert whisper_cpp_asr._polish(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # Verbatim from a live compat session: a 3-token phrase looping 3x.
+        (
+            "muscle development ചെയ്യുന്നതിന് നമുക്ക് protein ചെയ്യുന്നതിന് നമുക്ക് "
+            "protein ചെയ്യുന്നതിന് നമുക്ക് protein",
+            "muscle development ചെയ്യുന്നതിന് നമുക്ക് protein",
+        ),
+        # 2-token phrase looping.
+        (
+            "പലതാരം പ്രധാനമായിട്ട് പലതാരം പ്രധാനമായിട്ട് കൂടുതൽ",
+            "പലതാരം പ്രധാനമായിട്ട് കൂടുതൽ",
+        ),
+        # Must NOT damage legitimate text (no back-to-back phrase repeat).
+        (
+            "protein powder and gym കാര്യങ്ങളൊക്കെ ചെയ്യുന്നുണ്ട്",
+            "protein powder and gym കാര്യങ്ങളൊക്കെ ചെയ്യുന്നുണ്ട്",
+        ),
+        # A doubled SINGLE token is natural speech — left alone.
+        ("പറയുന്ന പറയുന്ന പോകുന്നത്", "പറയുന്ന പറയുന്ന പോകുന്നത്"),
+    ],
+)
+def test_phrase_level_loop_guard(text: str, expected: str) -> None:
+    """Greedy decoding loops on multi-word PHRASES, which neither the
+    single-token run guard nor the character guard can see."""
+    assert whisper_cpp_asr._collapse_repeats(text) == expected
 
 
 def test_serializes_concurrent_decode_on_shared_context() -> None:

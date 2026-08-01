@@ -79,6 +79,8 @@
         "compat:dev": "pnpm --filter @arcaai/compat-playground dev",
         "compat:build": "turbo run build --filter=@arcaai/compat-playground...",
         "compat:typecheck": "turbo run typecheck --filter=@arcaai/compat-playground",
+        "compat:lint": "turbo run lint --filter=@arcaai/compat-playground",
+        "compat:lint:fix": "turbo run lint:fix --filter=@arcaai/compat-playground",
         "── STT — Python service ──────────────────────────": "",
         "stt:setup": "./scripts/setup-python-env.sh --install --service stt",
         "stt:setup:cpu": "./scripts/setup-python-env.sh --install --service stt --cpu",

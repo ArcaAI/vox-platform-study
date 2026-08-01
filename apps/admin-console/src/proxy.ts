@@ -18,6 +18,16 @@ const PUBLIC_PATHS = new Set([
   '/verify-email',
   '/api/auth/register',
   '/api/auth/register/verify',
+  // SSO: /sso/start is called from the login form before a session exists;
+  // /sso/callback is a top-level GET the IdP redirects the browser to
+  // directly, also pre-session.
+  '/api/auth/sso/start',
+  '/api/auth/sso/callback',
+  // Self-service password reset: the page is opened from an emailed link
+  // (no session yet), and its submit route is called from that same page.
+  '/reset-password',
+  '/api/auth/reset-password',
+  '/api/auth/forgot-password',
 ]);
 
 function isPublic(pathname: string): boolean {

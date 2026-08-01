@@ -499,6 +499,65 @@ describe('StreamingBackendSTTProvider', () => {
       expect(provider.isReady()).toBe(false);
     });
 
+    // TASK-597 lane B — the second serial blocker on click→idle.
+    //
+    // `closeSession()` DELETEs the backend session, which re-enters
+    // `_finalize_session` and therefore contends on the same per-session
+    // finalize lock the first finalize still holds while it uploads capture
+    // blobs. Awaiting it put those uploads back on the teardown path through a
+    // second door. It is best-effort (its failure was already swallowed), so
+    // destroy() must issue it and move on.
+    it('does not block destroy() on the backend session close', async () => {
+      // A close that never settles — the pathological version of "the finalize
+      // lock is held". destroy() must not be hostage to it.
+      session.closeSession = vi.fn(() => new Promise<void>(() => {}));
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+      });
+      await provider.start();
+
+      await expect(provider.destroy()).resolves.toBeUndefined();
+      // Still ISSUED — the backend must be told; only the wait is gone.
+      expect(session.closeSession).toHaveBeenCalledTimes(1);
+      expect(provider.isReady()).toBe(false);
+    });
+
+    it('swallows a rejected session close instead of failing teardown or leaking an unhandled rejection', async () => {
+      const unhandled = vi.fn();
+      process.on('unhandledRejection', unhandled);
+      session.closeSession = vi.fn().mockRejectedValue(new Error('gateway 502'));
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+      });
+      await provider.start();
+
+      await expect(provider.destroy()).resolves.toBeUndefined();
+      // Let any unhandled-rejection detection fire before asserting.
+      await new Promise((r) => setTimeout(r, 0));
+      expect(unhandled).not.toHaveBeenCalled();
+      process.off('unhandledRejection', unhandled);
+    });
+
     it('prefers stopAndDrain over disconnect on destroy() when the client supports it', async () => {
       const stopAndDrain = vi.fn().mockResolvedValue(undefined);
       (wsClient as { stopAndDrain?: () => Promise<void> }).stopAndDrain = stopAndDrain;
@@ -522,6 +581,77 @@ describe('StreamingBackendSTTProvider', () => {
       expect(wsClient.disconnect).not.toHaveBeenCalled();
       expect(session.closeSession).toHaveBeenCalled();
       expect(provider.isReady()).toBe(false);
+    });
+
+    // TASK-597 lane B2 — `destroy()` awaits the drain, so its ceiling IS the
+    // teardown latency a caller observes on Stop. It must be configurable, and
+    // must defer to the ws client's own (lower) default when unset.
+    it('defers the drain ceiling to the ws client when no drainTimeoutMs is configured', async () => {
+      const stopAndDrain = vi.fn().mockResolvedValue(undefined);
+      (wsClient as { stopAndDrain?: (ms?: number) => Promise<void> }).stopAndDrain = stopAndDrain;
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+      });
+      await provider.start();
+      await provider.destroy();
+
+      expect(stopAndDrain).toHaveBeenCalledWith(undefined);
+    });
+
+    it('passes a configured drainTimeoutMs through to stopAndDrain', async () => {
+      const stopAndDrain = vi.fn().mockResolvedValue(undefined);
+      (wsClient as { stopAndDrain?: (ms?: number) => Promise<void> }).stopAndDrain = stopAndDrain;
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+        drainTimeoutMs: 800,
+      });
+      await provider.start();
+      await provider.destroy();
+
+      expect(stopAndDrain).toHaveBeenCalledWith(800);
+    });
+
+    it('ignores a non-positive drainTimeoutMs rather than closing the socket instantly', async () => {
+      const stopAndDrain = vi.fn().mockResolvedValue(undefined);
+      (wsClient as { stopAndDrain?: (ms?: number) => Promise<void> }).stopAndDrain = stopAndDrain;
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+        drainTimeoutMs: 0,
+      });
+      await provider.start();
+      await provider.destroy();
+
+      expect(stopAndDrain).toHaveBeenCalledWith(undefined);
     });
 
     it('sends stop and disconnects on stop()', async () => {

@@ -41,6 +41,17 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
   prompt?: string;
   /** Optional microphone identifier surfaced in transcripts. */
   microphoneId?: string;
+  /**
+   * Ceiling, in ms, on the stop-drain performed by {@link StreamingBackendSTTProvider.destroy}
+   * (TASK-597 lane B2). `destroy()` awaits the drain, so this is the worst-case
+   * teardown latency a caller can observe on Stop. Omitted → the ws client's own
+   * default (`SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS`, 1500ms).
+   *
+   * The drain normally ends far sooner: the backend publishes its terminal
+   * `closed` status as soon as the last transcript is on the stream, before the
+   * recording uploads and durable transcript persistence.
+   */
+  drainTimeoutMs?: number;
 }
 
 /**
@@ -154,6 +165,11 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
   private wsClient: StreamingWsClientLike;
   private pipelineId: string | null = null;
   /**
+   * Per-session stop-drain ceiling from {@link StreamingRemoteProviderConfig.drainTimeoutMs}.
+   * `null` leaves the decision to the ws client's own default.
+   */
+  private drainTimeoutMs: number | null = null;
+  /**
    * C6-01 — frames the ws client dropped at its bufferedAmount watermark since
    * the last session start. That PCM never reached the durable transcript, so
    * surfacing the count makes the otherwise-silent loss observable to callers.
@@ -200,6 +216,8 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
 
     this.config = streamingConfig;
     this.pipelineId = streamingConfig.pipelineId;
+    this.drainTimeoutMs =
+      typeof streamingConfig.drainTimeoutMs === 'number' && streamingConfig.drainTimeoutMs > 0 ? streamingConfig.drainTimeoutMs : null;
     this.droppedFrameCount = 0;
     this.bytesSent = 0;
 
@@ -280,20 +298,41 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
         // server's terminal status (or the drain timeout) so a tail final
         // emitted after stop still reaches onTranscript. The duplicate stop
         // frame (stop() above already sent one) is idempotent server-side.
-        await this.wsClient.stopAndDrain();
+        // `undefined` defers to the client's own default ceiling.
+        await this.wsClient.stopAndDrain(this.drainTimeoutMs ?? undefined);
       } else {
         this.wsClient.disconnect();
       }
     } catch {
       // best-effort; client may already be disconnected.
     }
+    // Fire-and-forget on purpose (TASK-597 lane B).
+    //
+    // This DELETE lands on the STT `end_session` route, which calls
+    // `_finalize_session` and therefore contends on the SAME per-session
+    // finalize lock the first finalize is still holding while it uploads the
+    // capture blobs. Awaiting it re-serialized teardown behind MinIO through a
+    // second entrypoint — exactly the wait that was moved off the caption path.
+    // Once the first finalize completes, the CLOSED short-circuit makes this
+    // call an instant no-op, so the await bought nothing but latency.
+    //
+    // The call itself stays (the backend must still be told), and its failure
+    // was ALREADY swallowed, so not awaiting loses no signal. Both a sync throw
+    // and a rejected promise are absorbed here so neither can escape as an
+    // unhandled rejection.
     try {
-      await this.session.closeSession();
+      const closing = this.session.closeSession() as unknown;
+      if (closing && typeof (closing as PromiseLike<void>).then === 'function') {
+        void (closing as Promise<void>).catch(() => {
+          // best-effort; backend may have already closed the session.
+        });
+      }
     } catch {
       // best-effort; backend may have already closed the session.
     }
     this.initialized = false;
     this.pipelineId = null;
+    this.drainTimeoutMs = null;
   }
 
   getStats(): STTStats {

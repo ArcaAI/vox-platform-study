@@ -21,7 +21,7 @@ afterEach(() => {
 
 function fillAndSubmit(username: string, password: string, tenantKey?: string) {
   fireEvent.change(screen.getByLabelText(/username/i), { target: { value: username } });
-  fireEvent.change(screen.getByLabelText(/password/i), { target: { value: password } });
+  fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: password } });
   if (tenantKey !== undefined) {
     fireEvent.change(screen.getByLabelText(/tenant key/i), { target: { value: tenantKey } });
   }
@@ -32,7 +32,7 @@ describe('LoginForm', () => {
   it('renders username, password and optional tenant key fields', () => {
     render(<LoginForm redirectTo="/dashboard" />);
     expect(screen.getByLabelText(/username/i)).toBeDefined();
-    expect(screen.getByLabelText(/password/i)).toBeDefined();
+    expect(screen.getByLabelText(/^password$/i)).toBeDefined();
     expect(screen.getByLabelText(/tenant key/i)).toBeDefined();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeDefined();
   });
@@ -91,5 +91,42 @@ describe('LoginForm', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
     expect(routerReplace).toHaveBeenCalledWith('/dashboard');
+  });
+
+  it('autofocuses the username field', () => {
+    render(<LoginForm redirectTo="/dashboard" />);
+    expect(document.activeElement).toBe(screen.getByLabelText(/username/i));
+  });
+
+  it('toggles the password field between masked and visible text', () => {
+    render(<LoginForm redirectTo="/dashboard" />);
+    const passwordInput = screen.getByLabelText(/^password$/i) as HTMLInputElement;
+    expect(passwordInput.type).toBe('password');
+
+    fireEvent.click(screen.getByRole('button', { name: /show password/i }));
+    expect(passwordInput.type).toBe('text');
+
+    fireEvent.click(screen.getByRole('button', { name: /hide password/i }));
+    expect(passwordInput.type).toBe('password');
+  });
+
+  it('sends a forgot-password request and shows the generic confirmation', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ message: 'If an account exists for that email, a password reset link has been sent.' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<LoginForm redirectTo="/dashboard" />);
+    fireEvent.click(screen.getByRole('button', { name: /forgot password/i }));
+    expect(screen.getByText(/reset your password/i)).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'doctor@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: /send reset link/i }));
+
+    expect(await screen.findByText(/check your email/i)).toBeDefined();
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/auth/forgot-password');
+    expect(JSON.parse(String(init.body))).toEqual({ email: 'doctor@example.com' });
+
+    fireEvent.click(screen.getByRole('button', { name: /back to sign in/i }));
+    expect(screen.getByLabelText(/username/i)).toBeDefined();
   });
 });

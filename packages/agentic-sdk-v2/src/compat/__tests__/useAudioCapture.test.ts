@@ -94,6 +94,49 @@ describe('useAudioCapture', () => {
     expect(audioMock.start).toHaveBeenCalledWith({ pipelineId: 'p1' });
   });
 
+  // TASK-597 — audio source selection. Before it, these fields were dropped on
+  // the floor and a compat consumer could only ever record the default mic.
+  it('forwards mic selection (deviceId/secondaryDeviceId/additionalDeviceIds) + gains to audio.start', async () => {
+    const { result } = renderHook(() =>
+      useAudioCapture({
+        options: { sttPipelineId: 'p1' },
+        deviceId: 'mic-A',
+        secondaryDeviceId: 'mic-B',
+        additionalDeviceIds: ['mic-C'],
+        sourceGains: [1, 0.8, 0.6],
+      }),
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    expect(audioMock.start).toHaveBeenCalledWith({
+      pipelineId: 'p1',
+      deviceId: 'mic-A',
+      secondaryDeviceId: 'mic-B',
+      additionalDeviceIds: ['mic-C'],
+      sourceGains: [1, 0.8, 0.6],
+    });
+  });
+
+  it('forwards pre-built sourceStreams (file-backed capture) to audio.start', async () => {
+    const streams = [{ id: 'file-1' }, { id: 'file-2' }] as unknown as MediaStream[];
+    const { result } = renderHook(() => useAudioCapture({ options: { sttPipelineId: 'p1' }, sourceStreams: streams }));
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    expect(audioMock.start).toHaveBeenCalledWith({ pipelineId: 'p1', sourceStreams: streams });
+  });
+
+  it('omits every source field from audio.start when none is selected (frozen v1 shape)', async () => {
+    const { result } = renderHook(() =>
+      useAudioCapture({ options: { sttPipelineId: 'p1' }, additionalDeviceIds: [], sourceStreams: [], sourceGains: [] }),
+    );
+    await act(async () => {
+      await result.current.startRecording();
+    });
+    expect(audioMock.start).toHaveBeenCalledWith({ pipelineId: 'p1' });
+  });
+
   it('is idempotent when capture already running (no double-start with the STT hook)', async () => {
     audioMock = makeAudioMock({ isCapturing: true });
     (useArcaAudio as unknown as ReturnType<typeof vi.fn>).mockReturnValue(audioMock);
