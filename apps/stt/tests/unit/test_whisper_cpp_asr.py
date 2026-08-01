@@ -285,7 +285,9 @@ def test_chunking_disabled_when_setting_zero() -> None:
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
-        ("അത് അത് അത് അത് അത് അത്", "അത്"),  # degenerate loop -> one
+        ("അത് അത് അത് അത് അത് അത്", "അത്"),  # spaced degenerate loop -> one
+        ("ക്രക്രക്രക്രക്രക്ര", "ക്ര"),  # NO-space Malayalam loop -> one
+        ("നല്ലത് ക്രക്രക്രക്രക്ര വരും", "നല്ലത് ക്ര വരും"),  # loop inside real text
         ("no no no", "no no no"),  # genuine triple survives (run == limit)
         ("the patient has a fever", "the patient has a fever"),  # normal untouched
         ("", ""),
@@ -293,6 +295,19 @@ def test_chunking_disabled_when_setting_zero() -> None:
 )
 def test_collapse_repeats_loop_guard(text: str, expected: str) -> None:
     assert whisper_cpp_asr._collapse_repeats(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (", ഞാൻ നേരത്തെ", "ഞാൻ നേരത്തെ"),  # strip whisper's leading comma
+        (". അപ്പോ ഇത്", "അപ്പോ ഇത്"),  # leading period
+        ("Hello there,", "Hello there"),  # trailing comma
+        ("ഒരു അത് അത് അത് അത് അത്", "ഒരു അത്"),  # loop-guard still runs via _polish
+    ],
+)
+def test_polish_strips_edge_junk_and_collapses(text: str, expected: str) -> None:
+    assert whisper_cpp_asr._polish(text) == expected
 
 
 def test_serializes_concurrent_decode_on_shared_context() -> None:

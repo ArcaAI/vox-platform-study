@@ -186,25 +186,46 @@ def _norm_token(token: str) -> str:
     return _EDGE_PUNCT_RE.sub("", token.lower())
 
 
+# Character-level degenerate loop: a short unit (1-12 chars) repeated 4+ times
+# back-to-back — catches no-space scripts (Malayalam "ക്രക്രക്രക്ര…") that the
+# whitespace-token guard below cannot see. Non-greedy unit, collapsed to one.
+_CHAR_LOOP_RE = re.compile(r"(.{1,12}?)\1{3,}", re.UNICODE)
+
+
 def _collapse_repeats(text: str) -> str:
-    """Collapse a degenerate run of >``_REPEAT_RUN_LIMIT`` identical consecutive
-    tokens to a single token (greedy repetition-loop guard)."""
+    """Collapse degenerate greedy-decode repetition loops to a single occurrence.
+
+    Two passes: (1) a whitespace-token run of >``_REPEAT_RUN_LIMIT`` identical
+    tokens ("അത് അത് അത് …"); (2) a repeated short CHARACTER unit for
+    non-space-delimited scripts ("ക്രക്രക്ര…"). Genuine short repetitions survive.
+    """
     tokens = text.split()
-    if len(tokens) <= _REPEAT_RUN_LIMIT:
-        return text
-    out: list[str] = []
-    i = 0
-    while i < len(tokens):
-        j = i
-        key = _norm_token(tokens[i])
-        while j < len(tokens) and _norm_token(tokens[j]) == key:
-            j += 1
-        if key and (j - i) > _REPEAT_RUN_LIMIT:
-            out.append(tokens[i])  # collapse the loop to one occurrence
-        else:
-            out.extend(tokens[i:j])
-        i = j
-    return " ".join(out)
+    if len(tokens) > _REPEAT_RUN_LIMIT:
+        out: list[str] = []
+        i = 0
+        while i < len(tokens):
+            j = i
+            key = _norm_token(tokens[i])
+            while j < len(tokens) and _norm_token(tokens[j]) == key:
+                j += 1
+            if key and (j - i) > _REPEAT_RUN_LIMIT:
+                out.append(tokens[i])  # collapse the loop to one occurrence
+            else:
+                out.extend(tokens[i:j])
+            i = j
+        text = " ".join(out)
+    return _CHAR_LOOP_RE.sub(r"\1", text)
+
+
+# Whisper often prepends a stray punctuation token (a leading "," or ".") to a
+# segment; strip leading/trailing standalone punctuation so it doesn't surface in
+# the transcript. Script letters are never touched.
+_EDGE_JUNK_RE = re.compile(r"^[\s,.।;:!?\-–—]+|[\s,.।;:\-–—]+$", re.UNICODE)
+
+
+def _polish(text: str) -> str:
+    """Final cleanup: repetition loop-guard + strip leading/trailing punctuation."""
+    return _EDGE_JUNK_RE.sub("", _collapse_repeats(text)).strip()
 
 
 class WhisperCppAsrAdapter:
@@ -367,7 +388,7 @@ class WhisperCppAsrAdapter:
         timestamps, apply the repetition loop-guard, and emit one utterance-level
         result. A single span is returned as-is (fast path)."""
         if len(sub_results) == 1:
-            sub_results[0]["text"] = _collapse_repeats(sub_results[0]["text"])
+            sub_results[0]["text"] = _polish(sub_results[0]["text"])
             if sub_results[0]["segments"]:
                 sub_results[0]["segments"][0]["text"] = sub_results[0]["text"]
             return sub_results[0]
@@ -386,7 +407,7 @@ class WhisperCppAsrAdapter:
                         "end": round(w["end"] + offset, 4),
                     }
                 )
-        text = _collapse_repeats(" ".join(text_parts))
+        text = _polish(" ".join(text_parts))
         duration = len(audio) / float(sample_rate) if sample_rate else 0.0
         start = word_timestamps[0]["start"] if word_timestamps else 0.0
         end = word_timestamps[-1]["end"] if word_timestamps else duration

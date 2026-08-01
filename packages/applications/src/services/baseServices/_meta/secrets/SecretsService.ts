@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { LRUCacheWithDelete } from 'mnemonist';
 import { ISecretsProvider, SECRETS_PROVIDER_TOKEN, SecretFetchOptions, SecretsHealth, SecretsProviderName } from './ISecretsProvider';
 
@@ -7,6 +7,13 @@ export interface SecretsServiceOptions {
   defaultTtlSec?: number;
   /** LRU max entries. Default 200. */
   lruMax?: number;
+  /**
+   * How often (seconds) to re-warm the `boot({ warmupKeys })` set so the
+   * cache-only `getSecretSync` path never goes cold on TTL expiry. Unset / <= 0
+   * derives a safe default of `max(30, floor(defaultTtlSec / 2))` — re-warming
+   * at half the TTL guarantees a valid entry always outlives one failed cycle.
+   */
+  reWarmIntervalSec?: number;
 }
 
 export const SECRETS_SERVICE_OPTIONS = Symbol.for('SecretsServiceOptions');
@@ -25,10 +32,11 @@ interface CacheEntry {
  *   caches across the fleet.
  */
 @Injectable()
-export class SecretsService {
+export class SecretsService implements OnModuleDestroy {
   private readonly logger = new Logger(SecretsService.name);
   private readonly cache: LRUCacheWithDelete<string, CacheEntry>;
   private readonly defaultTtlSec: number;
+  private readonly reWarmIntervalSecOpt: number;
 
   constructor(
     @Inject(SECRETS_PROVIDER_TOKEN)
@@ -40,6 +48,7 @@ export class SecretsService {
     // LRUCacheWithDelete supports .delete() which the plain LRUCache lacks.
     this.cache = new LRUCacheWithDelete(opts.lruMax ?? 200);
     this.defaultTtlSec = opts.defaultTtlSec ?? 300;
+    this.reWarmIntervalSecOpt = opts.reWarmIntervalSec ?? 0;
   }
 
   private effectiveTtlSec(opts?: SecretFetchOptions): number {
@@ -218,12 +227,85 @@ export class SecretsService {
       await providerBoot.call(this.provider);
     }
     if (opts.warmupKeys && opts.warmupKeys.length > 0) {
+      this.warmupKeys = [...opts.warmupKeys];
       const results = await Promise.allSettled(opts.warmupKeys.map((k) => this.getSecret(k)));
       const failed = results.map((r, i) => (r.status === 'rejected' ? opts.warmupKeys![i] : null)).filter((k): k is string => k !== null);
       if (failed.length > 0) {
         this.logger.warn(`SecretsService.boot(): warmup miss for ${failed.length}/${opts.warmupKeys.length} key(s): ${failed.join(', ')}`);
       }
+      // Keep the warmup set continuously warm. `getSecretSync` is cache-only and
+      // its entries carry the per-secret TTL, so without a re-warm loop every
+      // warmed key silently goes cold `defaultTtlSec` after boot — dropping the
+      // `X-Service-Token` header on the sync-only proxy paths (SMR/TTS) and
+      // turning healthy calls into upstream 401s minutes after startup. Refresh
+      // is a NO-OP when caching is disabled (`defaultTtlSec <= 0`) or nothing
+      // was warmed.
+      this.startReWarm();
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Warmup re-warm loop — keeps `getSecretSync` consumers from going cold
+  // ---------------------------------------------------------------------------
+  //
+  // The sync path (SmrCompatController / SmrProxyController / TtsWsGateway
+  // `getForwardHeaders`) cannot await Vault, so it reads `getSecretSync`, which
+  // returns `undefined` on any cache miss — including a plain TTL expiry. Boot
+  // warms the keys once; this loop re-fetches them at half the TTL so a warmed
+  // key is ALWAYS present. Using `{ refresh: true }` also makes the loop a
+  // bounded-staleness backstop for rotations (the `arca:secrets:invalidate`
+  // pub/sub channel remains the fast propagation path — plan §9.2 L4).
+
+  private warmupKeys: readonly string[] = [];
+  private reWarmTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Effective re-warm cadence: explicit option/env, else half the TTL (floor 30s). */
+  private reWarmIntervalMs(): number {
+    if (this.reWarmIntervalSecOpt > 0) return this.reWarmIntervalSecOpt * 1000;
+    return Math.max(30, Math.floor(this.defaultTtlSec / 2)) * 1000;
+  }
+
+  private startReWarm(): void {
+    // Nothing to keep warm, or caching disabled (entries never expire off TTL
+    // because they are never stored) → no loop.
+    if (this.reWarmTimer || this.warmupKeys.length === 0 || this.defaultTtlSec <= 0) return;
+    this.reWarmTimer = setInterval(() => {
+      void this.reWarmWarmupKeys();
+    }, this.reWarmIntervalMs());
+    // Never let the loop hold the event loop open (clean shutdown, test exit).
+    this.reWarmTimer.unref?.();
+  }
+
+  /**
+   * Re-fetch every warmup key, resetting its TTL. A failed key is logged at WARN
+   * and its EXISTING cached value is left in place — because the loop runs at
+   * half the TTL, a single transient provider blip still leaves a valid entry
+   * for the sync path, and the next cycle retries. Public for deterministic
+   * testing (fake timers) and operational forced-refresh.
+   */
+  async reWarmWarmupKeys(): Promise<void> {
+    if (this.warmupKeys.length === 0) return;
+    const results = await Promise.allSettled(this.warmupKeys.map((k) => this.getSecret(k, { refresh: true })));
+    const failed = this.warmupKeys.filter((_, i) => results[i]?.status === 'rejected');
+    if (failed.length > 0) {
+      // Names keys only, never values (plan §9.3 M10). Existing cache entries are
+      // retained; the sync path keeps serving the last-good token until recovery.
+      this.logger.warn(
+        `SecretsService re-warm miss for ${failed.length}/${this.warmupKeys.length} key(s): ${failed.join(', ')} (last-good values retained)`,
+      );
+    }
+  }
+
+  /** Stop the re-warm loop. Idempotent. Called on module destroy. */
+  stopReWarm(): void {
+    if (this.reWarmTimer) {
+      clearInterval(this.reWarmTimer);
+      this.reWarmTimer = null;
+    }
+  }
+
+  onModuleDestroy(): void {
+    this.stopReWarm();
   }
 
   /**
@@ -237,6 +319,14 @@ export class SecretsService {
     if (versioned) {
       for (const cacheKey of versioned) this.cache.delete(cacheKey);
       this.cacheKeysByName.delete(key);
+    }
+    // A warmup key must not stay evicted between re-warm cycles: the sync path
+    // would drop its `X-Service-Token` header until the next loop tick. Rotation
+    // invalidation means the value CHANGED, so re-fetch it now (fire-and-forget,
+    // `refresh` already implied by the eviction above) to re-populate the
+    // cache-only path with the NEW value promptly.
+    if (this.warmupKeys.includes(key)) {
+      void this.getSecretOptional(key);
     }
   }
 

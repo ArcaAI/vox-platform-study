@@ -27,6 +27,11 @@ export interface SecretsModuleOptions {
   /** LRU max entries. */
   lruMax?: number;
   /**
+   * Re-warm cadence (seconds) for the warmup set, forwarded to SecretsService.
+   * Unset/<=0 derives `max(30, floor(defaultTtlSec / 2))`.
+   */
+  reWarmIntervalSec?: number;
+  /**
    * Keys to warm during DI construction. When non-empty, the
    * `SecretsService` provider becomes an async useFactory that
    * `await`s `SecretsService.boot({warmupKeys})` BEFORE the service
@@ -149,6 +154,7 @@ export class SecretsModule {
           useValue: {
             defaultTtlSec: options.defaultTtlSec,
             lruMax: options.lruMax,
+            reWarmIntervalSec: options.reWarmIntervalSec,
           },
         },
         {
@@ -165,7 +171,10 @@ export class SecretsModule {
         },
         {
           provide: SecretsService,
-          useFactory: async (provider: ISecretsProvider, svcOptions: { defaultTtlSec?: number; lruMax?: number }): Promise<SecretsService> => {
+          useFactory: async (
+            provider: ISecretsProvider,
+            svcOptions: { defaultTtlSec?: number; lruMax?: number; reWarmIntervalSec?: number },
+          ): Promise<SecretsService> => {
             const svc = new SecretsService(provider, svcOptions);
             // Boot only when the caller actually asked for warmup. For
             // Vault provider in production, the warmup list also drives

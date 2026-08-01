@@ -701,11 +701,13 @@ class Settings(BaseSettings):
         ),
     )
     streaming_partial_window_s: float = Field(
-        default=8.0,
+        default=6.0,
         description=(
             "Tail window (seconds) of the current utterance decoded for "
-            "PARTIAL transcripts. Bounds per-partial decode cost on long "
-            "utterances; finals always decode the full utterance."
+            "PARTIAL transcripts. Set to the whisper.cpp force-emit window (~6 s) "
+            "so the last partial and the final decode the SAME audio — decoding is "
+            "deterministic, so matched windows converge and the final stops "
+            "visibly rephrasing the partial. env STREAMING_PARTIAL_WINDOW_S"
         ),
     )
     streaming_partial_interval_s: float = Field(
