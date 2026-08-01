@@ -250,15 +250,17 @@ preprocessing:
     min_speech_duration_ms: 100
     min_silence_duration_ms: 700
     padding_ms: 200
+    force_emit_after_ms: 12000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
 
 inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp pins the FIRST subtag (ml). initial_prompt is derived from it.
+  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp leaves language unset (auto) for a pair rather than pinning ml.
+  prev_text_context_words: 0   # NO carry-forward prompt — priming whisper.cpp with prior text propagates/compounds errors over a long session
 
 diarization:
-  enabled: true
+  enabled: false               # speaker labels not needed; also removes the per-utterance ECAPA embedding latency from finals
   backend: embedding
   max_speakers: 2
 
@@ -308,15 +310,17 @@ preprocessing:
     min_speech_duration_ms: 100
     min_silence_duration_ms: 700
     padding_ms: 200
+    force_emit_after_ms: 12000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
 
 inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml-en"       # Malayalam+English code-switch pair; the engine pins the FIRST subtag (ml).
+  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp leaves language unset (auto) for a pair — the fine-tune code-switches natively; pinning ml over-biases the script.
+  prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
-  enabled: true
+  enabled: false               # speaker labels not needed; also removes the per-utterance ECAPA embedding latency from finals
   backend: embedding
   max_speakers: 2
 
@@ -364,15 +368,17 @@ preprocessing:
     min_speech_duration_ms: 100
     min_silence_duration_ms: 700
     padding_ms: 200
+    force_emit_after_ms: 12000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
 
 inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml-en"       # Malayalam+English code-switch pair; the engine pins the FIRST subtag (ml).
+  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp leaves language unset (auto) for a pair — the fine-tune code-switches natively; pinning ml over-biases the script.
+  prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
-  enabled: true
+  enabled: false               # speaker labels not needed; also removes the per-utterance ECAPA embedding latency from finals
   backend: embedding
   max_speakers: 2
 
@@ -421,15 +427,17 @@ preprocessing:
     min_speech_duration_ms: 100
     min_silence_duration_ms: 700
     padding_ms: 200
+    force_emit_after_ms: 12000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
 
 inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml-en"       # Malayalam+English code-switch pair; the engine pins the FIRST subtag (ml).
+  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp leaves language unset (auto) for a pair — the fine-tune code-switches natively; pinning ml over-biases the script.
+  prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
-  enabled: true
+  enabled: false               # speaker labels not needed; also removes the per-utterance ECAPA embedding latency from finals
   backend: embedding
   max_speakers: 2
 

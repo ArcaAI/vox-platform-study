@@ -272,6 +272,14 @@ const VAULT_CLIENT: SettingDescriptor[] = [
   envKnob('secrets.ttlSec', 'number', 'Secrets', 'Secret cache TTL (s)', 'Per-entry TTL of the SecretsService LRU cache.', 300),
   envKnob('secrets.lruMax', 'number', 'Secrets', 'Secret cache size', 'Maximum entries in the SecretsService LRU cache.', 200),
   envKnob(
+    'secrets.rewarmIntervalSec',
+    'number',
+    'Secrets',
+    'Secret warmup re-warm interval (s)',
+    'How often the SecretsService re-warms its boot warmup set so the cache-only getSecretSync path (SMR/TTS X-Service-Token) never expires cold. Unset/<=0 derives max(30, TTL/2).',
+    0,
+  ),
+  envKnob(
     'pg.dynamicCreds',
     'boolean',
     'Database',

@@ -141,6 +141,82 @@ never touch known-good short clips). Per-clip at 7.0: test_1 0.025, test-2 0.239
 test-3 0.355, test-4 0.117, test-5 0.023, test-6 0.020, test-7 0.167 → **mean 0.135**
 (vs 0.273 un-chunked). Re-tune as the labeled set grows.
 
+## Live-path fixes (from a real streaming screenshot — issues the offline eval could not see)
+
+A live session screenshot showed ~25 s finals, `ക്രക്ര…` repetition garbage, `�` chars,
+progressive degradation over ~4 min, and "Speaker 1" labels. Root causes + fixes:
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Slow finalize (~25 s finals) | `max_utterance_duration_ms` **25000** force-emit; VAD never cuts continuous speech | pipeline `vad.force_emit_after_ms: 6000` — finals every ~6 s (the stable window) |
+| Worse after minutes | carry-forward prompt: `inference.prev_text_context_words` **50** feeds prior (garbage) text as `initial_prompt`, compounding | pipeline `inference.prev_text_context_words: 0` |
+| "Speaker 1" | `diarization.enabled: true` (ECAPA) sets `result.speaker_id`; SDK renders it (also adds per-final latency) | pipeline `diarization.enabled: false` |
+| `ക്രക്ര…` loop survived the guard | `_collapse_repeats` was whitespace-token only; Malayalam has no spaces | added a char-level `(.{1,12})\1{3,}` repeat collapse |
+
+Config applied to the seed (`06-stt.ts`) AND the live DB (all 4 whisper.cpp pipelines ×
+3 platform tenants): `arcaai-whisper-large-ml-en-gguf`, `-gguf-q8_0`,
+`arcaai-whisper-large-ml-en`, `production-whisper-large-v3-turbo-gguf`. **Requires an STT
+restart** to load the loop-guard code and read the new pipeline config.
+
+## Partial↔final divergence + English transliteration (from a second live report)
+
+User reported: partials show correct English terms, then the final "rephrases" them
+into Malayalam script (e.g. `അല്ലാസൗണ്ട് സ്കാനിൽ` = "ultrasound scan"), and asked why
+the transcript changes before finalizing.
+
+Findings (measured on the 7 labeled clips):
+- **Determinism control:** the same clip decoded 18× on one persistent model = a
+  rock-steady 0.02 CER. The model does NOT degrade with reuse — so "worse over time"
+  was the carry-forward prompt (already fixed), not context rot.
+- **Why partials≠finals:** decoding is a whole-window re-decode; partial and final
+  decode DIFFERENT audio (partial = rolling tail; final = the utterance + the ~0.4s
+  that arrived after the last partial). Different window → different text. Since
+  decoding is deterministic, **matched windows converge.**
+- **Transliteration:** `language=None` (auto) re-detects per decode; a Malayalam-
+  dominant or mid-word-cut window commits to Malayalam and transliterates embedded
+  English. No single language pin wins (`en` helps English-heavy clips but destroys
+  Malayalam-dominant ones; `ml` collapses on long windows) — `None` stays the balance.
+- **Decode-param tuning is a dead end:** `suppress_nst`/`suppress_blank` did not help
+  (often hurt); greedy+None+chunker is at the model's ceiling.
+
+Shipped fixes:
+- `streaming_partial_window_s` **8.0 → 6.0** — matches the 6 s force-emit so the last
+  partial and the final decode the same ≤6 s audio → they converge (deterministic).
+- `_polish()` — strips whisper's stray leading/trailing punctuation (`, ` / `. `) in
+  addition to the loop-guard. Scorecard 0.135 → **0.129**.
+
+Deeper fix (NOT done — needs live verification): the residual divergence and the
+mid-word-cut transliteration are inherent to the partial→fresh-final design. The real
+remedy is the whisper_streaming committed-stream model (overlapping windows +
+LocalAgreement → the committed text IS the final, no fresh re-decode). Recommended as a
+focused, live-verified follow-up.
+
+### force_emit sweep in the REAL streaming path (corrects a bad earlier assumption)
+
+`force_emit_after_ms: 6000` was verified on a MISLEADING test — the scorecard feeds each
+clip as ONE utterance (the adapter chunks it cleanly at the deepest silence), but the real
+`StreamingPreprocessor` pre-segments at the force-emit into **mid-phrase cuts**, and a
+window starting mid-phrase makes the fine-tune fail (e.g. a 6s middle utterance collapsed
+to `"അത് അ"`, dropping the whole middle). Sweeping force-emit through the real
+preprocessor+adapter path (offline VAD harness):
+
+| force_emit | mean CER |
+|---|---|
+| 6000 | 0.232 (shipped — WRONG) |
+| 9000 | 0.174 |
+| 12000 | 0.172 |
+| 20000 | 0.129 |
+| 25000 | 0.129 (best, but ~25s finals) |
+
+**Reverted 6000 → 12000** (interim) in the seed + all 12 live rows. This is a genuine
+latency↔quality trade-off with no free lunch on continuous pause-free speech: natural
+pauses finalize fast via the VAD (700ms) regardless; only pause-free runs hit force-emit,
+and cutting them short fails. The only way to get BOTH low latency AND quality on continuous
+speech is the whisper_streaming redesign (re-decode from utterance start + LocalAgreement +
+word-timestamp alignment), which needs LIVE verification — partials are wall-clock-gated and
+cannot be exercised by offline fast-replay. Owner decision pending on the trade-off point vs
+investing in the redesign.
+
 ## Open / follow-up
 - Re-tune `WHISPER_CPP_MAX_AUDIO_SECONDS` and compare model variants (q8_0, non-GGUF
   transformer) as more labeled ml-en clips arrive.

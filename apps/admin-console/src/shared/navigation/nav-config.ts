@@ -8,7 +8,6 @@ import {
   IconBuildings,
   IconCalendarTime,
   IconChartHistogram,
-  IconCloudCog,
   IconDatabase,
   IconDatabaseSearch,
   IconDna,
@@ -16,7 +15,6 @@ import {
   IconFingerprint,
   IconFolders,
   IconGauge,
-  IconHeadphones,
   IconHeartbeat,
   IconHistory,
   IconKey,
@@ -42,7 +40,6 @@ import {
   IconUsers,
   IconUserScan,
   IconUserShield,
-  IconVolume,
   IconWaveSine,
   type TablerIcon,
 } from '@tabler/icons-react';
@@ -316,34 +313,14 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     ],
     implemented: true,
   },
-  {
-    route: '/tts-config',
-    label: 'TTS configuration',
-    tier: '30-49',
-    icon: IconVolume,
-    required: [
-      ['read', 'TenantTtsConfig'],
-      ['manage', 'TenantTtsConfig'],
-    ],
-    implemented: true,
-  },
-  {
-    route: '/stt-config',
-    label: 'STT configuration',
-    tier: '30-49',
-    icon: IconHeadphones,
-    required: [
-      ['read', 'TenantSttConfig'],
-      ['manage', 'TenantSttConfig'],
-    ],
-    implemented: true,
-  },
-  // The tenant AI surface, rebuilt from the static
-  // EmptyState dead-end into read-only effective-model visibility for all 9 task
-  // keys plus the tenant's OWN bring-your-own cloud credentials. Model selection
-  // remains GLOBAL_ADMIN-only (owner expectation E3); the route was renamed
-  // `/ai-configuration` because "model defaults" advertised a capability this
-  // screen does not have. `/ai-model-defaults` redirects for one release.
+  // TASK-595: the single tenant AI hub. The former standalone screens
+  // `/stt-config`, `/tts-config` and `/ai-providers` were merged into four tabs
+  // here (Models · Speech · Voice · Providers), closing the credential-editor
+  // duplication (rule 13, "one authoritative editor"). Each tab spans a
+  // DIFFERENT backend resource, so `required` is the OR (canAny) of the four
+  // reads — the entry shows if the caller can read ANY one, and each tab is
+  // `<RequirePermission>`-gated in the screen. SMR selection stays tenant-owned;
+  // guardrail/nlp/harness model selection stays GLOBAL_ADMIN-only (read-only here).
   {
     route: '/ai-configuration',
     label: 'AI Configuration',
@@ -351,27 +328,9 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     icon: IconTargetArrow,
     required: [
       ['read', 'AiTaskDefault'],
-      ['manage', 'AiTaskDefault'],
-    ],
-    implemented: true,
-  },
-  // TASK-575 unified provider-credentials screen (LLM/STT/TTS tabs) over
-  // `admin/providers/:service/:provider`; gated on the same GlobalSetting
-  // ability the backend controller uses (CanRead for GET, CanManage for
-  // PUT/DELETE). Wired under TASK-586 Lane J — the rule-12 design gate was
-  // owner-waived. KNOWN FOLLOW-UP: its LLM/STT/TTS credential tabs overlap
-  // with the BYO-credential cards on `/ai-configuration`, `/stt-config`, and
-  // `/tts-config` below; consolidating (or demoting those to read-only +
-  // deep link, per the "one authoritative editor" rule in 13-nextjs-apps.md)
-  // is a separate, not-yet-scheduled decision.
-  {
-    route: '/ai-providers',
-    label: 'AI providers',
-    tier: '30-49',
-    icon: IconCloudCog,
-    required: [
+      ['read', 'TenantSttConfig'],
+      ['read', 'TenantTtsConfig'],
       ['read', 'GlobalSetting'],
-      ['manage', 'GlobalSetting'],
     ],
     implemented: true,
   },

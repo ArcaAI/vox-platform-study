@@ -1,21 +1,12 @@
 'use client';
 
 import { Fragment, useId } from 'react';
-import { parseAsString, useQueryState } from 'nuqs';
 import { Badge } from '@arcaai/ui/components/shadcn/badge';
 import { Card } from '@arcaai/ui/components/shadcn/card';
 import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui/components/shadcn/tabs';
-import { PageHeader } from '@/shared/page/page-header';
-import { ScreenTemplate } from '@/shared/page/screen-template';
-import { StatusFooter } from '@/shared/page/status-footer';
 import { ErrorState } from '@/shared/state/error-state';
-import { WorkingTenantGate } from '@/shared/tenant-scope/working-tenant-gate';
 import { useSttEffective, useSttFallbackCandidates, useSttRow, usePutSttRow, type EffectiveSttConfig } from '../api';
 import { SttFallbackForm } from './stt-fallback-form';
-import { SttCredentialsTab } from './stt-credentials-tab';
-
-const TAB_VALUES = ['fallback', 'credentials'] as const;
 
 /** Compact key/value summary of the resolved effective STT fallback spec. */
 function EffectiveResolveCard({ effective }: { effective: EffectiveSttConfig }) {
@@ -54,8 +45,15 @@ function FallbackTabSkeleton() {
   );
 }
 
-/** Fallback tab: effective resolve card + the OCC fallback-row editor. */
-function FallbackTab() {
+/**
+ * Speech (STT fallback) tab body — effective resolve card + the OCC
+ * fallback-row editor. Extracted from the retired `/stt-config` screen so the
+ * `/ai-configuration` hub can compose it as its "Speech" tab (TASK-595). The
+ * BYO STT credentials formerly living beside it are now edited only in the
+ * hub's Providers tab (the unified provider plane) — the one authoritative
+ * credential editor (rule 13).
+ */
+export function SttFallbackTab() {
   const uid = useId();
   const effectiveQuery = useSttEffective();
   const rowQuery = useSttRow();
@@ -91,56 +89,5 @@ function FallbackTab() {
         />
       </section>
     </div>
-  );
-}
-
-/**
- * Tenant STT configuration (/stt-config, tier 30-49).
- * Tenant-scoped fallback spec with OCC row editing, plus BYO provider-key
- * management (write-only, Vault-encrypted, with a pre-save "Test connection"
- * probe). Composed from the design-system best practices (ScreenTemplate,
- * WorkingTenantGate, skeletons, both themes, semantic tokens).
- */
-export function TenantSttConfigScreen() {
-  const [tabParam, setTabParam] = useQueryState('tab', parseAsString.withDefault('fallback'));
-  const tab = (TAB_VALUES as readonly string[]).includes(tabParam) ? tabParam : 'fallback';
-
-  return (
-    <WorkingTenantGate
-      title="STT Configuration"
-      meta={
-        <span aria-hidden className="text-muted-foreground font-mono text-xs">
-          GET /admin/stt-config
-        </span>
-      }
-    >
-      <Tabs className="flex min-h-0 flex-1 flex-col" value={tab} onValueChange={(next) => void setTabParam(next === 'fallback' ? null : next)}>
-        <ScreenTemplate
-          header={<PageHeader title="STT Configuration" meta={<span>tenant fallback pipeline &amp; BYO provider keys</span>} />}
-          tabs={
-            <TabsList variant="line">
-              <TabsTrigger value="fallback">Fallback</TabsTrigger>
-              <TabsTrigger value="credentials">Credentials</TabsTrigger>
-            </TabsList>
-          }
-          footer={
-            <StatusFooter
-              end={
-                <span aria-hidden className="font-mono">
-                  GET /admin/stt-config
-                </span>
-              }
-            />
-          }
-        >
-          <TabsContent value="fallback">
-            <FallbackTab />
-          </TabsContent>
-          <TabsContent value="credentials">
-            <SttCredentialsTab />
-          </TabsContent>
-        </ScreenTemplate>
-      </Tabs>
-    </WorkingTenantGate>
   );
 }
