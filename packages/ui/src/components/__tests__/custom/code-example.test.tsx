@@ -95,5 +95,33 @@ test.describe('CodeExample', () => {
       const tagName = await pre.evaluate((el) => el.tagName.toLowerCase());
       expect(tagName).toBe('pre');
     });
+
+    // The code body scrolls horizontally (`overflow-x-auto`). A scrollable
+    // region that cannot be focused leaves keyboard users unable to reach the
+    // off-screen code at all — WCAG 2.1.1, reported by axe as the SERIOUS
+    // `scrollable-region-focusable` violation.
+    test('scrollable code region is keyboard focusable', async ({ mount }) => {
+      const component = await mount(<ExpandedCodeExample />);
+      const pre = component.locator('pre');
+      await expect(pre).toHaveAttribute('tabindex', '0');
+      await pre.focus();
+      await expect(pre).toBeFocused();
+    });
+
+    // A focusable element with no accessible name announces nothing useful, so
+    // the name is part of the fix, not a nicety. Derived from title + language.
+    test('scrollable code region has an accessible name from title and language', async ({ mount }) => {
+      const component = await mount(<ExpandedCodeExample />);
+      const pre = component.locator('pre');
+      await expect(pre).toHaveAttribute('role', 'region');
+      await expect(pre).toHaveAttribute('aria-label', 'Sample Code — typescript code');
+    });
+
+    test('accessible name tracks the language prop', async ({ mount }) => {
+      const component = await mount(<PythonCodeExample />);
+      const pre = component.locator('pre');
+      await pre.waitFor({ state: 'visible', timeout: 5000 });
+      await expect(pre).toHaveAttribute('aria-label', /python code$/);
+    });
   });
 });

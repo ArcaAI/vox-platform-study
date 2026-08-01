@@ -298,6 +298,46 @@ export interface AudioStartOptions {
    */
   secondaryDeviceId?: string;
   /**
+   * Extra microphones beyond {@link AudioStartOptions.deviceId} and
+   * {@link AudioStartOptions.secondaryDeviceId} (TASK-597). ALL selected mics
+   * are mixed into ONE uplink stream — `AudioMixer` is N-source with per-source
+   * gain and 1/sqrt(N) master normalization, so the ceiling of two was a
+   * limitation of the hook, not of the mixer.
+   *
+   * The resolved source order is
+   * `[deviceId, secondaryDeviceId, ...additionalDeviceIds]` with empties
+   * dropped and duplicates removed; that order is what
+   * {@link AudioStartOptions.sourceGains} indexes into. Additive/optional —
+   * omit it and the pre-597 one-or-two-mic behaviour is byte-identical.
+   */
+  additionalDeviceIds?: string[];
+  /**
+   * Pre-built capture streams used **instead of** `getUserMedia` (TASK-597).
+   *
+   * When this is non-empty the hook opens NO microphone at all: the supplied
+   * streams become the capture sources and flow through the identical
+   * mixer → noise-filter → VAD → STT graph a mic would. This is the injection
+   * seam that lets a caller drive the pipeline from an audio FILE
+   * (`AudioContext.decodeAudioData` → `AudioBufferSourceNode` →
+   * `MediaStreamAudioDestinationNode.stream`) — one stream simulates a single
+   * mic, several simulate several mics mixed down to one uplink.
+   *
+   * Mutually exclusive with the deviceId fields: when set, `deviceId` /
+   * `secondaryDeviceId` / `additionalDeviceIds` are ignored. Every injected
+   * stream is stopped on `stop()` exactly like an acquired one.
+   */
+  sourceStreams?: MediaStream[];
+  /**
+   * Per-source mixer gain (linear, `1.0` = unity), index-aligned with the
+   * resolved source list — i.e. with {@link AudioStartOptions.sourceStreams}
+   * when streams are injected, otherwise with
+   * `[deviceId, secondaryDeviceId, ...additionalDeviceIds]` after de-duplication
+   * (TASK-597). Missing/short entries default to `1.0`. Ignored when there is a
+   * single source, because a single source is fed to the pipeline directly and
+   * no mixer node exists.
+   */
+  sourceGains?: number[];
+  /**
    * When true (and the workflow is LOCAL), records the
    * pre-noise-filter (raw) and post-filter (processed) tracks in parallel via
    * `DualStreamRecorder`. The resulting blobs are delivered on `stop()` through

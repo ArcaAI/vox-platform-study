@@ -23,7 +23,15 @@ function MetadataCell({ meta }: { meta?: Record<string, unknown> }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap gap-1">
-        {meta.speaker_id !== undefined ? <Badge variant="secondary">speaker: {String(meta.speaker_id)}</Badge> : null}
+        {/* `mic` / `speaker` are the literal keys the per-mic metadata rows send
+            (MetadataSimulator → sendAudioData). Mic attribution is the whole
+            point of the multi-mic timeline, so they get first-class badges
+            instead of being buried in the raw-JSON block below (TASK-597 lane
+            G, carried from lane C). The label is spelled out in text — the
+            badge variant is decoration, never the only signal. */}
+        {meta.mic !== undefined ? <Badge variant="default">mic: {String(meta.mic)}</Badge> : null}
+        {meta.speaker !== undefined ? <Badge variant="secondary">speaker: {String(meta.speaker)}</Badge> : null}
+        {meta.speaker_id !== undefined ? <Badge variant="secondary">speaker_id: {String(meta.speaker_id)}</Badge> : null}
         {meta.detected_language !== undefined ? <Badge variant="secondary">lang: {String(meta.detected_language)}</Badge> : null}
         {meta.chunk_id !== undefined ? <Badge variant="outline">chunk: {String(meta.chunk_id)}</Badge> : null}
         {meta.startTime !== undefined || meta.endTime !== undefined ? (
@@ -62,8 +70,7 @@ export function TranscriptColumn({ lines, interim, isPreSession }: TranscriptCol
       <CardHeader>
         <CardTitle>Live results</CardTitle>
         <CardDescription>
-          One timeline — the transcription (with timestamp) and the metadata returned alongside it (TASK-564 passthrough), aligned row by
-          row.
+          One timeline — the transcription (with timestamp) and the metadata returned alongside it (TASK-564 passthrough), aligned row by row.
         </CardDescription>
       </CardHeader>
       <CardContent className="min-h-0 flex-1">

@@ -121,6 +121,31 @@ export interface WsBackpressureOptions {
 }
 
 /**
+ * Stop-drain tuning (TASK-597 lane B).
+ *
+ * `stopAndDrain` keeps the socket open after the finalize control frame so a
+ * tail final still reaches `onTranscript`. How long it is willing to wait —
+ * and whether a `finalizing` progress status may end that wait early — is
+ * configuration, not a constant: the wait is user-visible latency on Stop.
+ */
+export interface WsDrainOptions {
+  /**
+   * Hard ceiling on the drain wait, in ms (default
+   * {@link SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS}). Reached only when no
+   * terminal status arrives at all.
+   */
+  timeoutMs?: number;
+  /**
+   * Quiet window in ms (default
+   * {@link SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS}). Once the server
+   * reports `finalizing`, the drain resolves after this much silence — every
+   * transcript received restarts the window, so the tail is never cut short.
+   * Set to `0` to disable the early resolve and wait for a terminal status only.
+   */
+  quietWindowMs?: number;
+}
+
+/**
  * WebSocket client for STT real-time audio streaming.
  *
  * Usage:
@@ -142,6 +167,17 @@ export class SttWebSocketClient {
   static readonly DEFAULT_MAX_QUEUE_SIZE = 200;
   /** Default bufferedAmount watermark — 1 MiB. */
   static readonly DEFAULT_BUFFERED_AMOUNT_HIGH_WATERMARK = 1 * 1024 * 1024;
+  /**
+   * Default stop-drain ceiling (TASK-597 lane B2). Lowered from 5000ms: the
+   * server now publishes its terminal `closed` status as soon as the last
+   * transcript is on the stream, BEFORE the blob uploads and durable transcript
+   * persistence it used to sit behind, so the old ceiling only ever measured
+   * how slow the blob store was. This is the fallback for a server that never
+   * answers at all — not the expected path.
+   */
+  static readonly DEFAULT_DRAIN_TIMEOUT_MS = 1500;
+  /** Default silence, in ms, after `finalizing` that ends the drain early. */
+  static readonly DEFAULT_DRAIN_QUIET_WINDOW_MS = 250;
 
   private ws: WebSocket | null = null;
   private logger?: ISDKLogger;
@@ -196,10 +232,28 @@ export class SttWebSocketClient {
    * status so the socket doesn't sit open longer than necessary.
    */
   private pendingDrainResolve: (() => void) | null = null;
+  /**
+   * TASK-597: progress channel into an in-flight drain. `handleMessage` calls
+   * it on every transcript and on a `finalizing` status so the drain can end on
+   * a quiet window instead of the full timeout. Null when no drain is pending.
+   */
+  private pendingDrainNudge: ((event: 'finalizing' | 'transcript') => void) | null = null;
+  /** Stop-drain configuration. */
+  private drainOptions: Required<WsDrainOptions>;
 
-  constructor(logger?: ISDKLogger, reconnect?: WsReconnectOptions, debugMode?: boolean, backpressure?: WsBackpressureOptions) {
+  constructor(
+    logger?: ISDKLogger,
+    reconnect?: WsReconnectOptions,
+    debugMode?: boolean,
+    backpressure?: WsBackpressureOptions,
+    drain?: WsDrainOptions,
+  ) {
     this.logger = logger;
     this._debugMode = debugMode ?? false;
+    this.drainOptions = {
+      timeoutMs: drain?.timeoutMs ?? SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS,
+      quietWindowMs: drain?.quietWindowMs ?? SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS,
+    };
     this.reconnectOptions = {
       enabled: reconnect?.enabled ?? false,
       maxAttempts: reconnect?.maxAttempts ?? 5,
@@ -453,15 +507,23 @@ export class SttWebSocketClient {
    * durable transcript is unaffected; the gateway persists it regardless).
    * This sends the `{type:'stop'}` finalize control frame, then keeps the
    * socket OPEN — so any in-flight transcript still reaches the normal
-   * {@link onTranscript} callback — until the server's terminal `status`
-   * (`closed` or `cancelled`) arrives, or `drainTimeoutMs` elapses (default
-   * 5000ms), whichever comes first. Only then does it close.
+   * {@link onTranscript} callback — until whichever of these comes first:
+   *
+   * 1. the server's terminal `status` (`closed` or `cancelled`);
+   * 2. TASK-597: a `finalizing` status followed by `quietWindowMs` with no
+   *    further transcript (each transcript restarts the window, so a tail
+   *    still streaming is never cut off);
+   * 3. `drainTimeoutMs` (default {@link SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS}).
+   *
+   * Only then does it close.
    *
    * Marks the disconnect intentional up front so the auto-reconnect path in
    * `onclose` never fires for this shutdown, however it is eventually
-   * triggered (terminal status or timeout).
+   * triggered (terminal status, quiet window or timeout).
+   *
+   * @param drainTimeoutMs - Overrides the configured ceiling for this call.
    */
-  async stopAndDrain(drainTimeoutMs = 5000): Promise<void> {
+  async stopAndDrain(drainTimeoutMs: number = this.drainOptions.timeoutMs): Promise<void> {
     this.intentionalDisconnect = true;
     this.cancelReconnect();
 
@@ -481,26 +543,51 @@ export class SttWebSocketClient {
       });
     }
 
+    const quietWindowMs = this.drainOptions.quietWindowMs;
+
     await new Promise<void>((resolve) => {
       let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        this.pendingDrainResolve = null;
-        this.logger?.debug('Stop-drain timed out — closing without a terminal status', {
-          operation: 'stopAndDrain',
-          component: 'SttWebSocketClient',
-          attributes: { drainTimeoutMs },
-        });
-        resolve();
-      }, drainTimeoutMs);
+      let quietTimer: ReturnType<typeof setTimeout> | null = null;
+      let finalizingSeen = false;
 
-      this.pendingDrainResolve = () => {
+      const finish = (reason: 'terminal_status' | 'quiet_window' | 'timeout') => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        if (quietTimer !== null) clearTimeout(quietTimer);
         this.pendingDrainResolve = null;
+        this.pendingDrainNudge = null;
+        if (reason !== 'terminal_status') {
+          this.logger?.debug(`Stop-drain ended on ${reason} without a terminal status`, {
+            operation: 'stopAndDrain',
+            component: 'SttWebSocketClient',
+            attributes: { reason, drainTimeoutMs, quietWindowMs },
+          });
+        }
         resolve();
+      };
+
+      const timer = setTimeout(() => finish('timeout'), drainTimeoutMs);
+
+      const armQuietWindow = () => {
+        if (quietWindowMs <= 0) return;
+        if (quietTimer !== null) clearTimeout(quietTimer);
+        quietTimer = setTimeout(() => finish('quiet_window'), quietWindowMs);
+      };
+
+      this.pendingDrainResolve = () => finish('terminal_status');
+      // Only a `finalizing` status opens the quiet window; transcripts merely
+      // restart an already-open one. Without that gate, a drain against a
+      // server that never acknowledges the stop would close on the first lull
+      // in an ordinary utterance stream.
+      this.pendingDrainNudge = (event) => {
+        if (settled) return;
+        if (event === 'finalizing') {
+          finalizingSeen = true;
+          armQuietWindow();
+        } else if (finalizingSeen) {
+          armQuietWindow();
+        }
       };
     });
 
@@ -958,6 +1045,8 @@ export class SttWebSocketClient {
               this.lastReceivedSeq = transcript.seq;
             }
             this.onTranscriptCb?.(transcript);
+            // Restart an open drain quiet window — the tail is still arriving.
+            this.pendingDrainNudge?.('transcript');
           }
           break;
         case 'resumed': {
@@ -1016,6 +1105,11 @@ export class SttWebSocketClient {
           // out the full drain timeout.
           if ((msg.status === 'closed' || msg.status === 'cancelled') && this.pendingDrainResolve) {
             this.pendingDrainResolve();
+          } else if (msg.status === 'finalizing') {
+            // TASK-597: `finalizing` means the server has stopped accepting
+            // audio and is emitting whatever tail remains. Open the quiet
+            // window so the drain ends on silence rather than the ceiling.
+            this.pendingDrainNudge?.('finalizing');
           }
           break;
         case 'error':

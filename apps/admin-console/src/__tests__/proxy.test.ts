@@ -27,3 +27,16 @@ describe('proxy (public register/verify-email routes)', () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe('proxy (public SSO and password-reset routes)', () => {
+  it.each([
+    '/api/auth/sso/start',
+    '/api/auth/sso/callback',
+    '/reset-password',
+    '/api/auth/reset-password',
+    '/api/auth/forgot-password',
+  ])('lets an unauthenticated request through to %s', (path) => {
+    const response = proxy(requestFor(path));
+    expect(response.status).toBe(200); // NextResponse.next() reports 200/no redirect
+  });
+});

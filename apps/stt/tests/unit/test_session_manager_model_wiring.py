@@ -1851,7 +1851,16 @@ class TestFinalizeSessionPendingSegments:
 
     @pytest.mark.asyncio
     async def test_finalize_calls_sequence_in_correct_order(self):
-        """Verify finalize → publish_status(finalizing) → close → publish_status(closed)."""
+        """Verify finalize → publish(finalizing) → publish(closed) → close → remove.
+
+        TASK-597 lane B3 moved the terminal ``closed`` publish AHEAD of the
+        durability work (blob uploads, dual capture, durable transcript) and of
+        ``session.close()``: the gateway subscription completes on that status
+        and the SDK's stop-drain blocks on it, so making it wait for MinIO was
+        pure user-visible Stop latency. ``close()`` + capacity release still run
+        unconditionally in the ``finally`` block, just after the client is free.
+        See ``streaming/test_session_manager_finalize_ordering.py``.
+        """
         from stt.streaming.schemas import SessionStatus
 
         mgr = _make_manager()
@@ -1879,8 +1888,8 @@ class TestFinalizeSessionPendingSegments:
         assert call_order == [
             "finalize",
             "publish:finalizing",
-            "close",
             "publish:closed",
+            "close",
             "remove",
         ]
 

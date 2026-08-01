@@ -53,7 +53,20 @@ export function CodeExample({ title, code, language = 'typescript', defaultOpen 
             </Button>
           </CardHeader>
           <CardContent>
-            <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm font-mono">
+            {/*
+              `overflow-x-auto` makes this a scrollable region, so it MUST be
+              keyboard-reachable — a pointer user can drag it, a keyboard user
+              could not reach the off-screen code at all (WCAG 2.1.1; axe
+              `scrollable-region-focusable`, serious). `tabIndex={0}` fixes the
+              reachability; the accessible name is not optional, because landing
+              on an unnamed focusable element announces nothing useful.
+            */}
+            <pre
+              tabIndex={0}
+              role="region"
+              aria-label={language ? `${title} — ${language} code` : `${title} — code`}
+              className="overflow-x-auto rounded-lg bg-muted p-4 text-sm font-mono"
+            >
               <code data-language={language}>{code}</code>
             </pre>
           </CardContent>

@@ -3423,11 +3423,26 @@ class SessionManager:
             await self._finalize_session_locked(session)
 
     async def _finalize_session_locked(self, session: StreamSession) -> None:
-        """Finalize a session — mark finalizing, upload recordings, close, and clean up.
+        """Finalize a session — mark finalizing, close out the live stream, upload, clean up.
 
         Callers must drain the inference queue *before* calling this
         method so that all utterances have been transcribed. Always invoked
         under the per-session finalize lock (see ``_finalize_session``).
+
+        Ordering contract (TASK-597 lane B3)::
+
+            drain (caller) -> last transcript published -> status 'closed'
+                           -> MinIO uploads -> dual capture -> durable transcript
+                           -> session.close() -> remove_session()
+
+        ``closed`` is the TERMINAL status: the gateway's result subscription
+        COMPLETES on it and drops anything published afterwards. It is therefore
+        published as soon as the live caption stream is genuinely finished —
+        every final is already on the stream (all four finalize entrypoints
+        drain first) and any in-flight partial is cancelled immediately before
+        the publish. Everything after it is server-side durability work the
+        client never needed to wait for; blocking the terminal status on a slow
+        MinIO round-trip is what made the SDK's stop-drain burn its full timeout.
         """
         # Once a session is closed, re-finalizing is a no-op.
         if session.status == SessionStatus.CLOSED:
@@ -3437,6 +3452,7 @@ class SessionManager:
         raw_audio_uri: str | None = None
         processed_audio_uri: str | None = None
         transcript_uri: str | None = None
+        closed_published = False
 
         try:
             if session.status == SessionStatus.ACTIVE:
@@ -3445,6 +3461,26 @@ class SessionManager:
                 # Publish status update
                 if publisher:
                     await publisher.publish_status("finalizing")
+
+            # ---- Terminal status, published BEFORE the durability work ----
+            # A partial is an interim caption for an utterance whose final is
+            # already published; cancelling it here is what makes "no transcript
+            # after `closed`" an ordering GUARANTEE rather than a race.
+            # ``remove_session`` cancels again (idempotent).
+            self._cancel_partial(session.session_id)
+            if publisher:
+                try:
+                    await publisher.publish_status("closed")
+                    closed_published = True
+                except Exception as exc:
+                    # Non-fatal: the ``finally`` block re-publishes after
+                    # ``session.close()``, so the client still gets a terminal
+                    # status (just on the old, late timeline).
+                    logger.error(
+                        "Failed to publish early 'closed' status; will retry after close",
+                        session_id=session.session_id,
+                        error=str(exc),
+                    )
 
             # Upload audio + transcript + metadata
             has_processed = len(session.processed_audio_buffer) > 0
@@ -3574,7 +3610,9 @@ class SessionManager:
                     processed_audio_uri=processed_audio_uri,
                     transcript_uri=transcript_uri,
                 )
-                if publisher:
+                # Normally already published above (before the uploads); this is
+                # the fallback for the case where the early publish itself failed.
+                if publisher and not closed_published:
                     await publisher.publish_status("closed")
             except Exception as close_exc:
                 logger.error(

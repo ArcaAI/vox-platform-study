@@ -35,6 +35,36 @@ export interface UseAudioCaptureProps {
    */
   language?: string;
   languageMode?: string;
+  /**
+   * Audio SOURCE selection (TASK-597), forwarded verbatim to
+   * `useArcaAudio.start(...)`. Before 597 this hook silently dropped every
+   * source option: v1's `useAudioCapture` had no device selection, so a v2
+   * consumer pairing it with `useArcaSpeechToText` could only ever record the
+   * default microphone — the mixer and the injection seam existed in the core
+   * hook but were unreachable from the compat surface.
+   *
+   * Which hook wins the start race matters here (see the coordination note at
+   * the top of the file): `startRecording()` and
+   * `useArcaSpeechToText.startTranscription()` both call `audio.start(...)`
+   * guarded by `audio.isCapturing`, and the first one through applies its
+   * options. `useArcaSpeechToText` never carries source options, so these are
+   * honoured whenever capture is started HERE — which is the documented order
+   * for a capture-first consumer (the compat playground). There is deliberately
+   * NO store-backed fallback (as `languageMode`/`pendingSttProvider` have): a
+   * `MediaStream` is a live, non-serializable resource whose ownership would
+   * become ambiguous if it were parked in the shared store, and unlike a
+   * language id it cannot be safely re-applied by whichever hook happens to
+   * start. Start capture here when you select sources.
+   *
+   * All additive/optional — omitting them keeps the frozen v1 behaviour.
+   */
+  deviceId?: string;
+  secondaryDeviceId?: string;
+  additionalDeviceIds?: string[];
+  /** Pre-built (e.g. file-backed) streams used INSTEAD of `getUserMedia`. */
+  sourceStreams?: MediaStream[];
+  /** Per-source linear mixer gain, index-aligned with the resolved source list. */
+  sourceGains?: number[];
   /** Retained for source-compat only — NEVER invoked (v2 owns PCM transport). */
   onAudioData?: (data: ArrayBuffer) => void;
   onError?: (error: ErrorInfo) => void;
@@ -60,7 +90,18 @@ function toErrorInfo(err: unknown): ErrorInfo {
 }
 
 export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptureReturn {
-  const { options, autoStart = false, language, languageMode, onError } = props;
+  const {
+    options,
+    autoStart = false,
+    language,
+    languageMode,
+    deviceId,
+    secondaryDeviceId,
+    additionalDeviceIds,
+    sourceStreams,
+    sourceGains,
+    onError,
+  } = props;
   const audio = useArcaAudio();
   // Pre-start engine selection (TASK-586) chosen via `useArcaSttProvider` before
   // capture — applied to `audio.start` and cleared, mirroring the languageMode
@@ -82,6 +123,13 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
         ...(language ? { language } : {}),
         ...(languageMode ? { languageMode } : {}),
         ...(pendingSttProvider ? { startOn: pendingSttProvider } : {}),
+        // Source selection (TASK-597) — spread only when supplied so a caller
+        // that selects nothing still produces the exact pre-597 options object.
+        ...(deviceId ? { deviceId } : {}),
+        ...(secondaryDeviceId ? { secondaryDeviceId } : {}),
+        ...(additionalDeviceIds?.length ? { additionalDeviceIds } : {}),
+        ...(sourceStreams?.length ? { sourceStreams } : {}),
+        ...(sourceGains?.length ? { sourceGains } : {}),
       });
       // Consume the pre-start selection so a later re-open starts on primary
       // unless re-selected (order-independent with useArcaSpeechToText).
@@ -92,7 +140,20 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
       onError?.(info);
       throw err;
     }
-  }, [audio, options?.sttPipelineId, language, languageMode, pendingSttProvider, setPendingSttProvider, onError]);
+  }, [
+    audio,
+    options?.sttPipelineId,
+    language,
+    languageMode,
+    pendingSttProvider,
+    setPendingSttProvider,
+    deviceId,
+    secondaryDeviceId,
+    additionalDeviceIds,
+    sourceStreams,
+    sourceGains,
+    onError,
+  ]);
 
   const stopRecording = useCallback(async (): Promise<void> => {
     if (!audio.isCapturing) return;

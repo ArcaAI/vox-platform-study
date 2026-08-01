@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { IconAlertCircle, IconClockExclamation } from '@tabler/icons-react';
+import { IconAlertCircle, IconCircleCheck, IconClockExclamation, IconEye, IconEyeOff } from '@tabler/icons-react';
 import { Alert, AlertDescription, AlertTitle } from '@arcaai/ui/components/shadcn/alert';
 import { Button } from '@arcaai/ui/components/shadcn/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@arcaai/ui/components/shadcn/card';
@@ -29,6 +29,12 @@ export function LoginForm({ redirectTo, initialError }: LoginFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [ssoEmail, setSsoEmail] = useState('');
   const [ssoSubmitting, setSsoSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [forgotPasswordEmail, setForgotPasswordEmail] = useState('');
+  const [forgotPasswordSubmitting, setForgotPasswordSubmitting] = useState(false);
+  const [forgotPasswordSent, setForgotPasswordSent] = useState(false);
+  const [forgotPasswordError, setForgotPasswordError] = useState<string | null>(null);
 
   function finishLogin() {
     // Soft navigation keeps module state alive — a previous session's
@@ -93,6 +99,84 @@ export function LoginForm({ redirectTo, initialError }: LoginFormProps) {
     }
   }
 
+  async function handleForgotPasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setForgotPasswordError(null);
+    setForgotPasswordSubmitting(true);
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: forgotPasswordEmail.trim() }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        setForgotPasswordError(data.message ?? 'Could not send reset link');
+        return;
+      }
+      setForgotPasswordSent(true);
+    } catch {
+      setForgotPasswordError('Could not reach the server. Please try again.');
+    } finally {
+      setForgotPasswordSubmitting(false);
+    }
+  }
+
+  function closeForgotPassword() {
+    setForgotPasswordOpen(false);
+    setForgotPasswordSent(false);
+    setForgotPasswordError(null);
+    setForgotPasswordEmail('');
+  }
+
+  if (forgotPasswordOpen) {
+    return (
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Reset your password</CardTitle>
+          <CardDescription>Enter your account email and we&apos;ll send you a reset link.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {forgotPasswordSent ? (
+            <Alert>
+              <IconCircleCheck />
+              <AlertTitle>Check your email</AlertTitle>
+              <AlertDescription>If an account exists for that email, a password reset link has been sent.</AlertDescription>
+            </Alert>
+          ) : (
+            <form onSubmit={handleForgotPasswordSubmit} className="flex flex-col gap-4">
+              {forgotPasswordError ? (
+                <Alert variant="destructive">
+                  <IconAlertCircle />
+                  <AlertTitle>{forgotPasswordError}</AlertTitle>
+                </Alert>
+              ) : null}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="forgot-password-email">Email</Label>
+                <Input
+                  id="forgot-password-email"
+                  type="email"
+                  autoComplete="email"
+                  autoFocus
+                  value={forgotPasswordEmail}
+                  onChange={(event) => setForgotPasswordEmail(event.target.value)}
+                  required
+                />
+              </div>
+              <Button type="submit" disabled={forgotPasswordSubmitting}>
+                {forgotPasswordSubmitting ? <Spinner /> : null}
+                {forgotPasswordSubmitting ? 'Sending…' : 'Send reset link'}
+              </Button>
+            </form>
+          )}
+          <Button type="button" variant="ghost" onClick={closeForgotPassword}>
+            Back to sign in
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (passwordExpired) {
     return (
       <Card className="w-full max-w-sm">
@@ -127,24 +211,50 @@ export function LoginForm({ redirectTo, initialError }: LoginFormProps) {
           ) : null}
           <div className="flex flex-col gap-2">
             <Label htmlFor="login-username">Username</Label>
-            <Input id="login-username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="login-password">Password</Label>
             <Input
-              id="login-password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              id="login-username"
+              autoComplete="username"
+              autoFocus
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
               required
             />
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="login-password">Password</Label>
+              <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setForgotPasswordOpen(true)}>
+                Forgot password?
+              </Button>
+            </div>
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+                className="pr-10"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 -translate-y-1/2"
+                onClick={() => setShowPassword((previous) => !previous)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <IconEyeOff aria-hidden /> : <IconEye aria-hidden />}
+              </Button>
+            </div>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="login-tenant-key">Tenant key (optional for global admins)</Label>
             <Input id="login-tenant-key" autoComplete="organization" value={tenantKey} onChange={(event) => setTenantKey(event.target.value)} />
           </div>
           <Button type="submit" disabled={submitting}>
+            {submitting ? <Spinner /> : null}
             {submitting ? 'Signing in…' : 'Sign in'}
           </Button>
         </form>

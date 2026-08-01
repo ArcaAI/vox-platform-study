@@ -89,10 +89,26 @@ export function useArcaAudio() {
   }, [store.logger]);
 
   // Capture-session resources that must survive between
-  // start() and stop(): the 2-mic mixer (+ its secondary stream) for F3, and
+  // start() and stop(): the N-source mixer for F3, and
   // the dual-capture recorder (+ its delivery callback) for F2.
   const mixerRef = useRef<AudioMixer | null>(null);
-  const secondaryStreamRef = useRef<MediaStream | null>(null);
+  /**
+   * REF CONTRACT (TASK-597 lane A) — read this before touching teardown.
+   *
+   * Holds EVERY stream the current capture session owns, in resolved source
+   * order: the primary mic, each extra mic, and any caller-injected
+   * (file-backed) stream. It replaced the pre-597 single `secondaryStreamRef`,
+   * which could only ever remember one stream and therefore leaked
+   * `MediaStreamTrack`s the moment a third source existed — and a leaked track
+   * keeps the browser's recording indicator lit after Stop.
+   *
+   * Invariants:
+   *   - `startAudio` registers streams AS THEY ARE ACQUIRED, so a mid-way
+   *     failure still leaves every already-open track reachable for cleanup.
+   *   - Any teardown path must iterate this array, stop every track, then reset
+   *     it to `[]`. Nothing else needs to know how many sources there were.
+   */
+  const sourceStreamsRef = useRef<MediaStream[]>([]);
   // Self-contained input-level meter (TASK-543): the transcription pipeline
   // never surfaced an amplitude to the store, so meters/waveforms sat at 0.
   // An AnalyserNode on the capture graph (analysis-only — never routed to the
@@ -162,15 +178,70 @@ export function useArcaAudio() {
       });
 
       try {
-        // Get user media
-        logger?.debug('Requesting microphone access', {
-          operation: 'startAudio',
-          component: 'useArcaAudio',
-        });
-        // Honor the selected primary microphone.
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: options?.deviceId ? { deviceId: { exact: options.deviceId } } : true,
-        });
+        // ------------------------------------------------------------------
+        // Resolve the capture sources (TASK-597).
+        //
+        // ONE code path serves all four source modes — a single mic, N mics
+        // mixed, one file-backed stream, N file-backed streams mixed — because
+        // everything downstream (mixer → noise filter → VAD → STT) is fed from
+        // the SAME resolved list. There is deliberately no separate "file" path:
+        // a simulated recording must exercise the identical graph a mic does,
+        // or it proves nothing about the real pipeline.
+        //
+        //   • `sourceStreams` non-empty → the caller already built the streams
+        //     (file playback, a test double, a remote track). getUserMedia is
+        //     NOT called, and the deviceId fields are ignored.
+        //   • otherwise → `[deviceId, secondaryDeviceId, ...additionalDeviceIds]`
+        //     with empties dropped and duplicates removed. An EMPTY list means
+        //     "the default mic" and still issues the pre-597 `{ audio: true }`
+        //     request, so a plain `start()` is unchanged.
+        // ------------------------------------------------------------------
+        const injectedStreams = (options?.sourceStreams ?? []).filter((s): s is MediaStream => Boolean(s));
+        const deviceIds =
+          injectedStreams.length > 0
+            ? []
+            : Array.from(
+                new Set(
+                  [options?.deviceId, options?.secondaryDeviceId, ...(options?.additionalDeviceIds ?? [])].filter(
+                    (id): id is string => typeof id === 'string' && id.trim().length > 0,
+                  ),
+                ),
+              );
+
+        // Register the array on the teardown ref FIRST and push into it as each
+        // stream is acquired — see the `sourceStreamsRef` contract. A rejection
+        // on the third getUserMedia must not orphan the first two open mics.
+        const sourceStreams: MediaStream[] = [];
+        sourceStreamsRef.current = sourceStreams;
+
+        if (injectedStreams.length > 0) {
+          logger?.debug('Using caller-supplied source streams (getUserMedia skipped)', {
+            operation: 'startAudio',
+            component: 'useArcaAudio',
+            attributes: { sourceCount: injectedStreams.length },
+          });
+          sourceStreams.push(...injectedStreams);
+        } else {
+          logger?.debug('Requesting microphone access', {
+            operation: 'startAudio',
+            component: 'useArcaAudio',
+            attributes: { deviceCount: deviceIds.length },
+          });
+          if (deviceIds.length === 0) {
+            sourceStreams.push(await navigator.mediaDevices.getUserMedia({ audio: true }));
+          } else {
+            // Sequential on purpose: browsers serialize device-permission
+            // prompts anyway, and a parallel Promise.all would lose track of
+            // which streams opened before a later one rejected.
+            for (const id of deviceIds) {
+              sourceStreams.push(await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: id } } }));
+            }
+          }
+        }
+
+        // The first source is the session's `activeStream` (what mute/unmute and
+        // the level meter act on), exactly as the primary mic was pre-597.
+        const stream = sourceStreams[0];
 
         const ctxManager = AudioContextManager.getInstance({ sampleRate: 48000 });
         const audioContext = await ctxManager.acquire();
@@ -210,28 +281,32 @@ export function useArcaAudio() {
           logger?.debug('Live level meter unavailable', { operation: 'startAudio', component: 'useArcaAudio', error: levelError as Error });
         }
 
-        // When a second mic is selected, mix both inputs
-        // into one processed graph via @arcaai/room's AudioMixer, then feed the
-        // mixed track to the noise-filter/VAD/STT pipeline.
+        // More than one source → mix them all into ONE uplink stream via
+        // @arcaai/room's AudioMixer (GainNode summation with 1/sqrt(N) master
+        // normalization), then feed the single mixed track to the
+        // noise-filter/VAD/STT pipeline. Exactly one source is fed straight
+        // through with no mixer node in the graph — the pre-597 behaviour of
+        // `start()` / `start({ deviceId })`.
         let track = stream.getAudioTracks()[0];
-        if (options?.secondaryDeviceId) {
-          const secondaryStream = await navigator.mediaDevices.getUserMedia({
-            audio: { deviceId: { exact: options.secondaryDeviceId } },
-          });
-          secondaryStreamRef.current = secondaryStream;
-
+        if (sourceStreams.length > 1) {
           const mixer = new AudioMixer(audioContext);
-          mixer.addSource('primary', stream);
-          mixer.addSource('secondary', secondaryStream);
+          sourceStreams.forEach((source, index) => {
+            const gain = options?.sourceGains?.[index];
+            mixer.addSource(`source-${index + 1}`, source, typeof gain === 'number' && Number.isFinite(gain) ? gain : 1.0);
+          });
           mixerRef.current = mixer;
 
           const mixedTrack = mixer.getMixedTrack();
           if (mixedTrack) track = mixedTrack;
 
-          logger?.debug('Mixed dual-microphone inputs', {
+          logger?.debug('Mixed multi-source capture inputs', {
             operation: 'startAudio',
             component: 'useArcaAudio',
-            attributes: { primaryDeviceId: options.deviceId, secondaryDeviceId: options.secondaryDeviceId },
+            attributes: {
+              sourceCount: sourceStreams.length,
+              fromFileStreams: injectedStreams.length > 0,
+              deviceIds,
+            },
           });
         }
 
@@ -452,6 +527,15 @@ export function useArcaAudio() {
           sdk: { consultationId: consultation?.id },
         });
       } catch (error) {
+        // A failed start must not leave microphones open. Before 597 a
+        // rejection after the first getUserMedia (a second device that
+        // disappeared, a pipeline that failed to initialize) left the acquired
+        // track live and the browser's recording indicator lit, because only
+        // stop() — which the caller never reaches on a throw — released it.
+        for (const source of sourceStreamsRef.current) {
+          source.getTracks().forEach((t) => t.stop());
+        }
+        sourceStreamsRef.current = [];
         timer?.error(error as Error);
         store.setAudioError(error as Error);
         throw error;
@@ -496,10 +580,34 @@ export function useArcaAudio() {
     return startAudio(options);
   }, [store, getLogger, startAudio]);
 
-  const stopAudio = useCallback(async (): Promise<void> => {
+  /**
+   * The in-flight `stopAudio()` promise, or `null`.
+   *
+   * Two facts make this load-bearing:
+   *
+   *  1. The compat layer drives ONE audio graph through TWO hooks
+   *     (`useAudioCapture.stopRecording` and
+   *     `useArcaSpeechToText.stopTranscription`), and both guard on a
+   *     RENDER-TIME `isCapturing` snapshot. A consumer that stops both in the
+   *     same tick therefore lands in here twice with the first still running.
+   *  2. Now that the graph is torn down BEFORE the drain is awaited, that
+   *     second call would find nothing left to release and go straight to a
+   *     SECOND `pluginManager.destroy()` — i.e. a second drain wait against an
+   *     already-closed transport, re-adding exactly the latency this change
+   *     removes.
+   *
+   * Handing the duplicate caller the SAME promise makes it free. The ref is
+   * cleared on settle, so a genuinely later stop (host unmount after a
+   * completed stop) still runs its own pass.
+   */
+  const stopInFlightRef = useRef<Promise<void> | null>(null);
+
+  const stopAudio = useCallback((): Promise<void> => {
+    if (stopInFlightRef.current) return stopInFlightRef.current;
+
     const { pluginManager, consultation } = store;
     const logger = getLogger();
-    if (!pluginManager) return;
+    if (!pluginManager) return Promise.resolve();
 
     logger?.debug('Stopping audio capture', {
       operation: 'stopAudio',
@@ -507,75 +615,136 @@ export function useArcaAudio() {
       sdk: { consultationId: consultation?.id },
     });
 
-    // Flush the dual-capture recorder BEFORE tearing down
-    // the pipeline (destroy ends the processed track), then deliver the blobs.
-    const recorder = dualRecorderRef.current;
-    if (recorder?.isRecording) {
-      try {
-        const result = await recorder.stop();
-        onDualCaptureRef.current?.(result);
-      } catch (error) {
-        logger?.warn('Dual capture stop failed', {
-          operation: 'stopAudio',
-          component: 'useArcaAudio',
-          error: error as Error,
-        });
+    const run = async (): Promise<void> => {
+      // ---------------------------------------------------------------------
+      // 1. Flush the dual-capture recorder.
+      //
+      // This MUST stay ahead of the track stops in step 2:
+      // `DualStreamRecorder.stop()` calls `MediaRecorder.stop()` and waits for
+      // that recorder's `onstop`. Once a recorder's stream has gone inactive
+      // the call throws `InvalidStateError` and the promise it is racing never
+      // settles — `stopAudio` would hang forever instead of merely losing the
+      // blobs. It is a local encoder flush (milliseconds) on the LOCAL
+      // workflow only, so it never puts the transport drain on this path.
+      // ---------------------------------------------------------------------
+      const recorder = dualRecorderRef.current;
+      if (recorder?.isRecording) {
+        try {
+          const result = await recorder.stop();
+          onDualCaptureRef.current?.(result);
+        } catch (error) {
+          logger?.warn('Dual capture stop failed', {
+            operation: 'stopAudio',
+            component: 'useArcaAudio',
+            error: error as Error,
+          });
+        }
       }
-    }
-    dualRecorderRef.current = null;
-    onDualCaptureRef.current = undefined;
+      dualRecorderRef.current = null;
+      onDualCaptureRef.current = undefined;
 
-    await pluginManager.destroy();
-    pluginManager.clearRuntimeOptions?.();
+      // ---------------------------------------------------------------------
+      // 2. USER-VISIBLE TEARDOWN — deliberately BEFORE the transport drain
+      //    (TASK-597 finding D2).
+      //
+      // This whole block is synchronous, so by the time `stopAudio` yields to
+      // its first `await` the microphone is released, the browser's recording
+      // indicator is out, and `isCapturing` is already false. Before 597 every
+      // line below sat AFTER `await pluginManager.destroy()`, which blocks on
+      // the streaming STT drain — so a click on Stop left the mic hot and the
+      // UI stuck in "recording" for the whole drain window.
+      //
+      // Nothing here touches the transport: the drain in step 3 still gets its
+      // full window, and the audio it is draining was already sent.
+      // ---------------------------------------------------------------------
 
-    // Tear down the input-level meter (before the stream/context are stopped).
-    if (levelMeterRef.current) {
-      clearInterval(levelMeterRef.current.timer);
-      try {
-        levelMeterRef.current.source.disconnect();
-        levelMeterRef.current.analyser.disconnect();
-      } catch {
-        // disconnect after context close can throw on some platforms — ignore.
+      // Tear down the input-level meter (before the stream/context are stopped).
+      if (levelMeterRef.current) {
+        clearInterval(levelMeterRef.current.timer);
+        try {
+          levelMeterRef.current.source.disconnect();
+          levelMeterRef.current.analyser.disconnect();
+        } catch {
+          // disconnect after context close can throw on some platforms — ignore.
+        }
+        levelMeterRef.current = null;
       }
-      levelMeterRef.current = null;
-    }
 
-    // Stop the uplink-bitrate poll (the store reset below zeroes the value).
-    if (uplinkTimerRef.current) {
-      clearInterval(uplinkTimerRef.current);
-      uplinkTimerRef.current = null;
-    }
+      // Stop the uplink-bitrate poll (the store reset below zeroes the value).
+      if (uplinkTimerRef.current) {
+        clearInterval(uplinkTimerRef.current);
+        uplinkTimerRef.current = null;
+      }
 
-    // Tear down the 2-mic mixer (stops both source streams).
-    if (mixerRef.current) {
-      mixerRef.current.dispose();
-      mixerRef.current = null;
-    }
-    secondaryStreamRef.current = null;
+      // Tear down the N-source mixer (its dispose() removes every source, which
+      // stops that source's tracks).
+      if (mixerRef.current) {
+        mixerRef.current.dispose();
+        mixerRef.current = null;
+      }
+      // Then stop every OTHER source stream this capture session owns — see the
+      // `sourceStreamsRef` contract above. Belt-and-braces with the mixer dispose
+      // (a mixer that threw while adopting sources would otherwise leave the rest
+      // live), and the only release path for a source when there is no mixer at
+      // all. `activeStream` is excluded because the block below releases it —
+      // releasing the microphone EXACTLY once is an asserted contract
+      // (`useArca.audio-unification.test.ts`).
+      {
+        const activeTracks = new Set(store.activeStream?.getTracks?.() ?? []);
+        for (const source of sourceStreamsRef.current) {
+          source.getTracks().forEach((t) => {
+            if (!activeTracks.has(t)) t.stop();
+          });
+        }
+        sourceStreamsRef.current = [];
+      }
 
-    const { activeStream } = store;
-    if (activeStream) {
-      activeStream.getTracks().forEach((t) => t.stop());
-      store.setActiveStream(null);
-    }
-    store.setActiveAudioContext(null);
+      const { activeStream } = store;
+      if (activeStream) {
+        activeStream.getTracks().forEach((t) => t.stop());
+        store.setActiveStream(null);
+      }
+      store.setActiveAudioContext(null);
 
-    store.setIsCapturing(false);
-    store.setIsSpeaking(false);
-    store.setAudioLevel(0);
-    store.setCurrentTranscript('');
-    // Session ended; clear the audio-drop signal (start/stop are the
-    // ONLY reset points — the latch deliberately survives reconnect).
-    store.resetAudioDropped();
-    // Session ended; clear the streaming STT connection/pipeline signal.
-    store.setSttConnectionState('connected');
-    store.setActivePipeline(null);
+      store.setIsCapturing(false);
+      store.setIsSpeaking(false);
+      store.setAudioLevel(0);
+      store.setCurrentTranscript('');
 
-    logger?.info('Audio capture stopped', {
-      operation: 'stopAudio',
-      component: 'useArcaAudio',
-      success: true,
+      // ---------------------------------------------------------------------
+      // 3. ONLY NOW await the transport.
+      //
+      // The plugin callbacks installed by `startAudio` are still wired, so a
+      // tail final emitted by the server during the drain still runs through
+      // `onTranscription` and still lands in `transcriptSegments`. Not losing
+      // that last caption is the entire reason the drain exists — the mic
+      // being off is orthogonal to it.
+      // ---------------------------------------------------------------------
+      await pluginManager.destroy();
+      pluginManager.clearRuntimeOptions?.();
+
+      // Connection-shaped signals are reset AFTER the drain on purpose: the
+      // transport emits its own disconnect/reconnect callbacks while
+      // destroy() runs, and those would overwrite a reset done before it.
+      // Session ended; clear the audio-drop signal (start/stop are the
+      // ONLY reset points — the latch deliberately survives reconnect).
+      store.resetAudioDropped();
+      // Session ended; clear the streaming STT connection/pipeline signal.
+      store.setSttConnectionState('connected');
+      store.setActivePipeline(null);
+
+      logger?.info('Audio capture stopped', {
+        operation: 'stopAudio',
+        component: 'useArcaAudio',
+        success: true,
+      });
+    };
+
+    const inFlight = run().finally(() => {
+      if (stopInFlightRef.current === inFlight) stopInFlightRef.current = null;
     });
+    stopInFlightRef.current = inFlight;
+    return inFlight;
   }, [store, getLogger]);
 
   /**

@@ -1,93 +1,39 @@
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  CodeEditor,
-  Input,
-  Label,
-  SttLanguageModePicker,
-  type SttLanguageModeOption,
-} from '@arcaai/ui';
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, SttLanguageModePicker } from '@arcaai/ui';
 import { ProviderToggle } from './ProviderToggle';
-
-interface ControllerColumnProps {
-  // Session status
-  sessionId: string | undefined;
-  sessionStatus: string;
-  sessionError: string | null;
-  sttError: string | null;
-
-  // Language
-  modes: SttLanguageModeOption[];
-  languageMode: string;
-  onLanguageModeChange: (modeId: string) => void;
-  catalogError: string | null;
-
-  // Recording
-  isRecording: boolean;
-  isStarting: boolean;
-  onStart: () => void;
-  onStop: () => void;
-
-  // Metadata simulation
-  simSpeakerId: string;
-  onSimSpeakerIdChange: (v: string) => void;
-  simLanguage: string;
-  onSimLanguageChange: (v: string) => void;
-  simMetadataJson: string;
-  onSimMetadataJsonChange: (v: string) => void;
-  onSendMetadata: () => void;
-  lastSentMetadata: Record<string, unknown> | null;
-}
+import { MetadataSimulator } from './MetadataSimulator';
+import { usePlaygroundSession } from '../context/playground-session';
 
 /**
- * Column 2 — the controller. Everything the operator drives during a session:
- * the STT language mode, the ON/OFF pipeline-vs-default engine toggle, the
- * start/stop recording controls, and the metadata simulator. Read-side output
- * lives in the transcript column (col 3).
+ * The controls column of the Live-transcription tab. Everything the operator
+ * drives during a session: the STT language mode, the ON/OFF pipeline-vs-default
+ * engine toggle, the start/stop recording controls, and the metadata simulator
+ * (`MetadataSimulator`, TASK-597 lane C). Read-side output lives in
+ * `TranscriptColumn` next to it.
+ *
+ * Props-free by design: every value comes from `usePlaygroundSession()`, which
+ * lives ABOVE the tabs so the session survives tab switches. Lane E takes
+ * ownership of the engine/pipeline controls from here; the remaining card
+ * contents are unchanged from the pre-tab-split version.
  */
-export function ControllerColumn({
-  sessionId,
-  sessionStatus,
-  sessionError,
-  sttError,
-  modes,
-  languageMode,
-  onLanguageModeChange,
-  catalogError,
-  isRecording,
-  isStarting,
-  onStart,
-  onStop,
-  simSpeakerId,
-  onSimSpeakerIdChange,
-  simLanguage,
-  onSimLanguageChange,
-  simMetadataJson,
-  onSimMetadataJsonChange,
-  onSendMetadata,
-  lastSentMetadata,
-}: ControllerColumnProps) {
+export function ControllerColumn() {
+  const { session, capture, transcript, language } = usePlaygroundSession();
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-2">
             Session
-            <Badge variant="outline">{sessionStatus}</Badge>
+            <Badge variant="outline">{session.status}</Badge>
           </CardTitle>
           <CardDescription>
-            <span className="font-mono text-xs">{sessionId ?? '—'}</span>
+            <span className="font-mono text-xs">{session.id ?? '—'}</span>
           </CardDescription>
         </CardHeader>
-        {sessionError || sttError ? (
+        {session.error || transcript.error ? (
           <CardContent className="flex flex-col gap-1">
-            {sessionError ? <p className="text-destructive text-sm">Session error: {sessionError}</p> : null}
-            {sttError ? <p className="text-destructive text-sm">STT error: {sttError}</p> : null}
+            {session.error ? <p className="text-destructive text-sm">Session error: {session.error}</p> : null}
+            {transcript.error ? <p className="text-destructive text-sm">STT error: {transcript.error}</p> : null}
           </CardContent>
         ) : null}
       </Card>
@@ -96,20 +42,20 @@ export function ControllerColumn({
         <CardHeader>
           <CardTitle>Language</CardTitle>
           <CardDescription>
-            From <code className="font-mono text-xs">useArcaSttLanguageModes()</code> (TASK-587) — falls back to a static list when the
-            catalog is empty. Pick before you start.
+            From <code className="font-mono text-xs">useArcaSttLanguageModes()</code> (TASK-587) — falls back to a static list when the catalog is
+            empty. Pick before you start.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <SttLanguageModePicker
             label="STT language mode"
-            modes={modes}
-            value={languageMode}
-            onValueChange={onLanguageModeChange}
-            disabled={isRecording}
+            modes={language.modes}
+            value={language.mode}
+            onValueChange={language.setMode}
+            disabled={capture.isRecording}
           />
-          {catalogError ? (
-            <p className="text-muted-foreground mt-2 text-xs">Catalog fetch failed ({catalogError}) — showing the static fallback list.</p>
+          {language.catalogError ? (
+            <p className="text-muted-foreground mt-2 text-xs">Catalog fetch failed ({language.catalogError}) — showing the static fallback list.</p>
           ) : null}
         </CardContent>
       </Card>
@@ -125,56 +71,29 @@ export function ControllerColumn({
             <code className="font-mono text-xs">useArcaSessionManager</code>.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex gap-2">
-          <Button onClick={onStart} disabled={isStarting || isRecording}>
-            {isStarting ? 'Starting…' : 'Start consultation'}
-          </Button>
-          <Button variant="outline" onClick={onStop} disabled={isStarting || !isRecording}>
-            Stop
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Simulate metadata</CardTitle>
-          <CardDescription>
-            TASK-564 client-side passthrough: <code className="font-mono text-xs">sendAudioData</code> tags the current turn; the same keys
-            round-trip onto the next transcript line (see col 3).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="sim-speaker-id">speaker_id</Label>
-              <Input id="sim-speaker-id" placeholder="doctor" value={simSpeakerId} onChange={(e) => onSimSpeakerIdChange(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="sim-language">language</Label>
-              <Input id="sim-language" placeholder="en" value={simLanguage} onChange={(e) => onSimLanguageChange(e.target.value)} />
-            </div>
+        <CardContent className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            {/* Start stays disabled through `stopping` too: the mic is already
+                released during the drain, so `isRecording` alone would re-arm
+                Start on top of a half-closed session (TASK-597 lane B). */}
+            <Button onClick={capture.start} disabled={capture.phase !== 'idle'}>
+              {capture.isStarting ? 'Starting…' : 'Start consultation'}
+            </Button>
+            <Button variant="outline" onClick={capture.stop} disabled={capture.phase !== 'recording'}>
+              {capture.phase === 'stopping' ? 'Finalizing…' : 'Stop'}
+            </Button>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="sim-metadata-json">Additional metadata (JSON object)</Label>
-            <CodeEditor
-              aria-label="Additional metadata JSON"
-              value={simMetadataJson}
-              onChange={onSimMetadataJsonChange}
-              language="json"
-              className="h-28"
-            />
-          </div>
-          <Button onClick={onSendMetadata} disabled={isStarting || !isRecording} className="self-start">
-            Send metadata
-          </Button>
-          {lastSentMetadata ? (
-            <div className="min-w-0">
-              <p className="text-muted-foreground text-xs font-medium">Last sent</p>
-              <pre className="bg-muted mt-1 overflow-x-auto rounded p-2 font-mono text-xs">{JSON.stringify(lastSentMetadata, null, 2)}</pre>
-            </div>
+          {capture.phase === 'stopping' ? (
+            // Not colour-only and not a spinner-with-no-words: the mic really is
+            // off already, and late final lines really are still arriving.
+            <p className="text-muted-foreground text-xs" role="status">
+              Microphone released. Finalizing the transcript — the last lines are still arriving.
+            </p>
           ) : null}
         </CardContent>
       </Card>
+
+      <MetadataSimulator />
     </div>
   );
 }

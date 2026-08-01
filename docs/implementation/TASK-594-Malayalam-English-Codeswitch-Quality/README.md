@@ -244,6 +244,33 @@ robustness on long continuous ml-en speech, not the streaming loop. Further gain
 model-side work (more long-form + code-switch training data, better long-audio decoding),
 which is outside this ticket.
 
+## Live compat-session verification (2026-08-01)
+
+Real compat run on pipeline `81000000-…117` (tenant `50000000-…0001`). Verified from the
+session screenshot + DB:
+
+**Confirmed working** — `lang: ml-en` (language NOT pinned to `ml`); English terms stay in
+Latin script (`food`, `supply`, `muscle development`, `protein powder and gym`, `skin`,
+`bacteria`, `functioning`) → the transliteration defect is GONE; finals now arrive at
+natural pauses (0.8–7 s segments) instead of 20 s blocks → slow-finalize is GONE.
+
+**Defect found + fixed — PHRASE-level repetition loops.** The loop guard only handled a
+repeated SINGLE token and a repeated short CHARACTER unit. Greedy decoding also loops on
+multi-word PHRASES, which both passes missed:
+`… ചെയ്യുന്നതിന് നമുക്ക് protein ചെയ്യുന്നതിന് നമുക്ക് protein ചെയ്യുന്നതിന് നമുക്ക് protein …`
+Added `_collapse_phrase_loops` (2–8 token phrase repeated back-to-back → one occurrence,
+longest phrase wins). Single-token doubling is deliberately left alone (natural speech).
+Verified on the verbatim screenshot strings; scorecard unchanged at 0.325 (no regression).
+
+**`�` (U+FFFD) artifacts** — whisper.cpp splits a multi-byte Malayalam character across two
+segments and pywhispercpp decodes each independently with `errors="replace"`, so the
+character is already unrecoverable. `_polish` now drops the marker (never meaningful text).
+
+**Cosmetic (playground, not STT)** — the leading `": "` on every line is the compat
+playground's transcript template `'{speaker_id}: {text}'`
+(`apps/compat-playground/src/components/SessionWorkspace.tsx:82`); with diarization off
+`speaker_id` is empty. Drop `{speaker_id}` from that template to clean it up.
+
 ## Open / follow-up
 - Re-tune `WHISPER_CPP_MAX_AUDIO_SECONDS` and compare model variants (q8_0, non-GGUF
   transformer) as more labeled ml-en clips arrive.

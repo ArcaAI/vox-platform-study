@@ -682,7 +682,7 @@ export { SSEClient, type SSEConnectOptions } from './core/SSEClient';
 export { DualStreamRecorder } from './core/DualStreamRecorder';
 export type { DualStreamRecorderOptions, DualStreamRecorderResult } from './core/DualStreamRecorder';
 export { StreamingSessionManager, type SessionManagerStatus } from './core/StreamingSessionManager';
-export { SttWebSocketClient, type WsConnectOptions, type WsReconnectOptions } from './core/SttWebSocketClient';
+export { SttWebSocketClient, type WsConnectOptions, type WsReconnectOptions, type WsDrainOptions } from './core/SttWebSocketClient';
 
 // =============================================================================
 // Store (Advanced Usage)
