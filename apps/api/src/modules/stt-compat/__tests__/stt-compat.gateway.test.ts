@@ -165,6 +165,49 @@ describe('SttCompatGateway', () => {
     });
   });
 
+  // TASK-597 follow-up #1: the bridge now relays `finalizing` (previously
+  // swallowed by its non-terminal allow-list). This gateway needed NO code
+  // change — it already default-forwards every status frame — but the v1 wire
+  // now carries `finalizing` too, so lock that in.
+  it('forwards a finalizing status frame on the v1 wire (default-forward, no allow-list)', async () => {
+    const client = createSocket();
+    const results = new Subject();
+    const apiKeyService = {
+      extractApiKeyFromWebSocket: vi.fn().mockReturnValue('legacy-key'),
+      authenticateByRawKey: vi.fn().mockResolvedValue({ tenantId: 'tenant-1' }),
+    };
+    const sessionService = { getSessionStatus: vi.fn().mockResolvedValue({ sessionId: 'session-1', status: 'active' }) };
+    const bridgeService = {
+      subscribeToResults: vi.fn().mockReturnValue(results.asObservable()),
+      writeAudioFrame: vi.fn().mockResolvedValue(undefined),
+      writeControlCommand: vi.fn().mockResolvedValue(undefined),
+    };
+    const sessionBinding = {
+      lookup: vi.fn().mockResolvedValue('tenant-1'),
+      lookupSessionMeta: vi.fn().mockResolvedValue({ sampleRate: 16000 }),
+    };
+    const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
+
+    await gateway.handleConnection(client as any, {
+      url: '/stt?sessionId=session-1&key=legacy-key',
+      headers: {},
+      socket: { remoteAddress: '127.0.0.1' },
+    } as any);
+    (client.send as any).mockClear();
+
+    results.next({ type: 'status', status: 'finalizing' });
+
+    const status = client.send.mock.calls
+      .map((call: unknown[]) => JSON.parse(call[0] as string))
+      .find((p: { data?: { status?: string } }) => p.data?.status === 'finalizing');
+    expect(status.data).toMatchObject({
+      type: 'status',
+      status: 'finalizing',
+      session_id: 'session-1',
+    });
+    expect(status.data.isFallback).toBeUndefined();
+  });
+
   it('rejects a socket when session ownership cannot be proven', async () => {
     const client = createSocket();
     const apiKeyService = {

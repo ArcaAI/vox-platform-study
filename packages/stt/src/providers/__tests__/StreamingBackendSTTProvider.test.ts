@@ -605,7 +605,7 @@ describe('StreamingBackendSTTProvider', () => {
       await provider.start();
       await provider.destroy();
 
-      expect(stopAndDrain).toHaveBeenCalledWith(undefined);
+      expect(stopAndDrain).toHaveBeenCalledWith(undefined, undefined);
     });
 
     it('passes a configured drainTimeoutMs through to stopAndDrain', async () => {
@@ -628,7 +628,7 @@ describe('StreamingBackendSTTProvider', () => {
       await provider.start();
       await provider.destroy();
 
-      expect(stopAndDrain).toHaveBeenCalledWith(800);
+      expect(stopAndDrain).toHaveBeenCalledWith(800, undefined);
     });
 
     it('ignores a non-positive drainTimeoutMs rather than closing the socket instantly', async () => {
@@ -651,7 +651,56 @@ describe('StreamingBackendSTTProvider', () => {
       await provider.start();
       await provider.destroy();
 
-      expect(stopAndDrain).toHaveBeenCalledWith(undefined);
+      expect(stopAndDrain).toHaveBeenCalledWith(undefined, undefined);
+    });
+
+    // TASK-597 — the quiet window is the OTHER half of the drain, and its `0`
+    // means something (disable the early resolve) where a `0` timeout does not.
+    it('PRESERVES quietWindowMs: 0 through to stopAndDrain', async () => {
+      const stopAndDrain = vi.fn().mockResolvedValue(undefined);
+      (wsClient as { stopAndDrain?: (ms?: number, q?: number) => Promise<void> }).stopAndDrain = stopAndDrain;
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+        drainTimeoutMs: 30000,
+        quietWindowMs: 0,
+      });
+      await provider.start();
+      await provider.destroy();
+
+      expect(stopAndDrain).toHaveBeenCalledWith(30000, 0);
+    });
+
+    it('ignores a NEGATIVE quietWindowMs — only 0 is meaningful', async () => {
+      const stopAndDrain = vi.fn().mockResolvedValue(undefined);
+      (wsClient as { stopAndDrain?: (ms?: number, q?: number) => Promise<void> }).stopAndDrain = stopAndDrain;
+      await provider.init({
+        sessionId: 'x',
+        language: 'en-US',
+        sampleRate: 48000,
+        channels: 1,
+        chunkLengthS: 30,
+        overlapLengthS: 5,
+        returnTimestamps: 'word',
+        codeSwitching: false,
+        diarization: false,
+        numSpeakers: 1,
+        pipelineId: 'p-1',
+        quietWindowMs: -1,
+      });
+      await provider.start();
+      await provider.destroy();
+
+      expect(stopAndDrain).toHaveBeenCalledWith(undefined, undefined);
     });
 
     it('sends stop and disconnects on stop()', async () => {

@@ -10,6 +10,7 @@ shared context and (2) detect the poisoned state and recreate the backend.
 
 from __future__ import annotations
 
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -435,3 +436,65 @@ def test_no_reload_on_genuine_silence(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result["text"] == ""
     assert rebuilt.count == 0
+
+
+# --- Native log-callback teardown (interpreter-shutdown safety) ---------------
+#
+# ``whisper_log_set`` parks ``_dispatch_log`` in a pybind11 static inside
+# ``_pywhispercpp``. That static is destroyed by ``__cxa_finalize_ranges`` at
+# ``exit()`` — AFTER ``Py_Finalize`` — so the trailing ``Py_DECREF`` runs with no
+# thread state and aborts the process ("PyThreadState_Get: ... the GIL is
+# released", ``Abort trap: 6``, exit 134) on an otherwise fully green run. The
+# adapter must therefore hand the callback back while the interpreter is alive.
+
+
+def test_install_registers_atexit_teardown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Installing the log sink must also arm an ``atexit`` teardown."""
+
+    calls: list[object] = []
+    registered: list[object] = []
+    fake_pw = SimpleNamespace(whisper_log_set=calls.append)
+
+    monkeypatch.setitem(sys.modules, "_pywhispercpp", fake_pw)
+    monkeypatch.setattr(whisper_cpp_asr, "_log_installed", False)
+    monkeypatch.setattr(whisper_cpp_asr, "_log_module", None)
+    monkeypatch.setattr(whisper_cpp_asr.atexit, "register", registered.append)
+
+    whisper_cpp_asr._ensure_log_capture_installed()
+
+    assert calls == [whisper_cpp_asr._dispatch_log]
+    assert whisper_cpp_asr._log_module is fake_pw
+    assert whisper_cpp_asr._uninstall_log_capture in registered
+
+
+def test_uninstall_releases_the_python_callback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Teardown hands the sink back to whisper.cpp's default logger, dropping
+    the extension's reference to ``_dispatch_log``."""
+
+    calls: list[object] = []
+    fake_pw = SimpleNamespace(whisper_log_set=calls.append)
+    monkeypatch.setattr(whisper_cpp_asr, "_log_module", fake_pw)
+
+    whisper_cpp_asr._uninstall_log_capture()
+
+    assert calls == [None]
+
+
+def test_uninstall_is_a_noop_when_never_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No registration means nothing to release — teardown must not import or
+    touch the extension."""
+
+    monkeypatch.setattr(whisper_cpp_asr, "_log_module", None)
+
+    whisper_cpp_asr._uninstall_log_capture()  # must not raise
+
+
+def test_uninstall_swallows_extension_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failure during teardown must never change the process exit status."""
+
+    def _boom(_callback: object) -> None:
+        raise RuntimeError("extension already torn down")
+
+    monkeypatch.setattr(whisper_cpp_asr, "_log_module", SimpleNamespace(whisper_log_set=_boom))
+
+    whisper_cpp_asr._uninstall_log_capture()  # must not raise

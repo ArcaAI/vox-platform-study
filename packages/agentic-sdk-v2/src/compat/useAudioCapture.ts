@@ -65,6 +65,26 @@ export interface UseAudioCaptureProps {
   sourceStreams?: MediaStream[];
   /** Per-source linear mixer gain, index-aligned with the resolved source list. */
   sourceGains?: number[];
+  /**
+   * Ceiling (ms) on the streaming-STT stop-drain awaited by `stopRecording()`
+   * (TASK-597 follow-up #4). Forwarded verbatim to `audio.start(...)`; omit for
+   * the SDK default (1500 ms). Non-positive values are ignored. The mic is
+   * released synchronously on stop regardless — this only bounds how long the
+   * returned promise waits for the server's last transcript.
+   */
+  drainTimeoutMs?: number;
+  /**
+   * Quiet window (ms) that ends the streaming-STT stop-drain early once the
+   * backend reports `finalizing` (TASK-597). Forwarded verbatim to
+   * `audio.start(...)`; omit for the SDK default (250 ms).
+   *
+   * **`0` disables the early resolve** and is PRESERVED — only negative values
+   * are ignored. Set it to `0` (with a generous `drainTimeoutMs`) when the tail
+   * final matters more than teardown latency: on a slow ASR pipeline the last
+   * transcript can trail `finalizing` by seconds, and the default quiet window
+   * closes the socket long before it arrives.
+   */
+  quietWindowMs?: number;
   /** Retained for source-compat only — NEVER invoked (v2 owns PCM transport). */
   onAudioData?: (data: ArrayBuffer) => void;
   onError?: (error: ErrorInfo) => void;
@@ -73,6 +93,23 @@ export interface UseAudioCaptureProps {
 export interface UseAudioCaptureReturn {
   isRecording: boolean;
   deviceStatus: AudioDeviceStatus | null;
+  /**
+   * PER-SOURCE input levels (0–100 each), index-aligned with the resolved
+   * capture-source order — i.e. with `sourceStreams` when streams are injected,
+   * otherwise with `[deviceId, secondaryDeviceId, ...additionalDeviceIds]`
+   * (TASK-597 follow-up #2).
+   *
+   * REACTIVE, unlike `getDeviceStatus()`: it re-renders as the levels change,
+   * so a consumer attributing a turn to a microphone does not have to poll.
+   * `deviceStatus.audioLevel` is unchanged and remains the single MIXED level —
+   * the v1 shape stays frozen.
+   *
+   * `[]` = no per-source signal (not recording, or a runtime that cannot
+   * analyse). Attribution is then genuinely unknown; say so rather than
+   * guessing. One entry ⇒ a single-source session, where that source is the
+   * whole mix and attribution to it is exact.
+   */
+  sourceLevels: number[];
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   getDeviceStatus: () => Promise<AudioDeviceStatus | null>;
@@ -100,6 +137,8 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     additionalDeviceIds,
     sourceStreams,
     sourceGains,
+    drainTimeoutMs,
+    quietWindowMs,
     onError,
   } = props;
   const audio = useArcaAudio();
@@ -130,6 +169,14 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
         ...(additionalDeviceIds?.length ? { additionalDeviceIds } : {}),
         ...(sourceStreams?.length ? { sourceStreams } : {}),
         ...(sourceGains?.length ? { sourceGains } : {}),
+        // Stop-drain ceiling (TASK-597 follow-up #4) — spread only when
+        // positive, so the pre-597 options object is byte-identical for every
+        // caller that does not set it (and a `0` cannot mean "no drain").
+        ...(typeof drainTimeoutMs === 'number' && drainTimeoutMs > 0 ? { drainTimeoutMs } : {}),
+        // Quiet window (TASK-597) — spread on `>= 0`, NOT on truthiness. `0` is
+        // the "wait for the terminal status, not a lull" setting, so a falsy
+        // guard here would drop the one value worth passing explicitly.
+        ...(typeof quietWindowMs === 'number' && quietWindowMs >= 0 ? { quietWindowMs } : {}),
       });
       // Consume the pre-start selection so a later re-open starts on primary
       // unless re-selected (order-independent with useArcaSpeechToText).
@@ -152,6 +199,8 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     additionalDeviceIds,
     sourceStreams,
     sourceGains,
+    drainTimeoutMs,
+    quietWindowMs,
     onError,
   ]);
 
@@ -197,6 +246,9 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
   return {
     isRecording: audio.isCapturing,
     deviceStatus,
+    // Per-source levels straight off the store (TASK-597 follow-up #2) — no
+    // polling, no derived state, and `[]` when the SDK has no signal to give.
+    sourceLevels: audio.sourceLevels ?? [],
     startRecording,
     stopRecording,
     getDeviceStatus,

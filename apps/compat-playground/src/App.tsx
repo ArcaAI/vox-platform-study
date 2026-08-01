@@ -22,6 +22,15 @@ function toCompatOptions(config: PlaygroundConfig): V1SdkConfig {
     credentials: { apiKey: config.apiKey.trim() },
     tenantId: config.tenantId.trim() || undefined,
     sttPipelineId: config.pipelineId.trim() || undefined,
+    // Browser capture-graph stages (TASK-597). Stated EXPLICITLY in both
+    // directions rather than omitted: the adapter's output replaces
+    // `DEFAULT_AUDIO_CONFIG` outright, so an omitted key silently means "off"
+    // and there would be no way to turn either stage back on. `false/false`
+    // reproduces the pre-597 effective behaviour exactly.
+    audioSettings: {
+      noiseSuppression: config.noiseSuppression ?? false,
+      voiceActivityDetection: config.voiceActivityDetection ?? false,
+    },
     // Enables the ON/OFF STT provider toggle (ProviderToggle.tsx).
     enableProviderSwitch: true,
   };

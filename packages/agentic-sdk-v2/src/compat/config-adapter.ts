@@ -26,6 +26,20 @@ function ensureApiV1Base(apiEndpoint: string): string {
   return /\/api\/v1$/.test(trimmed) ? trimmed : `${trimmed}/api/v1`;
 }
 
+/**
+ * Map the v1 audio settings + pipeline id onto v2's `AudioPluginConfig`.
+ *
+ * Only keys the caller stated a preference for are emitted, so a v1 config that
+ * predates a given switch keeps producing the exact object it always did.
+ *
+ * Worth knowing about the keys that are NOT emitted: `AgenticProvider` resolves
+ * `cfg.audio ?? DEFAULT_AUDIO_CONFIG` — it does NOT merge — and
+ * `PluginManager.getConfig()` resolves a missing plugin key to
+ * `{ enabled: false }`. So the moment this adapter emits ANY audio config (which
+ * it does for every `sttPipelineId`), every stage it omits is OFF, not
+ * defaulted. Stating a preference explicitly is therefore the only way a compat
+ * app can turn a stage ON as well as off.
+ */
 function mapAudioSettings(audio: V1AudioSettings | undefined, sttPipelineId: string | undefined): AudioPluginConfig | undefined {
   if (!audio && !sttPipelineId) return undefined;
 
@@ -33,6 +47,14 @@ function mapAudioSettings(audio: V1AudioSettings | undefined, sttPipelineId: str
 
   if (audio?.noiseSuppression !== undefined) {
     config.noiseFilter = { enabled: !!audio.noiseSuppression, level: 'medium' };
+  }
+
+  // TASK-597 — the VAD counterpart of `noiseSuppression`. `enabled: false`
+  // removes the stage from the capture graph entirely (`TranscriptionPipeline`
+  // only ever constructs processors for stages in `getEnabledStages()`), so the
+  // backend receives ungated audio.
+  if (audio?.voiceActivityDetection !== undefined) {
+    config.vad = { enabled: !!audio.voiceActivityDetection };
   }
 
   if (sttPipelineId) {

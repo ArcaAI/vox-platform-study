@@ -229,8 +229,10 @@ describe('env:sync — the declared surface stays small (plan §8)', () => {
     // SMR_OPENAI_ORGANIZATION, SMR_VERTEX_DEFAULT_MODEL, SMR_VERTEX_LOCATION,
     // SMR_VERTEX_PROJECT. Bump again only after checking `env:sync --check`
     // is clean — this constant exists to catch UNREVIEWED growth, not real growth.
+    // Bumped 144 -> 145 for 1 legitimate addition (secrets rewarm interval —
+    // verified via `pnpm env:sync --check`, no drift): SECRETS_REWARM_INTERVAL_SEC.
     const declared = declaredTsSurfaceKeys();
-    expect(declared.size).toBeLessThanOrEqual(144);
+    expect(declared.size).toBeLessThanOrEqual(145);
   });
 });
 

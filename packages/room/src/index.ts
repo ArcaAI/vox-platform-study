@@ -112,6 +112,8 @@ export {
   AudioMixer,
   type AudioMixerSource,
   type AudioMixerEventMap,
+  type AudioMixerSourceLevel,
+  type AudioMixerLevelMonitorOptions,
 
   // Typed Room errors
   RoomPermissionError,

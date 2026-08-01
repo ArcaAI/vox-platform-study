@@ -98,6 +98,14 @@ export function toWords(text: string): string[] {
  * The Python gate has the same behaviour; callers that need a bounded display
  * value clamp at the UI layer, not here.
  *
+ * DELIBERATE — do not "fix" this. Reviewed 2026-08-01 (TASK-597 follow-up #3)
+ * and kept as-is by owner decision: the alternatives (excluding empty-reference
+ * clips, or clamping to 1.0) both change aggregate scores and would force a
+ * regeneration of the TASK-594 `mlen_scorecard_baseline.json`. Parity with the
+ * Python gate is worth more than a tidier edge case, because the whole point of
+ * this port is that the playground and the quality gate agree. If it ever does
+ * change, it MUST change on both sides in the same commit.
+ *
  * Complexity: O(R·H) time, O(H) memory (single rolling row) — the same shape as
  * the Python loop. A pair of 5 000-character transcripts is ~25 M cell updates,
  * which runs in well under a second; nothing here is worth optimizing further

@@ -125,6 +125,23 @@ export interface UseArcaAudio {
   /** Live outbound audio uplink bitrate (bits/sec) over the last ~1s window; 0 when not streaming. */
   uplinkBitrate: number;
   /**
+   * PER-SOURCE input levels (0–100 each), index-aligned with the resolved
+   * capture-source order — `AudioStartOptions.sourceStreams` when streams are
+   * injected, otherwise `[deviceId, secondaryDeviceId, ...additionalDeviceIds]`
+   * after de-duplication (TASK-597 follow-up #2). Sampled from an
+   * analysis-only `AnalyserNode` per source inside the mixer.
+   *
+   * This answers "WHICH microphone is speaking", which {@link UseArcaAudio.level}
+   * — one meter on the single mixed graph — structurally cannot. `level` is
+   * unchanged and still the mixed value.
+   *
+   * `[]` means NO per-source signal is available (no capture session, or a
+   * runtime without Web Audio analysis). Treat it as "attribution unknown"; do
+   * not fall back to guessing. A single-source session publishes one entry,
+   * because that source genuinely is the whole mix.
+   */
+  sourceLevels: number[];
+  /**
    * Live connection health of the streaming STT session (TASK-567 Phase F).
    * `connected` is nominal; drive a reconnecting/error/switched banner off the
    * non-`connected` values.

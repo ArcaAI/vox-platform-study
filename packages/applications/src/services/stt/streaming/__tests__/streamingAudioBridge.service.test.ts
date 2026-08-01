@@ -902,7 +902,7 @@ describe('StreamingAudioBridgeService', () => {
     // terminal status — completing on it orphans that tail final (partials
     // relay, but the closing utterance is silently dropped). Only closed /
     // cancelled end the stream.
-    it('does NOT complete on status=finalizing — relays the tail final published after it', async () => {
+    it('RELAYS status=finalizing without completing — the tail final published after it still arrives', async () => {
       mockXreadgroup
         .mockResolvedValueOnce([
           [
@@ -918,11 +918,14 @@ describe('StreamingAudioBridgeService', () => {
       const obs = service.subscribeToResults('s-1');
       const results = await lastValueFrom(obs.pipe(toArray()));
 
-      // finalizing was skipped (non-terminal); the tail final still relayed,
-      // and the stream completed on the following `closed`.
-      expect(results).toHaveLength(1);
-      expect(results[0].text).toBe('the closing utterance');
-      expect(results[0].isFinal).toBe(true);
+      // `finalizing` is relayed as an ordinary NON-terminal status frame
+      // (TASK-597 follow-up #1 — the SDK's stop-drain quiet window opens on it),
+      // the tail final still relays AFTER it, and the stream completes only on
+      // the following `closed`.
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({ type: 'status', status: 'finalizing' });
+      expect(results[1].text).toBe('the closing utterance');
+      expect(results[1].isFinal).toBe(true);
     });
 
     it('should complete when status=cancelled is received', async () => {
@@ -934,7 +937,10 @@ describe('StreamingAudioBridgeService', () => {
       expect(results).toHaveLength(0);
     });
 
-    it('should skip non-terminal status entries', async () => {
+    // Default-forward, NOT an allow-list: a status nobody thought to enumerate
+    // must still reach the client (the TASK-568 Phase-F bug class that made
+    // `finalizing` inert). Unknown statuses are relayed and stay non-terminal.
+    it('forwards an UNKNOWN non-terminal status by default (no allow-list) and keeps reading', async () => {
       mockXreadgroup
         .mockResolvedValueOnce([
           [
@@ -950,8 +956,45 @@ describe('StreamingAudioBridgeService', () => {
       const obs = service.subscribeToResults('s-1');
       const results = await lastValueFrom(obs.pipe(toArray()));
 
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({ type: 'status', status: 'processing' });
+      expect(results[1].text).toBe('hello');
+    });
+
+    // A status entry with no `status` field is malformed — the SDK's
+    // `isValidStatus` guard would drop it anyway, so never put it on the wire.
+    it('drops a malformed status entry with an empty/absent status field', async () => {
+      mockXreadgroup
+        .mockResolvedValueOnce([
+          [
+            'stt:result:s-1',
+            [
+              ['1-0', ['type', 'status', 'status', '']],
+              ['2-0', ['type', 'status']],
+              ['3-0', ['text', 'hello', 'start_time', '0', 'end_time', '1', 'is_final', '1']],
+            ],
+          ],
+        ])
+        .mockResolvedValueOnce([['stt:result:s-1', [['4-0', ['type', 'status', 'status', 'closed']]]]]);
+
+      const obs = service.subscribeToResults('s-1');
+      const results = await lastValueFrom(obs.pipe(toArray()));
+
       expect(results).toHaveLength(1);
       expect(results[0].text).toBe('hello');
+    });
+
+    // Terminal statuses keep the pre-existing contract: they complete the
+    // stream and are NEVER emitted (the WS gateway synthesizes its own closing
+    // frame in `complete:`, so relaying them would double-send `closed`).
+    it('does NOT emit terminal statuses — closed/cancelled only complete the stream', async () => {
+      for (const terminal of ['closed', 'cancelled']) {
+        mockXreadgroup.mockReset();
+        mockXreadgroup.mockResolvedValueOnce([['stt:result:s-1', [['1-0', ['type', 'status', 'status', terminal]]]]]).mockResolvedValue(null);
+
+        const results = await lastValueFrom(service.subscribeToResults('s-1').pipe(toArray()));
+        expect(results).toHaveLength(0);
+      }
     });
 
     // The reader is a CONSUMER GROUP now. It creates the

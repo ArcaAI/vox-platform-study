@@ -1,5 +1,6 @@
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, SttLanguageModePicker } from '@arcaai/ui';
 import { ProviderToggle } from './ProviderToggle';
+import { DrainSettings } from './DrainSettings';
 import { MetadataSimulator } from './MetadataSimulator';
 import { usePlaygroundSession } from '../context/playground-session';
 
@@ -92,6 +93,10 @@ export function ControllerColumn() {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Per-capture stop-drain knobs — directly under Recording, because that
+          is the button whose behaviour they change (TASK-597). */}
+      <DrainSettings />
 
       <MetadataSimulator />
     </div>
