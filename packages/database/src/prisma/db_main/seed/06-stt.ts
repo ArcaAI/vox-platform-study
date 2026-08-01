@@ -250,7 +250,7 @@ preprocessing:
     min_speech_duration_ms: 100
     min_silence_duration_ms: 700
     padding_ms: 200
-    force_emit_after_ms: 12000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
+    force_emit_after_ms: 20000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
 
 inference:
   batch_size: 1
@@ -310,7 +310,7 @@ preprocessing:
     min_speech_duration_ms: 100
     min_silence_duration_ms: 700
     padding_ms: 200
-    force_emit_after_ms: 12000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
+    force_emit_after_ms: 20000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
 
 inference:
   batch_size: 1
@@ -368,7 +368,7 @@ preprocessing:
     min_speech_duration_ms: 100
     min_silence_duration_ms: 700
     padding_ms: 200
-    force_emit_after_ms: 12000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
+    force_emit_after_ms: 20000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
 
 inference:
   batch_size: 1
@@ -427,7 +427,7 @@ preprocessing:
     min_speech_duration_ms: 100
     min_silence_duration_ms: 700
     padding_ms: 200
-    force_emit_after_ms: 12000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
+    force_emit_after_ms: 20000   # force-emit continuous (pause-free) speech at ~12s. Natural pauses finalize sooner via VAD; 6s cut mid-phrase and failed (measured), 25s is the max — 12s balances latency vs quality
 
 inference:
   batch_size: 1
