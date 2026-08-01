@@ -319,21 +319,28 @@ gap named · ❌ = not verifiable in this session.
 |---|---|---|---|
 | 1 | Three isolated tabs; 2 and 3 gated on connection with a visible reason | ✅ | `App.tabs.test.tsx` (panel-identity assertions, not naive `forceMount`); confirmed live in a browser — locked tabs + the "Two tabs are locked" alert, unlocking on Connect |
 | 2 | Per-tab example code at page end, loaded from disk, non-empty (asserted) | ✅ | `TabExampleCode.test.tsx` (28 tests) loads all 22 registered files and asserts >200 chars each. **RED verified by mutation**: deleting one path from the `import.meta.glob` array fails exactly one test. Confirmed live on all three tabs — real source rendered, no empty blocks |
-| 3 | Single mic / N mics / file→single / files→N-mixed all transcribe | ⚠️ | Unit-covered end to end (`use-audio-sources`, `file-audio-source`, `AudioSourcePanel`, `useArcaAudio.sources.task597`). **No live transcription performed — no gateway, no STT, no microphone in this session.** |
-| 4 | Stop returns the UI to idle in < 150 ms; mic indicator off; tail final still lands | ⚠️ | Structural + test-proven (`useArcaAudio.stopOrder.task597.test.ts`, `playground-session.capture.test.tsx`; both RED-verified by reverting the ordering). **Not measured on a stopwatch against live infra.** |
+| 3 | Single mic / N mics / file→single / files→N-mixed all transcribe | ✅ (file→single, live) / ⚠️ (other 3 modes) | **LIVE-VERIFIED 2026-08-01** once STT was restarted through an interactive login shell so it inherited `HF_TOKEN` + `HF_HOME` from `~/.zshrc` (see §8 note — the earlier "no token" reading was a harness error, not a missing credential). Real clinical fixture (`cardiology_consult_01.wav`, 16 kHz mono, 21.9 s) streamed as 20 ms PCM16 frames at **1× realtime** through gateway → Redis → STT on `faster-whisper-large-v3-turbo-int8`: **4 transcript frames (1 final), fully accurate clinical text** ("…shortness of breath on exertion and intermittent chest pain… ordering an electrocardiogram and a troponin level… start aspirin 81 mg daily"). 700 160 bytes of PCM arrived intact (= 21.88 s). This is the SAME backend path the playground's file-backed source drives, so the file→single-mic mode is genuinely proven; N-mic mixing and the browser-side `MediaStream` plumbing remain unit-covered only. ⚠️ **Pacing matters**: an initial run at 4× realtime produced ZERO transcripts — the commit policy uses wall-clock windows (force_emit ~20 s), so faster-than-realtime ingestion emits nothing before finalize. Superseded the row below | |
+| ~~3~~ | *(superseded)* | ⚠️ | Attempted live 2026-08-01 with all three services up (API :8868, STT :8861, SMR :8862) and a real clinical fixture (`apps/stt/tests/e2e/fixtures/clinical/cardiology_consult_01.wav`, 16 kHz mono, 21.9 s). **No streaming session can be created at all**: `POST /audio/transcription-jobs/stream/session` → 500, because STT fails to load its model. Every pipeline tried (`…403` faster-whisper CT2, `…419` arcaai-ml-en) resolves to the SAME private HuggingFace repo `taphuynh/whisper-turbo-ml-en-codeswitch-fullft-2607.29.1-fp16`, which returns **`401 Unauthorized` / Repository Not Found** — no `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` / `HUGGINGFACE_TOKEN` is set in `.env.dev`, and no ASR model is cached on disk (`AiModel.downloadStatus` shows none downloaded). Consistent with the platform STT default having been repointed to the ArcaAI fine-tune. **Unblocking needs a HuggingFace token with access to that private repo, or a locally-cached public ASR model.** Superseded the row below | |
+| ~~3~~ | *(superseded — original lane G entry)* | ⚠️ | Unit-covered end to end (`use-audio-sources`, `file-audio-source`, `AudioSourcePanel`, `useArcaAudio.sources.task597`). **No live transcription performed — no gateway, no STT, no microphone in this session.** |
+| 4 | Stop returns the UI to idle in < 150 ms; mic indicator off; tail final still lands | ✅ (UI idle · ordering) / ❌ **(tail final does NOT land — see follow-up #10)** | **LIVE-MEASURED 2026-08-01**, same session as row 3. Timeline from the client's `{type:'stop'}`: `finalizing` **+4 ms** → final transcript **+30 413 ms** → `closed` **+30 418 ms**. Two conclusions. **(a) Lane B-server's ordering fix is CONFIRMED CORRECT**: `closed` trails the last transcript by **1 ms**, i.e. it is now published immediately after the transcript and before the MinIO uploads, exactly as designed — the 30 s is tail-flush ASR inference, not persistence. **(b) The "tail final still lands" half of this criterion is FALSIFIED in practice** — see follow-up #10; the UI would close its socket ~250 ms after stop and never receive that final. The UI-idle half remains structurally proven (the teardown block contains no `await`) and RED-verified. Note this harness is a raw WS client, not the SDK, so the SDK's drain behaviour is **inferred from the measured server timings**, not directly observed. Superseded the row below | |
+| ~~4~~ | *(superseded)* | ⚠️ | A measurement harness was written and is ready (`stream-verify.mjs`: create session → WS with ticket → 20 ms PCM16 frames → collect transcripts → `{type:'stop'}` → time the interval to the terminal `status: closed`, i.e. exactly what lane B-server moved ahead of the MinIO uploads and what `stopAndDrain()` waits on). It could not run: no streaming session can be created (row 3). The UI half remains structurally proven and RED-verified by the ordering tests — the teardown block contains no `await` — but the **server-side stop→closed interval has still never been measured against live infra**. Superseded the row below | |
+| ~~4~~ | *(superseded — original lane G entry)* | ⚠️ | Structural + test-proven (`useArcaAudio.stopOrder.task597.test.ts`, `playground-session.capture.test.tsx`; both RED-verified by reverting the ordering). **Not measured on a stopwatch against live infra.** |
 | 5 | Per-mic metadata round-trips onto the correct transcript row | ✅ | `MetadataSimulator.test.tsx` (round-trip + 8 KB guard + auto-tag debounce); lane G added visible `mic`/`speaker` badges on the timeline — `TranscriptColumn.test.tsx` |
 | 6 | WER/CER match `mlen_scorecard.py`; run exportable as JSON | ✅ | 11 shared fixtures compared at full float precision against the real Python, hard-coded as exact expectations (`scoring.test.tsx`); export now carries a real `run.audioSource` (`ScorecardPanel.test.tsx`) |
-| 7 | Pipeline picker lists real pipelines; toggle flips mid-session without reconnect | ⚠️ | Picker verified against a mocked fetch incl. the new debounce; the free-text fallback confirmed live (no gateway → free text, correct). **`GET /api/v1/audio/pipelines` has still never been called against a running gateway; the mid-session toggle has never been exercised live.** |
-| 8 | Department/visit/context → pre-summary → summary; live caption reachable from Summarization | ✅ (wiring) / ⚠️ (round trip) | `SummaryCard.test.tsx` (12); the tab reads the transcript from the lifted context, verified by test. **No SMR call made — no gateway.** |
-| 9 | Streaming toggle renders tokens live; non-streaming returns the final body | ⚠️ | `{stream:true,onDelta}` threading asserted in `SummaryCard.test.tsx`. **No real SSE stream observed.** |
+| 7 | Pipeline picker lists real pipelines; toggle flips mid-session without reconnect | ✅ (endpoint) / ⚠️ (toggle) | **LIVE-VERIFIED 2026-08-01** against a running gateway (:8868) — the first time this endpoint has ever been called for real. `GET /api/v1/audio/pipelines` → **HTTP 200, a BARE ARRAY of 14 pipelines** with `id`/`name`/`slug`, which is exactly the primary shape lane E's defensive unwrap handles. The mid-session engine toggle still requires a live STT session and remains unverified. Superseded the row below | |
+| ~~7~~ | *(superseded — original lane G entry)* | ⚠️ | Picker verified against a mocked fetch incl. the new debounce; the free-text fallback confirmed live (no gateway → free text, correct). **`GET /api/v1/audio/pipelines` has still never been called against a running gateway; the mid-session toggle has never been exercised live.** |
+| 8 | Department/visit/context → pre-summary → summary; live caption reachable from Summarization | ✅ | **LIVE-VERIFIED 2026-08-01.** `POST /api/smr/api/v1/presummary` (non-streaming, real tenant API key) → **HTTP 200** with a genuine v1-shaped body: `pre_summary` + `structured_data` carrying the five expected sections (Diagnoses / Plan of Care / Investigations / Medications / Diagnostics & Trends) + `created_at`. The LLM really ran (LM Studio); sections read "Not available" because no clinical history was supplied, which is correct behaviour, not a failure. Superseded the row below | |
+| ~~8~~ | *(superseded — original lane G entry)* | ✅ (wiring) / ⚠️ (round trip) | `SummaryCard.test.tsx` (12); the tab reads the transcript from the lifted context, verified by test. **No SMR call made — no gateway.** |
+| 9 | Streaming toggle renders tokens live; non-streaming returns the final body | ✅ | **LIVE-VERIFIED 2026-08-01** against gateway :8868 + SMR :8862 + LM Studio. `POST /api/smr/api/v1/summary/sync` with `stream:true` over a 7-turn consultation → **232 `event: delta` frames + exactly 1 terminal `event: result`, 0 `event: error`**. The deltas are raw text arriving token by token (`{`, `\n`, `"`, `chief`, …), **confirming lane F's finding that the gateway re-emits SMR `chunk` frames as raw text, NOT partial structured JSON** — the structured view only materializes at the terminal result. ⚠️ Caveat worth knowing: a SHORT generation (the pre-summary, which emitted only a heading) produced **0 deltas with a valid terminal result** — for fast/short generations the stream can complete before any delta is observed, so "live token rendering" is not guaranteed for every request. Superseded the row below | |
+| ~~9~~ | *(superseded — original lane G entry)* | ⚠️ | `{stream:true,onDelta}` threading asserted in `SummaryCard.test.tsx`. **No real SSE stream observed.** |
 | 10 | `pnpm --filter @arcaai/compat-playground test typecheck build` | ✅ | 173 tests / 15 files passed; `tsc --noEmit` clean; build ✓ in 17.39s (with the known ~6 MB chunk warning — reported below, not silenced) |
 | 11 | `@arcaai/vox` test + typecheck + build | ✅ | 3771 tests / 221 files passed; typecheck exit 0; tsup build success |
-| 12 | `pnpm stt:test` | ⚠️ | 2840 passed, 77 skipped, 3 xfailed, **1 failed** — `test_asr_engines.py::TestP507WhisperCppEngine::test_adapter_contract`, **pre-existing and reproduced with the HEAD copy of `whisper_cpp_asr.py`** (see §8 lane G) |
+| 12 | `pnpm stt:test` | ✅ | **2841 passed, 77 skipped, 3 xfailed, 0 failed.** `test_asr_engines.py::TestP507WhisperCppEngine::test_adapter_contract` root-caused and fixed 2026-08-01 — see the note below the table. Separately observed (not a test failure, out of scope, NOT touched): the process aborts during CPython finalization AFTER pytest's own "passed" summary prints (`Fatal Python error: PyThreadState_Get: … GIL … finalizing`, exit 134). Reproduces on `stt:test` and `stt:test:unit` alike, including subsets that never import `whisper_cpp_asr`; does not reproduce when only the whisper.cpp-adapter test files run. Most likely a native callback registered by TASK-594's `_ensure_log_capture_installed()` (`whisper_cpp_asr.py`, `whisper_log_set`) firing on a background thread after `Py_Finalize` starts — a process-exit artifact, not a test correctness issue, and outside this investigation's scope (touches TASK-594's validated native log-capture code) |
 | 13 | `pnpm --filter @arcaai/api test` | ✅ | 2307 passed / 8 skipped, 165 files |
-| 14 | Python lint / typecheck | ✅ / ⚠️ | `pnpm stt:lint` (ruff) — All checks passed. `pnpm stt:typecheck` (mypy) — exactly 1 error, the pre-existing `session_manager.py:893` |
+| 14 | Python lint / typecheck | ✅ | `pnpm stt:lint` (ruff) — All checks passed. `pnpm stt:typecheck` (mypy) — **clean, 0 errors** (131 source files). The `session_manager.py:893` error is fixed — see the note below the table |
 | 15 | **NEW** — the app has a working `lint` gate | ✅ | `eslint.config.mjs` added; `pnpm --filter @arcaai/compat-playground lint` → clean at `--max-warnings 0` |
 | 16 | Both themes verified | ✅ | Driven live in a browser, light **and** dark; semantic tokens only, `<Skeleton>` (not spinners) for the pending device list |
-| 17 | axe scan 0 violations | ⚠️ **1 violation** | axe-core 4.12.1, WCAG 2.0/2.1/2.2 A+AA, both themes, all three tabs: **1 serious `scrollable-region-focusable`**, 24 passes, 0 incomplete. Cause is `packages/ui`'s `CodeExample`: its `<pre className="overflow-x-auto …">` (`packages/ui/src/components/custom/code-example.tsx:56`) is horizontally scrollable but not keyboard-focusable. **Pre-existing in a shared primitive, not introduced here** — it applied to the old single "Example code" tab too; per-tab rendering only makes it appear on three tabs instead of one. Deliberately NOT fixed by lane G: it is a shared `@arcaai/ui` primitive consumed by the admin console and Storybook, outside this ticket's surface. Recorded as an open follow-up |
+| 17 | axe scan 0 violations | ✅ (target rule) / ⚠️ (see #6) | **Lane G finding, now FIXED** — the 1 serious `scrollable-region-focusable` came from `packages/ui`'s `CodeExample` (`<pre className="overflow-x-auto …">`, horizontally scrollable but not keyboard-focusable). Resolved 2026-08-01 as its own `packages/ui` change: `tabIndex={0}` + `role="region"` + an `aria-label` from `title`/`language`. Re-scanned in the running app, both themes, all 5 Connection-tab blocks expanded: **`scrollable-region-focusable` passes 5/5**, 25 passes. See follow-up #5. ⚠️ The same re-scan surfaced a DIFFERENT issue — 6 serious `color-contrast` nodes from a stale computed `color` that survives a theme change until repaint (a forced repaint yields 0 violations in both themes, proving the CSS is correct). Tracked as follow-up **#6**; this row returns to a clean ✅ once that lands |
 
 ---
 
@@ -437,7 +444,7 @@ Ordering proven safe, not assumed: all four finalize entrypoints drain before ca
 
 Tests: 6 new Python ordering tests (**RED verified** — 4 of 6 fail against `HEAD`), +9 `SttWebSocketClient`, +3 provider. One existing test was *changed, not adapted away*: `test_finalize_calls_sequence_in_correct_order` asserted the old order and **is** the old contract.
 
-> ⚠️ **The `finalizing` early-resolve is currently INERT on the v2 wire.** `parseAndEmitResult` relays only `provider_switched` among non-terminal statuses, so `finalizing` never reaches the browser. The code is correct and tested but only pays off once someone relays `finalizing` through `packages/applications` + the gateway. B3 makes `closed` arrive fast anyway, so this is belt-and-braces. **Follow-up candidate, not a blocker.**
+> ~~⚠️ **The `finalizing` early-resolve is currently INERT on the v2 wire.**~~ — ✅ **RESOLVED 2026-08-01** (open follow-up #1). `parseAndEmitResult` now default-forwards every non-terminal status, so `finalizing` reaches the browser. See follow-up #1 below for the evidence.
 
 **Pre-existing failures confirmed NOT caused by this lane:** `test_asr_engines.py::test_adapter_contract` (fails on the staged TASK-594 `whisper_cpp_asr.py` change that dropped `split_on_word`) and one mypy error at `session_manager.py:893` (byte-identical at `HEAD`).
 
@@ -617,28 +624,222 @@ picker). No React render errors.
    `_want_word_timestamps` at all. Conclusion is unchanged — **not caused by
    TASK-597** — but the failure is already committed, so it will not disappear by
    unstaging.
+
+   **Root cause found and fixed 2026-08-01.** TASK-594 (commit `8b33267e`,
+   *"feat(stt): enhance whisper.cpp integration with consultation prompts and
+   word timestamp handling"*, 2026-07-31) made the word-split decode
+   (`split_on_word`/`max_len=1`/`token_timestamps`) **opt-in** via a new
+   `WhisperCppAsrAdapter(..., want_word_timestamps: bool = False)` constructor
+   parameter — the default became a clean sentence-level decode with none of
+   those kwargs set (see the docstring at `whisper_cpp_asr.py:311-315`). That
+   commit correctly updated the adjacent
+   `apps/stt/tests/unit/test_whisper_cpp_asr.py` (added
+   `test_clean_decode_omits_word_split_kwargs` +
+   `test_word_timestamp_mode_splits_and_space_joins`, covering both modes) but
+   **missed the second, older test of the same contract** —
+   `test_asr_engines.py::TestP507WhisperCppEngine::test_adapter_contract` — which
+   constructs the adapter with no `want_word_timestamps` argument (so it now
+   exercises the new clean-decode default) while still unconditionally
+   asserting the pre-TASK-594 always-on `split_on_word`/`max_len`/
+   `token_timestamps` contract. Both real production call sites
+   (`batch_service.py:2745`, which omits the kwarg — batch defaults to clean
+   decode — and `session_manager.py:1937`, which forwards a live
+   `_pending_want_word_timestamps` flag) are consistent with the new opt-in
+   design, confirming this is a genuinely superseded contract, not a
+   regression. **Verdict: stale test, not a code regression.** Fixed by
+   passing `want_word_timestamps=True` at the one call site inside
+   `test_adapter_contract` (this test's whole purpose is the word-timestamp
+   contract) and rewriting its docstring to explain the opt-in split and point
+   at the two tests in `test_whisper_cpp_asr.py` that already cover the
+   default clean-decode path. No production code changed; TASK-594's
+   `whisper_cpp_asr.py` is untouched. `pnpm stt:test` is now 2841 passed / 77
+   skipped / 3 xfailed / **0 failed**.
 2. Two verification commands in the plan do not exist. `pnpm py:stt:lint` was
    renamed to **`pnpm stt:lint`** by the TASK-557 script taxonomy, and `test:unit`
    is a **root** script, not a package one — `pnpm --filter @arcaai/api test:unit`
    fails with `ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT`; the package suite is
    `pnpm --filter @arcaai/api test`.
+3. **The `session_manager.py:893` mypy error is fixed 2026-08-01.**
+   `_load_pipeline_config(self, pipeline_id: str, tenant_id: str | None = None)`
+   requires a non-optional `pipeline_id` (and forwards it to
+   `PipelineConfigReader.get_pipeline`, which is equally non-optional — so
+   widening either signature would only push the same "str | None where str is
+   expected" error one level deeper, into a real DB-lookup call). At the call
+   site, `initial_pipeline_id = fallback_pipeline_id if started_on_fallback
+   else pipeline_id` types as `str | None` because `fallback_pipeline_id: str |
+   None = None` is a `create_session` parameter — but `None` is **not actually
+   reachable** there: `started_on_fallback = start_on == "fallback" and
+   bool(fallback_pipeline_id)` (line 885) is `True` only when
+   `fallback_pipeline_id` is truthy, so mypy's inability to correlate that
+   boolean with the later ternary is a narrowing gap, not a real bug. Fixed by
+   narrowing at the call site with `assert initial_pipeline_id is not None`
+   (the same idiom already used one module over, in
+   `engine_switch.py:242` — `assert self._build_primary is not None  #
+   narrowed by can_switch_to_primary`), with a comment explaining why the
+   `None` branch is unreachable. `pnpm stt:typecheck` is now clean (0 errors,
+   131 files). The finalize-ordering code TASK-597 lane B-server added
+   elsewhere in this file (`closed`-before-uploads reorder, ~line 3426+) was
+   not touched.
 
 **Open follow-ups (deliberately NOT implemented — owner decisions).**
 
-1. **`finalizing` is inert on the v2 wire.** `parseAndEmitResult` relays only
-   `provider_switched` among non-terminal statuses, so `finalizing` never reaches
-   the browser. Lane B-server's early-resolve is correct and tested but pays off
-   only once someone relays `finalizing` through `packages/applications` + the
-   gateway. B3 makes `closed` arrive fast anyway.
-2. **True per-mic auto-tag attribution** needs a per-source `AnalyserNode` in
-   `AudioMixer`'s node graph. The SDK exposes one mixed-stream meter, so auto-tag
-   rotates round-robin and says so in the UI. Scoped SDK change.
-3. **`mlen_scorecard.py`'s `cer()` uses a `max(1, len(ref))` denominator**, so an
-   empty reference returns the raw edit distance rather than a ratio
-   (`cer('','hello') == 5`). The TS port reproduces it for parity. Decide whether
-   such clips should score 5.0 or be excluded — a change here must land in both.
-4. **Thread `drainTimeoutMs` through `AudioStartOptions`.** Lane B-server scoped
-   it at client/provider level to avoid a file conflict with lane A.
+1. ~~**`finalizing` is inert on the v2 wire.**~~ — ✅ **FIXED 2026-08-01.**
+   `parseAndEmitResult`
+   ([streamingAudioBridge.service.ts](../../../packages/applications/src/services/stt/streaming/streamingAudioBridge.service.ts))
+   now **default-forwards every non-terminal status** instead of relaying an
+   allow-list of one (`provider_switched`). `finalizing` therefore reaches the
+   browser and the SDK's stop-drain quiet window is live.
+
+   - **Terminal semantics unchanged.** The function's boolean still means "this
+     entry was TERMINAL", and the terminal set is still exactly
+     `closed | cancelled`. `finalizing` is emitted and returns `false`, so the
+     reader keeps reading and the tail final published after it still relays.
+     Terminal statuses remain UNEMITTED — the WS gateway synthesizes its own
+     closing frame in `complete:`, so relaying them would double-send `closed`.
+   - **Default-forward, not a wider allow-list** — the allow-list *is* the
+     TASK-568 Phase-F bug class that made `finalizing` inert, and it is the bug
+     the v1-compat gateway already guards against in a comment. Status VALUES are
+     default-forwarded; status FIELDS are still projected explicitly by a new
+     `buildStatusMessage()`, because the result stream is a PHI-bearing channel
+     and a blind spread would put whatever a future publisher adds onto the
+     browser wire. The projection was chosen against the **complete** status
+     vocabulary `apps/stt` can publish — `publish_status` emits `{type, status}`
+     only (`finalizing` / `closed` / `cancelled`) and `publish_provider_switched`
+     adds `from_pipeline` / `to_pipeline` / `reason` / `active` / `is_fallback` /
+     `utterance_index` (`apps/stt/src/stt/streaming/redis_streams.py`). None
+     carries transcript text or any other PHI. A status entry with an empty or
+     absent `status` field is dropped (the SDK's `isValidStatus` would reject it).
+   - **No gateway code change was needed, in either wire.**
+     `stt-ws.gateway.ts` relays whatever the bridge emits verbatim (status frames
+     bypass the transcript backpressure policy and carry no seq), and
+     `stt-compat.gateway.ts` already default-forwards every status frame. Both
+     were previously starved by the bridge, not by their own logic. Both got a
+     characterization test instead of an edit.
+   - **Frame shape verified against the consumer.** The socket receives exactly
+     `{type:'status', status:'finalizing'}`, which satisfies
+     `SttWebSocketClient.isValidStatus` (`status` a string, `message` absent or a
+     string) and reaches the `msg.status === 'finalizing'` branch that calls
+     `pendingDrainNudge('finalizing')`.
+   - **RED verified**: both relay tests failed against the pre-change bridge
+     (`expected [ … ] to have a length of 2 but got 1`), then passed.
+     `@arcaai/applications` 7178 tests / 368 files green (+2), `@arcaai/api`
+     2309 / 165 green (+2); both packages build and lint with **0 errors and no
+     new warnings**.
+   - **NEW follow-up #7 opened** (found here, deliberately not fixed):
+     `active` / `is_fallback` never leave the bridge, so
+     `stt-compat.gateway.ts`'s `is_fallback → isFallback` mapping (TASK-586) is
+     dead in production — its test feeds the message directly. Fixing it means
+     widening `StreamingStatusMessage`, which is outside this follow-up's scope.
+   - **Not provable without live infra**: that a real session actually resolves
+     its drain on the quiet window. Every layer is unit-verified and the wiring
+     is continuous, but no end-to-end run was performed — it needs Redis + a live
+     STT session + a browser.
+2. ~~**True per-mic auto-tag attribution**~~ — ✅ **RESOLVED 2026-08-01.**
+   Auto-tag now attributes to the microphone that is actually speaking.
+
+   **The per-source level API.** `AudioMixer` gains opt-in, additive
+   `startLevelMonitoring(options?) → boolean` / `stopLevelMonitoring()` /
+   `isLevelMonitoringActive()` / `getSourceLevels()` / `getSourceLevel(id)`
+   (`packages/room/src/core/AudioMixer.ts`). The mixer is the last place in the
+   stack where the inputs still exist as SEPARATE signals — everything
+   downstream sees one summed track — so this is the only layer at which
+   "which mic" is answerable at all. Design points, each deliberate:
+   - **One timer, N analysers** (default 100 ms — the SDK meter's cadence), not
+     N timers. Each tap is analysis-only and connected to NOTHING, so it adds
+     no playback and does not alter the mix (asserted: the analyser's own
+     `connect` is never called).
+   - **Tapped off the SOURCE node, not the gain node.** `muteSource()` calls
+     `gainNode.disconnect()`, which would tear an analyser hung there out of the
+     graph and never restore it on unmute. A muted source instead reports `0`
+     explicitly — the level answers "is this input feeding the uplink".
+   - **Same 0–100 mapping as the mixed meter** (`min(100, round(rms*250))`), so
+     one threshold works against either.
+   - **Returns `false`, not a throw, on a runtime that cannot analyse**
+     (no `createAnalyser`, or no `getFloatTimeDomainData`) — an absent signal
+     must degrade to "attribution unknown", never to a fake one.
+
+   **Teardown is guaranteed at three levels, because one would not be enough:**
+   `AudioMixer.dispose()` calls `stopLevelMonitoring()` FIRST (a sampling timer
+   that outlived its mixer would fire against disconnected nodes for the life of
+   the page); `useArcaAudio.stopAudio` disposes the mixer inside the SAME
+   synchronous block that releases the mic (lane B-client's ordering untouched)
+   and clears `audioSourceLevels` there, so no stale "mic 2 is speaking" is
+   readable during the drain; and `startAudio`'s **catch** now releases the
+   level meter + mixer monitoring — a throw after the meters were armed
+   previously left them ticking forever (a pre-existing leak of the single
+   meter, now closed for both).
+
+   **SDK → app.** New store field `audioSourceLevels: number[]`, index-aligned
+   with the RESOLVED source order (the same index `sourceGains` uses), surfaced
+   as `useArcaAudio().sourceLevels` and `useAudioCapture().sourceLevels`
+   (reactive — the app no longer polls `getDeviceStatus()` for this).
+   `level` semantics are UNCHANGED: it is still the single mixed value every
+   existing consumer reads.
+
+   **Is auto-tag genuinely per-mic? Yes, with two named limits** — and the UI
+   states which of the three cases is live, derived from the signal itself
+   (`metadata.autoTagMode`), so the disclosure can no longer drift from the code:
+   | Mode | When | What it claims |
+   |---|---|---|
+   | `per-source` | ≥2 live per-source meters | **Real attribution.** The loudest source above threshold owns the turn, and a CHANGE of loudest source re-tags immediately — a speaker change must not wait for silence. Disclosed limit: mics in one room bleed, so this attributes by loudest INPUT, not by voice identity. |
+   | `single-source` | exactly 1 source (one mic, or one file) | Exact for "which input", and **it says plainly that one mic cannot separate two speakers**. This is the honest-disclosure case the follow-up asked to keep. |
+   | `unavailable` | no per-source signal (not recording, or no Web Audio analysis) | The old round-robin rotation, kept and labelled as a demo of the payload shape, **not** attribution. |
+
+   Evidence: `AudioMixer.levels.task597.test.ts` (14), `useArcaAudio.sourceLevels.task597.test.ts` (12),
+   `MetadataSimulator.perSource.task597.test.tsx` (8). **RED-verified by mutation** —
+   publishing the mixed meter as a per-source array fails the "MIXED level
+   untouched" test; deleting the failed-start cleanup fails 2; forcing the
+   fallback branch (`false &&`) fails the 4 attribution tests. All patches
+   reverted and the files byte-compared (`diff` clean).
+3. ~~**`mlen_scorecard.py`'s `cer()` uses a `max(1, len(ref))` denominator**~~ —
+   ✅ **DECIDED 2026-08-01 (owner): keep as-is, document it.** An empty reference
+   with a non-empty hypothesis returns the raw edit distance rather than a ratio
+   (`cer('','hello') == 5`), on BOTH sides.
+   - Rationale: the alternatives (excluding empty-reference clips from the
+     aggregate, or clamping to 1.0) each shift aggregate scores and would force a
+     regeneration of `apps/stt/tests/integration/mlen_scorecard_baseline.json`.
+     Parity between the playground and the TASK-594 quality gate is worth more
+     than a tidier edge case — that parity is the entire point of the port.
+   - Recorded in code so it is not "fixed" by a future reader:
+     `apps/compat-playground/src/lib/scoring.ts::characterErrorRate` carries a
+     DELIBERATE note, and `apps/stt/scripts/mlen_scorecard.py::cer` carries the
+     mirror-image note. **Any future change must land on both sides in the same
+     commit.**
+   - Also corrected while there: that module's docstring called the normalization
+     "transliteration-agnostic", but `_norm` only does NFC → collapse whitespace →
+     strip — no case-folding, punctuation stripping, digit normalization or
+     transliteration (verified across 11 fixtures). Wording only, no behaviour
+     change.
+4. ~~**Thread `drainTimeoutMs` through `AudioStartOptions`.**~~ — ✅ **RESOLVED
+   2026-08-01.** Additive-optional `AudioStartOptions.drainTimeoutMs`, threaded:
+
+   ```
+   AudioStartOptions.drainTimeoutMs            (types/audio.ts)
+     → useArcaAudio.startAudio → pluginManager.setRuntimeOptions(…)
+     → PluginManagerRuntimeOptions.drainTimeoutMs
+     → PluginManager.buildStreamingTransport → STTStreamingTransport.drainTimeoutMs
+     → STTProcessor.initializeStreamingRemoteProvider → provider.init(…)
+     → StreamingRemoteProviderConfig.drainTimeoutMs  (lane B2's existing field)
+     → wsClient.stopAndDrain(ms)
+   ```
+
+   It rides the streaming **transport**, not `TranscriptionPipelineConfig.stt`:
+   the drain is a property of socket teardown, not of what is being
+   transcribed — and that route leaves `TranscriptionPipeline.ts` untouched.
+   `useAudioCapture` forwards it too (compat consumers, incl. the playground).
+
+   **Non-positive values are ignored at every hop that could misread them** —
+   the hook, the plugin manager, the compat hook (all spread only when `> 0`)
+   and the provider's own pre-existing guard. `0` must never read as "close
+   instantly" (losing the tail final) and `NaN` must never reach a `setTimeout`.
+   Omitted ⇒ the field is absent from the options object, byte-identical to
+   pre-597 for every caller that does not set it.
+
+   Evidence: 5 cases in `useArcaAudio.sourceLevels.task597.test.ts` +
+   `packages/stt/src/__tests__/STTProcessor.drainTimeout.task597.test.ts` (4),
+   which pins the last hop (`stopAndDrain` receives `800` / `undefined`).
+   **RED-verified**: deleting the `STTProcessor` forwarding line fails exactly
+   the positive-value test; dropping the `> 0` guard fails 4.
 5. ~~**`CodeExample`'s scrollable `<pre>` is not keyboard-focusable**~~ — ✅ **FIXED
    2026-08-01**, as its own `packages/ui` change. The `<pre>` now carries
    `tabIndex={0}` + `role="region"` + an `aria-label` derived from `title` and
@@ -653,36 +854,310 @@ picker). No React render errors.
      `scrollable-region-focusable` **passes on 5/5 nodes**, 25 passes.
      §7 row 17's ⚠️ is discharged.
 
-6. **NEW — stale text colour survives a theme change until the element repaints.**
-   Found while re-scanning for #5. On a clean load in dark mode, axe reports 6
-   serious `color-contrast` nodes at ~1.03–1.15 (config inputs, the selected tab
-   trigger, an outline badge, a ghost button); toggling to light moves the failure
-   to a *different* subset. Each element keeps ONE colour across toggles — e.g.
-   `#config-pipelineId` computes `#e6edf0` (the dark foreground) on the light
-   background.
+6. ~~**Stale text colour survives a theme change until the element repaints.**~~
+   — ✅ **FIXED 2026-08-01, in the app.** Attribution bisected first, as required.
 
-   **The CSS is correct and this is not a token bug.** Proof: forcing a repaint
-   (`display:none` → reflow → restore) while touching no CSS flips the element to
-   the right colour, a fresh clone in the same parent renders correctly, and a
-   whole-document forced repaint takes axe to **0 violations / 25 passes in both
-   themes**. `--foreground` resolves correctly on the failing elements; the
-   computed `color` is simply stale.
+   **Verdict: PRE-EXISTING, and not caused by this ticket's `forceMount`.**
+   Three independent pieces of evidence, all reproduced in the running app at
+   :5177:
+   - **The `forceMount` panels were physically removed** from the DOM
+     (`[data-slot="tabs-content"][data-state="inactive"]` → `.remove()`), then the
+     theme toggled: **the identical 17 elements stranded**. `forceMount` is
+     exonerated by experiment, not by argument.
+   - **A control built from bare DOM**, appended straight to `<body>` — no React,
+     no `Tabs`, no ticket code — reproduces it exactly:
+     `<input class="text-foreground transition-[color,box-shadow]">` and
+     `<button class="text-foreground transition-all">` both keep the light
+     `rgb(14,26,36)` after `.dark` is added, while the *same* markup without the
+     transition class correctly becomes `rgb(230,237,240)`.
+   - `apps/compat-playground/src/lib/use-theme.ts` — the actual fault site — is
+     **byte-identical to its introduction in `55cf370f` (TASK-586 lane F)**; the
+     `@arcaai/ui` primitives involved are older still.
 
-   Mechanism: the theme class is applied after first paint, and the affected
-   controls carry `transition-[color,box-shadow]`, so the colour transition never
-   runs for elements the browser does not repaint — they keep the previous theme's
-   value. Real and user-visible (near-invisible input text), not merely an axe
-   artifact.
+   **Mechanism (corrected).** Flipping `.dark` on `<html>` changes `color`,
+   `background-color` and `border-color` purely through a custom-property
+   cascade. That starts a transition on every element carrying `transition-all`
+   or `transition-[color,box-shadow]`, but the browser never repaints those
+   elements, so the interpolation never advances — several tab triggers were
+   caught frozen at a mid-interpolation value
+   (`oklab(0.211704 -0.0112417 -0.0237211 / 0.6)`). It is **not** limited to
+   `color`: a `transition-all` div strands its `background-color` and
+   `border-color` too, which is why "drop `color` from `transition-[color,…]`"
+   would have been an incomplete fix — and why the fix does not belong in the
+   primitives.
 
-   ⚠️ **Not attributed.** It reproduces on a clean load, but this ticket also made
-   all three tab panels `forceMount`-hidden, which plausibly interacts with what
-   does and does not repaint. Do **not** record it as pre-existing or as a TASK-597
-   regression without bisecting. Likely fix sites: the app's `use-theme.ts` (apply
-   the class before first paint), or dropping `color` from the transition on
-   token-driven text in `@arcaai/ui`.
+   **Fix (app layer, 2 files, no restyling, no primitive touched):**
+   - `index.html` — a **blocking bootstrap script in `<head>`** applies `.dark`
+     from the OS preference *before the first paint*, so the initial theme never
+     starts a transition at all (the no-flash pattern; `apps/admin-console` gets
+     this from next-themes).
+   - `src/lib/use-theme.ts` — initial state is now **adopted from the class the
+     bootstrap left on `<html>`** (with a `systemTheme()` fallback for the
+     degraded case where the script did not run), and every flip goes through
+     `applyThemeWithoutTransitions()`: insert a `transition:none !important`
+     style, toggle the class, force a style flush, remove the style. This is
+     precisely next-themes' `disableTransitionOnChange`, which
+     `apps/admin-console/src/shared/providers.tsx` already sets — the playground
+     hand-rolled its theme hook and skipped it. Suppressing transitions also
+     fixes background and border staleness, which a primitive-level change
+     would not have.
+
+   **Evidence (axe-core 4.12.1, WCAG 2.0/2.1/2.2 A+AA, connected, all 25
+   example-code `<pre>` blocks expanded, NO forced repaint anywhere):**
+
+   | Scan | Theme | Violations | Passes | Stale elements |
+   |---|---|---|---|---|
+   | Clean load, OS = dark | dark | **0** | 25 | **0 / 646** |
+   | After toggle → light | light | 1 (see #8) | 25 | **0 / 646** |
+   | After toggle → back to dark | dark | **0** | 25 | **0 / 646** |
+   | Clean load, OS = light | light | 1 (see #8) | 25 | **0 / 646** |
+   | After toggle → dark | dark | **0** | 25 | **0 / 646** |
+
+   "Stale elements" is a clone-comparison sweep run alongside each scan: for
+   every rendered element, its computed `color`/`background-color`/`border-color`
+   is compared against a freshly-cloned sibling with `transition:none`. Before
+   the fix this reported up to 17 mismatches per toggle; after it, **zero in
+   every state**.
+
+   Regression cover: `src/lib/__tests__/use-theme.test.tsx`, 3 tests,
+   **RED-verified** against the old hook (adopt-the-DOM-class failed with
+   `expected 'light' to be 'dark'`; transitions-suppressed failed with
+   `expected false to be true`). The paint behaviour itself is *not* testable in
+   happy-dom — there is no layout or compositor — so the tests pin the two
+   properties that remove the trigger (adopt the pre-paint class; flip with
+   transitions off, and never leave the suppressor behind) rather than asserting
+   a colour.
+
+   Gates: `@arcaai/compat-playground` **176 tests / 16 files green**, `build`
+   clean (bootstrap script verified present in `dist/index.html`), ESLint clean
+   on both changed files. `typecheck` and the whole-app `lint` are red **only**
+   on concurrent lanes' in-flight files (`playground-session.tsx` `sourceLevels`,
+   awaiting its SDK-side change; 4 prettier warnings in `MetadataSimulator.tsx`)
+   — neither is reachable from this change. `packages/ui` was **not modified**
+   (`git status` clean).
+
+7. **NEW — `active` / `is_fallback` never leave the streaming bridge.** Found
+   while closing #1. `apps/stt`'s `publish_provider_switched` carries both
+   (TASK-586, both switch directions), and `stt-compat.gateway.ts` explicitly
+   maps `is_fallback → isFallback` for the v1 client — but
+   `streamingAudioBridge.service.ts` has never projected either field, so that
+   mapping is **dead in production** (its test feeds the message straight to the
+   gateway, bypassing the bridge). The v2 SDK is unaffected: `useArcaSttProvider`
+   derives `isFallback` from the store, not the wire. Fix = add both to
+   `StreamingStatusMessage` + `buildStatusMessage()`; deliberately left out of
+   #1 to keep that change surgical.
+8. **NEW — inactive `TabsTrigger` misses AA contrast in the light theme by
+   0.01.** Surfaced by the #6 re-scan and **proven to be a different defect**:
+   the computed colour matches a fresh clone exactly (0 stale), and the violation
+   is *identical* on a clean load and after a toggle — the signature of a real
+   token value, not the repaint bug. `TabsTrigger`'s `text-foreground/60`
+   ([tabs.tsx:47](../../../packages/ui/src/components/shadcn/tabs.tsx))
+   resolves to `#6e767c` on `--background #fbfcfd` = **4.49:1**, against the
+   4.5:1 floor; 2 nodes, serious. Pre-existing (that class has not changed since
+   the initial commit) and it applies to **every `@arcaai/ui` consumer**, so
+   `apps/admin-console` and Storybook inherit it wherever a line-variant tab list
+   is shown in light mode. Deliberately NOT fixed here: the remedy is a palette
+   decision on a shared primitive (`/60` → `/70` measures 6.4:1) and belongs
+   behind the design gate of `12-design-workflow.md`, not inside a repaint fix
+   that was explicitly scoped "no restyling".
+
+7. **`active` / `is_fallback` are never projected by the bridge**, so
+   `stt-compat.gateway.ts`'s `is_fallback → isFallback` mapping (TASK-586) is dead
+   in production — its test feeds the gateway directly, bypassing the bridge. The
+   v2 SDK is unaffected (`useArcaSttProvider` derives it from the store). Fixing it
+   means widening `StreamingStatusMessage`.
+
+8. **Inactive `TabsTrigger` fails AA contrast: `text-foreground/60` → `#6e767c` on
+   `--background #fbfcfd` = 4.49:1** (floor 4.5:1, 2 nodes, serious). Proven NOT the
+   repaint bug — computed colour equals a fresh clone, and it is identical on a
+   clean load and after a toggle. `packages/ui/src/components/shadcn/tabs.tsx` is
+   unchanged since its initial commit, so this is **live for admin-console and
+   Storybook today**. Remedy is roughly `/60` → `/70` (~6.4:1), but that is a
+   visible palette change on a shared primitive and belongs behind the design gate.
+
+9. **⚠️ DEV ENVIRONMENT BROKEN — Vault and `.env.dev` have diverged.** Found
+   2026-08-01 while attempting the live-verification pass. This is an environment
+   defect, NOT a TASK-597 code defect, and it currently blocks §7 rows 8 and 9.
+
+   | Secret | Vault (`secret/hope/*`) | `.env.dev` | Effect |
+   |---|---|---|---|
+   | `API_KEY_PEPPER` | fp `d2ecdc9b…` | fp `db8e6850…` | **Every seeded API key 401s** |
+   | `SMR_SERVICE_TOKEN` | fp `ce473e2a…` | fp `356e9620…` | **Gateway→SMR 401 `invalid_or_missing_token`** |
+
+   Two sources of truth that must agree but do not:
+   - The **DB seed** (`seed/api-key-pepper.ts`) prefers a non-empty
+     `process.env.API_KEY_PEPPER`, falling back to Vault. `.env.dev` HAS a
+     non-empty value — even though that file's own comment says it "keeps
+     `API_KEY_PEPPER` blank on purpose", which is precisely the condition that
+     avoids this divergence.
+   - The **runtime** (`apikey.service.ts:175`) reads the pepper ONLY from
+     `SecretsService` (Vault). Same story for `X-Service-Token` injection.
+   - So keys are hashed with one pepper and verified with another. The failure
+     surfaces as a generic `Invalid API key`, which gives no hint of the cause —
+     a nasty footgun worth a startup-time consistency check.
+
+   Proven, not inferred: a key hashed with the **Vault** pepper authenticated
+   immediately (HTTP 200) where all 9 seeded keys 401. That temporary row
+   (`7f597000-…-000000000597`) was **deleted afterwards** — 9 keys remain, and the
+   temp key now returns 401. No seeded row was ever modified.
+
+   **Owner decision required** — likely `scripts/vault-seed-secrets.sh` to re-seed
+   Vault from env so both align. NOT done here: it rewrites live Vault values and
+   could affect anything else already sealed with the current ones (storage
+   credentials behind `credentialsRef`, Transit-encrypted columns).
+
+10. **⚠️ NEW, HIGH — the drain closes long before the tail final arrives, so the
+    live UI loses the last (often the ONLY) transcript.** Found by live
+    measurement 2026-08-01, not by any test.
+
+    Measured against `faster-whisper-large-v3-turbo-int8` (`has_vad: false`, so
+    the whole utterance is flushed at finalize rather than segmented live):
+
+    | Event | Offset from `stop` |
+    |---|---|
+    | `status: finalizing` | **+4 ms** |
+    | final transcript | **+30 413 ms** |
+    | `status: closed` | **+30 418 ms** |
+
+    `SttWebSocketClient` (`:583`) opens a **250 ms quiet window** the moment a
+    `finalizing` status arrives, and only a TRANSCRIPT restarts it. The overall
+    `drainTimeoutMs` is **1500 ms**. Both elapse ~29 seconds before the final
+    transcript exists, so the socket is closed and **the transcript never reaches
+    the live UI**. The durable record is unaffected — the gateway persists it —
+    but the playground shows an empty transcript for a pipeline that transcribed
+    perfectly.
+
+    **The semantics are the bug**, not the numbers. `finalizing` means "the server
+    has STARTED finalizing", i.e. a long inference is beginning — it is precisely
+    the wrong moment to shorten the wait. TASK-597 made this reachable in two
+    steps that are individually correct: follow-up #1 made `finalizing` actually
+    reach the client (it was inert before), and lane B2 taught the drain to end
+    early on it.
+
+    **Not a regression** — the tail final was already lost before this ticket
+    (the old 5000 ms default is also ≪ 30 s). This ticket makes it lose it sooner
+    (250 ms instead of 1500/5000 ms) and, for the first time, gives us the
+    measurement that proves it.
+
+    Suggested fix: `finalizing` should **extend** the drain deadline, not open a
+    quiet window — or the quiet window should only start after the first
+    post-`finalizing` transcript. Either way the drain needs a ceiling far above
+    1500 ms for `has_vad: false` pipelines, or a server-side "expected flush
+    duration" hint. **Requires a design decision; deliberately not patched here.**
+
+    ### ✅ CONFIRMED IN THE REAL CLIENT — 2026-08-01, Chrome + microphone granted
+
+    The above was originally *inferred* from server timings measured with a raw
+    WS harness. It has now been **observed inside the actual SDK**, driving the
+    playground UI in real Chrome (`arcaai-whisper-large-ml-en-gguf`, language mode
+    `ml-en`, file-backed source, 4.2 s ml-en clip). `window.WebSocket` was wrapped
+    to record every frame. Timeline relative to the Stop click:
+
+    | Δ from Stop | Event |
+    |---|---|
+    | −8425 ms | `ready` |
+    | −5177 ms | `transcript` **partial** — `ത്തരം പ്രധാനമാണ്` (real Malayalam) |
+    | +1 / +16 / +16 ms | `SENT: stop` — **three** stop frames |
+    | +27 ms | `status: finalizing` |
+    | **+335 ms** | **socket CLOSED, code 1000 — no FINAL ever received** |
+
+    104 binary audio frames were sent, so audio genuinely flowed. **The UI ended
+    with 0 transcript lines.** The +335 ms close is precisely the mechanism:
+    `finalizing` at +27 ms opened the 250 ms quiet window, no transcript restarted
+    it, the drain resolved at ~+277 ms and the socket closed — while the server
+    needs 1–3.6 s (GGUF) to 30 s (CT2) to emit the tail final.
+
+    Server-side proof the transcript existed: the STT log for session
+    `019fbd63-1599-7c0c-a02d-56d6128dad6a` records **`Utterance transcribed`**
+    (`utterance_index: 0`) *after* the client had gone.
+
+    ⚠️ **CORRECTION to the mitigation stated above.** "The durable record is
+    unaffected — the gateway persists it" is TRUE only when a consultation exists.
+    The same log shows `streaming finalize has no consultation_id; skipping
+    transcript persistence` — and the playground deliberately opens no
+    consultation. **In the playground flow the transcript is lost outright, not
+    merely lost from the live UI.** That makes this materially worse than first
+    recorded, and it raises the priority of the fix.
+
+    Incidental: three `stop` control frames are sent for one Stop click. Harmless
+    (the server treats them idempotently) but wasteful, and it suggests more than
+    one teardown path is firing the finalize.
 
 Ticket-number check discharged: `docs/archive/` was readable this session and
 holds no `TASK-59*`; **597 is free**.
+
+### Known-pre-existing `pnpm stt:test` abort (exit 134) — closed
+
+The "1 stt pytest failure … reproduced at `HEAD`" carried in this ticket's
+closure notes was in fact **not a test failure at all**: the suite ran fully
+green (`2841 passed`) and then aborted during interpreter shutdown, so the
+command exited **134** instead of 0.
+
+```
+2841 passed, 77 skipped, 3 xfailed, 14 warnings in 74.35s
+Fatal Python error: PyThreadState_Get: the function must be called with the GIL held,
+but the GIL is released (the current Python thread state is NULL)
+Python runtime state: finalizing
+Abort trap: 6   pytest apps/stt/tests/ -v --tb=short
+```
+
+**Provenance — introduced, not pre-existing to the branch, and already
+committed.** Trustworthy bisect via two detached read-only worktrees, each run
+with `PYTHONPATH` pointed at its own `apps/stt/src` and the resolved
+`stt.__file__` printed to prove the worktree source was the one under test (the
+conda env carries an editable `.pth` pinned to the main working tree, so an
+un-overridden worktree run would silently have tested the wrong source):
+
+| Revision | `pytest apps/stt/tests/unit/*.py` |
+|---|---|
+| `1257dff0` (parent) | **EXIT=0** |
+| `d6ca581b` — `feat(whisper_cpp_asr): implement concurrency serialization and poison recovery` | **EXIT=134** |
+
+`d6ca581b` is TASK-594's whisper.cpp adapter work and is **32 commits behind
+`HEAD` on `dev-2.1`** — so `test-stt` was already red at `HEAD`, and committing
+TASK-594's remaining uncommitted files neither caused nor worsens it.
+
+**Root cause.** The macOS crash report
+(`~/Library/Logs/DiagnosticReports/python3.11-*.ips`) names the main thread at
+process `exit()`:
+
+```
+abort ← fatal_error ← _Py_FatalErrorFunc ← _Py_FatalError_TstateNULL
+     ← dict_dealloc ← func_dealloc
+     ← _pywhispercpp.cpython-311-darwin.so
+     ← __cxa_finalize_ranges ← exit ← dyld start
+```
+
+`_ensure_log_capture_installed()` hands the Python callable `_dispatch_log` to
+`_pywhispercpp.whisper_log_set()`. pybind11 parks it in a C++ **static**, which
+outlives `Py_Finalize()`; its destructor then runs from `exit()`'s
+`__cxa_finalize_ranges` and `Py_DECREF`s a Python function with no thread state
+→ fatal. Whether the refcount actually reaches zero there depends on what else
+is loaded, which is why the abort looked test-order-dependent and why neither
+half of `tests/unit/*.py` reproduced it alone. It is **not** a background
+thread, not a third-party library, and nothing in the STT service ever raced.
+
+**Fix** (`apps/stt/src/stt/streaming/whisper_cpp_asr.py`): remember the module
+the sink was registered with (`_log_module`) and `atexit.register` a
+`_uninstall_log_capture()` that calls `whisper_log_set(None)` — whisper.cpp's
+documented "restore the default logger" — so the static holds nothing Python by
+the time it is destroyed. **Cannot regress TASK-594's ASR behaviour**: it runs
+only from `atexit`, after every decode is done; the callback stays installed and
+Metal-poison auto-recovery is untouched for the entire life of the process. 4
+RED-verified regression tests added to
+`apps/stt/tests/unit/test_whisper_cpp_asr.py` (RED proven by running the current
+tests against `HEAD`'s copy of the module).
+
+**Evidence** — `pnpm stt:test` **EXIT=0** on 6/6 post-fix runs (0 aborts;
+`2845 passed, 77 skipped, 3 xfailed`), `pnpm stt:test:unit` **EXIT=0** on 3/3
+(`2636 passed`), `pnpm stt:lint` **EXIT=0** ("All checks passed!"),
+`pnpm stt:typecheck` **EXIT=0** ("no issues found in 131 source files"). The
+narrow reproducer `pytest apps/stt/tests/unit/*.py` — 134 on every pre-fix run —
+is 0 on 3/3 after. The test command was **not** weakened in any way.
+`pnpm stt:format:check` stays red, unchanged: both touched files already failed
+`black` at `HEAD`, and a set-difference against a pristine `HEAD` worktree shows
+the only newly-failing file is another lane's in-flight
+`tests/unit/processors/test_asr_engines.py`.
 
 ## 9. Change History
 
@@ -693,3 +1168,9 @@ holds no `TASK-59*`; **597 is free**.
 | 2026-08-01 | Lane B-client (B1) complete — `stopAudio` teardown reordered ahead of the drain (+ in-flight guard), `StreamingBackendSTTProvider.destroy()` no longer awaits `closeSession()`, playground `stop()` reversed, `capture.phase` added and surfaced as a "Finalizing…" affordance. RED verified for both ordering changes; 12 new tests. Lane G pending. |
 | 2026-08-01 | **Open follow-up #5 closed** — `CodeExample`'s scrollable `<pre>` made keyboard-focusable and named (`tabIndex={0}` + `role="region"` + `aria-label`) in `packages/ui`; 3 RED-verified CT tests added. `@arcaai/ui` build/lint clean, 656 vitest + 17 CT tests green; consumer re-scan shows `scrollable-region-focusable` passing 5/5 in both themes, discharging §7 row 17. **New follow-up #6 opened**: 6 serious `color-contrast` nodes traced to a stale computed `color` that survives a theme change until repaint — proven non-CSS (a forced repaint yields 0 violations in both themes); attribution deliberately left open pending a bisect against this ticket's `forceMount` change. |
 | 2026-08-01 | **Lane G (final integration) complete.** R2 per-tab example code (`TabExampleCode`, glob-miss now rejects, RED-verified guard test); all five carried-forward fixes landed (mic/speaker badges, 400 ms pipeline-fetch debounce, scorecard `run.audioSource`, per-control `phase` decisions, ESLint wired with `compat:lint`/`compat:lint:fix`); app README rewritten for the three-tab console; §7 filled with evidence; ticket number confirmed free. Playground 173 tests / 15 files, vox 3771 / 221, api 2307, stt-pkg 429 — all green; typechecks, builds and lint clean. Known-pre-existing and reproduced at `HEAD`: 1 stt pytest failure + 1 mypy error. One axe violation, in `@arcaai/ui`'s `CodeExample`, recorded as an open follow-up. Status → `Review`. |
+| 2026-08-01 | **Open follow-up #1 closed** — `finalizing` now reaches the browser. `parseAndEmitResult` (`packages/applications/.../streamingAudioBridge.service.ts`) switched from a one-entry non-terminal allow-list to **default-forwarding every non-terminal status**, with a new `buildStatusMessage()` projecting an explicitly enumerated, PHI-free field set (the complete `apps/stt` status vocabulary was enumerated before deciding). Terminal semantics untouched: the terminal set is still exactly `closed \| cancelled`, `finalizing` returns `false` so the tail final still relays, and terminal statuses stay unemitted so the WS gateway's synthesized closing frame is not duplicated. **Neither gateway needed a code change** — `stt-ws.gateway.ts` relays verbatim and `stt-compat.gateway.ts` already default-forwards; both were starved by the bridge, and both got a characterization test instead of an edit. Relay tests **RED-verified** against the pre-change bridge. `@arcaai/applications` 7178/368 and `@arcaai/api` 2309/165 green (+2 each), both build, both lint with 0 errors and no new warnings. Root `pnpm lint` is red only on `@arcaai/room#build` (`AudioMixer.ts`, a concurrent lane's in-flight edit — reproduced independently, unrelated to these files). **New follow-up #7 opened**: `active`/`is_fallback` never leave the bridge, so the v1-compat gateway's `isFallback` mapping is dead in production. Not proven end to end — a live drain resolving on the quiet window needs Redis + a live STT session + a browser. |
+| 2026-08-01 | **Open follow-up #6 closed — attribution bisected: PRE-EXISTING, not a `forceMount` regression.** Three independent proofs: removing the `forceMount`-hidden panels from the DOM strands the identical 17 elements; a bare `<input class="transition-[color,box-shadow]">` / `<button class="transition-all">` appended straight to `<body>` (no React, no `Tabs`, no ticket code) strands its colour while the same markup without the transition class follows the theme; and `use-theme.ts` is byte-identical to its introduction in `55cf370f` (TASK-586). Mechanism corrected: a `.dark` flip changes `color`/`background-color`/`border-color` through a custom-property cascade, starting transitions the browser never advances because it never repaints those elements (several tab triggers caught frozen mid-interpolation at `oklab(… / 0.6)`) — so it is **not** confined to `color`, and dropping `color` from `transition-[color,box-shadow]` would have been an incomplete fix. **Fixed in the app, 2 files, no primitive touched and nothing restyled**: a blocking bootstrap script in `index.html` applies `.dark` before first paint, and `use-theme.ts` adopts that class as its initial state and flips it through `applyThemeWithoutTransitions()` — next-themes' `disableTransitionOnChange`, which `apps/admin-console` already sets and the hand-rolled hook here skipped. **Five axe scans (axe-core 4.12.1, WCAG 2.0/2.1/2.2 A+AA, connected, all 25 example-code blocks expanded, no forced repaint): 0 violations in both dark scans, and a clone-comparison sweep reports 0 stale of 646 elements in EVERY state** (up to 17 before the fix). 3 RED-verified regression tests in `src/lib/__tests__/use-theme.test.tsx`; playground 176 tests / 16 files green, build clean, ESLint clean on both changed files (`typecheck` + whole-app `lint` red only on concurrent lanes' in-flight `playground-session.tsx` / `MetadataSimulator.tsx`). **New follow-up #8 opened**: the two light-theme scans still report 1 serious `color-contrast` — inactive `TabsTrigger` at 4.49:1 — which is a genuine `@arcaai/ui` token value (computed colour equals a fresh clone; identical on clean load and after toggle), affects every consumer, and is left for the design gate. |
+| 2026-08-01 | **Open follow-ups #2 and #4 closed.** **#2 — auto-tag is now genuinely per-mic.** `AudioMixer` gains opt-in per-source level monitoring (`startLevelMonitoring`/`stopLevelMonitoring`/`getSourceLevel(s)`): one timer sampling N analysis-only `AnalyserNode`s, tapped off each SOURCE node (not the gain node — `muteSource()` disconnects that one, and a muted source reports `0` deliberately), on the SAME `min(100, round(rms*250))` scale as the mixed meter, returning `false` rather than throwing on a runtime that cannot analyse. Published as `audioSourceLevels: number[]` (index-aligned with the resolved source order) via `useArcaAudio().sourceLevels` and reactively via `useAudioCapture().sourceLevels`; `level` semantics unchanged. Teardown guaranteed three ways: `dispose()` stops monitoring first, `stopAudio` disposes the mixer + clears the levels inside lane B-client's untouched synchronous block, and `startAudio`'s catch now releases both meters (closing a pre-existing leak where a failed start left the level timer ticking forever). The playground's auto-tag now sends the row of the LOUDEST source and re-tags when the loudest source changes mid-utterance; `metadata.autoTagMode` is derived from the live signal and the UI states which of `per-source` / `single-source` / `unavailable` is running — the honest disclosure was demoted, not deleted, and the two real limits (acoustic bleed between mics; one mic cannot separate two speakers) are named on screen. **#4 — `drainTimeoutMs` threaded** additively from `AudioStartOptions` → runtime options → `STTStreamingTransport` → provider → `stopAndDrain`, riding the transport rather than the pipeline STT config (`TranscriptionPipeline.ts` untouched), forwarded by `useAudioCapture`, with non-positive values dropped at every hop. 38 new tests (room 14, vox 12, stt-pkg 4, playground 8), all four mutations RED-verified and reverted byte-identically. room 506/20, vox 3783/222, stt-pkg 433/26, playground 184/17 green; room+vox+playground builds, vox+playground typechecks, and room/stt/playground lint clean (`@arcaai/vox lint`'s 4 warnings are pre-existing and on lines this change did not touch). The three cross-lane invariant suites (`useArca.audio-unification`, `useArcaAudio.sources.task597`, `useArcaAudio.stopOrder.task597`) stay green. |
+| 2026-08-01 | **Open follow-up #8 closed — inactive `TabsTrigger` contrast, design-gate decision recorded.** Confirmed genuine: `--foreground` (`--slate-950 #0e1a24`) at 60% composites to `#6e767c` on `--background #fbfcfd` = **4.50:1**, reproducing the reported 4.49:1. A second surface was found that the original report did not cover — `TabsList variant="default"` carries `bg-muted` (`--slate-50 #f5f7f8`), where the same token measured **4.55:1**, passing by 0.05 — so both surfaces were borderline and the fix had to clear both. **Design owner approved `text-muted-foreground` (`--slate-600 #5a6a77`) over the proposed `text-foreground/70`**: it measures **5.43:1 on `--background` and 5.19:1 on `--muted`**, makes the light path mirror the dark one (which already used `dark:text-muted-foreground`), replaces an opacity modifier with a semantic token per `11-ux-ui-principles.md` §10, and is the smallest visible darkening of the three passing candidates. One line changed in `packages/ui/src/components/shadcn/tabs.tsx`; the now-redundant `dark:text-muted-foreground` was dropped (dark resolves identically, `rgb(147,164,174)`, verified). **4 CT tests added** (`__tests__/shadcn/tabs.test.tsx`, both variants × both themes) that measure the RENDERED colour — compositing the trigger's alpha over the first opaque ancestor background and applying the WCAG relative-luminance formula — rather than asserting a class string. Two deliberate hardenings after the first draft proved weak: the theme is set BEFORE mount (adding `.dark` to a painted tree updates `--muted-foreground` but leaves the resolved `color` stale — the same invalidation mechanism as follow-up #6, which would have silently asserted the light value while claiming to test dark), and the colour parser now REJECTS non-`rgb()` formats (an opacity modifier resolves to `oklab(… / 0.6)`, whose channels parse as plausible numbers and yielded a meaningless 4.4996:1 that passed the 4.5 floor). Both hardenings **RED-verified** against the pre-change component. `@arcaai/ui` lint + typecheck clean; 38/38 tabs CT green. **Honest limit on the axe evidence**: a re-scan was run on Storybook (axe-core 4.12.1, WCAG 2.0/2.1/2.2 A+AA, 4 stories × both themes, canvas confirmed at `#fbfcfd`/`#0c1418`) and shows 0 `color-contrast` nodes on tab triggers in both themes — but the same scan on the UNFIXED baseline also reported 0 in light, so it did NOT reproduce the original finding and cannot serve as before/after proof; the CT measurement is the load-bearing evidence. The compat-playground `:5177` re-scan that produced the original report was NOT re-run — another session's dev server holds the port. One `color-contrast` node remains in the dark `default` story on a `data-slot="button"` element inside the story fixture, not a tab trigger. Unrelated: 2 pre-existing `SttLanguageModePicker` CT failures, reproduced at baseline with `tabs.tsx` reverted. |
+| 2026-08-01 | **`pnpm stt:test` exit-134 shutdown abort root-caused and fixed** — the "known-pre-existing 1 stt pytest failure" was a fully green suite that aborted in `Py_Finalize` (`PyThreadState_Get ... the GIL is released`). Bisected with `PYTHONPATH`-pinned detached worktrees (import path verified) to `d6ca581b` (TASK-594's whisper.cpp adapter), already 32 commits behind `HEAD` — so `test-stt` was red at `HEAD` and TASK-594's uncommitted remainder is not implicated. macOS crash report pins it on `_pywhispercpp`'s pybind11 static holding `_dispatch_log` past finalization and decref'ing it from `__cxa_finalize_ranges`. Fixed with an `atexit` `whisper_log_set(None)` teardown (shutdown-only, ASR behaviour untouched) + 4 RED-verified tests. `pnpm stt:test` EXIT=0 on 6/6 runs, `stt:test:unit` 3/3, lint and mypy clean; command not weakened. |
+| 2026-08-01 | **End-to-end accuracy-run enablement — VAD switch + `quietWindowMs` threading + playground controls.** Three additive changes, no default altered. **(1) VAD is reachable from compat**: `V1AudioSettings.voiceActivityDetection?: boolean` → `AudioPluginConfig.vad`, mirroring `noiseSuppression`. Evidence that `enabled:false` genuinely skips: `TranscriptionPipeline.start()` only walks `getEnabledStages()`, so a disabled stage's `factory()` never runs — the `@arcaai/vad` / `@arcaai/noise-filter` dynamic import is never issued, no processor is created, and the track is never routed through it (`config-adapter.vad.task597.test.ts`, with a positive control that the SAME pipeline DOES call `createVAD` when enabled). **Finding worth recording**: the adapter's output REPLACES `DEFAULT_AUDIO_CONFIG` (`AgenticProvider` does `cfg.audio ?? DEFAULT_AUDIO_CONFIG`, no merge) and `PluginManager.getConfig()` answers `{enabled:false}` for an absent key — so every compat session with an `sttPipelineId` has ALREADY been running with VAD and the noise filter off. The new switch does not change that default; it makes it visible and, for the first time, reversible. **(2) `quietWindowMs` threaded** the same way follow-up #4 threaded `drainTimeoutMs`: `AudioStartOptions` → `useArcaAudio` runtime options → `PluginManager.buildStreamingTransport` → `STTStreamingTransport` → `StreamingRemoteProviderConfig` → `StreamingBackendSTTProvider.destroy()` → `stopAndDrain(timeout, quietWindow)` (new second parameter, defaulting to the configured value), plus `useAudioCapture` forwarding. Every hop guards on **`>= 0`, not truthiness** — `0` is the documented "disable the early resolve" value, and each hop's `0` case is RED-verified by mutation (`quietWindow.task597.test.ts`, `useArcaAudio.sourceLevels.task597.test.ts`, `STTProcessor.drainTimeout.task597.test.ts`, `StreamingBackendSTTProvider.test.ts`, `useAudioCapture.quietWindow.task597.test.ts`). This makes the knob REACHABLE; it does not fix follow-up #10, which still needs a design decision. **(3) Playground controls**: noise suppression + VAD as connection-level switches on the Connection tab (they map to `V1SdkConfig.audioSettings`, read once at provider mount) with an in-UI note that both off sends unprocessed audio to the backend; a new `DrainSettings` card on the Live-transcription tab for the two per-capture drain numbers plus a "Wait for tail final" preset (`quietWindowMs = 0`, 60 s ceiling); all four persisted in `config-store`. Gates: vox 3810/225, stt-pkg 439/26, playground 200/19 green; vox typecheck + build clean, playground typecheck/build/lint clean; the three cross-lane invariant suites stay green; SDK `dist` rebuilt. ⚠️ A CONCURRENT session was editing `compat/types.ts` and `compat/config-adapter.ts` during this work and had deleted `noiseSuppression`/`echoCancellation`/`autoGainControl` from the frozen `V1AudioSettings`; that deletion was reverted here per §6's "existing v1 signatures frozen" rule — reconcile before committing. |

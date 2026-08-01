@@ -56,6 +56,21 @@ export interface PluginManagerRuntimeOptions {
    * on the tenant-admin default provider when `'fallback'`.
    */
   startOn?: 'primary' | 'fallback';
+  /**
+   * Optional ceiling (ms) on the streaming-STT stop-drain (TASK-597
+   * follow-up #4). Rides on the streaming TRANSPORT rather than the pipeline
+   * STT config because it is a property of the socket teardown, not of what is
+   * being transcribed — see `buildStreamingTransport`. Omitted / non-positive ⇒
+   * the ws client's own default.
+   */
+  drainTimeoutMs?: number;
+  /**
+   * Optional quiet window (ms) that ends the streaming-STT stop-drain early
+   * once the backend reports `finalizing` (TASK-597). Rides the streaming
+   * TRANSPORT for the same reason `drainTimeoutMs` does. `0` DISABLES the early
+   * resolve and is preserved; omitted / negative ⇒ the ws client's own default.
+   */
+  quietWindowMs?: number;
   /** Optional microphone identifier surfaced in transcripts. */
   microphoneId?: string;
 }
@@ -818,6 +833,17 @@ export class PluginManager {
       wsClient,
       pipelineId,
       consultationId: this.runtimeOptions.consultationId,
+      // Per-capture stop-drain ceiling (TASK-597 follow-up #4). Spread only
+      // when positive so the provider keeps seeing `undefined` — and therefore
+      // its own default — for every caller that does not set it.
+      ...(typeof this.runtimeOptions.drainTimeoutMs === 'number' && this.runtimeOptions.drainTimeoutMs > 0
+        ? { drainTimeoutMs: this.runtimeOptions.drainTimeoutMs }
+        : {}),
+      // Per-capture stop-drain quiet window (TASK-597). `>= 0`, not truthiness:
+      // `0` means "disable the early resolve" and MUST survive this hop.
+      ...(typeof this.runtimeOptions.quietWindowMs === 'number' && this.runtimeOptions.quietWindowMs >= 0
+        ? { quietWindowMs: this.runtimeOptions.quietWindowMs }
+        : {}),
     };
   }
 

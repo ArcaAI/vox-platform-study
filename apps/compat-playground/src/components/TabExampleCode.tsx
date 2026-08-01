@@ -47,6 +47,7 @@ const RAW_SOURCE_LOADERS = import.meta.glob(
     '/src/hooks/use-audio-sources.ts',
     '/src/lib/file-audio-source.ts',
     '/src/components/ControllerColumn.tsx',
+    '/src/components/DrainSettings.tsx',
     '/src/components/ProviderToggle.tsx',
     '/src/components/MetadataSimulator.tsx',
     '/src/components/TranscriptColumn.tsx',
@@ -92,6 +93,11 @@ export const LIVE_TRANSCRIPTION_EXAMPLE_FILES: ExampleFile[] = [
   { path: '/src/hooks/use-audio-sources.ts', title: 'hooks/use-audio-sources.ts — device enumeration + resolved capture options', language: 'ts' },
   { path: '/src/lib/file-audio-source.ts', title: 'lib/file-audio-source.ts — decodeAudioData → MediaStream, per virtual mic', language: 'ts' },
   { path: '/src/components/ControllerColumn.tsx', title: 'components/ControllerColumn.tsx — language, engine, start/stop', language: 'tsx' },
+  {
+    path: '/src/components/DrainSettings.tsx',
+    title: 'components/DrainSettings.tsx — per-capture stop-drain timeout + quiet window',
+    language: 'tsx',
+  },
   { path: '/src/components/ProviderToggle.tsx', title: 'components/ProviderToggle.tsx — pipeline ↔ tenant-default switch', language: 'tsx' },
   {
     path: '/src/components/MetadataSimulator.tsx',

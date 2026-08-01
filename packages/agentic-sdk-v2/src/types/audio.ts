@@ -338,6 +338,41 @@ export interface AudioStartOptions {
    */
   sourceGains?: number[];
   /**
+   * Ceiling, in ms, on the streaming-STT stop-drain performed when this capture
+   * session is torn down (TASK-597 follow-up #4).
+   *
+   * `stop()` releases the microphone synchronously and only THEN awaits the
+   * drain, so this does not delay the mic going off or `isCapturing` going
+   * false — it bounds how long the returned promise may wait for the server's
+   * last transcript before giving up. Omit for the client default
+   * (`SttWebSocketClient.DEFAULT_DRAIN_TIMEOUT_MS`, 1500 ms). The drain normally
+   * ends far sooner, when the backend publishes its terminal `closed` status.
+   *
+   * Non-positive values are IGNORED (the default applies), matching the
+   * provider-level guard on `StreamingRemoteProviderConfig.drainTimeoutMs` —
+   * `0` must never read as "close instantly" or "wait forever". Backend
+   * (streaming) STT only; the local in-browser path has no transport to drain.
+   */
+  drainTimeoutMs?: number;
+  /**
+   * Quiet window, in ms, that ends the streaming-STT stop-drain EARLY
+   * (TASK-597). Once the backend reports `finalizing`, the drain resolves after
+   * this much silence; every transcript received restarts the window.
+   *
+   * **`0` disables the early resolve**, so the drain waits for the server's
+   * terminal `closed`/`cancelled` status (or {@link AudioStartOptions.drainTimeoutMs}).
+   * That is the setting to use when the tail final matters more than a fast
+   * teardown — on a slow pipeline the tail can arrive seconds after
+   * `finalizing`, long past the 250 ms default, and the socket would otherwise
+   * already be closed.
+   *
+   * Unlike `drainTimeoutMs`, **`0` is a meaningful value and is preserved**;
+   * only NEGATIVE values are ignored. Omit for the client default
+   * (`SttWebSocketClient.DEFAULT_DRAIN_QUIET_WINDOW_MS`, 250 ms). Backend
+   * (streaming) STT only.
+   */
+  quietWindowMs?: number;
+  /**
    * When true (and the workflow is LOCAL), records the
    * pre-noise-filter (raw) and post-filter (processed) tracks in parallel via
    * `DualStreamRecorder`. The resulting blobs are delivered on `stop()` through

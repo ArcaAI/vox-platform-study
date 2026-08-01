@@ -13,6 +13,26 @@ export interface AudioMixerSource {
   sourceNode: MediaStreamAudioSourceNode;
   gainNode: GainNode;
   muted: boolean;
+  /**
+   * Analysis-only tap on this source, present ONLY while per-source level
+   * monitoring is running (see {@link AudioMixer.startLevelMonitoring}). It is
+   * never connected to the destination, so it contributes nothing to the mix.
+   */
+  analyser?: AnalyserNode | null;
+}
+
+/** One source's current input level, on the same 0–100 scale the SDK meter uses. */
+export interface AudioMixerSourceLevel {
+  id: string;
+  /** 0–100. Always `0` for a muted source. */
+  level: number;
+}
+
+export interface AudioMixerLevelMonitorOptions {
+  /** Sampling period in ms. Defaults to 100 — the SDK's mixed-meter cadence. */
+  intervalMs?: number;
+  /** Called once per sample with every source's level, in insertion order. */
+  onLevels?: (levels: AudioMixerSourceLevel[]) => void;
 }
 
 export interface AudioMixerEventMap {
@@ -20,6 +40,18 @@ export interface AudioMixerEventMap {
   sourceRemoved: { id: string };
   mixChanged: { sourceCount: number };
   disposed: void;
+}
+
+/**
+ * Map an RMS amplitude to the 0–100 meter scale.
+ *
+ * Deliberately IDENTICAL to the mapping `useArcaAudio` applies to its single
+ * mixed-stream meter (`min(100, round(rms * 250))`), so a per-source level and
+ * the mixed `audio.level` are directly comparable — a UI threshold tuned
+ * against one works unchanged against the other.
+ */
+function rmsToLevel(rms: number): number {
+  return Math.min(100, Math.round(rms * 250));
 }
 
 /**
@@ -46,6 +78,15 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
   private readonly destination: MediaStreamAudioDestinationNode;
   private disposed = false;
 
+  // --- per-source level monitoring (opt-in, off by default) ------------------
+  private levelTimer: ReturnType<typeof setInterval> | null = null;
+  private levelOptions: AudioMixerLevelMonitorOptions = {};
+  // Explicitly `Float32Array<ArrayBuffer>` (not the default `ArrayBufferLike`):
+  // `getFloatTimeDomainData` rejects a SharedArrayBuffer-backed view, and the
+  // shared buffer is reused across sources, so it is allocated once per fftSize.
+  private levelBuffer: Float32Array<ArrayBuffer> | null = null;
+  private readonly levels: Map<string, number> = new Map();
+
   constructor(audioContext: AudioContext) {
     super();
     this.audioContext = audioContext;
@@ -65,7 +106,11 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
     sourceNode.connect(gainNode);
     gainNode.connect(this.masterGain);
 
-    this.sources.set(id, { id, stream, sourceNode, gainNode, muted: false });
+    const source: AudioMixerSource = { id, stream, sourceNode, gainNode, muted: false, analyser: null };
+    this.sources.set(id, source);
+    // A source added WHILE monitoring is running gets its tap immediately —
+    // otherwise it would silently report 0 for the rest of the session.
+    if (this.levelTimer !== null) this.attachAnalyser(source);
     this.updateMasterGain();
     this.emit('sourceAdded', { id });
     this.emit('mixChanged', { sourceCount: this.sources.size });
@@ -75,10 +120,12 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
     const source = this.sources.get(id);
     if (!source) return;
 
+    this.detachAnalyser(source);
     source.sourceNode.disconnect();
     source.gainNode.disconnect();
     source.stream.getTracks().forEach((t) => t.stop());
     this.sources.delete(id);
+    this.levels.delete(id);
     this.updateMasterGain();
     this.emit('sourceRemoved', { id });
     this.emit('mixChanged', { sourceCount: this.sources.size });
@@ -116,6 +163,149 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
     return count;
   }
 
+  // ===========================================================================
+  // Per-source level monitoring (TASK-597 follow-up #2)
+  // ===========================================================================
+  //
+  // The mixer is the ONLY place in the stack that still has the sources as
+  // separate signals — one node chain per input, before they are summed into
+  // the single uplink track. Everything downstream (the SDK's mixed-stream
+  // meter, the noise filter, VAD, STT) sees one mixed signal and therefore
+  // cannot say WHICH microphone is carrying the speech.
+  //
+  // Monitoring is OPT-IN and costs nothing when off: no analyser nodes are
+  // created and no timer runs. When on, ONE timer samples every source (rather
+  // than one timer per source) and each tap is an analysis-only `AnalyserNode`
+  // hung off the source node — never connected to the destination, so it adds
+  // no playback and does not alter the mix.
+
+  /**
+   * Start sampling every source's input level.
+   *
+   * Idempotent: a second call with new options restarts the timer rather than
+   * stacking a second one. Returns `false` (and changes nothing) when the
+   * runtime cannot analyse — an `AudioContext` without `createAnalyser`, or an
+   * analyser without `getFloatTimeDomainData`. Callers treat `false` as "no
+   * per-source signal available" rather than an error.
+   */
+  startLevelMonitoring(options: AudioMixerLevelMonitorOptions = {}): boolean {
+    if (this.disposed) return false;
+    if (typeof this.audioContext.createAnalyser !== 'function') return false;
+
+    this.stopLevelMonitoring();
+    this.levelOptions = options;
+
+    for (const source of this.sources.values()) {
+      this.attachAnalyser(source);
+    }
+    // Nothing could be tapped (e.g. an analyser double without the float
+    // time-domain read) — report unsupported instead of running a timer that
+    // can only ever publish zeros.
+    if (this.sources.size > 0 && !this.hasAnyAnalyser()) {
+      this.levelOptions = {};
+      return false;
+    }
+
+    const intervalMs = options.intervalMs && options.intervalMs > 0 ? options.intervalMs : 100;
+    this.levelTimer = setInterval(() => this.sampleLevels(), intervalMs);
+    return true;
+  }
+
+  /** Stop sampling and release every analyser tap. Safe to call when not running. */
+  stopLevelMonitoring(): void {
+    if (this.levelTimer !== null) {
+      clearInterval(this.levelTimer);
+      this.levelTimer = null;
+    }
+    for (const source of this.sources.values()) {
+      this.detachAnalyser(source);
+    }
+    this.levels.clear();
+    this.levelBuffer = null;
+    this.levelOptions = {};
+  }
+
+  isLevelMonitoringActive(): boolean {
+    return this.levelTimer !== null;
+  }
+
+  /** Latest sampled level per source, in insertion (mixer) order. */
+  getSourceLevels(): AudioMixerSourceLevel[] {
+    return Array.from(this.sources.keys()).map((id) => ({ id, level: this.levels.get(id) ?? 0 }));
+  }
+
+  /** Latest sampled level for one source; `0` when unknown, muted, or not monitored. */
+  getSourceLevel(id: string): number {
+    return this.levels.get(id) ?? 0;
+  }
+
+  private attachAnalyser(source: AudioMixerSource): void {
+    if (source.analyser) return;
+    if (typeof this.audioContext.createAnalyser !== 'function') return;
+    try {
+      const analyser = this.audioContext.createAnalyser();
+      if (typeof analyser.getFloatTimeDomainData !== 'function') return;
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.8;
+      // Tapped off the SOURCE node, deliberately not the gain node: muting
+      // calls `gainNode.disconnect()`, which would tear an analyser hung there
+      // off the graph and never reconnect it on unmute. A muted source instead
+      // reports 0 explicitly in `sampleLevels()`.
+      source.sourceNode.connect(analyser);
+      source.analyser = analyser;
+      this.levels.set(source.id, 0);
+    } catch {
+      // A runtime that cannot analyse simply has no per-source signal.
+      source.analyser = null;
+    }
+  }
+
+  private detachAnalyser(source: AudioMixerSource): void {
+    if (!source.analyser) return;
+    try {
+      source.analyser.disconnect();
+    } catch {
+      // Disconnect after context close throws on some platforms — ignore.
+    }
+    source.analyser = null;
+  }
+
+  private hasAnyAnalyser(): boolean {
+    for (const source of this.sources.values()) {
+      if (source.analyser) return true;
+    }
+    return false;
+  }
+
+  private sampleLevels(): void {
+    for (const source of this.sources.values()) {
+      if (!source.analyser) continue;
+      // A muted source contributes nothing to the mix, so it reads 0 — the
+      // level answers "is this input feeding the uplink", not "is the room loud".
+      if (source.muted) {
+        this.levels.set(source.id, 0);
+        continue;
+      }
+      try {
+        const size = source.analyser.fftSize;
+        if (!this.levelBuffer || this.levelBuffer.length !== size) {
+          this.levelBuffer = new Float32Array(new ArrayBuffer(size * Float32Array.BYTES_PER_ELEMENT));
+        }
+        const buffer = this.levelBuffer;
+        source.analyser.getFloatTimeDomainData(buffer);
+        let sumSquares = 0;
+        for (let i = 0; i < buffer.length; i += 1) {
+          const sample = buffer[i] ?? 0;
+          sumSquares += sample * sample;
+        }
+        this.levels.set(source.id, rmsToLevel(Math.sqrt(sumSquares / buffer.length)));
+      } catch {
+        // A transient analyser read error must never break the mix.
+      }
+    }
+    this.levelOptions.onLevels?.(this.getSourceLevels());
+  }
+
   getMixedStream(): MediaStream {
     return this.destination.stream;
   }
@@ -131,6 +321,11 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
 
   dispose(): void {
     if (this.disposed) return;
+
+    // Kill the sampling timer + analyser taps FIRST: a level timer that
+    // outlived its mixer would keep firing against disconnected nodes for the
+    // life of the page.
+    this.stopLevelMonitoring();
 
     for (const [id] of this.sources) {
       this.removeSource(id);

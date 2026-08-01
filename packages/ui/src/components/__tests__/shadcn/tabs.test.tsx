@@ -342,4 +342,72 @@ test.describe('Tabs', () => {
       await expect(content).toHaveClass(/custom-content/);
     });
   });
+
+  test.describe('contrast', () => {
+    // Measures the RENDERED colour, not the class string: composites the trigger's
+    // own alpha over the first opaque ancestor background, then applies the WCAG
+    // relative-luminance formula. An opacity modifier such as `text-foreground/60`
+    // (4.50:1 light) fails here even though a class assertion would still pass.
+    const inactiveTriggerContrast = (sel: string) => {
+      const el = document.querySelector(sel);
+      if (!el) throw new Error(`no element for ${sel}`);
+      // Strict on purpose: the sRGB luminance formula below is only valid for rgb()/rgba().
+      // A Tailwind opacity modifier resolves to oklab(... / a), whose channels would parse
+      // as plausible-looking numbers and yield a silently wrong ratio.
+      const channels = (value: string) => {
+        if (!/^rgba?\(/.test(value)) {
+          throw new Error(`unsupported computed colour "${value}" — expected rgb()/rgba(); an opacity modifier resolves to oklab()`);
+        }
+        return (value.match(/[\d.]+/g) ?? []).map(Number);
+      };
+
+      const fg = channels(getComputedStyle(el).color);
+      let opaque: number[] | null = null;
+      for (let node: Element | null = el; node; node = node.parentElement) {
+        const candidate = channels(getComputedStyle(node).backgroundColor);
+        if (candidate.length >= 3 && (candidate[3] ?? 1) > 0) {
+          opaque = candidate;
+          break;
+        }
+      }
+      if (!opaque) throw new Error('no opaque background found in the ancestor chain');
+      const bg = opaque;
+
+      const alpha = fg[3] ?? 1;
+      const composited = [0, 1, 2].map((i) => alpha * fg[i] + (1 - alpha) * bg[i]);
+      const toLinear = (c: number) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      };
+      const luminance = (rgb: number[]) => 0.2126 * toLinear(rgb[0]) + 0.7152 * toLinear(rgb[1]) + 0.0722 * toLinear(rgb[2]);
+      const [hi, lo] = [luminance(composited), luminance(bg)].sort((a, b) => b - a);
+      return { ratio: (hi + 0.05) / (lo + 0.05), color: getComputedStyle(el).color, alpha };
+    };
+
+    const INACTIVE = '[data-slot="tabs-trigger"][data-state="inactive"]';
+
+    for (const theme of ['light', 'dark'] as const) {
+      for (const variant of ['default', 'line'] as const) {
+        // WCAG 2.2 AA 1.4.3 — 4.5:1 for normal-weight text at this size (14px).
+        test(`inactive ${variant} trigger meets 4.5:1 in the ${theme} theme`, async ({ mount, page }) => {
+          // Theme is set BEFORE mount deliberately. Adding `.dark` to an already-painted
+          // tree updates --muted-foreground but leaves the resolved `color` stale, which
+          // would make this assert the light value while claiming to test dark.
+          if (theme === 'dark') {
+            await page.evaluate(() => document.documentElement.classList.add('dark'));
+          }
+          await mount(variant === 'line' ? <LineTabs /> : <BasicTabs />);
+
+          const { ratio, color, alpha } = await page.evaluate(inactiveTriggerContrast, INACTIVE);
+
+          // The colour must be a solid token, not `text-foreground/<n>`. An opacity
+          // modifier lands within rounding distance of the floor (the original defect
+          // measured 4.49:1 in axe and 4.4996:1 here), so the ratio assert alone is too
+          // slack to catch a regression to it. Opacity is the thing to forbid outright.
+          expect(alpha, `inactive ${variant} trigger rendered ${color}; expected a solid colour token`).toBe(1);
+          expect(ratio, `inactive ${variant} trigger rendered ${color} at ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+        });
+      }
+    }
+  });
 });

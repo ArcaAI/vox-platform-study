@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 144 |
+| Declared keys (distinct) | 145 |
 | … of which required (`failMode: closed`) | 36 |
 | … of which secret | 35 |
-| … tier `env` | 103 |
+| … tier `env` | 104 |
 | … tier `global-kv` | 10 |
 | … tier `vault-kv` | 31 |
-| `turbo.json#globalEnv` entries | 156 |
+| `turbo.json#globalEnv` entries | 157 |
 
 ## Variables
 
@@ -119,6 +119,7 @@ disagree with those declarations.
 | `S3_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | S3-protocol secret key read by `S3Service`. |
 | `SECRETS_LRU_MAX` | `env` | no | `200` | `apps/api` | Maximum entries in the SecretsService LRU cache. |
 | `SECRETS_PROVIDER` | `env` | no | `env` | `apps/api` | Selects the secrets backend (`env` \| `vault` \| …). It decides where every `vault-kv` descriptor is actually read from, so it necessarily precedes all of them. |
+| `SECRETS_REWARM_INTERVAL_SEC` | `env` | no | `0` | `apps/api` | How often the SecretsService re-warms its boot warmup set so the cache-only getSecretSync path (SMR/TTS X-Service-Token) never expires cold. Unset/<=0 derives max(30, TTL/2). |
 | `SECRETS_TTL_SEC` | `env` | no | `300` | `apps/api` | Per-entry TTL of the SecretsService LRU cache. |
 | `SEMANTIC_ENDPOINT_ENABLED` | `env` | no | `false` | `apps/api` | Gates content-driven semantic end-of-utterance detection on the STT streaming hot path. NOTE the naming exception: the STT `Settings` class carries NO `env_prefix`, so this is the BARE `SEMANTIC_ENDPOINT_ENABLED`, not `STT_SEMANTIC_ENDPOINT_ENABLED` — one of the plan §3.3 rule-1 violations (prefix must equal the service prefix) that a later rename has to fix. Default OFF until measured against the accuracy/latency scorecard. |
 | `SERVICE_NAME` | `env` | no | `hope-api` | `apps/api` | Logical service name stamped on logs and metrics. |

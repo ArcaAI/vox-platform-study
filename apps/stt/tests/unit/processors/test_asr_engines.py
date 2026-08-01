@@ -413,9 +413,16 @@ class TestP507WhisperCppEngine:
 
     def test_adapter_contract(self):
         # pywhispercpp's Model.transcribe() returns segment-level Segment
-        # objects (t0/t1 in 10ms units, no per-word breakdown) — the adapter
-        # forces near-word segmentation (split_on_word + max_len=1) to get
-        # real per-word timing from a single inference pass.
+        # objects (t0/t1 in 10ms units, no per-word breakdown). Word-split
+        # decoding (split_on_word + max_len=1 + token_timestamps, to get real
+        # per-word timing from a single inference pass) is now OPT-IN via
+        # ``want_word_timestamps=True`` — the default is a clean sentence-level
+        # decode with none of those kwargs set (see
+        # ``stt/streaming/whisper_cpp_asr.py``'s ``_want_word_timestamps`` and
+        # ``apps/stt/tests/unit/test_whisper_cpp_asr.py::
+        # test_clean_decode_omits_word_split_kwargs`` /
+        # ``test_word_timestamp_mode_splits_and_space_joins``). This test
+        # covers the word-timestamp contract, so it must opt in explicitly.
         import numpy as np
 
         from stt.models.base_loader import LoadedModel
@@ -446,7 +453,9 @@ class TestP507WhisperCppEngine:
         )
         from unittest.mock import MagicMock
 
-        adapter = WhisperCppAsrAdapter(loaded, MagicMock(language="en"))
+        adapter = WhisperCppAsrAdapter(
+            loaded, MagicMock(language="en"), want_word_timestamps=True
+        )
         out = adapter(np.zeros(16000, dtype=np.float32), 16000)
 
         assert out["text"] == "hello world"

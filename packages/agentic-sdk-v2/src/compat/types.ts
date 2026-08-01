@@ -24,6 +24,18 @@ export interface V1AudioSettings {
   noiseSuppression?: boolean;
   echoCancellation?: boolean;
   autoGainControl?: boolean;
+  /**
+   * Browser voice-activity detection (TASK-597). ADDITIVE + OPTIONAL — v1 had
+   * no VAD switch, so omitting it leaves the frozen mapping byte-identical.
+   *
+   * `false` emits `vad: { enabled: false }`, which removes the VAD stage from
+   * the capture graph entirely, so the backend receives UNGATED audio. `true`
+   * emits `vad: { enabled: true }`.
+   *
+   * Set it explicitly for an accuracy run against a labelled corpus, where VAD
+   * trimming would change what the model is scored on.
+   */
+  voiceActivityDetection?: boolean;
 }
 
 /** v1 `SDK_CONFIG_OPTIONS` — the subset that matters for the migration. */

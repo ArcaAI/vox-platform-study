@@ -58,6 +58,21 @@ export interface STTStreamingTransport {
   pipelineId: string;
   /** Optional consultation id to associate with the streaming session. */
   consultationId?: string;
+  /**
+   * Optional ceiling (ms) on the stop-drain `StreamingBackendSTTProvider.destroy()`
+   * performs (TASK-597 follow-up #4). Threaded from the SDK's
+   * `AudioStartOptions.drainTimeoutMs` through `PluginManager`'s runtime
+   * options. Omitted / non-positive ⇒ the ws client's own default.
+   */
+  drainTimeoutMs?: number;
+  /**
+   * Optional quiet window (ms) that ends the stop-drain early once the backend
+   * reports `finalizing` (TASK-597). Threaded from the SDK's
+   * `AudioStartOptions.quietWindowMs`. `0` DISABLES the early resolve (the
+   * drain then waits for the terminal status or `drainTimeoutMs`) and is
+   * preserved verbatim; omitted / negative ⇒ the ws client's own default.
+   */
+  quietWindowMs?: number;
 }
 
 /**
@@ -774,6 +789,14 @@ export class STTProcessor extends BaseProcessor {
       numSpeakers: features.numSpeakers ?? 2,
       pipelineId: transport.pipelineId,
       consultationId: transport.consultationId,
+      drainTimeoutMs: transport.drainTimeoutMs,
+      // Per-session stop-drain ceiling (TASK-597 follow-up #4). The provider
+      // applies its own `> 0` guard, so an out-of-range value degrades to the
+      // client default rather than to a zero-length (or unbounded) drain.
+      quietWindowMs: transport.quietWindowMs,
+      // Per-session stop-drain quiet window (TASK-597). The provider guards on
+      // `>= 0` here, NOT `> 0`: `0` is the documented "wait for the terminal
+      // status instead of a quiet lull" setting and must not be discarded.
       prompt: this.options.prompt,
     });
 

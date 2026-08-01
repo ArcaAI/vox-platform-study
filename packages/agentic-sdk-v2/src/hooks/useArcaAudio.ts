@@ -169,6 +169,16 @@ export function useArcaAudio() {
         // Pre-start engine selection (TASK-586). Start-time only — the session
         // opens on the tenant-admin default provider when 'fallback'.
         startOn: options?.startOn,
+        // Stop-drain ceiling (TASK-597 follow-up #4). Non-positive values are
+        // dropped HERE as well as at the provider, so a `0`/`-1` from a caller
+        // can never be mistaken for "drain forever" or "do not drain".
+        ...(typeof options?.drainTimeoutMs === 'number' && options.drainTimeoutMs > 0 ? { drainTimeoutMs: options.drainTimeoutMs } : {}),
+        // Stop-drain quiet window (TASK-597). Guarded on `>= 0`, NOT on
+        // truthiness: `0` is the documented "disable the early resolve" value,
+        // so a `!== 0` / falsy guard here would silently drop exactly the
+        // setting a caller went out of their way to ask for. Only negatives
+        // (meaningless) fall back to the client default.
+        ...(typeof options?.quietWindowMs === 'number' && options.quietWindowMs >= 0 ? { quietWindowMs: options.quietWindowMs } : {}),
       });
 
       const timer = logger?.startOperation('startAudio', {
@@ -249,6 +259,13 @@ export function useArcaAudio() {
         store.setActiveStream(stream);
         store.setActiveAudioContext(audioContext);
 
+        // With exactly ONE source there is no mixer to tap, and none is needed:
+        // that source IS the whole mix, so the meter below is already a
+        // truthful per-source level and is published as a 1-entry array. With
+        // several sources the mixer's per-source analysers own that array (see
+        // the mixer block further down) and this meter stays the MIXED level.
+        const isSingleSource = sourceStreams.length === 1;
+
         // Live input-level meter — best-effort + guarded so a runtime without
         // Web Audio analysis (or a test double) simply leaves the level at 0.
         try {
@@ -267,7 +284,9 @@ export function useArcaAudio() {
                   for (let i = 0; i < buffer.length; i += 1) sumSquares += buffer[i] * buffer[i];
                   const rms = Math.sqrt(sumSquares / buffer.length);
                   // Map speech-range RMS (~0..0.4) to a 0..100 meter with a gentle gain + ceiling.
-                  store.setAudioLevel(Math.min(100, Math.round(rms * 250)));
+                  const level = Math.min(100, Math.round(rms * 250));
+                  store.setAudioLevel(level);
+                  if (isSingleSource) store.setAudioSourceLevels?.([level]);
                 } catch {
                   // A transient analyser read error must never break capture.
                 }
@@ -295,6 +314,36 @@ export function useArcaAudio() {
             mixer.addSource(`source-${index + 1}`, source, typeof gain === 'number' && Number.isFinite(gain) ? gain : 1.0);
           });
           mixerRef.current = mixer;
+
+          // PER-SOURCE input levels (TASK-597 follow-up #2).
+          //
+          // The mixer is the only object that still holds the inputs as
+          // separate signals — one node chain each, before the summation. An
+          // analysis-only AnalyserNode per chain therefore answers "WHICH mic
+          // is speaking", which `store.audioLevel` (one meter on the mixed
+          // graph) structurally cannot. Published index-aligned with the
+          // resolved source order, so `audioSourceLevels[i]` is the level of
+          // source `i` — the same index `sourceGains` uses.
+          //
+          // Optional-called: the mixer double used by several existing suites
+          // predates these methods, and a missing per-source signal must
+          // degrade to "no attribution available" (an empty array), never throw.
+          const monitoring =
+            mixer.startLevelMonitoring?.({
+              // Same cadence as the mixed meter above. N analysers on one timer
+              // — the cost is N cheap RMS reads per 100 ms, not N timers.
+              intervalMs: 100,
+              onLevels: (levels) => store.setAudioSourceLevels?.(levels.map((entry) => entry.level)),
+            }) ?? false;
+          if (!monitoring) {
+            // Be explicit rather than leaving a stale array: consumers read `[]`
+            // as "this runtime gives no per-source signal".
+            store.setAudioSourceLevels?.([]);
+            logger?.debug('Per-source level monitoring unavailable', {
+              operation: 'startAudio',
+              component: 'useArcaAudio',
+            });
+          }
 
           const mixedTrack = mixer.getMixedTrack();
           if (mixedTrack) track = mixedTrack;
@@ -536,6 +585,25 @@ export function useArcaAudio() {
           source.getTracks().forEach((t) => t.stop());
         }
         sourceStreamsRef.current = [];
+        // …and it must not leave a level-sampling timer running either. Both
+        // meters are pure diagnostics with no `stop()` path of their own on a
+        // failed start, so a throw after they were armed (e.g. plugin
+        // initialize rejecting) would leave them ticking for the life of the
+        // page against a graph that no longer exists (TASK-597 follow-up #2).
+        // Only the TIMERS/taps are released here — track teardown is the loop
+        // above, deliberately left as the single place that stops tracks.
+        if (levelMeterRef.current) {
+          clearInterval(levelMeterRef.current.timer);
+          try {
+            levelMeterRef.current.source.disconnect();
+            levelMeterRef.current.analyser.disconnect();
+          } catch {
+            // disconnect after context close can throw on some platforms — ignore.
+          }
+          levelMeterRef.current = null;
+        }
+        mixerRef.current?.stopLevelMonitoring?.();
+        store.setAudioSourceLevels?.([]);
         timer?.error(error as Error);
         store.setAudioError(error as Error);
         throw error;
@@ -677,7 +745,8 @@ export function useArcaAudio() {
       }
 
       // Tear down the N-source mixer (its dispose() removes every source, which
-      // stops that source's tracks).
+      // stops that source's tracks — and stops per-source level monitoring, so
+      // no analyser tap or sampling timer can outlive the capture session).
       if (mixerRef.current) {
         mixerRef.current.dispose();
         mixerRef.current = null;
@@ -709,6 +778,10 @@ export function useArcaAudio() {
       store.setIsCapturing(false);
       store.setIsSpeaking(false);
       store.setAudioLevel(0);
+      // No capture session ⇒ no per-source signal. Cleared in the SAME
+      // synchronous block as the mic release so a consumer can never read a
+      // stale "mic 2 is speaking" level while the transport drains.
+      store.setAudioSourceLevels?.([]);
       store.setCurrentTranscript('');
 
       // ---------------------------------------------------------------------
@@ -955,6 +1028,12 @@ export function useArcaAudio() {
       audioLostThisSession: store.audioLostThisSession,
       // Live outbound uplink bitrate (bits/sec) over the last ~1s; 0 when not streaming.
       uplinkBitrate: store.audioUplinkBitrate,
+      // PER-SOURCE input levels (0-100), index-aligned with the resolved
+      // capture-source order (TASK-597 follow-up #2). `[]` = no per-source
+      // signal (no session, or a runtime that cannot analyse) — consumers must
+      // NOT infer attribution from an empty array. `level` above is unchanged:
+      // it stays the single MIXED level every existing consumer reads.
+      sourceLevels: store.audioSourceLevels ?? [],
       // Streaming STT connection health + active pipeline (TASK-567 Phase F).
       sttConnectionState: store.sttConnectionState,
       activePipeline: store.activePipeline,
@@ -982,6 +1061,7 @@ export function useArcaAudio() {
       store.audioDroppedFrameCount,
       store.audioLostThisSession,
       store.audioUplinkBitrate,
+      store.audioSourceLevels,
       store.sttConnectionState,
       store.activePipeline,
       startAudio,

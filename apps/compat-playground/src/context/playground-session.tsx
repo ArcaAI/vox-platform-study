@@ -115,6 +115,44 @@ export interface PlaygroundTranscriptSlice {
   clear: () => void;
 }
 
+/**
+ * Stop-drain tuning (TASK-597) — PER-CAPTURE, unlike the noise-suppression/VAD
+ * switches, which are connection-level and live on the Connection tab.
+ *
+ * These ride `AudioStartOptions` on each `startRecording()`, so a developer can
+ * change them between runs without remounting `<ArcaCompatProvider>`.
+ *
+ * Both are `undefined` by default, which means "use the SDK default"
+ * (1500 ms ceiling / 250 ms quiet window) — nothing changes unless opted into.
+ */
+export interface PlaygroundDrainSlice {
+  /** Hard ceiling on the drain wait. `undefined` ⇒ SDK default. */
+  timeoutMs: number | undefined;
+  setTimeoutMs: (value: number | undefined) => void;
+  /**
+   * Silence after `finalizing` that ends the drain early. **`0` disables the
+   * early resolve** — the socket then stays open for the tail final until the
+   * server's terminal status or `timeoutMs`. `undefined` ⇒ SDK default.
+   */
+  quietWindowMs: number | undefined;
+  setQuietWindowMs: (value: number | undefined) => void;
+  /** One-click preset: `quietWindowMs = 0` + a long ceiling. */
+  applyWaitForTailFinal: () => void;
+  /** Restore both to `undefined` (the SDK defaults). */
+  resetToDefaults: () => void;
+}
+
+/**
+ * The "wait for the tail final" preset.
+ *
+ * The default 250 ms quiet window resolves the drain almost immediately after
+ * the backend reports `finalizing`, which on a GGUF/whisper.cpp pipeline lands
+ * seconds before the last transcript — so the socket closes and the tail final
+ * is never delivered to the browser. `0` + a long ceiling is the configuration
+ * that actually waits for it.
+ */
+export const WAIT_FOR_TAIL_FINAL_TIMEOUT_MS = 60_000;
+
 /** STT language-mode catalog + selection (TASK-587). Owned by lane 0. */
 export interface PlaygroundLanguageSlice {
   /** Backend catalog when available, static fallback otherwise. */
@@ -223,17 +261,39 @@ export interface PlaygroundMetadataSlice {
   syncRowsFromSources: (sources: Array<{ id: string; micLabel: string }>) => void;
 
   /**
-   * Opt-in switch: while recording, alternate through `rows` and call
-   * `sendAudioData` automatically whenever the input level crosses
-   * `autoTagThreshold` — debounced (rising-edge + cooldown) to one emit per
-   * utterance, not per animation frame.
+   * Opt-in switch: while recording, tag the turn automatically whenever the
+   * input level crosses `autoTagThreshold`. WHICH row is sent depends on
+   * {@link PlaygroundMetadataSlice.autoTagMode} — see that field; it is the
+   * difference between real attribution and a rotation.
    */
   autoTagEnabled: boolean;
   setAutoTagEnabled: (v: boolean) => void;
   /** 0–100, same scale as the SDK's input-level meter. */
   autoTagThreshold: number;
   setAutoTagThreshold: (v: number) => void;
+  /**
+   * How auto-tag is CURRENTLY deciding which row to send — derived from what
+   * the SDK actually offers this run, not from a setting. The UI states it
+   * verbatim; the three values are genuinely different guarantees:
+   *
+   *  - `per-source`   — two or more live per-source meters: the LOUDEST source
+   *                     above threshold owns the turn, and a change of loudest
+   *                     source mid-utterance re-tags. Real per-mic attribution,
+   *                     bounded only by acoustic bleed between mics.
+   *  - `single-source`— exactly one source: every turn is attributed to it,
+   *                     which is exactly right for "which INPUT", and says
+   *                     nothing about which PERSON — one mic cannot separate
+   *                     two speakers.
+   *  - `unavailable`  — no per-source signal at all (not recording, or a
+   *                     runtime without Web Audio analysis). Falls back to the
+   *                     pre-follow-up ROUND-ROBIN rotation over the rows, which
+   *                     is a demo of the payload shape, NOT attribution.
+   */
+  autoTagMode: PlaygroundAutoTagMode;
 }
+
+/** See {@link PlaygroundMetadataSlice.autoTagMode}. */
+export type PlaygroundAutoTagMode = 'per-source' | 'single-source' | 'unavailable';
 
 /**
  * The four audio-source modes of the console. Every one of them ends up in the
@@ -309,6 +369,17 @@ export interface PlaygroundAudioSlice {
 
   /** The resolved capture sources, in mixer order. */
   sources: PlaygroundAudioSource[];
+  /**
+   * Live PER-SOURCE input level (0–100), index-aligned with {@link sources}
+   * (TASK-597 follow-up #2). Sampled from an analysis-only `AnalyserNode` per
+   * mixer source inside the SDK — this is what makes "which mic is speaking"
+   * answerable at all; the mixed `getDeviceStatus().audioLevel` cannot.
+   *
+   * `[]` = the SDK has no per-source signal (not recording, or a runtime
+   * without Web Audio analysis). Consumers must degrade honestly on `[]`
+   * rather than inferring attribution.
+   */
+  sourceLevels: number[];
   setGain: (sourceId: string, gain: number) => void;
   /** Exactly what is spread into `useAudioCapture(...)` on the next start. */
   captureOptions: {
@@ -331,6 +402,7 @@ export interface PlaygroundSessionContextValue {
   config: PlaygroundConfig;
   session: PlaygroundSessionSlice;
   capture: PlaygroundCaptureSlice;
+  drain: PlaygroundDrainSlice;
   transcript: PlaygroundTranscriptSlice;
   language: PlaygroundLanguageSlice;
   metadata: PlaygroundMetadataSlice;
@@ -379,6 +451,10 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // the mic is already off for all of it (TASK-597 lane B).
   const [isStopping, setIsStopping] = useState(false);
   const [languageMode, setLanguageMode] = useState(config.languageMode || 'en');
+  // Stop-drain knobs (TASK-597), seeded from the persisted config. Per-capture,
+  // so they are plain state here rather than part of the provider config.
+  const [drainTimeoutMs, setDrainTimeoutMs] = useState<number | undefined>(config.drainTimeoutMs);
+  const [quietWindowMs, setQuietWindowMs] = useState<number | undefined>(config.quietWindowMs);
 
   // Capture-relative anchor for the fallback (arrival-time) timestamp used
   // when a final segment carries no numeric `meta.startTime`.
@@ -412,6 +488,11 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // it re-arms only once the level drops back below.
   const autoTagAboveRef = useRef(false);
   const autoTagCursorRef = useRef(0);
+  // Index of the source that owned the last emitted turn, in per-source mode.
+  // A CHANGE of loudest source while the level stays up is a speaker change, so
+  // it re-tags without waiting for silence — that is the whole point of having
+  // a per-mic signal (TASK-597 follow-up #2).
+  const autoTagDominantRef = useRef<number | null>(null);
 
   const mgr = useArcaSessionManager({
     doctorId: 'compat-playground-doctor',
@@ -427,7 +508,18 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // race, so the language must ride along here or the pick is dropped (TASK-587).
   // The source options ride the SAME hook for the same reason: whichever hook
   // calls `audio.start(...)` first wins, and that is this one (TASK-597).
-  const capture = useAudioCapture({ language: languageMode, languageMode, ...audio.captureOptions });
+  // The drain knobs (TASK-597) ride the SAME hook for the same reason: they are
+  // `AudioStartOptions` fields, applied by whichever hook wins the start race,
+  // and that is this one. Spread on `!== undefined` — `0` is a real value for
+  // `quietWindowMs` (it disables the early resolve), so a truthiness check here
+  // would drop exactly the setting a tail-final run depends on.
+  const capture = useAudioCapture({
+    language: languageMode,
+    languageMode,
+    ...audio.captureOptions,
+    ...(drainTimeoutMs !== undefined ? { drainTimeoutMs } : {}),
+    ...(quietWindowMs !== undefined ? { quietWindowMs } : {}),
+  });
   // "Keep it fresh" ref for the level-status reader (same pattern as
   // `onTranscriptRef` in `useArcaSpeechToText.ts`) — avoids putting
   // `capture.getDeviceStatus` (which changes identity whenever `audio.level`
@@ -436,6 +528,15 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // ever gets a chance to fire.
   const getDeviceStatusRef = useRef(capture.getDeviceStatus);
   getDeviceStatusRef.current = capture.getDeviceStatus;
+  // Live PER-SOURCE levels (TASK-597 follow-up #2). Same "keep it fresh" ref
+  // pattern and for the same reason: the array is a new identity on every
+  // ~100ms store tick, so it must not be an effect dependency.
+  const sourceLevels = capture.sourceLevels ?? [];
+  const sourceLevelsRef = useRef<number[]>(sourceLevels);
+  sourceLevelsRef.current = sourceLevels;
+  // What auto-tag can honestly claim RIGHT NOW — derived from the signal that
+  // actually exists, never from a user setting.
+  const autoTagMode: PlaygroundAutoTagMode = sourceLevels.length > 1 ? 'per-source' : sourceLevels.length === 1 ? 'single-source' : 'unavailable';
   const stt = useArcaSpeechToText({
     sessionId: mgr.session?.id ?? '',
     language: languageMode,
@@ -528,6 +629,37 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     // Persist across reloads — does not touch the `connected` state in App.tsx,
     // so it never remounts `<ArcaCompatProvider>`.
     saveStoredConfig({ ...config, languageMode: modeId });
+  };
+
+  // Persist the drain knobs the same way the language mode is persisted — write
+  // through `saveStoredConfig` WITHOUT touching `connected` in App.tsx, so the
+  // SDK provider is never remounted and a live session survives the change.
+  const persistDrain = (next: { drainTimeoutMs?: number; quietWindowMs?: number }) => {
+    saveStoredConfig({ ...config, drainTimeoutMs, quietWindowMs, ...next });
+  };
+
+  const handleDrainTimeoutChange = (value: number | undefined) => {
+    setDrainTimeoutMs(value);
+    persistDrain({ drainTimeoutMs: value });
+  };
+
+  const handleQuietWindowChange = (value: number | undefined) => {
+    setQuietWindowMs(value);
+    persistDrain({ quietWindowMs: value });
+  };
+
+  const applyWaitForTailFinal = () => {
+    setDrainTimeoutMs(WAIT_FOR_TAIL_FINAL_TIMEOUT_MS);
+    setQuietWindowMs(0);
+    persistDrain({ drainTimeoutMs: WAIT_FOR_TAIL_FINAL_TIMEOUT_MS, quietWindowMs: 0 });
+  };
+
+  const resetDrainToDefaults = () => {
+    setDrainTimeoutMs(undefined);
+    setQuietWindowMs(undefined);
+    // Explicit `undefined` so the stored object loses the keys rather than
+    // keeping the previous override (JSON.stringify drops undefined values).
+    saveStoredConfig({ ...config, drainTimeoutMs: undefined, quietWindowMs: undefined });
   };
 
   const handleSendMetadata = () => {
@@ -627,6 +759,46 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     rowIdCounterRef.current = Math.max(rowIdCounterRef.current, sources.length);
   }, []);
 
+  // Sends ONE row. Kept OUTSIDE any `setState` updater — an updater can run
+  // more than once per commit (React Strict Mode replays it), and
+  // `sendAudioData` is a real side effect that must fire exactly once per
+  // crossing.
+  const fireAutoTagRow = useCallback(
+    (row: MetadataMicRow) => {
+      const result = buildRowMetadata(row);
+      if ('error' in result) {
+        // Auto-tag is a background loop — a bad row surfaces via its own inline
+        // error the next time the developer opens that row, not a toast storm.
+        setRowErrors((prev) => ({ ...prev, [row.id]: result.error }));
+        return;
+      }
+      try {
+        stt.sendAudioData(new ArrayBuffer(0), result.metadata);
+        setLastSentMetadata(result.metadata);
+      } catch {
+        // Non-fatal — same reasoning as above.
+      }
+    },
+    [stt.sendAudioData],
+  );
+
+  /**
+   * PER-SOURCE emit (TASK-597 follow-up #2): tag the turn with the row that
+   * belongs to the source the SDK says is loudest.
+   *
+   * Rows and sources line up 1:1 after "Sync rows from audio sources"; the
+   * modulo keeps a hand-edited shorter list usable instead of silently
+   * dropping the tag for the extra mics.
+   */
+  const fireAutoTagForSource = useCallback(
+    (sourceIndex: number) => {
+      const currentRows = rowsRef.current;
+      if (currentRows.length === 0) return;
+      fireAutoTagRow(currentRows[sourceIndex % currentRows.length]);
+    },
+    [fireAutoTagRow],
+  );
+
   // Fires the NEXT row in rotation and advances the cursor. Kept OUTSIDE any
   // `setState` updater — an updater can run more than once per commit (React
   // Strict Mode replays it), and `sendAudioData` is a real side effect that
@@ -652,18 +824,52 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     }
   }, [stt.sendAudioData]);
 
-  // Poll the single input-level meter (`useAudioCapture.getDeviceStatus()` —
-  // there is no PER-MIC level yet; that needs lane A's per-source metering) and
-  // rising-edge-debounce it: fire once when the level crosses `autoTagThreshold`
-  // going up, then require it to drop back below before firing again. One
-  // utterance ⇒ one emit, not one per 200 ms poll tick.
+  // ---------------------------------------------------------------------------
+  // Auto-tag poll (TASK-597 follow-up #2 — real per-mic attribution).
+  //
+  // TWO paths, and which one runs is decided by what the SDK actually offers:
+  //
+  //  • PER-SOURCE (`capture.sourceLevels` non-empty). The loudest source above
+  //    the threshold owns the turn. Rising-edge debounced exactly as before —
+  //    one sustained utterance ⇒ one emit — PLUS a re-tag when the loudest
+  //    source CHANGES while the level stays up, because that is a speaker
+  //    change and waiting for silence would attribute it to the wrong mic.
+  //
+  //  • FALLBACK (`sourceLevels` empty ⇒ no per-source signal). The pre-597
+  //    behaviour: poll the single MIXED meter and rotate round-robin through
+  //    the rows. This is a demonstration of the payload shape, not attribution,
+  //    and the UI says so — the honest disclosure was never removed, it now
+  //    only appears when it is actually true.
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!autoTagEnabled || !capture.isRecording) {
       autoTagAboveRef.current = false;
+      autoTagDominantRef.current = null;
       return;
     }
     const POLL_MS = 200;
     const interval = setInterval(() => {
+      const levels = sourceLevelsRef.current;
+
+      if (levels.length > 0) {
+        let dominant = 0;
+        for (let i = 1; i < levels.length; i += 1) {
+          if ((levels[i] ?? 0) > (levels[dominant] ?? 0)) dominant = i;
+        }
+        const peak = levels[dominant] ?? 0;
+        if (peak >= autoTagThreshold) {
+          if (!autoTagAboveRef.current || autoTagDominantRef.current !== dominant) {
+            autoTagAboveRef.current = true;
+            autoTagDominantRef.current = dominant;
+            fireAutoTagForSource(dominant);
+          }
+        } else {
+          autoTagAboveRef.current = false;
+          autoTagDominantRef.current = null;
+        }
+        return;
+      }
+
       void getDeviceStatusRef.current().then((status) => {
         const level = status?.audioLevel ?? 0;
         const isAbove = level >= autoTagThreshold;
@@ -676,7 +882,7 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
       });
     }, POLL_MS);
     return () => clearInterval(interval);
-  }, [autoTagEnabled, capture.isRecording, autoTagThreshold, fireAutoTag]);
+  }, [autoTagEnabled, capture.isRecording, autoTagThreshold, fireAutoTag, fireAutoTagForSource]);
 
   // Only this projection is memoized: it is recomputed on every interim update
   // otherwise, and the summarization tab re-renders on it. The context value
@@ -702,6 +908,14 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
       phase: isStarting ? 'starting' : isStopping ? 'stopping' : capture.isRecording ? 'recording' : 'idle',
       start,
       stop,
+    },
+    drain: {
+      timeoutMs: drainTimeoutMs,
+      setTimeoutMs: handleDrainTimeoutChange,
+      quietWindowMs,
+      setQuietWindowMs: handleQuietWindowChange,
+      applyWaitForTailFinal,
+      resetToDefaults: resetDrainToDefaults,
     },
     transcript: {
       lines,
@@ -740,9 +954,12 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
       setAutoTagEnabled,
       autoTagThreshold,
       setAutoTagThreshold,
+      autoTagMode,
     },
-    // Lane A — published as-is; the hook already returns the slice shape.
-    audio,
+    // Lane A's slice, with ONE field replaced: the hook cannot see the capture
+    // graph (it runs before `useAudioCapture` to build its options), so the
+    // live per-source levels are joined on here (TASK-597 follow-up #2).
+    audio: { ...audio, sourceLevels },
   };
 
   return <PlaygroundSessionContext.Provider value={value}>{children}</PlaygroundSessionContext.Provider>;

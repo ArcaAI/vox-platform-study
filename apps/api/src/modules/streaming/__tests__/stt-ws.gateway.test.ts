@@ -763,6 +763,36 @@ describe('SttWsGateway', () => {
       expect('seq' in sent).toBe(false);
     });
 
+    // TASK-597 follow-up #1: apps/stt publishes `finalizing` before it flushes
+    // the tail utterance; the bridge now relays it as a non-terminal status.
+    // The frame must reach the socket in exactly the shape
+    // `SttWebSocketClient.isValidStatus` accepts (`status` a string, `message`
+    // absent or a string) — that is what opens the SDK stop-drain quiet window.
+    // Tail transcripts published AFTER it must still be forwarded.
+    it('forwards a finalizing status to the client and keeps forwarding the tail final after it', async () => {
+      const resultSubject = new Subject();
+      mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+      const client = createMockSocket();
+      setValidTicketFor('sess-finalizing');
+      await gateway.handleConnection(client as any, buildReq('sess-finalizing') as any);
+      (client.send as any).mockClear();
+
+      resultSubject.next({ type: 'status', status: 'finalizing' });
+      resultSubject.next({ type: 'transcript', text: 'the closing utterance', startTime: 5, endTime: 7, isFinal: true });
+
+      expect(client.send).toHaveBeenCalledTimes(2);
+      const status = JSON.parse((client.send as any).mock.calls[0][0]);
+      expect(status).toEqual({ type: 'status', status: 'finalizing' });
+      // The SDK guard: `status` string, `message` absent-or-string.
+      expect(typeof status.status).toBe('string');
+      expect(status.message).toBeUndefined();
+
+      const tail = JSON.parse((client.send as any).mock.calls[1][0]);
+      expect(tail.text).toBe('the closing utterance');
+      expect(tail.isFinal).toBe(true);
+    });
+
     // stableChars (committed-prefix length) is an
     // additive bridge field; the gateway must forward it untouched on
     // the WS transcript message and omit it when absent.

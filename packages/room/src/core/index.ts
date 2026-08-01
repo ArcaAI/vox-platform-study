@@ -8,7 +8,13 @@ export { AudioContextManager, getNewAudioContext, type AudioContextAcquireOption
 export { AudioTrack, type AudioTrackOptions } from './AudioTrack.js';
 export { ProcessorPipeline } from './ProcessorPipeline.js';
 export { Room, RoomEvent, RoomState, createLocalTracks, type RoomEventMap } from './Room.js';
-export { AudioMixer, type AudioMixerSource, type AudioMixerEventMap } from './AudioMixer.js';
+export {
+  AudioMixer,
+  type AudioMixerSource,
+  type AudioMixerEventMap,
+  type AudioMixerSourceLevel,
+  type AudioMixerLevelMonitorOptions,
+} from './AudioMixer.js';
 export {
   RoomPermissionError,
   RoomDeviceError,

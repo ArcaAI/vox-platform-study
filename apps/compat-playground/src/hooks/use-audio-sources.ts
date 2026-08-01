@@ -265,6 +265,13 @@ export function useAudioSources(): PlaygroundAudioSlice {
     setLoop,
     setRate,
     sources,
+    // Placeholder only. Live per-source levels come from the CAPTURE graph
+    // (`useAudioCapture().sourceLevels`), which does not exist yet at this
+    // point: the provider must call this hook FIRST to build `captureOptions`,
+    // then feed the levels back onto the published slice. Returning `[]` here
+    // keeps this hook independently usable (and typed) rather than pretending
+    // it can see a graph it has not configured yet.
+    sourceLevels: [],
     setGain,
     captureOptions,
   };

@@ -52,6 +52,21 @@ export interface StreamingRemoteProviderConfig extends ProviderConfig {
    * recording uploads and durable transcript persistence.
    */
   drainTimeoutMs?: number;
+  /**
+   * Quiet window, in ms, after the backend's `finalizing` status that ends the
+   * stop-drain early (TASK-597). Every transcript received restarts it.
+   *
+   * **`0` disables the early resolve** — the drain then ends only on the
+   * terminal `closed`/`cancelled` status or {@link StreamingRemoteProviderConfig.drainTimeoutMs}.
+   * Use it when the tail final matters more than teardown latency: on a slow
+   * ASR pipeline the tail can trail `finalizing` by seconds, far past the
+   * 250 ms default, and the socket would otherwise already be closed.
+   *
+   * `0` is therefore GUARDED ON `>= 0`, not `> 0` — unlike `drainTimeoutMs`,
+   * where `0` would be meaningless. Omitted / negative ⇒ the ws client's own
+   * default.
+   */
+  quietWindowMs?: number;
 }
 
 /**
@@ -110,7 +125,7 @@ export interface StreamingWsClientLike {
    * reaches `onTranscript`, then close. Preferred over `disconnect()` on
    * teardown when the client supports it (`SttWebSocketClient` does).
    */
-  stopAndDrain?(drainTimeoutMs?: number): Promise<void>;
+  stopAndDrain?(drainTimeoutMs?: number, quietWindowMs?: number): Promise<void>;
   /** Register the transcript callback. */
   onTranscript(cb: (payload: StreamingTranscriptPayload) => void): void;
   /** Register a server-emitted error callback (e.g. `RESUME_FAILED`). */
@@ -170,6 +185,13 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
    */
   private drainTimeoutMs: number | null = null;
   /**
+   * Per-session stop-drain quiet window from {@link StreamingRemoteProviderConfig.quietWindowMs}.
+   * `null` leaves the decision to the ws client's own default. `0` is a REAL
+   * value here (disable the early resolve), which is why the guard below is
+   * `>= 0` and why this is `number | null` rather than a falsy-checked number.
+   */
+  private quietWindowMs: number | null = null;
+  /**
    * C6-01 — frames the ws client dropped at its bufferedAmount watermark since
    * the last session start. That PCM never reached the durable transcript, so
    * surfacing the count makes the otherwise-silent loss observable to callers.
@@ -218,6 +240,11 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.pipelineId = streamingConfig.pipelineId;
     this.drainTimeoutMs =
       typeof streamingConfig.drainTimeoutMs === 'number' && streamingConfig.drainTimeoutMs > 0 ? streamingConfig.drainTimeoutMs : null;
+    // `>= 0`, NOT `> 0`: `0` is the documented "disable the quiet-window early
+    // resolve" setting. A `> 0` guard here would silently discard exactly the
+    // value a caller sets when they need the tail final more than a fast stop.
+    this.quietWindowMs =
+      typeof streamingConfig.quietWindowMs === 'number' && streamingConfig.quietWindowMs >= 0 ? streamingConfig.quietWindowMs : null;
     this.droppedFrameCount = 0;
     this.bytesSent = 0;
 
@@ -299,7 +326,10 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
         // emitted after stop still reaches onTranscript. The duplicate stop
         // frame (stop() above already sent one) is idempotent server-side.
         // `undefined` defers to the client's own default ceiling.
-        await this.wsClient.stopAndDrain(this.drainTimeoutMs ?? undefined);
+        // `?? undefined` on both, so an unset knob defers to the client's own
+        // default. `0` survives it — `??` only replaces null/undefined — which
+        // is the whole point of storing the quiet window as `number | null`.
+        await this.wsClient.stopAndDrain(this.drainTimeoutMs ?? undefined, this.quietWindowMs ?? undefined);
       } else {
         this.wsClient.disconnect();
       }
@@ -333,6 +363,7 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     this.initialized = false;
     this.pipelineId = null;
     this.drainTimeoutMs = null;
+    this.quietWindowMs = null;
   }
 
   getStats(): STTStats {

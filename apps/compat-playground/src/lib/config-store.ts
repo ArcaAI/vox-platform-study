@@ -24,6 +24,40 @@ export interface PlaygroundConfig {
    * to fetch the real catalog) — this field only seeds its initial value.
    */
   languageMode: string;
+  // ---------------------------------------------------------------------------
+  // Capture-graph switches (TASK-597) — CONNECTION-level.
+  //
+  // These become `V1SdkConfig.audioSettings`, which `<ArcaCompatProvider>` reads
+  // ONCE at mount, so changing them requires a disconnect/reconnect. That is why
+  // they live on the Connection tab and not next to Start/Stop.
+  //
+  // Both default to `false`, which is exactly what the compat adapter has always
+  // produced: it emits a PARTIAL `AudioPluginConfig`, that object REPLACES
+  // `DEFAULT_AUDIO_CONFIG` wholesale, and `PluginManager` resolves every absent
+  // plugin key to `{enabled:false}`. So `false/false` changes nothing — it only
+  // makes the existing behaviour visible and, for the first time, reversible.
+  // ---------------------------------------------------------------------------
+  /** RNNoise browser noise suppression. */
+  noiseSuppression?: boolean;
+  /** Silero browser voice-activity detection. */
+  voiceActivityDetection?: boolean;
+
+  // ---------------------------------------------------------------------------
+  // Stop-drain knobs (TASK-597) — PER-CAPTURE.
+  //
+  // These ride `AudioStartOptions` on each `startRecording()`, so they can be
+  // changed between runs without touching the provider. Undefined ⇒ the SDK
+  // defaults (1500 ms / 250 ms); nothing changes unless the developer opts in.
+  // ---------------------------------------------------------------------------
+  /** Hard ceiling on the drain wait. Undefined ⇒ SDK default (1500 ms). */
+  drainTimeoutMs?: number;
+  /**
+   * Silence after `finalizing` that ends the drain early. `0` DISABLES the
+   * early resolve, so the socket stays open for the tail final until the
+   * server's terminal status or `drainTimeoutMs`. Undefined ⇒ SDK default (250 ms).
+   */
+  quietWindowMs?: number;
+
   /**
    * Last-used SMR department (code or name) — seeds the SummaryCard picker
    * (Workstream B). Optional: absent for configs saved before this field existed.
@@ -67,6 +101,16 @@ export function defaultConfig(): PlaygroundConfig {
     tenantId: stored.tenantId ?? import.meta.env.VITE_TENANT_ID ?? '',
     pipelineId: stored.pipelineId ?? import.meta.env.VITE_PIPELINE_ID ?? '',
     languageMode: stored.languageMode ?? import.meta.env.VITE_LANGUAGE_MODE ?? 'en',
+    // `?? false` (not `|| false`) so a stored `false` is honoured rather than
+    // re-defaulted, and so the pair is always a real boolean by the time it
+    // reaches `audioSettings` — `undefined` there would mean "say nothing",
+    // which is a THIRD state the two switches must not be able to express.
+    noiseSuppression: stored.noiseSuppression ?? false,
+    voiceActivityDetection: stored.voiceActivityDetection ?? false,
+    // Left `undefined` on purpose: absent ⇒ the SDK's own default, which is the
+    // documented no-op. A number here is always a deliberate override.
+    drainTimeoutMs: stored.drainTimeoutMs,
+    quietWindowMs: stored.quietWindowMs,
     department: stored.department ?? import.meta.env.VITE_DEPARTMENT ?? '',
     visitType: stored.visitType ?? import.meta.env.VITE_VISIT_TYPE ?? '',
   };

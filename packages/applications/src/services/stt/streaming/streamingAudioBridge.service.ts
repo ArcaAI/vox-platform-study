@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } f
 import Redis from 'ioredis';
 import { Observable, Subject, finalize } from 'rxjs';
 import { IConfigService } from '../../baseServices/_meta/config';
-import { StreamingTranscriptMessage, StreamingServerMessage } from './dto';
+import { StreamingTranscriptMessage, StreamingServerMessage, StreamingStatusMessage } from './dto';
 import { deriveSpeakerLabel } from './speaker-label';
 
 /**
@@ -608,6 +608,36 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
   }
 
   /**
+   * Project a `type: status` result entry onto the client-facing status frame.
+   *
+   * The STATUS is default-forwarded (any non-terminal value reaches the
+   * client); the FIELDS are projected explicitly, because the result stream is
+   * a PHI-bearing channel and a blind `{...data}` spread would put whatever a
+   * future publisher adds straight onto the browser wire. The projection covers
+   * everything `apps/stt` publishes on a status entry today:
+   * `publish_status` emits `{type, status}` only, and
+   * `publish_provider_switched` adds `from_pipeline` / `to_pipeline` /
+   * `reason` / `active` / `is_fallback` / `utterance_index`
+   * (`apps/stt/src/stt/streaming/redis_streams.py`). None of them carry text.
+   *
+   * NOTE: `active` / `is_fallback` are deliberately NOT relayed here — that is
+   * a pre-existing TASK-586 gap (the v1-compat gateway codes for them but never
+   * receives them) and widening the status DTO is out of this change's scope.
+   */
+  private buildStatusMessage(data: Record<string, string>): StreamingStatusMessage {
+    const utterance = data.utterance_index != null && data.utterance_index !== '' ? Number.parseInt(data.utterance_index, 10) : undefined;
+    return {
+      type: 'status',
+      status: data.status,
+      ...(data.message ? { message: data.message } : {}),
+      ...(data.from_pipeline ? { from_pipeline: data.from_pipeline } : {}),
+      ...(data.to_pipeline ? { to_pipeline: data.to_pipeline } : {}),
+      ...(data.reason ? { reason: data.reason } : {}),
+      ...(utterance != null && Number.isFinite(utterance) && utterance >= 0 ? { utterance_index: utterance } : {}),
+    };
+  }
+
+  /**
    * Parse one result-stream entry's flat field array and emit it on `subject`.
    * Returns `true` when the entry is a TERMINAL status (`closed`/`cancelled`)
    * so the caller completes the stream. (Parsing unchanged from the XREAD path.)
@@ -617,8 +647,17 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * `finalizing → FINAL → closed` (session_manager `publish_status("finalizing")`
    * precedes `_flush_final_utterance`). Completing on `finalizing` would tear the
    * reader down one entry too early and orphan the closing final in Redis — the
-   * session's last spoken utterance would never reach the client. Non-terminal
-   * status entries are skipped (never emitted) and the reader keeps reading.
+   * session's last spoken utterance would never reach the client.
+   *
+   * Every NON-terminal status is RELAYED (TASK-597 follow-up #1), then the
+   * reader keeps reading. This is deliberately a default-forward, not an
+   * allow-list: the previous `provider_switched`-only list silently swallowed
+   * `finalizing`, which is exactly what the SDK's stop-drain quiet window
+   * ({@link SttWebSocketClient.stopAndDrain}) listens for — the TASK-568
+   * Phase-F bug class the v1-compat gateway already guards against ("forward
+   * every status frame"). Terminal statuses stay UNEMITTED: the WS gateway
+   * synthesizes its own closing frame in `complete:`, so relaying them would
+   * double-send `closed`.
    */
   private parseAndEmitResult(subject: Subject<StreamingServerMessage>, fields: string[]): boolean {
     // Parse fields array into key-value pairs
@@ -630,22 +669,13 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     // Terminal only on a true end-of-session status. `finalizing` is a progress
     // marker that PRECEDES the tail final — treating it as terminal drops it.
     if (data.type === 'status') {
-      // provider_switched (TASK-567 §3.4) is a NON-terminal status result: relay
-      // it so the ASR-engine swap reaches the client on the existing status
-      // frame (zero WS protocol change), then keep reading. All other
-      // non-terminal statuses stay unemitted (progress-only, as before).
-      if (data.status === 'provider_switched') {
-        const utterance = data.utterance_index != null && data.utterance_index !== '' ? Number.parseInt(data.utterance_index, 10) : undefined;
-        subject.next({
-          type: 'status',
-          status: 'provider_switched',
-          ...(data.from_pipeline ? { from_pipeline: data.from_pipeline } : {}),
-          ...(data.to_pipeline ? { to_pipeline: data.to_pipeline } : {}),
-          ...(data.reason ? { reason: data.reason } : {}),
-          ...(utterance != null && Number.isFinite(utterance) && utterance >= 0 ? { utterance_index: utterance } : {}),
-        });
+      const terminal = data.status === 'closed' || data.status === 'cancelled';
+      // Relay every non-terminal status. `status` itself is required (the SDK's
+      // `isValidStatus` guard drops a frame without one, so never send it).
+      if (!terminal && data.status) {
+        subject.next(this.buildStatusMessage(data));
       }
-      return data.status === 'closed' || data.status === 'cancelled';
+      return terminal;
     }
 
     // Emit transcript segment

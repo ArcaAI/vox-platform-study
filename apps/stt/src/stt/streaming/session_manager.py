@@ -889,6 +889,10 @@ class SessionManager:
             # Pass tenant_id so STT refuses to load
             # a pipeline owned by a different tenant (defense in depth).
             initial_pipeline_id = fallback_pipeline_id if started_on_fallback else pipeline_id
+            # started_on_fallback is True only when bool(fallback_pipeline_id) is
+            # True (see its definition above), so the ternary's "then" branch is
+            # never None; the "else" branch is the required str `pipeline_id`.
+            assert initial_pipeline_id is not None  # narrowed by started_on_fallback
             pipeline_config = await self._load_pipeline_config(
                 initial_pipeline_id, tenant_id=tenant_id
             )

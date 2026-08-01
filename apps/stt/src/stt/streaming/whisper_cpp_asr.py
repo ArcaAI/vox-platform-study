@@ -45,6 +45,7 @@ Python level. This adapter therefore:
 
 from __future__ import annotations
 
+import atexit
 import gc
 import math
 import re
@@ -106,6 +107,10 @@ _model_locks: dict[str, threading.Lock] = {}
 
 _log_install_guard = threading.Lock()
 _log_installed = False
+# The ``_pywhispercpp`` extension module the sink is currently registered with,
+# so shutdown can hand the callback back to exactly that module (see
+# ``_uninstall_log_capture``). ``None`` until a registration succeeds.
+_log_module: Any = None
 
 
 def _dispatch_log(level: int, text: str) -> None:
@@ -123,8 +128,33 @@ def _dispatch_log(level: int, text: str) -> None:
         logger.warning("whisper.cpp native log", message=text.strip())
 
 
+def _uninstall_log_capture() -> None:
+    """Hand the log sink back to whisper.cpp's default logger at interpreter exit.
+
+    ``whisper_log_set`` parks the Python callable in a pybind11 static inside
+    ``_pywhispercpp``. That static outlives ``Py_Finalize``: its C++ destructor
+    runs from ``exit()``'s ``__cxa_finalize_ranges``, by which point there is no
+    thread state, so the ``Py_DECREF`` of ``_dispatch_log`` lands in
+    ``dict_dealloc`` → ``_Py_FatalError_TstateNULL`` and the process dies with
+    ``Abort trap: 6`` — after a fully green test run (exit 134). Dropping the
+    reference from an ``atexit`` hook releases it while the interpreter is still
+    alive, so the static holds nothing Python by the time it is destroyed.
+
+    Shutdown-only: no decode can be in flight, so this cannot affect
+    transcription behaviour. Best-effort — a failure here must never mask the
+    process exit status.
+    """
+    module = _log_module
+    if module is None:
+        return
+    try:
+        module.whisper_log_set(None)
+    except Exception:  # noqa: BLE001 — teardown must not raise at exit
+        pass
+
+
 def _ensure_log_capture_installed() -> None:
-    global _log_installed
+    global _log_installed, _log_module
     if _log_installed:
         return
     with _log_install_guard:
@@ -134,6 +164,10 @@ def _ensure_log_capture_installed() -> None:
             import _pywhispercpp as pw
 
             pw.whisper_log_set(_dispatch_log)
+            _log_module = pw
+            # Release the callback BEFORE the interpreter finalizes; see
+            # ``_uninstall_log_capture``.
+            atexit.register(_uninstall_log_capture)
         except Exception as exc:  # noqa: BLE001 — capture is best-effort
             # Without the callback we lose poison auto-recovery, but the lock
             # (the primary fix) still prevents the corruption in the first place.

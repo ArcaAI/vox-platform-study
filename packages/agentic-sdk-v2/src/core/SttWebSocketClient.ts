@@ -522,8 +522,15 @@ export class SttWebSocketClient {
    * triggered (terminal status, quiet window or timeout).
    *
    * @param drainTimeoutMs - Overrides the configured ceiling for this call.
+   * @param quietWindowMs - Overrides the configured quiet window for this call.
+   *   `0` disables the early resolve, so the drain ends only on a terminal
+   *   status or `drainTimeoutMs`. Pass `undefined` (not `0`) to keep the
+   *   configured value — `0` is a meaningful setting here, never "unset".
    */
-  async stopAndDrain(drainTimeoutMs: number = this.drainOptions.timeoutMs): Promise<void> {
+  async stopAndDrain(
+    drainTimeoutMs: number = this.drainOptions.timeoutMs,
+    quietWindowMsOverride: number = this.drainOptions.quietWindowMs,
+  ): Promise<void> {
     this.intentionalDisconnect = true;
     this.cancelReconnect();
 
@@ -543,7 +550,7 @@ export class SttWebSocketClient {
       });
     }
 
-    const quietWindowMs = this.drainOptions.quietWindowMs;
+    const quietWindowMs = quietWindowMsOverride;
 
     await new Promise<void>((resolve) => {
       let settled = false;

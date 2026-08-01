@@ -1,5 +1,20 @@
 import { useState, type ChangeEvent } from 'react';
-import { Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Input, Label } from '@arcaai/ui';
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Switch,
+} from '@arcaai/ui';
 import { defaultConfig, type PlaygroundConfig } from '../lib/config-store';
 import { PipelinePicker } from './PipelinePicker';
 import { CONNECTION_EXAMPLE_FILES, TabExampleCode } from './TabExampleCode';
@@ -12,8 +27,17 @@ interface ConnectionTabProps {
   onForget: () => void;
 }
 
+/**
+ * The text fields only. Narrowed away from `keyof PlaygroundConfig` because the
+ * config now also carries booleans (the capture-stage switches below) and
+ * numbers (the drain knobs, which live on the Live-transcription tab) — feeding
+ * either to an `<Input value>` is a type error, and rendering `false` as text
+ * would be a UI one.
+ */
+type TextFieldKey = 'apiEndpoint' | 'apiKey' | 'tenantId' | 'pipelineId';
+
 const FIELDS: Array<{
-  key: keyof PlaygroundConfig;
+  key: TextFieldKey;
   label: string;
   placeholder: string;
   hint: string;
@@ -50,6 +74,33 @@ const FIELDS: Array<{
 ];
 
 /**
+ * The two browser capture-graph stages, as CONNECTION-level switches.
+ *
+ * They belong here — not next to Start/Stop — because they map onto
+ * `V1SdkConfig.audioSettings`, which `<ArcaCompatProvider>` reads exactly once
+ * at mount. Changing one after connecting would have no effect until the
+ * provider remounts, so the form locks with the rest of the credentials and the
+ * user changes them via Disconnect → edit → Connect. (The stop-drain knobs are
+ * per-CAPTURE and therefore live on the Live-transcription tab instead.)
+ */
+const STAGE_SWITCHES: Array<{
+  key: 'noiseSuppression' | 'voiceActivityDetection';
+  label: string;
+  hint: string;
+}> = [
+  {
+    key: 'noiseSuppression',
+    label: 'Noise suppression',
+    hint: 'RNNoise (@arcaai/noise-filter) in the browser, before STT. Off ⇒ the stage is not built at all.',
+  },
+  {
+    key: 'voiceActivityDetection',
+    label: 'Voice activity detection (VAD)',
+    hint: 'Silero VAD (@arcaai/vad) in the browser. Off ⇒ the stage is not built at all, so speech gating never trims the uplink.',
+  },
+];
+
+/**
  * Tab 1 — configuration + Connect.
  *
  * Editable while disconnected; once `<ArcaCompatProvider>` is mounted (connected),
@@ -68,8 +119,7 @@ export function ConnectionTab({ connectedConfig, onConnect, onDisconnect, onForg
   const view = connectedConfig ?? draft;
   const canConnect = draft.apiEndpoint.trim() !== '' && draft.apiKey.trim() !== '';
 
-  const update = (field: keyof PlaygroundConfig) => (event: ChangeEvent<HTMLInputElement>) =>
-    setDraft((prev) => ({ ...prev, [field]: event.target.value }));
+  const update = (field: TextFieldKey) => (event: ChangeEvent<HTMLInputElement>) => setDraft((prev) => ({ ...prev, [field]: event.target.value }));
 
   return (
     <div className="flex flex-col gap-4">
@@ -124,6 +174,54 @@ export function ConnectionTab({ connectedConfig, onConnect, onDisconnect, onForg
           ))}
         </CardContent>
 
+        <CardContent className="flex flex-col gap-4 border-t pt-6">
+          <div>
+            <h2 className="text-sm font-medium">Browser audio processing</h2>
+            <p className="text-muted-foreground text-xs">
+              Client-side stages between the microphone and the STT uplink, mapped onto{' '}
+              <code className="font-mono text-xs">V1SdkConfig.audioSettings</code>. Both are off by default, which is what the compat adapter has
+              always produced.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {STAGE_SWITCHES.map((stage) => (
+              <div key={stage.key} className="flex flex-col gap-2">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    id={`config-${stage.key}`}
+                    checked={view[stage.key] ?? false}
+                    onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, [stage.key]: checked }))}
+                    disabled={connected}
+                    aria-describedby={`config-${stage.key}-hint`}
+                  />
+                  <Label htmlFor={`config-${stage.key}`}>{stage.label}</Label>
+                </div>
+                <p id={`config-${stage.key}-hint`} className="text-muted-foreground text-xs">
+                  {stage.hint}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Not colour-only, and not buried in a README: turning these off
+              changes what the backend actually hears.
+
+              `role="note"` overrides `Alert`'s built-in `role="alert"`. This is
+              permanently-rendered advisory text, not an urgent live-region
+              announcement — `alert` is assertive and reserved for messages that
+              interrupt, and this panel is force-mounted, so it would also make
+              every unrelated `getByRole('alert')` ambiguous. */}
+          <Alert role="note">
+            <AlertTitle>Both off sends unprocessed audio to the backend</AlertTitle>
+            <AlertDescription>
+              With noise suppression and VAD disabled, the raw captured signal reaches the ASR pipeline: no noise reduction, and no speech gating to
+              trim silence or non-speech. That is what you want for an accuracy run against a labelled corpus — the model is then scored on the same
+              audio you fed it — and usually not what you want for a noisy clinic room.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+
         <CardFooter className="flex flex-wrap items-center gap-2">
           {connected ? (
             <>
@@ -144,7 +242,15 @@ export function ConnectionTab({ connectedConfig, onConnect, onDisconnect, onForg
                 size="sm"
                 onClick={() => {
                   onForget();
-                  setDraft({ apiEndpoint: '', apiKey: '', tenantId: '', pipelineId: '', languageMode: '' });
+                  setDraft({
+                    apiEndpoint: '',
+                    apiKey: '',
+                    tenantId: '',
+                    pipelineId: '',
+                    languageMode: '',
+                    noiseSuppression: false,
+                    voiceActivityDetection: false,
+                  });
                 }}
               >
                 Forget saved config

@@ -13,7 +13,7 @@ import {
   Slider,
   Switch,
 } from '@arcaai/ui';
-import { usePlaygroundSession, type PlaygroundCapturePhase } from '../context/playground-session';
+import { usePlaygroundSession, type PlaygroundAutoTagMode, type PlaygroundCapturePhase } from '../context/playground-session';
 
 /**
  * When metadata may be attached (TASK-597 lane G — deliberate `phase` choice).
@@ -38,9 +38,10 @@ function canAttachMetadata(phase: PlaygroundCapturePhase): boolean {
  *  1. The frozen single-shot "Simulate metadata" form (TASK-564) — unchanged
  *     behaviour, now with an inline 8 KB field error instead of a bare toast.
  *  2. Per-mic rows (R5): one `{mic, speaker, ...json}` row per configured
- *     source, sent by hand OR auto-tagged when the input level crosses a
- *     threshold — alternating through the rows, debounced to one emit per
- *     utterance.
+ *     source, sent by hand OR auto-tagged from the LIVE PER-SOURCE input level
+ *     — the loudest mic above the threshold owns the turn (TASK-597
+ *     follow-up #2). It falls back to a round-robin rotation only when the SDK
+ *     reports no per-source signal, and says which of the two is running.
  *
  * Both surfaces share the SAME honesty note: on the v2 wire this metadata
  * never reaches the STT socket (see the callout below) — stated plainly here,
@@ -139,6 +140,44 @@ function ManualMetadataCard() {
   );
 }
 
+/**
+ * What auto-tag can HONESTLY claim, in the mode it is actually running in.
+ *
+ * The three cases are three different guarantees, so they get three different
+ * sentences rather than one hedged paragraph. `per-source` is real attribution
+ * and says so; the other two name exactly what they cannot do. The mode is
+ * derived from the live SDK signal (`audio.sourceLevels`), so this can never
+ * drift from behaviour the way a hard-coded disclaimer did.
+ */
+function AutoTagModeNote({ mode, sourceCount }: { mode: PlaygroundAutoTagMode; sourceCount: number }) {
+  if (mode === 'per-source') {
+    return (
+      <p className="text-muted-foreground text-xs">
+        <strong className="text-foreground">Per-mic attribution is live.</strong> {sourceCount} per-source meters are being sampled inside the mixer
+        (one analysis-only <code className="font-mono">AnalyserNode</code> per source), and the <em>loudest</em> source above the threshold owns the
+        turn — a change of loudest mic re-tags immediately instead of waiting for silence. Caveat worth knowing: mics in one room bleed into each
+        other, so this attributes by loudest <em>input</em>, not by voice identity.
+      </p>
+    );
+  }
+  if (mode === 'single-source') {
+    return (
+      <p className="text-muted-foreground text-xs">
+        <strong className="text-foreground">One audio source</strong>, so every turn is tagged to it. That is exact for &ldquo;which input&rdquo; and
+        says nothing about <em>which person</em> — a single microphone cannot separate two speakers. Select a second mic (or a multi-file /
+        split-stereo source) to get real attribution.
+      </p>
+    );
+  }
+  return (
+    <p className="text-muted-foreground text-xs">
+      <strong className="text-foreground">No per-source level available</strong> (nothing is recording yet, or this runtime has no Web Audio
+      analysis). Auto-tag falls back to rotating <em>round-robin</em> through the rows on the single mixed meter — that demonstrates the payload
+      shape, it is <em>not</em> attribution.
+    </p>
+  );
+}
+
 function MicRowsCard() {
   const { audio, capture, metadata } = usePlaygroundSession();
   const disabled = !canAttachMetadata(capture.phase);
@@ -150,29 +189,63 @@ function MicRowsCard() {
   // Defensive: lane A's `audio` group ships an ordered `sources` list, but this
   // group never depends on it existing — `rows` is self-sufficient either way.
   const sources = audio?.sources ?? [];
+  const levels = audio?.sourceLevels ?? [];
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           Per-mic metadata rows
-          {metadata.autoTagEnabled ? <Badge variant="secondary">Auto-tag on</Badge> : null}
+          {metadata.autoTagEnabled ? (
+            <Badge variant={metadata.autoTagMode === 'per-source' ? 'default' : 'secondary'}>
+              Auto-tag on · {metadata.autoTagMode === 'unavailable' ? 'round-robin' : metadata.autoTagMode}
+            </Badge>
+          ) : null}
         </CardTitle>
         <CardDescription>
           One <code className="font-mono text-xs">{'{mic, speaker}'}</code> row per mic — the screenshot&apos;s tagging shape. Send a row by hand, or
-          flip Auto-tag to emit automatically when the input level crosses the threshold below (alternates through the rows, debounced to one emit per
-          utterance).
+          flip Auto-tag to emit automatically from the live per-source input level: the loudest mic above the threshold owns the turn, debounced to
+          one emit per utterance.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {sources.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-xs">
-            <span className="text-muted-foreground">
-              {sources.length} configured audio source{sources.length === 1 ? '' : 's'}: {sources.map((s) => s.micLabel).join(', ')}.
-            </span>
-            <Button size="sm" variant="outline" onClick={() => metadata.syncRowsFromSources(sources)}>
-              Sync rows from audio sources
-            </Button>
+          <div className="flex flex-col gap-2 rounded-md border p-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-muted-foreground">
+                {sources.length} configured audio source{sources.length === 1 ? '' : 's'}.
+              </span>
+              <Button size="sm" variant="outline" onClick={() => metadata.syncRowsFromSources(sources)}>
+                Sync rows from audio sources
+              </Button>
+            </div>
+            {/* Live per-source level, index-aligned with `sources`. Shown as a
+                number as well as a bar: a bar alone conveys the reading by
+                length only, and this is the evidence for which row auto-tag
+                just picked. */}
+            <ul className="flex flex-col gap-1">
+              {sources.map((source, index) => {
+                const level = levels[index];
+                return (
+                  <li key={source.id} className="flex items-center gap-2">
+                    <span className="w-14 shrink-0 font-mono">{source.micLabel}</span>
+                    <span className="text-muted-foreground min-w-0 flex-1 truncate">{source.sourceLabel}</span>
+                    {typeof level === 'number' ? (
+                      <>
+                        <span className="bg-muted h-1.5 w-24 shrink-0 overflow-hidden rounded-full">
+                          <span className="bg-primary block h-full" style={{ width: `${Math.min(100, Math.max(0, level))}%` }} />
+                        </span>
+                        <span className="w-8 shrink-0 text-right font-mono" aria-label={`${source.micLabel} input level`}>
+                          {level}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground shrink-0">no level</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         ) : (
           <p className="text-muted-foreground text-xs">No configured audio sources yet — manage rows manually below (mic 1, mic 2, …).</p>
@@ -205,6 +278,7 @@ function MicRowsCard() {
               aria-label="Auto-tag input level threshold"
             />
           </div>
+          <AutoTagModeNote mode={metadata.autoTagMode} sourceCount={levels.length} />
           {autoTagDisabled ? (
             <p className="text-muted-foreground text-xs">Auto-tag only runs while recording — it reads the live input level.</p>
           ) : null}

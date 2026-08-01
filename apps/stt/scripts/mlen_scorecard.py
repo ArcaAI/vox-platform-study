@@ -3,9 +3,15 @@
 
 Runs each labeled clip in a directory through the REAL ``WhisperCppAsrAdapter``
 (so it exercises the shipped greedy / language / prompt / clean-text / length-guard
-behaviour), reports transliteration-agnostic **CER** per clip and the mean, and
-writes a scorecard JSON. Use it to tune ``WHISPER_CPP_MAX_AUDIO_SECONDS`` and the
-other whisper.cpp knobs as the labeled set grows.
+behaviour), reports **CER** per clip and the mean, and writes a scorecard JSON.
+Use it to tune ``WHISPER_CPP_MAX_AUDIO_SECONDS`` and the other whisper.cpp knobs
+as the labeled set grows.
+
+``_norm`` (below) is exactly three steps — NFC normalize, collapse whitespace
+runs, strip — and nothing else. It does NOT lowercase, strip punctuation,
+normalize digits, or transliterate; a dropped full stop or a case difference
+still counts as an edit. (Verified 2026-08-01 under TASK-597 across the 11
+`apps/compat-playground` parity fixtures that cross-check this function.)
 
 Clips dir layout (audio is NOT committed — clinical audio is PHI):
     <id>.wav            16 kHz mono
@@ -45,7 +51,22 @@ def _norm(s: str) -> str:
 
 
 def cer(ref: str, hyp: str) -> float:
-    """Character error rate (NFC-normalized, whitespace-collapsed)."""
+    """Character error rate (NFC-normalized, whitespace-collapsed).
+
+    The ``max(1, len(r))`` denominator is DELIBERATE, not an oversight: for an
+    empty reference with a non-empty hypothesis it returns the raw edit
+    distance rather than a ratio — e.g. ``cer('', 'hello') == 5.0``, not a
+    percentage. Reviewed 2026-08-01 (TASK-597 follow-up #3) and kept as-is by
+    owner decision: the alternatives (excluding empty-reference clips from the
+    aggregate, or clamping to 1.0) both shift aggregate scores and would force
+    regenerating ``apps/stt/tests/integration/mlen_scorecard_baseline.json``.
+    Parity with the TS port matters more than a tidier edge case.
+
+    If this ever changes, it MUST change on both sides in the same commit —
+    the mirror-image implementation is
+    ``apps/compat-playground/src/lib/scoring.ts::characterErrorRate``, which
+    carries the matching note.
+    """
     r, h = _norm(ref), _norm(hyp)
     dp = list(range(len(h) + 1))
     for i, rc in enumerate(r, 1):
