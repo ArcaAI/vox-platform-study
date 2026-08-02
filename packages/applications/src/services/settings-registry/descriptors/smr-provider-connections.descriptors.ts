@@ -4,9 +4,10 @@
 // Vertex) each carry a small PLATFORM-level connection surface in
 // `apps/smr/src/smr/core/config.py` (`OpenAIConfig` / `AnthropicConfig` /
 // `VertexConfig`, `SMR_OPENAI_` / `SMR_ANTHROPIC_` / `SMR_VERTEX_` prefixes).
-// These are the platform FALLBACK values used when a tenant has no enabled BYO
-// connection for the provider — the per-tenant key/endpoint is a different data
-// class entirely (`AiProviderConnection`, `db-secret` Vault-Transit ciphertext).
+// These are NON-SECRET platform routing values (base URL / endpoint / deployment
+// / tuning) used when a tenant has no enabled BYO connection for the provider —
+// the per-tenant key/endpoint is a different data class entirely
+// (`AiProviderConnection`, `db-secret` Vault-Transit ciphertext).
 //
 // FIELD SEMANTICS FOR THIS TIER (identical to `bootstrap-env.descriptors.ts`):
 //   - tier `env`            supplied through the process environment; read by
@@ -18,11 +19,13 @@
 //                           fallback, transcribed verbatim into `default`.
 //   - `default`            the SMR config class's ACTUAL fallback (config.py).
 //
-// The CREDENTIALS themselves (`SMR_OPENAI_API_KEY`, `SMR_ANTHROPIC_API_KEY`) are
-// a different data class (`vault-kv`, sensitivity `secret`) and live in
-// `platform-secrets.descriptors.ts`. Vertex authenticates with a service-account
-// JSON (tenant BYO) or Application Default Credentials (platform), so it has no
-// `SMR_VERTEX_API_KEY` — only its `(project, location)` routing below.
+// TASK-602: the CREDENTIALS themselves (`SMR_OPENAI_API_KEY`,
+// `SMR_ANTHROPIC_API_KEY`, `SMR_AZURE_API_KEY`) are BYOK-only and NO LONGER
+// registered anywhere — they are `db-secret` (Vault-Transit ciphertext in
+// `AiProviderConnection`, with the SYSTEM row as the platform default), never an
+// env var. Only the non-secret routing below stays `env`-tier. Vertex
+// authenticates with a service-account JSON (tenant BYO) or Application Default
+// Credentials (platform), so it has no `SMR_VERTEX_API_KEY`.
 
 import { EDITABLE_BY_NONE, SettingDescriptor } from '../registry.types';
 

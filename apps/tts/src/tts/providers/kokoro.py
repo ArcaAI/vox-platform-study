@@ -31,6 +31,7 @@ class KokoroProvider:
     name = "kokoro"
     supported_locales = {"en-IN", "en-US"}
     native_streaming = True
+    is_configured = True  # TASK-602: self-hosted engine needs no credential
 
     def __init__(
         self,

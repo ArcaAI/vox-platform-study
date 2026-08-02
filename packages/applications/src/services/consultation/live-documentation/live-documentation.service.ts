@@ -387,7 +387,7 @@ export class LiveDocumentationService implements OnModuleInit, OnModuleDestroy {
     // Durable-snapshot throttle: 0 disables periodic durable writes (P1-C).
     this.durableSnapshotMs = Number(this.configService.get('LIVE_DOC_DURABLE_SNAPSHOT_MS') ?? 30000);
     // Bounded live-generation params (P0-B).
-    this.smrMaxTokens = Number(this.configService.get('LIVE_DOC_SMR_MAX_TOKENS') ?? 1500);
+    this.smrMaxTokens = Number(this.configService.get('LIVE_DOC_SMR_MAX_TOKENS') ?? 8192);
     this.smrTimeoutMs = Number(this.configService.get('LIVE_DOC_SMR_TIMEOUT_MS') ?? 20000);
     this.smrProvider = this.configService.get<string>('LIVE_DOC_SMR_PROVIDER') || undefined;
     this.smrModel = this.configService.get<string>('LIVE_DOC_SMR_MODEL') || undefined;

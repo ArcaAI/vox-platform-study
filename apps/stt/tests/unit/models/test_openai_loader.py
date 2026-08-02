@@ -64,20 +64,33 @@ class TestOpenAILoaderFormats:
 
 class TestOpenAILoaderLoad:
     @pytest.mark.asyncio
-    async def test_load_with_env_key(self):
+    async def test_load_with_override_key(self):
         loader = OpenAILoader()
         with patch("stt.models.openai_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("env-openai-key"))
-            result = await loader.load(_config())
+            gs.return_value = _settings(None)
+            result = await loader.load(
+                _config(),
+                provider_overrides={"openai": {"api_key": "byok-openai-key"}},
+            )
         assert isinstance(result, LoadedModel)
         assert result.format == AiModelFormat.OPENAI
         assert result.device == "cloud"
         assert result.extra["provider"] == "openai"
         cfg = result.model
         assert isinstance(cfg, CloudRestConfig)
-        assert cfg.api_key.get_secret_value() == "env-openai-key"
+        assert cfg.api_key.get_secret_value() == "byok-openai-key"
         assert cfg.model_name == "gpt-4o-transcribe"
         assert cfg.base_url == "https://api.openai.com/v1"
+
+    @pytest.mark.asyncio
+    async def test_env_key_is_ignored_byok_only(self):
+        """TASK-602: an env-set OpenAI key must NOT satisfy the loader — BYOK-only."""
+        loader = OpenAILoader()
+        with patch("stt.models.openai_loader.get_settings") as gs:
+            gs.return_value = _settings(SecretStr("env-openai-key"))
+            with pytest.raises(CloudASRAuthError) as exc:
+                await loader.load(_config())
+        assert exc.value.details["has_key"] is False
 
     @pytest.mark.asyncio
     async def test_override_key_and_base_url_win(self):
@@ -113,8 +126,11 @@ class TestOpenAILoaderLoad:
     async def test_default_model_when_no_source_uri(self):
         loader = OpenAILoader()
         with patch("stt.models.openai_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("k"))
-            result = await loader.load(_config(source_uri=None))
+            gs.return_value = _settings(None)
+            result = await loader.load(
+                _config(source_uri=None),
+                provider_overrides={"openai": {"api_key": "byok-key"}},
+            )
         assert result.model.model_name == DEFAULT_OPENAI_MODEL
 
     @pytest.mark.asyncio

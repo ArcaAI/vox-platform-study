@@ -182,12 +182,11 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'minio.secretKey': 'MINIO_SECRET_KEY',
     's3.accessKey': 'S3_ACCESS_KEY',
     's3.secretKey': 'S3_SECRET_KEY',
-    'azure.speechKey': 'AZURE_SPEECH_KEY',
+    // TASK-602: azure.speechKey / smrAzure.apiKey / smrOpenai.apiKey /
+    // smrAnthropic.apiKey / ttsSarvam.apiKey were removed from the registry — the
+    // STT/TTS/SMR cloud credentials are BYOK-only (db-secret / AiProviderConnection),
+    // no longer vault-kv platform secrets. azure.foundryApiKey stays (out of scope).
     'azure.foundryApiKey': 'AZURE_FOUNDRY_API_KEY',
-    'smrAzure.apiKey': 'SMR_AZURE_API_KEY',
-    'smrOpenai.apiKey': 'SMR_OPENAI_API_KEY',
-    'smrAnthropic.apiKey': 'SMR_ANTHROPIC_API_KEY',
-    'ttsSarvam.apiKey': 'TTS_SARVAM_API_KEY',
     'guardrailVllm.apiKey': 'GUARDRAIL_VLLM_API_KEY',
     'harnessJudgeOpenaiCompat.apiKey': 'HARNESS_JUDGE_OPENAI_COMPAT_API_KEY',
     'harness.claimCheck.accessKey': 'HARNESS_CLAIM_CHECK_ACCESS_KEY',

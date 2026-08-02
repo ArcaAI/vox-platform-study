@@ -18,6 +18,7 @@ from pydantic import SecretStr
 from smr.core.config import AzureOpenAIConfig, Settings
 from smr.main import create_app
 from smr.models.provider import ModelInfo, ProviderInfo
+from smr.tests.conftest import keyed
 
 # ── AzureOpenAIConfig.api_key ──
 
@@ -26,16 +27,16 @@ class TestAzureApiKeySecretStr:
     """AzureOpenAIConfig.api_key must be a SecretStr."""
 
     def test_azure_api_key_is_secret_str(self):
-        cfg = AzureOpenAIConfig(api_key="sk-super-secret-key")
+        cfg = keyed(AzureOpenAIConfig(), "sk-super-secret-key")
         assert isinstance(cfg.api_key, SecretStr)
 
     def test_azure_api_key_repr_hidden(self):
-        cfg = AzureOpenAIConfig(api_key="sk-super-secret-key")
+        cfg = keyed(AzureOpenAIConfig(), "sk-super-secret-key")
         assert "sk-super-secret-key" not in repr(cfg.api_key)
         assert "sk-super-secret-key" not in str(cfg.api_key)
 
     def test_azure_api_key_get_secret_value(self):
-        cfg = AzureOpenAIConfig(api_key="sk-super-secret-key")
+        cfg = keyed(AzureOpenAIConfig(), "sk-super-secret-key")
         assert cfg.api_key.get_secret_value() == "sk-super-secret-key"
 
 
@@ -72,7 +73,7 @@ class TestModelDumpHidesSecrets:
         assert "top-secret-token-999" not in dumped_str
 
     def test_azure_model_dump_hides_api_key(self):
-        cfg = AzureOpenAIConfig(api_key="sk-azure-key-hidden")
+        cfg = keyed(AzureOpenAIConfig(), "sk-azure-key-hidden")
         dumped = cfg.model_dump()
         dumped_str = str(dumped)
         assert "sk-azure-key-hidden" not in dumped_str

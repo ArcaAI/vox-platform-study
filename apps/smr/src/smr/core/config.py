@@ -64,7 +64,18 @@ class AzureOpenAIConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SMR_AZURE_")
 
-    api_key: SecretStr = SecretStr("")
+    # TASK-602: Azure OpenAI is BYOK-only. The api_key is NEVER sourced from env —
+    # the `validation_alias` is a dead name no env var (nor Vault-Agent secrets_dir
+    # file) matches, and `populate_by_name` is OFF, so `SMR_AZURE_API_KEY` cannot
+    # repopulate it either. The platform default and per-tenant keys both arrive as
+    # a request `ProviderOverride` (gateway tenant→SYSTEM cascade). A non-empty
+    # api_key here only occurs in tests (constructed via `model_copy`) — the
+    # provider builds its shared client lazily from it; empty ⇒ no client, and a
+    # keyless generate raises `ProviderCredentialsError` (503).
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="SMR_AZURE_API_KEY__ENV_REMOVED_TASK_602",
+    )
     endpoint: str = ""
     api_version: str = "2024-12-01-preview"
     deployment_name: str = ""
@@ -171,11 +182,14 @@ class OpenAIConfig(BaseSettings):
 
     The OpenAI wire is identical to ``OpenAICompatConfig``'s, but this is the
     governed first-class ``openai`` provider (a tenant BYO key arrives per
-    request as a ``ProviderOverride``). The env values below are the PLATFORM
-    fallback used when no tenant override is present (and the fail-open target
-    when an override client cannot be built). An empty ``api_key`` simply means
-    no platform fallback is configured — the provider is then usable only with a
-    tenant override.
+    request as a ``ProviderOverride``).
+
+    TASK-602: the api_key is BYOK-only — NEVER sourced from env (dead
+    `validation_alias`, `populate_by_name` OFF; ``SMR_OPENAI_API_KEY`` no longer
+    populates it). The platform default and per-tenant keys both arrive as a
+    request ``ProviderOverride``; a keyless generate raises
+    ``ProviderCredentialsError`` (503). A non-empty api_key occurs only in tests
+    (via ``model_copy``).
     """
 
     # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
@@ -183,7 +197,10 @@ class OpenAIConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SMR_OPENAI_")
 
-    api_key: SecretStr = SecretStr("")
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="SMR_OPENAI_API_KEY__ENV_REMOVED_TASK_602",
+    )
     base_url: str = "https://api.openai.com/v1"
     # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
     default_model: str = ""
@@ -198,10 +215,13 @@ class OpenAIConfig(BaseSettings):
 class AnthropicConfig(BaseSettings):
     """Anthropic (Claude Messages API) provider configuration — BYO/tenant-first.
 
-    ``base_url`` empty ⇒ the SDK default (``https://api.anthropic.com``). Same
-    fallback semantics as ``OpenAIConfig``: env is the platform fallback / the
-    fail-open target; a tenant BYO key arrives per request as a
-    ``ProviderOverride``.
+    ``base_url`` empty ⇒ the SDK default (``https://api.anthropic.com``).
+
+    TASK-602: same BYOK-only credential rule as ``OpenAIConfig`` — the api_key is
+    NEVER sourced from env (dead `validation_alias`, `populate_by_name` OFF;
+    ``SMR_ANTHROPIC_API_KEY`` no longer populates it). The credential arrives per
+    request as a ``ProviderOverride``; a keyless generate raises
+    ``ProviderCredentialsError`` (503).
     """
 
     # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
@@ -209,7 +229,10 @@ class AnthropicConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SMR_ANTHROPIC_")
 
-    api_key: SecretStr = SecretStr("")
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="SMR_ANTHROPIC_API_KEY__ENV_REMOVED_TASK_602",
+    )
     base_url: str = ""
     # TASK-579: no compiled-in vendor model — see AzureOpenAIConfig.default_model.
     default_model: str = ""

@@ -19,8 +19,12 @@
 // GLOBAL_ADMIN_ONLY_TASK_PREFIXES); self-host engines are SYSTEM-only.
 // `encryptedApiKey` is Vault-Transit ciphertext via secret-field.util —
 // NEVER returned by any read DTO (hasKey boolean only).
-// Resolution: tenant row (enabled) → SYSTEM row → service env fallback,
-// filtered by `service`.
+// Resolution: tenant row (enabled) → SYSTEM row → fail closed, filtered by
+// `service`. TASK-602 removed the former per-service ENV-key fallback for the
+// STT/TTS/SMR cloud credentials: the SYSTEM row IS the platform default, and a
+// request with no enabled tenant/SYSTEM row now fails closed (typically 503)
+// rather than substituting an env secret. (Bedrock/Vertex remain ambient-cloud-
+// credential providers; they carry no static API key here.)
 //
 // Data class 2 (per-tenant secret as Vault-Transit ciphertext in a DB column).
 // This model IS a SYSTEM-shared read model — the SYSTEM row is the catalog entry

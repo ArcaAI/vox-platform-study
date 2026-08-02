@@ -215,13 +215,16 @@ class TestAzureSpeechFullFlowMocked:
     boundary to avoid requiring real credentials.
     """
 
+    # TASK-602: Azure Speech is BYOK-only — the key arrives via the gateway
+    # provider override, never env. Only the (non-secret) region is env-set.
+    _BYOK_OVERRIDE = {"azure-speech": {"api_key": "e2e-test-key-12345"}}
+
     @pytest.fixture
     def mock_azure_env(self):
-        """Set up mock Azure credentials in environment."""
+        """Set up the mock Azure REGION in environment (the key is BYOK)."""
         with patch.dict(
             os.environ,
             {
-                "AZURE_SPEECH_KEY": "e2e-test-key-12345",
                 "AZURE_SPEECH_REGION": "eastus",
             },
         ):
@@ -264,7 +267,7 @@ class TestAzureSpeechFullFlowMocked:
             return_value=mock_speech_config,
         ):
             loader = AzureSpeechLoader()
-            loaded_model = await loader.load(model_config)
+            loaded_model = await loader.load(model_config, provider_overrides=self._BYOK_OVERRIDE)
 
         assert loaded_model.format == AiModelFormat.AZURE_SPEECH
         assert loaded_model.device == "cloud"
@@ -383,7 +386,7 @@ class TestAzureSpeechFullFlowMocked:
             return_value=mock_speech_config,
         ):
             loader = AzureSpeechLoader()
-            loaded_model = await loader.load(model_config)
+            loaded_model = await loader.load(model_config, provider_overrides=self._BYOK_OVERRIDE)
 
         # Run inference — verify "ml" is normalized to "ml-IN"
         service = BatchTranscriptionService()
@@ -518,8 +521,12 @@ class TestAzureSpeechRealTranscription:
             ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION
         )
         loader = AzureSpeechLoader()
+        # TASK-602: Azure Speech is BYOK-only — pass the real key (from the env the
+        # skipif gate requires) as a gateway-shaped provider override, not via
+        # settings.
+        real_override = {"azure-speech": {"api_key": os.environ["AZURE_SPEECH_KEY"]}}
         try:
-            loaded_model = await loader.load(model_config)
+            loaded_model = await loader.load(model_config, provider_overrides=real_override)
         except RuntimeError as exc:
             _skip_if_azure_platform_unsupported(exc)
             raise

@@ -245,10 +245,10 @@ class Settings(BaseSettings):
         return str(v).strip()
 
     # Azure Speech (cloud ASR engine)
-    azure_speech_key: SecretStr | None = Field(
-        default=None,
-        description="Azure Cognitive Services Speech subscription key",
-    )
+    # TASK-602: Azure Speech is BYOK-only. The subscription KEY is NOT an env var
+    # and NOT a settings field — it is resolved per request from the
+    # provider-connection plane (tenant / SYSTEM AiProviderConnection). Only the
+    # non-secret REGION remains here.
     azure_speech_region: str | None = Field(
         default=None,
         description="Azure Speech service region (e.g., eastus, westeurope)",
@@ -275,25 +275,20 @@ class Settings(BaseSettings):
         description="MAI transcription model name for enhancedMode",
     )
 
-    # Sarvam AI speech-to-text (engine SARVAM, TASK-567 cloud fallback).
-    # Platform-level env fallback; per-tenant BYOK overrides take precedence
-    # when injected. Env vars: SARVAM_API_KEY / SARVAM_BASE_URL.
-    sarvam_api_key: SecretStr | None = Field(
-        default=None,
-        description="Sarvam AI api-subscription-key (platform-level fallback)",
-    )
+    # Sarvam AI speech-to-text (engine SARVAM, TASK-567 cloud engine).
+    # TASK-602: Sarvam is BYOK-only. The api-subscription-KEY is NOT an env var and
+    # NOT a settings field — it is resolved per request from the provider-connection
+    # plane. Only the non-secret base URL remains here.
     sarvam_base_url: str = Field(
         default="https://api.sarvam.ai",
         description="Sarvam AI API base URL",
     )
 
-    # OpenAI speech-to-text (engine OPENAI, TASK-567 cloud fallback).
-    # base_url supports Azure-OpenAI-compatible endpoints. Env vars:
-    # OPENAI_API_KEY / OPENAI_BASE_URL.
-    openai_api_key: SecretStr | None = Field(
-        default=None,
-        description="OpenAI API key (platform-level fallback)",
-    )
+    # OpenAI speech-to-text (engine OPENAI, TASK-567 cloud engine).
+    # base_url supports Azure-OpenAI-compatible endpoints (env: OPENAI_BASE_URL).
+    # TASK-602: OpenAI ASR is BYOK-only. The api KEY is NOT an env var and NOT a
+    # settings field — it is resolved per request from the provider-connection
+    # plane. Only the non-secret base URL remains here.
     openai_base_url: str = Field(
         default="https://api.openai.com/v1",
         description="OpenAI (or Azure-OpenAI-compatible) API base URL",

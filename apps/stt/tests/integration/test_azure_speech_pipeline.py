@@ -26,7 +26,6 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from pydantic import SecretStr
 
 from stt.core.exceptions import (
     CloudASRAuthError,
@@ -75,12 +74,17 @@ def azure_model_config():
     )
 
 
+# TASK-602: Azure Speech is BYOK-only — the key comes from the gateway-injected
+# provider override, never env. Region still comes from settings.
+_BYOK_OVERRIDE = {"azure-speech": {"api_key": "integration-test-key-12345"}}
+
+
 @pytest.fixture
 def mock_azure_settings():
-    """Patch settings to return test Azure credentials."""
+    """Patch settings to supply only the (non-secret) region — the key is BYOK."""
     with patch("stt.models.azure_speech_loader.get_settings") as mock_settings:
         mock_settings.return_value = MagicMock(
-            azure_speech_key=SecretStr("integration-test-key-12345"),
+            azure_speech_key=None,
             azure_speech_region="westus2",
         )
         yield mock_settings
@@ -128,7 +132,7 @@ class TestModelCacheAzureLoaderIntegration:
 
         # Load through cache (drives real AzureSpeechLoader.load)
         loader = cache._get_loader(AiModelFormat.AZURE_SPEECH)
-        loaded_model = await loader.load(azure_model_config)
+        loaded_model = await loader.load(azure_model_config, provider_overrides=_BYOK_OVERRIDE)
 
         # Verify the loaded model is compatible with batch service expectations
         assert isinstance(loaded_model, LoadedModel)
@@ -152,7 +156,7 @@ class TestModelCacheAzureLoaderIntegration:
         cache = ModelCache(max_models=5, max_memory_mb=5000, ttl_seconds=3600)
 
         loader = cache._get_loader(AiModelFormat.AZURE_SPEECH)
-        loaded_model = await loader.load(azure_model_config)
+        loaded_model = await loader.load(azure_model_config, provider_overrides=_BYOK_OVERRIDE)
 
         # Put in cache
         await cache.put("azure-speech-integration", loaded_model)
@@ -179,7 +183,7 @@ class TestModelCacheAzureLoaderIntegration:
         cache = ModelCache(max_models=5, max_memory_mb=5000, ttl_seconds=3600)
 
         loader = cache._get_loader(AiModelFormat.AZURE_SPEECH)
-        loaded_model = await loader.load(azure_model_config)
+        loaded_model = await loader.load(azure_model_config, provider_overrides=_BYOK_OVERRIDE)
         await cache.put("azure-speech-integration", loaded_model)
 
         # Evict
@@ -212,7 +216,7 @@ class TestLoaderBatchServiceIntegration:
         """Test that _run_inference correctly routes AZURE_SPEECH to Azure inference."""
         _, mock_config = mock_speech_config_class
         loader = AzureSpeechLoader()
-        loaded_model = await loader.load(azure_model_config)
+        loaded_model = await loader.load(azure_model_config, provider_overrides=_BYOK_OVERRIDE)
         service = BatchTranscriptionService()
 
         samples = np.zeros(16000, dtype=np.float32)
@@ -250,7 +254,7 @@ class TestLoaderBatchServiceIntegration:
         """Test that language normalization works end-to-end from config to Azure."""
         _, mock_config = mock_speech_config_class
         loader = AzureSpeechLoader()
-        loaded_model = await loader.load(azure_model_config)
+        loaded_model = await loader.load(azure_model_config, provider_overrides=_BYOK_OVERRIDE)
         service = BatchTranscriptionService()
 
         samples = np.zeros(16000, dtype=np.float32)
@@ -328,7 +332,7 @@ class TestLoaderBatchServiceIntegration:
         """Test that errors in _azure_transcribe_sync propagate through to_thread."""
         _, mock_config = mock_speech_config_class
         loader = AzureSpeechLoader()
-        loaded_model = await loader.load(azure_model_config)
+        loaded_model = await loader.load(azure_model_config, provider_overrides=_BYOK_OVERRIDE)
         service = BatchTranscriptionService()
 
         samples = np.zeros(16000, dtype=np.float32)
@@ -372,7 +376,7 @@ class TestFullAzurePipelineFlow:
 
         # Step 1: Load model through cache's loader
         loader = cache._get_loader(AiModelFormat.AZURE_SPEECH)
-        loaded_model = await loader.load(azure_model_config)
+        loaded_model = await loader.load(azure_model_config, provider_overrides=_BYOK_OVERRIDE)
         await cache.put(azure_model_config.slug, loaded_model)
 
         # Step 2: Retrieve from cache (simulates real usage)

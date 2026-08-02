@@ -326,8 +326,8 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
           formatted_test_results: preRequest.formatted_test_results,
           formatted_previous_visits: preRequest.formatted_previous_visits,
           language: (preRequest.language ?? 'en').trim() || 'en',
-          temperature: preRequest.temperature ?? 0.2,
-          max_tokens: preRequest.max_tokens ?? 800,
+          temperature: preRequest.temperature ?? 0.1,
+          max_tokens: preRequest.max_tokens ?? 65536,
         };
         // Top-level doctor_id lets the gateway apply that doctor's DNA writing-style. Omitted when unset.
         if (preRequest.doctorId !== undefined) payload.doctor_id = preRequest.doctorId;

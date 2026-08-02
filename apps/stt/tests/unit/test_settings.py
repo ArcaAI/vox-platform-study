@@ -91,6 +91,27 @@ class TestSettings:
             assert settings.transcription_chunk_length_s == 15
             assert settings.transcription_stride_length_s == "4,2"
 
+    def test_byok_credentials_are_not_settings_fields(self):
+        """TASK-602: Sarvam / OpenAI / Azure-Speech subscription keys are BYOK-only
+        — they are NOT Settings fields at all (resolved per request from the
+        provider-connection plane). Their env vars are silently ignored (extra=ignore)
+        and the attributes do not exist on Settings. The non-secret region / base_url
+        fields remain."""
+        env_vars = {
+            "SARVAM_API_KEY": "leaked-sarvam",
+            "OPENAI_API_KEY": "leaked-openai",
+            "AZURE_SPEECH_KEY": "leaked-azure",
+        }
+        with patch.dict(os.environ, env_vars, clear=True):
+            settings = Settings(_env_file=None)
+
+            assert not hasattr(settings, "sarvam_api_key")
+            assert not hasattr(settings, "openai_api_key")
+            assert not hasattr(settings, "azure_speech_key")
+            # Non-secret operational fields are unaffected.
+            assert settings.sarvam_base_url == "https://api.sarvam.ai"
+            assert settings.openai_base_url == "https://api.openai.com/v1"
+
     def test_env_override(self):
         """Test environment variable overrides."""
         env_vars = {
@@ -215,38 +236,32 @@ class TestSettings:
             # Default should be valid
             assert settings.log_level in ["DEBUG", "INFO", "WARNING", "ERROR"]
 
-    def test_azure_speech_defaults(self):
-        """Test Azure Speech default configuration (None when not set)."""
+    def test_azure_speech_region_defaults(self):
+        """Test Azure Speech region default (None when not set).
+
+        TASK-602: the Azure Speech KEY is no longer a settings field (BYOK-only);
+        only the non-secret region remains.
+        """
         with patch.dict(os.environ, {}, clear=True):
             settings = Settings(_env_file=None)
 
-            assert settings.azure_speech_key is None
             assert settings.azure_speech_region is None
 
-    def test_azure_speech_env_override(self):
-        """Test Azure Speech environment variable overrides."""
+    def test_azure_speech_region_env_override(self):
+        """Test the non-secret Azure Speech region env override.
+
+        TASK-602: AZURE_SPEECH_KEY is intentionally ignored (BYOK-only, no field).
+        """
         env_vars = {
-            "AZURE_SPEECH_KEY": "test-azure-key-123",
+            "AZURE_SPEECH_KEY": "test-azure-key-123",  # ignored (no field)
             "AZURE_SPEECH_REGION": "eastus2",
         }
 
         with patch.dict(os.environ, env_vars, clear=True):
             settings = Settings()
 
-            assert settings.azure_speech_key.get_secret_value() == "test-azure-key-123"
             assert settings.azure_speech_region == "eastus2"
-
-    def test_azure_speech_key_only(self):
-        """Test setting only Azure Speech key without region."""
-        env_vars = {
-            "AZURE_SPEECH_KEY": "key-only",
-        }
-
-        with patch.dict(os.environ, env_vars, clear=True):
-            settings = Settings(_env_file=None)
-
-            assert settings.azure_speech_key.get_secret_value() == "key-only"
-            assert settings.azure_speech_region is None
+            assert not hasattr(settings, "azure_speech_key")
 
     def test_vad_defaults(self):
         """Test Silero VAD default configuration.
@@ -361,7 +376,7 @@ class TestSecretRedaction:
         "AZURE_STORAGE_CONNECTION_STRING": "leak-azure-conn",
         "API_GATEWAY_KEY": "leak-gateway",
         "HUGGINGFACE_TOKEN": "leak-hf",
-        "AZURE_SPEECH_KEY": "leak-speech",
+        # TASK-602: AZURE_SPEECH_KEY is no longer a settings field (BYOK-only).
         "AZURE_FOUNDRY_API_KEY": "leak-foundry",
     }
 
@@ -391,5 +406,4 @@ class TestSecretRedaction:
         assert settings.azure_storage_connection_string.get_secret_value() == "leak-azure-conn"
         assert settings.api_gateway_key.get_secret_value() == "leak-gateway"
         assert settings.huggingface_token.get_secret_value() == "leak-hf"
-        assert settings.azure_speech_key.get_secret_value() == "leak-speech"
         assert settings.azure_foundry_api_key.get_secret_value() == "leak-foundry"

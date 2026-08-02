@@ -30,8 +30,8 @@ import { ENHANCED_SUMMARY_SCHEMA, SIMPLIFIED_SUMMARY_SCHEMA } from './summary-sc
 // generation), so a retry is safe only when the request provably never left
 // the gateway — mirrors `SmrProxyController.CONNECT_PHASE_CODES`.
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
-const PRE_SUMMARY_DEFAULT_TEMPERATURE = 0.2;
-const PRE_SUMMARY_DEFAULT_MAX_TOKENS = 800;
+const PRE_SUMMARY_DEFAULT_TEMPERATURE = 0.0;
+const PRE_SUMMARY_DEFAULT_MAX_TOKENS = 32_768;
 
 // SSE keepalive cadence for the held-open compat streams — mirrors
 // `SmrProxyController.SSE_HEARTBEAT_INTERVAL_MS`.
@@ -107,6 +107,11 @@ interface SmrGenerateRequest {
   max_tokens?: number;
   response_format?: SmrResponseFormat;
   stream?: boolean;
+  // TASK-602 follow-up: per-request BYOK credential for a cloud provider, keyed
+  // by the request's provider name. SMR no longer reads cloud creds from env, so
+  // an azure/openai/anthropic selection (primary OR fallback) must carry its key
+  // here or SMR fails closed with ProviderCredentialsError (503).
+  provider_overrides?: Record<string, Record<string, unknown>>;
 }
 
 /** One decoded SMR SSE frame (`event: <type>` + JSON `data`). */
@@ -115,6 +120,15 @@ interface SmrStreamFrame {
   content?: string;
   data?: unknown;
 }
+
+/**
+ * Terminal state of a single `pumpTaskStream` run.
+ * - `completed`         — a `done` frame resolved a result to the client.
+ * - `error_pre_content` — the task stream failed BEFORE any `delta` reached the
+ *   client; `res` is left open so the caller may restart on a fallback provider.
+ * - `error_final`       — a terminal `error` was written to the client; `res` is ended.
+ */
+type PumpOutcome = 'completed' | 'error_pre_content' | 'error_final';
 
 // The subset of SMR `GenerateResponse` (apps/smr models/responses.py) this shim
 // reads. Provider internals are intentionally NOT surfaced to the client.
@@ -202,7 +216,20 @@ export class SmrCompatController {
         throw new Error('SMR /api/v1/translate returned an unexpected shape');
       }
       const translatedSegments = segments.map((s, i) => ({ ...s, text: String(translations[i]) }));
-      return { ...body, session_data: { ...body.session_data, conversation_segments: translatedSegments } };
+      return {
+        ...body,
+        session_data: {
+          ...body.session_data,
+          conversation_segments: translatedSegments,
+          // The transcript is now English, so the SUMMARY must be English too
+          // (TASK-600 AC: translate_to_english ⇒ English summary). Force the
+          // output-language directive to 'en'; otherwise `resolveLanguage` reads
+          // the source language ('ml'/'hi') from session_metadata and the prompt
+          // orders the model to write the summary back in the source language —
+          // producing a non-English summary from an English transcript.
+          session_metadata: { ...(body.session_data?.session_metadata ?? {}), language: 'en' },
+        },
+      };
     } catch (err) {
       this.logger.warn({
         message: 'Transcript translation failed; summarizing the original transcript (fail-open)',
@@ -397,6 +424,9 @@ export class SmrCompatController {
       // Skip a same-provider fallback (retrying the identical provider cannot help).
       if (fallback && fallback.provider !== baseRequest.provider) {
         const fallbackRequest: SmrGenerateRequest = { ...baseRequest, provider: fallback.provider, model: fallback.model };
+        // The fallback provider differs from the primary — re-resolve its BYOK
+        // credential (the spread copied the primary's, if any). TASK-602 follow-up.
+        await this.attachLlmByok(fallbackRequest, tenantId);
         try {
           const generated = await this.postGenerate(fallbackRequest, 'Summary generation (tenant fallback)');
           this.logger.warn({
@@ -449,7 +479,9 @@ export class SmrCompatController {
             fallbackProvider: fallback.provider,
             correlationId: this.clsService.getId(),
           });
-          return { ...primaryRequest, provider: fallback.provider, model: fallback.model };
+          const fallbackRequest: SmrGenerateRequest = { ...primaryRequest, provider: fallback.provider, model: fallback.model };
+          await this.attachLlmByok(fallbackRequest, tenantId); // TASK-602 follow-up: fallback provider's BYOK
+          return fallbackRequest;
         }
         return null;
       },
@@ -530,6 +562,7 @@ export class SmrCompatController {
       const fallback = await this.harnessPolicyService.resolveSmrFallbackSelection(tenantId, 'finalize');
       if (fallback && fallback.provider !== smrRequest.provider) {
         const fallbackRequest: SmrGenerateRequest = { ...smrRequest, provider: fallback.provider, model: fallback.model };
+        await this.attachLlmByok(fallbackRequest, tenantId); // TASK-602 follow-up: fallback provider's BYOK
         try {
           const generated = await this.postGenerate(fallbackRequest, 'Pre-summary generation (tenant fallback)');
           this.logger.warn({
@@ -576,7 +609,9 @@ export class SmrCompatController {
             fallbackProvider: fallback.provider,
             correlationId: this.clsService.getId(),
           });
-          return { ...primaryRequest, provider: fallback.provider, model: fallback.model };
+          const fallbackRequest: SmrGenerateRequest = { ...primaryRequest, provider: fallback.provider, model: fallback.model };
+          await this.attachLlmByok(fallbackRequest, tenantId); // TASK-602 follow-up: fallback provider's BYOK
+          return fallbackRequest;
         }
         return null;
       },
@@ -593,6 +628,29 @@ export class SmrCompatController {
     const selection = await this.harnessPolicyService.resolveSmrSelection(tenantId);
     request.provider = selection.provider;
     request.model = selection.model;
+    await this.attachLlmByok(request, tenantId);
+  }
+
+  /**
+   * TASK-602 follow-up: inject the tenant's LLM cloud BYOK credential for
+   * `request.provider`. Mirrors `SmrProxyController` — SMR no longer holds env
+   * credentials, so a cloud provider (azure/openai/anthropic) selected as
+   * PRIMARY or FALLBACK must receive its key/endpoint as a per-request
+   * `provider_overrides` entry, or SMR fails closed with ProviderCredentialsError
+   * (503). Local engines (lm-studio/ollama) resolve to no override and are
+   * unaffected. `azure-openai` de-aliases to the `azure` connection key
+   * (`resolveSmrSelection`/`resolveSmrFallbackSelection` map azure→azure-openai
+   * for SMR's registry; the connection plane is keyed by `azure`). The override
+   * is keyed by `request.provider` so SMR's adapter (`provider_overrides[provider]`)
+   * finds it. Fail-open: a resolver error leaves the request unchanged (SMR then
+   * decides — a cloud provider will 503, a local one proceeds).
+   */
+  private async attachLlmByok(request: SmrGenerateRequest, tenantId: string): Promise<void> {
+    if (!this.providerConnectionService || !request.provider) return;
+    const connKey = request.provider === 'azure-openai' ? 'azure' : request.provider;
+    const overrides = await this.providerConnectionService.resolveTenantCloudOverrides('llm', tenantId).catch(() => undefined);
+    const entry = overrides?.[connKey] as Record<string, unknown> | undefined;
+    if (entry) request.provider_overrides = { [request.provider]: entry };
   }
 
   /**
@@ -728,6 +786,7 @@ export class SmrCompatController {
     // once on the tenant fallback (summary only); an exhausted START → error.
     let taskId: string | undefined;
     let startedRequest = smrRequest;
+    let usedFallback = false;
     try {
       taskId = await this.postGenerateStream(smrRequest, label);
     } catch (primaryError) {
@@ -736,6 +795,7 @@ export class SmrCompatController {
         try {
           taskId = await this.postGenerateStream(fallbackRequest, `${label} (tenant fallback)`);
           startedRequest = fallbackRequest;
+          usedFallback = true;
         } catch {
           // fall through to the error emit below
         }
@@ -748,7 +808,39 @@ export class SmrCompatController {
       }
     }
 
-    await this.pumpTaskStream(res, taskId, label, (content) => buildResult(content, startedRequest), heartbeatTimer);
+    // PUMP phase. SMR accepts a streaming `/generate` with 202 BEFORE the provider
+    // runs, so a down PRIMARY (e.g. LM Studio) surfaces as an SMR `error` frame
+    // AFTER the 202 — the START-phase fallback above never sees it. When that
+    // error (or an empty stream) arrives with NOTHING yet streamed to the client,
+    // the stream is safely restartable: retry ONCE on the tenant fallback, at
+    // parity with the non-stream path. Retry is disabled once we are already on a
+    // fallback provider or none is configured.
+    const allowRetry = !!resolveStartFallback && !usedFallback;
+    let outcome = await this.pumpTaskStream(res, taskId, label, (content) => buildResult(content, startedRequest), heartbeatTimer, allowRetry);
+    if (outcome === 'error_pre_content') {
+      // The primary stream was ACCEPTED (202) but the provider failed before any
+      // content — e.g. LM Studio is down. `resolveStartFallback` (which logs the
+      // retry and re-attaches the fallback provider's BYOK) restarts the stream
+      // once on the tenant fallback; nothing has reached the client, so this is
+      // clean. A synthetic error drives its eligibility check down the
+      // parse/mapping branch (a provider-side failure, not an unreachable SMR).
+      const fallbackRequest = resolveStartFallback ? await resolveStartFallback(new Error(`${label} stream produced no content`), smrRequest) : null;
+      let retried = false;
+      if (fallbackRequest && fallbackRequest.provider !== smrRequest.provider) {
+        try {
+          const fallbackTaskId = await this.postGenerateStream(fallbackRequest, `${label} (tenant fallback)`);
+          startedRequest = fallbackRequest;
+          outcome = await this.pumpTaskStream(res, fallbackTaskId, label, (content) => buildResult(content, startedRequest), heartbeatTimer, false);
+          retried = true;
+        } catch {
+          // fall through to finalize the error below
+        }
+      }
+      if (!retried && !res.writableEnded) {
+        this.writeSse(res, 'error', { detail: `${label} failed: upstream error` });
+        this.endStream(res, heartbeatTimer);
+      }
+    }
   }
 
   /**
@@ -763,7 +855,8 @@ export class SmrCompatController {
     label: string,
     buildResult: (content: string) => object,
     heartbeatTimer: ReturnType<typeof setInterval>,
-  ): Promise<void> {
+    allowPreContentRetry: boolean,
+  ): Promise<PumpOutcome> {
     const base = this.getSmrBaseUrl();
 
     let upstream;
@@ -774,89 +867,117 @@ export class SmrCompatController {
         timeout: STREAM_READ_TIMEOUT_MS,
       });
     } catch (err) {
+      // Opening the task stream failed before any content reached the client.
+      if (allowPreContentRetry) return 'error_pre_content';
       this.logStreamFailure(label, err);
       this.writeSse(res, 'error', { detail: `${label} failed: upstream error` });
       this.endStream(res, heartbeatTimer);
-      return;
+      return 'error_final';
     }
 
     const stream = upstream.data as Readable;
-    let buffer = '';
-    let accumulated = '';
-    let finished = false;
+    return await new Promise<PumpOutcome>((resolve) => {
+      let buffer = '';
+      let accumulated = '';
+      let finished = false;
 
-    const finishError = (detail: string): void => {
-      if (finished) return;
-      finished = true;
-      this.writeSse(res, 'error', { detail });
-      stream.destroy();
-      this.endStream(res, heartbeatTimer);
-    };
+      const finalizeError = (detail: string): void => {
+        if (finished) return;
+        finished = true;
+        this.writeSse(res, 'error', { detail });
+        stream.destroy();
+        this.endStream(res, heartbeatTimer);
+        resolve('error_final');
+      };
 
-    stream.on('data', (chunk: Buffer) => {
-      if (finished) return;
-      buffer += chunk.toString('utf8').replace(/\r\n/g, '\n');
-      let idx: number;
-      while ((idx = buffer.indexOf('\n\n')) !== -1) {
-        const rawFrame = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        const frame = this.parseSmrFrame(rawFrame);
-        if (!frame) continue;
+      // Nothing has reached the client yet — tear down THIS upstream but leave
+      // `res` (and its heartbeat) open so the caller can restart on a fallback
+      // provider. No `error` event is written, so the client stream is intact.
+      const preContentRetry = (): void => {
+        if (finished) return;
+        finished = true;
+        stream.destroy();
+        resolve('error_pre_content');
+      };
 
-        if (frame.type === 'chunk') {
-          const text = typeof frame.content === 'string' ? frame.content : '';
-          if (text) {
-            accumulated += text;
-            this.writeSse(res, 'delta', { text });
-          }
-        } else if (frame.type === 'done') {
-          finished = true;
-          try {
-            this.writeSse(res, 'result', buildResult(accumulated));
-          } catch (err) {
-            // Mapping/parse failure — redacted: the reason may echo LLM content.
+      // A failure BEFORE any `delta` is safely restartable; once content has
+      // streamed, the only honest outcome is a terminal `error`.
+      const onFailure = (detail: string, err?: unknown): void => {
+        if (err !== undefined) this.logStreamFailure(label, err);
+        if (accumulated === '' && allowPreContentRetry) preContentRetry();
+        else finalizeError(detail);
+      };
+
+      stream.on('data', (chunk: Buffer) => {
+        if (finished) return;
+        buffer += chunk.toString('utf8').replace(/\r\n/g, '\n');
+        let idx: number;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const rawFrame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const frame = this.parseSmrFrame(rawFrame);
+          if (!frame) continue;
+
+          if (frame.type === 'chunk') {
+            const text = typeof frame.content === 'string' ? frame.content : '';
+            if (text) {
+              accumulated += text;
+              this.writeSse(res, 'delta', { text });
+            }
+          } else if (frame.type === 'done') {
+            finished = true;
+            try {
+              this.writeSse(res, 'result', buildResult(accumulated));
+            } catch (err) {
+              // Mapping/parse failure — redacted: the reason may echo LLM content.
+              this.logger.error({
+                message: `${label} failed to assemble streaming result`,
+                correlationId: this.clsService.getId(),
+                redacted: true,
+                reason: err instanceof Error ? err.name : undefined,
+              });
+              this.writeSse(res, 'error', { detail: `${label} failed` });
+            }
+            stream.destroy();
+            this.endStream(res, heartbeatTimer);
+            resolve('completed');
+            return;
+          } else if (frame.type === 'error') {
+            // SMR error frame — never forward its content (may carry PHI/prompt).
             this.logger.error({
-              message: `${label} failed to assemble streaming result`,
+              message: `SMR error frame during ${label} (content redacted)`,
               correlationId: this.clsService.getId(),
               redacted: true,
-              reason: err instanceof Error ? err.name : undefined,
             });
-            this.writeSse(res, 'error', { detail: `${label} failed` });
+            onFailure(`${label} failed: upstream error`);
+            return;
           }
-          stream.destroy();
-          this.endStream(res, heartbeatTimer);
-          return;
-        } else if (frame.type === 'error') {
-          // SMR error frame — never forward its content (may carry PHI/prompt).
-          this.logger.error({
-            message: `SMR error frame during ${label} (content redacted)`,
-            correlationId: this.clsService.getId(),
-            redacted: true,
-          });
-          finishError(`${label} failed: upstream error`);
-          return;
+          // reasoning / meta / usage frames are progress-only — ignored.
         }
-        // reasoning / meta / usage frames are progress-only — ignored.
-      }
-    });
+      });
 
-    // Upstream closed without a terminal `done` frame → treat as an error.
-    stream.on('end', () => {
-      if (finished) return;
-      finishError(`${label} failed: upstream error`);
-    });
+      // Upstream closed without a terminal `done` frame → treat as an error.
+      stream.on('end', () => {
+        if (finished) return;
+        onFailure(`${label} failed: upstream error`);
+      });
 
-    stream.on('error', (err: Error) => {
-      this.logStreamFailure(label, err);
-      finishError(`${label} failed: upstream error`);
-    });
+      stream.on('error', (err: Error) => {
+        if (finished) return;
+        onFailure(`${label} failed: upstream error`, err);
+      });
 
-    // Client disconnected — stop the heartbeat and tear down the upstream.
-    res.on('close', () => {
-      if (!res.writableEnded) {
-        clearInterval(heartbeatTimer);
-        stream.destroy();
-      }
+      // Client disconnected — stop the heartbeat and tear down the upstream.
+      res.on('close', () => {
+        if (!res.writableEnded) {
+          clearInterval(heartbeatTimer);
+          stream.destroy();
+        }
+        if (!finished) {
+          finished = true;
+          resolve('error_final');
+        }
+      });
     });
   }
 

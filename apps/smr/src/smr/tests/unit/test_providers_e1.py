@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from smr.models.requests import GenerateRequest, ResponseFormat
+from smr.tests.conftest import keyed
 
 # ── Ollama Provider ──
 
@@ -144,10 +145,12 @@ class TestAzurePayloadDefaults:
         from smr.core.config import AzureOpenAIConfig
         from smr.providers.azure_openai import AzureOpenAIProvider
 
-        config = AzureOpenAIConfig(
-            api_key="test-key",
-            endpoint="https://test.openai.azure.com",
-            deployment_name="gpt-4",
+        config = keyed(
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                deployment_name="gpt-4",
+            ),
+            "test-key",
         )
         provider = AzureOpenAIProvider(config)
         provider._client = AsyncMock()
@@ -193,10 +196,12 @@ class TestAzureResponseFormat:
         from smr.core.config import AzureOpenAIConfig
         from smr.providers.azure_openai import AzureOpenAIProvider
 
-        config = AzureOpenAIConfig(
-            api_key="test-key",
-            endpoint="https://test.openai.azure.com",
-            deployment_name="gpt-4",
+        config = keyed(
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                deployment_name="gpt-4",
+            ),
+            "test-key",
         )
         provider = AzureOpenAIProvider(config)
         provider._client = AsyncMock()
@@ -252,10 +257,12 @@ class TestAzureTokenUsage:
         from smr.core.config import AzureOpenAIConfig
         from smr.providers.azure_openai import AzureOpenAIProvider
 
-        config = AzureOpenAIConfig(
-            api_key="test-key",
-            endpoint="https://test.openai.azure.com",
-            deployment_name="gpt-4",
+        config = keyed(
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                deployment_name="gpt-4",
+            ),
+            "test-key",
         )
         provider = AzureOpenAIProvider(config)
         provider._client = AsyncMock()

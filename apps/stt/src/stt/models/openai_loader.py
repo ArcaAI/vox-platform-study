@@ -67,13 +67,11 @@ class OpenAILoader(BaseModelLoader):
             model_name = override.get("model") or model_name
             used_override = bool(api_key_str)
 
-        if not api_key_str and settings.openai_api_key:
-            api_key_str = settings.openai_api_key.get_secret_value()
-
         if not api_key_str:
             raise CloudASRAuthError(
-                "OpenAI credentials not configured. Set OPENAI_API_KEY, or "
-                "configure a tenant OpenAI BYOK credential.",
+                "OpenAI credentials not configured. OpenAI ASR is BYOK-only: configure "
+                "a tenant OpenAI credential, or the platform (SYSTEM-tenant) OpenAI "
+                "connection, in the provider-connection plane. There is no env fallback.",
                 details={"has_key": False, "provider": "openai"},
             )
 

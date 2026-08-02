@@ -344,6 +344,42 @@ describe('SmrCompatController', () => {
       expect(smrCall![1].prompt).toContain('EN:Chest tightness.');
     });
 
+    it('forces the summary OUTPUT language to English when the transcript is translated (AC: EN summary from a non-English transcript)', async () => {
+      const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ sarvam: { api_key: 'byok' } }) };
+      const httpLocal = createMockHttpService();
+      httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
+        if (String(url).includes('/api/v1/translate')) {
+          return Promise.resolve({ data: { translations: (reqBody.texts ?? []).map((t) => `EN:${t}`), provider: 'sarvam', chars: 0 } });
+        }
+        return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      });
+      const ctrl = new SmrCompatController(httpLocal as any, config as any, cls as any, policy as any, template as any, secrets as any, undefined, providerConnection as any);
+
+      // A Malayalam-language consultation WITH the translate flag ON: the
+      // transcript is translated to English, so the output-language directive
+      // must switch from 'ml' to 'en' (otherwise the model writes an English
+      // transcript back up as a Malayalam summary — the TASK-600 defect).
+      const mlBody = syncRequest({
+        translate_to_english: true,
+        session_data: {
+          session_id: 'sess-ml',
+          created_at: '2026-07-27T09:30:00Z',
+          conversation_segments: [
+            { speaker: 'provider', text: 'ചോദ്യം', timestamp: '2026-07-27T09:30:05Z' },
+            { speaker: 'patient', text: 'നെഞ്ചുവേദന', timestamp: '2026-07-27T09:30:12Z' },
+          ],
+          session_metadata: { language: 'ml' },
+        },
+      } as Partial<SyncSummaryRequest>);
+      const res = createMockRes();
+      await ctrl.summarySync(mlBody, {} as never, res as never);
+
+      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(smrCall![1].prompt).toContain('EN:ചോദ്യം'); // transcript translated
+      expect(smrCall![1].system_prompt).toContain('Write the summary in English.'); // output forced to English
+      expect(smrCall![1].system_prompt).not.toContain('Malayalam');
+    });
+
     it('falls back to the ORIGINAL transcript when translation fails (fail-open)', async () => {
       const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue(undefined) };
       const httpLocal = createMockHttpService();
@@ -656,9 +692,14 @@ describe('SmrCompatController', () => {
       http.axiosRef.post.mockResolvedValue({ data: { task_id: 't1', status: 'streaming' } });
       http.axiosRef.get.mockResolvedValue({ data: smrStream });
       const res = createMockRes();
-      await controller.summarySync(syncRequest({ stream: true }), {} as never, res as never);
+      // The handler now awaits the stream to completion (required so the
+      // pre-content fallback can observe the outcome), so the frames must be
+      // written WHILE it is pending — PassThrough buffers them until the pump
+      // attaches its reader.
+      const done = controller.summarySync(syncRequest({ stream: true }), {} as never, res as never);
       for (const f of frames) smrStream.write(f);
       smrStream.end();
+      await done;
       await flushStream();
       return res;
     };
@@ -691,10 +732,11 @@ describe('SmrCompatController', () => {
       http.axiosRef.get.mockResolvedValue({ data: smrStream });
       const res = createMockRes();
 
-      await controller.presummary({ current_department: 'Cardiology', stream: true } as PreSummaryRequest, {} as never, res as never);
+      const done = controller.presummary({ current_department: 'Cardiology', stream: true } as PreSummaryRequest, {} as never, res as never);
       smrStream.write(smrFrame('chunk', { content: '**Confirmed & Provisional Diagnoses**\n- Hypertension' }));
       smrStream.write(smrFrame('done'));
       smrStream.end();
+      await done;
       await flushStream();
 
       expect(sseEventData(res, 'delta')).toEqual({ text: '**Confirmed & Provisional Diagnoses**\n- Hypertension' });
@@ -713,10 +755,11 @@ describe('SmrCompatController', () => {
       http.axiosRef.get.mockResolvedValue({ data: smrStream });
       const res = createMockRes();
 
-      await controller.summarySync(syncRequest({ stream: true }), {} as never, res as never);
+      const done = controller.summarySync(syncRequest({ stream: true }), {} as never, res as never);
       smrStream.write(smrFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }));
       smrStream.write(smrFrame('done'));
       smrStream.end();
+      await done;
       await flushStream();
 
       expect(policy.resolveSmrFallbackSelection).toHaveBeenCalledWith('tenant-1', 'finalize');

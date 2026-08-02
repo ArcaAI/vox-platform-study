@@ -188,8 +188,8 @@ export interface SummarizationSnippetContext extends SnippetBaseContext {
 export function buildSummarizationSnippet(ctx: SummarizationSnippetContext): string {
   const provider = ctx.provider ?? 'ollama';
   const model = ctx.model ?? '<auto>';
-  const temperature = ctx.temperature ?? 0.4;
-  const maxTokens = ctx.maxTokens ?? 4096;
+  const temperature = ctx.temperature ?? 0.1;
+  const maxTokens = ctx.maxTokens ?? 65536;
   const contextItemIds = ctx.contextItemIds && ctx.contextItemIds.length > 0 ? `[${ctx.contextItemIds.map((id) => `'${id}'`).join(', ')}]` : '[]';
   return [
     contextHeader(ctx),

@@ -36,6 +36,7 @@ import pytest
 from smr.models.requests import GenerateRequest, ResponseFormat
 from smr.models.stats import GenerationStats
 from smr.models.stream import StreamChunk
+from smr.tests.conftest import keyed
 
 # Canonical fixture values every provider fake reports — a "length"-class finish
 # (proves the real stop reason is surfaced, not the frozen "stop") + exact counts.
@@ -125,11 +126,13 @@ def _make_azure() -> Any:
     from smr.providers.azure_openai import AzureOpenAIProvider
 
     provider = AzureOpenAIProvider(
-        AzureOpenAIConfig(
-            api_key="k",
-            endpoint="https://test.openai.azure.com",
-            default_model="m",
-            deployment_name="",  # no-default-substitution contract under test; deployment override is separate
+        keyed(
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                default_model="m",
+                deployment_name="",  # no-default-substitution contract under test; deployment override is separate
+            ),
+            "k",
         )
     )
     provider._client = AsyncMock()

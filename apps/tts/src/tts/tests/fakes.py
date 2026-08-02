@@ -23,6 +23,7 @@ class FakeEngine:
         native_streaming: bool = True,
         chunks: int = 2,
         healthy: bool = True,
+        configured: bool = True,
         fail_before_emit: bool = False,
         fail_after_chunks: int | None = None,
         payload: bytes = b"AUDIO",
@@ -30,6 +31,7 @@ class FakeEngine:
         self.name = name
         self.supported_locales = locales or {"en-IN", "ml-IN"}
         self.native_streaming = native_streaming
+        self.is_configured = configured  # TASK-602
         self._chunks = chunks
         self._healthy = healthy
         self._fail_before_emit = fail_before_emit

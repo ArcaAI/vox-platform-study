@@ -279,8 +279,8 @@ export function SseTranscriptSummaryDemo() {
         system_prompt: 'You are a medical documentation assistant. Generate a concise clinical summary.',
         provider,
         stream: true,
-        temperature: 0.4,
-        max_tokens: 2048,
+        temperature: 0.1,
+        max_tokens: 65536,
       };
 
       try {

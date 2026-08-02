@@ -28,6 +28,7 @@ import pytest
 
 from smr.core.exceptions import ModelNotSelectedError
 from smr.models.requests import GenerateRequest
+from smr.tests.conftest import keyed
 
 # ---------------------------------------------------------------------------
 # Provider factories — one per cloud provider (mirrors test_no_model_default_d7.py)
@@ -42,7 +43,10 @@ def _azure():
     # (Azure routes by deployment name when one is configured — a separate,
     # unaffected contract covered by TestAzureDeploymentName).
     return AzureOpenAIProvider(
-        AzureOpenAIConfig(api_key="k", endpoint="https://test.openai.azure.com", deployment_name="")
+        keyed(
+            AzureOpenAIConfig(endpoint="https://test.openai.azure.com", deployment_name=""),
+            "k",
+        )
     )
 
 
@@ -58,14 +62,14 @@ def _openai():
     from smr.core.config import OpenAIConfig
     from smr.providers.openai import OpenAIProvider
 
-    return OpenAIProvider(OpenAIConfig(api_key="k"))
+    return OpenAIProvider(keyed(OpenAIConfig(), "k"))
 
 
 def _anthropic():
     from smr.core.config import AnthropicConfig
     from smr.providers.anthropic import AnthropicProvider
 
-    return AnthropicProvider(AnthropicConfig(api_key="k"))
+    return AnthropicProvider(keyed(AnthropicConfig(), "k"))
 
 
 def _vertex():

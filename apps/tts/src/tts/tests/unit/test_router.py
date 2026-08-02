@@ -155,6 +155,41 @@ class TestRouting:
         assert azure.closed >= 1
 
 
+class TestUnconfiguredProviderExclusion:
+    """TASK-602: a registered cloud provider with no platform credential
+    (is_configured=False) is excluded from candidates — it would 401 the live API.
+    It counts as available only via a per-tenant override."""
+
+    @pytest.mark.asyncio
+    async def test_unconfigured_provider_excluded_falls_through(self) -> None:
+        azure = FakeEngine("azure", configured=False)
+        kokoro = FakeEngine("kokoro")
+        router = _router({"azure": azure, "kokoro": kokoro})
+        await _collect(router, voice_id="en-female-1", text="Hi.")
+        assert azure.calls == 0
+        assert kokoro.calls == 1
+
+    @pytest.mark.asyncio
+    async def test_only_unconfigured_provider_fails_closed(self) -> None:
+        azure = FakeEngine("azure", configured=False)
+        router = _router({"azure": azure})
+        with pytest.raises(AllProvidersUnavailableError):
+            await _collect(router, voice_id="en-female-1", text="Hi.", routing_en=["azure"])
+
+    def test_unconfigured_registered_provider_available_via_override(self) -> None:
+        reg = ProviderRegistry()
+        reg.register("azure", FakeEngine("azure", configured=False))
+        router = TTSRouter(reg, VoiceCatalog(), Settings())
+        voice = VoiceCatalog().get("en-female-1")
+        # Without an override the keyless registered engine is excluded…
+        assert "azure" not in router.candidates(voice, routing_en=["azure"])
+        # …but a tenant that brings its own key makes it available (a keyed
+        # override engine is built downstream in _engine_for).
+        assert "azure" in router.candidates(
+            voice, routing_en=["azure"], override_providers={"azure"}
+        )
+
+
 class TestFailClosedRouting:
     """The router carries NO code/env vendor default (TASK-577 / F1): when the
     gateway injects no routing chain, it FAILS CLOSED instead of substituting a

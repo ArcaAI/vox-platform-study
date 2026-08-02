@@ -41,8 +41,10 @@
 //                             anywhere" — that was wrong; corrected at the wave-3 merge.)
 //   - `AZURE_OPENAI_API_KEY`— read ONLY by `apps/smr/src/smr/tests/e2e/conftest.py`
 //                             (a test fixture parsing a dotenv file directly). No
-//                             runtime reader; SMR's real Azure credential is
-//                             `SMR_AZURE_API_KEY`, registered below.
+//                             runtime reader. TASK-602: SMR's Azure credential
+//                             (`SMR_AZURE_API_KEY`) is no longer a platform-secret
+//                             either — it is BYOK-only (`db-secret`, resolved from
+//                             `AiProviderConnection`), so nothing is registered here.
 //   - `STT_SERVICE_TOKEN`   — does not exist. STT authenticates to the gateway
 //                             with `X-Internal-Service-Key` + `API_GATEWAY_KEY`
 //                             (`InternalServiceTokenGuard.SERVICE_SECRETS.stt`),
@@ -199,37 +201,17 @@ export const PLATFORM_SECRET_SETTINGS: SettingDescriptor[] = [
   ),
 
   // ── AI provider credentials (platform-owned; BYO tenant keys are db-secret) ─
-  platformSecret(
-    'azure.speechKey',
-    'Azure Speech key',
-    'Azure Cognitive Services Speech credential. Shared by STT (`azure_speech_loader`) and TTS, which accepts it as the fallback alias for `TTS_AZURE_API_KEY`.',
-    'AI Providers',
-  ),
+  // TASK-602: the STT/TTS/SMR cloud credentials (`AZURE_SPEECH_KEY`,
+  // `TTS_SARVAM_API_KEY`, `SMR_AZURE_API_KEY`, `SMR_OPENAI_API_KEY`,
+  // `SMR_ANTHROPIC_API_KEY`) are NO LONGER platform-secrets. They moved fully to
+  // the `db-secret` tier: a platform default is a SYSTEM-tenant row in
+  // `AiProviderConnection` (Vault-Transit ciphertext), resolved by the gateway and
+  // injected per request. The Python services no longer read any env fallback for
+  // them, so registering them here (which would seed a `vault-kv` secret and add
+  // them to `turbo#globalEnv`) is wrong — they are removed. Bedrock/Vertex use
+  // ambient cloud credentials (no static key). `azure.foundryApiKey` stays: it is a
+  // disabled-by-default preview engine, out of TASK-602 scope.
   platformSecret('azure.foundryApiKey', 'Azure AI Foundry key', 'Azure AI Foundry credential used by the STT Foundry model loader.', 'AI Providers'),
-  platformSecret(
-    'smrAzure.apiKey',
-    'SMR Azure OpenAI key',
-    "SMR's Azure OpenAI credential (`SMR_AZURE_` pydantic prefix, typed `SecretStr`).",
-    'AI Providers',
-  ),
-  platformSecret(
-    'smrOpenai.apiKey',
-    'SMR OpenAI key',
-    "SMR's PLATFORM-level OpenAI credential (`SMR_OPENAI_` pydantic prefix, typed `SecretStr`) — the fallback when a tenant has no enabled `(llm, openai)` BYO connection. A TENANT-supplied OpenAI key is a different data class (`db-secret`, Vault-Transit ciphertext in `AiProviderConnection`).",
-    'AI Providers',
-  ),
-  platformSecret(
-    'smrAnthropic.apiKey',
-    'SMR Anthropic key',
-    "SMR's PLATFORM-level Anthropic credential (`SMR_ANTHROPIC_` pydantic prefix, typed `SecretStr`) — the fallback when a tenant has no enabled `(llm, anthropic)` BYO connection.",
-    'AI Providers',
-  ),
-  platformSecret(
-    'ttsSarvam.apiKey',
-    'Sarvam TTS key (platform)',
-    'PLATFORM-level Sarvam credential (`TTS_SARVAM_` prefix). A TENANT-supplied Sarvam key is a different data class entirely — `tts.credential.sarvam`, tier `db-secret` — and must never be stored here.',
-    'AI Providers',
-  ),
   platformSecret(
     'guardrailVllm.apiKey',
     'Guardrail vLLM key',

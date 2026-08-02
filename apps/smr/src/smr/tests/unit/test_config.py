@@ -19,6 +19,7 @@ from smr.core.config import (
     VertexConfig,
     get_settings,
 )
+from smr.tests.conftest import keyed
 
 
 def _clear_smr_env(monkeypatch):
@@ -69,18 +70,20 @@ class TestAzureOpenAIConfig:
         assert cfg.adaptive_limits is True
 
     def test_override(self):
-        cfg = AzureOpenAIConfig(
-            api_key="sk-test", endpoint="https://my.openai.azure.com", deployment_name="gpt-4o"
+        cfg = keyed(
+            AzureOpenAIConfig(endpoint="https://my.openai.azure.com", deployment_name="gpt-4o"),
+            "sk-test",
         )
         assert cfg.api_key.get_secret_value() == "sk-test"
         assert cfg.deployment_name == "gpt-4o"
 
-    def test_env_prefix(self, monkeypatch):
+    def test_api_key_not_read_from_env(self, monkeypatch):
+        # TASK-602: api_key is BYOK-only — SMR_AZURE_API_KEY no longer populates it.
         monkeypatch.setenv("SMR_AZURE_API_KEY", "env-key")
         monkeypatch.setenv("SMR_AZURE_RPM_LIMIT", "1000")
         cfg = AzureOpenAIConfig()
-        assert cfg.api_key.get_secret_value() == "env-key"
-        assert cfg.rpm_limit == 1000
+        assert cfg.api_key.get_secret_value() == ""  # env ignored
+        assert cfg.rpm_limit == 1000  # non-secret still env-sourced
 
 
 class TestBedrockConfig:

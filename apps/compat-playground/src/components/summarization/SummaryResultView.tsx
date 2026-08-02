@@ -39,15 +39,21 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function EnhancedView({ s }: { s: EnhancedMedicalSummary }) {
-  const meds = s.treatment_plan.medications ?? [];
+  // Defensive: the model's structured output may omit nested objects entirely
+  // for non-diagnostic encounters (e.g. a lifestyle/education consult has no
+  // `primary_diagnosis`). Optional-chain every nested read so a missing section
+  // renders '—' instead of throwing and blanking the whole page (there is no
+  // error boundary above this).
+  const meds = s.treatment_plan?.medications ?? [];
+  const primary = s.clinical_assessment?.primary_diagnosis;
   return (
     <div className="flex flex-col gap-3">
-      <Section title="Chief complaint">{s.encounter_summary.chief_complaint || '—'}</Section>
+      <Section title="Chief complaint">{s.encounter_summary?.chief_complaint || '—'}</Section>
       <Section title="Primary diagnosis">
-        {s.clinical_assessment.primary_diagnosis.diagnosis || '—'}
-        {s.clinical_assessment.primary_diagnosis.icd10_code ? (
+        {primary?.diagnosis || '—'}
+        {primary?.icd10_code ? (
           <Badge variant="outline" className="ml-2">
-            {s.clinical_assessment.primary_diagnosis.icd10_code}
+            {primary.icd10_code}
           </Badge>
         ) : null}
       </Section>
@@ -64,7 +70,7 @@ function EnhancedView({ s }: { s: EnhancedMedicalSummary }) {
           </ul>
         </Section>
       ) : null}
-      <Section title="Clinical summary">{s.clinical_summary.summary || '—'}</Section>
+      <Section title="Clinical summary">{s.clinical_summary?.summary || '—'}</Section>
     </div>
   );
 }

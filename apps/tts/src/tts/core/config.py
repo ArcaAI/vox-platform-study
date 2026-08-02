@@ -1,9 +1,12 @@
 """TTS configuration using pydantic-settings.
 
 Root settings use the ``TTS_`` env prefix; each provider sub-config carries
-its own prefix (``TTS_AZURE_``, ``TTS_KOKORO_``, ``TTS_PARLER_``). The Azure
-credential falls back to the shared ``AZURE_SPEECH_KEY`` / ``AZURE_SPEECH_REGION``
-already used by stt for ASR (same Azure Speech resource serves TTS).
+its own prefix (``TTS_AZURE_``, ``TTS_KOKORO_``, ``TTS_PARLER_``).
+
+TASK-602: cloud credentials (Azure Speech, Sarvam) are BYOK-only — the
+subscription KEY is never sourced from env; it arrives per request as a
+provider override (tenant → SYSTEM ``AiProviderConnection``). Only the non-secret
+Azure ``REGION`` remains env-set (``TTS_AZURE_REGION`` / ``AZURE_SPEECH_REGION``).
 """
 
 from __future__ import annotations
@@ -28,15 +31,18 @@ class AzureSpeechConfig(BaseSettings):
     # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
-    # populate_by_name lets tests construct the config directly by field name
-    # (api_key=...) even though api_key/region carry env validation aliases.
-    model_config = SettingsConfigDict(env_prefix="TTS_AZURE_", populate_by_name=True)
+    model_config = SettingsConfigDict(env_prefix="TTS_AZURE_")
 
     enabled: bool = False
-    # Falls back to the shared Azure Speech credential already provisioned for stt.
+    # TASK-602: Azure Speech is BYOK-only. The subscription KEY is never sourced
+    # from env — the `validation_alias` is a dead name no env var matches, and
+    # `populate_by_name` is intentionally OFF so the field name cannot re-open an
+    # env path either. The platform default and per-tenant keys both arrive as a
+    # request `provider_override`, which the router applies via `model_copy`
+    # (bypassing validation). The non-secret REGION stays env-set.
     api_key: SecretStr = Field(
         default=SecretStr(""),
-        validation_alias=AliasChoices("TTS_AZURE_API_KEY", "AZURE_SPEECH_KEY"),
+        validation_alias="TTS_AZURE_API_KEY__ENV_REMOVED_TASK_602",
     )
     region: str = Field(
         default="eastus",
@@ -117,10 +123,17 @@ class SarvamConfig(BaseSettings):
     # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
     settings_customise_sources = hope_settings_sources
 
-    model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_", populate_by_name=True)
+    model_config = SettingsConfigDict(env_prefix="TTS_SARVAM_")
 
     enabled: bool = False
-    api_key: SecretStr = SecretStr("")
+    # TASK-602: Sarvam is BYOK-only. The api-subscription-KEY is never sourced from
+    # env — the `validation_alias` is a dead name and `populate_by_name` is OFF, so
+    # neither `TTS_SARVAM_API_KEY` nor the field name populates it. The key arrives
+    # as a request `provider_override`, applied by the router via `model_copy`.
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="TTS_SARVAM_API_KEY__ENV_REMOVED_TASK_602",
+    )
     base_url: str = "https://api.sarvam.ai"
     model: str = "bulbul:v3"
     voice_ml: str = "ishita"

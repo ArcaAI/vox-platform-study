@@ -18,6 +18,7 @@ from openai import APIConnectionError, APIError, APITimeoutError, AsyncOpenAI
 
 from smr.core.config import OpenAIConfig
 from smr.core.defaults import resolve_request_defaults
+from smr.core.exceptions import ProviderCredentialsError
 from smr.core.telemetry import get_tracer
 from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
@@ -43,13 +44,20 @@ class OpenAIProvider:
     def __init__(self, config: OpenAIConfig) -> None:
         self._config = config
         self._default_model = config.default_model
-        # The shared, env-configured PLATFORM fallback client. Rebuilt per
-        # request only when a tenant override is present (never mutated).
-        self._client = AsyncOpenAI(
-            api_key=config.api_key.get_secret_value(),
-            base_url=config.base_url,
-            organization=config.organization,
-            timeout=float(config.timeout_s),
+        # TASK-602: BYOK — the shared platform client is built ONLY when an
+        # explicit api_key is present (never from env; see OpenAIConfig). In
+        # production api_key is empty ⇒ None, and the credential must arrive per
+        # request as a ProviderOverride. Never hand an empty key to the SDK.
+        key = config.api_key.get_secret_value()
+        self._client: AsyncOpenAI | None = (
+            AsyncOpenAI(
+                api_key=key,
+                base_url=config.base_url,
+                organization=config.organization,
+                timeout=float(config.timeout_s),
+            )
+            if key
+            else None
         )
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
@@ -61,18 +69,34 @@ class OpenAIProvider:
             return None
         return request.provider_overrides.get(request.provider)
 
+    def _shared_or_raise(self) -> AsyncOpenAI:
+        """The shared platform client, or ``ProviderCredentialsError`` (503) when
+        none was configured. TASK-602: BYOK, fail-closed — there is no env
+        fallback, so a request with no usable override and no platform client
+        must fail cleanly rather than 401 an empty-keyed client."""
+        if self._client is None:
+            raise ProviderCredentialsError(
+                "OpenAI credentials not configured. OpenAI is BYOK-only: configure "
+                "a tenant OpenAI credential, or the platform (SYSTEM-tenant) "
+                "connection, in the provider-connection plane. There is no env "
+                "fallback.",
+                provider=_PROVIDER_NAME,
+            )
+        return self._client
+
     def _client_for(self, request: GenerateRequest) -> AsyncOpenAI:
         """Override-wins client resolution. A tenant credential builds a
-        request-scoped client (the shared/env-configured ``self._client`` is
-        never mutated) so concurrent requests for different tenants can never
-        interfere; absent an override, the shared client is reused unchanged.
+        request-scoped client (the shared client is never mutated) so concurrent
+        requests for different tenants can never interfere; absent an override,
+        the shared platform client is used (or 503 if none — see
+        ``_shared_or_raise``).
 
-        Fail-OPEN: if the override client cannot be built (malformed
-        credential, bad base_url, ...), degrade to the shared env client rather
-        than failing the request. The key is NEVER logged."""
+        Fail-OPEN on a MALFORMED override: if the override client cannot be built,
+        degrade to the shared platform client rather than failing the request —
+        which itself 503s if no platform client exists. The key is NEVER logged."""
         override = self._resolve_override(request)
         if override is None:
-            return self._client
+            return self._shared_or_raise()
         try:
             return AsyncOpenAI(
                 api_key=override.api_key.get_secret_value(),
@@ -86,7 +110,7 @@ class OpenAIProvider:
                 provider=_PROVIDER_NAME,
                 error=type(exc).__name__,
             )
-            return self._client
+            return self._shared_or_raise()
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         # override-wins: a tenant override MAY pin the model; otherwise the
@@ -248,6 +272,10 @@ class OpenAIProvider:
             yield StreamChunk(type="done", data={"finish_reason": finish_reason or "stop"})
 
     async def health_check(self) -> bool:
+        # TASK-602: no platform key ⇒ no shared client to probe (still BYOK-usable
+        # per request via an override).
+        if self._client is None:
+            return False
         try:
             await self._client.models.list()
             return True
@@ -268,6 +296,17 @@ class OpenAIProvider:
             else []
         )
         status = "available"
+        # TASK-602: no platform key ⇒ unavailable at the platform level (still
+        # BYOK-usable per request).
+        if self._client is None:
+            return ProviderInfo(
+                name=_PROVIDER_NAME,
+                display_name="OpenAI",
+                status="unavailable",
+                default_model=self._default_model,
+                models=models,
+                supports_streaming=True,
+            )
         try:
             model_list = await self._client.models.list()
             models = [ModelInfo(name=m.id, supports_streaming=True) for m in model_list.data]

@@ -108,8 +108,8 @@ export function useGeneratePreSummary() {
           system_prompt: systemPrompt,
           provider: provider || 'ollama',
           model: model || undefined,
-          temperature: temperature ?? 0.3,
-          max_tokens: maxTokens ?? 2048,
+          temperature: temperature ?? 0.1,
+          max_tokens: maxTokens ?? 65536,
           stream: false,
         } satisfies SmrGenerateRequest,
         { timeout: 120_000 },
@@ -178,8 +178,8 @@ export function useGenerateSummary() {
           system_prompt: systemPrompt,
           provider: provider || 'ollama',
           model: model || undefined,
-          temperature: temperature ?? 0.4,
-          max_tokens: maxTokens ?? 4096,
+          temperature: temperature ?? 0.1,
+          max_tokens: maxTokens ?? 65536,
           stream: false,
         } satisfies SmrGenerateRequest,
         { timeout: 120_000 },
@@ -239,8 +239,8 @@ export function useStreamPreSummary() {
         system_prompt: systemPrompt,
         provider: provider || 'ollama',
         model: model || undefined,
-        temperature: temperature ?? 0.3,
-        max_tokens: maxTokens ?? 2048,
+        temperature: temperature ?? 0.1,
+        max_tokens: maxTokens ?? 65536,
         stream: true,
       } satisfies SmrGenerateRequest);
 
@@ -328,8 +328,8 @@ export function useStreamSummary() {
         system_prompt: systemPrompt,
         provider: provider || 'ollama',
         model: model || undefined,
-        temperature: temperature ?? 0.4,
-        max_tokens: maxTokens ?? 4096,
+        temperature: temperature ?? 0.1,
+        max_tokens: maxTokens ?? 65536,
         stream: true,
       } satisfies SmrGenerateRequest);
 

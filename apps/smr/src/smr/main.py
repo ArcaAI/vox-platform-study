@@ -70,30 +70,31 @@ def _register_provider_factories(
 
         _register(("ollama",), lambda: OllamaProvider(settings.ollama, http_client))
 
-    # Azure needs a real endpoint + api_key (no default) to be a usable connection.
-    if settings.azure.endpoint and settings.azure.api_key.get_secret_value():
-        from smr.providers.azure_openai import AzureOpenAIProvider
-
-        _register(
-            ("azure-openai", "azure"),
-            _shared(lambda: AzureOpenAIProvider(settings.azure)),
-        )
-
     if settings.bedrock.region:
         from smr.providers.bedrock import BedrockProvider
 
         _register(("bedrock",), lambda: BedrockProvider(settings.bedrock))
 
-    # Cloud BYO providers (openai / anthropic / vertex) — governed by the
-    # unified provider plane (C5). Unlike azure/bedrock these are BYO-FIRST:
-    # the tenant credential arrives per request as a ``provider_overrides`` entry
-    # injected by the gateway, so they must be AVAILABLE even when no platform
-    # env credential is configured. They are therefore registered unconditionally
-    # (the env config is only the platform fallback / fail-open target).
+    # Cloud BYO providers (azure / openai / anthropic / vertex) — governed by the
+    # unified provider plane (C5). These are BYO-FIRST: the tenant credential
+    # (AND, for Azure, the endpoint) arrives per request as a ``provider_overrides``
+    # entry injected by the gateway, so they must be AVAILABLE even when no platform
+    # env credential/endpoint is configured. They are therefore registered
+    # UNCONDITIONALLY (env config is only the platform fallback / fail-open target).
+    #
+    # TASK-602: Azure was previously gated on ``settings.azure.endpoint`` — but a
+    # pure-BYOK tenant has NO platform endpoint (it lives in the tenant's
+    # AiProviderConnection row and rides the per-request override), so the gate
+    # made SMR answer 404 for a valid BYOK override — the exact failure openai/
+    # anthropic/vertex already avoid by registering unconditionally. A keyless/
+    # endpoint-less call with no override fails closed with
+    # ProviderCredentialsError (503), never a 404.
     from smr.providers.anthropic import AnthropicProvider
+    from smr.providers.azure_openai import AzureOpenAIProvider
     from smr.providers.openai import OpenAIProvider
     from smr.providers.vertex import VertexProvider
 
+    _register(("azure-openai", "azure"), _shared(lambda: AzureOpenAIProvider(settings.azure)))
     _register(("openai",), _shared(lambda: OpenAIProvider(settings.openai)))
     _register(("anthropic",), _shared(lambda: AnthropicProvider(settings.anthropic)))
     _register(("vertex",), _shared(lambda: VertexProvider(settings.vertex)))

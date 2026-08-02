@@ -6,6 +6,7 @@ import base64
 import os
 
 import pytest
+from pydantic import SecretStr
 
 from tts.catalog.voices import VoiceCatalog
 from tts.core.config import SarvamConfig, Settings
@@ -38,9 +39,11 @@ class _FakeClient:
 
 
 def _cfg(**kw) -> SarvamConfig:
-    base = {"api_key": "sarvam-key", "enabled": True}
-    base.update(kw)
-    return SarvamConfig(**base)
+    # TASK-602: api_key is no longer env/name-populatable (BYOK-only); construct
+    # via model_copy exactly as the router applies a per-tenant override.
+    api_key = kw.pop("api_key", "sarvam-key")
+    cfg = SarvamConfig(enabled=True, **kw)
+    return cfg.model_copy(update={"api_key": SecretStr(api_key)})
 
 
 def _req(**kw) -> SynthesisRequest:

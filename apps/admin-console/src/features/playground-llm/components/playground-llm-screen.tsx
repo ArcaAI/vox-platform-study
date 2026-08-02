@@ -36,8 +36,8 @@ import { ProvidersCard } from './providers-card';
 const INITIAL_FORM: LlmFormState = {
   prompt: '',
   systemPrompt: '',
-  temperature: 0.2,
-  maxTokens: '1024',
+  temperature: 0.1,
+  maxTokens: '65536',
   streaming: true,
   assembled: false,
   assembledType: 'pre-summary',
