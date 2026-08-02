@@ -1,4 +1,13 @@
-import { Authorize, HarnessPolicyService, IActiveUserContext, IConfigService, IDnaWritingStyleService, SecretsService } from '@arcaai/applications';
+import {
+  Authorize,
+  HarnessPolicyService,
+  IActiveUserContext,
+  IConfigService,
+  IDnaWritingStyleService,
+  IProviderConnectionService,
+  SecretsService,
+} from '@arcaai/applications';
+import { SYSTEM_TENANT_ID } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -148,7 +157,80 @@ export class SmrCompatController {
     // (gate-checked). @Optional so the shim degrades to department+visit-type
     // steering if the DNA module is ever absent — DNA is additive, never required.
     @Optional() @Inject(IDnaWritingStyleService) private readonly dnaWritingStyleService?: IDnaWritingStyleService,
+    // TASK-600: resolves per-tenant Sarvam BYOK from the unified provider plane
+    // for the pre-summarization transcript translation (now served by SMR).
+    // @Optional so the shim degrades gracefully (platform key) when absent.
+    @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
   ) {}
+
+  /**
+   * TASK-600 — when `translate_to_english` is set, return a copy of `body` whose
+   * transcript segments are translated to English via SMR's `/api/v1/translate`
+   * (the Sarvam translate capability). Per-tenant Sarvam BYOK is resolved from the
+   * unified provider plane (`resolveTenantCloudOverrides('stt','sarvam')` — one
+   * Sarvam subscription key serves every capability), and forwarded to SMR as a
+   * `provider_overrides` entry; absent ⇒ SMR uses its platform `SMR_SARVAM_API_KEY`.
+   * FAIL-OPEN: any error (SMR down, Sarvam failure, unexpected shape) logs a
+   * warning and returns the ORIGINAL body so the summary is still produced. Flag
+   * off/absent ⇒ no SMR translate call.
+   */
+  private async maybeTranslateBody(body: SyncSummaryRequest, tenantId: string): Promise<SyncSummaryRequest> {
+    if (body.translate_to_english !== true) return body;
+    const segments = body.session_data?.conversation_segments ?? [];
+    const texts = segments.map((s) => s.text ?? '');
+    if (texts.every((t) => !t.trim())) return body;
+
+    try {
+      // Sarvam is BYOK-ONLY — never an env credential. The key comes from the
+      // unified provider plane: the tenant admin's own Sarvam credential, else the
+      // global admin's platform (SYSTEM-tenant) credential. One Sarvam
+      // subscription key covers STT/TTS/translate, so the existing 'stt' Sarvam
+      // BYO row is reused. Only the 'sarvam' entry is forwarded (minimal exposure);
+      // if neither tier has one, no credential is sent and SMR fails → fail-open.
+      const sarvamOverride = await this.resolveSarvamByok(tenantId);
+      const providerOverrides = sarvamOverride ? { sarvam: sarvamOverride } : undefined;
+
+      const base = this.getSmrBaseUrl();
+      const url = `${base.replace(/\/+$/, '')}/api/v1/translate`;
+      const response = await this.httpService.axiosRef.post(
+        url,
+        { texts, source_language: 'auto', target_language: 'en-IN', provider: 'sarvam', provider_overrides: providerOverrides },
+        { headers: this.getForwardHeaders(), timeout: 60_000 },
+      );
+      const translations = (response.data as { translations?: unknown })?.translations;
+      if (!Array.isArray(translations) || translations.length !== segments.length) {
+        throw new Error('SMR /api/v1/translate returned an unexpected shape');
+      }
+      const translatedSegments = segments.map((s, i) => ({ ...s, text: String(translations[i]) }));
+      return { ...body, session_data: { ...body.session_data, conversation_segments: translatedSegments } };
+    } catch (err) {
+      this.logger.warn({
+        message: 'Transcript translation failed; summarizing the original transcript (fail-open)',
+        correlationId: this.clsService.getId(),
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return body;
+    }
+  }
+
+  /**
+   * TASK-600 — resolve the effective Sarvam BYOK credential (decrypted) from the
+   * unified provider plane, cascading the tenant admin's own credential first,
+   * then the global admin's platform (SYSTEM-tenant) credential. Sarvam is
+   * BYOK-only — there is NO env fallback. Returns `undefined` when neither tier
+   * has an enabled Sarvam credential (→ SMR gets no key → fail-open, no
+   * translation). One Sarvam subscription key serves every capability, so the
+   * existing `stt`/`sarvam` connection row is the source.
+   */
+  private async resolveSarvamByok(tenantId: string): Promise<Record<string, unknown> | undefined> {
+    if (!this.providerConnectionService) return undefined;
+    const pick = async (scopeTenantId: string): Promise<Record<string, unknown> | undefined> => {
+      const overrides = await this.providerConnectionService!.resolveTenantCloudOverrides('stt', scopeTenantId).catch(() => undefined);
+      return overrides?.sarvam as Record<string, unknown> | undefined;
+    };
+    // Tenant admin's key wins; else the global admin's platform (SYSTEM) key.
+    return (await pick(tenantId)) ?? (tenantId === SYSTEM_TENANT_ID ? undefined : await pick(SYSTEM_TENANT_ID));
+  }
 
   /**
    * TASK-599 — the requesting doctor's decrypted DNA writing-style text, or
@@ -286,9 +368,11 @@ export class SmrCompatController {
    * suite can drive it directly.
    */
   private async computeSummary(body: SyncSummaryRequest, tenantId: string): Promise<SummaryResponse> {
-    const governed = await this.resolveSummaryGoverned(body, tenantId);
-    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
-    const { baseRequest, buildResponse } = this.prepareSummary(body, governed, dnaStyleText);
+    // TASK-600: translate the transcript to English first when requested (fail-open).
+    const workingBody = await this.maybeTranslateBody(body, tenantId);
+    const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
+    const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id);
+    const { baseRequest, buildResponse } = this.prepareSummary(workingBody, governed, dnaStyleText);
     await this.applySmrModelSelection(baseRequest, tenantId);
 
     // Primary attempt: post + parse. A parse failure is captured here too so the
@@ -344,9 +428,11 @@ export class SmrCompatController {
    * restarted, so mid-stream failures surface as a single `error` event.
    */
   private async streamSummary(res: Response, body: SyncSummaryRequest, tenantId: string, _request: RequestWithAuth): Promise<void> {
-    const governed = await this.resolveSummaryGoverned(body, tenantId);
-    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
-    const { baseRequest, buildResponse } = this.prepareSummary(body, governed, dnaStyleText);
+    // TASK-600: translate the transcript to English first when requested (fail-open).
+    const workingBody = await this.maybeTranslateBody(body, tenantId);
+    const governed = await this.resolveSummaryGoverned(workingBody, tenantId);
+    const dnaStyleText = await this.resolveDnaStyleText(workingBody.doctor_id);
+    const { baseRequest, buildResponse } = this.prepareSummary(workingBody, governed, dnaStyleText);
     await this.applySmrModelSelection(baseRequest, tenantId);
 
     await this.streamGenerate(

@@ -100,4 +100,13 @@ export class SyncSummaryRequest {
   @IsOptional()
   @IsBoolean()
   stream?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'true → translate the transcript to English via Sarvam BEFORE summarizing (TASK-600). Fail-open: on a translation error the original transcript is summarized. Default false.',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  translate_to_english?: boolean;
 }

@@ -67,6 +67,9 @@ export function SummaryCard({ config }: SummaryCardProps) {
 
   const [useEnhanced, setUseEnhanced] = useState(true);
 
+  // Translate the transcript to English (Sarvam) before summarizing (persisted).
+  const [translateToEnglish, setTranslateToEnglish] = useState(config.translateToEnglish ?? false);
+
   // Streaming toggle (R10).
   const [streamEnabled, setStreamEnabled] = useState(false);
   const [streamingPreSummary, setStreamingPreSummary] = useState('');
@@ -86,7 +89,7 @@ export function SummaryCard({ config }: SummaryCardProps) {
   const hasTranscript = effectiveTranscript.trim().length > 0;
 
   const persistDefaults = () => {
-    saveStoredConfig({ ...config, department: department.trim(), visitType: visitType.trim(), doctorId: doctorId.trim() });
+    saveStoredConfig({ ...config, department: department.trim(), visitType: visitType.trim(), doctorId: doctorId.trim(), translateToEnglish });
   };
 
   const handlePreSummarize = async () => {
@@ -132,6 +135,7 @@ export function SummaryCard({ config }: SummaryCardProps) {
         previousVisitsText: context.previousVisits.trim() || undefined,
         ...(preSummary ? { preSummaryText: preSummary, includePreSummaryInContext: true } : {}),
         useEnhancedFormat: useEnhanced,
+        translateToEnglish,
         ...(streamEnabled ? { stream: true, onDelta: (_delta: string, accumulated: string) => setStreamingSummary(accumulated) } : {}),
       });
       setSummary(res);
@@ -194,6 +198,10 @@ export function SummaryCard({ config }: SummaryCardProps) {
           <div className="flex items-center gap-2">
             <Switch id="summary-stream" checked={streamEnabled} onCheckedChange={setStreamEnabled} />
             <Label htmlFor="summary-stream">Stream responses</Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch id="summary-translate" checked={translateToEnglish} onCheckedChange={setTranslateToEnglish} />
+            <Label htmlFor="summary-translate">Translate transcript to English (Sarvam)</Label>
           </div>
         </div>
 

@@ -342,4 +342,35 @@ describe('SummaryCard', () => {
     await waitFor(() => expect(summarizeSyncMock).toHaveBeenCalledTimes(1));
     expect(summarizeSyncMock.mock.calls[0][0].doctorId).toBeUndefined();
   });
+
+  // -- Phase 4: translate-to-English (Sarvam) toggle ---------------------------
+
+  it('defaults the translate toggle OFF → Summarize sends translateToEnglish falsy', async () => {
+    stubEmptyDepartmentsFetch();
+    mockLineTexts = ['patient reports headache'];
+    summarizeSyncMock.mockResolvedValue(FINAL_SUMMARY);
+
+    const user = userEvent.setup();
+    render(<SummaryCard config={CONFIG} />);
+
+    await user.click(screen.getByRole('button', { name: 'Summarize' }));
+
+    await waitFor(() => expect(summarizeSyncMock).toHaveBeenCalledTimes(1));
+    expect(summarizeSyncMock.mock.calls[0][0].translateToEnglish).toBeFalsy();
+  });
+
+  it('toggling the translate switch ON → Summarize sends translateToEnglish:true', async () => {
+    stubEmptyDepartmentsFetch();
+    mockLineTexts = ['patient reports headache'];
+    summarizeSyncMock.mockResolvedValue(FINAL_SUMMARY);
+
+    const user = userEvent.setup();
+    render(<SummaryCard config={CONFIG} />);
+
+    await user.click(screen.getByRole('switch', { name: 'Translate transcript to English (Sarvam)' }));
+    await user.click(screen.getByRole('button', { name: 'Summarize' }));
+
+    await waitFor(() => expect(summarizeSyncMock).toHaveBeenCalledTimes(1));
+    expect(summarizeSyncMock.mock.calls[0][0]).toMatchObject({ translateToEnglish: true });
+  });
 });

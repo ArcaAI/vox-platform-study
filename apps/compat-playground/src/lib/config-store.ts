@@ -75,6 +75,14 @@ export interface PlaygroundConfig {
    * backward-compat reason as `department`.
    */
   doctorId?: string;
+  /**
+   * Last-used SMR "translate transcript to English (Sarvam)" toggle — seeds the
+   * SummaryCard switch (TASK-600 Phase 4). When true, `summarizeSync` is called
+   * with `translateToEnglish: true` so the backend translates the transcript
+   * before summarizing. Optional for the same backward-compat reason as
+   * `department`.
+   */
+  translateToEnglish?: boolean;
 }
 
 const STORAGE_KEY = 'hope-compat-playground:config';

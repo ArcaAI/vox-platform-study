@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from smr.services.resizable_semaphore import ResizableSemaphore
     from smr.services.shutdown_manager import ShutdownManager
     from smr.services.task_manager import TaskManager
+    from smr.translation.base import TranslateProviderRegistry
 
 
 def get_settings(request: Request) -> Settings:
@@ -46,6 +47,11 @@ def get_provider_registry(request: Request) -> ProviderRegistry:
 def get_task_manager(request: Request) -> TaskManager:
     """Retrieve task manager from app.state."""
     return cast("TaskManager", request.app.state.task_manager)
+
+
+def get_translate_registry(request: Request) -> TranslateProviderRegistry:
+    """Retrieve the translate-provider registry from app.state."""
+    return cast("TranslateProviderRegistry", request.app.state.translate_registry)
 
 
 def get_generation_audit_logger(request: Request) -> GenerationAuditLogger:

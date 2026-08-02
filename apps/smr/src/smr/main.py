@@ -172,6 +172,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # straight into its rate limiter / queue / breaker / semaphore.
     _register_provider_factories(registry, settings, http_client)
 
+    # Translate capability: a SEPARATE registry (its providers are not LLMs and
+    # carry no rate-limit/circuit-breaker/queue companion state). Sarvam is
+    # registered unconditionally (BYO-first, like openai/anthropic): a tenant key
+    # arrives per request as a provider override, so it must be available even
+    # without a platform env key.
+    if not hasattr(app.state, "translate_registry") or app.state.translate_registry is None:
+        from smr.translation.base import TranslateProviderRegistry
+
+        app.state.translate_registry = TranslateProviderRegistry()
+
+    translate_registry = app.state.translate_registry
+    if "sarvam" not in translate_registry.list_providers():
+        from smr.translation.sarvam import SarvamTranslateProvider
+
+        translate_registry.register_factory(
+            "sarvam", lambda: SarvamTranslateProvider(settings.sarvam)
+        )
+
     from smr.services.rate_limiter import RateLimitTracker
 
     rate_limiters: dict[str, RateLimitTracker] = {}
@@ -307,6 +325,7 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     app.state.task_manager = None
     app.state.guardrail_client = None
     app.state.provider_registry = None
+    app.state.translate_registry = None
     app.state.rate_limiters = {}
     app.state.circuit_breakers = {}
     app.state.provider_queues = {}
@@ -350,12 +369,14 @@ def create_app(settings_override: Settings | None = None) -> FastAPI:
     from smr.api.endpoints.providers import router as providers_router
     from smr.api.endpoints.stream import router as stream_router
     from smr.api.endpoints.tasks import router as tasks_router
+    from smr.api.endpoints.translate import router as translate_router
 
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(generate_router, prefix="/api/v1")
     app.include_router(tasks_router, prefix="/api/v1")
     app.include_router(providers_router, prefix="/api/v1")
     app.include_router(stream_router, prefix="/api/v1")
+    app.include_router(translate_router, prefix="/api/v1")
 
     if settings.otel_enabled:
         from smr.core.observability import setup_opentelemetry

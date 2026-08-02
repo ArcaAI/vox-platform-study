@@ -18,6 +18,7 @@ test-results/
 playwright-report/
 htmlcov/
 .coverage
+apps/compat-playground/public/mltest
 
 # Next.js
 .next/

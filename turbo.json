@@ -286,6 +286,8 @@
         "SMR_OPENAI_DEFAULT_MODEL",
         "SMR_OPENAI_ORGANIZATION",
         "SMR_PORT",
+        "SMR_SARVAM_BASE_URL",
+        "SMR_SARVAM_MODEL",
         "SMR_SERVICE_TOKEN",
         "SMR_SERVICE_URL",
         "SMR_URL",

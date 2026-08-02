@@ -315,6 +315,84 @@ describe('SmrCompatController', () => {
       expect(body.system_prompt).not.toContain('SHOULD NOT APPEAR');
     });
 
+    // TASK-600 — translate the transcript to English via SMR /api/v1/translate
+    // before summarizing; BYOK resolved from the unified provider plane; fail-open
+    // to the original transcript on error; no call when the flag is absent.
+    it('translates the transcript via SMR /api/v1/translate (with tenant BYOK) before summarizing', async () => {
+      const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ sarvam: { api_key: 'byok' } }) };
+      const httpLocal = createMockHttpService();
+      httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
+        if (String(url).includes('/api/v1/translate')) {
+          return Promise.resolve({ data: { translations: (reqBody.texts ?? []).map((t) => `EN:${t}`), provider: 'sarvam', chars: 0 } });
+        }
+        return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      });
+      const ctrl = new SmrCompatController(httpLocal as any, config as any, cls as any, policy as any, template as any, secrets as any, undefined, providerConnection as any);
+
+      const res = createMockRes();
+      await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, res as never);
+
+      expect(providerConnection.resolveTenantCloudOverrides).toHaveBeenCalledWith('stt', 'tenant-1');
+      const calls = httpLocal.axiosRef.post.mock.calls;
+      const translateCall = calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/translate'));
+      expect(translateCall).toBeTruthy();
+      expect(translateCall![1].texts).toEqual(['What brings you in?', 'Chest tightness.']);
+      expect(translateCall![1].provider).toBe('sarvam');
+      expect(translateCall![1].provider_overrides.sarvam.api_key).toBe('byok');
+      const smrCall = calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(smrCall![1].prompt).toContain('EN:What brings you in?');
+      expect(smrCall![1].prompt).toContain('EN:Chest tightness.');
+    });
+
+    it('falls back to the ORIGINAL transcript when translation fails (fail-open)', async () => {
+      const providerConnection = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue(undefined) };
+      const httpLocal = createMockHttpService();
+      httpLocal.axiosRef.post.mockImplementation((url: string) => {
+        if (String(url).includes('/api/v1/translate')) return Promise.reject(new Error('smr translate down'));
+        return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      });
+      const ctrl = new SmrCompatController(httpLocal as any, config as any, cls as any, policy as any, template as any, secrets as any, undefined, providerConnection as any);
+
+      const res = createMockRes();
+      await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, res as never);
+
+      const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
+      expect(smrCall![1].prompt).toContain('What brings you in?'); // original, untranslated
+      expect(res.jsonBody).toBeTruthy(); // summary still produced
+    });
+
+    it('falls back to the global-admin (SYSTEM) Sarvam credential when the tenant has none (BYOK-only, no env)', async () => {
+      const providerConnection = {
+        resolveTenantCloudOverrides: vi.fn(async (_service: string, scopeTenantId: string) =>
+          scopeTenantId === '00000000-0000-0000-0000-000000000000' ? { sarvam: { api_key: 'platform-byok' } } : {},
+        ),
+      };
+      const httpLocal = createMockHttpService();
+      httpLocal.axiosRef.post.mockImplementation((url: string, reqBody: { texts?: string[] }) => {
+        if (String(url).includes('/api/v1/translate')) {
+          return Promise.resolve({ data: { translations: (reqBody.texts ?? []).map((t) => `EN:${t}`), provider: 'sarvam', chars: 0 } });
+        }
+        return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      });
+      const ctrl = new SmrCompatController(httpLocal as any, config as any, cls as any, policy as any, template as any, secrets as any, undefined, providerConnection as any);
+
+      const res = createMockRes();
+      await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, res as never);
+
+      // tenant tier tried first, then SYSTEM tier.
+      expect(providerConnection.resolveTenantCloudOverrides).toHaveBeenCalledWith('stt', 'tenant-1');
+      expect(providerConnection.resolveTenantCloudOverrides).toHaveBeenCalledWith('stt', '00000000-0000-0000-0000-000000000000');
+      const translateCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/translate'));
+      expect(translateCall![1].provider_overrides.sarvam.api_key).toBe('platform-byok');
+    });
+
+    it('does not call SMR translate when translate_to_english is absent', async () => {
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+      await invokeSummary(syncRequest());
+      const translateCall = http.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/translate'));
+      expect(translateCall).toBeFalsy();
+    });
+
     it('summarizes with no session_id (no consultation required), synthesizing a smr- id', async () => {
       http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       const body = syncRequest();

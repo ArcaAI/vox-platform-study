@@ -1,5 +1,10 @@
 import { HttpModule } from '@nestjs/axios';
-import { DnaWritingStyleServiceModule, HarnessPolicyServiceModule, PromptResolutionServiceModule } from '@arcaai/applications';
+import {
+  AiProviderConnectionServiceModule,
+  DnaWritingStyleServiceModule,
+  HarnessPolicyServiceModule,
+  PromptResolutionServiceModule,
+} from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { SmrCompatController } from './smr-compat.controller';
@@ -24,6 +29,9 @@ import { SmrCompatTemplateService } from './smr-compat-template.service';
     PromptResolutionServiceModule,
     // TASK-599: requesting doctor's DNA writing-style resolution (IDnaWritingStyleService).
     DnaWritingStyleServiceModule,
+    // TASK-600: per-tenant Sarvam BYOK resolution (unified provider plane) for the
+    // SMR-served transcript translation.
+    AiProviderConnectionServiceModule,
     CoreDatabaseModule,
   ],
   controllers: [SmrCompatController],
