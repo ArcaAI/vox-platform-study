@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaygroundConfig } from '../../lib/config-store';
 import { computeEffectiveTranscript } from '../summarization/TranscriptSource';
 
@@ -63,10 +63,45 @@ const FINAL_SUMMARY = {
   created_at: '2026-08-01T00:00:00Z',
 };
 
-/** Departments fetch resolves empty → free-text fallback (keeps the DOM simple). */
+/** Departments AND doctors fetch resolve empty → free-text fallback (keeps the DOM simple). */
 function stubEmptyDepartmentsFetch() {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => [] }));
 }
+
+/**
+ * Fetch stub: departments empty (free-text) but the users listing returns real
+ * doctor rows, so the Doctor `<Select>` renders in list mode. Matches the real
+ * `GET /api/v1/admin/users` bare-array shape `fetchDoctors` tolerates.
+ */
+function stubFetchWithDoctors(doctors: Array<{ id: string; username: string }>) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: unknown) => {
+      const body = String(url).includes('/admin/users') ? doctors : [];
+      return Promise.resolve({ ok: true, json: async () => body });
+    }),
+  );
+}
+
+const PRE_SUMMARY_RESULT = {
+  pre_summary: 'PRE',
+  structured_data: { title: '', sections: [] },
+  created_at: '2026-08-01T00:00:00Z',
+};
+
+beforeAll(() => {
+  // Radix Select drives its trigger through Pointer Events; happy-dom lacks the
+  // pointer-capture methods userEvent calls, so stub them (same spirit as the
+  // scrollIntoView/ResizeObserver stubs in src/test/setup.ts).
+  const proto = Element.prototype as unknown as {
+    hasPointerCapture?: () => boolean;
+    setPointerCapture?: () => void;
+    releasePointerCapture?: () => void;
+  };
+  proto.hasPointerCapture ??= () => false;
+  proto.setPointerCapture ??= () => {};
+  proto.releasePointerCapture ??= () => {};
+});
 
 beforeEach(() => {
   preSummarizeMock.mockReset();
@@ -260,5 +295,51 @@ describe('SummaryCard', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(streamError.message));
     // No pre-summary result rendered — the failure did not silently succeed.
     expect(screen.queryByText('Pre-summary')).not.toBeInTheDocument();
+  });
+
+  // -- Phase E: doctor / DNA writing-style picker ------------------------------
+
+  it('sends the selected doctorId into BOTH preSummarize and summarizeSync', async () => {
+    stubFetchWithDoctors([{ id: 'doc-1', username: 'Dr. Alice' }]);
+    preSummarizeMock.mockResolvedValue(PRE_SUMMARY_RESULT);
+    summarizeSyncMock.mockResolvedValue(FINAL_SUMMARY);
+    mockLineTexts = ['patient reports headache'];
+
+    const user = userEvent.setup();
+    render(<SummaryCard config={{ ...CONFIG, doctorId: undefined }} />);
+
+    // Select the doctor from the list.
+    const doctorSelect = await screen.findByRole('combobox', { name: 'Doctor' });
+    await user.click(doctorSelect);
+    await user.click(await screen.findByRole('option', { name: 'Dr. Alice' }));
+
+    await user.click(screen.getByRole('button', { name: 'Pre-summarize' }));
+    await waitFor(() => expect(preSummarizeMock).toHaveBeenCalledTimes(1));
+    expect(preSummarizeMock.mock.calls[0][0]).toMatchObject({ doctorId: 'doc-1' });
+
+    await user.click(screen.getByRole('button', { name: 'Summarize' }));
+    await waitFor(() => expect(summarizeSyncMock).toHaveBeenCalledTimes(1));
+    expect(summarizeSyncMock.mock.calls[0][0]).toMatchObject({ doctorId: 'doc-1' });
+  });
+
+  it('omits doctorId (sends undefined) when no doctor is selected — the "None" default', async () => {
+    stubFetchWithDoctors([{ id: 'doc-1', username: 'Dr. Alice' }]);
+    preSummarizeMock.mockResolvedValue(PRE_SUMMARY_RESULT);
+    summarizeSyncMock.mockResolvedValue(FINAL_SUMMARY);
+    mockLineTexts = ['patient reports headache'];
+
+    const user = userEvent.setup();
+    render(<SummaryCard config={{ ...CONFIG, doctorId: undefined }} />);
+
+    // The picker loads (list mode) but nothing is chosen → "None (no DNA style)".
+    await screen.findByRole('combobox', { name: 'Doctor' });
+
+    await user.click(screen.getByRole('button', { name: 'Pre-summarize' }));
+    await waitFor(() => expect(preSummarizeMock).toHaveBeenCalledTimes(1));
+    expect(preSummarizeMock.mock.calls[0][0].doctorId).toBeUndefined();
+
+    await user.click(screen.getByRole('button', { name: 'Summarize' }));
+    await waitFor(() => expect(summarizeSyncMock).toHaveBeenCalledTimes(1));
+    expect(summarizeSyncMock.mock.calls[0][0].doctorId).toBeUndefined();
   });
 });

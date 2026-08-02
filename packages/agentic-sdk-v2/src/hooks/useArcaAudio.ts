@@ -186,7 +186,10 @@ export function useArcaAudio() {
         // published by `useArcaSpeechToText`. The backend resolves the mode to
         // the actual language, so this alone is sufficient. (TASK-587 compat
         // start-coordination fix.)
-        languageMode: options?.languageMode ?? store.sttLanguageMode,
+        // When nobody has picked a mode, default to 'auto' so the session
+        // AUTO-DETECTS the language instead of a hardcoded default — pipelines
+        // no longer pin a language (TASK-598). A dev/end-user pick still wins.
+        languageMode: options?.languageMode ?? store.sttLanguageMode ?? 'auto',
         // Pre-start engine selection (TASK-586). Start-time only — the session
         // opens on the tenant-admin default provider when 'fallback'.
         startOn: options?.startOn,

@@ -746,6 +746,38 @@ describe('SttWebSocketClient', () => {
       expect(client.isConnected()).toBe(false);
     });
 
+    it('a concurrent second stopAndDrain JOINS the in-flight drain — both settle on the terminal status', async () => {
+      // TASK-597 follow-up regression: the compat layer stops one audio graph
+      // through two hooks, so two destroy passes can call stopAndDrain
+      // concurrently. The pending-drain resolver is a single slot; before the
+      // join, the second call overwrote the first caller's resolver and the
+      // orphaned drain waited out the FULL drainTimeoutMs (60 s in the field),
+      // pinning the UI in "Finalizing…" long after the socket had closed.
+      vi.useFakeTimers();
+      const p = client.connect('wss://example.com/ws?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await p;
+
+      let firstSettled = false;
+      let secondSettled = false;
+      const first = client.stopAndDrain(60_000, 30_000).then(() => {
+        firstSettled = true;
+      });
+      const second = client.stopAndDrain(60_000, 30_000).then(() => {
+        secondSettled = true;
+      });
+
+      lastMockWs!.simulateMessage(JSON.stringify({ type: 'status', status: 'closed', message: 'done' }));
+      // Both callers settle promptly on the terminal status — neither is left
+      // to the 60 s ceiling.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(firstSettled).toBe(true);
+      expect(secondSettled).toBe(true);
+      await Promise.all([first, second]);
+      expect(client.isConnected()).toBe(false);
+      vi.useRealTimers();
+    });
+
     it('closes anyway once the drain timeout elapses without a terminal status', async () => {
       vi.useFakeTimers();
       const p = client.connect('wss://example.com/ws?tenantId=test-tenant');

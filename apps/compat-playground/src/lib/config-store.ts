@@ -68,6 +68,13 @@ export interface PlaygroundConfig {
    * selector. Optional for the same backward-compat reason as `department`.
    */
   visitType?: string;
+  /**
+   * Last-used SMR doctor (user id) whose DNA writing-style is applied — seeds
+   * the SummaryCard doctor picker (TASK-599 Phase E). Empty/absent ⇒ NO
+   * `doctorId` is sent (department + visit-type only). Optional for the same
+   * backward-compat reason as `department`.
+   */
+  doctorId?: string;
 }
 
 const STORAGE_KEY = 'hope-compat-playground:config';
@@ -113,5 +120,6 @@ export function defaultConfig(): PlaygroundConfig {
     quietWindowMs: stored.quietWindowMs,
     department: stored.department ?? import.meta.env.VITE_DEPARTMENT ?? '',
     visitType: stored.visitType ?? import.meta.env.VITE_VISIT_TYPE ?? '',
+    doctorId: stored.doctorId ?? import.meta.env.VITE_DOCTOR_ID ?? '',
   };
 }

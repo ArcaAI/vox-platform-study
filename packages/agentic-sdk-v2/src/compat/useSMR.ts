@@ -146,6 +146,9 @@ function buildSyncPayload(request: SMRRequest, fallbackSessionId?: string): Reco
   // Optional indicators — forwarded top-level ONLY when provided (backward-compatible).
   if (request.specialty !== undefined) payload.specialty = request.specialty;
   if (encounterType !== undefined) payload.encounter_type = encounterType;
+  // Top-level doctor_id lets the gateway apply that doctor's DNA writing-style
+  // (kept alongside the legacy session_metadata.doctor_id). Omitted when unset.
+  if (request.doctorId !== undefined) payload.doctor_id = request.doctorId;
   return payload;
 }
 
@@ -310,7 +313,7 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
       setLoading(true);
       setError(null);
       try {
-        const payload = {
+        const payload: Record<string, unknown> = {
           current_department: (preRequest.current_department ?? '').trim() || 'General',
           visit_type: (preRequest.visit_type ?? '').trim() || 'New Referral',
           age: preRequest.age,
@@ -323,6 +326,8 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
           temperature: preRequest.temperature ?? 0.2,
           max_tokens: preRequest.max_tokens ?? 800,
         };
+        // Top-level doctor_id lets the gateway apply that doctor's DNA writing-style. Omitted when unset.
+        if (preRequest.doctorId !== undefined) payload.doctor_id = preRequest.doctorId;
         return preRequest.stream
           ? await requestStream<PreSummaryResponse>('presummary', payload, preRequest.onDelta)
           : await request<PreSummaryResponse>('presummary', payload);

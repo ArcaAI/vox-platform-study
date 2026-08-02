@@ -153,6 +153,54 @@ describe('useSMR', () => {
     expect('encounter_type' in body).toBe(false);
   });
 
+  it('summarizeSync sends top-level doctor_id when doctorId is provided (DNA writing-style)', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarizeSync({ text: 'a', doctorId: 'doc-42' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.doctor_id).toBe('doc-42');
+    // legacy nested key preserved
+    expect(body.session_data.session_metadata.doctor_id).toBe('doc-42');
+  });
+
+  it('summarizeSync omits top-level doctor_id when doctorId is not provided', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarizeSync({ text: 'a' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect('doctor_id' in body).toBe(false);
+  });
+
+  it('preSummarize sends top-level doctor_id when doctorId is provided (DNA writing-style)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ pre_summary: 'x', structured_data: { title: '', sections: [] }, created_at: 'now' }),
+    });
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.preSummarize({ current_department: 'Cardiology', visit_type: 'Follow Up', doctorId: 'doc-42' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.doctor_id).toBe('doc-42');
+  });
+
+  it('preSummarize omits top-level doctor_id when doctorId is not provided', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ pre_summary: 'x', structured_data: { title: '', sections: [] }, created_at: 'now' }),
+    });
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.preSummarize({ current_department: 'Cardiology', visit_type: 'Follow Up' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect('doctor_id' in body).toBe(false);
+  });
+
   it('preSummarize still sends current_department + visit_type (presummary contract unchanged)', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

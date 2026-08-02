@@ -55,6 +55,14 @@ export class PreSummaryRequest {
   @IsString()
   language?: string;
 
+  @ApiPropertyOptional({
+    description:
+      "Requesting doctor id (TASK-599). When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the pre-summary. Omit ⇒ department + visit-type only.",
+  })
+  @IsOptional()
+  @IsString()
+  doctor_id?: string;
+
   @ApiPropertyOptional({ description: 'Sampling temperature 0.0–2.0 (default 0.2)', default: 0.2 })
   @IsOptional()
   @IsNumber()

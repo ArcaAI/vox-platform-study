@@ -26,7 +26,15 @@ const mockPromptTemplateRepository = {
 
 const mockDnaWritingStyleRepository = {
   findById: vi.fn(),
+  // Decryption path (TASK-599): the generic findById never decrypts and the
+  // plaintext columns were dropped, so the real prompt path must use this.
+  findByIdWithDecryptedFields: vi.fn(),
 };
+
+// Minimal SecretsService stand-in — the repo mock's findByIdWithDecryptedFields
+// is stubbed directly, so no real Vault Transit call happens; this only needs to
+// be a truthy object the service forwards.
+const mockSecretsService = { decrypt: vi.fn(), encrypt: vi.fn() };
 
 function createMockPromptTemplate(
   overrides: Partial<{
@@ -91,6 +99,12 @@ describe('PromptAssemblyService', () => {
 
     mockPromptTemplateRepository.findById.mockResolvedValue(createMockPromptTemplate());
     mockDnaWritingStyleRepository.findById.mockResolvedValue(createMockDnaStyle());
+    // Decrypted-fields default mirrors the encryption extension's return shape:
+    // { entity, plaintext: { styleText, reportData, redactionRules } }.
+    mockDnaWritingStyleRepository.findByIdWithDecryptedFields.mockResolvedValue({
+      entity: { id: 'dna-001' },
+      plaintext: { styleText: 'Use bullet points. Be concise.', reportData: null, redactionRules: null },
+    });
   });
 
   // Warm-start is gated behind HARNESS_WARM_START_ENABLED
@@ -105,6 +119,26 @@ describe('PromptAssemblyService', () => {
       mockPromptTemplateRepository as any,
       mockDnaWritingStyleRepository as any,
       configService as any,
+    );
+  }
+
+  // Same as getService but with a SecretsService wired (production DI path):
+  // DNA styleText must be decrypted via findByIdWithDecryptedFields, not read
+  // off the non-decrypting findById (whose plaintext column was dropped).
+  async function getServiceWithSecrets(warmStartEnabled = false) {
+    const { PromptAssemblyService } = await import('../prompt-assembly.service');
+    const configService = {
+      get: vi.fn((key: string) => (key === 'HARNESS_WARM_START_ENABLED' ? (warmStartEnabled ? 'true' : undefined) : undefined)),
+    };
+    return new PromptAssemblyService(
+      mockPromptResolutionService as any,
+      mockPromptTemplateRepository as any,
+      mockDnaWritingStyleRepository as any,
+      configService as any,
+      undefined, // harnessPolicyService
+      undefined, // cls
+      undefined, // exemplarRetriever
+      mockSecretsService as any, // secretsService (TASK-599)
     );
   }
 
@@ -158,6 +192,56 @@ describe('PromptAssemblyService', () => {
 
       expect(result.userPrompt).toContain('Use bullet points. Be concise.');
       expect(result.userPrompt).not.toContain('{style_DNA_doctor_department_surgery}');
+    });
+
+    // TASK-599 — the styleText column is Vault-Transit ciphertext (plaintext
+    // dropped). When a SecretsService is wired, the style MUST be fetched via the
+    // decrypting repo method, not the generic non-decrypting findById.
+    it('should DECRYPT DNA styleText via SecretsService and substitute the placeholder', async () => {
+      mockDnaWritingStyleRepository.findByIdWithDecryptedFields.mockResolvedValue({
+        entity: { id: 'dna-001' },
+        plaintext: { styleText: 'Formal prose, no abbreviations.', reportData: null, redactionRules: null },
+      });
+      service = await getServiceWithSecrets();
+      const result = await service.assemble({
+        departmentId: 'dept-001',
+        promptType: 'new-patient',
+        transcript: 'Patient presents...',
+        conversationLanguage: 'English',
+        dnaStyleId: 'dna-001',
+      });
+
+      expect(mockDnaWritingStyleRepository.findByIdWithDecryptedFields).toHaveBeenCalledWith('dna-001', mockSecretsService);
+      expect(result.userPrompt).toContain('Formal prose, no abbreviations.');
+      expect(result.userPrompt).not.toContain('{style_DNA_doctor_department_surgery}');
+    });
+
+    // TASK-599 — ArcaAI governed templates declare NO {style_DNA_*} placeholder,
+    // so decrypting alone would drop the style. When no placeholder is present the
+    // decrypted style must be APPENDED as a trusted style directive.
+    it('should APPEND DNA style as a directive when the template has no {style_DNA_*} placeholder', async () => {
+      mockPromptTemplateRepository.findById.mockResolvedValue(
+        createMockPromptTemplate({ content: 'Summarize for {conversation_language}. No style slot here.' }),
+      );
+      mockPromptResolutionService.resolve.mockResolvedValue({
+        content: 'Summarize for {conversation_language}. No style slot here.',
+        promptId: 'template-001',
+        resolvedFrom: 'department',
+      });
+      mockDnaWritingStyleRepository.findByIdWithDecryptedFields.mockResolvedValue({
+        entity: { id: 'dna-001' },
+        plaintext: { styleText: 'Terse SOAP, active voice.', reportData: null, redactionRules: null },
+      });
+      service = await getServiceWithSecrets();
+      const result = await service.assemble({
+        departmentId: 'dept-001',
+        promptType: 'new-patient',
+        transcript: 'Patient presents...',
+        conversationLanguage: 'English',
+        dnaStyleId: 'dna-001',
+      });
+
+      expect(result.userPrompt).toContain('Terse SOAP, active voice.');
     });
 
     it('should load hyperparameters from template metaData.promptConfig', async () => {

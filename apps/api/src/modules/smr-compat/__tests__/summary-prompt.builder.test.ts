@@ -29,6 +29,18 @@ describe('buildSummaryPrompt', () => {
     expect(system).toContain('New Referral');
   });
 
+  // TASK-599 — the doctor's DNA writing-style is folded into the system prompt as
+  // style guidance when provided; omitted entirely when absent (D5).
+  it('folds the DNA writing style into the system prompt when dnaStyleText is provided', () => {
+    const { system } = buildSummaryPrompt(baseSession(), { dnaStyleText: 'Terse, active voice, no abbreviations.' });
+    expect(system).toContain('Terse, active voice, no abbreviations.');
+  });
+
+  it('omits any DNA style directive when dnaStyleText is absent', () => {
+    const { system } = buildSummaryPrompt(baseSession());
+    expect(system.toLowerCase()).not.toContain('writing style');
+  });
+
   it('folds pre_summary_text only when enrichment is enabled', () => {
     const session = baseSession();
     session.pre_summary_text = 'Known hypertension on amlodipine.';
@@ -138,5 +150,11 @@ describe('buildPreSummaryPrompt', () => {
   it('folds the governed pre-summary instruction when provided (TASK-592)', () => {
     const { system } = buildPreSummaryPrompt(req(), { governedInstruction: 'Highlight cardiac risk stratification.' });
     expect(system).toContain('Highlight cardiac risk stratification');
+  });
+
+  // TASK-599 — DNA writing style folded into the pre-summary system prompt.
+  it('folds the DNA writing style when dnaStyleText is provided', () => {
+    const { system } = buildPreSummaryPrompt(req(), { dnaStyleText: 'Bullet points, minimal prose.' });
+    expect(system).toContain('Bullet points, minimal prose.');
   });
 });

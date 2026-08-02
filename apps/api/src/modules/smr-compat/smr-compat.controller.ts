@@ -1,4 +1,4 @@
-import { Authorize, HarnessPolicyService, IActiveUserContext, IConfigService, SecretsService } from '@arcaai/applications';
+import { Authorize, HarnessPolicyService, IActiveUserContext, IConfigService, IDnaWritingStyleService, SecretsService } from '@arcaai/applications';
 import { HttpService } from '@nestjs/axios';
 import { Body, Controller, HttpException, HttpStatus, Inject, Logger, Optional, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -144,7 +144,33 @@ export class SmrCompatController {
     // TASK-592: resolves the tenant's real Department → governed instruction template.
     private readonly templateService: SmrCompatTemplateService,
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-599: resolves the requesting doctor's decrypted DNA writing-style
+    // (gate-checked). @Optional so the shim degrades to department+visit-type
+    // steering if the DNA module is ever absent — DNA is additive, never required.
+    @Optional() @Inject(IDnaWritingStyleService) private readonly dnaWritingStyleService?: IDnaWritingStyleService,
   ) {}
+
+  /**
+   * TASK-599 — the requesting doctor's decrypted DNA writing-style text, or
+   * `undefined` when no `doctor_id` was supplied (D5: department + visit-type
+   * only), the DNA service is unavailable, the tenant/doctor gate is off, or the
+   * doctor has no style. Never throws — DNA is additive; any failure degrades to
+   * "no style" so a summary is always produced.
+   */
+  private async resolveDnaStyleText(doctorId?: string): Promise<string | undefined> {
+    const id = doctorId?.trim();
+    if (!id || !this.dnaWritingStyleService) return undefined;
+    try {
+      return (await this.dnaWritingStyleService.getEffectiveStyleText(id)) ?? undefined;
+    } catch (err) {
+      this.logger.warn({
+        message: 'DNA writing-style resolution failed; proceeding without style',
+        correlationId: this.clsService.getId(),
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return undefined;
+    }
+  }
 
   @Post('summary/sync')
   @Authorize()
@@ -170,6 +196,7 @@ export class SmrCompatController {
   private prepareSummary(
     body: SyncSummaryRequest,
     governedInstruction?: string,
+    dnaStyleText?: string,
   ): {
     baseRequest: SmrGenerateRequest;
     buildResponse: (content: string, generated: Partial<SmrGenerateResponse>, req: SmrGenerateRequest) => SummaryResponse;
@@ -197,6 +224,7 @@ export class SmrCompatController {
       language,
       includePreSummary,
       governedInstruction,
+      dnaStyleText,
     });
 
     const baseRequest: SmrGenerateRequest = {
@@ -259,7 +287,8 @@ export class SmrCompatController {
    */
   private async computeSummary(body: SyncSummaryRequest, tenantId: string): Promise<SummaryResponse> {
     const governed = await this.resolveSummaryGoverned(body, tenantId);
-    const { baseRequest, buildResponse } = this.prepareSummary(body, governed);
+    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
+    const { baseRequest, buildResponse } = this.prepareSummary(body, governed, dnaStyleText);
     await this.applySmrModelSelection(baseRequest, tenantId);
 
     // Primary attempt: post + parse. A parse failure is captured here too so the
@@ -316,7 +345,8 @@ export class SmrCompatController {
    */
   private async streamSummary(res: Response, body: SyncSummaryRequest, tenantId: string, _request: RequestWithAuth): Promise<void> {
     const governed = await this.resolveSummaryGoverned(body, tenantId);
-    const { baseRequest, buildResponse } = this.prepareSummary(body, governed);
+    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
+    const { baseRequest, buildResponse } = this.prepareSummary(body, governed, dnaStyleText);
     await this.applySmrModelSelection(baseRequest, tenantId);
 
     await this.streamGenerate(
@@ -378,8 +408,8 @@ export class SmrCompatController {
   }
 
   /** Build the pre-summary `SmrGenerateRequest` (shared by sync + streaming). */
-  private buildPreSummaryRequest(body: PreSummaryRequest, governedInstruction?: string): SmrGenerateRequest {
-    const { system, user } = buildPreSummaryPrompt(body, { governedInstruction });
+  private buildPreSummaryRequest(body: PreSummaryRequest, governedInstruction?: string, dnaStyleText?: string): SmrGenerateRequest {
+    const { system, user } = buildPreSummaryPrompt(body, { governedInstruction, dnaStyleText });
     return {
       system_prompt: system,
       prompt: user,
@@ -398,7 +428,8 @@ export class SmrCompatController {
    */
   private async computePreSummary(body: PreSummaryRequest, tenantId: string): Promise<PreSummaryResponse> {
     const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary');
-    const smrRequest = this.buildPreSummaryRequest(body, governed);
+    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
+    const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
     await this.applySmrModelSelection(smrRequest, tenantId);
 
     let primaryError: unknown;
@@ -442,7 +473,8 @@ export class SmrCompatController {
    */
   private async streamPreSummary(res: Response, body: PreSummaryRequest, tenantId: string): Promise<void> {
     const governed = await this.templateService.resolveGovernedInstruction(tenantId, body.current_department, 'pre-summary');
-    const smrRequest = this.buildPreSummaryRequest(body, governed);
+    const dnaStyleText = await this.resolveDnaStyleText(body.doctor_id);
+    const smrRequest = this.buildPreSummaryRequest(body, governed, dnaStyleText);
     await this.applySmrModelSelection(smrRequest, tenantId);
     await this.streamGenerate(
       res,

@@ -270,6 +270,51 @@ describe('SmrCompatController', () => {
       expect(res.summary.summary).toBe('y');
     });
 
+    // TASK-599 — the requesting doctor's DNA writing-style is resolved by
+    // doctor_id and injected into the SMR system_prompt; omitted entirely when no
+    // doctor_id is supplied (D5: department + visit-type only).
+    it('injects the doctor DNA writing style into the SMR system_prompt when doctor_id is provided', async () => {
+      const dna = { getEffectiveStyleText: vi.fn().mockResolvedValue('Terse SOAP, active voice.') };
+      const controllerWithDna = new SmrCompatController(
+        http as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        dna as any,
+      );
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+
+      const res = createMockRes();
+      await controllerWithDna.summarySync(syncRequest({ doctor_id: 'doctor-1' }), {} as never, res as never);
+
+      expect(dna.getEffectiveStyleText).toHaveBeenCalledWith('doctor-1');
+      const [, body] = http.axiosRef.post.mock.calls[0];
+      expect(body.system_prompt).toContain('Terse SOAP, active voice.');
+    });
+
+    it('does NOT resolve or inject DNA style when doctor_id is absent', async () => {
+      const dna = { getEffectiveStyleText: vi.fn().mockResolvedValue('SHOULD NOT APPEAR') };
+      const controllerWithDna = new SmrCompatController(
+        http as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        dna as any,
+      );
+      http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
+
+      const res = createMockRes();
+      await controllerWithDna.summarySync(syncRequest(), {} as never, res as never);
+
+      expect(dna.getEffectiveStyleText).not.toHaveBeenCalled();
+      const [, body] = http.axiosRef.post.mock.calls[0];
+      expect(body.system_prompt).not.toContain('SHOULD NOT APPEAR');
+    });
+
     it('summarizes with no session_id (no consultation required), synthesizing a smr- id', async () => {
       http.axiosRef.post.mockResolvedValue({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       const body = syncRequest();
