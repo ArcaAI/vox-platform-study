@@ -43,20 +43,30 @@ class TestEnvPrefix:
         assert not hasattr(Settings(), "routing_en")
 
 
-class TestAzureAliasFallback:
-    """Azure credential falls back to the shared stt Azure Speech secret."""
+class TestAzureCredentialByok:
+    """TASK-602: the Azure Speech KEY is BYOK-only — never sourced from env. The
+    non-secret REGION still resolves from its env aliases."""
 
-    def test_reads_shared_azure_speech_key(self, monkeypatch) -> None:
+    def test_api_key_not_read_from_prefixed_env(self, monkeypatch) -> None:
+        monkeypatch.setenv("TTS_AZURE_API_KEY", "prefixed")
+        assert AzureSpeechConfig().api_key.get_secret_value() == ""
+
+    def test_api_key_not_read_from_shared_env(self, monkeypatch) -> None:
         monkeypatch.delenv("TTS_AZURE_API_KEY", raising=False)
         monkeypatch.setenv("AZURE_SPEECH_KEY", "shared-key-123")
-        assert AzureSpeechConfig().api_key.get_secret_value() == "shared-key-123"
+        assert AzureSpeechConfig().api_key.get_secret_value() == ""
 
-    def test_prefixed_key_takes_precedence(self, monkeypatch) -> None:
-        monkeypatch.setenv("AZURE_SPEECH_KEY", "shared")
-        monkeypatch.setenv("TTS_AZURE_API_KEY", "prefixed")
-        assert AzureSpeechConfig().api_key.get_secret_value() == "prefixed"
-
-    def test_region_fallback(self, monkeypatch) -> None:
+    def test_region_fallback_still_env_sourced(self, monkeypatch) -> None:
         monkeypatch.delenv("TTS_AZURE_REGION", raising=False)
         monkeypatch.setenv("AZURE_SPEECH_REGION", "centralindia")
         assert AzureSpeechConfig().region == "centralindia"
+
+
+class TestSarvamCredentialByok:
+    """TASK-602: the Sarvam KEY is BYOK-only — never sourced from env."""
+
+    def test_api_key_not_read_from_env(self, monkeypatch) -> None:
+        from tts.core.config import SarvamConfig
+
+        monkeypatch.setenv("TTS_SARVAM_API_KEY", "leaked")
+        assert SarvamConfig().api_key.get_secret_value() == ""

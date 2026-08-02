@@ -66,6 +66,11 @@ class TTSEngine(Protocol):
     name: str
     supported_locales: set[str]
     native_streaming: bool
+    # TASK-602: True when the engine has a usable credential/configuration. A cloud
+    # BYOK engine registered from empty platform config is `False` and the router
+    # excludes it from candidates (it can still serve via a per-request override
+    # engine); self-hosted engines are always `True`.
+    is_configured: bool
 
     async def health(self) -> bool: ...
 

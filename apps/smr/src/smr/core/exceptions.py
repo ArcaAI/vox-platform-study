@@ -60,6 +60,31 @@ class ModelNotSelectedError(InputValidationError):
         self.error_code = "MODEL_NOT_SELECTED"
 
 
+class ProviderCredentialsError(SmrError):
+    """No usable credential for a cloud provider generation request.
+
+    TASK-602: cloud providers (Azure OpenAI / OpenAI / Anthropic) are BYOK — the
+    credential arrives per request as a gateway-injected ``ProviderOverride``
+    (tenant → SYSTEM cascade), never from an env fallback. When neither a request
+    override nor a configured platform key is present, the adapter raises this
+    rather than building a client with an empty key (which would 401 downstream).
+
+    Distinct from ``ProviderError`` (the provider WAS reached and failed) — here no
+    client is ever built. Mapped to 503 (a platform-config gap, retryable once an
+    admin configures the connection), NOT 422 like ``ModelNotSelectedError`` (a
+    caller-input problem).
+    """
+
+    def __init__(
+        self,
+        message: str = "Provider credentials not configured",
+        *,
+        provider: str = "unknown",
+    ):
+        self.provider = provider
+        super().__init__(message, error_code="PROVIDER_CREDENTIALS_MISSING")
+
+
 class CircuitOpenError(SmrError):
     """Circuit breaker is open for the requested provider."""
 

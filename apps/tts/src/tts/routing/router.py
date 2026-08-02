@@ -206,7 +206,12 @@ class TTSRouter:
         for name in self.resolve_chain(voice.locale, routing_en=routing_en, routing_ml=routing_ml):
             if allow is not None and name not in allow:
                 continue
-            registered = name in self._registry
+            # TASK-602: a registered cloud provider with no platform credential
+            # (is_configured=False) is NOT a usable candidate — it would 401 the
+            # live API. It counts as available only via a per-tenant override
+            # (override_providers), which builds a keyed engine. Self-hosted
+            # engines are always is_configured=True.
+            registered = name in self._registry and self._registry.get(name).is_configured
             overridden = override_providers is not None and name in override_providers
             if not registered and not overridden:
                 continue

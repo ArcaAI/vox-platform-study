@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 
 import pytest
+from pydantic import SecretStr
 
 from tts.core.config import AzureSpeechConfig
 from tts.providers.azure_speech import AzureSpeechProvider, AzureSynthesisError
@@ -203,7 +204,10 @@ def make_fake_stream_sdk(*, cancel=False):
 
 
 def _config(key: str = "secret-key", region: str = "eastus") -> AzureSpeechConfig:
-    return AzureSpeechConfig(api_key=key, region=region, enabled=True)
+    # TASK-602: api_key/region are no longer name-populatable (BYOK-only key,
+    # aliased region); construct via model_copy as the router applies an override.
+    cfg = AzureSpeechConfig(enabled=True)
+    return cfg.model_copy(update={"api_key": SecretStr(key), "region": region})
 
 
 def _req(**kw) -> SynthesisRequest:

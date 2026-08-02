@@ -20,6 +20,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from smr.models.requests import GenerateRequest
+from smr.tests.conftest import keyed
 
 # ── Endpoint: fail-closed 422 when the model cannot be resolved ──
 
@@ -145,11 +146,13 @@ def _azure():
     # test_azure_provider.py) — when set, deployment_name is *meant* to
     # override request.model.
     return AzureOpenAIProvider(
-        AzureOpenAIConfig(
-            api_key="k",
-            endpoint="https://test.openai.azure.com",
-            default_model="azure-default",
-            deployment_name="",
+        keyed(
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                default_model="azure-default",
+                deployment_name="",
+            ),
+            "k",
         )
     )
 

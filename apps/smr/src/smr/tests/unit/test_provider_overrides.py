@@ -17,6 +17,7 @@ import pytest
 
 from smr.core.config import AzureOpenAIConfig, BedrockConfig
 from smr.models.requests import GenerateRequest, ProviderOverride
+from smr.tests.conftest import keyed
 
 
 class TestProviderOverrideModel:
@@ -54,12 +55,14 @@ class TestProviderOverrideModel:
 
 @pytest.fixture
 def azure_config():
-    return AzureOpenAIConfig(
-        api_key="env-key",
-        endpoint="https://env.openai.azure.com",
-        api_version="2024-06-01",
-        deployment_name="",
-        default_model="gpt-4",
+    return keyed(
+        AzureOpenAIConfig(
+            endpoint="https://env.openai.azure.com",
+            api_version="2024-06-01",
+            deployment_name="",
+            default_model="gpt-4",
+        ),
+        "env-key",
     )
 
 
@@ -255,7 +258,7 @@ class TestProviderOverrideNewFields:
 def openai_config():
     from smr.core.config import OpenAIConfig
 
-    return OpenAIConfig(api_key="env-key", base_url="https://api.openai.com/v1")
+    return keyed(OpenAIConfig(base_url="https://api.openai.com/v1"), "env-key")
 
 
 class TestOpenAIProviderOverrideConsumption:
@@ -382,7 +385,10 @@ class TestOpenAIProviderOverrideConsumption:
 def anthropic_config():
     from smr.core.config import AnthropicConfig
 
-    return AnthropicConfig(api_key="env-key", default_model="claude-3-5-haiku-20241022")
+    return keyed(
+        AnthropicConfig(default_model="claude-3-5-haiku-20241022"),
+        "env-key",
+    )
 
 
 class TestAnthropicProviderOverrideConsumption:

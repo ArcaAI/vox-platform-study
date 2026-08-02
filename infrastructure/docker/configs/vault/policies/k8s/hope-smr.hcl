@@ -14,9 +14,9 @@ path "secret/data/hope/SMR_SERVICE_TOKEN" {
   capabilities = ["read"]
 }
 
-path "secret/data/hope/SMR_AZURE_API_KEY" {
-  capabilities = ["read"]
-}
+# TASK-602: SMR_AZURE_API_KEY removed — SMR's Azure OpenAI credential is now
+# BYOK-only (db-secret / AiProviderConnection), never a Vault-kv platform secret.
+# (OpenAI/Anthropic platform keys were likewise removed from the registry.)
 
 path "secret/data/hope/REDIS_PASS" {
   capabilities = ["read"]

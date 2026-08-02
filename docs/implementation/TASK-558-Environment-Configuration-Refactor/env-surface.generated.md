@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 145 |
-| … of which required (`failMode: closed`) | 36 |
-| … of which secret | 35 |
+| Declared keys (distinct) | 140 |
+| … of which required (`failMode: closed`) | 31 |
+| … of which secret | 30 |
 | … tier `env` | 104 |
 | … tier `global-kv` | 10 |
-| … tier `vault-kv` | 31 |
-| `turbo.json#globalEnv` entries | 157 |
+| … tier `vault-kv` | 26 |
+| `turbo.json#globalEnv` entries | 152 |
 
 ## Variables
 
@@ -35,7 +35,6 @@ disagree with those declarations.
 | `API_URL` | `env` | no | `http://localhost:8868` | `apps/admin-console` | Origin the BFF proxy (`src/app/api/hope/[...path]/route.ts`) forwards to. Server-side only — never reaches the client bundle. |
 | `APP_SETTINGS_BOOT_INVARIANT` | `env` | no | — | `apps/api` | Set to `skip` (development only) to bypass the AppSettings boot invariant (`appSettings.service.ts`). |
 | `AZURE_FOUNDRY_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Azure AI Foundry credential used by the STT Foundry model loader. |
-| `AZURE_SPEECH_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Azure Cognitive Services Speech credential. Shared by STT (`azure_speech_loader`) and TTS, which accepts it as the fallback alias for `TTS_AZURE_API_KEY`. |
 | `AZURE_STORAGE_ACCOUNT_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Azure Storage shared account key — the alternative to `AZURE_STORAGE_CONNECTION_STRING` when the endpoint is composed from `accountName` + `endpointSuffix` on the storage config row. |
 | `AZURE_STORAGE_CONNECTION_STRING` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Full Azure Storage connection string (carries the account key) for the AZURE storage provider. Read by `BlobStorageProviderFactory.buildAzureProvider` AFTER the SYSTEM row’s `credentialsRef`, i.e. it is the env/kv fallback of the same two-step order as `S3_ACCESS_KEY`. Preferred over `AZURE_STORAGE_ACCOUNT_KEY`. |
 | `CORS_ALLOWED_ORIGINS` | `global-kv` | no | — | `apps/api` | Comma-separated allowed origins for the production CORS policy. `isOriginAllowed` consults this per REQUEST, so the DB value takes effect without a restart — the clearest §9.2 L1 case in this file, and a security-relevant list an operator must be able to tighten immediately. `CORS_ALLOWED_ORIGINS` remains the bootstrap fallback used until the platform row is readable. |
@@ -126,12 +125,9 @@ disagree with those declarations.
 | `SESSION_SECRET_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Signing/encryption secret for server-side session material. Rotating it invalidates existing sessions; users re-authenticate. |
 | `SHUTDOWN_DRAIN_DELAY_MS` | `global-kv` | no | `5000` | `apps/api` | Delay between failing readiness and closing the server, so a load balancer stops routing before connections drop. Resolved at drain time (see `shutdown.timeoutMs`). `SHUTDOWN_DRAIN_DELAY_MS` remains the bootstrap fallback. |
 | `SHUTDOWN_TIMEOUT_MS` | `global-kv` | no | `30000` | `apps/api` | Upper bound on graceful shutdown before the process is forced down. `GracefulShutdownService` resolves it at SHUTDOWN time, not construction time, so a change applies to the next drain without a restart. `SHUTDOWN_TIMEOUT_MS` remains the bootstrap fallback. |
-| `SMR_ANTHROPIC_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/smr` | SMR's PLATFORM-level Anthropic credential (`SMR_ANTHROPIC_` pydantic prefix, typed `SecretStr`) — the fallback when a tenant has no enabled `(llm, anthropic)` BYO connection. |
 | `SMR_ANTHROPIC_BASE_URL` | `env` | no | `` | `apps/api` | Anthropic API base URL for SMR’s platform-fallback client (`AnthropicConfig.base_url`). Empty ⇒ the SDK default (`https://api.anthropic.com`); a tenant BYO connection may override it per request. |
 | `SMR_ANTHROPIC_DEFAULT_MODEL` | `env` | no | `` | `apps/smr` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `AnthropicConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
-| `SMR_AZURE_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/smr` | SMR's Azure OpenAI credential (`SMR_AZURE_` pydantic prefix, typed `SecretStr`). |
 | `SMR_EXTERNAL_GUARDRAIL_ENABLED` | `env` | no | `false` | `apps/smr` | Gates input moderation on SMR `/generate` (`SMR_EXTERNAL_GUARDRAIL_` prefix). OFF is the dev/CI bypass so local runs need no guardrail service. When ON the posture is fail-CLOSED by construction: a transient error is absorbed by a bounded retry, a sustained outage rejects, and an errored guardrail NEVER allows — there is deliberately no `fail_open` option. |
-| `SMR_OPENAI_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/smr` | SMR's PLATFORM-level OpenAI credential (`SMR_OPENAI_` pydantic prefix, typed `SecretStr`) — the fallback when a tenant has no enabled `(llm, openai)` BYO connection. A TENANT-supplied OpenAI key is a different data class (`db-secret`, Vault-Transit ciphertext in `AiProviderConnection`). |
 | `SMR_OPENAI_BASE_URL` | `env` | no | `https://api.openai.com/v1` | `apps/api` | OpenAI API base URL for SMR’s platform-fallback OpenAI client (`OpenAIConfig.base_url`). Override for an OpenAI-compatible gateway; a tenant BYO connection may override it per request. |
 | `SMR_OPENAI_DEFAULT_MODEL` | `env` | no | `` | `apps/smr` | Empty by design (TASK-579): provider/model SELECTION is fail-closed — `OpenAIConfig.default_model` has no compiled-in vendor value, and an unresolved model raises (`require_model()`) rather than being substituted. Informational only (providers listing). |
 | `SMR_OPENAI_ORGANIZATION` | `env` | no | — | `apps/smr` | Optional OpenAI organization id sent by SMR’s platform-fallback client (`OpenAIConfig.organization`). Unset ⇒ the account default organization. |
@@ -148,7 +144,6 @@ disagree with those declarations.
 | `STT_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/stt` | Buffered-amount threshold above which partial transcripts are dropped. |
 | `STT_WS_RESUME_GRACE_MS` | `env` | no | `15000` | `apps/stt` | Window a disconnected STT session is held open for reconnect. |
 | `TTS_PORT` | `env` | no | `8865` | `apps/tts` | Port apps/tts binds. |
-| `TTS_SARVAM_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/tts` | PLATFORM-level Sarvam credential (`TTS_SARVAM_` prefix). A TENANT-supplied Sarvam key is a different data class entirely — `tts.credential.sarvam`, tier `db-secret` — and must never be stored here. |
 | `TTS_SERVICE_TOKEN` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Shared secret on the gateway↔TTS hop (`X-Service-Token`). |
 | `TTS_URL` | `env` | no | `http://localhost:8865` | `apps/api` | Text-to-speech base URL (apps/tts, port 8865). |
 | `TTS_WS_EGRESS_HIGH_WATERMARK_BYTES` | `env` | no | `524288` | `apps/tts` | Buffered-amount threshold above which TTS audio frames are dropped. |

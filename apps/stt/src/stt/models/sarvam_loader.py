@@ -65,13 +65,11 @@ class SarvamLoader(BaseModelLoader):
             model_name = override.get("model") or model_name
             used_override = bool(api_key_str)
 
-        if not api_key_str and settings.sarvam_api_key:
-            api_key_str = settings.sarvam_api_key.get_secret_value()
-
         if not api_key_str:
             raise CloudASRAuthError(
-                "Sarvam credentials not configured. Set SARVAM_API_KEY, or "
-                "configure a tenant Sarvam BYOK credential.",
+                "Sarvam credentials not configured. Sarvam is BYOK-only: configure "
+                "a tenant Sarvam credential, or the platform (SYSTEM-tenant) Sarvam "
+                "connection, in the provider-connection plane. There is no env fallback.",
                 details={"has_key": False, "provider": "sarvam"},
             )
 

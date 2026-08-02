@@ -12,6 +12,8 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from smr.tests.conftest import keyed
+
 
 class TestProviderRegistryTenantKeys:
     """Registry should accept and resolve tenant-facing provider keys."""
@@ -83,7 +85,7 @@ class TestMainLifespanProviderKeys:
             _env_file=None,
             host="0.0.0.0",
             port=8862,
-            azure=AzureOpenAIConfig(api_key="k", endpoint="https://x.openai.azure.com"),
+            azure=keyed(AzureOpenAIConfig(endpoint="https://x.openai.azure.com"), "k"),
         )
         registry = ProviderRegistry()
         _register_provider_factories(registry, settings, MagicMock())

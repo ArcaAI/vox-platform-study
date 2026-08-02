@@ -111,16 +111,11 @@ class AzureSpeechLoader(BaseModelLoader):
         override_key = override.get("api_key") if override else None
         override_region = (override.get("region") or override.get("endpoint")) if override else None
 
-        # Resolve credentials: per-tenant override > inline config > env settings
-        speech_key = (
-            override_key
-            or (
-                model_config.compute_type  # Re-purpose compute_type field for key
-                if model_config.compute_type and model_config.compute_type.startswith("key:")
-                else None
-            )
-            or (settings.azure_speech_key.get_secret_value() if settings.azure_speech_key else None)
-        )
+        # Azure Speech is BYOK-only: the subscription KEY comes solely from the
+        # per-tenant / SYSTEM provider-connection override (there is no env
+        # fallback and no inline-config key path). The REGION is non-secret, so
+        # it may still come from the pipeline config or env.
+        speech_key = override_key
 
         speech_region = (
             override_region or self._resolve_region(model_config) or settings.azure_speech_region
@@ -128,9 +123,11 @@ class AzureSpeechLoader(BaseModelLoader):
 
         if not speech_key or not speech_region:
             raise CloudASRAuthError(
-                "Azure Speech credentials not configured. "
-                "Set AZURE_SPEECH_KEY and AZURE_SPEECH_REGION environment variables, "
-                "or pass them in the pipeline configuration.",
+                "Azure Speech credentials not configured. Azure Speech is BYOK-only: "
+                "configure a tenant Azure Speech credential, or the platform "
+                "(SYSTEM-tenant) connection, in the provider-connection plane (the "
+                "region may still be set via pipeline config or AZURE_SPEECH_REGION). "
+                "There is no env fallback for the key.",
                 details={
                     "has_key": bool(speech_key),
                     "has_region": bool(speech_region),

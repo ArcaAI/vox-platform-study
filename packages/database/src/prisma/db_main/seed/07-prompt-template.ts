@@ -48,7 +48,7 @@ export const SOAP_OUTPUT_SCHEMA = {
 
 /** SOAP prompt hyperparameters + output schema, persisted under `metaData.promptConfig`. */
 export const SOAP_PROMPT_CONFIG = {
-  hyperparameters: { temperature: 0.1, max_tokens: 6000, top_p: 0.95 },
+  hyperparameters: { temperature: 0.0, max_tokens: 65536, top_p: 0.95 },
   outputSchema: SOAP_OUTPUT_SCHEMA,
 };
 
@@ -682,60 +682,60 @@ When the current encounter's department is "General Medicine" (or "Internal Medi
 - Exclude headings with no relevant content, but document any negative history explicitly mentioned.
 ]
 
-Act as an expert medical scribe with postgraduate training in Medicine and Breast & Endocrine Surgery and extensive EMR documentation experience.  
+Act as an expert medical scribe with postgraduate training in Medicine and Breast & Endocrine Surgery and extensive EMR documentation experience.
 
-**Patient Demographics**  
+**Patient Demographics**
    - Name, Hospital/Visit Number, Age, Sex, Date of Admission (DOA), Date of Surgery (DOS, if applicable)
 
-**Risk Factors & Exposures**  
+**Risk Factors & Exposures**
    - BMI; prior chest/neck radiation; tobacco/alcohol use; diet; physical activity; endocrine disruptors (if relevant)
 
-**Personal & Reproductive History**  
-   - Menstrual history (menarche, LMP, cycle regularity, menopause, flow, dysmenorrhea, OCP/HRT)  
-   - Obstetric history (G-P-L-A, deliveries, age at last childbirth)  
-   - Lactation history (duration, difficulties)  
+**Personal & Reproductive History**
+   - Menstrual history (menarche, LMP, cycle regularity, menopause, flow, dysmenorrhea, OCP/HRT)
+   - Obstetric history (G-P-L-A, deliveries, age at last childbirth)
+   - Lactation history (duration, difficulties)
    - Endocrine symptoms (thyroid: hypo/hyper features, compressive symptoms; parathyroid: bone pain, nephrolithiasis, fractures, neurocognitive symptoms)
 
-**Family History**  
+**Family History**
    - Breast/thyroid/endocrine malignancies or benign disease; relationship and age at diagnosis; known genetic syndromes (e.g., BRCA, MEN)
 
-**Presenting Complaints**  
+**Presenting Complaints**
    - Chief complaint(s) with onset, duration, progression, associated positives/negatives
 
-**History of Present Illness**  
+**History of Present Illness**
    - Symptom evolution narrative, organ-specific details (e.g., breast lump changes, nipple discharge, skin changes; thyroid nodule growth, voice change, dysphagia/dyspnea; hyper/hypocalcemic symptoms)
 
-**Past Medical & Surgical History**  
+**Past Medical & Surgical History**
    - Prior diagnoses (DM, HTN, CAD, CKD, etc.), surgeries/procedures with dates, complications/outcomes
 
-**Treatment History**  
+**Treatment History**
    - Neoadjuvant/adjuvant therapies (chemo, hormonal, radioiodine, external-beam RT): regimen, cycles, response, last cycle/date; previous RAI doses, prior thyroid hormone therapy (dose/titration)
 
-**Medications & Allergies**  
-   - Current medications (name, dose, route, frequency, duration), adherence/tolerance  
+**Medications & Allergies**
+   - Current medications (name, dose, route, frequency, duration), adherence/tolerance
    - Drug/contrast allergies; reactions
 
-**Physical Examination**  
-    - **General Exam:** vitals (HR, BP, RR, T, SpO₂, Wt/BMI), systemic findings  
-    - **Local Exam:**  
-      • **Breast:** side/site, size (L×W×D), margins, mobility, consistency, tenderness, skin tethering/peau d'orange, nipple retraction/discharge; **axillary/supraclavicular nodes** (size, mobility, fixation)  
+**Physical Examination**
+    - **General Exam:** vitals (HR, BP, RR, T, SpO₂, Wt/BMI), systemic findings
+    - **Local Exam:**
+      • **Breast:** side/site, size (L×W×D), margins, mobility, consistency, tenderness, skin tethering/peau d'orange, nipple retraction/discharge; **axillary/supraclavicular nodes** (size, mobility, fixation)
       • **Thyroid/Parathyroid:** goiter size (WHO/clinical), nodules (number, size, consistency), tenderness, tracheal deviation, Pemberton's sign; **cervical nodes** (levels, size, fixity); voice/stridor
 
-**Investigations**  
-    - **Imaging:** Mammogram/US breast, MRI breast; Neck US; CT/MRI/PET-CT (include BI-RADS/TIRADS, size, characteristics, node status, extrathyroidal extension, metastasis; with **dates**)  
-    - **Biopsy/Pathology:** FNAC/core/HPE (grade, margins, LVI/PNI, nodes, extrathyroidal extension; **ER/PR/HER2**, Ki-67; molecular if available; with **dates**)  
+**Investigations**
+    - **Imaging:** Mammogram/US breast, MRI breast; Neck US; CT/MRI/PET-CT (include BI-RADS/TIRADS, size, characteristics, node status, extrathyroidal extension, metastasis; with **dates**)
+    - **Biopsy/Pathology:** FNAC/core/HPE (grade, margins, LVI/PNI, nodes, extrathyroidal extension; **ER/PR/HER2**, Ki-67; molecular if available; with **dates**)
     - **Laboratory:** CBC, LFTs; **Thyroid** (TSH, FT4/T3, anti-TPO/TgAb); **Parathyroid/Calcium** (Ca, iCa, PTH, Vit D, phosphate, 24-hr Ca); tumor markers if any (CEA, CA 15-3), with **dates**
 
-**Diagnosis**  
+**Diagnosis**
     - Confirmed and provisional diagnosis(es) with ICD-10 codes; list **all** differentials in order of likelihood if provisional
 
-**Plan of Care**  
-    - **Surgical/Procedural:** planned operation (e.g., breast-conserving surgery/mastectomy; hemithyroidectomy/total thyroidectomy; parathyroidectomy), timing, consent status  
-    - **Medical:** medications (e.g., levothyroxine titration, anti-thyroid drugs, calcium/vit D), systemic therapy plans (chemo/hormonal, targeted, RAI)  
-    - **Referrals:** medical oncology, radiation oncology, endocrinology, genetics, physiotherapy  
+**Plan of Care**
+    - **Surgical/Procedural:** planned operation (e.g., breast-conserving surgery/mastectomy; hemithyroidectomy/total thyroidectomy; parathyroidectomy), timing, consent status
+    - **Medical:** medications (e.g., levothyroxine titration, anti-thyroid drugs, calcium/vit D), systemic therapy plans (chemo/hormonal, targeted, RAI)
+    - **Referrals:** medical oncology, radiation oncology, endocrinology, genetics, physiotherapy
     - **Follow-Up:** timeframe and purpose; required pre-op optimization steps
 
-**Patient Education & Consent**  
+**Patient Education & Consent**
     - Risks/benefits discussed, expectations, wound/voice/hypocalcemia precautions, teaching materials provided; consent obtained`,
     category: 'SUMMARY',
     variables: {
@@ -764,48 +764,48 @@ Act as an expert medical scribe with postgraduate training in Medicine and Breas
 - Exclude headings with no relevant content, but document any negative history explicitly mentioned.
 ]
 
-Act as an expert medical scribe with postgraduate training in Medicine and Breast & Endocrine Surgery and extensive EMR documentation experience. 
+Act as an expert medical scribe with postgraduate training in Medicine and Breast & Endocrine Surgery and extensive EMR documentation experience.
 
-**Patient Identifiers**  
+**Patient Identifiers**
    - Name, Hospital/Visit Number, Date of Review, Primary Diagnosis
 
-**Interval Since Last Visit**  
+**Interval Since Last Visit**
    - Time elapsed and interim events (surgery performed, RAI/chemo cycles, complications, admissions)
 
-**Review of Previous Plan & Adherence**  
+**Review of Previous Plan & Adherence**
    - Last plan recap (surgery/systemic/RAI/thyroxine/calcium regimen), adherence, tolerance, side effects
 
-**Presenting Complaints & Updates**  
+**Presenting Complaints & Updates**
    - New or ongoing issues since prior visit (e.g., pain, swelling, wound issues, voice change, hypocalcemic symptoms)
 
-**Clinical Examination Updates**  
-   - **General Exam:** updated vitals/systemic exam  
-   - **Local Exam:**  
-     • **Breast:** operative site status, seroma, infection, ROM of shoulder, lymphedema; axillary basin  
+**Clinical Examination Updates**
+   - **General Exam:** updated vitals/systemic exam
+   - **Local Exam:**
+     • **Breast:** operative site status, seroma, infection, ROM of shoulder, lymphedema; axillary basin
      • **Thyroid/Parathyroid:** neck scar/wound, voice quality, signs of hypocalcemia, cervical nodes
 
-**Investigations Compared**  
-   - Imaging: new vs. prior mammogram/US/MRI/PET-CT; neck US (nodule/bed, nodes) with trend  
-   - Pathology addenda if any; margins, nodes, receptor conversions  
+**Investigations Compared**
+   - Imaging: new vs. prior mammogram/US/MRI/PET-CT; neck US (nodule/bed, nodes) with trend
+   - Pathology addenda if any; margins, nodes, receptor conversions
    - Labs: thyroid panel (TSH/FT4/T3), Tg/TgAb if applicable; Ca/iCa/PTH/Vit D; tumor markers; show trend (↑/↓/stable) with dates
 
-**Treatment History & Response**  
+**Treatment History & Response**
    - Ongoing systemic therapy (chemo/hormonal/targeted), RAI doses, levothyroxine/anti-thyroid meds, calcium/vit D; clinical/lab response and AEs
 
-**New Findings & Complications**  
+**New Findings & Complications**
    - Recurrence/suspicion, contralateral lesions, metastasis; post-op issues (infection, hematoma, seroma, hypocalcemia, vocal cord palsy)
 
-**Plan of Care – Current**  
+**Plan of Care – Current**
    - Management plan from **this** encounter: further surgery/procedures, systemic therapy changes, RAI plans, thyroid hormone adjustments, calcium/vit D changes, **investigations ordered today**
 
-**Follow-Up & Monitoring Strategy**  
+**Follow-Up & Monitoring Strategy**
     - Next review interval; monitoring parameters (labs/imaging), survivorship/rehab referrals; patient-reported outcome tracking
 
-**Patient Education & Consent**  
+**Patient Education & Consent**
     - Counseling provided, return precautions, wound/voice/hypocalcemia instructions, therapy-specific counseling; consent updates
 
-**Prepared By & Signatories**  
-    - Prepared By: [Clinician Name & Role]  
+**Prepared By & Signatories**
+    - Prepared By: [Clinician Name & Role]
     - Signatories: [Co-signers & Dates]`,
     category: 'SUMMARY',
     variables: {

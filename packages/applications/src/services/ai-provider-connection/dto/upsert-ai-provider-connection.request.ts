@@ -66,7 +66,8 @@ export class UpsertAiProviderConnectionRequest {
   @ApiPropertyOptional({
     description:
       'Whether this connection participates in resolution. A DISABLED row is skipped and ' +
-      'resolution falls through to the SYSTEM row and then to the service env configuration.',
+      'resolution falls through to the SYSTEM row, then fails closed (TASK-602: the STT/TTS/SMR ' +
+      'cloud credentials no longer have a per-service env fallback).',
     default: false,
   })
   @IsOptional()

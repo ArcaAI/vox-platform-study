@@ -14,13 +14,9 @@ path "secret/data/hope/TTS_SERVICE_TOKEN" {
   capabilities = ["read"]
 }
 
-path "secret/data/hope/TTS_SARVAM_API_KEY" {
-  capabilities = ["read"]
-}
-
-path "secret/data/hope/AZURE_SPEECH_KEY" {
-  capabilities = ["read"]
-}
+# TASK-602: TTS_SARVAM_API_KEY and AZURE_SPEECH_KEY removed — TTS's Sarvam and
+# Azure Speech credentials are now BYOK-only (db-secret / AiProviderConnection),
+# never Vault-kv platform secrets.
 
 # Lease renewal for the agent's own auth lease.
 path "auth/token/renew-self" {

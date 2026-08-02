@@ -14,6 +14,7 @@ import pytest
 
 from smr.core.config import AzureOpenAIConfig, BedrockConfig
 from smr.models.requests import GenerateRequest
+from smr.tests.conftest import keyed
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -40,12 +41,14 @@ def bedrock_config_no_guardrail():
 
 @pytest.fixture
 def azure_config():
-    return AzureOpenAIConfig(
-        api_key="test-key",
-        endpoint="https://test.openai.azure.com",
-        api_version="2024-06-01",
-        deployment_name="gpt-4",
-        default_model="gpt-4",
+    return keyed(
+        AzureOpenAIConfig(
+            endpoint="https://test.openai.azure.com",
+            api_version="2024-06-01",
+            deployment_name="gpt-4",
+            default_model="gpt-4",
+        ),
+        "test-key",
     )
 
 
@@ -142,19 +145,23 @@ class TestAzureContentFilterConfig:
     """Verify content_filter_severity config field exists with correct default."""
 
     def test_azure_content_filter_severity_config(self):
-        config = AzureOpenAIConfig(
-            api_key="test-key",
-            endpoint="https://test.openai.azure.com",
-            default_model="gpt-4",
+        config = keyed(
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                default_model="gpt-4",
+            ),
+            "test-key",
         )
         assert config.content_filter_severity == "medium"
 
     def test_azure_content_filter_severity_custom(self):
-        config = AzureOpenAIConfig(
-            api_key="test-key",
-            endpoint="https://test.openai.azure.com",
-            default_model="gpt-4",
-            content_filter_severity="high",
+        config = keyed(
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                default_model="gpt-4",
+                content_filter_severity="high",
+            ),
+            "test-key",
         )
         assert config.content_filter_severity == "high"
 

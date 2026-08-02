@@ -96,8 +96,8 @@ export default function SummaryPage() {
   const [includeNER, setIncludeNER] = useState(false);
   const [provider, setProvider] = useState('ollama');
   const [model, setModel] = useState('');
-  const [temperature, setTemperature] = useState(0.4);
-  const [maxTokens, setMaxTokens] = useState(4096);
+  const [temperature, setTemperature] = useState(0.1);
+  const [maxTokens, setMaxTokens] = useState(65536);
   const [results, setResults] = useState<SmrGenerateResponse[]>([]);
   const [useStreaming, setUseStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');

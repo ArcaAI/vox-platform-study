@@ -33,6 +33,7 @@ from smr.core.dependencies import (
 from smr.core.exceptions import (
     CircuitOpenError,
     ConcurrencyLimitError,
+    ProviderCredentialsError,
     QueueTimeoutError,
     RateLimitError,
     ShutdownError,
@@ -593,6 +594,21 @@ async def generate(
             f"Generation timed out after {timeout_s}s for provider '{request_body.provider}'.",
             provider=request_body.provider,
         ) from None
+    except ProviderCredentialsError:
+        # TASK-602: a missing BYOK credential is a platform-CONFIG gap, not a
+        # provider health failure — do NOT record a circuit-breaker failure (it
+        # would open the breaker for a provider that never handled a request) and
+        # do NOT collapse it into a generic 502. Mark the task failed for a
+        # consistent record, then re-raise so the shared exception handler maps it
+        # to 503 (PROVIDER_CREDENTIALS_MISSING) via ``_STATUS_MAP``.
+        await task_manager.update_task(
+            task.task_id, status=TaskStatus.FAILED, error="Provider credentials not configured"
+        )
+        GENERATION_ERRORS.labels(
+            provider=request_body.provider, model=model, error_type="credentials_missing"
+        ).inc()
+        GENERATION_TOTAL.labels(provider=request_body.provider, model=model, status="failed").inc()
+        raise
     except Exception as exc:
         if cb:
             cb.record_failure()

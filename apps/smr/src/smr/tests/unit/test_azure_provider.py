@@ -12,16 +12,19 @@ import pytest
 
 from smr.core.config import AzureOpenAIConfig
 from smr.models.requests import GenerateRequest, ResponseFormat
+from smr.tests.conftest import keyed
 
 
 @pytest.fixture
 def azure_config():
-    return AzureOpenAIConfig(
-        api_key="test-key",
-        endpoint="https://test.openai.azure.com",
-        api_version="2024-06-01",
-        deployment_name="gpt-4",
-        default_model="gpt-4",
+    return keyed(
+        AzureOpenAIConfig(
+            endpoint="https://test.openai.azure.com",
+            api_version="2024-06-01",
+            deployment_name="gpt-4",
+            default_model="gpt-4",
+        ),
+        "test-key",
     )
 
 
@@ -350,12 +353,14 @@ class TestAzureDeploymentName:
         module-level os.environ mutation from the monorepo-root .env)."""
         from smr.providers.azure_openai import AzureOpenAIProvider
 
-        config = AzureOpenAIConfig(
-            api_key="test-key",
-            endpoint="https://test.openai.azure.com",
-            api_version="2024-06-01",
-            default_model="gpt-4",
-            deployment_name="",
+        config = keyed(
+            AzureOpenAIConfig(
+                endpoint="https://test.openai.azure.com",
+                api_version="2024-06-01",
+                default_model="gpt-4",
+                deployment_name="",
+            ),
+            "test-key",
         )
         assert config.deployment_name == ""
 

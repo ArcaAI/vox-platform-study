@@ -19,6 +19,7 @@ from anthropic import APIConnectionError, APIError, APITimeoutError, AsyncAnthro
 
 from smr.core.config import AnthropicConfig
 from smr.core.defaults import resolve_request_defaults
+from smr.core.exceptions import ProviderCredentialsError
 from smr.core.telemetry import get_tracer
 from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
@@ -58,13 +59,19 @@ class AnthropicProvider:
     def __init__(self, config: AnthropicConfig) -> None:
         self._config = config
         self._default_model = config.default_model
-        # The shared, env-configured PLATFORM fallback client (empty base_url ⇒
-        # the SDK default host). Rebuilt per request only when a tenant override
-        # is present (never mutated).
-        self._client = AsyncAnthropic(
-            api_key=config.api_key.get_secret_value(),
-            base_url=config.base_url or None,
-            timeout=float(config.timeout_s),
+        # TASK-602: BYOK — the shared platform client is built ONLY when an
+        # explicit api_key is present (never from env; see AnthropicConfig). In
+        # production api_key is empty ⇒ None, and the credential must arrive per
+        # request as a ProviderOverride. Never hand an empty key to the SDK.
+        key = config.api_key.get_secret_value()
+        self._client: AsyncAnthropic | None = (
+            AsyncAnthropic(
+                api_key=key,
+                base_url=config.base_url or None,
+                timeout=float(config.timeout_s),
+            )
+            if key
+            else None
         )
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
@@ -75,14 +82,30 @@ class AnthropicProvider:
             return None
         return request.provider_overrides.get(request.provider)
 
+    def _shared_or_raise(self) -> AsyncAnthropic:
+        """The shared platform client, or ``ProviderCredentialsError`` (503) when
+        none was configured. TASK-602: BYOK, fail-closed — no env fallback, so a
+        request with no usable override and no platform client fails cleanly
+        rather than 401-ing an empty-keyed client."""
+        if self._client is None:
+            raise ProviderCredentialsError(
+                "Anthropic credentials not configured. Anthropic is BYOK-only: "
+                "configure a tenant Anthropic credential, or the platform "
+                "(SYSTEM-tenant) connection, in the provider-connection plane. "
+                "There is no env fallback.",
+                provider=_PROVIDER_NAME,
+            )
+        return self._client
+
     def _client_for(self, request: GenerateRequest) -> AsyncAnthropic:
         """Override-wins client resolution. A tenant credential builds a
-        request-scoped client (the shared ``self._client`` is never mutated).
-        Fail-OPEN: a client that cannot be built degrades to the shared env
-        client rather than failing the request; the key is NEVER logged."""
+        request-scoped client (the shared client is never mutated); absent an
+        override, the shared platform client is used (or 503 if none).
+        Fail-OPEN on a MALFORMED override: degrade to the shared platform client
+        (itself 503 if none). The key is NEVER logged."""
         override = self._resolve_override(request)
         if override is None:
-            return self._client
+            return self._shared_or_raise()
         try:
             return AsyncAnthropic(
                 api_key=override.api_key.get_secret_value(),
@@ -95,7 +118,7 @@ class AnthropicProvider:
                 provider=_PROVIDER_NAME,
                 error=type(exc).__name__,
             )
-            return self._client
+            return self._shared_or_raise()
 
     def _resolve_model(self, request: GenerateRequest) -> str | None:
         override = self._resolve_override(request)
@@ -291,6 +314,10 @@ class AnthropicProvider:
             yield StreamChunk(type="done", data={"finish_reason": raw_stop or "end_turn"})
 
     async def health_check(self) -> bool:
+        # TASK-602: no platform key ⇒ no shared client to probe (still BYOK-usable
+        # per request via an override).
+        if self._client is None:
+            return False
         try:
             # A minimal, cheap round-trip; any successful response proves auth.
             await self._client.models.list(limit=1)
@@ -312,6 +339,17 @@ class AnthropicProvider:
             else []
         )
         status = "available"
+        # TASK-602: no platform key ⇒ unavailable at the platform level (still
+        # BYOK-usable per request).
+        if self._client is None:
+            return ProviderInfo(
+                name=_PROVIDER_NAME,
+                display_name="Anthropic",
+                status="unavailable",
+                default_model=self._default_model,
+                models=models,
+                supports_streaming=True,
+            )
         try:
             listing = await self._client.models.list(limit=100)
             models = [ModelInfo(name=m.id, supports_streaming=True) for m in listing.data]

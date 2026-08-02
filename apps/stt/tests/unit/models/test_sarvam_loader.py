@@ -64,11 +64,14 @@ class TestSarvamLoaderFormats:
 
 class TestSarvamLoaderLoad:
     @pytest.mark.asyncio
-    async def test_load_with_env_key(self):
+    async def test_load_with_override_key(self):
         loader = SarvamLoader()
         with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("env-sarvam-key"))
-            result = await loader.load(_config())
+            gs.return_value = _settings(None)
+            result = await loader.load(
+                _config(),
+                provider_overrides={"sarvam": {"api_key": "byok-sarvam-key"}},
+            )
         assert isinstance(result, LoadedModel)
         assert result.format == AiModelFormat.SARVAM
         assert result.device == "cloud"
@@ -76,8 +79,20 @@ class TestSarvamLoaderLoad:
         assert result.extra["provider"] == "sarvam"
         cfg = result.model
         assert isinstance(cfg, CloudRestConfig)
-        assert cfg.api_key.get_secret_value() == "env-sarvam-key"
+        assert cfg.api_key.get_secret_value() == "byok-sarvam-key"
         assert cfg.model_name == "saaras:v4"
+
+    @pytest.mark.asyncio
+    async def test_env_key_is_ignored_byok_only(self):
+        """TASK-602: an env-set Sarvam key must NOT satisfy the loader — Sarvam is
+        BYOK-only. With no override, the loader fails closed even if the (legacy)
+        settings field somehow held a value."""
+        loader = SarvamLoader()
+        with patch("stt.models.sarvam_loader.get_settings") as gs:
+            gs.return_value = _settings(SecretStr("env-sarvam-key"))
+            with pytest.raises(CloudASRAuthError) as exc:
+                await loader.load(_config())
+        assert exc.value.details["has_key"] is False
 
     @pytest.mark.asyncio
     async def test_override_key_wins_over_env(self):
@@ -93,17 +108,18 @@ class TestSarvamLoaderLoad:
         assert cfg.model_name == "saaras:v2"
 
     @pytest.mark.asyncio
-    async def test_override_without_key_falls_back_to_env(self):
+    async def test_override_without_key_raises(self):
+        """TASK-602: an override carrying no api_key does NOT fall back to env —
+        it fails closed (BYOK-only)."""
         loader = SarvamLoader()
         with patch("stt.models.sarvam_loader.get_settings") as gs:
             gs.return_value = _settings(SecretStr("env-key"))
-            result = await loader.load(
-                _config(),
-                provider_overrides={"sarvam": {"model": "saaras:v2"}},
-            )
-        cfg = result.model
-        assert cfg.api_key.get_secret_value() == "env-key"
-        assert cfg.model_name == "saaras:v2"
+            with pytest.raises(CloudASRAuthError) as exc:
+                await loader.load(
+                    _config(),
+                    provider_overrides={"sarvam": {"model": "saaras:v2"}},
+                )
+        assert exc.value.details["has_key"] is False
 
     @pytest.mark.asyncio
     async def test_raises_when_no_key_anywhere(self):
@@ -119,8 +135,11 @@ class TestSarvamLoaderLoad:
     async def test_default_model_when_no_source_uri(self):
         loader = SarvamLoader()
         with patch("stt.models.sarvam_loader.get_settings") as gs:
-            gs.return_value = _settings(SecretStr("k"))
-            result = await loader.load(_config(source_uri=None))
+            gs.return_value = _settings(None)
+            result = await loader.load(
+                _config(source_uri=None),
+                provider_overrides={"sarvam": {"api_key": "byok-key"}},
+            )
         assert result.model.model_name == DEFAULT_SARVAM_MODEL
 
     @pytest.mark.asyncio

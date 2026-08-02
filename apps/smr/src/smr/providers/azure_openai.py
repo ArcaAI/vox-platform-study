@@ -11,6 +11,7 @@ from openai import APIConnectionError, APIError, APITimeoutError, AsyncAzureOpen
 
 from smr.core.config import AzureOpenAIConfig
 from smr.core.defaults import resolve_request_defaults
+from smr.core.exceptions import ProviderCredentialsError
 from smr.core.telemetry import get_tracer
 from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
@@ -34,10 +35,20 @@ class AzureOpenAIProvider:
     def __init__(self, config: AzureOpenAIConfig) -> None:
         self._config = config
         self._default_model = config.default_model
-        self._client = AsyncAzureOpenAI(
-            api_key=config.api_key.get_secret_value(),
-            azure_endpoint=config.endpoint,
-            api_version=config.api_version,
+        # TASK-602: BYOK — the shared platform client is built ONLY when an
+        # explicit api_key is present (never from env; see AzureOpenAIConfig).
+        # In production api_key is empty, so this is None and the credential must
+        # arrive per request as a ProviderOverride (tenant→SYSTEM). Never hand an
+        # empty key to the SDK constructor (it would build a client that 401s).
+        key = config.api_key.get_secret_value()
+        self._client: AsyncAzureOpenAI | None = (
+            AsyncAzureOpenAI(
+                api_key=key,
+                azure_endpoint=config.endpoint,
+                api_version=config.api_version,
+            )
+            if key
+            else None
         )
 
     def _resolve_override(self, request: GenerateRequest) -> ProviderOverride | None:
@@ -51,11 +62,24 @@ class AzureOpenAIProvider:
 
     def _client_for(self, request: GenerateRequest) -> AsyncAzureOpenAI:
         """Override-wins client resolution. A tenant credential builds a
-        request-scoped client (the shared/env-configured ``self._client`` is
-        never mutated) so concurrent requests for different tenants can never
-        interfere; absent an override, the shared client is reused unchanged."""
+        request-scoped client (the shared client is never mutated) so concurrent
+        requests for different tenants can never interfere.
+
+        TASK-602 (BYOK, fail-closed): absent an override, the shared client is
+        reused ONLY when a platform key was configured; when neither an override
+        nor a platform client exists, raise ``ProviderCredentialsError`` (503)
+        rather than 401-ing an empty-keyed client downstream. There is no env
+        fallback."""
         override = self._resolve_override(request)
         if override is None:
+            if self._client is None:
+                raise ProviderCredentialsError(
+                    "Azure OpenAI credentials not configured. Azure OpenAI is "
+                    "BYOK-only: configure a tenant Azure OpenAI credential, or the "
+                    "platform (SYSTEM-tenant) connection, in the provider-connection "
+                    "plane. There is no env fallback.",
+                    provider="azure_openai",
+                )
             return self._client
         return AsyncAzureOpenAI(
             api_key=override.api_key.get_secret_value(),
@@ -100,7 +124,11 @@ class AzureOpenAIProvider:
                 "model": resolved_model,
                 "messages": self._build_messages(request),
                 "temperature": resolved["temperature"],
-                "max_tokens": resolved["max_tokens"],
+                # TASK-602 follow-up: newer Azure OpenAI models (gpt-5.x / o-series,
+                # e.g. gpt-5.4-mini) reject `max_tokens` and require
+                # `max_completion_tokens`; it is accepted across chat models on the
+                # configured api-version, so send it unconditionally.
+                "max_completion_tokens": resolved["max_tokens"],
                 "top_p": resolved["top_p"],
                 "stream": False,
             }
@@ -185,7 +213,11 @@ class AzureOpenAIProvider:
                 "model": resolved_model,
                 "messages": self._build_messages(request),
                 "temperature": resolved["temperature"],
-                "max_tokens": resolved["max_tokens"],
+                # TASK-602 follow-up: newer Azure OpenAI models (gpt-5.x / o-series,
+                # e.g. gpt-5.4-mini) reject `max_tokens` and require
+                # `max_completion_tokens`; it is accepted across chat models on the
+                # configured api-version, so send it unconditionally.
+                "max_completion_tokens": resolved["max_tokens"],
                 "top_p": resolved["top_p"],
                 "stream": True,
                 "stream_options": {"include_usage": True},
@@ -255,6 +287,11 @@ class AzureOpenAIProvider:
             yield StreamChunk(type="done", data={"finish_reason": finish_reason or "stop"})
 
     async def health_check(self) -> bool:
+        # TASK-602: no platform key ⇒ no shared client to probe. The provider is
+        # still registered (BYOK — usable per request via an override), but the
+        # platform connection itself is unhealthy.
+        if self._client is None:
+            return False
         try:
             await self._client.models.list()
             return True
@@ -274,7 +311,18 @@ class AzureOpenAIProvider:
             if self._default_model
             else []
         )
+        # TASK-602: no platform key ⇒ no shared client to probe ⇒ unavailable at
+        # the platform level (still BYOK-usable per request).
         status = "available"
+        if self._client is None:
+            return ProviderInfo(
+                name="azure_openai",
+                display_name="Azure OpenAI",
+                status="unavailable",
+                default_model=self._default_model,
+                models=models,
+                supports_streaming=True,
+            )
         try:
             await self._client.models.list()
         except (APIError, APIConnectionError, APITimeoutError) as exc:

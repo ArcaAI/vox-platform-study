@@ -14,9 +14,8 @@ path "secret/data/hope/API_GATEWAY_KEY" {
   capabilities = ["read"]
 }
 
-path "secret/data/hope/AZURE_SPEECH_KEY" {
-  capabilities = ["read"]
-}
+# TASK-602: AZURE_SPEECH_KEY removed — STT's Azure Speech credential is now
+# BYOK-only (db-secret / AiProviderConnection), never a Vault-kv platform secret.
 
 path "secret/data/hope/AZURE_FOUNDRY_API_KEY" {
   capabilities = ["read"]

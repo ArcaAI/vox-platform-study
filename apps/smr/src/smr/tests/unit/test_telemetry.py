@@ -27,6 +27,7 @@ from smr.core.config import (
     Settings,
 )
 from smr.models.requests import GenerateRequest
+from smr.tests.conftest import keyed
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -68,11 +69,13 @@ def ollama_config():
 
 @pytest.fixture
 def azure_config():
-    return AzureOpenAIConfig(
-        api_key="test-key",
-        endpoint="https://test.openai.azure.com",
-        deployment_name="gpt-4",
-        default_model="gpt-4",
+    return keyed(
+        AzureOpenAIConfig(
+            endpoint="https://test.openai.azure.com",
+            deployment_name="gpt-4",
+            default_model="gpt-4",
+        ),
+        "test-key",
     )
 
 

@@ -62,6 +62,7 @@ class IndicParlerProvider:
     name = "indic_parler"
     supported_locales = {"ml-IN", "en-IN"}
     native_streaming = True
+    is_configured = True  # TASK-602: self-hosted engine needs no credential
 
     def __init__(
         self,

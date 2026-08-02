@@ -3,14 +3,31 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from typing import TypeVar
 from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
 from smr.core.config import Settings
 from smr.main import create_app
+
+_C = TypeVar("_C")
+
+
+def keyed(config: _C, key: str = "test-key") -> _C:
+    """Return a copy of a cloud provider config with an explicit ``api_key``.
+
+    TASK-602: the cloud configs (Azure OpenAI / OpenAI / Anthropic) are BYOK-only
+    — ``api_key`` is no longer name- or env-populatable, so tests can no longer
+    pass ``api_key=`` to the constructor. This mirrors exactly how the gateway/
+    router applies a credential in production: ``model_copy(update=...)`` sets the
+    field without re-opening a validation/env path. Use for any test that needs a
+    provider built with a live platform key.
+    """
+    return config.model_copy(update={"api_key": SecretStr(key)})
 
 
 @pytest.fixture

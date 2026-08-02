@@ -105,8 +105,8 @@ export default function PreSummaryPage() {
 
   const [provider, setProvider] = useState('ollama');
   const [model, setModel] = useState('');
-  const [temperature, setTemperature] = useState(0.3);
-  const [maxTokens, setMaxTokens] = useState(2048);
+  const [temperature, setTemperature] = useState(0.1);
+  const [maxTokens, setMaxTokens] = useState(65536);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [useStreaming, setUseStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState('');
