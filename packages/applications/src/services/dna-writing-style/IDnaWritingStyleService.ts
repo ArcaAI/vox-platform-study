@@ -37,6 +37,14 @@ export abstract class IDnaWritingStyleService {
   abstract getDnaReport(doctorId: string): Promise<DnaReportResponse | null>;
   abstract getRedactionRules(doctorId: string): Promise<RedactionRuleSet>;
   /**
+   * TASK-599 — the doctor's DECRYPTED DNA writing-style text, or `null` when DNA
+   * style is disabled (tenant AND doctor gate), the doctor has no report/style,
+   * or the secrets backend is unwired. Reused by the v1-compat SMR path to inject
+   * the doctor's style into the summary/pre-summary prompt. Never throws on an
+   * absent/disabled style — DNA is additive.
+   */
+  abstract getEffectiveStyleText(doctorId: string): Promise<string | null>;
+  /**
    * Read the caller doctor's DNA on/off settings
    * (effective = tenant AND doctor, plus the tenant gate + DOCTOR-row OCC
    * version). Storage is the Phase-5 DOCTOR-scope `PipelinePolicy.dnaStyleEnabled`.

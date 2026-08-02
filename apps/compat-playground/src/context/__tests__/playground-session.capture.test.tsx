@@ -260,4 +260,35 @@ describe('playground capture — stop ordering (TASK-597 D2)', () => {
     // Surviving the teardown matters as much as arriving during it.
     expect(ctx.transcript.lines.map((l) => l.text)).toEqual(['first line', 'the tail final']);
   });
+
+  it('clears a stale interim once the stop teardown completes — no permanent "in progress" line', async () => {
+    // Field defect: during silence the ASR emits partials that never finalize.
+    // If the LAST event before Stop was such a partial, the console kept
+    // rendering it as an italic in-progress line forever — reading as "the
+    // last line is still being finalized" when the socket was already closed.
+    mount();
+    await act(async () => {
+      await ctx.capture.start();
+    });
+    act(() => {
+      sdk.onTranscript?.('a real line', true, {});
+      sdk.onTranscript?.('silence partial that never finalizes', false, {});
+    });
+    expect(ctx.transcript.interim).toBe('silence partial that never finalizes');
+
+    let stopping!: Promise<void>;
+    act(() => {
+      stopping = ctx.capture.stop();
+    });
+    // STILL shown while draining — a tail final may yet replace it.
+    expect(ctx.transcript.interim).toBe('silence partial that never finalizes');
+
+    await act(async () => {
+      sdk.releaseDrain();
+      await stopping;
+    });
+    // Drain over, socket closed — nothing can finalize this text anymore.
+    expect(ctx.transcript.interim).toBe('');
+    expect(ctx.transcript.lines.map((l) => l.text)).toEqual(['a real line']);
+  });
 });

@@ -65,6 +65,14 @@ export class SyncSummaryRequest {
   @IsString()
   visit_type?: string;
 
+  @ApiPropertyOptional({
+    description:
+      "Requesting doctor id (TASK-599). When set and the tenant+doctor DNA gate is on, the doctor's DNA writing-style is applied to the summary. Omit ⇒ department + visit-type only.",
+  })
+  @IsOptional()
+  @IsString()
+  doctor_id?: string;
+
   @ApiPropertyOptional({ description: 'Medical specialty' })
   @IsOptional()
   @IsString()

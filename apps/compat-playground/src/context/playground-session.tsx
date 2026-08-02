@@ -620,6 +620,12 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
       toast.error(error instanceof Error ? error.message : 'Failed to stop recording');
     } finally {
       captureStartRef.current = null;
+      // The drain is over — the socket is closed and no further final can
+      // arrive. A leftover interim (a silence-period partial the ASR never
+      // finalized) would otherwise sit in the transcript as an italic
+      // "in progress" line forever, reading as "the last line is still being
+      // finalized" when nothing is pending anymore.
+      setInterim('');
       setIsStopping(false);
     }
   };

@@ -232,6 +232,17 @@ export class SttWebSocketClient {
    * status so the socket doesn't sit open longer than necessary.
    */
   private pendingDrainResolve: (() => void) | null = null;
+
+  /**
+   * The in-flight {@link stopAndDrain} promise, or `null`.
+   *
+   * SINGLE-FLIGHT (TASK-597 follow-up): the drain resolver above is a single
+   * slot, so a second concurrent `stopAndDrain` used to OVERWRITE the first
+   * caller's resolver — the server's terminal status then settled only one of
+   * them and the other waited out the full `drainTimeoutMs` ceiling. Concurrent
+   * callers now join the same drain.
+   */
+  private drainInFlight: Promise<void> | null = null;
   /**
    * TASK-597: progress channel into an in-flight drain. `handleMessage` calls
    * it on every transcript and on a `finalizing` status so the drain can end on
@@ -527,7 +538,25 @@ export class SttWebSocketClient {
    *   status or `drainTimeoutMs`. Pass `undefined` (not `0`) to keep the
    *   configured value — `0` is a meaningful setting here, never "unset".
    */
-  async stopAndDrain(
+  stopAndDrain(drainTimeoutMs?: number, quietWindowMs?: number): Promise<void> {
+    // Concurrent callers JOIN the in-flight drain (see {@link drainInFlight}) —
+    // a second drain window against the same socket cannot end sooner than the
+    // first, and starting one used to orphan the first caller's resolver.
+    if (this.drainInFlight) {
+      this.logger?.info('stopAndDrain: joined in-flight drain', {
+        operation: 'stopAndDrain',
+        component: 'SttWebSocketClient',
+      });
+      return this.drainInFlight;
+    }
+    const run = this.stopAndDrainOnce(drainTimeoutMs, quietWindowMs).finally(() => {
+      if (this.drainInFlight === run) this.drainInFlight = null;
+    });
+    this.drainInFlight = run;
+    return run;
+  }
+
+  private async stopAndDrainOnce(
     drainTimeoutMs: number = this.drainOptions.timeoutMs,
     quietWindowMsOverride: number = this.drainOptions.quietWindowMs,
   ): Promise<void> {

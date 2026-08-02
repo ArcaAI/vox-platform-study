@@ -14,6 +14,7 @@ import { ClsService } from 'nestjs-cls';
 import { PromptResolutionService, PromptResolutionTier } from './prompt-resolution.service';
 import { PromptTemplateRepository, DnaWritingStyleReportRepository } from '@arcaai/domains';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
+import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
 import { truncatePriorVisitSummary } from '../../settings-registry/descriptors/agentic-revisit.descriptors';
 import { IActiveUserContext } from '../../../interfaces';
@@ -311,6 +312,13 @@ export class PromptAssemblyService {
     // trailing for the same reason as the two above: absent ⇒ zero-shot, which
     // is exactly the pre-B6 prompt.
     @Optional() @Inject(IGateEditExemplarRetriever) private readonly exemplarRetriever?: IGateEditExemplarRetriever,
+    // DNA writing-style decryption (TASK-599). The styleText column is
+    // Vault-Transit ciphertext (plaintext dropped in Phase 6), and the generic
+    // repository findById never decrypts — so without a SecretsService the style
+    // is silently never injected. @Global SecretsModule supplies this in prod;
+    // @Optional + trailing so existing positional test fixtures keep their arity
+    // (absent ⇒ legacy non-decrypting read, i.e. the prior latent no-op).
+    @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
   ) {
     const raw = String(this.configService.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -520,6 +528,22 @@ export class PromptAssemblyService {
       }
     }
 
+    // DNA writing-style append-fallback (TASK-599). If the resolved template
+    // consumed a {style_DNA_*} placeholder the style is already substituted into
+    // the body above; otherwise append it here so the style still reaches the LLM
+    // (the ArcaAI governed templates declare NO placeholder — without this the
+    // decrypted style would be silently dropped, the same class of latent no-op
+    // as the pre-summary/NER blocks). The style is trusted, platform-resolved
+    // INSTRUCTION about tone/formatting — NOT patient data — so it is framed as
+    // guidance and deliberately NOT wrapped in the EXTERNAL_DATA spotlighting
+    // delimiters (those are reserved for transcript/NER/notes/attachments).
+    const dnaStyleBlock = variables.dna_style_text ?? '';
+    if (dnaStyleBlock && !userPrompt.includes(dnaStyleBlock)) {
+      userPrompt +=
+        `\n\n--- CLINICIAN WRITING STYLE (apply to tone, formatting, and section phrasing; this is style guidance, not patient data) ---\n` +
+        `${dnaStyleBlock}`;
+    }
+
     const promptConfig = this.extractPromptConfig(template);
     const hyperparameters = promptConfig?.hyperparameters ?? {};
     const outputSchema = promptConfig?.outputSchema ?? null;
@@ -578,8 +602,14 @@ export class PromptAssemblyService {
     }
 
     if (params.dnaStyleId) {
-      const dnaStyle = await this.dnaWritingStyleRepository.findById(params.dnaStyleId);
-      if (dnaStyle?.styleText) {
+      const styleText = await this.resolveDnaStyleText(params.dnaStyleId);
+      if (styleText) {
+        // Always expose the resolved style so `assemble()` can APPEND it as a
+        // directive when the template declares no {style_DNA_*} slot (e.g. the
+        // ArcaAI governed templates) — mirrors the ner_entities/pre_summary_text
+        // append-fallback convention.
+        variables.dna_style_text = styleText;
+
         // The DNA writing style is DOCTOR-level: the same styleText applies to
         // whichever style_DNA_* slot the template uses (there is one style per
         // doctor, not one per department). The department-scoped key list is
@@ -591,13 +621,41 @@ export class PromptAssemblyService {
         const content = resolvedContent ?? '';
         for (const key of this.getDnaVariableKeys()) {
           if (content.includes(`{${key}}`)) {
-            variables[key] = dnaStyle.styleText;
+            variables[key] = styleText;
           }
         }
       }
     }
 
     return variables;
+  }
+
+  /**
+   * Fetch the DECRYPTED DNA writing-style text for a report id.
+   *
+   * The `styleText` column is Vault-Transit ciphertext — the plaintext column was
+   * dropped in Phase 6 — so the generic `findById` (which never decrypts) returns
+   * an entity whose `styleText` is always undefined in a Vault-backed environment.
+   * With a `SecretsService` wired we MUST go through the decrypting repository
+   * method; without one we fall back to the legacy non-decrypting read (a latent
+   * no-op in prod, but what the pre-TASK-599 code did and what secrets-less test
+   * fixtures rely on). Never throws — DNA style is additive; on any failure we
+   * proceed without it.
+   */
+  private async resolveDnaStyleText(dnaStyleId: string): Promise<string | null> {
+    try {
+      if (this.secretsService) {
+        const { plaintext } = await this.dnaWritingStyleRepository.findByIdWithDecryptedFields(dnaStyleId, this.secretsService);
+        return plaintext.styleText?.trim() || null;
+      }
+      const entity = (await this.dnaWritingStyleRepository.findById(dnaStyleId)) as { styleText?: string | null } | null;
+      return entity?.styleText?.trim() || null;
+    } catch (error) {
+      this.logger.warn(
+        `DNA writing-style resolution failed for ${dnaStyleId}; proceeding without style: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   private getDnaVariableKeys(): string[] {

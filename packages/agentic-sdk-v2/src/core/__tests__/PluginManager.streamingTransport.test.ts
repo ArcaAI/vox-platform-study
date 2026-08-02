@@ -147,6 +147,21 @@ describe('PluginManager.getTranscriptionPipelineConfig', () => {
     expect((cfg.stt as { startOn?: 'primary' | 'fallback' }).startOn).toBeUndefined();
   });
 
+  it("defaults languageMode to 'auto' when neither runtime nor static config pins one (TASK-598)", () => {
+    // Constructor stt config carries no languageMode; no runtime pick either.
+    manager.setRuntimeOptions({ pipelineId: 'p' });
+    const cfg = manager.getTranscriptionPipelineConfig();
+    // An un-selected session must AUTO-DETECT (backend resolves 'auto' to no
+    // language override) rather than fall back to a hardcoded language.
+    expect(cfg.stt.languageMode).toBe('auto');
+  });
+
+  it('a runtime languageMode pick still overrides the auto default (TASK-587/598)', () => {
+    manager.setRuntimeOptions({ pipelineId: 'p', languageMode: 'ml-en' });
+    const cfg = manager.getTranscriptionPipelineConfig();
+    expect(cfg.stt.languageMode).toBe('ml-en');
+  });
+
   it('clearRuntimeOptions() wipes runtime overrides', () => {
     manager.setRuntimeOptions({ pipelineId: 'p', consultationId: 'c', language: 'th' });
     manager.clearRuntimeOptions();

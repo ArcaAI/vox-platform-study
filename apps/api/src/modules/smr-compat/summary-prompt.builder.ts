@@ -29,6 +29,14 @@ export interface SummaryPromptOptions {
    * directive is still appended so the response shape stays Simplified/Enhanced.
    */
   governedInstruction?: string;
+  /**
+   * The requesting doctor's DNA writing-style text (TASK-599), already decrypted
+   * and gate-checked by the controller. When present it is appended as style
+   * guidance (tone/formatting/phrasing) — it never alters clinical facts and does
+   * NOT change the wire schema. Absent ⇒ no style directive (D5: no doctorId ⇒
+   * department + visit-type only).
+   */
+  dnaStyleText?: string;
 }
 
 const LANGUAGE_INSTRUCTION: Record<string, string> = {
@@ -135,6 +143,16 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
     }
   }
 
+  // TASK-599: the requesting doctor's DNA writing-style, applied to tone /
+  // formatting / phrasing only — never the clinical facts, and never the wire
+  // schema. Appended as guidance; absent when no doctorId resolved (D5).
+  const dnaStyle = options.dnaStyleText?.trim();
+  if (dnaStyle) {
+    systemLines.push(
+      `Match this clinician's documentation writing style (tone, formatting, and section phrasing) without changing any clinical facts:\n${dnaStyle}`,
+    );
+  }
+
   systemLines.push(
     'Base the summary strictly on the provided transcript and context; do not fabricate findings.',
     'Respond with a single JSON object that conforms to the provided schema. Output JSON only — no prose, no markdown fences.',
@@ -177,6 +195,8 @@ export interface PreSummaryPromptOptions {
    * pre-summary in addition to the base markdown/format directives.
    */
   governedInstruction?: string;
+  /** The requesting doctor's decrypted DNA writing-style text (TASK-599). */
+  dnaStyleText?: string;
 }
 
 /**
@@ -196,6 +216,12 @@ export function buildPreSummaryPrompt(req: PreSummaryRequest, options: PreSummar
   const governed = options.governedInstruction?.trim();
   if (governed) {
     systemLines.push(`Follow this department's pre-summary instruction where the provided context supports it:\n${governed}`);
+  }
+  const dnaStyle = options.dnaStyleText?.trim();
+  if (dnaStyle) {
+    systemLines.push(
+      `Match this clinician's documentation writing style (tone, formatting, and phrasing) without changing any clinical facts:\n${dnaStyle}`,
+    );
   }
   systemLines.push(
     'Organize the pre-summary as markdown with clear section headings and bullet points.',

@@ -442,6 +442,11 @@ export interface PreSummaryRequest {
   temperature?: number;
   max_tokens?: number;
   /**
+   * Doctor whose DNA writing-style the gateway should apply to the pre-summary.
+   * Forwarded top-level as `doctor_id` ONLY when provided (omitted when unset).
+   */
+  doctorId?: string;
+  /**
    * Client-only (TASK-589): opt into SSE streaming on `presummary`. Only
    * `stream` itself is sent on the wire (as `stream:true`); when omitted/false
    * the request is byte-identical to today's single-JSON-response path.

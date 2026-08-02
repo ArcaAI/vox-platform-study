@@ -45,6 +45,8 @@ const createMockDnaReportRepository = () => ({
   updateWithVersion: vi.fn(),
   // Repository-level pagination for the admin list.
   findPaginated: vi.fn().mockResolvedValue({ data: [], count: 0 }),
+  // Ciphertext decryption (TASK-551/599) — returns the plaintext view.
+  decryptFieldsFromEntity: vi.fn(),
   $: vi.fn(),
 });
 
@@ -1525,6 +1527,7 @@ describe('DnaWritingStyleService', () => {
     });
 
     let policy: ReturnType<typeof createMockPipelinePolicyService>;
+    let secrets: { encrypt: ReturnType<typeof vi.fn>; decrypt: ReturnType<typeof vi.fn> };
     let svc: DnaWritingStyleService;
 
     const buildSvc = () =>
@@ -1540,11 +1543,45 @@ describe('DnaWritingStyleService', () => {
         mockClsService as never,
         mockDatabaseService as never,
         policy as never,
+        secrets as never,
       );
 
     beforeEach(() => {
       policy = createMockPipelinePolicyService();
+      secrets = { encrypt: vi.fn(), decrypt: vi.fn() };
       svc = buildSvc();
+    });
+
+    // ── getEffectiveStyleText (TASK-599) ──
+    it('getEffectiveStyleText returns the decrypted styleText when the gate is effective', async () => {
+      policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
+      mockReportRepo.findLatestForDoctor.mockResolvedValue({ id: 'rep-1', doctorId: 'doctor-id-1' });
+      mockReportRepo.decryptFieldsFromEntity.mockResolvedValue({ styleText: 'Concise, formal, SOAP.', reportData: null, redactionRules: null });
+
+      const res = await svc.getEffectiveStyleText('doctor-id-1');
+
+      expect(res).toBe('Concise, formal, SOAP.');
+      expect(mockReportRepo.decryptFieldsFromEntity).toHaveBeenCalledWith({ id: 'rep-1', doctorId: 'doctor-id-1' }, secrets);
+    });
+
+    it('getEffectiveStyleText returns null when the DNA gate is not effective (no decrypt)', async () => {
+      policy.getDnaSettings.mockResolvedValue({ effective: false, tenantEnabled: false, doctorToggle: null, version: 0 });
+
+      const res = await svc.getEffectiveStyleText('doctor-id-1');
+
+      expect(res).toBeNull();
+      expect(mockReportRepo.findLatestForDoctor).not.toHaveBeenCalled();
+      expect(mockReportRepo.decryptFieldsFromEntity).not.toHaveBeenCalled();
+    });
+
+    it('getEffectiveStyleText returns null when the doctor has no report', async () => {
+      policy.getDnaSettings.mockResolvedValue({ effective: true, tenantEnabled: true, doctorToggle: true, version: 1 });
+      mockReportRepo.findLatestForDoctor.mockResolvedValue(null);
+
+      const res = await svc.getEffectiveStyleText('doctor-id-1');
+
+      expect(res).toBeNull();
+      expect(mockReportRepo.decryptFieldsFromEntity).not.toHaveBeenCalled();
     });
 
     it('getDnaSettings delegates to PipelinePolicyService with the CLS tenant + doctorId and maps the response', async () => {

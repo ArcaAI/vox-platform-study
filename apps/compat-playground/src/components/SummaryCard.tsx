@@ -50,6 +50,10 @@ export function SummaryCard({ config }: SummaryCardProps) {
   const [department, setDepartment] = useState(config.department ?? '');
   const [visitType, setVisitType] = useState(config.visitType?.trim() || DEFAULT_VISIT_TYPE);
 
+  // Doctor whose DNA writing-style is applied (persisted). Empty ⇒ NO doctorId
+  // is sent (department + visit-type only).
+  const [doctorId, setDoctorId] = useState(config.doctorId ?? '');
+
   // Clinical context.
   const [context, setContext] = useState<ClinicalContextValues>(EMPTY_CONTEXT);
   const updateContext = <K extends keyof ClinicalContextValues>(key: K, value: ClinicalContextValues[K]) => {
@@ -82,7 +86,7 @@ export function SummaryCard({ config }: SummaryCardProps) {
   const hasTranscript = effectiveTranscript.trim().length > 0;
 
   const persistDefaults = () => {
-    saveStoredConfig({ ...config, department: department.trim(), visitType: visitType.trim() });
+    saveStoredConfig({ ...config, department: department.trim(), visitType: visitType.trim(), doctorId: doctorId.trim() });
   };
 
   const handlePreSummarize = async () => {
@@ -91,6 +95,7 @@ export function SummaryCard({ config }: SummaryCardProps) {
       const res = await preSummarize({
         current_department: department.trim() || undefined,
         visit_type: visitType.trim() || undefined,
+        doctorId: doctorId.trim() || undefined,
         age: context.age.trim() || undefined,
         dob: context.dob.trim() || undefined,
         gender: context.gender.trim() || undefined,
@@ -121,6 +126,7 @@ export function SummaryCard({ config }: SummaryCardProps) {
       const res = await summarizeSync({
         text: effectiveTranscript,
         departmentId: department.trim() || undefined,
+        doctorId: doctorId.trim() || undefined,
         visitType: visitType.trim() || undefined,
         testResultsText: context.testResults.trim() || undefined,
         previousVisitsText: context.previousVisits.trim() || undefined,
@@ -161,6 +167,8 @@ export function SummaryCard({ config }: SummaryCardProps) {
           apiKey={apiKey}
           department={department}
           onDepartmentChange={setDepartment}
+          doctorId={doctorId}
+          onDoctorIdChange={setDoctorId}
           visitType={visitType}
           onVisitTypeChange={setVisitType}
           context={context}

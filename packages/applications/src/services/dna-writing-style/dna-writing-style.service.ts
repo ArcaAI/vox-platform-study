@@ -191,6 +191,33 @@ export class DnaWritingStyleService extends BaseService implements IDnaWritingSt
   }
 
   /**
+   * TASK-599 — the doctor's DECRYPTED DNA writing-style text for prompt
+   * injection, or `null` when DNA style is not applicable. Composes the same
+   * pieces the doctor-facing reads use: the tenant PHI guard, the effective
+   * on/off gate (`tenant AND doctor`), the latest report, and ciphertext
+   * decryption. Returns `null` — never throws — when the gate is off, there is no
+   * report/style, or the secrets backend is unwired, so callers can treat DNA as
+   * purely additive.
+   */
+  async getEffectiveStyleText(doctorId: string): Promise<string | null> {
+    const tenantId = this.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('Tenant ID is required');
+    }
+    await assertUserBelongsToTenant(this.userRoleAssignmentRepository, this.userDepartmentRepository, this.userRepository, doctorId, tenantId);
+
+    // Effective = tenant AND doctor toggle (Phase-5 cascade). Off ⇒ no style.
+    const settings = await this.getDnaSettings(doctorId);
+    if (!settings.effective) return null;
+
+    const report = await this.dnaReportRepository.findLatestForDoctor(doctorId);
+    if (!report || !this.secretsService) return null;
+
+    const { styleText } = await this.dnaReportRepository.decryptFieldsFromEntity(report, this.secretsService);
+    return styleText?.trim() || null;
+  }
+
+  /**
    * Resolve a single doctor's `User.username` for display. `User`
    * is a global (non-tenant-scoped) model, so this read is safe for tenant
    * admins. `userRepository.findById` THROWS `DataNotFoundException` when the

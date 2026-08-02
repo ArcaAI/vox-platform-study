@@ -630,11 +630,13 @@ export class PluginManager {
         location: sttConfig.provider === 'local' ? 'browser' : sttConfig.provider === 'backend' ? 'backend' : 'auto',
         provider: sttConfig.provider ?? DEFAULT_STT_CONFIG.provider,
         language: this.runtimeOptions.language ?? prefs?.language ?? sttConfig.language ?? DEFAULT_STT_CONFIG.language,
-        // End-user language mode (TASK-587). Runtime option wins; else the
-        // AudioPluginConfig default. Undefined ⇒ pipeline default (no override).
-        ...((this.runtimeOptions.languageMode ?? sttConfig.languageMode)
-          ? { languageMode: this.runtimeOptions.languageMode ?? sttConfig.languageMode }
-          : {}),
+        // End-user language mode (TASK-587). Runtime option wins, else the
+        // AudioPluginConfig value. When neither pins a mode we default to
+        // 'auto' so an un-selected session AUTO-DETECTS the language (the
+        // backend resolves 'auto' to no language override) rather than relying
+        // on a hardcoded default — pipelines no longer pin a language
+        // (TASK-598). A dev/end-user pick (ml/en/ml-en/vi/…) still wins.
+        languageMode: this.runtimeOptions.languageMode ?? sttConfig.languageMode ?? 'auto',
         // Pre-start engine selection (TASK-586). Start-time only — there is no
         // static sttConfig.startOn — so it comes solely from the runtime option.
         ...(this.runtimeOptions.startOn ? { startOn: this.runtimeOptions.startOn } : {}),
@@ -1077,9 +1079,36 @@ export class PluginManager {
   }
 
   /**
-   * Destroy all processors and release resources
+   * The in-flight `destroy()` promise, or `null`.
+   *
+   * SINGLE-FLIGHT (TASK-597 follow-up — the "Finalizing… for drainTimeoutMs"
+   * hang). The compat layer stops ONE audio graph through TWO hooks, and each
+   * `useArcaAudio` instance has its own per-instance stop guard — so both stop
+   * paths reach THIS shared manager and, without this, run `destroy()`
+   * concurrently. The second pass raced the first through the SAME
+   * `SttWebSocketClient`, whose pending-drain resolver is a single slot: one
+   * caller's drain lost its resolver and sat out the FULL `drainTimeoutMs`
+   * ceiling (measured: 60.9 s with a 60 s ceiling) while the UI stayed in
+   * "stopping". Handing every concurrent caller the SAME promise makes the
+   * duplicate free and the teardown single.
    */
-  async destroy(): Promise<void> {
+  private destroyInFlight: Promise<void> | null = null;
+
+  /**
+   * Destroy all processors and release resources.
+   *
+   * Concurrent calls join the in-flight teardown (see {@link destroyInFlight}).
+   */
+  destroy(): Promise<void> {
+    if (this.destroyInFlight) return this.destroyInFlight;
+    const run = this.destroyOnce().finally(() => {
+      if (this.destroyInFlight === run) this.destroyInFlight = null;
+    });
+    this.destroyInFlight = run;
+    return run;
+  }
+
+  private async destroyOnce(): Promise<void> {
     const timer = this.logger?.startOperation('destroyPlugins', {
       component: 'PluginManager',
     });

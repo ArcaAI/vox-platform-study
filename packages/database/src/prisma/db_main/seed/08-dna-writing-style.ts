@@ -409,6 +409,72 @@ export const CUSTOMER_DNA_CLINICIANS = [
     styleText:
       'Dr. Tan (ArcaAI, General Practice) writes concise, professional outpatient notes with moderate medical terminology and standard abbreviations. Documentation follows a clear SOAP structure with explicit assessment and plan sections.',
   },
+  {
+    userId: SEED_USER_IDS.ARCAAI_DOCTOR_SURG,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    departmentId: SEED_DEPARTMENT_IDS.SURG_ARCAAI,
+    reportId: '73000000-0000-0000-0001-000000000002',
+    versionId: '74000000-0000-0000-0001-000000000002',
+    usageIds: ['75000000-0000-0000-0001-000000000003'],
+    reportData: { formality: 'formal', sentenceLength: 'short', medicalTermUsage: 'extensive', abbreviationStyle: 'heavy' },
+    styleText:
+      'Dr. Ng (ArcaAI, Surgery) writes highly structured, formal operative documentation. Prefers short, decisive sentences with heavy use of standard surgical abbreviations (NPO, OT, RIF, POD). Notes follow a strict template: Indication → Procedure → Findings → Post-op Plan.',
+  },
+  {
+    userId: SEED_USER_IDS.ARCAAI_DOCTOR_RHEUM,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    departmentId: SEED_DEPARTMENT_IDS.RHEUM_ARCAAI,
+    reportId: '73000000-0000-0000-0001-000000000003',
+    versionId: '74000000-0000-0000-0001-000000000003',
+    usageIds: ['75000000-0000-0000-0001-000000000004'],
+    reportData: { formality: 'formal', sentenceLength: 'medium', medicalTermUsage: 'extensive', abbreviationStyle: 'moderate' },
+    styleText:
+      'Dr. Nair (ArcaAI, Rheumatology) documents with emphasis on tender/swollen joint counts, inflammatory markers, and disease-activity scores. Uses moderate standard rheumatology shorthand (DAS28, ESR, CRP) and consistently presents serial lab values in tabular form.',
+  },
+  {
+    userId: SEED_USER_IDS.ARCAAI_DOCTOR_NEUR,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    departmentId: SEED_DEPARTMENT_IDS.NEUR_ARCAAI,
+    reportId: '73000000-0000-0000-0001-000000000004',
+    versionId: '74000000-0000-0000-0001-000000000004',
+    usageIds: ['75000000-0000-0000-0001-000000000005'],
+    reportData: { formality: 'formal', sentenceLength: 'long', medicalTermUsage: 'extensive', abbreviationStyle: 'minimal' },
+    styleText:
+      'Dr. Wong (ArcaAI, Neurology) favours detailed, narrative-style documentation with extensive neurological terminology and minimal abbreviations, preferring to spell terms out in full. Neurological examination findings are described granularly, with thorough differentials and explicit reasoning chains.',
+  },
+  {
+    userId: SEED_USER_IDS.ARCAAI_DOCTOR_ORTH,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    departmentId: SEED_DEPARTMENT_IDS.ORTH_ARCAAI,
+    reportId: '73000000-0000-0000-0001-000000000005',
+    versionId: '74000000-0000-0000-0001-000000000005',
+    usageIds: ['75000000-0000-0000-0001-000000000006'],
+    reportData: { formality: 'professional', sentenceLength: 'short', medicalTermUsage: 'moderate', abbreviationStyle: 'heavy' },
+    styleText:
+      'Dr. Goh (ArcaAI, Orthopedics) writes brisk, focused musculoskeletal notes centred on mechanism of injury, range-of-motion, and imaging correlation. Uses heavy standard orthopedic abbreviations (ROM, WBAT, ORIF, NWB) with clearly delineated management and follow-up plans.',
+  },
+  {
+    userId: SEED_USER_IDS.ARCAAI_DOCTOR_HEME,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    departmentId: SEED_DEPARTMENT_IDS.HEME_ARCAAI,
+    reportId: '73000000-0000-0000-0001-000000000006',
+    versionId: '74000000-0000-0000-0001-000000000006',
+    usageIds: ['75000000-0000-0000-0001-000000000007'],
+    reportData: { formality: 'formal', sentenceLength: 'medium', medicalTermUsage: 'extensive', abbreviationStyle: 'moderate' },
+    styleText:
+      'Dr. Rao (ArcaAI, Hematology) writes precise, formal notes anchored to the full blood count, blood-film morphology, and coagulation profile. Uses moderate standard hematology shorthand (CBC, Hb, MCV, INR) and always lays out serial counts in tabular format with trend commentary.',
+  },
+  {
+    userId: SEED_USER_IDS.ARCAAI_DOCTOR_BREN,
+    tenantId: SEED_CUSTOMER_TENANT_IDS.ARCAAI,
+    departmentId: SEED_DEPARTMENT_IDS.BREN_ARCAAI,
+    reportId: '73000000-0000-0000-0001-000000000007',
+    versionId: '74000000-0000-0000-0001-000000000007',
+    usageIds: ['75000000-0000-0000-0001-000000000008'],
+    reportData: { formality: 'formal', sentenceLength: 'medium', medicalTermUsage: 'extensive', abbreviationStyle: 'moderate' },
+    styleText:
+      'Dr. Lee (ArcaAI, Breast & Endocrine) writes thorough, formal documentation covering reproductive and hormonal history alongside imaging and screening results. Uses moderate abbreviations, spelling out uncommon terms, and consistently emphasises risk-factor analysis and screening-protocol adherence.',
+  },
 ];
 
 export const CUSTOMER_DNA_REPORTS = CUSTOMER_DNA_CLINICIANS.map((c) => ({

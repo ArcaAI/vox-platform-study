@@ -256,7 +256,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp leaves language unset (auto) for a pair rather than pinning ml.
+  language: null          # Auto-detect. Language is a runtime choice (end-user/dev languageMode, TASK-587); an unset pipeline lets whisper.cpp detect and code-switch natively.
   prev_text_context_words: 0   # NO carry-forward prompt — priming whisper.cpp with prior text propagates/compounds errors over a long session
 
 diarization:
@@ -316,7 +316,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp leaves language unset (auto) for a pair — the fine-tune code-switches natively; pinning ml over-biases the script.
+  language: null          # Auto-detect. Language is a runtime choice (languageMode, TASK-587); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
   prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
@@ -374,7 +374,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp leaves language unset (auto) for a pair — the fine-tune code-switches natively; pinning ml over-biases the script.
+  language: null          # Auto-detect. Language is a runtime choice (languageMode, TASK-587); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
   prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
@@ -433,7 +433,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml-en"       # Malayalam+English code-switch pair; whisper.cpp leaves language unset (auto) for a pair — the fine-tune code-switches natively; pinning ml over-biases the script.
+  language: null          # Auto-detect. Language is a runtime choice (languageMode, TASK-587); an unset pipeline lets the ml-en fine-tune code-switch natively — pinning a language over-biases the script.
   prev_text_context_words: 0   # NO carry-forward prompt — priming this fine-tune with prior text propagates/compounds errors over a long session (measured)
 
 diarization:
@@ -889,7 +889,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: en
+  language: null           # Auto-detect. Language is a runtime choice (languageMode, TASK-587); not pinned in the pipeline definition.
   beam_size: 1
   temperature: 0
 postprocessing:
@@ -933,7 +933,7 @@ inference:
   batch_size: 1
   compute_type: auto
   device: auto
-  language: "ml"
+  language: null           # Auto-detect. Language is a runtime choice (languageMode, TASK-587); not pinned in the pipeline definition.
 
 postprocessing:
   timestamps:

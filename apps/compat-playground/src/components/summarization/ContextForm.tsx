@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, Textarea } from '@arcaai/ui';
 import { fetchDepartments, type DepartmentOption } from '../../lib/departments';
+import { fetchDoctors, type DoctorOption } from '../../lib/doctors';
 
 /**
  * The department + visit type + clinical context form for the Summarization
@@ -26,8 +27,13 @@ export const DEFAULT_VISIT_TYPE: string = VISIT_TYPE_PRESETS[0];
 const CUSTOM_VISIT = '__custom__';
 /** Sentinel value for the "custom / free text" option in the department select. */
 const CUSTOM_DEPT = '__custom__';
+/** Sentinel value for the "custom / free text" option in the doctor select. */
+const CUSTOM_DOCTOR = '__custom__';
+/** Sentinel value for the "no doctor / no DNA style" option. Maps to empty doctorId. */
+const NONE_DOCTOR = '__none__';
 
 type DeptFetchState = 'loading' | 'list' | 'freetext';
+type DoctorFetchState = 'loading' | 'list' | 'freetext';
 
 export interface ClinicalContextValues {
   age: string;
@@ -43,6 +49,9 @@ export interface ContextFormProps {
   apiKey: string;
   department: string;
   onDepartmentChange: (value: string) => void;
+  /** Selected doctor's user id (submitted as `doctorId`); empty ⇒ no DNA style. */
+  doctorId: string;
+  onDoctorIdChange: (value: string) => void;
   /** The EFFECTIVE visit type — either a preset label or free text. */
   visitType: string;
   onVisitTypeChange: (value: string) => void;
@@ -55,6 +64,8 @@ export function ContextForm({
   apiKey,
   department,
   onDepartmentChange,
+  doctorId,
+  onDoctorIdChange,
   visitType,
   onVisitTypeChange,
   context,
@@ -64,6 +75,11 @@ export function ContextForm({
   const [deptState, setDeptState] = useState<DeptFetchState>('loading');
   const [deptOptions, setDeptOptions] = useState<DepartmentOption[]>([]);
   const [deptIsCustom, setDeptIsCustom] = useState(false);
+
+  // Doctor picker: same list/loading/free-text-fallback pattern as department.
+  const [doctorState, setDoctorState] = useState<DoctorFetchState>('loading');
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
+  const [doctorIsCustom, setDoctorIsCustom] = useState(false);
 
   // Visit type list-vs-custom mode. Seeded ONCE from the incoming effective
   // value (mirrors the config/localStorage seeding elsewhere in this app) —
@@ -93,10 +109,31 @@ export function ContextForm({
     };
   }, [apiEndpoint, apiKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setDoctorState('loading');
+    fetchDoctors(apiEndpoint, apiKey)
+      .then((options) => {
+        if (cancelled) return;
+        if (options.length === 0) {
+          setDoctorState('freetext');
+          return;
+        }
+        setDoctorOptions(options);
+        setDoctorState('list');
+      })
+      .catch(() => {
+        if (!cancelled) setDoctorState('freetext');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiEndpoint, apiKey]);
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Department + visit type */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {/* Department + doctor + visit type */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor="summary-department">Department</Label>
           {deptState === 'loading' ? (
@@ -132,6 +169,48 @@ export function ContextForm({
               placeholder="Enter department name or code"
               value={department}
               onChange={(e) => onDepartmentChange(e.target.value)}
+            />
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="summary-doctor">Doctor</Label>
+          {doctorState === 'loading' ? (
+            <Skeleton className="h-9 w-full" />
+          ) : doctorState === 'list' && !doctorIsCustom ? (
+            <Select
+              value={doctorOptions.some((o) => o.id === doctorId) ? doctorId : NONE_DOCTOR}
+              onValueChange={(v) => {
+                if (v === CUSTOM_DOCTOR) {
+                  setDoctorIsCustom(true);
+                  onDoctorIdChange('');
+                } else if (v === NONE_DOCTOR) {
+                  onDoctorIdChange('');
+                } else {
+                  onDoctorIdChange(v);
+                }
+              }}
+            >
+              <SelectTrigger id="summary-doctor" aria-label="Doctor">
+                <SelectValue placeholder="None (no DNA style)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_DOCTOR}>None (no DNA style)</SelectItem>
+                {doctorOptions.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+                <SelectItem value={CUSTOM_DOCTOR}>Custom…</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              id="summary-doctor"
+              aria-label="Doctor"
+              placeholder="Enter a doctor id (blank = no DNA style)"
+              value={doctorId}
+              onChange={(e) => onDoctorIdChange(e.target.value)}
             />
           )}
         </div>

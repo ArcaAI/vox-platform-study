@@ -65,12 +65,18 @@ export const DEMO_PIPELINE_POLICY_OVERRIDE = {
   dnaStyleEnabled: null,
 } as const satisfies PipelineToggleSnapshot;
 
-/** ArcaAI-tenant override — production day-1 tenant routes through the harness (others inherit). */
+/**
+ * ArcaAI-tenant override — production day-1 tenant routes through the harness
+ * (others inherit). `dnaStyleEnabled: true` turns on the per-doctor DNA
+ * writing-style gate at the tenant scope; every ArcaAI doctor is seeded with a
+ * DNA report (08-dna-writing-style.ts), so the effective gate is satisfied
+ * without needing DOCTOR-scope rows.
+ */
 export const ARCAAI_PIPELINE_POLICY_OVERRIDE = {
   autoSummaryEnabled: null,
   autoNerEnabled: null,
   harnessEnabled: true,
-  dnaStyleEnabled: null,
+  dnaStyleEnabled: true,
 } as const satisfies PipelineToggleSnapshot;
 
 const SYSTEM_REASON = 'TASK-356 Phase 5 seed: SYSTEM pipeline cascade default (auto on, harness off — legacy platform behavior)';

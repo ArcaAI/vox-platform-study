@@ -1,5 +1,5 @@
 import { HttpModule } from '@nestjs/axios';
-import { HarnessPolicyServiceModule, PromptResolutionServiceModule } from '@arcaai/applications';
+import { DnaWritingStyleServiceModule, HarnessPolicyServiceModule, PromptResolutionServiceModule } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { Module } from '@nestjs/common';
 import { SmrCompatController } from './smr-compat.controller';
@@ -22,6 +22,8 @@ import { SmrCompatTemplateService } from './smr-compat-template.service';
     HarnessPolicyServiceModule,
     // TASK-592: real tenant Department → governed instruction-template resolution.
     PromptResolutionServiceModule,
+    // TASK-599: requesting doctor's DNA writing-style resolution (IDnaWritingStyleService).
+    DnaWritingStyleServiceModule,
     CoreDatabaseModule,
   ],
   controllers: [SmrCompatController],
