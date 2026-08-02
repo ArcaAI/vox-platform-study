@@ -173,6 +173,24 @@ describe('useSMR', () => {
     expect('doctor_id' in body).toBe(false);
   });
 
+  it('summarizeSync sends top-level translate_to_english:true when translateToEnglish is true (TASK-600)', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarizeSync({ text: 'a', translateToEnglish: true });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.translate_to_english).toBe(true);
+  });
+
+  it('summarizeSync omits translate_to_english when translateToEnglish is not provided (TASK-600)', async () => {
+    const { result } = renderHook(() => useSMR());
+    await act(async () => {
+      await result.current.summarizeSync({ text: 'a' });
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect('translate_to_english' in body).toBe(false);
+  });
+
   it('preSummarize sends top-level doctor_id when doctorId is provided (DNA writing-style)', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

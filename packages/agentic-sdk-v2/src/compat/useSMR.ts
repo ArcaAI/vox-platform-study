@@ -149,6 +149,9 @@ function buildSyncPayload(request: SMRRequest, fallbackSessionId?: string): Reco
   // Top-level doctor_id lets the gateway apply that doctor's DNA writing-style
   // (kept alongside the legacy session_metadata.doctor_id). Omitted when unset.
   if (request.doctorId !== undefined) payload.doctor_id = request.doctorId;
+  // TASK-600: top-level translate_to_english lets the gateway translate the
+  // transcript to English before summarizing. Sent ONLY when explicitly true.
+  if (request.translateToEnglish === true) payload.translate_to_english = true;
   return payload;
 }
 

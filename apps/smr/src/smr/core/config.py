@@ -247,6 +247,26 @@ class VertexConfig(BaseSettings):
     rpm_limit: int = 0
 
 
+class SarvamConfig(BaseSettings):
+    """Sarvam AI translation provider configuration — BYOK-ONLY.
+
+    SMR's ``translate`` capability routes to Sarvam's REST ``/translate``
+    endpoint. Sarvam is BYOK-only: the api_key NEVER comes from env — it always
+    arrives per request as a ``ProviderOverride`` (the gateway resolves it from
+    the tenant/global-admin provider-connection). This config therefore carries
+    only NON-secret operational settings; a request with no override key fails
+    closed (endpoint → 503).
+    """
+
+    # TASK-558-H: init > host env > secrets_dir (Vault Agent) > .env.<NODE_ENV> > default.
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(env_prefix="SMR_SARVAM_")
+
+    base_url: str = "https://api.sarvam.ai"
+    model: str | None = None
+
+
 class ExternalGuardrailConfig(BaseSettings):
     """Input moderation posture for /generate.
 
@@ -419,6 +439,7 @@ class Settings(BaseSettings):
     openai_compat: OpenAICompatConfig = Field(default_factory=OpenAICompatConfig)
     vllm: VllmConfig = Field(default_factory=VllmConfig)
     llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
+    sarvam: SarvamConfig = Field(default_factory=SarvamConfig)
     external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)

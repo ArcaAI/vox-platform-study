@@ -412,6 +412,13 @@ export interface SMRRequest {
   includePreSummaryInContext?: boolean;
   useEnhancedFormat?: boolean;
   /**
+   * TASK-600: summary-only opt-in. When `true`, the summary request carries
+   * top-level `translate_to_english: true` so the gateway translates the
+   * transcript to English (via Sarvam) before summarizing. Omitted from the
+   * wire when unset/false; fail-open server-side. Not applied to pre-summary.
+   */
+  translateToEnglish?: boolean;
+  /**
    * Client-only (TASK-589): opt into SSE streaming on `summary/sync`. Only
    * `stream` itself is sent on the wire (as `stream:true`); when omitted/false
    * the request is byte-identical to today's single-JSON-response path.
