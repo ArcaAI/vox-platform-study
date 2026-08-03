@@ -60,6 +60,11 @@ const RAW_SOURCE_LOADERS = import.meta.glob(
     '/src/components/summarization/TranscriptSource.tsx',
     '/src/components/summarization/SummaryResultView.tsx',
     '/src/lib/departments.ts',
+    // Batch upload
+    '/src/components/BatchUploadTab.tsx',
+    '/src/components/batch/BatchUploadPanel.tsx',
+    '/src/components/batch/BatchJobQueue.tsx',
+    '/src/components/batch/BatchJobResult.tsx',
   ],
   { query: '?raw', import: 'default' },
 ) as Record<string, () => Promise<string>>;
@@ -133,6 +138,31 @@ export const SUMMARIZATION_EXAMPLE_FILES: ExampleFile[] = [
     language: 'tsx',
   },
   { path: '/src/lib/departments.ts', title: 'lib/departments.ts — GET /api/v1/admin/departments with x-api-key', language: 'ts' },
+];
+
+/** Tab 4 — files → one job per file → streamed results → summarization hand-off. */
+export const BATCH_UPLOAD_EXAMPLE_FILES: ExampleFile[] = [
+  { path: '/src/components/BatchUploadTab.tsx', title: 'components/BatchUploadTab.tsx — the tab shell', language: 'tsx' },
+  {
+    path: '/src/components/batch/BatchUploadPanel.tsx',
+    title: 'components/batch/BatchUploadPanel.tsx — file picker/drop zone, pipeline, language, concurrency',
+    language: 'tsx',
+  },
+  {
+    path: '/src/components/batch/BatchJobQueue.tsx',
+    title: 'components/batch/BatchJobQueue.tsx — one row per file: progress, job id, cancel/retry',
+    language: 'tsx',
+  },
+  {
+    path: '/src/components/batch/BatchJobResult.tsx',
+    title: 'components/batch/BatchJobResult.tsx — streamed segments + the authoritative result text',
+    language: 'tsx',
+  },
+  {
+    path: '/src/context/playground-session.tsx',
+    title: 'context/playground-session.tsx — the `batch` slice: useArcaBatchTranscription() above the tabs',
+    language: 'tsx',
+  },
 ];
 
 /**

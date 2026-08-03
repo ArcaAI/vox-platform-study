@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Label, Skeleton, Switch } from '@arcaai/ui';
 import { useSMR, type SummaryResponse } from '@arcaai/vox/compat';
 import { toast } from 'sonner';
@@ -42,6 +42,10 @@ export function SummaryCard({ config }: SummaryCardProps) {
   // this card lives in the Summarization tab while the transcript is produced
   // in the Live-transcription tab, and the two panels never see each other.
   const transcriptLines = usePlaygroundSession().transcript.lineTexts;
+  // Batch-upload hand-off (TASK-603): a completed job's transcript pushed over
+  // from the Batch-upload tab. Same cross-tab route as the live transcript —
+  // through the console-wide session context, never a prop.
+  const batchHandoff = usePlaygroundSession().batch.handoff;
 
   // Department + visit type (persisted). `visitType` is always the EFFECTIVE
   // value — a preset label or free text — never a sentinel; `ContextForm`
@@ -64,6 +68,18 @@ export function SummaryCard({ config }: SummaryCardProps) {
   const [transcriptMode, setTranscriptMode] = useState<TranscriptSourceMode>('live');
   const [pastedTranscript, setPastedTranscript] = useState('');
   const [additionalContext, setAdditionalContext] = useState('');
+
+  // Apply each hand-off EXACTLY ONCE, keyed on its token. Keying on the text
+  // would re-apply on every render (and silently undo a manual edit); keying on
+  // the token means a second "Send to Summarization" of the SAME transcript
+  // still lands, while re-renders in between do nothing.
+  const appliedHandoffRef = useRef(0);
+  useEffect(() => {
+    if (!batchHandoff || batchHandoff.token === appliedHandoffRef.current) return;
+    appliedHandoffRef.current = batchHandoff.token;
+    setPastedTranscript(batchHandoff.text);
+    setTranscriptMode('pasted');
+  }, [batchHandoff]);
 
   const [useEnhanced, setUseEnhanced] = useState(true);
 

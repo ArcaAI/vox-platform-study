@@ -21,6 +21,12 @@
  * `startTranscription()`/`stopTranscription()` drive the SAME `useArcaAudio()`
  * instance as `useAudioCapture`, guarded by `audio.isCapturing` (idempotent).
  *
+ * `uploadAudioFile()` / `getTranscriptionStatus()` / `isUploading` /
+ * `uploadProgress` are the v1 FILE-upload members. They used to throw / be
+ * hardcoded; from TASK-603 they drive the real v2 batch endpoint through
+ * `FileTranscriptionService`. Signatures are unchanged. For many files with
+ * live per-file results, use `useArcaBatchTranscription` instead.
+ *
  * `sendAudioData(data, metadata)` is a METADATA SINK (TASK-560 §5.3 / §6 F1): it
  * records `{device_id, role, chunk_id, …}`-style metadata onto a bounded,
  * capture-relative TIMELINE (E2) and NEVER pushes PCM — v2 owns capture and
@@ -30,7 +36,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useArcaAudio } from '../hooks/useArcaAudio';
-import { useAgenticStore, selectCurrentTranscript } from '../store/agenticStore';
+import { FileTranscriptionService } from '../core/FileTranscriptionService';
+import { useAgenticStore, selectApiClient, selectCurrentTranscript, selectLogger } from '../store/agenticStore';
 import type { TranscriptSegment } from '../types/audio';
 import type { AgenticState } from '../store/agenticStore';
 import type { ErrorInfo } from './types';
@@ -61,7 +68,15 @@ export interface UseArcaSpeechToTextReturn {
   stopTranscription: () => Promise<void>;
   /** Metadata sink — records turn metadata; NEVER pushes PCM (v2 owns transport). */
   sendAudioData: (audioData: ArrayBuffer, metadata?: Record<string, unknown>) => void;
+  /**
+   * Upload a pre-recorded file for batch transcription; resolves to the job id
+   * (v1 resolved to its task id). `provider` — v1's `'azure' | 'whisper'` slot —
+   * is honoured as a PIPELINE OVERRIDE for this upload; when omitted the
+   * pipeline comes from `options.pipelineId`. See {@link useArcaBatchTranscription}
+   * for the multi-file queue with live results.
+   */
   uploadAudioFile: (file: File, language: string, provider?: string) => Promise<string>;
+  /** Read a job back by id. Resolves to a `TranscriptionJobResponse`. */
   getTranscriptionStatus: (taskId: string) => Promise<unknown>;
   isUploading: boolean;
   uploadProgress: number;
@@ -120,6 +135,13 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   }, [language, languageMode, setAudioLanguage, setSttLanguageMode]);
 
   const [error, setError] = useState<ErrorInfo | null>(null);
+  // Real upload state (TASK-603) — these two were hardcoded `false`/`0` while
+  // `uploadAudioFile` threw.
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  // The batch endpoint runs through the SDK client, not the capture graph.
+  const apiClient = useAgenticStore(selectApiClient);
+  const logger = useAgenticStore(selectLogger);
 
   // Keep callbacks fresh without re-subscribing the diff effects.
   const onTranscriptRef = useRef(onTranscript);
@@ -247,13 +269,80 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
     if (timeline.length > METADATA_TIMELINE_CAP) timeline.shift(); // drop-oldest
   }, []);
 
-  const uploadAudioFile = useCallback(async (): Promise<string> => {
-    throw new Error('[@arcaai/vox/compat] uploadAudioFile is not supported. Use the v2 file-transcription API (FileTranscriptionService).');
-  }, []);
+  // ---------------------------------------------------------------------------
+  // The v1 file-upload members (TASK-603).
+  //
+  // These four were declared by v1 and, until now, were dead in compat:
+  // `uploadAudioFile`/`getTranscriptionStatus` threw "not supported" and
+  // `isUploading`/`uploadProgress` were hardcoded `false`/`0`. Nothing about the
+  // SIGNATURES changed here — a migrating v1 app keeps compiling — only the
+  // bodies, which now drive the real v2 batch endpoint through
+  // `FileTranscriptionService`.
+  //
+  // v1's third argument was an ASR provider name (`'azure' | 'whisper'`). v2
+  // expresses the engine as a PIPELINE, so `provider` is honoured as a pipeline
+  // id/slug override for that one upload; absent, the pipeline comes from the
+  // same `options.pipelineId` the live path uses. Neither present is a hard,
+  // named error — never a silent upload against the wrong engine.
+  //
+  // For MANY files with live per-file results, use `useArcaBatchTranscription`;
+  // this pair stays deliberately single-file, exactly as v1 shaped it.
+  // ---------------------------------------------------------------------------
+  const uploadAudioFile = useCallback(
+    async (file: File, uploadLanguage: string, provider?: string): Promise<string> => {
+      const client = apiClient;
+      if (!client) {
+        const info = toErrorInfo(new Error('SDK not initialized — no apiClient available. Mount <ArcaCompatProvider> before uploading.'));
+        setError(info);
+        onError?.(info);
+        throw new Error(info.message);
+      }
+      const targetPipeline = provider?.trim() || pipelineId;
+      if (!targetPipeline) {
+        const info = toErrorInfo(
+          new Error(
+            'No pipelineId available for this upload. Pass one as the third argument (v1 `provider` is treated as a pipeline override) ' +
+              'or configure it via useArcaSpeechToText({ options: { pipelineId } }).',
+          ),
+        );
+        setError(info);
+        onError?.(info);
+        throw new Error(info.message);
+      }
 
-  const getTranscriptionStatus = useCallback(async (): Promise<unknown> => {
-    throw new Error('[@arcaai/vox/compat] getTranscriptionStatus is not supported. Read live state from useArcaAudio().transcriptSegments.');
-  }, []);
+      const service = new FileTranscriptionService(client, logger ?? undefined);
+      setIsUploading(true);
+      setUploadProgress(0);
+      setError(null);
+      try {
+        const job = await service.uploadAndTranscribeWithProgress(file, {
+          pipelineId: targetPipeline,
+          ...(uploadLanguage ? { language: uploadLanguage } : {}),
+          onProgress: (progress) => setUploadProgress(Math.round(progress)),
+        });
+        setUploadProgress(100);
+        return job.id;
+      } catch (err) {
+        const info = toErrorInfo(err);
+        setError(info);
+        onError?.(info);
+        throw err;
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [apiClient, logger, pipelineId, onError],
+  );
+
+  const getTranscriptionStatus = useCallback(
+    async (taskId: string): Promise<unknown> => {
+      if (!apiClient) {
+        throw new Error('[@arcaai/vox/compat] SDK not initialized — no apiClient available. Mount <ArcaCompatProvider> first.');
+      }
+      return new FileTranscriptionService(apiClient, logger ?? undefined).getJob(taskId);
+    },
+    [apiClient, logger],
+  );
 
   const transcript = useMemo(() => {
     const finals = segments.map((s) => s.text).join(' ');
@@ -267,8 +356,8 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
     sendAudioData,
     uploadAudioFile,
     getTranscriptionStatus,
-    isUploading: false,
-    uploadProgress: 0,
+    isUploading,
+    uploadProgress,
     error,
   };
 }

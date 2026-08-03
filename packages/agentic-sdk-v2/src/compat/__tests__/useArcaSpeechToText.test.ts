@@ -18,6 +18,23 @@ vi.mock('../../hooks/useArcaAudio', () => ({
   useArcaAudio: vi.fn(),
 }));
 
+// TASK-603 — the frozen v1 upload members are now real, so the file-transcription
+// service is stubbed the same way the batch-hook suite stubs it.
+const fileServiceMocks = vi.hoisted(() => {
+  const upload = vi.fn();
+  const getJob = vi.fn();
+  class MockFileTranscriptionService {
+    uploadAndTranscribeWithProgress = upload;
+    getJob = getJob;
+    cancelJob = vi.fn();
+    dispose = vi.fn();
+    buildJobStreamUrl = (jobId: string) => `https://api.test/api/v1/audio/transcription-jobs/${jobId}/stream`;
+  }
+  return { upload, getJob, MockFileTranscriptionService };
+});
+
+vi.mock('../../core/FileTranscriptionService', () => ({ FileTranscriptionService: fileServiceMocks.MockFileTranscriptionService }));
+
 vi.mock('../../store/agenticStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../store/agenticStore')>();
   return { ...actual, useAgenticStore: vi.fn() };
@@ -34,7 +51,13 @@ type MockState = {
   // TASK-586 — the pre-start engine selection consumed at `audio.start`.
   pendingSttProvider?: 'primary' | 'fallback' | null;
   setPendingSttProvider?: (v: 'primary' | 'fallback' | null) => void;
+  // TASK-603 — the client the (now real) v1 upload members run through.
+  apiClient?: unknown;
+  logger?: unknown;
 };
+
+/** Stand-in for the SDK API client; only its identity matters to these tests. */
+const apiClientStub = { getBaseUrl: () => 'https://api.test/api/v1' };
 
 function installStore(state: Pick<MockState, 'transcriptSegments' | 'currentTranscript'> & Partial<MockState>) {
   // Augment the SAME object in place (do NOT copy) — several tests reassign
@@ -46,6 +69,8 @@ function installStore(state: Pick<MockState, 'transcriptSegments' | 'currentTran
   state.setPendingSttProvider ??= vi.fn((v: 'primary' | 'fallback' | null) => {
     state.pendingSttProvider = v;
   });
+  if (!('apiClient' in state)) state.apiClient = apiClientStub;
+  state.logger ??= null;
   (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (s: MockState) => unknown) => selector(state as MockState));
 }
 
@@ -529,5 +554,124 @@ describe('useArcaSpeechToText', () => {
     const meta = onTranscript.mock.calls[onTranscript.mock.calls.length - 1][2] as Record<string, unknown>;
     expect(meta.role).toBe('clinician');
     expect(meta.chunk_id).toBe('c1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The frozen v1 upload members, now real (TASK-603)
+//
+// v1's `useArcaSpeechToText` shipped `uploadAudioFile` / `getTranscriptionStatus`
+// / `isUploading` / `uploadProgress`; compat used to throw on the first two and
+// hardcode the last two. These tests pin the real behaviour AND the fact that
+// the signature did not move — a migrating v1 app must keep compiling.
+// ---------------------------------------------------------------------------
+describe('useArcaSpeechToText — v1 file upload (TASK-603)', () => {
+  beforeEach(() => {
+    fileServiceMocks.upload.mockReset();
+    fileServiceMocks.getJob.mockReset();
+    fileServiceMocks.upload.mockResolvedValue({ id: 'job-9', status: 'QUEUED' });
+    fileServiceMocks.getJob.mockResolvedValue({ id: 'job-9', status: 'COMPLETED', resultText: 'done' });
+    (useArcaAudio as unknown as ReturnType<typeof vi.fn>).mockReturnValue(audioMock);
+  });
+
+  const wavFile = () => new File([new Uint8Array(64)], 'clip.wav', { type: 'audio/wav' });
+
+  it('uploads through the configured pipeline and resolves the job id (v1 returned the task id)', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'pipe-cfg' } }));
+
+    let taskId = '';
+    await act(async () => {
+      taskId = await result.current.uploadAudioFile(wavFile(), 'ml');
+    });
+
+    expect(taskId).toBe('job-9');
+    expect(fileServiceMocks.upload).toHaveBeenCalledTimes(1);
+    expect(fileServiceMocks.upload.mock.calls[0][1]).toMatchObject({ pipelineId: 'pipe-cfg', language: 'ml' });
+  });
+
+  it('treats the v1 `provider` argument as a pipeline override', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'pipe-cfg' } }));
+
+    await act(async () => {
+      await result.current.uploadAudioFile(wavFile(), 'en', 'pipe-override');
+    });
+
+    expect(fileServiceMocks.upload.mock.calls[0][1]).toMatchObject({ pipelineId: 'pipe-override' });
+  });
+
+  it('rejects with an actionable error when no pipeline is resolvable', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    const { result } = renderHook(() => useArcaSpeechToText(baseProps));
+
+    await expect(result.current.uploadAudioFile(wavFile(), 'en')).rejects.toThrow(/pipelineId/i);
+    expect(fileServiceMocks.upload).not.toHaveBeenCalled();
+  });
+
+  it('drives isUploading / uploadProgress instead of the old hardcoded false/0', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    let releaseUpload!: (value: unknown) => void;
+    fileServiceMocks.upload.mockImplementationOnce((_file: File, options: { onProgress?: (p: number) => void }) => {
+      return new Promise((resolve) => {
+        options.onProgress?.(42);
+        releaseUpload = resolve;
+      });
+    });
+
+    const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'pipe-cfg' } }));
+    expect(result.current.isUploading).toBe(false);
+
+    let pending!: Promise<string>;
+    await act(async () => {
+      pending = result.current.uploadAudioFile(wavFile(), 'en');
+    });
+
+    expect(result.current.isUploading).toBe(true);
+    expect(result.current.uploadProgress).toBe(42);
+
+    await act(async () => {
+      releaseUpload({ id: 'job-9', status: 'QUEUED' });
+      await pending;
+    });
+
+    expect(result.current.isUploading).toBe(false);
+    expect(result.current.uploadProgress).toBe(100);
+  });
+
+  it('surfaces an upload failure on `error` + onError and clears isUploading', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    fileServiceMocks.upload.mockRejectedValueOnce(new Error('415 unsupported audio type'));
+    const onError = vi.fn();
+    const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'pipe-cfg' }, onError }));
+
+    await act(async () => {
+      await expect(result.current.uploadAudioFile(wavFile(), 'en')).rejects.toThrow(/415/);
+    });
+
+    expect(result.current.isUploading).toBe(false);
+    expect(result.current.error?.message).toContain('415');
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it('getTranscriptionStatus reads the job back by id', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '' });
+    const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'pipe-cfg' } }));
+
+    let job: unknown;
+    await act(async () => {
+      job = await result.current.getTranscriptionStatus('job-9');
+    });
+
+    expect(fileServiceMocks.getJob).toHaveBeenCalledWith('job-9');
+    expect(job).toMatchObject({ id: 'job-9', status: 'COMPLETED' });
+  });
+
+  it('rejects both members with a clear message when the SDK has no apiClient', async () => {
+    installStore({ transcriptSegments: [], currentTranscript: '', apiClient: null });
+    const { result } = renderHook(() => useArcaSpeechToText({ ...baseProps, options: { pipelineId: 'pipe-cfg' } }));
+
+    await expect(result.current.uploadAudioFile(wavFile(), 'en')).rejects.toThrow(/not initialized/i);
+    await expect(result.current.getTranscriptionStatus('job-9')).rejects.toThrow(/not initialized/i);
   });
 });

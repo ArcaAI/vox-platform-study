@@ -4,8 +4,8 @@ A **standalone developer console** — `@arcaai/compat-playground` — modeling 
 real HOPE v1 → v2 migrating developer would build on `@arcaai/vox/compat`. It is
 the runnable reference for the compat surface: connect with tenant credentials,
 drive a live transcription session from real microphones *or* from an audio file,
-score the result against a ground-truth transcript, and run the department →
-pre-summary → summary chain — streaming or not.
+score the result against a ground-truth transcript, batch-upload pre-recorded
+audio, and run the department → pre-summary → summary chain — streaming or not.
 
 Every tab ends with **the actual source it runs** (see [Example code](#example-code-per-tab)),
 so nothing here can drift from what you just used.
@@ -36,15 +36,16 @@ pnpm compat:dev
 
 Or scoped to this package: `pnpm --filter @arcaai/compat-playground dev`.
 
-## Layout — three isolated tabs
+## Layout — four isolated tabs
 
 | Tab | Gated | What it is |
 |---|---|---|
 | **1 · Connection** | always available | Credentials → `V1SdkConfig` → `<ArcaCompatProvider>`, plus the pipeline picker |
 | **2 · Live transcription** | requires a connection | Audio sources, engine toggle, start/stop, per-mic metadata, transcript timeline, WER/CER |
-| **3 · Summarization** | requires a connection | Department / visit type / clinical context → pre-summary → summary |
+| **3 · Batch upload** | requires a connection | Pre-recorded files → one transcription job each → streamed results → hand-off to Summarization |
+| **4 · Summarization** | requires a connection | Department / visit type / clinical context → pre-summary → summary |
 
-Tabs 2 and 3 are `disabled` until you connect, with the reason spelled out on
+Tabs 2–4 are `disabled` until you connect, with the reason spelled out on
 screen (a silently dead control is a WCAG/UX failure).
 
 Two structural rules hold the console together, and both are easy to break by
@@ -55,7 +56,7 @@ accident:
    is mounted **inside** `<ArcaCompatProvider>` and **outside** `<Tabs>`. It owns
    the session, the mic, the transcript, the metadata simulator and the audio
    sources, and exposes them as named groups
-   (`config`/`session`/`capture`/`transcript`/`language`/`metadata`/`audio`).
+   (`config`/`session`/`capture`/`transcript`/`language`/`metadata`/`audio`/`batch`).
    That is what lets the Summarization tab read the caption the Live
    transcription tab produced.
 2. **Every `<TabsContent>` is `forceMount` + `data-[state=inactive]:hidden`.**
@@ -238,7 +239,33 @@ two runs are comparable across a pipeline switch.
 
 ---
 
-## Tab 3 — Summarization
+## Tab 3 — Batch upload
+
+Pre-recorded audio, through
+[`useArcaBatchTranscription()`](../../packages/agentic-sdk-v2/docs/Compat-API-Reference.md#7-usearcabatchtranscription)
+— the compat-native multi-file queue. Drop or choose N audio files; each becomes
+one backend transcription job.
+
+| Control | What it does |
+|---|---|
+| **Audio files** | File input + drop zone. The input is the accessible path; the drop zone is layered on the same handler |
+| **Pipeline** | Applied to the NEXT enqueue, independent of the Connection tab's — queued files keep the pipeline they were queued with |
+| **STT language mode** | The console-wide selection, shared with the Live-transcription tab |
+| **Files in flight at once** | Concurrency cap. A slot is held for the whole lifecycle — upload AND result stream — so it also bounds open SSE connections |
+
+Each queue row shows its upload progress, the **job id the gateway returned**, its
+status, and Cancel / Retry / Remove. Selecting a row shows its transcript:
+segments as they stream in, and — once the job completes — the job's own
+`resultText`, which is the authoritative version (streamed chunks can be partial).
+
+**Send to Summarization** pushes a completed transcript into Tab 4 as its
+`Pasted` transcript source, the same cross-tab route the live caption uses.
+
+The v1 single-file `uploadAudioFile()` on `useArcaSpeechToText` hits the same
+endpoint and still works — see
+[§3.1 of the compat reference](../../packages/agentic-sdk-v2/docs/Compat-API-Reference.md#31-file-upload--the-v1-members-for-real-task-603).
+
+## Tab 4 — Summarization
 
 [`SummaryCard.tsx`](./src/components/SummaryCard.tsx) orchestrates `useSMR()`
 from `@arcaai/vox/compat`; [`summarization/`](./src/components/summarization/)

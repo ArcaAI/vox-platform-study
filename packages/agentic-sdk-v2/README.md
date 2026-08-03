@@ -178,6 +178,7 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 
 `@arcaai/vox/compat` lets a HOPE v1 app (`@arcaai/agentic-sdk`) move to this SDK by changing an import specifier and adding one provider (`ArcaCompatProvider`) — no rewrite of call sites. It ships six hooks: `useArcaSessionManager`, `useAudioCapture`, `useArcaSpeechToText`, `useSMR`, `useArcaSttProvider`, and `useArcaSttLanguageModes`. Compat hooks are thin adapters that **only consume the public v2 API** (the hooks/store/clients documented above) — they never reach into v2 internals.
 
+**Installing the SDK (GitHub Packages auth, install command, peer deps):** [`docs/Compat-API-Reference.md#installation`](docs/Compat-API-Reference.md#installation).
 **Full compat API reference (setup, every hook's signature and gotchas, the metadata-precedence contract, reproduced v1 types):** [`docs/Compat-API-Reference.md`](docs/Compat-API-Reference.md).
 **Migration walkthrough:** [`docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md`](../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md) — 3-step checklist, side-by-side hook table, full before/after code sample, verification checklist.
 **Working example:** `apps/compat-playground` (port 5177) — a full runnable reference exercising every compat hook end to end.
