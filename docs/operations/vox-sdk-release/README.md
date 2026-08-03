@@ -51,6 +51,18 @@ it still reads `ArcaAI/project-hope` before publishing** if it's been a while.
 ## Release steps
 
 ```bash
+# Bump all SDK packages together (recommended so workspace:* rewrites stay aligned)
+for p in agentic-sdk-v2 room stt vad noise-filter med-ner pipeline; do
+  node -e "
+    const fs = require('fs');
+    const path = 'packages/$p/package.json';
+    const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+    pkg.version = '2.0.1';
+    fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+    console.log(pkg.name + ' -> ' + pkg.version);
+  "
+done
+
 # 1. Build vox + its workspace deps (room, stt, vad, noise-filter, med-ner)
 pnpm sdk:build
 

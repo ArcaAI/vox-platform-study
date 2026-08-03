@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/stt",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Speech-to-text plugin for @arcaai/room with local Whisper and backend fallback support",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
