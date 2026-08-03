@@ -1,7 +1,7 @@
 import { HttpException, UnauthorizedException, ValidationPipe } from '@nestjs/common';
 import { PassThrough } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PreSummaryRequest } from '../dto/pre-summary.request';
+import { PreSummaryRequest } from '../dto/pre-summary.request';
 import type { PreSummaryResponse, SummaryResponse } from '../dto/summary.response';
 import { SyncSummaryRequest } from '../dto/sync-summary.request';
 import { resolveDepartmentVisit, SmrCompatController } from '../smr-compat.controller';
@@ -181,6 +181,37 @@ describe('SyncSummaryRequest validation', () => {
     } as never)) as SyncSummaryRequest;
 
     expect(transformed.session_data.session_id).toBeUndefined();
+  });
+});
+
+describe('PreSummaryRequest validation', () => {
+  const pipe = new ValidationPipe({
+    transform: true,
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    forbidUnknownValues: true,
+  });
+
+  it('accepts the compat SDK default max_tokens value', async () => {
+    const transformed = (await pipe.transform(
+      { current_department: 'General', visit_type: 'New / Referral', max_tokens: 65536 },
+      { type: 'body', metatype: PreSummaryRequest } as never,
+    )) as PreSummaryRequest;
+
+    expect(transformed.max_tokens).toBe(65536);
+  });
+
+  it('rejects values above the compat token ceiling', async () => {
+    await expect(
+      pipe.transform(
+        { current_department: 'General', visit_type: 'New / Referral', max_tokens: 65537 },
+        { type: 'body', metatype: PreSummaryRequest } as never,
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: expect.arrayContaining(['max_tokens must not be greater than 65536']),
+      }),
+    });
   });
 });
 
