@@ -1,3 +1,4 @@
+export * from './batch-transcription-limits.service';
 export * from './dto';
 export * from './ITranscriptionJobService';
 export * from './transcriptionJob.dto.mapper';

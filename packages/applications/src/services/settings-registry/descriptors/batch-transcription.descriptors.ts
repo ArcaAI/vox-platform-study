@@ -75,18 +75,20 @@ const META: Record<BatchTranscriptionKnobKey, { label: string; description: stri
   },
 };
 
-export const BATCH_TRANSCRIPTION_SETTINGS: SettingDescriptor[] = (Object.keys(BATCH_TRANSCRIPTION_DEFAULTS) as BatchTranscriptionKnobKey[]).map((knob) => ({
-  key: batchTranscriptionKey(knob),
-  tier: 'global-kv',
-  dataType: 'number',
-  sensitivity: 'internal',
-  // Platform capacity — a tenant must not be able to raise its own ceiling.
-  maxScope: 'system',
-  globalOnly: true,
-  editableBy: 'GlobalSetting',
-  failMode: 'open-to-default',
-  default: BATCH_TRANSCRIPTION_DEFAULTS[knob],
-  category: 'Speech',
-  label: META[knob].label,
-  description: META[knob].description,
-}));
+export const BATCH_TRANSCRIPTION_SETTINGS: SettingDescriptor[] = (Object.keys(BATCH_TRANSCRIPTION_DEFAULTS) as BatchTranscriptionKnobKey[]).map(
+  (knob) => ({
+    key: batchTranscriptionKey(knob),
+    tier: 'global-kv',
+    dataType: 'number',
+    sensitivity: 'internal',
+    // Platform capacity — a tenant must not be able to raise its own ceiling.
+    maxScope: 'system',
+    globalOnly: true,
+    editableBy: 'GlobalSetting',
+    failMode: 'open-to-default',
+    default: BATCH_TRANSCRIPTION_DEFAULTS[knob],
+    category: 'Speech',
+    label: META[knob].label,
+    description: META[knob].description,
+  }),
+);
