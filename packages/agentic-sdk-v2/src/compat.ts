@@ -49,6 +49,21 @@ export type { UseArcaSpeechToTextProps, UseArcaSpeechToTextReturn } from './comp
 export { useSMR } from './compat/useSMR';
 export type { UseSMROptions, UseSMRReturn } from './compat/useSMR';
 
+// Batch / file transcription (TASK-603). Compat-NATIVE: v1 had only the
+// single-file `uploadAudioFile()` on `useArcaSpeechToText` (still honoured, and
+// now real); this is the multi-file queue with per-file progress and live
+// results. It MUST be exported here rather than imported from `@arcaai/vox` —
+// the store context does not cross entry bundles (see `useArcaSttLanguageModes`).
+export { useArcaBatchTranscription } from './compat/useArcaBatchTranscription';
+export type {
+  UseArcaBatchTranscriptionProps,
+  UseArcaBatchTranscriptionReturn,
+  BatchQueueItem,
+  BatchItemStatus,
+  BatchTranscriptSegment,
+  BatchTranscriptionOptions,
+} from './compat/useArcaBatchTranscription';
+
 // STT provider switching — the one compat import with NO v1 ancestor (TASK-568).
 export { useArcaSttProvider } from './compat/useArcaSttProvider';
 export type { UseArcaSttProviderProps, UseArcaSttProviderReturn } from './compat/useArcaSttProvider';

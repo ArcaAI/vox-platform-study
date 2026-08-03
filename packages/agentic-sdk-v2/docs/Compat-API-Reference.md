@@ -1,14 +1,15 @@
 # @arcaai/vox/compat — API Reference
 
-**Package**: `@arcaai/vox` &middot; **Entry point**: `@arcaai/vox/compat` &middot; **Version**: 2.0.0
+**Package**: `@arcaai/vox` &middot; **Entry point**: `@arcaai/vox/compat` &middot; **Version**: 2.0.1
 
-> Verified directly against source in `packages/agentic-sdk-v2/src/compat/` (2026-07-31).
+> Verified directly against source in `packages/agentic-sdk-v2/src/compat/` (2026-08-03).
 > This document covers **only** the v1-compat surface. For the rest of the SDK
 > (core hooks, audio pipeline, session lifecycle), see
 > [`../README.md`](../README.md) and [`API-Reference.md`](API-Reference.md).
 
 ## Table of Contents
 
+- [Installation](#installation)
 - [Purpose](#purpose)
 - [Entry-bundle isolation](#entry-bundle-isolation)
 - [Setup — `ArcaCompatProvider`](#setup--arcacompatprovider)
@@ -18,10 +19,63 @@
 - [4. `useSMR`](#4-usesmr)
 - [5. `useArcaSttProvider`](#5-usearcasttprovider)
 - [6. `useArcaSttLanguageModes`](#6-usearcasttlanguagemodes)
-- [7. Reproduced v1 type surface](#7-reproduced-v1-type-surface)
-- [8. Defects/anti-patterns deliberately not reproduced](#8-defectsanti-patterns-deliberately-not-reproduced)
+- [7. `useArcaBatchTranscription`](#7-usearcabatchtranscription)
+- [8. Reproduced v1 type surface](#8-reproduced-v1-type-surface)
+- [9. Defects/anti-patterns deliberately not reproduced](#9-defectsanti-patterns-deliberately-not-reproduced)
 - [Related docs](#related-docs)
 - [Source file index](#source-file-index)
+
+## Installation
+
+`@arcaai/vox` (the package the `/compat` entry ships from) is published to **GitHub
+Packages**, not the public npm registry — install requires a scoped registry
+mapping plus an authenticated token, even for a public/`read:packages`-only pull.
+
+### 1. Authenticate to GitHub Packages (one-time, per machine)
+
+1. Create a GitHub PAT (classic) with at least the `read:packages` scope, for
+   an account with read access to `ArcaAI/project-hope`.
+2. Point the `@arcaai` scope at the GitHub Packages registry and supply the
+   token. Either your **global** `~/.npmrc` or a **project-local** `.npmrc`
+   (add it to `.gitignore` — never commit a token):
+   ```
+   @arcaai:registry=https://npm.pkg.github.com
+   //npm.pkg.github.com/:_authToken=YOUR_TOKEN_HERE
+   ```
+   pnpm/yarn read the same `.npmrc` format; no extra config needed beyond this.
+
+### 2. Install
+
+```bash
+pnpm add @arcaai/vox@2.0.1
+# or: npm install @arcaai/vox@2.0.1 / yarn add @arcaai/vox@2.0.1
+```
+
+`@arcaai/vox`'s own dependencies (`@arcaai/room`, `@arcaai/stt`, `@arcaai/vad`,
+`@arcaai/noise-filter`, and the optional peer `@arcaai/med-ner`) resolve
+transitively from the **same** `@arcaai` registry mapping above — no separate
+install step. Peer dependencies you must satisfy yourself: `react` /
+`react-dom` `^18.3.0 || ^19.0.4`.
+
+If `pnpm add` 404s or 401s, the registry mapping/token from step 1 is the
+first thing to check — a plain `npm.pkg.github.com` 404 for a scoped package
+almost always means an unauthenticated request or a token missing
+`read:packages`. (Publishing — not relevant to installing as a consumer — is
+covered in [`docs/operations/vox-sdk-release/README.md`](../../../docs/operations/vox-sdk-release/README.md).)
+
+### 3. Import the compat entry
+
+Nothing else compat-specific to install — `/compat` is a bundle inside the
+same `@arcaai/vox` package (see [Entry-bundle isolation](#entry-bundle-isolation)
+below), not a separate install:
+
+```ts
+import { ArcaCompatProvider, useSMR, type V1SdkConfig } from '@arcaai/vox/compat';
+```
+
+Every compat module carries `"use client"` — in a Next.js App Router consumer,
+render `<ArcaCompatProvider>` from a client component (or a client boundary
+that wraps the page).
 
 ## Purpose
 
@@ -70,7 +124,7 @@ const v1Config: V1SdkConfig = {
 | `apiEndpoint` | `string` | REST base, e.g. `https://api.arcaai.com`. v1 configured the bare origin; the adapter normalizes it up to `/api/v1` for v2's `AgenticClient`. |
 | `websocketUrl` | `string` | WS base, e.g. `wss://api.arcaai.com`. |
 | `credentials?.apiKey` | `string` | **Required.** `mapV1ConfigToAgenticConfig` throws `"credentials.apiKey is required"` if missing/blank — v2 has **no** baked-in default key (v1 did; that default is deliberately not reproduced). |
-| `audioSettings?` | `V1AudioSettings` | `{ sampleRate?, format?, channels?, noiseSuppression?, echoCancellation?, autoGainControl? }`. Only `noiseSuppression` is currently mapped (→ `audio.noiseFilter.enabled`, level fixed at `'medium'`). |
+| `audioSettings?` | `V1AudioSettings` | `{ sampleRate?, format?, channels?, noiseSuppression?, echoCancellation?, autoGainControl?, voiceActivityDetection? }`. Only `noiseSuppression` (→ `audio.noiseFilter.enabled`, level fixed at `'medium'`) and `voiceActivityDetection` (TASK-597, → `audio.vad.enabled`) are currently mapped. |
 | `environment?` | `'development' \| 'staging' \| 'production'` | `'development'` → `debug: true`. |
 | `sttPipelineId?` | `string` | Backend ASR pipeline id for live streaming. v1 had no equivalent (its STT WS was API-key-flat); omit for local STT. |
 | `tenantId?` | `string` | TASK-586 addition. Accepted for parity; the v2 gateway resolves tenancy **authoritatively from the API key** — a mismatched value here is never trusted over the key. |
@@ -81,6 +135,8 @@ const v1Config: V1SdkConfig = {
 v1 provider, not a second store. `enableProviderSwitch` also rides a small
 internal `CompatFeatureFlagsContext`, consumed only by `useArcaSttProvider`
 (not part of the public API).
+
+**Audio config gotcha:** `AgenticProvider` resolves `cfg.audio ?? DEFAULT_AUDIO_CONFIG` — it does **not** merge — and a missing plugin key resolves to `{ enabled: false }`. So the moment `audioSettings` or `sttPipelineId` is set (which emits *some* audio config), every stage the adapter doesn't emit a preference for is **OFF**, not defaulted. Stating `noiseSuppression`/`voiceActivityDetection` explicitly is the only way to turn a stage on as well as off.
 
 ---
 
@@ -135,11 +191,21 @@ function useAudioCapture(props?: {
   autoStart?: boolean;
   language?: string; // additive, no v1 ancestor
   languageMode?: string; // additive, no v1 ancestor
+  // Audio SOURCE selection (TASK-597) — additive, no v1 ancestor
+  deviceId?: string;
+  secondaryDeviceId?: string;
+  additionalDeviceIds?: string[];
+  sourceStreams?: MediaStream[]; // pre-built (e.g. file-backed) streams INSTEAD of getUserMedia
+  sourceGains?: number[]; // per-source linear mixer gain, index-aligned with the resolved source list
+  // Stop-drain tuning (TASK-597 follow-up #4) — additive, no v1 ancestor
+  drainTimeoutMs?: number;
+  quietWindowMs?: number;
   onAudioData?: (data: ArrayBuffer) => void; // retained for source-compat only — NEVER invoked
   onError?: (error: ErrorInfo) => void;
 }): {
   isRecording: boolean;
   deviceStatus: AudioDeviceStatus | null;
+  sourceLevels: number[]; // additive, no v1 ancestor
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<void>;
   getDeviceStatus: () => Promise<AudioDeviceStatus | null>;
@@ -150,9 +216,13 @@ function useAudioCapture(props?: {
 
 **Behavior:**
 - `startRecording()`/`stopRecording()` drive the **same shared `useArcaAudio()` instance** as `useArcaSpeechToText`, guarded by `audio.isCapturing` — pairing both hooks (as v1 apps typically do) never double-starts the mic.
-- `startRecording()` calls `audio.start({ pipelineId: options?.sttPipelineId, language?, languageMode?, startOn? })`. If a pre-start provider selection is pending (see `useArcaSttProvider` below), it's applied here as `startOn` and then cleared.
+- `startRecording()` calls `audio.start({ pipelineId: options?.sttPipelineId, language?, languageMode?, startOn?, deviceId?, secondaryDeviceId?, additionalDeviceIds?, sourceStreams?, sourceGains?, drainTimeoutMs?, quietWindowMs? })`. If a pre-start provider selection is pending (see `useArcaSttProvider` below), it's applied here as `startOn` and then cleared.
 - `onAudioData` is accepted for source-compat but **never invoked** — v2 owns the full capture→mix→noise→VAD→STT pipeline and transport internally.
 - `language`/`languageMode` are additive (no v1 ancestor). Because this hook and `useArcaSpeechToText` race to call `audio.start` first, **both** hooks also write the selection into the shared store (`setAudioLanguage`/`setSttLanguageMode`, read by `useArcaSpeechToText`) so the outcome is order-independent — whichever hook starts first, the selection isn't dropped.
+- **Audio source selection (TASK-597)**, all additive/optional (omitting them keeps the frozen v1 behavior): `deviceId`/`secondaryDeviceId`/`additionalDeviceIds` pick real input devices; `sourceStreams` injects pre-built streams (e.g. file-backed) INSTEAD of `getUserMedia`; `sourceGains` sets a per-source linear mixer gain, index-aligned with the resolved source list. Unlike `languageMode`/`pendingSttProvider` there is **no store-backed fallback** for these — a `MediaStream` is a live, non-serializable resource, so ownership would become ambiguous if parked in the shared store. They're honored only when capture is started from **this hook** — the documented order for a capture-first consumer (the compat playground); `useArcaSpeechToText` never carries source options.
+- **`sourceLevels`** (TASK-597 follow-up #2): PER-SOURCE input levels (0–100 each), index-aligned with the resolved capture-source order — with `sourceStreams` when streams are injected, otherwise with `[deviceId, secondaryDeviceId, ...additionalDeviceIds]`. REACTIVE (re-renders as levels change), unlike `getDeviceStatus()`, which still requires polling. `deviceStatus.audioLevel` is unchanged and remains the single MIXED level — the v1 shape stays frozen. `[]` means no per-source signal (not recording, or a runtime that cannot analyse) — attribution is then genuinely unknown. One entry means a single-source session, where that source is the whole mix and attribution to it is exact.
+- **`drainTimeoutMs`** (TASK-597 follow-up #4): ceiling (ms) on the streaming-STT stop-drain awaited by `stopRecording()`. Forwarded verbatim to `audio.start(...)`; omit for the SDK default (1500 ms). Non-positive values are ignored. The mic is released synchronously on stop regardless — this only bounds how long the returned promise waits for the server's last transcript.
+- **`quietWindowMs`** (TASK-597): quiet window (ms) that ends the stop-drain early once the backend reports `finalizing`. Omit for the SDK default (250 ms). **`0` disables the early resolve** and is PRESERVED (only negative values are ignored) — set it to `0` with a generous `drainTimeoutMs` when the tail final matters more than teardown latency, since on a slow ASR pipeline the last transcript can trail `finalizing` by seconds.
 - `getDeviceStatus()` uses `navigator.mediaDevices.enumerateDevices()`; `permissionStatus` is inferred `'granted'` only when at least one returned device has a non-empty `label` (Chrome only populates labels post-permission).
 - `autoStart: true` calls `startRecording()` once on mount.
 
@@ -174,10 +244,10 @@ function useArcaSpeechToText(props: {
   startTranscription: () => Promise<void>;
   stopTranscription: () => Promise<void>;
   sendAudioData: (audioData: ArrayBuffer, metadata?: Record<string, unknown>) => void;
-  uploadAudioFile: (file: File, language: string, provider?: string) => Promise<string>; // throws — unsupported
-  getTranscriptionStatus: (taskId: string) => Promise<unknown>; // throws — unsupported
-  isUploading: boolean; // always false
-  uploadProgress: number; // always 0
+  uploadAudioFile: (file: File, language: string, provider?: string) => Promise<string>; // → job id
+  getTranscriptionStatus: (taskId: string) => Promise<unknown>; // → TranscriptionJobResponse
+  isUploading: boolean;
+  uploadProgress: number; // 0–100
   error: ErrorInfo | null;
 };
 ```
@@ -229,7 +299,19 @@ In short: **if you set `speaker_id`/`confidence`/`language`/`isFinal` yourself, 
 
 - `pipelineId` and `languageMode` are read out of the frozen `options` bag (additive, no v1 signature change) and forwarded to `audio.start(...)`.
 - `startTranscription()`/`stopTranscription()` drive the **same** `useArcaAudio()` instance as `useAudioCapture`, guarded by `audio.isCapturing` — idempotent when paired.
-- `uploadAudioFile()` and `getTranscriptionStatus()` **always throw** — explicitly unsupported. Use `FileTranscriptionService` for file-based transcription, or read `transcriptSegments` directly for live state.
+- `uploadAudioFile()` / `getTranscriptionStatus()` / `isUploading` / `uploadProgress` are **live** (TASK-603) — they used to throw / be hardcoded. See §3.1 below.
+### 3.1 File upload — the v1 members, for real (TASK-603)
+
+```ts
+const taskId = await uploadAudioFile(file, 'ml');           // → job id
+const job = await getTranscriptionStatus(taskId);           // → TranscriptionJobResponse
+```
+
+- Uploads to `POST /api/v1/audio/transcription-jobs/transcribe` (multipart) through `FileTranscriptionService`, and resolves to the **job id** — v1 resolved to its task id, so the call site is unchanged.
+- **`provider` is a pipeline override.** v1's third argument was an ASR provider name (`'azure' | 'whisper'`); v2 expresses the engine as a pipeline, so a non-empty `provider` is used as the `pipelineId` for that upload. Omitted, the pipeline comes from `options.pipelineId` — the same value the live path uses. Neither present rejects with a named error; nothing is uploaded against a guessed engine.
+- `isUploading` / `uploadProgress` (0–100) track the in-flight upload; a failure also lands on `error` and calls `onError`.
+- This pair is **single-file**, exactly as v1 shaped it. For many files with per-file progress and live streamed results, use [`useArcaBatchTranscription`](#7-usearcabatchtranscription).
+
 - `onStatus` (a previously-frozen-but-unwired v1 prop) also fires `'reconnecting'`/`'reconnected'` on transport reconnects, and `'provider_switched'` with `{ fromPipeline, toPipeline }` on any STT engine switch — additive behavior on an existing optional prop; apps that never pass `onStatus` are unaffected.
 
 ## 4. `useSMR`
@@ -264,11 +346,17 @@ function useSMR(props?: {
 - **Real per-turn `conversation_segments`** are always built — from `request.segments` when supplied, otherwise split from `request.text` per non-empty line (a fixed v1 defect: v1 collapsed the entire transcript into one `speaker: 'user'` blob). Lines shaped `"Speaker: text"` (speaker name ≤ 40 chars before the colon) are parsed to keep the speaker label; everything else defaults to `speaker: 'user'`.
 - `summarizeAsync` calls `/summary/async`, which is **explicitly not part of the reproduced v1 shim contract** — treat it as best-effort and prefer `summarizeSync`.
 - **Tenant context is mandatory** — the endpoint rejects with `401 "Tenant context is required"` if no tenant resolves from the API key / `X-Tenant-Id`. There is no v1-style SYSTEM-tenant default fallback.
+- **DNA writing-style (TASK-599):** set `SMRRequest.doctorId` (summary) or `PreSummaryRequest.doctorId` to forward a top-level `doctor_id` alongside the legacy `session_data.session_metadata.doctor_id`. When the tenant+doctor DNA gate is on, the gateway applies that doctor's DNA writing-style to the prompt; omitted ⇒ department + visit-type prompting only, unchanged from before TASK-599.
+- **Translate-to-English (TASK-600):** set `SMRRequest.translateToEnglish: true` to have the gateway translate the transcript to English via Sarvam **before** summarizing — sent on the wire as top-level `translate_to_english: true` (omitted when unset/false). **Summary-only** — there is no pre-summary equivalent. **Fail-open:** if translation fails, the gateway summarizes the original transcript rather than erroring. When translation succeeds, the gateway also forces the summary's output-language directive to English, overriding whatever language the source session was tagged with.
 - **Streaming (opt-in):** pass `{ stream: true, onDelta }` on `SMRRequest`/`PreSummaryRequest`. The hook switches to SSE parsing:
   - `event: delta` (`data: {"text": "..."}`) → fires `onDelta(delta, accumulated)`, where `accumulated` is the running concatenation including this delta.
+  - `event: reasoning` (`data: {"text": "..."}`) → fires `onReasoning(reasoning, accumulated)` when supplied, on a channel kept **separate** from `onDelta`/the final result. A reasoning-capable model's chain-of-thought (Azure `reasoning_content`, Anthropic thinking blocks, LM Studio reasoning deltas) lands here — never mixed into the answer text. Callers that don't pass `onReasoning` simply never see these frames; nothing else changes.
   - `event: result` → resolves the promise with the same v1-shaped body the non-streaming path returns.
   - `event: error` (`data: {"detail": "..."}`) → rejects with that detail message.
   Omitting `stream` (or setting it `false`) is **byte-identical** to the existing single-JSON-response path — nothing changes for callers who don't opt in.
+- **Reasoning models on the non-streaming path too:** even without `stream:true`, a model that inlines its chain-of-thought as `<think>…</think>`/`<thinking>…</thinking>` ahead of the JSON answer has those blocks stripped server-side before parsing (and, failing a direct parse, the gateway falls back to extracting the last brace-balanced `{...}` object) — so a reasoning model's preamble no longer breaks summary parsing.
+- **BYOK credential errors (TASK-602):** the gateway no longer holds env-level cloud-provider credentials — a tenant's Azure/OpenAI/Anthropic selection (primary or fallback) must have a BYOK connection configured, or the call fails closed with a `503` (`ProviderCredentialsError`) surfaced through the normal `onError`/thrown-`Error` path. Local engines (LM Studio/Ollama) are unaffected.
+- **`max_tokens` ceiling:** both `SMRRequest`/`PreSummaryRequest` map to a gateway DTO capped at `1–32768` (raised from `32000`); a value outside that range is rejected by the gateway's validation pipe before it reaches the LLM.
 
 ## 5. `useArcaSttProvider`
 
@@ -320,11 +408,72 @@ interface LanguageMode {
 
 Fetches `GET /audio/transcription-jobs/language-modes` (default: once on mount, or lazily via `refresh()` if `autoFetch: false`). The selected mode's `id` is passed to `audio.start({ languageMode })`; the backend is authoritative — it rejects with **422** if no configured engine can serve the requested mode.
 
-## 7. Reproduced v1 type surface
+## 7. `useArcaBatchTranscription`
+
+A **v2-native hook with no v1 ancestor** (same category as `useArcaSttProvider`), for transcribing PRE-RECORDED files. v1 only had the single-file `uploadAudioFile()` on `useArcaSpeechToText` — still supported, see [§3.1](#31-file-upload--the-v1-members-for-real-task-603) — this is the multi-file queue: per-file upload progress, per-file live results, cancel/retry.
+
+```ts
+function useArcaBatchTranscription(props?: {
+  options?: { pipelineId?: string; language?: string; consultationId?: string }; // defaults per enqueue
+  concurrency?: number; // default 2 — bounds uploads AND open SSE streams
+  onJobCompleted?: (item: BatchQueueItem) => void;
+  onError?: (error: ErrorInfo, itemId: string) => void;
+}): {
+  items: BatchQueueItem[];
+  enqueue: (files: File[] | FileList, options?: BatchTranscriptionOptions) => string[]; // → queue-item ids
+  cancel: (itemId: string) => void;
+  retry: (itemId: string) => void;
+  remove: (itemId: string) => void;
+  clear: () => void;
+  isUploading: boolean;
+  isStreaming: boolean;
+  activeCount: number;
+  error: ErrorInfo | null;
+};
+
+interface BatchQueueItem {
+  id: string; // queue id (NOT the job id — that exists only after upload)
+  fileName: string;
+  size: number;
+  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  uploadProgress: number; // 0–100, upload only
+  jobId: string | null;
+  segments: BatchTranscriptSegment[]; // streamed, in arrival order
+  text: string; // joined finals while streaming; the job's own resultText once completed
+  error: string | null;
+  job: TranscriptionJobResponse | null;
+}
+```
+
+```tsx
+const batch = useArcaBatchTranscription({ options: { pipelineId, language: 'ml-en' } });
+<input type="file" multiple accept="audio/*" onChange={(e) => batch.enqueue(e.target.files ?? [])} />;
+```
+
+### How it runs
+
+1. `POST /audio/transcription-jobs/transcribe` (multipart, XHR progress) → job id.
+2. `GET /audio/transcription-jobs/:id/stream` (SSE) → `chunk` / `status` / `complete` / `error` events append to `segments`.
+3. On terminal completion the job is **re-read once** (`GET /audio/transcription-jobs/:id`) and `item.text` becomes its `resultText` — streamed chunks can be partial, so the read-back is the authoritative transcript.
+
+### Two things that are easy to get wrong
+
+- **SSE construction is `new SSEClient(scope, apiClient, logger)`.** The legacy one-argument form is blocked inside the client and never connects.
+- **The ticket scope is per job — `transcription_job:<jobId>`** (`transcriptionJobScopeFor()`), because the route declares `@StreamScope({ namespace: 'transcription_job', param: 'id' })`. A generic scope string is rejected 401.
+
+Both are locked by unit tests; do not "simplify" either.
+
+### Concurrency
+
+A slot is held for the **whole lifecycle** — upload AND result stream — not just the upload, so `concurrency` also bounds how many SSE connections are open at once. Files past the cap sit in `pending` until a slot frees.
+
+## 8. Reproduced v1 type surface
 
 `compat.ts` re-exports the following types verbatim from the frozen v1 contract (`compat/types.ts`), so a v1 app keeps compiling against familiar names:
 
 `V1SdkConfig`, `V1AudioSettings`, `ErrorInfo`, `SessionStatus`, `MedicalSession`, `SessionMetadata`, `PatientInfo`, `ProviderInfo`, `AudioDeviceStatus`, `SummaryResponse`, `MedicalSummary` (union of `EnhancedMedicalSummary | SimplifiedMedicalSummary | SoapMedicalSummary`), `EnhancedMedicalSummary`, `SimplifiedMedicalSummary`, `SoapMedicalSummary`, `SMRRequest`, `SMRJobStatus`, `ConversationSegmentInput`, `TestResult`, `PreviousVisitRecord`, `PreSummaryRequest`, `PreSummaryResponse`, `StructuredPreSummary`, `PreSummarySection`, `PreSummarySectionItem`, `ProviderSwitchInfo`.
+
+`SMRRequest`/`PreSummaryRequest` themselves are frozen shapes (TASK-560 §5), but keep growing ADDITIVE, no-v1-ancestor fields with no effect on callers who omit them: `stream`/`onDelta` (TASK-589), `onReasoning` (streaming reasoning-model chain-of-thought), `doctorId` (TASK-599 — DNA writing-style), and `translateToEnglish` on `SMRRequest` only (TASK-600 — Sarvam translate-before-summarize).
 
 `ErrorInfo` shape (used across every compat hook's `onError`):
 ```ts
@@ -338,7 +487,7 @@ interface ErrorInfo {
 }
 ```
 
-## 8. Defects/anti-patterns deliberately not reproduced
+## 9. Defects/anti-patterns deliberately not reproduced
 
 Documented in [`TASK-560 README §6`](../../../docs/implementation/TASK-560-v1-v2-consultation-migration/README.md):
 
@@ -356,6 +505,9 @@ Documented in [`TASK-560 README §6`](../../../docs/implementation/TASK-560-v1-v
 - [`docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md`](../../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md) — step-by-step migration walkthrough with a full before/after example
 - [`docs/implementation/TASK-560-v1-v2-consultation-migration/README.md`](../../../docs/implementation/TASK-560-v1-v2-consultation-migration/README.md) — frozen contract (§5) and anti-patterns (§6)
 - [`docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md`](../../../docs/implementation/TASK-564-live-transcription-metadata-passthrough/METADATA_PASSTHROUGH.md) — the live-transcription metadata contract in full
+- [`docs/implementation/TASK-599-Compat-DNA-Writing-Style/README.md`](../../../docs/implementation/TASK-599-Compat-DNA-Writing-Style/README.md) — DNA writing-style resolution into SMR summary/pre-summary prompts
+- [`docs/implementation/TASK-600-Compat-Translate-To-English/README.md`](../../../docs/implementation/TASK-600-Compat-Translate-To-English/README.md) — Sarvam translate-to-English before summarizing
+- [`docs/implementation/TASK-602-Provider-Credential-Env-Fallback-Cleanup/README.md`](../../../docs/implementation/TASK-602-Provider-Credential-Env-Fallback-Cleanup/README.md) — BYOK cloud-provider credential model (fail-closed `ProviderCredentialsError`)
 - [`apps/compat-playground`](../../../apps/compat-playground) (port 5177) — full runnable reference app exercising every hook on this page
 
 ## Source file index
@@ -371,6 +523,7 @@ Documented in [`TASK-560 README §6`](../../../docs/implementation/TASK-560-v1-v
 | `src/compat/speechToTextMetadata.ts` | Pure metadata helpers (`composeDeliveredMetadata`, `pickMetadataForFinal`, etc.) |
 | `src/compat/useSMR.ts` | |
 | `src/compat/useArcaSttProvider.ts` | |
+| `src/compat/useArcaBatchTranscription.ts` | Batch/file upload queue (TASK-603) |
 | `src/hooks/useArcaSttLanguageModes.ts` | Re-exported via `compat.ts` |
 | `src/compat/types.ts` | Reproduced v1 type surface |
 | `src/compat/__tests__/` | Unit tests for every hook above, plus `contract.test.ts` and `metadata-passthrough.contract.test.ts` |

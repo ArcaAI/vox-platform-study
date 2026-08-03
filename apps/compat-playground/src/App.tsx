@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ArcaCompatProvider, type V1SdkConfig } from '@arcaai/vox/compat';
 import { Alert, AlertDescription, AlertTitle, Button, Card, CardContent, Tabs, TabsContent, TabsList, TabsTrigger } from '@arcaai/ui';
 import { Toaster } from 'sonner';
+import { BatchUploadTab } from './components/BatchUploadTab';
 import { ConnectionTab } from './components/ConnectionTab';
 import { LiveTranscriptionTab } from './components/LiveTranscriptionTab';
 import { SummarizationTab } from './components/SummarizationTab';
@@ -9,10 +10,10 @@ import { PlaygroundSessionProvider } from './context/playground-session';
 import { clearStoredConfig, saveStoredConfig, type PlaygroundConfig } from './lib/config-store';
 import { useTheme } from './lib/use-theme';
 
-type ConsoleTab = 'connection' | 'live-transcription' | 'summarization';
+type ConsoleTab = 'connection' | 'live-transcription' | 'batch-upload' | 'summarization';
 
-/** The reason both session tabs are disabled before connecting — shown, never implied. */
-const GATE_REASON = 'Connect on the Connection tab to enable Live transcription and Summarization.';
+/** The reason the session tabs are disabled before connecting — shown, never implied. */
+const GATE_REASON = 'Connect on the Connection tab to enable Live transcription, Batch upload and Summarization.';
 
 function toCompatOptions(config: PlaygroundConfig): V1SdkConfig {
   const apiEndpoint = config.apiEndpoint.trim().replace(/\/+$/, '');
@@ -57,7 +58,7 @@ export function App() {
 
   const handleDisconnect = () => {
     setConnected(null);
-    // The two session tabs are about to become disabled — never strand the user
+    // The session tabs are about to become disabled — never strand the user
     // on a tab they can no longer interact with.
     setTab('connection');
   };
@@ -68,7 +69,7 @@ export function App() {
   const compatOptions = useMemo(() => (connected ? toCompatOptions(connected) : null), [connected]);
 
   // ---------------------------------------------------------------------------
-  // The three-tab console.
+  // The four-tab console.
   //
   // Two invariants hold this together and are easy to break by accident:
   //
@@ -90,6 +91,9 @@ export function App() {
           <TabsTrigger value="live-transcription" disabled={!connected}>
             Live transcription
           </TabsTrigger>
+          <TabsTrigger value="batch-upload" disabled={!connected}>
+            Batch upload
+          </TabsTrigger>
           <TabsTrigger value="summarization" disabled={!connected}>
             Summarization
           </TabsTrigger>
@@ -97,7 +101,7 @@ export function App() {
 
         {!connected ? (
           <Alert>
-            <AlertTitle>Two tabs are locked</AlertTitle>
+            <AlertTitle>Three tabs are locked</AlertTitle>
             <AlertDescription>{GATE_REASON}</AlertDescription>
           </Alert>
         ) : null}
@@ -114,6 +118,19 @@ export function App() {
         className="mx-auto w-full max-w-[110rem] data-[state=inactive]:hidden"
       >
         {connected ? <LiveTranscriptionTab /> : <NotConnectedPanel what="Live transcription" />}
+      </TabsContent>
+
+      {/* `forceMount` is load-bearing here beyond the shared invariant: a batch
+          upload runs for minutes and its SSE result stream must not be torn
+          down by switching to another tab. (The queue itself lives in
+          `<PlaygroundSessionProvider>` for the same reason.) */}
+      <TabsContent
+        value="batch-upload"
+        forceMount
+        data-testid="batch-upload-panel"
+        className="mx-auto w-full max-w-[110rem] data-[state=inactive]:hidden"
+      >
+        {connected ? <BatchUploadTab /> : <NotConnectedPanel what="Batch upload" />}
       </TabsContent>
 
       <TabsContent

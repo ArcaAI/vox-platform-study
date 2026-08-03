@@ -116,7 +116,7 @@ Same names, same signatures; the compat hook delegates to the v2 public API.
 | `useArcaSpeechToText({onTranscript})` | `useArcaSpeechToText(...)` | `useArcaAudio()` + store selectors | `onTranscript(text,isFinal,meta)` **still fires** — synthesized by observing `transcriptSegments`/`currentTranscript`. See #2. |
 | `startTranscription()` / `stopTranscription()` | same | `audio.start(...)` / `audio.stop()` | Same coordinated `useArcaAudio()` instance as `useAudioCapture`. |
 | `sendAudioData(buf, meta)` | `sendAudioData(buf, meta)` | *(metadata sink)* | Records `{deviceid, role}`-style metadata for the next turn; **does not push PCM**. See #3. |
-| `uploadAudioFile()` / `getTranscriptionStatus()` | present but **throws** | — | Out of the live-workflow scope; use the v2 file-transcription API if you need batch upload. |
+| `uploadAudioFile()` / `getTranscriptionStatus()` | same signatures, now **live** (TASK-603) | `POST /audio/transcription-jobs/transcribe`, `GET /audio/transcription-jobs/:id` | Resolves to the job id (v1: task id). v1's `provider` argument is honoured as a **pipeline override**; absent, `options.pipelineId` is used. `isUploading`/`uploadProgress` are real. For MANY files use `useArcaBatchTranscription`. |
 | `useSMR().summarizeSync(req)` | `summarizeSync(req)` | `POST /api/smr/api/v1/summary/sync` | Same path, same `x-api-key`. Sends **real per-turn** segments now (F2). See #6. |
 | `useSMR().summarize(req)` | `summarize(req)` | (alias of `summarizeSync`) | |
 | `useSMR().preSummarize(req)` | `preSummarize(req)` | `POST /api/smr/api/v1/presummary` | Same path. |

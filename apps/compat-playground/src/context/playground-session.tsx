@@ -5,7 +5,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 // entry-point bundles (tsup `splitting: false`). Importing it from
 // `@arcaai/vox/core` makes `useStoreApi()` read a different context instance
 // and throw "must be used within an <AgenticProvider>".
-import { useArcaSessionManager, useAudioCapture, useArcaSpeechToText, useArcaSttLanguageModes } from '@arcaai/vox/compat';
+import { useArcaSessionManager, useAudioCapture, useArcaSpeechToText, useArcaSttLanguageModes, useArcaBatchTranscription } from '@arcaai/vox/compat';
+import type { BatchQueueItem } from '@arcaai/vox/compat';
 import { type SttLanguageModeOption } from '@arcaai/ui';
 import { toast } from 'sonner';
 import { type TranscriptLine } from '../components/TranscriptColumn';
@@ -392,6 +393,57 @@ export interface PlaygroundAudioSlice {
 }
 
 /**
+ * Batch (pre-recorded file) transcription — the Batch-upload tab (TASK-603).
+ *
+ * A NEW top-level group rather than a widening of `audio`: `audio` is the LIVE
+ * capture graph (mics, decoded files fed through the mixer, per-source levels),
+ * while this is an upload queue that never touches the capture graph at all.
+ *
+ * It lives here, above the tabs, for the same reason the capture session does:
+ * an upload takes minutes and its SSE result stream must survive a tab switch.
+ * Everything except the local UI state is `useArcaBatchTranscription()` verbatim.
+ */
+export interface PlaygroundBatchSlice {
+  /** One row per queued file, in enqueue order. */
+  items: BatchQueueItem[];
+  /** Queue files with the tab's pipeline + the console-wide language mode. */
+  enqueue: (files: File[]) => void;
+  cancel: (itemId: string) => void;
+  retry: (itemId: string) => void;
+  remove: (itemId: string) => void;
+  clear: () => void;
+  isUploading: boolean;
+  /** Rows currently holding a concurrency slot (uploading OR streaming). */
+  activeCount: number;
+  /** Last batch error, for the tab's single error surface. */
+  error: string | null;
+
+  /**
+   * Pipeline for the NEXT enqueue. Seeded from the connection config but
+   * independently changeable — running a batch against a different ASR pipeline
+   * is the most common reason to open this tab at all. Already-queued rows keep
+   * the pipeline they were enqueued with (the hook snapshots it per item).
+   */
+  pipelineId: string;
+  setPipelineId: (value: string) => void;
+  /** Files in flight at once, counting upload AND result stream. */
+  concurrency: number;
+  setConcurrency: (value: number) => void;
+
+  /** Which row the result panel is showing. */
+  selectedId: string | null;
+  select: (itemId: string | null) => void;
+
+  /**
+   * Transcript pushed toward the Summarization tab. Token-keyed so `SummaryCard`
+   * applies each push exactly once and a later manual edit is never clobbered
+   * by a re-render.
+   */
+  handoff: { token: number; text: string } | null;
+  sendToSummarization: (text: string) => void;
+}
+
+/**
  * The value published by `<PlaygroundSessionProvider>`.
  *
  * Read it with `usePlaygroundSession()`. Lane E adds a `pipeline` group
@@ -407,6 +459,7 @@ export interface PlaygroundSessionContextValue {
   language: PlaygroundLanguageSlice;
   metadata: PlaygroundMetadataSlice;
   audio: PlaygroundAudioSlice;
+  batch: PlaygroundBatchSlice;
 }
 
 const PlaygroundSessionContext = createContext<PlaygroundSessionContextValue | null>(null);
@@ -559,6 +612,55 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     },
     onError: (err) => toast.error(`STT error: ${err.message}`),
   });
+
+  // ---------------------------------------------------------------------------
+  // Batch upload (TASK-603) — mounted HERE, above the tabs, so a multi-minute
+  // upload and its SSE result stream survive every tab switch, exactly like the
+  // live capture session does.
+  // ---------------------------------------------------------------------------
+  const [batchPipelineId, setBatchPipelineId] = useState(config.pipelineId);
+  const [batchConcurrency, setBatchConcurrency] = useState(2);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [batchHandoff, setBatchHandoff] = useState<{ token: number; text: string } | null>(null);
+  const handoffTokenRef = useRef(0);
+
+  const batch = useArcaBatchTranscription({
+    options: { pipelineId: batchPipelineId.trim() || undefined, language: languageMode },
+    concurrency: batchConcurrency,
+    onJobCompleted: (item) => toast.success(`Transcribed ${item.fileName}.`),
+    onError: (err) => toast.error(`Batch error: ${err.message}`),
+  });
+
+  const enqueueBatch = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return;
+      const ids = batch.enqueue(files);
+      // Select the first file of the batch so the result panel is never an
+      // empty box while something is visibly uploading next to it.
+      setSelectedBatchId((prev) => prev ?? ids[0] ?? null);
+      toast.success(`Queued ${files.length} file${files.length === 1 ? '' : 's'}.`);
+    },
+    [batch],
+  );
+
+  const removeBatchItem = useCallback(
+    (itemId: string) => {
+      batch.remove(itemId);
+      setSelectedBatchId((prev) => (prev === itemId ? null : prev));
+    },
+    [batch],
+  );
+
+  const clearBatch = useCallback(() => {
+    batch.clear();
+    setSelectedBatchId(null);
+  }, [batch]);
+
+  const sendToSummarization = useCallback((text: string) => {
+    handoffTokenRef.current += 1;
+    setBatchHandoff({ token: handoffTokenRef.current, text });
+    toast.success('Transcript sent to the Summarization tab.');
+  }, []);
 
   const isPreSession = mgr.isLoading && !mgr.session;
 
@@ -966,6 +1068,25 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
     // graph (it runs before `useAudioCapture` to build its options), so the
     // live per-source levels are joined on here (TASK-597 follow-up #2).
     audio: { ...audio, sourceLevels },
+    batch: {
+      items: batch.items,
+      enqueue: enqueueBatch,
+      cancel: batch.cancel,
+      retry: batch.retry,
+      remove: removeBatchItem,
+      clear: clearBatch,
+      isUploading: batch.isUploading,
+      activeCount: batch.activeCount,
+      error: batch.error?.message ?? null,
+      pipelineId: batchPipelineId,
+      setPipelineId: setBatchPipelineId,
+      concurrency: batchConcurrency,
+      setConcurrency: setBatchConcurrency,
+      selectedId: selectedBatchId,
+      select: setSelectedBatchId,
+      handoff: batchHandoff,
+      sendToSummarization,
+    },
   };
 
   return <PlaygroundSessionContext.Provider value={value}>{children}</PlaygroundSessionContext.Provider>;

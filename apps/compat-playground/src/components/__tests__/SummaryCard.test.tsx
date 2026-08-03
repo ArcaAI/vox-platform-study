@@ -39,8 +39,11 @@ vi.mock('sonner', () => ({
 // session to read. Mock the hook rather than standing up the whole provider —
 // this suite is about the SMR call shape, not session wiring.
 let mockLineTexts: string[] = [];
+// `batch.handoff` is the batch-upload → summarization push (TASK-603); `null`
+// here means "nothing was handed over", which is the state every test below
+// exercises. The dedicated hand-off assertions live in BatchUploadTab.test.tsx.
 vi.mock('../../context/playground-session', () => ({
-  usePlaygroundSession: () => ({ transcript: { lineTexts: mockLineTexts } }),
+  usePlaygroundSession: () => ({ transcript: { lineTexts: mockLineTexts }, batch: { handoff: null } }),
 }));
 
 // Import AFTER the mocks are registered.

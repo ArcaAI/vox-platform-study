@@ -37,6 +37,20 @@ vi.mock('@arcaai/vox/compat', () => ({
     error: null,
   }),
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn() }),
+  // TASK-603 — the provider also mounts the batch-upload queue; an idle stub is
+  // all these suites need (batch behaviour is covered in BatchUploadTab.test.tsx).
+  useArcaBatchTranscription: () => ({
+    items: [],
+    enqueue: vi.fn(() => []),
+    cancel: vi.fn(),
+    retry: vi.fn(),
+    remove: vi.fn(),
+    clear: vi.fn(),
+    isUploading: false,
+    isStreaming: false,
+    activeCount: 0,
+    error: null,
+  }),
   useArcaSttProvider: () => ({
     usePipeline: false,
     switchStatus: 'idle',
@@ -63,7 +77,7 @@ vi.mock('sonner', () => ({
 // Import AFTER the mocks are registered.
 import { App } from '../../App';
 
-const PANEL_IDS = ['connection-panel', 'live-transcription-panel', 'summarization-panel'] as const;
+const PANEL_IDS = ['connection-panel', 'live-transcription-panel', 'batch-upload-panel', 'summarization-panel'] as const;
 
 /** Connect the console so both gated tabs become reachable. */
 async function connect(user: ReturnType<typeof userEvent.setup>) {
@@ -85,14 +99,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('App — three-tab console shell', () => {
-  it('gates the two session tabs with a VISIBLE reason until connected', () => {
+describe('App — four-tab console shell', () => {
+  it('gates the three session tabs with a VISIBLE reason until connected', () => {
     render(<App />);
 
     expect(screen.getByRole('tab', { name: 'Live transcription' })).toBeDisabled();
+    expect(screen.getByRole('tab', { name: 'Batch upload' })).toBeDisabled();
     expect(screen.getByRole('tab', { name: 'Summarization' })).toBeDisabled();
     // A disabled control must say why it is disabled, on screen.
-    expect(screen.getByText(/Connect on the Connection tab to enable Live transcription and Summarization\./)).toBeInTheDocument();
+    expect(screen.getByText(/Connect on the Connection tab to enable Live transcription, Batch upload and Summarization\./)).toBeInTheDocument();
   });
 
   it('enables the session tabs once connected', async () => {
@@ -101,6 +116,7 @@ describe('App — three-tab console shell', () => {
     await connect(user);
 
     expect(screen.getByRole('tab', { name: 'Live transcription' })).toBeEnabled();
+    expect(screen.getByRole('tab', { name: 'Batch upload' })).toBeEnabled();
     expect(screen.getByRole('tab', { name: 'Summarization' })).toBeEnabled();
   });
 
@@ -119,17 +135,17 @@ describe('App — three-tab console shell', () => {
   // identity of the panel's first CHILD is what actually proves nothing was
   // unmounted.
   // ---------------------------------------------------------------------------
-  it('keeps ALL THREE panel bodies mounted when the active tab changes (forceMount invariant)', async () => {
+  it('keeps EVERY panel body mounted when the active tab changes (forceMount invariant)', async () => {
     const user = userEvent.setup();
     render(<App />);
     await connect(user);
 
     const bodyOf = (id: string) => screen.getByTestId(id).firstElementChild;
     const before = PANEL_IDS.map((id) => bodyOf(id));
-    // All three bodies exist up front — that is what `forceMount` buys.
+    // Every body exists up front — that is what `forceMount` buys.
     before.forEach((body) => expect(body).not.toBeNull());
 
-    for (const tabName of ['Live transcription', 'Summarization', 'Connection']) {
+    for (const tabName of ['Live transcription', 'Batch upload', 'Summarization', 'Connection']) {
       await user.click(screen.getByRole('tab', { name: tabName }));
       PANEL_IDS.forEach((id, i) => {
         // Same DOM node object ⇒ React never unmounted and re-created it.

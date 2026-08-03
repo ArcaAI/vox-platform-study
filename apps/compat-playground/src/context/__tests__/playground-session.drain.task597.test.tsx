@@ -45,6 +45,20 @@ vi.mock('@arcaai/vox/compat', () => ({
     error: null,
   }),
   useArcaSttLanguageModes: () => ({ modes: [], isLoading: false, error: null, refresh: vi.fn() }),
+  // TASK-603 — the provider also mounts the batch-upload queue; an idle stub is
+  // all these suites need (batch behaviour is covered in BatchUploadTab.test.tsx).
+  useArcaBatchTranscription: () => ({
+    items: [],
+    enqueue: vi.fn(() => []),
+    cancel: vi.fn(),
+    retry: vi.fn(),
+    remove: vi.fn(),
+    clear: vi.fn(),
+    isUploading: false,
+    isStreaming: false,
+    activeCount: 0,
+    error: null,
+  }),
 }));
 
 import { PlaygroundSessionProvider, usePlaygroundSession, WAIT_FOR_TAIL_FINAL_TIMEOUT_MS } from '../playground-session';

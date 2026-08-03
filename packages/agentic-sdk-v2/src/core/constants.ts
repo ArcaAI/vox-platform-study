@@ -425,6 +425,16 @@ export const STT_ENDPOINTS = {
   RETRY_JOB: (jobId: string) => `/audio/transcription-jobs/${encodeURIComponent(jobId)}/retry`,
 } as const;
 
+/**
+ * SSE ticket scope for a transcription job's result stream.
+ *
+ * MUST match the gateway's per-resource scope exactly: the route declares
+ * `@StreamScope({ namespace: 'transcription_job', param: 'id' })` and the auth
+ * guard compares the ticket's stored scope against `transcription_job:<id>`.
+ * A generic scope string ("jobs", "transcription-jobs", …) is rejected 401.
+ */
+export const transcriptionJobScopeFor = (jobId: string): string => `transcription_job:${jobId}`;
+
 // =============================================================================
 // Pipeline Endpoints (ASR-R-01)
 // =============================================================================
