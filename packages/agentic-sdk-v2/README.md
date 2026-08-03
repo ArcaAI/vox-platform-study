@@ -23,7 +23,7 @@ Peer dependencies: `react` / `react-dom` `^18.3.0 || ^19.0.4`.
 | Import                        | Contents                                                                                                                             |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `@arcaai/vox`                 | Everything: core + audio plugin hooks and pipelines                                                                                  |
-| `@arcaai/vox/core`            | Provider, hooks, types, client — no audio/ML plugin code                                                                             |
+| `@arcaai/vox/core`            | Provider, hooks, types, client — no audio/ML plugin code. Includes `useBatchTranscription` (pre-recorded file upload + monitoring)   |
 | `@arcaai/vox/plugins`         | `useVAD`, `useSTT`, `useNoiseFilter`, `useArcaAudio`, `useSttProviderToggle`, `useTtsPlayback`/`useTtsStream`, `PluginManager`, pipelines |
 | `@arcaai/vox/plugins/med-ner` | `useMedNER` only — isolates the optional `@arcaai/med-ner` dependency so the main plugins entry never fails when it is not installed |
 | `@arcaai/vox/compat`          | v1 (`@arcaai/agentic-sdk`) source-compatible hooks for migrating apps — see [Migrating from v1](#migrating-from-v1-arcaaivoxcompat)  |

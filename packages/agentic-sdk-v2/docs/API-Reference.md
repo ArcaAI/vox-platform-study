@@ -14,6 +14,8 @@
 - [Import Paths](#import-paths)
 - [1. useArca — Unified Hook](#1-usearc--unified-hook)
 - [2. Focused Domain Hooks](#2-focused-domain-hooks)
+  - [useSttProviderToggle() — live pipeline ↔ default](#usesttprovidertoggle--live-pipeline--default)
+  - [useBatchTranscription() — pre-recorded files](#usebatchtranscription--pre-recorded-files)
 - [3. useAuth — Authentication](#3-useauth--authentication)
 - [4. useArcaConfig — Configuration](#4-usearcaconfig--configuration)
 - [5. Admin & Management Hooks](#5-admin--management-hooks)
@@ -325,6 +327,148 @@ const pipelines = useArcaPipelines();
 ```
 
 Same interface as [`useArca().pipelines`](#pipelines).
+
+---
+
+### useSttProviderToggle() — live pipeline ↔ default
+
+Switch a LIVE transcription session between the selected pipeline and the
+tenant's default fallback STT provider, without dropping the session: the
+backend swaps the ASR engine while the WebSocket, the Redis streams and the
+session identity survive.
+
+```tsx
+import { useSttProviderToggle } from '@arcaai/vox';
+
+function ProviderToggle() {
+  const stt = useSttProviderToggle();
+
+  return (
+    <>
+      <span>
+        Transcribing on {stt.activeProvider?.name ?? 'the selected pipeline'}
+        {stt.isFallbackActive && ' (fallback)'}
+      </span>
+
+      {stt.usePipeline ? (
+        <button disabled={!stt.canSwitchToDefault} onClick={() => stt.switchToDefault()}>
+          Switch to {stt.fallback?.pipelineName ?? 'the default provider'}
+        </button>
+      ) : (
+        <button onClick={() => stt.switchToPipeline()}>Switch back to my pipeline</button>
+      )}
+
+      {stt.switchError && <p role="alert">{stt.switchError.message}</p>}
+    </>
+  );
+}
+```
+
+| Member                | Type                                               | Description                                                                                      |
+| --------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `activeProvider`      | `{ pipelineId, name?, isFallback } \| null`        | Pipeline currently transcribing. `null` before capture / for local STT                           |
+| `usePipeline`         | `boolean`                                          | On the SDK-configured (primary) pipeline                                                         |
+| `isFallbackActive`    | `boolean`                                          | On the tenant-admin default (fallback)                                                           |
+| `switchToPipeline()`  | `() => Promise<void>`                              | Switch (back) to the primary. Idempotent                                                         |
+| `switchToDefault()`   | `() => Promise<void>`                              | Switch to the tenant default. Idempotent                                                         |
+| `switchStatus`        | `'idle' \| 'switching' \| 'switched' \| 'failed'`  | Lifecycle of the most recent switch                                                              |
+| `switchError`         | `Error \| null`                                    | Last failure, so a UI need not wrap every call in `try/catch`                                    |
+| `resetSwitchStatus()` | `() => void`                                       | Back to `idle`; clears `switchError`                                                             |
+| `fallback`            | `{ configured, pipelineId, pipelineName } \| null` | The tenant's configured fallback. **`null` means UNKNOWN**, never "none configured"              |
+| `canSwitchToDefault`  | `boolean`                                          | A live session exists, is not already on the fallback, and a fallback is configured (or unknown) |
+| `refreshFallback()`   | `() => Promise<void>`                              | Re-read the fallback pointer                                                                     |
+
+Notes:
+
+- Both directions POST native routes (`switch-to-primary` / `switch-to-fallback`).
+  Compat mode only reroutes them through the `/api/stt/switch` shim; it is not
+  required for either direction.
+- Success is confirmed ASYNCHRONOUSLY by the backend's `provider_switched`
+  frame, which flips `activePipeline.isFallback` — that flip, not the HTTP
+  response, moves `switchStatus` to `'switched'`.
+- Both methods reject when there is no live streaming session (local STT
+  included), so the control is a no-op rather than a silent failure.
+- `canSwitchToDefault` is `true` while `fallback` is unknown: a failed labelling
+  read must not take a working fallback away from the user.
+
+---
+
+### useBatchTranscription() — pre-recorded files
+
+Upload pre-recorded audio (by default up to **5 recordings of at most 60
+minutes** each), monitor each job live, and collect each result.
+
+```tsx
+import { useBatchTranscription } from '@arcaai/vox';
+
+function BatchUpload({ pipelineId }: { pipelineId: string }) {
+  const batch = useBatchTranscription({
+    options: { pipelineId },
+    onItemCompleted: (item) => console.log(item.fileName, item.text),
+  });
+
+  return (
+    <>
+      <input type="file" multiple accept="audio/*" disabled={batch.remainingSlots === 0} onChange={(e) => batch.enqueue(e.target.files ?? [])} />
+      <p>
+        {batch.remainingSlots} of {batch.limits.maxFilesPerBatch} slots free
+      </p>
+
+      <ul>
+        {batch.items.map((item) => (
+          <li key={item.id}>
+            {item.fileName} — {item.status}
+            {item.status === 'uploading' && ` ${item.uploadProgress}%`}
+            {item.error && <span role="alert"> {item.error}</span>}
+            {item.status === 'completed' && <blockquote>{item.text}</blockquote>}
+            <button onClick={() => batch.cancel(item.id)}>Cancel</button>
+            <button onClick={() => batch.retry(item.id)}>Retry</button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+| Member                         | Type                            | Description                                                                 |
+| ------------------------------ | ------------------------------- | --------------------------------------------------------------------------- |
+| `items`                        | `BatchQueueItem[]`              | One row per selected file, in selection order                               |
+| `enqueue(files, options?)`     | `(files, options?) => string[]` | Append files; returns the new row ids (refused files included)              |
+| `cancel(id)` / `retry(id)`     | `(id: string) => void`          | Abort the upload or cancel the backend job / re-run from the top            |
+| `remove(id)` / `clear()`       | `(id?) => void`                 | Drop one row / all rows, stopping each first                                |
+| `limits`                       | `BatchTranscriptionLimits`      | Effective ceilings — the gateway's once loaded, the SDK defaults until then |
+| `limitsError`                  | `Error \| null`                 | Set when the limits fetch failed; the defaults remain in force              |
+| `remainingSlots`               | `number`                        | How many more recordings this batch accepts                                 |
+| `isUploading` / `isProcessing` | `boolean`                       | Something is uploading / transcribing                                       |
+| `activeCount`                  | `number`                        | Rows holding a concurrency slot                                             |
+
+`BatchQueueItem` carries `status` (`validating \| pending \| uploading \|
+processing \| completed \| failed \| cancelled`), `uploadProgress`, `jobId`,
+`durationSeconds`, `rejectionReason`, `segments`, `text`, `error` and `job`.
+
+Notes worth knowing before you build on it:
+
+- **The ceilings come from the gateway.** The hook fetches
+  `GET /audio/transcription-jobs/limits` (the admin-configurable `stt.batch.*`
+  settings) and applies them over its own defaults, so lowering a knob moves the
+  client too. If that fetch fails, the documented defaults stay in force —
+  uploading is never blocked by a settings hiccup, and the gateway re-checks
+  every request regardless.
+- **A refused file is a visible row**, `status: 'failed'` with a
+  `rejectionReason` of `too_many` / `too_long` / `too_large` /
+  `unsupported_type` — never a silent drop.
+- **Duration is checked locally first** so an over-long recording is refused
+  before ~115 MB is uploaded. When the browser cannot read a container's
+  duration the file is uploaded anyway and the gateway decides (it fails closed
+  and returns 400).
+- **`item.text` is authoritative once completed**: streamed chunks can be
+  partial, so the finished job is re-read and its `resultText` replaces the
+  streamed text.
+- **Concurrency (default 2) covers the whole lifecycle**, upload and result
+  stream, so a 5-file batch never opens 5 sockets at once.
+- The engine is exported separately as `BatchTranscriptionQueue` for non-React
+  callers.
 
 ---
 
@@ -819,6 +963,7 @@ Exported from `@arcaai/vox/core` for advanced use cases:
 | `ModelRegistry`            | STT/VAD/NER model discovery and selection                                 |
 | `PersonalizationManager`   | User preferences with local/backend/hybrid storage                        |
 | `FileTranscriptionService` | Upload and transcribe audio files                                         |
+| `BatchTranscriptionQueue`  | Framework-free batch queue (caps, scheduling, upload + result stream)     |
 | `SSEClient`                | Authenticated, reconnectable Server-Sent Events client                    |
 | `StreamingSessionManager`  | Manage STT streaming sessions                                             |
 | `SttWebSocketClient`       | WebSocket client for STT streaming protocol                               |
