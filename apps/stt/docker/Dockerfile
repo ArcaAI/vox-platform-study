@@ -82,22 +82,36 @@ FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04 AS ml-builder
 
 WORKDIR /build
 
+# Build toolchain only — deliberately NO apt python. Ubuntu 22.04's `python3.11`
+# package is 3.11.0rc1, a RELEASE CANDIDATE, and this image used to both build and
+# ship against it while every CPU service got a real 3.11.x from
+# python:3.11-slim-trixie. The interpreter now comes from uv
+# (python-build-standalone) so both halves of the fleet run a stable, pinned 3.11.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3.11 python3.11-dev python3.11-venv \
         build-essential \
         cmake git
-
-RUN python3.11 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_NO_INSTALLER_METADATA=1
+    UV_NO_INSTALLER_METADATA=1 \
+    UV_PYTHON_INSTALL_DIR=/opt/python
+
+# The venv holds a SYMLINK to this interpreter, so ml-runtime must copy /opt/python
+# alongside /opt/venv at the identical path or the link dangles.
+# Patch pinned per 09-infrastructure-devops (pin tags, no floating refs). This runs
+# before any expensive layer, so if uv 0.11.7's manifest predates this patch the
+# build fails in seconds — drop to `3.11` or bump uv.
+# `-VV` prints the resolved build to the log as evidence it is not an RC.
+RUN uv python install 3.11.15 \
+    && uv venv --python 3.11.15 /opt/venv \
+    && /opt/venv/bin/python -VV
+
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Workspace scaffolding: stt's pyproject declares hope-runtime-models / hope-env
 # as `workspace = true` sources, so even this fresh (non-frozen) GPU resolve needs
@@ -191,24 +205,54 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # and the platform-default ml-en GGUF pipeline ran on whisper_cpp_num_threads CPU
 # threads while torch/onnxruntime-gpu held an idle CUDA context.
 #
-# Upstream documents CUDA support as a source build gated on GGML_CUDA=1.
-# CMAKE_CUDA_ARCHITECTURES is pinned deliberately: ggml defaults to `native`, which
-# probes the BUILDER's GPU — on a GPU-less CI runner that yields a wrong-arch or
-# CPU-only build, failing silently exactly like the wheel did. 89 = Ada Lovelace
-# (RTX A2000 Ada / L4 / 4090). Update this when the deployment GPU changes.
-ENV GGML_CUDA=1 \
-    CMAKE_CUDA_ARCHITECTURES=89
+# Upstream documents CUDA support as a source build gated on GGML_CUDA=1. Its
+# setup.py turns EVERY environment variable into a `-D<KEY>=<VALUE>` CMake define,
+# which is how all three flags below reach CMake.
+#
+#   GGML_CUDA=1              enable ggml's CUDA backend.
+#   CMAKE_CUDA_ARCHITECTURES pinned deliberately: ggml defaults to `native`, which
+#                            probes the BUILDER's GPU — on a GPU-less CI runner that
+#                            yields a wrong-arch or CPU-only build, failing silently
+#                            exactly like the wheel did. 89 = Ada Lovelace
+#                            (RTX A2000 Ada / L4 / 4090). Update with the deploy GPU.
+#   BUILD_SHARED_LIBS=OFF    REQUIRED, not an optimization. Upstream's CMakeLists is
+#                            `add_subdirectory(whisper.cpp)` + link `whisper`, with no
+#                            install rule and no RPATH, so a shared whisper.cpp build
+#                            leaves `_pywhispercpp.so` linked against a libwhisper.so.1
+#                            that is never copied into site-packages —
+#                            `ImportError: libwhisper.so.1: cannot open shared object
+#                            file` at import. The published wheels only work because
+#                            cibuildwheel runs `auditwheel repair` to vendor it; a
+#                            source install gets no such repair. Static-linking whisper
+#                            + ggml into the extension removes the dangling reference
+#                            entirely and keeps everything inside /opt/venv, which is
+#                            all the ml-runtime stage copies. CUDA itself stays
+#                            dynamic (libcudart/libcublas from the -runtime base).
+#   CMAKE_POSITION_INDEPENDENT_CODE  static archives must be -fPIC to link into a
+#                            shared Python extension; not guaranteed by default and
+#                            the failure is a link-time relocation error.
+#
+# Set inline rather than as ENV: with setup.py's env->define conversion, a persistent
+# ENV would leak these defines into any later source build in this stage.
 RUN --mount=type=cache,target=/root/.cache/uv \
+    GGML_CUDA=1 \
+    CMAKE_CUDA_ARCHITECTURES=89 \
+    BUILD_SHARED_LIBS=OFF \
+    CMAKE_POSITION_INDEPENDENT_CODE=ON \
     uv pip install --python /opt/venv/bin/python \
         --reinstall-package pywhispercpp \
         "pywhispercpp @ git+https://github.com/absadiki/pywhispercpp@v1.5.0"
 
-# Fail the build if the CUDA backend did not actually link. Without this the
-# regression is invisible until someone notices 400% CPU in production.
-RUN /opt/venv/bin/python -c "import _pywhispercpp as p; print(p.__file__)" \
-    | xargs ldd \
-    | grep -qiE "libcudart|libcublas" \
-    || (echo "FATAL: pywhispercpp built without CUDA — whisper.cpp would fall back to CPU" && exit 1)
+# Two-part gate. `set -eu` matters: if the extension fails to LOAD, the import's own
+# error (e.g. a dangling libwhisper.so.1) must surface instead of being swallowed and
+# reported as the unrelated "built without CUDA". Only a loadable-but-CPU extension
+# should reach the grep.
+RUN set -eu; \
+    ext=$(/opt/venv/bin/python -c "import _pywhispercpp as p; print(p.__file__)"); \
+    echo "pywhispercpp extension: $ext"; \
+    ldd "$ext"; \
+    ldd "$ext" | grep -qiE "libcudart|libcublas" \
+      || { echo "FATAL: pywhispercpp loaded but linked no CUDA runtime — whisper.cpp would fall back to CPU"; exit 1; }
 
 # The two workspace path deps (hope-runtime-models, hope-env) resolve as EDITABLE
 # under `uv pip install` (tool.uv.sources workspace=true) — an
@@ -283,11 +327,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3.11 python3.11-venv libsndfile1 ffmpeg \
+        libsndfile1 ffmpeg \
     && groupadd --gid 1001 hope \
     && useradd --uid 1001 --gid hope --create-home --shell /bin/bash hope \
     && mkdir -p /models && chown -R hope:hope /app /models
 
+# Interpreter AND venv both come from ml-builder — no apt python here either (it
+# would be the same 3.11.0rc1). /opt/python must land at the builder's
+# UV_PYTHON_INSTALL_DIR path, because /opt/venv symlinks into it.
+COPY --from=ml-builder --chown=hope:hope /opt/python /opt/python
 COPY --from=ml-builder --chown=hope:hope /opt/venv /opt/venv
 COPY --chown=hope:hope apps/stt/src ./src
 
@@ -308,13 +356,13 @@ ENV PATH="/opt/venv/bin:$PATH" \
 EXPOSE 8861
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD ["python3.11", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8861/api/v1/health')"]
+    CMD ["/opt/venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8861/api/v1/health')"]
 
-CMD ["python3.11", "-m", "uvicorn", "stt.main:app", "--host", "0.0.0.0", "--port", "8861"]
+CMD ["/opt/venv/bin/python", "-m", "uvicorn", "stt.main:app", "--host", "0.0.0.0", "--port", "8861"]
 
 # =============================================================================
 # Stage 5: Worker — Dramatiq worker extending ml-runtime
 # =============================================================================
 FROM ml-runtime AS worker
 
-CMD ["python3.11", "-m", "dramatiq", "stt.worker", "--processes", "2", "--threads", "4"]
+CMD ["/opt/venv/bin/python", "-m", "dramatiq", "stt.worker", "--processes", "2", "--threads", "4"]
