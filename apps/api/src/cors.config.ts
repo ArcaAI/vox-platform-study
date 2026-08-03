@@ -4,14 +4,14 @@
  * Extracted from `main.ts` so the dev / staging / production branches
  * can be unit-tested without booting the Nest application. The exported
  * `getCorsOrigins(nodeEnv)` is the value passed to `app.enableCors({
- * origin })`. The dev branch returns a localhost-only RegExp; the
- * staging / production branches use a callback.
+ * origin })`. The dev branch returns a localhost plus compatibility-playground
+ * allowlist RegExp; the staging / production branches use a callback.
  */
 import { Logger } from '@nestjs/common';
 
 const corsLogger = new Logger('CORS');
 
-const DEV_LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+const DEV_ALLOWED_ORIGINS = /^(?:https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?|https:\/\/compat-playground\.taphuynh\.dev)$/;
 
 /**
  * TASK-558 lane I — where the allowed-origin list comes from at REQUEST time.
@@ -141,29 +141,29 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
   } else {
     // Dev fallback (only reachable if a caller misuses isOriginAllowed
     // with nodeEnv='development'; `getCorsOrigins` no longer goes through
-    // this function in dev). Mirrors the DEV_LOCALHOST_ORIGIN RegExp so the
+    // this function in dev). Mirrors the DEV_ALLOWED_ORIGINS RegExp so the
     // posture is identical regardless of which entry point is used.
-    return logCorsDecision(origin, DEV_LOCALHOST_ORIGIN.test(origin), 'development_localhost_only');
+    return logCorsDecision(origin, DEV_ALLOWED_ORIGINS.test(origin), 'development_allowed_origin');
   }
 }
 
 /**
  * Value passed to `app.enableCors({ origin })`.
  *
- *   - development → localhost-only RegExp.
+ *   - development → localhost plus compatibility-playground RegExp.
  *   - production / staging → callback delegating to `isOriginAllowed`.
  *
  * The dev branch must NOT return `true`: combined with
  * `credentials: true`, browsers reject that config (the spec forbids
- * wildcard + credentials), so the intent is "localhost only in dev" —
- * this pins it explicitly so the server's response headers match the
- * browser's behaviour.
+ * wildcard + credentials), so the intent is "localhost plus the explicitly
+ * allowed compatibility playground in dev" — this pins it explicitly so the
+ * server's response headers match the browser's behaviour.
  */
 export function getCorsOrigins(
   nodeEnv: string,
 ): RegExp | string[] | boolean | ((origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => void) {
   if (nodeEnv === 'development') {
-    return DEV_LOCALHOST_ORIGIN;
+    return DEV_ALLOWED_ORIGINS;
   }
   return (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     const isAllowed = isOriginAllowed(origin, nodeEnv);
