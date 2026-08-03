@@ -794,5 +794,19 @@ describe('SmrCompatController', () => {
       expect(out).not.toContain('SECRET_PHI_LEAK');
       expect(res.end).toHaveBeenCalled();
     });
+
+    it('forwards SMR reasoning frames to the client as a separate `reasoning` event, never mixed into the result', async () => {
+      const res = await runSummaryStream([
+        smrFrame('reasoning', { content: 'Weighing the differential…' }),
+        smrFrame('chunk', { content: '{"chief_complaint":"x","summary":"y"}' }),
+        smrFrame('done'),
+      ]);
+
+      expect(written(res)).toContain('event: reasoning');
+      expect(sseEventData(res, 'reasoning')).toEqual({ text: 'Weighing the differential…' });
+      // Reasoning is NOT part of the answer — the result still parses cleanly.
+      const result = sseEventData(res, 'result') as SummaryResponse;
+      expect(result.summary.summary).toBe('y');
+    });
   });
 });

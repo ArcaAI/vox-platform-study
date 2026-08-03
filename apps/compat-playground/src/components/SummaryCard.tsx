@@ -74,6 +74,16 @@ export function SummaryCard({ config }: SummaryCardProps) {
   const [streamEnabled, setStreamEnabled] = useState(false);
   const [streamingPreSummary, setStreamingPreSummary] = useState('');
   const [streamingSummary, setStreamingSummary] = useState('');
+  // Reasoning-model chain-of-thought (separate SSE channel). Kept AFTER the run
+  // completes — reset only when the next request starts — so it stays visible
+  // alongside the final answer, not wiped the instant the result arrives.
+  const [reasoning, setReasoning] = useState('');
+
+  // Raw JSON the model streamed for the SUMMARY (the accumulated deltas). Kept
+  // after the run so the developer can still inspect the exact JSON that
+  // produced the structured view below — the live preview is swapped out for
+  // `SummaryView` on completion, which otherwise makes the raw output vanish.
+  const [rawSummaryOutput, setRawSummaryOutput] = useState('');
 
   // Results.
   const [preSummary, setPreSummary] = useState<string | null>(null);
@@ -94,6 +104,7 @@ export function SummaryCard({ config }: SummaryCardProps) {
 
   const handlePreSummarize = async () => {
     setStreamingPreSummary('');
+    setReasoning('');
     try {
       const res = await preSummarize({
         current_department: department.trim() || undefined,
@@ -106,7 +117,13 @@ export function SummaryCard({ config }: SummaryCardProps) {
         formatted_test_results: context.testResults.trim() || undefined,
         formatted_previous_visits: context.previousVisits.trim() || undefined,
         language: config.languageMode?.startsWith('ml') ? 'ml' : 'en',
-        ...(streamEnabled ? { stream: true, onDelta: (_delta: string, accumulated: string) => setStreamingPreSummary(accumulated) } : {}),
+        ...(streamEnabled
+          ? {
+              stream: true,
+              onDelta: (_delta: string, accumulated: string) => setStreamingPreSummary(accumulated),
+              onReasoning: (_r: string, accumulated: string) => setReasoning(accumulated),
+            }
+          : {}),
       });
       setPreSummary(res.pre_summary);
       persistDefaults();
@@ -125,6 +142,8 @@ export function SummaryCard({ config }: SummaryCardProps) {
   const handleSummarize = async () => {
     if (!hasTranscript) return;
     setStreamingSummary('');
+    setReasoning('');
+    setRawSummaryOutput('');
     try {
       const res = await summarizeSync({
         text: effectiveTranscript,
@@ -136,7 +155,16 @@ export function SummaryCard({ config }: SummaryCardProps) {
         ...(preSummary ? { preSummaryText: preSummary, includePreSummaryInContext: true } : {}),
         useEnhancedFormat: useEnhanced,
         translateToEnglish,
-        ...(streamEnabled ? { stream: true, onDelta: (_delta: string, accumulated: string) => setStreamingSummary(accumulated) } : {}),
+        ...(streamEnabled
+          ? {
+              stream: true,
+              onDelta: (_delta: string, accumulated: string) => {
+                setStreamingSummary(accumulated);
+                setRawSummaryOutput(accumulated);
+              },
+              onReasoning: (_r: string, accumulated: string) => setReasoning(accumulated),
+            }
+          : {}),
       });
       setSummary(res);
       persistDefaults();
@@ -214,6 +242,22 @@ export function SummaryCard({ config }: SummaryCardProps) {
           </div>
         ) : null}
 
+        {/* Reasoning-model chain-of-thought — its own collapsible channel, shown
+            live while streaming AND kept beside the final answer. Only visible
+            for reasoning models that emit a reasoning stream. */}
+        {reasoning ? (
+          <details className="rounded border" open={loading}>
+            <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-semibold">
+              Reasoning
+              <Badge variant="secondary">AI</Badge>
+              {loading && streamEnabled ? <Badge variant="outline">Streaming…</Badge> : null}
+            </summary>
+            <div className="text-muted-foreground max-h-72 overflow-auto px-3 pb-3 text-sm whitespace-pre-wrap" aria-live="polite">
+              {reasoning}
+            </div>
+          </details>
+        ) : null}
+
         {showPreSummaryStreamPreview ? <StreamingPreview label="Pre-summary" text={streamingPreSummary} /> : null}
         {showSummaryStreamPreview ? <StreamingPreview label="Summary" text={streamingSummary} /> : null}
 
@@ -235,6 +279,15 @@ export function SummaryCard({ config }: SummaryCardProps) {
             </div>
             <SummaryView summary={summary} />
           </div>
+        ) : null}
+
+        {/* Raw model output (JSON) — persisted after the run so the structured
+            view above doesn't make the streamed JSON vanish. Dev-console aid. */}
+        {rawSummaryOutput && !showSummaryStreamPreview ? (
+          <details className="rounded border">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">Raw model output (JSON)</summary>
+            <pre className="text-muted-foreground max-h-72 overflow-auto px-3 pb-3 text-xs whitespace-pre-wrap">{rawSummaryOutput}</pre>
+          </details>
         ) : null}
       </CardContent>
 

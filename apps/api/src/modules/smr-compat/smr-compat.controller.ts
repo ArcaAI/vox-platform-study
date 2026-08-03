@@ -924,6 +924,14 @@ export class SmrCompatController {
               accumulated += text;
               this.writeSse(res, 'delta', { text });
             }
+          } else if (frame.type === 'reasoning') {
+            // Reasoning-model chain-of-thought (Azure `reasoning_content`,
+            // Anthropic thinking, LM Studio reasoning delta). Forwarded as its
+            // OWN event so the client can display it separately. Deliberately
+            // NOT added to `accumulated`: it is not part of the answer, must not
+            // corrupt the result JSON, and must not gate the pre-content fallback.
+            const text = typeof frame.content === 'string' ? frame.content : '';
+            if (text) this.writeSse(res, 'reasoning', { text });
           } else if (frame.type === 'done') {
             finished = true;
             try {
@@ -952,7 +960,7 @@ export class SmrCompatController {
             onFailure(`${label} failed: upstream error`);
             return;
           }
-          // reasoning / meta / usage frames are progress-only — ignored.
+          // meta / usage frames are progress-only — ignored.
         }
       });
 

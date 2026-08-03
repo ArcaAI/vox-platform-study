@@ -275,8 +275,13 @@ describe('SummaryCard', () => {
     // The terminal `result` event resolves to the SAME v1-shaped body the
     // non-streaming path returns — same final render as the non-streaming test.
     await screen.findByText('Subj');
-    // The streaming preview is gone once the final result has landed.
-    expect(screen.queryByText('S O A P')).not.toBeInTheDocument();
+    // The LIVE streaming preview (its char/token counter) is gone once the final
+    // result lands…
+    expect(screen.queryByText(/chars ·/)).not.toBeInTheDocument();
+    // …but the raw streamed JSON is preserved in the collapsible dev panel so it
+    // does not vanish behind the structured view.
+    expect(screen.getByText('Raw model output (JSON)')).toBeInTheDocument();
+    expect(screen.getByText('S O A P')).toBeInTheDocument();
   });
 
   // -- SSE error handling -------------------------------------------------------

@@ -193,7 +193,12 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
    * with the terminal v1-shaped body, `error` throws with `data.detail`.
    */
   const requestStream = useCallback(
-    async <T>(path: string, body: Record<string, unknown>, onDelta?: (delta: string, accumulated: string) => void): Promise<T> => {
+    async <T>(
+      path: string,
+      body: Record<string, unknown>,
+      onDelta?: (delta: string, accumulated: string) => void,
+      onReasoning?: (reasoning: string, accumulated: string) => void,
+    ): Promise<T> => {
       if (!client) {
         throw new Error('[@arcaai/vox/compat] useSMR: SDK not initialized. Wrap your app in <ArcaCompatProvider>.');
       }
@@ -220,6 +225,7 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
       const decoder = new TextDecoder();
       let buffer = '';
       let accumulated = '';
+      let accumulatedReasoning = '';
       let result: T | undefined;
       let resultSeen = false;
 
@@ -230,6 +236,10 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
           const { text = '' } = JSON.parse(parsed.data) as { text?: string };
           accumulated += text;
           onDelta?.(text, accumulated);
+        } else if (parsed.event === 'reasoning') {
+          const { text = '' } = JSON.parse(parsed.data) as { text?: string };
+          accumulatedReasoning += text;
+          onReasoning?.(text, accumulatedReasoning);
         } else if (parsed.event === 'result') {
           result = JSON.parse(parsed.data) as T;
           resultSeen = true;
@@ -277,7 +287,7 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
       try {
         const payload = buildSyncPayload(smrRequest, sessionId);
         const result = smrRequest.stream
-          ? await requestStream<SummaryResponse>('summary/sync', payload, smrRequest.onDelta)
+          ? await requestStream<SummaryResponse>('summary/sync', payload, smrRequest.onDelta, smrRequest.onReasoning)
           : await request<SummaryResponse>('summary/sync', payload);
         onComplete?.(result);
         return result;
@@ -332,7 +342,7 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
         // Top-level doctor_id lets the gateway apply that doctor's DNA writing-style. Omitted when unset.
         if (preRequest.doctorId !== undefined) payload.doctor_id = preRequest.doctorId;
         return preRequest.stream
-          ? await requestStream<PreSummaryResponse>('presummary', payload, preRequest.onDelta)
+          ? await requestStream<PreSummaryResponse>('presummary', payload, preRequest.onDelta, preRequest.onReasoning)
           : await request<PreSummaryResponse>('presummary', payload);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Pre-summary failed';

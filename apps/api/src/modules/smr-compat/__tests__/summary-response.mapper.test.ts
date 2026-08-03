@@ -56,6 +56,28 @@ describe('mapGenerateToV1Summary', () => {
     expect(res.summary.summary).toBe('y');
   });
 
+  // Reasoning models (many LM Studio GGUFs) emit their chain-of-thought INLINE
+  // before the JSON — the summary must still be recovered, not lost to a parse error.
+  it('strips a leading <think>…</think> reasoning block before the JSON', () => {
+    const withThink = '<think>The patient reports chest tightness; likely stable.</think>\n{"chief_complaint":"x","summary":"y"}';
+    const res = mapGenerateToV1Summary(withThink, { sessionId: 's', useEnhanced: false, createdAt: CREATED });
+    expect(res.summary.chief_complaint).toBe('x');
+    expect(res.summary.summary).toBe('y');
+  });
+
+  it('recovers the JSON object from surrounding prose (unterminated think / preamble / trailing notes)', () => {
+    const withProse = '<think>reasoning with no closing tag and a stray { brace\nHere is the summary:\n{"chief_complaint":"x","summary":"y"}\nHope that helps.';
+    const res = mapGenerateToV1Summary(withProse, { sessionId: 's', useEnhanced: false, createdAt: CREATED });
+    expect(res.summary.chief_complaint).toBe('x');
+    expect(res.summary.summary).toBe('y');
+  });
+
+  it('strips <think> even around a fenced JSON block', () => {
+    const combo = '<think>thinking…</think>\n```json\n{"chief_complaint":"x","summary":"y"}\n```';
+    const res = mapGenerateToV1Summary(combo, { sessionId: 's', useEnhanced: false, createdAt: CREATED });
+    expect(res.summary.summary).toBe('y');
+  });
+
   it('echoes pre_summary_text into metadata only when provided', () => {
     const withPre = mapGenerateToV1Summary(simplifiedContent, {
       sessionId: 's',
