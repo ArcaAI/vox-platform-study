@@ -219,10 +219,17 @@ pnpm --filter @arcaai/applications build → ok
 pnpm --filter @arcaai/applications lint  → 0 errors
 
 apps/api streaming suites             → 13 files, 316 tests passed
+apps/api full unit suite              → 164 files, 2338 passed / 4 skipped, 3 FAILED (see below)
 pnpm api:build                        → ok
 pnpm --filter @arcaai/api lint        → 4 errors, ALL pre-existing in
                                         modules/smr-compat/summary-schemas.ts (untouched here)
 ```
+
+**The 3 apps/api failures are pre-existing, not caused by this ticket** — `cors.config.test.ts`
+(RegExp literal drift), `smr-compat.controller.test.ts` (default temperature 0 vs 0.2), and
+`summary-prompt.builder.test.ts` (Malayalam guidance missing). Verified by running the same three
+files in the main checkout at `ac750a59`, with none of this ticket's code present: identical 3
+failures. They belong to the TASK-592/600 compat-SMR work and are left alone here.
 
 New tests: 6 descriptor, 6 limits-resolver, 14 duration-probe (API), 16 controller, 7 duration-probe
 (SDK), 26 engine, 12 hook, 9 toggle — 96 in total.
