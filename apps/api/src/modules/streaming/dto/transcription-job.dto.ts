@@ -2,7 +2,19 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 export const AUDIO_BUCKET = 'hope-audio';
-export const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+
+/**
+ * STATIC hard ceiling for the multipart interceptor (TASK-604).
+ *
+ * A `@UseInterceptors` decorator is evaluated once at class definition, so it
+ * cannot read the per-tenant `stt.batch.maxFileSizeMb` knob. This bound exists
+ * only to stop a multi-gigabyte body from being buffered before the handler can
+ * apply the CONFIGURED limit — it is deliberately far above it.
+ *
+ * It replaces the former `MAX_FILE_SIZE = 100 MB`, which was the only bound the
+ * route had and rejected a legitimate 60-minute 16 kHz mono WAV (~115 MB).
+ */
+export const MAX_UPLOAD_HARD_CEILING = 1024 * 1024 * 1024; // 1 GB
 
 /**
  * `pipelineId` shape validation.
@@ -176,4 +188,44 @@ export class BatchTranscribeResponse {
 
   @ApiProperty({ description: 'Audio file URI in storage' })
   audioUri!: string;
+}
+
+/**
+ * The batch ceilings a client must respect (TASK-604), resolved from the
+ * admin-configurable `stt.batch.*` settings. Served by
+ * `GET /audio/transcription-jobs/limits` so the SDK enforces the SAME numbers
+ * the gateway does rather than hardcoding them a second time.
+ */
+export class BatchTranscriptionLimitsResponse {
+  @ApiProperty({ description: 'Recordings a client may submit as one batch' })
+  maxFilesPerBatch!: number;
+
+  @ApiProperty({ description: 'Duration ceiling for one recording, in minutes' })
+  maxDurationMinutes!: number;
+
+  @ApiProperty({ description: 'Size ceiling for one recording, in bytes' })
+  maxFileSizeBytes!: number;
+
+  @ApiProperty({ description: 'Queued or processing jobs one caller may hold at once' })
+  maxActiveJobsPerUser!: number;
+
+  @ApiProperty({ description: 'Accepted audio MIME types', type: [String] })
+  allowedMimeTypes!: string[];
+}
+
+/**
+ * The tenant's configured STT fallback pipeline (TASK-604), for the live
+ * pipeline↔default toggle. Identity only — never credential material.
+ * `configured: false` means the toggle should be disabled rather than offered
+ * and failed with a 409 mid-consultation.
+ */
+export class SttFallbackProviderResponse {
+  @ApiProperty({ description: 'Whether a usable fallback pipeline is configured for this tenant' })
+  configured!: boolean;
+
+  @ApiProperty({ description: 'Configured fallback pipeline id, if any', nullable: true })
+  pipelineId!: string | null;
+
+  @ApiProperty({ description: 'Display name of the fallback pipeline, if resolvable', nullable: true })
+  pipelineName!: string | null;
 }
