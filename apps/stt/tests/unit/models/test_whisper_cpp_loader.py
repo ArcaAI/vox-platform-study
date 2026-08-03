@@ -145,7 +145,7 @@ def _patched_env(tmp_path):
     gguf = tmp_path / "whisper-large-v3-turbo-q8_0.gguf"
     gguf.write_bytes(b"GGUF")
 
-    settings = MagicMock(whisper_cpp_num_threads=4)
+    settings = MagicMock(whisper_cpp_num_threads=8)
 
     async def _resolve(_model_config, _settings):
         return gguf

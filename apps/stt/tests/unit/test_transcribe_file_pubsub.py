@@ -766,6 +766,9 @@ class TestFailJobFunction:
             job_id="j-600",
             error_message="Model error",
             error_code="MODEL_ERROR",
+            # BUG-013: the owning tenant is now addressed explicitly; this direct
+            # call supplies none, so the callback keeps today's key-derived scope.
+            tenant_id=None,
         )
 
         # Publisher notified with FAILED status

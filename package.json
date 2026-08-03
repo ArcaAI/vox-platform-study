@@ -88,6 +88,7 @@
         "stt:setup:gpu": "./scripts/setup-python-env.sh --install --service stt --gpu",
         "stt:dev": "./scripts/dev-service.sh stt",
         "stt:dev:watch": "./scripts/dev-service.sh stt --watch",
+        "stt:worker:dev": "./scripts/dev-service.sh stt-worker",
         "stt:test": "conda run -n arcaenv --no-capture-output pytest apps/stt/tests/ -v --tb=short",
         "stt:test:unit": "conda run -n arcaenv --no-capture-output pytest apps/stt/tests/unit/ -v --tb=short",
         "stt:test:integration": "conda run -n arcaenv --no-capture-output pytest apps/stt/tests/integration/ -v --tb=short",

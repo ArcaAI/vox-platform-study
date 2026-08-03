@@ -314,7 +314,7 @@ class Settings(BaseSettings):
         description="Optional path to a prebuilt libwhisper shared library (env WHISPER_CPP_LIBRARY_PATH)",
     )
     whisper_cpp_num_threads: int = Field(
-        default=4,
+        default=8,
         description="CPU threads for whisper.cpp inference",
     )
     whisper_cpp_max_audio_seconds: float = Field(

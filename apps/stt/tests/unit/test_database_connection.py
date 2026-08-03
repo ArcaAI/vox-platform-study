@@ -12,89 +12,91 @@ import pytest
 class TestDatabaseConnectionHelpers:
     """Tests for database connection helper functions."""
 
-    def test_get_loop_id_with_running_loop(self):
-        """Test _get_loop_id returns loop id when loop is running."""
-        from stt.core.database.connection import _get_loop_id
+    def test_engine_binding_follows_the_running_loop(self):
+        """BUG-015: a binding belongs to ONE loop, never to a recycled address."""
+        from stt.core.database.connection import _get_or_create_engine
 
         async def run_test():
-            loop_id = _get_loop_id()
-            assert loop_id > 0  # Should return actual loop id
+            first, _ = _get_or_create_engine()
+            second, _ = _get_or_create_engine()
+            return first, second
 
-        asyncio.run(run_test())
+        same_loop_a, same_loop_b = asyncio.run(run_test())
+        other_loop, _ = asyncio.run(run_test())[0], None
 
-    def test_get_loop_id_without_running_loop(self):
-        """Test _get_loop_id returns 0 when no loop is running."""
-        from stt.core.database import connection
+        assert same_loop_a is same_loop_b, "one engine per loop, reused within it"
+        assert other_loop is not same_loop_a, "a new loop must get a new engine"
 
-        # Directly test without running event loop
-        with patch("asyncio.get_running_loop", side_effect=RuntimeError("No loop")):
-            result = connection._get_loop_id()
-            assert result == 0
+    def test_engine_cache_size_is_observable(self):
+        """`engine_cache_size` is the guard against the pool leak returning."""
+        from stt.core.database.connection import engine_cache_size
+
+        assert engine_cache_size() >= 0
 
 
 class TestDatabaseEngineCreation:
     """Tests for database engine creation."""
 
     def test_get_or_create_engine_creates_new_engine(self):
-        """Test that engine is created for new loop."""
+        """Test that engine is created for a loop that has none."""
         from stt.core.database import connection as conn_module
+        from stt.core.loop_local import reset_loop_locals
 
-        # Reset module state
-        original_engines = conn_module._engines.copy()
-        original_factories = conn_module._session_factories.copy()
-        conn_module._engines.clear()
-        conn_module._session_factories.clear()
-
+        reset_loop_locals(conn_module._ENGINE_NAMESPACE)
         mock_engine = MagicMock()
         mock_session_factory = MagicMock()
 
         try:
             with (
-                patch.object(conn_module, "_get_loop_id", return_value=12345),
-                patch("stt.core.database.connection.create_async_engine", return_value=mock_engine),
+                patch(
+                    "stt.core.database.connection.create_async_engine", return_value=mock_engine
+                ),
                 patch(
                     "stt.core.database.connection.async_sessionmaker",
                     return_value=mock_session_factory,
                 ),
             ):
 
-                engine, factory = conn_module._get_or_create_engine()
+                async def run_test():
+                    return conn_module._get_or_create_engine()
+
+                engine, factory = asyncio.run(run_test())
 
                 assert engine is mock_engine
                 assert factory is mock_session_factory
-                assert 12345 in conn_module._engines
         finally:
-            # Restore original state
-            conn_module._engines.clear()
-            conn_module._engines.update(original_engines)
-            conn_module._session_factories.clear()
-            conn_module._session_factories.update(original_factories)
+            reset_loop_locals(conn_module._ENGINE_NAMESPACE)
 
     def test_get_or_create_engine_reuses_existing(self):
-        """Test that existing engine is reused."""
+        """Test that an existing engine is reused WITHIN the same loop."""
         from stt.core.database import connection as conn_module
+        from stt.core.loop_local import reset_loop_locals
 
-        # Reset module state
-        original_engines = conn_module._engines.copy()
-        original_factories = conn_module._session_factories.copy()
-
+        reset_loop_locals(conn_module._ENGINE_NAMESPACE)
         mock_engine = MagicMock()
         mock_factory = MagicMock()
-        conn_module._engines[99999] = mock_engine
-        conn_module._session_factories[99999] = mock_factory
 
         try:
-            with patch.object(conn_module, "_get_loop_id", return_value=99999):
-                engine, factory = conn_module._get_or_create_engine()
+            with (
+                patch(
+                    "stt.core.database.connection.create_async_engine", return_value=mock_engine
+                ),
+                patch(
+                    "stt.core.database.connection.async_sessionmaker", return_value=mock_factory
+                ) as sessionmaker,
+            ):
+
+                async def run_test():
+                    conn_module._get_or_create_engine()
+                    return conn_module._get_or_create_engine()
+
+                engine, factory = asyncio.run(run_test())
 
                 assert engine is mock_engine
                 assert factory is mock_factory
+                assert sessionmaker.call_count == 1, "the second call must reuse, not rebuild"
         finally:
-            # Restore original state
-            conn_module._engines.clear()
-            conn_module._engines.update(original_engines)
-            conn_module._session_factories.clear()
-            conn_module._session_factories.update(original_factories)
+            reset_loop_locals(conn_module._ENGINE_NAMESPACE)
 
 
 class TestDatabaseInitialization:
@@ -125,37 +127,34 @@ class TestDatabaseInitialization:
 
     @pytest.mark.asyncio
     async def test_close_database(self):
-        """Test close_database disposes all engines."""
+        """close_database disposes this loop's engine and clears every binding."""
         from stt.core.database import connection as conn_module
+        from stt.core.loop_local import loop_local_size, reset_loop_locals
 
-        # Set up mock engines
-        mock_engine1 = AsyncMock()
-        mock_engine1.dispose = AsyncMock()
-        mock_engine2 = AsyncMock()
-        mock_engine2.dispose = AsyncMock()
-
-        original_engines = conn_module._engines.copy()
-        original_factories = conn_module._session_factories.copy()
+        reset_loop_locals(conn_module._ENGINE_NAMESPACE)
+        mock_engine = AsyncMock()
+        mock_engine.dispose = AsyncMock()
+        # `sync_engine.dispose` is the SYNC reclaim path — not a coroutine.
+        mock_engine.sync_engine = MagicMock()
         original_initialized = conn_module._initialized
 
-        conn_module._engines = {1: mock_engine1, 2: mock_engine2}
-        conn_module._session_factories = {1: MagicMock(), 2: MagicMock()}
-        conn_module._initialized = True
-
         try:
-            await conn_module.close_database()
+            with (
+                patch(
+                    "stt.core.database.connection.create_async_engine", return_value=mock_engine
+                ),
+                patch("stt.core.database.connection.async_sessionmaker", return_value=MagicMock()),
+            ):
+                conn_module._get_or_create_engine()
+                conn_module._initialized = True
 
-            mock_engine1.dispose.assert_called_once()
-            mock_engine2.dispose.assert_called_once()
-            assert len(conn_module._engines) == 0
-            assert len(conn_module._session_factories) == 0
+                await conn_module.close_database()
+
+            mock_engine.dispose.assert_awaited_once()
+            assert loop_local_size(conn_module._ENGINE_NAMESPACE) == 0
             assert conn_module._initialized is False
         finally:
-            # Restore original state
-            conn_module._engines.clear()
-            conn_module._engines.update(original_engines)
-            conn_module._session_factories.clear()
-            conn_module._session_factories.update(original_factories)
+            reset_loop_locals(conn_module._ENGINE_NAMESPACE)
             conn_module._initialized = original_initialized
 
 

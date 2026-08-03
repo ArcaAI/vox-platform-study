@@ -417,7 +417,7 @@ class ModelRef:
         "parakeet.cpp": "PARAKEET_CPP",
         "whisper.cpp": "WHISPER_CPP",
         # Cloud BYOK speech providers (TASK-567). Shorthand examples:
-        # `sarvam :: saaras-v3`, `openai :: gpt-4o-transcribe`.
+        # `sarvam :: saaras-v4`, `openai :: gpt-4o-transcribe`.
         "sarvam": "SARVAM",
         "openai": "OPENAI",
         # Denoise models (RNNoise et al.) load via the ONNX runtime path.

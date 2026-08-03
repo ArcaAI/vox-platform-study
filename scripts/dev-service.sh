@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# TASK-346 — Single-service dev launcher (Python services + harness worker)
+# TASK-346 / BUG-011 — Single-service dev launcher (Python services + workers)
 # ============================================================================
 # Starts one HOPE Python service. This script owns PROCESS SHAPE only — bind
 # address, port, conda env, the uvicorn/worker command. It is NOT a config
@@ -18,7 +18,7 @@
 # model pairing below); anything you export in your shell still wins.
 #
 # USAGE:
-#   ./scripts/dev-service.sh <stt|smr|nlp|guardrail|harness|tts|worker> [--watch] [--print]
+#   ./scripts/dev-service.sh <stt|stt-worker|smr|nlp|guardrail|harness|tts|worker> [--watch] [--print]
 #   ./scripts/dev-service.sh --check-stt-key      # preflight only (used by dev:doctor)
 #
 # FLAGS:
@@ -36,6 +36,14 @@
 #   Services bind 127.0.0.1 by default — these are PHI-processing dev
 #   services and must not listen on the LAN by accident. To expose one
 #   deliberately (e.g. testing from a phone), export HOST=0.0.0.0.
+#
+# WORKERS (no port, no --watch — a reload would cancel the model warm-up):
+#   stt-worker  STT batch transcription: the Dramatiq consumer of the
+#               `dramatiq:stt_batch` queue. Without it, batch jobs are accepted
+#               and persisted as QUEUED but never executed (BUG-011). Mirrors
+#               the container command (apps/stt/docker/Dockerfile stage
+#               `worker`), scaled down to one process for a laptop.
+#   worker      harness Temporal worker on task queue `harness-task-queue`.
 #
 # MACHINE-SPECIFIC MODEL:
 #   LM_STUDIO_MODEL (default: gemma-4-e4b-it-qat) feeds both the SMR default
@@ -57,7 +65,7 @@ NC='\033[0m'
 CONDA_ENV="${CONDA_ENV:-arcaenv}"
 
 usage() {
-    sed -n '2,43p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 # ----------------------------------------------------------------------------
@@ -143,7 +151,7 @@ for arg in "$@"; do
         --watch) WATCH=1 ;;
         --print) PRINT=1 ;;
         --help|-h) usage; exit 0 ;;
-        stt|smr|nlp|guardrail|harness|tts|worker) SERVICE="$arg" ;;
+        stt|stt-worker|smr|nlp|guardrail|harness|tts|worker) SERVICE="$arg" ;;
         *) echo -e "${RED}Unknown argument: $arg${NC}" >&2; usage >&2; exit 2 ;;
     esac
 done
@@ -204,6 +212,22 @@ case "$SERVICE" in
         CMD=(uvicorn stt.main:app --host "$HOST" --port "$STT_PORT" --app-dir apps/stt/src)
         RELOAD_DIR="apps/stt/src"
         ;;
+    stt-worker)
+        # Dramatiq batch consumer. No port, no reload. `dramatiq` has no
+        # equivalent of uvicorn's --app-dir, so apps/stt/src is put on
+        # PYTHONPATH (relative — the script cd's to the repo root) instead.
+        # --processes 1 (the container uses 2) keeps one copy of the
+        # VAD/ASR/diarization models resident on a laptop.
+        ENV_REPORT+=("PYTHONPATH=apps/stt/src${PYTHONPATH:+:$PYTHONPATH}")
+        CMD=(
+            env "PYTHONPATH=apps/stt/src${PYTHONPATH:+:$PYTHONPATH}"
+            python -m dramatiq stt.worker --processes 1 --threads 4
+        )
+        if [ "$WATCH" = "1" ]; then
+            echo -e "${YELLOW}--watch is not supported for the STT batch worker; ignoring.${NC}" >&2
+            WATCH=0
+        fi
+        ;;
     smr)
         : "${SMR_PORT:=8862}"
         apply_smr_env
@@ -262,7 +286,7 @@ if [ "$PRINT" = "1" ]; then
     if [ "${#ENV_REPORT[@]}" -gt 0 ]; then
         printf '  %s\n' "${ENV_REPORT[@]}"
     fi
-    if [ "$SERVICE" = "stt" ]; then
+    if [ "$SERVICE" = "stt" ] || [ "$SERVICE" = "stt-worker" ]; then
         if [ -n "${API_GATEWAY_KEY:-}" ]; then
             echo "  API_GATEWAY_KEY=<masked> (from environment)"
         else
@@ -274,7 +298,8 @@ if [ "$PRINT" = "1" ]; then
     exit 0
 fi
 
-if [ "$SERVICE" = "stt" ]; then
+# Both STT processes call back into the gateway with API_GATEWAY_KEY.
+if [ "$SERVICE" = "stt" ] || [ "$SERVICE" = "stt-worker" ]; then
     check_stt_key
 fi
 

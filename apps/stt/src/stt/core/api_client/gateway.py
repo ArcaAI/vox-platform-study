@@ -1,7 +1,6 @@
 """HTTP client for write operations through API Gateway."""
 
 from datetime import datetime
-from functools import lru_cache
 from typing import Any, cast
 
 import httpx
@@ -9,6 +8,7 @@ import structlog
 
 from stt.core.config.settings import get_settings
 from stt.core.exceptions import APIGatewayError, JobTerminalError
+from stt.core.loop_local import get_loop_local
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
@@ -96,15 +96,40 @@ class APIGatewayClient:
     # Transcription Job Lifecycle
     # =========================================================================
 
+    @staticmethod
+    def _tenant_headers(tenant_id: str | None) -> dict[str, str] | None:
+        """Per-request tenant addressing (BUG-013).
+
+        The worker is a single platform-wide process servicing every tenant's
+        queue from ONE credential, so the tenant cannot come from the credential
+        — the gateway would otherwise derive it from the internal API-key row
+        (pinned to the platform default tenant) and every other tenant's job
+        would 404 on the tenant-scoped lookup.
+
+        Deliberately NOT ``X-Tenant-Id``: the gateway's global ``ContextInterceptor``
+        rejects that header with 400 whenever it diverges from the authenticated
+        principal's tenant, and the worker's API-key row carries a ``userId``, so
+        CLS *does* get a user and the divergence guard *does* fire. This header is
+        the internal-only channel the STT controller gates on the platform
+        credential instead.
+
+        Omitted when no tenant is supplied so the request shape is unchanged for
+        callers that have not been upgraded.
+        """
+        return {"X-Internal-Tenant-Id": tenant_id} if tenant_id else None
+
     async def start_job(
         self,
         job_id: str,
         worker_id: str,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         """Mark a transcription job as PROCESSING.
 
         Calls NestJS ``PATCH /internal/stt/jobs/{id}/start`` which expects
         an ``InternalStartJobRequest`` body with ``workerId``.
+
+        ``tenant_id`` addresses the job's OWNING tenant (see ``_tenant_headers``).
 
         Raises ``JobTerminalError`` if the job is already in a
         terminal state (COMPLETED/FAILED/CANCELLED/DEAD) so callers can
@@ -115,6 +140,7 @@ class APIGatewayClient:
                 "PATCH",
                 f"/internal/stt/jobs/{job_id}/start",
                 json={"workerId": worker_id},
+                headers=self._tenant_headers(tenant_id),
             )
         except APIGatewayError as e:
             status_code = (e.details or {}).get("status_code")
@@ -142,6 +168,7 @@ class APIGatewayClient:
         self,
         job_id: str,
         progress: int,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         """Update job processing progress (0-100).
 
@@ -152,6 +179,7 @@ class APIGatewayClient:
             "PATCH",
             f"/internal/stt/jobs/{job_id}/progress",
             json={"progress": progress},
+            headers=self._tenant_headers(tenant_id),
         )
 
     async def complete_job(
@@ -159,6 +187,7 @@ class APIGatewayClient:
         job_id: str,
         result_text: str,
         result_metadata: dict[str, Any] | None = None,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         """Mark a transcription job as COMPLETED with results.
 
@@ -174,6 +203,7 @@ class APIGatewayClient:
             "PATCH",
             f"/internal/stt/jobs/{job_id}/complete",
             json=payload,
+            headers=self._tenant_headers(tenant_id),
         )
 
     async def fail_job(
@@ -181,6 +211,7 @@ class APIGatewayClient:
         job_id: str,
         error_message: str,
         error_code: str | None = None,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         """Mark a transcription job as FAILED.
 
@@ -196,13 +227,14 @@ class APIGatewayClient:
             "PATCH",
             f"/internal/stt/jobs/{job_id}/fail",
             json=payload,
+            headers=self._tenant_headers(tenant_id),
         )
 
     # =========================================================================
     # Job Status Query (for cancellation polling)
     # =========================================================================
 
-    async def get_job_status(self, job_id: str) -> str:
+    async def get_job_status(self, job_id: str, tenant_id: str | None = None) -> str:
         """Get job status from API Gateway.
 
         Returns the status string (e.g. QUEUED, PROCESSING, CANCELLED).
@@ -211,6 +243,7 @@ class APIGatewayClient:
         result = await self._request(
             "GET",
             f"/internal/stt/jobs/{job_id}/status",
+            headers=self._tenant_headers(tenant_id),
         )
         return cast(str, result.get("status", "UNKNOWN"))
 
@@ -317,19 +350,20 @@ class APIGatewayClient:
         if transcription_source:
             payload["transcriptionSource"] = transcription_source
 
-        # Only attach the header when a key is supplied so the request shape is
-        # unchanged for existing callers (the gateway ignores it for now).
+        # Only attach a header when its value is supplied so the request shape is
+        # unchanged for existing callers (the gateway ignores Idempotency-Key for
+        # now). `X-Internal-Tenant-Id` addresses the owning tenant: the batch path resolves
+        # the job by id under the tenant-scoped extension, so without it a
+        # non-default tenant's create 404s exactly like /start did (BUG-013).
+        headers = self._tenant_headers(tenant_id) or {}
         if idempotency_key:
-            return await self._request(
-                "POST",
-                "/internal/stt/transcripts",
-                json=payload,
-                headers={"Idempotency-Key": idempotency_key},
-            )
+            headers["Idempotency-Key"] = idempotency_key
+
         return await self._request(
             "POST",
             "/internal/stt/transcripts",
             json=payload,
+            headers=headers or None,
         )
 
     # =========================================================================
@@ -444,11 +478,24 @@ class APIGatewayClient:
             return False
 
 
-@lru_cache
 def get_api_client() -> APIGatewayClient:
-    """Get the API Gateway client instance."""
-    return APIGatewayClient(
-        base_url=settings.api_gateway_url,
-        api_key=settings.api_gateway_key.get_secret_value(),
-        timeout=settings.api_gateway_timeout,
+    """Get the API Gateway client for the CURRENT event loop.
+
+    BUG-015: this was ``@lru_cache``'d, so ONE client — and the one
+    ``httpx.AsyncClient`` it lazily opens — was shared by every loop in the
+    process. The Dramatiq worker creates a loop per message, so a job could
+    inherit a connection pool owned by a loop that had already closed; the worker
+    log showed the resulting ``asyncio`` primitives "bound to a different event
+    loop". Binding per loop keeps each job's HTTP state on its own loop.
+    """
+    return cast(
+        "APIGatewayClient",
+        get_loop_local(
+            "api_client.gateway",
+            lambda: APIGatewayClient(
+                base_url=settings.api_gateway_url,
+                api_key=settings.api_gateway_key.get_secret_value(),
+                timeout=settings.api_gateway_timeout,
+            ),
+        ),
     )

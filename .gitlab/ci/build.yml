@@ -32,13 +32,22 @@ warm-up-base-images:
   script:
     - |
       set -eu
+      # MUST match the external bases actually referenced by the Dockerfiles.
+      # Derive with:
+      #   grep -rhoE '(ghcr.io/astral-sh/uv|python|node|nginx|nvidia/cuda):[^ ]*' \
+      #     apps/*/Dockerfile apps/stt/docker/Dockerfile packages/database/Dockerfile \
+      #     infrastructure/docker/python-base/Dockerfile | sort -u
+      # Entries that drift out of sync are pure waste: a stale entry burns runner
+      # disk on an image no build consumes, a missing one costs a cold pull.
       images="
         nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
-        ghcr.io/astral-sh/uv:python3.11-bookworm-slim
-        ghcr.io/astral-sh/uv:0.8.13
-        python:3.11-slim-bookworm
+        nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04
+        ghcr.io/astral-sh/uv:0.11.7
         python:3.11-slim-trixie
-        node:22-alpine
+        node:24-slim
+        node:24-bookworm-slim
+        node:24-alpine
+        nginx:1.27-alpine
       "
       for img in $images; do
         if docker image inspect "$img" >/dev/null 2>&1; then

@@ -132,12 +132,12 @@ export const AUDIO_AI_MODELS: AiModelSeed[] = [
     // TASK-567 — tenant BYOK fallback engine (cloud REST). Catalog metadata for
     // the fallback-candidate picker. TASK-586: `format` is now the first-class
     // AiModelFormat.SARVAM (previously the generic CLOUD_API), so the pipeline
-    // binds this engine via a BARE SLUG ref (`asr: "sarvam-saaras-v3"`) exactly
+    // binds this engine via a BARE SLUG ref (`asr: "sarvam-saaras-v4"`) exactly
     // like the Azure Speech row — no inline `engine:`/`sarvam::` override needed.
     id: '80000000-0000-0000-0001-000000000016',
     tenantId: SYSTEM_TENANT_ID,
     name: 'Sarvam Saaras v4 (STT)',
-    slug: 'sarvam-saaras-v3',
+    slug: 'sarvam-saaras-v4',
     description:
       'Sarvam AI speech-to-text (saaras:v4, code-switch capable, 10+ Indic languages + English). Cloud REST; per-tenant BYOK via the STT provider credential (TASK-567) or SARVAM_API_KEY.',
     category: ModelCategory.AUDIO,

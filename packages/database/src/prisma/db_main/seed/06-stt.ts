@@ -699,11 +699,11 @@ postprocessing:
 # TASK-567 — [sarvam] Sarvam AI speech-to-text (saaras:v4), cloud REST.
 # BYOK: per-tenant SARVAM credential (TASK-567) or SARVAM_API_KEY env. TASK-586:
 # SARVAM is now a first-class AiModelFormat, so the ASR is a BARE SLUG ref to the
-# "sarvam-saaras-v3" catalog row — identical in shape to the Azure Speech pipeline
+# "sarvam-saaras-v4" catalog row — identical in shape to the Azure Speech pipeline
 # (no inline engine block or provider shorthand needed).
 
 models:
-  asr: "sarvam-saaras-v3"
+  asr: "sarvam-saaras-v4"
 
 preprocessing:
   normalize:

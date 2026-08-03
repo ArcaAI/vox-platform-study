@@ -154,7 +154,7 @@ async def _transcribe_file_async(
     # Cancellation check helper — polls API for job status
     async def _check_cancelled() -> None:
         try:
-            status = await api_client.get_job_status(job_id)
+            status = await api_client.get_job_status(job_id, tenant_id=tenant_id)
             if status == "CANCELLED":
                 raise JobCancelledError(f"Job {job_id} was cancelled")
         except JobCancelledError:
@@ -171,7 +171,7 @@ async def _transcribe_file_async(
         await publisher.connect()
 
         # Step 1: Mark job as processing
-        await api_client.start_job(job_id, worker_id)
+        await api_client.start_job(job_id, worker_id, tenant_id=tenant_id)
         logger.info(f"[{job_id}] Job marked as PROCESSING")
 
         # Publish status: PROCESSING
@@ -232,7 +232,7 @@ async def _transcribe_file_async(
 
                 async with _progress_publish_lock:
                     try:
-                        await api_client.update_job_progress(job_id, progress)
+                        await api_client.update_job_progress(job_id, progress, tenant_id=tenant_id)
                     except Exception as e:
                         logger.warning(f"[{job_id}] Failed to update progress: {e}")
                     try:
@@ -367,6 +367,7 @@ async def _transcribe_file_async(
                     transcript_text=result.text,
                     metadata=result.to_dict(),
                     consultation_id=consultation_id,
+                    tenant_id=tenant_id,
                     # Sent on the TYPED field, not smuggled inside `metadata`.
                     # The metadata path was how the wrong (text-less, seconds,
                     # snake_case) shape used to slip past validation and write
@@ -385,6 +386,7 @@ async def _transcribe_file_async(
         logger.info(f"[{job_id}] Completing job")
         await api_client.complete_job(
             job_id=job_id,
+            tenant_id=tenant_id,
             result_text=result.text,
             result_metadata={
                 **result.to_dict(),
@@ -405,7 +407,7 @@ async def _transcribe_file_async(
         # Non-retryable error
         logger.error(f"[{job_id}] Resource not found: {e}")
         await publisher.publish_error(job_id, "NOT_FOUND", str(e))
-        await _fail_job(api_client, publisher, job_id, str(e), "NOT_FOUND")
+        await _fail_job(api_client, publisher, job_id, str(e), "NOT_FOUND", tenant_id=tenant_id)
         raise dramatiq.middleware.SkipMessage() from e
 
     except JobCancelledError as e:
@@ -423,14 +425,14 @@ async def _transcribe_file_async(
         # Transcription-specific error (may be retryable)
         logger.error(f"[{job_id}] Transcription error: {e}")
         await publisher.publish_error(job_id, "TRANSCRIPTION_ERROR", str(e))
-        await _fail_job(api_client, publisher, job_id, str(e), "TRANSCRIPTION_ERROR")
+        await _fail_job(api_client, publisher, job_id, str(e), "TRANSCRIPTION_ERROR", tenant_id=tenant_id)
         raise  # Let Dramatiq handle retry
 
     except Exception as e:
         # Unexpected error
         logger.exception(f"[{job_id}] Unexpected error: {e}")
         await publisher.publish_error(job_id, "INTERNAL_ERROR", str(e))
-        await _fail_job(api_client, publisher, job_id, str(e), "INTERNAL_ERROR")
+        await _fail_job(api_client, publisher, job_id, str(e), "INTERNAL_ERROR", tenant_id=tenant_id)
         raise
 
     finally:
@@ -444,13 +446,20 @@ async def _fail_job(
     job_id: str,
     error_message: str,
     error_code: str,
+    tenant_id: str | None = None,
 ) -> None:
-    """Mark job as failed via the API and publish failure status event."""
+    """Mark job as failed via the API and publish failure status event.
+
+    ``tenant_id`` addresses the job's owning tenant (BUG-013). Without it the
+    /fail callback 404s by the same mechanism as /start, so a job that can never
+    run can never be marked FAILED either — it strands at QUEUED with no error.
+    """
     try:
         await api_client.fail_job(
             job_id=job_id,
             error_message=error_message,
             error_code=error_code,
+            tenant_id=tenant_id,
         )
     except Exception as e:
         logger.error(f"[{job_id}] Failed to update job status: {e}")
