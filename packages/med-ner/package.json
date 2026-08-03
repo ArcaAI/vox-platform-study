@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/med-ner",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Medical Named Entity Recognition plugin for @arcaai/room using Transformers.js",
   "private": false,
   "main": "./dist/index.cjs",
