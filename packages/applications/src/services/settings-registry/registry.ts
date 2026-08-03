@@ -10,6 +10,7 @@ import { AGENTIC_CONTEXT_SETTINGS } from './descriptors/agentic-context.descript
 import { AGENTIC_EVAL_SETTINGS } from './descriptors/agentic-eval.descriptors';
 import { AGENTIC_FEWSHOT_SETTINGS } from './descriptors/agentic-fewshot.descriptors';
 import { AGENTIC_REVISIT_SETTINGS } from './descriptors/agentic-revisit.descriptors';
+import { BATCH_TRANSCRIPTION_SETTINGS } from './descriptors/batch-transcription.descriptors';
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
@@ -33,6 +34,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   ...TTS_SETTINGS,
   // Per-tenant STT fallback pipeline pointer + BYO provider credentials (TASK-567).
   ...STT_FALLBACK_SETTINGS,
+  // Batch (pre-recorded file) upload ceilings — recordings per batch, minutes
+  // per recording, size, in-flight jobs per user (TASK-604).
+  ...BATCH_TRANSCRIPTION_SETTINGS,
   ...ENTITLEMENT_SETTINGS,
   // TASK-615 WS-H — outbox-drain schedule (WS-B handoff) + the
   // TenantUsageMeter reconcile-sweep kill-switch + its seed-time-only default.
