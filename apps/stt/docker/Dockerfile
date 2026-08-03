@@ -206,8 +206,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # threads while torch/onnxruntime-gpu held an idle CUDA context.
 #
 # Upstream documents CUDA support as a source build gated on GGML_CUDA=1. Its
-# setup.py turns EVERY environment variable into a `-D<KEY>=<VALUE>` CMake define,
-# which is how all three flags below reach CMake.
+# setup.py accepts CMAKE_ARGS as explicit CMake definitions; pass the complete set
+# below through that channel so the static-link options are not implicit.
 #
 #   GGML_CUDA=1              enable ggml's CUDA backend.
 #   CMAKE_CUDA_ARCHITECTURES pinned deliberately: ggml defaults to `native`, which
@@ -235,24 +235,28 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Set inline rather than as ENV: with setup.py's env->define conversion, a persistent
 # ENV would leak these defines into any later source build in this stage.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    GGML_CUDA=1 \
-    CMAKE_CUDA_ARCHITECTURES=89 \
-    BUILD_SHARED_LIBS=OFF \
-    CMAKE_POSITION_INDEPENDENT_CODE=ON \
+    CMAKE_ARGS="-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=89 -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON" \
     uv pip install --python /opt/venv/bin/python \
         --reinstall-package pywhispercpp \
         "pywhispercpp @ git+https://github.com/absadiki/pywhispercpp@v1.5.0"
 
-# Two-part gate. `set -eu` matters: if the extension fails to LOAD, the import's own
-# error (e.g. a dangling libwhisper.so.1) must surface instead of being swallowed and
-# reported as the unrelated "built without CUDA". Only a loadable-but-CPU extension
-# should reach the grep.
+# Build-time gate. The CUDA driver library (libcuda.so.1) is injected by the
+# NVIDIA container runtime on a GPU node and is intentionally absent from this
+# driverless CUDA devel builder. Inspect the extension with ldd here instead of
+# importing it; the runtime pod must provide the driver before loading the model.
 RUN set -eu; \
-    ext=$(/opt/venv/bin/python -c "import _pywhispercpp as p; print(p.__file__)"); \
+    ext=$(find /opt/venv/lib/python3.11/site-packages -type f -name '_pywhispercpp*.so' -print -quit); \
+    test -n "$ext" \
+      || { echo "FATAL: pywhispercpp extension was not installed"; exit 1; }; \
     echo "pywhispercpp extension: $ext"; \
-    ldd "$ext"; \
-    ldd "$ext" | grep -qiE "libcudart|libcublas" \
-      || { echo "FATAL: pywhispercpp loaded but linked no CUDA runtime — whisper.cpp would fall back to CPU"; exit 1; }
+    ldd_output=$(ldd "$ext"); \
+    printf '%s\n' "$ldd_output"; \
+    if printf '%s\n' "$ldd_output" | grep -q 'libwhisper.so'; then \
+      echo "FATAL: pywhispercpp retains a libwhisper shared-library dependency; the runtime image copies only /opt/venv"; \
+      exit 1; \
+    fi; \
+    printf '%s\n' "$ldd_output" | grep -qiE "libcudart|libcublas" \
+      || { echo "FATAL: pywhispercpp linked no CUDA runtime — whisper.cpp would fall back to CPU"; exit 1; }
 
 # The two workspace path deps (hope-runtime-models, hope-env) resolve as EDITABLE
 # under `uv pip install` (tool.uv.sources workspace=true) — an
