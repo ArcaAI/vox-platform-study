@@ -70,11 +70,11 @@ export class PreSummaryRequest {
   @Max(2)
   temperature?: number;
 
-  @ApiPropertyOptional({ description: 'Max output tokens 1–32000 (default 800)', default: 800 })
+  @ApiPropertyOptional({ description: 'Max output tokens 1–32768 (default 800)', default: 800 })
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(32000)
+  @Max(32768)
   max_tokens?: number;
 
   @ApiPropertyOptional({
