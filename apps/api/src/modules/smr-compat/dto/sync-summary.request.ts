@@ -38,11 +38,11 @@ export class SyncSummaryRequest {
   @Max(2)
   temperature?: number;
 
-  @ApiPropertyOptional({ description: 'Max output tokens 1–32000' })
+  @ApiPropertyOptional({ description: 'Max output tokens 1–32768' })
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(32000)
+  @Max(32768)
   max_tokens?: number;
 
   @ApiPropertyOptional({ description: 'Free-form extra context' })
