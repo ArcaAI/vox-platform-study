@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/noise-filter",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "AI-powered noise cancellation plugin for @arcaai/room using RNNoise WebAssembly",
   "private": false,
   "main": "./dist/index.cjs",

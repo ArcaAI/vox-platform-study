@@ -1,5 +1,5 @@
 import { BatchJobQueue } from './batch/BatchJobQueue';
-import { BatchJobResult } from './batch/BatchJobResult';
+import { BatchResultsPanel } from './batch/BatchResultsPanel';
 import { BatchUploadPanel } from './batch/BatchUploadPanel';
 import { BATCH_UPLOAD_EXAMPLE_FILES, TabExampleCode } from './TabExampleCode';
 
@@ -19,7 +19,7 @@ export function BatchUploadTab() {
         <BatchUploadPanel />
         <BatchJobQueue />
       </div>
-      <BatchJobResult />
+      <BatchResultsPanel />
       <div className="xl:col-span-2">
         <TabExampleCode
           files={BATCH_UPLOAD_EXAMPLE_FILES}

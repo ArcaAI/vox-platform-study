@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/vox",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "ARCAAI Vox SDK for medical consultation workflows",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

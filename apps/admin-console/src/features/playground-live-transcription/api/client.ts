@@ -54,12 +54,18 @@ export function buildStreamWsUrl(apiHost: string, wsPath: string, params: { sess
  * Multipart upload through the BFF (the shared `request` core detects
  * FormData bodies and skips the JSON content-type). ≤100 MB, audio mimes.
  */
-export async function uploadBatchAudio(input: { file: File; pipelineId: string; language?: string }): Promise<BatchTranscribeResponse> {
+export async function uploadBatchAudio(input: {
+  file: File;
+  pipelineId: string;
+  language?: string;
+  /** Abort handle — the batch queue cancels an in-flight upload with it. */
+  signal?: AbortSignal;
+}): Promise<BatchTranscribeResponse> {
   const form = new FormData();
   form.append('file', input.file);
   form.append('pipelineId', input.pipelineId);
   if (input.language) form.append('language', input.language);
-  return (await request<BatchTranscribeResponse>(`${JOB_BASE}/transcribe`, { method: 'POST', body: form })).data;
+  return (await request<BatchTranscribeResponse>(`${JOB_BASE}/transcribe`, { method: 'POST', body: form, signal: input.signal })).data;
 }
 
 /** Caller's OWN jobs only; custom envelope with 1-based page. */

@@ -501,6 +501,7 @@ Documented in [`TASK-560 README §6`](../../../docs/implementation/TASK-560-v1-v
 
 ## Related docs
 
+- [`Batch-Transcription-Reference.md`](Batch-Transcription-Reference.md) — expanded batch transcription reference: the compat hook contracts in §3.1/§7 above, plus the full gateway REST/SSE API (`TranscriptionJobController`) they call
 - [`../README.md`](../README.md) — full SDK overview (core hooks, audio pipeline, session lifecycle)
 - [`docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md`](../../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md) — step-by-step migration walkthrough with a full before/after example
 - [`docs/implementation/TASK-560-v1-v2-consultation-migration/README.md`](../../../docs/implementation/TASK-560-v1-v2-consultation-migration/README.md) — frozen contract (§5) and anti-patterns (§6)

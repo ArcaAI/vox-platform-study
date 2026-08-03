@@ -41,7 +41,6 @@ function ScreenBody() {
   const tab = tabParam === 'batch' ? 'batch' : 'streaming';
 
   const [pipelineChoice, setPipelineChoice] = useState<string | null>(null);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   // Picker options: ENABLED pipelines only; derived default = tenant default.
   const pipelines = useMemo(() => (pipelinesQuery.data ?? []).filter((pipeline) => pipeline.resourceStatus === 'ENABLED'), [pipelinesQuery.data]);
@@ -149,7 +148,7 @@ function ScreenBody() {
           <StreamingTab live={live} pipelineName={selectedPipeline?.name ?? null} canStart={canStart} onStart={handleStart} />
         </TabsContent>
         <TabsContent value="batch">
-          <BatchTab pipelineId={pipelineId} activeJobId={activeJobId} onActiveJobChange={setActiveJobId} />
+          <BatchTab pipelineId={pipelineId} />
         </TabsContent>
       </Tabs>
     </PlaygroundCanvas>
