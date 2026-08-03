@@ -430,6 +430,13 @@ export interface SMRRequest {
    * is the running concatenation of every delta seen so far, including this one.
    */
   onDelta?: (delta: string, accumulated: string) => void;
+  /**
+   * Client-only: fired for each SSE `reasoning` event when `stream:true` — a
+   * reasoning model's chain-of-thought, delivered on a channel SEPARATE from
+   * the answer deltas (never mixed into `onDelta`/the final result). NEVER sent
+   * on the wire. `accumulated` is the running concatenation of reasoning so far.
+   */
+  onReasoning?: (reasoning: string, accumulated: string) => void;
 }
 
 // =============================================================================
@@ -465,6 +472,12 @@ export interface PreSummaryRequest {
    * the running concatenation of every delta seen so far, including this one.
    */
   onDelta?: (delta: string, accumulated: string) => void;
+  /**
+   * Client-only: fired for each SSE `reasoning` event when `stream:true` — a
+   * reasoning model's chain-of-thought, on a channel SEPARATE from the answer
+   * deltas. NEVER sent on the wire. `accumulated` is the running concatenation.
+   */
+  onReasoning?: (reasoning: string, accumulated: string) => void;
 }
 
 export interface PreSummarySectionItem {

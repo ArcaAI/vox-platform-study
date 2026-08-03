@@ -27,6 +27,20 @@ export interface SummaryMappingMeta {
 }
 
 /**
+ * Strip reasoning-model "thinking" blocks the model may prepend to its answer.
+ * Reasoning models that do NOT expose a separate reasoning channel (many LM
+ * Studio GGUFs, some local models) emit their chain-of-thought INLINE as
+ * `<think>…</think>` (or `<thinking>…</thinking>`) before the JSON. Left in
+ * place it makes `JSON.parse` fail and the ENTIRE summary is lost, so it is
+ * removed defensively. (Providers that expose reasoning via a dedicated field —
+ * Azure `reasoning_content`, Anthropic thinking blocks — never reach here with
+ * inline tags; this only rescues the inline case.)
+ */
+function stripReasoningBlocks(raw: string): string {
+  return raw.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '').trim();
+}
+
+/**
  * Strip markdown code fences the model may wrap JSON output in.
  * Handles ```json … ``` and bare ``` … ``` fences.
  */
@@ -37,20 +51,56 @@ function stripCodeFences(raw: string): string {
 }
 
 /**
+ * Extract the LAST brace-balanced `{ … }` object from a string. Reasoning
+ * models put their prose (which may itself contain stray `{`/`}`) BEFORE the
+ * JSON answer, so we scan BACKWARD from the final `}`, matching depth, and
+ * return the span of the last balanced top-level object. Returns null when
+ * there is no balanced object. (Brace counting ignores string contents, which
+ * is good enough here — the answer is a machine-emitted object, and a false
+ * match simply fails the subsequent JSON.parse and surfaces as an error.)
+ */
+function extractLastJsonObject(s: string): string | null {
+  const end = s.lastIndexOf('}');
+  if (end === -1) return null;
+  let depth = 0;
+  for (let i = end; i >= 0; i--) {
+    const ch = s[i];
+    if (ch === '}') depth++;
+    else if (ch === '{') {
+      depth--;
+      if (depth === 0) return s.slice(i, end + 1);
+    }
+  }
+  return null;
+}
+
+/**
  * Parse the LLM `content` string as a JSON object. Throws a descriptive error
  * (surfaced by the controller as a v1 `500 { detail: "... failed: <reason>" }`)
- * when the content is not a JSON object.
+ * when the content is not a JSON object. Tolerates reasoning-model output that
+ * wraps the JSON in thinking tags or prose: think-blocks are stripped, and on a
+ * direct-parse failure the last brace-balanced `{ … }` span is extracted and
+ * re-parsed (rescues a leading preamble, an unterminated `<think>`, or trailing
+ * commentary — otherwise the entire summary is lost to a parse error).
  */
 function parseSummaryContent(content: string): Record<string, unknown> {
-  const cleaned = stripCodeFences(content ?? '');
+  const cleaned = stripCodeFences(stripReasoningBlocks(content ?? ''));
   if (!cleaned) {
     throw new Error('empty LLM content');
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(cleaned);
-  } catch (err) {
-    throw new Error(`LLM content was not valid JSON (${err instanceof Error ? err.message : String(err)})`);
+  } catch (directErr) {
+    const span = extractLastJsonObject(cleaned);
+    if (span === null) {
+      throw new Error(`LLM content was not valid JSON (${directErr instanceof Error ? directErr.message : String(directErr)})`);
+    }
+    try {
+      parsed = JSON.parse(span);
+    } catch (spanErr) {
+      throw new Error(`LLM content was not valid JSON (${spanErr instanceof Error ? spanErr.message : String(spanErr)})`);
+    }
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('LLM content was not a JSON object');
