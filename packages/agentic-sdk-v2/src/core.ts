@@ -64,6 +64,8 @@ export {
   useArcaSttLanguageModes,
   // Native 2-way STT provider toggle (pipeline ↔ default)
   useSttProviderToggle,
+  // Native batch (pre-recorded file) transcription queue
+  useBatchTranscription,
   useMonitoring,
   usePipelines,
   usePlatformMetrics,
@@ -678,6 +680,24 @@ export type { VoiceEnrollmentProvider, EnrolledEmbeddingRef, VoiceMatchResult } 
 // =============================================================================
 
 export { FileTranscriptionService, type FileTranscribeOptions } from './core/FileTranscriptionService';
+export {
+  BatchTranscriptionQueue,
+  DEFAULT_BATCH_LIMITS,
+  type BatchQueueItem,
+  type BatchItemStatus,
+  type BatchRejectionReason,
+  type BatchTranscriptSegment,
+  type BatchTranscriptionLimits,
+  type BatchTranscriptionOptions,
+  type BatchTranscriptionQueueConfig,
+} from './core/BatchTranscriptionQueue';
+export { probeAudioDurationSeconds, type ProbeAudioDurationOptions } from './core/audioDuration';
+export type {
+  UseBatchTranscriptionProps,
+  UseBatchTranscriptionReturn,
+  BatchTranscriptionLimitsResponse,
+} from './hooks/useBatchTranscription';
+export type { SttFallbackProvider } from './hooks/useSttProviderToggle';
 export { SSEClient, type SSEConnectOptions } from './core/SSEClient';
 
 // Dual-stream recorder (dual-capture X8): records raw + processed

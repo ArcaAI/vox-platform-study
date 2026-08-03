@@ -1404,10 +1404,12 @@ export function useArcaAudio() {
    * Switch the live streaming session's ASR engine (TASK-586 Lane D —
    * generalized from the TASK-567 R4 one-way `switchToFallback`).
    *
-   * Primary path: POST the switch route via the streaming session manager
-   * (`target: 'fallback'` hits the native or compat route depending on how
-   * the manager was configured; `target: 'primary'` requires compat mode —
-   * see `StreamingSessionManager.switchProvider`). The backend swaps the ASR
+   * Primary path: POST the switch route via the streaming session manager.
+   * BOTH directions are native (TASK-586 Lane H): `target: 'fallback'` POSTs
+   * `.../switch-to-fallback` and `target: 'primary'` POSTs
+   * `.../switch-to-primary`. Compat mode only REROUTES them through the
+   * `/api/stt/switch` shim when a compat session opted in — it is not required
+   * for either direction. The backend swaps the ASR
    * engine while the WebSocket/session survive, and the client learns the new
    * pipeline from the `provider_switched` status frame (which updates
    * `activePipeline` / `sttConnectionState` — see the `onProviderSwitched`

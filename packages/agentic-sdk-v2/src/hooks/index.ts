@@ -108,7 +108,15 @@ export { useHealthCheck, type UseHealthCheckReturn } from './useHealthCheck';
 export { useArcaSttLanguageModes, type UseArcaSttLanguageModesReturn } from './useArcaSttLanguageModes';
 
 // Native 2-way STT provider toggle — pipeline (primary) ↔ default (fallback) (TASK-586 Lane H)
-export { useSttProviderToggle, type UseSttProviderToggleReturn } from './useSttProviderToggle';
+export { useSttProviderToggle, type UseSttProviderToggleReturn, type SttFallbackProvider } from './useSttProviderToggle';
+// Batch (pre-recorded file) transcription — up to N recordings, monitored to
+// completion (TASK-604).
+export {
+  useBatchTranscription,
+  type UseBatchTranscriptionProps,
+  type UseBatchTranscriptionReturn,
+  type BatchTranscriptionLimitsResponse,
+} from './useBatchTranscription';
 
 // Global settings hook
 export { useGlobalSettings, type UseGlobalSettingsReturn } from './useGlobalSettings';

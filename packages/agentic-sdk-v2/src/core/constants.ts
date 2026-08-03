@@ -423,6 +423,18 @@ export const STT_ENDPOINTS = {
   CANCEL_JOB: (jobId: string) => `/audio/transcription-jobs/${encodeURIComponent(jobId)}/cancel`,
   /** Retry a failed transcription job */
   RETRY_JOB: (jobId: string) => `/audio/transcription-jobs/${encodeURIComponent(jobId)}/retry`,
+  /**
+   * Batch upload ceilings — recordings per batch, minutes per recording, size,
+   * in-flight jobs (TASK-604). The SDK enforces the SAME numbers the gateway
+   * does; fetching them is what keeps "5" and "60" from being hardcoded twice.
+   */
+  BATCH_LIMITS: '/audio/transcription-jobs/limits',
+  /**
+   * The tenant's configured STT fallback pipeline (TASK-604) — lets the live
+   * provider toggle NAME the default and disable itself when none is set,
+   * instead of discovering the 409 mid-consultation.
+   */
+  FALLBACK_PROVIDER: '/audio/transcription-jobs/fallback',
 } as const;
 
 /**
