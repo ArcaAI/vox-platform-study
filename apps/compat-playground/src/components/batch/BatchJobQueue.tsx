@@ -11,7 +11,7 @@ import { usePlaygroundSession } from '../../context/playground-session';
  * place a developer scans for "which one failed".
  */
 
-const STATUS_VARIANT: Record<BatchItemStatus, 'default' | 'secondary' | 'outline' | 'destructive'> = {
+export const STATUS_VARIANT: Record<BatchItemStatus, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   pending: 'outline',
   uploading: 'secondary',
   processing: 'secondary',
@@ -20,7 +20,7 @@ const STATUS_VARIANT: Record<BatchItemStatus, 'default' | 'secondary' | 'outline
   cancelled: 'outline',
 };
 
-const STATUS_LABEL: Record<BatchItemStatus, string> = {
+export const STATUS_LABEL: Record<BatchItemStatus, string> = {
   pending: 'Queued',
   uploading: 'Uploading',
   processing: 'Transcribing',

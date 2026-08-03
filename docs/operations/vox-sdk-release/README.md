@@ -57,7 +57,7 @@ for p in agentic-sdk-v2 room stt vad noise-filter med-ner pipeline; do
     const fs = require('fs');
     const path = 'packages/$p/package.json';
     const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-    pkg.version = '2.0.1';
+    pkg.version = '2.0.2';
     fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
     console.log(pkg.name + ' -> ' + pkg.version);
   "

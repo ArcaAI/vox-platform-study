@@ -409,12 +409,12 @@ describe('LiveTranscriptionScreen', () => {
     await screen.findByLabelText('Pipeline');
 
     const file = new File(['RIFF'.repeat(64)], 'visit.wav', { type: 'audio/wav' });
-    const input = (await screen.findByLabelText(/audio file/i)) as HTMLInputElement;
+    const input = (await screen.findByLabelText(/audio files?/i)) as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
 
     // Rule 9: chosen file shows name + size + a remove control.
     expect(await screen.findByText('visit.wav')).toBeDefined();
-    expect(screen.getByRole('button', { name: /remove file/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /remove file visit\.wav/i })).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: /upload & transcribe/i }));
 
@@ -435,12 +435,14 @@ describe('LiveTranscriptionScreen', () => {
     await waitFor(() => expect(FakeEventSource.instances.length).toBe(1));
     expect(FakeEventSource.instances[0].url).toContain('/api/v1/audio/transcription-jobs/j-8841/stream?ticket=');
 
-    const card = within(await screen.findByRole('region', { name: /active batch job/i }));
-    expect(card.getByText('j-8841')).toBeDefined();
+    // TASK-605: the file now lives in the batch queue (one row per file), and
+    // the row carries the job id + its live backend progress.
+    const queue = within(await screen.findByRole('region', { name: /batch queue/i }));
+    expect(queue.getByText('j-8841')).toBeDefined();
 
     act(() => FakeEventSource.instances[0].open());
     act(() => FakeEventSource.instances[0].emit('progress', JSON.stringify({ type: 'progress', data: { jobId: 'j-8841', progress: 62 } })));
-    expect(await card.findByText(/62%/)).toBeDefined();
+    expect(await queue.findByText(/62%/)).toBeDefined();
   });
 
   it('lists my jobs with cancel/retry actions wired to the owner-scoped mutations', async () => {

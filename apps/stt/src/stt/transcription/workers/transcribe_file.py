@@ -22,6 +22,7 @@ from ...core.exceptions import (
 )
 from ...core.job_concurrency import get_job_gate, refresh_job_concurrency_limit
 from ...core.messaging.pubsub import TranscriptionEventPublisher
+from ...core.worker_loop import run_on_worker_loop
 from ...pipeline.config_reader import get_pipeline_reader
 from ...storage.blob_service import get_blob_service
 from ..batch_service import get_batch_service
@@ -90,8 +91,15 @@ def transcribe_file(
     # gate's `--threads` outer bound still caps how many jobs a process attempts;
     # this is the operator-adjustable inner bound. See core/job_concurrency.py.
     with get_job_gate():
-        # Run async code in event loop
-        asyncio.run(
+        # BUG-016: dispatch onto the process-wide worker loop instead of
+        # `asyncio.run()`. A loop per message put every job on its own loop while
+        # the objects jobs SHARE (DB pools, HTTP clients, the model cache's
+        # single-flight futures) are bound to the loop that built them — the
+        # cause of the 300s stall, the pool leak, and
+        # `got Future … attached to a different loop`. Concurrency is unchanged:
+        # the thread gate above still bounds it, and the loop never does CPU work
+        # (loading and inference already run under `asyncio.to_thread`).
+        run_on_worker_loop(
             _transcribe_file_async(
                 job_id=job_id,
                 tenant_id=tenant_id,
