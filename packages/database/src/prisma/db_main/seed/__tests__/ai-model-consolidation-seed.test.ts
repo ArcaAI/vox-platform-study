@@ -110,7 +110,7 @@ const TASK_524_NEW_SLUGS = [
 // TASK-567 — tenant BYOK STT fallback engines (cloud REST catalog metadata for
 // the fallback-candidate picker; the pipeline YAML reaches them via the
 // `provider :: model` shorthand, so their Prisma `format` is CLOUD_API).
-const TASK_567_NEW_SLUGS = ['sarvam-saaras-v3', 'openai-gpt4o-transcribe'] as const;
+const TASK_567_NEW_SLUGS = ['sarvam-saaras-v4', 'openai-gpt4o-transcribe'] as const;
 
 // ArcaAI in-house Malayalam+English code-switch full fine-tune of
 // whisper-large-v3-turbo, served via whisper.cpp GGUF (matrix #10).

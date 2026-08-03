@@ -40,9 +40,21 @@ const createMockSessionService = () => ({
   removeSession: vi.fn(),
 });
 
-const createMockCls = () => ({
-  get: vi.fn().mockReturnValue({ id: 'user-1', tenantId: 'tenant-1' }),
+/**
+ * Key-aware CLS mock (BUG-012). The real CLS is a keyed store: `user` holds the
+ * JWT-derived identity and `tenantId` holds the ACTIVE tenant — the JWT tenant
+ * for a tenant-bound caller, or the global-admin's elevated working tenant
+ * (`ContextInterceptor`). A mock that returns one object for EVERY key cannot
+ * express the global-admin shape (`user.tenantId === ''` + `tenantId` set), so
+ * the store is keyed here.
+ */
+const clsFor = (store: Record<string, unknown>) => ({
+  get: vi.fn((key?: string) => (key === undefined ? undefined : store[key])),
 });
+
+// Default: a tenant-bound caller — `JwtStrategy.validate` writes the same
+// tenant into BOTH `user.tenantId` and the CLS `tenantId` key.
+const createMockCls = () => clsFor({ user: { id: 'user-1', tenantId: 'tenant-1' }, tenantId: 'tenant-1' });
 
 const createMockBlobStorage = () => ({
   putObject: vi.fn(),
@@ -738,6 +750,92 @@ describe('TranscriptionJobController', () => {
     it('CreateStreamingJobRequest rejects a path-traversal pipelineId', async () => {
       const dto = plainToInstance(CreateStreamingJobRequest, { pipelineId: '../../etc/passwd' });
       expect((await validate(dto)).length).toBeGreaterThan(0);
+    });
+  });
+
+  // ------------------------------------------------------------------------
+  // BUG-012 — active-tenant resolution.
+  //
+  // `getTenantId()` must use the canonical order the rest of the gateway uses
+  // (`ClsTenantContextProvider.getTenantId()`, `agentic-admin.controller.ts`,
+  // `harness-admin.controller.ts`): CLS `tenantId` FIRST — that is where
+  // `ContextInterceptor` elevates a GLOBAL_ADMIN's working tenant from the
+  // `x-tenant-id` header — then the JWT-derived `user.tenantId`. Reading only
+  // `user.tenantId` 400s every global-admin caller, whose JWT carries
+  // `tenantId: ''`.
+  // ------------------------------------------------------------------------
+  describe('BUG-012 — active tenant resolution (global-admin working tenant)', () => {
+    const buildController = (clsStore: Record<string, unknown>) =>
+      new TranscriptionJobController(
+        mockJobService as any,
+        mockRealtimeService as any,
+        mockSessionService as any,
+        clsFor(clsStore) as any,
+        mockBlobStorage as any,
+        mockTenantBucketService as any,
+        mockPipelineService as any,
+        mockStreamTicketService as any,
+        mockStreamSessionTenantBinding as any,
+        mockEntitlements as any,
+      );
+
+    const audioFile = () =>
+      ({
+        buffer: Buffer.from('RIFFfake-wav-bytes'),
+        size: 18,
+        mimetype: 'audio/wav',
+        originalname: 'test-1.wav',
+      }) as Express.Multer.File;
+
+    // GLOBAL_ADMIN shape: empty JWT tenant + elevated working tenant in CLS.
+    const globalAdminStore = { user: { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] }, tenantId: 'tenant-1' };
+
+    it('transcribeFile resolves the elevated CLS working tenant for a GLOBAL_ADMIN with an empty JWT tenant', async () => {
+      mockJobService.createBatchJob.mockResolvedValue({ id: 'job-ga', status: 'QUEUED' });
+      const ctrl = buildController(globalAdminStore);
+
+      const result = await ctrl.transcribeFile(audioFile(), { pipelineId: 'pipe-1' } as TranscribeFileRequest);
+
+      expect(result).toMatchObject({ id: 'job-ga', status: 'QUEUED' });
+      expect(mockRealtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ jobId: 'job-ga', tenantId: 'tenant-1' }));
+    });
+
+    it('createStreamSession resolves the elevated CLS working tenant for a GLOBAL_ADMIN', async () => {
+      mockSessionService.createSession.mockResolvedValue({
+        sessionId: 'sess-ga',
+        status: 'active',
+        maxConcurrent: 5,
+        currentActive: 1,
+      });
+      const ctrl = buildController(globalAdminStore);
+
+      await ctrl.createStreamSession({ pipelineId: 'pipe-1' } as CreateStreamSessionRequest);
+
+      expect(mockEntitlements.assertConcurrencyQuota).toHaveBeenCalledWith('tenant-1');
+      expect(mockSessionService.createSession).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
+      expect(mockStreamSessionTenantBinding.bind).toHaveBeenCalledWith('sess-ga', 'tenant-1');
+    });
+
+    // Regression guard in the other direction: a tenant-bound caller whose CLS
+    // `tenantId` key was never populated must still resolve via the JWT identity.
+    it('transcribeFile falls back to the JWT user tenant when no CLS tenantId is set', async () => {
+      mockJobService.createBatchJob.mockResolvedValue({ id: 'job-tb', status: 'QUEUED' });
+      const ctrl = buildController({ user: { id: 'user-1', tenantId: 'tenant-1' } });
+
+      await ctrl.transcribeFile(audioFile(), { pipelineId: 'pipe-1' } as TranscribeFileRequest);
+
+      expect(mockRealtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
+    });
+
+    // Fail-closed posture preserved: an empty string is "no tenant", never a
+    // tenant. A global admin with NO working tenant selected still 400s.
+    it('transcribeFile still rejects when neither the CLS tenantId nor the JWT tenant is present', async () => {
+      const ctrl = buildController({ user: { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] }, tenantId: '' });
+
+      await expect(ctrl.transcribeFile(audioFile(), { pipelineId: 'pipe-1' } as TranscribeFileRequest)).rejects.toThrow(
+        /Tenant context is required/,
+      );
+      expect(mockJobService.createBatchJob).not.toHaveBeenCalled();
     });
   });
 });

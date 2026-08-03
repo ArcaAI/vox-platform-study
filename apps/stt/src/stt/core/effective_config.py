@@ -23,10 +23,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import structlog
+
+from stt.core.loop_local import get_loop_local, reset_loop_locals
 
 logger = structlog.get_logger(__name__)
 
@@ -250,24 +252,35 @@ class EffectiveConfigClient:
             return EffectiveConfigSnapshot(raw={}, ok=False, fetched_at=self._last_refresh_at)
 
 
-_client: EffectiveConfigClient | None = None
+_LOOP_LOCAL_NAMESPACE = "effective_config.client"
 
 
 def get_effective_config_client() -> EffectiveConfigClient:
-    """Process-wide client, built from the existing gateway transport settings."""
-    global _client
-    if _client is None:
-        from stt.core.config.settings import get_settings
+    """The client for the CURRENT event loop, built from the gateway settings.
 
-        settings = get_settings()
-        _client = EffectiveConfigClient(
-            base_url=settings.api_gateway_url,
-            api_key=settings.api_gateway_key.get_secret_value(),
-        )
-    return _client
+    BUG-015: this was a process-wide module global, so its ``asyncio.Lock`` (and
+    the per-tenant override locks) belonged to whichever loop first awaited them.
+    The Dramatiq worker creates a loop per message, so later jobs awaited a lock
+    owned by a closed loop — the worker log recorded it stuck as
+    ``[unlocked, waiters:1] is bound to a different event loop``. Per-loop
+    binding keeps the single-flight guarantee within a job, which is the scope it
+    was ever meant to have.
+    """
+    from stt.core.config.settings import get_settings
+
+    settings = get_settings()
+    return cast(
+        "EffectiveConfigClient",
+        get_loop_local(
+            _LOOP_LOCAL_NAMESPACE,
+            lambda: EffectiveConfigClient(
+                base_url=settings.api_gateway_url,
+                api_key=settings.api_gateway_key.get_secret_value(),
+            ),
+        ),
+    )
 
 
 def reset_effective_config_client() -> None:
-    """Drop the singleton (tests only)."""
-    global _client
-    _client = None
+    """Drop the cached clients (tests only)."""
+    reset_loop_locals(_LOOP_LOCAL_NAMESPACE)

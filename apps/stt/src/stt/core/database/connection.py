@@ -5,9 +5,9 @@ a new event loop. SQLAlchemy async engines are bound to the event loop they're
 created in. To handle this, we create engines lazily per event loop.
 """
 
-import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import cast
 
 import structlog
 from sqlalchemy import text
@@ -19,32 +19,38 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from stt.core.config.settings import get_settings
+from stt.core.loop_local import get_loop_local, loop_local_size, reset_loop_locals
 
 logger = structlog.get_logger(__name__)
 settings = get_settings()
 
-# Store engines per event loop to handle Dramatiq workers
-# Each worker thread gets its own event loop via asyncio.run()
-_engines: dict[int, AsyncEngine] = {}
-_session_factories: dict[int, async_sessionmaker[AsyncSession]] = {}
+_ENGINE_NAMESPACE = "database.engine"
 _initialized = False
 
 
-def _get_loop_id() -> int:
-    """Get current event loop's id for tracking engines per loop."""
-    try:
-        loop = asyncio.get_running_loop()
-        return id(loop)
-    except RuntimeError:
-        return 0
+def _dispose_stale(bound: tuple[AsyncEngine, async_sessionmaker[AsyncSession]]) -> None:
+    """Reclaim an engine whose event loop is gone (BUG-015).
+
+    Runs with no loop to await on, so it CANNOT use ``await engine.dispose()``.
+    ``close=False`` drops the pooled connections instead of trying to close them
+    on a dead loop; their sockets are released when the objects are collected.
+    """
+    engine, _ = bound
+    engine.sync_engine.dispose(close=False)
 
 
 def _get_or_create_engine() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
-    """Get or create an engine for the current event loop."""
-    loop_id = _get_loop_id()
+    """Get or create an engine bound to the CURRENT event loop.
 
-    if loop_id not in _engines:
-        logger.debug(f"Creating new database engine for loop {loop_id}")
+    BUG-015: this used to be a dict keyed on ``id(loop)``. CPython recycles those
+    addresses, so a new loop was routinely handed a CLOSED loop's engine and its
+    dead connection pool — a job then stalled 300s in its first query while the
+    dead socket timed out. Entries were also never evicted, so one pool
+    accumulated per job until Postgres refused connections. `loop_local` keys on
+    loop IDENTITY and prunes closed loops, which fixes both.
+    """
+
+    def _build() -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
         engine = create_async_engine(
             settings.database_url,
             pool_size=settings.database_pool_size,
@@ -52,7 +58,6 @@ def _get_or_create_engine() -> tuple[AsyncEngine, async_sessionmaker[AsyncSessio
             echo=settings.debug,
             pool_pre_ping=True,  # Verify connections before use
         )
-
         session_factory = async_sessionmaker(
             bind=engine,
             class_=AsyncSession,
@@ -60,11 +65,18 @@ def _get_or_create_engine() -> tuple[AsyncEngine, async_sessionmaker[AsyncSessio
             autocommit=False,
             autoflush=False,
         )
+        logger.debug("Created database engine for the current event loop")
+        return engine, session_factory
 
-        _engines[loop_id] = engine
-        _session_factories[loop_id] = session_factory
+    return cast(
+        "tuple[AsyncEngine, async_sessionmaker[AsyncSession]]",
+        get_loop_local(_ENGINE_NAMESPACE, _build, dispose=_dispose_stale),
+    )
 
-    return _engines[loop_id], _session_factories[loop_id]
+
+def engine_cache_size() -> int:
+    """Live engine bindings — pinned by tests so the pool leak cannot return."""
+    return loop_local_size(_ENGINE_NAMESPACE)
 
 
 async def initialize_database() -> None:
@@ -89,16 +101,15 @@ async def close_database() -> None:
 
     logger.info("Closing database connection pools")
 
-    # Dispose all engines
-    for loop_id, engine in list(_engines.items()):
-        try:
-            await engine.dispose()
-            logger.debug(f"Disposed engine for loop {loop_id}")
-        except Exception as e:
-            logger.warning(f"Error disposing engine for loop {loop_id}: {e}")
+    # Close THIS loop's engine gracefully (the only one we can await on); any
+    # binding left from another loop is reclaimed synchronously by `dispose`.
+    try:
+        engine, _ = _get_or_create_engine()
+        await engine.dispose()
+    except Exception as e:  # noqa: BLE001 — shutdown must not raise
+        logger.warning(f"Error disposing engine for the current loop: {e}")
 
-    _engines.clear()
-    _session_factories.clear()
+    reset_loop_locals(_ENGINE_NAMESPACE)
     _initialized = False
 
     logger.info("Database connection closed")

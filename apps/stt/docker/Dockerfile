@@ -23,6 +23,9 @@
 #     override that skips redundant nvidia-* wheels (the CUDA libs come from the
 #     nvidia/cuda base image). This GPU path is NOT covered by `uv sync --frozen`
 #     and must be validated on a GPU CI runner.
+#   - GPU `ml-runtime`/`worker` additionally COMPILE pywhispercpp from source
+#     (GGML_CUDA=1, pinned CUDA arch) because no CUDA wheel is published; the
+#     ml-builder stage therefore needs the CUDA -devel base for nvcc.
 
 # Base image is parameterized so CI can inject the registry-qualified tag while
 # local builds default to the locally-built `hope-python-base:latest`.
@@ -67,12 +70,15 @@ RUN find /app/.venv/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/nul
 # =============================================================================
 # Stage 2: ML Builder — unified ML packages (CUDA-capable, CPU fallback)
 # =============================================================================
-# Uses the CUDA runtime base so compiled extensions link against system CUDA.
+# Uses the CUDA *devel* base (not -runtime) because whisper.cpp's CUDA backend
+# is compiled from source here and needs nvcc, which only ships in -devel. This
+# is builder-only: the shipped ml-runtime stage stays on -runtime, whose CUDA
+# math libs (libcudart/libcublas) are what ggml-cuda links against.
 # Installs stt[ml-gpu]/[nemo] directly (fresh resolve) with an override that
 # skips nvidia-* wheels already provided by the base image. transformers/optimum
 # are pinned by stt's pyproject ([ml]) so they match the workspace lock.
 # =============================================================================
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04 AS ml-builder
+FROM nvidia/cuda:12.8.1-cudnn-devel-ubuntu22.04 AS ml-builder
 
 WORKDIR /build
 
@@ -81,7 +87,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.11 python3.11-dev python3.11-venv \
-        build-essential
+        build-essential \
+        cmake git
 
 RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -173,6 +180,35 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && uv pip install --python /opt/venv/bin/python \
         --override /tmp/cuda-overrides.txt \
         "./apps/stt[nemo]"
+
+# whisper.cpp WITH CUDA — must run AFTER [ml-gpu]/[nemo] so neither resolves the
+# CPU wheel back over it.
+#
+# The PyPI `pywhispercpp` wheels are prebuilt CPU-only ggml (Metal on macOS, plain
+# CPU on manylinux). whisper.cpp does NOT error when asked for a GPU it wasn't
+# compiled for — it logs `use gpu = 1` and silently decodes on the CPU thread pool.
+# So `context_params={"use_gpu": True}` in models/whisper_cpp_loader.py was a no-op
+# and the platform-default ml-en GGUF pipeline ran on whisper_cpp_num_threads CPU
+# threads while torch/onnxruntime-gpu held an idle CUDA context.
+#
+# Upstream documents CUDA support as a source build gated on GGML_CUDA=1.
+# CMAKE_CUDA_ARCHITECTURES is pinned deliberately: ggml defaults to `native`, which
+# probes the BUILDER's GPU — on a GPU-less CI runner that yields a wrong-arch or
+# CPU-only build, failing silently exactly like the wheel did. 89 = Ada Lovelace
+# (RTX A2000 Ada / L4 / 4090). Update this when the deployment GPU changes.
+ENV GGML_CUDA=1 \
+    CMAKE_CUDA_ARCHITECTURES=89
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python \
+        --reinstall-package pywhispercpp \
+        "pywhispercpp @ git+https://github.com/absadiki/pywhispercpp@v1.5.0"
+
+# Fail the build if the CUDA backend did not actually link. Without this the
+# regression is invisible until someone notices 400% CPU in production.
+RUN /opt/venv/bin/python -c "import _pywhispercpp as p; print(p.__file__)" \
+    | xargs ldd \
+    | grep -qiE "libcudart|libcublas" \
+    || (echo "FATAL: pywhispercpp built without CUDA — whisper.cpp would fall back to CPU" && exit 1)
 
 # The two workspace path deps (hope-runtime-models, hope-env) resolve as EDITABLE
 # under `uv pip install` (tool.uv.sources workspace=true) — an

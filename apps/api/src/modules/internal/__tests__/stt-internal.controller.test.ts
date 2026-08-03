@@ -10,7 +10,10 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { SttInternalController } from '../stt-internal.controller';
 
@@ -124,5 +127,118 @@ describe('SttInternalController.getProviderOverrides', () => {
     expect(result).toEqual({ sarvam: { api_key: 'k' } });
     expect(cls.set).toHaveBeenCalledWith('tenantId', 't-1');
     expect(sttConfig.resolveProviderOverrides).toHaveBeenCalledWith('t-1');
+  });
+});
+
+/**
+ * BUG-013 — the worker's job-lifecycle callbacks must resolve a job owned by
+ * ANY tenant, not only the tenant that happens to own the internal API-key row.
+ *
+ * The worker now forwards `X-Internal-Tenant-Id`; the controller pins CLS to it so the
+ * tenant-scoped Prisma extension filters on the job's real owner. Because that
+ * turns a caller-supplied header into a tenant selector, the pin is honoured
+ * ONLY for a caller presenting the platform internal credential
+ * (`X-Internal-Service-Key` === `API_GATEWAY_KEY`) — otherwise any tenant SDK
+ * key could drive another tenant's job by asserting a header.
+ */
+describe('SttInternalController tenant pinning (BUG-013)', () => {
+  const GATEWAY_KEY = 'internal-gateway-secret';
+  const TENANT = '50000000-0000-0000-0000-000000000001';
+
+  let sttInternalService: any;
+  let cls: any;
+  let secretsService: any;
+  let controller: SttInternalController;
+
+  const requestWith = (internalKey?: string) =>
+    ({
+      apiKey: { id: 'key-1' },
+      headers: internalKey ? { 'x-internal-service-key': internalKey } : {},
+    }) as any;
+
+  beforeEach(() => {
+    sttInternalService = {
+      createTranscript: vi.fn().mockResolvedValue({ contextItemId: 'ci-1' }),
+      startJob: vi.fn().mockResolvedValue({ id: 'job-1', status: 'PROCESSING' }),
+      updateProgress: vi.fn().mockResolvedValue({ id: 'job-1' }),
+      completeJob: vi.fn().mockResolvedValue({ id: 'job-1', status: 'COMPLETED' }),
+      failJob: vi.fn().mockResolvedValue({ id: 'job-1', status: 'FAILED' }),
+      getJobStatus: vi.fn().mockResolvedValue({ status: 'PROCESSING' }),
+    };
+    cls = { run: vi.fn((fn: () => unknown) => fn()), set: vi.fn() };
+    secretsService = { getSecretOptional: vi.fn().mockResolvedValue(GATEWAY_KEY) };
+    controller = new SttInternalController(sttInternalService, undefined, cls, secretsService);
+  });
+
+  // Each lifecycle route: [name, invoke(tenantHeader, internalKey), assertion on the service call]
+  const routes: Array<[string, (tenantId?: string, internalKey?: string) => Promise<unknown>, () => any]> = [
+    ['startJob', (t, k) => controller.startJob(requestWith(k), 'job-1', { workerId: 'w-1' } as any, t), () => sttInternalService.startJob],
+    ['updateProgress', (t, k) => controller.updateProgress(requestWith(k), 'job-1', { progress: 50 } as any, t), () => sttInternalService.updateProgress],
+    ['completeJob', (t, k) => controller.completeJob(requestWith(k), 'job-1', { resultText: 'x' } as any, t), () => sttInternalService.completeJob],
+    ['failJob', (t, k) => controller.failJob(requestWith(k), 'job-1', { errorMessage: 'boom' } as any, t), () => sttInternalService.failJob],
+    ['getJobStatus', (t, k) => controller.getJobStatus(requestWith(k), 'job-1', t), () => sttInternalService.getJobStatus],
+    ['createTranscript', (t, k) => controller.createTranscript(requestWith(k), { jobId: 'job-1' } as any, undefined, t), () => sttInternalService.createTranscript],
+  ];
+
+  for (const [name, invoke, serviceFn] of routes) {
+    it(`${name}: pins CLS to the forwarded X-Internal-Tenant-Id when the platform internal credential is presented`, async () => {
+      await invoke(TENANT, GATEWAY_KEY);
+
+      expect(cls.run).toHaveBeenCalledTimes(1);
+      expect(cls.set).toHaveBeenCalledWith('tenantId', TENANT);
+      expect(serviceFn()).toHaveBeenCalledTimes(1);
+    });
+
+    it(`${name}: leaves CLS untouched when no X-Internal-Tenant-Id is forwarded (backward compatible)`, async () => {
+      await invoke(undefined, GATEWAY_KEY);
+
+      expect(cls.run).not.toHaveBeenCalled();
+      expect(cls.set).not.toHaveBeenCalled();
+      expect(serviceFn()).toHaveBeenCalledTimes(1);
+    });
+
+    it(`${name}: refuses the tenant pin for a caller that is not the platform internal credential`, async () => {
+      await expect(invoke(TENANT, 'some-tenant-sdk-key')).rejects.toThrow(ForbiddenException);
+
+      expect(cls.run).not.toHaveBeenCalled();
+      expect(serviceFn()).not.toHaveBeenCalled();
+    });
+  }
+
+  it('fails closed when the internal gateway secret is not configured', async () => {
+    secretsService.getSecretOptional.mockResolvedValue(undefined);
+
+    await expect(controller.startJob(requestWith(GATEWAY_KEY), 'job-1', { workerId: 'w-1' } as any, TENANT)).rejects.toThrow(ForbiddenException);
+    expect(sttInternalService.startJob).not.toHaveBeenCalled();
+  });
+
+  it('still requires an API key before any tenant pin is considered', async () => {
+    const request = { headers: { 'x-internal-service-key': GATEWAY_KEY } } as any;
+
+    await expect(controller.startJob(request, 'job-1', { workerId: 'w-1' } as any, TENANT)).rejects.toThrow(UnauthorizedException);
+    expect(sttInternalService.startJob).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * BUG-013 follow-up — the pin header name is load-bearing.
+ *
+ * The first cut of the fix read `@Headers('x-tenant-id')`, which never reached
+ * the controller at runtime: the global `ContextInterceptor` rejects an
+ * `x-tenant-id` that diverges from the authenticated principal's tenant with a
+ * 400, and the worker's API-key row carries a `userId`, so CLS *does* hold a
+ * user and that guard *does* fire. The unit tests above call the handlers
+ * directly, so they cannot see that — hence this source-level pin, matching the
+ * precedent in `apps/api/src/__tests__/secrets-migration.test.ts`.
+ */
+describe('SttInternalController tenant-pin header name (BUG-013)', () => {
+  const src = readFileSync(join(__dirname, '..', 'stt-internal.controller.ts'), 'utf8');
+
+  it('reads the pin from the internal-only `x-internal-tenant-id` header', () => {
+    expect(src).toContain("@Headers('x-internal-tenant-id')");
+  });
+
+  it('never reads `x-tenant-id`, which ContextInterceptor rejects for this caller', () => {
+    expect(src).not.toContain("@Headers('x-tenant-id')");
   });
 });

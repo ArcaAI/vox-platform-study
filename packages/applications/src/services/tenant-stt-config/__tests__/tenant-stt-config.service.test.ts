@@ -144,7 +144,7 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
   });
 
   it('accepts the cloud provider::model shorthand without an AiModel lookup', async () => {
-    ctx.pipelineService.getById.mockResolvedValue(cloudPipeline({ configYaml: 'models:\n  asr: "sarvam::saaras-v3"\n' }));
+    ctx.pipelineService.getById.mockResolvedValue(cloudPipeline({ configYaml: 'models:\n  asr: "sarvam::saaras-v4"\n' }));
     ctx.configRepo.findByTenantId.mockResolvedValue(null);
     ctx.configRepo.create.mockImplementation(async (e: unknown) => e);
     const res = await ctx.svc.setFallbackPipeline(TENANT, { fallbackPipelineId: 'pl-fallback-1', expectedVersion: 0 });
@@ -180,10 +180,10 @@ describe('TenantSttConfigService — setFallbackPipeline validation', () => {
   });
 
   it('accepts a Sarvam fallback via a BARE SLUG ref (TASK-586 canonical shape — like Azure) resolved to the SARVAM AiModel format', async () => {
-    // The seeded Sarvam pipeline now uses `asr: "sarvam-saaras-v3"` (bare slug),
+    // The seeded Sarvam pipeline now uses `asr: "sarvam-saaras-v4"` (bare slug),
     // identical in shape to the Azure Speech pipeline. The slug resolves to the
     // AiModel whose format is the first-class SARVAM (a cloud STT format).
-    ctx.pipelineService.getById.mockResolvedValue(cloudPipeline({ configYaml: 'models:\n  asr: "sarvam-saaras-v3"\n' }));
+    ctx.pipelineService.getById.mockResolvedValue(cloudPipeline({ configYaml: 'models:\n  asr: "sarvam-saaras-v4"\n' }));
     ctx.aiModelRepo.findBySlug.mockResolvedValue({ computeType: 'cloud', format: 'SARVAM' });
     ctx.configRepo.findByTenantId.mockResolvedValue(null);
     ctx.configRepo.create.mockImplementation(async (e: unknown) => e);

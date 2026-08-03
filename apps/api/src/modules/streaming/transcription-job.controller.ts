@@ -110,12 +110,32 @@ export class TranscriptionJobController {
     @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
   ) {}
 
+  /**
+   * The caller's ACTIVE tenant, resolved in the canonical order used
+   * everywhere else in the gateway — `ClsTenantContextProvider.getTenantId()`
+   * (`src/database/tenant-context.provider.ts`) and the sibling admin
+   * controllers: the CLS `tenantId` key FIRST, then the JWT-derived identity.
+   *
+   * The `tenantId` key is where `ContextInterceptor` elevates a GLOBAL_ADMIN's
+   * selected working tenant from the `x-tenant-id` header; a global admin's own
+   * JWT carries `tenantId: ''`, so reading `user.tenantId` alone rejected every
+   * global-admin caller with a 400 (BUG-012). `??` (not `||`) matches the
+   * provider exactly, and the explicit length check keeps an empty-string claim
+   * from leaking through as a tenant — a caller with no active tenant still
+   * fails closed here.
+   *
+   * No new trust is granted: the only way the CLS `tenantId` diverges from
+   * `user.tenantId` is that audited global-admin elevation, which
+   * `resolveActiveTenant` already restricts to elevated callers with an empty
+   * JWT tenant and a well-formed UUID (a forged header from a tenant-bound
+   * caller is rejected as 400 before the handler runs).
+   */
   private getTenantId(): string {
-    const user = this.cls.get('user');
-    if (!user?.tenantId) {
+    const active = this.cls.get('tenantId') ?? this.cls.get('user')?.tenantId;
+    if (!active || active.length === 0) {
       throw new BadRequestException('Tenant context is required. Ensure you are authenticated with a tenant-scoped user.');
     }
-    return user.tenantId;
+    return active;
   }
 
   /**

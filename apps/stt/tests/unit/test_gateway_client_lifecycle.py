@@ -28,7 +28,7 @@ class TestStartJob:
         """Verify start_job constructs payload matching InternalStartJobRequest."""
         captured = {}
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             captured["method"] = method
             captured["path"] = path
             captured["json"] = json
@@ -67,7 +67,7 @@ class TestUpdateJobProgress:
         """Verify update_job_progress constructs payload matching InternalUpdateProgressRequest."""
         captured = {}
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             captured["method"] = method
             captured["path"] = path
             captured["json"] = json
@@ -87,7 +87,7 @@ class TestUpdateJobProgress:
         """Verify progress accepts valid boundary values (0, 50, 100)."""
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"progress": progress}
@@ -112,7 +112,7 @@ class TestCompleteJob:
         """Verify complete_job constructs payload matching InternalCompleteJobRequest."""
         captured = {}
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             captured["method"] = method
             captured["path"] = path
             captured["json"] = json
@@ -138,7 +138,7 @@ class TestCompleteJob:
         """Verify resultMetadata is omitted when None."""
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"status": "COMPLETED"}
@@ -154,7 +154,7 @@ class TestCompleteJob:
         """Verify empty dict metadata IS included (not same as None)."""
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"status": "COMPLETED"}
@@ -180,7 +180,7 @@ class TestFailJob:
         """Verify fail_job constructs payload matching InternalFailJobRequest."""
         captured = {}
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             captured["method"] = method
             captured["path"] = path
             captured["json"] = json
@@ -204,7 +204,7 @@ class TestFailJob:
         """Verify errorCode is omitted when not provided."""
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"status": "FAILED"}
@@ -235,7 +235,7 @@ class TestCreateTranscriptUpdated:
         """Verify create_transcript constructs correct payload."""
         captured = {}
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             captured["method"] = method
             captured["path"] = path
             captured["json"] = json
@@ -262,7 +262,7 @@ class TestCreateTranscriptUpdated:
         """Verify optional fields are omitted when not provided."""
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"contextItemId": "ctx-456"}
@@ -283,7 +283,7 @@ class TestCreateTranscriptUpdated:
         """Verify metadata is included as-is when provided."""
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"contextItemId": "ctx-456"}
@@ -323,7 +323,7 @@ class TestLegacyUpdateJobStatus:
         """Verify payload with only required 'status' field."""
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"id": "j-1", "status": "QUEUED"}
@@ -340,7 +340,7 @@ class TestLegacyUpdateJobStatus:
 
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"id": "j-1"}
@@ -366,7 +366,7 @@ class TestLegacyUpdateJobStatus:
 
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"id": "j-1"}
@@ -391,7 +391,7 @@ class TestLegacyUpdateJobStatus:
 
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"id": "j-1"}
@@ -421,7 +421,7 @@ class TestLegacyUpdateJobStatus:
         """Verify the legacy endpoint path is /internal/stt/jobs/{id}/status."""
         captured_path = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_path
             captured_path = path
             return {"id": "j-abc"}
@@ -436,7 +436,7 @@ class TestLegacyUpdateJobStatus:
         """Verify error_code alone is included; error_message omitted."""
         captured_json = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_json
             captured_json = json
             return {"id": "j-1"}

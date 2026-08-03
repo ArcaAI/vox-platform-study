@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type DragEvent } from 'react';
-import { IconFileMusic, IconPlugConnected, IconRefresh, IconUpload, IconX } from '@tabler/icons-react';
+import { IconFileMusic, IconPlugConnected, IconPlugConnectedX, IconRefresh, IconUpload, IconX } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { StatusDot } from '@arcaai/ui/components/metrics/status-dot';
@@ -29,6 +29,7 @@ import {
   useRetryJob,
 } from '../api';
 import type { JobStreamEnvelope, PlaygroundJobStatus } from '../api';
+import { isStalledQuery } from '../lib/stalled-query';
 
 const JOB_STATUS_META: Record<PlaygroundJobStatus, { label: string; role: StatusColorRole }> = {
   QUEUED: { label: 'Queued', role: 'info' },
@@ -101,6 +102,12 @@ function UploadCard({ pipelineId, onJobCreated }: { pipelineId: string | null; o
     );
   }
 
+  const disabledReason = !pipelineId
+    ? 'Select a pipeline first — the picker above has not produced one yet.'
+    : !file
+      ? 'Choose an audio file to enable upload.'
+      : null;
+
   return (
     <Card className="gap-4">
       <CardHeader>
@@ -158,10 +165,20 @@ function UploadCard({ pipelineId, onJobCreated }: { pipelineId: string | null; o
           </p>
         ) : null}
 
-        <Button onClick={handleUpload} disabled={!file || !pipelineId || upload.isPending}>
+        <Button
+          onClick={handleUpload}
+          disabled={!file || !pipelineId || upload.isPending}
+          aria-describedby={disabledReason ? 'batch-upload-reason' : undefined}
+        >
           {upload.isPending ? <Spinner /> : <IconUpload aria-hidden />}
           Upload &amp; transcribe
         </Button>
+        {/* Rule 11 §5: a disabled control must state its reason. */}
+        {disabledReason ? (
+          <p id="batch-upload-reason" className="text-muted-foreground text-xs">
+            {disabledReason}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -295,7 +312,24 @@ function MyJobsStrip() {
   }
 
   let body;
-  if (jobsQuery.isPending) {
+  // BUG-014: `isPending` alone also covers "never started" and
+  // "offline-paused", neither of which ever resolves — checked FIRST because a
+  // stalled query satisfies both branches (rules 10 and 11 §4).
+  if (isStalledQuery(jobsQuery)) {
+    body = (
+      <EmptyState
+        icon={IconPlugConnectedX}
+        title="Jobs did not load"
+        description="The request never left the browser — you may be offline, or this panel did not finish loading. Retry to call GET /audio/transcription-jobs."
+        action={
+          <Button variant="outline" size="sm" aria-label="Retry loading jobs" onClick={() => void jobsQuery.refetch()}>
+            <IconRefresh aria-hidden />
+            Retry
+          </Button>
+        }
+      />
+    );
+  } else if (jobsQuery.isPending) {
     body = (
       <div className="flex flex-col gap-2">
         {Array.from({ length: 3 }, (_, index) => (

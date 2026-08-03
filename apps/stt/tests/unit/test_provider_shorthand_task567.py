@@ -12,7 +12,7 @@ from stt.pipeline.dto import AiModelFormat, ModelRef
 @pytest.mark.parametrize(
     ("shorthand", "engine", "model_id"),
     [
-        ("sarvam :: saaras-v3", AiModelFormat.SARVAM, "saaras-v3"),
+        ("sarvam :: saaras-v4", AiModelFormat.SARVAM, "saaras-v4"),
         ("openai :: gpt-4o-transcribe", AiModelFormat.OPENAI, "gpt-4o-transcribe"),
         ("openai :: gpt-4o-mini-transcribe", AiModelFormat.OPENAI, "gpt-4o-mini-transcribe"),
     ],

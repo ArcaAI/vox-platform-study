@@ -238,7 +238,7 @@ class TestAPIGatewayClientMethods:
         """Verify update_job_status builds the correct API payload structure."""
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {"status": "updated", "job_id": "j-123"}
@@ -261,7 +261,7 @@ class TestAPIGatewayClientMethods:
         """Verify datetime fields are correctly serialized to ISO format."""
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {"status": "ok"}
@@ -286,7 +286,7 @@ class TestAPIGatewayClientMethods:
         """Verify None optional fields are NOT included in payload."""
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {"status": "ok"}
@@ -313,7 +313,7 @@ class TestAPIGatewayClientMethods:
         """Verify create_transcript builds payload matching CreateTranscriptRequest DTO."""
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {
@@ -346,7 +346,7 @@ class TestAPIGatewayClientMethods:
         ``consultationId`` + ``tenantId`` (with the streaming source label)."""
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {"contextItemId": "ctx-stream-1"}
@@ -375,7 +375,7 @@ class TestAPIGatewayClientMethods:
         """Verify audio recording includes all audio metadata fields."""
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {"id": "ar-123"}
@@ -416,7 +416,7 @@ class TestAPIGatewayClientMethods:
         """
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {"id": "ar-456"}
@@ -440,7 +440,7 @@ class TestAPIGatewayClientMethods:
         """Back-compat: no raw/processed keys when the caller doesn't pass them."""
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {"id": "ar-789"}
@@ -461,7 +461,7 @@ class TestAPIGatewayClientMethods:
         (``internal/stt/audio-records``), not the mismatched ``audio-recordings``."""
         captured: dict[str, Any] = {}
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             captured["method"] = method
             captured["path"] = path
             return {"id": "ar-route"}
@@ -477,7 +477,7 @@ class TestAPIGatewayClientMethods:
         """Contract guard: create_media POSTs ``internal/stt/media`` (I-2b endpoint)."""
         captured: dict[str, Any] = {}
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             captured["method"] = method
             captured["path"] = path
             return {"id": "m-route"}
@@ -505,7 +505,7 @@ class TestAPIGatewayClientMethods:
         """Verify media creation includes all file metadata."""
         captured_payload = None
 
-        async def capture_request(method, path, json=None, params=None):
+        async def capture_request(method, path, json=None, params=None, headers=None):
             nonlocal captured_payload
             captured_payload = json
             return {"id": "m-123", "uri": "s3://bucket/path/recording.wav"}
@@ -574,17 +574,23 @@ class TestAPIGatewayClientMethods:
 
 
 class TestGetAPIClient:
-    """Tests for get_api_client singleton factory."""
+    """Tests for the get_api_client factory.
+
+    BUG-015: this was `@lru_cache`d — one client, and one `httpx.AsyncClient`,
+    shared by every event loop in the process. It is now bound per loop, so the
+    cache is cleared with `reset_loop_locals` rather than `cache_clear`.
+    """
 
     def test_creates_client_with_settings(self):
         """Verify factory creates client with correct settings."""
+        from stt.core.loop_local import reset_loop_locals
+
         with patch("stt.core.api_client.gateway.settings") as mock_settings:
             mock_settings.api_gateway_url = "http://api.example.com:8868/api/v1"
             mock_settings.api_gateway_key = SecretStr("production-key-123")
             mock_settings.api_gateway_timeout = 60
 
-            # Clear cache for fresh test
-            get_api_client.cache_clear()
+            reset_loop_locals("api_client.gateway")
 
             client = get_api_client()
 
@@ -594,17 +600,41 @@ class TestGetAPIClient:
             assert client.api_key == "production-key-123"
             assert client.timeout == 60
 
-    def test_returns_same_instance_on_repeated_calls(self):
-        """Verify singleton pattern - same instance returned."""
+    def test_returns_same_instance_within_one_event_loop(self):
+        """Reused within a loop — the scope the singleton was ever meant to have."""
+        import asyncio
+
+        from stt.core.loop_local import reset_loop_locals
+
         with patch("stt.core.api_client.gateway.settings") as mock_settings:
             mock_settings.api_gateway_url = "http://localhost:8868/api/v1"
             mock_settings.api_gateway_key = SecretStr("test-key")
             mock_settings.api_gateway_timeout = 30
 
-            get_api_client.cache_clear()
+            reset_loop_locals("api_client.gateway")
 
-            client1 = get_api_client()
-            client2 = get_api_client()
+            async def main():
+                return get_api_client(), get_api_client()
+
+            client1, client2 = asyncio.run(main())
 
             # Test actual identity, not mock calls
             assert client1 is client2
+
+    def test_returns_a_distinct_instance_per_event_loop(self):
+        """The defect: a client (and its httpx pool) must not cross loops."""
+        import asyncio
+
+        from stt.core.loop_local import reset_loop_locals
+
+        with patch("stt.core.api_client.gateway.settings") as mock_settings:
+            mock_settings.api_gateway_url = "http://localhost:8868/api/v1"
+            mock_settings.api_gateway_key = SecretStr("test-key")
+            mock_settings.api_gateway_timeout = 30
+
+            reset_loop_locals("api_client.gateway")
+
+            async def main():
+                return get_api_client()
+
+            assert asyncio.run(main()) is not asyncio.run(main())

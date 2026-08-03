@@ -3,8 +3,9 @@
 # TASK-346 / TASK-555 / TASK-557 — DEV app-stack supervisor
 # ============================================================================
 # Starts the full local clinical-workspace stack in one command:
-#   api (8868), stt (8861), smr (8862), guardrail (8863), nlp (8864),
-#   harness (8866), worker (Temporal task queue), admin (5176)
+#   api (8868), stt (8861), stt-worker (Dramatiq batch queue), smr (8862),
+#   guardrail (8863), nlp (8864), harness (8866),
+#   worker (Temporal task queue), admin (5176)
 # Guardrail is part of the default stack (the admin console monitors it);
 # start a subset to leave it out.
 #
@@ -25,7 +26,10 @@
 #     Since TASK-557 the test stack uses its own ports (dev + 100), so a test
 #     stack may run alongside this one.
 #   - REFUSES to start a second harness worker (it would consume from the
-#     same Temporal task queue).
+#     same Temporal task queue). There is deliberately NO such guard for
+#     stt-worker: several Dramatiq consumers on `dramatiq:stt_batch` are
+#     legitimate (that is how the queue scales). If you already started one by
+#     hand, start a subset without it (BUG-011).
 #   - All logs are tailed in the foreground. Ctrl-C stops every spawned
 #     service (whole process trees, conda wrappers included).
 #   - `down` stops ONLY pids recorded in this stack's pidfiles.
@@ -47,13 +51,14 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-DEFAULT_SERVICES=(api stt smr guardrail nlp harness worker admin)
-ALL_SERVICES=(api stt smr nlp harness worker admin guardrail tts)
+DEFAULT_SERVICES=(api stt stt-worker smr guardrail nlp harness worker admin)
+ALL_SERVICES=(api stt stt-worker smr nlp harness worker admin guardrail tts)
 
 port_for() {
     case "$1" in
         api) echo "${API_PORT:-8868}" ;;
         stt) echo "${STT_PORT:-8861}" ;;
+        stt-worker) echo "" ;;
         smr) echo "${SMR_PORT:-8862}" ;;
         nlp) echo "${NLP_PORT:-8864}" ;;
         harness) echo "${HARNESS_PORT:-8866}" ;;

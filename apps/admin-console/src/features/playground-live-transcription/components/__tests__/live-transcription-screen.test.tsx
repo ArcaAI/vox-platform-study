@@ -7,7 +7,10 @@
  * and the my-jobs strip with cancel/retry.
  */
 
-import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '@/test/render';
 import type { PlaygroundTranscriptionJob } from '../../api/types';
@@ -472,5 +475,83 @@ describe('LiveTranscriptionScreen', () => {
     await screen.findByLabelText('Pipeline');
 
     expect(await screen.findByText('No batch jobs yet')).toBeDefined();
+  });
+
+  it('leaves no skeleton and no stalled state on the happy path', async () => {
+    stubScreen();
+    renderWithProviders(<LiveTranscriptionScreen />, { searchParams: '?tab=batch' });
+
+    const picker = (await screen.findByLabelText('Pipeline')) as HTMLSelectElement;
+    await waitFor(() => expect(picker.value).toBe('p-default'));
+    await screen.findByText('j-run');
+
+    expect(screen.queryByText(/did not load/i)).toBeNull();
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
+  });
+});
+
+/**
+ * BUG-014 — a TanStack v5 query that never fetches stays `status:'pending'`
+ * with `fetchStatus:'idle'|'paused'` forever, and the screen used to branch on
+ * `isPending` alone, so it rendered a skeleton with no terminal state (rule 10
+ * and rule 11 §4). The offline manager reproduces exactly that shape: every
+ * query mounts, none of them fetches.
+ */
+describe('LiveTranscriptionScreen — queries that never fetch', () => {
+  function renderOffline(searchParams = '') {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Mirrors providers.tsx, which seeds the session from the server-decrypted
+    // projection — so the gate passes and only the DATA queries are stalled.
+    queryClient.setQueryData(['auth', 'session'], session());
+    onlineManager.setOnline(false);
+
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <NuqsTestingAdapter searchParams={searchParams}>
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        </NuqsTestingAdapter>
+      );
+    }
+    return render(<LiveTranscriptionScreen />, { wrapper: Wrapper });
+  }
+
+  afterEach(() => {
+    onlineManager.setOnline(true);
+  });
+
+  it('replaces the pipeline-picker skeleton with a retryable terminal state', async () => {
+    stubScreen();
+    renderOffline();
+
+    expect(await screen.findByText(/pipelines did not load/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /retry loading pipelines/i })).toBeDefined();
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
+  });
+
+  it('replaces the my-jobs skeletons with an Empty-family terminal state', async () => {
+    stubScreen();
+    renderOffline('?tab=batch');
+
+    const strip = within(await screen.findByRole('region', { name: /my jobs/i }));
+    expect(await strip.findByText(/jobs did not load/i)).toBeDefined();
+    expect(strip.getByRole('button', { name: /retry loading jobs/i })).toBeDefined();
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
+  });
+
+  it('surfaces a failed pipelines request as a terminal state rather than "No pipelines available"', async () => {
+    stubScreen((call) => {
+      const path = new URL(call.url, 'http://test.local').pathname;
+      if (call.method === 'GET' && path === '/api/hope/audio/pipelines') {
+        // 404-over-403 tenancy posture: a denied read reads as "not found".
+        return Response.json({ statusCode: 404, message: 'Not Found', error: 'Not Found' }, { status: 404 });
+      }
+      return undefined;
+    });
+    renderWithProviders(<LiveTranscriptionScreen />);
+
+    expect(await screen.findByText(/pipelines did not load/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /retry loading pipelines/i })).toBeDefined();
+    expect(screen.queryByText('No pipelines available')).toBeNull();
+    expect(document.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(0);
   });
 });

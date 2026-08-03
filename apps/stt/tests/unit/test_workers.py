@@ -122,7 +122,7 @@ class TestTranscribeFileWorker:
         captured_error_code = None
         captured_error_message = None
 
-        async def capture_failure(job_id, error_message, error_code):
+        async def capture_failure(job_id, error_message, error_code, tenant_id=None):
             nonlocal captured_error_code, captured_error_message
             captured_error_code = error_code
             captured_error_message = error_message
@@ -165,7 +165,7 @@ class TestTranscribeFileWorker:
         """Verify _fail_job sends correct error information to API."""
         received_args = {}
 
-        async def capture_call(job_id, error_message, error_code):
+        async def capture_call(job_id, error_message, error_code, tenant_id=None):
             received_args["job_id"] = job_id
             received_args["error_message"] = error_message
             received_args["error_code"] = error_code
@@ -215,7 +215,7 @@ class TestTranscribeFileErrorHandling:
         """Test that TranscriptionError fails the job correctly."""
         captured_error_code = None
 
-        async def capture_failure(job_id, error_message, error_code):
+        async def capture_failure(job_id, error_message, error_code, tenant_id=None):
             nonlocal captured_error_code
             captured_error_code = error_code
 
@@ -260,7 +260,7 @@ class TestTranscribeFileErrorHandling:
         """Test that unexpected errors are handled correctly."""
         captured_error_code = None
 
-        async def capture_failure(job_id, error_message, error_code):
+        async def capture_failure(job_id, error_message, error_code, tenant_id=None):
             nonlocal captured_error_code
             captured_error_code = error_code
 

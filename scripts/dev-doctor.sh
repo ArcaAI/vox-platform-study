@@ -3,9 +3,10 @@
 # TASK-346 — Local dev-stack doctor (read-only)
 # ============================================================================
 # Answers "why is X broken?" in one shot: probes every service port/health
-# endpoint, docker infra containers, LM Studio / Ollama, Temporal, the
-# harness Temporal worker process, and runs the STT API-key preflight
-# (placeholder detection — never prints the key).
+# endpoint, docker infra containers, LM Studio / Ollama, Temporal, the two
+# portless worker processes (harness Temporal worker, STT Dramatiq batch
+# worker), and runs the STT API-key preflight (placeholder detection — never
+# prints the key).
 #
 # USAGE:
 #   pnpm stack:dev:doctor
@@ -136,6 +137,16 @@ if [ "${worker_count:-0}" -gt 0 ]; then
     pass "harness worker process" "$worker_count matching process(es)"
 else
     fail "harness worker process" "not running — start with 'pnpm worker:dev'"
+fi
+
+# STT Dramatiq batch worker — also portless. Nothing else reports its absence:
+# with no consumer on `dramatiq:stt_batch` the gateway still accepts uploads and
+# every health endpoint stays green while jobs sit QUEUED forever (BUG-011).
+stt_worker_count="$(pgrep -f 'dramatiq stt\.worker' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${stt_worker_count:-0}" -gt 0 ]; then
+    pass "stt batch worker process" "$stt_worker_count matching process(es)"
+else
+    fail "stt batch worker process" "not running — start with 'pnpm stt:worker:dev' (batch jobs would stay QUEUED)"
 fi
 
 echo -e "${CYAN}── Preflight ────────────────────────────────────────────────────${NC}"

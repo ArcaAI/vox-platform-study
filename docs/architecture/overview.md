@@ -97,7 +97,7 @@ Two additional long-running processes are not HTTP services:
 
 | Process | Started by | Role |
 |---|---|---|
-| STT Dramatiq worker | `stt-worker` / `pnpm stt:dev` stack | Consumes batch transcription jobs from Redis (Dramatiq broker, DB 5); loads VAD/ASR/diarization models per worker process |
+| STT Dramatiq worker | `pnpm stt:worker:dev` (`dramatiq stt.worker`), or as part of `pnpm stack:dev`; in the cluster, the `worker` stage of `apps/stt/docker/Dockerfile` | Consumes batch transcription jobs from Redis (Dramatiq broker, DB 5); loads VAD/ASR/diarization models per worker process. A SEPARATE process from `pnpm stt:dev` — without it batch jobs stay `QUEUED` (BUG-011) |
 | Harness Temporal worker | `pnpm worker:dev` (`harness.temporal.worker`) | Executes `HarnessDocWorkflow` / `HarnessPingWorkflow` activities on task queue `harness-task-queue` |
 
 The API gateway also runs in-process BullMQ workers (queues from the `JobQueue` enum in `@arcaai/domains`: `AuditLog`, `SysEvent`, `GeneratePreSummary`, `GenerateSummary`, `IngestKnowledgeDocument`, etc.).
