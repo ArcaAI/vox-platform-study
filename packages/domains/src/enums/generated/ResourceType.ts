@@ -80,4 +80,7 @@ export enum ResourceType {
   AiPriceBook = 'AiPriceBook',
   BillingInvoice = 'BillingInvoice',
   BillingAdjustment = 'BillingAdjustment',
+  // CORS control plane (TASK-610): tenant-owned browser origin registry.
+  // Parity with audit.prisma; see resourceType.enum-parity.test.ts.
+  TenantAllowedOrigin = 'TenantAllowedOrigin',
 }

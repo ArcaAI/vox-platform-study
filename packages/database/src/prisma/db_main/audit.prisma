@@ -200,6 +200,9 @@ enum ResourceType {
   // the domains-layer `ResourceType` TS enum must stay in parity with this
   // one (resourceType.enum-parity.test.ts). Never emitted again.
   TenantSttProviderCredential
+  // CORS control plane (TASK-610): tenant-owned browser origin registry.
+  // Emitted as audit `resourceType` by TenantAllowedOriginService.broadcastSysEvent.
+  TenantAllowedOrigin
 
   // USAGE METERING + BILLING (TASK-615).
   //

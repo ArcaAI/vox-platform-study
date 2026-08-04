@@ -1,0 +1,74 @@
+// ============================================================================
+// Tenant Allowed Origin (CORS control plane)
+//
+// DB-backed, global-admin-editable registry of browser origins permitted to
+// call the gateway. Modeled on tenant-stt-config.prisma. Origin resolution
+// (CORS callback + WS handshake) and the tenant-isolation binding guard are
+// built in packages/applications / apps/api (TASK-610, layers 3-4); this
+// model is the leaf schema layer only.
+//
+//   TenantAllowedOrigin — one row per registered origin. `tenantId` is the
+//   OWNING tenant; the reserved SYSTEM tenant
+//   (00000000-0000-0000-0000-000000000000) owns platform-operated origins
+//   (e.g. the admin console, which serves every tenant from one origin) and
+//   is valid for every tenant at the application layer. Customer-owned
+//   origins are tenant-scoped.
+//
+// This model is OCC-written (carries `_version`) via the admin PATCH route;
+// its (hand-authored) mapper strips `version` per 03-domain-layer.md.
+// ============================================================================
+
+model TenantAllowedOrigin {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // core (business) fields
+  // Normalized `scheme://host[:port]` — lowercase, no path, no trailing
+  // slash. Normalization (default-port stripping, scheme/host lowercasing,
+  // wildcard/path rejection) is owned by OriginNormalizer
+  // (packages/applications) — this column stores its output, not raw input.
+  // GLOBAL uniqueness — deliberately NOT scoped to (tenantId, origin). Two
+  // tenants registering the same origin would make the runtime reverse index
+  // (Map<origin, ownerTenantId> built by OriginRegistryService) ambiguous —
+  // which tenant does a request from that origin belong to? The database is
+  // the layer that must forbid this, not application-level validation alone.
+  //
+  // Declared as a FIELD-level `@unique(map:)` rather than a named
+  // `@@unique([origin], name: ...)`. Naming a SINGLE-FIELD @@unique makes
+  // Prisma emit `AtLeast<{ id?, origin?, … }, "id" | "TenantAllowedOrigin_origin_unique">`
+  // — a discriminator key it never generates into the object — so the
+  // constraint becomes unaddressable: `where: { origin }` is refused at
+  // runtime ("needs at least one of `id` or `TenantAllowedOrigin_origin_unique`")
+  // and the named key is refused too ("Unknown argument"). `@unique(map:)`
+  // keeps the identical DB index name (no migration change) while making
+  // `where: { origin }` valid in both the type and the engine.
+  origin String @unique(map: "TenantAllowedOrigin_origin_unique")
+
+  // Human-readable name shown in the admin list (e.g. "BCMCH pre-production").
+  label String
+
+  // Optional operator note.
+  description String?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // indexing
+  // Global uniqueness on `origin` is declared FIELD-LEVEL above — see the
+  // comment there for why a named `@@unique` cannot be used on a single field.
+  @@index([tenantId], name: "TenantAllowedOrigin_tenantId_idx")
+  @@schema("core")
+}

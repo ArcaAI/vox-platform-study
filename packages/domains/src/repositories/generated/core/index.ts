@@ -100,6 +100,7 @@ export * from './SummaryMetaRepository';
 // Sibling that patches SummaryMetaRepository.prototype.
 export * from './SummaryMetaRepository.encryption';
 export * from './TagRepository';
+export * from './TenantAllowedOriginRepository';
 export * from './TenantBucketRepository';
 export * from './TenantEntitlementRepository';
 export * from './TenantFrontendConfigRepository';

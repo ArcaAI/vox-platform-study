@@ -20,6 +20,7 @@ import { seedConsultation } from './09-consultation';
 import { seedAuditLog } from './10-audit-log';
 import { seedGlobalSetting } from './11-global-setting';
 import { seedPlatformKnobSettings } from './11a-platform-knob-settings';
+import { seedTenantAllowedOrigins } from './11b-tenant-allowed-origins';
 import { seedRateLimitSettings } from './12-rate-limit-settings';
 import { seedHarnessPolicy } from './13-harness-policy';
 import { seedPipelinePolicy } from './14-pipeline-policy';
@@ -177,6 +178,12 @@ export const seed = async () => {
     // Platform-knob rows for the env keys TASK-558 lane I moved into the
     // `global-kv` tier, seeded at today's env values so behaviour is identical.
     await seedPlatformKnobSettings(client);
+    console.log('');
+    // Day-1 browser origins permitted to call the gateway, owned by the SYSTEM
+    // tenant. Must be seeded BEFORE the production catch-all is closed
+    // (TASK-610 §4.8) — an empty registry plus a closed catch-all locks every
+    // browser app out.
+    await seedTenantAllowedOrigins(client);
     console.log('');
     // Platform-wide rate-limit config (single-tenant rows).
     await seedRateLimitSettings(client);

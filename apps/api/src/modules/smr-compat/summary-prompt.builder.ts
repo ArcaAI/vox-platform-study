@@ -41,7 +41,7 @@ export interface SummaryPromptOptions {
 
 const LANGUAGE_INSTRUCTION: Record<string, string> = {
   en: 'Write the summary in English.',
-  ml: 'Write the summary in English',
+  ml: 'Write the summary in Malayalam (മലയാളം).',
 };
 
 function languageDirective(language?: string): string {

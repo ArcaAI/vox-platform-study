@@ -1,4 +1,4 @@
-import { ISocketRegistryService, StreamingAudioBridgeService, StreamingSessionService } from '@arcaai/applications';
+import { IOriginRegistry, ISocketRegistryService, StreamingAudioBridgeService, StreamingSessionService } from '@arcaai/applications';
 import { Inject, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
@@ -6,6 +6,9 @@ import type { Subscription } from 'rxjs';
 import type WebSocket from 'ws';
 import type { Server } from 'ws';
 import { StreamSessionTenantBindingService } from '../../common';
+// The bootstrap fallback is shared with the HTTP CORS callback ON PURPOSE — see
+// `isBootstrapAllowed` below. One rule, one implementation.
+import { isBootstrapAllowed } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
 
@@ -204,6 +207,14 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     @Optional()
     @Inject(ISocketRegistryService)
     private readonly socketRegistry?: ISocketRegistryService,
+    // CSWSH guard (TASK-610 D-6): registry-backed allow-list for the
+    // `Origin` header, the same reverse index `cors.config.ts` consults.
+    // Optional so the gateway still boots in stacks that don't wire
+    // `OriginRegistryServiceModule` — see `isOriginAllowed` for the
+    // bootstrap-fallback posture when it's absent or fails.
+    @Optional()
+    @Inject(IOriginRegistry)
+    private readonly originRegistry?: IOriginRegistry,
   ) {}
 
   onModuleInit(): void {
@@ -293,7 +304,92 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     return counts;
   }
 
+  /**
+   * Registry lookup backing the CSWSH guard (TASK-610 D-6, FR-5). Never
+   * hard-fails the handshake on a registry outage: matching the HTTP CORS
+   * bootstrap-fallback posture (FR-6), an absent or failing registry logs
+   * loudly and ALLOWS — a DB blip must not sever every live transcription
+   * session mid-consultation. `IOriginRegistry.has()` is documented to never
+   * throw on malformed input; the try/catch is defense-in-depth against an
+   * unexpected registry failure rather than the expected path.
+   *
+   * A registry that is PRESENT but EMPTY (`size() === 0` — unseeded table,
+   * or every row deleted) is treated the SAME as an absent one: it "has
+   * nothing to say", so the bootstrap fallback applies rather than `has()`
+   * legitimately answering `false` for every origin. This closes a
+   * confirmed divergence from the HTTP path (W4-R adversarial review):
+   * `platform-knobs.binder.ts` collapses an empty registry to `null` for
+   * `cors.config.ts`, which falls back to `CORS_ALLOWED_ORIGINS` — this
+   * predicate previously called `has()` directly and rejected every origin
+   * instead, severing live transcription sessions on an unseeded/emptied
+   * table.
+   */
+  private isOriginAllowed(origin: string): boolean {
+    if (!this.originRegistry) {
+      this.logger.warn({
+        message: 'WS handshake — origin registry unavailable, allowing by bootstrap fallback (TASK-610 FR-6)',
+        origin,
+      });
+      return true;
+    }
+    try {
+      if (this.originRegistry.size() === 0) {
+        this.logger.warn({
+          message: 'WS handshake — origin registry empty, allowing by bootstrap fallback (TASK-610 FR-6)',
+          origin,
+        });
+        return this.isBootstrapAllowed(origin);
+      }
+      return this.originRegistry.has(origin);
+    } catch (err) {
+      this.logger.warn({
+        message: 'WS handshake — origin registry lookup failed, allowing by bootstrap fallback (TASK-610 FR-6)',
+        origin,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return true;
+    }
+  }
+
+  /**
+   * The env allow-list consulted only when the origin registry has nothing to
+   * say (absent, empty, or broken — see `isOriginAllowed`).
+   *
+   * IMPORTED from `cors.config.ts`, not reimplemented. This method exists only
+   * to keep the call site readable. The defect that produced this whole branch
+   * (TASK-610, W4-R finding #3) was HTTP and WS disagreeing about one rule, and
+   * a local copy of that rule is precisely how they would come to disagree
+   * again — the next edit would land on one side only. Two lines is not too
+   * small to share when both copies are a security decision.
+   */
+  private isBootstrapAllowed(origin: string): boolean {
+    return isBootstrapAllowed(origin);
+  }
+
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
+    // CSWSH guard (TASK-610 D-6). Browsers do not apply CORS to the
+    // WebSocket handshake, so — unlike every other route behind this
+    // gateway — nothing upstream has already checked `Origin`. Checked
+    // FIRST, before sessionId/ticket parsing, mirroring the CORS callback's
+    // pre-auth position in the architecture (plan §3.0): it is a
+    // browser-facing, advisory check, not the tenant-isolation control.
+    //
+    // No `Origin` header → ALLOW. A missing header means a non-browser
+    // caller (server-to-server, CLI, the resume/reconnect path from a
+    // trusted internal tool) — CSWSH is specifically an attack that rides a
+    // VICTIM BROWSER's ambient credentials via an auto-attached `Origin`
+    // header, so a request with no `Origin` cannot be that attack. This
+    // mirrors the HTTP CORS posture, which also allows no-Origin through.
+    const origin = req.headers?.origin;
+    if (typeof origin === 'string' && origin.length > 0 && !this.isOriginAllowed(origin)) {
+      this.logger.warn({
+        message: 'WS handshake rejected — unregistered origin (TASK-610 D-6, cross-site WebSocket hijacking guard)',
+        origin,
+      });
+      client.close(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
+      return;
+    }
+
     const url = new URL(req.url || '', 'http://localhost');
     const sessionId = url.searchParams.get('sessionId');
     const ticket = url.searchParams.get('ticket');

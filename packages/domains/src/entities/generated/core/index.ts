@@ -76,3 +76,4 @@ export * from './AiUsageRollupHourlyEntity';
 export * from './BillingAdjustmentEntity';
 export * from './BillingInvoiceEntity';
 export * from './BillingInvoiceLineEntity';
+export * from './TenantAllowedOriginEntity';

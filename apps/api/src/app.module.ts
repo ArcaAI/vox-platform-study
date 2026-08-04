@@ -12,6 +12,7 @@ import {
   KnowledgeServiceModule,
   LoggingServiceModule,
   ObservabilityModule,
+  OriginRegistryServiceModule,
   RateLimitServiceModule,
   RedisServiceModule,
   SysEventServiceModule,
@@ -27,7 +28,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ClsGuard, ClsModule } from 'nestjs-cls';
 import { uuidv7 } from 'uuidv7';
 import { DataNotFoundExceptionFilter } from './filters';
-import { JwtAuthGuard } from './guards';
+import { JwtAuthGuard, OriginTenantBindingGuard } from './guards';
 import { ContextInterceptor, ExceptionInterceptor, ImpersonationAuditInterceptor, MaintenanceInterceptor, MetricsInterceptor } from './interceptors';
 import { TenantOwnedResourceModule, TenantOwnedResourceSseGuard } from './common';
 import { GracefulShutdownModule } from './services';
@@ -55,6 +56,7 @@ import { PlatformKnobsModule } from './modules/platform-knobs/platform-knobs.mod
 import { SettingsCatalogModule } from './modules/settings-catalog/settings-catalog.module';
 import { ConsultationModule } from './modules/consultation/consultation.module';
 import { DepartmentModule } from './modules/department/department.module';
+import { TenantAllowedOriginModule } from './modules/tenant-allowed-origin/tenant-allowed-origin.module';
 import { DepartmentAgentModule } from './modules/department-agent/department-agent.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
@@ -170,6 +172,21 @@ const guards = [
     provide: APP_GUARD,
     useClass: TenantOwnedResourceSseGuard,
   },
+  // TASK-610 FR-4 — binds a browser `Origin` to the tenant that registered it.
+  // MUST stay AFTER UnifiedAuthGuard, for the same reason as the guard above:
+  // it reads the CLS tenantId. Placed EARLIER in this array it does not throw
+  // and does not fail any test — the CLS tenant is simply always empty, its
+  // "no resolved tenant → pass through" rule fires on every request, and the
+  // guard silently degrades to a no-op while looking installed. Ordering here
+  // is the enforcement; do not reorder without re-reading that rule.
+  //
+  // CORS decides WHICH ORIGINS may talk to the gateway at all; this decides
+  // WHOSE DATA a given origin may touch. CORS alone is advisory browser
+  // behavior and provides no isolation — this guard is the control.
+  {
+    provide: APP_GUARD,
+    useClass: OriginTenantBindingGuard,
+  },
   {
     provide: APP_GUARD,
     useClass: RequiresIfMatchGuard,
@@ -227,6 +244,10 @@ const common = [
   // in `guards[]` below can be constructed via DI. Placed early so the guard's
   // dependencies resolve before the feature modules load.
   ThrottleConfigModule,
+  // TASK-610 — the origin→owner-tenant index. Root-level because
+  // `OriginTenantBindingGuard` is an APP_GUARD and resolves from this module's
+  // injector; `PlatformKnobsModule` imports it separately for the CORS resolver.
+  OriginRegistryServiceModule,
   // DB-backed rate-limit settings. Exports IRateLimitSettingsService
   // so the TieredThrottlerGuard (APP_GUARD above) resolves live limits from the
   // GlobalSetting cache, and IRateLimitAdminService for the admin endpoint.
@@ -296,6 +317,8 @@ const featureModules: any[] = [
   AuditLogModule,
   ConsultationModule,
   DepartmentModule,
+  // TASK-610 — global-admin CRUD over the browser-origin allow-list.
+  TenantAllowedOriginModule,
   DepartmentAgentModule,
   DnaWritingStyleModule,
   // /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)

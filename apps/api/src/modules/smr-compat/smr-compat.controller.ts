@@ -31,8 +31,8 @@ import { ENHANCED_SUMMARY_SCHEMA, SIMPLIFIED_SUMMARY_SCHEMA } from './summary-sc
 // generation), so a retry is safe only when the request provably never left
 // the gateway — mirrors `SmrProxyController.CONNECT_PHASE_CODES`.
 const CONNECT_PHASE_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND']);
-const PRE_SUMMARY_DEFAULT_TEMPERATURE = 0.0;
-const PRE_SUMMARY_DEFAULT_MAX_TOKENS = 32_768;
+const PRE_SUMMARY_DEFAULT_TEMPERATURE = 0.2;
+const PRE_SUMMARY_DEFAULT_MAX_TOKENS = 800;
 
 // SSE keepalive cadence for the held-open compat streams — mirrors
 // `SmrProxyController.SSE_HEARTBEAT_INTERVAL_MS`.

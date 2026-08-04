@@ -5,6 +5,7 @@ import {
   AiTaskDefaultServiceModule,
   EntitlementsServiceModule,
   HarnessPolicyServiceModule,
+  OriginRegistryServiceModule,
   PipelineServiceModule,
   PlatformMetricsServiceModule,
   StreamingSessionServiceModule,
@@ -39,6 +40,12 @@ import { TranscriptionJobController } from './transcription-job.controller';
     PipelineServiceModule,
     CoreDatabaseModule,
     HarnessPolicyServiceModule, // SMR-selection resolver for SmrProxyController
+    // TASK-610 D-6 — supplies `IOriginRegistry` to `SttWsGateway`'s CSWSH
+    // handshake check. Browsers do NOT apply CORS to WebSockets, so this is the
+    // only place the allow-list reaches the socket path. The gateway injects it
+    // `@Optional()` and fails OPEN, so omitting this import does not break the
+    // build or any test — it just silently disables the check.
+    OriginRegistryServiceModule,
     // Registry-backed providers listings on SmrProxyController:
     // AiModelService lists ENABLED rows per taskType; AiTaskDefaultService
     // resolves the effective `guardrail.validate` default.

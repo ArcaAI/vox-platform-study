@@ -14,6 +14,7 @@ import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholde
 // still have a working import.
 import { apiEnv } from './config';
 import { getCorsOrigins, isOriginAllowed } from './cors.config';
+import { CORS_ALLOWED_HEADERS, CORS_EXPOSED_HEADERS } from './cors.headers';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
 // Swagger config lives in `swagger.config.ts` so the security-scheme list
@@ -192,31 +193,8 @@ async function bootstrap() {
     origin: getCorsOrigins(nodeEnv),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-API-Key',
-      'api-key',
-      'apikey',
-      'x-api-key',
-      'traceparent',
-      'tracestate',
-      'X-Request-Id',
-      'X-Correlation-ID',
-      'x-correlation-id',
-      'X-Tenant-Id',
-      'X-Project-Id',
-      'X-Session-Id',
-      'X-User-Agent',
-      'X-SDK-Version',
-      'Accept',
-      'Accept-Language',
-      'Accept-Encoding',
-      'Cache-Control',
-      'Origin',
-      'Referer',
-      'User-Agent',
-    ],
+    allowedHeaders: [...CORS_ALLOWED_HEADERS],
+    exposedHeaders: [...CORS_EXPOSED_HEADERS],
   };
 
   app.enableCors(corsOptions);
@@ -238,14 +216,28 @@ async function bootstrap() {
     next();
   });
 
-  // Log CORS configuration
-  const customOrigins = env.CORS_ALLOWED_ORIGINS as string | undefined;
+  // Log CORS configuration.
+  //
+  // This line is what an incident responder greps first, so it must describe
+  // the code as it stands — a stale policy label here sends someone hunting a
+  // behavior that no longer exists. It has been wrong twice already: it said
+  // `allow_all` for three tickets after dev was pinned to localhost, and it
+  // said `allowlist_then_any_https` for the few hours between TASK-610 landing
+  // the header fixes and TASK-610 deleting the catch-all it named.
+  //
+  // Since TASK-610 the allow-list is the `TenantAllowedOrigin` table, indexed
+  // by `OriginRegistryService` and consulted PER REQUEST — so the origins this
+  // line reports are NOT the effective list. `CORS_ALLOWED_ORIGINS` is only the
+  // bootstrap fallback used while the registry is unreachable.
+  const bootstrapOrigins = env.CORS_ALLOWED_ORIGINS as string | undefined;
   loggingService.info(
     'CORS configuration',
     {
       environment: nodeEnv,
-      customOrigins: customOrigins ? customOrigins.split(',').map((o) => o.trim()) : null,
-      policy: nodeEnv === 'development' ? 'allow_all' : nodeEnv === 'staging' ? 'localhost_and_staging_domains' : 'default_domains_and_https',
+      // Named `bootstrapOrigins`, not `customOrigins`: it is what answers when
+      // the DB does not, never the live allow-list.
+      bootstrapOrigins: bootstrapOrigins ? bootstrapOrigins.split(',').map((o) => o.trim()) : null,
+      policy: nodeEnv === 'development' ? 'origin_registry_plus_dev_loopback' : 'origin_registry_only',
     },
     'Bootstrap',
   );
