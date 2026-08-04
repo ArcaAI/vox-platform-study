@@ -266,6 +266,22 @@ export interface DualCaptureResult {
 /**
  * Options accepted by audio.start() to configure the capture session.
  */
+/**
+ * The three `MediaTrackConstraints` switches that decide whether the browser
+ * hands the SDK processed or raw microphone audio (TASK-608).
+ *
+ * Mirrors the WebRTC constraint names 1:1 so the values pass straight through
+ * to `getUserMedia`; see {@link AudioStartOptions.audioProcessing}.
+ */
+export interface AudioProcessingConstraints {
+  /** Browser acoustic echo cancellation. Browser default: ON. */
+  echoCancellation?: boolean;
+  /** Browser noise suppression (distinct from the SDK's RNNoise stage). Browser default: ON. */
+  noiseSuppression?: boolean;
+  /** Browser automatic gain control — the only thing that changes capture LEVEL. Browser default: ON. */
+  autoGainControl?: boolean;
+}
+
 export interface AudioStartOptions {
   language?: string;
   /**
@@ -337,6 +353,28 @@ export interface AudioStartOptions {
    * no mixer node exists.
    */
   sourceGains?: number[];
+  /**
+   * Browser audio-processing switches, applied to the `getUserMedia` constraints
+   * of EVERY resolved source (TASK-608).
+   *
+   * The SDK's own graph does nothing to the signal on the backend-streaming path
+   * — the noise filter and VAD are separate, opt-in pipeline stages, the level
+   * meters are analysis-only taps, and the uplink only resamples 48→16 kHz and
+   * converts to Int16. The BROWSER is the exception: `getUserMedia` defaults
+   * `echoCancellation`, `noiseSuppression` and `autoGainControl` to ON in
+   * Chrome, Edge and Safari, so unconstrained capture is DSP'd and auto-gained
+   * before the SDK ever sees it. Set these to `false` for genuinely raw capture
+   * — the right choice for clinical ASR, for multi-mic arrays, and for virtual
+   * or loopback devices, whose non-standard clocking the browser APM frequently
+   * mishandles (it can emit pure silence).
+   *
+   * Only the keys present are sent, so a caller can disable AGC alone and leave
+   * the rest to the browser. An omitted (or empty) object reproduces the pre-608
+   * request exactly: `{ audio: true }` for the default mic, NOT `{ audio: {} }`.
+   * Ignored when {@link AudioStartOptions.sourceStreams} is used — those streams
+   * were built by the caller, who already owns their constraints.
+   */
+  audioProcessing?: AudioProcessingConstraints;
   /**
    * Ceiling, in ms, on the streaming-STT stop-drain performed when this capture
    * session is torn down (TASK-597 follow-up #4).

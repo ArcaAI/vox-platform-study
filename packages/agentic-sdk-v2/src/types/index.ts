@@ -111,6 +111,7 @@ export type {
   AudioActions,
   AudioOptions,
   AudioPluginStates,
+  AudioProcessingConstraints,
   AudioStartOptions,
   AudioState,
   PluginState,
