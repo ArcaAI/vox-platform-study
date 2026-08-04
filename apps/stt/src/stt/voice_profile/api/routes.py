@@ -6,13 +6,13 @@ returns a 256d speaker embedding from the best one. No database writes.
 
 from __future__ import annotations
 
-import io
 import logging
 
 import numpy as np
-import soundfile as sf
 from fastapi import APIRouter, HTTPException, UploadFile
 
+from stt.core.exceptions import AudioProcessingError
+from stt.transcription.audio_decode import decode_audio
 from stt.voice_profile.api.schemas import ExtractionResponse
 
 logger = logging.getLogger(__name__)
@@ -64,10 +64,12 @@ async def extract_voice_embedding(files: list[UploadFile]) -> ExtractionResponse
             raise HTTPException(status_code=400, detail=f"File {i + 1} is empty")
 
         try:
-            samples, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32")
-        except Exception as exc:
+            # TASK-607 — same tolerant decode as batch: libsndfile, then ffmpeg,
+            # so phone recordings with vendor trailers are accepted here too.
+            samples, sr = decode_audio(audio_bytes)
+        except AudioProcessingError as exc:
             raise HTTPException(
-                status_code=400, detail=f"Cannot decode file {i + 1}: {exc}"
+                status_code=400, detail=f"Cannot decode file {i + 1}: {exc.message}"
             ) from exc
 
         if samples.ndim > 1:

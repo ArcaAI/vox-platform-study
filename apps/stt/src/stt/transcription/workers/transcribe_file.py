@@ -13,6 +13,7 @@ from ...core.api_client.gateway import get_api_client
 from ...core.config.settings import get_settings
 from ...core.effective_config import get_effective_config_client
 from ...core.exceptions import (
+    AudioProcessingError,
     CloudASRError,
     JobCancelledError,
     JobTerminalError,
@@ -428,6 +429,15 @@ async def _transcribe_file_async(
         # Job was already completed/failed by a previous attempt -- skip silently
         logger.warning(f"[{job_id}] Job already in terminal state, skipping duplicate delivery")
         return
+
+    except AudioProcessingError as e:
+        # TASK-607 — the file itself is unusable (undecodable, wrong format,
+        # too short). Report the specific code and let the broker skip retries;
+        # re-reading the same bytes can only fail the same way.
+        logger.error(f"[{job_id}] Audio error ({e.error_code}): {e}")
+        await publisher.publish_error(job_id, e.error_code, e.message)
+        await _fail_job(api_client, publisher, job_id, e.message, e.error_code, tenant_id=tenant_id)
+        raise
 
     except TranscriptionError as e:
         # Transcription-specific error (may be retryable)

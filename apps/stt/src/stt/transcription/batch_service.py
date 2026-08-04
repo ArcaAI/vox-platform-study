@@ -33,6 +33,7 @@ from azure.cognitiveservices.speech import (
 
 from ..core.config.settings import get_settings
 from ..core.exceptions import (
+    NON_RETRYABLE_EXCEPTIONS,
     CloudASRAuthError,
     CloudASRQuotaError,
     CloudASRTranscriptionError,
@@ -583,6 +584,11 @@ class BatchTranscriptionService:
                 pipeline=pipeline_config.slug,
                 error_type=type(e).__name__,
             )
+            # Preserve non-retryable failures (undecodable audio, bad config,
+            # cancellation). Re-wrapping them as TranscriptionError made the
+            # broker retry a file that can never succeed.
+            if isinstance(e, NON_RETRYABLE_EXCEPTIONS):
+                raise
             raise TranscriptionError(f"Transcription failed: {e}") from e
         finally:
             # Release pins so idle TTL can apply after the job.
