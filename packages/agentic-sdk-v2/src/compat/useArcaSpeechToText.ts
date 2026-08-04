@@ -187,6 +187,31 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   const metadataTimelineRef = useRef<TimelineEntry[]>([]);
   const captureStartMsRef = useRef<number | undefined>(undefined);
 
+  // The base is anchored when CAPTURE begins — not when startTranscription runs.
+  // `useAudioCapture` and this hook drive the SAME audio graph, and an app that
+  // lets the user pick a microphone must start from `useAudioCapture` (the only
+  // hook carrying device/source selection). In that order `audio.isCapturing` is
+  // already true when `startTranscription()` runs, its idempotency guard returns
+  // early, and an anchor set only inside it would never exist — every
+  // `sendAudioData` would stamp `atMs = 0` and `pickMetadataForFinal` would be
+  // handed `undefined`, silently collapsing per-segment attribution to sticky
+  // most-recent (TASK-611). Watching `isCapturing` also covers the case where
+  // this hook mounts mid-capture and `startTranscription` is never called at all.
+  //
+  // Anchoring only on the false→true transition AND only while unset keeps this
+  // to ONE write per capture: re-renders while capturing cannot drift the base,
+  // and the synchronous pre-anchor in `startTranscription` (which fires BEFORE
+  // the graph reports capturing, so metadata sent in that window is already
+  // placed) still owns the STT-first order — unchanged for existing consumers.
+  // `stopTranscription` clears the ref, so the next capture anchors afresh.
+  const wasCapturingRef = useRef(false);
+  useEffect(() => {
+    if (audio.isCapturing && !wasCapturingRef.current && captureStartMsRef.current === undefined) {
+      captureStartMsRef.current = Date.now();
+    }
+    wasCapturingRef.current = audio.isCapturing;
+  }, [audio.isCapturing]);
+
   // Diff cursor for finals already surfaced.
   const seenFinalCountRef = useRef(0);
   // Last interim value surfaced (avoids duplicate interim callbacks).
@@ -222,7 +247,8 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
     if (audio.isCapturing) return; // coordinated with useAudioCapture (idempotent)
     try {
       setError(null);
-      // Anchor the capture-relative timeline base at capture start.
+      // STT-first pre-anchor: capture has not been reported yet, so the effect
+      // above has nothing to see; it will not overwrite this (see TASK-611).
       if (captureStartMsRef.current === undefined) captureStartMsRef.current = Date.now();
       await audio.start({
         language,

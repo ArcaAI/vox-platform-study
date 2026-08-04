@@ -129,6 +129,17 @@ export interface AgenticState {
    */
   audioSourceLevels: number[];
   /**
+   * Ids of the capture sources currently in the mix (TASK-609), index-aligned
+   * with {@link AgenticState.audioSourceLevels} — so `audioSourceIds[i]` names
+   * the source whose level is `audioSourceLevels[i]`, and that id is what
+   * `useArcaAudio.removeSource` / `setSourceGain` take.
+   *
+   * `[]` when there is no capture session AND when the session has no mixer (a
+   * single source started without `dynamicSources` is fed to the pipeline
+   * directly, so there is nothing id-addressable to change).
+   */
+  audioSourceIds: string[];
+  /**
    * Live connection health of the streaming STT session (TASK-567 Phase F).
    * Driven by the streaming client's reconnect callbacks and the backend
    * `provider_switched` status. `connected` is the nominal value (also the
@@ -247,6 +258,8 @@ export interface AgenticActions {
   setAudioUplinkBitrate: (bitrate: number) => void;
   /** Publish per-source input levels (see {@link AgenticState.audioSourceLevels}); `[]` clears them. */
   setAudioSourceLevels: (levels: number[]) => void;
+  /** Publish the mixed capture-source ids (see {@link AgenticState.audioSourceIds}); `[]` clears them. */
+  setAudioSourceIds: (ids: string[]) => void;
   /** Clear both the count and the latch — called on capture start/stop only. */
   resetAudioDropped: () => void;
   /** Set the streaming STT connection state (reconnect callbacks / provider switch). */
@@ -382,6 +395,7 @@ const initialState: AgenticState = {
   audioLostThisSession: false,
   audioUplinkBitrate: 0,
   audioSourceLevels: [],
+  audioSourceIds: [],
   // Streaming STT connection state starts nominal; no active pipeline yet.
   sttConnectionState: 'connected',
   activePipeline: null,
@@ -547,6 +561,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   resetAudioDropped: () => set({ audioDroppedFrameCount: 0, audioLostThisSession: false, audioUplinkBitrate: 0 }),
   setAudioUplinkBitrate: (bitrate) => set({ audioUplinkBitrate: bitrate }),
   setAudioSourceLevels: (levels) => set({ audioSourceLevels: levels }),
+  setAudioSourceIds: (ids) => set({ audioSourceIds: ids }),
   setSttConnectionState: (sttConnectionState) => set({ sttConnectionState }),
   setActivePipeline: (activePipeline) => set({ activePipeline }),
 
@@ -611,6 +626,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       audioLostThisSession: false,
       audioUplinkBitrate: 0,
       audioSourceLevels: [],
+      audioSourceIds: [],
       // A tenant switch ends any streaming session — reset the STT connection
       // signal so the outgoing tenant's fallback/reconnect state can't bleed in.
       sttConnectionState: 'connected',
@@ -696,6 +712,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
       audioLostThisSession: false,
       audioUplinkBitrate: 0,
       audioSourceLevels: [],
+      audioSourceIds: [],
       authUser: null,
       authIsAuthenticated: false,
       authImpersonatedUser: null,

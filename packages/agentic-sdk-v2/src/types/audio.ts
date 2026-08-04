@@ -376,6 +376,28 @@ export interface AudioStartOptions {
    */
   audioProcessing?: AudioProcessingConstraints;
   /**
+   * Opt into RUNTIME capture-source changes for this session (TASK-609).
+   *
+   * With this set, a mixer is built even for a SINGLE source, so
+   * `useArcaAudio.addSource` / `removeSource` / `setSourceGain` can change what
+   * is being recorded WITHOUT tearing the session down. That matters because
+   * the alternative — `stop()` then `start()` — closes the WebSocket, ends the
+   * STT session and breaks transcript continuity, purely to attach a second
+   * microphone.
+   *
+   * It is opt-in rather than always-on because the pipeline is initialized with
+   * exactly ONE track: with several sources that track is necessarily the
+   * mixer's output, but a lone source is fed straight through (no mixer node in
+   * the graph) and that pre-597 behaviour is preserved by default. Sessions
+   * started with two or more sources already have a mixer and accept runtime
+   * changes without this flag.
+   *
+   * Note the mixer's `1/√N` master normalization is recomputed on every
+   * add/remove, so joining a second mic drops the mix level ~3 dB — deliberate
+   * summation headroom, not a bug.
+   */
+  dynamicSources?: boolean;
+  /**
    * Ceiling, in ms, on the streaming-STT stop-drain performed when this capture
    * session is torn down (TASK-597 follow-up #4).
    *
