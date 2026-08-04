@@ -86,7 +86,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // models (AiUsageEvent, AiUsageOutbox, AiPriceBook, AiUsageRollupHourly,
     // AiUsageRollupDaily, BillingInvoice, BillingInvoiceLine,
     // BillingAdjustment).
-    expect(TENANT_SCOPED_MODELS.size).toBe(65);
+    // 65 → 66: TASK-610 adds TenantAllowedOrigin (CORS control plane).
+    expect(TENANT_SCOPED_MODELS.size).toBe(66);
   });
 
   // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing
@@ -107,6 +108,13 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     ]) {
       expect(TENANT_SCOPED_MODELS.has(model)).toBe(true);
     }
+  });
+
+  // TASK-610 — the CORS control plane is tenant-scoped: a tenant's browser
+  // origin registry must never be readable cross-tenant. SYSTEM-owned rows are
+  // resolved by OriginRegistryService, not by widening this read.
+  it('includes the CORS control-plane model', () => {
+    expect(TENANT_SCOPED_MODELS.has('TenantAllowedOrigin')).toBe(true);
   });
 
   it('includes every PHI-bearing model', () => {

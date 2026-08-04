@@ -96,3 +96,8 @@ export * from './tenant-idp-config';
 export * from './idp-resolver';
 export * from './federated-auth';
 export * from './directory-sync';
+// Browser-origin allow-list: origin grammar + the origin→owner-tenant reverse
+// index the CORS layer and the origin/tenant binding guard both read.
+export * from './origin-registry';
+// Global-admin CRUD over the allow-list rows the registry above indexes.
+export * from './tenant-allowed-origin';

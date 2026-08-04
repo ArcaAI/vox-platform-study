@@ -209,6 +209,12 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'BillingInvoice',
   'BillingInvoiceLine',
   'BillingAdjustment',
+  // tenant-allowed-origin.prisma — CORS control plane (TASK-610). A STANDARD
+  // tenant-scoped config model (tenantId + resourceStatus soft-delete +
+  // _version OCC + audit). Admin CRUD stays tenant-filtered; SYSTEM-owned rows
+  // (platform-operated origins, valid for every tenant) are resolved by the
+  // application-layer OriginRegistryService, not by widening this read here.
+  'TenantAllowedOrigin',
 ]);
 
 /**

@@ -60,6 +60,7 @@ import { RoleRepository } from '../../../repositories/generated/core/RoleReposit
 import { StorageAccessKeyRepository } from '../../../repositories/generated/core/StorageAccessKeyRepository';
 import { SummaryMetaRepository } from '../../../repositories/generated/core/SummaryMetaRepository';
 import { TagRepository } from '../../../repositories/generated/core/TagRepository';
+import { TenantAllowedOriginRepository } from '../../../repositories/generated/core/TenantAllowedOriginRepository';
 import { TenantBucketRepository } from '../../../repositories/generated/core/TenantBucketRepository';
 import { TenantEntitlementRepository } from '../../../repositories/generated/core/TenantEntitlementRepository';
 import { TenantFrontendConfigRepository } from '../../../repositories/generated/core/TenantFrontendConfigRepository';
@@ -167,6 +168,8 @@ const repositories = [
   DnaUsageRecordRepository,
   PromptUsageRecordRepository,
   // Storage domain
+  // TASK-610 CORS control plane — browser-origin allow-list.
+  TenantAllowedOriginRepository,
   TenantBucketRepository,
   StorageAccessKeyRepository,
   TenantStorageConfigRepository,

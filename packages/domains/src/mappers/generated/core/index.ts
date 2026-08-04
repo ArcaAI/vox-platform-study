@@ -55,6 +55,7 @@ export * from './RolePermissionEntityMapper';
 export * from './StorageAccessKeyEntityMapper';
 export * from './SummaryMetaEntityMapper';
 export * from './TagEntityMapper';
+export * from './TenantAllowedOriginEntityMapper';
 export * from './TenantBucketEntityMapper';
 export * from './TenantEntitlementEntityMapper';
 export * from './TenantFrontendConfigEntityMapper';

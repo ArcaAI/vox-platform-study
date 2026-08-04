@@ -1,7 +1,7 @@
-import { ILoggingService, LogLevel, TenantSettingsService } from '@arcaai/applications';
+import { ILoggingService, IOriginRegistry, LogLevel, TenantSettingsService } from '@arcaai/applications';
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { setPlatformCorsOriginsResolver } from '../../cors.config';
+import { setOriginRegistryResolver } from '../../cors.config';
 
 /**
  * Applies the two PRE-BOOTSTRAP platform knobs TASK-558 lane I moved into the
@@ -36,22 +36,49 @@ export class PlatformKnobsBinder implements OnModuleInit {
   constructor(
     @Optional() private readonly tenantSettings?: TenantSettingsService,
     @Optional() @Inject(ILoggingService) private readonly loggingService?: ILoggingService,
+    @Optional() @Inject(IOriginRegistry) private readonly originRegistry?: IOriginRegistry,
   ) {}
 
   onModuleInit(): void {
+    this.installOriginRegistryResolver();
+
     if (!this.tenantSettings) {
       this.logger.debug('No settings resolver wired — platform knobs stay on their env bootstrap values');
       return;
     }
-    // The CORS lane resolves lazily per request, so installing the accessor
-    // once is enough: a later settings write is picked up automatically.
-    setPlatformCorsOriginsResolver(() => {
-      const resolved = this.tenantSettings!.resolvePlatform<unknown>('corsAllowedOrigins').value;
-      if (typeof resolved === 'string') return resolved;
-      if (Array.isArray(resolved)) return resolved.join(',');
-      return undefined;
-    });
     this.applyLogLevel();
+  }
+
+  /**
+   * TASK-610 — hand the origin REGISTRY to the pre-bootstrap CORS code.
+   *
+   * This replaces the `corsAllowedOrigins` string resolver TASK-558 lane I
+   * installed here. Allowed origins are `TenantAllowedOrigin` rows now, so the
+   * lazily-resolved thing is the reverse index rather than a comma-separated
+   * setting; `CORS_ALLOWED_ORIGINS` survives only as the bootstrap fallback
+   * inside `cors.config.ts` (FR-6).
+   *
+   * WHY THE EMPTY INDEX IS REPORTED AS `null`. `OriginIndexResolver` returning
+   * `null` means "the registry has not loaded" and sends `isOriginAllowed` to
+   * that bootstrap fallback. `OriginRegistryService.refresh()` deliberately
+   * does NOT throw when the database is unreachable — it keeps its previous
+   * index, which at boot is empty. Reporting that empty index as a loaded
+   * registry would refuse every browser origin on the platform for as long as
+   * the database stayed down. An unseeded table behaves the same way and wants
+   * the same answer (plan §3.8). Once even one row exists, the registry is
+   * authoritative and a miss is a refusal.
+   *
+   * Resolution is lazy (per request), so installing the accessor once is
+   * enough — a row added later is picked up on the registry's next refresh
+   * with no restart and no re-install here.
+   */
+  private installOriginRegistryResolver(): void {
+    if (!this.originRegistry) {
+      this.logger.warn('No origin registry wired — CORS stays on the CORS_ALLOWED_ORIGINS bootstrap allow-list');
+      return;
+    }
+    const registry = this.originRegistry;
+    setOriginRegistryResolver(() => (registry.size() > 0 ? registry : null));
   }
 
   /** Re-apply after every settings-cache refresh (local write or peer invalidation). */
