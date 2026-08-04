@@ -261,14 +261,26 @@ export function useArcaAudio() {
             component: 'useArcaAudio',
             attributes: { deviceCount: deviceIds.length },
           });
+          // Browser audio-processing switches (TASK-608). Only the keys the
+          // caller stated a preference for are forwarded, and an empty/omitted
+          // object must leave the request shape untouched — `{ audio: true }`
+          // for the default mic, not `{ audio: {} }`, which is a different
+          // request that every pre-608 integrator's behaviour hangs off.
+          const processing: Record<string, boolean> = {};
+          for (const key of ['echoCancellation', 'noiseSuppression', 'autoGainControl'] as const) {
+            const value = options?.audioProcessing?.[key];
+            if (typeof value === 'boolean') processing[key] = value;
+          }
+          const hasProcessing = Object.keys(processing).length > 0;
+
           if (deviceIds.length === 0) {
-            sourceStreams.push(await navigator.mediaDevices.getUserMedia({ audio: true }));
+            sourceStreams.push(await navigator.mediaDevices.getUserMedia({ audio: hasProcessing ? { ...processing } : true }));
           } else {
             // Sequential on purpose: browsers serialize device-permission
             // prompts anyway, and a parallel Promise.all would lose track of
             // which streams opened before a later one rejected.
             for (const id of deviceIds) {
-              sourceStreams.push(await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: id } } }));
+              sourceStreams.push(await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: id }, ...processing } }));
             }
           }
         }

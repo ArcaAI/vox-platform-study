@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useArcaAudio } from '../hooks/useArcaAudio';
 import { useAgenticStore } from '../store/agenticStore';
+import type { AudioProcessingConstraints } from '../types';
 import type { AudioDeviceStatus, ErrorInfo, V1SdkConfig } from './types';
 
 export interface UseAudioCaptureProps {
@@ -65,6 +66,22 @@ export interface UseAudioCaptureProps {
   sourceStreams?: MediaStream[];
   /** Per-source linear mixer gain, index-aligned with the resolved source list. */
   sourceGains?: number[];
+  /**
+   * Browser audio-processing switches (TASK-608), forwarded verbatim to
+   * `audio.start(...)` and applied to every capture source's `getUserMedia`
+   * constraints. Pass `{ echoCancellation: false, noiseSuppression: false,
+   * autoGainControl: false }` for raw, un-gained capture.
+   *
+   * NOT the same switch as v1's `audioSettings.noiseSuppression`, which toggles
+   * the SDK's own RNNoise pipeline stage. This one is the BROWSER's DSP, which
+   * runs before the SDK sees a single sample and is ON by default in every major
+   * browser. An app that wants genuinely unprocessed audio turns off both.
+   *
+   * Subject to the same start-race rule as the source options above: honoured
+   * whenever capture is started HERE, which is the documented order for a
+   * capture-first consumer.
+   */
+  audioProcessing?: AudioProcessingConstraints;
   /**
    * Ceiling (ms) on the streaming-STT stop-drain awaited by `stopRecording()`
    * (TASK-597 follow-up #4). Forwarded verbatim to `audio.start(...)`; omit for
@@ -137,6 +154,7 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     additionalDeviceIds,
     sourceStreams,
     sourceGains,
+    audioProcessing,
     drainTimeoutMs,
     quietWindowMs,
     onError,
@@ -169,6 +187,10 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
         ...(additionalDeviceIds?.length ? { additionalDeviceIds } : {}),
         ...(sourceStreams?.length ? { sourceStreams } : {}),
         ...(sourceGains?.length ? { sourceGains } : {}),
+        // Browser DSP switches (TASK-608) — spread only when at least one key is
+        // stated, so a caller that says nothing still produces the exact
+        // pre-608 options object.
+        ...(audioProcessing && Object.keys(audioProcessing).length > 0 ? { audioProcessing } : {}),
         // Stop-drain ceiling (TASK-597 follow-up #4) — spread only when
         // positive, so the pre-597 options object is byte-identical for every
         // caller that does not set it (and a `0` cannot mean "no drain").
@@ -199,6 +221,7 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     additionalDeviceIds,
     sourceStreams,
     sourceGains,
+    audioProcessing,
     drainTimeoutMs,
     quietWindowMs,
     onError,

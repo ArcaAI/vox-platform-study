@@ -32,6 +32,7 @@ export function LiveTranscription({ pipelineId, language }: LiveTranscriptionPro
     transcriptTemplate: '{speaker_id}: {text}',
     options: { pipelineId: pipelineId.trim() || undefined, languageMode: language },
     onTranscript: (text, isFinal) => {
+      console.log('REceived: ' + text);
       if (isFinal) {
         setLines((prev) => [...prev, text]);
         setInterim('');
@@ -103,7 +104,13 @@ export function LiveTranscription({ pipelineId, language }: LiveTranscriptionPro
         <button onClick={stop} disabled={phase !== 'recording' && phase !== 'starting'}>
           Stop
         </button>
-        <button onClick={() => { setLines([]); setInterim(''); }} disabled={phase !== 'idle'}>
+        <button
+          onClick={() => {
+            setLines([]);
+            setInterim('');
+          }}
+          disabled={phase !== 'idle'}
+        >
           Clear
         </button>
         <span className="muted">language: {language}</span>

@@ -56,9 +56,13 @@ services:
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
             POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
         volumes:
-            # PostgreSQL 18+ requires mount at /var/lib/postgresql (not /data subdirectory)
-            # See: https://github.com/docker-library/postgres/pull/1259
-            - postgres-data:/var/lib/postgresql
+            # Mount at the timescaledb-ha data root. This image sets
+            # PGDATA=/home/postgres/pgdata/data and declares NO volume there, so a
+            # mount anywhere else leaves the cluster in the container's writable
+            # layer, where `compose up -d` / image bumps silently destroy it.
+            # (The /var/lib/postgresql guidance in docker-library/postgres#1259
+            # applies to the OFFICIAL postgres image, which this is not.)
+            - postgres-data:/home/postgres/pgdata
         # Minimal PostgreSQL tuning for local development (low resource usage)
         command: >
             postgres
@@ -66,7 +70,7 @@ services:
             -c effective_cache_size=128MB
             -c work_mem=4MB
             -c maintenance_work_mem=32MB
-            -c max_connections=50
+            -c max_connections=100
             -c wal_level=minimal
             -c max_wal_senders=0
             -c log_min_duration_statement=500
