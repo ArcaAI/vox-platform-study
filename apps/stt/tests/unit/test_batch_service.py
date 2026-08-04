@@ -16,7 +16,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from stt.core.exceptions import TranscriptionError
+from stt.core.exceptions import (
+    NON_RETRYABLE_EXCEPTIONS,
+    AudioCorruptedError,
+    TranscriptionError,
+)
 from stt.models.base_loader import LoadedModel
 
 _MODEL_BASE = (
@@ -374,6 +378,28 @@ class TestBatchTranscriptionService:
             # Test error content provides useful information
             error = exc_info.value
             assert "whisper-test" in str(error) or "model" in str(error).lower()
+
+    @pytest.mark.asyncio
+    async def test_transcribe_preserves_non_retryable_audio_error(
+        self, service, pipeline_config, audio_bytes
+    ):
+        """TASK-607: an undecodable file must not be re-wrapped as retryable.
+
+        Wrapping it in ``TranscriptionError`` cost four attempts on a file that
+        can never decode.
+        """
+        with patch.object(service, "_load_models") as mock_load:
+            mock_load.side_effect = AudioCorruptedError("Audio file could not be decoded.")
+
+            with pytest.raises(AudioCorruptedError) as exc_info:
+                await service.transcribe(
+                    job_id="j-607",
+                    audio_bytes=audio_bytes,
+                    pipeline_config=pipeline_config,
+                )
+
+        assert isinstance(exc_info.value, NON_RETRYABLE_EXCEPTIONS)
+        assert not isinstance(exc_info.value, TranscriptionError)
 
     # =========================================================================
     # Model Loading Tests - Focus on loading behavior

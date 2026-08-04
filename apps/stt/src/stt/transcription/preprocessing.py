@@ -28,7 +28,6 @@ Uses the pipeline-defined VAD model when available, falling back to the
 dedicated Silero VAD v5 ONNX singleton service for backward compatibility.
 """
 
-import io
 import logging
 from typing import Any, cast
 
@@ -36,6 +35,7 @@ import numpy as np
 
 from ..models.base_loader import LoadedModel
 from ..pipeline.dto import PreprocessingConfig
+from .audio_decode import decode_audio
 from .dto import AudioSegment, ProcessedAudio
 
 logger = logging.getLogger(__name__)
@@ -258,26 +258,17 @@ class AudioPreprocessor:
         """
         Load audio from bytes.
 
+        Delegates to :func:`decode_audio`, which falls back from libsndfile to
+        ffmpeg so uploads carrying vendor trailers or damaged frames still
+        decode. Undecodable input raises ``AudioCorruptedError``.
+
         Args:
             audio_bytes: Raw audio bytes
 
         Returns:
             Tuple of (samples as numpy array, sample rate)
         """
-        try:
-            import soundfile as sf
-
-            audio_io = io.BytesIO(audio_bytes)
-            samples, sr = sf.read(audio_io)
-            return samples.astype(np.float32), sr
-
-        except ImportError:
-            # Fallback to librosa
-            import librosa
-
-            audio_io = io.BytesIO(audio_bytes)
-            samples, sr = librosa.load(audio_io, sr=None)
-            return samples, cast(int, sr)
+        return decode_audio(audio_bytes)
 
     def _resample(self, samples: np.ndarray, original_sr: int, target_sr: int) -> np.ndarray:
         """Resample audio to target sample rate."""

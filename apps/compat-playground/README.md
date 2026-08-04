@@ -172,6 +172,15 @@ source selection stays **locked** through it; the metadata form stays **usable**
 through it (it tags the next line, which may still be arriving); auto-tag is the
 one control gated on `recording` alone, because it reads the live input level.
 
+### Stop drain (TASK-597)
+
+[`DrainSettings.tsx`](./src/components/DrainSettings.tsx), below the Recording
+card, configures the `stopping` window itself: a stop-drain timeout (how long to
+wait for tail finals before forcing the transport closed) and a quiet-window
+override (`quietWindowMs: 0` disables the quiet-window heuristic entirely,
+forcing the full timeout every time). Both apply to the *next* capture — a
+capture already draining keeps whatever it started with.
+
 ### Metadata simulator (R5)
 
 [`MetadataSimulator.tsx`](./src/components/MetadataSimulator.tsx). Two surfaces
@@ -194,11 +203,12 @@ Two honesty notes are stated **in the UI**, not just here:
 > per-frame metadata on the wire, but its attribution is also last-wins/sticky.
 > **Both paths are recency-attributed — only the transport differs.**
 
-> **Auto-tag cannot do true per-mic attribution.** The SDK exposes exactly one
-> *mixed-stream* level meter, not a per-source signal, so auto-tag rotates
-> round-robin through the rows on each debounced threshold crossing. Real
-> attribution needs a per-source `AnalyserNode` in `AudioMixer`'s node graph —
-> an open follow-up.
+> **Auto-tag does true per-mic attribution.** The SDK exposes real per-source
+> level meters (`useAudioCapture`'s `sourceLevels`, index-aligned with
+> `sources`); auto-tag samples them and gives the turn to the loudest mic above
+> threshold, debounced. It falls back to round-robin only when the runtime
+> reports no per-source signal (nothing recording yet, or no Web Audio
+> analysis available) — the UI badges which of the two is running.
 
 Payloads are validated against the SDK's 8 KB `MAX_METADATA_BYTES` guard
 **before** sending, and a violation renders as an inline `FieldError`
@@ -365,7 +375,7 @@ pnpm --filter @arcaai/compat-playground test
 ```
 src/
 ├── main.tsx                          # entry — mounts <App />
-├── App.tsx                           # three tabs, the connection gate, one provider mount
+├── App.tsx                           # the four-tab console, the connection gate, one provider mount
 ├── index.css                         # Tailwind v4 + @arcaai/ui token import
 ├── context/
 │   └── playground-session.tsx        # the lifted session (mounted above the tabs)
@@ -375,11 +385,14 @@ src/
 │   ├── LiveTranscriptionTab.tsx      # tab 2 — layout
 │   ├── AudioSourcePanel.tsx          # mic / multi-mic / file source picker
 │   ├── ControllerColumn.tsx          # language, engine toggle, start/stop
+│   ├── DrainSettings.tsx             # per-capture stop-drain timeout + quiet window
 │   ├── ProviderToggle.tsx            # pipeline ↔ tenant-default engine switch
 │   ├── MetadataSimulator.tsx         # manual + per-mic metadata rows, auto-tag
 │   ├── TranscriptColumn.tsx          # the two-track transcript | metadata timeline
 │   ├── ScorecardPanel.tsx            # reference transcript, WER/CER, run export
-│   ├── SummarizationTab.tsx          # tab 3 — layout
+│   ├── BatchUploadTab.tsx            # tab 3 — layout
+│   ├── batch/                        # BatchUploadPanel · BatchJobQueue · BatchJobResult · BatchAllResultsView · BatchResultsPanel
+│   ├── SummarizationTab.tsx          # tab 4 — layout
 │   ├── SummaryCard.tsx               # useSMR() orchestration + streaming toggle
 │   ├── summarization/                # ContextForm · TranscriptSource · SummaryResultView
 │   └── TabExampleCode.tsx            # per-tab source, via import.meta.glob(?raw)
