@@ -10,6 +10,14 @@ export { useArca, type UseArcaReturn, type UseArcaSession, type UseArcaAudio, ty
 
 // Focused domain hooks (REFACTOR-01)
 export { useArcaAudio } from './useArcaAudio';
+// Runtime audio-input discovery for device pickers (TASK-609). Provider-free.
+export {
+  useArcaDevices,
+  type ArcaAudioDevice,
+  type ArcaDevicePreference,
+  type ArcaDevicePermission,
+  type UseArcaDevicesReturn,
+} from './useArcaDevices';
 export { useArcaContext } from './useArcaContext';
 export { useArcaSummary } from './useArcaSummary';
 export { useArcaLiveSummary, type UseArcaLiveSummaryReturn, type LiveSummaryStreamStatus } from './useArcaLiveSummary';

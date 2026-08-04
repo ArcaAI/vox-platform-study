@@ -67,6 +67,19 @@ export interface UseAudioCaptureProps {
   /** Per-source linear mixer gain, index-aligned with the resolved source list. */
   sourceGains?: number[];
   /**
+   * Build an `AudioMixer` even for a SINGLE capture source (TASK-609),
+   * forwarded verbatim to `audio.start(...)`. Without this, a single-source
+   * session captures straight to the STT transport with no mixer in the
+   * path, so sources can only be added/removed by tearing down and reopening
+   * the WebSocket session. `dynamicSources: true` keeps the mixer present
+   * from the start so sources can change mid-session without a reconnect.
+   *
+   * Subject to the same start-race rule as the source options above:
+   * honoured whenever capture is started HERE, which is the documented order
+   * for a capture-first consumer.
+   */
+  dynamicSources?: boolean;
+  /**
    * Browser audio-processing switches (TASK-608), forwarded verbatim to
    * `audio.start(...)` and applied to every capture source's `getUserMedia`
    * constraints. Pass `{ echoCancellation: false, noiseSuppression: false,
@@ -154,6 +167,7 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     additionalDeviceIds,
     sourceStreams,
     sourceGains,
+    dynamicSources,
     audioProcessing,
     drainTimeoutMs,
     quietWindowMs,
@@ -187,6 +201,10 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
         ...(additionalDeviceIds?.length ? { additionalDeviceIds } : {}),
         ...(sourceStreams?.length ? { sourceStreams } : {}),
         ...(sourceGains?.length ? { sourceGains } : {}),
+        // Mixer-for-single-source opt-in (TASK-609) — spread only on `true`,
+        // so a caller that doesn't ask for it still produces the exact
+        // pre-609 options object.
+        ...(dynamicSources ? { dynamicSources } : {}),
         // Browser DSP switches (TASK-608) — spread only when at least one key is
         // stated, so a caller that says nothing still produces the exact
         // pre-608 options object.
@@ -221,6 +239,7 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     additionalDeviceIds,
     sourceStreams,
     sourceGains,
+    dynamicSources,
     audioProcessing,
     drainTimeoutMs,
     quietWindowMs,

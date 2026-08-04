@@ -43,6 +43,7 @@ export {
   useArcaLiveSummary,
   useArcaAudio,
   useArcaConfig,
+  useArcaDevices,
   useArcaContext,
   useArcaSession,
   // Surface the dedicated summary hook from the core entry.

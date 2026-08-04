@@ -21,6 +21,7 @@ export function LiveTranscription({ pipelineId, language }: LiveTranscriptionPro
   const capture = useAudioCapture({
     language,
     languageMode: language,
+    options: { sttPipelineId: pipelineId.trim() || undefined },
     onError: (err) => setError(err.message),
   });
 
@@ -50,23 +51,17 @@ export function LiveTranscription({ pipelineId, language }: LiveTranscriptionPro
     setInterim('');
     setError(null);
     try {
-      // TRANSCRIPTION FIRST, capture second — deliberately the reverse of the
-      // usual compat ordering, and load-bearing for the provider switch.
-      //
-      // Both hooks call the same `audio.start(...)` and the first one through
-      // applies its options; the second logs "startAudio ignored — capture
-      // already active". Only `useArcaSpeechToText` carries `pipelineId`
-      // (`useAudioCapture` has no such prop), and the SDK sets its
-      // `activePipeline` ONLY when `audio.start()` receives a `pipelineId`.
-      // Start capture first and `activePipeline` stays null, which silently
-      // disables provider switching: `fallbackAvailable` is false and a switch
-      // is recorded as a pre-start preference instead of switching the live
-      // stream — with no error to tell you.
-      //
-      // Both hooks receive the same language, and this app selects no capture
-      // devices, so nothing is lost by letting the STT hook win the race.
-      await stt.startTranscription();
+      // CAPTURE FIRST, transcription second. Both hooks call the same
+      // `audio.start(...)` and the first one through applies its options; the
+      // second is a no-op against the already-capturing audio graph.
+      // `useAudioCapture` is the only hook that carries device/source options
+      // (deviceId, sourceStreams, audioProcessing, ...), so it must win the
+      // race or those selections are silently dropped in favor of the default
+      // microphone. Both hooks pass `pipelineId`, so `activePipeline` (and
+      // provider switching) is set either way; `language`/`languageMode` and
+      // `pendingSttProvider` are store-backed, so they too are order-independent.
       await capture.startRecording();
+      await stt.startTranscription();
       setPhase('recording');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start recording');

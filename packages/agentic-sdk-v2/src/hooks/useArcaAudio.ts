@@ -120,6 +120,85 @@ export function useArcaAudio() {
   const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
   const onDualCaptureRef = useRef<((result: DualCaptureResult) => void) | undefined>(undefined);
 
+  // ---------------------------------------------------------------------------
+  // Runtime source management (TASK-609)
+  // ---------------------------------------------------------------------------
+  /** Mixer source ids in mix order — the array published to `store.audioSourceIds`. */
+  const sourceIdsRef = useRef<string[]>([]);
+  /**
+   * id → stream association for `sourceIdsRef` (TASK-611). `sourceStreamsRef`
+   * is positional with no id of its own, so removing a source BY ID needs a
+   * lookup to find which entry of that array to drop. Populated everywhere an
+   * id is minted (`nextSourceId`'s two call sites: the initial mixer build and
+   * `addSource`) and kept in lockstep with `sourceIdsRef` — same reset points,
+   * same removal in `removeSource`.
+   */
+  const sourceIdToStreamRef = useRef<Map<string, MediaStream>>(new Map());
+  /**
+   * MONOTONIC id counter. Never reset within a session and never reused after a
+   * removal: recycling `source-2` would let a stale id from a removed mic
+   * address whatever took its place — silently re-gaining or dropping the wrong
+   * microphone.
+   */
+  const sourceCounterRef = useRef(0);
+  /** Session-wide `getUserMedia` processing switches, inherited by runtime adds. */
+  const audioProcessingRef = useRef<Record<string, boolean>>({});
+  /** Detach functions for the per-track `ended` listeners; run on teardown. */
+  const endedListenersRef = useRef<(() => void)[]>([]);
+
+  const nextSourceId = useCallback((): string => {
+    sourceCounterRef.current += 1;
+    const id = `source-${sourceCounterRef.current}`;
+    sourceIdsRef.current = [...sourceIdsRef.current, id];
+    return id;
+  }, []);
+
+  const publishSourceIds = useCallback(() => {
+    store.setAudioSourceIds?.([...sourceIdsRef.current]);
+  }, [store]);
+
+  /**
+   * Watch a capture source for DEVICE LOSS (TASK-609).
+   *
+   * A microphone unplugged mid-consultation ends its track: the graph stays
+   * wired, the socket stays open, and the audio just stops. Nothing detected
+   * that before, so it presented exactly like the "no data on the socket" class
+   * of bug. Surfacing it as an `audioError` is deliberate — it IS an error, and
+   * the alternative (auto-removing the source) would change the mix's master
+   * gain underneath the user without their say-so.
+   */
+  const watchSourceForLoss = useCallback(
+    (stream: MediaStream) => {
+      const logger = getLogger();
+      for (const track of stream.getAudioTracks?.() ?? []) {
+        if (typeof track.addEventListener !== 'function') continue;
+        const onEnded = () => {
+          const label = track.label || 'unknown device';
+          logger?.warn('Capture source ended — device disconnected or revoked', {
+            operation: 'watchSourceForLoss',
+            component: 'useArcaAudio',
+            attributes: { label },
+          });
+          store.setAudioError(new Error(`Capture source ended: ${label}. The device was disconnected or its permission was revoked.`));
+        };
+        track.addEventListener('ended', onEnded);
+        endedListenersRef.current.push(() => track.removeEventListener?.('ended', onEnded));
+      }
+    },
+    [store, getLogger],
+  );
+
+  const releaseSourceWatchers = useCallback(() => {
+    for (const detach of endedListenersRef.current) {
+      try {
+        detach();
+      } catch {
+        // A listener on an already-released track must not break teardown.
+      }
+    }
+    endedListenersRef.current = [];
+  }, []);
+
   // ==========================================================================
   // Audio Actions
   // ==========================================================================
@@ -143,13 +222,43 @@ export function useArcaAudio() {
       // closures are not. Optional-chained: test doubles without the getter
       // keep the pre-guard behaviour.
       if (pluginManager.initialized === true) {
-        logger?.info('startAudio ignored — capture already active (coordinated dual-hook start)', {
-          operation: 'startAudio',
-          component: 'useArcaAudio',
-          attributes: { language: options?.language, pipelineId: options?.pipelineId },
-        });
+        // …but stay LOUD about what the ignored call was carrying (TASK-609).
+        // Everything in this list would have CHANGED WHAT IS RECORDED, and
+        // dropping it silently is how "the UI shows my external mic selected
+        // but the socket carries the built-in one" became a debuggable-only-
+        // by-reading-the-source bug. Options the running session already
+        // applies (language, pipelineId) stay at INFO — they are the normal
+        // dual-hook path, not a mistake.
+        const droppedOptions = (
+          ['deviceId', 'secondaryDeviceId', 'additionalDeviceIds', 'sourceStreams', 'sourceGains', 'audioProcessing', 'dynamicSources'] as const
+        ).filter((key) => options?.[key] !== undefined);
+        const attributes = { language: options?.language, pipelineId: options?.pipelineId, ...(droppedOptions.length ? { droppedOptions } : {}) };
+        if (droppedOptions.length) {
+          logger?.warn(
+            'startAudio ignored — capture already active; capture-shaped options were DROPPED. Start capture from the hook that carries the sources (see TASK-609).',
+            {
+              operation: 'startAudio',
+              component: 'useArcaAudio',
+              attributes,
+            },
+          );
+        } else {
+          logger?.info('startAudio ignored — capture already active (coordinated dual-hook start)', {
+            operation: 'startAudio',
+            component: 'useArcaAudio',
+            attributes,
+          });
+        }
         return;
       }
+
+      // A new capture session starts with a clean source registry (TASK-609):
+      // ids restart at `source-1`, and nothing from the previous session's
+      // mixer can be addressed by a stale id held by the UI.
+      sourceIdsRef.current = [];
+      sourceIdToStreamRef.current.clear();
+      sourceCounterRef.current = 0;
+      releaseSourceWatchers();
 
       // A new capture session starts with a clean audio-drop signal.
       // Reset BEFORE audio flows (the session-sticky latch clears on start/stop
@@ -242,6 +351,22 @@ export function useArcaAudio() {
                 ),
               );
 
+        // Browser audio-processing switches (TASK-608), resolved ONCE per
+        // session and parked on a ref: a mic added at runtime (TASK-609) must
+        // arrive under the SAME constraints, or the mix ends up half-DSP'd.
+        // Only stated keys are kept, so an empty/omitted object leaves the
+        // request shape untouched — `{ audio: true }` for the default mic, not
+        // `{ audio: {} }`, which is a different request that every pre-608
+        // integrator's behaviour hangs off.
+        {
+          const processing: Record<string, boolean> = {};
+          for (const key of ['echoCancellation', 'noiseSuppression', 'autoGainControl'] as const) {
+            const value = options?.audioProcessing?.[key];
+            if (typeof value === 'boolean') processing[key] = value;
+          }
+          audioProcessingRef.current = processing;
+        }
+
         // Register the array on the teardown ref FIRST and push into it as each
         // stream is acquired — see the `sourceStreamsRef` contract. A rejection
         // on the third getUserMedia must not orphan the first two open mics.
@@ -261,16 +386,7 @@ export function useArcaAudio() {
             component: 'useArcaAudio',
             attributes: { deviceCount: deviceIds.length },
           });
-          // Browser audio-processing switches (TASK-608). Only the keys the
-          // caller stated a preference for are forwarded, and an empty/omitted
-          // object must leave the request shape untouched — `{ audio: true }`
-          // for the default mic, not `{ audio: {} }`, which is a different
-          // request that every pre-608 integrator's behaviour hangs off.
-          const processing: Record<string, boolean> = {};
-          for (const key of ['echoCancellation', 'noiseSuppression', 'autoGainControl'] as const) {
-            const value = options?.audioProcessing?.[key];
-            if (typeof value === 'boolean') processing[key] = value;
-          }
+          const processing = audioProcessingRef.current;
           const hasProcessing = Object.keys(processing).length > 0;
 
           if (deviceIds.length === 0) {
@@ -285,6 +401,10 @@ export function useArcaAudio() {
           }
         }
 
+        // Watch every source for device loss (TASK-609) — before anything can
+        // fail below, so a mic that disappears during initialize is still seen.
+        sourceStreams.forEach(watchSourceForLoss);
+
         // The first source is the session's `activeStream` (what mute/unmute and
         // the level meter act on), exactly as the primary mic was pre-597.
         const stream = sourceStreams[0];
@@ -295,12 +415,20 @@ export function useArcaAudio() {
         store.setActiveStream(stream);
         store.setActiveAudioContext(audioContext);
 
+        // Whether this session routes through the mixer — decided once here and
+        // reused below, because it also decides WHO owns the per-source levels
+        // (the mixer's analysers, or the single-source meter). Two writers on
+        // that array make it flap.
+        const usesMixer = sourceStreams.length > 1 || options?.dynamicSources === true;
+
         // With exactly ONE source there is no mixer to tap, and none is needed:
         // that source IS the whole mix, so the meter below is already a
         // truthful per-source level and is published as a 1-entry array. With
         // several sources the mixer's per-source analysers own that array (see
         // the mixer block further down) and this meter stays the MIXED level.
-        const isSingleSource = sourceStreams.length === 1;
+        // (…unless a mixer exists anyway because runtime source changes were
+        // requested — then its analysers own the per-source array, TASK-609.)
+        const isSingleSource = sourceStreams.length === 1 && !usesMixer;
 
         // Live input-level meter — best-effort + guarded so a runtime without
         // Web Audio analysis (or a test double) simply leaves the level at 0.
@@ -343,13 +471,23 @@ export function useArcaAudio() {
         // through with no mixer node in the graph — the pre-597 behaviour of
         // `start()` / `start({ deviceId })`.
         let track = stream.getAudioTracks()[0];
-        if (sourceStreams.length > 1) {
+        // A mixer is built for N > 1 sources — and ALSO for a single source when
+        // the caller opted into runtime source changes (TASK-609). The reason is
+        // structural: the pipeline is initialized with ONE track and the
+        // transport hangs off it, so sources can only be added or dropped
+        // mid-session when that track is the mixer's stable output. Without the
+        // opt-in a single source is still fed straight through (no mixer node at
+        // all), preserving the pre-597 graph exactly.
+        if (usesMixer) {
           const mixer = new AudioMixer(audioContext);
           sourceStreams.forEach((source, index) => {
             const gain = options?.sourceGains?.[index];
-            mixer.addSource(`source-${index + 1}`, source, typeof gain === 'number' && Number.isFinite(gain) ? gain : 1.0);
+            const id = nextSourceId();
+            sourceIdToStreamRef.current.set(id, source);
+            mixer.addSource(id, source, typeof gain === 'number' && Number.isFinite(gain) ? gain : 1.0);
           });
           mixerRef.current = mixer;
+          publishSourceIds();
 
           // PER-SOURCE input levels (TASK-597 follow-up #2).
           //
@@ -550,9 +688,7 @@ export function useArcaAudio() {
         // later provider_switched still flips it mid-session.
         store.setSttConnectionState('connected');
         store.setActivePipeline(
-          options?.pipelineId
-            ? { id: options.pipelineId, name: options.pipelineId, isFallback: options?.startOn === 'fallback' }
-            : null,
+          options?.pipelineId ? { id: options.pipelineId, name: options.pipelineId, isFallback: options?.startOn === 'fallback' } : null,
         );
 
         // Uplink-bitrate poll — the streaming STT stage exists after initialize().
@@ -612,6 +748,13 @@ export function useArcaAudio() {
           sdk: { consultationId: consultation?.id },
         });
       } catch (error) {
+        // Detach the loss watchers first, or the cleanup below trips them and
+        // overwrites the REAL start error with "device disconnected" (TASK-609).
+        releaseSourceWatchers();
+        sourceIdsRef.current = [];
+        sourceIdToStreamRef.current.clear();
+        store.setAudioSourceIds?.([]);
+
         // A failed start must not leave microphones open. Before 597 a
         // rejection after the first getUserMedia (a second device that
         // disappeared, a pipeline that failed to initialize) left the acquired
@@ -645,8 +788,144 @@ export function useArcaAudio() {
         throw error;
       }
     },
-    [store, getLogger],
+    [store, getLogger, nextSourceId, publishSourceIds, watchSourceForLoss, releaseSourceWatchers],
   );
+
+  /**
+   * Add a capture source to the LIVE mix (TASK-609).
+   *
+   * The mixed track the pipeline reads does not change identity when a source
+   * joins, so the STT stage, the WebSocket session and the transcript continue
+   * uninterrupted — which is the entire point: before this, "plug in the room
+   * mic" meant stop() + start() and a torn-down session mid-consultation.
+   *
+   * Requires a mixer, i.e. a session started with several sources or with
+   * `dynamicSources: true`. A single-source session feeds the device track
+   * straight into the pipeline, and swapping THAT would mean re-initializing
+   * the pipeline — the very teardown this API exists to avoid. The error says
+   * so rather than silently doing nothing.
+   *
+   * @returns the new source id — the handle for `removeSource` / `setSourceGain`.
+   */
+  const addSource = useCallback(
+    async (input: { deviceId?: string; stream?: MediaStream; gain?: number }): Promise<string> => {
+      const logger = getLogger();
+      if (!store.isCapturing || store.pluginManager?.initialized !== true) {
+        throw new Error('useArcaAudio.addSource: no active capture session. Call start() first.');
+      }
+      const mixer = mixerRef.current;
+      if (!mixer) {
+        throw new Error(
+          'useArcaAudio.addSource: this capture session has no mixer, so its sources cannot be changed. ' +
+            'Start with `dynamicSources: true` (or with more than one source) to enable runtime source changes.',
+        );
+      }
+
+      // A caller-built stream is used as-is; a deviceId is opened under the
+      // SAME processing constraints the session started with (TASK-608), so a
+      // late-joining mic cannot arrive DSP'd into a raw-capture mix.
+      let stream = input.stream;
+      if (!stream) {
+        if (!input.deviceId) throw new Error('useArcaAudio.addSource: provide either `deviceId` or `stream`.');
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: input.deviceId }, ...audioProcessingRef.current } });
+      }
+
+      const gain = typeof input.gain === 'number' && Number.isFinite(input.gain) ? input.gain : 1.0;
+      const id = nextSourceId();
+      try {
+        mixer.addSource(id, stream, gain);
+      } catch (error) {
+        // Roll the id back and release the mic we just opened — a failed add
+        // must not leave a phantom id in the published list or a hot track.
+        sourceIdsRef.current = sourceIdsRef.current.filter((existing) => existing !== id);
+        sourceIdToStreamRef.current.delete(id);
+        if (!input.stream) stream.getTracks().forEach((t) => t.stop());
+        throw error;
+      }
+      sourceIdToStreamRef.current.set(id, stream);
+
+      // A mic joining a MUTED session must arrive muted. Otherwise plugging one
+      // in silently un-mutes part of the room — the mute state the clinician
+      // set would only apply to the sources that happened to be present when
+      // they pressed it — and the eventual unmute() would land on a track that
+      // was already live.
+      if (store.isMuted) {
+        for (const track of stream.getAudioTracks?.() ?? []) {
+          track.enabled = false;
+        }
+      }
+
+      // Registered for teardown as well: the mixer stops a source's tracks on
+      // removal/dispose, but the `sourceStreamsRef` contract is that it holds
+      // EVERY stream the session owns, so a mixer that throws mid-teardown
+      // still leaves nothing hot.
+      sourceStreamsRef.current = [...sourceStreamsRef.current, stream];
+      watchSourceForLoss(stream);
+      publishSourceIds();
+
+      logger?.info('Capture source added to the live mix', {
+        operation: 'addSource',
+        component: 'useArcaAudio',
+        attributes: { id, gain, fromStream: !!input.stream, sourceCount: sourceIdsRef.current.length },
+      });
+      return id;
+    },
+    [store, getLogger, nextSourceId, publishSourceIds, watchSourceForLoss],
+  );
+
+  /**
+   * Drop a capture source from the live mix (TASK-609). The mixer stops that
+   * source's tracks, so the microphone is released immediately.
+   *
+   * Removing the LAST source is refused: an empty mix is not a capture state,
+   * it is silence on an open socket — indistinguishable, downstream, from the
+   * failure modes this ticket exists to eliminate. Use `stop()`.
+   */
+  const removeSource = useCallback(
+    (id: string): void => {
+      const mixer = mixerRef.current;
+      if (!mixer) throw new Error('useArcaAudio.removeSource: this capture session has no mixer.');
+      if (!sourceIdsRef.current.includes(id)) throw new Error(`useArcaAudio.removeSource: unknown source id "${id}".`);
+      if (sourceIdsRef.current.length <= 1) {
+        throw new Error('useArcaAudio.removeSource: refusing to remove the last capture source — call stop() to end capture instead.');
+      }
+
+      mixer.removeSource(id);
+      sourceIdsRef.current = sourceIdsRef.current.filter((existing) => existing !== id);
+
+      // Drop the stream from the teardown/mute set too (TASK-611) — otherwise
+      // it lingers in `sourceStreamsRef` for the rest of the session: dead to
+      // the mixer but still walked by `applyEnabledToAllSources` and
+      // `stopAudio`'s teardown loop. `sourceStreamsRef` is positional with no
+      // id of its own, so the lookup goes through `sourceIdToStreamRef`.
+      const removedStream = sourceIdToStreamRef.current.get(id);
+      sourceIdToStreamRef.current.delete(id);
+      if (removedStream) {
+        sourceStreamsRef.current = sourceStreamsRef.current.filter((existing) => existing !== removedStream);
+      }
+
+      publishSourceIds();
+
+      getLogger()?.info('Capture source removed from the live mix', {
+        operation: 'removeSource',
+        component: 'useArcaAudio',
+        attributes: { id, sourceCount: sourceIdsRef.current.length },
+      });
+    },
+    [getLogger, publishSourceIds],
+  );
+
+  /**
+   * Set a source's linear gain in the live mix (`1.0` = unity) — the balance
+   * control for "the room mic is much quieter than the headset" (TASK-609).
+   * Independent of the mixer's own `1/√N` master normalization.
+   */
+  const setSourceGain = useCallback((id: string, gain: number): void => {
+    const mixer = mixerRef.current;
+    if (!mixer) throw new Error('useArcaAudio.setSourceGain: this capture session has no mixer.');
+    if (!Number.isFinite(gain) || gain < 0) throw new Error(`useArcaAudio.setSourceGain: gain must be a finite number >= 0 (got ${gain}).`);
+    mixer.setSourceGain(id, gain);
+  }, []);
 
   /**
    * Start capture from the user's persisted preferences.
@@ -780,6 +1059,14 @@ export function useArcaAudio() {
         uplinkTimerRef.current = null;
       }
 
+      // Detach the device-loss watchers BEFORE the tracks are stopped, so the
+      // teardown's own `track.stop()` cannot fire an `ended` handler and post a
+      // "device disconnected" error for a perfectly normal Stop (TASK-609).
+      releaseSourceWatchers();
+      sourceIdsRef.current = [];
+      sourceIdToStreamRef.current.clear();
+      store.setAudioSourceIds?.([]);
+
       // Tear down the N-source mixer (its dispose() removes every source, which
       // stops that source's tracks — and stops per-source level monitoring, so
       // no analyser tap or sampling timer can outlive the capture session).
@@ -854,7 +1141,7 @@ export function useArcaAudio() {
     });
     stopInFlightRef.current = inFlight;
     return inFlight;
-  }, [store, getLogger]);
+  }, [store, getLogger, releaseSourceWatchers]);
 
   /**
    * Switch the live streaming session's ASR engine (TASK-586 Lane D —
@@ -948,29 +1235,52 @@ export function useArcaAudio() {
     [switchProvider],
   );
 
+  /**
+   * Apply an `enabled` state to the audio tracks of EVERY source the session
+   * owns (TASK-609).
+   *
+   * Mute used to act on `store.activeStream` alone — the FIRST resolved source.
+   * With N mixed microphones (TASK-597) or a mic added at runtime, that muted
+   * microphone 1 and left the rest of the room live on the socket while the UI
+   * said "muted": a privacy failure in a consultation, not a cosmetic one.
+   *
+   * `sourceStreamsRef` is the authoritative list (see its REF CONTRACT), but
+   * `activeStream` is unioned in so a stream the ref never saw is still covered,
+   * and the union is DE-DUPLICATED by track identity because `activeStream` is
+   * normally `sourceStreams[0]`.
+   *
+   * Deliberately still `track.enabled`, not `AudioMixer.muteSource`: a
+   * single-source session has no mixer by design, which is the most common
+   * case of all.
+   */
+  const applyEnabledToAllSources = useCallback(
+    (enabled: boolean) => {
+      const seen = new Set<MediaStreamTrack>();
+      for (const stream of [...sourceStreamsRef.current, ...(store.activeStream ? [store.activeStream] : [])]) {
+        for (const track of stream.getAudioTracks?.() ?? []) {
+          if (seen.has(track)) continue;
+          seen.add(track);
+          track.enabled = enabled;
+        }
+      }
+      return seen.size;
+    },
+    [store],
+  );
+
   const muteAudio = useCallback(() => {
     const logger = getLogger();
-    logger?.debug('Muting audio', { operation: 'muteAudio', component: 'useArcaAudio' });
     store.setIsMuted(true);
-    const { activeStream } = store;
-    if (activeStream) {
-      activeStream.getAudioTracks().forEach((t) => {
-        t.enabled = false;
-      });
-    }
-  }, [store, getLogger]);
+    const trackCount = applyEnabledToAllSources(false);
+    logger?.debug('Muting audio', { operation: 'muteAudio', component: 'useArcaAudio', attributes: { trackCount } });
+  }, [store, getLogger, applyEnabledToAllSources]);
 
   const unmuteAudio = useCallback(() => {
     const logger = getLogger();
-    logger?.debug('Unmuting audio', { operation: 'unmuteAudio', component: 'useArcaAudio' });
     store.setIsMuted(false);
-    const { activeStream } = store;
-    if (activeStream) {
-      activeStream.getAudioTracks().forEach((t) => {
-        t.enabled = true;
-      });
-    }
-  }, [store, getLogger]);
+    const trackCount = applyEnabledToAllSources(true);
+    logger?.debug('Unmuting audio', { operation: 'unmuteAudio', component: 'useArcaAudio', attributes: { trackCount } });
+  }, [store, getLogger, applyEnabledToAllSources]);
 
   const toggleNoiseFilter = useCallback(
     async (enabled?: boolean) => {
@@ -1070,11 +1380,18 @@ export function useArcaAudio() {
       // NOT infer attribution from an empty array. `level` above is unchanged:
       // it stays the single MIXED level every existing consumer reads.
       sourceLevels: store.audioSourceLevels ?? [],
+      // Ids of the sources in the live mix (TASK-609), index-aligned with
+      // `sourceLevels`. `[]` when there is no mixer — see `dynamicSources`.
+      sourceIds: store.audioSourceIds ?? [],
       // Streaming STT connection health + active pipeline (TASK-567 Phase F).
       sttConnectionState: store.sttConnectionState,
       activePipeline: store.activePipeline,
       start: startAudio,
       startFromPreferences,
+      // Runtime source management (TASK-609) — mid-session, session-preserving.
+      addSource,
+      removeSource,
+      setSourceGain,
       stop: stopAudio,
       switchToFallback,
       switchProvider,
@@ -1098,10 +1415,14 @@ export function useArcaAudio() {
       store.audioLostThisSession,
       store.audioUplinkBitrate,
       store.audioSourceLevels,
+      store.audioSourceIds,
       store.sttConnectionState,
       store.activePipeline,
       startAudio,
       startFromPreferences,
+      addSource,
+      removeSource,
+      setSourceGain,
       stopAudio,
       switchToFallback,
       switchProvider,
