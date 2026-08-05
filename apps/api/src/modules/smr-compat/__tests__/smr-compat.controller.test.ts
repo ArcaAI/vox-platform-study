@@ -615,8 +615,8 @@ describe('SmrCompatController', () => {
       const res = await invokePresummary(preRequest());
 
       const [, body] = http.axiosRef.post.mock.calls[0];
-      expect(body.temperature).toBe(0.2);
-      expect(body.max_tokens).toBe(800);
+      expect(body.temperature).toBe(0);
+      expect(body.max_tokens).toBe(32_768);
       expect(res.pre_summary).toContain('Hypertension');
       // v1 guarantees the 5 canonical sections in order.
       expect(res.structured_data.sections).toHaveLength(5);

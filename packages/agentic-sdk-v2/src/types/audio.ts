@@ -339,8 +339,19 @@ export interface AudioStartOptions {
    * mic, several simulate several mics mixed down to one uplink.
    *
    * Mutually exclusive with the deviceId fields: when set, `deviceId` /
-   * `secondaryDeviceId` / `additionalDeviceIds` are ignored. Every injected
-   * stream is stopped on `stop()` exactly like an acquired one.
+   * `secondaryDeviceId` / `additionalDeviceIds` are ignored.
+   *
+   * OWNERSHIP (TASK-612 OD-1a): injected streams are CALLER-owned. `stop()`
+   * (and a failed `start()`) unwires them from the graph but never stops
+   * their tracks — the same stream object can be passed to the next
+   * `start()` and will simply work. Only streams the SDK itself opened via
+   * `getUserMedia` are stopped by SDK teardown. Corollary: releasing the
+   * microphone of an injected stream is the CALLER's job; forgetting it
+   * leaves the browser's recording indicator lit after `stop()`.
+   *
+   * Every entry must have at least one live audio track at `start()` —
+   * a dead or trackless stream rejects with `SOURCE_STREAM_NOT_LIVE`
+   * instead of producing a silent uplink.
    */
   sourceStreams?: MediaStream[];
   /**

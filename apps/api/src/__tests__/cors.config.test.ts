@@ -12,11 +12,13 @@ import { getCorsOrigins } from '../cors.config';
  */
 describe('getCorsOrigins', () => {
   describe('development', () => {
-    it('returns the exact AC-4 localhost-only RegExp', () => {
+    it('returns the localhost + compat-playground allowlist RegExp', () => {
       const origin = getCorsOrigins('development');
 
       expect(origin).toBeInstanceOf(RegExp);
-      expect((origin as RegExp).source).toBe('^https?:\\/\\/(localhost|127\\.0\\.0\\.1)(:\\d+)?$');
+      expect((origin as RegExp).source).toBe(
+        '^(?:https?:\\/\\/(?:localhost|127\\.0\\.0\\.1)(?::\\d+)?|https:\\/\\/compat-playground\\.taphuynh\\.dev)$',
+      );
     });
 
     it.each([
@@ -27,6 +29,8 @@ describe('getCorsOrigins', () => {
       ['http://127.0.0.1', true],
       ['http://127.0.0.1:5173', true],
       ['https://127.0.0.1:5174', true],
+      // The explicitly allowed compatibility playground (https only).
+      ['https://compat-playground.taphuynh.dev', true],
     ])('matches %s -> %s', (candidate, expected) => {
       const origin = getCorsOrigins('development') as RegExp;
       expect(origin.test(candidate)).toBe(expected);

@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet._
+
+---
+
+## [2.0.4] — 2026-08-05
+
+### Added / Changed — TASK-612 (external-microphone / injected-stream hardening)
+
+Hardens the `sourceStreams` / `addSource({ stream })` external-audio
+integration seam end to end: previously-silent failure paths around it now
+fail loudly, and stream ownership between the SDK and the caller is now
+explicit. Touches `useArcaAudio`, the `useAudioCapture`/`useArcaSpeechToText`
+compat hooks, and `@arcaai/room`'s `AudioMixer`. Full contract:
+[`docs/Compat-API-Reference.md` §8](docs/Compat-API-Reference.md#8-external-microphones--injected-streams).
+
+- **New `AgenticErrorCode` members:** `SOURCE_STREAM_NOT_LIVE` (a
+  `sourceStreams` entry, or the stream passed to `addSource({ stream })`, has
+  no audio track — or none with `readyState === 'live'`) and
+  `CAPTURE_OPTIONS_DROPPED` (`useArcaAudio.start()` now REJECTS, instead of
+  only `logger.warn`ing, when the compat start-race drops a call's
+  capture-shaped options: `deviceId`, `secondaryDeviceId`,
+  `additionalDeviceIds`, `sourceStreams`, `sourceGains`, `audioProcessing`,
+  `dynamicSources`).
+- **BEHAVIOR CHANGE — caller-owned stream ownership.** `useArcaAudio` (and
+  therefore `useAudioCapture`) no longer stops the tracks of an injected
+  stream (`sourceStreams`, `addSource({ stream })`) on `stop()`, a failed
+  `start()`, or mixer removal/dispose. The same `MediaStream` object can now
+  be reused across sessions. Integrators that relied on the SDK releasing an
+  injected stream's microphone must now call `track.stop()` themselves.
+  SDK-opened (`deviceId`) streams are unaffected — released exactly as
+  before. `@arcaai/room`'s `AudioMixer.addSource()` gained the per-source
+  `stopTracksOnRemove` option (default `true`, the pre-TASK-612 behavior)
+  backing this.
+- **Silent-uplink watchdog.** A streaming session with 5 continuous seconds
+  of zero input level (while unmuted) is now flagged: the store gains
+  `audioSignalState: 'ok' | 'silent'`, and `useArcaSpeechToText`'s `onStatus`
+  gains two events — `'no_audio_signal'` / `'audio_signal_restored'` — each
+  firing once per transition, never on mount.
+- **`useAudioCapture` diagnostics parity.** Additive return fields
+  `uplinkBitrate`, `audioLost`, `droppedFrames`, mirroring the native
+  `useArcaAudio()` store fields of the same purpose.
+- **Empty-final suppression.** A whitespace-only final transcript no longer
+  produces a transcript segment, a context POST, or a synthesized
+  `onTranscript` call. `useArcaSpeechToText.stopTranscription()` also now
+  resets its interim-dedup ref, so an identical first interim in the next
+  session is no longer silently swallowed.
+- No breaking changes — every item above is additive or error-surfacing;
+  frozen v1-compat signatures are unchanged.
+
+---
+
+## [2.0.3] and earlier
+
+Everything below shipped in the packages published up to 2.0.3; per-version
+sectioning was not yet in place, so first-shipped versions are unrecorded.
+
 ### Added — TASK-302 Stream D (optimistic locking on config writes)
 
 - `useGlobalSettings.get(id)` now captures the response `ETag` header

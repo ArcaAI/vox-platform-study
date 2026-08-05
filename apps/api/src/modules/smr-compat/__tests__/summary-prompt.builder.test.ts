@@ -68,9 +68,9 @@ describe('buildSummaryPrompt', () => {
     expect(user).toContain('2026-05 Cardiology: BP review.');
   });
 
-  it('selects Malayalam language guidance for ml', () => {
+  it('uses the English summary directive for ml (Malayalam handled by upstream translation)', () => {
     const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
-    expect(system).toContain('Malayalam');
+    expect(system).toContain('Write the summary in English');
   });
 
   it('emits a JSON-only instruction so structured output round-trips', () => {

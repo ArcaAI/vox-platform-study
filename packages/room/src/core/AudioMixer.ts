@@ -19,6 +19,32 @@ export interface AudioMixerSource {
    * never connected to the destination, so it contributes nothing to the mix.
    */
   analyser?: AnalyserNode | null;
+  /**
+   * Resolved from {@link AudioMixerAddSourceOptions.stopTracksOnRemove} at
+   * `addSource` time — `true` (stop the tracks on removal/dispose) unless the
+   * caller opted out. See that option for why the distinction exists.
+   */
+  stopTracksOnRemove: boolean;
+}
+
+/** Per-source options for {@link AudioMixer.addSource}. */
+export interface AudioMixerAddSourceOptions {
+  /**
+   * Whether the mixer may stop this source's `MediaStreamTrack`s when the
+   * source is removed (`removeSource`, and therefore `dispose`, which removes
+   * every source). Defaults to `true` — the behaviour every pre-TASK-612
+   * caller relies on.
+   *
+   * Pass `false` for a stream the mixer's CALLER built and still owns (an
+   * injected external-microphone stream, a file-backed
+   * `MediaStreamAudioDestinationNode.stream`, a remote track). Stopping such a
+   * stream is not cleanup, it is destruction of someone else's object: the
+   * owner's next session reuses the same `MediaStream`, finds every track
+   * `ended`, and gets a structurally valid capture whose uplink carries
+   * silence. With `false` the mixer still disconnects the nodes and forgets
+   * the source — only the tracks are left alone, for their owner to stop.
+   */
+  stopTracksOnRemove?: boolean;
 }
 
 /** One source's current input level, on the same 0–100 scale the SDK meter uses. */
@@ -95,7 +121,7 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
     this.masterGain.connect(this.destination);
   }
 
-  addSource(id: string, stream: MediaStream, gain = 1.0): void {
+  addSource(id: string, stream: MediaStream, gain = 1.0, options: AudioMixerAddSourceOptions = {}): void {
     if (this.disposed) throw new Error('AudioMixer is disposed');
     if (this.sources.has(id)) throw new Error(`Source "${id}" already exists`);
 
@@ -106,7 +132,19 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
     sourceNode.connect(gainNode);
     gainNode.connect(this.masterGain);
 
-    const source: AudioMixerSource = { id, stream, sourceNode, gainNode, muted: false, analyser: null };
+    // Ownership is decided HERE, once, and stored on the source record: it is a
+    // property of where the stream came from, so a later removal never has to
+    // guess. `!== false` keeps the default `true` for every existing caller,
+    // including one that passes an options object without the key.
+    const source: AudioMixerSource = {
+      id,
+      stream,
+      sourceNode,
+      gainNode,
+      muted: false,
+      analyser: null,
+      stopTracksOnRemove: options.stopTracksOnRemove !== false,
+    };
     this.sources.set(id, source);
     // A source added WHILE monitoring is running gets its tap immediately —
     // otherwise it would silently report 0 for the rest of the session.
@@ -123,7 +161,11 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
     this.detachAnalyser(source);
     source.sourceNode.disconnect();
     source.gainNode.disconnect();
-    source.stream.getTracks().forEach((t) => t.stop());
+    // Unwiring is unconditional; STOPPING the tracks is not. A caller-owned
+    // source (`stopTracksOnRemove: false`) leaves this method with its tracks
+    // still `live` — the mixer has forgotten it, and its owner decides when it
+    // ends (TASK-612).
+    if (source.stopTracksOnRemove) source.stream.getTracks().forEach((t) => t.stop());
     this.sources.delete(id);
     this.levels.delete(id);
     this.updateMasterGain();
@@ -327,6 +369,9 @@ export class AudioMixer extends TypedEventEmitter<AudioMixerEventMap> {
     // life of the page.
     this.stopLevelMonitoring();
 
+    // Delegated to removeSource so disposal and removal cannot drift apart —
+    // which also means dispose honours each source's `stopTracksOnRemove`:
+    // caller-owned streams survive the mixer they were mixed in (TASK-612).
     for (const [id] of this.sources) {
       this.removeSource(id);
     }

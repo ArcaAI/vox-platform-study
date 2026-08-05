@@ -129,6 +129,10 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
   // `useAudioCapture`, mirroring the languageMode store-fallback pattern).
   const pendingSttProvider = useAgenticStore((s) => s.pendingSttProvider);
   const setPendingSttProvider = useAgenticStore((s) => s.setPendingSttProvider);
+  // Silent-uplink watchdog signal (TASK-612 Lane D) — read from the store
+  // directly (same pattern as `pendingSttProvider`); `?? 'ok'` keeps older
+  // store doubles that predate the field green.
+  const audioSignalState = useAgenticStore((s) => s.audioSignalState ?? 'ok');
   useEffect(() => {
     setAudioLanguage(language);
     setSttLanguageMode(languageMode);
@@ -181,6 +185,21 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
     prevPipelineIdRef.current = pipelineId;
   }, [audio.sttConnectionState, audio.activePipeline]);
 
+  // Silent-uplink watchdog surfacing (TASK-612 Lane D, AC-4) — the same
+  // additive pattern as the reconnect events above: the frozen-but-optional
+  // v1 `onStatus` learns that the open socket is carrying pure silence
+  // (`no_audio_signal`) and that the signal came back
+  // (`audio_signal_restored`). Once per transition, nothing on mount.
+  const prevAudioSignalRef = useRef<'ok' | 'silent'>('ok');
+  useEffect(() => {
+    const emit = onStatusRef.current;
+    if (emit) {
+      if (audioSignalState === 'silent' && prevAudioSignalRef.current !== 'silent') emit('no_audio_signal');
+      if (audioSignalState === 'ok' && prevAudioSignalRef.current === 'silent') emit('audio_signal_restored');
+    }
+    prevAudioSignalRef.current = audioSignalState;
+  }, [audioSignalState]);
+
   // Capture-relative metadata TIMELINE (E2). Replaces the single sticky bag:
   // each sendAudioData appends {atMs, metadata}; finals correlate by startTime,
   // interims use most-recent. `captureStartMs` anchors the capture-relative base.
@@ -222,6 +241,11 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
     for (let i = seenFinalCountRef.current; i < segments.length; i += 1) {
       const seg = segments[i];
       if (!seg?.isFinal) continue;
+      // Belt-and-braces (TASK-612 Lane F, OD-3a): useArcaAudio already suppresses
+      // whitespace-only finals before they reach the store, but skip here too in
+      // case some other producer writes one — the cursor below still advances
+      // to `segments.length`, so a skipped segment is never re-visited.
+      if (!seg.text?.trim()) continue;
       const callerMeta = pickMetadataForFinal(metadataTimelineRef.current, seg.startTime, captureStartMsRef.current);
       const text = applyTemplate(transcriptTemplate, {
         text: seg.text,
@@ -273,6 +297,9 @@ export function useArcaSpeechToText(props: UseArcaSpeechToTextProps): UseArcaSpe
       // Reset the timeline for a clean re-open.
       metadataTimelineRef.current = [];
       captureStartMsRef.current = undefined;
+      // TASK-612 Lane F (I-2): also reset the interim dedup ref, or an identical
+      // first interim in the NEXT session is silently swallowed as a "duplicate".
+      lastInterimRef.current = '';
     } catch (err) {
       const info = toErrorInfo(err);
       setError(info);

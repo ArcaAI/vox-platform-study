@@ -111,6 +111,7 @@ export {
   // AudioMixer
   AudioMixer,
   type AudioMixerSource,
+  type AudioMixerAddSourceOptions,
   type AudioMixerEventMap,
   type AudioMixerSourceLevel,
   type AudioMixerLevelMonitorOptions,
