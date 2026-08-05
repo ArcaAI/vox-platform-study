@@ -232,6 +232,17 @@ describe('StreamingBackendSTTProvider', () => {
       expect(provider.getBytesSent()).toBe(0);
       expect(provider.getDroppedFrameCount()).toBe(1);
     });
+
+    it('skips sending empty frames after resampling (TASK-612 Lane G)', async () => {
+      // A very short input (1 sample at 48 kHz) resamples to 0 samples at 16 kHz.
+      // Empty frames must never reach the wire.
+      const droppedCountBefore = provider.getDroppedFrameCount();
+      await provider.processAudio(new Float32Array(1), 48000);
+
+      expect(wsClient.sendAudioFrame).not.toHaveBeenCalled();
+      expect(provider.getDroppedFrameCount()).toBe(droppedCountBefore);
+      expect(provider.getBytesSent()).toBe(0);
+    });
   });
 
   // C6-01 — the client's bufferedAmount watermark silently drops outbound audio;

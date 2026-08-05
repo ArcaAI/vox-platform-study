@@ -431,6 +431,47 @@ Non-goals (v2-native, not compat): listing/selecting arbitrary pipelines
 
 ---
 
+## External microphones / custom audio sources (TASK-612)
+
+v1 apps that wanted a specific or custom audio source did their **own**
+capture — built the `MediaStream`/PCM themselves and pushed it via
+`sendAudioData()`. v2 inverts that: the SDK owns capture end-to-end, so the
+way to use your own source is to hand it the `MediaStream`, not the samples.
+
+```diff
+- // v1 — app captures, pushes PCM manually
+- const stream = await getMyOwnAudioSource();
+- recordAndPush(stream, (chunk) => stt.sendAudioData(chunk));
++ // v2 — hand the SDK the stream; it captures, mixes, and transports it
++ const stream = await getMyOwnAudioSource();
++ const capture = useAudioCapture({ sourceStreams: [stream] });
++ await capture.startRecording();       // start capture FIRST
++ await stt.startTranscription();       // then STT — it never carries sources
+```
+
+- Pass one or more streams via `useAudioCapture({ sourceStreams: [stream, ...] })`,
+  or pick real input devices with `deviceId`/`secondaryDeviceId`/
+  `additionalDeviceIds` — see behavioral difference #5 above for the
+  device-mixing upgrade.
+- **Start capture first.** `useAudioCapture` and `useArcaSpeechToText` race to
+  call `audio.start()`; only the hook that actually starts FIRST has its
+  source options applied. Call `startRecording()` (carrying `sourceStreams`/
+  `deviceId`) before `startTranscription()`, never the reverse. Getting this
+  backwards is no longer silently dropped — see the reference for the exact
+  error.
+- `sendAudioData()` keeps working exactly as behavioral difference #3
+  describes — a metadata-tagging sink only, never an audio path. Don't try to
+  push your own PCM through it; that reintroduces the v1 defect #3 already
+  warns about.
+- The stream you pass is yours: the SDK never stops its tracks, so the same
+  `MediaStream` can be reused across sessions — but that also means **you**
+  release its microphone when you're done (`track.stop()`).
+- Full contract — ownership rules, liveness validation, the silent-uplink
+  watchdog, virtual/loopback-device guidance, and a troubleshooting table:
+  [`Compat-API-Reference.md` §8 External microphones & injected streams](../../../packages/agentic-sdk-v2/docs/Compat-API-Reference.md#8-external-microphones--injected-streams).
+
+---
+
 ## What you must change vs. what stays
 
 | Stays the same | Must change |

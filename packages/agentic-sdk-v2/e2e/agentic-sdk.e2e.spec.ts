@@ -25,11 +25,10 @@ test.describe('@arcaai/vox E2E Tests', () => {
       expect(exports.useAgenticStore).toBe(true);
       expect(exports.AgenticClient).toBe(true);
       expect(exports.PluginManager).toBe(true);
-      expect(exports.LifecycleManager).toBe(true);
       expect(exports.PersonalizationManager).toBe(true);
       expect(exports.ModelRegistry).toBe(true);
-      expect(exports.SessionCoordinator).toBe(true);
-      expect(exports.SessionPersistence).toBe(true);
+      expect(exports.StreamingSessionManager).toBe(true);
+      expect(exports.SttWebSocketClient).toBe(true);
     });
 
     test('should load pipeline exports', async ({ page }) => {
@@ -61,25 +60,39 @@ test.describe('@arcaai/vox E2E Tests', () => {
 
       expect(exports.CONSULTATION_ENDPOINTS).toBe(true);
       expect(exports.CONTEXT_ENDPOINTS).toBe(true);
-      expect(exports.DEFAULT_AUDIO_CONFIG).toBe(true);
+      expect(exports.SUMMARY_ENDPOINTS).toBe(true);
     });
   });
 
   test.describe('SDK Constants', () => {
+    // The endpoint maps are read INSIDE the page rather than off the serialized
+    // `window.sdkConstants` snapshot: `page.evaluate` returns JSON, which drops
+    // every function-valued endpoint builder, so a snapshot read reports
+    // `undefined` for entries that are perfectly healthy.
     test('should have CONSULTATION_ENDPOINTS', async ({ page }) => {
-      const constants = await page.evaluate(() => window.sdkConstants);
+      const endpoints = await page.evaluate(() => ({
+        open: window.SDK.CONSULTATION_ENDPOINTS.OPEN,
+        get: typeof window.SDK.CONSULTATION_ENDPOINTS.GET,
+        close: typeof window.SDK.CONSULTATION_ENDPOINTS.CLOSE,
+      }));
 
-      expect(constants.CONSULTATION_ENDPOINTS.CREATE).toBe('/consultations');
-      expect(typeof constants.CONSULTATION_ENDPOINTS.GET).toBe('function');
-      expect(typeof constants.CONSULTATION_ENDPOINTS.END).toBe('function');
+      // `CREATE`/`END` are gone: opening is get-or-create (`session.open()`), and
+      // a consultation is CLOSEd/REOPENed rather than ended.
+      expect(endpoints.open).toBe('/consultations/open');
+      expect(endpoints.get).toBe('function');
+      expect(endpoints.close).toBe('function');
     });
 
     test('should have CONTEXT_ENDPOINTS', async ({ page }) => {
-      const constants = await page.evaluate(() => window.sdkConstants);
+      const endpoints = await page.evaluate(() => ({
+        add: typeof window.SDK.CONTEXT_ENDPOINTS.ADD,
+        get: typeof window.SDK.CONTEXT_ENDPOINTS.GET,
+        update: typeof window.SDK.CONTEXT_ENDPOINTS.UPDATE,
+      }));
 
-      expect(typeof constants.CONTEXT_ENDPOINTS.ADD).toBe('function');
-      expect(typeof constants.CONTEXT_ENDPOINTS.GET).toBe('function');
-      expect(typeof constants.CONTEXT_ENDPOINTS.UPDATE).toBe('function');
+      expect(endpoints.add).toBe('function');
+      expect(endpoints.get).toBe('function');
+      expect(endpoints.update).toBe('function');
     });
 
     test('should have DEFAULT_TIMEOUT', async ({ page }) => {
@@ -175,28 +188,12 @@ test.describe('@arcaai/vox E2E Tests', () => {
     });
   });
 
-  test.describe('Lifecycle Management', () => {
-    test('should show lifecycle state after mounting', async ({ page }) => {
-      await page.click('#btn-mount-provider');
-      await page.waitForTimeout(200);
-
-      await expect(page.locator('#lifecycle-state')).toHaveText('Active');
-    });
-
-    test('should show canClose status', async ({ page }) => {
-      await page.click('#btn-mount-provider');
-      await page.waitForTimeout(200);
-
-      await expect(page.locator('#lifecycle-can-close')).toContainText('Can Close');
-    });
-
-    test('should show pending operations count', async ({ page }) => {
-      await page.click('#btn-mount-provider');
-      await page.waitForTimeout(200);
-
-      await expect(page.locator('#lifecycle-pending')).toContainText('Pending:');
-    });
-  });
+  // The "Lifecycle Management" describe block was removed along with the fixture
+  // panel it drove: `LifecycleManager`, `SessionCoordinator` and
+  // `SessionPersistence` are no longer exported and the store has no `lifecycle`
+  // slice, so its three tests asserted a subsystem that no longer exists (two of
+  // them passed only because they matched the panel's static placeholder text).
+  // Session close/reopen is covered through `useArcaSession()`.
 
   test.describe('Date Utilities', () => {
     test('should format date correctly', async ({ page }) => {
@@ -211,10 +208,14 @@ test.describe('@arcaai/vox E2E Tests', () => {
     });
 
     test('should format relative time correctly', async ({ page }) => {
-      // Set a date from a few minutes ago
+      // Set a date from a few minutes ago. `#utils-date-input` is a
+      // `datetime-local` field, so the value must be LOCAL time — feeding it
+      // `toISOString()` (UTC) shifts the instant by the runner's UTC offset and
+      // turns "5 minutes ago" into "N hours ago" everywhere but UTC.
       const now = new Date();
       now.setMinutes(now.getMinutes() - 5);
-      const isoString = now.toISOString().slice(0, 16);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const isoString = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
 
       await page.fill('#utils-date-input', isoString);
       await page.click('#btn-format-relative');
@@ -321,11 +322,15 @@ test.describe('@arcaai/vox E2E Tests', () => {
       expect(types.hasAgenticError).toBe(true);
     });
 
-    test('should export default states', async ({ page }) => {
+    test('should export plugin default configs', async ({ page }) => {
       const types = await page.evaluate(() => window.sdkTypes);
 
-      expect(types.hasDefaultAudioState).toBe(true);
-      expect(types.hasDefaultAudioPluginStates).toBe(true);
+      // NOTE: `DEFAULT_AUDIO_STATE`/`DEFAULT_AUDIO_PLUGIN_STATES` are defined in
+      // `src/types/audio.ts` but never re-exported by the root barrel, so they
+      // are not reachable by a consumer and are not asserted here.
+      expect(types.hasDefaultSttConfig).toBe(true);
+      expect(types.hasDefaultVadConfig).toBe(true);
+      expect(types.hasDefaultNoiseFilterConfig).toBe(true);
     });
   });
 
@@ -387,9 +392,6 @@ test.describe('@arcaai/vox E2E Tests', () => {
             tenantId: 'test',
           });
 
-          // Test LifecycleManager
-          const lifecycle = new SDK.LifecycleManager();
-
           // Test PersonalizationManager - needs a client
           const personalization = new SDK.PersonalizationManager(client, {
             storage: 'local',
@@ -400,7 +402,6 @@ test.describe('@arcaai/vox E2E Tests', () => {
 
           return {
             client: client !== null,
-            lifecycle: lifecycle !== null,
             personalization: personalization !== null,
             models: models !== null,
           };
@@ -411,7 +412,6 @@ test.describe('@arcaai/vox E2E Tests', () => {
 
       expect(canInstantiate.error).toBeUndefined();
       expect(canInstantiate.client).toBe(true);
-      expect(canInstantiate.lifecycle).toBe(true);
       expect(canInstantiate.personalization).toBe(true);
       expect(canInstantiate.models).toBe(true);
     });
@@ -421,35 +421,37 @@ test.describe('@arcaai/vox E2E Tests', () => {
         const { SDK } = window;
         return {
           getConsultation: SDK.CONSULTATION_ENDPOINTS.GET('test-123'),
-          endConsultation: SDK.CONSULTATION_ENDPOINTS.END('test-123'),
+          closeConsultation: SDK.CONSULTATION_ENDPOINTS.CLOSE('test-123'),
           addContext: SDK.CONTEXT_ENDPOINTS.ADD('test-123'),
           updateContext: SDK.CONTEXT_ENDPOINTS.UPDATE('test-123', 'item-456'),
         };
       });
 
       expect(endpoints.getConsultation).toBe('/consultations/test-123');
-      expect(endpoints.endConsultation).toBe('/consultations/test-123/end');
+      expect(endpoints.closeConsultation).toBe('/consultations/test-123/close');
       expect(endpoints.addContext).toBe('/consultations/test-123/context');
       expect(endpoints.updateContext).toBe('/consultations/test-123/context/item-456');
     });
   });
 
   test.describe('Store Selectors', () => {
+    // Only selectors the ROOT barrel re-exports are asserted. The bulk of
+    // `select*` (selectTranscriptions, selectCaseNotes, …) lives on
+    // `src/store/agenticStore.ts` and is consumed through `useArcaStore(selector)`
+    // inside a provider — never off the SDK namespace.
     test('should have selector functions', async ({ page }) => {
       const hasSelectors = await page.evaluate(() => {
         const { SDK } = window;
         return {
-          selectTranscriptions: typeof SDK.selectTranscriptions === 'function',
-          selectCaseNotes: typeof SDK.selectCaseNotes === 'function',
-          selectCanClose: typeof SDK.selectCanClose === 'function',
-          selectPendingOperations: typeof SDK.selectPendingOperations === 'function',
-          selectLifecycleStatus: typeof SDK.selectLifecycleStatus === 'function',
+          useArcaStore: typeof SDK.useArcaStore === 'function',
+          selectAudioDropped: typeof SDK.selectAudioDropped === 'function',
+          selectAudioDegraded: typeof SDK.selectAudioDegraded === 'function',
         };
       });
 
-      expect(hasSelectors.selectTranscriptions).toBe(true);
-      expect(hasSelectors.selectCaseNotes).toBe(true);
-      expect(hasSelectors.selectCanClose).toBe(true);
+      expect(hasSelectors.useArcaStore).toBe(true);
+      expect(hasSelectors.selectAudioDropped).toBe(true);
+      expect(hasSelectors.selectAudioDegraded).toBe(true);
     });
   });
 });

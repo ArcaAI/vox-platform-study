@@ -11,6 +11,7 @@ export { Room, RoomEvent, RoomState, createLocalTracks, type RoomEventMap } from
 export {
   AudioMixer,
   type AudioMixerSource,
+  type AudioMixerAddSourceOptions,
   type AudioMixerEventMap,
   type AudioMixerSourceLevel,
   type AudioMixerLevelMonitorOptions,

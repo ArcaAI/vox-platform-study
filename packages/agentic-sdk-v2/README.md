@@ -180,6 +180,7 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 
 **Installing the SDK (GitHub Packages auth, install command, peer deps):** [`docs/Compat-API-Reference.md#installation`](docs/Compat-API-Reference.md#installation).
 **Full compat API reference (setup, every hook's signature and gotchas, the metadata-precedence contract, reproduced v1 types):** [`docs/Compat-API-Reference.md`](docs/Compat-API-Reference.md).
+**External microphones / injected streams (start order, ownership, liveness, the silent-uplink watchdog):** [`docs/Compat-API-Reference.md` §8](docs/Compat-API-Reference.md#8-external-microphones--injected-streams).
 **Migration walkthrough:** [`docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md`](../../docs/implementation/TASK-560-v1-v2-consultation-migration/MIGRATION_GUIDE.md) — 3-step checklist, side-by-side hook table, full before/after code sample, verification checklist.
 **Working example:** `apps/compat-playground` (port 5177) — a full runnable reference exercising every compat hook end to end.
 

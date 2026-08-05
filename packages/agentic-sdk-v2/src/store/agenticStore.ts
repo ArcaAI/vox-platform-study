@@ -109,6 +109,15 @@ export interface AgenticState {
    */
   audioUplinkBitrate: number;
   /**
+   * Silent-uplink watchdog signal (TASK-612 Lane D). `'silent'` means a
+   * STREAMING session's input level has been zero for a sustained window —
+   * the socket is open and carrying structurally valid frames of nothing
+   * (wrong/default mic, OS-muted device, a suspended caller AudioContext
+   * behind an injected stream, browser APM zeroing a virtual device).
+   * Returns to `'ok'` on the first non-zero level and on capture start/stop.
+   */
+  audioSignalState: 'ok' | 'silent';
+  /**
    * Live PER-SOURCE input levels (0–100 each), index-aligned with the RESOLVED
    * capture-source order `useArcaAudio.start()` computed — i.e. with
    * `AudioStartOptions.sourceStreams`, else with
@@ -256,6 +265,8 @@ export interface AgenticActions {
   markAudioLost: () => void;
   /** Set the live uplink bitrate (bits/sec); 0 clears it (capture stopped / not streaming). */
   setAudioUplinkBitrate: (bitrate: number) => void;
+  /** Set the silent-uplink watchdog signal (see {@link AgenticState.audioSignalState}). */
+  setAudioSignalState: (state: 'ok' | 'silent') => void;
   /** Publish per-source input levels (see {@link AgenticState.audioSourceLevels}); `[]` clears them. */
   setAudioSourceLevels: (levels: number[]) => void;
   /** Publish the mixed capture-source ids (see {@link AgenticState.audioSourceIds}); `[]` clears them. */
@@ -394,6 +405,7 @@ const initialState: AgenticState = {
   audioDroppedFrameCount: 0,
   audioLostThisSession: false,
   audioUplinkBitrate: 0,
+  audioSignalState: 'ok',
   audioSourceLevels: [],
   audioSourceIds: [],
   // Streaming STT connection state starts nominal; no active pipeline yet.
@@ -560,6 +572,7 @@ const agenticStoreInitializer: StateCreator<AgenticState & AgenticActions> = (se
   markAudioLost: () => set({ audioLostThisSession: true }),
   resetAudioDropped: () => set({ audioDroppedFrameCount: 0, audioLostThisSession: false, audioUplinkBitrate: 0 }),
   setAudioUplinkBitrate: (bitrate) => set({ audioUplinkBitrate: bitrate }),
+  setAudioSignalState: (state) => set({ audioSignalState: state }),
   setAudioSourceLevels: (levels) => set({ audioSourceLevels: levels }),
   setAudioSourceIds: (ids) => set({ audioSourceIds: ids }),
   setSttConnectionState: (sttConnectionState) => set({ sttConnectionState }),

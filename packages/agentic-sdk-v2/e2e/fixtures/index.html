@@ -142,27 +142,6 @@
       border-color: #4CAF50;
       border-style: solid;
     }
-    .lifecycle-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 10px;
-    }
-    .lifecycle-card {
-      background: white;
-      padding: 10px;
-      border-radius: 4px;
-      border: 1px solid #eee;
-      text-align: center;
-    }
-    .lifecycle-card .value {
-      font-size: 14px;
-      font-weight: 500;
-    }
-    .lifecycle-card .label {
-      font-size: 11px;
-      color: #666;
-      margin-top: 4px;
-    }
   </style>
 </head>
 <body>
@@ -255,22 +234,12 @@
     </div>
   </div>
 
-  <!-- Lifecycle Management Test -->
-  <div class="section" id="lifecycle-section">
-    <h2>Lifecycle Management</h2>
-    <div class="status" id="lifecycle-status">
-      <span class="status-item info" id="lifecycle-state">Not Mounted</span>
-      <span class="status-item info" id="lifecycle-can-close">Can Close: -</span>
-      <span class="status-item info" id="lifecycle-pending">Pending: 0</span>
-    </div>
-    <div class="lifecycle-grid" id="subsystems-grid">
-      <p style="grid-column: 1/-1; text-align:center; color:#999;">Mount provider to see subsystems</p>
-    </div>
-    <div class="controls" style="margin-top:15px;">
-      <button id="btn-graceful-shutdown" class="warning" disabled>Request Graceful Shutdown</button>
-      <button id="btn-force-shutdown" class="danger" disabled>Force Shutdown</button>
-    </div>
-  </div>
+  <!--
+    The "Lifecycle Management" section was removed: `LifecycleManager`,
+    `SessionCoordinator` and `SessionPersistence` are no longer exported and the
+    store carries no `lifecycle` slice, so the panel could only ever read
+    "Not Mounted". Session close/reopen now lives on `useArcaSession()`.
+  -->
 
   <!-- Logger Test -->
   <div class="section" id="logger-section">
@@ -349,14 +318,21 @@
     </div>
   </div>
 
-  <!-- Load React and ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
-  <!-- Load the SDK -->
+  <!--
+    Self-contained ESM: no CDN, no import map, no bare specifiers. React comes out
+    of the bundle itself (see e2e/fixtures/e2e-entry.ts) so the page and the SDK
+    share ONE React instance — mounting AgenticProvider through a second copy of
+    React is an "invalid hook call".
+  -->
   <script type="module">
-    // Import SDK (E2E bundle with all dependencies bundled)
+    // Import SDK (E2E bundle — every browser-unresolvable dependency inlined)
     const SDK = await import('./dist/e2e-bundle.mjs');
+
+    // React/ReactDOM must be installed before any code below uses them.
+    window.React = SDK.__React;
+    window.ReactDOM = { createRoot: SDK.__createRoot };
+    const React = window.React;
+    const ReactDOM = window.ReactDOM;
 
     // Expose for testing
     window.SDK = SDK;
@@ -384,20 +360,21 @@
         useArcaConfig: typeof SDK.useArcaConfig === 'function',
         useArcaSession: typeof SDK.useArcaSession === 'function',
 
-        // Store
+        // Store. Only the selectors the ROOT barrel actually re-exports are
+        // checked — most `select*` helpers live on `src/store/agenticStore.ts`
+        // and are reached through `useArcaStore`, not off the SDK namespace.
         useAgenticStore: typeof SDK.useAgenticStore === 'function',
-        selectTranscriptions: typeof SDK.selectTranscriptions === 'function',
-        selectCaseNotes: typeof SDK.selectCaseNotes === 'function',
-        selectCanClose: typeof SDK.selectCanClose === 'function',
+        useArcaStore: typeof SDK.useArcaStore === 'function',
+        selectAudioDropped: typeof SDK.selectAudioDropped === 'function',
+        selectAudioDegraded: typeof SDK.selectAudioDegraded === 'function',
 
         // Core Classes
         AgenticClient: typeof SDK.AgenticClient === 'function',
         PluginManager: typeof SDK.PluginManager === 'function',
-        LifecycleManager: typeof SDK.LifecycleManager === 'function',
         PersonalizationManager: typeof SDK.PersonalizationManager === 'function',
         ModelRegistry: typeof SDK.ModelRegistry === 'function',
-        SessionCoordinator: typeof SDK.SessionCoordinator === 'function',
-        SessionPersistence: typeof SDK.SessionPersistence === 'function',
+        StreamingSessionManager: typeof SDK.StreamingSessionManager === 'function',
+        SttWebSocketClient: typeof SDK.SttWebSocketClient === 'function',
 
         // Pipelines
         TranscriptionPipeline: typeof SDK.TranscriptionPipeline === 'function',
@@ -419,7 +396,7 @@
         // Constants
         CONSULTATION_ENDPOINTS: typeof SDK.CONSULTATION_ENDPOINTS === 'object',
         CONTEXT_ENDPOINTS: typeof SDK.CONTEXT_ENDPOINTS === 'object',
-        DEFAULT_AUDIO_CONFIG: typeof SDK.DEFAULT_AUDIO_CONFIG === 'object',
+        SUMMARY_ENDPOINTS: typeof SDK.SUMMARY_ENDPOINTS === 'object',
       };
 
       const moduleStatus = document.getElementById('module-status');
@@ -471,10 +448,15 @@
 
     // Check type exports
     function checkTypes() {
+      // `DEFAULT_AUDIO_STATE`/`DEFAULT_AUDIO_PLUGIN_STATES` are NOT checked: they
+      // exist in `src/types/audio.ts` but the root barrel does not re-export them,
+      // so they are not part of the surface a consumer can reach. The plugin
+      // default configs below are the ones that are.
       const types = {
         hasAgenticError: typeof SDK.AgenticError === 'function',
-        hasDefaultAudioState: typeof SDK.DEFAULT_AUDIO_STATE === 'object',
-        hasDefaultAudioPluginStates: typeof SDK.DEFAULT_AUDIO_PLUGIN_STATES === 'object',
+        hasDefaultSttConfig: typeof SDK.DEFAULT_STT_CONFIG === 'object',
+        hasDefaultVadConfig: typeof SDK.DEFAULT_VAD_CONFIG === 'object',
+        hasDefaultNoiseFilterConfig: typeof SDK.DEFAULT_NOISE_FILTER_CONFIG === 'object',
       };
 
       document.getElementById('types-output').innerHTML = `
@@ -506,15 +488,6 @@
         document.getElementById('store-context').textContent = store.contextItems?.length || 0;
         document.getElementById('store-summaries').textContent = store.summaries?.length || 0;
         document.getElementById('store-entities').textContent = store.entities?.length || 0;
-
-        // Lifecycle
-        if (store.lifecycle) {
-          const lifecycle = store.lifecycle;
-          document.getElementById('lifecycle-state').textContent = 'Active';
-          document.getElementById('lifecycle-state').className = 'status-item healthy';
-          document.getElementById('lifecycle-can-close').textContent = `Can Close: ${lifecycle.canClose ? 'Yes' : 'No'}`;
-          document.getElementById('lifecycle-pending').textContent = `Pending: ${lifecycle.pendingOperations?.length || 0}`;
-        }
       } catch (e) {
         logEvent(`Store error: ${e.message}`, 'error');
       }
@@ -525,9 +498,14 @@
       const { AgenticProvider } = SDK;
       const container = document.getElementById('react-root');
 
+      // `AgenticConfig` nests connection settings under `api` — a flat
+      // `{ baseUrl, tenantId }` makes the provider throw on `cfg.api.tenantId`
+      // and render nothing.
       const config = {
-        baseUrl: document.getElementById('config-base-url').value,
-        tenantId: document.getElementById('config-tenant-id').value,
+        api: {
+          baseUrl: document.getElementById('config-base-url').value,
+          tenantId: document.getElementById('config-tenant-id').value,
+        },
         personalization: {
           storage: document.getElementById('config-personalization').value,
         },
@@ -543,10 +521,10 @@
         React.createElement('div', { style: { padding: '20px', textAlign: 'center' } },
           React.createElement('p', { style: { color: '#4CAF50', fontWeight: 'bold' } }, '✓ AgenticProvider Mounted'),
           React.createElement('p', { style: { fontSize: '12px', color: '#666' } },
-            `Base URL: ${config.baseUrl}`
+            `Base URL: ${config.api.baseUrl}`
           ),
           React.createElement('p', { style: { fontSize: '12px', color: '#666' } },
-            `Tenant: ${config.tenantId}`
+            `Tenant: ${config.api.tenantId}`
           )
         )
       );
@@ -560,8 +538,6 @@
       document.getElementById('btn-mount-provider').disabled = true;
       document.getElementById('btn-unmount-provider').disabled = false;
       document.getElementById('btn-refresh-store').disabled = false;
-      document.getElementById('btn-graceful-shutdown').disabled = false;
-      document.getElementById('btn-force-shutdown').disabled = false;
       document.getElementById('btn-log-debug').disabled = false;
       document.getElementById('btn-log-info').disabled = false;
       document.getElementById('btn-log-warn').disabled = false;
@@ -604,8 +580,6 @@
       document.getElementById('btn-mount-provider').disabled = false;
       document.getElementById('btn-unmount-provider').disabled = true;
       document.getElementById('btn-refresh-store').disabled = true;
-      document.getElementById('btn-graceful-shutdown').disabled = true;
-      document.getElementById('btn-force-shutdown').disabled = true;
       document.getElementById('btn-log-debug').disabled = true;
       document.getElementById('btn-log-info').disabled = true;
       document.getElementById('btn-log-warn').disabled = true;
@@ -618,9 +592,6 @@
       document.getElementById('store-context').textContent = '-';
       document.getElementById('store-summaries').textContent = '-';
       document.getElementById('store-entities').textContent = '-';
-
-      document.getElementById('lifecycle-state').textContent = 'Not Mounted';
-      document.getElementById('lifecycle-state').className = 'status-item info';
 
       logEvent('AgenticProvider unmounted', 'info');
       window.reactMounted = false;

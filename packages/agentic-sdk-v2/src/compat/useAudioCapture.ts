@@ -145,6 +145,27 @@ export interface UseAudioCaptureReturn {
   getDeviceStatus: () => Promise<AudioDeviceStatus | null>;
   error: ErrorInfo | null;
   isReady: boolean;
+  /**
+   * Live outbound STT uplink bitrate (bits/sec), straight off the store's
+   * `audioUplinkBitrate` (published by `useArcaAudio`'s 1 Hz uplink-bytes
+   * sampler). `0` when not streaming, or when the store field is undefined
+   * (a test-double store) — same degrade-honestly rule as `sourceLevels`.
+   */
+  uplinkBitrate: number;
+  /**
+   * Session-sticky latch off the store's `audioLostThisSession` (TASK-612
+   * finding I-3): true once outbound audio was dropped at the streaming STT
+   * transport's backpressure watermark THIS capture session. Survives
+   * reconnect; clears only on the next start. `false` when the store field
+   * is undefined.
+   */
+  audioLost: boolean;
+  /**
+   * Count of outbound audio frames dropped this session, off the store's
+   * `audioDroppedFrameCount` — the running total behind {@link audioLost}.
+   * `0` when the store field is undefined.
+   */
+  droppedFrames: number;
 }
 
 function toErrorInfo(err: unknown): ErrorInfo {
@@ -179,6 +200,12 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
   // store-fallback pattern (order-independent with `useArcaSpeechToText`).
   const pendingSttProvider = useAgenticStore((s) => s.pendingSttProvider);
   const setPendingSttProvider = useAgenticStore((s) => s.setPendingSttProvider);
+  // Diagnostics parity (TASK-612 Lane E, AC-5) — atomic per-field selectors,
+  // one per store field, so this hook re-renders only on the field it reads
+  // rather than the whole audio slice.
+  const uplinkBitrate = useAgenticStore((s) => s.audioUplinkBitrate);
+  const audioLostThisSession = useAgenticStore((s) => s.audioLostThisSession);
+  const audioDroppedFrameCount = useAgenticStore((s) => s.audioDroppedFrameCount);
 
   const [deviceStatus, setDeviceStatus] = useState<AudioDeviceStatus | null>(null);
   const [error, setError] = useState<ErrorInfo | null>(null);
@@ -296,5 +323,11 @@ export function useAudioCapture(props: UseAudioCaptureProps = {}): UseAudioCaptu
     getDeviceStatus,
     error,
     isReady: true,
+    // Diagnostics parity (TASK-612 Lane E) — straight off the store, no
+    // polling, no derived computation; degrade to 0/false when a test-double
+    // store never set the field.
+    uplinkBitrate: uplinkBitrate ?? 0,
+    audioLost: audioLostThisSession ?? false,
+    droppedFrames: audioDroppedFrameCount ?? 0,
   };
 }

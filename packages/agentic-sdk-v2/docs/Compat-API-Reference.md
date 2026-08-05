@@ -2,7 +2,7 @@
 
 **Package**: `@arcaai/vox` &middot; **Entry point**: `@arcaai/vox/compat` &middot; **Version**: 2.0.1
 
-> Verified directly against source in `packages/agentic-sdk-v2/src/compat/` (2026-08-03).
+> Verified directly against source in `packages/agentic-sdk-v2/src/compat/` (2026-08-05).
 > This document covers **only** the v1-compat surface. For the rest of the SDK
 > (core hooks, audio pipeline, session lifecycle), see
 > [`../README.md`](../README.md) and [`API-Reference.md`](API-Reference.md).
@@ -20,8 +20,9 @@
 - [5. `useArcaSttProvider`](#5-usearcasttprovider)
 - [6. `useArcaSttLanguageModes`](#6-usearcasttlanguagemodes)
 - [7. `useArcaBatchTranscription`](#7-usearcabatchtranscription)
-- [8. Reproduced v1 type surface](#8-reproduced-v1-type-surface)
-- [9. Defects/anti-patterns deliberately not reproduced](#9-defectsanti-patterns-deliberately-not-reproduced)
+- [8. External microphones & injected streams](#8-external-microphones--injected-streams)
+- [9. Reproduced v1 type surface](#9-reproduced-v1-type-surface)
+- [10. Defects/anti-patterns deliberately not reproduced](#10-defectsanti-patterns-deliberately-not-reproduced)
 - [Related docs](#related-docs)
 - [Source file index](#source-file-index)
 
@@ -197,6 +198,8 @@ function useAudioCapture(props?: {
   additionalDeviceIds?: string[];
   sourceStreams?: MediaStream[]; // pre-built (e.g. file-backed) streams INSTEAD of getUserMedia
   sourceGains?: number[]; // per-source linear mixer gain, index-aligned with the resolved source list
+  dynamicSources?: boolean; // build a mixer even for ONE source (TASK-609) — see the caveat below
+  audioProcessing?: AudioProcessingConstraints; // browser echoCancellation/noiseSuppression/autoGainControl (TASK-608)
   // Stop-drain tuning (TASK-597 follow-up #4) — additive, no v1 ancestor
   drainTimeoutMs?: number;
   quietWindowMs?: number;
@@ -211,6 +214,9 @@ function useAudioCapture(props?: {
   getDeviceStatus: () => Promise<AudioDeviceStatus | null>;
   error: ErrorInfo | null;
   isReady: boolean;
+  uplinkBitrate: number; // TASK-612 — live outbound STT uplink bitrate (bits/sec); 0 when not streaming
+  audioLost: boolean; // TASK-612 — session-sticky latch: true once outbound audio was dropped this session
+  droppedFrames: number; // TASK-612 — count of outbound audio frames dropped this session
 };
 ```
 
@@ -219,8 +225,11 @@ function useAudioCapture(props?: {
 - `startRecording()` calls `audio.start({ pipelineId: options?.sttPipelineId, language?, languageMode?, startOn?, deviceId?, secondaryDeviceId?, additionalDeviceIds?, sourceStreams?, sourceGains?, drainTimeoutMs?, quietWindowMs? })`. If a pre-start provider selection is pending (see `useArcaSttProvider` below), it's applied here as `startOn` and then cleared.
 - `onAudioData` is accepted for source-compat but **never invoked** — v2 owns the full capture→mix→noise→VAD→STT pipeline and transport internally.
 - `language`/`languageMode` are additive (no v1 ancestor). Because this hook and `useArcaSpeechToText` race to call `audio.start` first, **both** hooks also write the selection into the shared store (`setAudioLanguage`/`setSttLanguageMode`, read by `useArcaSpeechToText`) so the outcome is order-independent — whichever hook starts first, the selection isn't dropped.
-- **Audio source selection (TASK-597)**, all additive/optional (omitting them keeps the frozen v1 behavior): `deviceId`/`secondaryDeviceId`/`additionalDeviceIds` pick real input devices; `sourceStreams` injects pre-built streams (e.g. file-backed) INSTEAD of `getUserMedia`; `sourceGains` sets a per-source linear mixer gain, index-aligned with the resolved source list. Unlike `languageMode`/`pendingSttProvider` there is **no store-backed fallback** for these — a `MediaStream` is a live, non-serializable resource, so ownership would become ambiguous if parked in the shared store. They're honored only when capture is started from **this hook** — the documented order for a capture-first consumer (the compat playground); `useArcaSpeechToText` never carries source options.
+- **Audio source selection (TASK-597)**, all additive/optional (omitting them keeps the frozen v1 behavior): `deviceId`/`secondaryDeviceId`/`additionalDeviceIds` pick real input devices; `sourceStreams` injects pre-built streams (e.g. file-backed) INSTEAD of `getUserMedia`; `sourceGains` sets a per-source linear mixer gain, index-aligned with the resolved source list. Unlike `languageMode`/`pendingSttProvider` there is **no store-backed fallback** for these — a `MediaStream` is a live, non-serializable resource, so ownership would become ambiguous if parked in the shared store. They're honored only when capture is started from **this hook** — the documented order for a capture-first consumer (the compat playground); `useArcaSpeechToText` never carries source options. Full ownership/liveness/troubleshooting contract for `sourceStreams`: [§8 External microphones & injected streams](#8-external-microphones--injected-streams).
+- **`dynamicSources`** (TASK-609), forwarded verbatim to `audio.start(...)`: builds an `AudioMixer` even for a single capture source, so the mix could be changed mid-session (via runtime `addSource`/`removeSource`/`setSourceGain`) without tearing capture down. On the compat surface today this only pre-arms the mixer — those runtime methods live on the native `useArcaAudio()` only and are **not yet exposed through `/compat`** (OD-4, deferred to a follow-up ticket), so passing `dynamicSources: true` alone has no directly observable effect for a pure-compat consumer.
+- **`audioProcessing`** (TASK-608), forwarded verbatim to `audio.start(...)` and applied to every capture source's `getUserMedia` constraints: `{ echoCancellation?, noiseSuppression?, autoGainControl? }`, each defaulting to the browser's own ON default when omitted. This is **not** the same switch as `V1SdkConfig.audioSettings.noiseSuppression` (which toggles the SDK's own RNNoise stage) — this one is the *browser's* DSP, which runs before the SDK ever sees a sample. **Ignored when `sourceStreams` is used** — see [§8](#8-external-microphones--injected-streams).
 - **`sourceLevels`** (TASK-597 follow-up #2): PER-SOURCE input levels (0–100 each), index-aligned with the resolved capture-source order — with `sourceStreams` when streams are injected, otherwise with `[deviceId, secondaryDeviceId, ...additionalDeviceIds]`. REACTIVE (re-renders as levels change), unlike `getDeviceStatus()`, which still requires polling. `deviceStatus.audioLevel` is unchanged and remains the single MIXED level — the v1 shape stays frozen. `[]` means no per-source signal (not recording, or a runtime that cannot analyse) — attribution is then genuinely unknown. One entry means a single-source session, where that source is the whole mix and attribution to it is exact.
+- **`uplinkBitrate` / `audioLost` / `droppedFrames`** (TASK-612 Lane E, additive): live diagnostics straight off the store, no polling. `uplinkBitrate` is the outbound STT uplink in bits/sec (`0` when not streaming). `audioLost` is a session-sticky latch that flips `true` once any outbound audio frame was dropped at the streaming transport's backpressure watermark — it survives reconnect and clears only on the next `startRecording()`. `droppedFrames` is the running count behind it. All three degrade to `0`/`false` when the underlying store field is unset (e.g. a test double), the same rule `sourceLevels` already follows.
 - **`drainTimeoutMs`** (TASK-597 follow-up #4): ceiling (ms) on the streaming-STT stop-drain awaited by `stopRecording()`. Forwarded verbatim to `audio.start(...)`; omit for the SDK default (1500 ms). Non-positive values are ignored. The mic is released synchronously on stop regardless — this only bounds how long the returned promise waits for the server's last transcript.
 - **`quietWindowMs`** (TASK-597): quiet window (ms) that ends the stop-drain early once the backend reports `finalizing`. Omit for the SDK default (250 ms). **`0` disables the early resolve** and is PRESERVED (only negative values are ignored) — set it to `0` with a generous `drainTimeoutMs` when the tail final matters more than teardown latency, since on a slow ASR pipeline the last transcript can trail `finalizing` by seconds.
 - `getDeviceStatus()` uses `navigator.mediaDevices.enumerateDevices()`; `permissionStatus` is inferred `'granted'` only when at least one returned device has a non-empty `label` (Chrome only populates labels post-permission).
@@ -312,7 +321,7 @@ const job = await getTranscriptionStatus(taskId);           // → Transcription
 - `isUploading` / `uploadProgress` (0–100) track the in-flight upload; a failure also lands on `error` and calls `onError`.
 - This pair is **single-file**, exactly as v1 shaped it. For many files with per-file progress and live streamed results, use [`useArcaBatchTranscription`](#7-usearcabatchtranscription).
 
-- `onStatus` (a previously-frozen-but-unwired v1 prop) also fires `'reconnecting'`/`'reconnected'` on transport reconnects, and `'provider_switched'` with `{ fromPipeline, toPipeline }` on any STT engine switch — additive behavior on an existing optional prop; apps that never pass `onStatus` are unaffected.
+- `onStatus` (a previously-frozen-but-unwired v1 prop) also fires `'reconnecting'`/`'reconnected'` on transport reconnects, `'provider_switched'` with `{ fromPipeline, toPipeline }` on any STT engine switch, and — TASK-612 Lane D — `'no_audio_signal'` when the silent-uplink watchdog detects a sustained zero-level streaming session, followed by `'audio_signal_restored'` on recovery. Each of that pair fires **once per transition, never on mount**. See [§8 External microphones & injected streams](#8-external-microphones--injected-streams) for what trips the watchdog and how long it takes. All of the above is additive behavior on an existing optional prop; apps that never pass `onStatus` are unaffected.
 
 ## 4. `useSMR`
 
@@ -467,7 +476,177 @@ Both are locked by unit tests; do not "simplify" either.
 
 A slot is held for the **whole lifecycle** — upload AND result stream — not just the upload, so `concurrency` also bounds how many SSE connections are open at once. Files past the cap sit in `pending` until a slot frees.
 
-## 8. Reproduced v1 type surface
+## 8. External microphones & injected streams
+
+TASK-612 hardened the `sourceStreams` seam (§2) end to end — the "I pass my
+own `MediaStream`(s) and get empty/no transcripts" class of v1→v2 migration
+bug. This section is the full contract; §2/§3 above link back here for the
+specifics. Ownership and liveness are enforced in `useArcaAudio`
+(`@arcaai/vox`, non-compat) and `AudioMixer` (`@arcaai/room`) — compat only
+inherits the behavior through `useAudioCapture`/`useArcaSpeechToText`.
+
+### Start order — capture-shaped options must win the start race
+
+`useAudioCapture` and `useArcaSpeechToText` drive the SAME `useArcaAudio()`
+instance (see the coordination note atop §2/§3); only the hook whose
+`audio.start(...)` call actually runs FIRST has its options applied. Always
+call `startRecording()` — carrying `sourceStreams`/`deviceId`/etc. — **before**
+`startTranscription()`, never the reverse; `startTranscription()` never
+carries source options.
+
+Since TASK-612 (Lane C), getting this backwards is no longer silent in the
+tested case: when a start reaches `useArcaAudio` while capture is already
+active AND carries capture-shaped options (`deviceId`, `secondaryDeviceId`,
+`additionalDeviceIds`, `sourceStreams`, `sourceGains`, `audioProcessing`,
+`dynamicSources`), it now REJECTS with `AgenticError('CAPTURE_OPTIONS_DROPPED', ...)`
+naming every dropped key, instead of only `logger.warn`ing as before (the verified
+case: `startTranscription()` first, `startRecording({ sourceStreams })` second).
+The rejection surfaces through `useAudioCapture`'s existing `catch` →
+`setError`/`onError` path — no new wiring needed. A call carrying only options
+the running session already applies (`language`, `pipelineId`) is unaffected
+and still resolves silently — that's the designed coordinated dual-hook start,
+not a mistake.
+
+### Stream ownership
+
+An injected stream — `sourceStreams` on `useAudioCapture`, or the native
+`useArcaAudio().addSource({ stream })` — is always **caller-owned**. Since
+TASK-612 (Lane B, OD-1a) the SDK never stops a caller-owned stream's tracks:
+`stopRecording()`, a failed `startRecording()`, and mixer
+removal/`dispose()` all unwire the stream from the capture graph but leave
+its tracks `live`. **The same `MediaStream` object can be handed to the next
+`startRecording()` and will simply work** — reuse across sessions is
+supported.
+
+The corollary: releasing an injected stream's microphone is the **caller's**
+job. If you built it from `getUserMedia` yourself, call `track.stop()` on it
+when you are truly done — the SDK will not do it for you, and forgetting it
+leaves the browser's recording indicator lit after `stopRecording()`.
+
+Streams the SDK itself opens — every `deviceId`/`secondaryDeviceId`/
+`additionalDeviceIds` source (i.e. any capture that does not pass
+`sourceStreams`) — are SDK-owned and released by SDK teardown exactly as
+before TASK-612; nothing changes for device-id capture.
+
+### Liveness — a dead or trackless stream rejects, it never streams silence
+
+Every entry in `sourceStreams` (and the stream passed to the native
+`addSource({ stream })`) must have at least one audio track with
+`readyState === 'live'` at start. Since TASK-612 (Lane A) a stream that fails
+this — no audio track at all, or every track already `ended` (the classic
+symptom of reusing a stream the SDK used to kill, pre-Lane-B) — is rejected
+BEFORE anything is armed: no `getUserMedia` call, no teardown-sensitive state
+registered, nothing to unwind.
+
+`startRecording()` rejects with `AgenticError('SOURCE_STREAM_NOT_LIVE', ...)`,
+the message naming every offending entry by index — e.g.
+`sourceStreams[0]: no live audio track` — so several bad entries are all
+named in one rejection. The native `addSource({ stream })` seam applies the
+identical check but names the stream generically
+(`useArcaAudio.addSource: injected stream has no live audio track.`), since
+there is only ever one candidate there.
+
+### `sendAudioData` still does not send audio
+
+`sendAudioData(audioData, metadata)` still never transmits `audioData` — it
+is a metadata sink only (§3, unchanged by TASK-612). If your v1 app captured
+its own PCM and pushed it here expecting it on the wire, that is the **RC-1**
+migration trap: your audio was silently discarded while v2 captured a
+*different* source (the OS default mic, or nothing). **Pass your stream(s) to
+`useAudioCapture({ sourceStreams: [...] })` instead** — that's the only way
+to get your own audio captured; `sendAudioData` cannot recover it after the
+fact, and `onAudioData` never fires either way.
+
+### Virtual/loopback devices and browser DSP
+
+On the `deviceId` path (not `sourceStreams`), the browser's own
+audio-processing module — echo cancellation, noise suppression, AGC, all ON
+by default in Chrome/Edge/Safari — runs before the SDK ever sees a sample,
+and on virtual or loopback devices with non-standard clocking it can emit
+**pure silence** instead of erroring (RC-4). If a virtual/loopback `deviceId`
+capture streams zeros, pass:
+
+```ts
+useAudioCapture({
+  deviceId: virtualDeviceId,
+  audioProcessing: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+});
+```
+
+`audioProcessing` (§2) is **ignored when `sourceStreams` is used** — those
+streams were already built by the caller, who owns their own constraints;
+there is nothing for the SDK to apply it to.
+
+### `pipelineId` is required for live backend STT
+
+Live backend STT requires a `pipelineId` — set it via
+`useAudioCapture({ options: { sttPipelineId } })`, or forward one through
+`useArcaSpeechToText({ options: { pipelineId } })`. Without it, capture still
+starts (`isRecording`/`isCapturing` go `true`, the mic is live) but no
+streaming transport is built and no socket opens — nothing ever reaches
+`onTranscript`/`transcriptSegments` (RC-5). **This was not addressed by
+TASK-612** — see the troubleshooting table below. Check
+`useArcaSttProvider().activeProvider` (`null` ⇒ no pipeline) or the native
+`store.activePipeline`.
+
+### The silent-uplink watchdog
+
+A watchdog (TASK-612 Lane D) runs on every streaming session (one that
+supplied a `pipelineId`). If the input level stays at zero for **5
+consecutive seconds** while unmuted, the session is declared silent:
+`onStatus('no_audio_signal')` fires once (§3), the native store's
+`audioSignalState` flips to `'silent'`, and one `logger.warn` names the
+likely causes — a wrong/default microphone, an OS-muted device, a suspended
+caller `AudioContext` behind an injected stream, or browser
+echo-cancellation/noise-suppression/AGC zeroing a virtual device. The first
+non-zero level clears it — `onStatus('audio_signal_restored')` fires once —
+and the watchdog re-arms for a fresh 5 s window.
+
+Muting (`audio.mute()`) is exempt: an intentionally-muted session never trips
+the watchdog, and unmuting always gets a fresh full window before any
+warning. The watchdog rides the same live input-level meter `sourceLevels`
+does, so it is unavailable wherever that meter is.
+
+### Import every hook from `/compat`
+
+This whole contract lives inside `useArcaAudio`, but you never import
+`useArcaAudio` yourself under `<ArcaCompatProvider>` — every hook you use in
+that tree, `useAudioCapture`/`useArcaSpeechToText` included, must come from
+`@arcaai/vox/compat` (see [Entry-bundle isolation](#entry-bundle-isolation)).
+Importing any hook from `/core` or `/plugins` instead reads a different store
+context and throws.
+
+### Troubleshooting
+
+Adapted from the TASK-612 root-cause investigation, updated to post-fix
+reality:
+
+| Observable | Cause | Since TASK-612 |
+| --- | --- | --- |
+| `startRecording()` (or the native `addSource()`) rejects `SOURCE_STREAM_NOT_LIVE` | A `sourceStreams[i]` (or the single `addSource({stream})`) has no audio track, or none `live` | **New** — was RC-3's silent zero-uplink; now a loud rejection before anything is armed |
+| `startRecording()` rejects `CAPTURE_OPTIONS_DROPPED` | Called after `startTranscription()` already started capture, carrying `sourceStreams`/`deviceId`/etc. — the start race (RC-2) | **New** — was a `logger.warn`-only silent drop |
+| `onStatus('no_audio_signal')` fires; binary frames flowing but payloads are all zero | Wrong/default mic, muted device, suspended caller `AudioContext`, or browser APM zeroing a virtual device (RC-1 / RC-4) | **New signal** — was previously only visible by watching `sourceLevels` stay `[0]` |
+| No binary frames at all; only JSON `ready`/`status` | A capture source's track ended mid-session (device unplugged/revoked) — check `track.readyState === 'ended'` | Unchanged — surfaced via `audio.error`; the dead-AT-START class (old RC-3) is now a start-time rejection instead |
+| No socket at all | No `pipelineId` was supplied (RC-5) — check `activeProvider` / `store.activePipeline` | **Unchanged** — not addressed by TASK-612 |
+| Debug log `Using caller-supplied source streams` absent | Your streams never reached `startAudio` — check the start-order rule above | Unchanged |
+| A `sourceStreams` `MediaStream` reused across sessions used to go dead | Pre-612 the SDK stopped every injected track on `stop()` (RC-3) | **Fixed** (Lane B, OD-1a) — caller-owned tracks now survive `stopRecording()`; reuse just works |
+
+**`ErrorInfo.code` stays coarse.** Every compat hook's `onError`/`.error`
+wraps whatever was thrown into one of two fixed codes —
+`useAudioCapture` always reports `'AUDIO_CAPTURE_ERROR'`,
+`useArcaSpeechToText` always reports `'TRANSCRIPTION_ERROR'` — regardless of
+the underlying `AgenticError.code` (`SOURCE_STREAM_NOT_LIVE`,
+`CAPTURE_OPTIONS_DROPPED`, etc.). The specific code travels only in
+`ErrorInfo.message`. To branch on the precise code programmatically, catch
+the promise from `startRecording()`/`startTranscription()` directly — both
+re-throw the original error after populating `error`/`onError`, so
+`(err as { code?: string }).code` is there for a caller who wants it.
+`AgenticError` itself isn't re-exported from `/compat`; a `import type` from
+`@arcaai/vox`/`@arcaai/vox/core` for a stricter cast is fine (type-only
+imports carry no runtime store dependency, so the entry-bundle isolation rule
+above — which is about hooks — doesn't apply to them).
+
+## 9. Reproduced v1 type surface
 
 `compat.ts` re-exports the following types verbatim from the frozen v1 contract (`compat/types.ts`), so a v1 app keeps compiling against familiar names:
 
@@ -487,7 +666,7 @@ interface ErrorInfo {
 }
 ```
 
-## 9. Defects/anti-patterns deliberately not reproduced
+## 10. Defects/anti-patterns deliberately not reproduced
 
 Documented in [`TASK-560 README §6`](../../../docs/implementation/TASK-560-v1-v2-consultation-migration/README.md):
 

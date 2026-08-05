@@ -25,14 +25,28 @@ function makeAudioMock(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// Reactive store mock for the TASK-586 pre-start selection.
-let storeState: { pendingSttProvider: 'primary' | 'fallback' | null; setPendingSttProvider: (v: 'primary' | 'fallback' | null) => void };
-function installStore(pendingSttProvider: 'primary' | 'fallback' | null = null) {
+// Reactive store mock for the TASK-586 pre-start selection plus the TASK-612
+// Lane E diagnostics fields. The diagnostics are optional on the mock shape
+// (not just the value) so `installStore()` with no third argument reproduces
+// a test-double store that never set them at all — the "undefined" case the
+// hook must degrade from, not merely a store that set them to a falsy value.
+let storeState: {
+  pendingSttProvider: 'primary' | 'fallback' | null;
+  setPendingSttProvider: (v: 'primary' | 'fallback' | null) => void;
+  audioUplinkBitrate?: number;
+  audioLostThisSession?: boolean;
+  audioDroppedFrameCount?: number;
+};
+function installStore(
+  pendingSttProvider: 'primary' | 'fallback' | null = null,
+  diagnostics: { audioUplinkBitrate?: number; audioLostThisSession?: boolean; audioDroppedFrameCount?: number } = {},
+) {
   storeState = {
     pendingSttProvider,
     setPendingSttProvider: vi.fn((v) => {
       storeState.pendingSttProvider = v;
     }),
+    ...diagnostics,
   };
   (useAgenticStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
     (selector: (s: typeof storeState) => unknown) => selector(storeState),
@@ -172,5 +186,61 @@ describe('useAudioCapture', () => {
       await result.current.startRecording();
     });
     expect(onAudioData).not.toHaveBeenCalled();
+  });
+
+  // TASK-612 Lane E (AC-5) — compat diagnostics parity. Backpressure audio
+  // loss and uplink bitrate previously lived only on the v2 store (finding
+  // I-3); these fields let a compat integrator tell "silence is being sent"
+  // from "nothing is being sent" without reaching into the store directly.
+  describe('diagnostics fields (TASK-612 Lane E)', () => {
+    it('reflects uplinkBitrate/audioLost/droppedFrames from the store and updates reactively as the store writes them', () => {
+      installStore(null, { audioUplinkBitrate: 128_000, audioLostThisSession: true, audioDroppedFrameCount: 3 });
+      const { result, rerender } = renderHook(() => useAudioCapture({}));
+
+      expect(result.current.uplinkBitrate).toBe(128_000);
+      expect(result.current.audioLost).toBe(true);
+      expect(result.current.droppedFrames).toBe(3);
+
+      // Simulate the store publishing new values mid-session (e.g. the 1 Hz
+      // uplink sampler and another dropped frame) and re-render, mirroring
+      // how a real Zustand subscription would propagate the write.
+      storeState.audioUplinkBitrate = 256_000;
+      storeState.audioLostThisSession = false;
+      storeState.audioDroppedFrameCount = 7;
+      rerender();
+
+      expect(result.current.uplinkBitrate).toBe(256_000);
+      expect(result.current.audioLost).toBe(false);
+      expect(result.current.droppedFrames).toBe(7);
+    });
+
+    it('defaults uplinkBitrate/audioLost/droppedFrames to 0/false/0 when the store never set them', () => {
+      installStore(); // no diagnostics — a test-double store lacking these fields entirely
+      const { result } = renderHook(() => useAudioCapture({}));
+
+      expect(result.current.uplinkBitrate).toBe(0);
+      expect(result.current.audioLost).toBe(false);
+      expect(result.current.droppedFrames).toBe(0);
+    });
+
+    it('keeps every pre-existing return key present alongside the new diagnostics fields (frozen v1 shape, superset check)', () => {
+      const { result } = renderHook(() => useAudioCapture({}));
+      const preExistingKeys = [
+        'isRecording',
+        'deviceStatus',
+        'sourceLevels',
+        'startRecording',
+        'stopRecording',
+        'getDeviceStatus',
+        'error',
+        'isReady',
+      ];
+      for (const key of preExistingKeys) {
+        expect(result.current).toHaveProperty(key);
+      }
+      expect(result.current).toHaveProperty('uplinkBitrate');
+      expect(result.current).toHaveProperty('audioLost');
+      expect(result.current).toHaveProperty('droppedFrames');
+    });
   });
 });

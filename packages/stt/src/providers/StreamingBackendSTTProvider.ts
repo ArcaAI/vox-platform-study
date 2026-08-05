@@ -296,6 +296,10 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     const resampled = prepareFloat32ForWhisper(audio, sampleRate);
     const int16 = float32ToInt16(resampled);
     this.totalAudioProcessed += resampled.length / 16000;
+    // Empty frames (result of resampling very short input) must never reach the wire.
+    if (int16.length === 0) {
+      return;
+    }
     // Forward the view directly; `WebSocket.send` accepts typed arrays
     // natively, so the previous ArrayBuffer.slice copy is gone.
     // Honor the backpressure return: a dropped frame is real audio lost

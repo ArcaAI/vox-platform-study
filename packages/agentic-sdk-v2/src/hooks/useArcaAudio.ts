@@ -8,6 +8,7 @@
 import { useMemo, useCallback, useRef } from 'react';
 import { useAgenticStore } from '../store';
 import type { ContextItem, TranscriptionResult } from '../types';
+import { AgenticError } from '../types';
 import type { TranscriptSegment, AudioStartOptions, DualCaptureResult, ProviderSwitchInfo } from '../types/audio';
 import { CONTEXT_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
@@ -59,6 +60,34 @@ function deriveSpeakerLabel(speakerId?: string | null): string | undefined {
 }
 
 /**
+ * Liveness check for a single caller-supplied capture stream (TASK-612
+ * Lane A, RC-3) — used both for `AudioStartOptions.sourceStreams` at start
+ * and for `addSource({ stream })` at runtime.
+ *
+ * A stream with no audio track, or whose only track(s) have all already
+ * ended (e.g. a stream reused after a prior session's `stop()`, or a caller
+ * that stopped it directly), is otherwise ACCEPTED and produces a
+ * structurally valid capture session whose uplink carries nothing — no
+ * transcripts, no error, just silence on an open socket. Returns the
+ * violation reason so callers can build a message naming it, or `null` when
+ * the stream has at least one track with `readyState === 'live'`.
+ */
+/** Cadence of the live input-level meter (and the watchdog riding its tick). */
+const LEVEL_METER_INTERVAL_MS = 100;
+/**
+ * Sustained zero-level window after which a STREAMING session is declared
+ * silent (TASK-612 Lane D, RC-4): long enough that a pause between sentences
+ * never trips it, short enough to be noticed before a consultation is lost.
+ */
+const SILENT_UPLINK_WATCHDOG_MS = 5000;
+
+function injectedStreamLivenessViolation(stream: MediaStream): 'no audio track' | 'no live audio track' | null {
+  const audioTracks = stream.getAudioTracks();
+  if (audioTracks.length === 0) return 'no audio track';
+  return audioTracks.some((track) => track.readyState === 'live') ? null : 'no live audio track';
+}
+
+/**
  * Focused hook for audio capture, muting, and plugin control.
  *
  * Extracted from useArca for better performance and maintainability (REFACTOR-01).
@@ -105,15 +134,40 @@ export function useArcaAudio() {
    * Invariants:
    *   - `startAudio` registers streams AS THEY ARE ACQUIRED, so a mid-way
    *     failure still leaves every already-open track reachable for cleanup.
-   *   - Any teardown path must iterate this array, stop every track, then reset
-   *     it to `[]`. Nothing else needs to know how many sources there were.
+   *   - Any teardown path must iterate this array, stop every SDK-OWNED
+   *     track — skipping streams in `callerOwnedStreamsRef` (TASK-612
+   *     OD-1a) — then reset it to `[]`. Nothing else needs to know how many
+   *     sources there were.
    */
   const sourceStreamsRef = useRef<MediaStream[]>([]);
+  /**
+   * OWNERSHIP companion to `sourceStreamsRef` (TASK-612 Lane B, OD-1a).
+   *
+   * Membership means the CALLER built this stream (`sourceStreams`,
+   * `addSource({ stream })`) and owns its lifecycle: every teardown path
+   * unwires it but NEVER stops its tracks — stopping them destroyed the
+   * integrator's reusable external-mic stream, so the next session found
+   * every track `ended` (RC-3). SDK-opened (`getUserMedia`) streams are
+   * absent from this set and released exactly as always.
+   *
+   * Reassigned fresh at every `startAudio`, so no tag outlives the session
+   * that made it. A WeakSet on purpose: identity-only, never enumerated, and
+   * it cannot retain a stream the session has forgotten.
+   */
+  const callerOwnedStreamsRef = useRef<WeakSet<MediaStream>>(new WeakSet());
   // Self-contained input-level meter (TASK-543): the transcription pipeline
   // never surfaced an amplitude to the store, so meters/waveforms sat at 0.
   // An AnalyserNode on the capture graph (analysis-only — never routed to the
   // destination, so it adds no playback) samples RMS into `store.setAudioLevel`.
   const levelMeterRef = useRef<{ analyser: AnalyserNode; source: MediaStreamAudioSourceNode; timer: ReturnType<typeof setInterval> } | null>(null);
+  /**
+   * LIVE mute flag for the meter's watchdog tick (TASK-612 Lane D). The timer
+   * closure captures the render-time `store` snapshot, which goes stale the
+   * moment mute changes — this ref is the imperative channel `muteAudio` /
+   * `unmuteAudio` write, so the watchdog never warns about silence the
+   * clinician asked for. Re-anchored to the store snapshot at each start.
+   */
+  const isMutedRef = useRef(false);
   // Live uplink-bitrate poller (TASK-543): samples the streaming STT transport's
   // cumulative bytes-sent once a second and publishes the delta*8 as bits/sec.
   const uplinkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -221,8 +275,21 @@ export function useArcaAudio() {
       // false after `destroy`), so it is the cross-hook truth the stale
       // closures are not. Optional-chained: test doubles without the getter
       // keep the pre-guard behaviour.
+      //
+      // TASK-612 Lane C (RC-2, OD-2a): the ignored call's contract now depends
+      // on WHAT it was carrying. Capture-shaped options (`deviceId`,
+      // `sourceStreams`, `dynamicSources`, ...) would have changed WHAT IS
+      // RECORDED, so silently dropping them is a bug, not idempotence — that
+      // branch still `logger.warn`s (log-based triage stays) and now ALSO
+      // THROWS a named `AgenticError` ('CAPTURE_OPTIONS_DROPPED') so the
+      // calling hook's existing catch → setError/onError path surfaces it,
+      // instead of an integrator whose STT hook won the start race streaming
+      // the default mic with no surfaced error. A call carrying ONLY options
+      // the running session already applies (language, pipelineId) is still
+      // the DESIGNED coordinated dual-hook path (compat drives one audio graph
+      // through two hooks) — that stays a silent `logger.info` + return, not
+      // an error.
       if (pluginManager.initialized === true) {
-        // …but stay LOUD about what the ignored call was carrying (TASK-609).
         // Everything in this list would have CHANGED WHAT IS RECORDED, and
         // dropping it silently is how "the UI shows my external mic selected
         // but the socket carries the built-in one" became a debuggable-only-
@@ -242,13 +309,17 @@ export function useArcaAudio() {
               attributes,
             },
           );
-        } else {
-          logger?.info('startAudio ignored — capture already active (coordinated dual-hook start)', {
-            operation: 'startAudio',
-            component: 'useArcaAudio',
-            attributes,
-          });
+          throw new AgenticError(
+            'CAPTURE_OPTIONS_DROPPED',
+            `useArcaAudio.start: capture is already active, so this call's capture-shaped option(s) were dropped — ${droppedOptions.join(', ')}. ` +
+              'Start capture from the hook that carries the sources BEFORE starting transcription (e.g. start capture — startRecording()/addSource — before startTranscription()).',
+          );
         }
+        logger?.info('startAudio ignored — capture already active (coordinated dual-hook start)', {
+          operation: 'startAudio',
+          component: 'useArcaAudio',
+          attributes,
+        });
         return;
       }
 
@@ -264,6 +335,10 @@ export function useArcaAudio() {
       // Reset BEFORE audio flows (the session-sticky latch clears on start/stop
       // only, so it survives reconnect but never leaks across capture sessions).
       store.resetAudioDropped();
+      // …and with a clean audio-signal verdict; the watchdog's live mute
+      // channel re-anchors to the snapshot (TASK-612 Lane D).
+      store.setAudioSignalState?.('ok');
+      isMutedRef.current = store.isMuted === true;
 
       if (options?.language) {
         store.setAudioLanguage(options.language);
@@ -340,6 +415,31 @@ export function useArcaAudio() {
         //     request, so a plain `start()` is unchanged.
         // ------------------------------------------------------------------
         const injectedStreams = (options?.sourceStreams ?? []).filter((s): s is MediaStream => Boolean(s));
+
+        // TASK-612 Lane A (RC-3) — fail loudly on a dead/trackless injected
+        // stream instead of silently streaming zeros. This runs BEFORE
+        // anything teardown-sensitive is armed: source-loss watchers, the
+        // level meter, `sourceStreamsRef` registration (a few lines down),
+        // and any `getUserMedia` call. A rejection here therefore leaves no
+        // capture state to unwind and never touches a caller-owned track —
+        // there is nothing registered yet for the failed-start cleanup below
+        // to reach.
+        if (injectedStreams.length > 0) {
+          const violations = injectedStreams
+            .map((s, index) => {
+              const reason = injectedStreamLivenessViolation(s);
+              return reason ? `sourceStreams[${index}]: ${reason}` : null;
+            })
+            .filter((v): v is string => v !== null);
+          if (violations.length > 0) {
+            throw new AgenticError(
+              'SOURCE_STREAM_NOT_LIVE',
+              `useArcaAudio.start: sourceStreams contains stream(s) that cannot be used — ${violations.join('; ')}. ` +
+                'Each entry needs a live audio track; build (and resume) the stream before calling start().',
+            );
+          }
+        }
+
         const deviceIds =
           injectedStreams.length > 0
             ? []
@@ -372,6 +472,11 @@ export function useArcaAudio() {
         // on the third getUserMedia must not orphan the first two open mics.
         const sourceStreams: MediaStream[] = [];
         sourceStreamsRef.current = sourceStreams;
+        // Ownership snapshot for THIS session (OD-1a): injected streams are
+        // caller-owned; everything the SDK opens below is SDK-owned. Fresh
+        // WeakSet per start, so a stream injected last session but SDK-opened
+        // this one (or vice versa) cannot inherit a stale tag.
+        callerOwnedStreamsRef.current = new WeakSet(injectedStreams);
 
         if (injectedStreams.length > 0) {
           logger?.debug('Using caller-supplied source streams (getUserMedia skipped)', {
@@ -432,6 +537,8 @@ export function useArcaAudio() {
 
         // Live input-level meter — best-effort + guarded so a runtime without
         // Web Audio analysis (or a test double) simply leaves the level at 0.
+        // The silent-uplink watchdog (TASK-612 Lane D) rides this meter's
+        // tick, so where the meter is unavailable the watchdog is too.
         try {
           if (typeof audioContext.createMediaStreamSource === 'function' && typeof audioContext.createAnalyser === 'function') {
             const analyser = audioContext.createAnalyser();
@@ -441,6 +548,13 @@ export function useArcaAudio() {
             source.connect(analyser); // analysis only — deliberately NOT connected to destination
             if (typeof analyser.getFloatTimeDomainData === 'function') {
               const buffer = new Float32Array(analyser.fftSize);
+              // Silent-uplink watchdog (TASK-612 Lane D, RC-4) — rides this
+              // same tick rather than a second timer. Streaming-only: with no
+              // pipeline there is no uplink to be silent on.
+              const streamingSession = Boolean(options?.pipelineId);
+              let watchdogZeroTicks = 0;
+              let watchdogSilentEpisode = false;
+              const watchdogTickLimit = SILENT_UPLINK_WATCHDOG_MS / LEVEL_METER_INTERVAL_MS;
               const timer = setInterval(() => {
                 try {
                   analyser.getFloatTimeDomainData(buffer);
@@ -451,10 +565,38 @@ export function useArcaAudio() {
                   const level = Math.min(100, Math.round(rms * 250));
                   store.setAudioLevel(level);
                   if (isSingleSource) store.setAudioSourceLevels?.([level]);
+
+                  // A sustained zero level on an UNMUTED streaming session
+                  // means the socket is carrying structurally valid silence —
+                  // the RC-4 failure class nothing else surfaces. One warn per
+                  // episode; recovery is silent and re-arms the episode.
+                  if (streamingSession) {
+                    if (level > 0) {
+                      watchdogZeroTicks = 0;
+                      if (watchdogSilentEpisode) {
+                        watchdogSilentEpisode = false;
+                        store.setAudioSignalState?.('ok');
+                      }
+                    } else if (isMutedRef.current) {
+                      // Intentional silence — and the counter restarts, so an
+                      // unmute gets a fresh full window before any warning.
+                      watchdogZeroTicks = 0;
+                    } else {
+                      watchdogZeroTicks += 1;
+                      if (!watchdogSilentEpisode && watchdogZeroTicks >= watchdogTickLimit) {
+                        watchdogSilentEpisode = true;
+                        store.setAudioSignalState?.('silent');
+                        logger?.warn(
+                          `Streaming session has sent silence for ${SILENT_UPLINK_WATCHDOG_MS / 1000}s — likely a wrong/default microphone, an OS-muted device, a suspended caller AudioContext behind an injected stream, or browser echo-cancellation/noise-suppression/AGC zeroing a virtual device.`,
+                          { operation: 'silentUplinkWatchdog', component: 'useArcaAudio' },
+                        );
+                      }
+                    }
+                  }
                 } catch {
                   // A transient analyser read error must never break capture.
                 }
-              }, 100);
+              }, LEVEL_METER_INTERVAL_MS);
               levelMeterRef.current = { analyser, source, timer };
             } else {
               source.disconnect();
@@ -471,6 +613,16 @@ export function useArcaAudio() {
         // through with no mixer node in the graph — the pre-597 behaviour of
         // `start()` / `start({ deviceId })`.
         let track = stream.getAudioTracks()[0];
+        // Defensive (TASK-612 RC-3) — every INJECTED stream was already
+        // validated above, and a getUserMedia stream should always carry the
+        // track it was requested with, but an unguarded index read here used
+        // to let a trackless first source through as `undefined`: capture
+        // "succeeded" (pluginManager.initialize(undefined, …) resolves,
+        // isCapturing flips true) with no signal on the wire and no error
+        // anywhere. Fail loudly instead.
+        if (!track) {
+          throw new AgenticError('SOURCE_STREAM_NOT_LIVE', 'useArcaAudio.start: capture source has no audio track.');
+        }
         // A mixer is built for N > 1 sources — and ALSO for a single source when
         // the caller opted into runtime source changes (TASK-609). The reason is
         // structural: the pipeline is initialized with ONE track and the
@@ -484,7 +636,11 @@ export function useArcaAudio() {
             const gain = options?.sourceGains?.[index];
             const id = nextSourceId();
             sourceIdToStreamRef.current.set(id, source);
-            mixer.addSource(id, source, typeof gain === 'number' && Number.isFinite(gain) ? gain : 1.0);
+            mixer.addSource(id, source, typeof gain === 'number' && Number.isFinite(gain) ? gain : 1.0, {
+              // Caller-owned sources survive removal/dispose (OD-1a): the
+              // mixer unwires them but must not stop their tracks.
+              stopTracksOnRemove: !callerOwnedStreamsRef.current.has(source),
+            });
           });
           mixerRef.current = mixer;
           publishSourceIds();
@@ -538,6 +694,18 @@ export function useArcaAudio() {
           onTranscription: (result: TranscriptionResult) => {
             if (result.isFinal) {
               store.setCurrentTranscript('');
+
+              // OD-3a (TASK-612): a whitespace-only final carries no clinical
+              // value, so suppress the segment, the context POST, and the NER
+              // trigger below — the interim clear above still runs, since the
+              // interim window did end.
+              if (!result.text?.trim()) {
+                logger?.debug('Whitespace-only final suppressed', {
+                  operation: 'onTranscription',
+                  component: 'useArcaAudio',
+                });
+                return;
+              }
 
               // `startTime`/`endTime` are seconds relative to stream start. When
               // a result carries no VAD/streaming offset, fall back to 0 — NOT
@@ -755,12 +923,16 @@ export function useArcaAudio() {
         sourceIdToStreamRef.current.clear();
         store.setAudioSourceIds?.([]);
 
-        // A failed start must not leave microphones open. Before 597 a
-        // rejection after the first getUserMedia (a second device that
+        // A failed start must not leave SDK-OPENED microphones live. Before
+        // 597 a rejection after the first getUserMedia (a second device that
         // disappeared, a pipeline that failed to initialize) left the acquired
         // track live and the browser's recording indicator lit, because only
         // stop() — which the caller never reaches on a throw — released it.
+        // Caller-owned (injected) streams are skipped: the failure is the
+        // SDK's, and destroying the caller's reusable stream over it was
+        // RC-3 (TASK-612 OD-1a).
         for (const source of sourceStreamsRef.current) {
+          if (callerOwnedStreamsRef.current.has(source)) continue;
           source.getTracks().forEach((t) => t.stop());
         }
         sourceStreamsRef.current = [];
@@ -828,12 +1000,27 @@ export function useArcaAudio() {
       if (!stream) {
         if (!input.deviceId) throw new Error('useArcaAudio.addSource: provide either `deviceId` or `stream`.');
         stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: input.deviceId }, ...audioProcessingRef.current } });
+      } else {
+        // TASK-612 Lane A (RC-3) — the same liveness contract `start()`
+        // applies to `sourceStreams`, extended to this runtime seam. Checked
+        // BEFORE `nextSourceId()` / `mixer.addSource()` below, so a rejected
+        // add mutates NEITHER the published source-id registry nor the
+        // mixer — the running session is left fully usable.
+        const reason = injectedStreamLivenessViolation(stream);
+        if (reason) {
+          throw new AgenticError('SOURCE_STREAM_NOT_LIVE', `useArcaAudio.addSource: injected stream has ${reason}.`);
+        }
       }
 
       const gain = typeof input.gain === 'number' && Number.isFinite(input.gain) ? input.gain : 1.0;
+      // Ownership is decided by PROVENANCE (OD-1a): a caller-built stream is
+      // caller-owned — the mixer must not stop its tracks on removal and the
+      // teardown loops skip it (see the REF CONTRACT). A deviceId source was
+      // opened by the SDK right above, so the SDK releases it.
+      if (input.stream) callerOwnedStreamsRef.current.add(input.stream);
       const id = nextSourceId();
       try {
-        mixer.addSource(id, stream, gain);
+        mixer.addSource(id, stream, gain, { stopTracksOnRemove: !input.stream });
       } catch (error) {
         // Roll the id back and release the mic we just opened — a failed add
         // must not leave a phantom id in the published list or a hot track.
@@ -855,10 +1042,10 @@ export function useArcaAudio() {
         }
       }
 
-      // Registered for teardown as well: the mixer stops a source's tracks on
-      // removal/dispose, but the `sourceStreamsRef` contract is that it holds
-      // EVERY stream the session owns, so a mixer that throws mid-teardown
-      // still leaves nothing hot.
+      // Registered for teardown as well: the mixer releases SDK-owned sources
+      // on removal/dispose, but the `sourceStreamsRef` contract is that it
+      // holds EVERY stream the session uses, so a mixer that throws
+      // mid-teardown still leaves nothing hot that the SDK owns.
       sourceStreamsRef.current = [...sourceStreamsRef.current, stream];
       watchSourceForLoss(stream);
       publishSourceIds();
@@ -874,8 +1061,11 @@ export function useArcaAudio() {
   );
 
   /**
-   * Drop a capture source from the live mix (TASK-609). The mixer stops that
-   * source's tracks, so the microphone is released immediately.
+   * Drop a capture source from the live mix (TASK-609). For an SDK-owned
+   * source (opened from a `deviceId`) the mixer stops its tracks, releasing
+   * the microphone immediately; a caller-owned stream (`addSource({ stream })`,
+   * `sourceStreams`) is unwired but left LIVE for its owner to stop
+   * (TASK-612 OD-1a).
    *
    * Removing the LAST source is refused: an empty mix is not a capture state,
    * it is silence on an open socket — indistinguishable, downstream, from the
@@ -1067,23 +1257,28 @@ export function useArcaAudio() {
       sourceIdToStreamRef.current.clear();
       store.setAudioSourceIds?.([]);
 
-      // Tear down the N-source mixer (its dispose() removes every source, which
-      // stops that source's tracks — and stops per-source level monitoring, so
-      // no analyser tap or sampling timer can outlive the capture session).
+      // Tear down the N-source mixer (its dispose() removes every source —
+      // stopping the tracks of SDK-owned sources only, per each source's
+      // `stopTracksOnRemove` (TASK-612) — and stops per-source level
+      // monitoring, so no analyser tap or sampling timer can outlive the
+      // capture session).
       if (mixerRef.current) {
         mixerRef.current.dispose();
         mixerRef.current = null;
       }
-      // Then stop every OTHER source stream this capture session owns — see the
-      // `sourceStreamsRef` contract above. Belt-and-braces with the mixer dispose
-      // (a mixer that threw while adopting sources would otherwise leave the rest
-      // live), and the only release path for a source when there is no mixer at
-      // all. `activeStream` is excluded because the block below releases it —
+      // Then stop every OTHER SDK-owned source stream of this capture
+      // session — see the `sourceStreamsRef` contract above. Belt-and-braces
+      // with the mixer dispose (a mixer that threw while adopting sources
+      // would otherwise leave the rest live), and the only release path for a
+      // source when there is no mixer at all. Caller-owned streams are
+      // skipped — the SDK unwires but never stops them (TASK-612 OD-1a).
+      // `activeStream` is excluded because the block below releases it —
       // releasing the microphone EXACTLY once is an asserted contract
       // (`useArca.audio-unification.test.ts`).
       {
         const activeTracks = new Set(store.activeStream?.getTracks?.() ?? []);
         for (const source of sourceStreamsRef.current) {
+          if (callerOwnedStreamsRef.current.has(source)) continue;
           source.getTracks().forEach((t) => {
             if (!activeTracks.has(t)) t.stop();
           });
@@ -1093,7 +1288,11 @@ export function useArcaAudio() {
 
       const { activeStream } = store;
       if (activeStream) {
-        activeStream.getTracks().forEach((t) => t.stop());
+        // The primary source may be caller-owned (injected `sourceStreams[0]`)
+        // — then its tracks stay LIVE; only the session's claim on it ends.
+        if (!callerOwnedStreamsRef.current.has(activeStream)) {
+          activeStream.getTracks().forEach((t) => t.stop());
+        }
         store.setActiveStream(null);
       }
       store.setActiveAudioContext(null);
@@ -1105,6 +1304,9 @@ export function useArcaAudio() {
       // synchronous block as the mic release so a consumer can never read a
       // stale "mic 2 is speaking" level while the transport drains.
       store.setAudioSourceLevels?.([]);
+      // …and no audio-signal verdict either (TASK-612 Lane D) — a 'silent'
+      // latched mid-session must not outlive the session that earned it.
+      store.setAudioSignalState?.('ok');
       store.setCurrentTranscript('');
 
       // ---------------------------------------------------------------------
@@ -1271,6 +1473,7 @@ export function useArcaAudio() {
   const muteAudio = useCallback(() => {
     const logger = getLogger();
     store.setIsMuted(true);
+    isMutedRef.current = true; // live channel for the watchdog tick (TASK-612)
     const trackCount = applyEnabledToAllSources(false);
     logger?.debug('Muting audio', { operation: 'muteAudio', component: 'useArcaAudio', attributes: { trackCount } });
   }, [store, getLogger, applyEnabledToAllSources]);
@@ -1278,6 +1481,7 @@ export function useArcaAudio() {
   const unmuteAudio = useCallback(() => {
     const logger = getLogger();
     store.setIsMuted(false);
+    isMutedRef.current = false; // live channel for the watchdog tick (TASK-612)
     const trackCount = applyEnabledToAllSources(true);
     logger?.debug('Unmuting audio', { operation: 'unmuteAudio', component: 'useArcaAudio', attributes: { trackCount } });
   }, [store, getLogger, applyEnabledToAllSources]);

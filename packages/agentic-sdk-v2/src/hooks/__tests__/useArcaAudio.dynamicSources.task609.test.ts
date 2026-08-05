@@ -175,7 +175,9 @@ describe('useArcaAudio — runtime source management (TASK-609)', () => {
     });
 
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith({ audio: { deviceId: { exact: 'mic-B' } } });
-    expect(roomMocks.addSource).toHaveBeenLastCalledWith(id, expect.objectContaining({ label: 'mic-B' }), 0.8);
+    // 4th arg since TASK-612 Lane B: a deviceId source is SDK-owned, so the
+    // mixer releases its tracks on removal.
+    expect(roomMocks.addSource).toHaveBeenLastCalledWith(id, expect.objectContaining({ label: 'mic-B' }), 0.8, { stopTracksOnRemove: true });
     expect(mockStoreData.setAudioSourceIds).toHaveBeenLastCalledWith(['source-1', id]);
     // The whole point: no re-initialize ⇒ the WebSocket session survives.
     expect(mockStoreData.pluginManager.initialize).toHaveBeenCalledTimes(initializeCalls);
@@ -215,7 +217,9 @@ describe('useArcaAudio — runtime source management (TASK-609)', () => {
     });
 
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1); // start only
-    expect(roomMocks.addSource).toHaveBeenLastCalledWith(expect.any(String), injected, 1.0);
+    // 4th arg since TASK-612 Lane B: a caller-built stream is caller-owned —
+    // the mixer must not stop its tracks on removal.
+    expect(roomMocks.addSource).toHaveBeenLastCalledWith(expect.any(String), injected, 1.0, { stopTracksOnRemove: false });
   });
 
   it('removes a source and drops it from the published id list', async () => {

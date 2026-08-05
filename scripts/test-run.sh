@@ -20,7 +20,7 @@
 # SUITES:
 #   unit          Vitest unit suites            (infra: yes, services: none)
 #   integration   Vitest integration suites     (infra: yes, services: none)
-#   e2e           Playwright API e2e            (infra: yes, services: api)
+#   e2e           Playwright API e2e            (infra: yes, services: full stack)
 #   py            every Python pytest suite     (infra: yes, services: none)
 #   <service>     one Python service's pytest   (stt|smr|nlp|guardrail|harness|tts)
 #
@@ -47,7 +47,11 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-READY_TIMEOUT="${TEST_RUN_TIMEOUT:-120}"
+# 300s ceiling (was 120): the e2e full-stack default starts STT, which loads
+# Whisper models on boot and legitimately needs longer than 120s on a laptop.
+# This only bounds the wait when a service is NOT yet healthy — a fast boot
+# still exits the health loop the moment it reports ready, so success is unaffected.
+READY_TIMEOUT="${TEST_RUN_TIMEOUT:-300}"
 KEEP=false
 TEARDOWN_INFRA=true
 
@@ -86,7 +90,11 @@ case "$SUITE" in
         DEFAULT_SERVICES=() ;;
     e2e)
         SUITE_CMD=(pnpm test:e2e)
-        DEFAULT_SERVICES=(api) ;;
+        # Full stack minus the Temporal worker: the isolated test infra
+        # (tests/docker-compose.test.yml) has no Temporal, so the worker cannot
+        # connect. The harness FastAPI app itself boots fine without it.
+        # Override ad-hoc by passing services, e.g. `test:e2e:managed -- api smr`.
+        DEFAULT_SERVICES=(api stt smr guardrail nlp harness) ;;
     py)
         SUITE_CMD=(pnpm test:py)
         DEFAULT_SERVICES=() ;;

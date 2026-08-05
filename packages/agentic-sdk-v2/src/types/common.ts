@@ -78,6 +78,19 @@ export type AgenticErrorCode =
   // transcription is disabled (`LOCAL_TRANSCRIPTION_ENABLED = false` in
   // `core/constants.ts`) and no backend transport is configured.
   | 'LOCAL_TRANSCRIPTION_DISABLED'
+  // TASK-612: `useArcaAudio.startAudio` / `addSource` throw this instead of
+  // silently streaming zeros when a caller-injected `MediaStream`
+  // (`AudioStartOptions.sourceStreams`, or `addSource({ stream })`) has no
+  // audio track, or no track with `readyState === 'live'`.
+  | 'SOURCE_STREAM_NOT_LIVE'
+  // TASK-612 Lane C (RC-2, OD-2a): `useArcaAudio.startAudio`'s CALL-TIME
+  // idempotence guard throws this instead of silently dropping
+  // capture-shaped options (`deviceId`, `sourceStreams`, `dynamicSources`,
+  // ...) when a call lands while capture is already active — e.g. the
+  // compat layer's two coordinating hooks racing to start the mic. A call
+  // carrying only options the running session already applies (language,
+  // pipelineId) is unaffected — that stays a silent, designed no-op.
+  | 'CAPTURE_OPTIONS_DROPPED'
   | 'UNKNOWN_ERROR';
 
 // =============================================================================

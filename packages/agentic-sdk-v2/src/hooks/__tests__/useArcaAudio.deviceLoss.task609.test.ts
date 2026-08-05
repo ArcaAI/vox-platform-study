@@ -17,6 +17,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { AgenticError } from '../../types';
 
 const roomMocks = vi.hoisted(() => {
   class MockAudioMixer {
@@ -180,15 +181,24 @@ describe('useArcaAudio — device loss (TASK-609)', () => {
 });
 
 describe('useArcaAudio — ignored start carrying source options (TASK-609)', () => {
-  it('WARNS, naming the dropped options, when a second start would have changed the sources', async () => {
+  it('WARNS and REJECTS with CAPTURE_OPTIONS_DROPPED when a second start would have changed the sources', async () => {
+    // Contract updated by TASK-612 (OD-2a): the warn stays for log triage, but a
+    // dropped capture-shaped option set is now ALSO a rejected promise — the
+    // pre-612 "warn and resolve" behavior was root cause RC-2 (default mic
+    // streams while the UI shows the external selection, no surfaced error).
     const { result } = renderHook(() => useArcaAudio());
     await act(async () => {
       await result.current.start({ pipelineId: 'p1' });
     });
 
+    let caught: unknown;
     await act(async () => {
-      await result.current.start({ deviceId: 'external-array', audioProcessing: { autoGainControl: false } });
+      caught = await result.current
+        .start({ deviceId: 'external-array', audioProcessing: { autoGainControl: false } })
+        .catch((err: unknown) => err);
     });
+    expect(caught).toBeInstanceOf(AgenticError);
+    expect((caught as InstanceType<typeof AgenticError>).code).toBe('CAPTURE_OPTIONS_DROPPED');
 
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringMatching(/ignored/i),

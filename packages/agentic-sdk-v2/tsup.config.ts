@@ -200,14 +200,64 @@ export default defineConfig([
   },
 
   // ==========================================================================
-  // E2E build - Same as main build for browser testing
+  // E2E build - browser fixture for e2e/agentic-sdk.e2e.spec.ts
+  //
+  // NOT "same as the main build": `e2e/fixtures/index.html` loads this file as a
+  // bare `<script type="module">` off a static file server, with no bundler and
+  // no import map behind it. Anything left external stays a bare specifier the
+  // browser cannot resolve, and a single unresolved static import aborts module
+  // evaluation — `window.SDK` never gets set and every test in the suite fails in
+  // its shared `beforeEach`. So this entry inlines everything a browser cannot
+  // resolve for itself, `react`/`react-dom` included (see `e2e/fixtures/e2e-entry.ts`).
+  //
+  // What deliberately stays external, and why it is safe here:
+  //   - `onnxruntime-web`/`-common`: bundling them yields a 30MB+ artifact AND
+  //     breaks their WASM discovery (see the note in `externalDependencies`). The
+  //     only importer is the inlined CJS `@ricky0123/vad-web`, whose
+  //     `require("onnxruntime-web")` esbuild turns into a `__require()` stub —
+  //     no bare import is emitted, so the module still evaluates. The stub throws
+  //     only if VAD is actually instantiated, which this suite never does.
+  //   - `@arcaai/med-ner`, `highlight.run`, `onnxruntime-node`, `sharp`: reached
+  //     only through `import()` on opt-in code paths this suite never enters.
+  //
+  // `@arcaai/stt`/`@arcaai/noise-filter` ARE inlined here even though the published
+  // builds keep them external for the `import.meta.url` hazard documented above:
+  // this entry is esm-only, so esbuild leaves `import.meta.url` intact rather than
+  // shimming it to `{}`. Their worker/WASM assets still do not resolve next to the
+  // fixture bundle — irrelevant, because the suite only asserts that `useSTT` /
+  // `useNoiseFilter` are exported, never runs them.
   // ==========================================================================
   {
     ...sharedOptions,
-    entry: { 'e2e-bundle': 'src/index.ts' },
+    entry: { 'e2e-bundle': 'e2e/fixtures/e2e-entry.ts' },
     format: ['esm'],
     outDir: 'e2e/fixtures/dist',
     external: externalDependencies,
-    noExternal: bundledDependencies,
+    // NOTE: tsup gives `noExternal` precedence over `external`, so the entries
+    // below win over `externalDependencies`. Sub-path imports are matched by
+    // regex because tsup compares plain strings with `===` — `'react-dom'` would
+    // not match `'react-dom/client'`, and `'react'` would not match
+    // `'react/jsx-runtime'`.
+    noExternal: [
+      ...bundledDependencies,
+      /^react($|\/)/,
+      /^react-dom($|\/)/,
+      '@ricky0123/vad-web',
+      // ORT-web has to come with `@ricky0123/vad-web`: esbuild rewrites that CJS
+      // package's `require("onnxruntime-web")` to a `__require()` stub, and the
+      // stub is hit while the module graph is still INITIALISING ("Dynamic require
+      // of onnxruntime-web is not supported"), not lazily on first VAD use — which
+      // aborts evaluation of the whole bundle just as a bare specifier would.
+      /^onnxruntime-(web|common)($|\/)/,
+      '@arcaai/stt',
+      '@arcaai/noise-filter',
+      'valibot',
+      'deepmerge-ts',
+      'diff',
+    ],
+    // esbuild empties `import.meta` on targets below es2020; `@arcaai/noise-filter`
+    // resolves its WASM through `new URL(..., import.meta.url)`, so an older target
+    // turns that into a "Invalid URL" throw instead of a harmless wrong URL.
+    target: 'es2022',
   },
 ]);
