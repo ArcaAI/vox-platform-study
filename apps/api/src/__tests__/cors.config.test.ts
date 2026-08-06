@@ -1,67 +1,65 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import { getCorsOrigins } from '../cors.config';
+import { getCorsOrigins, isOriginAllowed, setPlatformCorsOriginsResolver } from '../cors.config';
 
-/**
- * Dev CORS pins to a localhost-only RegExp.
- *
- * The dev branch of `getCorsOrigins` must NOT return `true`: combined
- * with `credentials: true` that's a config the browser rejects anyway
- * (cookies + wildcard is illegal), so the intent is "localhost only in
- * dev" and this test pins that intent as code.
- */
+/** Resolve the callback returned by `getCorsOrigins` to its boolean decision. */
+function allows(nodeEnv: string, origin: string | undefined): boolean {
+  const resolver = getCorsOrigins(nodeEnv) as (o: string | undefined, cb: (e: Error | null, allow?: boolean) => void) => void;
+  let allowed = false;
+  resolver(origin, (_err, value) => {
+    allowed = value === true;
+  });
+  return allowed;
+}
+
 describe('getCorsOrigins', () => {
+  afterEach(() => {
+    setPlatformCorsOriginsResolver(null);
+    delete process.env.CORS_ALLOWED_ORIGINS;
+  });
+
   describe('development', () => {
-    it('returns the localhost + compat-playground allowlist RegExp', () => {
-      const origin = getCorsOrigins('development');
-
-      expect(origin).toBeInstanceOf(RegExp);
-      expect((origin as RegExp).source).toBe(
-        '^(?:https?:\\/\\/(?:localhost|127\\.0\\.0\\.1)(?::\\d+)?|https:\\/\\/compat-playground\\.taphuynh\\.dev)$',
-      );
+    it('returns a callback (never `true`/`*`, which is illegal with credentials)', () => {
+      expect(typeof getCorsOrigins('development')).toBe('function');
     });
 
     it.each([
-      ['http://localhost', true],
-      ['http://localhost:3000', true],
-      ['https://localhost', true],
-      ['https://localhost:8868', true],
-      ['http://127.0.0.1', true],
-      ['http://127.0.0.1:5173', true],
-      ['https://127.0.0.1:5174', true],
-      // The explicitly allowed compatibility playground (https only).
-      ['https://compat-playground.taphuynh.dev', true],
-    ])('matches %s -> %s', (candidate, expected) => {
-      const origin = getCorsOrigins('development') as RegExp;
-      expect(origin.test(candidate)).toBe(expected);
+      ['http://localhost:3000'],
+      ['http://localhost:5173'],
+      ['http://127.0.0.1:5173'],
+      ['https://compat-playground.taphuynh.dev'],
+      ['https://arcaai-u2204.bcmch.org'],
+      ['https://arcaai-staging.bcmch.org'],
+      ['https://mi-preproduction.bcmch.org:4433'],
+      ['http://192.168.1.10:8080'],
+    ])('allows %s', (origin) => {
+      expect(allows('development', origin)).toBe(true);
+    });
+  });
+
+  describe('CORS_ALLOWED_ORIGINS applies in every environment', () => {
+    it.each(['staging', 'production'])('honours the allow-list in %s', (nodeEnv) => {
+      process.env.CORS_ALLOWED_ORIGINS = 'https://arcaai-u2204.bcmch.org, https://mi-preproduction.bcmch.org:4433';
+
+      expect(isOriginAllowed('https://arcaai-u2204.bcmch.org', nodeEnv)).toBe(true);
+      expect(isOriginAllowed('https://mi-preproduction.bcmch.org:4433', nodeEnv)).toBe(true);
     });
 
-    it.each([
-      ['http://evil.com'],
-      ['https://app.arcaai.com'],
-      ['http://localhost.evil.com'],
-      ['http://127.0.0.1.evil.com'],
-      ['http://0.0.0.0'],
-      ['ftp://localhost:8080'],
-      ['ws://localhost:3000'],
-      ['file:///etc/passwd'],
-    ])('rejects %s', (candidate) => {
-      const origin = getCorsOrigins('development') as RegExp;
-      expect(origin.test(candidate)).toBe(false);
+    it('still rejects an unlisted origin in staging', () => {
+      process.env.CORS_ALLOWED_ORIGINS = 'https://arcaai-u2204.bcmch.org';
+      expect(isOriginAllowed('https://evil.example', 'staging')).toBe(false);
     });
   });
 
   describe('production', () => {
-    it('returns a callback function (unchanged behaviour)', () => {
-      const origin = getCorsOrigins('production');
-      expect(typeof origin).toBe('function');
+    it('returns a callback (unchanged behaviour)', () => {
+      expect(typeof getCorsOrigins('production')).toBe('function');
     });
   });
 
   describe('staging', () => {
-    it('returns a callback function (unchanged behaviour)', () => {
-      const origin = getCorsOrigins('staging');
-      expect(typeof origin).toBe('function');
+    it('returns a callback (unchanged behaviour)', () => {
+      expect(typeof getCorsOrigins('staging')).toBe('function');
     });
   });
 });

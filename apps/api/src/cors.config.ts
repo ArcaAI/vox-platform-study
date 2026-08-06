@@ -67,15 +67,26 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
     return logCorsDecision(origin, true, 'no_origin_provided');
   }
 
-  if (nodeEnv === 'production') {
-    const allowedOrigins = resolveAllowedOrigins();
-    if (allowedOrigins) {
-      const originList = allowedOrigins.split(',').map((o) => o.trim());
-      if (originList.includes(origin)) {
-        return logCorsDecision(origin, true, 'cors_allowed_origins_match');
-      }
+  // The operator-managed allow-list wins in EVERY environment. It used to be
+  // consulted only in production, which meant an origin an operator explicitly
+  // allowed was still rejected on a staging deployment.
+  const allowedOrigins = resolveAllowedOrigins();
+  if (allowedOrigins) {
+    const originList = allowedOrigins.split(',').map((o) => o.trim());
+    if (originList.includes(origin)) {
+      return logCorsDecision(origin, true, 'cors_allowed_origins_match');
     }
+  }
 
+  if (nodeEnv === 'development') {
+    // Development allows ANY origin: local dev drives the gateway from
+    // arbitrary hosts (playgrounds, LAN devices, the BCMCH pre-production
+    // front ends). `true` here reflects the request Origin back — NOT `*` —
+    // so it stays legal alongside `credentials: true`.
+    return logCorsDecision(origin, true, 'development_allow_all');
+  }
+
+  if (nodeEnv === 'production') {
     const defaultAllowedOrigins = ['https://app.arcaai.com', 'https://dashboard.arcaai.com', 'https://admin.arcaai.com'];
 
     if (defaultAllowedOrigins.includes(origin)) {
@@ -139,10 +150,7 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
 
     return logCorsDecision(origin, false, 'staging_not_allowed');
   } else {
-    // Dev fallback (only reachable if a caller misuses isOriginAllowed
-    // with nodeEnv='development'; `getCorsOrigins` no longer goes through
-    // this function in dev). Mirrors the DEV_ALLOWED_ORIGINS RegExp so the
-    // posture is identical regardless of which entry point is used.
+    // Any other NODE_ENV (e.g. `test`) keeps the previous localhost posture.
     return logCorsDecision(origin, DEV_ALLOWED_ORIGINS.test(origin), 'development_allowed_origin');
   }
 }
@@ -150,21 +158,16 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
 /**
  * Value passed to `app.enableCors({ origin })`.
  *
- *   - development → localhost plus compatibility-playground RegExp.
+ *   - development → every origin (reflected, never `*`).
  *   - production / staging → callback delegating to `isOriginAllowed`.
  *
- * The dev branch must NOT return `true`: combined with
- * `credentials: true`, browsers reject that config (the spec forbids
- * wildcard + credentials), so the intent is "localhost plus the explicitly
- * allowed compatibility playground in dev" — this pins it explicitly so the
- * server's response headers match the browser's behaviour.
+ * All branches return a CALLBACK, never the literal `true` and never `'*'`:
+ * the `cors` middleware then echoes the request's own Origin, which is the
+ * only form legal alongside `credentials: true`.
  */
 export function getCorsOrigins(
   nodeEnv: string,
 ): RegExp | string[] | boolean | ((origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => void) {
-  if (nodeEnv === 'development') {
-    return DEV_ALLOWED_ORIGINS;
-  }
   return (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     const isAllowed = isOriginAllowed(origin, nodeEnv);
     callback(null, isAllowed);
