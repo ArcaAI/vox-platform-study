@@ -71,6 +71,12 @@ export * from './rate-limit';
 export * from './entitlements';
 // Rolling-monthly usage metering (live aggregate + reconcile job).
 export * from './metering';
+// Per-request AI usage ledger: emission port, outbox drainer, provider
+// usage normalizer, allow-listed attributes and the frozen vocabulary.
+export * from './usageLedger';
+// Effective-dated COST/SELL rate resolution behind the ledger and the
+// (later) invoice engine.
+export * from './priceBook';
 // RBAC services exposed for controllers (closes C-10 / H-9).
 export * from './rbac';
 // Platform runtime metrics (E1/E2/E3) + multi-instance socket registry.
