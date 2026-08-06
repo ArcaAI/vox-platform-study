@@ -125,7 +125,9 @@ export class MissingSellRateError extends Error {
     public readonly unit: AiUsageUnit,
     public readonly day: Date,
   ) {
-    super(`No effective SELL rate for ${capability}/${unit} at ${day.toISOString()} — the rate card is incomplete; superseding it forward is the fix.`);
+    super(
+      `No effective SELL rate for ${capability}/${unit} at ${day.toISOString()} — the rate card is incomplete; superseding it forward is the fix.`,
+    );
     this.name = 'MissingSellRateError';
   }
 }
@@ -169,11 +171,7 @@ export function computePlanFeeLines(segments: readonly PlanFeeSegment[], period:
       days === periodDays
         ? segment.feeMicrosPerPeriod // exact — bypass the division entirely
         : BigInt(
-            new Decimal(segment.feeMicrosPerPeriod.toString())
-              .times(days)
-              .dividedBy(periodDays)
-              .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-              .toFixed(0),
+            new Decimal(segment.feeMicrosPerPeriod.toString()).times(days).dividedBy(periodDays).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toFixed(0),
           );
 
     lines.push({
@@ -273,21 +271,19 @@ export function computeCapabilityOverage(input: CapabilityOverageInput, resolveR
   // ---- one line per (unit, rate row), deterministic order --------------------
   const lines = [...groups.values()]
     .sort((a, b) => UNIT_ORDER[a.unit] - UNIT_ORDER[b.unit] || a.firstDay - b.firstDay || (a.rate.priceBookId < b.rate.priceBookId ? -1 : 1))
-    .map(
-      (group): InvoiceLineDraft => ({
-        kind: BillingLineKind.OVERAGE,
-        capability: input.capability,
-        unit: group.unit,
-        quantity: perUnitTotals.get(group.unit) ?? new Decimal(0),
-        includedAllowance: allowance,
-        overageQuantity: group.overage,
-        unitPriceMicros: group.rate.unitPriceMicros,
-        // The ONE rounding rule: HALF-UP, once, at the line — via the SAME
-        // helper the COST rater uses, so the planes can never round apart.
-        amountMicros: computeCostMicros(group.overage, group.rate.unitPriceMicros),
-        description: `${input.capability} ${group.unit} overage — from ${new Date(group.firstDay).toISOString().slice(0, 10)}`,
-      }),
-    );
+    .map((group): InvoiceLineDraft => ({
+      kind: BillingLineKind.OVERAGE,
+      capability: input.capability,
+      unit: group.unit,
+      quantity: perUnitTotals.get(group.unit) ?? new Decimal(0),
+      includedAllowance: allowance,
+      overageQuantity: group.overage,
+      unitPriceMicros: group.rate.unitPriceMicros,
+      // The ONE rounding rule: HALF-UP, once, at the line — via the SAME
+      // helper the COST rater uses, so the planes can never round apart.
+      amountMicros: computeCostMicros(group.overage, group.rate.unitPriceMicros),
+      description: `${input.capability} ${group.unit} overage — from ${new Date(group.firstDay).toISOString().slice(0, 10)}`,
+    }));
 
   return {
     lines,

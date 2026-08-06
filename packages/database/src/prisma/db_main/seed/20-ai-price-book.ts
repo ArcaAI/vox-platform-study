@@ -365,6 +365,37 @@ const OVERAGE_ROWS: PriceBookSeed[] = [
     unitPriceMicros: 6n,
     note: 'PLACEHOLDER — $6.00 per 1M output tokens above allowance.',
   },
+  // The remaining LLM token kinds. The invoice engine FAILS CLOSED on a
+  // missing SELL rate (an invoice line cannot be "unrated"), and the pooled
+  // `monthlyLlmTokens` allowance covers ALL billable token kinds — so a
+  // cache-read or reasoning token falling into overage without a row here
+  // would abort the whole draft (TASK-615 WS-I).
+  {
+    id: 'B1000000-0000-0000-0002-000000000008',
+    plane: AiPriceBookPlane.SELL,
+    capability: AiCapability.LLM,
+    unit: AiUsageUnit.CACHE_READ_TOKEN,
+    unitPriceMicros: 1n,
+    note: 'PLACEHOLDER — cache reads at half the input overage rate (market discount direction).',
+  },
+  {
+    id: 'B1000000-0000-0000-0002-000000000009',
+    plane: AiPriceBookPlane.SELL,
+    capability: AiCapability.LLM,
+    unit: AiUsageUnit.CACHE_WRITE_TOKEN,
+    unitPriceMicros: 3n,
+    // Per-TTL split (5m ×1.25 vs 1h ×2.00) awaits a price dimension — the
+    // ws-b-contract §11 item; a single blended write rate until then.
+    note: 'PLACEHOLDER — cache writes at ~1.5× input overage; per-TTL split deferred (needs a cacheTtl price dimension).',
+  },
+  {
+    id: 'B1000000-0000-0000-0002-000000000010',
+    plane: AiPriceBookPlane.SELL,
+    capability: AiCapability.LLM,
+    unit: AiUsageUnit.REASONING_TOKEN,
+    unitPriceMicros: 6n,
+    note: 'PLACEHOLDER — reasoning tokens priced as output (market norm).',
+  },
   {
     id: 'B1000000-0000-0000-0002-000000000005',
     plane: AiPriceBookPlane.SELL,

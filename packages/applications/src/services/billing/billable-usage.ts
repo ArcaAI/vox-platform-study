@@ -47,7 +47,13 @@ export const BILLABLE_UNITS: Record<AiCapability, readonly AiUsageUnit[]> = {
   [AiCapability.STT]: [AiUsageUnit.SESSION_SECOND, AiUsageUnit.AUDIO_SECOND],
   // All billable token kinds pool into `monthlyLlmTokens`. GPU_SECOND is the
   // self-hosted cost-truth unit and is never sold (research §3).
-  [AiCapability.LLM]: [AiUsageUnit.INPUT_TOKEN, AiUsageUnit.OUTPUT_TOKEN, AiUsageUnit.CACHE_READ_TOKEN, AiUsageUnit.CACHE_WRITE_TOKEN, AiUsageUnit.REASONING_TOKEN],
+  [AiCapability.LLM]: [
+    AiUsageUnit.INPUT_TOKEN,
+    AiUsageUnit.OUTPUT_TOKEN,
+    AiUsageUnit.CACHE_READ_TOKEN,
+    AiUsageUnit.CACHE_WRITE_TOKEN,
+    AiUsageUnit.REASONING_TOKEN,
+  ],
   [AiCapability.TTS]: [AiUsageUnit.CHARACTER],
   // REQUEST rows are a shape metric (seeded at 0 cost) — text units carry NLP billing.
   [AiCapability.NLP]: [AiUsageUnit.TEXT_UNIT],

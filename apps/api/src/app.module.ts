@@ -58,6 +58,8 @@ import { DepartmentModule } from './modules/department/department.module';
 import { DepartmentAgentModule } from './modules/department-agent/department-agent.module';
 import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-style.module';
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
+// billing: SELL rate card + invoice lifecycle + tenant self-service reads (TASK-615 WS-I).
+import { BillingApiModule } from './modules/billing/billing.module';
 // harness administration & observability console (/admin/harness/*).
 import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
 // ordered agentic-session trajectory read plane (/admin/agent-trajectory/*).
@@ -297,6 +299,9 @@ const featureModules: any[] = [
   // /admin/entitlements/* (global-admin matrix/override/kill-switch/downgrade)
   // + /entitlements/me (tenant self-snapshot). All entitlements endpoints live here.
   EntitlementsApiModule,
+  // /admin/billing/rate-card + /admin/billing/invoices + /billing/me/* —
+  // SELL rate card (supersede-only) and the invoice engine (TASK-615 WS-I).
+  BillingApiModule,
   // Applies the pre-bootstrap platform knobs (`logLevel`,
   // `corsAllowedOrigins`) from the settings cascade — TASK-558 lane I. No
   // controllers; a binder only.

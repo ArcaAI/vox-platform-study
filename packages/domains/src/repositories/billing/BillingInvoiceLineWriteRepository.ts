@@ -9,6 +9,19 @@ import { BillingInvoiceLineEntityMapper } from '../../mappers';
 import { BillingInvoiceLineRepository } from '../generated/core/BillingInvoiceLineRepository';
 
 /**
+ * Structural view of the transaction client this extension writes through —
+ * typed instead of `any` so the only-warn `no-explicit-any` gate stays clean
+ * while still accepting both the real `Prisma.TransactionClient` and mocked
+ * delegates in unit tests.
+ */
+interface BillingLineTxDelegate {
+  billingInvoiceLine: {
+    updateMany: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<{ count: number }>;
+    createMany: (args: { data: Record<string, unknown>[] }) => Promise<{ count: number }>;
+  };
+}
+
+/**
  * Tx-aware invoice-line supersede writes (TASK-615 WS-I).
  *
  * Recomputing a DRAFT replaces its lines idempotently: the OLD lines are
@@ -35,8 +48,13 @@ export class BillingInvoiceLineWriteRepository extends BillingInvoiceLineReposit
    * Soft-delete every LIVE line of one invoice through the caller's tx.
    * Bumps `_version` on each row — soft-delete is a real state change (OCC).
    */
-  async softDeleteByInvoice(tenantId: string, invoiceId: string, updatedBy: string | null, tx: Prisma.TransactionClient | any): Promise<number> {
-    const result = await (tx as Record<string, any>).billingInvoiceLine.updateMany({
+  async softDeleteByInvoice(
+    tenantId: string,
+    invoiceId: string,
+    updatedBy: string | null,
+    tx: Prisma.TransactionClient | BillingLineTxDelegate,
+  ): Promise<number> {
+    const result = await (tx as BillingLineTxDelegate).billingInvoiceLine.updateMany({
       where: { tenantId, invoiceId, resourceStatus: { not: ResourceStatusType.DELETED } },
       data: {
         resourceStatus: ResourceStatusType.DELETED,
@@ -45,7 +63,7 @@ export class BillingInvoiceLineWriteRepository extends BillingInvoiceLineReposit
         version: { increment: 1 },
       },
     });
-    return result.count as number;
+    return result.count;
   }
 
   /**
@@ -53,11 +71,11 @@ export class BillingInvoiceLineWriteRepository extends BillingInvoiceLineReposit
    * null-stripping pipeline as `Repository.create`, so the `_version` OCC
    * strip applies (the DB owns `_version`).
    */
-  async createManyInTx(entities: readonly BillingInvoiceLineEntity[], tx: Prisma.TransactionClient | any): Promise<number> {
+  async createManyInTx(entities: readonly BillingInvoiceLineEntity[], tx: Prisma.TransactionClient | BillingLineTxDelegate): Promise<number> {
     if (entities.length === 0) return 0;
     const mapper = BillingInvoiceLineEntityMapper.getInstance();
     const data = entities.map((entity) => removeNullValues(mapper.toPersistence(entity)));
-    const result = await (tx as Record<string, any>).billingInvoiceLine.createMany({ data });
-    return result.count as number;
+    const result = await (tx as BillingLineTxDelegate).billingInvoiceLine.createMany({ data });
+    return result.count;
   }
 }

@@ -320,7 +320,8 @@ export class BillingService extends BaseService implements IBillingService {
     response.computedAt = now.toISOString();
     response.overageSpendMicros = overageSpendMicros.toString();
     response.spendLimitMicros = spendLimitMicros === null ? null : spendLimitMicros.toString();
-    response.remainingMicros = spendLimitMicros === null ? null : (spendLimitMicros > overageSpendMicros ? spendLimitMicros - overageSpendMicros : 0n).toString();
+    response.remainingMicros =
+      spendLimitMicros === null ? null : (spendLimitMicros > overageSpendMicros ? spendLimitMicros - overageSpendMicros : 0n).toString();
     response.exceeded = spendLimitMicros !== null && overageSpendMicros >= spendLimitMicros;
     response.utilizationPercent = spendLimitMicros === null || spendLimitMicros <= 0n ? null : Number((overageSpendMicros * 100n) / spendLimitMicros);
     response.byokNotionalCostMicros = byokNotionalCostMicros.toString();
@@ -358,7 +359,9 @@ export class BillingService extends BaseService implements IBillingService {
     if (plan !== null && !options.overageOnly) {
       const fee = await this.priceBook.resolvePlanFee(tenantId, plan, period.start);
       if (!fee) {
-        throw new ConflictException(`The SELL card carries no PLAN_FEE row for tier ${plan} — the rate card is incomplete; a draft will not silently bill 0.`);
+        throw new ConflictException(
+          `The SELL card carries no PLAN_FEE row for tier ${plan} — the rate card is incomplete; a draft will not silently bill 0.`,
+        );
       }
       const segment: PlanFeeSegment = {
         planTier: plan,
@@ -483,7 +486,12 @@ export class BillingService extends BaseService implements IBillingService {
         contextBand: null,
         planTier,
       });
-      rates.set(key, price === null ? null : { priceBookId: price.priceBookId, unitPriceMicros: price.unitPriceMicros, bookVersion: price.bookVersion, currency: price.currency });
+      rates.set(
+        key,
+        price === null
+          ? null
+          : { priceBookId: price.priceBookId, unitPriceMicros: price.unitPriceMicros, bookVersion: price.bookVersion, currency: price.currency },
+      );
       if (price) currencies.add(price.currency);
     }
 

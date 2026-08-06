@@ -98,7 +98,7 @@ describe('BillingInvoiceLineWriteRepository', () => {
   });
 
   it("softDeleteByInvoice soft-deletes the invoice's live lines through the supplied tx (never hard-deletes)", async () => {
-    await repo.softDeleteByInvoice(TENANT, 'inv-1', 'user-1', tx);
+    await repo.softDeleteByInvoice(TENANT, 'inv-1', 'user-1', tx as never);
 
     expect(tx.billingInvoiceLine.updateMany).toHaveBeenCalledTimes(1);
     const args = tx.billingInvoiceLine.updateMany.mock.calls[0][0];
@@ -111,7 +111,7 @@ describe('BillingInvoiceLineWriteRepository', () => {
   });
 
   it('createManyInTx maps entities through the house mapper and writes through the tx', async () => {
-    await repo.createManyInTx([line], tx);
+    await repo.createManyInTx([line], tx as never);
 
     expect(tx.billingInvoiceLine.createMany).toHaveBeenCalledTimes(1);
     const args = tx.billingInvoiceLine.createMany.mock.calls[0][0];
@@ -123,7 +123,7 @@ describe('BillingInvoiceLineWriteRepository', () => {
   });
 
   it('createManyInTx is a no-op for an empty batch', async () => {
-    await repo.createManyInTx([], tx);
+    await repo.createManyInTx([], tx as never);
     expect(tx.billingInvoiceLine.createMany).not.toHaveBeenCalled();
   });
 });
