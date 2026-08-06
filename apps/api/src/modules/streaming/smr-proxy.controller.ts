@@ -9,8 +9,11 @@ import {
   IConfigService,
   IProviderConnectionService,
   ITenantService,
+  IUsageLedgerService,
   ModelResponse,
+  buildLlmUsageInput,
   isCloudByoProvider,
+  parseSmrUsageDetail,
   SecretsService,
   isSuperAdmin,
 } from '@arcaai/applications';
@@ -195,6 +198,12 @@ export class SmrProxyController {
     @Optional()
     @Inject(IProviderConnectionService)
     private readonly aiProviderConnectionService?: IProviderConnectionService,
+    // (TASK-615 WS-D) Records the tokens a proxied stream consumed, on
+    // teardown. @Optional so existing positional test fixtures keep compiling;
+    // absent ⇒ the stream is simply not metered (it is never failed).
+    @Optional()
+    @Inject(IUsageLedgerService)
+    private readonly usageLedger?: IUsageLedgerService,
   ) {}
 
   /**
@@ -645,6 +654,74 @@ export class SmrProxyController {
 
     let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
+    // TASK-615 WS-D — meter what flows through the pipe.
+    //
+    // The proxy stays a byte pipe: every chunk is forwarded VERBATIM and the
+    // usage block is read from a side copy. `usageTail` holds only the bytes
+    // after the last complete frame boundary, so memory does not grow with the
+    // length of a long generation.
+    const tenantId = this.clsService.get('tenantId');
+    let usageTail = '';
+    let terminalUsage: unknown = null;
+    let emitted = false;
+
+    // Teardown fires from three places (`end`, `error`, client `close`) and can
+    // fire more than once. Emission is idempotent at the ledger anyway — the
+    // key is derived from the task id — but emitting once keeps the outbox from
+    // absorbing three copies of every stream.
+    const emitUsageOnce = (): void => {
+      if (emitted) return;
+      emitted = true;
+      if (!this.usageLedger || !tenantId || !terminalUsage) return;
+
+      const usage = parseSmrUsageDetail(terminalUsage);
+      if (!usage) return;
+
+      const input = buildLlmUsageInput({ usage, tenantId, operation: 'generate.stream' });
+      if (!input) return;
+
+      // Fire-and-forget with a swallowed rejection: the generation already
+      // happened and the client already has its bytes. A metering failure must
+      // degrade to "not metered", never to a broken stream.
+      void this.usageLedger.recordUsage(input).catch((error: unknown) => {
+        this.logger.warn({
+          message: 'Usage metering failed for a proxied SMR stream',
+          taskId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    };
+
+    /**
+     * Scan forwarded bytes for the terminal frame's `usage` block.
+     *
+     * Only complete `\n\n`-delimited frames are parsed, and only the ones whose
+     * payload carries a `usage` key — a token chunk never gets JSON-parsed, and
+     * frame content is never logged (it is generated clinical text).
+     */
+    const captureTerminalUsage = (chunk: Buffer): void => {
+      usageTail += chunk.toString('utf-8');
+      let boundary = usageTail.indexOf('\n\n');
+      while (boundary !== -1) {
+        const frame = usageTail.slice(0, boundary);
+        usageTail = usageTail.slice(boundary + 2);
+        const dataLine = frame.split('\n').find((line) => line.startsWith('data:'));
+        if (dataLine && dataLine.includes('"usage"')) {
+          try {
+            const payload = JSON.parse(dataLine.slice('data:'.length).trim()) as { data?: { usage?: unknown } };
+            if (payload?.data?.usage) terminalUsage = payload.data.usage;
+          } catch {
+            // A partially-delivered or non-JSON frame is not worth a log line
+            // (and its body may be PHI) — the next frame may still carry usage.
+          }
+        }
+        boundary = usageTail.indexOf('\n\n');
+      }
+      // Bound the carry-over: a frame this large is malformed, and holding it
+      // would turn a metering nicety into a memory leak.
+      if (usageTail.length > 64_000) usageTail = '';
+    };
+
     try {
       const streamUrl = lastEventId
         ? `${base}/api/v1/tasks/${taskId}/stream?last_event_id=${encodeURIComponent(lastEventId)}`
@@ -665,15 +742,20 @@ export class SmrProxyController {
 
       stream.on('data', (chunk: Buffer) => {
         res.write(chunk);
+        captureTerminalUsage(chunk);
       });
 
       stream.on('end', () => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
+        emitUsageOnce();
         res.end();
       });
 
       stream.on('error', (err: Error) => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
+        // The tokens seen before the socket died were still spent — emit them
+        // (TASK-470/471: this is where a dropped tail becomes lost revenue).
+        emitUsageOnce();
         this.logger.error({
           message: 'SSE stream error from SMR',
           taskId,
@@ -684,6 +766,9 @@ export class SmrProxyController {
 
       res.on('close', () => {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
+        // The client hung up. SMR keeps generating in its background task, but
+        // whatever usage already crossed the wire is real and must be recorded.
+        emitUsageOnce();
         stream.destroy();
       });
     } catch (err) {
