@@ -78,9 +78,15 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
    *
    * @param entities - Array of entities to create
    * @param skipDuplicates - If true, skip records that would cause unique constraint violations
+   * @param tx - Optional transaction client. When supplied (atomic multi-entity
+   *   create, e.g. a step batch + its usage-ledger rows), the write routes
+   *   through it so it participates in the caller's `$transaction` and rolls
+   *   back with the rest on partial failure — mirrors the existing `create(...,
+   *   tx)` / `updateWithVersion(..., tx)` contract. Without `tx` the cached
+   *   extended client (`this.db`) is used — behaviour unchanged.
    * @returns The count of created records
    */
-  public async createMany(entities: DomainEntity[], skipDuplicates: boolean = true): Promise<{ count: number }> {
+  public async createMany(entities: DomainEntity[], skipDuplicates: boolean = true, tx?: Prisma.TransactionClient | any): Promise<{ count: number }> {
     if (entities.length === 0) {
       return { count: 0 };
     }
@@ -90,7 +96,9 @@ export abstract class Repository<DomainEntity extends BaseEntity, DatabaseModel>
       return removeNullValues(mapped);
     });
 
-    const result = await this.db.createMany({
+    const delegate = tx ? (tx as Record<string, any>)[this._modelName] : this.db;
+
+    const result = await delegate.createMany({
       data,
       skipDuplicates,
     });
