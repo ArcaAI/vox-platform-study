@@ -72,6 +72,56 @@ def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[N
 
 
 # ---------------------------------------------------------------------------
+# Guardrail LLM consumption (TASK-615)
+# ---------------------------------------------------------------------------
+# Guardrail runs an LLM on every generation the platform serves and, until now,
+# reported no domain counters at all — its cost was structurally invisible.
+#
+# LABELS ARE BOUNDED AND CONTAIN NO TENANT. Prometheus is the fleet-health
+# plane; per-tenant consumption is answered from Postgres (the usage ledger),
+# which has access controls a scrape endpoint does not. Adding a tenant label
+# here would also make cardinality grow with the customer list.
+
+GUARDRAIL_REQUESTS_TOTAL = Counter(
+    "guardrail_requests_total",
+    "Guardrail LLM calls, by provider, model and outcome.",
+    ["provider", "model", "status"],
+)
+
+GUARDRAIL_TOKENS_TOTAL = Counter(
+    "guardrail_tokens_total",
+    "Tokens consumed by guardrail's own LLM calls, by provider, model and direction.",
+    ["provider", "model", "direction"],
+)
+
+
+def record_guardrail_call(
+    *,
+    provider: str | None,
+    model: str | None,
+    status: str,
+    prompt_tokens: int | None = 0,
+    completion_tokens: int | None = 0,
+) -> None:
+    """Record one guardrail LLM call. Never raises.
+
+    A telemetry edge case (an odd label, a negative count from a degraded
+    engine) must not take down a safety check, so everything here is
+    swallow-and-continue. Counters only ever move forward: a negative count is
+    clamped to zero rather than rejected.
+    """
+    try:
+        labels = {"provider": provider or "unknown", "model": model or "unknown"}
+        GUARDRAIL_REQUESTS_TOTAL.labels(**labels, status=status or "unknown").inc()
+        for direction, count in (("input", prompt_tokens), ("output", completion_tokens)):
+            amount = max(0, int(count or 0))
+            if amount:
+                GUARDRAIL_TOKENS_TOTAL.labels(**labels, direction=direction).inc(amount)
+    except Exception:  # noqa: BLE001 — telemetry never fails a guardrail call
+        return
+
+
+# ---------------------------------------------------------------------------
 # Model-cache retention metrics
 # ---------------------------------------------------------------------------
 # FIXED CONTRACT: names and label sets are identical across all five HOPE

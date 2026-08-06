@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, cast
 
 import httpx
 
 from guardrail.core.config import OllamaConfig
 from guardrail.core.logging import get_logger
-from guardrail.core.metrics import track_model_inference
+from guardrail.core.metrics import record_guardrail_call, track_model_inference
+from guardrail.providers.stats import stats_from_ollama_response
 
 logger = get_logger(__name__)
+
+# Engine identity stamped onto per-call stats: this provider talks the Ollama
+# native wire, and the gateway normalizer branches on that shape.
+_PROVIDER_NAME = "ollama"
 
 
 class GuardianProvider:
@@ -57,6 +63,7 @@ class GuardianProvider:
             }
 
         try:
+            start = time.perf_counter()
             # Truncate text for validation (first 2000 chars should be sufficient)
             text_sample = text[:2000]
 
@@ -82,10 +89,25 @@ class GuardianProvider:
                 response.raise_for_status()
 
             result = response.json()
+            total_ms = int((time.perf_counter() - start) * 1000)
             content = result.get("response", "").strip()
 
             # Parse JSON response
             validation_result = self._parse_validation_response(content)
+            # Guardrail's own token spend. Computed here and carried on the
+            # result so the endpoint can surface it — this is the only route it
+            # has to the billing plane (guardrail has no gateway in front of it).
+            stats = stats_from_ollama_response(
+                provider=_PROVIDER_NAME, model=self.model, data=result, total_ms=total_ms
+            )
+            validation_result["stats"] = stats.to_dict()
+            record_guardrail_call(
+                provider=_PROVIDER_NAME,
+                model=self.model,
+                status="success",
+                prompt_tokens=stats.prompt_tokens,
+                completion_tokens=stats.predicted_tokens,
+            )
 
             # Apply confidence threshold
             if validation_result["confidence"] < self.guardian_min_confidence:

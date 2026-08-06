@@ -45,6 +45,15 @@ class MedicalValidationResponse(BaseModel):
     request_id: str = Field(..., description="Request ID for tracking")
     timestamp: str = Field(..., description="Validation timestamp")
     error: str | None = Field(None, description="Error message if validation failed")
+    # Guardrail's OWN per-call LLM usage (``GuardrailCallStats``). Guardrail is a
+    # peer service — SMR posts to it directly, with no gateway in between — so
+    # riding back on this response is the only path its token spend has to the
+    # billing plane. ``None`` when no model was reached (disabled, error,
+    # keyword fallback): a zero-token block would be indistinguishable from a
+    # free call. Metered for COGS; never quota-blocked, never invoiced (D16).
+    stats: dict[str, Any] | None = Field(
+        None, description="Per-call LLM usage stats for this validation, when a model was invoked"
+    )
 
 
 class BatchMedicalValidationRequest(BaseModel):
@@ -52,6 +61,18 @@ class BatchMedicalValidationRequest(BaseModel):
 
     texts: list[str] = Field(..., description="List of texts to validate")
     request_id: str | None = Field(None, description="Optional request ID for tracking")
+
+
+def _stats_of(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Lift a provider's per-call usage stats off a validation result.
+
+    Every guardian provider attaches ``stats`` when it actually invoked a model.
+    A result without it (validation disabled, keyword fallback, an error path)
+    yields ``None`` — reporting zeros there would tell the billing plane the call
+    was free rather than that it never happened.
+    """
+    stats = result.get("stats") if isinstance(result, dict) else None
+    return stats if isinstance(stats, dict) else None
 
 
 @router.post("/medical/validate", response_model=MedicalValidationResponse)
@@ -86,6 +107,7 @@ async def validate_medical_context(
             request_id=request.request_id or f"med_val_{int(time.time() * 1000)}",
             timestamp=datetime.now(UTC).isoformat(),
             error=result.get("error"),
+            stats=_stats_of(result),
         )
 
     except Exception as e:
@@ -101,6 +123,7 @@ async def validate_medical_context(
             request_id=request.request_id or f"med_val_{int(time.time() * 1000)}",
             timestamp=datetime.now(UTC).isoformat(),
             error=str(e),
+            stats=None,
         )
 
 
@@ -132,6 +155,7 @@ async def validate_batch_medical_context(
                         request_id=f"{request.request_id or 'batch'}_{i}",
                         timestamp=datetime.now(UTC).isoformat(),
                         error=str(result),
+                        stats=None,
                     )
                 )
             else:
@@ -146,6 +170,7 @@ async def validate_batch_medical_context(
                         request_id=f"{request.request_id or 'batch'}_{i}",
                         timestamp=datetime.now(UTC).isoformat(),
                         error=result.get("error"),
+                        stats=_stats_of(result),
                     )
                 )
 
@@ -165,6 +190,7 @@ async def validate_batch_medical_context(
                 request_id=f"{request.request_id or 'batch'}_{i}",
                 timestamp=datetime.now(UTC).isoformat(),
                 error=str(e),
+                stats=None,
             )
             for i in range(len(request.texts))
         ]

@@ -28,6 +28,7 @@ from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
 from smr.models.stats import GenerationStats, build_generation_stats
 from smr.models.stream import StreamChunk
+from smr.models.usage import vertex_usage_dict
 from smr.providers.base import require_model
 
 if TYPE_CHECKING:
@@ -171,12 +172,12 @@ class VertexProvider:
             ),
             total_ms=total_ms,
             ttft_ms=ttft_ms,
+            # The usage blob is emitted in Google's JSON WIRE spelling (not the
+            # SDK's snake_case), because that is what the billing normalizer
+            # parses — and it carries `thoughtsTokenCount`, which Vertex reports
+            # OUTSIDE `candidatesTokenCount` (the Gemini API reports it inside).
             engine_native={
-                "usage": {
-                    "prompt_token_count": prompt_tokens,
-                    "candidates_token_count": predicted_tokens,
-                    "total_token_count": total_tokens,
-                },
+                "usage": vertex_usage_dict(usage),
                 "finish_reason": raw_stop_reason,
             },
         )
