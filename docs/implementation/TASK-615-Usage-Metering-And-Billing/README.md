@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — Waves 0–2 merged (ledger, emitters, meters/quotas, billing engine); Wave 3 (surfacing + evidence) executing |
+| **Status** | Review — all 11 workstreams (Waves 0–3) implemented and merged; live evidence run captured (§6 Wave 3); remaining items are owner decisions + design-gated console screens (§7) |
 | **Type** | feature (cross-cutting: database → domains → applications → api → python services → admin console → infra) |
 | **Created** | 2026-08-06 |
 | **Branch** | dev-2.1 |
@@ -719,7 +719,29 @@ files, 133/133 tests; full suite bit-identical to pre-change baseline (zero regr
 api build 8/8. _(Listed here out of wave order — WS-B is a Wave-0 lane; kept in place to
 preserve the document's edit history.)_
 
-### Wave 3 — WS-K (shadow metering, reconciliation, E2E evidence)
+### Wave 3 — complete 2026-08-06 (WS-J + WS-K merged; all 11 workstreams done)
+
+**WS-J — usage-analytics HTTP surface + Grafana** (branch `task-615-ws-j`, ff-merge head
+`560e1cd5`). Endpoints (money as micros STRINGS, class-validator DTOs, 404-over-403):
+`GET admin/usage/summary` (capability×provider×model×unit + BYOK notional split),
+`GET admin/usage/timeseries` (bounded 92d daily / 72h hourly), `GET admin/usage/
+cost-per-encounter` (p50/p90/p99/mean/total over consultations, INTERNAL costBasis only),
+`GET admin/usage/top-tenants` (GLOBAL_ADMIN-only cross-tenant, imperative isSuperAdmin),
+plus tenant self-service `GET usage/me/summary` and `usage/me/burndown` (linear
+`projectedToExceed` flag). New hand-written `UsageAnalyticsAggregateRepository` for the
+two shapes rollups can't express. Grafana `consumption.json` (7 panels, Postgres
+datasource uid `hope-postgres` — the datasource itself still needs provisioning). G16
+migration note recorded in `PlatformMetricsService`'s header (delegate to the
+ledger-derived service once the response-shape change is signed off). Console screens
+deliberately NOT built — design-gated per rule 12. Evidence: domains 1,499, applications
+7,606/7,606, api 2,439/2,439 + boot permission audit 15/15, dashboard JSON validated.
+
+**WS-K detail below** (branch `task-615-ws-k`, ff-merge head `af70931b`). Post-merge
+tail fix by the orchestrator: the COST-plane seed gap WS-K's evidence run exposed
+(TTS `AUDIO_SECOND` wildcard row added at 0µ so TTS duration events rate instead of
+draining unrated — the CHARACTER row carries TTS COGS for now).
+
+#### WS-K (shadow metering, reconciliation, E2E evidence)
 
 **WS-K — shadow metering, reconciliation, E2E evidence** (branch `task-615-ws-k`, worktree
 `hope-v2-wt-ws-k`, commit `e91b5a47`, NOT merged/pushed). Read-only shadow-metering report
@@ -810,13 +832,48 @@ WS-J owns that surface, built in parallel).
 
 ---
 
-## 7. Change History
+## 7. Remaining follow-ups & owner decisions (post-Wave-3)
+
+**Blocking real billing (owner action required):**
+1. **Supersede every placeholder SELL price** (`bookVersion 2026-08-06-placeholder-v1`)
+   with real commercial rates via `admin/billing/rate-card` before invoicing anyone.
+2. **Set real plan allowances** — all allowance columns seed NULL (unlimited); no
+   commercial ceilings were invented.
+3. **Production enforcement flip** (`entitlements.enabled`, `metering.reconcile.enabled`)
+   remains a launch decision (OQ3); shadow-meter one full cycle first (the
+   `ShadowMeteringService` exists, OFF by default).
+
+**Schema follow-ups (need a WS-A-style custodian pass):**
+4. Rollup grain lacks an `operation`/`billable` dimension — `LLM_TOKENS` meter over-counts
+   by guardrail+harness tokens; billing compensates via ledger aggregates today.
+5. `TenantUsageMeter.usedCount` is Int32 — overflow risk on token/character meters.
+6. `TenantPlanHistory` table for true mid-period fee proration (engine is ready;
+   `planFeeBasis: PERIOD_END_PLAN` until then).
+7. `cacheTtl` price dimension for per-TTL cache-write rates (single blended rate seeded).
+
+**Smaller engineering tail:**
+8. 402 spend-limit call-site wiring from `IBillingService.getSpendStatus`.
+9. Cross-tenant e2e specs for the WS-J `admin/usage/*` surface (WS-K deliberately left
+   them out while WS-J was in flight); execute the three authored task-615 e2e specs
+   against a live API (`pnpm test:up:api` → `pnpm test:e2e`).
+10. Grafana `hope-postgres` datasource provisioning (dashboard references it).
+11. `getConsumptionRollup` delegation to the ledger-derived usage-analytics service (G16).
+12. Dual-mic `channelCount` real signal (SDK session-create field; hardcoded 1 today).
+13. STT reaper edge: a session surviving gateway crash + retry exhaustion (~46 s) builds
+    a usage summary no gateway caller receives — needs an STT-side push-back path.
+14. Real provider usage-API reconcilers (OpenAI/Anthropic/Azure) — interfaces + stubs
+    exist; each needs org-level admin credentials (documented in the reconciler registry).
+15. **Console screens** (Consumption & Cost, Billing) — design-gated per rule 12: Figma
+    frames → owner approval → build; the HTTP surface they need is complete.
+
+## 8. Change History
 
 | Date | Change |
 |---|---|
 | 2026-08-06 | Ticket created, superseding TASK-601. Carried forward: current-state review (re-verified same day — all 16 gaps still open), external research (§1–12), design decisions D1–D8 and the five resolved owner questions. Added: billing-plane research track (§13), decisions D10–D17 (sell/cost price planes, per-capability allowances, overage policy, invoice lifecycle, BYOK billing, proration, PHI-free in-house rating), and the parallel-agent implementation plan (11 workstreams, 4 waves, coordination rules). Status → Review. |
 | 2026-08-06 | Plan approved by owner; execution started. **Wave 0 complete and merged** (WS-G `c4ef67e0`, WS-A `95718eb4`, WS-B `414204cb` — see §6); wave-1 emitter contract frozen (ws-b-contract.md). Status → In Progress. |
 | 2026-08-06 | **Wave 1 complete and merged** — all four emitter lanes (WS-D `54cbf3c7`, WS-F `9872338b`, WS-E `95aa176c`, WS-C `9c3ff673`; see §6). Gaps G5–G9 closed at the emission layer. Cross-lane verification in the merged tree: api streaming/compat/speech 351/351, applications stt+summary+ledger+trajectory 852/852. Wave 2 (WS-H meters/quotas, WS-I billing engine, WS-D2 emission completion) launched. |
+| 2026-08-06 | **Wave 3 complete — ALL 11 WORKSTREAMS DONE.** WS-J (usage-analytics API + Grafana, ff-head `560e1cd5`) and WS-K (shadow metering, outbox pruning, e2e specs, live evidence run, ff-head `af70931b`) merged; orchestrator tail fix for the TTS `AUDIO_SECOND` COST seed gap WS-K exposed. Live evidence: 13 synthetic events across all 5 capabilities drained → rated → rolled up → metered → a real 2-line draft invoice (PLAN_FEE + forced STT overage), cleanup psql-verified. Status → Review. Remaining: §7 follow-ups (placeholder SELL prices, allowances, schema tail, console screens behind the design gate). |
 | 2026-08-06 | **Wave 2 complete and merged** — WS-I (billing engine, ff-head `399b1149`), WS-D2 (emission completion, ff-head `b177e087`), WS-H (meters/quotas/alerts, ff-head `80e31a10`); see §6. Mid-wave, the owner linearized `dev-2.1` history and landed the `f5fdacbd` DI fix; all lanes rebased + fast-forwarded. Main-tree verification: billing/priceBook/ledger 212/212, consultation sweep 1,754/1,754, entitlements/metering/billing/summary 546/546, api speech+billing+interceptors 153/153. Wave 3 launched (WS-K evidence/shadow-metering + WS-J API/Grafana; console screens remain design-gated). |
 | 2026-08-06 | **WS-K complete, branch `task-615-ws-k` (worktree `hope-v2-wt-ws-k`, commit `e91b5a47`) — NOT merged/pushed.** Shadow-metering drift report + provider-reconciler stubs + DISPATCHED-outbox pruning (see §6 Wave 3); 3 E2E specs authored (not executed — no live API on 8868); 1 live SQL integration test (5/5, isolated test DB port 5433); live evidence run against dev Postgres (synthetic per-capability batch → real drainer → rollups → `MeteringService`/`BillingService`, incl. a forced real overage line), fully cleaned up and independently verified. Found: COST price book missing a `TTS AUDIO_SECOND` wildcard row (documented, not fixed — WS-A's lane). Evidence: applications 7,614/7,614, domains + applications build clean, lint clean. |
 | 2026-08-06 | **WS-D2 defect fix — WS-D's summary metering was dead in production.** `SummaryService` and `ChainSummaryService` injected the identically-named but UNWIRED `CoreUnitOfWorkService` from `services/baseServices/unitsOfWork/` (registered in no NestJS `providers: []` and absent from the applications barrel), so under `@Optional()` it resolved to `undefined` and `persistSummaryMetaWithUsage` ALWAYS took the unmetered fallback branch — no LLM/guardrail usage rows were ever written by `generateSummary`, `generatePreSummary`, or `generateComprehensiveSummary`. Unit tests could not catch it: they construct the services positionally with mocks and never exercise NestJS DI. Fixed by importing the DOMAINS `CoreUnitOfWorkService` from `@arcaai/domains` (provided + exported by `CoreDatabaseModule`, which both service modules already import) — the pattern WS-C's `SttInternalService` had already documented. Added `summary/__tests__/usage-ledger.di-wiring.task615.test.ts`, a container-free guard asserting the resolved constructor tokens against `CoreDatabaseModule`'s real exports (8 tests; verified RED against the broken imports first). The unwired class is retained (its own test is a named entry in the `cross-tenant-coverage` manifest) but now carries an explicit ⚠️ UNWIRED — DO NOT INJECT header. Evidence: `@arcaai/applications` build clean, 383 files / 7425 tests passing (baseline 7417 + 8 new), 0 new lint warnings. |

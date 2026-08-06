@@ -241,6 +241,18 @@ const COST_ROWS: PriceBookSeed[] = [
     unitPriceMicros: 16n,
     note: 'PLACEHOLDER — Azure neural TTS list, ~$16.00 per 1M characters.',
   },
+  {
+    // WS-K evidence run found TTS AUDIO_SECOND events drain UNRATED without this
+    // wildcard — TTS emits CHARACTER (sell unit) + AUDIO_SECOND (cost unit) per
+    // request, and the cost plane must resolve both.
+    id: 'B1000000-0000-0000-0000-000000000032',
+    plane: AiPriceBookPlane.COST,
+    capability: AiCapability.TTS,
+    provider: null, // wildcard — synthesized-output seconds, any engine
+    unit: AiUsageUnit.AUDIO_SECOND,
+    unitPriceMicros: 0n,
+    note: 'PLACEHOLDER (deliberate 0) — TTS output-duration COGS is carried by the CHARACTER row for now; this row exists so AUDIO_SECOND events rate instead of draining unrated.',
+  },
 
   // --- NLP -----------------------------------------------------------------
   {
