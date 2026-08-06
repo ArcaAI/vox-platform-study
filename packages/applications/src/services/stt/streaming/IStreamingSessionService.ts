@@ -56,7 +56,15 @@ export interface IStreamingSessionService {
   /**
    * Finalize and remove a streaming session.
    *
+   * TASK-615 WS-C: on a real teardown, emits ONE `transcribe.stream` usage
+   * row (SESSION_SECOND + AUDIO_SECOND). `interrupted` is a purely
+   * gateway-side decision (STT has no concept of it) — pass `true` from an
+   * abort path (resume-grace expiry, shutdown); leave the `false` default
+   * for an explicit close. Both use the SAME idempotency key, so a
+   * duplicate teardown call is a no-op at the ledger, never a double charge.
+   *
    * @param sessionId - The session identifier
+   * @param interrupted - Whether this teardown is an abort, not an explicit close (default false)
    */
-  removeSession(sessionId: string): Promise<void>;
+  removeSession(sessionId: string, interrupted?: boolean): Promise<void>;
 }

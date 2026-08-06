@@ -126,6 +126,31 @@ export interface SttLanguageModeCatalog {
   modes: SttLanguageMode[];
 }
 
+/**
+ * TASK-615 WS-C — the usage-attribution summary a REAL session teardown
+ * returns (`StreamingSessionTeardownResponse` in `apps/stt`). Kept in the
+ * WIRE (snake_case) shape rather than mapped to camelCase: this is read
+ * exactly once, inside `StreamingSessionService.removeSession`, to build the
+ * `transcribe.stream` ledger event, and is never exposed to any other
+ * consumer. `undefined`/absent on the idempotent "already gone" 204 branch.
+ */
+export interface StreamingSessionTeardownSummary {
+  session_id: string;
+  tenant_id: string;
+  consultation_id: string | null;
+  user_id: string | null;
+  pipeline_id: string;
+  /** ISO-8601 teardown instant — the ledger event's `occurredAt`. */
+  closed_at: string;
+  audio_seconds: number;
+  session_seconds: number;
+  /** Usage-ledger engine id; `null` when no ASR model was ever resolved. */
+  engine: string | null;
+  /** `SELF_HOSTED` | `CLOUD` | `BYOK`; `null` alongside a `null` engine. */
+  deployment: string | null;
+  language_mode: string | null;
+}
+
 export interface StreamingAvailability {
   /** Whether the streaming module is initialized and has capacity */
   available: boolean;

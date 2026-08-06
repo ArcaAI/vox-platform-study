@@ -1,9 +1,17 @@
 import { HttpService } from '@nestjs/axios';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
+import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { IConfigService } from '../../baseServices/_meta/config';
+import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
 import { IStreamingSessionService } from './IStreamingSessionService';
-import { CreateStreamingSessionRequest, SttLanguageModeCatalog, StreamingAvailability, StreamingSessionStatus } from './dto';
+import {
+  CreateStreamingSessionRequest,
+  SttLanguageModeCatalog,
+  StreamingAvailability,
+  StreamingSessionStatus,
+  StreamingSessionTeardownSummary,
+} from './dto';
 
 /**
  * StreamingSessionService
@@ -17,6 +25,13 @@ import { CreateStreamingSessionRequest, SttLanguageModeCatalog, StreamingAvailab
  *
  * This is a brand-new service for STT WebSocket streaming.
  * It does NOT touch or reuse the old STT v1 WebSocket implementation.
+ *
+ * TASK-615 WS-C: this is also the ONE emission point for the
+ * `transcribe.stream` usage-ledger row. Every caller (the DELETE controller
+ * route, the WS gateway's disconnect/finalize/shutdown paths, the removal
+ * retry service, and the stt-compat surface) tears a session down through
+ * `removeSession`, so putting emission here — rather than duplicating it per
+ * caller — guarantees they all flow through the same path.
  */
 @Injectable()
 export class StreamingSessionService implements IStreamingSessionService {
@@ -26,6 +41,10 @@ export class StreamingSessionService implements IStreamingSessionService {
   constructor(
     private readonly httpService: HttpService,
     @Optional() @Inject(IConfigService) private readonly configService?: IConfigService,
+    // Optional + trailing so every pre-TASK-615 2-arg construction (tests,
+    // and any DI graph that doesn't wire the ledger) keeps compiling —
+    // emission is simply skipped when this is absent.
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
   ) {
     this.sttBaseUrl = this.configService?.config?.STT_URL || 'http://localhost:8861';
     this.logger.log({
@@ -227,10 +246,29 @@ export class StreamingSessionService implements IStreamingSessionService {
 
   /**
    * Remove a streaming session (triggers finalization on STT).
+   *
+   * TASK-615 WS-C: a REAL teardown now returns a usage-attribution summary
+   * (see `StreamingSessionTeardownSummary`), which this emits as ONE
+   * `transcribe.stream` ledger row (SESSION_SECOND + AUDIO_SECOND) through
+   * `IUsageLedgerService`. The idempotent "already gone" branch (204, no
+   * body) has nothing to emit — a prior successful call already did (or
+   * never got the chance to, in which case there is genuinely no usage to
+   * record). `interrupted` is entirely a GATEWAY-side decision (STT has no
+   * concept of it): pass `true` from an abort path (resume-grace expiry,
+   * shutdown) and leave it `false` (the default) for an explicit close —
+   * ws-b-contract.md §4's "THE ABORT RULE": both use the SAME idempotency
+   * key, so a duplicate teardown is a no-op at the ledger, never a double
+   * charge.
    */
-  async removeSession(sessionId: string): Promise<void> {
+  async removeSession(sessionId: string, interrupted = false): Promise<void> {
+    let summary: StreamingSessionTeardownSummary | undefined;
     try {
-      await firstValueFrom(this.httpService.delete(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, { timeout: 30000 }));
+      const response = await firstValueFrom(
+        this.httpService.delete<StreamingSessionTeardownSummary | undefined>(`${this.sttBaseUrl}/internal/streaming/sessions/${sessionId}`, {
+          timeout: 30000,
+        }),
+      );
+      summary = response.status === 200 ? response.data : undefined;
 
       this.logger.log({
         message: 'Streaming session removed',
@@ -246,6 +284,65 @@ export class StreamingSessionService implements IStreamingSessionService {
         return;
       }
       throw error;
+    }
+
+    if (summary) {
+      await this.emitStreamingUsage(summary, interrupted);
+    }
+  }
+
+  /**
+   * Build and record the `transcribe.stream` usage rows from a teardown
+   * summary. Never throws — emission is a metering side effect of work
+   * already done and must never surface a failure to (or block) the caller
+   * that just finished tearing the session down.
+   */
+  private async emitStreamingUsage(summary: StreamingSessionTeardownSummary, interrupted: boolean): Promise<void> {
+    if (!this.usageLedgerService) {
+      return;
+    }
+    // Never guess a provider — no resolved engine means no ASR model was
+    // ever loaded for this session (e.g. it failed before load), so there
+    // is nothing meaningful to bill against (mirrors the batch path).
+    if (!summary.engine || !summary.deployment) {
+      return;
+    }
+
+    try {
+      await this.usageLedgerService.recordUsage({
+        common: {
+          tenantId: summary.tenant_id,
+          sessionId: summary.session_id,
+          consultationId: summary.consultation_id ?? null,
+          doctorId: summary.user_id ?? null,
+          idempotencyKey: UsageIdempotencyKey.sttStreamSession(summary.session_id),
+          occurredAt: summary.closed_at,
+          capability: AiCapability.STT,
+          operation: 'transcribe.stream',
+          provider: summary.engine,
+          model: null,
+          deployment: AiDeploymentKind[summary.deployment as keyof typeof AiDeploymentKind],
+          ...(summary.deployment === 'BYOK' ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
+          attributesJson: {
+            engine: summary.engine,
+            pipelineId: summary.pipeline_id,
+            languageMode: summary.language_mode ?? null,
+            channelCount: 1,
+            streamKind: 'ws',
+            interrupted,
+          },
+        },
+        units: [
+          { unit: AiUsageUnit.SESSION_SECOND, quantity: summary.session_seconds },
+          { unit: AiUsageUnit.AUDIO_SECOND, quantity: summary.audio_seconds },
+        ],
+      });
+    } catch (error) {
+      this.logger.error({
+        message: 'stt.stream.usage_emit_failed — session torn down but the transcribe.stream usage row was not recorded',
+        sessionId: summary.session_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 }

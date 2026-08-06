@@ -136,6 +136,20 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
       return;
     }
     this.closeSession(session);
+    // TASK-615 WS-C — an abrupt disconnect (tab closed, wifi drop) never
+    // called POST /stop_session, so the upstream STT session was NEVER torn
+    // down here at all: it leaked until STT's own idle-timeout reaper
+    // eventually finalized it server-side with no gateway caller to receive
+    // the usage-attribution summary, silently losing that session's usage.
+    // Fire-and-forget, mirroring the native WS gateway's finalizeSession
+    // posture; `interrupted: true` since no explicit stop was ever received.
+    this.sessionService.removeSession(session.sessionId, true).catch((err: unknown) => {
+      this.logger.warn({
+        message: 'Legacy STT session removal failed on disconnect',
+        sessionId: session.sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
   onModuleDestroy(): void {
