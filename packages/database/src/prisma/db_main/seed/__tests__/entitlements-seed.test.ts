@@ -1,0 +1,110 @@
+/**
+ * seedEntitlements — TASK-615 WS-H addition.
+ *
+ * Two GlobalSetting kill-switches now seed off the SAME env-driven pattern:
+ *   - `entitlements.enabled`        (ENTITLEMENTS_ENABLED_DEFAULT)   — pre-existing (WS-A)
+ *   - `metering.reconcile.enabled`  (METERING_RECONCILE_ENABLED_DEFAULT) — new
+ *
+ * Both read a `*_DEFAULT` env var at MODULE LOAD TIME to decide the value of a
+ * FRESH row only (`create` branch); an existing row's `update` branch never
+ * touches `value`, so a re-seed can never clobber a live operator toggle
+ * (OQ3). `vi.resetModules()` + dynamic import per test is required because the
+ * env read happens once, at import — mirrors `phi-encryption.test.ts`.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SEED_GLOBAL_SETTING_IDS, SEED_TENANT_ID } from '../00-constants';
+
+beforeEach(() => {
+  vi.resetModules();
+  vi.stubEnv('ENTITLEMENTS_ENABLED_DEFAULT', '');
+  vi.stubEnv('METERING_RECONCILE_ENABLED_DEFAULT', '');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+async function loadSeedEntitlements() {
+  return (await import('../15-entitlements')).seedEntitlements;
+}
+
+function makeMockClient() {
+  const upserts: Array<{ where: unknown; update: Record<string, unknown>; create: Record<string, unknown> }> = [];
+  const client = {
+    planEntitlement: { upsert: vi.fn(async () => ({})) },
+    globalSetting: {
+      upsert: vi.fn(async (args: { where: unknown; update: Record<string, unknown>; create: Record<string, unknown> }) => {
+        upserts.push(args);
+        return {};
+      }),
+    },
+  };
+  return { client, upserts };
+}
+
+describe('seedEntitlements — metering.reconcile.enabled GlobalSetting row', () => {
+  it('upserts a SECOND kill-switch row (metering.reconcile.enabled) alongside entitlements.enabled', async () => {
+    const seedEntitlements = await loadSeedEntitlements();
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    const meteringUpsert = upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled');
+    expect(meteringUpsert).toBeDefined();
+    expect(meteringUpsert!.create).toMatchObject({
+      id: SEED_GLOBAL_SETTING_IDS.METERING_RECONCILE_ENABLED,
+      tenantId: SEED_TENANT_ID,
+      namespace: 'metering',
+      key: 'metering.reconcile.enabled',
+      defaultValue: 'false',
+    });
+  });
+
+  it('defaults the metering.reconcile.enabled FRESH-row value to false when METERING_RECONCILE_ENABLED_DEFAULT is unset (TEST/CI/PROD posture)', async () => {
+    const seedEntitlements = await loadSeedEntitlements();
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    const meteringUpsert = upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!;
+    expect(meteringUpsert.create.value).toBe('false');
+  });
+
+  it('defaults the metering.reconcile.enabled FRESH-row value to true when METERING_RECONCILE_ENABLED_DEFAULT is truthy (DEV/STAGING posture)', async () => {
+    vi.stubEnv('METERING_RECONCILE_ENABLED_DEFAULT', 'true');
+    const seedEntitlements = await loadSeedEntitlements();
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    const meteringUpsert = upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!;
+    expect(meteringUpsert.create.value).toBe('true');
+  });
+
+  it('never overwrites an EXISTING row value on re-seed (update branch omits `value`)', async () => {
+    vi.stubEnv('METERING_RECONCILE_ENABLED_DEFAULT', 'true'); // would flip a fresh row ON…
+    const seedEntitlements = await loadSeedEntitlements();
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    const meteringUpsert = upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!;
+    // …but the `update` branch (applied on re-seed) must not carry `value` at
+    // all, so an operator's live toggle is never clobbered.
+    expect(meteringUpsert.update).not.toHaveProperty('value');
+  });
+
+  it('the metering switch is independently env-driven from the entitlements switch', async () => {
+    vi.stubEnv('ENTITLEMENTS_ENABLED_DEFAULT', 'true');
+    vi.stubEnv('METERING_RECONCILE_ENABLED_DEFAULT', ''); // stays unset
+    const seedEntitlements = await loadSeedEntitlements();
+    const { client, upserts } = makeMockClient();
+
+    await seedEntitlements(client as never);
+
+    const entitlementsUpsert = upserts.find((u) => (u.create as { key?: string }).key === 'entitlements.enabled')!;
+    const meteringUpsert = upserts.find((u) => (u.create as { key?: string }).key === 'metering.reconcile.enabled')!;
+    expect(entitlementsUpsert.create.value).toBe('true');
+    expect(meteringUpsert.create.value).toBe('false');
+  });
+});
