@@ -223,7 +223,16 @@ health_path_for() {
 if [ "${#SERVICES[@]}" -eq 0 ]; then
     step "Step 2/5: no app services required for this suite"
 else
-    step "Step 2/5: starting services (${SERVICES[*]})"
+    # Services run SECRETS_PROVIDER=vault and fail closed if .env.test's AppRole
+    # creds are stale (e.g. hope-vault was recreated → new role_id). Auto-mint
+    # fresh creds so the API boots — nobody re-provisions role_id/secret_id by
+    # hand. No-op when .env.test does not select the Vault provider.
+    step "Step 2/5: ensuring Vault creds + starting services (${SERVICES[*]})"
+    if ! "$SCRIPT_DIR/ensure-test-vault-creds.sh"; then
+        echo -e "${RED}Failed to provision Vault credentials for the test env.${NC}" >&2
+        teardown
+        exit 1
+    fi
     mkdir -p "$LOG_DIR" && chmod 700 "$LOG_DIR"
     for svc in "${SERVICES[@]}"; do
         port="$(port_for "$svc")"

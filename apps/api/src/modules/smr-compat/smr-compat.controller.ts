@@ -657,14 +657,22 @@ export class SmrCompatController {
   }
 
   /**
-   * Resolve the mandatory V2 Core tenant context: CLS-bound tenant (set by
-   * `UnifiedAuthGuard` from the api key), else the authenticated API key's
-   * tenant. Rejects with `401 Tenant context is required` when neither is
-   * present — no SYSTEM-default leak (§9.3 M4). This is defense-in-depth: a
-   * correctly tenant-scoped key never trips it.
+   * Resolve the mandatory V2 Core tenant context: CLS-bound tenant → the
+   * authenticated API key's tenant → the authenticated JWT user's own tenant.
+   * The last fallback matters on these compat routes specifically: they are
+   * EXCLUDED from the `api/v1` global prefix, so the JWT strategy's CLS
+   * population (the "single source of truth" that normally sets CLS `tenantId`
+   * for a Bearer caller) is not wired for them — the working-tenant elevation in
+   * `ContextInterceptor` is likewise a no-op here. `request.user` / `request.apiKey`,
+   * however, are set DIRECTLY on the Express request by the auth pipeline on every
+   * route, so we read the tenant off the request — exactly as the `apiKey` branch
+   * already does. Rejects with `401 Tenant context is required` when none is
+   * present — no SYSTEM-default leak (§9.3 M4); a global-admin's EMPTY tenant
+   * still trips it (they must act through a tenant-scoped credential).
+   * Defense-in-depth: a correctly tenant-scoped key or JWT never trips it.
    */
   private requireTenantId(authRequest?: RequestWithAuth): string {
-    const tenantId = this.clsService.get('tenantId') ?? authRequest?.apiKey?.tenantId;
+    const tenantId = this.clsService.get('tenantId') ?? authRequest?.apiKey?.tenantId ?? authRequest?.user?.tenantId;
     if (!tenantId) {
       throw new UnauthorizedException('Tenant context is required');
     }
