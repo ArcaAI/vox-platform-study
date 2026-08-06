@@ -147,6 +147,12 @@ _apply_test_overrides() {
   local file="$1"
   _set_env "$file" NODE_ENV test
   _set_env "$file" CI false
+  # NOTE: SECRETS_PROVIDER is deliberately NOT overridden here — .env.test keeps
+  # the sample's `vault` value because the PHI ciphertext seed, the test API and
+  # the e2e/integration suites use real Vault Transit (see test-setup.sh Step 3/6).
+  # The unit vitest suites need the SOFT (`!= vault`) no-op path instead; they get
+  # it from a project-scoped `env: { SECRETS_PROVIDER: 'env' }` in vitest.config.ts
+  # (workspace project), so the unit run is correct regardless of this file.
   _set_env "$file" DATABASE_URL "postgresql://test:test@localhost:5433/hope_test?schema=public"
   _set_env "$file" DIRECT_URL "postgresql://test:test@localhost:5433/hope_test?schema=public"
   _set_env "$file" REDIS_HOST localhost
