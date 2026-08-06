@@ -23,7 +23,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { SEEDED_USERS, loginUser } from '../../../../tests/helpers';
+import { DEFAULT_TENANT_KEY, SEEDED_USERS, loginUser } from '../../../../tests/helpers';
 // TASK-563 — validate LIVE 200 responses against the frozen v1 schema lock
 // (§5.4/§5.5). Hermetic when SMR is down (status ≠ 200 → shape check skipped).
 import { PreSummaryResponseSchema, SummaryResponseSchema } from '../../../../tests/contracts/smr-compat.schemas';
@@ -65,7 +65,14 @@ test.describe('TASK-562 v1-compatible SMR summary shims', () => {
   const createdApiKeyIds: string[] = [];
 
   test.beforeAll(async ({ request }) => {
-    const result = await loginUser(request, SEEDED_USERS.superAdmin.username, SEEDED_USERS.superAdmin.password);
+    // A TENANT-SCOPED admin, not the global superAdmin: the v1 SDK consumers
+    // these shims emulate are always tenant-bound, and the compat shim requires
+    // a resolvable tenant context (`requireTenantId`). A global-admin
+    // authenticates with an EMPTY tenant, so it would (correctly) 401 on these
+    // prefix-excluded routes — the working-tenant elevation interceptor does not
+    // run there. tenant_admin's JWT carries a concrete tenantId, resolved by the
+    // shim's JWT-user fallback.
+    const result = await loginUser(request, SEEDED_USERS.admin.username, SEEDED_USERS.admin.password, DEFAULT_TENANT_KEY);
     token = result?.token ?? '';
 
     if (token) {
