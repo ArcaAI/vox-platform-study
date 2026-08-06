@@ -19,6 +19,20 @@ if (process.env.NODE_ENV !== 'test') {
   process.env.NODE_ENV = 'test';
 }
 
+// Pin the PHI encrypt-on-write guard to SOFT mode for the vitest UNIT suite. The
+// unit suites construct services with MOCKED repositories/SecretsService and assert
+// the soft no-op path (phi-field-encryption.ts: SECRETS_PROVIDER != 'vault' → skip;
+// == 'vault' → fail-closed throw). `.env.test` deliberately keeps SECRETS_PROVIDER=vault
+// for the seed / test-API / e2e / integration flows (real Vault Transit, see
+// scripts/test-setup.sh). Forcing it here — the imperative twin of the vitest.config.ts
+// workspace-project `env` override — makes the unit run correct regardless of `.env.test`
+// and independent of dotenv. Integration uses tests/setup/integration.setup.ts (no
+// override), so it still runs with vault. Guard tests inject env explicitly / vi.stubEnv,
+// so this ambient default never affects them.
+if (process.env.SECRETS_PROVIDER === 'vault') {
+  process.env.SECRETS_PROVIDER = 'env';
+}
+
 // Node 25+ ships a native localStorage on globalThis that has no working
 // methods unless --localstorage-file is provided. When vitest uses jsdom the
 // environment normally supplies a working Storage, but the native getter can
