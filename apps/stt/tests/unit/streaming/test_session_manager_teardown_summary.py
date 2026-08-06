@@ -92,6 +92,7 @@ class TestBuildTeardownSummary:
         assert summary["consultation_id"] == "c1"
         assert summary["user_id"] == "u1"
         assert summary["pipeline_id"] == "p1"
+        assert summary["closed_at"] == "2026-08-06T10:01:30"
         assert summary["audio_seconds"] == 42.5
         assert summary["session_seconds"] == pytest.approx(90.0)
         assert summary["engine"] == "whisper_cpp"
@@ -138,6 +139,9 @@ class TestBuildTeardownSummary:
         summary = mgr._build_teardown_summary(session)
 
         assert summary["session_seconds"] == 0.0
+        # closed_at (the ledger occurredAt) still gets a real ISO stamp —
+        # the summary is never returned with a missing required field.
+        assert summary["closed_at"]
 
 
 class TestFinalizeReturnsTeardownSummary:

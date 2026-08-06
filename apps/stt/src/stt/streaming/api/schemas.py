@@ -150,6 +150,10 @@ class StreamingSessionTeardownResponse(BaseModel):
     consultation_id: str | None = None
     user_id: str | None = None
     pipeline_id: str
+    closed_at: str = Field(
+        ...,
+        description="ISO-8601 teardown instant (session.close()'s stamp) — the ledger event's occurredAt",
+    )
     audio_seconds: float = Field(
         ..., description="Decoded audio seconds ingested (total_duration_seconds)"
     )
