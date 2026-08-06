@@ -131,4 +131,61 @@ describe('resolveEntitlements', () => {
       expect(r.limits.storageQuotaBytes).toBe(10 * GIB);
     });
   });
+
+  describe('TASK-615 D11 per-capability allowances (monthlySttSessionSeconds/monthlyLlmTokens/monthlyTtsCharacters/monthlyNlpTextUnits/monthlyEmbeddingTokens)', () => {
+    it('seeds every plan unlimited (null) — D11: seeding NULL is a strict no-op until a commercial ceiling is set', () => {
+      for (const plan of [TenantPlan.STARTER, TenantPlan.TRIAL, TenantPlan.PRO, TenantPlan.ENTERPRISE]) {
+        const r = resolveEntitlements(plan);
+        expect(r.limits.monthlySttSessionSeconds).toBeNull();
+        expect(r.limits.monthlyLlmTokens).toBeNull();
+        expect(r.limits.monthlyTtsCharacters).toBeNull();
+        expect(r.limits.monthlyNlpTextUnits).toBeNull();
+        expect(r.limits.monthlyEmbeddingTokens).toBeNull();
+      }
+    });
+
+    it('a null plan (ungated-legacy) has unlimited allowances too', () => {
+      const r = resolveEntitlements(null);
+      expect(r.limits.monthlySttSessionSeconds).toBeNull();
+      expect(r.limits.monthlyLlmTokens).toBeNull();
+      expect(r.limits.monthlyTtsCharacters).toBeNull();
+      expect(r.limits.monthlyNlpTextUnits).toBeNull();
+      expect(r.limits.monthlyEmbeddingTokens).toBeNull();
+    });
+
+    it('a DB plan row can set a finite allowance ceiling', () => {
+      const r = resolveEntitlements(TenantPlan.TRIAL, { monthlyLlmTokens: 500_000 });
+      expect(r.limits.monthlyLlmTokens).toBe(500_000);
+      // untouched allowance fields stay unlimited
+      expect(r.limits.monthlyTtsCharacters).toBeNull();
+    });
+
+    it('a per-tenant override wins over the plan row (negotiated enterprise allowance)', () => {
+      const r = resolveEntitlements(TenantPlan.ENTERPRISE, { monthlyLlmTokens: 10_000_000 }, { monthlyLlmTokens: 50_000_000 });
+      expect(r.limits.monthlyLlmTokens).toBe(50_000_000);
+    });
+
+    it('a null override inherits the plan default (does not zero it out)', () => {
+      const r = resolveEntitlements(TenantPlan.ENTERPRISE, { monthlyTtsCharacters: 1_000_000 }, { monthlyTtsCharacters: null });
+      expect(r.limits.monthlyTtsCharacters).toBe(1_000_000);
+    });
+
+    it('normalizes a bigint allowance (Prisma returns BigInt for these columns too)', () => {
+      const r = resolveEntitlements(TenantPlan.ENTERPRISE, { monthlySttSessionSeconds: BigInt(3_600_000) });
+      expect(typeof r.limits.monthlySttSessionSeconds).toBe('number');
+      expect(r.limits.monthlySttSessionSeconds).toBe(3_600_000);
+    });
+
+    it('normalizes a bigint allowance override too', () => {
+      const r = resolveEntitlements(TenantPlan.STARTER, null, { monthlyNlpTextUnits: BigInt(200_000) });
+      expect(r.limits.monthlyNlpTextUnits).toBe(200_000);
+    });
+
+    it('TRIAL mirrors PRO exactly for the new allowances too', () => {
+      const trial = resolveEntitlements(TenantPlan.TRIAL);
+      const pro = resolveEntitlements(TenantPlan.PRO);
+      expect(trial.limits.monthlyLlmTokens).toBe(pro.limits.monthlyLlmTokens);
+      expect(trial.limits.monthlyEmbeddingTokens).toBe(pro.limits.monthlyEmbeddingTokens);
+    });
+  });
 });

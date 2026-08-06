@@ -70,6 +70,16 @@ export interface PlanEntitlementValues {
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
+  /**
+   * Per-capability included allowances (TASK-615 D11). `null` = unlimited —
+   * every plan seeds NULL today; a commercial ceiling is set later through
+   * the admin plan matrix, once shadow metering has run a full cycle.
+   */
+  monthlySttSessionSeconds: number | null;
+  monthlyLlmTokens: number | null;
+  monthlyTtsCharacters: number | null;
+  monthlyNlpTextUnits: number | null;
+  monthlyEmbeddingTokens: number | null;
   featureDnaReports: boolean;
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
@@ -90,6 +100,11 @@ const PRO_VALUES: PlanEntitlementValues = {
   monthlyConsultations: 5_000,
   monthlyTranscriptionMinutes: 12_000,
   monthlySummaries: 5_000,
+  monthlySttSessionSeconds: null,
+  monthlyLlmTokens: null,
+  monthlyTtsCharacters: null,
+  monthlyNlpTextUnits: null,
+  monthlyEmbeddingTokens: null,
   featureDnaReports: true,
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
@@ -110,6 +125,11 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     monthlyConsultations: 500,
     monthlyTranscriptionMinutes: 1_000,
     monthlySummaries: 500,
+    monthlySttSessionSeconds: null,
+    monthlyLlmTokens: null,
+    monthlyTtsCharacters: null,
+    monthlyNlpTextUnits: null,
+    monthlyEmbeddingTokens: null,
     featureDnaReports: false,
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
@@ -130,6 +150,11 @@ export const PLAN_ENTITLEMENT_DEFAULTS: Record<TenantPlan, PlanEntitlementValues
     monthlyConsultations: 50_000,
     monthlyTranscriptionMinutes: 120_000,
     monthlySummaries: 50_000,
+    monthlySttSessionSeconds: null,
+    monthlyLlmTokens: null,
+    monthlyTtsCharacters: null,
+    monthlyNlpTextUnits: null,
+    monthlyEmbeddingTokens: null,
     featureDnaReports: true,
     featureVoiceEnrollment: true,
     featureMonitoringAccess: true,

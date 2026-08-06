@@ -21,7 +21,7 @@ import { IActiveUserContext } from '../../interfaces';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { IGlobalSettingService } from '../globalSetting/IGlobalSettingService';
 import { ITenantService } from '../tenant/ITenantService';
-import { IMeteringService } from '../metering/IMeteringService';
+import { IMeteringService, MeterUsage } from '../metering/IMeteringService';
 import { ISocketRegistryService } from '../platform-metrics/socket-registry.service';
 import { IEntitlementsService, StorageSoftWarn, TenantRateLimitPolicy } from './IEntitlementsService';
 import { ResolvedEntitlements, resolveEntitlements } from './resolve-entitlements';
@@ -64,6 +64,30 @@ import {
  * rarely retuned, so a few seconds of staleness is acceptable).
  */
 const RATE_LIMIT_POLICY_TTL_MS = 30_000;
+
+/** `bigint | null | undefined` DB column → `number | null` response field (same conversion `storageQuotaBytes` already uses). */
+function toAllowanceNumber(value: bigint | null | undefined): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
+/**
+ * `MeterCapabilityKey` → the `MeterUsage` field it reads. Replaces a chained
+ * ternary as the capability set grew from 3 to 8 (TASK-615 D11): a map keeps
+ * `assertMeterQuota` a flat, exhaustively-typed lookup instead of an
+ * if/else-if ladder, and `Record<MeterCapabilityKey, ...>` means TypeScript
+ * itself refuses to compile if a capability is ever added to the union
+ * without a matching entry here.
+ */
+const METER_USAGE_FIELD_BY_CAPABILITY: Record<MeterCapabilityKey, (usage: MeterUsage) => number> = {
+  monthlyConsultations: (u) => u.consultations,
+  monthlyTranscriptionMinutes: (u) => u.transcriptionMinutes,
+  monthlySummaries: (u) => u.summaries,
+  monthlySttSessionSeconds: (u) => u.sttSessionSeconds,
+  monthlyLlmTokens: (u) => u.llmTokens,
+  monthlyTtsCharacters: (u) => u.ttsCharacters,
+  monthlyNlpTextUnits: (u) => u.nlpTextUnits,
+  monthlyEmbeddingTokens: (u) => u.embeddingTokens,
+};
 
 @Injectable()
 export class EntitlementsService extends BaseService implements IEntitlementsService {
@@ -155,6 +179,17 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       buildCapabilityRow('monthlyConsultations', resolved.limits.monthlyConsultations, meterUsage.consultations),
       buildCapabilityRow('monthlyTranscriptionMinutes', resolved.limits.monthlyTranscriptionMinutes, meterUsage.transcriptionMinutes),
       buildCapabilityRow('monthlySummaries', resolved.limits.monthlySummaries, meterUsage.summaries),
+      // TASK-615 D11 — the five ledger-derived unit-allowance meters.
+      buildCapabilityRow('monthlySttSessionSeconds', resolved.limits.monthlySttSessionSeconds, meterUsage.sttSessionSeconds),
+      buildCapabilityRow('monthlyLlmTokens', resolved.limits.monthlyLlmTokens, meterUsage.llmTokens),
+      buildCapabilityRow('monthlyTtsCharacters', resolved.limits.monthlyTtsCharacters, meterUsage.ttsCharacters),
+      buildCapabilityRow('monthlyNlpTextUnits', resolved.limits.monthlyNlpTextUnits, meterUsage.nlpTextUnits),
+      buildCapabilityRow('monthlyEmbeddingTokens', resolved.limits.monthlyEmbeddingTokens, meterUsage.embeddingTokens),
+      // GUARDRAIL_CALLS — informational only. There is no allowance column
+      // (D6/D16: guardrail is metered but never quota-blocked), so `limit` is
+      // always `null` here — passing it through `buildCapabilityRow` still
+      // gives the right `unlimited: true` / `exceeded: false` shape for free.
+      buildCapabilityRow('guardrailCalls', null, meterUsage.guardrailCalls),
     ];
 
     return {
@@ -188,6 +223,10 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     // Q10 — block the NEW action only; existing resources are grandfathered.
     // Emit an audit event (subscribers persist it), then throw the
     // typed error the API maps to 409/429.
+    // TASK-615 — `responsibleEntityId` (from CLS, when a request is in
+    // flight) lets the sys-event consumer author the resulting audit-log row
+    // instead of leaving it authorless; a background/system caller with no
+    // CLS user emits `undefined`, same as `broadcastSysEvent` already tolerates.
     this.eventEmitter.emit(ENTITLEMENTS_QUOTA_BLOCKED_EVENT, {
       tenantId,
       capability,
@@ -195,6 +234,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       used: currentCount,
       requested: increment,
       at: new Date(),
+      responsibleEntityId: this.requestUserId ?? undefined,
     });
 
     throw new QuotaExceededException(
@@ -211,12 +251,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (!this.isEnforcementEnabled()) return;
 
     const usage = await this.metering.getCurrentUsage(tenantId);
-    const used =
-      capability === 'monthlyConsultations'
-        ? usage.consultations
-        : capability === 'monthlyTranscriptionMinutes'
-          ? usage.transcriptionMinutes
-          : usage.summaries;
+    const used = METER_USAGE_FIELD_BY_CAPABILITY[capability](usage);
 
     // Delegates to the shared block-new logic (same event + typed error). The
     // API maps the meter capabilities to 429; the quantity ones to 409.
@@ -249,6 +284,7 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       used: active,
       requested: increment,
       at: new Date(),
+      responsibleEntityId: this.requestUserId ?? undefined,
     });
 
     throw new QuotaExceededException(
@@ -377,6 +413,12 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     this.applyLimitField(request, 'monthlyConsultations', (v) => (row.monthlyConsultations = v));
     this.applyLimitField(request, 'monthlyTranscriptionMinutes', (v) => (row.monthlyTranscriptionMinutes = v));
     this.applyLimitField(request, 'monthlySummaries', (v) => (row.monthlySummaries = v));
+    // TASK-615 D11 — per-capability allowance ceilings (same bigint conversion as storageQuotaBytes above).
+    this.applyBigIntField(request.monthlySttSessionSeconds, (v) => (row.monthlySttSessionSeconds = v));
+    this.applyBigIntField(request.monthlyLlmTokens, (v) => (row.monthlyLlmTokens = v));
+    this.applyBigIntField(request.monthlyTtsCharacters, (v) => (row.monthlyTtsCharacters = v));
+    this.applyBigIntField(request.monthlyNlpTextUnits, (v) => (row.monthlyNlpTextUnits = v));
+    this.applyBigIntField(request.monthlyEmbeddingTokens, (v) => (row.monthlyEmbeddingTokens = v));
     if (request.featureDnaReports !== undefined) row.featureDnaReports = request.featureDnaReports;
     if (request.featureVoiceEnrollment !== undefined) row.featureVoiceEnrollment = request.featureVoiceEnrollment;
     if (request.featureMonitoringAccess !== undefined) row.featureMonitoringAccess = request.featureMonitoringAccess;
@@ -436,6 +478,12 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyConsultations: request.monthlyConsultations ?? null,
       monthlyTranscriptionMinutes: request.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: request.monthlySummaries ?? null,
+      // TASK-615 D11 — negotiated per-capability allowance overrides.
+      monthlySttSessionSeconds: request.monthlySttSessionSeconds === null || request.monthlySttSessionSeconds === undefined ? null : BigInt(request.monthlySttSessionSeconds),
+      monthlyLlmTokens: request.monthlyLlmTokens === null || request.monthlyLlmTokens === undefined ? null : BigInt(request.monthlyLlmTokens),
+      monthlyTtsCharacters: request.monthlyTtsCharacters === null || request.monthlyTtsCharacters === undefined ? null : BigInt(request.monthlyTtsCharacters),
+      monthlyNlpTextUnits: request.monthlyNlpTextUnits === null || request.monthlyNlpTextUnits === undefined ? null : BigInt(request.monthlyNlpTextUnits),
+      monthlyEmbeddingTokens: request.monthlyEmbeddingTokens === null || request.monthlyEmbeddingTokens === undefined ? null : BigInt(request.monthlyEmbeddingTokens),
       featureDnaReports: request.featureDnaReports ?? null,
       featureVoiceEnrollment: request.featureVoiceEnrollment ?? null,
       featureMonitoringAccess: request.featureMonitoringAccess ?? null,
@@ -470,6 +518,12 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     existing.monthlyConsultations = null;
     existing.monthlyTranscriptionMinutes = null;
     existing.monthlySummaries = null;
+    // TASK-615 D11 — clear the new allowance overrides too (reversible, never deleted).
+    existing.monthlySttSessionSeconds = null;
+    existing.monthlyLlmTokens = null;
+    existing.monthlyTtsCharacters = null;
+    existing.monthlyNlpTextUnits = null;
+    existing.monthlyEmbeddingTokens = null;
     existing.featureDnaReports = null;
     existing.featureVoiceEnrollment = null;
     existing.featureMonitoringAccess = null;
@@ -510,6 +564,18 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     }
   }
 
+  /**
+   * TASK-615 D11 — assign a `number | null` allowance field as its `bigint |
+   * null` column, only when the caller supplied it (`undefined` = "leave
+   * unchanged"). Same conversion `storageQuotaBytes` already uses; factored out
+   * because there are now five of these instead of one.
+   */
+  private applyBigIntField(value: number | null | undefined, assign: (value: bigint | null) => void): void {
+    if (value !== undefined) {
+      assign(value === null ? null : BigInt(value));
+    }
+  }
+
   private applyTenantOverrideFields(entity: TenantEntitlementEntity, request: UpsertTenantEntitlementRequest): void {
     if (request.maxUsers !== undefined) entity.maxUsers = request.maxUsers;
     if (request.maxDepartments !== undefined) entity.maxDepartments = request.maxDepartments;
@@ -523,6 +589,11 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
     if (request.monthlyConsultations !== undefined) entity.monthlyConsultations = request.monthlyConsultations;
     if (request.monthlyTranscriptionMinutes !== undefined) entity.monthlyTranscriptionMinutes = request.monthlyTranscriptionMinutes;
     if (request.monthlySummaries !== undefined) entity.monthlySummaries = request.monthlySummaries;
+    this.applyBigIntField(request.monthlySttSessionSeconds, (v) => (entity.monthlySttSessionSeconds = v));
+    this.applyBigIntField(request.monthlyLlmTokens, (v) => (entity.monthlyLlmTokens = v));
+    this.applyBigIntField(request.monthlyTtsCharacters, (v) => (entity.monthlyTtsCharacters = v));
+    this.applyBigIntField(request.monthlyNlpTextUnits, (v) => (entity.monthlyNlpTextUnits = v));
+    this.applyBigIntField(request.monthlyEmbeddingTokens, (v) => (entity.monthlyEmbeddingTokens = v));
     if (request.featureDnaReports !== undefined) entity.featureDnaReports = request.featureDnaReports;
     if (request.featureVoiceEnrollment !== undefined) entity.featureVoiceEnrollment = request.featureVoiceEnrollment;
     if (request.featureMonitoringAccess !== undefined) entity.featureMonitoringAccess = request.featureMonitoringAccess;
@@ -566,6 +637,11 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyConsultations: row.monthlyConsultations ?? null,
       monthlyTranscriptionMinutes: row.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: row.monthlySummaries ?? null,
+      monthlySttSessionSeconds: toAllowanceNumber(row.monthlySttSessionSeconds),
+      monthlyLlmTokens: toAllowanceNumber(row.monthlyLlmTokens),
+      monthlyTtsCharacters: toAllowanceNumber(row.monthlyTtsCharacters),
+      monthlyNlpTextUnits: toAllowanceNumber(row.monthlyNlpTextUnits),
+      monthlyEmbeddingTokens: toAllowanceNumber(row.monthlyEmbeddingTokens),
       featureDnaReports: row.featureDnaReports,
       featureVoiceEnrollment: row.featureVoiceEnrollment,
       featureMonitoringAccess: row.featureMonitoringAccess,
@@ -589,6 +665,11 @@ export class EntitlementsService extends BaseService implements IEntitlementsSer
       monthlyConsultations: row.monthlyConsultations ?? null,
       monthlyTranscriptionMinutes: row.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: row.monthlySummaries ?? null,
+      monthlySttSessionSeconds: toAllowanceNumber(row.monthlySttSessionSeconds),
+      monthlyLlmTokens: toAllowanceNumber(row.monthlyLlmTokens),
+      monthlyTtsCharacters: toAllowanceNumber(row.monthlyTtsCharacters),
+      monthlyNlpTextUnits: toAllowanceNumber(row.monthlyNlpTextUnits),
+      monthlyEmbeddingTokens: toAllowanceNumber(row.monthlyEmbeddingTokens),
       featureDnaReports: row.featureDnaReports ?? null,
       featureVoiceEnrollment: row.featureVoiceEnrollment ?? null,
       featureMonitoringAccess: row.featureMonitoringAccess ?? null,
