@@ -297,6 +297,16 @@ const QUOTA_RATE_CAPABILITIES = new Set([
   // A simultaneous-session cap is retry-later, not a permanent conflict; 429
   // lets the caller back off and retry once a session frees up.
   'maxConcurrentSessions',
+  // TASK-615 D11 — the five ledger-derived unit-allowance meters
+  // (MeterCapabilityKey in @arcaai/applications' entitlements/enforcement.ts).
+  // Same rolling-monthly-meter semantics as the three above; no
+  // 'monthlyGuardrailCalls' — guardrail has no allowance column (D6/D16, never
+  // quota-blocked), so no capability string for it can ever reach this map.
+  'monthlySttSessionSeconds',
+  'monthlyLlmTokens',
+  'monthlyTtsCharacters',
+  'monthlyNlpTextUnits',
+  'monthlyEmbeddingTokens',
 ]);
 
 function mapQuotaCapabilityToHttp(capability: string | undefined): HttpStatus {
