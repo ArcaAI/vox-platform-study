@@ -6,6 +6,7 @@ import { BaseService, assertEqualTenants } from '../../common';
 import { clampCursorLimit, decodeCursor, toCursorPage } from '../../common/cursorPagination';
 import { IActiveUserContext } from '../../interfaces';
 import { IRedisCacheService } from '../baseServices/redis';
+import { IUsageLedgerService } from '../usageLedger';
 import { AgentTrajectoryDtoMapper } from './agent-trajectory.dto.mapper';
 import {
   AgentTrajectorySessionResponse,
@@ -14,6 +15,7 @@ import {
   CreateAgentTrajectoryStepInput,
   GenerationMetricsAggregateResponse,
 } from './dto';
+import { buildHarnessUsageEvent } from './harness-usage.mapper';
 import {
   AggregateGenerationStatsFilters,
   IAgentTrajectoryService,
@@ -44,6 +46,8 @@ const MAX_GENERATION_METRICS_ROWS = 5000;
  *     so a re-delivered duplicate batch persists nothing new.
  *   - `pruneOlderThan` is the ONLY hard-delete path in the service and operates
  *     EXCLUSIVELY on `AgentTrajectoryStep` (soft-delete-exempt, hard retention).
+ *   - `recordSteps` co-emits usage-ledger rows for LLM_CALL steps that carry
+ *     billable AD-1 `GenerationStats` (TASK-615 WS-F) — see `emitUsage` below.
  *
  * Extends `BaseService` for the CLS tenant getter; a placeholder
  * `ResourceType` is passed only to satisfy the base constructor — this service
@@ -62,6 +66,10 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     // Optional so unit fixtures can construct without a cache; production DI
     // (@Global RedisCacheModule) supplies it for the live-view republish.
     @Optional() @Inject(IRedisCacheService) private readonly cacheService?: IRedisCacheService,
+    // Optional for the same reason: production DI (UsageLedgerServiceModule,
+    // imported by this service's own module) always supplies it; a fixture
+    // that omits it simply gets no ledger emission (see `emitUsage`).
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
   ) {
     // Telemetry exemption — never broadcasts, so the ResourceType is inert.
     super(eventEmitter, clsService, ResourceType.SummaryMeta);
@@ -119,6 +127,10 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     if (count > 0) {
       await this.republishToLiveView(entities);
     }
+
+    // Usage-ledger emission (TASK-615 WS-F) — attempted for EVERY entity,
+    // deliberately NOT gated on `count`. See `emitUsage`.
+    await this.emitUsage(entities);
   }
 
   async listSessions(
@@ -304,6 +316,54 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
         this.logger.warn({
           message: 'Failed to republish trajectory step to live view',
           consultationId: entity.consultationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  /**
+   * Co-emit usage-ledger rows (TASK-615 WS-F) for every LLM_CALL step that
+   * carries billable AD-1 `GenerationStats` — `buildHarnessUsageEvent` maps
+   * the step, `null` for anything else (wrong step type, no stats, no
+   * positive token count, no provider).
+   *
+   * Attempted for EVERY entity in the batch, deliberately NOT gated on
+   * whether `createMany` actually inserted it. A Temporal activity retry
+   * re-POSTs the identical step, which the composite unique
+   * `(tenantId, sessionId, runId, seq)` makes a no-op at the trajectory
+   * table — but `harness-usage.mapper.ts` derives the ledger's idempotency
+   * key from that SAME tuple (`harness:step:<sessionId>:<runId>:<seq>`, NOT
+   * the entity's freshly-generated row id), so a retry converges to one
+   * ledger row by KEY. Gating this on the trajectory insert outcome would
+   * mean a retry after a first-attempt ledger failure (outbox write down,
+   * say) never gets a second chance to emit, because the trajectory insert
+   * itself no-ops on the retry.
+   *
+   * Best-effort like `republishToLiveView`: an emission failure is logged
+   * and swallowed, never allowed to fail trajectory persistence — metering is
+   * a side effect of work already done (WS-B contract §5).
+   *
+   * NOT wrapped in the same DB transaction as `createMany` today:
+   * `AgentTrajectoryStepRepository.createMany` has no `tx` parameter (only
+   * `create`/`updateWithVersion` do — see `packages/domains/src/common/repository.ts`),
+   * and extending it is outside this service's boundary. See the WS-F ticket
+   * report for the recommended follow-up.
+   */
+  private async emitUsage(entities: AgentTrajectoryStepEntity[]): Promise<void> {
+    if (!this.usageLedgerService) return;
+    for (const entity of entities) {
+      const event = buildHarnessUsageEvent(entity);
+      if (!event) continue;
+      try {
+        await this.usageLedgerService.recordUsage(event);
+      } catch (error) {
+        this.logger.warn({
+          message: 'Failed to emit harness usage-ledger event',
+          tenantId: entity.tenantId,
+          sessionId: entity.sessionId,
+          runId: entity.runId,
+          seq: entity.seq,
           error: error instanceof Error ? error.message : String(error),
         });
       }
