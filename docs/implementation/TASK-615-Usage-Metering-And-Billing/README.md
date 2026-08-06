@@ -569,6 +569,25 @@ decisions: ledger metadata column named `attributesJson`; rollup `model` is
 Found pre-existing defect (filed separately): the entitlement plane has no migration at
 all — `migrate deploy` replay fails before this ticket's migration.
 
+### Wave 1 — merging as lanes land
+
+**WS-F — harness per-step usage emission** (branch `task-615-ws-f`, merge `9872338b`).
+LLM_CALL trajectory steps co-emit ledger rows: pure mapper
+`agent-trajectory/harness-usage.mapper.ts` + `emitUsage` hook in
+`agent-trajectory.service.ts:133`; activity-layer provider/model backfill on `llm_stats`
+(`activities.py` only — zero `@workflow.defn` changes, replay-compat 13/13). Idempotency
+key = `harness:step:<sessionId>:<runId>:<seq>:<UNIT>` (the same tuple that dedupes
+trajectory persistence, NOT the row UUID). Double-emission analysis: harness-originated
+`SummaryMeta` rows carry no token columns and harness calls SMR via `SmrClient`, never
+the gateway summary path — `llm:<requestId>` and `harness:step:<...>` id-spaces are
+disjoint by construction. Evidence: harness 1,021 tests green; applications
+agent-trajectory + usageLedger 156/156; pre-existing vault-class failures verified
+untouched. Open items handed on: (1) `Repository.createMany` lacks a `tx` param —
+emission uses the contract's sanctioned no-tx fallback; adding `tx` to `createMany`
+(packages/domains) is a wave-2 follow-up. (2) Reasoning tokens ride a separate THINKING
+step and are not yet billed. (3) AD-1 stats carry no BYOK signal → harness rows are
+always `costBasis: INTERNAL` for now.
+
 **WS-B — ledger core services + frozen contract** (branch `task-615-ws-b`, merge
 `414204cb`). 31 files, +4,492. `IUsageLedgerService.recordUsage` (transactional-outbox
 write, strict validation, derives nothing silently), BullMQ outbox drainer (retry state
