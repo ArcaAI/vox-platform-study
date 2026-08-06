@@ -76,6 +76,41 @@ _CLOUD_ASR_OVERRIDE_FORMATS = frozenset(
     }
 )
 
+# TASK-615 WS-C — the one AiModelFormat whose lowercased value does NOT match
+# its seeded AiProviderConnection id (see KNOWN_PROVIDERS in
+# packages/applications/src/services/usageLedger/vocabulary.ts): AZURE_SPEECH
+# lowercases to "azure_speech" but the connection id is "azure-speech"
+# (hyphenated). Every other cloud format's lowercased value already matches
+# (SARVAM -> "sarvam", OPENAI -> "openai"), so only this one needs a mapping —
+# guessing the rest would risk silently forking a rollup dimension instead.
+_ENGINE_ID_OVERRIDES: dict[AiModelFormat, str] = {
+    AiModelFormat.AZURE_SPEECH: "azure-speech",
+}
+
+
+def resolve_usage_attribution(
+    asr_format: AiModelFormat, provider_overrides: dict[str, Any] | None
+) -> tuple[str, str]:
+    """Map the loaded ASR model's format to a usage-ledger ``(engine, deployment)``.
+
+    ``deployment`` follows the SAME BYOK-detection rule the model loader
+    itself uses at line ~867 (``_asr_cloud_byok``): a format in
+    ``_CLOUD_ASR_OVERRIDE_FORMATS`` with a non-empty ``provider_overrides``
+    dict was actually served on the tenant's own credential (TASK-567) and is
+    ``"BYOK"``; the same format with no override is platform-funded
+    ``"CLOUD"``; anything else is ``"SELF_HOSTED"``. Recomputed here (rather
+    than threaded out of ``_load_models``) from the exact same two inputs, so
+    it can never drift from the load-time decision.
+    """
+    is_cloud = asr_format in _CLOUD_ASR_OVERRIDE_FORMATS
+    is_byok = is_cloud and bool(provider_overrides)
+    engine = (
+        _ENGINE_ID_OVERRIDES.get(asr_format)
+        or str(getattr(asr_format, "value", asr_format)).lower()
+    )
+    deployment = "BYOK" if is_byok else ("CLOUD" if is_cloud else "SELF_HOSTED")
+    return engine, deployment
+
 
 class BatchTranscriptionService:
     """Service for batch (file) transcription.
@@ -526,6 +561,12 @@ class BatchTranscriptionService:
             # ----------------------------------------------------------
             timing.total_seconds = time.time() - pipeline_start
             result.processing_time_seconds = timing.total_seconds
+            # TASK-615 WS-C — usage-ledger attribution, forwarded as typed
+            # top-level fields on the complete_job() gateway callback (never
+            # inside result.metadata — see TranscriptionResult.engine).
+            result.engine, result.deployment = resolve_usage_attribution(
+                asr_model.format, provider_overrides
+            )
             result.metadata["job_id"] = job_id
             result.metadata["pipeline"] = pipeline_config.slug
             result.metadata["timing"] = timing

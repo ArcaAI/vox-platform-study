@@ -129,6 +129,29 @@ class TestTranscriptionResult:
         )
         assert result_dict["metadata"]["model"] == "whisper-large"
 
+    def test_engine_and_deployment_default_to_none(self):
+        """TASK-615 WS-C — new typed fields default to None so an existing
+        `TranscriptionResult(...)` construction (no keyword) is unaffected."""
+        result = TranscriptionResult(text="hi")
+        assert result.engine is None
+        assert result.deployment is None
+
+    def test_engine_and_deployment_are_settable(self):
+        result = TranscriptionResult(text="hi", engine="whisper_cpp", deployment="SELF_HOSTED")
+        assert result.engine == "whisper_cpp"
+        assert result.deployment == "SELF_HOSTED"
+
+    def test_to_dict_does_not_include_engine_or_deployment(self):
+        """The resultMetadata blob is UNCHANGED for compatibility (per the
+        WS-C scope note) — engine/deployment ride ONLY as typed top-level
+        fields on the complete_job() call, never inside this blob."""
+        result = TranscriptionResult(
+            text="hi", duration_seconds=1.0, engine="whisper_cpp", deployment="SELF_HOSTED"
+        )
+        result_dict = result.to_dict()
+        assert "engine" not in result_dict
+        assert "deployment" not in result_dict
+
     def test_to_dict_word_timestamps_format(self, sample_result):
         """Test word timestamp format in dict."""
         result_dict = sample_result.to_dict()

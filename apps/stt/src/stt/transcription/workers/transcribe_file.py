@@ -402,6 +402,15 @@ async def _transcribe_file_async(
                 "transcript_uri": transcript_uri,
                 "context_item_id": context_item_id,
             },
+            # TASK-615 WS-C — typed usage-attribution fields lifted OUT of the
+            # (soon-to-be-encrypted) resultMetadata blob above; the gateway
+            # reads these to emit the transcribe.batch AUDIO_SECOND ledger
+            # row. None (unresolved engine, e.g. an unusual pipeline shape)
+            # is never guessed — complete_job() omits the field entirely.
+            duration_seconds=result.duration_seconds,
+            processing_time_seconds=result.processing_time_seconds,
+            engine=result.engine,
+            deployment=result.deployment,
         )
 
         # Publish status: COMPLETED
@@ -443,14 +452,18 @@ async def _transcribe_file_async(
         # Transcription-specific error (may be retryable)
         logger.error(f"[{job_id}] Transcription error: {e}")
         await publisher.publish_error(job_id, "TRANSCRIPTION_ERROR", str(e))
-        await _fail_job(api_client, publisher, job_id, str(e), "TRANSCRIPTION_ERROR", tenant_id=tenant_id)
+        await _fail_job(
+            api_client, publisher, job_id, str(e), "TRANSCRIPTION_ERROR", tenant_id=tenant_id
+        )
         raise  # Let Dramatiq handle retry
 
     except Exception as e:
         # Unexpected error
         logger.exception(f"[{job_id}] Unexpected error: {e}")
         await publisher.publish_error(job_id, "INTERNAL_ERROR", str(e))
-        await _fail_job(api_client, publisher, job_id, str(e), "INTERNAL_ERROR", tenant_id=tenant_id)
+        await _fail_job(
+            api_client, publisher, job_id, str(e), "INTERNAL_ERROR", tenant_id=tenant_id
+        )
         raise
 
     finally:
