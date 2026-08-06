@@ -25,6 +25,7 @@ import {
   AgentStepStatus,
   AgentStepType,
   TranscriptSegmentRepository,
+  generateId,
 } from '@arcaai/domains';
 import { IAgentTrajectoryService } from '../../agent-trajectory/IAgentTrajectoryService';
 import type { CreateAgentTrajectoryStepInput } from '../../agent-trajectory/dto';
@@ -56,6 +57,7 @@ import { HarnessPolicyService } from '../../harness-policy/harness-policy.servic
 import type { PromptResolutionTier } from '../prompt/prompt-resolution.service';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../shared/namedEntityFromNlp';
 import { resolveNerModelInjection } from '../shared/resolveNerModelSelection';
+import { buildNerUsageEvent } from '../shared/nerUsageEvent';
 import { collectCitedSegmentIds } from '../lib/transcript-segments';
 import { generateJsonWithRepair, looksLikeJsonObject, parsesAsJsonObject, type JsonRepairCall } from '../shared/bounded-json-repair';
 import { IAiTaskDefaultService } from '../../ai-task-default/IAiTaskDefaultService';
@@ -160,9 +162,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     // (TASK-552 Lane C). Optional + trailing so existing positional test
     // fixtures keep compiling; absent ⇒ citedSegments: [] (best-effort).
     @Optional() @Inject(TranscriptSegmentRepository) private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
-    // (TASK-615 WS-D) Records the LLM + guardrail token rows this generation
-    // produced. Optional + trailing so existing positional test fixtures keep
-    // compiling; absent ⇒ the generation is simply not metered (never fails).
+    // Shared by two lanes: WS-D (generatePreSummary/generateSummary) records
+    // the LLM + guardrail token rows a generation produced; WS-E
+    // (extractEntities) records the ner.extract usage row the synchronous
+    // NER path produced. Optional + trailing so existing positional test
+    // fixtures keep compiling; absent ⇒ the corresponding path is simply
+    // not metered (never fails — metering is additive, not a precondition).
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
     // (TASK-615 WS-D) Lets the SummaryMeta write and the usage emission share
     // one transaction, so neither can survive without the other.
@@ -1069,6 +1074,34 @@ export class SummaryService extends BaseService implements ISummaryService {
       savedCount,
     });
 
+    // TASK-615 WS-E (revised): per-invocation ner.extract usage row — keyed
+    // on a freshly generated requestId for THIS synchronous call (this path
+    // has no natural durable job id the way NerProcessor does), never on
+    // consultationId (attribution only — shares buildNerUsageEvent with the
+    // async NerProcessor path so the shape can't drift). No business
+    // transaction to join — entity persistence above isn't wrapped in one —
+    // so recordUsage runs without `tx`. Never let a metering failure fail
+    // the request; it's a side effect of work already done.
+    if (this.usageLedger) {
+      try {
+        await this.usageLedger.recordUsage(
+          buildNerUsageEvent({
+            tenantId,
+            requestId: generateId(),
+            consultationId: contextItem.consultationId,
+            charCount: [...contextItem.content].length,
+            model: nerResponse.modelUsed,
+          }),
+        );
+      } catch (error) {
+        this.logger.warn({
+          message: 'NER usage emission failed',
+          contextItemId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: contextItem.id,
       data: {
@@ -1315,6 +1348,12 @@ export class SummaryService extends BaseService implements ISummaryService {
 
   private async callNlpService(text: string): Promise<{
     entities: Record<string, unknown>[];
+    /**
+     * The resolved `model_name` actually sent to NLP, or `null` when
+     * resolution fail-opened (NLP's own env default applied, which this
+     * caller has no visibility into — TASK-615 WS-E never guesses it).
+     */
+    modelUsed: string | null;
   }> {
     try {
       // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
@@ -1323,7 +1362,7 @@ export class SummaryService extends BaseService implements ISummaryService {
       // just the playground. Fail-open: {} on any resolution hiccup.
       const modelSelection = await resolveNerModelInjection(this.aiTaskDefaultService, this.clsService, this.logger);
       const response = await this.httpService.axiosRef.post(`${this.nlpServiceUrl}/api/v1/classify/tokens`, { text, ...modelSelection });
-      return response.data;
+      return { ...response.data, modelUsed: modelSelection.model_name ?? null };
     } catch (error) {
       throw new BadRequestException(`Failed to call NLP service: ${error}`);
     }

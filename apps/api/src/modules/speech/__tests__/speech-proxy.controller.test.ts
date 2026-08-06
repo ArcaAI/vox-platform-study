@@ -13,6 +13,12 @@ const createMockConfigService = () => ({
 
 const createMockSecrets = (token?: string) => ({ getSecretSync: vi.fn(() => token) });
 
+const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 1 }) });
+
+const createMockCls = (tenantId: string | undefined = 't1') => ({
+  get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : undefined)),
+});
+
 function makeStream() {
   const stream = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
   stream.destroy = vi.fn();
@@ -20,6 +26,10 @@ function makeStream() {
 }
 
 function makeRes() {
+  // `on` actually registers handlers (a real-ish EventEmitter) so tests can
+  // drive `res.emit('close', ...)` to simulate a client disconnect — the
+  // original bare `vi.fn()` couldn't be triggered from a test.
+  const emitter = new EventEmitter();
   const headers: Record<string, string> = {};
   const res: any = {
     headersSent: false,
@@ -29,7 +39,8 @@ function makeRes() {
     flushHeaders: vi.fn(),
     write: vi.fn(),
     end: vi.fn(),
-    on: vi.fn(),
+    on: vi.fn((event: string, cb: (...args: unknown[]) => void) => emitter.on(event, cb)),
+    emit: (event: string, ...args: unknown[]) => emitter.emit(event, ...args),
     status: vi.fn(() => res),
     json: vi.fn(),
   };
@@ -252,6 +263,216 @@ describe('SpeechProxyController', () => {
 
       const body = http.axiosRef.post.mock.calls[0][1];
       expect(body).toEqual({ input: 'Hi.', voice: 'en-female-1' });
+    });
+  });
+
+  // TASK-615 WS-E: gateway emits CHARACTER + AUDIO_SECOND usage rows using the
+  // headers tts's /audio/speech endpoint surfaces (X-Tts-Characters,
+  // X-Tts-Provider, X-Tts-Sample-Rate, X-Tts-Audio-Format, and — batch only —
+  // X-Tts-Audio-Seconds). Streaming responses don't carry a final duration
+  // header (unknowable before headers commit), so the gateway derives it from
+  // the byte count it observes while proxying, using the SAME PCM/WAV byte
+  // math tts uses internally.
+  describe('POST /speech/synthesize — usage-ledger emission (TASK-615 WS-E)', () => {
+    const buildController = (usageLedger: unknown = createMockUsageLedger(), cls: unknown = createMockCls()) =>
+      new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any, undefined, undefined, cls as any, usageLedger as any);
+
+    it('emits CHARACTER + the EXACT AUDIO_SECOND from the batch response header', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '6',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+          'x-tts-audio-seconds': '0.29166666666666663',
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hello.', voice: 'en-female-1' } as any, res);
+      stream.emit('data', Buffer.alloc(14));
+      stream.emit('end');
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({
+        tenantId: 't1',
+        capability: 'TTS',
+        operation: 'tts.synthesize',
+        provider: 'kokoro',
+        deployment: 'SELF_HOSTED',
+      });
+      expect(call.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CHARACTER', quantity: 6 },
+          { unit: 'AUDIO_SECOND', quantity: 0.29166666666666663 },
+        ]),
+      );
+    });
+
+    it('derives AUDIO_SECOND from the proxied byte count when the header is absent (raw stream mode)', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+          // NO x-tts-audio-seconds — streaming mode.
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', stream_format: 'audio' } as any, res);
+      stream.emit('data', Buffer.alloc(9600)); // 9600 / (2*24000) = 0.2s
+      stream.emit('end');
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CHARACTER', quantity: 3 },
+          { unit: 'AUDIO_SECOND', quantity: 0.2 },
+        ]),
+      );
+    });
+
+    it('omits AUDIO_SECOND for mp3 (not derivable from a byte count, streaming mode)', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/mpeg',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'kokoro',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'mp3',
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', stream_format: 'audio', response_format: 'mp3' } as any, res);
+      stream.emit('data', Buffer.alloc(9600));
+      stream.emit('end');
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.units).toEqual([{ unit: 'CHARACTER', quantity: 3 }]);
+    });
+
+    it('classifies a BYOK-served provider: deployment BYOK, costBasis BYOK_NOTIONAL', async () => {
+      // No tenantTtsConfig injected — applyTenantConfig() returns the body
+      // unchanged, so a caller-supplied provider_overrides (as the browser
+      // client would forward it, or as applyTenantConfig injects it in
+      // production) passes through verbatim to the classification below.
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: {
+          'content-type': 'audio/pcm',
+          'x-tts-characters': '3',
+          'x-tts-provider': 'azure',
+          'x-tts-sample-rate': '24000',
+          'x-tts-audio-format': 'pcm',
+        },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1', provider_overrides: { azure: { api_key: 'k' } } } as any, res);
+      stream.emit('end');
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({ provider: 'azure', deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
+    });
+
+    it('classifies a cloud provider NOT covered by a BYOK override as deployment CLOUD', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'azure', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      stream.emit('end');
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({ provider: 'azure', deployment: 'CLOUD' });
+      expect(call.common.costBasis).toBeUndefined();
+    });
+
+    it('marks attributesJson.interrupted=true when the client disconnects mid-stream', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'kokoro', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      stream.emit('data', Buffer.alloc(100));
+      res.emit('close'); // client disconnected — never emits 'end'
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common.attributesJson).toEqual({ interrupted: true });
+    });
+
+    it('never double-emits when both an error/close teardown occurs', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'kokoro', 'x-tts-sample-rate': '24000', 'x-tts-audio-format': 'pcm' },
+        data: stream,
+      });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      stream.emit('end');
+      res.emit('close'); // fires after 'end' too, in real Node — must be a no-op here
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+    });
+
+    it('emits nothing when IUsageLedgerService is absent (fail-open, positional construction)', async () => {
+      const ctrl = new SpeechProxyController(http as any, config as any, createMockSecrets('svc-token') as any);
+      const stream = makeStream();
+      http.axiosRef.post.mockResolvedValue({
+        headers: { 'content-type': 'audio/pcm', 'x-tts-characters': '3', 'x-tts-provider': 'kokoro' },
+        data: stream,
+      });
+      const res = makeRes();
+
+      // Must not throw even though there's no ledger to call.
+      await ctrl.synthesize({ input: 'Hi.', voice: 'en-female-1' } as any, res);
+      stream.emit('end');
+    });
+
+    it('emits nothing on an upstream error (e.g. 413) — no stream was ever established', async () => {
+      const usageLedger = createMockUsageLedger();
+      const ctrl = buildController(usageLedger);
+      http.axiosRef.post.mockRejectedValue({ response: { status: 413, data: { detail: 'too long' } } });
+      const res = makeRes();
+
+      await ctrl.synthesize({ input: 'x'.repeat(5000), voice: 'en-female-1' } as any, res);
+
+      expect(usageLedger.recordUsage).not.toHaveBeenCalled();
     });
   });
 });

@@ -20,6 +20,12 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from tts.catalog.voices import VoiceNotFoundError
+from tts.core.usage import (
+    UNKNOWN_PROVIDER,
+    compute_audio_seconds,
+    count_characters,
+    record_usage_metrics,
+)
 from tts.providers.base import CONTENT_TYPES, AudioChunk, AudioFormat
 from tts.routing.router import AllProvidersUnavailableError
 
@@ -56,14 +62,22 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
     catalog = request.app.state.voice_catalog
 
     if len(body.input) > settings.max_input_chars:
+        # 413 — nothing was accepted, so nothing is recorded: no headers, no
+        # Prometheus counters (TASK-615 §"a 413-rejected request emits nothing").
         raise HTTPException(
             status_code=413,
             detail=f"input exceeds max_input_chars ({settings.max_input_chars})",
         )
     try:
-        catalog.get(body.voice)
+        voice = catalog.get(body.voice)
     except VoiceNotFoundError as exc:
         raise HTTPException(status_code=404, detail=f"unknown voice: {body.voice}") from exc
+
+    # ACCEPTED input length (TASK-615 §3 contract: 1 Unicode code point = 1
+    # character) — computed here, past every rejection path, never re-derived
+    # downstream from a re-encoded/truncated copy of the text.
+    character_count = count_characters(body.input)
+    locale = voice.locale
 
     # Read-triggered retention refresh (TTL-cached, single-flight,
     # fail-safe): a service that never synthesizes never polls. Applied BEFORE
@@ -87,7 +101,9 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
     )
 
     # Prime the generator so provider-availability errors become an HTTP status
-    # BEFORE any streaming headers are committed.
+    # BEFORE any streaming headers are committed. This ALSO resolves which
+    # provider won failover (AudioChunk.provider, TASK-615 WS-E) before any
+    # response is built, so it can go in a header on every response mode.
     try:
         first: AudioChunk | None = await stream.__anext__()
         exhausted = False
@@ -99,40 +115,118 @@ async def create_speech(body: SpeechRequest, request: Request) -> Response:
             status_code=503, detail="no TTS provider available for this voice"
         ) from exc
 
+    provider = first.provider if first is not None else None
+    # Accumulated across every chunk this request yields, regardless of which
+    # response mode drains it — the SAME counters back batch, SSE, and raw
+    # streaming, and are read at teardown (success OR abort) by each mode below.
+    audio_bytes_total = 0
+
     async def chunks() -> AsyncIterator[AudioChunk]:
+        nonlocal audio_bytes_total
         try:
             if first is not None:
+                audio_bytes_total += len(first.data)
                 yield first
             if not exhausted:
                 async for chunk in stream:
+                    audio_bytes_total += len(chunk.data)
                     yield chunk
         finally:
             await stream.aclose()
 
     content_type = CONTENT_TYPES[fmt]
+    base_headers = {
+        "X-Tts-Characters": str(character_count),
+        "X-Tts-Sample-Rate": str(settings.sample_rate),
+        "X-Tts-Audio-Format": fmt.value,
+        "X-Tts-Provider": provider or UNKNOWN_PROVIDER,
+    }
 
     if body.stream_format == "sse":
 
         async def events() -> AsyncIterator[dict[str, str]]:
-            async for chunk in chunks():
-                payload = {"audio": base64.b64encode(chunk.data).decode("ascii")}
-                yield {"event": "speech.audio.delta", "data": json.dumps(payload)}
-            yield {"event": "speech.audio.done", "data": json.dumps({})}
+            interrupted = True
+            try:
+                async for chunk in chunks():
+                    payload = {"audio": base64.b64encode(chunk.data).decode("ascii")}
+                    yield {"event": "speech.audio.delta", "data": json.dumps(payload)}
+                interrupted = False
+                yield {"event": "speech.audio.done", "data": json.dumps({})}
+            finally:
+                # SSE is TTS's own framing (unlike the raw byte stream below),
+                # so the EXACT final duration can ride the wire as one more
+                # event — accumulate + surface at teardown, abort included.
+                audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, settings.sample_rate)
+                record_usage_metrics(
+                    provider=provider,
+                    locale=locale,
+                    characters=character_count,
+                    audio_seconds=audio_seconds,
+                    status="aborted" if interrupted else "ok",
+                )
+                yield {
+                    "event": "speech.usage",
+                    "data": json.dumps(
+                        {
+                            "characters": character_count,
+                            "audioSeconds": audio_seconds,
+                            "interrupted": interrupted,
+                        }
+                    ),
+                }
 
-        return EventSourceResponse(events(), headers={"X-Accel-Buffering": "no"})
+        return EventSourceResponse(events(), headers={**base_headers, "X-Accel-Buffering": "no"})
 
     if body.stream_format == "audio":
 
         async def raw() -> AsyncIterator[bytes]:
-            async for chunk in chunks():
-                yield chunk.data
+            interrupted = True
+            try:
+                async for chunk in chunks():
+                    yield chunk.data
+                interrupted = False
+            finally:
+                # Duration is NOT knowable up front here (raw bytes only, no
+                # room for a trailing control frame) — the gateway derives it
+                # from X-Tts-Sample-Rate/X-Tts-Audio-Format + the byte count it
+                # observes while proxying (same RTF byte math). This is TTS's
+                # own accumulate-and-record-at-teardown for the Prometheus view.
+                audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, settings.sample_rate)
+                record_usage_metrics(
+                    provider=provider,
+                    locale=locale,
+                    characters=character_count,
+                    audio_seconds=audio_seconds,
+                    status="aborted" if interrupted else "ok",
+                )
 
-        return StreamingResponse(raw(), media_type=content_type, headers=_STREAM_HEADERS)
+        # X-Tts-Audio-Seconds is deliberately ABSENT: headers commit before the
+        # stream (and therefore the duration) exists.
+        return StreamingResponse(raw(), media_type=content_type, headers={**base_headers, **_STREAM_HEADERS})
 
-    # Batch: collect the full utterance.
-    buf = bytearray()
-    async for chunk in chunks():
-        buf += chunk.data
+    # Batch: collect the full utterance, then respond — duration IS knowable
+    # here, so it rides as a header like everything else.
+    interrupted = True
+    try:
+        buf = bytearray()
+        async for chunk in chunks():
+            buf += chunk.data
+        interrupted = False
+    finally:
+        audio_seconds = compute_audio_seconds(fmt, audio_bytes_total, settings.sample_rate)
+        record_usage_metrics(
+            provider=provider,
+            locale=locale,
+            characters=character_count,
+            audio_seconds=audio_seconds,
+            status="aborted" if interrupted else "ok",
+        )
     return Response(
-        content=bytes(buf), media_type=content_type, headers={"Cache-Control": "no-store"}
+        content=bytes(buf),
+        media_type=content_type,
+        headers={
+            **base_headers,
+            "Cache-Control": "no-store",
+            **({"X-Tts-Audio-Seconds": str(audio_seconds)} if audio_seconds is not None else {}),
+        },
     )
