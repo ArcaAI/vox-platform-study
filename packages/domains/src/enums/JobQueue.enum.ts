@@ -29,4 +29,9 @@ export enum JobQueue {
 
   // Gate-edit mining — derived learning-loop corpus
   MineGateEditExemplar = 'MineGateEditExemplar',
+
+  // AI usage-ledger outbox drain (TASK-615 WS-B; promoted from a local
+  // constant in packages/applications/src/services/usageLedger/usage-ledger.constants.ts
+  // per the WS-B handoff — TASK-615 WS-D2 item 4c).
+  AiUsageOutboxDrain = 'AiUsageOutboxDrain',
 }
