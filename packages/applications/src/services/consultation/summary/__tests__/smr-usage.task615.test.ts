@@ -2,7 +2,7 @@ import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaa
 import { describe, expect, it } from 'vitest';
 
 import { KNOWN_PROVIDERS } from '../../../usageLedger/vocabulary';
-import { buildGuardrailUsageInput, buildLlmUsageInput, parseSmrUsageDetail, toLedgerProvider } from '../smr-usage';
+import { buildGuardrailUsageInput, buildLlmUsageInput, buildLlmUsageInputFromTokenCounts, parseSmrUsageDetail, toLedgerProvider } from '../smr-usage';
 
 /**
  * TASK-615 WS-D — turning an SMR response into ledger rows.
@@ -291,5 +291,81 @@ describe('buildGuardrailUsageInput', () => {
     })!;
 
     expect(input.common.idempotencyKey).toBe('guardrail:parent-task-7');
+  });
+});
+
+// TASK-615 WS-D2 (item 1b) — context.service.ts#addRawSummary is a WRITE
+// PATH THAT NEVER CALLS SMR ITSELF (confirmed: zero httpService/axios
+// references in that file). It exists to persist a summary + bare
+// inputTokens/outputTokens the CALLER already computed, so there is no real
+// SmrUsageDetail — no provider, no endpointKind, no raw provider payload.
+// buildLlmUsageInput requires all of that (and would force a fabricated
+// endpointKind onto attributesJson, misrepresenting an API shape that never
+// happened), so this is a separate, honest, minimal builder for that one
+// case: reuses UsageIdempotencyKey/toUsageUnitQuantities, no forked logic.
+describe('buildLlmUsageInputFromTokenCounts', () => {
+  it('emits INPUT_TOKEN + OUTPUT_TOKEN rows keyed to the supplied requestId, with no fabricated attributesJson', () => {
+    const input = buildLlmUsageInputFromTokenCounts({
+      tenantId: 'tenant-1',
+      operation: 'generate',
+      requestId: 'req-compat-1',
+      provider: 'none',
+      model: 'gpt-4',
+      deployment: AiDeploymentKind.CLOUD,
+      occurredAt: new Date(OCCURRED_AT),
+      inputTokens: 1500,
+      outputTokens: 500,
+      consultationId: 'consult-1',
+      doctorId: 'doc-1',
+      departmentId: 'dept-1',
+    })!;
+
+    expect(input.common).toMatchObject({
+      tenantId: 'tenant-1',
+      idempotencyKey: 'llm:req-compat-1',
+      operation: 'generate',
+      capability: AiCapability.LLM,
+      provider: 'none',
+      model: 'gpt-4',
+      deployment: AiDeploymentKind.CLOUD,
+      consultationId: 'consult-1',
+      doctorId: 'doc-1',
+      departmentId: 'dept-1',
+      requestId: 'req-compat-1',
+      attributesJson: { interrupted: false },
+    });
+    expect(input.units).toEqual([
+      { unit: AiUsageUnit.INPUT_TOKEN, quantity: 1500 },
+      { unit: AiUsageUnit.OUTPUT_TOKEN, quantity: 500 },
+    ]);
+  });
+
+  it('records nothing at all when both counts are zero/absent (no work billed)', () => {
+    expect(
+      buildLlmUsageInputFromTokenCounts({
+        tenantId: 'tenant-1',
+        operation: 'generate',
+        requestId: 'req-empty',
+        provider: 'none',
+        model: null,
+        deployment: AiDeploymentKind.CLOUD,
+        occurredAt: new Date(OCCURRED_AT),
+      }),
+    ).toBeNull();
+  });
+
+  it('drops a zero unit but keeps the non-zero one', () => {
+    const input = buildLlmUsageInputFromTokenCounts({
+      tenantId: 'tenant-1',
+      operation: 'generate',
+      requestId: 'req-input-only',
+      provider: 'none',
+      model: null,
+      deployment: AiDeploymentKind.CLOUD,
+      occurredAt: new Date(OCCURRED_AT),
+      inputTokens: 200,
+    })!;
+
+    expect(input.units).toEqual([{ unit: AiUsageUnit.INPUT_TOKEN, quantity: 200 }]);
   });
 });

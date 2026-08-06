@@ -1,8 +1,11 @@
 import {
+  AiDeploymentKind,
   AudioRecordingFactory,
   AudioRecordingRepository,
   ConsultationEntity,
   ConsultationRepository,
+  CorePrisma,
+  CoreUnitOfWorkService,
   ContextItemEntity,
   ContextItemFactory,
   ContextItemRepository,
@@ -10,6 +13,7 @@ import {
   ContextItemType,
   ContextItemVersionFactory,
   ContextItemVersionRepository,
+  generateId,
   MediaRepository,
   NamedEntityFactory,
   NamedEntityRepository,
@@ -27,6 +31,8 @@ import { BaseService, assertParentInScope, encryptPhiFields } from '../../../com
 import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IBlobStorageService, deriveThumbnailKey } from '../../baseServices/storage';
+import { IUsageLedgerService } from '../../usageLedger';
+import { buildLlmUsageInputFromTokenCounts } from '../summary/smr-usage';
 import { IContextService } from './IContextService';
 import { ContextDtoMapper, ResolvedMediaUrl } from './context.dto.mapper';
 import { ConsultationPipelineEvent, ContextAddedPayload, ContextRemovedPayload } from '../events';
@@ -106,6 +112,18 @@ export class ContextService extends BaseService implements IContextService {
     // CoreDatabaseModule / the @Global storage module in the NestJS runtime.
     @Optional() @Inject(MediaRepository) private readonly mediaRepository?: MediaRepository,
     @Optional() @Inject(IBlobStorageService) private readonly blobStorage?: IBlobStorageService,
+    // TASK-615 WS-D2 (item 1b) — records the bare inputTokens/outputTokens
+    // `addRawSummary` receives (this write path makes NO SMR call of its
+    // own). Optional + trailing so existing positional fixtures keep
+    // compiling; absent ⇒ the SummaryMeta persists unmetered.
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // This is the DOMAINS `CoreUnitOfWorkService` (its `runInTransaction` is
+    // the one production callers actually use — see the outbox drainer /
+    // sttInternal.service.ts / AgentTrajectoryService / ComprehensiveSummary-
+    // Processor precedent), NOT the identically-named, unwired class under
+    // `services/baseServices`. Optional + trailing so existing positional
+    // fixtures keep compiling.
+    @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
   }
@@ -458,7 +476,9 @@ export class ContextService extends BaseService implements IContextService {
     // SummaryMeta context arrays. A poisoned `previousSummaryIds`
     // entry pointing into another tenant would otherwise be persisted
     // verbatim and later regurgitated as "context" by chain summarisers.
-    await assertParentInScope(this.consultationRepository, consultationId, tenantId);
+    // The returned entity also supplies doctorId/departmentId attribution
+    // for the usage-ledger row below (TASK-615 WS-D2).
+    const consultation = await assertParentInScope(this.consultationRepository, consultationId, tenantId);
     await this.assertContextItemsInTenant(tenantId, request.caseNoteIds);
     await this.assertContextItemsInTenant(tenantId, request.preSummaryIds);
     await this.assertContextItemsInTenant(tenantId, request.previousSummaryIds);
@@ -510,7 +530,15 @@ export class ContextService extends BaseService implements IContextService {
     }
 
     await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.summaryMetaRepository.create(summaryMeta);
+    await this.persistSummaryMetaWithUsage(summaryMeta, {
+      tenantId,
+      consultationId,
+      doctorId: consultation.doctorId,
+      departmentId: consultation.departmentId,
+      model: request.aiModelId ?? null,
+      inputTokens: request.inputTokens,
+      outputTokens: request.outputTokens,
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -522,6 +550,70 @@ export class ContextService extends BaseService implements IContextService {
     // Return with summary meta
     const result = await this.contextItemRepository.findWithSummaryMeta(saved.id);
     return ContextDtoMapper.toResponse(result!);
+  }
+
+  /**
+   * Persist a `SummaryMeta` and, in the SAME transaction, record the bare
+   * `inputTokens`/`outputTokens` it carries (TASK-615 WS-D2). `addRawSummary`
+   * makes NO SMR call of its own — the caller already ran the generation and
+   * supplied the token counts directly — so there is no real `SmrUsageDetail`
+   * (no provider, no endpointKind); `buildLlmUsageInputFromTokenCounts`
+   * (smr-usage.ts) is the honest builder for that shape (never fabricates an
+   * `endpointKind`). A freshly generated id keys the row: this write path
+   * carries no natural request/task id.
+   *
+   * TWO deliberate degradations, mirroring `SummaryService`'s treatment:
+   *   - No ledger / no unit-of-work wired (legacy positional test fixtures)
+   *     ⇒ plain create, unmetered. Metering is additive.
+   *   - A metering failure is swallowed; the SummaryMeta is re-created alone.
+   */
+  private async persistSummaryMetaWithUsage(
+    summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
+    attribution: {
+      tenantId: string;
+      consultationId: string;
+      doctorId?: string | null;
+      departmentId?: string | null;
+      model?: string | null;
+      inputTokens?: number | null;
+      outputTokens?: number | null;
+    },
+  ): Promise<void> {
+    const llmInput = buildLlmUsageInputFromTokenCounts({
+      tenantId: attribution.tenantId,
+      operation: 'generate',
+      requestId: generateId(),
+      // No provider identity is known on this write path — the caller's own
+      // generation happened outside HOPE's provider infrastructure.
+      provider: 'none',
+      model: attribution.model ?? null,
+      deployment: AiDeploymentKind.CLOUD,
+      occurredAt: new Date(),
+      inputTokens: attribution.inputTokens,
+      outputTokens: attribution.outputTokens,
+      consultationId: attribution.consultationId,
+      doctorId: attribution.doctorId,
+      departmentId: attribution.departmentId,
+    });
+
+    if (!this.usageLedgerService || !this.unitOfWorkService || !llmInput) {
+      await this.summaryMetaRepository.create(summaryMeta);
+      return;
+    }
+
+    try {
+      await this.unitOfWorkService.runInTransaction(async (tx: CorePrisma.TransactionClient) => {
+        await this.summaryMetaRepository.create(summaryMeta, tx);
+        await this.usageLedgerService!.recordUsage(llmInput, tx);
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Usage metering failed for addRawSummary; persisting the summary metadata unmetered',
+        consultationId: attribution.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await this.summaryMetaRepository.create(summaryMeta);
+    }
   }
 
   /**
