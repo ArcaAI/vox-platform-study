@@ -73,8 +73,24 @@ describe('SessionRemovalRetryService', () => {
     // Attempt 2 after the doubled delay — succeeds and clears the entry.
     await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2);
     expect(mockSessionService.removeSession).toHaveBeenCalledTimes(2);
-    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-retry');
+    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-retry', false);
     expect(mockCache.srem).toHaveBeenCalledWith(SESSION_REMOVAL_RETRY_SET_KEY, 'sess-retry');
+  });
+
+  // TASK-615 WS-C — `interrupted` is the CALLER's determination (the WS
+  // gateway's finalizeSession), threaded through enqueue -> every retry
+  // attempt unchanged, since this service has no basis of its own to
+  // recompute it.
+  it('threads interrupted:true through every retry attempt', async () => {
+    mockSessionService.removeSession.mockRejectedValueOnce(new Error('stt down')).mockResolvedValueOnce(undefined);
+
+    service.enqueue('sess-abort-retry', true);
+
+    await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
+    expect(mockSessionService.removeSession).toHaveBeenNthCalledWith(1, 'sess-abort-retry', true);
+
+    await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2);
+    expect(mockSessionService.removeSession).toHaveBeenNthCalledWith(2, 'sess-abort-retry', true);
   });
 
   it('stops after the bounded number of attempts and logs an error (entry left for ops)', async () => {
@@ -97,7 +113,7 @@ describe('SessionRemovalRetryService', () => {
     service.enqueue('sess-redis-blip');
     await vi.advanceTimersByTimeAsync(SESSION_REMOVAL_RETRY_BASE_DELAY_MS);
 
-    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-redis-blip');
+    expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-redis-blip', false);
   });
 
   it('cancels pending retries on module destroy', async () => {

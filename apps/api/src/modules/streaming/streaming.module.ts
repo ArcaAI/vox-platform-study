@@ -13,6 +13,7 @@ import {
   TenantSttConfigServiceModule,
   TranscriptionJobServiceModule,
   TranscriptionRealtimeServiceModule,
+  UsageLedgerServiceModule,
 } from '@arcaai/applications';
 import { CoreDatabaseModule } from '@arcaai/domains';
 import { HttpModule } from '@nestjs/axios';
@@ -61,6 +62,14 @@ import { TranscriptionJobController } from './transcription-job.controller';
     // Resolves the caller tenant's STT fallback pointer + BYO provider
     // overrides for `createStreamSession` injection + `switch-to-fallback`.
     TenantSttConfigServiceModule,
+    // TASK-615 — `IUsageLedgerService` for `SmrProxyController`'s (WS-D)
+    // generate.stream emission AND `StreamingSessionService`'s (WS-C)
+    // transcribe.stream emission. Both are constructor-injected at THIS
+    // module's level (SmrProxyController is declared directly below;
+    // StreamingSessionServiceModule importing it only satisfies its OWN
+    // providers, not a sibling controller here) — Nest's module
+    // encapsulation means each module that injects the token must import it.
+    UsageLedgerServiceModule,
   ],
   controllers: [TranscriptionJobController, AdminTranscriptionJobController, SmrProxyController],
   // SessionRemovalRetryService resolves

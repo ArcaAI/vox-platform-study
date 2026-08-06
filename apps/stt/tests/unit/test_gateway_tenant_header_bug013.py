@@ -125,11 +125,15 @@ class TestActorForwardsTenantId:
                 seen["status"] = tenant_id
                 return "PROCESSING"
 
-            async def start_job(self, job_id: str, worker_id: str, tenant_id: str | None = None) -> dict[str, Any]:
+            async def start_job(
+                self, job_id: str, worker_id: str, tenant_id: str | None = None
+            ) -> dict[str, Any]:
                 seen["start"] = tenant_id
                 return {}
 
-            async def update_job_progress(self, job_id: str, progress: int, tenant_id: str | None = None) -> dict[str, Any]:
+            async def update_job_progress(
+                self, job_id: str, progress: int, tenant_id: str | None = None
+            ) -> dict[str, Any]:
                 seen["progress"] = tenant_id
                 return {}
 
@@ -176,7 +180,9 @@ class TestActorForwardsTenantId:
             async def get_job_status(self, job_id: str, tenant_id: str | None = None) -> str:
                 return "PROCESSING"
 
-            async def start_job(self, job_id: str, worker_id: str, tenant_id: str | None = None) -> dict[str, Any]:
+            async def start_job(
+                self, job_id: str, worker_id: str, tenant_id: str | None = None
+            ) -> dict[str, Any]:
                 seen["start"] = tenant_id
                 raise RuntimeError("gateway exploded")
 
@@ -239,7 +245,10 @@ def _install_worker_stubs(monkeypatch, mod: Any, api_client: Any) -> None:
     class FakeResult:
         text = "hello world"
         transcript_uri: str | None = None
+        duration_seconds = 1.0
         processing_time_seconds = 1.0
+        engine: str | None = None
+        deployment: str | None = None
         metadata: dict[str, Any] = {}
 
         def to_dict(self) -> dict[str, Any]:

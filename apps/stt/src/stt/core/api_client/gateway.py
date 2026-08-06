@@ -188,16 +188,39 @@ class APIGatewayClient:
         result_text: str,
         result_metadata: dict[str, Any] | None = None,
         tenant_id: str | None = None,
+        duration_seconds: float | None = None,
+        processing_time_seconds: float | None = None,
+        engine: str | None = None,
+        deployment: str | None = None,
     ) -> dict[str, Any]:
         """Mark a transcription job as COMPLETED with results.
 
         Calls NestJS ``PATCH /internal/stt/jobs/{id}/complete`` which expects
         an ``InternalCompleteJobRequest`` body with ``resultText`` and
         optional ``resultMetadata``.
+
+        TASK-615 WS-C: ``duration_seconds``/``processing_time_seconds``/
+        ``engine``/``deployment`` ride as TYPED, top-level sibling fields —
+        NOT nested inside ``result_metadata`` — because the gateway encrypts
+        that blob into ciphertext on the completing persist
+        (``SttInternalService.completeJob``), making anything trapped only
+        inside it unqueryable. ``result_metadata`` is passed through
+        unchanged for compatibility; this is a second, typed channel, not a
+        move. Each is omitted from the JSON body (never sent as ``null``)
+        when left at its default ``None``, so an un-upgraded gateway sees an
+        unchanged request shape. ``0.0`` is a real value and IS sent.
         """
         payload: dict[str, Any] = {"resultText": result_text}
         if result_metadata is not None:
             payload["resultMetadata"] = result_metadata
+        if duration_seconds is not None:
+            payload["durationSeconds"] = duration_seconds
+        if processing_time_seconds is not None:
+            payload["processingTimeSeconds"] = processing_time_seconds
+        if engine is not None:
+            payload["engine"] = engine
+        if deployment is not None:
+            payload["deployment"] = deployment
 
         return await self._request(
             "PATCH",

@@ -1,5 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsObject, IsNumber, IsUUID, IsIn, Min, Max, IsArray, ValidateNested, IsInt } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsObject,
+  IsNumber,
+  IsUUID,
+  IsIn,
+  Min,
+  Max,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  Matches,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { JsonValue } from '@arcaai/domains';
 
@@ -170,6 +184,50 @@ export class InternalCompleteJobRequest {
   @IsObject()
   @IsOptional()
   resultMetadata?: JsonValue;
+
+  // TASK-615 WS-C — typed top-level fields lifted out of `resultMetadata`.
+  // The blob above is encrypted into ciphertext columns on the completing
+  // persist (`SttInternalService.completeJob`), so anything trapped only
+  // inside it is unqueryable afterwards — including the two fields the usage
+  // ledger's `transcribe.batch` emission needs. These typed fields carry the
+  // SAME values `resultMetadata` still also carries (`result.to_dict()` is
+  // unchanged for compatibility); this is a second, typed channel, not a move.
+  @ApiPropertyOptional({
+    description: 'Decoded audio duration in seconds (typed; also present inside resultMetadata). Feeds the AUDIO_SECOND usage row.',
+    example: 42.5,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  durationSeconds?: number;
+
+  @ApiPropertyOptional({
+    description: 'Wall-clock transcription processing time in seconds (typed; also present inside resultMetadata).',
+    example: 12.8,
+  })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  processingTimeSeconds?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'ASR engine/provider id that produced this result, in usage-ledger vocabulary (e.g. "whisper_cpp", "faster_whisper", "azure-speech"). Required to emit the AUDIO_SECOND usage row — absent skips emission rather than guessing.',
+    example: 'whisper_cpp',
+  })
+  @IsString()
+  @IsOptional()
+  @Matches(/^[a-z0-9][a-z0-9._-]{0,63}$/, { message: 'engine must be a lowercase provider id (see usage ledger vocabulary.ts)' })
+  engine?: string;
+
+  @ApiPropertyOptional({
+    description: 'Economic deployment kind of the engine that produced this result.',
+    enum: ['SELF_HOSTED', 'CLOUD', 'BYOK'],
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(['SELF_HOSTED', 'CLOUD', 'BYOK'])
+  deployment?: 'SELF_HOSTED' | 'CLOUD' | 'BYOK';
 }
 
 /**

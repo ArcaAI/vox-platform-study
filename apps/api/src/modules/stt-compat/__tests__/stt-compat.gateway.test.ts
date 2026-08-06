@@ -372,4 +372,57 @@ describe('SttCompatGateway', () => {
     expect(sessionService.getSessionStatus).not.toHaveBeenCalled();
     expect(bridgeService.subscribeToResults).not.toHaveBeenCalled();
   });
+
+  // TASK-615 WS-C — without this, an abrupt disconnect (tab closed, wifi
+  // drop — no explicit /stop_session) never tore down the upstream STT
+  // session at all; it leaked until STT's OWN idle-timeout reaper finalized
+  // it server-side with no gateway caller to receive the usage summary, so
+  // that session's usage was silently lost. Mirrors the native WS gateway's
+  // finalizeSession-on-disconnect posture, marked interrupted (no explicit
+  // stop was ever received).
+  it('removes the upstream STT session (interrupted) on an abrupt WebSocket disconnect', async () => {
+    const client = createSocket();
+    const results = new Subject();
+    const apiKeyService = {
+      extractApiKeyFromWebSocket: vi.fn().mockReturnValue('legacy-key'),
+      authenticateByRawKey: vi.fn().mockResolvedValue({ tenantId: 'tenant-1' }),
+    };
+    const sessionService = {
+      getSessionStatus: vi.fn().mockResolvedValue({ sessionId: 'session-1', status: 'active' }),
+      removeSession: vi.fn().mockResolvedValue(undefined),
+    };
+    const bridgeService = {
+      subscribeToResults: vi.fn().mockReturnValue(results.asObservable()),
+      writeAudioFrame: vi.fn().mockResolvedValue(undefined),
+      writeControlCommand: vi.fn().mockResolvedValue(undefined),
+    };
+    const sessionBinding = { lookup: vi.fn().mockResolvedValue('tenant-1'), lookupSessionMeta: vi.fn().mockResolvedValue({}) };
+    const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
+
+    await gateway.handleConnection(
+      client as any,
+      { url: '/stt?sessionId=session-1&key=legacy-key', headers: {}, socket: { remoteAddress: '127.0.0.1' } } as any,
+    );
+    await client.handlers.close();
+
+    expect(sessionService.removeSession).toHaveBeenCalledWith('session-1', true);
+  });
+
+  it('does not attempt removal on disconnect when no session was ever established', async () => {
+    const client = createSocket();
+    const apiKeyService = {
+      extractApiKeyFromWebSocket: vi.fn().mockReturnValue('legacy-key'),
+      authenticateByRawKey: vi.fn().mockResolvedValue({ tenantId: 'tenant-1' }),
+    };
+    const sessionService = { getSessionStatus: vi.fn(), removeSession: vi.fn().mockResolvedValue(undefined) };
+    const bridgeService = { subscribeToResults: vi.fn() };
+    const sessionBinding = { lookup: vi.fn().mockResolvedValue(null) };
+    const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
+
+    // Never connects (rejected — see the ownership test above); calling the
+    // handler directly with an unregistered client must be a safe no-op.
+    gateway.handleDisconnect(client as any);
+
+    expect(sessionService.removeSession).not.toHaveBeenCalled();
+  });
 });

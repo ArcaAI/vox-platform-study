@@ -188,6 +188,13 @@ class SessionManager:
         # TASK-587 — per-session end-user language mode id, resolved against the
         # session's ASR engine at load time.
         self._session_language_modes: dict[str, str] = {}
+        # TASK-615 WS-C — the ASR AiModelFormat actually loaded for this session,
+        # stamped in `_load_asr_pipeline` (the single choke point for BOTH
+        # session-create and every engine switch, so this can never go stale).
+        # Read at teardown to resolve the usage-ledger (engine, deployment) pair
+        # via `resolve_usage_attribution` — the same function batch completion
+        # uses, so the two paths can never drift.
+        self._session_asr_formats: dict[str, AiModelFormat] = {}
         self._publishers: dict[str, ResultPublisher] = {}
         self._preprocessors: dict[str, StreamingPreprocessor] = {}
         self._inference_workers: dict[str, StreamingInferenceWorker] = {}
@@ -1295,7 +1302,7 @@ class SessionManager:
             user_id=user_id,
         )
 
-    async def end_session(self, session_id: str) -> None:
+    async def end_session(self, session_id: str) -> dict[str, Any] | None:
         """Gracefully end a session — finalize (upload artifacts) then remove.
 
         This is the public entry-point for API routes (DELETE, POST end).
@@ -1303,10 +1310,16 @@ class SessionManager:
         calls ``_finalize_session`` which uploads remaining PCM chunks,
         ``complete.wav``, ``transcript.json``, and ``metadata.json``
         before cleaning up.
+
+        Returns the TASK-615 WS-C usage-attribution teardown summary (see
+        ``_build_teardown_summary``) so the API Gateway can emit the
+        ``transcribe.stream`` ledger row — ``None`` when the session was
+        already gone, or when the forced-removal error path below was taken
+        (best-effort: a summary is never worth blocking cleanup for).
         """
         session = self._sessions.get(session_id)
         if session is None:
-            return
+            return None
 
         try:
             # F-32 — flush the tail at most once per session (see
@@ -1317,7 +1330,7 @@ class SessionManager:
                     preprocessor=self._preprocessors.get(session_id),
                 )
                 await self._drain_inference_queue(session_id)
-            await self._finalize_session(session)
+            return await self._finalize_session(session)
         except Exception as exc:
             logger.error(
                 "Failed to end session gracefully; forcing removal",
@@ -1325,6 +1338,7 @@ class SessionManager:
                 error=str(exc),
             )
             await self.remove_session(session_id)
+            return None
 
     async def remove_session(self, session_id: str) -> None:
         """Remove a session, stopping its consumers and releasing capacity."""
@@ -1374,6 +1388,10 @@ class SessionManager:
         self._provider_overrides.pop(session_id, None)
         self._fallback_pipeline_ids.pop(session_id, None)
         self._session_language_modes.pop(session_id, None)
+        # TASK-615 WS-C — the teardown summary (if any) is built BEFORE this
+        # runs (see `_finalize_session_locked`), so dropping the tracking dict
+        # here is safe cleanup, not a lost read.
+        self._session_asr_formats.pop(session_id, None)
         # Drop the per-session finalize lock (a queued waiter
         # already holds its own reference and will no-op on the CLOSED guard).
         self._finalize_locks.pop(session_id, None)
@@ -1679,6 +1697,12 @@ class SessionManager:
                 task_type=ModelTaskType.AUTOMATIC_SPEECH_RECOGNITION,
                 db_model_config=db_model_config,
             )
+
+        # TASK-615 WS-C — stamp the format of whichever ASR model just loaded.
+        # This runs on session-create AND every engine switch (this method is
+        # the sole loader for both), so the LATEST call always reflects the
+        # currently active engine for usage-ledger attribution at teardown.
+        self._session_asr_formats[session_id] = asr_model.format
 
         # On pipeline use, load ALL referenced models (vad/denoise/
         # embedding) into the cache and pin them for the active session.
@@ -3452,7 +3476,7 @@ class SessionManager:
                 error=str(re_exc),
             )
 
-    async def _finalize_session(self, session: StreamSession) -> None:
+    async def _finalize_session(self, session: StreamSession) -> dict[str, Any] | None:
         """Finalize a session under a per-session lock.
 
         The four finalize entrypoints (``end_session``, the final audio frame,
@@ -3460,7 +3484,11 @@ class SessionManager:
         serialization two of them both reach the upload + ``create_media`` block
         and duplicate the ``Media`` rows / re-upload the blob. The lock makes
         them run one at a time, and the ``CLOSED`` short-circuit inside makes the
-        second entrant an idempotent no-op.
+        second entrant an idempotent no-op — including for the TASK-615 WS-C
+        teardown summary: only the entrant that actually closed the session
+        returns one, so at most one HTTP caller ever attempts ledger emission
+        for a given teardown (the unique idempotency key would dedup a second
+        attempt anyway, but this avoids even trying).
         """
         # Get-or-create without allocating a throwaway Lock on every call (the
         # get/create is atomic — no await between the get and the assignment).
@@ -3469,9 +3497,93 @@ class SessionManager:
             lock = asyncio.Lock()
             self._finalize_locks[session.session_id] = lock
         async with lock:
-            await self._finalize_session_locked(session)
+            return await self._finalize_session_locked(session)
 
-    async def _finalize_session_locked(self, session: StreamSession) -> None:
+    def _compute_session_seconds(self, session: StreamSession) -> float:
+        """Wall-clock socket open->close seconds (``created_at`` -> ``closed_at``).
+
+        Both are ``datetime.utcnow().isoformat()`` stamps (see ``session.py``),
+        so a bare ``fromisoformat`` diff is exact. Never raises: an unparsable
+        or missing ``closed_at`` (should not happen — ``close()`` always sets
+        it before this is called) degrades to ``0.0`` rather than blocking
+        teardown over a metering computation.
+        """
+        closed_at = session.metadata.closed_at
+        if not closed_at:
+            return 0.0
+        try:
+            delta = datetime.fromisoformat(closed_at) - datetime.fromisoformat(session.created_at)
+            return max(0.0, delta.total_seconds())
+        except (ValueError, TypeError):
+            logger.warning(
+                "streaming.teardown_summary.session_seconds_unparsable",
+                session_id=session.session_id,
+                created_at=session.created_at,
+                closed_at=closed_at,
+            )
+            return 0.0
+
+    def _build_teardown_summary(self, session: StreamSession) -> dict[str, Any]:
+        """The TASK-615 WS-C usage-attribution summary returned on teardown.
+
+        STT has no notion of "interrupted" — that is entirely a GATEWAY-side
+        concept (which code path called ``removeSession``: an explicit close
+        vs. the resume-grace window expiring). This summary is IDENTICAL
+        either way; the caller decides ``attributesJson.interrupted``.
+
+        ``engine``/``deployment`` are ``None`` when no ASR model was ever
+        resolved for this session (e.g. it failed before load) — never
+        guessed, exactly like the batch path's ``resolve_usage_attribution``
+        (which this reuses, so the two can never drift on the AZURE_SPEECH
+        spelling trap or any other provider mapping).
+        """
+        from stt.core.metrics import record_streaming_teardown
+        from stt.transcription.batch_service import resolve_usage_attribution
+
+        asr_format = self._session_asr_formats.get(session.session_id)
+        engine: str | None = None
+        deployment: str | None = None
+        if asr_format is not None:
+            engine, deployment = resolve_usage_attribution(
+                asr_format, self._provider_overrides.get(session.session_id)
+            )
+
+        # TASK-615 WS-C — the streaming audio-duration histogram + real-time
+        # factor the current-state review flagged as missing (batch has
+        # stt_audio_duration_seconds; streaming had neither a duration signal
+        # in Prometheus nor an RTF at all). `cumulative_processing_seconds` is
+        # the per-utterance ASR-only time this session's inference worker
+        # accumulated (see `StreamingInferenceWorker`); 0.0 (never having had
+        # a worker) is a safe default. Labels bounded to
+        # {pipeline, engine, status} — no tenant label.
+        worker = self._inference_workers.get(session.session_id)
+        processing_seconds = worker.cumulative_processing_seconds if worker is not None else 0.0
+        record_streaming_teardown(
+            pipeline=session.pipeline_id,
+            engine=engine or "unknown",
+            status="closed",
+            audio_seconds=session.total_duration_seconds,
+            processing_seconds=processing_seconds,
+        )
+
+        return {
+            "session_id": session.session_id,
+            "tenant_id": session.tenant_id,
+            "consultation_id": session.consultation_id,
+            "user_id": session.metadata.user_id,
+            "pipeline_id": session.pipeline_id,
+            # `closed_at` is the ledger event's `occurredAt` — falls back to
+            # "now" only in the defensive case `close()` somehow left it unset
+            # (should not happen; never worth blocking teardown over).
+            "closed_at": session.metadata.closed_at or datetime.utcnow().isoformat(),
+            "audio_seconds": session.total_duration_seconds,
+            "session_seconds": self._compute_session_seconds(session),
+            "engine": engine,
+            "deployment": deployment,
+            "language_mode": self._session_language_modes.get(session.session_id),
+        }
+
+    async def _finalize_session_locked(self, session: StreamSession) -> dict[str, Any] | None:
         """Finalize a session — mark finalizing, close out the live stream, upload, clean up.
 
         Callers must drain the inference queue *before* calling this
@@ -3495,13 +3607,14 @@ class SessionManager:
         """
         # Once a session is closed, re-finalizing is a no-op.
         if session.status == SessionStatus.CLOSED:
-            return
+            return None
 
         publisher = self._publishers.get(session.session_id)
         raw_audio_uri: str | None = None
         processed_audio_uri: str | None = None
         transcript_uri: str | None = None
         closed_published = False
+        teardown_summary: dict[str, Any] | None = None
 
         try:
             if session.status == SessionStatus.ACTIVE:
@@ -3669,9 +3782,27 @@ class SessionManager:
                     session_id=session.session_id,
                     error=str(close_exc),
                 )
+
+            # TASK-615 WS-C — build the teardown summary AFTER session.close()
+            # (so `closed_at` is stamped) but BEFORE `remove_session()` pops
+            # the per-session attribution tracking dicts. Best-effort: a
+            # summary-build failure must never block teardown/cleanup, so it
+            # degrades to no summary (the gateway simply skips emission)
+            # rather than propagating.
+            try:
+                teardown_summary = self._build_teardown_summary(session)
+            except Exception as summary_exc:
+                logger.error(
+                    "streaming.teardown_summary.build_failed",
+                    session_id=session.session_id,
+                    error=str(summary_exc),
+                )
+
             # Always clean up in-memory and capacity state, even if graceful
             # close failed.
             await self.remove_session(session.session_id)
+
+        return teardown_summary
 
     async def _cancel_session(self, session: StreamSession) -> None:
         """Cancel a session — immediate cleanup, no finalization."""
