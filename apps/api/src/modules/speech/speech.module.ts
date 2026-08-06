@@ -1,4 +1,4 @@
-import { AiProviderConnectionServiceModule, TenantTtsConfigServiceModule, UsageLedgerServiceModule } from '@arcaai/applications';
+import { AiProviderConnectionServiceModule, EntitlementsServiceModule, TenantTtsConfigServiceModule, UsageLedgerServiceModule } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { SpeechProxyController } from './speech-proxy.controller';
@@ -8,9 +8,10 @@ import { TtsWsGateway } from './tts-ws.gateway';
 // (under the app's @Global core), and StreamTicketService is @Global, so this
 // module only needs the HTTP client, the per-tenant TTS spec resolver, the
 // unified provider-connection plane (BYO credential injection, `service='tts'`,
-// TASK-570), the usage-ledger emission port (TASK-615 WS-E — NOT @Global,
-// so every emitting module imports it explicitly), and to register the
-// WS-duplex gateway.
+// TASK-570), the usage-ledger emission port (TASK-615 WS-E), the
+// entitlements quota port (TASK-615 WS-H, monthlyTtsCharacters pre-flight —
+// neither is @Global, so every consuming module imports it explicitly), and
+// to register the WS-duplex gateway.
 @Module({
   imports: [
     HttpModule.register({
@@ -20,6 +21,7 @@ import { TtsWsGateway } from './tts-ws.gateway';
     TenantTtsConfigServiceModule,
     AiProviderConnectionServiceModule,
     UsageLedgerServiceModule,
+    EntitlementsServiceModule,
   ],
   controllers: [SpeechProxyController],
   providers: [TtsWsGateway],
