@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | In Progress — Wave 0 merged (WS-G, WS-A, WS-B; contract frozen); Wave 1 emitter lanes executing |
+| **Status** | In Progress — Waves 0–2 merged (ledger, emitters, meters/quotas, billing engine); Wave 3 (surfacing + evidence) executing |
 | **Type** | feature (cross-cutting: database → domains → applications → api → python services → admin console → infra) |
 | **Created** | 2026-08-06 |
 | **Branch** | dev-2.1 |
@@ -646,6 +646,64 @@ emission uses the contract's sanctioned no-tx fallback; adding `tx` to `createMa
 step and are not yet billed. (3) AD-1 stats carry no BYOK signal → harness rows are
 always `costBasis: INTERNAL` for now.
 
+### Wave 2 — complete 2026-08-06 (WS-I, WS-D2, WS-H merged)
+
+_Note: mid-wave the owner linearized `dev-2.1` (merge commits rebased flat) and landed
+`f5fdacbd`, fixing a production-dead DI wiring in WS-D's summary emission (see the
+Change History row below). All wave-2 lanes were rebased onto the rewritten head and
+fast-forward merged to keep history linear._
+
+**WS-I — SELL rate card + invoice engine** (branch `task-615-ws-i`, ff-merge head
+`399b1149`). Implements D10–D15/D17. Supersede-only SELL rate-card service + GLOBAL_ADMIN
+API (no update method exists at any layer; supersede = OCC close + successor insert in
+one tx); `IBillingService`: `computeDraft` from rollups (never raw events) — pooled
+per-capability allowances, chronological daily overage crossing with pro-rata unit split,
+each portion rated at the SELL row effective that day (mid-month reprice → split-rate
+lines), **missing SELL rate fails CLOSED (409)**; integer micros, HALF-UP once per line,
+Σ lines == total by construction (250-scenario property test + simulated-month golden);
+D16/OQ1 exclusions (guardrail/harness tokens and streaming audio-seconds never bill);
+BYOK units bill, notional cost is a DTO field, never a line; lifecycle
+DRAFT→FINALIZED (OCC, only after periodEnd, immutable) / DRAFT→VOID; credit memos target
+FINALIZED invoices and net as ADJUSTMENT lines on the issue-month draft;
+`getSpendStatus` vs `monthlySpendLimitMicros` (402 wiring left to a later lane).
+**Proration limitation (owner-visible):** no plan-change history exists →
+`planFeeBasis: PERIOD_END_PLAN`; the proration engine is multi-segment and golden-tested,
+so a future `TenantPlanHistory` table drops in with zero engine change. Endpoints:
+`admin/billing/rate-card*`, `admin/billing/invoices*` (finalize/void with If-Match),
+`billing/me/*`. Evidence: billing+priceBook 106/106, api billing 8/8, database 920/920.
+⚠️ Seeded SELL prices are placeholders — supersede with real rates before billing anyone.
+
+**WS-D2 — emission completion + platform debt** (branch `task-615-ws-d2`, ff-merge head
+`b177e087`). Metered the two remaining self-calling SummaryMeta writers
+(`comprehensive-summary.processor.ts`, `context.service.ts` via a new honest
+bare-token-count builder in smr-usage.ts); harness-internal `persistDraft` explicitly
+does NOT emit (double-bill guard test — step-level metering covers it); playground NER
+emits `nlp:<requestId>` with clinician attribution; RAG embedding ingestion emits
+`embed` INPUT_TOKEN rows (provider `lm-studio` — verified against the embeddings client
+config; TEI is reranker-only); `Repository.createMany` gained `tx` and agent-trajectory
+persistence + emission now share one transaction; `JobQueue.AiUsageOutboxDrain`
+promoted. Evidence: domains 1,487, applications consultation 1,479/1,479, api
+2,406/2,406. Independently rediscovered the summary DI bug already fixed by `f5fdacbd`.
+
+**WS-H — meters, quotas, allowances, alerts** (branch `task-615-ws-h`, ff-merge head
+`80e31a10`). `MeteringService.getCurrentUsage` gains the six unit meters summed from
+`AiUsageRollupDaily` (guardrail calls counted from the raw ledger — rollups carry no
+`operation` dimension); reconcile upserts all 9 `TenantUsageMeter` rows; D11 allowances
+flow plan→tenant-override with `monthlyGuardrailCalls` made a COMPILE ERROR (guardrail
+can never be quota-gated); quota call-sites — LLM tokens at `generatePreSummary`/
+`generateSummary` entry, TTS characters pre-flight on REST synthesize (exact code-point
+count) and WS connect (increment-0 "already over" check, close code 4429); the five new
+capabilities map to 429; `ENTITLEMENTS_QUOTA_BLOCKED_EVENT` now enqueues an audit-log
+job; `metering.*` settings descriptors registered (WS-B handoff); seeds gain an
+env-driven `metering.reconcile.enabled` GlobalSetting (dev flips both defaults ON via
+gitignored `.env.dev`; test/CI/prod stay OFF per OQ3). Evidence: scoped 623/623,
+**full applications suite 7,554/7,554** (vault-class failures fully resolved by the
+owner's vitest fix), api 145/145, database 949/949, env:sync:check clean. Known
+approximations (owner-visible): `LLM_TOKENS` meter includes guardrail+harness tokens
+(rollup grain limitation — WS-A follow-up: add an `operation`/`billable` dimension);
+`TenantUsageMeter.usedCount` is Int32 (overflow risk on token meters, schema follow-up);
+all allowance seeds are NULL (no commercial ceilings invented).
+
 **WS-B — ledger core services + frozen contract** (branch `task-615-ws-b`, merge
 `414204cb`). 31 files, +4,492. `IUsageLedgerService.recordUsage` (transactional-outbox
 write, strict validation, derives nothing silently), BullMQ outbox drainer (retry state
@@ -658,7 +716,8 @@ event recorded unrated — metering fails closed, rating fails open), LLM usage 
 `app.module.ts` (granted exception). **The wave-1 emitter contract is FROZEN:**
 [ws-b-contract.md](./ws-b-contract.md). Evidence: applications build green; 8/8 new test
 files, 133/133 tests; full suite bit-identical to pre-change baseline (zero regressions);
-api build 8/8.
+api build 8/8. _(Listed here out of wave order — WS-B is a Wave-0 lane; kept in place to
+preserve the document's edit history.)_
 
 ---
 
@@ -669,4 +728,5 @@ api build 8/8.
 | 2026-08-06 | Ticket created, superseding TASK-601. Carried forward: current-state review (re-verified same day — all 16 gaps still open), external research (§1–12), design decisions D1–D8 and the five resolved owner questions. Added: billing-plane research track (§13), decisions D10–D17 (sell/cost price planes, per-capability allowances, overage policy, invoice lifecycle, BYOK billing, proration, PHI-free in-house rating), and the parallel-agent implementation plan (11 workstreams, 4 waves, coordination rules). Status → Review. |
 | 2026-08-06 | Plan approved by owner; execution started. **Wave 0 complete and merged** (WS-G `c4ef67e0`, WS-A `95718eb4`, WS-B `414204cb` — see §6); wave-1 emitter contract frozen (ws-b-contract.md). Status → In Progress. |
 | 2026-08-06 | **Wave 1 complete and merged** — all four emitter lanes (WS-D `54cbf3c7`, WS-F `9872338b`, WS-E `95aa176c`, WS-C `9c3ff673`; see §6). Gaps G5–G9 closed at the emission layer. Cross-lane verification in the merged tree: api streaming/compat/speech 351/351, applications stt+summary+ledger+trajectory 852/852. Wave 2 (WS-H meters/quotas, WS-I billing engine, WS-D2 emission completion) launched. |
+| 2026-08-06 | **Wave 2 complete and merged** — WS-I (billing engine, ff-head `399b1149`), WS-D2 (emission completion, ff-head `b177e087`), WS-H (meters/quotas/alerts, ff-head `80e31a10`); see §6. Mid-wave, the owner linearized `dev-2.1` history and landed the `f5fdacbd` DI fix; all lanes rebased + fast-forwarded. Main-tree verification: billing/priceBook/ledger 212/212, consultation sweep 1,754/1,754, entitlements/metering/billing/summary 546/546, api speech+billing+interceptors 153/153. Wave 3 launched (WS-K evidence/shadow-metering + WS-J API/Grafana; console screens remain design-gated). |
 | 2026-08-06 | **WS-D2 defect fix — WS-D's summary metering was dead in production.** `SummaryService` and `ChainSummaryService` injected the identically-named but UNWIRED `CoreUnitOfWorkService` from `services/baseServices/unitsOfWork/` (registered in no NestJS `providers: []` and absent from the applications barrel), so under `@Optional()` it resolved to `undefined` and `persistSummaryMetaWithUsage` ALWAYS took the unmetered fallback branch — no LLM/guardrail usage rows were ever written by `generateSummary`, `generatePreSummary`, or `generateComprehensiveSummary`. Unit tests could not catch it: they construct the services positionally with mocks and never exercise NestJS DI. Fixed by importing the DOMAINS `CoreUnitOfWorkService` from `@arcaai/domains` (provided + exported by `CoreDatabaseModule`, which both service modules already import) — the pattern WS-C's `SttInternalService` had already documented. Added `summary/__tests__/usage-ledger.di-wiring.task615.test.ts`, a container-free guard asserting the resolved constructor tokens against `CoreDatabaseModule`'s real exports (8 tests; verified RED against the broken imports first). The unwired class is retained (its own test is a named entry in the `cross-tenant-coverage` manifest) but now carries an explicit ⚠️ UNWIRED — DO NOT INJECT header. Evidence: `@arcaai/applications` build clean, 383 files / 7425 tests passing (baseline 7417 + 8 new), 0 new lint warnings. |
