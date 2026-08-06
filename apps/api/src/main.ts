@@ -5,6 +5,7 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
+import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
 // CORS helpers live in `cors.config.ts` so the dev / staging / production
 // branches can be unit-tested without booting the Nest application.
@@ -37,6 +38,14 @@ async function bootstrap() {
   // after loadEnv() and before NestFactory.create(), so a missing env-tier var
   // fails fast at boot with the full list of problems (plan §9.2 L2).
   loadEnv();
+
+  // PHI-safe telemetry (TASK-615 WS-G): refuse to boot in production unless
+  // OTel GenAI content-capture is pinned off. Placed immediately after
+  // `loadEnv()` — the earliest point `process.env` carries the fully
+  // resolved (host env > env file) value — and before the zod schema below,
+  // so a misconfigured production deploy fails on the single most direct
+  // check rather than surfacing as a generic schema problem.
+  assertGenaiContentCaptureDisabled();
 
   // Validate the declared env surface (built from the settings-registry
   // descriptors) and read the pre-bootstrap values from the TYPED result rather

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 import pytest
+from pydantic import ValidationError
 
 from smr.core.config import (
     AnthropicConfig,
@@ -16,6 +17,7 @@ from smr.core.config import (
     QueueConfig,
     RedisConfig,
     Settings,
+    TelemetryPhiGuardConfig,
     VertexConfig,
     get_settings,
 )
@@ -161,6 +163,85 @@ class TestQueueConfig:
         cfg = QueueConfig()
         assert cfg.max_size == 200
         assert cfg.max_wait_s == 60.0
+
+
+class TestTelemetryPhiGuardConfig:
+    """TASK-615 WS-G: PHI-safe telemetry boot guard.
+
+    Mirrors the gateway's `assertGenaiContentCaptureDisabled` posture:
+    `NODE_ENV=production` + a content-capture value other than the literal
+    `NO_CONTENT` (including unset, i.e. the empty-string default) must refuse
+    to construct. Every other environment is unenforced, matching the
+    env-sample flow pinning `NO_CONTENT` as a template default rather than a
+    hard runtime requirement outside production.
+
+    Constructed via keyword args (the `init_settings` source outranks env),
+    so these tests do not depend on ambient process env / .env.test content —
+    consistent with `AzureOpenAIConfig`/`BedrockConfig` construction tests
+    above. `_isolate_smr_env` (module-level, autouse) only clears `SMR_*`
+    names, so this class adds its own autouse isolation for the two bare
+    names this config reads.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_bare_env(self, monkeypatch):
+        monkeypatch.delenv("NODE_ENV", raising=False)
+        monkeypatch.delenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", raising=False)
+
+    def test_defaults_are_unenforced(self):
+        cfg = TelemetryPhiGuardConfig()
+        assert cfg.node_env == "development"
+        assert cfg.genai_capture_message_content == ""
+
+    def test_passes_outside_production_when_unset(self):
+        cfg = TelemetryPhiGuardConfig(node_env="development")
+        assert cfg.genai_capture_message_content == ""
+
+    def test_passes_outside_production_with_permissive_value(self):
+        cfg = TelemetryPhiGuardConfig(node_env="test", genai_capture_message_content="SPAN_AND_EVENT")
+        assert cfg.genai_capture_message_content == "SPAN_AND_EVENT"
+
+    def test_passes_in_production_when_exactly_no_content(self):
+        cfg = TelemetryPhiGuardConfig(node_env="production", genai_capture_message_content="NO_CONTENT")
+        assert cfg.genai_capture_message_content == "NO_CONTENT"
+
+    def test_refuses_in_production_when_unset(self):
+        with pytest.raises(ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"):
+            TelemetryPhiGuardConfig(node_env="production")
+
+    def test_refuses_in_production_with_permissive_value(self):
+        with pytest.raises(ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"):
+            TelemetryPhiGuardConfig(node_env="production", genai_capture_message_content="SPAN_AND_EVENT")
+
+    def test_refuses_in_production_on_near_miss_case(self):
+        with pytest.raises(ValidationError):
+            TelemetryPhiGuardConfig(node_env="production", genai_capture_message_content="no_content")
+
+    def test_reads_bare_env_names_not_smr_prefixed(self, monkeypatch):
+        # These are cross-process conventions — SMR_NODE_ENV / SMR_OTEL_... must
+        # NOT be what this class reads (Settings' env_prefix_target="all" would
+        # otherwise silently prefix them).
+        monkeypatch.setenv("NODE_ENV", "test")
+        monkeypatch.setenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "NO_CONTENT")
+        monkeypatch.setenv("SMR_NODE_ENV", "production")
+        monkeypatch.setenv("SMR_OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_AND_EVENT")
+        cfg = TelemetryPhiGuardConfig()
+        assert cfg.node_env == "test"
+        assert cfg.genai_capture_message_content == "NO_CONTENT"
+
+    def test_settings_construction_refuses_in_production(self, monkeypatch):
+        _clear_smr_env(monkeypatch)
+        monkeypatch.setenv("NODE_ENV", "production")
+        monkeypatch.delenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", raising=False)
+        with pytest.raises(ValidationError, match="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"):
+            Settings()
+
+    def test_settings_construction_passes_in_production_when_pinned(self, monkeypatch):
+        _clear_smr_env(monkeypatch)
+        monkeypatch.setenv("NODE_ENV", "production")
+        monkeypatch.setenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "NO_CONTENT")
+        s = Settings()
+        assert s.telemetry_phi_guard.genai_capture_message_content == "NO_CONTENT"
 
 
 class TestSettings:

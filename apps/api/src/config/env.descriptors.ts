@@ -216,6 +216,25 @@ const OBSERVABILITY: SettingDescriptor[] = [
     'Interval of the simplified monitoring collector.',
     15000,
   ),
+  // TASK-615 WS-G: PHI-safe telemetry, layer 1 of 4 (docs/operations/
+  // telemetry-phi-guardrails.md). This is a cross-process OTel
+  // instrumentation-library convention — the SAME bare name is read by
+  // apps/smr's `TelemetryPhiGuardConfig` (Python) — so it carries no
+  // per-service prefix. Deliberately no runtime `default`: the boot audit
+  // (`bootstrap/genai-content-capture-audit.ts`, called from `main.ts`
+  // immediately after `loadEnv()`) must be able to tell "unset" apart from
+  // "explicitly NO_CONTENT" in production. `sampleValue` still pins the
+  // literal in every generated `.env.sample`.
+  {
+    ...envKnob(
+      'otel.instrumentation.genai.captureMessageContent',
+      'string',
+      'Observability',
+      'GenAI content-capture switch',
+      'Pins the OTel GenAI instrumentation-library content-capture switch off, so prompt/completion text (PHI) is never stamped onto spans. Boot-time audit refuses to start in production unless this is exactly NO_CONTENT.',
+    ),
+    sampleValue: 'NO_CONTENT',
+  },
 ];
 
 /**
