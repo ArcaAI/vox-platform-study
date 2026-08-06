@@ -27,7 +27,7 @@ are unaffected — their model default is acceptable built-in topology.
 from __future__ import annotations
 
 from hope_env import hope_settings_sources, load_env
-from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # TASK-556: env_prefix is SMR_*; AliasChoices("…", "V2_…") + env_prefix_target
@@ -326,6 +326,58 @@ class ExternalGuardrailConfig(BaseSettings):
     service_token: SecretStr = SecretStr("")
 
 
+class TelemetryPhiGuardConfig(BaseSettings):
+    """PHI-safe telemetry boot guard (TASK-615 WS-G).
+
+    ``NODE_ENV`` and ``OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT``
+    are cross-process conventions read identically by every HOPE deployable —
+    the TypeScript gateway's ``assertGenaiContentCaptureDisabled``
+    (``apps/api/src/bootstrap/genai-content-capture-audit.ts``) reads the
+    SAME bare names. ``Settings`` applies ``env_prefix="SMR_"`` with
+    ``env_prefix_target="all"``, which would otherwise turn these into
+    ``SMR_NODE_ENV`` / ``SMR_OTEL_INSTRUMENTATION_...`` — names nothing else
+    reads — so this nested config carries no prefix of its own.
+
+    OTel GenAI instrumentation defaults to NOT capturing prompt/completion
+    content, but the capture switch is an instrumentation-library convention
+    absent from the official OTel SDK env-var spec: a library that ignores it
+    captures content (PHI) anyway. Layer 1 of the 4-layer PHI-safe telemetry
+    defense (docs/operations/telemetry-phi-guardrails.md) is pinning this
+    switch to ``NO_CONTENT`` everywhere; the validator below turns "pinned"
+    into "enforced" for production, mirroring the gateway boot audit's
+    posture — refuse to construct rather than silently run unsafe.
+
+    Deliberately no default other than the empty string for
+    ``genai_capture_message_content``: "unset" and "explicitly NO_CONTENT"
+    must stay distinguishable so a production deploy that forgot to set the
+    var fails loudly instead of resolving to a safe-looking default. Outside
+    production the var is unenforced (dev/test are not a PHI exposure
+    surface, and the env-sample flow already pins ``NO_CONTENT`` as the
+    template default there).
+    """
+
+    settings_customise_sources = hope_settings_sources
+
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+    node_env: str = Field(default="development", validation_alias="NODE_ENV")
+    genai_capture_message_content: str = Field(
+        default="", validation_alias="OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+    )
+
+    @model_validator(mode="after")
+    def _assert_content_capture_disabled_in_production(self) -> TelemetryPhiGuardConfig:
+        if self.node_env == "production" and self.genai_capture_message_content != "NO_CONTENT":
+            raise ValueError(
+                "Refusing to boot: OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT must be "
+                f"exactly 'NO_CONTENT' in production (got {self.genai_capture_message_content!r} "
+                "-- unset counts as wrong). This switch prevents OTel GenAI instrumentation from "
+                "capturing PHI-bearing prompt/completion content in spans. See "
+                "docs/operations/telemetry-phi-guardrails.md."
+            )
+        return self
+
+
 class RedisConfig(BaseSettings):
     """Redis configuration for task management."""
 
@@ -464,6 +516,10 @@ class Settings(BaseSettings):
     llama_cpp: LlamaCppConfig = Field(default_factory=LlamaCppConfig)
     sarvam: SarvamConfig = Field(default_factory=SarvamConfig)
     external_guardrail: ExternalGuardrailConfig = Field(default_factory=ExternalGuardrailConfig)
+    # TASK-615 WS-G: raises at construction time (propagates out of
+    # `Settings()` -> `get_settings()` -> `create_app()`) when NODE_ENV=production
+    # and OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT is not pinned.
+    telemetry_phi_guard: TelemetryPhiGuardConfig = Field(default_factory=TelemetryPhiGuardConfig)
     redis: RedisConfig = Field(default_factory=RedisConfig)
     circuit_breaker: CircuitBreakerConfig = Field(default_factory=CircuitBreakerConfig)
     queue: QueueConfig = Field(default_factory=QueueConfig)
