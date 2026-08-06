@@ -43,6 +43,10 @@ export class UsageSummaryResponse {
   @ApiProperty({ description: 'Σ costMicros across every line (INTERNAL basis only).' })
   totalCostMicros!: string;
 
-  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, description: 'BYOK notional spend by capability, integer micros. A product-visibility figure — never billed (D14).' })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: 'BYOK notional spend by capability, integer micros. A product-visibility figure — never billed (D14).',
+  })
   byokNotionalCostMicrosByCapability!: Record<string, string>;
 }

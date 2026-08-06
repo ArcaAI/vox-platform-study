@@ -114,6 +114,9 @@ export class UsageAnalyticsAggregateRepository {
       ORDER BY 1
     `)) as Array<{ capability: string; costMicros: unknown }>;
 
-    return rows.map((row) => ({ capability: row.capability as AiCapability, costMicros: row.costMicros === null ? 0n : BigInt(String(row.costMicros)) }));
+    return rows.map((row) => ({
+      capability: row.capability as AiCapability,
+      costMicros: row.costMicros === null ? 0n : BigInt(String(row.costMicros)),
+    }));
   }
 }
