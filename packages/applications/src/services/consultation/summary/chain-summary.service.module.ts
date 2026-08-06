@@ -8,10 +8,13 @@ import { PromptResolutionServiceModule } from '../prompt/prompt-resolution.servi
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { ConfigResolverModule } from '../../config-resolver';
+import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 
 @Module({
   // HarnessPolicyServiceModule supplies the SMR-selection resolver.
   // ConfigResolverModule supplies the preferred-prompt resolver.
+  // UsageLedgerServiceModule (TASK-615 WS-D) supplies IUsageLedgerService so a
+  // chain generation's token consumption is recorded with its SummaryMeta.
   imports: [
     CommonServiceModule,
     CoreDatabaseModule,
@@ -20,6 +23,7 @@ import { ConfigResolverModule } from '../../config-resolver';
     PromptResolutionServiceModule,
     HarnessPolicyServiceModule,
     ConfigResolverModule,
+    UsageLedgerServiceModule,
   ],
   providers: [PromptAssemblyService, ChainSummaryService],
   exports: [ChainSummaryService],

@@ -42,6 +42,10 @@ import {
 } from './dto';
 import { SummaryDtoMapper } from './summary.dto.mapper';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryResponse } from './smr-generate';
+import { buildGuardrailUsageInput, buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './smr-usage';
+import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
+import type { UsageOperation } from '../../usageLedger/vocabulary';
+import { CoreUnitOfWorkService } from '../../baseServices/unitsOfWork/core/core.unitOfWork';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -77,6 +81,18 @@ interface SmrGenerationStats {
 interface SmrRepairCall extends JsonRepairCall {
   mapped: LegacySmrSummaryResponse;
   stats: SmrGenerationStats | null;
+  /** SMR's billing passthrough for this call — one per attempt, all metered. */
+  usage: SmrUsageDetail | null;
+  /** The guardrail call this generation triggered, forwarded by SMR. */
+  guardrailUsage: SmrUsageDetail | null;
+}
+
+/** Everything an emission needs that is NOT already on the usage block. */
+interface SummaryUsageAttribution {
+  tenantId: string;
+  consultationId: string;
+  doctorId?: string | null;
+  departmentId?: string | null;
 }
 
 @Injectable()
@@ -144,6 +160,13 @@ export class SummaryService extends BaseService implements ISummaryService {
     // (TASK-552 Lane C). Optional + trailing so existing positional test
     // fixtures keep compiling; absent ⇒ citedSegments: [] (best-effort).
     @Optional() @Inject(TranscriptSegmentRepository) private readonly transcriptSegmentRepository?: TranscriptSegmentRepository,
+    // (TASK-615 WS-D) Records the LLM + guardrail token rows this generation
+    // produced. Optional + trailing so existing positional test fixtures keep
+    // compiling; absent ⇒ the generation is simply not metered (never fails).
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
+    // (TASK-615 WS-D) Lets the SummaryMeta write and the usage emission share
+    // one transaction, so neither can survive without the other.
+    @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -249,7 +272,12 @@ export class SummaryService extends BaseService implements ISummaryService {
       summaryMeta.tokensPerSecond = smrResponse.stats.tokens_per_second ?? null;
     }
     await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.summaryMetaRepository.create(summaryMeta);
+    await this.persistSummaryMetaWithUsage(summaryMeta, smrResponse, 'presummarize', {
+      tenantId,
+      consultationId,
+      doctorId: consultation.doctorId,
+      departmentId: consultation.departmentId,
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: savedContext.id,
@@ -384,7 +412,12 @@ export class SummaryService extends BaseService implements ISummaryService {
       summaryMeta.tokensPerSecond = smrResponse.stats.tokens_per_second ?? null;
     }
     await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.summaryMetaRepository.create(summaryMeta);
+    await this.persistSummaryMetaWithUsage(summaryMeta, smrResponse, 'generate', {
+      tenantId,
+      consultationId,
+      doctorId: consultation.doctorId,
+      departmentId: consultation.departmentId,
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: savedContext.id,
@@ -410,6 +443,78 @@ export class SummaryService extends BaseService implements ISummaryService {
     });
 
     return SummaryDtoMapper.toResponse(savedContext);
+  }
+
+  /**
+   * Persist a `SummaryMeta` and, in the SAME transaction, record the tokens the
+   * generation consumed (TASK-615 WS-D).
+   *
+   * The transaction is the point. A `SummaryMeta` that rolls back must not
+   * leave a billed event behind, and one that commits must not lose its usage
+   * to a crash a millisecond later — passing `tx` guards both directions at
+   * once, which is why the contract prefers it over a follow-up write.
+   *
+   * TWO deliberate degradations:
+   *   - No ledger / no unit-of-work wired (legacy positional test fixtures) ⇒
+   *     plain create, unmetered. Metering is additive; it must not become a
+   *     precondition for saving a clinical note.
+   *   - A metering failure is swallowed. The model already ran and the clinician
+   *     is waiting for the draft: "not metered" is recoverable from the provider's
+   *     own usage API, a 500 on a delivered summary is not.
+   */
+  private async persistSummaryMetaWithUsage(
+    summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
+    smrResponse: { usage: SmrUsageDetail | null; guardrailUsage: SmrUsageDetail | null },
+    operation: UsageOperation,
+    attribution: SummaryUsageAttribution,
+  ): Promise<void> {
+    const llmInput = smrResponse.usage
+      ? buildLlmUsageInput({
+          usage: smrResponse.usage,
+          tenantId: attribution.tenantId,
+          operation,
+          consultationId: attribution.consultationId,
+          doctorId: attribution.doctorId,
+          departmentId: attribution.departmentId,
+        })
+      : null;
+    const guardrailInput = smrResponse.guardrailUsage
+      ? buildGuardrailUsageInput({
+          usage: smrResponse.guardrailUsage,
+          tenantId: attribution.tenantId,
+          consultationId: attribution.consultationId,
+          doctorId: attribution.doctorId,
+          departmentId: attribution.departmentId,
+          fallbackRequestId: smrResponse.usage?.taskId ?? null,
+        })
+      : null;
+
+    const inputs = [llmInput, guardrailInput].filter((input): input is NonNullable<typeof input> => input !== null);
+
+    if (!this.usageLedger || !this.unitOfWork || inputs.length === 0) {
+      await this.summaryMetaRepository.create(summaryMeta);
+      return;
+    }
+
+    try {
+      await this.unitOfWork.runInTransaction(async (tx) => {
+        await this.summaryMetaRepository.create(summaryMeta, tx);
+        for (const input of inputs) {
+          await this.usageLedger!.recordUsage(input, tx);
+        }
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Usage metering failed for a generated summary; persisting the summary metadata unmetered',
+        consultationId: attribution.consultationId,
+        operation,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // The transaction rolled back, so the SummaryMeta was never written.
+      // Re-create it on its own — losing the metadata over a metering problem
+      // would be strictly worse than losing the meter.
+      await this.summaryMetaRepository.create(summaryMeta);
+    }
   }
 
   /**
@@ -1004,7 +1109,7 @@ export class SummaryService extends BaseService implements ISummaryService {
     };
     options?: Record<string, unknown>;
     context?: Record<string, unknown>;
-  }): Promise<LegacySmrSummaryResponse & { stats: SmrGenerationStats | null }> {
+  }): Promise<LegacySmrSummaryResponse & { stats: SmrGenerationStats | null; usage: SmrUsageDetail | null; guardrailUsage: SmrUsageDetail | null }> {
     try {
       // SMR is a stateless gateway with no model default; resolve
       // the tenant's effective {provider, model} and merge it in as the base so a
@@ -1039,7 +1144,14 @@ export class SummaryService extends BaseService implements ISummaryService {
             },
           );
           const mapped = mapSmrGenerateResponse(response.data);
-          return { text: mapped.summary, mapped, stats: SummaryService.parseGenerationStats(response.data) };
+          const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown } | null;
+          return {
+            text: mapped.summary,
+            mapped,
+            stats: SummaryService.parseGenerationStats(response.data),
+            usage: parseSmrUsageDetail(data?.usage_detail),
+            guardrailUsage: parseSmrUsageDetail(data?.guardrail_usage),
+          };
         },
         // The summary is opaque JSON we persist verbatim, so the strict parse only
         // decides WHETHER the structured contract was honoured — the text passes
@@ -1074,6 +1186,12 @@ export class SummaryService extends BaseService implements ISummaryService {
         outputTokens: sumAcrossCalls((c) => c.mapped.outputTokens),
         processingTimeMs: sumAcrossCalls((c) => c.mapped.processingTimeMs),
         stats: finalCall.stats,
+        // The usage blocks describe the call whose text became the stored note.
+        // A repair attempt is a SEPARATE SMR request with its own task id, so it
+        // bills as its own ledger event rather than being folded in here — the
+        // per-unit sums above would silently merge two idempotency identities.
+        usage: finalCall.usage,
+        guardrailUsage: finalCall.guardrailUsage,
       };
     } catch (error) {
       throw new BadRequestException(`Failed to call SMR service: ${error}`);
