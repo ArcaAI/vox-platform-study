@@ -1,12 +1,26 @@
-import { AiModelService, IAiRuntimeProfileService, IAiTaskDefaultService } from '@arcaai/applications';
-import { ModelTaskType } from '@arcaai/domains';
+import {
+  AiModelService,
+  buildNerUsageEvent,
+  IActiveUserContext,
+  IAiRuntimeProfileService,
+  IAiTaskDefaultService,
+  IUsageLedgerService,
+} from '@arcaai/applications';
+import { generateId, ModelTaskType } from '@arcaai/domains';
 import { BadRequestException, Body, Controller, Inject, Logger, Optional, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ClsService } from 'nestjs-cls';
 import { Authorize } from '../../decorators';
 import { AiInferenceClient } from './ai-inference.client';
 import { AnalyzeGuardrailRequest } from './dto/analyze-guardrail.request';
 import { ExtractEntitiesRequest } from './dto/extract-entities.request';
 import { SuggestDiagnosisRequest } from './dto/suggest-diagnosis.request';
+
+// The "clinician" definition this controller attributes NER usage to.
+// Mirrors DnaWritingStyleController's DNA_DOCTOR_ROLES — the one other place
+// in this codebase that already draws this exact line (an admin acting under
+// their own account is not a clinician; DOCTOR/SPECIALIST/CONSULTANT are).
+const CLINICIAN_ROLES = ['DOCTOR', 'SPECIALIST', 'CONSULTANT'];
 
 /**
  * AiInferenceController — the USER-PLANE `/ai/*` inference proxy over
@@ -46,6 +60,17 @@ export class AiInferenceController {
     @Optional()
     @Inject(IAiRuntimeProfileService)
     private readonly aiRuntimeProfileService?: IAiRuntimeProfileService,
+    // TASK-615 WS-D2 (item 2) — tenantId + clinician-attribution source for
+    // the playground NER usage-ledger row. Optional (mirrors AiInferenceClient's
+    // own `cls` field) so unit fixtures compile without a mock; absent ⇒ no
+    // tenantId is resolvable, so emission simply doesn't happen (see below).
+    @Optional() private readonly cls?: ClsService<IActiveUserContext>,
+    // Emits the `ner.extract` usage row for the playground
+    // `/ai/nlp/entities` proxy — the ONE NER call site with no consultation
+    // attribution. Optional + trailing so existing positional fixtures keep
+    // compiling; absent ⇒ no emission (fail-open — metering must never block
+    // the playground tool).
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
   ) {}
 
   @Post('guardrail/analyze')
@@ -90,7 +115,7 @@ export class AiInferenceController {
       runtimeParams = await this.resolveRuntimeParams(selection.provider, selection.modelSlug);
     }
 
-    return this.client.classifyTokens({
+    const result = await this.client.classifyTokens({
       text: body.text,
       aggregation_strategy: body.aggregationStrategy ?? 'simple',
       ...(body.language ? { language: body.language } : {}),
@@ -98,6 +123,47 @@ export class AiInferenceController {
       ...(modelPath ? { model_path: modelPath } : {}),
       ...runtimeParams,
     });
+
+    await this.emitNerUsage(body.text, modelName || null);
+
+    return result;
+  }
+
+  /**
+   * Emit the playground `ner.extract` usage row (TASK-615 WS-D2). This is the
+   * ONE NER call site with no consultation context — `buildNerUsageEvent`
+   * (shared with ner.processor.ts / summary.service.ts) omits
+   * `consultationId` here and attributes `doctorId` instead, when the CLS
+   * caller holds a clinician role. Fail-open: no tenantId, no ledger wired, or
+   * a ledger rejection all degrade to "not metered" — never a failed request.
+   */
+  private async emitNerUsage(text: string, model: string | null): Promise<void> {
+    const tenantId = this.cls?.get('tenantId');
+    if (!this.usageLedgerService || !tenantId) return;
+    try {
+      await this.usageLedgerService.recordUsage(
+        buildNerUsageEvent({
+          tenantId,
+          requestId: generateId(),
+          charCount: [...text].length,
+          model,
+          doctorId: this.resolveDoctorId(),
+        }),
+      );
+    } catch (error) {
+      this.logger.warn({
+        message: 'Playground NER usage emission failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** The acting user's id when their CLS roles include a clinician role, else null. */
+  private resolveDoctorId(): string | null {
+    const user = this.cls?.get('user');
+    const roles = user?.roles ?? [];
+    if (!user?.id || !roles.some((role: string) => CLINICIAN_ROLES.includes(role))) return null;
+    return user.id;
   }
 
   @Post('nlp/diagnosis')

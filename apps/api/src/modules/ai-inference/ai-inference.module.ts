@@ -1,4 +1,4 @@
-import { AiModelServiceModule, AiRuntimeProfileServiceModule, AiTaskDefaultServiceModule } from '@arcaai/applications';
+import { AiModelServiceModule, AiRuntimeProfileServiceModule, AiTaskDefaultServiceModule, UsageLedgerServiceModule } from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { AiInferenceClient } from './ai-inference.client';
@@ -13,11 +13,13 @@ import { AiInferenceController } from './ai-inference.controller';
  * `AiModelServiceModule` so a caller-supplied model override
  * is validated against the registry before being forwarded. Kept separate
  * from AiServiceAdminModule so the read-only admin plane stays untouched.
+ * `UsageLedgerServiceModule` supplies `IUsageLedgerService` for the
+ * TASK-615 WS-D2 playground `ner.extract` usage-ledger emission.
  */
 @Module({
   // AiRuntimeProfileServiceModule supplies the hyperparameter
   // profile resolver injected alongside `model_name`.
-  imports: [HttpModule, AiTaskDefaultServiceModule, AiModelServiceModule, AiRuntimeProfileServiceModule],
+  imports: [HttpModule, AiTaskDefaultServiceModule, AiModelServiceModule, AiRuntimeProfileServiceModule, UsageLedgerServiceModule],
   controllers: [AiInferenceController],
   providers: [AiInferenceClient],
 })

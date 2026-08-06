@@ -15,9 +15,19 @@ export interface NerUsageEventParams {
   /**
    * ATTRIBUTION only (a column on the event, not part of the identity/key).
    * May be — and normally is — the same value across many invocations for
-   * one consultation.
+   * one consultation. Optional (TASK-615 WS-D2): the playground
+   * `/ai/nlp/entities` call site is a standalone inference proxy with NO
+   * consultation context at all — omitted rather than fabricated.
    */
-  consultationId: string;
+  consultationId?: string | null;
+  /**
+   * ATTRIBUTION only (TASK-615 WS-D2). Set for the playground call site when
+   * the CLS caller is a clinician (DOCTOR/SPECIALIST/CONSULTANT); the two
+   * existing consultation-scoped call sites (ner.processor, summary.service
+   * extractEntities) leave it unset — the consultation's own doctorId already
+   * covers attribution there.
+   */
+  doctorId?: string | null;
   /** Character count of the text SENT to NLP for THIS call. */
   charCount: number;
   /** The resolved AiTaskDefault model_name, or null when resolution fail-opened (unknown, never guessed). */
@@ -52,7 +62,7 @@ export interface NerUsageEventParams {
  * consultation, never collapsed into one.
  */
 export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatchInput {
-  const { tenantId, requestId, consultationId, charCount, model } = params;
+  const { tenantId, requestId, consultationId, doctorId, charCount, model } = params;
   return {
     common: {
       tenantId,
@@ -67,7 +77,8 @@ export function buildNerUsageEvent(params: NerUsageEventParams): UsageEventBatch
       model,
       deployment: AiDeploymentKind.SELF_HOSTED,
       // Attribution only — never folded into the idempotency key.
-      consultationId,
+      consultationId: consultationId ?? null,
+      doctorId: doctorId ?? null,
       requestId,
     },
     units: [

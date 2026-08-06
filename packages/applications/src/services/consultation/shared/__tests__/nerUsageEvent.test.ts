@@ -75,4 +75,33 @@ describe('buildNerUsageEvent (TASK-615 WS-E, revised — per-invocation keying)'
   it('rejects a blank requestId (would collapse every invocation onto one key)', () => {
     expect(() => buildNerUsageEvent({ tenantId: 't1', requestId: '', consultationId: 'consult-1', charCount: 100, model: null })).toThrow();
   });
+
+  // TASK-615 WS-D2 (item 2) — the playground `/ai/nlp/entities` call site has
+  // NO consultation context at all (a standalone inference proxy, not a
+  // consultation write path), so consultationId must be optional; doctorId is
+  // new attribution for that same call site (a clinician using the tool
+  // under their own account).
+  describe('optional consultationId + doctorId attribution (TASK-615 WS-D2)', () => {
+    it('omits consultationId entirely when the call carries none (playground path)', () => {
+      const event = buildNerUsageEvent({ tenantId: 't1', requestId: 'req-1', charCount: 100, model: 'm1' });
+      expect(event.common.consultationId).toBeNull();
+    });
+
+    it('carries doctorId when the caller supplies one, without requiring consultationId', () => {
+      const event = buildNerUsageEvent({ tenantId: 't1', requestId: 'req-1', charCount: 100, model: 'm1', doctorId: 'doctor-9' });
+      expect(event.common.doctorId).toBe('doctor-9');
+      expect(event.common.consultationId).toBeNull();
+    });
+
+    it('omits doctorId when the caller supplies none (non-clinician playground user)', () => {
+      const event = buildNerUsageEvent({ tenantId: 't1', requestId: 'req-1', charCount: 100, model: 'm1' });
+      expect(event.common.doctorId).toBeNull();
+    });
+
+    it('the two existing consultation call sites (ner.processor / summary.service) are unaffected — consultationId still required-shaped when supplied', () => {
+      const event = buildNerUsageEvent({ tenantId: 't1', requestId: 'job-a', consultationId: 'consult-1', charCount: 250, model: 'm1' });
+      expect(event.common.consultationId).toBe('consult-1');
+      expect(event.common.doctorId).toBeNull();
+    });
+  });
 });

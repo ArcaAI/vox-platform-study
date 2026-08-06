@@ -2,7 +2,15 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
-import { AiCapability, AiDeploymentKind, AiUsageUnit, JobQueue, KnowledgeChunkFactory, KnowledgeChunkRepository, KnowledgeDocumentRepository } from '@arcaai/domains';
+import {
+  AiCapability,
+  AiDeploymentKind,
+  AiUsageUnit,
+  JobQueue,
+  KnowledgeChunkFactory,
+  KnowledgeChunkRepository,
+  KnowledgeDocumentRepository,
+} from '@arcaai/domains';
 import { KnowledgeIngestClient, KnowledgeIngestResponse } from './knowledge-ingest.client';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
