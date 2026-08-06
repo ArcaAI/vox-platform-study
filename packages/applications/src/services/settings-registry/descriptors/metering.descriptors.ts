@@ -95,7 +95,7 @@ export const METERING_SETTINGS: SettingDescriptor[] = [
     category: 'Platform Operations',
     label: 'Metering reconcile seed default',
     description:
-      "SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database (OQ3 — ON in dev/staging via METERING_RECONCILE_ENABLED_DEFAULT, OFF in test/CI/prod). The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment.",
+      'SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database (OQ3 — ON in dev/staging via METERING_RECONCILE_ENABLED_DEFAULT, OFF in test/CI/prod). The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment.',
     default: false,
   },
 ];

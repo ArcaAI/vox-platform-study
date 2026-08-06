@@ -1,4 +1,9 @@
-import { AiProviderConnectionServiceModule, EntitlementsServiceModule, TenantTtsConfigServiceModule, UsageLedgerServiceModule } from '@arcaai/applications';
+import {
+  AiProviderConnectionServiceModule,
+  EntitlementsServiceModule,
+  TenantTtsConfigServiceModule,
+  UsageLedgerServiceModule,
+} from '@arcaai/applications';
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { SpeechProxyController } from './speech-proxy.controller';
