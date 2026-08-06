@@ -1,3 +1,5 @@
+import { JobQueue } from '@arcaai/domains';
+
 /**
  * Outbox-drainer tuning (TASK-615 WS-B).
  *
@@ -11,13 +13,14 @@
 /**
  * BullMQ queue name.
  *
- * Deliberately NOT added to `JobQueue` in `@arcaai/domains`: that enum is WS-A's
- * file and this lane does not edit another lane's package. A local literal works
- * because `BullModule.forRootAsync` is registered globally by
- * `RedisServiceModule` — `registerQueue` here binds to the same connection. If a
- * later ticket wants it in the shared enum, that is a one-line move.
+ * Promoted into the shared `JobQueue` enum home (`@arcaai/domains`) per the
+ * WS-B handoff (TASK-615 WS-D2 item 4c) — the value is unchanged
+ * (`'AiUsageOutboxDrain'`), only the source of truth moved so a rename of one
+ * can never silently drift from the other. `BullModule.forRootAsync` is
+ * registered globally by `RedisServiceModule`, so `registerQueue` here still
+ * binds to the same connection regardless of where the name comes from.
  */
-export const USAGE_OUTBOX_QUEUE = 'AiUsageOutboxDrain';
+export const USAGE_OUTBOX_QUEUE = JobQueue.AiUsageOutboxDrain;
 
 /** Job name for the periodic sweep. */
 export const USAGE_OUTBOX_DRAIN_JOB = 'drain';
