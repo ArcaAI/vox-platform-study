@@ -400,4 +400,135 @@ describe('StreamingSessionService', () => {
       );
     });
   });
+
+  // ===========================================================================
+  // TASK-615 WS-C — removeSession() usage emission
+  // ===========================================================================
+  describe('removeSession — transcribe.stream usage emission (TASK-615 WS-C)', () => {
+    const teardownSummary = (overrides: Record<string, unknown> = {}) => ({
+      session_id: 's-1',
+      tenant_id: 'tenant-1',
+      consultation_id: 'consult-1',
+      user_id: 'doctor-1',
+      pipeline_id: 'pipeline-9',
+      closed_at: '2026-08-06T10:01:30',
+      audio_seconds: 42.5,
+      session_seconds: 90.0,
+      engine: 'whisper_cpp',
+      deployment: 'SELF_HOSTED',
+      language_mode: 'ml-en',
+      ...overrides,
+    });
+
+    const mockUsageLedgerService = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) });
+
+    it('emits BOTH SESSION_SECOND and AUDIO_SECOND on a real (complete) teardown', async () => {
+      httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary() }));
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input).toMatchObject({
+        common: expect.objectContaining({
+          tenantId: 'tenant-1',
+          sessionId: 's-1',
+          consultationId: 'consult-1',
+          doctorId: 'doctor-1',
+          idempotencyKey: 'stt:session:s-1',
+          occurredAt: '2026-08-06T10:01:30',
+          capability: 'STT',
+          operation: 'transcribe.stream',
+          provider: 'whisper_cpp',
+          model: null,
+          deployment: 'SELF_HOSTED',
+          attributesJson: expect.objectContaining({
+            engine: 'whisper_cpp',
+            pipelineId: 'pipeline-9',
+            languageMode: 'ml-en',
+            channelCount: 1,
+            streamKind: 'ws',
+            interrupted: false,
+          }),
+        }),
+        units: expect.arrayContaining([
+          { unit: 'SESSION_SECOND', quantity: 90.0 },
+          { unit: 'AUDIO_SECOND', quantity: 42.5 },
+        ]),
+      });
+      expect(input.common.costBasis).toBeUndefined();
+    });
+
+    it('stamps interrupted:true on the abort path — SAME idempotency key as completion', async () => {
+      httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary() }));
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1', true);
+
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common.idempotencyKey).toBe('stt:session:s-1');
+      expect(input.common.attributesJson.interrupted).toBe(true);
+    });
+
+    it('maps a BYOK-deployed engine to costBasis BYOK_NOTIONAL', async () => {
+      httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary({ engine: 'azure-speech', deployment: 'BYOK' }) }));
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common.provider).toBe('azure-speech');
+      expect(input.common.deployment).toBe('BYOK');
+      expect(input.common.costBasis).toBe('BYOK_NOTIONAL');
+    });
+
+    it('does NOT emit when the session had no resolved engine (never guesses a provider)', async () => {
+      httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary({ engine: null, deployment: null }) }));
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('does NOT emit on the idempotent 204 "already gone" response (no summary)', async () => {
+      httpService.delete.mockReturnValue(of({ status: 204, data: undefined }));
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await service.removeSession('s-1');
+
+      expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('does NOT emit and does NOT throw when the ledger itself is not wired', async () => {
+      httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary() }));
+      // Exactly the 2-arg construction every pre-TASK-615 caller uses.
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+      await expect(service.removeSession('s-1')).resolves.toBeUndefined();
+    });
+
+    it('still resolves (never throws) when recordUsage itself fails — metering never blocks teardown', async () => {
+      httpService.delete.mockReturnValue(of({ status: 200, data: teardownSummary() }));
+      const usageLedgerService = { recordUsage: vi.fn().mockRejectedValue(new Error('ledger boom')) };
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await expect(service.removeSession('s-1')).resolves.toBeUndefined();
+    });
+
+    it('a genuine 404 from STT still resolves without attempting emission (pre-existing idempotent-removal behaviour)', async () => {
+      httpService.delete.mockReturnValue(throwError(() => ({ response: { status: 404 } })));
+      const usageLedgerService = mockUsageLedgerService();
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'), usageLedgerService as any);
+
+      await expect(service.removeSession('s-1')).resolves.toBeUndefined();
+      expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
+    });
+  });
 });

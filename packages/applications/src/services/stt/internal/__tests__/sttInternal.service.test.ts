@@ -55,6 +55,7 @@ function createBehavioralJobEntity(
     progress?: number;
     workerId?: string | null;
     createdBy?: string | null;
+    version?: number;
   } = {},
 ) {
   // Internal mutable state
@@ -78,6 +79,7 @@ function createBehavioralJobEntity(
     consultationId: 'consultationId' in overrides ? overrides.consultationId : 'consultation-1',
     pipelineId: overrides.pipelineId ?? 'pipeline-1',
     createdBy: overrides.createdBy ?? 'user-123',
+    version: overrides.version ?? 1,
 
     // Getters for mutable state
     get status() {
@@ -269,6 +271,18 @@ const mockEventEmitter = {
 const mockJobRepository = {
   findById: vi.fn(),
   update: vi.fn(),
+  updateWithVersion: vi.fn(),
+};
+
+// TASK-615 WS-C — usage-ledger emission collaborators. A distinguishable
+// sentinel `tx` object lets tests assert the SAME transaction client flows
+// into both the job persist and the ledger emission (ws-b-contract.md §5).
+const FAKE_TX = { __fakeTx: true };
+const mockUnitOfWorkService = {
+  runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(FAKE_TX)),
+};
+const mockUsageLedgerService = {
+  recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['outbox-1'], events: 1 }),
 };
 
 const mockContextItemRepository = {
@@ -318,6 +332,7 @@ describe('SttInternalService', () => {
 
     mockTranscriptSegmentRepository.create.mockImplementation(async (entity: any) => entity);
     mockTranscriptSegmentRepository.createMany.mockImplementation(async (entities: any[]) => ({ count: entities.length }));
+    mockJobRepository.updateWithVersion.mockImplementation(async (_id: any, entity: any) => entity);
 
     service = new SttInternalService(
       mockJobRepository as any,
@@ -328,6 +343,9 @@ describe('SttInternalService', () => {
       mockClsService as any,
       undefined, // secretsService (optional)
       mockTranscriptSegmentRepository as any,
+      undefined, // redisCache (optional)
+      mockUnitOfWorkService as any,
+      mockUsageLedgerService as any,
     );
   });
 
@@ -616,6 +634,144 @@ describe('SttInternalService', () => {
       mockJobRepository.findById.mockResolvedValue(job);
 
       await expect(service.completeJob('job-123', { resultText: 'Test' })).rejects.toThrow();
+    });
+
+    // =========================================================================
+    // TASK-615 WS-C — transcribe.batch usage emission
+    // =========================================================================
+    describe('usage emission (transcribe.batch)', () => {
+      it('emits one AUDIO_SECOND row via the ledger, in the SAME transaction as the completing update', async () => {
+        const job = createBehavioralJobEntity({
+          id: 'job-123',
+          tenantId: 'tenant-1',
+          consultationId: 'consult-1',
+          pipelineId: 'pipeline-9',
+          status: TranscriptionJobStatus.PROCESSING,
+          version: 3,
+        });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await service.completeJob('job-123', {
+          resultText: 'Transcription result',
+          resultMetadata: { confidence: 0.95, duration_seconds: 42.5 },
+          durationSeconds: 42.5,
+          processingTimeSeconds: 9.1,
+          engine: 'whisper_cpp',
+          deployment: 'SELF_HOSTED',
+        });
+
+        // Persist went through the transactional, version-guarded path.
+        expect(mockUnitOfWorkService.runInTransaction).toHaveBeenCalledTimes(1);
+        expect(mockJobRepository.updateWithVersion).toHaveBeenCalledWith('job-123', job, 3, FAKE_TX);
+        expect(mockJobRepository.update).not.toHaveBeenCalled();
+
+        // Usage emitted through the SAME tx.
+        expect(mockUsageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+        const [input, tx] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(tx).toBe(FAKE_TX);
+        expect(input).toMatchObject({
+          common: expect.objectContaining({
+            tenantId: 'tenant-1',
+            idempotencyKey: 'stt:job:job-123',
+            capability: 'STT',
+            operation: 'transcribe.batch',
+            provider: 'whisper_cpp',
+            model: null,
+            deployment: 'SELF_HOSTED',
+            consultationId: 'consult-1',
+            requestId: 'job-123',
+            attributesJson: expect.objectContaining({
+              engine: 'whisper_cpp',
+              pipelineId: 'pipeline-9',
+              channelCount: 1,
+            }),
+          }),
+          units: [{ unit: 'AUDIO_SECOND', quantity: 42.5 }],
+        });
+        expect(input.common.costBasis).toBeUndefined();
+      });
+
+      it('maps a BYOK-deployed engine to costBasis BYOK_NOTIONAL', async () => {
+        const job = createBehavioralJobEntity({ id: 'job-byok', status: TranscriptionJobStatus.PROCESSING });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await service.completeJob('job-byok', {
+          resultText: 'text',
+          durationSeconds: 10,
+          engine: 'azure-speech',
+          deployment: 'BYOK',
+        });
+
+        const [input] = mockUsageLedgerService.recordUsage.mock.calls[0];
+        expect(input.common.provider).toBe('azure-speech');
+        expect(input.common.deployment).toBe('BYOK');
+        expect(input.common.costBasis).toBe('BYOK_NOTIONAL');
+      });
+
+      it('does NOT emit usage when durationSeconds is absent (old/un-upgraded worker)', async () => {
+        const job = createBehavioralJobEntity({ id: 'job-old', status: TranscriptionJobStatus.PROCESSING });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await service.completeJob('job-old', { resultText: 'text' });
+
+        expect(mockUsageLedgerService.recordUsage).not.toHaveBeenCalled();
+        expect(mockUnitOfWorkService.runInTransaction).not.toHaveBeenCalled();
+        // Falls through to the pre-existing, non-transactional persist.
+        expect(mockJobRepository.update).toHaveBeenCalledWith('job-old', job);
+      });
+
+      it('does NOT emit usage when durationSeconds is 0 (no audio decoded)', async () => {
+        const job = createBehavioralJobEntity({ id: 'job-zero', status: TranscriptionJobStatus.PROCESSING });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await service.completeJob('job-zero', { resultText: 'text', durationSeconds: 0, engine: 'whisper_cpp' });
+
+        expect(mockUsageLedgerService.recordUsage).not.toHaveBeenCalled();
+      });
+
+      it('does NOT emit usage when engine is absent (never guesses a provider)', async () => {
+        const job = createBehavioralJobEntity({ id: 'job-no-engine', status: TranscriptionJobStatus.PROCESSING });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await service.completeJob('job-no-engine', { resultText: 'text', durationSeconds: 10 });
+
+        expect(mockUsageLedgerService.recordUsage).not.toHaveBeenCalled();
+        // Job still completes normally.
+        expect(job.isCompleted).toBe(true);
+      });
+
+      it('still completes the job when the ledger call throws (metering never blocks the request)', async () => {
+        const job = createBehavioralJobEntity({ id: 'job-ledger-fails', status: TranscriptionJobStatus.PROCESSING });
+        mockJobRepository.findById.mockResolvedValue(job);
+        mockUsageLedgerService.recordUsage.mockRejectedValueOnce(new Error('ledger boom'));
+
+        const result = await service.completeJob('job-ledger-fails', { resultText: 'text', durationSeconds: 10, engine: 'whisper_cpp' });
+
+        expect(result.status).toBe(TranscriptionJobStatus.COMPLETED);
+        expect(job.isCompleted).toBe(true);
+      });
+
+      it('skips emission entirely when the ledger/unit-of-work are not wired (older DI graph)', async () => {
+        // Reconstruct without the two new trailing deps — exactly the arity
+        // every pre-TASK-615 caller (and the encryption test file) still uses.
+        const bareService = new SttInternalService(
+          mockJobRepository as any,
+          mockContextItemRepository as any,
+          mockMediaRepository as any,
+          mockAudioRecordingRepository as any,
+          mockEventEmitter as any,
+          mockClsService as any,
+          undefined,
+          mockTranscriptSegmentRepository as any,
+        );
+        const job = createBehavioralJobEntity({ id: 'job-bare', status: TranscriptionJobStatus.PROCESSING });
+        mockJobRepository.findById.mockResolvedValue(job);
+
+        await bareService.completeJob('job-bare', { resultText: 'text', durationSeconds: 10, engine: 'whisper_cpp' });
+
+        expect(mockUsageLedgerService.recordUsage).not.toHaveBeenCalled();
+        expect(mockJobRepository.update).toHaveBeenCalledWith('job-bare', job);
+      });
     });
   });
 

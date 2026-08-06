@@ -164,6 +164,80 @@ class TestCompleteJob:
 
             assert captured_json["resultMetadata"] == {}
 
+    # TASK-615 WS-C — typed usage-attribution fields lifted out of
+    # resultMetadata (the blob is encrypted on the gateway side, so anything
+    # trapped only inside it is unqueryable). These ride as SIBLING top-level
+    # fields on InternalCompleteJobRequest, matching resultText/resultMetadata.
+
+    @pytest.mark.asyncio
+    async def test_complete_job_sends_typed_duration_and_engine_fields(self, client):
+        """duration_seconds/processing_time_seconds/engine/deployment ride as
+        typed top-level JSON fields, not nested inside resultMetadata."""
+        captured_json = None
+
+        async def capture_request(method, path, json=None, params=None, headers=None):
+            nonlocal captured_json
+            captured_json = json
+            return {"status": "COMPLETED"}
+
+        metadata = {"language": "en", "duration_seconds": 42.5}
+
+        with patch.object(client, "_request", side_effect=capture_request):
+            await client.complete_job(
+                "job-123",
+                result_text="Full transcript text.",
+                result_metadata=metadata,
+                duration_seconds=42.5,
+                processing_time_seconds=9.75,
+                engine="whisper_cpp",
+                deployment="SELF_HOSTED",
+            )
+
+        # The blob itself is UNCHANGED — a second, typed channel, not a move.
+        assert captured_json["resultMetadata"] == metadata
+        assert captured_json["durationSeconds"] == 42.5
+        assert captured_json["processingTimeSeconds"] == 9.75
+        assert captured_json["engine"] == "whisper_cpp"
+        assert captured_json["deployment"] == "SELF_HOSTED"
+
+    @pytest.mark.asyncio
+    async def test_complete_job_omits_typed_fields_when_none(self, client):
+        """None (the default) means the field is left off the payload
+        entirely — never sent as a JSON null — so an un-upgraded gateway
+        (or a job the caller chose not to attribute) sees an unchanged
+        request shape."""
+        captured_json = None
+
+        async def capture_request(method, path, json=None, params=None, headers=None):
+            nonlocal captured_json
+            captured_json = json
+            return {"status": "COMPLETED"}
+
+        with patch.object(client, "_request", side_effect=capture_request):
+            await client.complete_job("job-123", result_text="Hello")
+
+        for key in ("durationSeconds", "processingTimeSeconds", "engine", "deployment"):
+            assert key not in captured_json
+
+    @pytest.mark.asyncio
+    async def test_complete_job_sends_zero_duration_explicitly(self, client):
+        """0.0 is a real (falsy-but-meaningful) value — must not be dropped
+        by an `if duration_seconds` truthiness check."""
+        captured_json = None
+
+        async def capture_request(method, path, json=None, params=None, headers=None):
+            nonlocal captured_json
+            captured_json = json
+            return {"status": "COMPLETED"}
+
+        with patch.object(client, "_request", side_effect=capture_request):
+            await client.complete_job(
+                "job-123", result_text="Hello", duration_seconds=0.0, engine="whisper_cpp"
+            )
+
+        assert captured_json["durationSeconds"] == 0.0
+        assert "engine" in captured_json
+
 
 class TestFailJob:
     """Tests for APIGatewayClient.fail_job()."""

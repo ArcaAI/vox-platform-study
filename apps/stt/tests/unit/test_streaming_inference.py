@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -77,6 +78,53 @@ class TestInferenceWorkerInit:
 # =========================================================================
 # Tests: process_utterance
 # =========================================================================
+
+
+class TestCumulativeProcessingSeconds:
+    """TASK-615 WS-C — per-session running total of ASR-only processing
+    time, read by SessionManager at teardown to compute the streaming RTF
+    metric (stt_streaming_rtf). Distinct from stt_streaming_inference_latency_seconds
+    (still observed unchanged): that is per-utterance, this is the session-wide sum."""
+
+    def test_starts_at_zero(self):
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "hi")
+        assert worker.cumulative_processing_seconds == 0.0
+
+    @pytest.mark.asyncio
+    async def test_accumulates_across_utterances(self):
+        """`time.monotonic()` advances by a fixed 0.1s on EVERY call (from
+        anywhere — `process_utterance` times itself too). Since
+        `_run_inference`'s own pair of calls is never interleaved with any
+        other `time.monotonic()` call, each utterance contributes exactly
+        0.1s to the accumulator regardless of how many other timing calls
+        happen elsewhere — precise, without coupling this test to an
+        unrelated internal call count."""
+        worker = StreamingInferenceWorker(asr_pipeline=lambda s, sr: "hi")
+        counter = itertools.count(start=0.0, step=0.1)
+
+        with patch("stt.streaming.inference.time.monotonic", side_effect=lambda: next(counter)):
+            await worker.process_utterance("sess-1", _make_utterance(index=0))
+            after_one = worker.cumulative_processing_seconds
+            await worker.process_utterance("sess-1", _make_utterance(index=1))
+
+        assert after_one == pytest.approx(0.1)
+        assert worker.cumulative_processing_seconds == pytest.approx(0.2)
+
+    @pytest.mark.asyncio
+    async def test_does_not_accumulate_when_pipeline_raises(self):
+        """A pipeline exception propagates out of `_run_inference` BEFORE its
+        timing/observe_streaming_inference call — `process_utterance`'s outer
+        guard is what turns it into an empty result — so a failed utterance
+        must not silently inflate the RTF numerator."""
+
+        def _failing_pipeline(samples, sr):
+            raise RuntimeError("boom")
+
+        worker = StreamingInferenceWorker(asr_pipeline=_failing_pipeline)
+
+        await worker.process_utterance("sess-1", _make_utterance())
+
+        assert worker.cumulative_processing_seconds == 0.0
 
 
 class TestProcessUtterance:

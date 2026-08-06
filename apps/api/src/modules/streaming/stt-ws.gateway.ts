@@ -242,7 +242,9 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       // Match finalizeSession: drop the tenant binding so no ticket can be
       // minted against the session we're finalizing on shutdown (F-36).
       void this.sessionBinding.clear(session.sessionId);
-      removals.push(this.sessionService.removeSession(session.sessionId).catch(() => {}));
+      // TASK-615 WS-C — a SIGTERM/rolling-deploy teardown is always an
+      // abort: no client-driven close was ever received for these sessions.
+      removals.push(this.sessionService.removeSession(session.sessionId, true).catch(() => {}));
     }
     this.sessions.clear();
     this.sessionsById.clear();
@@ -777,6 +779,12 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * tell STT-v2 to finalize (with the removal-retry fallback), drop all
    * state. Idempotent. Called on an explicit `close` or when the resume grace
    * window expires with no reconnect.
+   *
+   * TASK-615 WS-C: `reason` also decides the ledger's `interrupted` flag —
+   * `'session closed by client'` is the only non-abort reason; anything else
+   * (today just `'grace window expired'`, permissively any future reason
+   * too) is an abort. STT itself has no notion of this; it is purely a
+   * gateway-side decision made here, at the one place both reasons meet.
    */
   private finalizeSession(session: SessionInfo, reason: string): void {
     if (session.finalizing && reason === 'grace window expired') {
@@ -809,7 +817,8 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
     // TTL remains the backstop. The sibling meta key expires on its own TTL.
     void this.sessionBinding.clear(session.sessionId);
 
-    this.sessionService.removeSession(session.sessionId).catch((err) => {
+    const interrupted = reason !== 'session closed by client';
+    this.sessionService.removeSession(session.sessionId, interrupted).catch((err) => {
       this.logger.warn({
         message: 'Session cleanup failed on finalize',
         sessionId: session.sessionId,
@@ -817,7 +826,7 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
       });
       // Park the session for bounded retries
       // instead of leaking it until the STT-v2 inactivity reaper.
-      this.removalRetry.enqueue(session.sessionId);
+      this.removalRetry.enqueue(session.sessionId, interrupted);
     });
   }
 

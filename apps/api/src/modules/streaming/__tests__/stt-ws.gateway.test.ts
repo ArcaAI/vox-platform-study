@@ -431,10 +431,40 @@ describe('SttWsGateway', () => {
         await vi.advanceTimersByTimeAsync(WS_RESUME_GRACE_MS + 5);
 
         expect(mockBridgeService.unsubscribeFromResults).toHaveBeenCalledWith('sess-789');
-        expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-789');
+        // TASK-615 WS-C — a grace-window expiry is an ABORT: no explicit
+        // close was ever received, so the ledger row is marked interrupted.
+        expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-789', true);
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    // TASK-615 WS-C — the abort test, written before the interrupted flag
+    // existed anywhere on this path: an unreachable/dropped client (grace
+    // expiry) must be distinguishable from a client-driven close at the
+    // ledger. Both call removeSession with the SAME sessionId (same
+    // idempotency key either way — ws-b-contract.md §4), but only the abort
+    // carries interrupted:true.
+    it('marks the ledger row interrupted on grace-window expiry, NOT on an explicit close', async () => {
+      vi.useFakeTimers();
+      try {
+        const abortClient = createMockSocket();
+        setValidTicketFor('sess-abort-flag');
+        await gateway.handleConnection(abortClient as any, buildReq('sess-abort-flag') as any);
+        gateway.handleDisconnect(abortClient as any);
+        await vi.advanceTimersByTimeAsync(WS_RESUME_GRACE_MS + 5);
+
+        expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-abort-flag', true);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const closeClient = createMockSocket();
+      setValidTicketFor('sess-complete-flag');
+      await gateway.handleConnection(closeClient as any, buildReq('sess-complete-flag') as any);
+      await gateway.handleMessage(closeClient as any, JSON.stringify({ type: 'close' }));
+
+      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-complete-flag', false);
     });
 
     // A failed fire-and-forget removeSession
@@ -452,7 +482,8 @@ describe('SttWsGateway', () => {
         await vi.advanceTimersByTimeAsync(WS_RESUME_GRACE_MS + 5);
         await vi.advanceTimersByTimeAsync(5); // settle the fire-and-forget .catch
 
-        expect(mockRemovalRetry.enqueue).toHaveBeenCalledWith('sess-leak');
+        // Grace expiry is an abort — the enqueued retry carries interrupted:true.
+        expect(mockRemovalRetry.enqueue).toHaveBeenCalledWith('sess-leak', true);
       } finally {
         vi.useRealTimers();
       }
@@ -542,7 +573,8 @@ describe('SttWsGateway', () => {
 
       await gateway.handleMessage(client as any, JSON.stringify({ type: 'close' }));
 
-      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-close');
+      // Explicit close — not an abort.
+      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-close', false);
       expect(gateway.getActiveSessionCount()).toBe(0);
     });
 
@@ -1059,7 +1091,7 @@ describe('SttWsGateway', () => {
       const closeFrame = Buffer.from(JSON.stringify({ type: 'close' }));
       await gateway.handleMessage(client as any, closeFrame as any, false);
 
-      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-ctrl-close');
+      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-ctrl-close', false);
       expect(mockBridgeService.writeAudioFrame).not.toHaveBeenCalled();
     });
 
@@ -1166,7 +1198,7 @@ describe('SttWsGateway', () => {
         // session is finalized and deleted (upstream gone).
         gateway.handleDisconnect(client1 as any);
         vi.advanceTimersByTime(WS_RESUME_GRACE_MS + 1);
-        expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-grace-resume');
+        expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-grace-resume', true);
         // F-36: finalize dropped the tenant binding too.
         expect(mockSessionBinding.clear).toHaveBeenCalledWith('sess-grace-resume');
 
@@ -1283,7 +1315,8 @@ describe('SttWsGateway', () => {
 
       await gateway.onModuleDestroy();
 
-      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-shutdown');
+      // Shutdown is always an abort — no client-driven close was received.
+      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-shutdown', true);
       // F-36: shutdown finalize also clears the tenant binding.
       expect(mockSessionBinding.clear).toHaveBeenCalledWith('sess-shutdown');
       expect(gateway.getActiveSessionCount()).toBe(0);
@@ -1300,7 +1333,7 @@ describe('SttWsGateway', () => {
       await gateway.onModuleDestroy();
 
       // The deploy tidies it up instead of orphaning the upstream session.
-      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-grace-shutdown');
+      expect(mockSessionService.removeSession).toHaveBeenCalledWith('sess-grace-shutdown', true);
     });
   });
 
