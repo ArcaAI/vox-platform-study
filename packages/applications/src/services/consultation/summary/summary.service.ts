@@ -208,6 +208,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
 
+    // TASK-615 WS-H — LLM-token allowance pre-flight, BEFORE the (expensive)
+    // SMR call. Post-hoc debit model (D6): a request's own token count is
+    // unknowable until SMR responds, so this compares month-to-date rollups
+    // against the allowance rather than predicting this call's usage — same
+    // no-increment call shape as `monthlySummaries` above. A no-op (never
+    // reads the ledger) while the kill-switch is off or the allowance is
+    // null (unlimited — the seeded default for every plan today).
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
+
     // (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant before invoking the (expensive) SMR
     // call. `assertParentInScope` throws `NotFoundException` for both
@@ -324,6 +333,15 @@ export class SummaryService extends BaseService implements ISummaryService {
     // A generated summary consumes a monthly meter unit.
     // Kill-switch-gated (Q9); → 429 once the tenant is over the monthly cap.
     await this.entitlements?.assertMeterQuota(tenantId, 'monthlySummaries');
+
+    // TASK-615 WS-H — LLM-token allowance pre-flight, BEFORE the (expensive)
+    // SMR call. Post-hoc debit model (D6): a request's own token count is
+    // unknowable until SMR responds, so this compares month-to-date rollups
+    // against the allowance rather than predicting this call's usage — same
+    // no-increment call shape as `monthlySummaries` above. A no-op (never
+    // reads the ledger) while the kill-switch is off or the allowance is
+    // null (unlimited — the seeded default for every plan today).
+    await this.entitlements?.assertMeterQuota(tenantId, 'monthlyLlmTokens');
 
     // (audit C-1 / C-3) — verify the parent Consultation
     // belongs to the caller's tenant, then validate every explicit
