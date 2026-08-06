@@ -29,7 +29,7 @@ const OTHER_TENANT = 'tenant-2';
 const CID = 'consultation-1';
 const SESSION = 'session-1';
 
-function buildDeps(opts: { clsTenant?: string | null } = {}) {
+function buildDeps(opts: { clsTenant?: string | null; unitOfWorkService?: unknown } = {}) {
   const repository = {
     createMany: vi.fn().mockResolvedValue({ count: 0 }),
     findAll: vi.fn().mockResolvedValue([]),
@@ -49,6 +49,7 @@ function buildDeps(opts: { clsTenant?: string | null } = {}) {
     clsService as never,
     cacheService as never,
     usageLedgerService as never,
+    opts.unitOfWorkService as never,
   );
   return { service, repository, eventEmitter, clsService, cacheService, usageLedgerService };
 }
@@ -231,6 +232,70 @@ describe('AgentTrajectoryService', () => {
       const service = new AgentTrajectoryService(repository as never, eventEmitter as never, clsService as never);
 
       await expect(service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS })])).resolves.toBeUndefined();
+    });
+  });
+
+  // TASK-615 WS-D2 (item 4b) — upgrade from the WS-F "sanctioned no-tx
+  // fallback" now that `Repository.createMany` accepts a `tx` client. When
+  // the unit-of-work is wired, step persistence and usage emission share ONE
+  // transaction; when it is not wired (legacy fixtures), behavior is
+  // byte-identical to the pre-upgrade sequential calls.
+  describe('recordSteps — createMany + usage emission share one transaction (TASK-615 WS-D2)', () => {
+    const LLM_STATS = { prompt_tokens: 100, predicted_tokens: 40, provider: 'lm-studio', model: 'phi-4' };
+    const TX = { __brand: 'tx' } as const;
+
+    function buildDepsWithUow() {
+      const unitOfWorkService = { runInTransaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(TX)) };
+      return { ...buildDeps({ unitOfWorkService }), unitOfWorkService };
+    }
+
+    it('routes createMany through the SAME tx the unit-of-work opened', async () => {
+      const { service, repository, unitOfWorkService } = buildDepsWithUow();
+      repository.createMany.mockResolvedValue({ count: 1 });
+
+      await service.recordSteps([makeStepInput({ seq: 0 })]);
+
+      expect(unitOfWorkService.runInTransaction).toHaveBeenCalledTimes(1);
+      expect(repository.createMany).toHaveBeenCalledWith(expect.any(Array), true, TX);
+    });
+
+    it('routes the usage-ledger emission through the SAME tx as the step persistence', async () => {
+      const { service, repository, usageLedgerService, unitOfWorkService } = buildDepsWithUow();
+      repository.createMany.mockResolvedValue({ count: 1 });
+
+      await service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS, seq: 9, runId: 'run-9' })]);
+
+      expect(unitOfWorkService.runInTransaction).toHaveBeenCalledTimes(1);
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+      const [, tx] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(tx).toBe(TX);
+    });
+
+    it('a metering failure inside the transaction is still swallowed — the transaction resolves and the batch commits', async () => {
+      const { service, repository, usageLedgerService, cacheService, unitOfWorkService } = buildDepsWithUow();
+      repository.createMany.mockResolvedValue({ count: 1 });
+      usageLedgerService.recordUsage.mockRejectedValue(new Error('outbox write failed'));
+
+      await expect(
+        service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS })]),
+      ).resolves.toBeUndefined();
+
+      // runInTransaction's callback resolved normally (the per-row catch in
+      // emitUsage absorbed the rejection) — republish still ran afterward.
+      expect(cacheService.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('without a wired unit-of-work: falls back to the pre-upgrade sequential (no-tx) calls, unchanged', async () => {
+      // buildDeps() with no unitOfWorkService override leaves it undefined —
+      // the exact arity the pre-existing idempotency tests above assert on.
+      const { service, repository, usageLedgerService } = buildDeps();
+      repository.createMany.mockResolvedValue({ count: 1 });
+
+      await service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS })]);
+
+      expect(repository.createMany).toHaveBeenCalledWith(expect.any(Array), true);
+      const [, tx] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(tx).toBeUndefined();
     });
   });
 
