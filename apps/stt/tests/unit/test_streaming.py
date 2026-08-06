@@ -239,6 +239,33 @@ class TestSegmentResult:
         )
         assert restored.word_timestamps == []
 
+    def test_pipeline_id_omitted_when_unset(self):
+        """pipeline_id (TASK-613) is omitted from the wire dict when unknown —
+        same conditional pattern as `language` (never emitted as empty string)."""
+        from stt.streaming.schemas import SegmentResult
+
+        result = SegmentResult(text="No pipeline info")
+        d = result.to_redis_dict()
+        assert "pipeline_id" not in d
+        restored = SegmentResult.from_redis_dict(d)
+        assert restored.pipeline_id is None
+
+    def test_pipeline_id_roundtrip(self):
+        from stt.streaming.schemas import SegmentResult
+
+        original = SegmentResult(
+            text="Patient reports headache",
+            start_time=0.0,
+            end_time=1.0,
+            is_final=True,
+            pipeline_id="pipe-primary-001",
+        )
+        d = original.to_redis_dict()
+        assert d["pipeline_id"] == "pipe-primary-001"
+
+        restored = SegmentResult.from_redis_dict(d)
+        assert restored.pipeline_id == "pipe-primary-001"
+
 
 class TestSessionControl:
     """Tests for SessionControl serialization/deserialization."""

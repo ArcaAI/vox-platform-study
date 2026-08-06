@@ -94,6 +94,13 @@ export interface StreamingTranscriptPayload {
    * word timings to consumers.
    */
   wordTimestamps?: WordTimestamp[];
+  /**
+   * The ASR pipeline that produced THIS utterance (TASK-613). Per-utterance,
+   * not per-session: a mid-session engine switch means consecutive transcripts
+   * legitimately name different pipelines. Absent from an older backend that
+   * does not stamp results.
+   */
+  pipelineId?: string;
 }
 
 /**
@@ -439,6 +446,12 @@ export class StreamingBackendSTTProvider extends BaseSTTProvider {
     // (`audio.transcriptSegments[].words`) instead of being dropped.
     if (payload.wordTimestamps && payload.wordTimestamps.length > 0) {
       result.words = payload.wordTimestamps;
+    }
+    // Per-utterance pipeline provenance (TASK-613). Set only
+    // when the backend stamped one, so an older backend leaves the key absent
+    // rather than surfacing `undefined` to consumers.
+    if (payload.pipelineId) {
+      result.pipelineId = payload.pipelineId;
     }
     return result;
   }

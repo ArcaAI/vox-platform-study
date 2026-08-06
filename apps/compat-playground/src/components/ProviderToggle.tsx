@@ -1,6 +1,7 @@
 import { useArcaSttProvider } from '@arcaai/vox/compat';
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Switch } from '@arcaai/ui';
 import { toast } from 'sonner';
+import { usePlaygroundSession } from '../context/playground-session';
 
 const STATUS_VARIANT = {
   idle: 'outline',
@@ -11,6 +12,7 @@ const STATUS_VARIANT = {
 } as const;
 
 export function ProviderToggle() {
+  const { capture } = usePlaygroundSession();
   const raw = useArcaSttProvider({
     onProviderSwitched: (info) => {
       toast.success(`STT engine switched to ${info.toPipeline.name ?? info.toPipeline.id} (${info.reason})`);
@@ -22,15 +24,17 @@ export function ProviderToggle() {
   const provider = raw;
   const busy = provider.switchStatus === 'switching';
 
-  // `activeProvider` is only non-null once a live backend STT session exists.
-  // Before that, `switchTo()` in `useArcaSttProvider` records a PENDING
-  // pre-start selection (`pendingSttProvider`) rather than performing a live
-  // switch — but it still reports `switchStatus: 'switched'` for read
-  // consistency (see useArcaSttProvider.ts ~158-212). Presenting that as
-  // "switched" here would read as "the engine changed" when nothing has
-  // actually happened yet, so relabel it as "pending" at the UI layer instead
-  // of touching the hook.
-  const isPreSession = provider.activeProvider === null;
+  // Before capture starts, `switchTo()` records a PENDING pre-start selection
+  // rather than performing a live switch — but still reports
+  // `switchStatus: 'switched'` for read consistency. Showing that as "switched"
+  // would read as "the engine changed" when nothing has happened yet, so it is
+  // relabelled "pending" here.
+  //
+  // The gate is CAPTURE, not `activeProvider` (TASK-614 E2). `activeProvider`
+  // was the wrong signal for the same reason the hook's own guard was: it can
+  // be null on a perfectly live session, which made this card claim "no live
+  // session yet — queued" in the middle of a recording.
+  const isPreSession = capture.phase === 'idle';
   const displayStatus = isPreSession && provider.switchStatus === 'switched' ? 'pending' : provider.switchStatus;
 
   const handleToggle = async (checked: boolean) => {

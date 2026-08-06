@@ -43,6 +43,10 @@ class _Recorder:
         self.build_calls = 0
         self.primary_build_calls = 0
         self.applied: list[Any] = []
+        # TASK-613 — the swap carries the target pipeline id alongside the
+        # callable, so the worker's per-utterance provenance stamp is updated
+        # in the same body.
+        self.applied_pipeline_ids: list[str | None] = []
         self.published: list[dict[str, Any]] = []
         self._build_ok = build_ok
         self._primary_build_ok = primary_build_ok
@@ -59,8 +63,9 @@ class _Recorder:
             raise RuntimeError("primary build failed")
         return f"primary-callable-{self.primary_build_calls}"
 
-    def apply(self, new_callable: Any) -> None:
+    def apply(self, new_callable: Any, pipeline_id: str | None = None) -> None:
         self.applied.append(new_callable)
+        self.applied_pipeline_ids.append(pipeline_id)
 
     async def publish(
         self,

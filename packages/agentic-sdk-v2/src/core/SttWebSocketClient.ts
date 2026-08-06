@@ -947,6 +947,15 @@ export class SttWebSocketClient {
       normalized.language = detectedLanguage;
     }
 
+    // Per-utterance ASR pipeline provenance (TASK-613). The gateway relays it
+    // as `pipelineId`; raw wire payloads may defensively carry `pipeline_id`.
+    // Additive — absent on backends that predate per-utterance stamping, so
+    // consumers degrade to their request-derived pipeline id.
+    const pipelineId = typeof msg.pipelineId === 'string' ? msg.pipelineId : typeof msg.pipeline_id === 'string' ? msg.pipeline_id : undefined;
+    if (pipelineId && pipelineId.trim().length > 0) {
+      normalized.pipelineId = pipelineId;
+    }
+
     const speakerId = typeof msg.speakerId === 'string' ? msg.speakerId : typeof msg.speaker_id === 'string' ? msg.speaker_id : undefined;
     if (speakerId && speakerId.trim().length > 0) {
       normalized.speakerId = speakerId;

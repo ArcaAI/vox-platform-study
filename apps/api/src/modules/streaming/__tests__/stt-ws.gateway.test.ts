@@ -819,6 +819,53 @@ describe('SttWsGateway', () => {
       expect(sent.stableChars).toBe(5);
     });
 
+    // TASK-613 C3 — pipelineId (the ASR engine that produced THIS
+    // utterance, TASK-613 B1) is an additive bridge field; the gateway
+    // relays it verbatim like stableChars/englishText and omits it when
+    // the bridge didn't set one.
+    it('forwards pipelineId on the relayed transcript when present (TASK-613 C3)', async () => {
+      const resultSubject = new Subject();
+      mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+      const client = createMockSocket();
+      setValidTicketFor('sess-pipeline-id');
+      await gateway.handleConnection(client as any, buildReq('sess-pipeline-id') as any);
+      (client.send as any).mockClear();
+
+      resultSubject.next({
+        type: 'transcript',
+        text: 'hello world',
+        startTime: 0,
+        endTime: 1,
+        isFinal: true,
+        pipelineId: 'sarvam_transcription',
+      });
+
+      const sent = JSON.parse((client.send as any).mock.calls[0][0]);
+      expect(sent.pipelineId).toBe('sarvam_transcription');
+    });
+
+    it('omits pipelineId from the relayed transcript when absent (TASK-613 C3)', async () => {
+      const resultSubject = new Subject();
+      mockBridgeService.subscribeToResults.mockReturnValue(resultSubject.asObservable());
+
+      const client = createMockSocket();
+      setValidTicketFor('sess-no-pipeline-id');
+      await gateway.handleConnection(client as any, buildReq('sess-no-pipeline-id') as any);
+      (client.send as any).mockClear();
+
+      resultSubject.next({
+        type: 'transcript',
+        text: 'hello world',
+        startTime: 0,
+        endTime: 1,
+        isFinal: true,
+      });
+
+      const sent = JSON.parse((client.send as any).mock.calls[0][0]);
+      expect('pipelineId' in sent).toBe(false);
+    });
+
     // Gloss results (post-final English
     // translations) ride the same relay; their additive fields must
     // survive the `{ ...msg, seq }` spread untouched.
@@ -1413,6 +1460,26 @@ describe('SttWsGateway', () => {
       logSpy.mockClear();
       gateway.handleDisconnect(client as any);
       expect(logSpy).toHaveBeenCalledWith(expect.objectContaining({ droppedPartialResults: 0 }));
+    });
+
+    // TASK-613 C3 — pipelineId must survive the bounded final-queue path
+    // (tagAndBuffer + enqueueFinalResult), not just the immediate-send path
+    // covered above.
+    it('preserves pipelineId on a final queued and flushed under backpressure (TASK-613 C3)', async () => {
+      const { client, resultSubject } = await connectWithSubject('sess-bp-pipeline-id');
+
+      client.bufferedAmount = THRESHOLD_BYTES + 1;
+      resultSubject.next({ ...finalMsg('xin chào'), pipelineId: 'sarvam_transcription' });
+
+      expect(client.send).not.toHaveBeenCalled();
+
+      client.bufferedAmount = 0;
+      await new Promise((resolve) => setTimeout(resolve, FLUSH_WAIT_MS));
+
+      const sent = sentMessages(client);
+      expect(sent).toHaveLength(1);
+      expect(sent[0].pipelineId).toBe('sarvam_transcription');
+      gateway.handleDisconnect(client as any);
     });
 
     it('delivers partials and finals immediately when bufferedAmount is below the threshold', async () => {

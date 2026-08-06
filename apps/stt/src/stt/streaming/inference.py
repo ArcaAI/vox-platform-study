@@ -26,6 +26,7 @@ import structlog
 from stt.core.initial_prompt import compose_prompt
 from stt.core.metrics import observe_streaming_inference
 from stt.pipeline.dto import InferenceConfig, PostprocessingConfig
+from stt.streaming.engine_switch import SWITCHABLE_ASR_ERRORS
 from stt.streaming.preprocessor import AudioUtterance
 from stt.streaming.redis_streams import ResultPublisher
 from stt.streaming.schemas import SegmentResult
@@ -141,9 +142,16 @@ class StreamingInferenceWorker:
         gloss_callable: Any = None,
         gloss_timeout_s: float | None = None,
         embedding_service: Any = None,  # per-pipeline embedding model
+        active_pipeline_id: str | None = None,
     ) -> None:
         self._publisher = result_publisher
         self._asr_pipeline = asr_pipeline
+        # TASK-613 — the ASR pipeline id that ``_asr_pipeline`` belongs to,
+        # stamped onto every SegmentResult this worker constructs. It is
+        # reassigned IN THE SAME function body as ``_asr_pipeline`` by the
+        # engine-switch seam (``SessionManager._make_switch_controller._apply``)
+        # so the two can never disagree about which engine produced a result.
+        self._active_pipeline_id = active_pipeline_id
         self._tenant_id = tenant_id
         self._consultation_id = consultation_id
         self._diarization_config = diarization_config
@@ -338,7 +346,27 @@ class StreamingInferenceWorker:
                 )
                 embedding = None
                 inference_out = await self._run_inference(utterance)
+        except SWITCHABLE_ASR_ERRORS as exc:
+            # TASK-614 — an ASR-ENGINE failure (cloud auth/quota, model error)
+            # must PROPAGATE. The inference loop's handler is the only path to
+            # ``EngineSwitchController.record_failure``, i.e. the only way the
+            # automatic fallback ever arms; degrading it to an empty transcript
+            # here left the session silently quiet on exactly the failure class
+            # auto-switch exists for. The loop keeps the session alive either
+            # way — it catches this, and on a switch re-runs the utterance on
+            # the new engine.
+            logger.error(
+                "ASR inference failed — propagating for engine-switch evaluation",
+                session_id=session_id,
+                utterance_index=utterance.utterance_index,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            raise
         except Exception as exc:
+            # Everything else still degrades to an empty transcript: swapping
+            # engines would not fix it, so raising would only lose utterances
+            # that survive today.
             logger.error(
                 "Inference failed",
                 session_id=session_id,
@@ -443,6 +471,7 @@ class StreamingInferenceWorker:
             word_timestamps=word_timestamps,
             inference_ms=round(elapsed * 1000, 1),
             utterance_index=utterance.utterance_index,
+            pipeline_id=self._active_pipeline_id,
         )
 
         # Step 3: Speaker Diarization
@@ -561,6 +590,12 @@ class StreamingInferenceWorker:
                 is_final=True,
                 utterance_index=utterance.utterance_index,
                 result_type="gloss",
+                # TASK-613 — inherit the ORIGINATING final's stamp, not the
+                # live worker's: the gloss is fire-and-forget after the final
+                # was published, so an engine switch can land in between, and
+                # the transcript this gloss republishes came from the final's
+                # engine.
+                pipeline_id=final_result.pipeline_id,
             )
             if self._publisher is not None:
                 await self._publisher.publish(gloss)
@@ -1120,4 +1155,5 @@ class StreamingInferenceWorker:
             speaker_confidence=0.0,
             inference_ms=round(elapsed * 1000, 1),
             utterance_index=utterance.utterance_index,
+            pipeline_id=self._active_pipeline_id,
         )

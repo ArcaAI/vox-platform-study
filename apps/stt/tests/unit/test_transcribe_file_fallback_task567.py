@@ -20,7 +20,10 @@ import pytest
 
 from stt.core.exceptions import CloudASRAuthError, CloudASRTranscriptionError
 from stt.transcription.dto import TranscriptionResult
-from stt.transcription.workers.transcribe_file import _transcribe_file_async
+from stt.transcription.workers.transcribe_file import (
+    _transcribe_file_async,
+    transcribe_file,
+)
 
 
 def _make_result(text: str = "ok", pipeline_id: str = "p-primary") -> TranscriptionResult:
@@ -191,3 +194,76 @@ async def test_success_path_never_touches_fallback():
     # Fallback configured but never used on the happy path.
     assert batch.transcribe.await_count == 1
     api.complete_job.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# TASK-614 D-6 — the gateway↔worker wire contract for the fallback.
+#
+# The tests above call `_transcribe_file_async` directly, so they proved the
+# fallback BRANCH worked while nothing in production ever reached it: the API
+# gateway's Dramatiq dispatch never sent `fallback_pipeline_id` at all.
+#
+# It now rides as a KWARG next to `storage`, with the same 10 positional args
+# as before. This locks that exact shape against the actor's signature — a
+# renamed kwarg or a changed positional count silently disables batch fallback
+# again, which is precisely how it stayed dead since TASK-567.
+# ---------------------------------------------------------------------------
+
+# The positional args the gateway emits, in order (transcriptionRealtime.service.ts):
+# job_id, tenant_id, pipeline_id, audio_uri, consultation_id, media_id,
+# language, code_switching, audio_bucket_name, user_id
+_GATEWAY_POSITIONAL_ARGS = (
+    "job-1",
+    "tenant-1",
+    "p-primary",
+    "s3://hope-audio/x.wav",
+    None,
+    None,
+    None,
+    None,
+    "hope-audio",
+    "user-1",
+)
+
+
+def _invoke_actor(**kwargs):
+    """Call the actor body the way Dramatiq does, capturing the forwarded call."""
+    with (
+        # MagicMock, not the AsyncMock `patch` would autospec for an async def:
+        # `run_on_worker_loop` is mocked too, so a real coroutine here would be
+        # created and never awaited (a RuntimeWarning, not a failure).
+        patch(
+            "stt.transcription.workers.transcribe_file._transcribe_file_async",
+            new_callable=MagicMock,
+        ) as inner,
+        patch("stt.transcription.workers.transcribe_file.run_on_worker_loop"),
+        patch("stt.transcription.workers.transcribe_file.refresh_job_concurrency_limit"),
+    ):
+        transcribe_file.fn(*_GATEWAY_POSITIONAL_ARGS, **kwargs)
+    return inner.call_args.kwargs
+
+
+def test_actor_binds_the_gateway_fallback_kwarg():
+    forwarded = _invoke_actor(fallback_pipeline_id="p-fallback")
+
+    assert forwarded["fallback_pipeline_id"] == "p-fallback"
+    # The positional tail still lands where the signature expects it.
+    assert forwarded["audio_bucket_name"] == "hope-audio"
+    assert forwarded["user_id"] == "user-1"
+
+
+def test_actor_binds_fallback_and_storage_together():
+    # Both are kwargs; a DEDICATED tenant sends both in the same message.
+    forwarded = _invoke_actor(
+        fallback_pipeline_id="p-fallback",
+        storage={"provider": "s3", "bucket": "tenant-bucket"},
+    )
+
+    assert forwarded["fallback_pipeline_id"] == "p-fallback"
+    assert forwarded["storage"] == {"provider": "s3", "bucket": "tenant-bucket"}
+
+
+def test_actor_defaults_the_fallback_to_none_when_absent():
+    forwarded = _invoke_actor()
+
+    assert forwarded["fallback_pipeline_id"] is None

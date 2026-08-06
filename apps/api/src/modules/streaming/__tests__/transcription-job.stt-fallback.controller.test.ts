@@ -158,7 +158,16 @@ describe('TranscriptionJobController.getLanguageModes (TASK-587)', () => {
 
   it('delegates to the streaming session service catalog', async () => {
     const catalog = {
-      modes: [{ id: 'ml-en', label: 'Malayalam + English', kind: 'code_switch', primaryLanguage: 'ml', secondaryLanguage: 'en', supportedEngines: ['SARVAM'] }],
+      modes: [
+        {
+          id: 'ml-en',
+          label: 'Malayalam + English',
+          kind: 'code_switch',
+          primaryLanguage: 'ml',
+          secondaryLanguage: 'en',
+          supportedEngines: ['SARVAM'],
+        },
+      ],
     };
     const { controller, mocks } = build();
     mocks.sessionService.getLanguageModes.mockResolvedValue(catalog);
@@ -221,5 +230,202 @@ describe('TranscriptionJobController.switchStreamSessionToPrimary (TASK-586 Lane
     const { controller, mocks } = build();
     mocks.sessionService.switchProvider.mockRejectedValue({ response: { status: 404 } });
     await expect(controller.switchStreamSessionToPrimary('sess-1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+/**
+ * TASK-614 D-6 — batch auto-fallback was never dispatched.
+ *
+ * `transcribe_file.py:317-336` has implemented the batch fallback since
+ * TASK-567: on a cloud-ASR/model failure it re-runs ONCE on
+ * `fallback_pipeline_id` within the same Dramatiq attempt and stamps
+ * `usedFallbackPipelineId` on the result. But nothing ever SUPPLIED that
+ * argument — the gateway's dispatch stops at `userId` and its only kwarg is
+ * `storage` — so the whole path was unreachable in production and a failing
+ * primary simply failed the job.
+ *
+ * Streaming sessions have resolved the tenant fallback since TASK-567
+ * (`createStreamSession` above); batch is the half that was missed.
+ */
+describe('TranscriptionJobController.transcribeFile — batch fallback dispatch (TASK-614 D-6)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const audioFile = () => ({ buffer: Buffer.from('audio'), size: 12, mimetype: 'audio/wav', originalname: 'visit.wav' }) as Express.Multer.File;
+
+  it("passes the tenant's fallback pipeline into the batch job", async () => {
+    const { controller, mocks } = build();
+    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-1', status: 'QUEUED' });
+
+    await controller.transcribeFile(audioFile(), { pipelineId: 'primary-pipe' } as never);
+
+    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ fallbackPipelineId: 'fallback-pipe' }));
+  });
+
+  it('omits the key entirely when the tenant has no fallback configured', async () => {
+    const sttConfig = createMockSttConfig();
+    sttConfig.getEffective.mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: null, autoSwitchEnabled: true });
+    const { controller, mocks } = build(sttConfig);
+    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-2', status: 'QUEUED' });
+
+    await controller.transcribeFile(audioFile(), { pipelineId: 'primary-pipe' } as never);
+
+    const params = mocks.realtimeService.dispatchDramatiqJob.mock.calls[0][0];
+    expect('fallbackPipelineId' in params).toBe(false);
+  });
+
+  it('is fail-open: a config resolve error still dispatches the job without a fallback', async () => {
+    // A broken tenant STT config must never block a transcription — same
+    // posture the streaming path already takes.
+    const sttConfig = createMockSttConfig();
+    sttConfig.getEffective.mockRejectedValue(new Error('vault down'));
+    const { controller, mocks } = build(sttConfig);
+    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-3', status: 'QUEUED' });
+
+    await controller.transcribeFile(audioFile(), { pipelineId: 'primary-pipe' } as never);
+
+    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledTimes(1);
+    const params = mocks.realtimeService.dispatchDramatiqJob.mock.calls[0][0];
+    expect('fallbackPipelineId' in params).toBe(false);
+  });
+});
+
+/**
+ * TASK-614 D-10 — the tenant's auto-switch governance reaches the session.
+ *
+ * `getEffective` has always returned `autoSwitchEnabled` /
+ * `consecutiveFailureThreshold`; the controller read the object and used only
+ * `fallbackPipelineId`, so the governance never left the gateway and STT's
+ * controller silently used its own defaults.
+ */
+describe('TranscriptionJobController.createStreamSession — auto-switch governance (TASK-614)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("forwards the tenant's autoSwitchEnabled and consecutiveFailureThreshold", async () => {
+    const sttConfig = createMockSttConfig();
+    sttConfig.getEffective.mockResolvedValue({
+      tenantId: 'tenant-1',
+      fallbackPipelineId: 'fallback-pipe',
+      autoSwitchEnabled: false,
+      consecutiveFailureThreshold: 5,
+    });
+    const { controller, mocks } = build(sttConfig);
+
+    await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
+
+    const payload = mocks.sessionService.createSession.mock.calls[0][0];
+    expect(payload.autoSwitchEnabled).toBe(false);
+    expect(payload.consecutiveFailureThreshold).toBe(5);
+  });
+
+  it('is fail-open: a config resolve error leaves the governance unset rather than blocking the session', async () => {
+    const sttConfig = createMockSttConfig();
+    sttConfig.getEffective.mockRejectedValue(new Error('vault down'));
+    const { controller, mocks } = build(sttConfig);
+
+    await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never);
+
+    const payload = mocks.sessionService.createSession.mock.calls[0][0];
+    expect(mocks.sessionService.createSession).toHaveBeenCalledTimes(1);
+    expect('autoSwitchEnabled' in payload).toBe(false);
+  });
+});
+
+/**
+ * TASK-614 D-5 / AC-2 — the create response carries the RESOLVED baseline.
+ *
+ * Until now both create paths returned only what the caller already knew. A
+ * client that sent no pipelineId, a session opened on the fallback by choice,
+ * and one opened there because the primary ASR failed to load were all
+ * indistinguishable from a normal primary session — which is why the SDK's
+ * `activePipeline` had to be derived from the request and went null.
+ */
+describe('TranscriptionJobController.createStreamSession — resolved pipeline echo (TASK-614)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns the resolved pipelineId and activeEngine from the session service', async () => {
+    const { controller, mocks } = build();
+    mocks.sessionService.createSession.mockResolvedValue({
+      sessionId: 'sess-1',
+      status: 'active',
+      maxConcurrent: 10,
+      currentActive: 1,
+      pipelineId: 'resolved-pipe',
+      activeEngine: 'fallback',
+    });
+
+    const result = (await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never)) as Record<string, unknown>;
+
+    expect(result.pipelineId).toBe('resolved-pipe');
+    expect(result.activeEngine).toBe('fallback');
+  });
+
+  it('omits both against an older STT that echoes neither (mixed-version degrade)', async () => {
+    const { controller, mocks } = build();
+    mocks.sessionService.createSession.mockResolvedValue({ sessionId: 'sess-1', status: 'active', maxConcurrent: 10, currentActive: 1 });
+
+    const result = (await controller.createStreamSession({ pipelineId: 'primary-pipe' } as never)) as Record<string, unknown>;
+
+    expect('pipelineId' in result).toBe(false);
+    expect('activeEngine' in result).toBe(false);
+  });
+});
+
+/**
+ * TASK-614 D-8/D11 — batch can say "use the tenant default".
+ *
+ * Live sessions have always been able to omit the pipeline (the gateway
+ * resolves one), but batch hard-required it all the way down to the SDK queue,
+ * so there was no way to express the same intent for an upload.
+ */
+describe('TranscriptionJobController.transcribeFile — tenant-default pipeline (TASK-614 D11)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const audioFile = () => ({ buffer: Buffer.from('audio'), size: 12, mimetype: 'audio/wav', originalname: 'visit.wav' }) as Express.Multer.File;
+
+  it("resolves the tenant's default pipeline when the request omits one", async () => {
+    const { controller, mocks } = build();
+    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-d1', status: 'QUEUED' });
+    mocks.pipelineService.getAll = vi.fn().mockResolvedValue([
+      { id: 'other-pipe', isDefault: false, tenantId: 'tenant-1' },
+      { id: 'tenant-default-pipe', isDefault: true, tenantId: 'tenant-1' },
+    ]);
+
+    await controller.transcribeFile(audioFile(), {} as never);
+
+    expect(mocks.jobService.createBatchJob).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'tenant-default-pipe' }));
+    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'tenant-default-pipe' }));
+  });
+
+  it('falls back to the configured fallback pipeline when no pipeline is marked default', async () => {
+    const { controller, mocks } = build();
+    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-d2', status: 'QUEUED' });
+    mocks.pipelineService.getAll = vi.fn().mockResolvedValue([{ id: 'other-pipe', isDefault: false, tenantId: 'tenant-1' }]);
+
+    await controller.transcribeFile(audioFile(), {} as never);
+
+    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'fallback-pipe' }));
+  });
+
+  it('409s with an explicit message when neither a default nor a fallback exists', async () => {
+    // Never guess a pipeline: transcribing a consultation on an arbitrary
+    // engine is worse than refusing.
+    const sttConfig = createMockSttConfig();
+    sttConfig.getEffective.mockResolvedValue({ tenantId: 'tenant-1', fallbackPipelineId: null, autoSwitchEnabled: true });
+    const { controller, mocks } = build(sttConfig);
+    mocks.pipelineService.getAll = vi.fn().mockResolvedValue([{ id: 'other-pipe', isDefault: false, tenantId: 'tenant-1' }]);
+
+    await expect(controller.transcribeFile(audioFile(), {} as never)).rejects.toThrow(/no default .*pipeline/i);
+    expect(mocks.jobService.createBatchJob).not.toHaveBeenCalled();
+  });
+
+  it('still honours an explicit pipelineId (unchanged for every existing caller)', async () => {
+    const { controller, mocks } = build();
+    mocks.jobService.createBatchJob.mockResolvedValue({ id: 'job-d4', status: 'QUEUED' });
+    mocks.pipelineService.getAll = vi.fn();
+
+    await controller.transcribeFile(audioFile(), { pipelineId: 'explicit-pipe' } as never);
+
+    expect(mocks.pipelineService.getAll).not.toHaveBeenCalled();
+    expect(mocks.realtimeService.dispatchDramatiqJob).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'explicit-pipe' }));
   });
 });

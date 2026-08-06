@@ -566,7 +566,13 @@ export function PlaygroundSessionProvider({ config, children }: PlaygroundSessio
   // and that is this one. Spread on `!== undefined` — `0` is a real value for
   // `quietWindowMs` (it disables the early resolve), so a truthiness check here
   // would drop exactly the setting a tail-final run depends on.
+  // And the PIPELINE ID rides it for the same reason (TASK-614 D-1): passing it
+  // only to `useArcaSpeechToText` below meant the winning start carried none, so
+  // the session ran the gateway-resolved tenant default and `activePipeline`
+  // stayed null — which `useArcaSttProvider` reads as "capture has not started",
+  // silently turning the mid-session STT-engine toggle into a no-op.
   const capture = useAudioCapture({
+    options: { sttPipelineId: config.pipelineId.trim() || undefined },
     language: languageMode,
     languageMode,
     ...audio.captureOptions,

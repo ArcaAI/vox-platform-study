@@ -18,6 +18,8 @@ export interface EnrichmentSeg {
   language?: string;
   startTime?: number;
   endTime?: number;
+  /** Per-utterance ASR pipeline provenance (TASK-613), when the segment carries one. */
+  pipelineId?: string;
 }
 
 /**
@@ -45,6 +47,20 @@ export function resolveDetectedLanguage(meta: Record<string, unknown> | undefine
 }
 
 /**
+ * TASK-613 §3.3 `pipeline_id` normalization: caller `pipeline_id → pipelineId
+ * → seg.pipelineId`. Same precedence style as `resolveDetectedLanguage` —
+ * the caller's own value wins, otherwise the v2-resolved per-utterance
+ * pipeline id from the segment. `undefined` when nothing provides one, which
+ * is how an old backend (no per-utterance stamping) degrades: the key is
+ * never written, never a literal "undefined".
+ */
+export function resolvePipelineId(meta: Record<string, unknown> | undefined, seg: EnrichmentSeg): unknown | undefined {
+  if (meta?.pipeline_id !== undefined) return meta.pipeline_id;
+  if (meta?.pipelineId !== undefined) return meta.pipelineId;
+  return seg.pipelineId;
+}
+
+/**
  * Compose the delivered metadata in the EXACT §5.2 precedence order
  * (lowest → highest), fixing defect F4:
  *   1. v2 ASR/diarization enrichments   — LOWEST (caller may override)
@@ -52,7 +68,8 @@ export function resolveDetectedLanguage(meta: Record<string, unknown> | undefine
  *   3. v1-canonical normalized keys      — HIGHEST (overlay last, matches v1 §4.3)
  *
  * A caller who sets `speaker_id`/`confidence`/`language`/`isFinal` now sees
- * THEIR value; only `chunk_id`/`detected_language` are overlaid on top.
+ * THEIR value; only `chunk_id`/`detected_language`/`pipeline_id` are overlaid
+ * on top (the last one added by TASK-613 D4, same overlay tier).
  */
 export function composeDeliveredMetadata(args: {
   seg: EnrichmentSeg;
@@ -62,6 +79,7 @@ export function composeDeliveredMetadata(args: {
   const { seg, isFinal, callerMeta } = args;
   const chunkId = resolveChunkId(callerMeta);
   const detectedLanguage = resolveDetectedLanguage(callerMeta, seg);
+  const pipelineId = resolvePipelineId(callerMeta, seg);
   return {
     // (1) enrichments — lowest precedence
     speaker_id: seg.speakerLabel,
@@ -75,6 +93,7 @@ export function composeDeliveredMetadata(args: {
     // (3) v1-canonical normalized keys — highest precedence
     ...(chunkId !== undefined ? { chunk_id: chunkId } : {}),
     ...(detectedLanguage !== undefined ? { detected_language: detectedLanguage } : {}),
+    ...(pipelineId !== undefined ? { pipeline_id: pipelineId } : {}),
   };
 }
 

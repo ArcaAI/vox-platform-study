@@ -114,6 +114,15 @@ export class StreamingSessionService implements IStreamingSessionService {
             // Held by the session runtime in memory only; NEVER logged.
             provider_overrides: dto.providerOverrides ?? null,
             fallback_pipeline_id: dto.fallbackPipelineId ?? null,
+            // Tenant governance for the FAILURE-DRIVEN auto switch (TASK-614).
+            // Both are real `TenantSttConfig` settings that were resolved by the
+            // gateway and then dropped here, so STT's EngineSwitchController
+            // always used its own defaults — a tenant that disabled
+            // auto-fallback still got it. `null` means "use the controller
+            // default"; `?? null` (not a truthiness guard) so an explicit
+            // `false` survives.
+            auto_switch_enabled: dto.autoSwitchEnabled ?? null,
+            consecutive_failure_threshold: dto.consecutiveFailureThreshold ?? null,
           },
           { timeout: 15000 },
         ),
@@ -134,6 +143,16 @@ export class StreamingSessionService implements IStreamingSessionService {
         maxConcurrent: data.maxConcurrent ?? (data as any).max_concurrent,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         currentActive: data.currentActive ?? (data as any).current_active,
+        // The RESOLVED pipeline + the engine STT actually opened on (TASK-614).
+        // This is the client's only honest baseline: the request carries what
+        // was ASKED for, which differs from what runs whenever the caller sent
+        // no pipelineId, chose `startOn: 'fallback'`, or the primary ASR failed
+        // to load at create. Left undefined against an older STT that echoes
+        // neither — a new gateway must not invent a baseline.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        pipelineId: data.pipelineId ?? (data as any).pipeline_id,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        activeEngine: data.activeEngine ?? (data as any).active_engine,
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {

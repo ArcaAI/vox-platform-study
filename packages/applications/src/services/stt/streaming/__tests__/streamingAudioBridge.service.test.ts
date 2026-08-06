@@ -547,6 +547,69 @@ describe('StreamingAudioBridgeService', () => {
       expect('detectedLanguage' in result).toBe(false);
     });
 
+    // TASK-613 B1 — the pipeline id that actually produced this utterance
+    // (§3.2 seam in apps/stt: worker-level `_active_pipeline_id`, stamped
+    // per SegmentResult and published as `pipeline_id`, omitted when unknown).
+    it('surfaces the wire `pipeline_id` as camelCase pipelineId (TASK-613 B1)', async () => {
+      mockXreadgroup
+        .mockResolvedValueOnce([
+          ['stt:result:s-1', [['1-0', ['text', 'hi', 'start_time', '0', 'end_time', '1', 'is_final', '1', 'pipeline_id', 'sarvam_transcription']]]],
+        ])
+        .mockResolvedValue(null);
+
+      const obs = service.subscribeToResults('s-1');
+      const result = (await firstValueFrom(obs.pipe(take(1)))) as { pipelineId?: string };
+
+      expect(result.pipelineId).toBe('sarvam_transcription');
+    });
+
+    it('omits pipelineId when the wire has no pipeline_id (older stt worker unchanged)', async () => {
+      mockXreadgroup
+        .mockResolvedValueOnce([['stt:result:s-1', [['1-0', ['text', 'hi', 'start_time', '0', 'end_time', '1', 'is_final', '1']]]]])
+        .mockResolvedValue(null);
+
+      const obs = service.subscribeToResults('s-1');
+      const result = await firstValueFrom(obs.pipe(take(1)));
+
+      expect('pipelineId' in result).toBe(false);
+    });
+
+    it('the transcript projection stays an allow-list — a novel upstream field is still dropped (TASK-613 B1)', async () => {
+      // The result stream is PHI-bearing; forwarding pipelineId must never
+      // become a blind spread of whatever a future publisher adds.
+      mockXreadgroup
+        .mockResolvedValueOnce([
+          [
+            'stt:result:s-1',
+            [
+              [
+                '1-0',
+                [
+                  'text',
+                  'hi',
+                  'start_time',
+                  '0',
+                  'end_time',
+                  '1',
+                  'is_final',
+                  '1',
+                  'pipeline_id',
+                  'sarvam_transcription',
+                  'patient_note',
+                  'should never reach the browser',
+                ],
+              ],
+            ],
+          ],
+        ])
+        .mockResolvedValue(null);
+
+      const obs = service.subscribeToResults('s-1');
+      const result = await firstValueFrom(obs.pipe(take(1)));
+
+      expect(result).not.toHaveProperty('patient_note');
+    });
+
     it('should emit a provider_switched status result (non-terminal) so the swap reaches the client', async () => {
       // apps/stt publishes an ASR-engine swap as a `status`/`provider_switched`
       // result (TASK-567). Previously the bridge swallowed every non-terminal
@@ -589,6 +652,65 @@ describe('StreamingAudioBridgeService', () => {
         reason: 'auto',
         utterance_index: 4,
       });
+    });
+
+    // -------------------------------------------------------------------------
+    // TASK-614 D-4 — `active` / `is_fallback` must reach the client.
+    //
+    // apps/stt has always published both (`redis_streams.py` publish_switch);
+    // this projection dropped them, so the compat gateway's `isFallback` branch
+    // was unreachable and the SDK fell back to "absent ⇒ isFallback = true".
+    // That guess is right for primary→fallback and WRONG for every switch back,
+    // which is why a session that returned to the selected pipeline still read
+    // as "on the tenant default" forever.
+    //
+    // The wire carries '1'/'0' strings; the DTO (and every consumer) is typed
+    // `boolean`. Relaying the raw string would be worse than dropping it — '0'
+    // is truthy in JS, so the primary direction would still latch as fallback.
+    // -------------------------------------------------------------------------
+    const switchEntry = (fields: string[]) => [['stt:result:s-1', [['1-0', ['type', 'status', 'status', 'provider_switched', ...fields]]]]];
+
+    it('relays active + is_fallback for a switch TO the fallback', async () => {
+      mockXreadgroup
+        .mockResolvedValueOnce(switchEntry(['to_pipeline', 'sarvam_transcription', 'active', 'fallback', 'is_fallback', '1']))
+        .mockResolvedValue(null);
+
+      const result = await firstValueFrom(service.subscribeToResults('s-1').pipe(take(1)));
+
+      expect(result).toMatchObject({ status: 'provider_switched', active: 'fallback', is_fallback: true });
+    });
+
+    it('relays active + is_fallback for a switch BACK to the primary — as a real boolean false', async () => {
+      mockXreadgroup
+        .mockResolvedValueOnce(switchEntry(['to_pipeline', 'arcaai_ml_en', 'active', 'primary', 'is_fallback', '0']))
+        .mockResolvedValue(null);
+
+      const result = await firstValueFrom(service.subscribeToResults('s-1').pipe(take(1)));
+
+      expect(result).toMatchObject({ status: 'provider_switched', active: 'primary', is_fallback: false });
+      // Not the string '0' — see the block comment above.
+      expect((result as { is_fallback?: unknown }).is_fallback).not.toBe('0');
+    });
+
+    it('omits both fields for a pre-586 backend that publishes neither', async () => {
+      mockXreadgroup.mockResolvedValueOnce(switchEntry(['to_pipeline', 'sarvam_transcription', 'reason', 'auto'])).mockResolvedValue(null);
+
+      const result = await firstValueFrom(service.subscribeToResults('s-1').pipe(take(1)));
+
+      expect(result).not.toHaveProperty('active');
+      expect(result).not.toHaveProperty('is_fallback');
+    });
+
+    it('stays an allow-list — a novel upstream status field is still dropped', async () => {
+      // The result stream is PHI-bearing; widening it must never become a
+      // blind spread of whatever a future publisher adds.
+      mockXreadgroup
+        .mockResolvedValueOnce(switchEntry(['active', 'fallback', 'is_fallback', '1', 'patient_note', 'should never reach the browser']))
+        .mockResolvedValue(null);
+
+      const result = await firstValueFrom(service.subscribeToResults('s-1').pipe(take(1)));
+
+      expect(result).not.toHaveProperty('patient_note');
     });
 
     it('should map speaker metadata AND derive a canonical speakerLabel when present', async () => {

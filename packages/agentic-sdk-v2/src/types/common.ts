@@ -91,6 +91,12 @@ export type AgenticErrorCode =
   // carrying only options the running session already applies (language,
   // pipelineId) is unaffected — that stays a silent, designed no-op.
   | 'CAPTURE_OPTIONS_DROPPED'
+  // TASK-614: a provider switch was requested but this capture session cannot
+  // serve one — capture has not started, or it is running on local (browser)
+  // STT with no backend streaming session behind it. Distinct from a switch the
+  // BACKEND refused (that surfaces as the transport's own error): this one says
+  // the switch was never attempted, so it can never be reported as succeeded.
+  | 'SWITCH_UNSUPPORTED'
   | 'UNKNOWN_ERROR';
 
 // =============================================================================

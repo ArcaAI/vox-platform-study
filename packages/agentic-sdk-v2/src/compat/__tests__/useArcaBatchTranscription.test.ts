@@ -200,6 +200,67 @@ describe('useArcaBatchTranscription', () => {
     expect(onJobCompleted).toHaveBeenCalledTimes(1);
   });
 
+  // ---------------------------------------------------------------------------
+  // TASK-614 D-7 — batch fallback provenance.
+  //
+  // When the primary ASR fails, the worker re-runs on the tenant fallback and
+  // stamps `usedFallbackPipelineId` into the result metadata. That value does
+  // reach the client, but buried at `job.resultMetadata.metadata.…` — untyped
+  // and undiscoverable. A transcript produced by a different engine than the
+  // one requested is a clinical-provenance fact, not a footnote, so the queue
+  // item states it directly.
+  // ---------------------------------------------------------------------------
+  it('surfaces the fallback pipeline on an item whose job fell back', async () => {
+    mocks.getJob.mockResolvedValue({
+      id: 'job-1',
+      status: 'COMPLETED',
+      resultText: 'authoritative text',
+      resultMetadata: { metadata: { usedFallbackPipelineId: 'sarvam_transcription' } },
+    });
+    const { result } = renderHook(() => useArcaBatchTranscription({ options: DEFAULT_OPTIONS }));
+
+    await act(async () => {
+      result.current.enqueue([makeFile('one.wav')]);
+    });
+    await waitFor(() => expect(mocks.MockSSEClient.instances).toHaveLength(1));
+    await act(async () => {
+      mocks.MockSSEClient.instances[0].emit('complete', { data: { status: 'COMPLETED' } });
+    });
+
+    await waitFor(() => expect(result.current.items[0].status).toBe('completed'));
+    expect(result.current.items[0].usedFallbackPipelineId).toBe('sarvam_transcription');
+  });
+
+  it('leaves the fallback pipeline null when the requested pipeline produced the transcript', async () => {
+    const { result } = renderHook(() => useArcaBatchTranscription({ options: DEFAULT_OPTIONS }));
+
+    await act(async () => {
+      result.current.enqueue([makeFile('one.wav')]);
+    });
+    await waitFor(() => expect(mocks.MockSSEClient.instances).toHaveLength(1));
+    await act(async () => {
+      mocks.MockSSEClient.instances[0].emit('complete', { data: { status: 'COMPLETED' } });
+    });
+
+    await waitFor(() => expect(result.current.items[0].status).toBe('completed'));
+    expect(result.current.items[0].usedFallbackPipelineId).toBeNull();
+  });
+
+  // TASK-614 D-8/D11 — batch can say "use the tenant default".
+  it('uploads without a pipelineId and lets the gateway resolve the tenant default', async () => {
+    const { result } = renderHook(() => useArcaBatchTranscription({ options: {} }));
+
+    await act(async () => {
+      result.current.enqueue([makeFile('one.wav')]);
+    });
+
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1));
+    // No pipelineId on the wire — omitted, not sent as an empty string, which
+    // the gateway's slug/UUID validation would reject.
+    expect('pipelineId' in mocks.upload.mock.calls[0][1]).toBe(false);
+    expect(result.current.items[0].status).not.toBe('failed');
+  });
+
   it('marks the item failed when the upload rejects', async () => {
     mocks.upload.mockRejectedValueOnce(new Error('413 payload too large'));
     const onError = vi.fn();
@@ -351,16 +412,22 @@ describe('useArcaBatchTranscription', () => {
     expect(mocks.MockSSEClient.instances[0].connected).toBe(false);
   });
 
-  it('fails the item with an actionable error when no pipeline is resolvable', async () => {
+  // CONTRACT CHANGE (TASK-614 D-8/D11). This used to assert that an upload with
+  // no resolvable pipeline failed client-side. That refused a request the
+  // backend can serve: omitting the pipeline now means "use the tenant's
+  // default", which the gateway resolves (tenant default → configured
+  // fallback) and 409s only when the tenant has neither. Deciding that here,
+  // with no knowledge of the tenant's configuration, was the SDK overreaching.
+  it('uploads with no pipelineId rather than failing the item client-side', async () => {
     const { result } = renderHook(() => useArcaBatchTranscription({}));
 
     await act(async () => {
       result.current.enqueue([makeFile('one.wav')]);
     });
 
-    await waitFor(() => expect(result.current.items[0].status).toBe('failed'));
-    expect(result.current.items[0].error).toMatch(/pipelineId/i);
-    expect(mocks.upload).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1));
+    expect('pipelineId' in mocks.upload.mock.calls[0][1]).toBe(false);
+    expect(result.current.items[0].status).not.toBe('failed');
   });
 
   it('fails the item when the SDK has no apiClient yet', async () => {

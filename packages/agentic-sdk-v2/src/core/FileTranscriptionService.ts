@@ -29,8 +29,13 @@ type BatchTranscribeResponse = {
  * Options for file transcription upload
  */
 export interface FileTranscribeOptions {
-  /** Pipeline UUID or slug (required) */
-  pipelineId: string;
+  /**
+   * Pipeline UUID or slug. OPTIONAL since TASK-614: omit it to transcribe on
+   * the tenant's default pipeline — the gateway resolves tenant-default →
+   * configured STT fallback and 409s when the tenant has neither, so it never
+   * guesses. Passing one explicitly is unchanged.
+   */
+  pipelineId?: string;
   /** Optional consultation to link the job to */
   consultationId?: string;
   /** Audio sample rate in Hz */
@@ -77,7 +82,12 @@ export class FileTranscriptionService {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('pipelineId', options.pipelineId);
+    // Appended only when supplied (TASK-614): the gateway validates `pipelineId`
+    // as a slug/UUID, so sending an empty field would 400 the very request that
+    // means "use the tenant default".
+    if (options.pipelineId) {
+      formData.append('pipelineId', options.pipelineId);
+    }
 
     if (options.consultationId) {
       formData.append('consultationId', options.consultationId);
@@ -143,7 +153,12 @@ export class FileTranscriptionService {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('pipelineId', options.pipelineId);
+    // Appended only when supplied (TASK-614): the gateway validates `pipelineId`
+    // as a slug/UUID, so sending an empty field would 400 the very request that
+    // means "use the tenant default".
+    if (options.pipelineId) {
+      formData.append('pipelineId', options.pipelineId);
+    }
 
     if (options.consultationId) {
       formData.append('consultationId', options.consultationId);
@@ -207,7 +222,7 @@ export class FileTranscriptionService {
     return this.apiClient.get<PaginatedResponse<TranscriptionJobResponse>>(endpoint);
   }
 
-  private normalizeJobResponse(response: TranscriptionJobResponse | BatchTranscribeResponse, pipelineId: string): TranscriptionJobResponse {
+  private normalizeJobResponse(response: TranscriptionJobResponse | BatchTranscribeResponse, pipelineId?: string): TranscriptionJobResponse {
     // If the response already has the full TranscriptionJobResponse shape, return it directly
     const asFull = response as Partial<TranscriptionJobResponse>;
     if (asFull.jobType !== undefined && typeof asFull.id === 'string' && asFull.id.length > 0) {
@@ -229,7 +244,11 @@ export class FileTranscriptionService {
     return {
       id: batch.id,
       jobType: TranscriptionJobType.BATCH,
-      pipelineId,
+      // The minimal batch response carries no pipeline, so this echoes what was
+      // REQUESTED. Empty when the caller let the tenant default apply
+      // (TASK-614) — the authoritative value arrives with the terminal
+      // `getJob()` read, which the queue uses for the completed item.
+      pipelineId: pipelineId ?? '',
       status,
       progress: 0,
       retryCount: 0,

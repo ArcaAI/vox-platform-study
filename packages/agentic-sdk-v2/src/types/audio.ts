@@ -144,6 +144,12 @@ export interface TranscriptionResult {
    * Optional/back-compatible — absent for engines that don't emit word timings.
    */
   words?: TranscriptWord[];
+  /**
+   * Per-utterance ASR pipeline provenance (TASK-613), carried from
+   * `WsTranscriptResult.pipelineId` when the streaming transport reports one.
+   * Optional/back-compatible — absent for providers that don't yet forward it.
+   */
+  pipelineId?: string;
 }
 
 /**
@@ -250,6 +256,13 @@ export interface TranscriptSegment {
    * them. Optional/back-compatible — existing consumers are unaffected.
    */
   words?: TranscriptWord[];
+  /**
+   * The ASR pipeline that produced this segment (TASK-613). Per-utterance:
+   * after a mid-session engine switch, consecutive segments legitimately carry
+   * different ids, which is the point — session-level state cannot express it.
+   * Absent for local transcription and for backends that do not stamp results.
+   */
+  pipelineId?: string;
 }
 
 /**

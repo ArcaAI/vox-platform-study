@@ -60,6 +60,8 @@ export interface ITranscriptionRealtimeService {
     language?: string;
     userId?: string;
     audioBucketName?: string;
+    /** Tenant fallback pipeline the worker re-runs on if the primary ASR fails (TASK-614). */
+    fallbackPipelineId?: string;
   }): Promise<void>;
 }
 

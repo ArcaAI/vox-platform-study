@@ -32,13 +32,20 @@ export const ALLOWED_AUDIO_MIMES = new Set([
 ]);
 
 export class TranscribeFileRequest {
-  @ApiProperty({ description: 'Pipeline ID (slug or UUID) to use for transcription' })
+  /**
+   * OPTIONAL since TASK-614: omit it to transcribe on the tenant's default
+   * pipeline, the same "I don't care which, use ours" intent a live session has
+   * always been able to express. The gateway resolves the tenant default and
+   * 409s when the tenant has neither a default nor a fallback — it never guesses
+   * a pipeline.
+   */
+  @ApiPropertyOptional({ description: "Pipeline ID (slug or UUID). Omit to use the tenant's default pipeline." })
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @Matches(PIPELINE_ID_PATTERN, {
     message: 'pipelineId must be a slug ([A-Za-z0-9-]) or UUID (TASK-298 D-19)',
   })
-  pipelineId!: string;
+  pipelineId?: string;
 
   @ApiPropertyOptional({ description: 'Associated consultation ID' })
   @IsUUID()
@@ -110,6 +117,28 @@ export class StreamSessionResponse {
 
   @ApiProperty({ description: 'Currently active sessions' })
   currentActive!: number;
+
+  /**
+   * The RESOLVED ASR pipeline the session opened with (TASK-614). Differs from
+   * the requested id whenever the caller sent none. The SDK uses this as its
+   * `activePipeline` baseline instead of echoing back its own request — which
+   * left it null for every session started without an explicit pipeline.
+   * Absent against an STT that predates the echo.
+   */
+  @ApiPropertyOptional({ description: 'Resolved ASR pipeline id the session opened with' })
+  @IsOptional()
+  @IsString()
+  pipelineId?: string;
+
+  /**
+   * The engine actually live at create: `'primary'`, or `'fallback'` when the
+   * session opened on the tenant fallback — by choice (`startOn`) or because
+   * the primary ASR failed to load (TASK-614).
+   */
+  @ApiPropertyOptional({ description: "Engine live at create: 'primary' or 'fallback'", enum: ['primary', 'fallback'] })
+  @IsOptional()
+  @IsString()
+  activeEngine?: 'primary' | 'fallback';
 
   /**
    * One-shot stream ticket the SDK appends to the WebSocket URL.

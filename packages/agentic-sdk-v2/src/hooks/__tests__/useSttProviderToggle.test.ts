@@ -117,15 +117,36 @@ describe('useSttProviderToggle — switching (both directions)', () => {
     expect(result.current.switchStatus).toBe('switched');
   });
 
-  it('rejects when there is no live streaming session', async () => {
-    setupAudio({ activePipeline: null });
+  // TASK-614 D-3: this used to assert that a null `activePipeline` blocked the
+  // switch. That premise was wrong — `activePipeline` is request-derived and is
+  // null for the WHOLE session whenever capture started without an explicit
+  // `pipelineId`, so the guard fired mid-session on a perfectly live session.
+  // "Is there a session to switch?" is `isCapturing`; the pipeline identity is
+  // a separate question the client may legitimately not know yet.
+  it('switches mid-session even when the active pipeline is unknown', async () => {
+    setupAudio({ isCapturing: true, activePipeline: null });
     const { result } = renderHook(() => useSttProviderToggle());
 
-    await expect(
-      act(async () => {
-        await result.current.switchToDefault();
-      }),
-    ).rejects.toThrow(/no active streaming session/i);
+    await act(async () => {
+      await result.current.switchToDefault();
+    });
+
+    expect(mockAudio.switchProvider).toHaveBeenCalledWith('fallback');
+    expect(result.current.switchStatus).toBe('switching');
+  });
+
+  it('rejects with SWITCH_UNSUPPORTED when capture has not started', async () => {
+    setupAudio({ isCapturing: false, activePipeline: null });
+    const { result } = renderHook(() => useSttProviderToggle());
+
+    let caught: any;
+    await act(async () => {
+      await result.current.switchToDefault().catch((err: unknown) => {
+        caught = err;
+      });
+    });
+
+    expect(caught?.code).toBe('SWITCH_UNSUPPORTED');
     expect(mockAudio.switchProvider).not.toHaveBeenCalled();
   });
 

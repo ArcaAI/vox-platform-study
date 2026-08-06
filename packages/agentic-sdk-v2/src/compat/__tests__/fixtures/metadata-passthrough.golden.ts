@@ -127,6 +127,41 @@ export const COMPOSE_GOLDEN: readonly ComposeCase[] = [
       isFinal: false,
     },
   },
+  {
+    // TASK-613 D4: seg.pipelineId (the v2-resolved per-utterance pipeline)
+    // is overlaid as pipeline_id, same precedence tier as chunk_id/detected_language.
+    name: 'pipeline_id resolves from seg.pipelineId when caller supplies none',
+    seg: { language: 'en', startTime: 1, endTime: 2, pipelineId: 'pipeline-fallback-abc' },
+    isFinal: true,
+    callerMeta: undefined,
+    expected: {
+      speaker_id: undefined,
+      confidence: undefined,
+      language: 'en',
+      startTime: 1,
+      endTime: 2,
+      isFinal: true,
+      detected_language: 'en',
+      pipeline_id: 'pipeline-fallback-abc',
+    },
+  },
+  {
+    // Backward compatibility (§3.4): an old backend never resolves a
+    // pipeline id on the segment, and the caller never supplies one — the
+    // key must be OMITTED, never written as literal undefined/null.
+    name: 'omits pipeline_id when neither caller nor seg provide one (old-backend degrade)',
+    seg: { startTime: 5, endTime: 6 },
+    isFinal: true,
+    callerMeta: undefined,
+    expected: {
+      speaker_id: undefined,
+      confidence: undefined,
+      language: undefined,
+      startTime: 5,
+      endTime: 6,
+      isFinal: true,
+    },
+  },
 ];
 
 /** §4.3 chunk_id resolution chain — priority `chunk_id → chunkId → other`. */
@@ -147,5 +182,21 @@ export const DETECTED_LANGUAGE_GOLDEN: readonly {
   { meta: { detected_language: 'ml', detectedLanguage: 'hi' }, seg: { language: 'en' }, expected: 'ml' },
   { meta: { detectedLanguage: 'hi' }, seg: { language: 'en' }, expected: 'hi' },
   { meta: {}, seg: { language: 'en' }, expected: 'en' },
+  { meta: undefined, seg: {}, expected: undefined },
+];
+
+/**
+ * TASK-613 §3.3 pipeline_id chain — `pipeline_id → pipelineId → seg.pipelineId`.
+ * Mirrors the detected_language chain: caller-supplied wins, otherwise the
+ * v2-resolved value from the segment; `undefined` when nothing provides it.
+ */
+export const PIPELINE_ID_GOLDEN: readonly {
+  meta: Record<string, unknown> | undefined;
+  seg: EnrichmentSeg;
+  expected: unknown;
+}[] = [
+  { meta: { pipeline_id: 'p-snake', pipelineId: 'p-camel' }, seg: { pipelineId: 'p-seg' }, expected: 'p-snake' },
+  { meta: { pipelineId: 'p-camel' }, seg: { pipelineId: 'p-seg' }, expected: 'p-camel' },
+  { meta: {}, seg: { pipelineId: 'p-seg' }, expected: 'p-seg' },
   { meta: undefined, seg: {}, expected: undefined },
 ];

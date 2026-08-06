@@ -46,6 +46,30 @@ def _require_session_manager() -> SessionManager:
     return mgr
 
 
+def _resolve_active_pipeline(mgr: SessionManager, session: Any) -> tuple[str, str]:
+    """``(effective pipeline id, active engine)`` for a session.
+
+    Reads the per-session ``EngineSwitchController`` the manager already
+    installs for every session (TASK-567) via its public
+    ``get_switch_controller`` accessor, so BOTH values are truthful for the
+    start_on=fallback (D3) and create-time-load-failure (D4) cases, where the
+    controller's ``active_engine`` is flipped to ``'fallback'`` at create.
+
+    ``session.pipeline_id`` is the pipeline the caller REQUESTED, so returning
+    it unconditionally made a D3/D4 session report ``active_engine: 'fallback'``
+    beside a ``pipeline_id`` naming the primary (TASK-613 A3). The controller
+    owns both ends of that pair, so it is the single source for them; it is
+    also the same object the swap seam updates, so the response cannot drift
+    from the engine that is actually live. Falls back to the requested id when
+    no controller is registered, or when the controller has no id for the
+    active engine.
+    """
+    controller = mgr.get_switch_controller(session.session_id)
+    if controller is None:
+        return session.pipeline_id, "primary"
+    return (controller.active_pipeline_id or session.pipeline_id), controller.active_engine
+
+
 # -------------------------------------------------------------------------
 # GET /internal/streaming/language-modes — STT language-mode catalog (TASK-587)
 # -------------------------------------------------------------------------
@@ -112,6 +136,8 @@ async def create_streaming_session(
             fallback_pipeline_id=request.fallback_pipeline_id,
             language_mode=request.language_mode,
             start_on=request.start_on or "primary",
+            auto_switch_enabled=request.auto_switch_enabled,
+            consecutive_failure_threshold=request.consecutive_failure_threshold,
         )
     except LanguageModeUnsupportedError as exc:
         # TASK-587 — the selected mode fits none of the session's engines
@@ -154,11 +180,14 @@ async def create_streaming_session(
             headers={"Retry-After": "5"},
         )
 
+    active_pipeline_id, active_engine = _resolve_active_pipeline(mgr, session)
     return StreamingSessionResponse(
         session_id=session.session_id,
         status="active",
         max_concurrent=guard.max_streams,
         current_active=guard.active_count,
+        pipeline_id=active_pipeline_id,
+        active_engine=active_engine,
     )
 
 
@@ -211,11 +240,14 @@ async def get_streaming_session(session_id: str) -> StreamingSessionResponse:
 
     guard = mgr.capacity_guard
 
+    active_pipeline_id, active_engine = _resolve_active_pipeline(mgr, session)
     return StreamingSessionResponse(
         session_id=session.session_id,
         status=session.status.value,
         max_concurrent=guard.max_streams,
         current_active=guard.active_count,
+        pipeline_id=active_pipeline_id,
+        active_engine=active_engine,
     )
 
 
@@ -288,7 +320,9 @@ async def end_active_streaming_session(session_id: str) -> dict[str, Any]:
     responses={
         200: {"description": "Switch requested"},
         404: {"description": "Session not found"},
-        409: {"description": "Target unavailable (no fallback, primary never loaded, or already active)"},
+        409: {
+            "description": "Target unavailable (no fallback, primary never loaded, or already active)"
+        },
         503: {"description": "Streaming not initialized"},
     },
 )

@@ -380,6 +380,7 @@ class SessionManager:
         pipeline_config: Any,
         build_speaker_identifier: bool,
         provider_overrides: dict[str, Any] | None = None,
+        active_pipeline_id: str | None = None,
     ) -> _SessionRuntime:
         """Build the per-session runtime components.
 
@@ -393,6 +394,12 @@ class SessionManager:
         SpeakerIdentifier: its in-memory tracker state is lost on crash, so a
         recovered session restarts without it (Sortformer, being stateless
         per-utterance, IS reconstructed either way).
+
+        ``active_pipeline_id`` (TASK-613) is the pipeline this runtime is being
+        assembled FOR — i.e. the EFFECTIVE engine, which is the fallback on the
+        user-selected start-on-fallback and create-time-load-failure paths, not
+        the requested primary. The inference worker stamps it onto every result
+        it produces.
         """
         publisher = ResultPublisher(redis=self._redis, session_id=session_id)
 
@@ -595,6 +602,7 @@ class SessionManager:
             hallucination_short_word_count=hallucination_short_word_count,
             gloss_callable=gloss_pipeline,
             embedding_service=pipeline_embedding_service,
+            active_pipeline_id=active_pipeline_id,
         )
 
         return _SessionRuntime(
@@ -796,6 +804,8 @@ class SessionManager:
         fallback_pipeline_id: str | None = None,
         language_mode: str | None = None,
         start_on: str = "primary",
+        auto_switch_enabled: bool | None = None,
+        consecutive_failure_threshold: int | None = None,
     ) -> StreamSession | None:
         """Create a new streaming session.
 
@@ -836,6 +846,14 @@ class SessionManager:
                 user choice (the primary is NOT attempted at create) and is
                 distinct from the load-failure ``created_on_fallback`` path. If
                 no fallback is configured, the create fails open on the primary.
+            auto_switch_enabled: Tenant governance for the FAILURE-DRIVEN auto
+                switch (TASK-614). ``None`` = the controller's own default
+                (enabled), so an older gateway that sends nothing keeps the
+                pre-614 behaviour. Never affects a user-initiated switch — that
+                is an explicit choice, not a policy.
+            consecutive_failure_threshold: Tenant governance for how many
+                consecutive threshold-class utterance failures arm the auto
+                switch (TASK-614). ``None`` = the controller's default (2).
         """
         # Check capacity
         if not await self._capacity_guard.try_acquire(session_id):
@@ -917,6 +935,9 @@ class SessionManager:
                     pipeline_config=pipeline_config,
                     build_speaker_identifier=True,
                     provider_overrides=provider_overrides,
+                    # TASK-613 — effective pipeline: the fallback IS the engine
+                    # this session opens on.
+                    active_pipeline_id=fallback_pipeline_id,
                 )
             else:
                 # One shared assembly for creation AND recovery. TASK-567
@@ -934,6 +955,7 @@ class SessionManager:
                         pipeline_config=pipeline_config,
                         build_speaker_identifier=True,
                         provider_overrides=provider_overrides,
+                        active_pipeline_id=pipeline_id,
                     )
                 except Exception as primary_exc:
                     if not fallback_pipeline_id:
@@ -959,6 +981,10 @@ class SessionManager:
                         pipeline_config=pipeline_config,
                         build_speaker_identifier=True,
                         provider_overrides=provider_overrides,
+                        # TASK-613 — the sharpest divergence (D4): the client is
+                        # told 'active' and never learns it is on an engine it
+                        # did not select. Stamp the effective one.
+                        active_pipeline_id=fallback_pipeline_id,
                     )
                     created_on_fallback = True
             publisher = runtime.publisher
@@ -1014,6 +1040,8 @@ class SessionManager:
                 tenant_id=tenant_id,
                 primary_pipeline_id=pipeline_id,
                 fallback_pipeline_id=fallback_pipeline_id,
+                auto_switch_enabled=auto_switch_enabled,
+                consecutive_failure_threshold=consecutive_failure_threshold,
             )
             self._switch_controllers[session_id] = switch_controller
             # If the primary ASR failed and we opened on the fallback, record the
@@ -1110,9 +1138,7 @@ class SessionManager:
             raise ValueError("invalid_target")
         await self._redis.xadd(
             control_stream_key(session_id),
-            SessionControl(
-                action=ControlAction.SWITCH_TO_FALLBACK, target=target
-            ).to_redis_dict(),
+            SessionControl(action=ControlAction.SWITCH_TO_FALLBACK, target=target).to_redis_dict(),
         )
 
     async def request_switch_to_fallback(self, session_id: str) -> None:
@@ -1126,6 +1152,8 @@ class SessionManager:
         tenant_id: str | None,
         primary_pipeline_id: str,
         fallback_pipeline_id: str | None,
+        auto_switch_enabled: bool | None = None,
+        consecutive_failure_threshold: int | None = None,
     ) -> EngineSwitchController:
         """Build the per-session ``EngineSwitchController`` (TASK-567 §3.4).
 
@@ -1147,12 +1175,18 @@ class SessionManager:
                 session_id, primary_pipeline_id, tenant_id
             )
 
-        def _apply(new_callable: StreamingAsrCallable) -> None:
+        def _apply(new_callable: StreamingAsrCallable, pipeline_id: str | None) -> None:
             worker = self._inference_workers.get(session_id)
             if worker is not None:
                 # The inference worker reads this reference each utterance; a
                 # plain reassignment is the whole "seamless swap".
                 worker._asr_pipeline = new_callable
+                # TASK-613 — the per-utterance provenance stamp moves with the
+                # callable, in this same synchronous body. Do NOT split these
+                # two assignments, add an await between them, or introduce a
+                # second update path: any divergence attributes utterances to
+                # the wrong engine, which is worse than no attribution.
+                worker._active_pipeline_id = pipeline_id
 
         async def _publish(
             from_pipeline: str,
@@ -1171,6 +1205,18 @@ class SessionManager:
                     utterance_index=utterance_index,
                 )
 
+        # TASK-614 — the tenant's auto-switch governance. Both values are real
+        # `TenantSttConfig` settings resolved by the gateway, but nothing ever
+        # sent them, so this controller always used its own defaults: a tenant
+        # that turned auto-fallback OFF still got it. `None` (an older gateway
+        # that sends neither) keeps the controller's defaults, so the pre-614
+        # behaviour is byte-identical.
+        governance: dict[str, Any] = {}
+        if auto_switch_enabled is not None:
+            governance["auto_switch_enabled"] = auto_switch_enabled
+        if consecutive_failure_threshold is not None:
+            governance["consecutive_failure_threshold"] = consecutive_failure_threshold
+
         return EngineSwitchController(
             session_id=session_id,
             tenant_id=tenant_id,
@@ -1180,6 +1226,7 @@ class SessionManager:
             build_primary=_build_primary,
             apply_callable=_apply,
             publish_switch=_publish,
+            **governance,
         )
 
     async def _build_fallback_asr_callable(
@@ -1226,9 +1273,7 @@ class SessionManager:
             p_config, session_id, tenant_id=tenant_id, provider_overrides=overrides
         )
         if asr_callable is None:
-            raise RuntimeError(
-                f"Primary pipeline '{primary_pipeline_id}' produced no ASR callable"
-            )
+            raise RuntimeError(f"Primary pipeline '{primary_pipeline_id}' produced no ASR callable")
         return asr_callable
 
     async def _preseed_speaker(
@@ -1688,10 +1733,10 @@ class SessionManager:
         # ``WhisperCppAsrAdapter``). Stashed for ``_make_whisper_cpp_callable`` to
         # read (threading it through the shared engine interface would touch every
         # engine adapter).
-        timestamps_cfg = getattr(getattr(pipeline_config, "postprocessing", None), "timestamps", None)
-        self._pending_want_word_timestamps = bool(
-            getattr(timestamps_cfg, "word_timestamps", False)
+        timestamps_cfg = getattr(
+            getattr(pipeline_config, "postprocessing", None), "timestamps", None
         )
+        self._pending_want_word_timestamps = bool(getattr(timestamps_cfg, "word_timestamps", False))
 
         # Create the callable ASR pipeline
         asr_pipeline = self._make_asr_callable(
@@ -3720,6 +3765,10 @@ class SessionManager:
                         sample_rate=meta.sample_rate,
                         pipeline_config=pipeline_config,
                         build_speaker_identifier=False,
+                        # TASK-613 — a recovered session emits stamped frames
+                        # too; `meta.pipeline_id` is the pipeline whose config
+                        # was just loaded above.
+                        active_pipeline_id=meta.pipeline_id,
                     )
                     publisher = runtime.publisher
                     preprocessor = runtime.preprocessor

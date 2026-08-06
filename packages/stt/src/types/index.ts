@@ -478,6 +478,13 @@ export interface TranscriptionResult {
   words?: WordTimestamp[];
 
   /**
+   * The ASR pipeline that produced this result (TASK-613). Per-utterance, so a
+   * mid-session engine switch is visible transcript-by-transcript. Absent for
+   * local providers and for backends that do not stamp results.
+   */
+  pipelineId?: string;
+
+  /**
    * Speaker ID from diarization, if available.
    */
   speakerId?: string;

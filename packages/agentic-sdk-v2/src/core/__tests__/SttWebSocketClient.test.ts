@@ -2170,6 +2170,109 @@ describe('SttWebSocketClient', () => {
       client.disconnect();
     });
 
+    // Per-utterance pipeline provenance (TASK-613 D3): which ASR pipeline
+    // actually produced this utterance, which can differ from the requested
+    // one after a mid-session engine switch. Additive + dual-cased like
+    // utteranceIndex/resultType above.
+    it('should normalize pipelineId from gateway (camelCase) payloads', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttWebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'switched mid-session',
+          startTime: 0,
+          endTime: 1,
+          isFinal: true,
+          pipelineId: 'pipeline-fallback-abc',
+        }),
+      );
+
+      expect(transcriptCb).toHaveBeenCalledWith(expect.objectContaining({ pipelineId: 'pipeline-fallback-abc' }));
+
+      client.disconnect();
+    });
+
+    it('should accept pipeline_id defensively from snake_case wire payloads', () => {
+      const normalize = (
+        SttWebSocketClient as unknown as {
+          normalizeTranscript(msg: Record<string, unknown>): WsTranscriptResult | null;
+        }
+      ).normalizeTranscript;
+
+      const normalized = normalize({
+        type: 'transcript',
+        text: 'snake pipeline id',
+        start_time: 0,
+        end_time: 1,
+        is_final: true,
+        pipeline_id: 'pipeline-primary-xyz',
+      });
+
+      expect(normalized).not.toBeNull();
+      expect(normalized!.pipelineId).toBe('pipeline-primary-xyz');
+    });
+
+    it('prefers camelCase pipelineId over snake_case pipeline_id when both are present', () => {
+      const normalize = (
+        SttWebSocketClient as unknown as {
+          normalizeTranscript(msg: Record<string, unknown>): WsTranscriptResult | null;
+        }
+      ).normalizeTranscript;
+
+      const normalized = normalize({
+        type: 'transcript',
+        text: 'both casings',
+        start_time: 0,
+        end_time: 1,
+        is_final: true,
+        pipelineId: 'pipeline-camel',
+        pipeline_id: 'pipeline-snake',
+      });
+
+      expect(normalized!.pipelineId).toBe('pipeline-camel');
+    });
+
+    // Backward compatibility (§3.4): an OLD backend that never learned about
+    // per-utterance provenance sends neither casing. The SDK must degrade
+    // silently — no key invented, never the literal "undefined".
+    it('should omit pipelineId when neither casing is present (old backend degrade)', async () => {
+      const mockLogger = createMockLogger();
+      const client = new SttWebSocketClient(mockLogger);
+
+      const connectPromise = client.connect('wss://api.example.com/ws/stream?tenantId=test-tenant');
+      lastMockWs!.simulateOpen();
+      await connectPromise;
+
+      const transcriptCb = vi.fn();
+      client.onTranscript(transcriptCb);
+
+      lastMockWs!.simulateMessage(
+        JSON.stringify({
+          type: 'transcript',
+          text: 'pre-613 backend payload',
+          startTime: 0,
+          endTime: 1,
+          isFinal: true,
+        }),
+      );
+
+      expect(transcriptCb).toHaveBeenCalledTimes(1);
+      const normalized = transcriptCb.mock.calls[0][0];
+      expect('pipelineId' in normalized).toBe(false);
+      expect(JSON.stringify(normalized)).not.toContain('undefined');
+
+      client.disconnect();
+    });
+
     it('should reject status messages missing required fields', async () => {
       const mockLogger = createMockLogger();
       const client = new SttWebSocketClient(mockLogger);

@@ -102,14 +102,14 @@ describe('SttCompatGateway', () => {
         },
         chunk_id: 'mic2_chunk131',
         detected_language: 'en-US',
+        pipeline_id: null,
       },
       sessionId: 'session-1',
     });
     const fallbackTranscription = client.send.mock.calls
       .map(([raw]) => JSON.parse(raw))
       .find(
-        (payload: { data?: { type?: string; text?: string } }) =>
-          payload.data?.type === 'transcription' && payload.data?.text === 'without speaker',
+        (payload: { data?: { type?: string; text?: string } }) => payload.data?.type === 'transcription' && payload.data?.text === 'without speaker',
       );
     expect(fallbackTranscription).toMatchObject({
       data: { speaker_id: 'Unknown' },
@@ -135,11 +135,14 @@ describe('SttCompatGateway', () => {
     };
     const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
 
-    await gateway.handleConnection(client as any, {
-      url: '/stt?sessionId=session-1&key=legacy-key',
-      headers: {},
-      socket: { remoteAddress: '127.0.0.1' },
-    } as any);
+    await gateway.handleConnection(
+      client as any,
+      {
+        url: '/stt?sessionId=session-1&key=legacy-key',
+        headers: {},
+        socket: { remoteAddress: '127.0.0.1' },
+      } as any,
+    );
     (client.send as any).mockClear();
 
     results.next({
@@ -188,11 +191,14 @@ describe('SttCompatGateway', () => {
     };
     const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
 
-    await gateway.handleConnection(client as any, {
-      url: '/stt?sessionId=session-1&key=legacy-key',
-      headers: {},
-      socket: { remoteAddress: '127.0.0.1' },
-    } as any);
+    await gateway.handleConnection(
+      client as any,
+      {
+        url: '/stt?sessionId=session-1&key=legacy-key',
+        headers: {},
+        socket: { remoteAddress: '127.0.0.1' },
+      } as any,
+    );
     (client.send as any).mockClear();
 
     results.next({ type: 'status', status: 'finalizing' });
@@ -206,6 +212,140 @@ describe('SttCompatGateway', () => {
       session_id: 'session-1',
     });
     expect(status.data.isFallback).toBeUndefined();
+  });
+
+  // TASK-613 C4 — the pipeline that actually produced this utterance
+  // (TASK-613 B1's camelCase `pipelineId` on the bridge transcript
+  // projection) must reach the v1-compat client in BOTH the top-level
+  // `pipeline_id` field (mirroring how `chunk_id`/`detected_language` are
+  // emitted) and `metadata.pipeline_id` (per OD-3), without disturbing the
+  // TASK-564 `resolveMetadata` cache.
+  it('mirrors pipelineId onto top-level pipeline_id AND metadata.pipeline_id (TASK-613 C4)', async () => {
+    const client = createSocket();
+    const results = new Subject();
+    const apiKeyService = {
+      extractApiKeyFromWebSocket: vi.fn().mockReturnValue('legacy-key'),
+      authenticateByRawKey: vi.fn().mockResolvedValue({ tenantId: 'tenant-1' }),
+    };
+    const sessionService = { getSessionStatus: vi.fn().mockResolvedValue({ sessionId: 'session-1', status: 'active' }) };
+    const bridgeService = {
+      subscribeToResults: vi.fn().mockReturnValue(results.asObservable()),
+      writeAudioFrame: vi.fn().mockResolvedValue(undefined),
+      writeControlCommand: vi.fn().mockResolvedValue(undefined),
+    };
+    const sessionBinding = {
+      lookup: vi.fn().mockResolvedValue('tenant-1'),
+      lookupSessionMeta: vi.fn().mockResolvedValue({ sampleRate: 16000 }),
+    };
+    const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
+
+    await gateway.handleConnection(
+      client as any,
+      {
+        url: '/stt?sessionId=session-1&key=legacy-key',
+        headers: {},
+        socket: { remoteAddress: '127.0.0.1' },
+      } as any,
+    );
+    await client.handlers.message(createFrame(Buffer.from([1, 2, 3]), { device_id: 'mic2' }), true);
+    (client.send as any).mockClear();
+
+    results.next({ type: 'transcript', text: 'hello', startTime: 0, endTime: 1, isFinal: true, pipelineId: 'sarvam_transcription' });
+
+    const transcription = client.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .find((p: { data?: { type?: string } }) => p.data?.type === 'transcription');
+
+    expect(transcription.data.pipeline_id).toBe('sarvam_transcription');
+    expect(transcription.data.metadata.pipeline_id).toBe('sarvam_transcription');
+    // Cached device_id metadata (TASK-564) survives the mirror.
+    expect(transcription.data.metadata.device_id).toBe('mic2');
+  });
+
+  it('emits pipeline_id: null and no metadata.pipeline_id key when the bridge has not stamped one (TASK-613 C4)', async () => {
+    const client = createSocket();
+    const results = new Subject();
+    const apiKeyService = {
+      extractApiKeyFromWebSocket: vi.fn().mockReturnValue('legacy-key'),
+      authenticateByRawKey: vi.fn().mockResolvedValue({ tenantId: 'tenant-1' }),
+    };
+    const sessionService = { getSessionStatus: vi.fn().mockResolvedValue({ sessionId: 'session-1', status: 'active' }) };
+    const bridgeService = {
+      subscribeToResults: vi.fn().mockReturnValue(results.asObservable()),
+      writeAudioFrame: vi.fn().mockResolvedValue(undefined),
+      writeControlCommand: vi.fn().mockResolvedValue(undefined),
+    };
+    const sessionBinding = {
+      lookup: vi.fn().mockResolvedValue('tenant-1'),
+      lookupSessionMeta: vi.fn().mockResolvedValue({ sampleRate: 16000 }),
+    };
+    const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
+
+    await gateway.handleConnection(
+      client as any,
+      {
+        url: '/stt?sessionId=session-1&key=legacy-key',
+        headers: {},
+        socket: { remoteAddress: '127.0.0.1' },
+      } as any,
+    );
+    (client.send as any).mockClear();
+
+    results.next({ type: 'transcript', text: 'hello', startTime: 0, endTime: 1, isFinal: true });
+
+    const transcription = client.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .find((p: { data?: { type?: string } }) => p.data?.type === 'transcription');
+
+    expect(transcription.data.pipeline_id).toBeNull();
+    expect('pipeline_id' in transcription.data.metadata).toBe(false);
+  });
+
+  it('does not corrupt the cached session metadata (TASK-564) across a later message carrying no metadata of its own', async () => {
+    const client = createSocket();
+    const results = new Subject();
+    const apiKeyService = {
+      extractApiKeyFromWebSocket: vi.fn().mockReturnValue('legacy-key'),
+      authenticateByRawKey: vi.fn().mockResolvedValue({ tenantId: 'tenant-1' }),
+    };
+    const sessionService = { getSessionStatus: vi.fn().mockResolvedValue({ sessionId: 'session-1', status: 'active' }) };
+    const bridgeService = {
+      subscribeToResults: vi.fn().mockReturnValue(results.asObservable()),
+      writeAudioFrame: vi.fn().mockResolvedValue(undefined),
+      writeControlCommand: vi.fn().mockResolvedValue(undefined),
+    };
+    const sessionBinding = {
+      lookup: vi.fn().mockResolvedValue('tenant-1'),
+      lookupSessionMeta: vi.fn().mockResolvedValue({ sampleRate: 16000 }),
+    };
+    const gateway = new SttCompatGateway(apiKeyService as any, sessionService as any, bridgeService as any, sessionBinding as any);
+
+    await gateway.handleConnection(
+      client as any,
+      {
+        url: '/stt?sessionId=session-1&key=legacy-key',
+        headers: {},
+        socket: { remoteAddress: '127.0.0.1' },
+      } as any,
+    );
+    await client.handlers.message(createFrame(Buffer.from([1, 2, 3]), { device_id: 'mic2' }), true);
+    (client.send as any).mockClear();
+
+    // First utterance on the primary — stamped.
+    results.next({ type: 'transcript', text: 'first', startTime: 0, endTime: 1, isFinal: true, pipelineId: 'azure_speech_transcription' });
+    // Second utterance after a mid-session switch — no `metadata` field of its
+    // own, so the gateway falls back to the TASK-564 cache; the mirrored
+    // pipeline_id must reflect the NEW pipeline, not stick to the first.
+    results.next({ type: 'transcript', text: 'second', startTime: 1, endTime: 2, isFinal: true, pipelineId: 'sarvam_transcription' });
+
+    const transcriptions = client.send.mock.calls
+      .map(([raw]) => JSON.parse(raw))
+      .filter((p: { data?: { type?: string } }) => p.data?.type === 'transcription');
+
+    expect(transcriptions[0].data.metadata.device_id).toBe('mic2');
+    expect(transcriptions[0].data.metadata.pipeline_id).toBe('azure_speech_transcription');
+    expect(transcriptions[1].data.metadata.device_id).toBe('mic2');
+    expect(transcriptions[1].data.metadata.pipeline_id).toBe('sarvam_transcription');
   });
 
   it('rejects a socket when session ownership cannot be proven', async () => {

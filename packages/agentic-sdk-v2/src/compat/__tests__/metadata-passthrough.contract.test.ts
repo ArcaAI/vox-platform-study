@@ -25,10 +25,11 @@ import {
   composeDeliveredMetadata,
   resolveChunkId,
   resolveDetectedLanguage,
+  resolvePipelineId,
   applyTemplate,
   DEFAULT_TRANSCRIPT_TEMPLATE,
 } from '../speechToTextMetadata';
-import { COMPOSE_GOLDEN, CHUNK_ID_GOLDEN, DETECTED_LANGUAGE_GOLDEN } from './fixtures/metadata-passthrough.golden';
+import { COMPOSE_GOLDEN, CHUNK_ID_GOLDEN, DETECTED_LANGUAGE_GOLDEN, PIPELINE_ID_GOLDEN } from './fixtures/metadata-passthrough.golden';
 
 // ===========================================================================
 // Lock 1 — §5.2 delivered-metadata precedence (golden shape match).
@@ -85,6 +86,38 @@ describe('§5.2 precedence drift guard — caller keys survive enrichments (F4)'
     expect('chunk_id' in out).toBe(false);
     expect('detected_language' in out).toBe(false);
   });
+
+  // TASK-613 D4 — pipeline_id joins chunk_id/detected_language as a §4.3-style
+  // overlay: caller-supplied wins, otherwise the v2-resolved seg.pipelineId.
+  // The caller here supplies the CAMEL-cased `pipelineId` (not the canonical
+  // `pipeline_id`), so this only passes once the overlay normalizes it —
+  // spreading callerMeta alone would leave `out.pipeline_id` unset.
+  it('pipeline_id is overlaid LAST and a caller value overrides seg.pipelineId', () => {
+    const withPipeline = { ...seg, pipelineId: 'pipeline-from-seg' };
+    const out = composeDeliveredMetadata({
+      seg: withPipeline,
+      isFinal: true,
+      callerMeta: { pipelineId: 'pipeline-from-caller' },
+    });
+    expect(out.pipeline_id).toBe('pipeline-from-caller');
+    const keys = Object.keys(out);
+    expect(keys.indexOf('pipeline_id')).toBeGreaterThan(keys.indexOf('speaker_id'));
+  });
+
+  it('pipeline_id resolves from seg.pipelineId when the caller supplies none', () => {
+    const withPipeline = { ...seg, pipelineId: 'pipeline-from-seg' };
+    const out = composeDeliveredMetadata({ seg: withPipeline, isFinal: true, callerMeta: undefined });
+    expect(out.pipeline_id).toBe('pipeline-from-seg');
+  });
+
+  // Backward compatibility (§3.4): an old backend never resolves a per-utterance
+  // pipeline id, so seg.pipelineId is absent and the caller never supplied one —
+  // the key must be OMITTED, never the literal "undefined".
+  it('omits pipeline_id when nothing (caller or seg) provides one (old-backend degrade)', () => {
+    const out = composeDeliveredMetadata({ seg, isFinal: true, callerMeta: undefined });
+    expect('pipeline_id' in out).toBe(false);
+    expect(JSON.stringify(out)).not.toContain('undefined');
+  });
 });
 
 // ===========================================================================
@@ -99,6 +132,13 @@ describe('§4.3 chunk_id resolution chain', () => {
 describe('§4.3 detected_language resolution chain', () => {
   it.each(DETECTED_LANGUAGE_GOLDEN)('resolveDetectedLanguage(%o, seg) → expected', ({ meta, seg, expected }) => {
     expect(resolveDetectedLanguage(meta, seg)).toBe(expected);
+  });
+});
+
+// TASK-613 §3.3 D4 — pipeline_id resolution chain, same style as detected_language.
+describe('§3.3 pipeline_id resolution chain (TASK-613)', () => {
+  it.each(PIPELINE_ID_GOLDEN)('resolvePipelineId(%o, seg) → expected', ({ meta, seg, expected }) => {
+    expect(resolvePipelineId(meta, seg)).toBe(expected);
   });
 });
 
