@@ -248,6 +248,17 @@ describe('ExceptionInterceptor — QuotaExceededException → precise client sta
     expect(caught.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
   });
 
+  // TASK-615 D11 — the five new ledger-derived unit-allowance capabilities
+  // are rolling-monthly METERS, same retry-later semantics as
+  // monthlyConsultations/monthlyTranscriptionMinutes/monthlySummaries above.
+  it.each(['monthlySttSessionSeconds', 'monthlyLlmTokens', 'monthlyTtsCharacters', 'monthlyNlpTextUnits', 'monthlyEmbeddingTokens'])(
+    'maps the TASK-615 unit-allowance capability (%s) to 429 Too Many Requests',
+    async (capability) => {
+      const caught = await catchHttp(new QuotaExceededException('limit', { capability, limit: 1000, used: 1000, requested: 1, tenantId: 't-1' }));
+      expect(caught.getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+    },
+  );
+
   it('maps the storage capability to 413 Payload Too Large', async () => {
     const caught = await catchHttp(
       new QuotaExceededException('limit', { capability: 'storageQuotaBytes', limit: 100, used: 100, requested: 1, tenantId: 't-1' }),
