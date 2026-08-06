@@ -232,6 +232,10 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'rateLimit.windowMs': 'RATE_LIMIT_WINDOW_MS',
     'registration.selfSignupEnabled': 'REGISTRATION_SELF_SIGNUP_ENABLED',
     'entitlements.enabledDefault': 'ENTITLEMENTS_ENABLED_DEFAULT',
+    // TASK-615 WS-H — seed-time-only default for the metering reconcile
+    // sweep, mirroring entitlements.enabledDefault exactly (see
+    // metering.descriptors.ts).
+    'metering.reconcile.enabledDefault': 'METERING_RECONCILE_ENABLED_DEFAULT',
     // NOTE: `TENANT_IDP_ENABLED` is deliberately ABSENT — it has no reader
     // anywhere in the repo despite an `.env.sample` comment claiming one.
     // See `feature-flags.descriptors.ts` for the evidence.
