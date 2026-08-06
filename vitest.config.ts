@@ -79,6 +79,20 @@ export default defineConfig({
         test: {
           name: 'workspace',
           exclude: [...SHARED_EXCLUDE, 'apps/admin-console/**'],
+          // The unit suites run with MOCKED repositories/SecretsService and assert
+          // the PHI encrypt-on-write SOFT no-op path (see phi-field-encryption.ts:
+          // `SECRETS_PROVIDER != 'vault'` → skip; `== 'vault'` → fail-closed throw).
+          // `.env.test` deliberately carries SECRETS_PROVIDER=vault for the seed /
+          // test-API / e2e / integration flows (they use real Vault Transit — see
+          // scripts/test-setup.sh). Pin the unit workers to soft mode here so the
+          // unit run is correct regardless of what `.env.test` holds and never
+          // depends on a hand-maintained value. Scoped to this project only, so
+          // integration (its own config) keeps vault. Project `env` overrides the
+          // dotenv-cli-injected value — same mechanism the admin-console project
+          // below relies on for API_URL/ADMIN_SESSION_SECRET.
+          env: {
+            SECRETS_PROVIDER: 'env',
+          },
           // `packages/applications/.../image-thumbnail.service.test.ts` deliberately
           // exercises the REAL `sharp` codec (not mocked). sharp's native libvips
           // addon is not safe under Node's worker_threads (Vitest's default `threads`
