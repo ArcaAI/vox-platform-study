@@ -22,7 +22,19 @@ const planEntitlementRepository = { findByPlan: vi.fn(), findAll: vi.fn(), updat
 const tenantEntitlementRepository = { findByTenant: vi.fn(), create: vi.fn(), updateWithVersion: vi.fn() };
 const apiKeyRepository = { count: vi.fn() };
 const tenantService = { getUsageStats: vi.fn() };
-const metering = { getCurrentUsage: vi.fn().mockResolvedValue({ consultations: 0, transcriptionMinutes: 0, summaries: 0 }) };
+const metering = {
+  getCurrentUsage: vi.fn().mockResolvedValue({
+    consultations: 0,
+    transcriptionMinutes: 0,
+    summaries: 0,
+    sttSessionSeconds: 0,
+    llmTokens: 0,
+    ttsCharacters: 0,
+    nlpTextUnits: 0,
+    guardrailCalls: 0,
+    embeddingTokens: 0,
+  }),
+};
 
 const appSettings = {
   getFromCache: vi.fn((k: string) => cache.get(k)),
@@ -84,6 +96,11 @@ const fakePlanEntity = (o: Record<string, unknown> = {}) => ({
   monthlyConsultations: 500,
   monthlyTranscriptionMinutes: 1000,
   monthlySummaries: 500,
+  monthlySttSessionSeconds: null as bigint | null,
+  monthlyLlmTokens: null as bigint | null,
+  monthlyTtsCharacters: null as bigint | null,
+  monthlyNlpTextUnits: null as bigint | null,
+  monthlyEmbeddingTokens: null as bigint | null,
   featureDnaReports: false,
   featureVoiceEnrollment: false,
   featureMonitoringAccess: false,
@@ -107,6 +124,11 @@ const fakeTenantEntity = (o: Record<string, unknown> = {}) => ({
   monthlyConsultations: null,
   monthlyTranscriptionMinutes: null,
   monthlySummaries: null,
+  monthlySttSessionSeconds: null as bigint | null,
+  monthlyLlmTokens: null as bigint | null,
+  monthlyTtsCharacters: null as bigint | null,
+  monthlyNlpTextUnits: null as bigint | null,
+  monthlyEmbeddingTokens: null as bigint | null,
   featureDnaReports: null,
   featureVoiceEnrollment: null,
   featureMonitoringAccess: null,
@@ -243,6 +265,48 @@ describe('EntitlementsService', () => {
       expect(caps.trial.expired).toBe(false);
       expect(caps.trial.daysRemaining).toBe(3);
     });
+
+    it('TASK-615 — exposes the six new unit meters (allowance ceiling + live usage) alongside M1–M3', async () => {
+      tenantRepository.findById.mockResolvedValue({ plan: 'PRO', trialEndsAt: null });
+      planEntitlementRepository.findByPlan.mockResolvedValue(null);
+      tenantEntitlementRepository.findByTenant.mockResolvedValue({ monthlyLlmTokens: 1_000_000 });
+      tenantService.getUsageStats.mockResolvedValue(usageStats());
+      apiKeyRepository.count.mockResolvedValue(0);
+      metering.getCurrentUsage.mockResolvedValue({
+        consultations: 0,
+        transcriptionMinutes: 0,
+        summaries: 0,
+        sttSessionSeconds: 3_600,
+        llmTokens: 900_000,
+        ttsCharacters: 5_000,
+        nlpTextUnits: 40,
+        guardrailCalls: 12,
+        embeddingTokens: 100,
+      });
+
+      const caps = await makeService().getCapabilities('tenant-1');
+
+      const llmTokens = caps.meters.find((m) => m.key === 'monthlyLlmTokens')!;
+      expect(llmTokens).toMatchObject({ limit: 1_000_000, used: 900_000, nearLimit: true, exceeded: false });
+
+      const sttSeconds = caps.meters.find((m) => m.key === 'monthlySttSessionSeconds')!;
+      expect(sttSeconds).toMatchObject({ used: 3_600, unlimited: true }); // PRO seeds this allowance NULL
+
+      const ttsChars = caps.meters.find((m) => m.key === 'monthlyTtsCharacters')!;
+      expect(ttsChars).toMatchObject({ used: 5_000, unlimited: true });
+
+      const nlpUnits = caps.meters.find((m) => m.key === 'monthlyNlpTextUnits')!;
+      expect(nlpUnits).toMatchObject({ used: 40, unlimited: true });
+
+      const embeddingTokens = caps.meters.find((m) => m.key === 'monthlyEmbeddingTokens')!;
+      expect(embeddingTokens).toMatchObject({ used: 100, unlimited: true });
+
+      // GUARDRAIL_CALLS is informational-only — surfaced for visibility, but
+      // there is no allowance column so it is ALWAYS `unlimited: true` and can
+      // never appear as `exceeded`.
+      const guardrailCalls = caps.meters.find((m) => m.key === 'guardrailCalls')!;
+      expect(guardrailCalls).toMatchObject({ limit: null, used: 12, unlimited: true, exceeded: false });
+    });
   });
 
   describe('plan matrix CRUD', () => {
@@ -284,6 +348,34 @@ describe('EntitlementsService', () => {
 
       expect(row.storageQuotaBytes).toBe(BigInt(10 * GIB));
     });
+
+    it('TASK-615 — converts a new allowance ceiling number into its bigint column and echoes it in the response', async () => {
+      const row = fakePlanEntity({ plan: 'PRO', version: 1 });
+      planEntitlementRepository.findByPlan.mockResolvedValue(row);
+      planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().updatePlanEntitlement('PRO', {
+        monthlyLlmTokens: 2_000_000,
+        monthlyTtsCharacters: 500_000,
+        expectedVersion: 1,
+      });
+
+      expect(row.monthlyLlmTokens).toBe(BigInt(2_000_000));
+      expect(row.monthlyTtsCharacters).toBe(BigInt(500_000));
+      expect(res.monthlyLlmTokens).toBe(2_000_000);
+      expect(res.monthlyTtsCharacters).toBe(500_000);
+    });
+
+    it('TASK-615 — a null allowance ceiling clears it to unlimited', async () => {
+      const row = fakePlanEntity({ plan: 'PRO', version: 1, monthlyLlmTokens: BigInt(2_000_000) });
+      planEntitlementRepository.findByPlan.mockResolvedValue(row);
+      planEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().updatePlanEntitlement('PRO', { monthlyLlmTokens: null, expectedVersion: 1 });
+
+      expect(row.monthlyLlmTokens).toBeNull();
+      expect(res.monthlyLlmTokens).toBeNull();
+    });
   });
 
   describe('tenant override CRUD', () => {
@@ -323,8 +415,31 @@ describe('EntitlementsService', () => {
       expect(res.maxUsers).toBe(12);
     });
 
+    it('TASK-615 — creates an override with a negotiated allowance ceiling', async () => {
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+      tenantRepository.findById.mockResolvedValue({ id: 'tenant-1' });
+      tenantEntitlementRepository.create.mockImplementation(async (entity) => entity);
+
+      const res = await makeService().upsertTenantEntitlement('tenant-1', { monthlyLlmTokens: 50_000_000 });
+
+      const created = tenantEntitlementRepository.create.mock.calls[0][0];
+      expect(created.monthlyLlmTokens).toBe(BigInt(50_000_000));
+      expect(res.monthlyLlmTokens).toBe(50_000_000);
+    });
+
+    it('TASK-615 — updates an existing override allowance under OCC', async () => {
+      const row = fakeTenantEntity({ version: 3 });
+      tenantEntitlementRepository.findByTenant.mockResolvedValue(row);
+      tenantEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
+
+      const res = await makeService().upsertTenantEntitlement('tenant-1', { monthlySttSessionSeconds: 100_000, expectedVersion: 3 });
+
+      expect(row.monthlySttSessionSeconds).toBe(BigInt(100_000));
+      expect(res.monthlySttSessionSeconds).toBe(100_000);
+    });
+
     it('clears an override by nulling every field (reversible, never deleted)', async () => {
-      const row = fakeTenantEntity({ maxUsers: 99, rateLimitPerMinute: 300, version: 5 });
+      const row = fakeTenantEntity({ maxUsers: 99, rateLimitPerMinute: 300, monthlyLlmTokens: BigInt(1_000_000), version: 5 });
       tenantEntitlementRepository.findByTenant.mockResolvedValue(row);
       tenantEntitlementRepository.updateWithVersion.mockImplementation(async (_id, entity) => entity);
 
@@ -332,6 +447,13 @@ describe('EntitlementsService', () => {
 
       expect(row.maxUsers).toBeNull();
       expect(row.rateLimitPerMinute).toBeNull();
+      // TASK-615 — the new allowance overrides are cleared exactly like the
+      // pre-existing ones (reversible, never deleted).
+      expect(row.monthlySttSessionSeconds).toBeNull();
+      expect(row.monthlyLlmTokens).toBeNull();
+      expect(row.monthlyTtsCharacters).toBeNull();
+      expect(row.monthlyNlpTextUnits).toBeNull();
+      expect(row.monthlyEmbeddingTokens).toBeNull();
       expect(tenantEntitlementRepository.updateWithVersion).toHaveBeenCalledWith('te-1', row, 5);
     });
 
@@ -397,6 +519,29 @@ describe('EntitlementsService', () => {
           expect(err.metadata).toMatchObject({ capability: 'maxUsers', limit: 5, used: 8, requested: 1, tenantId: 'tenant-1' });
         });
     });
+
+    it('TASK-615 — enriches the blocked-event payload with the requesting user when CLS carries one (audit-quality authorship)', async () => {
+      values.set('entitlements.enabled', true);
+      asStarter();
+      clsService.get.mockImplementationOnce((key: string) => (key === 'user' ? { id: 'user-42' } : undefined));
+
+      await expect(makeService().assertQuantityQuota('tenant-1', 'maxUsers', 5)).rejects.toBeInstanceOf(QuotaExceededException);
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        ENTITLEMENTS_QUOTA_BLOCKED_EVENT,
+        expect.objectContaining({ responsibleEntityId: 'user-42' }),
+      );
+    });
+
+    it('TASK-615 — the blocked-event payload omits an author when CLS carries no user (background/system caller)', async () => {
+      values.set('entitlements.enabled', true);
+      asStarter(); // clsService.get default returns undefined for every key
+
+      await expect(makeService().assertQuantityQuota('tenant-1', 'maxUsers', 5)).rejects.toBeInstanceOf(QuotaExceededException);
+
+      const call = eventEmitter.emit.mock.calls.find((c) => c[0] === ENTITLEMENTS_QUOTA_BLOCKED_EVENT)!;
+      expect(call[1].responsibleEntityId).toBeUndefined();
+    });
   });
 
   describe('assertMeterQuota (meters, → 429)', () => {
@@ -431,6 +576,117 @@ describe('EntitlementsService', () => {
         ENTITLEMENTS_QUOTA_BLOCKED_EVENT,
         expect.objectContaining({ capability: 'monthlyConsultations', limit: 500, used: 500 }),
       );
+    });
+
+    describe('TASK-615 D11 unit-allowance capabilities', () => {
+      it('is a NO-OP when the allowance is null (unlimited) even with heavy usage — no DB plan row', async () => {
+        values.set('entitlements.enabled', true);
+        asStarter(); // STARTER seeds monthlyTtsCharacters: null
+        metering.getCurrentUsage.mockResolvedValueOnce({
+          consultations: 0,
+          transcriptionMinutes: 0,
+          summaries: 0,
+          sttSessionSeconds: 0,
+          llmTokens: 0,
+          ttsCharacters: 999_999_999,
+          nlpTextUnits: 0,
+          guardrailCalls: 0,
+          embeddingTokens: 0,
+        });
+
+        await expect(makeService().assertMeterQuota('tenant-1', 'monthlyTtsCharacters', 500)).resolves.toBeUndefined();
+        expect(eventEmitter.emit).not.toHaveBeenCalled();
+      });
+
+      it('throws QuotaExceededException once a finite TTS-character allowance is exceeded', async () => {
+        values.set('entitlements.enabled', true);
+        tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
+        planEntitlementRepository.findByPlan.mockResolvedValue({ monthlyTtsCharacters: 10_000 });
+        tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+        metering.getCurrentUsage.mockResolvedValueOnce({
+          consultations: 0,
+          transcriptionMinutes: 0,
+          summaries: 0,
+          sttSessionSeconds: 0,
+          llmTokens: 0,
+          ttsCharacters: 9_800,
+          nlpTextUnits: 0,
+          guardrailCalls: 0,
+          embeddingTokens: 0,
+        });
+
+        // Pre-flight: THIS request would add 500 chars — 9,800 + 500 > 10,000.
+        await expect(makeService().assertMeterQuota('tenant-1', 'monthlyTtsCharacters', 500)).rejects.toBeInstanceOf(QuotaExceededException);
+        expect(eventEmitter.emit).toHaveBeenCalledWith(
+          ENTITLEMENTS_QUOTA_BLOCKED_EVENT,
+          expect.objectContaining({ tenantId: 'tenant-1', capability: 'monthlyTtsCharacters', limit: 10_000, used: 9_800, requested: 500 }),
+        );
+      });
+
+      it('reads llmTokens / sttSessionSeconds / nlpTextUnits / embeddingTokens off the correct MeterUsage field', async () => {
+        values.set('entitlements.enabled', true);
+        const usage = {
+          consultations: 0,
+          transcriptionMinutes: 0,
+          summaries: 0,
+          sttSessionSeconds: 111,
+          llmTokens: 222,
+          ttsCharacters: 333,
+          nlpTextUnits: 444,
+          guardrailCalls: 555,
+          embeddingTokens: 666,
+        };
+        const cases: Array<[keyof typeof usage, 'monthlySttSessionSeconds' | 'monthlyLlmTokens' | 'monthlyNlpTextUnits' | 'monthlyEmbeddingTokens']> = [
+          ['sttSessionSeconds', 'monthlySttSessionSeconds'],
+          ['llmTokens', 'monthlyLlmTokens'],
+          ['nlpTextUnits', 'monthlyNlpTextUnits'],
+          ['embeddingTokens', 'monthlyEmbeddingTokens'],
+        ];
+
+        for (const [usageKey, capability] of cases) {
+          tenantRepository.findById.mockResolvedValue({ plan: 'STARTER', trialEndsAt: null });
+          planEntitlementRepository.findByPlan.mockResolvedValue({ [capability]: usage[usageKey] }); // limit == used exactly
+          tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+          metering.getCurrentUsage.mockResolvedValueOnce(usage);
+
+          // increment 0 → "used > limit" only; used == limit must NOT block.
+          await expect(makeService().assertMeterQuota('tenant-1', capability, 0)).resolves.toBeUndefined();
+          // increment 1 → used + 1 > limit → blocks.
+          metering.getCurrentUsage.mockResolvedValueOnce(usage);
+          await expect(makeService().assertMeterQuota('tenant-1', capability, 1)).rejects.toBeInstanceOf(QuotaExceededException);
+        }
+      });
+
+      it('TRIAL hard-cap vs paid soft-cap: a finite TRIAL allowance blocks; the same usage under an unlimited (null) paid-tier allowance never blocks', async () => {
+        values.set('entitlements.enabled', true);
+        const heavyUsage = {
+          consultations: 0,
+          transcriptionMinutes: 0,
+          summaries: 0,
+          sttSessionSeconds: 0,
+          llmTokens: 5_000_000,
+          ttsCharacters: 0,
+          nlpTextUnits: 0,
+          guardrailCalls: 0,
+          embeddingTokens: 0,
+        };
+
+        // TRIAL with an operator-set finite allowance — D12 "hard caps only for TRIAL".
+        tenantRepository.findById.mockResolvedValue({ plan: 'TRIAL', trialEndsAt: null });
+        planEntitlementRepository.findByPlan.mockResolvedValue({ monthlyLlmTokens: 5_000_000 });
+        tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+        metering.getCurrentUsage.mockResolvedValueOnce(heavyUsage);
+        await expect(makeService().assertMeterQuota('tenant-1', 'monthlyLlmTokens')).rejects.toBeInstanceOf(QuotaExceededException);
+
+        // Same usage under ENTERPRISE, which seeds monthlyLlmTokens NULL (D12
+        // "soft caps for paid tiers" — unlimited here means the quota gate
+        // never blocks; overage billing is the invoice engine's job, WS-I).
+        tenantRepository.findById.mockResolvedValue({ plan: 'ENTERPRISE', trialEndsAt: null });
+        planEntitlementRepository.findByPlan.mockResolvedValue(null);
+        tenantEntitlementRepository.findByTenant.mockResolvedValue(null);
+        metering.getCurrentUsage.mockResolvedValueOnce(heavyUsage);
+        await expect(makeService().assertMeterQuota('tenant-1', 'monthlyLlmTokens')).resolves.toBeUndefined();
+      });
     });
   });
 

@@ -43,6 +43,21 @@ export class TenantEntitlementResponse {
   @ApiPropertyOptional({ description: 'Override monthly summaries; null = inherit', nullable: true })
   monthlySummaries?: number | null;
 
+  @ApiPropertyOptional({ description: 'Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit', nullable: true })
+  monthlySttSessionSeconds?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly LLM tokens allowance (TASK-615 D11); null = inherit', nullable: true })
+  monthlyLlmTokens?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly TTS characters allowance (TASK-615 D11); null = inherit', nullable: true })
+  monthlyTtsCharacters?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly NLP text-units allowance (TASK-615 D11); null = inherit', nullable: true })
+  monthlyNlpTextUnits?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly embedding tokens allowance (TASK-615 D11); null = inherit', nullable: true })
+  monthlyEmbeddingTokens?: number | null;
+
   @ApiPropertyOptional({ description: 'Override DNA reports feature; null = inherit', nullable: true })
   featureDnaReports?: boolean | null;
 
@@ -131,6 +146,36 @@ export class UpsertTenantEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlySummaries?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly STT session-seconds allowance (TASK-615 D11); null = inherit', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlySttSessionSeconds?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly LLM tokens allowance (TASK-615 D11); null = inherit', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyLlmTokens?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly TTS characters allowance (TASK-615 D11); null = inherit', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyTtsCharacters?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly NLP text-units allowance (TASK-615 D11); null = inherit', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyNlpTextUnits?: number | null;
+
+  @ApiPropertyOptional({ description: 'Override monthly embedding tokens allowance (TASK-615 D11); null = inherit', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyEmbeddingTokens?: number | null;
 
   @ApiPropertyOptional({ description: 'Override DNA reports feature; null = inherit', nullable: true })
   @IsOptional()

@@ -16,8 +16,21 @@ export type EntitlementLimitKey = keyof ResolvedLimits;
  * The rolling-monthly METER capabilities (Q5): the subset of limit keys backed
  * by `TenantUsageMeter` / live Postgres aggregation. Over-limit here maps to
  * HTTP 429 (not 409) at the API gateway.
+ *
+ * TASK-615 D11 adds the five ledger-derived unit-allowance capabilities.
+ * Deliberately NO `monthlyGuardrailCalls` — guardrail has no allowance column
+ * (D6/D16: metered, never quota-blocked), so the type itself makes
+ * "gate a guardrail call on quota" impossible to express at a call site.
  */
-export type MeterCapabilityKey = 'monthlyConsultations' | 'monthlyTranscriptionMinutes' | 'monthlySummaries';
+export type MeterCapabilityKey =
+  | 'monthlyConsultations'
+  | 'monthlyTranscriptionMinutes'
+  | 'monthlySummaries'
+  | 'monthlySttSessionSeconds'
+  | 'monthlyLlmTokens'
+  | 'monthlyTtsCharacters'
+  | 'monthlyNlpTextUnits'
+  | 'monthlyEmbeddingTokens';
 
 /**
  * Q10 "block-new" — would adding `increment` more (default 1) to `used` exceed

@@ -30,6 +30,19 @@ export interface ResolvedLimits {
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
+  /**
+   * Per-capability INCLUDED ALLOWANCES (TASK-615 D11), over the same
+   * UTC-calendar-month windows as the meters above. `null` = unlimited — the
+   * seeded default for every plan today (a commercial ceiling is a product
+   * decision, set later through the admin plan matrix). No
+   * `monthlyGuardrailCalls`: guardrail is metered but never quota-blocked
+   * (D6/D16), so an allowance for it would be a control nothing reads.
+   */
+  monthlySttSessionSeconds: number | null;
+  monthlyLlmTokens: number | null;
+  monthlyTtsCharacters: number | null;
+  monthlyNlpTextUnits: number | null;
+  monthlyEmbeddingTokens: number | null;
 }
 
 export interface ResolvedFeatures {
@@ -66,6 +79,12 @@ export interface PlanEntitlementInput {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  // TASK-615 D11 — DB column type is `BigInt?`, same normalization as storageQuotaBytes.
+  monthlySttSessionSeconds?: number | bigint | null;
+  monthlyLlmTokens?: number | bigint | null;
+  monthlyTtsCharacters?: number | bigint | null;
+  monthlyNlpTextUnits?: number | bigint | null;
+  monthlyEmbeddingTokens?: number | bigint | null;
   featureDnaReports?: boolean;
   featureVoiceEnrollment?: boolean;
   featureMonitoringAccess?: boolean;
@@ -88,6 +107,12 @@ export interface TenantEntitlementOverrideInput {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  // TASK-615 D11 — negotiated-allowance override hook (null = inherit the plan default).
+  monthlySttSessionSeconds?: number | bigint | null;
+  monthlyLlmTokens?: number | bigint | null;
+  monthlyTtsCharacters?: number | bigint | null;
+  monthlyNlpTextUnits?: number | bigint | null;
+  monthlyEmbeddingTokens?: number | bigint | null;
   featureDnaReports?: boolean | null;
   featureVoiceEnrollment?: boolean | null;
   featureMonitoringAccess?: boolean | null;
@@ -111,6 +136,11 @@ export const UNGATED_ENTITLEMENTS: ResolvedEntitlements = {
     monthlyConsultations: null,
     monthlyTranscriptionMinutes: null,
     monthlySummaries: null,
+    monthlySttSessionSeconds: null,
+    monthlyLlmTokens: null,
+    monthlyTtsCharacters: null,
+    monthlyNlpTextUnits: null,
+    monthlyEmbeddingTokens: null,
   },
   features: { dnaReports: true, voiceEnrollment: true, monitoringAccess: true },
   modelTier: 'full_custom',
@@ -158,6 +188,11 @@ export function resolveEntitlements(
     monthlyConsultations: pick(planRow?.monthlyConsultations, seeded.monthlyConsultations),
     monthlyTranscriptionMinutes: pick(planRow?.monthlyTranscriptionMinutes, seeded.monthlyTranscriptionMinutes),
     monthlySummaries: pick(planRow?.monthlySummaries, seeded.monthlySummaries),
+    monthlySttSessionSeconds: pick(toNum(planRow?.monthlySttSessionSeconds), seeded.monthlySttSessionSeconds),
+    monthlyLlmTokens: pick(toNum(planRow?.monthlyLlmTokens), seeded.monthlyLlmTokens),
+    monthlyTtsCharacters: pick(toNum(planRow?.monthlyTtsCharacters), seeded.monthlyTtsCharacters),
+    monthlyNlpTextUnits: pick(toNum(planRow?.monthlyNlpTextUnits), seeded.monthlyNlpTextUnits),
+    monthlyEmbeddingTokens: pick(toNum(planRow?.monthlyEmbeddingTokens), seeded.monthlyEmbeddingTokens),
     featureDnaReports: pick(planRow?.featureDnaReports, seeded.featureDnaReports),
     featureVoiceEnrollment: pick(planRow?.featureVoiceEnrollment, seeded.featureVoiceEnrollment),
     featureMonitoringAccess: pick(planRow?.featureMonitoringAccess, seeded.featureMonitoringAccess),
@@ -180,6 +215,11 @@ export function resolveEntitlements(
       monthlyConsultations: pick(override?.monthlyConsultations, base.monthlyConsultations),
       monthlyTranscriptionMinutes: pick(override?.monthlyTranscriptionMinutes, base.monthlyTranscriptionMinutes),
       monthlySummaries: pick(override?.monthlySummaries, base.monthlySummaries),
+      monthlySttSessionSeconds: pick(toNum(override?.monthlySttSessionSeconds), base.monthlySttSessionSeconds),
+      monthlyLlmTokens: pick(toNum(override?.monthlyLlmTokens), base.monthlyLlmTokens),
+      monthlyTtsCharacters: pick(toNum(override?.monthlyTtsCharacters), base.monthlyTtsCharacters),
+      monthlyNlpTextUnits: pick(toNum(override?.monthlyNlpTextUnits), base.monthlyNlpTextUnits),
+      monthlyEmbeddingTokens: pick(toNum(override?.monthlyEmbeddingTokens), base.monthlyEmbeddingTokens),
     },
     features: {
       dnaReports: pick(override?.featureDnaReports, base.featureDnaReports),

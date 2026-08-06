@@ -44,6 +44,21 @@ export class PlanEntitlementResponse {
   @ApiPropertyOptional({ description: 'Monthly summaries; null = unlimited', nullable: true })
   monthlySummaries?: number | null;
 
+  @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited', nullable: true })
+  monthlySttSessionSeconds?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly LLM tokens allowance, all billable kinds summed (TASK-615 D11); null = unlimited', nullable: true })
+  monthlyLlmTokens?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly TTS characters allowance, Unicode code points (TASK-615 D11); null = unlimited', nullable: true })
+  monthlyTtsCharacters?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly NLP text-units allowance (TASK-615 D11); null = unlimited', nullable: true })
+  monthlyNlpTextUnits?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly embedding tokens allowance (TASK-615 D11); null = unlimited', nullable: true })
+  monthlyEmbeddingTokens?: number | null;
+
   @ApiProperty({ description: 'DNA writing-style + reports enabled' })
   featureDnaReports: boolean;
 
@@ -128,6 +143,36 @@ export class UpdatePlanEntitlementRequest {
   @IsInt()
   @Min(0)
   monthlySummaries?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly STT session-seconds allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlySttSessionSeconds?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly LLM tokens allowance, all billable kinds summed (TASK-615 D11); null = unlimited', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyLlmTokens?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly TTS characters allowance, Unicode code points (TASK-615 D11); null = unlimited', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyTtsCharacters?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly NLP text-units allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyNlpTextUnits?: number | null;
+
+  @ApiPropertyOptional({ description: 'Monthly embedding tokens allowance (TASK-615 D11); null = unlimited', nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyEmbeddingTokens?: number | null;
 
   @ApiPropertyOptional({ description: 'DNA writing-style + reports enabled' })
   @IsOptional()
