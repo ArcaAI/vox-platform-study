@@ -3,14 +3,40 @@ import {
   IConfigService,
   IProviderConnectionService,
   ITenantTtsConfigService,
+  IUsageLedgerService,
   ProviderOverrides,
   SecretsService,
+  UsageIdempotencyKey,
 } from '@arcaai/applications';
+import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
 import WebSocket from 'ws';
 import { StreamTicketService } from '../auth/stream-ticket.service';
+
+// Self-hosted TTS engine ids (KNOWN_PROVIDERS, packages/applications/.../vocabulary.ts).
+// Mirrors SpeechProxyController's classifier — kept local rather than shared
+// since the two files have no common base and the set is tiny/stable.
+const SELF_HOSTED_TTS_PROVIDERS = new Set(['kokoro', 'indic_parler']);
+
+/** Shape of the `{"type":"usage",...}` control frame stream_ws.py sends at teardown. */
+interface TtsUsageFrame {
+  type: 'usage';
+  characters: number;
+  audioSeconds: number | null;
+  interrupted: boolean;
+  provider: string | null;
+}
+
+function isTtsUsageFrame(value: unknown): value is TtsUsageFrame {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as Record<string, unknown>).type === 'usage' &&
+    typeof (value as Record<string, unknown>).characters === 'number'
+  );
+}
 
 /**
  * WS-duplex TTS gateway. Bridges a browser WebSocket to the tts
@@ -63,6 +89,10 @@ interface Bridge {
   providerOverrides: ProviderOverrides | null;
   /** The client's first `init` frame is enriched with the tenant config exactly once. */
   initEnriched: boolean;
+  // TASK-615 WS-E: carried so the usage-frame handler can build the ledger
+  // event without threading extra params through the message callback.
+  sessionId: string;
+  tenantId: string | null;
 }
 
 @WebSocketGateway({ path: '/ws/tts/stream' })
@@ -85,6 +115,10 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // BYO provider credential injection (`service='tts'`, TASK-570) — the
     // unified provider-connection plane.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
+    // TASK-615 WS-E: emits CHARACTER + AUDIO_SECOND from tts's final "usage"
+    // control frame. Optional/trailing so existing positional test fixtures
+    // keep compiling; absent (or no tenantId on the ticket) ⇒ no emission.
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
   ) {}
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
@@ -174,6 +208,8 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       effectiveConfig,
       providerOverrides,
       initEnriched: false,
+      sessionId,
+      tenantId,
     };
     this.bridges.set(client, bridge);
 
@@ -186,8 +222,15 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     // Upstream → browser: verbatim relay (binary PCM frames + JSON control),
-    // with egress backpressure onto the upstream when the browser saturates.
+    // with egress backpressure onto the upstream when the browser saturates —
+    // EXCEPT the final "usage" control frame (TASK-615 WS-E), which is an
+    // internal signal between tts and this gateway: consumed here to emit the
+    // ledger row, never forwarded (the browser client's protocol has no
+    // "usage" message type).
     upstream.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
+      if (!isBinary && this.maybeConsumeUsageFrame(bridge, data)) {
+        return;
+      }
       this.safeSend(client, data, isBinary);
       this.applyBackpressure(bridge);
     });
@@ -269,6 +312,78 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Buffer (not string) to satisfy WebSocket.RawData; isBinary stays false, so
     // ws still ships it as a TEXT frame — tts parses it as JSON init.
     return Buffer.from(JSON.stringify(enriched));
+  }
+
+  /**
+   * TASK-615 WS-E: consume tts's final ``{"type":"usage",...}`` frame and
+   * emit CHARACTER + AUDIO_SECOND ledger rows. Fail-open throughout — a
+   * malformed frame, a missing ledger, or a missing tenantId all just mean
+   * "no emission", never a thrown error into the relay path.
+   *
+   * @returns true when `data` WAS a usage frame (whether or not emission
+   *          happened) — the caller uses this to skip the client relay.
+   */
+  private maybeConsumeUsageFrame(bridge: Bridge, data: WebSocket.RawData): boolean {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data.toString());
+    } catch {
+      return false;
+    }
+    if (!isTtsUsageFrame(parsed)) {
+      return false;
+    }
+
+    if (this.usageLedger && bridge.tenantId) {
+      const { deployment, costBasis } = parsed.provider
+        ? this.classifyTtsProvider(parsed.provider, bridge.providerOverrides)
+        : { deployment: AiDeploymentKind.SELF_HOSTED, costBasis: undefined };
+      this.usageLedger
+        .recordUsage({
+          common: {
+            tenantId: bridge.tenantId,
+            idempotencyKey: UsageIdempotencyKey.ttsRequest(bridge.sessionId),
+            occurredAt: new Date(),
+            capability: AiCapability.TTS,
+            operation: 'tts.synthesize',
+            provider: parsed.provider ?? 'none',
+            model: null,
+            deployment,
+            ...(costBasis ? { costBasis } : {}),
+            requestId: bridge.sessionId,
+            sessionId: bridge.sessionId,
+            attributesJson: { interrupted: parsed.interrupted },
+          },
+          units: [
+            { unit: AiUsageUnit.CHARACTER, quantity: parsed.characters },
+            ...(parsed.audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: parsed.audioSeconds }] : []),
+          ],
+        })
+        .catch((err: unknown) => {
+          // Never let a metering failure disrupt the bridge — synthesis
+          // already happened; this is a side effect of work already done.
+          this.logger.warn({
+            message: 'TTS usage emission failed',
+            sessionId: bridge.sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    }
+    return true;
+  }
+
+  /** BYOK (tenant credential injected into the init frame) beats self-hosted beats platform-funded cloud. */
+  private classifyTtsProvider(
+    provider: string,
+    providerOverrides: ProviderOverrides | null,
+  ): { deployment: AiDeploymentKind; costBasis?: AiCostBasis } {
+    if (providerOverrides && provider in providerOverrides) {
+      return { deployment: AiDeploymentKind.BYOK, costBasis: AiCostBasis.BYOK_NOTIONAL };
+    }
+    if (SELF_HOSTED_TTS_PROVIDERS.has(provider)) {
+      return { deployment: AiDeploymentKind.SELF_HOSTED };
+    }
+    return { deployment: AiDeploymentKind.CLOUD };
   }
 
   private safeSend(socket: WebSocket, data: WebSocket.RawData, isBinary: boolean): void {

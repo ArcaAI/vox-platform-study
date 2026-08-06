@@ -7,7 +7,12 @@ from transformers import AutoModelForTokenClassification, AutoTokenizer, pipelin
 
 from nlp.core.config import OntologyLinkerConfig, TokenClassificationConfig
 from nlp.core.logging import get_logger
-from nlp.core.metrics import MODEL_MEDICAL_NER, track_model_inference
+from nlp.core.metrics import (
+    MODEL_MEDICAL_NER,
+    NLP_DOCUMENTS_PROCESSED_TOTAL,
+    nlp_metrics,
+    track_model_inference,
+)
 from nlp.schemas.classification import TokenClassificationRequest, TokenClassificationResponse
 from nlp.schemas.common import Entity, TextPosition
 from nlp.services.assertion import AssertionModel, NegExAssertionClassifier
@@ -125,6 +130,15 @@ class TransformerTokenClassifier(TokenClassifier):
             if self.configs.assertion_enabled and entities:
                 entities = self.assertion_classifier.classify(request.text, entities)
 
+            # TASK-615 WS-E: wire the previously dead record_entities() at the
+            # real call-site (current-state-review §2.4 — zero call-sites
+            # outside its own definition). One call per DISTINCT entity_type so
+            # the label stays bounded (the model's own fixed BIO-tag label set,
+            # not free text), plus one "document processed" per call — this
+            # single site is shared by BOTH the REST route (classify_tokens)
+            # and the WebSocket route (same service.process()).
+            self._record_usage_metrics(entities)
+
             return TokenClassificationResponse(
                 # tokens=tokens,
                 # labels=labels,
@@ -149,6 +163,19 @@ class TransformerTokenClassifier(TokenClassifier):
                 entities=entities,
                 model_version=self.version,
             )
+
+    def _record_usage_metrics(self, entities: list[Entity]) -> None:
+        """TASK-615 WS-E: entities-by-type (dual OTel+Prometheus write via
+        ``nlp_metrics.record_entities``) + one documents-processed increment.
+        Grouped by type so the label is bounded by the model's own fixed
+        BIO-tag label set, never a per-entity free-text value.
+        """
+        counts: dict[str, int] = {}
+        for entity in entities:
+            counts[entity.entity_type] = counts.get(entity.entity_type, 0) + 1
+        for entity_type, count in counts.items():
+            nlp_metrics.record_entities(entity_count=count, entity_type=entity_type, model=MODEL_MEDICAL_NER)
+        NLP_DOCUMENTS_PROCESSED_TOTAL.labels(model=MODEL_MEDICAL_NER).inc()
 
     def _to_entities(self, pipeline_results: list[dict[str, Any]]) -> list[Entity]:
         """Convert pipeline results to MedicalEntity objects"""

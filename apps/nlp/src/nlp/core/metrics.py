@@ -86,6 +86,11 @@ class NLPMetrics:
         self, entity_count: int, entity_type: str, model: str = "token_classifier"
     ) -> None:
         self.entity_count.add(entity_count, {"entity_type": entity_type, "model": model})
+        # TASK-615 WS-E: the OTel counter above is exported via OTLP gRPC only
+        # (not Prometheus-scrapable — see the module docstring). The
+        # platform-metrics backend reads Prometheus, so this call ALSO feeds
+        # the Prometheus-native counter below. Same call site, two sinks.
+        NLP_ENTITIES_TOTAL.labels(model=model, entity_type=entity_type).inc(entity_count)
 
     def record_confidence(self, score: float, model: str, label: str = "") -> None:
         self.classification_confidence.record(score, {"model": model, "label": label})
@@ -95,6 +100,27 @@ class NLPMetrics:
 
 
 nlp_metrics = NLPMetrics()
+
+
+# ---------------------------------------------------------------------------
+# Usage-metering counters (TASK-615 WS-E)
+# ---------------------------------------------------------------------------
+# Prometheus-scrapable counterparts of NLPMetrics.entity_count/inference_count
+# (current-state-review §2.4: those are OTel-only). record_entities() (above)
+# writes both; TokenClassifier.process() increments the documents counter once
+# per call — see services/token_classifier.py, the shared call site behind
+# both the REST and WebSocket token-classification routes.
+NLP_ENTITIES_TOTAL = Counter(
+    "nlp_entities",
+    "Entities extracted, by model and entity type",
+    ["model", "entity_type"],
+)
+
+NLP_DOCUMENTS_PROCESSED_TOTAL = Counter(
+    "nlp_documents_processed",
+    "Documents (entity-extraction calls) processed, by model",
+    ["model"],
+)
 
 
 # ---------------------------------------------------------------------------

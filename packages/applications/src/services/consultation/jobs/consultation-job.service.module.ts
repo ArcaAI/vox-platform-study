@@ -20,6 +20,7 @@ import { HarnessGatewayServiceModule } from '../harness/harness-gateway.service.
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { ConfigResolverModule } from '../../config-resolver';
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
+import { UsageLedgerServiceModule } from '../../usageLedger';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-defaul
     HarnessPolicyServiceModule, // SMR-selection resolver for the summary/pre-summary/comprehensive processors
     AiTaskDefaultServiceModule, // nlp.ner model-injection resolver for NerProcessor (TASK-552 Lane A)
     ConfigResolverModule, // Realtime cascade + preferred-prompt threading (handler + summary processor)
+    UsageLedgerServiceModule, // ner.extract usage emission for NerProcessor (TASK-615 WS-E)
     EventEmitterModule, // Required for @OnEvent handlers and EventEmitter2 injection
     RedisCacheModule.register(), // For job status storage and pub/sub
     BullModule.registerQueue(

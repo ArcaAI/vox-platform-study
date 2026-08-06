@@ -2291,4 +2291,119 @@ describe('SummaryService', () => {
       expect(encOrder).toBeLessThan(updateOrder);
     });
   });
+
+  // ===========================================================================
+  // TASK-615 WS-E — extractEntities (sync path) usage-ledger emission
+  // ===========================================================================
+
+  describe('extractEntities — usage-ledger emission (TASK-615 WS-E)', () => {
+    const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 2 }) });
+
+    const buildServiceWithLedger = (usageLedger: unknown, aiTaskDefaultService?: unknown) =>
+      new SummaryService(
+        mockContextItemRepository as any,
+        mockConsultationRepository as any,
+        mockSummaryMetaRepository as any,
+        mockNamedEntityRepository as any,
+        mockHttpService as any,
+        mockConfigService as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        mockContextItemVersionRepository as any,
+        mockPromptAssemblyService as any,
+        undefined, // secretsService
+        undefined, // userProfileRepository
+        undefined, // harnessAuditService
+        undefined, // harnessGatewayService
+        mockHarnessPolicyService as any,
+        undefined, // configResolver
+        undefined, // entitlements
+        undefined, // trajectoryService
+        aiTaskDefaultService as any,
+        undefined, // transcriptSegmentRepository
+        usageLedger as any,
+      );
+
+    it('emits TEXT_UNIT + REQUEST keyed to a freshly generated requestId, with consultationId as attribution', async () => {
+      const usageLedger = createMockUsageLedger();
+      const aiTaskDefaultService = { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
+      const svc = buildServiceWithLedger(usageLedger, aiTaskDefaultService);
+      const content = 'y'.repeat(300); // 300 chars -> 3 TEXT_UNIT
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content, consultationId: 'consult-sync-1' }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      await svc.extractEntities('ctx-item-123');
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      // The sync path has no natural durable job id, so idempotencyKey is
+      // built from a freshly generated requestId — NEVER the consultationId
+      // (that would silently drop every subsequent extractEntities call for
+      // the same consultation).
+      expect(call.common.idempotencyKey).toMatch(/^nlp:/);
+      expect(call.common.idempotencyKey).not.toBe('nlp:consult-sync-1');
+      expect(call.common).toMatchObject({
+        tenantId: 'tenant-1',
+        capability: 'NLP',
+        operation: 'ner.extract',
+        provider: 'built-in',
+        model: 'blaze999/Medical-NER',
+        deployment: 'SELF_HOSTED',
+        consultationId: 'consult-sync-1',
+      });
+      expect(call.units).toEqual([
+        { unit: 'TEXT_UNIT', quantity: 3 },
+        { unit: 'REQUEST', quantity: 1 },
+      ]);
+    });
+
+    it('carries a null model when AiTaskDefault resolution fail-opened', async () => {
+      const usageLedger = createMockUsageLedger();
+      const svc = buildServiceWithLedger(usageLedger); // no aiTaskDefaultService
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content', consultationId: 'consult-sync-2' }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      await svc.extractEntities('ctx-item-123');
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common.model).toBeNull();
+    });
+
+    it('two extractEntities calls for the SAME consultation get DISTINCT idempotencyKeys (never dropped)', async () => {
+      // Regression test for the earlier consultation-keyed design, which
+      // silently dropped every call after the first for a consultation.
+      const usageLedger = createMockUsageLedger();
+      const svc = buildServiceWithLedger(usageLedger);
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content', consultationId: 'shared-consult' }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      await svc.extractEntities('ctx-item-123');
+      await svc.extractEntities('ctx-item-123');
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(2);
+      const firstKey = usageLedger.recordUsage.mock.calls[0][0].common.idempotencyKey;
+      const secondKey = usageLedger.recordUsage.mock.calls[1][0].common.idempotencyKey;
+      expect(firstKey).not.toBe(secondKey);
+      // Both still attribute to the same consultation.
+      expect(usageLedger.recordUsage.mock.calls[0][0].common.consultationId).toBe('shared-consult');
+      expect(usageLedger.recordUsage.mock.calls[1][0].common.consultationId).toBe('shared-consult');
+    });
+
+    it('emits nothing when IUsageLedgerService is absent (fail-open, existing positional fixtures unaffected)', async () => {
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content' }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      // `service` (the shared beforeEach fixture) has no usageLedger — must not throw.
+      await expect(service.extractEntities('ctx-item-123')).resolves.toBeUndefined();
+    });
+
+    it('a metering failure never fails extractEntities (never let a metering failure fail the request)', async () => {
+      const usageLedger = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox write failed')) };
+      const svc = buildServiceWithLedger(usageLedger);
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content' }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      await expect(svc.extractEntities('ctx-item-123')).resolves.toBeUndefined();
+    });
+  });
 });
