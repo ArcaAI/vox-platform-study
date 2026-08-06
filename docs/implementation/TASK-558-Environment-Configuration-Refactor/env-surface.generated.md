@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 140 |
+| Declared keys (distinct) | 141 |
 | … of which required (`failMode: closed`) | 31 |
 | … of which secret | 30 |
-| … tier `env` | 104 |
+| … tier `env` | 105 |
 | … tier `global-kv` | 10 |
 | … tier `vault-kv` | 26 |
-| `turbo.json#globalEnv` entries | 152 |
+| `turbo.json#globalEnv` entries | 154 |
 
 ## Variables
 
@@ -89,6 +89,7 @@ disagree with those declarations.
 | `OIDC_CLIENT_SECRET` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Client secret for the platform OIDC relying-party registration. Absent ⇒ OIDC authentication is disabled (a logged WARN, not a crash) — see `auth.service.module.ts`. |
 | `OTEL_DEBUG` | `env` | no | `false` | `apps/api` | Enables the OpenTelemetry diagnostic logger. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `env` | no | — | `apps/api` | gRPC OTLP collector endpoint. Unset disables the exporters. |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | `env` | no | — | `apps/api` | Pins the OTel GenAI instrumentation-library content-capture switch off, so prompt/completion text (PHI) is never stamped onto spans. Boot-time audit refuses to start in production unless this is exactly NO_CONTENT. |
 | `OTEL_METRICS_ENABLED` | `env` | no | `false` | `apps/api` | Turns on the OpenTelemetry metrics pipeline. |
 | `OTEL_SDK_DISABLED` | `env` | no | `false` | `apps/api` | Skips OpenTelemetry SDK start-up entirely. |
 | `OTEL_SERVICE_NAME` | `env` | no | `api-gateway` | `apps/api` | Value of the `service.name` resource attribute. |
