@@ -19,6 +19,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SysEventService } from '../sysEvent.service';
 import { SysEvent, SendContactMessageEvent, AuditAction, JobQueue, JobType, ResourceType } from '@arcaai/domains';
+import type { QuotaBlockedEvent } from '../../entitlements/entitlements.constants';
 
 /**
  * Mock IRedisService - simulates the Redis queue service.
@@ -1063,6 +1064,77 @@ describe('SysEventService', () => {
       // The passed data should still reference the event data
       // (This test documents current behavior - not necessarily requiring deep clone)
       expect(passedData).toEqual(event.data);
+    });
+  });
+
+  describe('handleEntitlementsQuotaBlockedEvent (TASK-615 WS-H)', () => {
+    /**
+     * The payload `EntitlementsService.assertQuantityQuota` /
+     * `assertConcurrencyQuota` actually emit on `ENTITLEMENTS_QUOTA_BLOCKED_EVENT`
+     * — NOT a `SysEvent` (no `id`, no `resourceType`; `responsibleEntityId` is
+     * optional). Previously nobody listened for it at all: a quota block
+     * happened, the typed exception was thrown, and the event itself vanished —
+     * no audit trail. This is the first real consumer.
+     */
+    const makeQuotaBlockedEvent = (overrides: Partial<QuotaBlockedEvent> = {}): QuotaBlockedEvent => ({
+      tenantId: 'tenant-1',
+      capability: 'monthlyTtsCharacters',
+      limit: 10_000,
+      used: 9_800,
+      requested: 500,
+      at: new Date('2026-08-06T10:00:00.000Z'),
+      ...overrides,
+    });
+
+    it('enqueues an AuditLog job carrying the block details, scoped to the tenant', async () => {
+      const event = makeQuotaBlockedEvent();
+
+      await service.handleEntitlementsQuotaBlockedEvent(event);
+
+      expect(mockRedisService.addJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queueName: JobQueue.AuditLog,
+          data: expect.objectContaining({
+            action: AuditAction.UPDATE,
+            resourceType: ResourceType.Tenant,
+            resourceId: 'tenant-1',
+            tenantId: 'tenant-1',
+            data: expect.objectContaining({
+              quotaBlocked: true,
+              capability: 'monthlyTtsCharacters',
+              limit: 10_000,
+              used: 9_800,
+              requested: 500,
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('authors the audit row with responsibleEntityId when the emitting caller supplied one', async () => {
+      const event = makeQuotaBlockedEvent({ responsibleEntityId: 'user-42' });
+
+      await service.handleEntitlementsQuotaBlockedEvent(event);
+
+      expect(mockRedisService.addJob).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ responsibleUserId: 'user-42' }) }),
+      );
+    });
+
+    it('degrades to an authorless row (never throws) when no responsibleEntityId was supplied', async () => {
+      const event = makeQuotaBlockedEvent({ responsibleEntityId: undefined });
+
+      await expect(service.handleEntitlementsQuotaBlockedEvent(event)).resolves.toBeUndefined();
+      expect(mockRedisService.addJob).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ responsibleUserId: undefined }) }),
+      );
+    });
+
+    it('never throws when the Redis enqueue fails (Promise.allSettled, same posture as every other handler)', async () => {
+      mockRedisService.addJob.mockRejectedValueOnce(new Error('queue down'));
+      const event = makeQuotaBlockedEvent();
+
+      await expect(service.handleEntitlementsQuotaBlockedEvent(event)).resolves.toBeUndefined();
     });
   });
 });
