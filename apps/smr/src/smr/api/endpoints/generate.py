@@ -80,6 +80,12 @@ from smr.models.stats import (
 )
 from smr.models.stream import StreamChunk
 from smr.models.task import TaskStatus
+from smr.models.usage import (
+    UsageDetail,
+    build_usage_detail,
+    guardrail_usage_from_verdict,
+    raw_usage_from_stats,
+)
 from smr.providers.base import LLMProvider, ProviderNotFoundError, ProviderRegistry
 from smr.services.circuit_breaker import CircuitBreaker, CircuitState
 from smr.services.external_guardrail import (
@@ -147,6 +153,29 @@ def _coerce_stats(result: Any, *, provider: str, model: str, latency_ms: int) ->
         total_ms=latency_ms,
         ttft_ms=None,
     )
+
+
+def _used_byok_credential(request_body: GenerateRequest) -> bool:
+    """True when the gateway injected a tenant credential for THIS provider.
+
+    The gateway only forwards the override entry for the provider it resolved,
+    so a match here means the call is tenant-funded and the ledger row must be
+    stamped ``BYOK_NOTIONAL`` rather than counted as platform spend.
+    """
+    overrides = request_body.provider_overrides
+    return overrides is not None and request_body.provider in overrides
+
+
+def _extract_stream_usage(data: dict[str, Any]) -> tuple[int, int, int | None]:
+    """Read ``(prompt, completion, total)`` off one streamed ``usage`` chunk.
+
+    Accepts both the AD-1 ``predicted_tokens`` naming and the wire-compat
+    ``completion_tokens``.
+    """
+    prompt = int(data.get("prompt_tokens", 0) or 0)
+    completion = int(data.get("completion_tokens", data.get("predicted_tokens", 0)) or 0)
+    total = data.get("total_tokens")
+    return prompt, completion, int(total) if total is not None else None
 
 
 def _get_provider_timeout(settings: Settings, provider_name: str) -> float:
@@ -227,6 +256,11 @@ async def generate(
             logger.debug("generation.idempotency_cache_hit", cache_key=cache_key)
             return GenerateResponse.model_validate_json(cached)
 
+    # Guardrail's own LLM spend rides back on THIS response — guardrail is a peer
+    # service with no gateway in front of it, so the verdict is the only path its
+    # tokens have to the billing plane.
+    guardrail_usage: UsageDetail | None = None
+
     # Guardrail medical-content validation.
     # The consultation tenant is forwarded so guardrail resolves per-tenant
     # provider/model from DB. Degrade-safe → fail-CLOSED posture: a
@@ -242,6 +276,10 @@ async def generate(
             system_prompt=request_body.system_prompt,
             tenant_id=x_tenant_id,
         )
+        # Lifted BEFORE the allow/deny branch: a REJECTED prompt still burned
+        # guardrail tokens, and metering the safety plane is exactly how its cost
+        # lands in per-encounter margin (it is never invoiced to the tenant).
+        guardrail_usage = guardrail_usage_from_verdict(verdict)
         if not verdict.get("allowed", False):  # fail-closed default (missing key → reject)
             reason = verdict.get("reason", "not_allowed")
             # A sustained guardrail outage is retryable (503); a genuine content
@@ -334,6 +372,12 @@ async def generate(
         shutdown_manager.register_task(task.task_id)
 
     if request_body.stream:
+        # The audit event for a streaming generation is logged by
+        # ``_run_streaming_generation`` when the stream ENDS, with the real token
+        # totals. The pre-generation placeholder that used to be logged here
+        # described a generation that had not happened yet and reported zero
+        # tokens for one that then cost thousands — an audit record must
+        # describe what happened, not what is about to.
         background_tasks.add_task(
             _run_streaming_generation,
             task_manager,
@@ -344,20 +388,10 @@ async def generate(
             model=model,
             shutdown_manager=shutdown_manager,
             circuit_breakers=circuit_breakers,
-        )
-        generation_audit.log_generation(
-            GenerationAuditEvent(
-                request_id=ctx.get("request_id", "unknown"),
-                timestamp=datetime.now(UTC).isoformat(),
-                provider=request_body.provider,
-                model=model,
-                status="streaming",
-                prompt_tokens=0,
-                completion_tokens=0,
-                total_tokens=0,
-                latency_ms=0,
-                finish_reason="streaming",
-            )
+            generation_audit=generation_audit,
+            tenant_id=x_tenant_id,
+            request_id=ctx.get("request_id", "unknown"),
+            byok=_used_byok_credential(request_body),
         )
         return JSONResponse(
             status_code=202,
@@ -492,6 +526,7 @@ async def generate(
                 total_tokens=total_tokens,
                 latency_ms=latency_ms,
                 finish_reason=finish_reason,
+                tenant_id=x_tenant_id,
             )
         )
 
@@ -539,6 +574,18 @@ async def generate(
             latency_ms=latency_ms,
             finish_reason=finish_reason,
             stats=stats,
+            usage_detail=build_usage_detail(
+                task_id=task.task_id,
+                request_id=ctx.get("request_id"),
+                provider=request_body.provider,
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                raw=raw_usage_from_stats(stats),
+                byok=_used_byok_credential(request_body),
+            ),
+            guardrail_usage=guardrail_usage,
         )
         # Cache the completed generation so a replayed request carrying the
         # same key returns THIS response instead of re-billing the model (bounded TTL). STRICTLY
@@ -587,6 +634,7 @@ async def generate(
                 latency_ms=latency_ms,
                 finish_reason="error",
                 error="Request timed out",
+                tenant_id=x_tenant_id,
             )
         )
 
@@ -640,6 +688,7 @@ async def generate(
                 latency_ms=latency_ms,
                 finish_reason="error",
                 error=str(exc),
+                tenant_id=x_tenant_id,
             )
         )
 
@@ -678,6 +727,10 @@ async def _run_streaming_generation(
     model: str = "default",
     shutdown_manager: ShutdownManager | None = None,
     circuit_breakers: dict[str, CircuitBreaker] | None = None,
+    generation_audit: GenerationAuditLogger | None = None,
+    tenant_id: str | None = None,
+    request_id: str | None = None,
+    byok: bool = False,
 ) -> None:
     from smr.core.metrics import TTFT_SECONDS
 
@@ -692,7 +745,53 @@ async def _run_streaming_generation(
     ttft_ms: int | None = None
     total_input_tokens = 0
     total_output_tokens = 0
+    reported_total_tokens: int | None = None
+    raw_usage: dict[str, Any] | None = None
     stream_finish_reason: str | None = None
+    # The provider's own ``done`` frame, held back so the usage block can be
+    # folded into it. The SSE reader STOPS at the first ``done``/``error``, so a
+    # usage frame appended after one would never be delivered.
+    pending_done: StreamChunk | None = None
+
+    def _usage_detail(*, interrupted: bool) -> dict[str, Any]:
+        return build_usage_detail(
+            task_id=task_id,
+            request_id=request_id,
+            provider=resolved_provider,
+            model=resolved_model or "",
+            prompt_tokens=total_input_tokens,
+            completion_tokens=total_output_tokens,
+            total_tokens=reported_total_tokens,
+            raw=raw_usage,
+            interrupted=interrupted,
+            byok=byok,
+        ).model_dump(mode="json")
+
+    def _log_audit(*, status: str, latency_ms: int, finish_reason: str, error: str | None) -> None:
+        """Log the generation's REAL totals, once, when the stream has ended."""
+        if generation_audit is None:
+            return
+        generation_audit.log_generation(
+            GenerationAuditEvent(
+                request_id=request_id or "unknown",
+                timestamp=datetime.now(UTC).isoformat(),
+                provider=resolved_provider,
+                model=resolved_model or "",
+                status=status,
+                prompt_tokens=total_input_tokens,
+                completion_tokens=total_output_tokens,
+                total_tokens=(
+                    reported_total_tokens
+                    if reported_total_tokens is not None
+                    else total_input_tokens + total_output_tokens
+                ),
+                latency_ms=latency_ms,
+                finish_reason=finish_reason,
+                error=error,
+                tenant_id=tenant_id,
+            )
+        )
+
     try:
         async for chunk in provider.generate_stream(request_body):
             if not first_chunk_recorded:
@@ -701,13 +800,21 @@ async def _run_streaming_generation(
                 ttft_ms = int(ttft * 1000)
                 first_chunk_recorded = True
             if chunk.type == "usage" and isinstance(chunk.data, dict):
-                total_input_tokens += chunk.data.get("prompt_tokens", 0) or 0
-                # accept both wire-compat "completion_tokens" and AD-1 "predicted_tokens"
-                total_output_tokens += (
-                    chunk.data.get("completion_tokens", chunk.data.get("predicted_tokens", 0)) or 0
-                )
-            if chunk.type == "done" and isinstance(chunk.data, dict):
-                stream_finish_reason = chunk.data.get("finish_reason") or stream_finish_reason
+                # TAKE-LAST, never sum. Anthropic restates its usage cumulatively
+                # on every ``message_delta``, so summing multiplies the bill by
+                # the number of deltas; every other provider reports usage
+                # exactly once, for which take-last is identical to summing.
+                prompt, completion, total = _extract_stream_usage(chunk.data)
+                total_input_tokens = prompt
+                total_output_tokens = completion
+                reported_total_tokens = total
+                raw_usage = raw_usage_from_stats(chunk.data) or raw_usage
+            if chunk.type == "done":
+                if isinstance(chunk.data, dict):
+                    stream_finish_reason = chunk.data.get("finish_reason") or stream_finish_reason
+                # Hold it back; it is re-emitted below carrying the usage block.
+                pending_done = chunk
+                continue
             await task_manager.append_chunk(task_id, chunk)
         latency_ms = int((time.monotonic() - start) * 1000)
         # stamp normalized stop-reason + decode-throughput fleet
@@ -734,6 +841,17 @@ async def _run_streaming_generation(
             ).inc()
         except Exception as exc:  # noqa: BLE001 — telemetry must never fail the stream
             logger.warning("streaming_generation.stats_degraded", task_id=task_id, error=str(exc))
+
+        # The terminal frame, carrying the usage block the gateway meters from.
+        # A provider that emitted no ``done`` of its own still gets one, so the
+        # frame the gateway keys on is always present.
+        done_data: dict[str, Any] = dict(
+            pending_done.data if pending_done and isinstance(pending_done.data, dict) else {}
+        )
+        done_data.setdefault("finish_reason", stream_finish_reason or "stop")
+        done_data["usage"] = _usage_detail(interrupted=False)
+        await task_manager.append_chunk(task_id, StreamChunk(type="done", data=done_data))
+
         await task_manager.update_task(task_id, status=TaskStatus.COMPLETED)
         GENERATION_TOTAL.labels(
             provider=resolved_provider, model=resolved_model, status="completed"
@@ -756,14 +874,36 @@ async def _run_streaming_generation(
         if cb:
             cb.record_success()
             _update_cb_metric(resolved_provider, cb)
+        _log_audit(
+            status="completed",
+            latency_ms=latency_ms,
+            finish_reason=stream_finish_reason or "stop",
+            error=None,
+        )
     except Exception as exc:
+        latency_ms = int((time.monotonic() - start) * 1000)
         logger.error("streaming_generation.failed", task_id=task_id, error=str(exc), exc_info=True)
         await task_manager.update_task(task_id, status=TaskStatus.FAILED, error=str(exc))
+        # The interrupted stream still burned whatever tokens it had already
+        # reported — emit them. Dropping the tail here is the TASK-470/471 bug
+        # class: the provider bills for work whose only record we threw away.
+        # The block carries the SAME ``task_id`` a clean completion would, so the
+        # gateway's idempotency key converges instead of double-billing.
         await task_manager.append_chunk(
             task_id,
             StreamChunk(
-                type="error", data={"error": "Generation failed due to an internal error."}
+                type="error",
+                data={
+                    "error": "Generation failed due to an internal error.",
+                    "usage": _usage_detail(interrupted=True),
+                },
             ),
+        )
+        _log_audit(
+            status="failed",
+            latency_ms=latency_ms,
+            finish_reason="error",
+            error=str(exc),
         )
         GENERATION_ERRORS.labels(
             provider=resolved_provider, model=resolved_model, error_type="provider_error"

@@ -25,6 +25,7 @@ from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest, ProviderOverride
 from smr.models.stats import GenerationStats, build_generation_stats
 from smr.models.stream import StreamChunk
+from smr.models.usage import anthropic_usage_dict
 from smr.providers.base import require_model
 
 if TYPE_CHECKING:
@@ -185,7 +186,18 @@ class AnthropicProvider:
         output_tokens: int,
         total_ms: int,
         ttft_ms: int | None = None,
+        raw_usage: Any = None,
     ) -> GenerationStats:
+        # Anthropic's ``input_tokens`` EXCLUDES the cache counts, so a usage blob
+        # without ``cache_read_input_tokens`` / ``cache_creation_input_tokens``
+        # under-reports the input total by the whole cached prefix. When the SDK
+        # usage object is available it is preserved verbatim (TTL split included);
+        # otherwise fall back to the two headline counts.
+        native_usage = (
+            anthropic_usage_dict(raw_usage)
+            if raw_usage is not None
+            else {"input_tokens": input_tokens, "output_tokens": output_tokens}
+        )
         stats = build_generation_stats(
             provider=_PROVIDER_NAME,
             model=model,
@@ -196,7 +208,7 @@ class AnthropicProvider:
             total_ms=total_ms,
             ttft_ms=ttft_ms,
             engine_native={
-                "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+                "usage": native_usage,
                 "stop_reason": raw_stop_reason,
             },
         )
@@ -239,6 +251,7 @@ class AnthropicProvider:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 total_ms=total_ms,
+                raw_usage=usage_obj,
             )
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
@@ -270,6 +283,11 @@ class AnthropicProvider:
             input_tokens = 0
             output_tokens = 0
             raw_stop: str | None = None
+            # ``message_start`` carries the input + CACHE counts for the whole
+            # request; ``message_delta`` only restates output. Keeping the start
+            # usage as the base is what preserves the cache breakdown — deltas
+            # would otherwise overwrite it with a cache-less object.
+            stream_usage: dict[str, Any] | None = None
 
             stream = await self._client_for(request).messages.create(**kwargs)
             async for event in stream:
@@ -277,6 +295,8 @@ class AnthropicProvider:
                 if etype == "message_start":
                     usage = getattr(getattr(event, "message", None), "usage", None)
                     input_tokens = getattr(usage, "input_tokens", input_tokens) or input_tokens
+                    if usage is not None:
+                        stream_usage = anthropic_usage_dict(usage)
                 elif etype == "content_block_delta":
                     delta = getattr(event, "delta", None)
                     dtype = getattr(delta, "type", None)
@@ -294,11 +314,16 @@ class AnthropicProvider:
                             yield StreamChunk(type="chunk", content=text)
                 elif etype == "message_delta":
                     usage = getattr(event, "usage", None)
+                    # CUMULATIVE, not incremental — take the latest value, never
+                    # accumulate. Summing the deltas multiplies the output count
+                    # by the number of deltas.
                     output_tokens = getattr(usage, "output_tokens", output_tokens) or output_tokens
                     delta = getattr(event, "delta", None)
                     raw_stop = getattr(delta, "stop_reason", raw_stop)
 
             total_ms = int((time.monotonic() - start) * 1000)
+            if stream_usage is not None:
+                stream_usage["output_tokens"] = output_tokens
             stats = self._build_stats(
                 model=resolved_model,
                 raw_stop_reason=raw_stop,
@@ -306,6 +331,7 @@ class AnthropicProvider:
                 output_tokens=output_tokens,
                 total_ms=total_ms,
                 ttft_ms=ttft_ms,
+                raw_usage=stream_usage,
             )
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", output_tokens)

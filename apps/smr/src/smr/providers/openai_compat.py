@@ -18,6 +18,7 @@ from smr.models.provider import ModelInfo, ProviderInfo
 from smr.models.requests import GenerateRequest
 from smr.models.stats import GenerationStats, stats_from_openai_usage
 from smr.models.stream import StreamChunk
+from smr.models.usage import openai_usage_dict
 
 if TYPE_CHECKING:
     from opentelemetry.trace import Tracer
@@ -164,11 +165,10 @@ class OpenAICompatProvider:
             )
             finish_reason = response.choices[0].finish_reason
             usage_obj = getattr(response, "usage", None)
-            usage = {
-                "prompt_tokens": usage_obj.prompt_tokens if usage_obj else 0,
-                "completion_tokens": usage_obj.completion_tokens if usage_obj else 0,
-                "total_tokens": usage_obj.total_tokens if usage_obj else 0,
-            }
+            # Keep the provider's OWN usage object, breakdown intact: the cache
+            # and reasoning splits are priced separately by the ledger and the
+            # three headline fields cannot express them.
+            usage = openai_usage_dict(usage_obj)
             # engine_native: OpenAI ``usage`` + the LM-Studio ``stats`` blob when the
             # server includes it (extra field, dict-shaped) — audit-only, never billed.
             native: dict[str, Any] = {"usage": usage}
@@ -222,17 +222,13 @@ class OpenAICompatProvider:
             start = time.monotonic()
             ttft_ms: int | None = None
             finish_reason: str | None = None
-            usage: dict[str, int] | None = None
+            usage: dict[str, Any] | None = None
 
             stream = await self._client.chat.completions.create(**kwargs)
             async for chunk in stream:
                 if not chunk.choices:
                     if getattr(chunk, "usage", None):
-                        usage = {
-                            "prompt_tokens": chunk.usage.prompt_tokens,
-                            "completion_tokens": chunk.usage.completion_tokens,
-                            "total_tokens": chunk.usage.total_tokens,
-                        }
+                        usage = openai_usage_dict(chunk.usage)
                     continue
                 delta = chunk.choices[0].delta
                 if chunk.choices[0].finish_reason:
