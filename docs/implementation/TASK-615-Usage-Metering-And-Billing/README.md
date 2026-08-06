@@ -571,6 +571,29 @@ all — `migrate deploy` replay fails before this ticket's migration.
 
 ### Wave 1 — merging as lanes land
 
+**WS-D — SMR + guardrail usage emission** (branch `task-615-ws-d`, merge `54cbf3c7`).
+Closes G5 + G6. SMR: `GenerationAuditEvent.tenant_id` on all four audit paths; the
+pre-generation zero-token streaming audit placeholder is gone — streaming logs once at
+teardown with real totals (complete AND abort); usage chunks reduce take-last (Anthropic
+cumulative trap); the provider `done` frame is held back and re-emitted carrying the
+usage block (frames appended after `done` were undeliverable); adapters preserve
+provider usage detail (cache TTL split, reasoning, `service_tier`, Vertex JSON wire
+spelling — the SDK spelling would have zeroed every Vertex row). Guardrail: stats on
+single/batch/judge paths (`None` when no model reached; new Ollama stats builder);
+`guardrail_requests_total`/`guardrail_tokens_total`, no tenant labels. Gateway:
+`smr-usage.ts` builders; emission at `summary.service.ts` (presummarize + generate),
+`chain-summary.service.ts`, and `smr-proxy.controller.ts` stream teardown
+(end/error/close). SSE terminal frames (`done` AND `error`) carry `data.usage`;
+**`task_id` is the billing identity** (`llm:<taskId>` converges across abort/retry).
+Evidence: smr 1,074 passed (4 known pre-existing), guardrail 181 passed (3 pre-existing
+verified on unmodified baseline), TS 596/0 post-rebase, eslint 0 errors. Open items
+handed on: unmetered `SummaryMeta` writers outside the lane —
+`comprehensive-summary.processor.ts:206`, `context.service.ts:513` (compat),
+`harness-internal.service.ts:724` (copy `persistSummaryMetaWithUsage`); unknown SMR
+providers normalize as `openai.chat` (inclusive-input assumption — alert-worthy);
+bounded-JSON repair retries carry their own task id and are not billed; WS-C must add
+`UsageLedgerServiceModule` to `streaming.module.ts` (handed to WS-C mid-flight).
+
 **WS-F — harness per-step usage emission** (branch `task-615-ws-f`, merge `9872338b`).
 LLM_CALL trajectory steps co-emit ledger rows: pure mapper
 `agent-trajectory/harness-usage.mapper.ts` + `emitUsage` hook in
