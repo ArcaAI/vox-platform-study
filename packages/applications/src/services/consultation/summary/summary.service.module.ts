@@ -13,6 +13,7 @@ import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.
 import { EntitlementsServiceModule } from '../../entitlements/entitlements.service.module';
 import { AgentTrajectoryServiceModule } from '../../agent-trajectory/agent-trajectory.service.module';
 import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-default.service.module';
+import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service.module';
 
 @Module({
   // HarnessAuditServiceModule supplies the WORM audit trail
@@ -36,6 +37,9 @@ import { AiTaskDefaultServiceModule } from '../../ai-task-default/ai-task-defaul
     // dep so a summary generation records its LLM_CALL trajectory step.
     AgentTrajectoryServiceModule,
     AiTaskDefaultServiceModule,
+    // (TASK-615 WS-D) supplies IUsageLedgerService so a generated summary's
+    // token consumption is recorded in the same transaction as its SummaryMeta.
+    UsageLedgerServiceModule,
   ],
   providers: [
     {
