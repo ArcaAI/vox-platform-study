@@ -214,9 +214,7 @@ describe('AgentTrajectoryService', () => {
       repository.createMany.mockResolvedValue({ count: 1 });
       usageLedgerService.recordUsage.mockRejectedValue(new Error('outbox write failed'));
 
-      await expect(
-        service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS })]),
-      ).resolves.toBeUndefined();
+      await expect(service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS })])).resolves.toBeUndefined();
       // The rest of recordSteps still ran (republish included).
       expect(cacheService.publish).toHaveBeenCalledTimes(1);
     });
