@@ -6,6 +6,10 @@ signals; the rest track routing health and concurrency.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from hope_runtime_models import PrometheusMetricsSink
 from prometheus_client import Counter, Gauge, Histogram
 
@@ -56,6 +60,89 @@ TTS_PROVIDER_ERRORS = Counter(
     "Provider errors, by provider and exception type",
     ["provider", "type"],
 )
+
+# ---------------------------------------------------------------------------
+# Usage-metering counters (TASK-615 WS-E)
+# ---------------------------------------------------------------------------
+# Accepted input characters (1 Unicode code point = 1 char, TASK-615 §3) and
+# synthesized output audio-seconds, both by provider/locale/status. The
+# gateway is the ledger emitter (D3); these are the platform-metrics/Grafana
+# signal, not the billing source of truth.
+# Named without the `_total` suffix, like TTS_REQUESTS above —
+# prometheus_client appends it at export time.
+TTS_CHARACTERS_TOTAL = Counter(
+    "tts_characters",
+    "Accepted input characters (Unicode code points), by provider, locale, and status",
+    ["provider", "locale", "status"],
+)
+
+TTS_SYNTHESIZED_SECONDS_TOTAL = Counter(
+    "tts_synthesized_seconds",
+    "Synthesized output audio-seconds, by provider, locale, and status",
+    ["provider", "locale", "status"],
+)
+
+
+# ---------------------------------------------------------------------------
+# Cross-service per-model contract metrics
+# ---------------------------------------------------------------------------
+# Standardized {service, model} pair emitted IDENTICALLY by every HOPE model
+# service (STT, SMR, NLP, Guardrail) so the platform-metrics backend can read
+# per-model "running" + "avg latency" with ONE PromQL pattern. The name and
+# label keys must stay byte-identical across services. TTS was the one
+# service missing this pair (current-state-review §2.0/§2.5); "model" here is
+# the provider/engine name — TTS has no separate per-request model concept.
+
+SERVICE_NAME = "tts"
+
+MODEL_RUNNING_INSTANCES = Gauge(
+    "model_running_instances",
+    "In-flight inference operations currently running, by service and model.",
+    ["service", "model"],
+)
+
+MODEL_INFERENCE_LATENCY = Histogram(
+    "model_inference_latency_seconds",
+    "Per-inference wall-clock latency in seconds, by service and model.",
+    ["service", "model"],
+    buckets=[
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1.0,
+        2.5,
+        5.0,
+        10.0,
+        30.0,
+        60.0,
+        120.0,
+        300.0,
+    ],
+)
+
+
+@contextmanager
+def track_model_inference(model: str, service: str = SERVICE_NAME) -> Iterator[None]:
+    """Track one model (provider) inference: bump the running gauge for its
+    duration and observe its latency.
+
+    Safe for sync or async call-sites (``with track_model_inference(...):``
+    around an ``await`` times the whole awaited block). The gauge is always
+    decremented, even when the inference raises.
+    """
+    MODEL_RUNNING_INSTANCES.labels(service=service, model=model).inc()
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        MODEL_INFERENCE_LATENCY.labels(service=service, model=model).observe(
+            time.perf_counter() - start
+        )
+        MODEL_RUNNING_INSTANCES.labels(service=service, model=model).dec()
 
 
 # ---------------------------------------------------------------------------

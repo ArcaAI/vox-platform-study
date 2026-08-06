@@ -47,6 +47,12 @@ class AudioChunk:
 
     data: bytes
     is_final: bool = False
+    # Stamped by the ROUTER only (never a provider adapter) with the name of
+    # the provider that actually produced this chunk. A request doesn't know
+    # which candidate in the failover chain won until the first byte ships, so
+    # this is how a caller (the usage-metering endpoints, TASK-615 WS-E)
+    # learns it without re-deriving router-internal failover state.
+    provider: str | None = None
 
 
 class ProviderNotFoundError(KeyError):

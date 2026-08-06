@@ -24,7 +24,9 @@ from tts.core.metrics import (
     TTS_REQUESTS,
     TTS_RTF,
     TTS_TTFA,
+    track_model_inference,
 )
+from tts.core.usage import compute_audio_seconds
 from tts.providers.base import (
     AudioChunk,
     AudioFormat,
@@ -293,15 +295,21 @@ class TTSRouter:
                     if engine.native_streaming
                     else self._sentence_adapter(engine, req)
                 )
-                async with aclosing(source) as stream:
-                    async for chunk in stream:
-                        if not emitted:
-                            TTS_TTFA.labels(provider=name, locale=locale).observe(
-                                time.perf_counter() - started
-                            )
-                            emitted = True
-                        audio_bytes += len(chunk.data)
-                        yield chunk
+                # Per-model (= per-provider) running gauge + inference
+                # latency — TASK-615 WS-E cross-service {service, model} pair.
+                with track_model_inference(name):
+                    async with aclosing(source) as stream:
+                        async for chunk in stream:
+                            if not emitted:
+                                TTS_TTFA.labels(provider=name, locale=locale).observe(
+                                    time.perf_counter() - started
+                                )
+                                emitted = True
+                            audio_bytes += len(chunk.data)
+                            # Stamp the winning provider (TASK-615 WS-E usage
+                            # attribution) — a caller doesn't know which
+                            # candidate won until the first byte ships.
+                            yield replace(chunk, provider=name)
                 breaker.record_success()
                 self._observe_rtf(name, req, audio_bytes, time.perf_counter() - started)
                 TTS_REQUESTS.labels(provider=name, locale=locale, status="ok").inc()
@@ -398,10 +406,14 @@ class TTSRouter:
     def _observe_rtf(
         self, name: str, req: SynthesisRequest, audio_bytes: int, gen_s: float
     ) -> None:
-        if req.fmt == AudioFormat.PCM and req.sample_rate and audio_bytes:
-            audio_s = audio_bytes / (2 * req.sample_rate)  # s16le mono
-            if audio_s > 0:
-                TTS_RTF.labels(provider=name).observe(gen_s / audio_s)
+        # Shares its byte math with the usage-metering audio-seconds
+        # derivation (tts.core.usage.compute_audio_seconds, TASK-615 WS-E) so
+        # the SLO metric and the billed quantity never drift apart. WAV/MP3
+        # aren't RTF-observed here (this metric predates format support
+        # beyond PCM); compute_audio_seconds itself DOES handle WAV.
+        audio_s = compute_audio_seconds(req.fmt, audio_bytes, req.sample_rate)
+        if audio_s:
+            TTS_RTF.labels(provider=name).observe(gen_s / audio_s)
 
 
 class _ChainSynthesizer:
@@ -452,9 +464,10 @@ class _ChainSynthesizer:
 
         if self._locked is not None:
             engine = r._engine_for(self._locked, self._overrides)
-            async with aclosing(engine.synthesize(self._req(self._locked, sentence))) as stream:
-                async for chunk in stream:
-                    yield chunk
+            with track_model_inference(self._locked):
+                async with aclosing(engine.synthesize(self._req(self._locked, sentence))) as stream:
+                    async for chunk in stream:
+                        yield replace(chunk, provider=self._locked)
             return
 
         last_exc: Exception | None = None
@@ -470,15 +483,16 @@ class _ChainSynthesizer:
             emitted = False
             started = time.perf_counter()
             try:
-                async with aclosing(engine.synthesize(self._req(name, sentence))) as stream:
-                    async for chunk in stream:
-                        if not emitted:
-                            TTS_TTFA.labels(provider=name, locale=locale).observe(
-                                time.perf_counter() - started
-                            )
-                            emitted = True
-                            self._locked = name  # lock the whole stream to this provider
-                        yield chunk
+                with track_model_inference(name):
+                    async with aclosing(engine.synthesize(self._req(name, sentence))) as stream:
+                        async for chunk in stream:
+                            if not emitted:
+                                TTS_TTFA.labels(provider=name, locale=locale).observe(
+                                    time.perf_counter() - started
+                                )
+                                emitted = True
+                                self._locked = name  # lock the whole stream to this provider
+                            yield replace(chunk, provider=name)
                 breaker.record_success()
                 return
             except Exception as exc:

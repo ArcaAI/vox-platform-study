@@ -240,3 +240,64 @@ class TestFailClosedRouting:
         # AllProvidersUnavailableError so the endpoints' existing 503 / WS
         # provider-unavailable handlers cover it with no extra wiring.
         assert issubclass(TtsRoutingUnconfiguredError, AllProvidersUnavailableError)
+
+
+class TestProviderAttribution:
+    """TASK-615 WS-E: the router stamps ``AudioChunk.provider`` with the
+    winning candidate so a caller (the usage-metering endpoints) learns which
+    provider served the request without re-deriving failover state."""
+
+    @pytest.mark.asyncio
+    async def test_stamps_winning_provider_on_every_chunk(self) -> None:
+        azure = FakeEngine("azure", chunks=3)
+        router = _router({"azure": azure})
+        chunks = await _collect(router, voice_id="en-female-1", text="Hi.")
+        assert [c.provider for c in chunks] == ["azure", "azure", "azure"]
+
+    @pytest.mark.asyncio
+    async def test_stamps_the_provider_that_won_failover(self) -> None:
+        azure = FakeEngine("azure", fail_before_emit=True)
+        kokoro = FakeEngine("kokoro", chunks=1)
+        router = _router({"azure": azure, "kokoro": kokoro})
+        chunks = await _collect(router, voice_id="en-female-1", text="Hi.")
+        assert [c.provider for c in chunks] == ["kokoro"]
+
+    @pytest.mark.asyncio
+    async def test_stamps_provider_through_the_sentence_adapter(self) -> None:
+        # Non-streaming engine -> router drives it via _sentence_adapter.
+        engine = FakeEngine("azure", native_streaming=False, chunks=1)
+        router = _router({"azure": engine})
+        chunks = await _collect(router, voice_id="en-female-1", text="One. Two.")
+        assert chunks and all(c.provider == "azure" for c in chunks)
+
+
+class TestModelInferenceTracking:
+    """TASK-615 WS-E: every provider synthesis call is wrapped in the
+    cross-service ``track_model_inference`` gauge/histogram (provider name is
+    the "model" label — TTS has no separate per-request model concept)."""
+
+    @pytest.mark.asyncio
+    async def test_synthesize_tracks_model_inference(self) -> None:
+        from prometheus_client import REGISTRY
+
+        azure = FakeEngine("azure", chunks=1)
+        router = _router({"azure": azure})
+        labels = {"service": "tts", "model": "azure"}
+        before = REGISTRY.get_sample_value("model_inference_latency_seconds_count", labels) or 0.0
+
+        await _collect(router, voice_id="en-female-1", text="Hi.")
+
+        after = REGISTRY.get_sample_value("model_inference_latency_seconds_count", labels)
+        assert after == before + 1
+
+    @pytest.mark.asyncio
+    async def test_gauge_returns_to_zero_after_synthesis(self) -> None:
+        from prometheus_client import REGISTRY
+
+        azure = FakeEngine("azure", chunks=1)
+        router = _router({"azure": azure})
+        labels = {"service": "tts", "model": "azure"}
+
+        await _collect(router, voice_id="en-female-1", text="Hi.")
+
+        assert REGISTRY.get_sample_value("model_running_instances", labels) in (0.0, None)

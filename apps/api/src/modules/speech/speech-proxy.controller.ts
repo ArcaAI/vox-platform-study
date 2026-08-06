@@ -4,14 +4,27 @@ import {
   IConfigService,
   IProviderConnectionService,
   ITenantTtsConfigService,
+  IUsageLedgerService,
   SecretsService,
+  UsageIdempotencyKey,
 } from '@arcaai/applications';
+import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit, generateId } from '@arcaai/domains';
 import { HttpService } from '@nestjs/axios';
 import { ClsService } from 'nestjs-cls';
 import { Body, Controller, Get, HttpException, HttpStatus, Inject, Logger, Optional, Post, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AxiosError } from 'axios';
 import type { Response } from 'express';
+
+// Self-hosted TTS engine ids (KNOWN_PROVIDERS, packages/applications/.../vocabulary.ts).
+// Anything else that isn't a BYOK-overridden connection is treated as a
+// platform-funded CLOUD call (azure/sarvam on the platform's own credential).
+const SELF_HOSTED_TTS_PROVIDERS = new Set(['kokoro', 'indic_parler']);
+// Raw s16le mono PCM: 2 bytes/sample. WAV carries the same payload behind a
+// fixed 44-byte header. Mirrors tts.core.usage.compute_audio_seconds — kept
+// in lockstep so the gateway-derived streaming figure agrees with tts's own.
+const PCM_BYTES_PER_SAMPLE = 2;
+const WAV_HEADER_BYTES = 44;
 
 // The gateway forwards the body verbatim; tts owns strict validation. A plain
 // interface (not a class-validator DTO) means the global ValidationPipe skips it,
@@ -63,6 +76,11 @@ export class SpeechProxyController {
     // unified provider-connection plane. Optional for the same reason as above.
     @Optional() @Inject(IProviderConnectionService) private readonly providerConnectionService?: IProviderConnectionService,
     @Optional() private readonly cls?: ClsService<IActiveUserContext>,
+    // TASK-615 WS-E: emits CHARACTER + AUDIO_SECOND usage rows at stream
+    // teardown. Optional/trailing so existing positional test fixtures keep
+    // compiling; absent (or no resolvable tenantId) ⇒ no emission, fail-open —
+    // metering must never block synthesis.
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
   ) {}
 
   /**
@@ -172,6 +190,57 @@ export class SpeechProxyController {
     throw lastErr;
   }
 
+  /**
+   * TASK-615 WS-E: accepted characters are tts's own count (X-Tts-Characters,
+   * computed AFTER its 413 guard — the single source of truth for what was
+   * actually accepted). A missing/malformed header falls back to counting
+   * code points on the exact forwarded input — defensive only, never the
+   * primary path.
+   */
+  private resolveCharacterCount(headers: Record<string, unknown>, input: string): number {
+    const header = headers['x-tts-characters'];
+    const parsed = typeof header === 'string' ? Number(header) : NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : [...input].length;
+  }
+
+  /**
+   * Prefers tts's own EXACT duration (batch mode: X-Tts-Audio-Seconds).
+   * Streaming modes never carry it (unknowable before headers commit) — the
+   * gateway derives it from the byte count it observed while proxying, using
+   * the same PCM/WAV byte math tts uses internally. MP3 is never derivable
+   * from a byte count and returns `null` on both paths.
+   */
+  private resolveAudioSeconds(headers: Record<string, unknown>, proxiedBytes: number): number | null {
+    const exact = headers['x-tts-audio-seconds'];
+    if (typeof exact === 'string' && exact.length > 0) {
+      const parsed = Number(exact);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const sampleRate = Number(headers['x-tts-sample-rate']);
+    const format = headers['x-tts-audio-format'];
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0 || proxiedBytes <= 0) return null;
+    if (format === 'pcm') return proxiedBytes / (PCM_BYTES_PER_SAMPLE * sampleRate);
+    if (format === 'wav') {
+      const payload = proxiedBytes - WAV_HEADER_BYTES;
+      return payload > 0 ? payload / (PCM_BYTES_PER_SAMPLE * sampleRate) : null;
+    }
+    return null; // mp3 / unknown — compressed, not derivable from byte count
+  }
+
+  /** BYOK (tenant credential we injected) beats self-hosted beats platform-funded cloud. */
+  private classifyTtsProvider(
+    provider: string,
+    providerOverrides: SpeechSynthesizeRequest['provider_overrides'],
+  ): { deployment: AiDeploymentKind; costBasis?: AiCostBasis } {
+    if (providerOverrides && provider in providerOverrides) {
+      return { deployment: AiDeploymentKind.BYOK, costBasis: AiCostBasis.BYOK_NOTIONAL };
+    }
+    if (SELF_HOSTED_TTS_PROVIDERS.has(provider)) {
+      return { deployment: AiDeploymentKind.SELF_HOSTED };
+    }
+    return { deployment: AiDeploymentKind.CLOUD };
+  }
+
   @Post('synthesize')
   @Authorize()
   @ApiOperation({ summary: 'Synthesize speech via TTS (batch audio, streamed audio, or SSE)' })
@@ -202,19 +271,72 @@ export class SpeechProxyController {
       res.setHeader('X-Accel-Buffering', 'no');
       res.flushHeaders();
 
+      // TASK-615 WS-E: accumulated across the whole proxy lifetime and
+      // recorded exactly once at teardown — success or abort (client
+      // disconnect / upstream stream error). requestId is minted fresh per
+      // HTTP call since this proxy has no client-supplied one; one physical
+      // call always tears down through exactly one of end/error/close.
+      const tenantId = this.cls?.get('tenantId');
+      const characters = this.resolveCharacterCount(upstream.headers, forwardBody.input);
+      const provider = (upstream.headers['x-tts-provider'] as string | undefined) || undefined;
+      const { deployment, costBasis } = provider
+        ? this.classifyTtsProvider(provider, forwardBody.provider_overrides)
+        : { deployment: undefined, costBasis: undefined };
+      const requestId = generateId();
+      let proxiedBytes = 0;
+      let emitted = false;
+
+      const emitUsage = (interrupted: boolean): void => {
+        if (emitted || !tenantId || !this.usageLedger) return;
+        emitted = true;
+        const audioSeconds = this.resolveAudioSeconds(upstream.headers, proxiedBytes);
+        this.usageLedger
+          .recordUsage({
+            common: {
+              tenantId,
+              idempotencyKey: UsageIdempotencyKey.ttsRequest(requestId),
+              occurredAt: new Date(),
+              capability: AiCapability.TTS,
+              operation: 'tts.synthesize',
+              provider: provider ?? 'none',
+              model: null,
+              deployment: deployment ?? AiDeploymentKind.SELF_HOSTED,
+              ...(costBasis ? { costBasis } : {}),
+              requestId,
+              attributesJson: { interrupted },
+            },
+            units: [
+              { unit: AiUsageUnit.CHARACTER, quantity: characters },
+              ...(audioSeconds !== null ? [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: audioSeconds }] : []),
+            ],
+          })
+          .catch((err: unknown) => {
+            // Never let a metering failure surface to the caller — synthesis
+            // already happened; this is a side effect of work already done.
+            this.logger.warn({
+              message: 'TTS usage emission failed',
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+      };
+
       const stream = upstream.data;
       stream.on('data', (chunk: Buffer) => {
+        proxiedBytes += chunk.length;
         res.write(chunk);
       });
       stream.on('end', () => {
         res.end();
+        emitUsage(false);
       });
       stream.on('error', (err: Error) => {
         this.logger.error({ message: 'TTS audio stream error', error: err.message });
         res.end();
+        emitUsage(true);
       });
       res.on('close', () => {
         stream.destroy();
+        emitUsage(true);
       });
     } catch (err) {
       const axiosError = err as AxiosError<UpstreamErrorPayload | string>;
