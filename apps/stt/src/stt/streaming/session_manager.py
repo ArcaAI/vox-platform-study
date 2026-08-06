@@ -3553,6 +3553,10 @@ class SessionManager:
             "consultation_id": session.consultation_id,
             "user_id": session.metadata.user_id,
             "pipeline_id": session.pipeline_id,
+            # `closed_at` is the ledger event's `occurredAt` — falls back to
+            # "now" only in the defensive case `close()` somehow left it unset
+            # (should not happen; never worth blocking teardown over).
+            "closed_at": session.metadata.closed_at or datetime.utcnow().isoformat(),
             "audio_seconds": session.total_duration_seconds,
             "session_seconds": self._compute_session_seconds(session),
             "engine": engine,

@@ -511,6 +511,7 @@ class TestDeleteSession:
             "consultation_id": "c-1",
             "user_id": "u-1",
             "pipeline_id": "pipe-001",
+            "closed_at": "2026-08-06T10:01:30",
             "audio_seconds": 42.5,
             "session_seconds": 90.0,
             "engine": "whisper_cpp",
