@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 141 |
+| Declared keys (distinct) | 142 |
 | … of which required (`failMode: closed`) | 31 |
 | … of which secret | 30 |
-| … tier `env` | 105 |
+| … tier `env` | 106 |
 | … tier `global-kv` | 10 |
 | … tier `vault-kv` | 26 |
-| `turbo.json#globalEnv` entries | 154 |
+| `turbo.json#globalEnv` entries | 155 |
 
 ## Variables
 
@@ -69,6 +69,7 @@ disagree with those declarations.
 | `LOG_FILE_PATH` | `env` | no | `./logs` | `apps/api` | Directory rotating log files are written to. |
 | `LOG_FILE_SEPARATE_ERROR` | `env` | no | `false` | `apps/api` | Writes errors to their own file in addition to the combined log. |
 | `LOG_LEVEL` | `global-kv` | no | `info` | `apps/api` | Gateway log level, applied live by `PlatformKnobsBinder` through `ILoggingService.setLevel` whenever the settings cache refreshes — so an operator can raise verbosity during an incident with no redeploy. `LOG_LEVEL` remains the BOOTSTRAP value: it is read pre-bootstrap in `apps/api/src/main.ts` (before the Nest module graph, therefore before any DB) to seed the Nest logger. |
+| `METERING_RECONCILE_ENABLED_DEFAULT` | `env` | no | `false` | `apps/api` | SEED-TIME ONLY, and not itself a runtime gate: `seed/15-entitlements.ts` reads it to decide the value of the `metering.reconcile.enabled` GlobalSetting row on a FRESH database (OQ3 — ON in dev/staging via METERING_RECONCILE_ENABLED_DEFAULT, OFF in test/CI/prod). The live control plane is `metering.reconcile.enabled` (already cataloged above, tier `global-kv`, kill-switch). Mirrors `entitlements.enabledDefault` exactly; its migration is DELETION, once seeding takes its default from the descriptor instead of the environment. |
 | `METRICS_COLLECT_INTERVAL` | `env` | no | `15000` | `apps/api` | Interval of the simplified monitoring collector. |
 | `METRICS_PREFIX` | `env` | no | — | `apps/api` | Prefix for Prometheus metric names; defaults to the sanitized service name. |
 | `MINIO_ACCESS_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | MinIO/S3 access key for platform object storage. NOTE: the per-tenant / platform-default STORAGE CONFIG (endpoint, region, path style, prefix) is a separate concern owned by `TenantStorageConfig`; only the credential lives here, referenced by `credentialsRef`. |

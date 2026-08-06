@@ -55,6 +55,9 @@ const PLATFORM_WIDE_KEYS = [
   'RATE_LIMIT_TIER_RELAXED_LIMIT',
   'RATE_LIMIT_TIER_RELAXED_TTL',
   'ENTITLEMENTS_ENABLED',
+  // TASK-615 WS-H — the metering reconcile-sweep kill-switch joins the
+  // same platform-tenant-only block, seeded alongside ENTITLEMENTS_ENABLED.
+  'METERING_RECONCILE_ENABLED',
 ] as const;
 
 // System-tenant (SYSTEM_TENANT_ID) platform rows: not per-tenant and not part of

@@ -636,6 +636,12 @@ export const SEED_GLOBAL_SETTING_IDS = {
   // Entitlements enforcement kill-switch (platform tenant only).
   // Seeded OFF (Q9); flip per-env to turn quota/feature enforcement on.
   ENTITLEMENTS_ENABLED: '85000000-0000-0000-0000-000000000400',
+
+  // TASK-615 WS-H — TenantUsageMeter reconcile-sweep kill-switch (platform
+  // tenant only). Same `0400` block as ENTITLEMENTS_ENABLED; seeded OFF by
+  // default, env-driven ON for a fresh DEV/STAGING database (OQ3) via
+  // METERING_RECONCILE_ENABLED_DEFAULT — mirrors ENTITLEMENTS_ENABLED_DEFAULT.
+  METERING_RECONCILE_ENABLED: '85000000-0000-0000-0000-000000000401',
 } as const;
 
 // =============================================================================
