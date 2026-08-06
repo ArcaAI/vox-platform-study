@@ -4,13 +4,23 @@
  *  - recordSteps: IDEMPOTENT batch insert (createMany + skipDuplicates), NO
  *    sys-event, and per-consultation republish to `consultation:trajectory:{id}`.
  *  - recordSteps: tenant scoping (single-tenant batch; CLS-context match).
+ *  - recordSteps: usage-ledger emission (TASK-615 WS-F) — co-emits ledger rows
+ *    for LLM_CALL steps, converges retries on the same idempotency key, and
+ *    never lets an emission failure fail trajectory persistence.
  *  - listSteps: ordered by seq asc, keyset-paginated, 404-over-403 cross-tenant.
  *  - listSessions: distinct sessions with counts + first/last timestamps.
  *  - pruneOlderThan: HARD-deletes only aged rows (fake timers) and returns count.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { AgentSessionKind, AgentStepStatus, AgentStepType, AgentTrajectoryStepEntity, AgentTrajectoryStepFactory } from '@arcaai/domains';
+import {
+  AgentSessionKind,
+  AgentStepStatus,
+  AgentStepType,
+  AgentTrajectoryStepEntity,
+  AgentTrajectoryStepFactory,
+  AiUsageUnit,
+} from '@arcaai/domains';
 import { AgentTrajectoryService } from '../agent-trajectory.service';
 import { CreateAgentTrajectoryStepInput } from '../dto';
 
@@ -31,9 +41,16 @@ function buildDeps(opts: { clsTenant?: string | null } = {}) {
     get: vi.fn().mockImplementation((key: string) => (key === 'tenantId' ? (opts.clsTenant ?? undefined) : undefined)),
   };
   const cacheService = { publish: vi.fn().mockResolvedValue(undefined) };
+  const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['outbox-1'], events: 1 }) };
 
-  const service = new AgentTrajectoryService(repository as never, eventEmitter as never, clsService as never, cacheService as never);
-  return { service, repository, eventEmitter, clsService, cacheService };
+  const service = new AgentTrajectoryService(
+    repository as never,
+    eventEmitter as never,
+    clsService as never,
+    cacheService as never,
+    usageLedgerService as never,
+  );
+  return { service, repository, eventEmitter, clsService, cacheService, usageLedgerService };
 }
 
 function makeStepInput(overrides: Partial<CreateAgentTrajectoryStepInput> = {}): CreateAgentTrajectoryStepInput {
@@ -133,6 +150,87 @@ describe('AgentTrajectoryService', () => {
       const { service, repository } = buildDeps({ clsTenant: OTHER_TENANT });
       await expect(service.recordSteps([makeStepInput({ tenantId: TENANT })])).rejects.toBeInstanceOf(NotFoundException);
       expect(repository.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordSteps — usage-ledger emission (TASK-615 WS-F)', () => {
+    const LLM_STATS = { prompt_tokens: 100, predicted_tokens: 40, provider: 'lm-studio', model: 'phi-4' };
+
+    it('co-emits INPUT_TOKEN/OUTPUT_TOKEN rows for a persisted LLM_CALL step', async () => {
+      const { service, repository, usageLedgerService } = buildDeps();
+      repository.createMany.mockResolvedValue({ count: 1 });
+
+      await service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS, seq: 5, runId: 'run-1' })]);
+
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common).toMatchObject({
+        tenantId: TENANT,
+        idempotencyKey: `harness:step:${SESSION}:run-1:5`,
+        capability: 'LLM',
+        operation: 'harness.step',
+        provider: 'lm-studio',
+        model: 'phi-4',
+      });
+      expect(input.units).toEqual(
+        expect.arrayContaining([
+          { unit: AiUsageUnit.INPUT_TOKEN, quantity: 100 },
+          { unit: AiUsageUnit.OUTPUT_TOKEN, quantity: 40 },
+        ]),
+      );
+    });
+
+    it('a retried/re-delivered batch (same session/run/seq) emits the SAME idempotency key both times', async () => {
+      const { service, repository, usageLedgerService } = buildDeps();
+      repository.createMany.mockResolvedValue({ count: 1 });
+
+      const batch = [makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS, seq: 7, runId: 'run-2' })];
+      await service.recordSteps(batch);
+      await service.recordSteps(batch); // Temporal activity retry re-POSTing the identical step
+
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(2);
+      const firstKey = usageLedgerService.recordUsage.mock.calls[0][0].common.idempotencyKey;
+      const secondKey = usageLedgerService.recordUsage.mock.calls[1][0].common.idempotencyKey;
+      expect(firstKey).toBe(secondKey);
+      expect(firstKey).toBe(`harness:step:${SESSION}:run-2:7`);
+    });
+
+    it('never emits for a non-LLM_CALL step', async () => {
+      const { service, repository, usageLedgerService } = buildDeps();
+      repository.createMany.mockResolvedValue({ count: 1 });
+      await service.recordSteps([makeStepInput({ stepType: AgentStepType.PHASE, stats: LLM_STATS })]);
+      expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('never emits for an LLM_CALL step with no stats', async () => {
+      const { service, repository, usageLedgerService } = buildDeps();
+      repository.createMany.mockResolvedValue({ count: 1 });
+      await service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: undefined })]);
+      expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('an emission failure never fails trajectory persistence (best-effort, like the live-view republish)', async () => {
+      const { service, repository, usageLedgerService, cacheService } = buildDeps();
+      repository.createMany.mockResolvedValue({ count: 1 });
+      usageLedgerService.recordUsage.mockRejectedValue(new Error('outbox write failed'));
+
+      await expect(service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS })])).resolves.toBeUndefined();
+      // The rest of recordSteps still ran (republish included).
+      expect(cacheService.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('constructs without a usage-ledger service (test-fixture ergonomics) and simply skips emission', async () => {
+      const repository = {
+        createMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findAll: vi.fn().mockResolvedValue([]),
+        listSessionSummaries: vi.fn().mockResolvedValue([]),
+        delete: vi.fn().mockResolvedValue(undefined),
+      };
+      const eventEmitter = { emit: vi.fn() };
+      const clsService = { get: vi.fn().mockReturnValue(undefined) };
+      const service = new AgentTrajectoryService(repository as never, eventEmitter as never, clsService as never);
+
+      await expect(service.recordSteps([makeStepInput({ stepType: AgentStepType.LLM_CALL, stats: LLM_STATS })])).resolves.toBeUndefined();
     });
   });
 

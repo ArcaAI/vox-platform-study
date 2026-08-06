@@ -1103,6 +1103,18 @@ async def generate(payload: GenerateInput) -> SmrGenerationResult:
     llm_stats: dict[str, Any] = dict(result.stats or {})
     llm_stats["prompt_chars"] = prompt_chars
     llm_stats["prompt_tokens_est"] = prompt_tokens_est
+    # TASK-615 WS-F — the gateway's usage-ledger emission hook (co-emitted on
+    # trajectory persistence) needs `provider`/`model` on every LLM_CALL step to
+    # attribute cost. AD-1 GenerationStats normally carries both
+    # (``stats.provider``/``stats.model``), but a legacy SMR response with no
+    # ``stats`` block (cache hit) would otherwise omit them even though
+    # ``SmrGenerationResult`` itself always carries them at the top level.
+    # Backfill only when the stats block didn't already say one — never
+    # overwrite a value SMR actually reported.
+    if not llm_stats.get("provider") and result.provider:
+        llm_stats["provider"] = result.provider
+    if not llm_stats.get("model") and result.model:
+        llm_stats["model"] = result.model
     batch = _TrajectoryBatch(settings, payload.trajectory)
     batch.record(
         step_type=STEP_LLM_CALL,
