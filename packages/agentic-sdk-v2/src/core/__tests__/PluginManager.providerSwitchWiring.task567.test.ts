@@ -23,6 +23,11 @@ const captured: Record<string, ((...args: any[]) => void) | undefined> = {};
 vi.mock('../StreamingSessionManager', () => ({
   StreamingSessionManager: class {
     refreshTicket = vi.fn(async () => 'ticket');
+    // Captured like the ws-client callbacks below so the TASK-614 session-create
+    // echo can be driven from a test.
+    onSessionCreated(cb: (response: unknown) => void) {
+      captured.onSessionCreated = cb;
+    }
   },
 }));
 
@@ -67,6 +72,28 @@ describe('PluginManager — provider-switch / connection wiring (TASK-567)', () 
     onProviderSwitched = vi.fn<(info: ProviderSwitchInfo) => void>();
     manager.setCallbacks({ onSttConnectionState, onProviderSwitched });
     manager.buildStreamingTransport({ enabled: true, provider: 'backend' }, 'pipe-1');
+  });
+
+  // TASK-614 — the session-create echo is routed to the plugin bus so the store's
+  // `activePipeline` can be server-derived instead of an echo of the request.
+  it('routes a session-create echo to onStreamingSessionCreated', () => {
+    const onStreamingSessionCreated = vi.fn();
+    manager.setCallbacks({ onSttConnectionState, onProviderSwitched, onStreamingSessionCreated });
+
+    captured.onSessionCreated?.({ sessionId: 's-1', pipelineId: 'resolved-pipe', activeEngine: 'fallback' });
+
+    expect(onStreamingSessionCreated).toHaveBeenCalledWith({ pipelineId: 'resolved-pipe', isFallback: true });
+  });
+
+  it('stays silent when the gateway echoes no pipeline (older backend)', () => {
+    // The consumer must then keep its own request-derived value rather than
+    // receive a half-filled baseline it cannot distinguish from a real one.
+    const onStreamingSessionCreated = vi.fn();
+    manager.setCallbacks({ onSttConnectionState, onProviderSwitched, onStreamingSessionCreated });
+
+    captured.onSessionCreated?.({ sessionId: 's-1' });
+
+    expect(onStreamingSessionCreated).not.toHaveBeenCalled();
   });
 
   it('registers all four lifecycle callbacks and onStatus on the ws client', () => {

@@ -19,11 +19,17 @@
  * `audio.activePipeline.isFallback` — the single source of truth this hook
  * reads for `activeProvider` / `usePipeline`.
  *
- * Degraded posture: `activePipeline` stays `null` for a non-backend (local)
- * session, so both switch methods reject cleanly instead of no-op'ing.
+ * Degraded posture (TASK-614): a switch is possible whenever CAPTURE is running.
+ * Before capture, both methods reject with `AgenticError('SWITCH_UNSUPPORTED')`.
+ * During capture on a local (browser) STT session there is no backend session to
+ * switch, and the rejection comes from `useArcaAudio.switchProvider` — either
+ * way the call rejects rather than silently resolving. `activePipeline` is NOT
+ * the gate: it is request-derived and null for the whole session whenever the
+ * app started capture without an explicit `pipelineId`.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AgenticError } from '../types/common';
 import { useArcaAudio } from './useArcaAudio';
 
 type ProviderSwitchTarget = 'primary' | 'fallback';
@@ -77,17 +83,25 @@ export function useSttProviderToggle(): UseSttProviderToggleReturn {
 
   const switchTo = useCallback(
     async (target: ProviderSwitchTarget): Promise<void> => {
-      const current = audio.activePipeline ?? null;
-      // No live backend session / no pipeline to switch from.
-      if (!current) {
-        throw new Error(`No active streaming session to switch to ${target}`);
+      // Whether a switch is POSSIBLE is decided by capture, not by
+      // `activePipeline` (TASK-614 D-3). `activePipeline` is request-derived —
+      // null for the whole session whenever capture started without an explicit
+      // `pipelineId` — so gating on it refused switches on live sessions.
+      if (!audio.isCapturing) {
+        throw new AgenticError('SWITCH_UNSUPPORTED', `No active capture session — start capture before switching to ${target}.`);
       }
-      const isCurrentlyFallback = current.isFallback === true;
-      const alreadyThere = target === 'fallback' ? isCurrentlyFallback : !isCurrentlyFallback;
-      // Already on the requested side → idempotent no-op (no duplicate v2 call).
-      if (alreadyThere) {
-        setSwitchStatus('switched');
-        return;
+      const current = audio.activePipeline ?? null;
+      // Which side we are on is a SEPARATE question, and one the client may not
+      // be able to answer yet. Skip the idempotence shortcut when it is unknown
+      // and let the backend adjudicate rather than assuming either side.
+      if (current) {
+        const isCurrentlyFallback = current.isFallback === true;
+        const alreadyThere = target === 'fallback' ? isCurrentlyFallback : !isCurrentlyFallback;
+        // Already on the requested side → idempotent no-op (no duplicate v2 call).
+        if (alreadyThere) {
+          setSwitchStatus('switched');
+          return;
+        }
       }
       setSwitchStatus('switching');
       try {

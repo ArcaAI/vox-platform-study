@@ -25,12 +25,18 @@
  *    flip (true→false now fires too, not just false→true).
  *  - `onSwitchFailed` fires when a user-requested switch rejects.
  *
- * Degraded posture (deployment predates TASK-567 — no fallback / no switch
- * route): `activePipeline` stays `null` for a non-backend session, so
- * `fallbackAvailable` is `false` and `switchToDefault()`/`switchToPipeline()`
- * reject cleanly — never a crash or a silent no-op resolution. Switching back
- * to the primary pipeline additionally requires `enableProviderSwitch: true`
- * in the `<ArcaCompatProvider>` config (TASK-586 §C3) — without it, the native
+ * When a switch happens (TASK-614): `audio.isCapturing` decides. Before capture
+ * the pick is remembered as a pre-start preference and applied at `audio.start`;
+ * during capture the live in-place switch is issued. `activePipeline` is NOT the
+ * gate — it is request-derived and stays `null` for the whole session whenever
+ * the app started capture without an explicit `pipelineId`, which used to make
+ * every mid-session switch a silent no-op that still reported `switched`.
+ *
+ * Degraded posture: capture running on local (browser) STT has no backend
+ * session to switch, so both methods reject with `SWITCH_UNSUPPORTED` — never a
+ * crash and never a silent no-op resolution. Switching back to the primary
+ * pipeline additionally requires `enableProviderSwitch: true` in the
+ * `<ArcaCompatProvider>` config (TASK-586 §C3) — without it, the native
  * streaming route has no primary-direction endpoint and `switchToPipeline()`
  * rejects with `SWITCH_FAILED`.
  */
@@ -90,12 +96,23 @@ export interface UseArcaSttProviderReturn {
   switchToDefault: () => Promise<void>;
 }
 
+/**
+ * `useArcaAudio.switchProvider` throws this shape when capture is running but
+ * there is no BACKEND streaming session behind it (local/browser STT, or a
+ * transport that never came up). That is a different failure from the backend
+ * REFUSING a switch, so it carries its own code — a caller can tell "this
+ * session can never switch" from "this switch attempt failed".
+ */
+const NO_BACKEND_SESSION_RE = /no active streaming session/i;
+
 function switchFailedError(err: unknown): ErrorInfo {
+  const message = err instanceof Error ? err.message : String(err ?? 'STT provider switch failed');
+  const unsupported = NO_BACKEND_SESSION_RE.test(message);
   return {
-    code: 'SWITCH_FAILED',
-    message: err instanceof Error ? err.message : String(err ?? 'STT provider switch failed'),
+    code: unsupported ? 'SWITCH_UNSUPPORTED' : 'SWITCH_FAILED',
+    message,
     severity: 'high',
-    category: 'processing',
+    category: unsupported ? 'configuration' : 'processing',
   };
 }
 
@@ -157,23 +174,34 @@ export function useArcaSttProvider(props: UseArcaSttProviderProps = {}): UseArca
 
   const switchTo = useCallback(
     async (target: ProviderSwitchTarget): Promise<void> => {
-      const current = audio.activePipeline ?? null;
-      // No live backend session yet → record a PRE-START selection (TASK-586)
-      // instead of rejecting. The pending pick is applied at `audio.start` by
-      // whichever start hook runs first (order-independent, mirroring the
-      // `languageMode` store-fallback pattern) and reflected in the read state
-      // below. Once a session is live the in-place switch path (below) runs.
-      if (!current) {
+      // Capture not started → record a PRE-START selection (TASK-586) instead
+      // of rejecting. The pending pick is applied at `audio.start` by whichever
+      // start hook runs first (order-independent, mirroring the `languageMode`
+      // store-fallback pattern) and reflected in the read state below.
+      //
+      // The gate is `isCapturing`, NOT `activePipeline` (TASK-614 D-2). The
+      // latter is request-derived and stays null for the WHOLE session whenever
+      // the app started capture without an explicit `pipelineId` — so keying off
+      // it turned every mid-session switch into a silent pre-start no-op that
+      // still reported `switched`. A switch this hook did not perform must never
+      // be reported as one.
+      if (!audio.isCapturing) {
         setPendingSttProvider(target);
         setSwitchStatus('switched');
         return;
       }
-      const isCurrentlyFallback = current.isFallback === true;
-      const alreadyThere = target === 'fallback' ? isCurrentlyFallback : !isCurrentlyFallback;
-      // Already on the requested side → idempotent no-op (no duplicate v2 call).
-      if (alreadyThere) {
-        setSwitchStatus('switched');
-        return;
+      const current = audio.activePipeline ?? null;
+      // WHICH side we are on is a separate question, and the client may not be
+      // able to answer it yet. Take the idempotence shortcut only when the
+      // answer is known; otherwise let the backend adjudicate.
+      if (current) {
+        const isCurrentlyFallback = current.isFallback === true;
+        const alreadyThere = target === 'fallback' ? isCurrentlyFallback : !isCurrentlyFallback;
+        // Already on the requested side → idempotent no-op (no duplicate v2 call).
+        if (alreadyThere) {
+          setSwitchStatus('switched');
+          return;
+        }
       }
       setSwitchStatus('switching');
       pendingUserSwitchRef.current = true;

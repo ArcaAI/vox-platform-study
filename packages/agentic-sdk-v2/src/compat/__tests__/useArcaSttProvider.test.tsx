@@ -299,3 +299,89 @@ describe('useArcaSttProvider', () => {
     expectTypeOf<UseArcaSttProviderReturn['switchToDefault']>().returns.resolves.toBeVoid();
   });
 });
+
+/**
+ * TASK-614 D-2/D-5/D-7 — "is there a live session?" is answered by CAPTURE.
+ *
+ * `activePipeline` is request-derived: it is `null` for the whole session
+ * whenever the app started capture without an explicit `pipelineId` (the
+ * gateway then resolves one server-side). Keying the pre-start branch off it
+ * meant a MID-SESSION switch was silently recorded as a pre-start preference
+ * and reported as `switched` — no HTTP call, no WS frame, no error. The field
+ * report: "I switched the STT engine to Off and nothing reached the backend."
+ *
+ * The distinction the hook actually needs is "has capture started", which
+ * `audio.isCapturing` answers directly.
+ */
+describe('useArcaSttProvider — live switch is gated on capture, not on activePipeline (TASK-614)', () => {
+  beforeEach(() => {
+    installAudio();
+    installFeatureFlags(false);
+    installStore();
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('performs the switch mid-session even when the active pipeline is unknown', async () => {
+    installAudio({ isCapturing: true, activePipeline: null });
+    const { result } = renderHook(() => useArcaSttProvider());
+
+    await act(async () => {
+      await result.current.switchToDefault();
+    });
+
+    expect(audioMock.switchProvider).toHaveBeenCalledTimes(1);
+    expect(audioMock.switchProvider).toHaveBeenCalledWith('fallback', { useCompatEndpoint: false });
+    // …and it must NOT be mistaken for a pre-start pick.
+    expect(storeState.setPendingSttProvider).not.toHaveBeenCalled();
+    // Still awaiting the backend's provider_switched frame.
+    expect(result.current.switchStatus).toBe('switching');
+  });
+
+  it('performs the switch back to primary mid-session with an unknown active pipeline', async () => {
+    installAudio({ isCapturing: true, activePipeline: null });
+    installFeatureFlags(true);
+    const { result } = renderHook(() => useArcaSttProvider());
+
+    await act(async () => {
+      await result.current.switchToPipeline();
+    });
+
+    expect(audioMock.switchProvider).toHaveBeenCalledWith('primary', { useCompatEndpoint: true });
+    expect(storeState.setPendingSttProvider).not.toHaveBeenCalled();
+  });
+
+  it('rejects with SWITCH_UNSUPPORTED — never "switched" — when capture has no backend streaming session', async () => {
+    // Capture is running on LOCAL (browser) STT, or the transport never came
+    // up: there is genuinely nothing to switch. Resolving as `switched` here is
+    // the failure mode this ticket exists to remove.
+    const onSwitchFailed = vi.fn();
+    installAudio({ isCapturing: true, activePipeline: null });
+    audioMock.switchProvider.mockRejectedValueOnce(new Error('No active streaming session to switch to fallback'));
+
+    const { result } = renderHook(() => useArcaSttProvider({ onSwitchFailed }));
+
+    let rejected: ErrorInfo | undefined;
+    await act(async () => {
+      await result.current.switchToDefault().catch((e: ErrorInfo) => {
+        rejected = e;
+      });
+    });
+
+    expect(rejected).toMatchObject({ code: 'SWITCH_UNSUPPORTED', category: 'configuration' });
+    expect(result.current.switchStatus).toBe('failed');
+    expect(onSwitchFailed).toHaveBeenCalledWith(expect.objectContaining({ code: 'SWITCH_UNSUPPORTED' }));
+  });
+
+  it('still records a PRE-START preference before capture begins (TASK-586 behaviour preserved)', async () => {
+    installAudio({ isCapturing: false, activePipeline: null });
+    const { result } = renderHook(() => useArcaSttProvider());
+
+    await act(async () => {
+      await result.current.switchToDefault();
+    });
+
+    expect(storeState.setPendingSttProvider).toHaveBeenLastCalledWith('fallback');
+    expect(audioMock.switchProvider).not.toHaveBeenCalled();
+    expect(result.current.switchStatus).toBe('switched');
+  });
+});

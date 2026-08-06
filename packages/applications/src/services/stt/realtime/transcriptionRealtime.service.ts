@@ -320,6 +320,13 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
     userId?: string;
     audioBucketName?: string;
     storage?: StorageDescriptor | null;
+    /**
+     * Tenant fallback pipeline the worker re-runs on when the primary ASR
+     * fails (TASK-614 D-6). `transcribe_file` has accepted this since
+     * TASK-567, but nothing ever supplied it — so batch auto-fallback was
+     * unreachable in production and a failing primary just failed the job.
+     */
+    fallbackPipelineId?: string;
   }): Promise<void> {
     const messageId = uuidv7();
     const redisMessageId = uuidv7(); // Required by Dramatiq protocol
@@ -338,9 +345,17 @@ export class TranscriptionRealtimeService implements ITranscriptionRealtimeServi
         params.audioBucketName ?? 'hope-audio',
         params.userId ?? null,
       ],
-      // Per-tenant storage descriptor passed as a Dramatiq kwarg (avoids
-      // reshuffling the positional args). Present only for DEDICATED tenants.
-      kwargs: params.storage ? { storage: params.storage } : {},
+      // Kwargs, never positional. The actor's positional tail is
+      // (..., user_id, storage, fallback_pipeline_id), so appending either of
+      // these positionally would force emitting the slots before it and would
+      // silently shift on any future insertion upstream. Both are optional and
+      // omitted entirely when absent.
+      kwargs: {
+        // Per-tenant storage descriptor — DEDICATED tenants only.
+        ...(params.storage ? { storage: params.storage } : {}),
+        // Tenant fallback pipeline for the worker's in-attempt re-run (TASK-614).
+        ...(params.fallbackPipelineId ? { fallback_pipeline_id: params.fallbackPipelineId } : {}),
+      },
       options: {
         redis_message_id: redisMessageId,
       },

@@ -51,6 +51,14 @@ _IMMEDIATE_SWITCH_ERRORS = (CloudASRAuthError, CloudASRQuotaError)
 # transient blip should not abandon the primary engine.
 _THRESHOLD_SWITCH_ERRORS = (CloudASRTranscriptionError, ModelError)
 
+# The union of both, PUBLIC because the inference worker must let exactly these
+# propagate for ``record_failure`` below to ever see them (TASK-614 D-11). Its
+# broad ``except Exception`` used to convert every ASR failure into an empty
+# transcript, so auto-fallback was deaf to the failure class it exists for.
+# Keep this the single source of truth: a class added to one tuple above and
+# duplicated into ``inference.py`` by hand is how that break returns.
+SWITCHABLE_ASR_ERRORS = _IMMEDIATE_SWITCH_ERRORS + _THRESHOLD_SWITCH_ERRORS
+
 # Trigger reasons, published on the ``provider_switched`` status result.
 REASON_AUTO = "auto"
 REASON_USER = "user"
@@ -74,7 +82,10 @@ class EngineSwitchController:
         primary_pipeline_id: str,
         fallback_pipeline_id: str | None,
         build_fallback: Callable[[], Awaitable[Any]],
-        apply_callable: Callable[[Any], None],
+        # TASK-613 — the swap carries the TARGET pipeline id alongside the new
+        # callable so the inference worker's per-utterance provenance stamp is
+        # updated in the same function body as the callable it names.
+        apply_callable: Callable[[Any, str | None], None],
         publish_switch: Callable[[str, str, str, str, int | None], Awaitable[None]],
         build_primary: Callable[[], Awaitable[Any]] | None = None,
         auto_switch_enabled: bool = True,
@@ -109,6 +120,20 @@ class EngineSwitchController:
     def active_engine(self) -> str:
         """``'primary'`` or ``'fallback'``."""
         return self._active
+
+    @property
+    def active_pipeline_id(self) -> str | None:
+        """The pipeline id of the engine currently live (TASK-613).
+
+        The session-create/status response uses this rather than the REQUESTED
+        pipeline id, so a session that opened on the fallback (``start_on=
+        'fallback'`` or a create-time primary load failure) never reports
+        ``active_engine: 'fallback'`` beside a ``pipeline_id`` naming the
+        primary.
+        """
+        if self._active == _FALLBACK:
+            return self._fallback_pipeline_id
+        return self._primary_pipeline_id
 
     @property
     def switched(self) -> bool:
@@ -230,20 +255,23 @@ class EngineSwitchController:
         async with self._lock:
             if target == self._active:
                 return False  # already on the requested engine
+            target_pipeline_id: str | None
             if target == _FALLBACK:
                 if not self.has_fallback:
                     return False
                 # Selection is fail-closed: propagate a build failure rather than
                 # pretend a switch happened. The session stays on the primary.
                 new_callable = await self._build_fallback()
+                target_pipeline_id = self._fallback_pipeline_id
             elif target == _PRIMARY:
                 if not self.can_switch_to_primary:
                     return False
                 assert self._build_primary is not None  # narrowed by can_switch_to_primary
                 new_callable = await self._build_primary()
+                target_pipeline_id = self._primary_pipeline_id
             else:
                 return False
-            self._apply_callable(new_callable)
+            self._apply_callable(new_callable, target_pipeline_id)
             self._active = target
             self._consecutive_failures = 0
             await self._emit_switch(target, reason, utterance_index)

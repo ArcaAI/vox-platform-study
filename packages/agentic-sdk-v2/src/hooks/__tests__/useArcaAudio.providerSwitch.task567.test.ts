@@ -239,6 +239,122 @@ describe('useArcaAudio — provider switch + connection state (TASK-567)', () =>
     expect(mockStoreData.setActivePipeline).toHaveBeenCalledWith({ id: 'sarvam_transcription', name: 'sarvam_transcription', isFallback: true });
   });
 
+  // ---------------------------------------------------------------------------
+  // TASK-614 D-1/D-2/D-3 — `activePipeline` is SERVER-derived.
+  //
+  // It used to be an echo of `options.pipelineId`, which is silent about the
+  // three ways the running engine differs from the requested one: no pipelineId
+  // sent at all (gateway resolves), `startOn: 'fallback'`, and a primary ASR
+  // that failed to load at create. The first of those left `activePipeline`
+  // null for the WHOLE session — the state every switch consumer reads.
+  // ---------------------------------------------------------------------------
+  it('takes the active pipeline from the session-create echo, not the request', async () => {
+    const { result } = renderHook(() => useArcaAudio());
+
+    await act(async () => {
+      await result.current.start({ pipelineId: 'requested-pipe' });
+      const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
+      callbacks.onStreamingSessionCreated?.({ pipelineId: 'resolved-pipe', isFallback: false });
+    });
+
+    expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith({
+      id: 'resolved-pipe',
+      name: 'resolved-pipe',
+      isFallback: false,
+    });
+  });
+
+  it('yields a non-null active pipeline for a session started with NO pipelineId', async () => {
+    const { result } = renderHook(() => useArcaAudio());
+
+    await act(async () => {
+      await result.current.start({});
+      const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
+      callbacks.onStreamingSessionCreated?.({ pipelineId: 'gateway-default', isFallback: false });
+    });
+
+    expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith({
+      id: 'gateway-default',
+      name: 'gateway-default',
+      isFallback: false,
+    });
+  });
+
+  it('reports isFallback from frame 0 when the server opened on the fallback', async () => {
+    // Covers BOTH create-time cases: the user's `startOn: 'fallback'` and a
+    // primary ASR that failed to load — the client can't tell them apart and
+    // does not need to.
+    const { result } = renderHook(() => useArcaAudio());
+
+    await act(async () => {
+      await result.current.start({ pipelineId: 'requested-pipe' });
+      const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
+      callbacks.onStreamingSessionCreated?.({ pipelineId: 'tenant-fallback', isFallback: true });
+    });
+
+    expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith({
+      id: 'tenant-fallback',
+      name: 'tenant-fallback',
+      isFallback: true,
+    });
+  });
+
+  it('degrades to the request-derived value against a gateway that never echoes', async () => {
+    // Mixed-version guard: a new SDK on an older backend must keep working
+    // exactly as it did, not throw and not null out.
+    const { result } = renderHook(() => useArcaAudio());
+
+    await act(async () => {
+      await result.current.start({ pipelineId: 'requested-pipe' });
+    });
+
+    expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith({
+      id: 'requested-pipe',
+      name: 'requested-pipe',
+      isFallback: false,
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // TASK-614 D-4 — the direction of a switch is READ, not guessed.
+  //
+  // The handler used to assume `isFallback = true` whenever the frame carried
+  // neither `is_fallback` nor `active`. The bridge dropped both fields, so that
+  // guess ran on EVERY switch — including the ones going back to the selected
+  // pipeline, which therefore stayed latched as "on the tenant default".
+  // ---------------------------------------------------------------------------
+  it('un-latches on an explicit primary-direction frame', async () => {
+    const { result } = renderHook(() => useArcaAudio());
+    await act(async () => {
+      await result.current.start({ pipelineId: 'primary' });
+    });
+    const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
+
+    act(() =>
+      callbacks.onProviderSwitched({ fromPipeline: 'sarvam', toPipeline: 'primary', reason: 'user', active: 'primary', isFallback: false }),
+    );
+
+    expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith({ id: 'primary', name: 'primary', isFallback: false });
+    expect(mockStoreData.setSttConnectionState).toHaveBeenLastCalledWith('connected');
+  });
+
+  it('infers the direction from the pipeline id when a legacy backend sends neither field', async () => {
+    // Pre-586 backend: no `active`, no `is_fallback`. We still know which
+    // pipeline this session asked for, and the frame names the one now live —
+    // so a switch whose target IS the requested pipeline is a return to
+    // primary, never a fallback. Guessing `true` here is what stuck the toggle.
+    const { result } = renderHook(() => useArcaAudio());
+    await act(async () => {
+      await result.current.start({ pipelineId: 'arcaai_ml_en' });
+    });
+    const callbacks = mockStoreData.pluginManager.setCallbacks.mock.calls[0]?.[0];
+
+    act(() => callbacks.onProviderSwitched({ fromPipeline: 'sarvam', toPipeline: 'arcaai_ml_en', reason: 'user' }));
+
+    expect(mockStoreData.setActivePipeline).toHaveBeenLastCalledWith({ id: 'arcaai_ml_en', name: 'arcaai_ml_en', isFallback: false });
+    expect(mockStoreData.setSttConnectionState).toHaveBeenLastCalledWith('connected');
+  });
+
   it('switchToFallback drives the session manager in-place switch', async () => {
     const sessionManager = makeSessionManager();
     setupStore({}, sessionManager);

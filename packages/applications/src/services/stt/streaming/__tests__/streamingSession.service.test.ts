@@ -295,4 +295,109 @@ describe('StreamingSessionService', () => {
 
     expect(result).toEqual({ modes: [] });
   });
+
+  /**
+   * TASK-614 D-5 / AC-2 — the create response is the client's baseline.
+   *
+   * STT now echoes the RESOLVED pipeline and the engine it actually opened on
+   * (`pipeline_id` / `active_engine`), which is the only honest source for the
+   * SDK's `activePipeline`: a client that sent no pipelineId, a session opened
+   * on the fallback by choice (`start_on`), and one opened there because the
+   * primary ASR failed to load are all invisible to the request alone.
+   */
+  describe('createSession — server-derived pipeline baseline (TASK-614)', () => {
+    it('maps pipeline_id and active_engine from the STT response', async () => {
+      httpService.post.mockReturnValue(
+        of({
+          data: {
+            session_id: 's-10',
+            status: 'active',
+            max_concurrent: 4,
+            current_active: 1,
+            pipeline_id: 'resolved-pipe',
+            active_engine: 'fallback',
+          },
+        }),
+      );
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+      const result = await service.createSession({ sessionId: 's-10', tenantId: 'tenant-1', pipelineId: 'requested-pipe' });
+
+      expect(result?.pipelineId).toBe('resolved-pipe');
+      expect(result?.activeEngine).toBe('fallback');
+    });
+
+    it('leaves both undefined against an older STT that echoes neither', async () => {
+      // Mixed-version degrade: a new gateway must not invent a baseline.
+      httpService.post.mockReturnValue(of({ data: { session_id: 's-11', status: 'active', max_concurrent: 4, current_active: 1 } }));
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+      const result = await service.createSession({ sessionId: 's-11', tenantId: 'tenant-1', pipelineId: 'requested-pipe' });
+
+      expect(result?.pipelineId).toBeUndefined();
+      expect(result?.activeEngine).toBeUndefined();
+    });
+  });
+
+  /**
+   * TASK-614 D-10 — the tenant's auto-switch governance must reach STT.
+   *
+   * `autoSwitchEnabled` and `consecutiveFailureThreshold` are stored on
+   * `TenantSttConfig`, resolved by `resolveEffectiveSttConfig`, and returned by
+   * the effective-config API — but nothing ever put them on this POST body, so
+   * `EngineSwitchController` always used its own defaults. A tenant that turned
+   * auto-fallback OFF still got auto-fallback.
+   */
+  describe('StreamingSessionService.createSession — auto-switch governance (TASK-614)', () => {
+    const okResponse = () => of({ data: { session_id: 's-9', status: 'active', max_concurrent: 4, current_active: 1 } });
+
+    it('forwards auto_switch_enabled and consecutive_failure_threshold', async () => {
+      httpService.post.mockReturnValue(okResponse());
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+      await service.createSession({
+        sessionId: 's-9',
+        tenantId: 'tenant-1',
+        pipelineId: 'pipeline-1',
+        autoSwitchEnabled: false,
+        consecutiveFailureThreshold: 4,
+      });
+
+      expect(httpService.post).toHaveBeenCalledWith(
+        'http://stt.internal:9000/internal/streaming/sessions',
+        expect.objectContaining({ auto_switch_enabled: false, consecutive_failure_threshold: 4 }),
+        { timeout: 15000 },
+      );
+    });
+
+    it('sends null for both when the caller resolved neither', async () => {
+      // Null, not omitted: STT reads `None` as "use the controller default", which
+      // is exactly what an unresolved tenant setting means.
+      httpService.post.mockReturnValue(okResponse());
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+      await service.createSession({ sessionId: 's-9', tenantId: 'tenant-1', pipelineId: 'pipeline-1' });
+
+      expect(httpService.post).toHaveBeenCalledWith(
+        'http://stt.internal:9000/internal/streaming/sessions',
+        expect.objectContaining({ auto_switch_enabled: null, consecutive_failure_threshold: null }),
+        { timeout: 15000 },
+      );
+    });
+
+    it('forwards auto_switch_enabled: true explicitly (never collapsed to null)', async () => {
+      // `false` and `true` are both real tenant choices; a truthiness guard here
+      // would silently drop the enabling one on a tenant that set it explicitly.
+      httpService.post.mockReturnValue(okResponse());
+      const service = new StreamingSessionService(httpService, configWithSttUrl('http://stt.internal:9000'));
+
+      await service.createSession({ sessionId: 's-9', tenantId: 'tenant-1', pipelineId: 'pipeline-1', autoSwitchEnabled: true });
+
+      expect(httpService.post).toHaveBeenCalledWith(
+        'http://stt.internal:9000/internal/streaming/sessions',
+        expect.objectContaining({ auto_switch_enabled: true }),
+        { timeout: 15000 },
+      );
+    });
+  });
 });

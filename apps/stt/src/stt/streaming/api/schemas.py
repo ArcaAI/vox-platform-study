@@ -73,6 +73,24 @@ class CreateStreamingSessionRequest(BaseModel):
             "session proceeds on the primary (fail-open)."
         ),
     )
+    auto_switch_enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Tenant governance for the FAILURE-DRIVEN auto switch (TASK-614). "
+            "None ⇒ the engine-switch controller's default (enabled), so an "
+            "older gateway that omits it keeps the pre-614 behaviour. Never "
+            "affects a user-initiated switch — that is an explicit choice."
+        ),
+    )
+    consecutive_failure_threshold: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Tenant governance for how many consecutive threshold-class "
+            "utterance failures arm the auto switch (TASK-614). None ⇒ the "
+            "controller's default (2)."
+        ),
+    )
 
 
 class SwitchProviderRequest(BaseModel):
@@ -105,6 +123,13 @@ class StreamingSessionResponse(BaseModel):
     reason: str | None = Field(default=None, description="Rejection reason (e.g. 'at_capacity')")
     max_concurrent: int = Field(..., description="Maximum concurrent sessions for this worker")
     current_active: int = Field(..., description="Number of currently active sessions")
+    pipeline_id: str = Field(
+        ..., description="The ASR pipeline id this session is (or was) opened with"
+    )
+    active_engine: str = Field(
+        ...,
+        description=("The engine currently live for this session: 'primary' or 'fallback'"),
+    )
 
 
 class StreamingAvailabilityResponse(BaseModel):

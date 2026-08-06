@@ -63,6 +63,17 @@ export interface CreateStreamingSessionRequest {
    * classified outage without tearing the WebSocket.
    */
   fallbackPipelineId?: string | null;
+  /**
+   * Tenant governance for the FAILURE-DRIVEN auto switch (TASK-614). Omitted /
+   * `null` ⇒ STT's `EngineSwitchController` default (enabled). Never governs a
+   * user-initiated switch — that is an explicit choice, not a policy.
+   */
+  autoSwitchEnabled?: boolean | null;
+  /**
+   * Tenant governance for how many consecutive threshold-class utterance
+   * failures arm the auto switch (TASK-614). Omitted / `null` ⇒ STT default (2).
+   */
+  consecutiveFailureThreshold?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +91,19 @@ export interface StreamingSessionStatus {
   maxConcurrent: number;
   /** Number of currently active sessions */
   currentActive: number;
+  /**
+   * The RESOLVED ASR pipeline this session opened with (TASK-614). Differs from
+   * the requested id whenever the caller sent none (STT/gateway resolve one) or
+   * a slug resolved to a different identifier. `undefined` against an STT that
+   * predates the echo.
+   */
+  pipelineId?: string;
+  /**
+   * The engine actually live at create: `'primary'`, or `'fallback'` when the
+   * session opened on the tenant fallback — by choice (`startOn`) or because
+   * the primary ASR failed to load (TASK-614). `undefined` against an older STT.
+   */
+  activeEngine?: 'primary' | 'fallback';
 }
 
 /**
@@ -183,6 +207,14 @@ export interface StreamingTranscriptMessage {
    * language. Consumers prefer this over the session-configured language/mode.
    */
   detectedLanguage?: string;
+  /**
+   * The ASR pipeline that actually produced THIS utterance (TASK-613 B1),
+   * stamped per-segment by the stt worker (`SegmentResult.pipeline_id`).
+   * Can differ from the session's requested pipeline after a mid-session
+   * engine switch. Absent when the upstream stt worker doesn't set it
+   * (older workers, or the id is not yet known).
+   */
+  pipelineId?: string;
   /** Speaker identifier from diarization, if available */
   speakerId?: string;
   /**
@@ -218,6 +250,18 @@ export interface StreamingStatusMessage {
   to_pipeline?: string;
   /** Switch trigger: 'auto' (outage/exception) or 'user' (clinician-initiated). */
   reason?: string;
+  /**
+   * The now-live engine (TASK-586 wire field, relayed since TASK-614). Names the
+   * side of the BIDIRECTIONAL switch, so a client can tell a return to the
+   * selected pipeline from a move to the tenant default.
+   */
+  active?: 'primary' | 'fallback';
+  /**
+   * Boolean convenience flag for {@link active}. Coerced from the stream's
+   * '1'/'0' string by the bridge — consumers (compat gateway, SDK) all type it
+   * `boolean`, and the raw '0' string would be truthy.
+   */
+  is_fallback?: boolean;
   /** Utterance ordinal at which the swap happened. */
   utterance_index?: number;
 }

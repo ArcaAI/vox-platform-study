@@ -210,8 +210,16 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
         metadata.detectedLanguage,
         session.language,
       );
-      const deliveredMetadata =
+      // The ASR pipeline that actually produced THIS utterance (TASK-613
+      // B1's camelCase `pipelineId` on the bridge transcript projection).
+      // Per §3.3/OD-3 it is relayed in BOTH the top-level `pipeline_id`
+      // (mirroring chunk_id/detected_language) and `metadata.pipeline_id`.
+      const pipelineId = this.firstPresent(message.pipeline_id, message.pipelineId, metadata.pipeline_id, metadata.pipelineId);
+      let deliveredMetadata =
         detectedLanguage !== undefined && metadata.detected_language === undefined ? { ...metadata, detected_language: detectedLanguage } : metadata;
+      if (pipelineId !== undefined && deliveredMetadata.pipeline_id === undefined) {
+        deliveredMetadata = { ...deliveredMetadata, pipeline_id: pipelineId };
+      }
 
       this.sendLegacyMessage(session.client, session.sessionId, {
         type: 'transcription',
@@ -223,6 +231,7 @@ export class SttCompatGateway implements OnGatewayConnection, OnGatewayDisconnec
         metadata: deliveredMetadata,
         chunk_id: chunkId ?? null,
         detected_language: detectedLanguage ?? null,
+        pipeline_id: pipelineId ?? null,
       });
       return;
     }

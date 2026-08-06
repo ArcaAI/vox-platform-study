@@ -248,6 +248,59 @@ describe('TranscriptionRealtimeService', () => {
   });
 
   // -----------------------------------------------------------------------
+  // dispatchDramatiqJob — fallback pipeline (TASK-614 D-6)
+  //
+  // `transcribe_file` re-runs a failed primary ASR on `fallback_pipeline_id`
+  // within the same Dramatiq attempt (TASK-567), but the argument was never
+  // sent, so batch auto-fallback never ran in production.
+  //
+  // It rides as a KWARG, deliberately. The actor's positional order is
+  // (job_id, tenant_id, pipeline_id, audio_uri, consultation_id, media_id,
+  // language, code_switching, audio_bucket_name, user_id, storage,
+  // fallback_pipeline_id) — appending positionally would mean emitting the
+  // `storage` slot too, and any future insertion upstream silently shifts
+  // every later argument. Kwargs are order-free.
+  // -----------------------------------------------------------------------
+
+  describe('dispatchDramatiqJob fallbackPipelineId', () => {
+    const dispatchAndRead = async (extra: Record<string, unknown>) => {
+      await service.dispatchDramatiqJob({
+        jobId: 'job-77',
+        tenantId: 'tenant-1',
+        pipelineId: 'primary-pipe',
+        audioUri: 's3://hope-audio/x.wav',
+        ...extra,
+      } as any);
+      return JSON.parse((mockCacheService.hset as any).mock.calls[0][2]);
+    };
+
+    it('passes the fallback pipeline as a kwarg', async () => {
+      const message = await dispatchAndRead({ fallbackPipelineId: 'fallback-pipe' });
+
+      expect(message.kwargs.fallback_pipeline_id).toBe('fallback-pipe');
+      // Positional args must be untouched — the worker signature depends on them.
+      expect(message.args).toHaveLength(10);
+    });
+
+    it('omits the kwarg entirely when no fallback is configured', async () => {
+      const message = await dispatchAndRead({});
+
+      expect('fallback_pipeline_id' in message.kwargs).toBe(false);
+    });
+
+    it('carries the fallback alongside a per-tenant storage descriptor', async () => {
+      // Both are kwargs; adding one must not displace the other.
+      const message = await dispatchAndRead({
+        fallbackPipelineId: 'fallback-pipe',
+        storage: { provider: 's3', bucket: 'tenant-bucket' },
+      });
+
+      expect(message.kwargs.fallback_pipeline_id).toBe('fallback-pipe');
+      expect(message.kwargs.storage).toEqual({ provider: 's3', bucket: 'tenant-bucket' });
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // subscribeToJob
   // -----------------------------------------------------------------------
 

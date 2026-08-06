@@ -9,7 +9,7 @@ import { useMemo, useCallback, useRef } from 'react';
 import { useAgenticStore } from '../store';
 import type { ContextItem, TranscriptionResult } from '../types';
 import { AgenticError } from '../types';
-import type { TranscriptSegment, AudioStartOptions, DualCaptureResult, ProviderSwitchInfo } from '../types/audio';
+import type { TranscriptSegment, AudioStartOptions, DualCaptureResult, ProviderSwitchInfo, ActivePipelineInfo } from '../types/audio';
 import { CONTEXT_ENDPOINTS } from '../core/constants';
 import type { ISDKLogger } from '../core/logger';
 import { AudioContextManager, AudioMixer } from '@arcaai/room';
@@ -173,6 +173,14 @@ export function useArcaAudio() {
   const uplinkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dualRecorderRef = useRef<DualStreamRecorder | null>(null);
   const onDualCaptureRef = useRef<((result: DualCaptureResult) => void) | undefined>(undefined);
+  /**
+   * The pipeline baseline the GATEWAY reported for this session (TASK-614),
+   * captured by `onStreamingSessionCreated` during `pluginManager.initialize()`.
+   * A ref, not state: it is written and read inside one `startAudio` pass, well
+   * before any re-render. Cleared on start and stop so it can never leak a
+   * previous session's engine into the next one.
+   */
+  const serverPipelineRef = useRef<ActivePipelineInfo | null>(null);
 
   // ---------------------------------------------------------------------------
   // Runtime source management (TASK-609)
@@ -322,6 +330,10 @@ export function useArcaAudio() {
         });
         return;
       }
+
+      // …and with no server pipeline baseline carried over (TASK-614): the
+      // previous session's engine must never be reported for this one.
+      serverPipelineRef.current = null;
 
       // A new capture session starts with a clean source registry (TASK-609):
       // ids restart at `source-1`, and nothing from the previous session's
@@ -725,6 +737,10 @@ export function useArcaAudio() {
                 // Carry word-level timings through to
                 // the store so consumers read words from audio.transcriptSegments.
                 words: result.words,
+                // Per-utterance pipeline provenance (TASK-613).
+                // Spread-conditional so an older backend leaves the key absent
+                // rather than writing `undefined` into every stored segment.
+                ...(result.pipelineId ? { pipelineId: result.pipelineId } : {}),
               };
               store.addTranscriptSegment(segment);
 
@@ -818,16 +834,43 @@ export function useArcaAudio() {
             store.setSttConnectionState(state);
           },
           // The backend swapped the session's ASR engine (TASK-586 Lane D:
-          // BIDIRECTIONAL — primary→fallback OR fallback→primary). Prefer the
-          // frame's explicit `active`/`isFallback` fields when present (a
-          // backend that supports the compat bidirectional toggle reports
-          // both directions); fall back to the pre-586 always-fallback
-          // inference for a backend that only ever reports the one-way
-          // primary→fallback switch, so this handler stays byte-compatible
-          // with every pre-586 caller.
+          // BIDIRECTIONAL — primary→fallback OR fallback→primary). The
+          // direction is READ from the frame, in descending order of certainty
+          // (TASK-614 D-4):
+          //
+          //   1. `isFallback` — the backend said so outright.
+          //   2. `active` — the backend named the live engine.
+          //   3. the pipeline id — this session asked for `options.pipelineId`,
+          //      and the frame names what is live now; if they match, this is a
+          //      return to the primary, not a fallback.
+          //   4. only with none of the above: assume fallback. On a backend old
+          //      enough to send neither field, the one-way primary→fallback
+          //      auto-switch is the only switch that existed.
+          //
+          // Step 3 exists because steps 1–2 were unreachable until TASK-614
+          // fixed the bridge, which made step 4 run on EVERY switch — latching
+          // sessions that had returned to their selected pipeline as "fallback"
+          // for the rest of their life.
+          // The gateway echoed the RESOLVED pipeline + the engine it actually
+          // opened on (TASK-614). Fires during `initialize()`, i.e. BEFORE the
+          // `setActivePipeline` below, so the ref is what that line reads.
+          // Also written to the store here so a consumer subscribed before the
+          // start resolves sees the truth immediately.
+          onStreamingSessionCreated: ({ pipelineId, isFallback }) => {
+            serverPipelineRef.current = { id: pipelineId, name: pipelineId, isFallback };
+            store.setActivePipeline(serverPipelineRef.current);
+          },
           onProviderSwitched: (info) => {
             const raw = info as ProviderSwitchInfo & { active?: 'primary' | 'fallback'; isFallback?: boolean };
-            const isFallback = raw.isFallback !== undefined ? raw.isFallback : raw.active !== undefined ? raw.active === 'fallback' : true;
+            const requestedPipelineId = options?.pipelineId;
+            const isFallback =
+              raw.isFallback !== undefined
+                ? raw.isFallback
+                : raw.active !== undefined
+                  ? raw.active === 'fallback'
+                  : requestedPipelineId && info.toPipeline
+                    ? info.toPipeline !== requestedPipelineId
+                    : true;
             // A switch BACK to primary un-latches the durable fallback flag and
             // returns the connection to the nominal `connected` state — the
             // TASK-568 durable latch was one-way by construction; this is the
@@ -851,12 +894,23 @@ export function useArcaAudio() {
 
         // Reset the streaming STT connection signal for the new session and
         // record the active pipeline (backend workflow only — local STT has no
-        // pipeline). `isFallback` reflects the pre-start `startOn` selection
-        // (TASK-586) so the compat hook reads the right side from frame 1; a
-        // later provider_switched still flips it mid-session.
+        // pipeline).
+        //
+        // SERVER-derived when the gateway echoed the resolved baseline
+        // (TASK-614): the REQUEST is silent about a caller that sent no
+        // pipelineId (the gateway resolves one — the session then had a null
+        // `activePipeline` for its whole life), about a session opened on the
+        // fallback by `startOn`, and about one opened there because the primary
+        // ASR failed to load. `serverPipelineRef` is filled by
+        // `onStreamingSessionCreated` DURING `initialize()` above, so it is
+        // already set here when the backend supports the echo.
+        //
+        // Falls back to the request-derived value for an older gateway — a new
+        // SDK must keep working there, unchanged.
         store.setSttConnectionState('connected');
         store.setActivePipeline(
-          options?.pipelineId ? { id: options.pipelineId, name: options.pipelineId, isFallback: options?.startOn === 'fallback' } : null,
+          serverPipelineRef.current ??
+            (options?.pipelineId ? { id: options.pipelineId, name: options.pipelineId, isFallback: options?.startOn === 'fallback' } : null),
         );
 
         // Uplink-bitrate poll — the streaming STT stage exists after initialize().
@@ -1330,6 +1384,7 @@ export function useArcaAudio() {
       // Session ended; clear the streaming STT connection/pipeline signal.
       store.setSttConnectionState('connected');
       store.setActivePipeline(null);
+      serverPipelineRef.current = null;
 
       logger?.info('Audio capture stopped', {
         operation: 'stopAudio',

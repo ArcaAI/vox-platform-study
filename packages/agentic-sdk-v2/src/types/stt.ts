@@ -165,6 +165,19 @@ export interface StreamingSessionResponse {
   /** Epoch milliseconds when the stream ticket expires. */
   ticketExpiresAt?: number;
   /**
+   * The RESOLVED ASR pipeline this session opened with (TASK-614). Differs from
+   * the requested id whenever the client sent none — the gateway resolves one,
+   * and before this echo existed the SDK had no way to learn which. Optional:
+   * absent against a gateway that predates it.
+   */
+  pipelineId?: string;
+  /**
+   * The engine live at create: `'primary'`, or `'fallback'` when the session
+   * opened on the tenant fallback — by choice (`startOn`) or because the primary
+   * ASR failed to load. Optional for the same back-compat reason.
+   */
+  activeEngine?: 'primary' | 'fallback';
+  /**
    * Whether the speaker voice profile was successfully preseeded
    * preseed contract). Surfaced so the SDK can short-circuit an extra
    * voice-enrollment-status round-trip.
@@ -297,6 +310,14 @@ export interface WsTranscriptResult {
   wordTimestamps?: WsWordTimestamp[];
   /** Backend inference/processing time in seconds */
   inference?: number;
+  /**
+   * Per-utterance ASR pipeline provenance (TASK-613): the pipeline that
+   * actually produced THIS utterance, which can differ from the one the
+   * session requested after a mid-session engine switch. The gateway relays
+   * it as `pipelineId`. Optional for backward compat with older backends
+   * that don't stamp it — consumers then keep their request-derived value.
+   */
+  pipelineId?: string;
 }
 
 /**
@@ -351,6 +372,8 @@ export interface WsTranscriptWirePayload {
   word_timestamps?: unknown;
   inference?: unknown;
   inference_time?: unknown;
+  pipelineId?: unknown;
+  pipeline_id?: unknown;
   /** Absorbs any not-yet-modelled server field so `Record<string, unknown>` stays assignable. */
   [key: string]: unknown;
 }

@@ -82,6 +82,16 @@ export interface BatchQueueItem {
   error: string | null;
   /** Last job payload seen (upload response, then the terminal fetch). */
   job: TranscriptionJobResponse | null;
+  /**
+   * The tenant fallback pipeline that actually produced this transcript, when
+   * the requested pipeline failed and the worker re-ran on the fallback
+   * (TASK-614). `null` when the requested pipeline produced it — the normal
+   * case — or when the job has not completed.
+   *
+   * Which engine transcribed a consultation is clinical provenance, so it is
+   * stated here rather than left buried in `job.resultMetadata`.
+   */
+  usedFallbackPipelineId: string | null;
 }
 
 /** Upload options. Given per-hook as defaults and/or per-`enqueue` as an override. */
@@ -154,6 +164,23 @@ function asNumber(value: unknown): number | undefined {
     if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
+}
+
+/**
+ * Read the fallback pipeline a completed job actually ran on (TASK-614 D-7).
+ *
+ * The worker stamps `usedFallbackPipelineId` into `TranscriptionResult.metadata`
+ * when the primary ASR failed and it re-ran on the tenant fallback; the gateway
+ * spreads `result.to_dict()` into the job's `resultMetadata`, so it lands at
+ * `resultMetadata.metadata.usedFallbackPipelineId`. Both levels are untyped
+ * pass-throughs, so every access is guarded — a shape change upstream must
+ * degrade to "no fallback recorded", never throw on a completed job.
+ */
+function readUsedFallbackPipelineId(job: TranscriptionJobResponse): string | null {
+  const meta = job.resultMetadata as { metadata?: unknown } | null | undefined;
+  const inner = meta?.metadata as { usedFallbackPipelineId?: unknown } | null | undefined;
+  const value = inner?.usedFallbackPipelineId;
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 /** Join the FINAL segments — the interim ones are hypotheses, not transcript. */
@@ -303,6 +330,7 @@ export function useArcaBatchTranscription(props: UseArcaBatchTranscriptionProps 
             status: 'completed',
             job,
             text: job.resultText?.trim() || prev.text,
+            usedFallbackPipelineId: readUsedFallbackPipelineId(job),
           }));
         } catch {
           // The transcript we streamed is still worth keeping — completion is
@@ -365,15 +393,12 @@ export function useArcaBatchTranscription(props: UseArcaBatchTranscriptionProps 
         failItem(id, new Error('SDK not initialized — no apiClient available. Mount <ArcaCompatProvider> before uploading.'), 'configuration');
         return;
       }
+      // OPTIONAL since TASK-614 (D-8): omitting it means "use the tenant's
+      // default pipeline", the same intent a live session has always been able
+      // to express. The gateway resolves it (tenant default → configured
+      // fallback) and 409s when the tenant has neither, so refusing here would
+      // only deny a legitimate request the backend can serve.
       const pipelineId = runtime.options.pipelineId?.trim();
-      if (!pipelineId) {
-        failItem(
-          id,
-          new Error('No pipelineId available for this upload. Pass one via enqueue(files, { pipelineId }) or the hook options.'),
-          'configuration',
-        );
-        return;
-      }
 
       const service = new FileTranscriptionService(client, loggerRef.current ?? undefined);
       const abort = new AbortController();
@@ -385,7 +410,10 @@ export function useArcaBatchTranscription(props: UseArcaBatchTranscriptionProps 
       let job: TranscriptionJobResponse;
       try {
         job = await service.uploadAndTranscribeWithProgress(runtime.file, {
-          pipelineId,
+          // OMITTED, not sent empty: the gateway validates `pipelineId` as a
+          // slug/UUID, so an empty string would 400 where "tenant default" was
+          // meant.
+          ...(pipelineId ? { pipelineId } : {}),
           ...(runtime.options.language ? { language: runtime.options.language } : {}),
           ...(runtime.options.consultationId ? { consultationId: runtime.options.consultationId } : {}),
           signal: abort.signal,
@@ -481,6 +509,7 @@ export function useArcaBatchTranscription(props: UseArcaBatchTranscriptionProps 
         text: '',
         error: null,
         job: null,
+        usedFallbackPipelineId: null,
       });
     }
     setItems((prev) => [...prev, ...created]);
@@ -513,7 +542,16 @@ export function useArcaBatchTranscription(props: UseArcaBatchTranscriptionProps 
       cancelledRef.current.delete(itemId);
       startedRef.current.delete(itemId);
       teardown(itemId, { abortUpload: true });
-      patchItem(itemId, { status: 'pending', uploadProgress: 0, jobId: null, segments: [], text: '', error: null, job: null });
+      patchItem(itemId, {
+        status: 'pending',
+        uploadProgress: 0,
+        jobId: null,
+        segments: [],
+        text: '',
+        error: null,
+        job: null,
+        usedFallbackPipelineId: null,
+      });
     },
     [patchItem, teardown],
   );

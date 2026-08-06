@@ -28,6 +28,10 @@ def mock_session_manager():
     guard.max_streams = 10
     guard.active_count = 1
     mgr.capacity_guard = guard
+    # get_switch_controller (TASK-613) is a SYNCHRONOUS method on the real
+    # SessionManager; explicitly set as a plain MagicMock so routes.py's
+    # synchronous call site gets None back instead of an unawaited coroutine.
+    mgr.get_switch_controller = MagicMock(return_value=None)
     return mgr
 
 
@@ -63,6 +67,7 @@ def test_get_language_modes_returns_catalog(client: TestClient) -> None:
 def test_create_forwards_language_mode(client: TestClient, mock_session_manager) -> None:
     session = MagicMock()
     session.session_id = "sess-587"
+    session.pipeline_id = "pipeline-1"
     mock_session_manager.create_session.return_value = session
 
     resp = client.post("/internal/streaming/sessions", json=_create_body(language_mode="ml-en"))

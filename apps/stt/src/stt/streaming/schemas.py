@@ -157,6 +157,9 @@ class SegmentResult:
     with their final. ``result_type`` (wire field ``type``) is ``"segment"``
     for regular partials/finals and ``"gloss"`` for the opt-in follow-up
     English-translation result.
+
+    ``pipeline_id`` (additive) carries the ASR pipeline id that produced this
+    utterance. ``None`` (field omitted on the wire) when unknown.
     """
 
     text: str
@@ -175,6 +178,11 @@ class SegmentResult:
     # reports one — Sarvam/OpenAI cloud STT echo it. ``None`` for engines that
     # don't detect (the field is then omitted from the wire dict).
     language: str | None = None
+    # ``pipeline_id`` (additive) is the ASR pipeline that produced THIS
+    # utterance — set at result-construction time so a mid-session engine
+    # switch is reflected per-utterance rather than session-wide. ``None``
+    # (field omitted on the wire) when the producer did not stamp one.
+    pipeline_id: str | None = None
 
     def to_redis_dict(self) -> dict[str, str]:
         """Serialize to Redis Stream field dict for ``XADD``."""
@@ -202,6 +210,8 @@ class SegmentResult:
             d["stable_chars"] = str(self.stable_chars)
         if self.language:
             d["language"] = self.language
+        if self.pipeline_id:
+            d["pipeline_id"] = self.pipeline_id
         return d
 
     @classmethod
@@ -249,6 +259,7 @@ class SegmentResult:
             utterance_index=utterance_index,
             result_type=_get("type") or "segment",
             language=_get("language") or None,
+            pipeline_id=_get("pipeline_id") or None,
         )
 
 

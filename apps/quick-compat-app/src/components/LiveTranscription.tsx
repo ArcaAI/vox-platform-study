@@ -111,7 +111,7 @@ export function LiveTranscription({ pipelineId, language }: LiveTranscriptionPro
         <span className="muted">language: {language}</span>
       </div>
 
-      <ProviderSwitch pipelineId={pipelineId} />
+      <ProviderSwitch />
 
       <div className="meter" aria-label="input level">
         <div className="meter-fill" style={{ width: `${Math.min(100, level)}%` }} />

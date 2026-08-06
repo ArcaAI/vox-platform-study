@@ -114,7 +114,7 @@ export class SttCompatController {
 
       // Always resolve the tenant fallback + BYO overrides (fail-open — a broken
       // or absent config must never block session creation).
-      const { providerOverrides, fallbackPipelineId } = await this.resolveSttFallbackConfig(tenantId);
+      const { providerOverrides, fallbackPipelineId, autoSwitchEnabled, consecutiveFailureThreshold } = await this.resolveSttFallbackConfig(tenantId);
 
       // Pre-start default-provider selection (TASK-586 C7b). Map the compat
       // vocabulary (pipeline≡primary, default≡fallback) to the applications
@@ -134,6 +134,10 @@ export class SttCompatController {
         language: body.language ?? undefined,
         providerOverrides,
         fallbackPipelineId,
+        // Tenant auto-switch governance (TASK-614). `!== undefined`, not
+        // truthiness — `false` is the choice worth carrying.
+        ...(autoSwitchEnabled !== undefined ? { autoSwitchEnabled } : {}),
+        ...(consecutiveFailureThreshold !== undefined ? { consecutiveFailureThreshold } : {}),
         ...(startOn ? { startOn } : {}),
       });
       if (!session) {
@@ -146,7 +150,13 @@ export class SttCompatController {
         this.sessionMetadataService?.setLanguage(body.session_id, body.language),
       ]);
 
-      return response;
+      // Echo the RESOLVED baseline (TASK-614) — additive, so v1 clients that
+      // ignore unknown keys are unaffected. Spread only when STT reported it.
+      return {
+        ...response,
+        ...(session.pipelineId ? { pipeline_id: session.pipelineId } : {}),
+        ...(session.activeEngine ? { active_engine: session.activeEngine } : {}),
+      };
     };
 
     if (this.cls) {
@@ -250,7 +260,12 @@ export class SttCompatController {
    * BYO key must never block transcription. Decrypted overrides are handed
    * straight to the session payload and NEVER logged here.
    */
-  private async resolveSttFallbackConfig(tenantId: string): Promise<{ providerOverrides?: SttProviderOverrides; fallbackPipelineId?: string }> {
+  private async resolveSttFallbackConfig(tenantId: string): Promise<{
+    providerOverrides?: SttProviderOverrides;
+    fallbackPipelineId?: string;
+    autoSwitchEnabled?: boolean;
+    consecutiveFailureThreshold?: number;
+  }> {
     if (!this.sttConfig) {
       return {};
     }
@@ -259,6 +274,9 @@ export class SttCompatController {
       return {
         providerOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
         fallbackPipelineId: effective.fallbackPipelineId ?? undefined,
+        // TASK-614 — the governance half of the same resolved config.
+        autoSwitchEnabled: effective.autoSwitchEnabled ?? undefined,
+        consecutiveFailureThreshold: effective.consecutiveFailureThreshold ?? undefined,
       };
     } catch (err) {
       this.logger.warn({

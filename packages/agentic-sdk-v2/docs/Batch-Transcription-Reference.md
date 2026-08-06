@@ -109,6 +109,9 @@ interface BatchQueueItem {
   text: string; // joined FINAL segments while streaming; the job's own resultText once completed
   error: string | null;
   job: TranscriptionJobResponse | null; // last payload seen — upload response, then the terminal read
+  usedFallbackPipelineId: string | null; // TASK-614 — set when the primary ASR failed and the
+  //                                        job was re-run on the tenant fallback; null on the
+  //                                        normal path and before completion
 }
 
 interface BatchTranscriptSegment {
@@ -246,7 +249,10 @@ record), plus the `stream/session/*` WebSocket-session routes.
 ```ts
 // POST /transcribe — multipart/form-data fields
 interface TranscribeFileRequest {
-  pipelineId: string; // REQUIRED. Slug ([A-Za-z0-9][A-Za-z0-9-]*) or UUID v4
+  pipelineId?: string; // OPTIONAL since TASK-614. Slug ([A-Za-z0-9][A-Za-z0-9-]*) or UUID v4.
+  //                      Omit to use the tenant's default pipeline: the gateway resolves
+  //                      tenant-default → configured STT fallback, and 409s when it has
+  //                      neither. It never guesses a pipeline.
   consultationId?: string; // UUID, optional
   language?: string; // ISO 639-1, e.g. 'en', 'vi', 'auto' — optional pipeline override
 }

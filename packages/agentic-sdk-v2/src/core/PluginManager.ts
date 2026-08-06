@@ -119,6 +119,13 @@ export interface PluginEventCallbacks {
    * status frame so the hook can mark the active pipeline as the fallback.
    */
   onProviderSwitched?: (info: ProviderSwitchInfo) => void;
+  /**
+   * The backend streaming session was created and reported the pipeline it
+   * RESOLVED plus the engine it actually opened on (TASK-614). Fires once per
+   * session, before any audio flows. Not fired by a gateway that predates the
+   * echo — the consumer then keeps its request-derived value.
+   */
+  onStreamingSessionCreated?: (info: { pipelineId: string; isFallback: boolean }) => void;
 }
 
 /**
@@ -812,6 +819,18 @@ export class PluginManager {
     wsClient.onReconnect(() => this.callbacks.onSttConnectionState?.('reconnecting'));
     wsClient.onReconnected(() => this.callbacks.onSttConnectionState?.('connected'));
     wsClient.onReconnectFailed(() => this.callbacks.onSttConnectionState?.('error'));
+    // The gateway echoes the RESOLVED pipeline + the engine actually opened on
+    // (TASK-614). Route it out so the store's `activePipeline` is server-derived
+    // rather than an echo of what the client asked for — the request is silent
+    // about a caller that sent no pipelineId, a session opened on the fallback
+    // by choice, and one opened there because the primary ASR failed to load.
+    sessionManager.onSessionCreated((response) => {
+      if (!response.pipelineId) return; // older gateway — consumer keeps its request-derived value
+      this.callbacks.onStreamingSessionCreated?.({
+        pipelineId: response.pipelineId,
+        isFallback: response.activeEngine === 'fallback',
+      });
+    });
     // The backend publishes an ASR engine swap as a `status`/`provider_switched`
     // result (zero WS protocol change); route it to the provider-switch callback.
     wsClient.onStatus((status) => {

@@ -620,12 +620,21 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
    * `reason` / `active` / `is_fallback` / `utterance_index`
    * (`apps/stt/src/stt/streaming/redis_streams.py`). None of them carry text.
    *
-   * NOTE: `active` / `is_fallback` are deliberately NOT relayed here — that is
-   * a pre-existing TASK-586 gap (the v1-compat gateway codes for them but never
-   * receives them) and widening the status DTO is out of this change's scope.
+   * `active` / `is_fallback` ARE relayed (TASK-614, closing the TASK-586 gap
+   * this comment used to describe). Without them the v1-compat gateway's
+   * `isFallback` branch was unreachable and the SDK fell back to "absent ⇒
+   * fallback" — correct for primary→fallback, wrong for every switch back, so a
+   * session that returned to its selected pipeline read as "on the tenant
+   * default" for the rest of its life.
+   *
+   * `is_fallback` is COERCED to a real boolean here. The wire carries '1'/'0'
+   * strings and every consumer types the field `boolean`; relaying the raw
+   * string would be worse than dropping it, since '0' is truthy in JS.
    */
   private buildStatusMessage(data: Record<string, string>): StreamingStatusMessage {
     const utterance = data.utterance_index != null && data.utterance_index !== '' ? Number.parseInt(data.utterance_index, 10) : undefined;
+    const isFallback =
+      data.is_fallback != null && data.is_fallback !== '' ? data.is_fallback === '1' || data.is_fallback.toLowerCase() === 'true' : undefined;
     return {
       type: 'status',
       status: data.status,
@@ -633,6 +642,8 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       ...(data.from_pipeline ? { from_pipeline: data.from_pipeline } : {}),
       ...(data.to_pipeline ? { to_pipeline: data.to_pipeline } : {}),
       ...(data.reason ? { reason: data.reason } : {}),
+      ...(data.active === 'primary' || data.active === 'fallback' ? { active: data.active } : {}),
+      ...(isFallback !== undefined ? { is_fallback: isFallback } : {}),
       ...(utterance != null && Number.isFinite(utterance) && utterance >= 0 ? { utterance_index: utterance } : {}),
     };
   }
@@ -690,6 +701,9 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
     // v2 client and the v1-compat gateway read a REAL detection instead of an
     // echo of the requested language/mode.
     const detectedLanguage = data.language || data.detected_language || undefined;
+    // The pipeline that actually produced THIS utterance (TASK-613 B1);
+    // absent when the upstream stt worker doesn't stamp it.
+    const pipelineId = data.pipeline_id || undefined;
 
     // Additive committed-prefix length on partials.
     // Only relayed when present and a valid non-negative integer.
@@ -740,6 +754,7 @@ export class StreamingAudioBridgeService implements OnModuleInit, OnModuleDestro
       ...(resultType ? { resultType } : {}),
       ...(englishText ? { englishText } : {}),
       ...(detectedLanguage ? { detectedLanguage } : {}),
+      ...(pipelineId ? { pipelineId } : {}),
       ...(speakerId ? { speakerId } : {}),
       ...(speakerLabel ? { speakerLabel } : {}),
       ...(speakerConfidence != null && !isNaN(speakerConfidence) ? { speakerConfidence } : {}),

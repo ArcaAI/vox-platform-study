@@ -1,11 +1,6 @@
 import { useState } from 'react';
 import { useArcaSttProvider } from '@arcaai/vox/compat';
 
-interface ProviderSwitchProps {
-  /** The configured (primary) pipeline id — used to tell the two sides apart. */
-  pipelineId: string;
-}
-
 /**
  * Quick STT provider switch for a live session.
  *
@@ -22,7 +17,7 @@ interface ProviderSwitchProps {
  * Switching back to the selected pipeline additionally requires
  * `enableProviderSwitch: true` on the provider (see `App.tsx`).
  */
-export function ProviderSwitch({ pipelineId }: ProviderSwitchProps) {
+export function ProviderSwitch() {
   const [error, setError] = useState<string | null>(null);
   const [lastSwitch, setLastSwitch] = useState<string | null>(null);
   /** The side the user last asked for, so "switching…" can be cleared by arrival. */
@@ -36,20 +31,13 @@ export function ProviderSwitch({ pipelineId }: ProviderSwitchProps) {
     onSwitchFailed: (err) => setError(err.message),
   });
 
-  // Which side is live, decided by the pipeline ID rather than the SDK's
-  // `isFallback` flag.
-  //
-  // WHY: the SDK derives `isFallback` from the backend's switch-confirmation
-  // frame and DEFAULTS IT TO TRUE when the frame carries neither `isFallback`
-  // nor `active`. This gateway's frame carries neither, so a switch BACK to the
-  // selected pipeline is still reported as `isFallback=true` — the toggle would
-  // stick on "Default" forever even though the stream really did move back
-  // (observed: `provider switched … to=…0117, isFallback=true`).
-  //
-  // The id is unambiguous, so compare that. Before a live session exists there
-  // is no id yet, and the hook's pre-start view is authoritative.
+  // Which side is live. `usePipeline` is now trustworthy in both directions
+  // (TASK-614): the gateway relays `active`/`is_fallback` on the switch frame,
+  // and where a backend still omits them the SDK compares the pipeline id
+  // itself rather than assuming "fallback". The id comparison this component
+  // used to hand-roll now lives in the SDK, so it is gone from here.
   const active = provider.activeProvider;
-  const onSelected = active ? active.pipelineId === pipelineId : provider.usePipeline;
+  const onSelected = provider.usePipeline;
 
   // Both calls reject with an ErrorInfo on failure; `onSwitchFailed` already
   // surfaces it, so the catch here only stops the unhandled rejection.
@@ -62,12 +50,10 @@ export function ProviderSwitch({ pipelineId }: ProviderSwitchProps) {
 
   // "Switching" means "the live pipeline is not the one you asked for yet".
   //
-  // `provider.switchStatus` cannot be used for this: it only leaves 'switching'
-  // when the `isFallback` flip fires, and that flip never happens on the way
-  // back to the selected pipeline (same defaulting bug as above) — so the label
-  // would stick forever. The buttons are deliberately never disabled for the
-  // same reason; the SDK guards concurrent switches and both calls are
-  // idempotent.
+  // Still derived from arrival rather than `provider.switchStatus`: the status
+  // leaves 'switching' on the `isFallback` flip, which is one event behind what
+  // this label is about. The buttons are deliberately never disabled — the SDK
+  // guards concurrent switches and both calls are idempotent.
   const arrived = requested === null || (requested === 'selected') === onSelected;
   const busy = !arrived;
 
