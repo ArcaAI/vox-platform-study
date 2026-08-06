@@ -39,6 +39,8 @@ def _make_result(
     language: str = "en",
     duration: float = 5.0,
     processing_time: float = 1.2,
+    engine: str | None = "whisper_cpp",
+    deployment: str | None = "SELF_HOSTED",
 ) -> TranscriptionResult:
     """Create a complete TranscriptionResult matching real pipeline output."""
     return TranscriptionResult(
@@ -51,6 +53,8 @@ def _make_result(
         sentence_timestamps=[],
         segments=[],
         metadata={"pipeline_id": "p-789"},
+        engine=engine,
+        deployment=deployment,
     )
 
 
@@ -371,6 +375,67 @@ class TestWorkerWithConsultation:
         # Job completed with context_item_id in metadata
         complete_kwargs = api.complete_job.call_args.kwargs
         assert complete_kwargs["result_metadata"]["context_item_id"] == "ctx-55"
+
+    # TASK-615 WS-C — the typed usage-attribution fields
+    # (duration_seconds/processing_time_seconds/engine/deployment) must ride
+    # as separate kwargs on the complete_job() call, mirroring
+    # `TranscriptionResult`'s own fields, NOT smuggled into result_metadata.
+    @pytest.mark.asyncio
+    async def test_completes_job_with_typed_usage_attribution_fields(self, pubsub_capture):
+        api = AsyncMock()
+        api.start_job = AsyncMock()
+        api.update_job_progress = AsyncMock()
+        api.complete_job = AsyncMock()
+        api.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-usage"})
+
+        result = _make_result(
+            duration=42.5, processing_time=9.75, engine="whisper_cpp", deployment="SELF_HOSTED"
+        )
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(api_client=api, result=result)
+
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
+            await _transcribe_file_async(
+                job_id="j-usage",
+                tenant_id="t-1",
+                pipeline_id="p-1",
+                audio_uri="s3://audio.wav",
+                consultation_id="c-usage",
+            )
+
+        complete_kwargs = api.complete_job.call_args.kwargs
+        assert complete_kwargs["duration_seconds"] == 42.5
+        assert complete_kwargs["processing_time_seconds"] == 9.75
+        assert complete_kwargs["engine"] == "whisper_cpp"
+        assert complete_kwargs["deployment"] == "SELF_HOSTED"
+        # The blob is UNCHANGED — a second, typed channel, not a move.
+        assert complete_kwargs["result_metadata"]["duration_seconds"] == 42.5
+        assert complete_kwargs["result_metadata"]["processing_time_seconds"] == 9.75
+
+    @pytest.mark.asyncio
+    async def test_completes_job_without_engine_when_unresolved(self, pubsub_capture):
+        """A result with no resolved engine (e.g. an unusual pipeline shape)
+        must not fabricate one — complete_job simply omits it."""
+        api = AsyncMock()
+        api.start_job = AsyncMock()
+        api.update_job_progress = AsyncMock()
+        api.complete_job = AsyncMock()
+        api.create_transcript = AsyncMock(return_value={"contextItemId": "ctx-noeng"})
+
+        result = _make_result(engine=None, deployment=None)
+        p1, p2, p3, p4, p5, *_ = _patch_worker_deps(api_client=api, result=result)
+
+        with p1, p2, p3, p4, p5, _patch_publisher(pubsub_capture):
+            await _transcribe_file_async(
+                job_id="j-noeng",
+                tenant_id="t-1",
+                pipeline_id="p-1",
+                audio_uri="s3://audio.wav",
+                consultation_id="c-noeng",
+            )
+
+        complete_kwargs = api.complete_job.call_args.kwargs
+        assert complete_kwargs.get("engine") is None
+        assert complete_kwargs.get("deployment") is None
 
     @pytest.mark.asyncio
     async def test_without_consultation_skips_context_item(self, pubsub_capture):
