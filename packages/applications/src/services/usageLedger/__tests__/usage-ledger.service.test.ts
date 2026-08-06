@@ -233,9 +233,9 @@ describe('UsageLedgerService.recordUsage — validation (derives nothing silentl
   it('REJECTS a free-text attributesJson key and writes nothing', async () => {
     // The PHI gate. Nothing partial is written: an emitter fixes its payload
     // and retries with the same idempotency keys.
-    await expect(
-      service.recordUsage(validInput({ attributesJson: { chiefComplaint: 'chest pain' } as never })),
-    ).rejects.toThrow(ArgumentInvalidException);
+    await expect(service.recordUsage(validInput({ attributesJson: { chiefComplaint: 'chest pain' } as never }))).rejects.toThrow(
+      ArgumentInvalidException,
+    );
     expect(mockOutboxRepository.create).not.toHaveBeenCalled();
   });
 

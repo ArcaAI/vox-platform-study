@@ -16,6 +16,7 @@ import {
   RedisServiceModule,
   SysEventServiceModule,
   UnifiedAuthGuard,
+  UsageLedgerServiceModule,
 } from '@arcaai/applications';
 import { JobQueue } from '@arcaai/domains';
 import { Global, Module } from '@nestjs/common';
@@ -244,6 +245,13 @@ const common = [
   AuditLogServiceModule, // Event-driven audit logging (replaces Kafka audit topics)
   AuditRetentionServiceModule, // scheduled AuditLog retention purge (bounds growth)
   AgentTrajectoryRetentionServiceModule, // scheduled AgentTrajectoryStep hard-retention prune (opt-in)
+  // AI usage metering: exports IUsageLedgerService for the emitter lanes and
+  // hosts the outbox drainer (BullMQ tick -> rate -> append -> roll up). Its
+  // queue registers its own name rather than a `JobQueue` member, so it is not
+  // covered by `RedisServiceModule.register(queueNames)` above; the global
+  // BullMQ root config supplies the connection either way. Placed here, beside
+  // the other background workers, so the drainer starts with them.
+  UsageLedgerServiceModule,
   JwtAuthGuardModule, // JWT guard — before AuthorizationModule
   AuthorizationModule, // Policy-based authorization (RBAC)
   // Vault prisma factory. Self-guards via SECRETS_PROVIDER=vault +

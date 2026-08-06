@@ -95,7 +95,18 @@ describe('validateUsageAttributes — the allow-list', () => {
 
   it('declares its allow-list as data so WS-G and the contract doc read the same list', () => {
     expect(Object.keys(USAGE_ATTRIBUTE_KEYS).sort()).toEqual(
-      ['cacheTtl', 'channelCount', 'contextBand', 'endpointKind', 'engine', 'interrupted', 'languageMode', 'pipelineId', 'serviceTier', 'streamKind'].sort(),
+      [
+        'cacheTtl',
+        'channelCount',
+        'contextBand',
+        'endpointKind',
+        'engine',
+        'interrupted',
+        'languageMode',
+        'pipelineId',
+        'serviceTier',
+        'streamKind',
+      ].sort(),
     );
   });
 });

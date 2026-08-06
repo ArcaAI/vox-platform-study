@@ -87,7 +87,9 @@ describe('PriceBookService.resolveCostPrice', () => {
 
   it('prices a tenant off its OWN card when it has a matching row (negotiated rate)', async () => {
     mockRepository.findEffectiveCandidates.mockImplementation(async (query: { tenantId: string }) =>
-      query.tenantId === TENANT ? [row({ id: 'tenant-row', tenantId: TENANT, unitPriceMicros: 2n })] : [row({ provider: 'anthropic', unitPriceMicros: 15n })],
+      query.tenantId === TENANT
+        ? [row({ id: 'tenant-row', tenantId: TENANT, unitPriceMicros: 2n })]
+        : [row({ provider: 'anthropic', unitPriceMicros: 15n })],
     );
 
     const resolved = await service.resolveCostPrice({
@@ -107,7 +109,9 @@ describe('PriceBookService.resolveCostPrice', () => {
   it('falls back to the SYSTEM platform card when no tenant row matches', async () => {
     mockRepository.findEffectiveCandidates.mockImplementation(async (query: { tenantId: string }) =>
       // The tenant has a card, but only for a different provider.
-      query.tenantId === TENANT ? [row({ id: 'tenant-openai', tenantId: TENANT, provider: 'openai', unitPriceMicros: 1n })] : [row({ provider: 'anthropic', unitPriceMicros: 15n })],
+      query.tenantId === TENANT
+        ? [row({ id: 'tenant-openai', tenantId: TENANT, provider: 'openai', unitPriceMicros: 1n })]
+        : [row({ provider: 'anthropic', unitPriceMicros: 15n })],
     );
 
     const resolved = await service.resolveCostPrice({

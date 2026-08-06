@@ -42,7 +42,19 @@ describe('operation vocabulary', () => {
 
 describe('provider vocabulary', () => {
   it('carries the connection ids the AiProviderConnection seed already uses', () => {
-    for (const provider of ['openai', 'azure', 'azure-speech', 'anthropic', 'bedrock', 'vertex', 'sarvam', 'ollama', 'lm-studio', 'vllm', 'llama-cpp']) {
+    for (const provider of [
+      'openai',
+      'azure',
+      'azure-speech',
+      'anthropic',
+      'bedrock',
+      'vertex',
+      'sarvam',
+      'ollama',
+      'lm-studio',
+      'vllm',
+      'llama-cpp',
+    ]) {
       expect(isKnownProvider(provider)).toBe(true);
     }
   });

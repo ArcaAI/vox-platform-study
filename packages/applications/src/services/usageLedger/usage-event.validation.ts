@@ -41,7 +41,9 @@ export function expandUsageBatch(batch: UsageEventBatchInput): UsageEventInput[]
       unit: line.unit,
       quantity: line.quantity,
       attributesJson:
-        common.attributesJson || line.attributesJson ? { ...(common.attributesJson ?? {}), ...(line.attributesJson ?? {}) } : (common.attributesJson ?? null),
+        common.attributesJson || line.attributesJson
+          ? { ...(common.attributesJson ?? {}), ...(line.attributesJson ?? {}) }
+          : (common.attributesJson ?? null),
     }));
 }
 
@@ -75,7 +77,11 @@ export function validateUsageEventInput(input: UsageEventInput): string[] {
 
   violations.push(...validateProviderId(input.provider));
 
-  if (input.model !== undefined && input.model !== null && (typeof input.model !== 'string' || input.model.length === 0 || input.model.length > 128)) {
+  if (
+    input.model !== undefined &&
+    input.model !== null &&
+    (typeof input.model !== 'string' || input.model.length === 0 || input.model.length > 128)
+  ) {
     violations.push('model must be a non-empty string of at most 128 characters, or null');
   }
 
