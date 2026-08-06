@@ -1,7 +1,15 @@
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClsService } from 'nestjs-cls';
-import { AgentStepType, AgentTrajectoryStepEntity, AgentTrajectoryStepFactory, AgentTrajectoryStepRepository, ResourceType } from '@arcaai/domains';
+import {
+  AgentStepType,
+  AgentTrajectoryStepEntity,
+  AgentTrajectoryStepFactory,
+  AgentTrajectoryStepRepository,
+  CorePrisma,
+  CoreUnitOfWorkService,
+  ResourceType,
+} from '@arcaai/domains';
 import { BaseService, assertEqualTenants } from '../../common';
 import { clampCursorLimit, decodeCursor, toCursorPage } from '../../common/cursorPagination';
 import { IActiveUserContext } from '../../interfaces';
@@ -70,6 +78,16 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     // imported by this service's own module) always supplies it; a fixture
     // that omits it simply gets no ledger emission (see `emitUsage`).
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // TASK-615 WS-D2 — Optional + trailing (arity-preserving). This is the
+    // DOMAINS `CoreUnitOfWorkService` (its `runInTransaction` is the one
+    // production callers actually use — see the outbox drainer / sttInternal
+    // WS-C precedent), NOT the identically-named, unwired class under
+    // `services/baseServices`. When wired, `recordSteps` folds the
+    // `createMany` batch insert and the usage-ledger emission into ONE
+    // transaction (upgrading the WS-F "sanctioned no-tx fallback" now that
+    // `Repository.createMany` accepts a `tx` client). Unwired fixtures fall
+    // back to the pre-upgrade sequential (no-tx) calls, unchanged.
+    @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
   ) {
     // Telemetry exemption — never broadcasts, so the ResourceType is inert.
     super(eventEmitter, clsService, ResourceType.SummaryMeta);
@@ -120,17 +138,32 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
     // IDEMPOTENT batch insert: `skipDuplicates` maps to `ON CONFLICT DO NOTHING`,
     // so a re-delivered duplicate batch (same composite unique) persists nothing.
     // NO sys-event here — telemetry exemption (see class header).
-    const { count } = await this.agentTrajectoryStepRepository.createMany(entities, true);
+    //
+    // TASK-615 WS-D2: when the unit-of-work is wired, the batch insert and the
+    // usage-ledger emission (see `emitUsage`) share ONE transaction — upgrading
+    // the WS-F "sanctioned no-tx fallback" now that `Repository.createMany`
+    // accepts a `tx` client. Unwired fixtures keep the pre-upgrade sequential
+    // (no-tx) calls, byte-identical to before. Either way `emitUsage` catches
+    // its OWN per-row failures (see below), so a metering hiccup never rolls
+    // back — or blocks — the step persistence.
+    let count: number;
+    if (this.unitOfWorkService) {
+      ({ count } = await this.unitOfWorkService.runInTransaction(async (tx) => {
+        const result = await this.agentTrajectoryStepRepository.createMany(entities, true, tx);
+        // Attempted for EVERY entity, deliberately NOT gated on `count` — see `emitUsage`.
+        await this.emitUsage(entities, tx);
+        return result;
+      }));
+    } else {
+      ({ count } = await this.agentTrajectoryStepRepository.createMany(entities, true));
+      await this.emitUsage(entities);
+    }
 
     // Only republish when at least one row was actually persisted — a fully
     // duplicate re-delivered batch stays a no-op on the live view too.
     if (count > 0) {
       await this.republishToLiveView(entities);
     }
-
-    // Usage-ledger emission (TASK-615 WS-F) — attempted for EVERY entity,
-    // deliberately NOT gated on `count`. See `emitUsage`.
-    await this.emitUsage(entities);
   }
 
   async listSessions(
@@ -350,13 +383,13 @@ export class AgentTrajectoryService extends BaseService implements IAgentTraject
    * and extending it is outside this service's boundary. See the WS-F ticket
    * report for the recommended follow-up.
    */
-  private async emitUsage(entities: AgentTrajectoryStepEntity[]): Promise<void> {
+  private async emitUsage(entities: AgentTrajectoryStepEntity[], tx?: CorePrisma.TransactionClient): Promise<void> {
     if (!this.usageLedgerService) return;
     for (const entity of entities) {
       const event = buildHarnessUsageEvent(entity);
       if (!event) continue;
       try {
-        await this.usageLedgerService.recordUsage(event);
+        await this.usageLedgerService.recordUsage(event, tx);
       } catch (error) {
         this.logger.warn({
           message: 'Failed to emit harness usage-ledger event',
