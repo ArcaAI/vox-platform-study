@@ -1,0 +1,378 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "hope-postgres"
+      },
+      "description": "Daily rollup quantity summed per capability (AiUsageRollupDaily.quantitySum), TASK-615 D5/D8. Units differ per capability (tokens, audio-seconds, characters, text-units) — read as relative trend, not an absolute cross-capability comparison.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "hope-postgres" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  date_trunc('day', \"bucketStart\") AS \"time\",\n  \"capability\"::text AS metric,\n  SUM(\"quantitySum\") AS \"value\"\nFROM \"core\".\"AiUsageRollupDaily\"\nWHERE $__timeFilter(\"bucketStart\")\nGROUP BY 1, 2\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Units by capability (daily rollup)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "hope-postgres"
+      },
+      "description": "Daily rollup rated cost summed per capability (AiUsageRollupDaily.costMicrosSum / 1e6, INTERNAL cost basis only — BYOK_NOTIONAL never lands in the rollup sum, D14). USD by construction (AiPriceBook.currency default).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "hope-postgres" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  date_trunc('day', \"bucketStart\") AS \"time\",\n  \"capability\"::text AS metric,\n  SUM(\"costMicrosSum\") / 1000000.0 AS \"value\"\nFROM \"core\".\"AiUsageRollupDaily\"\nWHERE $__timeFilter(\"bucketStart\")\nGROUP BY 1, 2\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Rated cost by capability (daily rollup, INTERNAL basis)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "hope-postgres"
+      },
+      "description": "Top-N tenants by rated rollup cost over the dashboard time range (INTERNAL basis). Cross-tenant by construction — same GLOBAL_ADMIN-only posture as GET admin/usage/top-tenants (TASK-615 WS-J).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "cost_usd" },
+            "properties": [{ "id": "unit", "value": "currencyUSD" }]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "id": 3,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "cost_usd" }]
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "hope-postgres" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  \"tenantId\",\n  SUM(\"costMicrosSum\") / 1000000.0 AS cost_usd\nFROM \"core\".\"AiUsageRollupDaily\"\nWHERE $__timeFilter(\"bucketStart\")\nGROUP BY 1\nORDER BY 2 DESC\nLIMIT 10",
+          "refId": "A"
+        }
+      ],
+      "title": "Top 10 tenants by rated cost",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "hope-postgres"
+      },
+      "description": "Daily rated cost split by costBasis, straight from the raw ledger (AiUsageEvent). BYOK_NOTIONAL is a product-visibility figure only — it is never invoiced and excluded from the rollup sums above (D14); shown here to make that exclusion visible.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "hope-postgres" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  date_trunc('day', \"occurredAt\") AS \"time\",\n  \"costBasis\"::text AS metric,\n  SUM(\"costMicros\") / 1000000.0 AS \"value\"\nFROM \"core\".\"AiUsageEvent\"\nWHERE $__timeFilter(\"occurredAt\") AND \"costMicros\" IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "BYOK notional vs internal cost",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "hope-postgres"
+      },
+      "description": "Current AiUsageOutbox row counts by status. FAILED > 0 means the drainer parked a row after 8 retries — needs a human (ws-b-contract.md §8).",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [
+            { "options": { "match": "null", "result": { "text": "0" } }, "type": "special" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "PENDING" },
+            "properties": [{ "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 500 }] } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 18 },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "hope-postgres" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  status_labels.status AS metric,\n  COALESCE(counts.count, 0) AS \"value\"\nFROM (VALUES ('PENDING'), ('DISPATCHED'), ('FAILED')) AS status_labels(status)\nLEFT JOIN (\n  SELECT \"status\"::text AS status, COUNT(*) AS count\n  FROM \"core\".\"AiUsageOutbox\"\n  GROUP BY 1\n) counts ON counts.status = status_labels.status\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Outbox rows by status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "hope-postgres"
+      },
+      "description": "Age of the oldest still-PENDING outbox row, seconds. A steadily growing value with the drainer enabled (metering.outbox.drain.enabled) means the drainer is stalled, not just backlogged.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 300 },
+              { "color": "red", "value": 1800 }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 18 },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "hope-postgres" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  COALESCE(EXTRACT(EPOCH FROM (now() - MIN(\"availableAt\"))), 0) AS \"value\"\nFROM \"core\".\"AiUsageOutbox\"\nWHERE \"status\" = 'PENDING'",
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest pending outbox row (age)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "hope-postgres"
+      },
+      "description": "Rows parked FAILED after exhausting the drainer's 8 retry attempts (ws-b-contract.md §8) — usage that needs a human to re-drive or write off.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 18 },
+      "id": 7,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "hope-postgres" },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS \"value\" FROM \"core\".\"AiUsageOutbox\" WHERE \"status\" = 'FAILED'",
+          "refId": "A"
+        }
+      ],
+      "title": "Outbox rows FAILED (parked)",
+      "type": "stat"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["consumption", "billing", "usage"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Consumption & Cost",
+  "uid": "hope-consumption",
+  "version": 1,
+  "weekStart": ""
+}
