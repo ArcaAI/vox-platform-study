@@ -18,6 +18,7 @@ import {
 } from '@arcaai/domains';
 import { JobsOptions } from 'bullmq';
 import { IResourceSubscriptionService } from '../resourceSubscription';
+import { ENTITLEMENTS_QUOTA_BLOCKED_EVENT, QuotaBlockedEvent } from '../entitlements/entitlements.constants';
 
 /**
  * Default job options for audit log jobs.
@@ -331,5 +332,54 @@ export class SysEventService implements ISysEventService {
 
     const results = await Promise.allSettled(jobs);
     this.logJobQueueFailures(results, SysEventType.SendContactMessage);
+  }
+
+  /**
+   * TASK-615 WS-H — the first real consumer of `ENTITLEMENTS_QUOTA_BLOCKED_EVENT`
+   * (emitted by `EntitlementsService.assertQuantityQuota` / `assertMeterQuota` /
+   * `assertConcurrencyQuota`). Before this handler existed nobody listened for
+   * the event at all: the typed `QuotaExceededException` still reached the
+   * caller, but the domain event itself had no subscriber, so a quota block
+   * left no audit trail.
+   *
+   * `QuotaBlockedEvent` is NOT a `SysEvent` (no `id`, no `resourceType`), so
+   * this builds the `AuditLogJob` by hand rather than reusing
+   * `buildAuditLogData`. `AuditAction` has no "blocked"/"denied" member — the
+   * enum lives in `@arcaai/domains`, owned by a different lane, and adding a
+   * value is a schema/enum-parity change outside this one — so `UPDATE` is
+   * the closest existing fit: a quota block is a fact about the TENANT's
+   * consumption state, not a create/delete/archive. `resourceId` is the
+   * blocked tenant; `data.quotaBlocked: true` is what actually distinguishes
+   * this row from an ordinary tenant-settings update on read.
+   */
+  @OnEvent(ENTITLEMENTS_QUOTA_BLOCKED_EVENT)
+  async handleEntitlementsQuotaBlockedEvent(event: QuotaBlockedEvent): Promise<void> {
+    const jobs: Promise<void>[] = [
+      this.redisService.addJob<AuditLogJob>({
+        queueName: JobQueue.AuditLog,
+        jobType: JobType.ResourceUpdated,
+        data: {
+          action: AuditAction.UPDATE,
+          // Same tolerance `warnIfMissingResponsibleEntity` already documents
+          // for every other handler: a background/system-triggered block (no
+          // CLS user) is a real, expected case, not an error.
+          responsibleUserId: event.responsibleEntityId,
+          resourceId: event.tenantId,
+          resourceType: ResourceType.Tenant,
+          data: {
+            quotaBlocked: true,
+            capability: event.capability,
+            limit: event.limit,
+            used: event.used,
+            requested: event.requested,
+          },
+          tenantId: event.tenantId,
+        },
+        options: AUDIT_LOG_JOB_OPTIONS,
+      }),
+    ];
+
+    const results = await Promise.allSettled(jobs);
+    this.logJobQueueFailures(results, ENTITLEMENTS_QUOTA_BLOCKED_EVENT);
   }
 }

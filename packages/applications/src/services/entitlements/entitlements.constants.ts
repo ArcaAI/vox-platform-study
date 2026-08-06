@@ -28,8 +28,31 @@ export const entitlementsEnabledKey = (): string => `${ENTITLEMENTS_NAMESPACE}.e
  * Domain event emitted whenever a quota precheck BLOCKS a create/submit (Q10).
  * A named event (not a `SysEventType`) keeps the audit/websocket wiring a
  * Phase-4 concern; subscribers can persist it to `AuditLog` there.
+ *
+ * TASK-615 WS-H: `SysEventService.handleEntitlementsQuotaBlockedEvent`
+ * (`../sysEvent/sysEvent.service.ts`) is that subscriber.
  */
 export const ENTITLEMENTS_QUOTA_BLOCKED_EVENT = 'entitlements.quota-blocked';
+
+/**
+ * The payload `assertQuantityQuota` / `assertMeterQuota` / `assertConcurrencyQuota`
+ * emit on {@link ENTITLEMENTS_QUOTA_BLOCKED_EVENT}. Deliberately NOT a `SysEvent`
+ * (no `id`, no `resourceType`) — it is a narrower, purpose-built shape that
+ * predates the sys-event pipeline gaining a listener for it; the consumer
+ * adapts it into an `AuditLogJob` itself rather than forcing the emit sites to
+ * construct a full `SysEvent`.
+ */
+export interface QuotaBlockedEvent {
+  tenantId: string;
+  /** `EntitlementLimitKey | MeterCapabilityKey | 'maxConcurrentSessions'` — kept as `string` so this type has no dependency on `enforcement.ts`. */
+  capability: string;
+  limit: number | null;
+  used: number;
+  requested: number;
+  at: Date;
+  /** The user whose request triggered the block, when known (CLS-scoped calls only; absent for a background/system caller). */
+  responsibleEntityId?: string;
+}
 
 /**
  * Domain event emitted when a storage upload crosses the tenant quota (Q6).
