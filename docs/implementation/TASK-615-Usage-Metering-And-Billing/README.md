@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Review — findings, research, and parallel-execution plan complete; awaiting owner approval before implementation |
+| **Status** | In Progress — Wave 0 merged (WS-G, WS-A, WS-B; contract frozen); Wave 1 emitter lanes executing |
 | **Type** | feature (cross-cutting: database → domains → applications → api → python services → admin console → infra) |
 | **Created** | 2026-08-06 |
 | **Branch** | dev-2.1 |
@@ -542,8 +542,46 @@ documented explanations; evidence pasted in §6.
 
 ## 6. Implementation Summary
 
-_Pending — implementation has not started. Each workstream records files changed,
-migrations, API changes, and evidence here on merge._
+_Updated per workstream on merge into `dev-2.1`._
+
+### Wave 0 — merged 2026-08-06
+
+**WS-G — PHI-safe telemetry hardening** (branch `task-615-ws-g`, merge `c4ef67e0`).
+`NO_CONTENT` pin for `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` registered via
+`turbo.json#globalEnv` + `env:sync`; production boot assertions in the gateway
+(`apps/api/src/bootstrap/genai-content-capture-audit.ts`) and SMR
+(`TelemetryPhiGuardConfig` in `core/config.py`); static allow-list test over every
+`gen_ai.*` literal in SMR; `docs/operations/telemetry-phi-guardrails.md`. Evidence:
+env:sync:check OK; api build 8/8; 49/49 scoped unit tests; py:smr 1049 passed with the
+4 failures proven pre-existing against a stashed baseline.
+
+**WS-A — schema & domain foundation** (branch `task-615-ws-a`, merge `95718eb4`).
+83 files, +5,907. New `usage-ledger.prisma` (AiUsageEvent/AiUsageOutbox/AiPriceBook/
+rollups) + `billing.prisma` (BillingInvoice/Line/Adjustment); 9 enums; 6 UsageMeterMetric
++ 3 ResourceType values; 11 allowance columns; migration
+`20260806000000_task_615_usage_ledger_and_billing` proven by an empty
+`prisma migrate diff` against a scratch shadow DB; 8 hand-authored domain trios
+registered in CoreDatabaseModule; placeholder price-book seed (29 SYSTEM rows,
+`bookVersion 2026-08-06-placeholder-v1`). Evidence: gen checks no-drift + coverage OK;
+database 943 tests, domains 1,483 tests green (84 new, red-first). Notable interface
+decisions: ledger metadata column named `attributesJson`; rollup `model` is
+`String @default("")`. Post-merge the shared dev DB was `db:push`ed and re-seeded.
+Found pre-existing defect (filed separately): the entitlement plane has no migration at
+all — `migrate deploy` replay fails before this ticket's migration.
+
+**WS-B — ledger core services + frozen contract** (branch `task-615-ws-b`, merge
+`414204cb`). 31 files, +4,492. `IUsageLedgerService.recordUsage` (transactional-outbox
+write, strict validation, derives nothing silently), BullMQ outbox drainer (retry state
+on the outbox row; rating + ledger insert + rollup increments in one transaction, rollups
+derived from the insert outcome so redelivery is a no-op), `IPriceBookService`
+(most-specific-wins precedence, tested; price 0 is a real rate; unresolvable price →
+event recorded unrated — metering fails closed, rating fails open), LLM usage normalizer
+(disjoint counters, `endpointKind` branching, cumulative-delta take-last),
+`attributesJson` 10-key allow-list, `UsageLedgerServiceModule` wired in
+`app.module.ts` (granted exception). **The wave-1 emitter contract is FROZEN:**
+[ws-b-contract.md](./ws-b-contract.md). Evidence: applications build green; 8/8 new test
+files, 133/133 tests; full suite bit-identical to pre-change baseline (zero regressions);
+api build 8/8.
 
 ---
 
@@ -552,3 +590,4 @@ migrations, API changes, and evidence here on merge._
 | Date | Change |
 |---|---|
 | 2026-08-06 | Ticket created, superseding TASK-601. Carried forward: current-state review (re-verified same day — all 16 gaps still open), external research (§1–12), design decisions D1–D8 and the five resolved owner questions. Added: billing-plane research track (§13), decisions D10–D17 (sell/cost price planes, per-capability allowances, overage policy, invoice lifecycle, BYOK billing, proration, PHI-free in-house rating), and the parallel-agent implementation plan (11 workstreams, 4 waves, coordination rules). Status → Review. |
+| 2026-08-06 | Plan approved by owner; execution started. **Wave 0 complete and merged** (WS-G `c4ef67e0`, WS-A `95718eb4`, WS-B `414204cb` — see §6); wave-1 emitter contract frozen (ws-b-contract.md). Status → In Progress. |
