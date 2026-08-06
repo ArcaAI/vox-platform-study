@@ -6,6 +6,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ContextItemRepository,
   ConsultationRepository,
+  CoreUnitOfWorkService,
   SummaryMetaRepository,
   NamedEntityRepository,
   ContextItemFactory,
@@ -18,7 +19,6 @@ import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSection
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-generate';
 import { buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './smr-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
-import { CoreUnitOfWorkService } from '../../baseServices/unitsOfWork/core/core.unitOfWork';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -73,6 +73,12 @@ export class ChainSummaryService extends BaseService {
     // unmetered would understate cost exactly where it is highest. Optional +
     // trailing so existing positional test fixtures keep compiling.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
+    // This is the DOMAINS `CoreUnitOfWorkService` (provided + exported by
+    // `CoreDatabaseModule`, so `@Optional()` actually resolves it), NOT the
+    // identically-named, unwired class under `services/baseServices` — which
+    // resolved to `undefined` and silently disabled this metering entirely.
+    // The token stays EXPLICIT (rather than relying on `emitDecoratorMetadata`,
+    // as `SttInternalService` does) so the DI guard test can assert it.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);

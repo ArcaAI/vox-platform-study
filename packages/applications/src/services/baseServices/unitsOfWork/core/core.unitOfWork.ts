@@ -8,6 +8,23 @@ import { CorePrisma, CoreDatabaseService } from '@arcaai/domains';
 type DatabaseContext = any;
 
 /**
+ * ⚠️ UNWIRED — DO NOT INJECT THIS CLASS. It appears in no NestJS
+ * `providers: []` array anywhere in the repo and is not exported from the
+ * `@arcaai/applications` barrel, so `@Inject(CoreUnitOfWorkService)` against
+ * it resolves to `undefined` (silently, under `@Optional()`). Inject the
+ * DOMAINS class of the same name instead —
+ * `import { CoreUnitOfWorkService } from '@arcaai/domains'` — which
+ * `CoreDatabaseModule` both provides and exports.
+ *
+ * This trap already cost TASK-615 WS-D a shipped-but-dead metering path (both
+ * summary services took the unmetered fallback branch in production while
+ * their unit tests passed). Guarded now by
+ * `services/consultation/summary/__tests__/usage-ledger.di-wiring.task615.test.ts`.
+ *
+ * The class is retained only because its own test file is a named entry in the
+ * `cross-tenant-coverage` manifest; it has no other consumer and no production
+ * caller.
+ *
  * No production caller uses the legacy
  * `startTransaction/endTransaction/transactionClient` wrapper pattern — an
  * `rg "transactionClient" packages/applications/src packages/domains/src`

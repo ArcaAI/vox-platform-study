@@ -8,6 +8,7 @@ import {
   ContextItemRepository,
   ContextItemVersionRepository,
   ConsultationRepository,
+  CoreUnitOfWorkService,
   SummaryMetaRepository,
   NamedEntityRepository,
   UserProfileRepository,
@@ -46,7 +47,6 @@ import { buildSmrGeneratePayload, mapSmrGenerateResponse, type LegacySmrSummaryR
 import { buildGuardrailUsageInput, buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './smr-usage';
 import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
 import type { UsageOperation } from '../../usageLedger/vocabulary';
-import { CoreUnitOfWorkService } from '../../baseServices/unitsOfWork/core/core.unitOfWork';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -171,6 +171,12 @@ export class SummaryService extends BaseService implements ISummaryService {
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
     // (TASK-615 WS-D) Lets the SummaryMeta write and the usage emission share
     // one transaction, so neither can survive without the other.
+    // This is the DOMAINS `CoreUnitOfWorkService` (provided + exported by
+    // `CoreDatabaseModule`, so `@Optional()` actually resolves it), NOT the
+    // identically-named, unwired class under `services/baseServices` — which
+    // resolved to `undefined` and silently disabled this metering entirely.
+    // The token stays EXPLICIT (rather than relying on `emitDecoratorMetadata`,
+    // as `SttInternalService` does) so the DI guard test can assert it.
     @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
