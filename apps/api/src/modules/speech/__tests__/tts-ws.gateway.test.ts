@@ -269,4 +269,157 @@ describe('TtsWsGateway', () => {
       expect('provider_overrides' in frame).toBe(false);
     });
   });
+
+  // TASK-615 WS-E: tts sends a final {"type":"usage",...} control frame at
+  // session teardown (success OR abort — see stream_ws.py). The gateway
+  // consumes it to emit CHARACTER + AUDIO_SECOND ledger rows and — since the
+  // browser client's protocol has no "usage" message type — strips it from
+  // the upstream→client relay so the SDK never sees an unrecognized frame.
+  describe('usage-frame consumption (TASK-615 WS-E)', () => {
+    const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 1 }) });
+
+    const buildGateway = (usageLedger: unknown) =>
+      new TtsWsGateway(ticketService as never, config as never, secrets as never, undefined, undefined, usageLedger as never);
+
+    it('emits CHARACTER + AUDIO_SECOND from the usage frame and does not relay it to the browser', async () => {
+      const usageLedger = createMockUsageLedger();
+      gateway = buildGateway(usageLedger);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      const usageFrame = Buffer.from(
+        JSON.stringify({ type: 'usage', characters: 10, audioSeconds: 0.2, interrupted: false, provider: 'azure' }),
+      );
+      upstream.emit('message', usageFrame, false);
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({
+        tenantId: 't1',
+        capability: 'TTS',
+        operation: 'tts.synthesize',
+        provider: 'azure',
+        deployment: 'CLOUD',
+        sessionId: 'sess-1',
+        attributesJson: { interrupted: false },
+      });
+      expect(call.units).toEqual(
+        expect.arrayContaining([
+          { unit: 'CHARACTER', quantity: 10 },
+          { unit: 'AUDIO_SECOND', quantity: 0.2 },
+        ]),
+      );
+      // Never forwarded to the browser — its protocol doesn't expect it.
+      expect(client.send).not.toHaveBeenCalledWith(usageFrame, { binary: false });
+    });
+
+    it('omits AUDIO_SECOND when tts reports null (nothing was ever synthesized)', async () => {
+      const usageLedger = createMockUsageLedger();
+      gateway = buildGateway(usageLedger);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      upstream.emit(
+        'message',
+        Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: null, interrupted: true, provider: null })),
+        false,
+      );
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.units).toEqual([{ unit: 'CHARACTER', quantity: 4 }]);
+      expect(call.common.attributesJson).toEqual({ interrupted: true });
+    });
+
+    it('classifies a BYOK-resolved provider as deployment BYOK / costBasis BYOK_NOTIONAL', async () => {
+      const usageLedger = createMockUsageLedger();
+      // Both tenantTtsConfig AND providerConnectionService must be present —
+      // openBridge() only resolves provider_overrides when the FIRST is set.
+      const tenantTtsConfig = {
+        getEffective: vi.fn().mockResolvedValue({
+          tenantId: 't1',
+          defaultFormat: 'pcm',
+          defaultSpeed: 1.0,
+          routingEn: ['azure'],
+          routingMl: ['azure'],
+          allowedProviders: ['azure'],
+          voiceBindings: {},
+        }),
+      };
+      const providerConnectionService = { resolveTenantCloudOverrides: vi.fn().mockResolvedValue({ azure: { api_key: 'k' } }) };
+      gateway = new TtsWsGateway(
+        ticketService as never,
+        config as never,
+        secrets as never,
+        tenantTtsConfig as never,
+        providerConnectionService as never,
+        usageLedger as never,
+      );
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      upstream.emit(
+        'message',
+        Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: 0.1, interrupted: false, provider: 'azure' })),
+        false,
+      );
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({ provider: 'azure', deployment: 'BYOK', costBasis: 'BYOK_NOTIONAL' });
+    });
+
+    it('classifies a self-hosted engine as deployment SELF_HOSTED with no costBasis', async () => {
+      const usageLedger = createMockUsageLedger();
+      gateway = buildGateway(usageLedger);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      upstream.emit(
+        'message',
+        Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: 0.1, interrupted: false, provider: 'kokoro' })),
+        false,
+      );
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({ provider: 'kokoro', deployment: 'SELF_HOSTED' });
+      expect(call.common.costBasis).toBeUndefined();
+    });
+
+    it('does nothing when IUsageLedgerService is absent (fail-open, positional construction)', async () => {
+      gateway = new TtsWsGateway(ticketService as never, config as never, secrets as never);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      const usageFrame = Buffer.from(JSON.stringify({ type: 'usage', characters: 4, audioSeconds: 0.1, interrupted: false, provider: 'kokoro' }));
+      // Must not throw even though there's no ledger to call.
+      upstream.emit('message', usageFrame, false);
+      expect(client.send).not.toHaveBeenCalledWith(usageFrame, { binary: false });
+    });
+
+    it('still relays binary audio frames and other JSON control frames normally', async () => {
+      const usageLedger = createMockUsageLedger();
+      gateway = buildGateway(usageLedger);
+      gateway.createUpstreamSocket = vi.fn(() => upstream as never);
+      const client = makeSocket();
+      await gateway.handleConnection(client as never, req('?sessionId=sess-1&ticket=t'));
+      upstream.emit('open');
+
+      const pcm = Buffer.from([1, 2, 3, 4]);
+      upstream.emit('message', pcm, true);
+      const doneFrame = Buffer.from('{"type":"done"}');
+      upstream.emit('message', doneFrame, false);
+
+      expect(client.send).toHaveBeenCalledWith(pcm, { binary: true });
+      expect(client.send).toHaveBeenCalledWith(doneFrame, { binary: false });
+    });
+  });
 });

@@ -26,6 +26,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from tts.catalog.voices import VoiceNotFoundError
 from tts.core.logging import get_logger
+from tts.core.usage import compute_audio_seconds, count_characters, record_usage_metrics
 from tts.providers.base import AudioFormat, SynthesisStream
 from tts.routing.router import AllProvidersUnavailableError
 
@@ -40,6 +41,19 @@ _ERR_INTERNAL = "internal"
 
 # Auth-failure close code — matches the gateway's uniform 4401 (enumeration-safe).
 _CLOSE_AUTH = 4401
+
+
+class _SessionUsage:
+    """Accumulates one session's accepted characters + synthesized audio bytes
+    (TASK-615 WS-E). Shared mutable state between the main audio loop and the
+    ``_pump_input`` reader task, since "characters accepted" is everything the
+    client pushed regardless of whether it was ever successfully synthesized.
+    """
+
+    def __init__(self) -> None:
+        self.characters = 0
+        self.audio_bytes = 0
+        self.provider: str | None = None
 
 
 def _str_list(value: Any) -> list[str] | None:
@@ -99,6 +113,7 @@ async def audio_stream(ws: WebSocket) -> None:
 
     settings = ws.app.state.settings
     tts_router = ws.app.state.router
+    catalog = ws.app.state.voice_catalog
     await ws.accept()
 
     try:
@@ -155,35 +170,77 @@ async def audio_stream(ws: WebSocket) -> None:
         {"type": "ready", "sample_rate": settings.sample_rate, "format": "pcm", "channels": 1}
     )
 
-    reader = asyncio.ensure_future(_pump_input(ws, stream))
+    # TASK-615 WS-E: accumulated across the whole session (every "text" frame
+    # pushed, every binary PCM frame sent) and surfaced at teardown — success
+    # OR abort — so the gateway (which fronts this socket) can emit CHARACTER
+    # + AUDIO_SECOND ledger rows. `locale` is resolved once, up front — the
+    # voice is fixed for the session's lifetime (one init -> one stream).
+    usage = _SessionUsage()
+    locale = catalog.get(voice).locale
+
+    reader = asyncio.ensure_future(_pump_input(ws, stream, usage))
+    interrupted = True
     try:
         async for chunk in stream:
+            if chunk.provider:
+                usage.provider = chunk.provider
+            usage.audio_bytes += len(chunk.data)
             await ws.send_bytes(chunk.data)
+        interrupted = False
         await ws.send_json({"type": "done"})
     except AllProvidersUnavailableError:
-        await _send_error(ws, _ERR_PROVIDER, "no provider available for this voice")
+        # NOT `_send_error` here — it also closes the socket, which would ship
+        # before the usage frame below. Close happens once, in `finally`.
+        await _send_error_frame(ws, _ERR_PROVIDER, "no provider available for this voice")
     except WebSocketDisconnect:
         pass
     except Exception:
         logger.warning("tts.stream_error", exc_info=True)
-        await _send_error(ws, _ERR_INTERNAL, "synthesis failed")
+        await _send_error_frame(ws, _ERR_INTERNAL, "synthesis failed")
     finally:
         reader.cancel()
-        with contextlib.suppress(Exception):
+        # `asyncio.CancelledError` is a `BaseException` (Py 3.8+), NOT an
+        # `Exception` — `suppress(Exception)` alone lets a genuine cancel of
+        # an in-flight `_pump_input` await escape THIS finally block (and
+        # abort the metrics/usage-frame code below it, mid-teardown). Must be
+        # named explicitly.
+        with contextlib.suppress(asyncio.CancelledError, Exception):
             await reader
         await stream.aclose()  # free upstream (Azure conn / GPU task)
+        audio_seconds = compute_audio_seconds(AudioFormat.PCM, usage.audio_bytes, settings.sample_rate)
+        record_usage_metrics(
+            provider=usage.provider,
+            locale=locale,
+            characters=usage.characters,
+            audio_seconds=audio_seconds,
+            status="aborted" if interrupted else "ok",
+        )
+        with contextlib.suppress(Exception):
+            # Best-effort: a disconnected client simply never receives it —
+            # never let this raise ahead of closing the socket.
+            await ws.send_json(
+                {
+                    "type": "usage",
+                    "characters": usage.characters,
+                    "audioSeconds": audio_seconds,
+                    "interrupted": interrupted,
+                    "provider": usage.provider,
+                }
+            )
         with contextlib.suppress(Exception):
             await ws.close()
 
 
-async def _pump_input(ws: WebSocket, stream: SynthesisStream) -> None:
+async def _pump_input(ws: WebSocket, stream: SynthesisStream, usage: _SessionUsage) -> None:
     """Feed client control frames into the synthesis stream until end/disconnect."""
     try:
         while True:
             msg: Any = await ws.receive_json()
             mtype = msg.get("type") if isinstance(msg, dict) else None
             if mtype == "text":
-                await stream.push_text(str(msg.get("text", "")))
+                text = str(msg.get("text", ""))
+                usage.characters += count_characters(text)
+                await stream.push_text(text)
             elif mtype == "flush":
                 await stream.flush()
             elif mtype == "end":
@@ -200,3 +257,16 @@ async def _send_error(ws: WebSocket, code: str, message: str) -> None:
     with contextlib.suppress(Exception):
         await ws.send_json({"type": "error", "code": code, "message": message})
         await ws.close()
+
+
+async def _send_error_frame(ws: WebSocket, code: str, message: str) -> None:
+    """Same error frame as ``_send_error``, WITHOUT closing the socket.
+
+    Used from the main audio loop's except branches (TASK-615 WS-E): the
+    ``finally`` block still has a usage frame to send after this, so closing
+    here would ship before it. The early up-front-rejection paths (before any
+    stream/reader exists — nothing to report usage for) keep using
+    ``_send_error``, which closes immediately.
+    """
+    with contextlib.suppress(Exception):
+        await ws.send_json({"type": "error", "code": code, "message": message})

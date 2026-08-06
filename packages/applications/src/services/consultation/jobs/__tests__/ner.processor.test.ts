@@ -1438,4 +1438,148 @@ Chinese: 發燒 (fever)
       );
     });
   });
+
+  // ===========================================================================
+  // TASK-615 WS-E — consultation-batched ner.extract usage-ledger emission
+  // ===========================================================================
+
+  describe('usage-ledger emission (TASK-615 WS-E)', () => {
+    const createMockUsageLedger = () => ({ recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o1'], events: 2 }) });
+
+    const buildProcessorWithLedger = (usageLedger: unknown, aiTaskDefaultService?: unknown) =>
+      new NerProcessor(
+        mockJobService as any,
+        mockContextItemRepository as any,
+        mockNamedEntityRepository as any,
+        mockHttpService as any,
+        mockConfigService as any,
+        mockEventEmitter as any,
+        mockClsService as any,
+        undefined,
+        aiTaskDefaultService as any,
+        usageLedger as any,
+      );
+
+    it('emits TEXT_UNIT + REQUEST keyed to THIS job, with consultationId as attribution', async () => {
+      const usageLedger = createMockUsageLedger();
+      const aiTaskDefaultService = { getEffective: vi.fn().mockResolvedValue({ model: { sourceUri: 'blaze999/Medical-NER' } }) };
+      const proc = buildProcessorWithLedger(usageLedger, aiTaskDefaultService);
+      const content = 'x'.repeat(250); // 250 chars -> 2.5 TEXT_UNIT
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      const payload: ExtractNerJobPayload = {
+        jobId: 'job-usage-1',
+        contextItemId: 'ctx-item-123',
+        consultationId: 'consult-usage-1',
+        tenantId: 'tenant-1',
+        userId: 'user-1',
+      };
+
+      await proc.process(createMockJob(payload));
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(1);
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common).toMatchObject({
+        tenantId: 'tenant-1',
+        idempotencyKey: 'nlp:job-usage-1',
+        requestId: 'job-usage-1',
+        capability: 'NLP',
+        operation: 'ner.extract',
+        provider: 'built-in',
+        model: 'blaze999/Medical-NER',
+        deployment: 'SELF_HOSTED',
+        consultationId: 'consult-usage-1',
+      });
+      expect(call.units).toEqual([
+        { unit: 'TEXT_UNIT', quantity: 2.5 },
+        { unit: 'REQUEST', quantity: 1 },
+      ]);
+    });
+
+    it('carries a null model when AiTaskDefault resolution fail-opened', async () => {
+      const usageLedger = createMockUsageLedger();
+      const proc = buildProcessorWithLedger(usageLedger); // no aiTaskDefaultService
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content' }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      await proc.process(
+        createMockJob({
+          jobId: 'job-usage-2',
+          contextItemId: 'ctx-item-123',
+          consultationId: 'consult-usage-2',
+          tenantId: 'tenant-1',
+          userId: 'user-1',
+        }),
+      );
+
+      const call = usageLedger.recordUsage.mock.calls[0][0];
+      expect(call.common.model).toBeNull();
+    });
+
+    it('two jobs in the SAME consultation get DISTINCT idempotencyKeys and BOTH bill their own quantity (never dropped)', async () => {
+      // Regression test for the earlier consultation-keyed design, which
+      // silently dropped every job after the first for a consultation.
+      const usageLedger = createMockUsageLedger();
+      const proc = buildProcessorWithLedger(usageLedger);
+      mockContextItemRepository.findById.mockResolvedValueOnce(createMockContextItem({ content: 'x'.repeat(100) }));
+      mockContextItemRepository.findById.mockResolvedValueOnce(createMockContextItem({ content: 'x'.repeat(400) }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      await proc.process(
+        createMockJob({ jobId: 'job-a', contextItemId: 'ctx-a', consultationId: 'shared-consult', tenantId: 'tenant-1', userId: 'user-1' }),
+      );
+      await proc.process(
+        createMockJob({ jobId: 'job-b', contextItemId: 'ctx-b', consultationId: 'shared-consult', tenantId: 'tenant-1', userId: 'user-1' }),
+      );
+
+      expect(usageLedger.recordUsage).toHaveBeenCalledTimes(2);
+      const firstCall = usageLedger.recordUsage.mock.calls[0][0];
+      const secondCall = usageLedger.recordUsage.mock.calls[1][0];
+
+      expect(firstCall.common.idempotencyKey).toBe('nlp:job-a');
+      expect(secondCall.common.idempotencyKey).toBe('nlp:job-b');
+      expect(firstCall.common.idempotencyKey).not.toBe(secondCall.common.idempotencyKey);
+
+      // Same consultation attribution on both...
+      expect(firstCall.common.consultationId).toBe('shared-consult');
+      expect(secondCall.common.consultationId).toBe('shared-consult');
+
+      // ...but each keeps ITS OWN quantity — nothing summed away or dropped.
+      expect(firstCall.units).toEqual([
+        { unit: 'TEXT_UNIT', quantity: 1 },
+        { unit: 'REQUEST', quantity: 1 },
+      ]);
+      expect(secondCall.units).toEqual([
+        { unit: 'TEXT_UNIT', quantity: 4 },
+        { unit: 'REQUEST', quantity: 1 },
+      ]);
+    });
+
+    it('emits nothing when IUsageLedgerService is absent (fail-open, positional construction)', async () => {
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content' }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      // The default `processor` fixture has no usageLedger — must not throw.
+      const result = await processor.process(
+        createMockJob({ jobId: 'job-usage-3', contextItemId: 'ctx-item-123', consultationId: 'consult-usage-3', tenantId: 'tenant-1', userId: 'user-1' }),
+      );
+
+      expect(result.contextItemId).toBe('ctx-item-123');
+    });
+
+    it('a metering failure never fails the job (never let a metering failure fail the request)', async () => {
+      const usageLedger = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox write failed')) };
+      const proc = buildProcessorWithLedger(usageLedger);
+      mockContextItemRepository.findById.mockResolvedValue(createMockContextItem({ content: 'Test content' }));
+      mockHttpService.axiosRef.post.mockResolvedValue({ data: { entities: [] } });
+
+      const result = await proc.process(
+        createMockJob({ jobId: 'job-usage-4', contextItemId: 'ctx-item-123', consultationId: 'consult-usage-4', tenantId: 'tenant-1', userId: 'user-1' }),
+      );
+
+      expect(result.contextItemId).toBe('ctx-item-123');
+      expect(mockJobService.notifyComplete).toHaveBeenCalled();
+    });
+  });
 });

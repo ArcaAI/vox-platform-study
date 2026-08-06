@@ -14,7 +14,9 @@ import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../../common';
 import { namedEntityPropsFromNlp, type NlpNamedEntity } from '../../shared/namedEntityFromNlp';
 import { resolveNerModelInjection } from '../../shared/resolveNerModelSelection';
+import { buildNerUsageEvent } from '../../shared/nerUsageEvent';
 import { IAiTaskDefaultService } from '../../../ai-task-default/IAiTaskDefaultService';
+import { IUsageLedgerService } from '../../../usageLedger';
 
 @Processor(JobQueue.ExtractNamedEntities)
 export class NerProcessor extends WorkerHost {
@@ -38,6 +40,11 @@ export class NerProcessor extends WorkerHost {
     // positional test fixtures keep compiling; absent ⇒ posts without
     // `model_name`, i.e. today's behavior (fail-open).
     @Optional() @Inject(IAiTaskDefaultService) private readonly aiTaskDefaultService?: IAiTaskDefaultService,
+    // Emits the consultation-batched `ner.extract` usage row (TASK-615
+    // WS-E). Optional + trailing so existing positional test fixtures keep
+    // compiling; absent ⇒ no emission (fail-open — metering must never
+    // block a durable NER job).
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
   ) {
     super();
     this.nlpServiceUrl = this.configService.get<string>('NLP_URL') ?? 'http://localhost:8864';
@@ -125,6 +132,32 @@ export class NerProcessor extends WorkerHost {
           namedEntities: savedEntities,
         };
 
+        // TASK-615 WS-E (revised): per-invocation ner.extract usage row —
+        // keyed on THIS job's id, never on consultationId (which is
+        // attribution only). No business transaction to join here (entity
+        // persistence isn't wrapped in one), so recordUsage runs without
+        // `tx`. Never let a metering failure fail the job — it's a side
+        // effect of work already done.
+        if (this.usageLedger) {
+          try {
+            await this.usageLedger.recordUsage(
+              buildNerUsageEvent({
+                tenantId,
+                requestId: jobId,
+                consultationId: job.data.consultationId,
+                charCount: [...contextItem.content].length,
+                model: nlpResponse.modelUsed,
+              }),
+            );
+          } catch (error) {
+            this.logger.warn({
+              message: 'NER usage emission failed',
+              jobId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
         await this.jobService.notifyComplete(jobId, result);
 
         // Emit NerExtracted event for auto-pipeline completion
@@ -169,6 +202,12 @@ export class NerProcessor extends WorkerHost {
 
   private async callNlpService(content: string): Promise<{
     entities: NlpNamedEntity[];
+    /**
+     * The resolved `model_name` actually sent to NLP, or `null` when
+     * resolution fail-opened (NLP's own env default applied, which this
+     * caller has no visibility into — TASK-615 WS-E never guesses it).
+     */
+    modelUsed: string | null;
   }> {
     try {
       // TASK-552 Lane A: inject the effective `nlp.ner` AiTaskDefault model
@@ -186,7 +225,7 @@ export class NerProcessor extends WorkerHost {
           timeout: 60000, // 1 minute timeout
         },
       );
-      return response.data;
+      return { ...response.data, modelUsed: modelSelection.model_name ?? null };
     } catch (error) {
       this.logger.error({
         message: 'NLP service call failed',

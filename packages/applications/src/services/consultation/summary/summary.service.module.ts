@@ -23,6 +23,10 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
   // EntitlementsServiceModule supplies the monthlySummaries meter.
   // AiTaskDefaultServiceModule supplies the nlp.ner model-injection resolver
   // for extractEntities (TASK-552 Lane A).
+  // UsageLedgerServiceModule supplies IUsageLedgerService: WS-D uses it so a
+  // generated summary's token consumption is recorded in the same
+  // transaction as its SummaryMeta, and WS-E uses it for the ner.extract
+  // usage row extractEntities emits (TASK-615).
   imports: [
     CommonServiceModule,
     CoreDatabaseModule,
@@ -37,8 +41,6 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
     // dep so a summary generation records its LLM_CALL trajectory step.
     AgentTrajectoryServiceModule,
     AiTaskDefaultServiceModule,
-    // (TASK-615 WS-D) supplies IUsageLedgerService so a generated summary's
-    // token consumption is recorded in the same transaction as its SummaryMeta.
     UsageLedgerServiceModule,
   ],
   providers: [
