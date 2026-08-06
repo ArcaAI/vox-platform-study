@@ -2,6 +2,7 @@ import {
   Authorize,
   IActiveUserContext,
   IConfigService,
+  IEntitlementsService,
   IProviderConnectionService,
   ITenantTtsConfigService,
   IUsageLedgerService,
@@ -81,6 +82,13 @@ export class SpeechProxyController {
     // compiling; absent (or no resolvable tenantId) ⇒ no emission, fail-open —
     // metering must never block synthesis.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
+    // TASK-615 WS-H: PRE-FLIGHT monthlyTtsCharacters allowance check, BEFORE
+    // the upstream TTS call — characters are knowable upfront here (the whole
+    // `input` string is in the request body), unlike the WS-duplex gateway.
+    // Optional/trailing so existing positional test fixtures keep compiling;
+    // absent (or no resolvable tenantId) ⇒ no check, fail-open (kill-switch-
+    // gated inside the service — a no-op until an operator opts in per-env).
+    @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
   ) {}
 
   /**
@@ -247,6 +255,19 @@ export class SpeechProxyController {
   async synthesize(@Body() body: SpeechSynthesizeRequest, @Res() res: Response): Promise<void> {
     const base = this.getTtsBaseUrl();
     const forwardBody = await this.applyTenantConfig(body);
+
+    // TASK-615 WS-H — PRE-FLIGHT monthlyTtsCharacters check, before any
+    // upstream call. `applyTenantConfig` never touches `input`, so this counts
+    // the same text that will actually be synthesized. Unicode CODE POINTS
+    // (`[...input].length`), matching the CHARACTER unit's counting rule
+    // (no CJK/Indic double-counting) — `.length` would over-count surrogate
+    // pairs. Throws `QuotaExceededException` (→ 429) when this request would
+    // push the tenant over its monthly allowance; a no-op when the kill-switch
+    // is off, the allowance is null (unlimited), or there is no tenant context.
+    const tenantId = this.cls?.get('tenantId');
+    if (tenantId && this.entitlementsService) {
+      await this.entitlementsService.assertMeterQuota(tenantId, 'monthlyTtsCharacters', [...forwardBody.input].length);
+    }
 
     try {
       const upstream = await this.withRetry(
