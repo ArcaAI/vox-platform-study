@@ -221,6 +221,71 @@ export function buildGuardrailUsageInput(params: BuildGuardrailUsageParams): Usa
   };
 }
 
+interface BuildLlmUsageFromTokenCountsParams {
+  tenantId: string;
+  operation: UsageOperation;
+  /** Ties every unit row of this call together. */
+  requestId: string;
+  provider: string;
+  model?: string | null;
+  deployment: AiDeploymentKind;
+  occurredAt: Date;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  consultationId?: string | null;
+  doctorId?: string | null;
+  departmentId?: string | null;
+}
+
+/**
+ * Build an LLM usage batch from BARE `{inputTokens, outputTokens}` — for a
+ * writer that never called SMR itself and therefore has no
+ * {@link SmrUsageDetail} (no provider, no `endpointKind`, no raw provider
+ * payload). `context.service.ts#addRawSummary` is the one caller: a legacy
+ * write path that persists a summary + pre-computed token counts a caller
+ * supplied directly, with zero SMR/HTTP calls anywhere in that file.
+ *
+ * Deliberately NOT layered on {@link buildLlmUsageInput} — that function
+ * requires a real `endpointKind` and stamps it onto `attributesJson`
+ * unconditionally, which would fabricate an API shape that never happened.
+ * This builder reuses the SAME primitives (`UsageIdempotencyKey`,
+ * `toUsageUnitQuantities`, the vocabulary/enum types) without any of the
+ * normalizer logic, since there is nothing to normalize — two counts, no
+ * cache/reasoning split, no provider translation.
+ */
+export function buildLlmUsageInputFromTokenCounts(params: BuildLlmUsageFromTokenCountsParams): UsageEventBatchInput | null {
+  const units = toUsageUnitQuantities({
+    inputTokens: toCount(params.inputTokens),
+    outputTokens: toCount(params.outputTokens),
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 0,
+  });
+  if (units.length === 0) return null;
+
+  return {
+    common: {
+      tenantId: params.tenantId,
+      idempotencyKey: UsageIdempotencyKey.llmRequest(params.requestId),
+      occurredAt: params.occurredAt,
+      capability: AiCapability.LLM,
+      operation: params.operation,
+      provider: params.provider,
+      model: params.model ?? null,
+      deployment: params.deployment,
+      consultationId: params.consultationId ?? null,
+      doctorId: params.doctorId ?? null,
+      departmentId: params.departmentId ?? null,
+      requestId: params.requestId,
+      // No endpointKind/serviceTier/cacheTtl: this path carries no SMR usage
+      // detail block, so there is nothing honest to record beyond "this row
+      // was not interrupted" (this write path has no streaming/abort concept).
+      attributesJson: { interrupted: false },
+    },
+    units,
+  };
+}
+
 // ── internals ───────────────────────────────────────────────────────────────
 
 /**
