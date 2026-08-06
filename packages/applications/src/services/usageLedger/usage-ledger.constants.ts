@@ -59,3 +59,35 @@ export const DRAIN_DEFAULTS = {
   enabled: true,
   intervalSeconds: 30,
 } as const;
+
+// ── DISPATCHED-outbox pruning (TASK-615 WS-K — the WS-B handoff item) ───────
+//
+// A `DISPATCHED` outbox row has already produced its `AiUsageEvent` (or been
+// permanently unrated) — it is a completed work item, not history. Pruning it
+// bounds `AiUsageOutbox` growth the same way `AuditRetentionService` bounds
+// `AuditLog` growth: a scheduled hard delete behind an OFF-by-default kill
+// switch and a configurable retention window.
+
+/** Master switch. OFF by default: pruning is a HARD delete, so an operator opts in explicitly (mirrors `audit-retention.enabled`). */
+export const PRUNE_ENABLED_KEY = 'metering.outbox.prune.enabled';
+
+export const PRUNE_CRON_KEY = 'metering.outbox.prune.cron';
+
+/** How long a DISPATCHED row survives before it is eligible for deletion. */
+export const PRUNE_RETENTION_DAYS_KEY = 'metering.outbox.prune.retentionDays';
+
+export const PRUNE_DEFAULTS = {
+  enabled: false,
+  /** Once a day at 03:30 UTC — 30 minutes offset from `AuditRetentionService`'s 03:00 purge so the two maintenance jobs don't contend. */
+  cron: '30 3 * * *',
+  /** research-findings.md §6: "Compress raw events after ~7 days" — the outbox row's job (durable at-least-once delivery) is done well before that; 7 days keeps a short operational window for post-incident inspection. */
+  retentionDays: 7,
+} as const;
+
+export const PRUNE_JOB_NAME = 'usage-outbox-prune';
+
+/** Rows deleted per batch — same shape as `AuditRetentionService`'s batched purge (bounds a single transaction's lock footprint). */
+export const PRUNE_BATCH_SIZE = 1000;
+
+/** Caps a single scheduled tick's batch count, same purpose as `AuditRetentionService`'s `maxBatchesPerRun`. */
+export const PRUNE_MAX_BATCHES_PER_RUN = 1000;

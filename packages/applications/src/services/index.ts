@@ -73,6 +73,8 @@ export * from './billing';
 export * from './entitlements';
 // Rolling-monthly usage metering (live aggregate + reconcile job).
 export * from './metering';
+// Shadow-metering drift report + provider-reconciler stubs (TASK-615 WS-K).
+export * from './metering/reconciliation';
 // Per-request AI usage ledger: emission port, outbox drainer, provider
 // usage normalizer, allow-listed attributes and the frozen vocabulary.
 export * from './usageLedger';

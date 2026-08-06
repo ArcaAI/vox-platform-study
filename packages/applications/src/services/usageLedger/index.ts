@@ -9,4 +9,5 @@ export * from './usage-ledger.service';
 export * from './usage-ledger.service.module';
 export * from './usage-outbox.drainer';
 export * from './usage-outbox.processor';
+export * from './usage-outbox-pruner.service';
 export * from './vocabulary';
