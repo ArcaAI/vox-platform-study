@@ -185,6 +185,30 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   // _version OCC + audit). NOT SYSTEM-shared: a tenant's department agents are
   // never visible cross-tenant.
   'DepartmentAgent',
+  // usage-ledger.prisma (5) — AI usage metering plane (TASK-615).
+  // The ledger, its outbox and both rollups are tenant-scoped and NOT
+  // SYSTEM-shared: one tenant's consumption (and therefore its cost profile)
+  // must never surface in another's reads. All four are soft-delete EXEMPT
+  // (append-only under hard retention, no resourceStatus column) — see
+  // MODELS_WITHOUT_SOFT_DELETE in client.ts.
+  'AiUsageEvent',
+  'AiUsageOutbox',
+  'AiUsageRollupHourly',
+  'AiUsageRollupDaily',
+  // The price book is the ONE exception in this group: its SYSTEM-tenant rows
+  // are the platform rate card that every tenant's rater must read, so it is
+  // also a SYSTEM-shared read model (below). Standard soft-delete + sys-events
+  // (it is admin-managed, unlike its append-only siblings).
+  'AiPriceBook',
+  // billing.prisma (3) — tenant invoice plane (TASK-615).
+  // Money documents: strictly tenant-scoped, never SYSTEM-shared.
+  // BillingInvoice/Line keep soft delete (a draft is withdrawn, not purged);
+  // BillingAdjustment is append-only (a credit memo against a FINALIZED,
+  // immutable period cannot be retracted by deletion) and is therefore listed
+  // in MODELS_WITHOUT_SOFT_DELETE.
+  'BillingInvoice',
+  'BillingInvoiceLine',
+  'BillingAdjustment',
 ]);
 
 /**
@@ -315,6 +339,18 @@ export const SYSTEM_SHARED_READ_MODELS: ReadonlySet<string> = new Set([
   // WRITES are NOT widened (a tenant can never mutate a SYSTEM-owned setting),
   // and customer tenants stay excluded (the IN list is exactly [caller, SYSTEM]).
   'GlobalSetting',
+  // The PLATFORM RATE CARD (TASK-615). Both price planes — COST (COGS,
+  // consumed by the at-ingest rater) and SELL (the tenant-facing card,
+  // consumed by the invoice engine) — live as SYSTEM-tenant rows. Every
+  // tenant's rater resolves "the row effective at this event's occurredAt"
+  // while running under that tenant's CLS, so without widening the read the
+  // rate card is invisible and nothing can be priced (the same silent-fallback
+  // failure mode documented for GlobalSetting above). READS widen to
+  // [caller, SYSTEM]; WRITES are NOT widened — rate-card mutation is
+  // GLOBAL_ADMIN-only at the service layer (the AiTaskDefault precedent), and a
+  // tenant-owned row is reserved for a negotiated enterprise rate. No secret
+  // material: prices are integer micros.
+  'AiPriceBook',
 ]);
 
 export function isSystemSharedReadModel(model: string): boolean {

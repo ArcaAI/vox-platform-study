@@ -1,0 +1,332 @@
+// =============================================================================
+// AI Usage Metering — append-only ledger, transactional outbox, price book,
+// and Postgres-first rollups (TASK-615, decisions D2–D5, D10).
+//
+// The five models here are the METERING plane. `billing.prisma` builds the
+// invoice plane on top of them; the two are deliberately separate files because
+// they change for different reasons (a vendor reprice touches the price book, a
+// product decision touches the invoice engine).
+//
+// POSTURE (shared by the ledger, the outbox and both rollups — the
+// AgentTrajectoryStep precedent):
+//   - TENANT-SCOPED via the tenant-scope $extends (TENANT_SCOPED_MODELS in
+//     packages/database/src/extensions/tenant-scope.ts).
+//   - NO soft-delete lifecycle. These are append-only FACTS under hard
+//     retention (18 months raw, rollups indefinite — OQ5), so they carry no
+//     `resourceStatus` column, are listed in MODELS_WITHOUT_SOFT_DELETE
+//     (packages/database/src/client.ts), and softDelete()/restore() throw.
+//     A usage fact is corrected by a compensating event, never by deletion —
+//     the raw rows are the evidence behind a disputed invoice.
+//   - NO sys-events on write. Per-call metering at request volume would flood
+//     the audit trail with rows that carry no compliance meaning. Only the
+//     ADMIN-managed price book emits sys-events (it has a ResourceType).
+//   - `_version` (OCC) + `_metadata` + standard audit fields are kept so rows
+//     still round-trip through the shared BaseTenantEntity / Repository
+//     machinery.
+//
+// PHI RULE: no free text lands in this plane. `AiUsageEvent.attributesJson`
+// accepts allow-listed enum values and opaque ids ONLY (WS-G owns the
+// allow-list test); prompt/transcript content never appears here in any form.
+// =============================================================================
+
+/// Append-only per-request usage ledger — the single source of truth for what
+/// the platform consumed on a tenant's behalf.
+///
+/// GRAIN: one row per (request, unit). A single LLM call emits several rows
+/// sharing a `requestId` — input tokens, output tokens, cache reads, reasoning
+/// tokens — rather than one wide row. That keeps provider-specific token kinds
+/// separable (a normalizer trap: Anthropic/Bedrock EXCLUDE cache tokens from
+/// `input_tokens` while OpenAI/Gemini INCLUDE them) and lets a new unit ship
+/// without a migration.
+///
+/// IDEMPOTENCY: `idempotencyKey` is UNIQUE and derived from the INTENT (not from
+/// a timestamp or a random id), so an outbox redelivery, a gateway retry, or a
+/// resumed stream converges on the same row instead of double-billing. The
+/// repository's `createIfAbsent` turns the resulting P2002 into a no-op.
+///
+/// TIME: `occurredAt` is when the usage happened (the rating input — the price
+/// row effective THEN is the one applied); `recordedAt` is when the platform
+/// observed it. They differ on the abort/backfill paths, which is exactly when
+/// billing correctness is hardest.
+model AiUsageEvent {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // Intent-derived idempotency key, e.g. "<requestId>::<capability>::<unit>".
+  // UNIQUE platform-wide (not per tenant): keys embed a tenant-unique request
+  // id, and a global unique is the cheaper, stricter guarantee.
+  idempotencyKey String @unique
+
+  // When the metered work happened vs when we recorded it (see the header).
+  occurredAt DateTime
+  recordedAt DateTime @default(now())
+
+  // What was consumed.
+  capability AiCapability
+  // Bounded operation vocabulary (string rather than an enum so a new emitter
+  // ships without a migration — the same call the codebase makes for
+  // `AiTaskDefault.taskKey` and `AiProviderConnection.provider`):
+  //   transcribe.stream · transcribe.batch · generate · generate.stream ·
+  //   presummarize · guardrail.validate · ner.extract · tts.synthesize ·
+  //   harness.step · embed
+  operation  String
+  provider   String
+  // Null for capabilities that do not select a model (e.g. a raw STT
+  // audio-second row on a self-hosted pipeline).
+  model      String?
+  deployment AiDeploymentKind
+
+  // How much, in which unit. Decimal — never Float: audio/GPU seconds are
+  // fractional and these values are multiplied by prices to produce money.
+  unit     AiUsageUnit
+  quantity Decimal     @db.Decimal(24, 6)
+
+  // Attribution (all optional — a harness step has no consultation, an
+  // embedding backfill has no doctor). Ids only, never names.
+  consultationId String?
+  doctorId       String?
+  departmentId   String?
+  requestId      String?
+  sessionId      String?
+
+  // Rating, stamped at ingest against the COST plane of `AiPriceBook`.
+  // `priceBookVersion` records WHICH book priced the row so an invoice remains
+  // reproducible after the rate card moves on. All money is integer micros
+  // (1e-6 of the currency unit) — floats are never used for money.
+  unitPriceMicros  BigInt?
+  priceBookVersion String?
+  costMicros       BigInt?
+  // BYOK_NOTIONAL marks a tenant-funded call: metered and rated for visibility,
+  // never invoiced, and excluded from platform-spend aggregates (D14).
+  costBasis        AiCostBasis @default(INTERNAL)
+
+  // Allow-listed dimensional attributes ONLY — enum values and opaque ids
+  // (e.g. { "engine": "whisper-cpp", "channelCount": 2, "interrupted": true }).
+  // Deliberately NOT named `metadata`: the house `_metadata` column above is
+  // already mapped to the `metaData` property, and two properties differing only
+  // by case is a footgun on a money-critical write path.
+  attributesJson Json? @db.JsonB
+
+  // audit fields. NOTE: no resource-status fields — append-only under hard
+  // retention (see the file header + MODELS_WITHOUT_SOFT_DELETE).
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Period scans (invoice computation, rollup maintenance, retention prune).
+  @@index([tenantId, occurredAt], name: "AiUsageEvent_tenant_occurredAt_idx")
+  // Per-capability period scans (allowance/overage math, consumption screens).
+  @@index([tenantId, capability, occurredAt], name: "AiUsageEvent_tenant_capability_occurredAt_idx")
+  // Cost-per-encounter and per-request reconciliation: gather every unit row of
+  // one call. Not tenant-prefixed on purpose — `requestId` is already unique
+  // enough to be selective, and the tenant-scope extension adds its filter.
+  @@index([requestId], name: "AiUsageEvent_requestId_idx")
+  @@schema("core")
+}
+
+/// Transactional outbox for usage emission (D3).
+///
+/// The emitter writes an outbox row INSIDE the business transaction that
+/// produced the usage (the summary write, the job completion), so usage can
+/// never be lost by a crash between "work done" and "usage recorded" — and can
+/// never be recorded for work that rolled back. A BullMQ drainer then converts
+/// PENDING rows into `AiUsageEvent` appends; exactly-once-effective delivery
+/// falls out of the ledger's `idempotencyKey`, so the drainer only needs
+/// at-least-once semantics.
+///
+/// Rows are work items, not history: drained rows are pruned, so like the ledger
+/// this model has no soft-delete lifecycle.
+model AiUsageOutbox {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // One or more `UsageEventInput` records (the WS-B contract), carrying the
+  // same allow-listed, PHI-free attributes as the ledger row they become.
+  payload Json @db.JsonB
+
+  status      AiUsageOutboxStatus @default(PENDING)
+  attempts    Int                 @default(0)
+  // Retry backoff: the drainer claims rows with `availableAt <= now()`.
+  availableAt DateTime            @default(now())
+  // Bounded diagnostic (provider/DB error class), never a payload dump.
+  lastError   String?             @db.Text
+
+  // audit fields (no resource-status — see the file header)
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The drainer's claim query: pending rows whose backoff has elapsed, oldest
+  // first. Not tenant-prefixed — the drainer sweeps ALL tenants.
+  @@index([status, availableAt], name: "AiUsageOutbox_status_availableAt_idx")
+  @@index([tenantId], name: "AiUsageOutbox_tenantId_idx")
+  @@schema("core")
+}
+
+/// Effective-dated, supersede-only price rows — both planes (D4, D10).
+///
+/// SUPERSEDE-ONLY: a price is NEVER edited in place. Repricing closes the
+/// current row (`effectiveTo`) and inserts a new one, so an invoice computed
+/// last month can still be reproduced exactly. Resolution is "the row whose
+/// [effectiveFrom, effectiveTo) window contains the event's `occurredAt`" —
+/// `occurredAt`, never `recordedAt`, or a backfilled event would be priced at
+/// today's rate.
+///
+/// TENANCY: platform-wide rows live on the SYSTEM tenant
+/// (00000000-0000-0000-0000-000000000000) and the model is in
+/// SYSTEM_SHARED_READ_MODELS, so every tenant's rater READS them under its own
+/// CLS while WRITES stay pinned to the caller (rate-card mutation is
+/// GLOBAL_ADMIN-only at the service layer — the AiTaskDefault precedent). A
+/// tenant-owned row is the hook for a negotiated enterprise rate.
+///
+/// Unlike its siblings in this file this model IS admin-managed: it keeps the
+/// standard soft-delete lifecycle and emits sys-events (it has a `ResourceType`).
+model AiPriceBook {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields — SYSTEM tenant = the platform rate card.
+  tenantId String
+
+  plane   AiPriceBookPlane
+  rowKind AiPriceRowKind   @default(USAGE_UNIT)
+
+  // Dimensions. All nullable because a row's specificity varies: a COST row is
+  // keyed by (capability, provider, model, unit); a SELL overage row by
+  // (capability, unit, planTier); a PLAN_FEE row by `planTier` alone. Resolution
+  // is most-specific-wins in the service layer.
+  planTier    TenantPlan?
+  capability  AiCapability?
+  provider    String?
+  model       String?
+  unit        AiUsageUnit?
+  // Optional context-window band ("0-128k", "128k+") — several vendors price
+  // long-context requests differently for the same model.
+  contextBand String?
+
+  // The price itself: integer micros of `currency` per ONE `unit`
+  // (or per period for a PLAN_FEE row). Never Float.
+  currency        String @default("USD")
+  unitPriceMicros BigInt
+
+  // Effective window. `effectiveTo` null = still in force.
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  // Human-traceable label for the book this row came from (e.g.
+  // "2026-08-06-placeholder-v1", or a pinned upstream SHA once the LiteLLM
+  // import lands). Stamped onto every rated ledger row.
+  bookVersion   String
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The rater's hot path: resolve (plane, capability, provider, model, unit)
+  // effective at a point in time.
+  @@index([tenantId, plane, capability, provider, model, unit, effectiveFrom], name: "AiPriceBook_resolution_idx")
+  // The invoice engine's path: plan fees and per-tier overage rates.
+  @@index([tenantId, plane, rowKind, planTier, effectiveFrom], name: "AiPriceBook_plan_resolution_idx")
+  @@index([tenantId], name: "AiPriceBook_tenantId_idx")
+  @@schema("core")
+}
+
+/// Hourly pre-aggregate of the ledger (D5).
+///
+/// Consumption screens, quota checks and invoice computation read ROLLUPS, never
+/// raw events — invoicing a busy tenant off tens of millions of rows is not a
+/// query anyone should write. Postgres-first by design; a Timescale continuous
+/// aggregate is a later, non-breaking swap for exactly this shape.
+///
+/// UPSERT KEY: the full dimension tuple below is UNIQUE, which is what makes
+/// rollup maintenance idempotent under drainer retry. `model` is NOT NULL with
+/// an EMPTY-STRING SENTINEL default for capabilities that select no model —
+/// Postgres treats each NULL as distinct, so a nullable column here would let
+/// two upserts for the same model-less dimension BOTH insert and silently
+/// double-count. Same reasoning, same fix as `AgentTrajectoryStep.runId`.
+model AiUsageRollupHourly {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // Truncated to the hour, UTC.
+  bucketStart DateTime
+  capability  AiCapability
+  provider    String
+  // "" sentinel when the capability selects no model (see the header).
+  model       String       @default("")
+  unit        AiUsageUnit
+
+  quantitySum   Decimal @db.Decimal(38, 6)
+  // Sum of INTERNAL cost only; BYOK_NOTIONAL rows are excluded so platform-spend
+  // reads are not inflated by tenant-funded calls (D14).
+  costMicrosSum BigInt  @default(0)
+
+  // audit fields (no resource-status — see the file header)
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, bucketStart, capability, provider, model, unit], name: "AiUsageRollupHourly_dimension_unique")
+  @@index([tenantId, bucketStart], name: "AiUsageRollupHourly_tenant_bucketStart_idx")
+  @@schema("core")
+}
+
+/// Daily pre-aggregate — same contract and the same NULL-free dimension tuple as
+/// the hourly rollup, at the grain invoice computation and month-to-date
+/// consumption screens actually read.
+model AiUsageRollupDaily {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // Truncated to the day, UTC — the same boundary the monthly meters and
+  // billing periods use, so a period sum is a clean range scan.
+  bucketStart DateTime
+  capability  AiCapability
+  provider    String
+  model       String       @default("")
+  unit        AiUsageUnit
+
+  quantitySum   Decimal @db.Decimal(38, 6)
+  costMicrosSum BigInt  @default(0)
+
+  // audit fields (no resource-status — see the file header)
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, bucketStart, capability, provider, model, unit], name: "AiUsageRollupDaily_dimension_unique")
+  @@index([tenantId, bucketStart], name: "AiUsageRollupDaily_tenant_bucketStart_idx")
+  @@schema("core")
+}

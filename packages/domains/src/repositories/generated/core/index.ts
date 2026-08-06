@@ -1,8 +1,13 @@
 export * from './AgentTrajectoryStepRepository';
 export * from './AiModelRepository';
+export * from './AiPriceBookRepository';
 export * from './AiProviderConnectionRepository';
 export * from './AiRuntimeProfileRepository';
 export * from './AiTaskDefaultRepository';
+export * from './AiUsageEventRepository';
+export * from './AiUsageOutboxRepository';
+export * from './AiUsageRollupDailyRepository';
+export * from './AiUsageRollupHourlyRepository';
 export * from './ApiKeyRepository';
 export * from './AsrPipelineRepository';
 export * from './AsrPipelineVersionRepository';
@@ -12,6 +17,9 @@ export * from './AuditLogRepository';
 // envelope encrypt/decrypt helpers (encryptEnvelopeIntoEntity /
 // decryptEnvelopeFromEntity). Importing here runs the augmentation at module load.
 export * from './AuditLogRepository.encryption';
+export * from './BillingAdjustmentRepository';
+export * from './BillingInvoiceLineRepository';
+export * from './BillingInvoiceRepository';
 export * from './ConsultationRepository';
 export * from './ContextItemRepository';
 // Sibling that patches ContextItemRepository.prototype with

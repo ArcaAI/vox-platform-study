@@ -1,0 +1,190 @@
+// =============================================================================
+// Tenant Billing — invoice lifecycle (TASK-615, decisions D12–D15, D17).
+//
+// The SELL side of the metering plane. Monthly computation reads the ROLLUPS in
+// `usage-ledger.prisma` (never raw events at invoice time) against the SELL rows
+// of `AiPriceBook`:
+//
+//   invoice = prorated plan fee
+//           + Σ_capability max(0, usage − included allowance) × overage rate
+//           − adjustments
+//
+// LIFECYCLE (D13): DRAFT → review → FINALIZE (immutable). A correction to a
+// finalized period is a `BillingAdjustment` credit memo, NEVER a mutation of the
+// finalized rows. The 18-month raw ledger is the dispute evidence behind every
+// line.
+//
+// MONEY: integer micros (1e-6 of the currency unit) everywhere, as BigInt.
+// Floats are never used for money. One documented rounding rule — half-up at
+// LINE level — so Σ lines == total by construction.
+//
+// PHI (D17): nothing in this plane is PHI. Lines carry capability/unit
+// aggregates and a bounded `description` label — never a patient, a
+// consultation, or free clinical text. That is what keeps a future AR export
+// (finalized, PHI-free lines only) outside §164.312(b), and it is why no
+// billing vendor ever needs to sit in the raw-event path — none signs a BAA.
+// =============================================================================
+
+/// One tenant's invoice for one billing period.
+///
+/// OCC: this is the one TASK-615 model that is optimistically
+/// concurrency-controlled. Draft edits and the finalize transition go through
+/// `_version` → strong ETag → `If-Match` → `repository.updateWithVersion`, so
+/// two concurrent finalizes cannot both win and clobber each other's totals.
+/// Its mapper therefore carries the `FIELDS_NOT_WRITABLE = ['version']` strip.
+///
+/// Soft delete is retained (a draft raised in error is withdrawn, not purged);
+/// mutations emit sys-events (`ResourceType.BillingInvoice`).
+model BillingInvoice {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  // Half-open period [periodStart, periodEnd), UTC calendar month — the same
+  // window the rolling `TenantUsageMeter` uses, so allowances and invoices can
+  // never disagree about which month a call fell in.
+  periodStart DateTime
+  periodEnd   DateTime
+
+  status   BillingInvoiceStatus @default(DRAFT)
+  currency String               @default("USD")
+
+  // Integer micros. `subtotalMicros` = plan fee + overage (before adjustments);
+  // `totalMicros` = subtotal + Σ adjustments (credits are negative).
+  subtotalMicros BigInt @default(0)
+  totalMicros    BigInt @default(0)
+
+  // Set exactly once, on the FINALIZE transition. Their presence is the
+  // immutability marker every write path checks.
+  finalizedAt DateTime?
+  finalizedBy String?
+
+  Lines       BillingInvoiceLine[]
+  Adjustments BillingAdjustment[]
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A period can be invoiced ONCE per tenant — the guard against a re-run of the
+  // monthly draft job silently issuing a second invoice for the same month.
+  @@unique([tenantId, periodStart], name: "BillingInvoice_tenant_periodStart_unique")
+  @@index([tenantId], name: "BillingInvoice_tenantId_idx")
+  @@index([tenantId, status], name: "BillingInvoice_tenant_status_idx")
+  @@schema("core")
+}
+
+/// One line of an invoice: the plan fee, a capability's overage, or an
+/// adjustment carried onto the invoice.
+///
+/// Lines record the FULL derivation — usage, the allowance it was measured
+/// against, the overage that fell out, and the rate applied — so a tenant
+/// disputing a charge can be answered from the invoice alone, with the raw
+/// ledger as the next level of evidence.
+///
+/// `BillingInvoice` is declared as a real Prisma relation, matching how every
+/// other parent-child pair in this schema is modelled (`AsrPipelineVersion` →
+/// `AsrPipeline`, `PromptVersion` → `PromptTemplate`, `EvalScore` → `EvalRun`,
+/// `KnowledgeChunk` → `KnowledgeDocument`).
+model BillingInvoiceLine {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  invoiceId      String
+  BillingInvoice BillingInvoice @relation(fields: [invoiceId], references: [id])
+
+  kind BillingLineKind
+
+  // Null on PLAN_FEE and ADJUSTMENT lines, which are not tied to one capability.
+  capability AiCapability?
+  unit       AiUsageUnit?
+
+  // The derivation, all Decimal (fractional units are real: audio seconds,
+  // text units) and all nullable because a PLAN_FEE line has none of them.
+  quantity          Decimal? @db.Decimal(38, 6)
+  includedAllowance Decimal? @db.Decimal(38, 6)
+  overageQuantity   Decimal? @db.Decimal(38, 6)
+
+  // The SELL rate applied, and the resulting money — integer micros.
+  // `amountMicros` is NOT NULL: every line contributes to the total.
+  unitPriceMicros BigInt?
+  amountMicros    BigInt
+
+  // Bounded human label ("LLM tokens — overage", "PRO plan — prorated 12/31
+  // days"). Never PHI, never free-form tenant input.
+  description String?
+
+  // resource status fields
+  resourceStatus          ResourceStatusType @default(ENABLED)
+  resourceStatusUpdatedAt DateTime?
+  resourceStatusUpdatedBy String?
+
+  // audit fields
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, invoiceId], name: "BillingInvoiceLine_tenant_invoice_idx")
+  @@index([invoiceId], name: "BillingInvoiceLine_invoiceId_idx")
+  @@schema("core")
+}
+
+/// A credit (or debit) memo against an invoice — the ONLY way to correct a
+/// FINALIZED period (D13).
+///
+/// APPEND-ONLY: no `resourceStatus`, listed in MODELS_WITHOUT_SOFT_DELETE, so
+/// `softDelete()`/`restore()` throw. Retracting an adjustment by deleting it
+/// would rewrite a closed period; the correction path is another adjustment.
+/// Mutations emit sys-events (`ResourceType.BillingAdjustment`) — issuing a
+/// credit is a financial control point and belongs in the audit trail.
+///
+/// SIGN CONVENTION: `amountMicros` is NEGATIVE for a credit (the common case)
+/// and positive for a debit. `BillingInvoice.totalMicros` adds them, so the
+/// arithmetic has no special cases.
+model BillingAdjustment {
+  // meta fields
+  metaData Json?  @map("_metadata") @db.JsonB
+  version  Int    @default(1) @map("_version")
+  id       String @id @default(uuid(7))
+
+  // multi tenant fields
+  tenantId String
+
+  invoiceId      String
+  BillingInvoice BillingInvoice @relation(fields: [invoiceId], references: [id])
+
+  // Bounded reason code, not prose (e.g. "goodwill_credit",
+  // "metering_correction", "sla_credit"). Keeps the plane PHI-free and the
+  // reasons aggregatable.
+  reason String
+
+  // Integer micros; negative = credit (see the sign convention above).
+  amountMicros BigInt
+
+  // audit fields. NOTE: no resource-status fields — append-only (see above).
+  createdBy String?  @default("60000000-0000-0000-0000-000000000000")
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, invoiceId], name: "BillingAdjustment_tenant_invoice_idx")
+  @@index([invoiceId], name: "BillingAdjustment_invoiceId_idx")
+  @@schema("core")
+}
