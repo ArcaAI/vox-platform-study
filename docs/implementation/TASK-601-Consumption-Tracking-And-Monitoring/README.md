@@ -2,11 +2,18 @@
 
 | | |
 |---|---|
-| **Status** | Review — research + plan complete, awaiting owner approval before implementation |
+| **Status** | **Superseded by [TASK-615](../TASK-615-Usage-Metering-And-Billing/README.md)** (2026-08-06) — no implementation happened under this ticket |
 | **Type** | feature (cross-cutting: database → domain → applications → api → python services → admin console → infra) |
 | **Created** | 2026-08-02 |
 | **Branch** | dev-2.1 |
 | **Companion docs** | [current-state-review.md](./current-state-review.md) (exhaustive codebase map) · [research-findings.md](./research-findings.md) (external research with citations) |
+
+> **⚠️ Superseded.** All research, findings, design decisions (D1–D9), and the resolved
+> owner questions were carried into **TASK-615 — AI Usage Metering, Consumption Monitoring
+> & Tenant Billing**, which extends this work with the tenant billing plane (sell-side
+> rate card, fixed plan + on-demand invoicing), a 2026-08-06 current-state re-verification,
+> and a parallel-agent workstream plan. **Do not implement from this README** — TASK-615
+> is authoritative. This folder is retained for provenance and can move to `docs/archive/`.
 
 ---
 
@@ -319,3 +326,4 @@ migrations, API changes, and evidence per phase._
 | Date | Change |
 |---|---|
 | 2026-08-02 | Ticket created. Current-state review (2 codebase sweeps), external research (6 specialist tracks), synthesis, and phased implementation plan documented. Status → Review, awaiting owner approval of the plan and the 5 open questions (§4). |
+| 2026-08-06 | **Superseded by TASK-615.** Current state re-verified (all 16 gaps still open, no code produced here); research, decisions D1–D9, and the answered owner questions carried into TASK-615, which adds the billing plane (sell-side rate card, plan + overage invoicing, D10–D17) and restructures the plan into 11 parallel agent workstreams. Status → Superseded. |
