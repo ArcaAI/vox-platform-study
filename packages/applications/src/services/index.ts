@@ -67,6 +67,8 @@ export * from './tenant-frontend-config';
 export * from './queue-admin';
 // DB-backed, admin-controlled rate-limit configuration.
 export * from './rate-limit';
+// Tenant billing: invoice engine + lifecycle (TASK-615 WS-I).
+export * from './billing';
 // DB-backed plan entitlements (matrix + per-tenant override + kill-switch).
 export * from './entitlements';
 // Rolling-monthly usage metering (live aggregate + reconcile job).
