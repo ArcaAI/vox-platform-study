@@ -2,13 +2,40 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
 import { CronJob } from 'cron';
-import { CoreDatabaseService, EntityId, UsageMeterMetric } from '@arcaai/domains';
+import { AiCapability, AiUsageUnit, CoreDatabaseService, EntityId, UsageMeterMetric } from '@arcaai/domains';
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { IMeteringService, MeterUsage } from './IMeteringService';
 import { currentMonthWindow } from './metering-window';
 import { METERING_CRON_KEY, METERING_DEFAULTS, METERING_ENABLED_KEY, METERING_JOB_NAME } from './metering.constants';
 
 const MS_PER_MINUTE = 60_000;
+
+/** All five billable token kinds — the "all token kinds summed" definition of LLM_TOKENS/EMBEDDING_TOKENS. */
+const TOKEN_UNITS: AiUsageUnit[] = [
+  AiUsageUnit.INPUT_TOKEN,
+  AiUsageUnit.OUTPUT_TOKEN,
+  AiUsageUnit.CACHE_READ_TOKEN,
+  AiUsageUnit.CACHE_WRITE_TOKEN,
+  AiUsageUnit.REASONING_TOKEN,
+];
+
+/** operation string on `AiUsageEvent` — a `string` column (WS-B vocabulary), not an enum re-export. */
+const GUARDRAIL_OPERATION = 'guardrail.validate';
+
+/**
+ * `Prisma.Decimal` (decimal.js) out of `aggregate({_sum})`, a plain number in
+ * tests, or `null` when a window has no rows. Never `Number(decimalInstance)`
+ * directly here — go through `.toNumber()` when it exists so this stays exact
+ * for a real Decimal and still accepts a bare mock number in tests.
+ */
+function toNumberSafe(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'object' && typeof (value as { toNumber?: unknown }).toNumber === 'function') {
+    return (value as { toNumber: () => number }).toNumber();
+  }
+  return Number(value);
+}
 
 /**
  * Rolling-monthly metering.
@@ -68,6 +95,16 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       this.upsertMeter(tenantId, UsageMeterMetric.CONSULTATIONS, periodStart, periodEnd, usage.consultations, now),
       this.upsertMeter(tenantId, UsageMeterMetric.TRANSCRIPTION_MINUTES, periodStart, periodEnd, usage.transcriptionMinutes, now),
       this.upsertMeter(tenantId, UsageMeterMetric.SUMMARIES, periodStart, periodEnd, usage.summaries, now),
+      // TASK-615 — the six ledger-derived unit meters, same window, same
+      // upsert primitive. GUARDRAIL_CALLS is persisted too (informational —
+      // no allowance column reads it, but the reconcile snapshot is a
+      // uniform sweep over every UsageMeterMetric, not just the gated ones).
+      this.upsertMeter(tenantId, UsageMeterMetric.STT_SESSION_SECONDS, periodStart, periodEnd, usage.sttSessionSeconds, now),
+      this.upsertMeter(tenantId, UsageMeterMetric.LLM_TOKENS, periodStart, periodEnd, usage.llmTokens, now),
+      this.upsertMeter(tenantId, UsageMeterMetric.TTS_CHARACTERS, periodStart, periodEnd, usage.ttsCharacters, now),
+      this.upsertMeter(tenantId, UsageMeterMetric.NLP_TEXT_UNITS, periodStart, periodEnd, usage.nlpTextUnits, now),
+      this.upsertMeter(tenantId, UsageMeterMetric.GUARDRAIL_CALLS, periodStart, periodEnd, usage.guardrailCalls, now),
+      this.upsertMeter(tenantId, UsageMeterMetric.EMBEDDING_TOKENS, periodStart, periodEnd, usage.embeddingTokens, now),
     ]);
 
     return usage;
@@ -144,15 +181,39 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
    *   - CONSULTATIONS         = COUNT(Consultation WHERE createdAt ∈ window)
    *   - TRANSCRIPTION_MINUTES = round(SUM(AudioRecording.duration ms ∈ window)/60000)
    *   - SUMMARIES             = COUNT(SummaryMeta WHERE generatedAt ∈ window)
+   *
+   * TASK-615 — six more, all read from `AiUsageRollupDaily` (D5) EXCEPT
+   * `guardrailCalls` (raw ledger — see `MeterUsage`'s doc comment for why).
+   * The daily rollup is never behind the hourly one for "today": the outbox
+   * drainer increments BOTH in the SAME transaction on every drain pass
+   * (`usage-outbox.drainer.ts#accumulateRollups`), so Daily already carries
+   * today's partial-day bucket as of the last drain tick — there is no
+   * "fall back to Hourly" case to implement.
    */
   private async aggregateWindow(tenantId: EntityId, periodStart: Date, periodEnd: Date): Promise<MeterUsage> {
     const client = this.databaseService.baseClient;
     const window = { gte: periodStart, lt: periodEnd };
 
-    const [consultations, durationAgg, summaries] = await Promise.all([
+    const [
+      consultations,
+      durationAgg,
+      summaries,
+      sttSessionSeconds,
+      llmTokens,
+      ttsCharacters,
+      nlpTextUnits,
+      embeddingTokens,
+      guardrailCalls,
+    ] = await Promise.all([
       client.consultation.count({ where: { tenantId, createdAt: window } }),
       client.audioRecording.aggregate({ _sum: { duration: true }, where: { tenantId, createdAt: window } }),
       client.summaryMeta.count({ where: { tenantId, generatedAt: window } }),
+      this.sumRollupQuantity(tenantId, window, AiCapability.STT, [AiUsageUnit.SESSION_SECOND]),
+      this.sumRollupQuantity(tenantId, window, AiCapability.LLM, TOKEN_UNITS),
+      this.sumRollupQuantity(tenantId, window, AiCapability.TTS, [AiUsageUnit.CHARACTER]),
+      this.sumRollupQuantity(tenantId, window, AiCapability.NLP, [AiUsageUnit.TEXT_UNIT]),
+      this.sumRollupQuantity(tenantId, window, AiCapability.EMBEDDING, TOKEN_UNITS),
+      this.countGuardrailCalls(tenantId, window),
     ]);
 
     const durationMs = durationAgg._sum.duration ?? 0;
@@ -161,7 +222,46 @@ export class MeteringService implements IMeteringService, OnModuleInit, OnModule
       consultations,
       transcriptionMinutes: Math.round(durationMs / MS_PER_MINUTE),
       summaries,
+      sttSessionSeconds,
+      llmTokens,
+      ttsCharacters,
+      nlpTextUnits,
+      guardrailCalls,
+      embeddingTokens,
     };
+  }
+
+  /**
+   * Sum `AiUsageRollupDaily.quantitySum` for one (capability, unit-set) over
+   * the window, rounded to a whole unit (allowances are integer/`BigInt`).
+   * `unit` is ALWAYS an `{ in: [...] }` filter, even for a single-unit metric,
+   * so every TASK-615 metric reads through one shape.
+   */
+  private async sumRollupQuantity(tenantId: EntityId, window: { gte: Date; lt: Date }, capability: AiCapability, units: AiUsageUnit[]): Promise<number> {
+    const result = await this.databaseService.baseClient.aiUsageRollupDaily.aggregate({
+      _sum: { quantitySum: true },
+      where: { tenantId, capability, unit: { in: units }, bucketStart: window },
+    });
+    return Math.round(toNumberSafe(result._sum.quantitySum));
+  }
+
+  /**
+   * GUARDRAIL_CALLS — distinct-`requestId` COUNT over the raw `AiUsageEvent`
+   * ledger for `operation: 'guardrail.validate'` (capability `LLM`). The
+   * rollup cannot answer this (no `operation` dimension — see `MeterUsage`'s
+   * doc comment); this is the one metric in this file that reads the raw
+   * ledger rather than a pre-aggregate. Acceptable here because GUARDRAIL_CALLS
+   * is informational-only (D6/D16 — no allowance column ever gates it, so this
+   * never runs on the `assertMeterQuota` hot path) and scoped by the same
+   * `(tenantId, occurredAt)` index the ledger's period scans already use.
+   */
+  private async countGuardrailCalls(tenantId: EntityId, window: { gte: Date; lt: Date }): Promise<number> {
+    const rows = await this.databaseService.baseClient.aiUsageEvent.findMany({
+      where: { tenantId, capability: AiCapability.LLM, operation: GUARDRAIL_OPERATION, occurredAt: window },
+      select: { requestId: true },
+      distinct: ['requestId'],
+    });
+    return rows.length;
   }
 
   /** Idempotent per-(tenant, metric, window) snapshot upsert (unscoped). */
