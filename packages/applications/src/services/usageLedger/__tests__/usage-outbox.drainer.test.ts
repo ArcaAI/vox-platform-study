@@ -14,13 +14,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  AiCapability,
-  AiCostBasis,
-  AiDeploymentKind,
-  AiUsageOutboxStatus,
-  AiUsageUnit,
-} from '@arcaai/domains';
+import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageOutboxStatus, AiUsageUnit } from '@arcaai/domains';
 
 import { UsageOutboxDrainer } from '../usage-outbox.drainer';
 import { USAGE_OUTBOX_PAYLOAD_VERSION } from '../dto';
@@ -120,7 +114,9 @@ describe('UsageOutboxDrainer — rating', () => {
     // The seeded STT SESSION_SECOND COGS row is deliberately zero.
     mockPriceBook.resolveCostPrice.mockResolvedValue({ priceBookId: 'p0', unitPriceMicros: 0n, bookVersion: 'book-v1', currency: 'USD' });
     mockOutboxRepository.findClaimable.mockResolvedValue([
-      outboxRow([serializedEvent({ capability: AiCapability.STT, unit: AiUsageUnit.SESSION_SECOND, provider: 'whisper_cpp', model: null, quantity: '300' })]),
+      outboxRow([
+        serializedEvent({ capability: AiCapability.STT, unit: AiUsageUnit.SESSION_SECOND, provider: 'whisper_cpp', model: null, quantity: '300' }),
+      ]),
     ]);
 
     await drainer.drainBatch();
@@ -268,7 +264,9 @@ describe('UsageOutboxDrainer — exactly-once-effective under redelivery', () =>
 
   it('is a full no-op on a complete redrain, then marks the row DISPATCHED', async () => {
     mockEventRepository.create.mockRejectedValue({ code: 'P2002', meta: { target: ['idempotencyKey'] } });
-    mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent(), serializedEvent({ idempotencyKey: 'llm:req-1:OUTPUT_TOKEN' })])]);
+    mockOutboxRepository.findClaimable.mockResolvedValue([
+      outboxRow([serializedEvent(), serializedEvent({ idempotencyKey: 'llm:req-1:OUTPUT_TOKEN' })]),
+    ]);
 
     await drainer.drainBatch();
 
@@ -283,7 +281,9 @@ describe('UsageOutboxDrainer — exactly-once-effective under redelivery', () =>
     mockEventRepository.create
       .mockRejectedValueOnce({ code: 'P2002', meta: { target: ['idempotencyKey'] } })
       .mockImplementationOnce(async (entity: unknown) => entity);
-    mockOutboxRepository.findClaimable.mockResolvedValue([outboxRow([serializedEvent(), serializedEvent({ idempotencyKey: 'llm:req-1:OUTPUT_TOKEN' })])]);
+    mockOutboxRepository.findClaimable.mockResolvedValue([
+      outboxRow([serializedEvent(), serializedEvent({ idempotencyKey: 'llm:req-1:OUTPUT_TOKEN' })]),
+    ]);
 
     const report = await drainer.drainBatch();
 

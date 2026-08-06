@@ -105,7 +105,9 @@ export class UsageLedgerService implements IUsageLedgerService {
    * warning is the whole intervention.
    */
   private warnOnUnflaggedByok(events: UsageEventInput[]): void {
-    const suspects = events.filter((event) => event.deployment === AiDeploymentKind.BYOK && (event.costBasis ?? AiCostBasis.INTERNAL) !== AiCostBasis.BYOK_NOTIONAL);
+    const suspects = events.filter(
+      (event) => event.deployment === AiDeploymentKind.BYOK && (event.costBasis ?? AiCostBasis.INTERNAL) !== AiCostBasis.BYOK_NOTIONAL,
+    );
 
     if (suspects.length > 0) {
       this.logger.warn({

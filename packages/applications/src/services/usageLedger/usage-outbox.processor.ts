@@ -5,13 +5,7 @@ import { Job, Queue } from 'bullmq';
 
 import { IAppSettingsService } from '../baseServices/_meta/appSettings/IAppSettingsService';
 import { DrainReport, UsageOutboxDrainer } from './usage-outbox.drainer';
-import {
-  DRAIN_DEFAULTS,
-  DRAIN_ENABLED_KEY,
-  DRAIN_INTERVAL_SECONDS_KEY,
-  USAGE_OUTBOX_DRAIN_JOB,
-  USAGE_OUTBOX_QUEUE,
-} from './usage-ledger.constants';
+import { DRAIN_DEFAULTS, DRAIN_ENABLED_KEY, DRAIN_INTERVAL_SECONDS_KEY, USAGE_OUTBOX_DRAIN_JOB, USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
 
 /**
  * The BullMQ half of the outbox drainer.
