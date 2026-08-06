@@ -26,7 +26,7 @@ import httpx
 
 from guardrail.core.config import OpenAICompatConfig
 from guardrail.core.logging import get_logger
-from guardrail.core.metrics import track_model_inference
+from guardrail.core.metrics import record_guardrail_call, track_model_inference
 from guardrail.providers._granite import GRANITE_CRITERIA, build_guardian_block, parse_score
 from guardrail.providers.stats import GuardrailCallStats, stats_from_openai_response
 
@@ -115,6 +115,13 @@ class OpenAICompatProvider:
         content = (data["choices"][0]["message"]["content"] or "").strip()
         stats = stats_from_openai_response(
             provider=_PROVIDER_NAME, model=model, data=data, total_ms=total_ms
+        )
+        record_guardrail_call(
+            provider=_PROVIDER_NAME,
+            model=model,
+            status="success",
+            prompt_tokens=stats.prompt_tokens,
+            completion_tokens=stats.predicted_tokens,
         )
         return content, stats
 
@@ -378,9 +385,17 @@ class OpenAICompatGuardianProvider:
 
             validation_result = self._parse_validation_response(content)
             # AD-1 per-call stats on the judge result (additive).
-            validation_result["stats"] = stats_from_openai_response(
+            judge_stats = stats_from_openai_response(
                 provider=_PROVIDER_NAME, model=self.model, data=data, total_ms=total_ms
-            ).to_dict()
+            )
+            validation_result["stats"] = judge_stats.to_dict()
+            record_guardrail_call(
+                provider=_PROVIDER_NAME,
+                model=self.model,
+                status="success",
+                prompt_tokens=judge_stats.prompt_tokens,
+                completion_tokens=judge_stats.predicted_tokens,
+            )
 
             if validation_result["confidence"] < self.guardian_min_confidence:
                 logger.warning(
