@@ -81,6 +81,8 @@ export * from './usageLedger';
 export * from './priceBook';
 // RBAC services exposed for controllers (closes C-10 / H-9).
 export * from './rbac';
+// Read-only usage-analytics surface over the ledger rollups (TASK-615 WS-J).
+export * from './usageAnalytics';
 // Platform runtime metrics (E1/E2/E3) + multi-instance socket registry.
 export * from './platform-metrics';
 // Per-tenant TTS configuration (DB-backed spec + BYO provider creds).
