@@ -20,6 +20,11 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from prometheus_client import REGISTRY
+
+
+def _metric(name: str, labels: dict[str, str]) -> float:
+    return REGISTRY.get_sample_value(name, labels) or 0.0
 
 
 def _make_session(
@@ -98,6 +103,48 @@ class TestBuildTeardownSummary:
         assert summary["engine"] == "whisper_cpp"
         assert summary["deployment"] == "SELF_HOSTED"
         assert summary["language_mode"] == "ml-en"
+
+    def test_records_the_streaming_audio_duration_and_rtf_metrics(self):
+        """TASK-615 WS-C — the current-state review's telemetry gap: streaming
+        had no audio-duration signal in Prometheus and no RTF at all."""
+        from stt.pipeline.dto import AiModelFormat
+        from stt.streaming.inference import StreamingInferenceWorker
+
+        mgr = _make_manager()
+        session = _make_session()
+        session._metadata.total_duration_seconds = 40.0
+        session._metadata.closed_at = session._metadata.created_at
+        mgr._session_asr_formats[session.session_id] = AiModelFormat.WHISPER_CPP
+        worker = StreamingInferenceWorker()
+        worker.cumulative_processing_seconds = 10.0
+        mgr._inference_workers[session.session_id] = worker
+
+        labels = {"pipeline": "p1", "engine": "whisper_cpp", "status": "closed"}
+        before_audio_count = _metric("stt_streaming_audio_duration_seconds_count", labels)
+        before_rtf_sum = _metric("stt_streaming_rtf_sum", labels)
+
+        mgr._build_teardown_summary(session)
+
+        assert (
+            _metric("stt_streaming_audio_duration_seconds_count", labels) == before_audio_count + 1
+        )
+        # RTF = processing_seconds / audio_seconds = 10/40 = 0.25.
+        assert _metric("stt_streaming_rtf_sum", labels) == pytest.approx(before_rtf_sum + 0.25)
+
+    def test_records_metrics_with_unknown_engine_when_none_resolved(self):
+        """No ASR model ever loaded -> engine stays None in the summary, but
+        the metric label must still be a bounded, non-empty value."""
+        mgr = _make_manager()
+        session = _make_session()
+        session._metadata.total_duration_seconds = 5.0
+        session._metadata.closed_at = session._metadata.created_at
+
+        labels = {"pipeline": "p1", "engine": "unknown", "status": "closed"}
+        before = _metric("stt_streaming_audio_duration_seconds_count", labels)
+
+        mgr._build_teardown_summary(session)
+
+        assert _metric("stt_streaming_audio_duration_seconds_count", labels) == before + 1
 
     def test_byok_cloud_engine_summary(self):
         from stt.pipeline.dto import AiModelFormat

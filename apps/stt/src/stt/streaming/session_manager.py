@@ -3537,6 +3537,7 @@ class SessionManager:
         (which this reuses, so the two can never drift on the AZURE_SPEECH
         spelling trap or any other provider mapping).
         """
+        from stt.core.metrics import record_streaming_teardown
         from stt.transcription.batch_service import resolve_usage_attribution
 
         asr_format = self._session_asr_formats.get(session.session_id)
@@ -3546,6 +3547,24 @@ class SessionManager:
             engine, deployment = resolve_usage_attribution(
                 asr_format, self._provider_overrides.get(session.session_id)
             )
+
+        # TASK-615 WS-C — the streaming audio-duration histogram + real-time
+        # factor the current-state review flagged as missing (batch has
+        # stt_audio_duration_seconds; streaming had neither a duration signal
+        # in Prometheus nor an RTF at all). `cumulative_processing_seconds` is
+        # the per-utterance ASR-only time this session's inference worker
+        # accumulated (see `StreamingInferenceWorker`); 0.0 (never having had
+        # a worker) is a safe default. Labels bounded to
+        # {pipeline, engine, status} — no tenant label.
+        worker = self._inference_workers.get(session.session_id)
+        processing_seconds = worker.cumulative_processing_seconds if worker is not None else 0.0
+        record_streaming_teardown(
+            pipeline=session.pipeline_id,
+            engine=engine or "unknown",
+            status="closed",
+            audio_seconds=session.total_duration_seconds,
+            processing_seconds=processing_seconds,
+        )
 
         return {
             "session_id": session.session_id,

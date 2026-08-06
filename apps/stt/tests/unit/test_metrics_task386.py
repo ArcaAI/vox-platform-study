@@ -109,3 +109,66 @@ class TestStreamingMetrics:
         m.observe_streaming_inference(0.42)
 
         assert _val("stt_streaming_inference_latency_seconds_count") == before + 1
+
+
+class TestStreamingTeardownMetrics:
+    """TASK-615 WS-C — stt_streaming_audio_duration_seconds + stt_streaming_rtf,
+    the streaming counterparts to the batch-only stt_audio_duration_seconds /
+    RTF gap noted in the current-state review. Labels bounded to
+    {pipeline, engine, status} — no tenant label (the PHI-free telemetry
+    plane)."""
+
+    def test_record_streaming_teardown_observes_audio_duration_and_rtf(self):
+        labels = {"pipeline": "p-1", "engine": "whisper_cpp", "status": "success"}
+        before_audio_count = _val("stt_streaming_audio_duration_seconds_count", labels)
+        before_audio_sum = _val("stt_streaming_audio_duration_seconds_sum", labels)
+        before_rtf_count = _val("stt_streaming_rtf_count", labels)
+        before_rtf_sum = _val("stt_streaming_rtf_sum", labels)
+
+        m.record_streaming_teardown(
+            pipeline="p-1",
+            engine="whisper_cpp",
+            status="success",
+            audio_seconds=40.0,
+            processing_seconds=10.0,
+        )
+
+        assert _val("stt_streaming_audio_duration_seconds_count", labels) == before_audio_count + 1
+        assert _val("stt_streaming_audio_duration_seconds_sum", labels) == before_audio_sum + 40.0
+        assert _val("stt_streaming_rtf_count", labels) == before_rtf_count + 1
+        # RTF = processing_seconds / audio_seconds = 10/40 = 0.25.
+        assert _val("stt_streaming_rtf_sum", labels) == round(before_rtf_sum + 0.25, 6)
+
+    def test_record_streaming_teardown_skips_when_no_audio(self):
+        """0 audio_seconds means nothing meaningful to divide by — must not
+        record a bogus RTF (division-by-zero) or an empty-session
+        observation that would skew the p50/p95."""
+        labels = {"pipeline": "p-2", "engine": "whisper_cpp", "status": "success"}
+        before_audio_count = _val("stt_streaming_audio_duration_seconds_count", labels)
+        before_rtf_count = _val("stt_streaming_rtf_count", labels)
+
+        m.record_streaming_teardown(
+            pipeline="p-2",
+            engine="whisper_cpp",
+            status="success",
+            audio_seconds=0.0,
+            processing_seconds=0.0,
+        )
+
+        assert _val("stt_streaming_audio_duration_seconds_count", labels) == before_audio_count
+        assert _val("stt_streaming_rtf_count", labels) == before_rtf_count
+
+    def test_record_streaming_teardown_clamps_negative_processing_seconds(self):
+        """Defensive: a clock/accounting glitch must never produce a
+        negative RTF observation."""
+        labels = {"pipeline": "p-3", "engine": "whisper_cpp", "status": "success"}
+
+        m.record_streaming_teardown(
+            pipeline="p-3",
+            engine="whisper_cpp",
+            status="success",
+            audio_seconds=10.0,
+            processing_seconds=-5.0,
+        )
+
+        assert _val("stt_streaming_rtf_sum", labels) >= 0.0

@@ -224,6 +224,12 @@ class StreamingInferenceWorker:
             self._prev_text_context_words = max(0, prev_text_context_words)
         else:
             self._prev_text_context_words = InferenceConfig().prev_text_context_words
+        # TASK-615 WS-C — running total of ASR-only processing time across
+        # every utterance this worker has transcribed. Read by SessionManager
+        # at teardown (`_build_teardown_summary`) to compute the streaming
+        # real-time factor. Only successful `_run_inference` calls add to it
+        # (a raised exception never reaches that call's own timing code).
+        self.cumulative_processing_seconds: float = 0.0
 
     def _resolve_uses_cadence_fast(self) -> bool:
         """Does the effective punctuation model resolve to
@@ -643,7 +649,9 @@ class StreamingInferenceWorker:
 
         if hasattr(result, "__await__"):
             result = await result
-        observe_streaming_inference(time.monotonic() - _asr_start)
+        _elapsed = max(0.0, time.monotonic() - _asr_start)
+        observe_streaming_inference(_elapsed)
+        self.cumulative_processing_seconds += _elapsed
 
         # Extract text and word timestamps from pipeline result
         if isinstance(result, dict):
