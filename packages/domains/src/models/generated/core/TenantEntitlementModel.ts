@@ -18,6 +18,12 @@ export class TenantEntitlement extends BaseTenantDataModel {
   public monthlyConsultations: number | null;
   public monthlyTranscriptionMinutes: number | null;
   public monthlySummaries: number | null;
+  public monthlySttSessionSeconds: bigint | null;
+  public monthlyLlmTokens: bigint | null;
+  public monthlyTtsCharacters: bigint | null;
+  public monthlyNlpTextUnits: bigint | null;
+  public monthlyEmbeddingTokens: bigint | null;
+  public monthlySpendLimitMicros: bigint | null;
   public featureDnaReports: boolean | null;
   public featureVoiceEnrollment: boolean | null;
   public featureMonitoringAccess: boolean | null;
@@ -40,6 +46,12 @@ export class TenantEntitlement extends BaseTenantDataModel {
     this.monthlyConsultations = data.monthlyConsultations;
     this.monthlyTranscriptionMinutes = data.monthlyTranscriptionMinutes;
     this.monthlySummaries = data.monthlySummaries;
+    this.monthlySttSessionSeconds = data.monthlySttSessionSeconds;
+    this.monthlyLlmTokens = data.monthlyLlmTokens;
+    this.monthlyTtsCharacters = data.monthlyTtsCharacters;
+    this.monthlyNlpTextUnits = data.monthlyNlpTextUnits;
+    this.monthlyEmbeddingTokens = data.monthlyEmbeddingTokens;
+    this.monthlySpendLimitMicros = data.monthlySpendLimitMicros;
     this.featureDnaReports = data.featureDnaReports;
     this.featureVoiceEnrollment = data.featureVoiceEnrollment;
     this.featureMonitoringAccess = data.featureMonitoringAccess;

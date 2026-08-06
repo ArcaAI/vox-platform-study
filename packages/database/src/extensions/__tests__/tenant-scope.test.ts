@@ -82,7 +82,31 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // read pre-auth by the API-key authentication lookup, so it can never
     // carry a CLS tenant. (The drift guard below is the durable check; this
     // count stays as a quick human-readable tripwire.)
-    expect(TENANT_SCOPED_MODELS.size).toBe(57);
+    // 57 → 65: TASK-615 adds eight tenantId-bearing usage-metering / billing
+    // models (AiUsageEvent, AiUsageOutbox, AiPriceBook, AiUsageRollupHourly,
+    // AiUsageRollupDaily, BillingInvoice, BillingInvoiceLine,
+    // BillingAdjustment).
+    expect(TENANT_SCOPED_MODELS.size).toBe(65);
+  });
+
+  // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing
+  // plane are tenant-scoped: a tenant's consumption and its invoices must never
+  // be readable cross-tenant. `AiPriceBook` is tenant-scoped too, but is
+  // additionally a SYSTEM-shared READ model (the platform rate card lives on
+  // the SYSTEM tenant) — see the SYSTEM_SHARED_READ_MODELS suite below.
+  it('includes the usage-metering + billing models', () => {
+    for (const model of [
+      'AiUsageEvent',
+      'AiUsageOutbox',
+      'AiPriceBook',
+      'AiUsageRollupHourly',
+      'AiUsageRollupDaily',
+      'BillingInvoice',
+      'BillingInvoiceLine',
+      'BillingAdjustment',
+    ]) {
+      expect(TENANT_SCOPED_MODELS.has(model)).toBe(true);
+    }
   });
 
   it('includes every PHI-bearing model', () => {
@@ -307,6 +331,15 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // CLS; writes stay global-admin only. Carries a Vault `credentialsRef`
         // path, never credentials.
         'TenantStorageConfig',
+        // TASK-615 — the price book's SYSTEM-tenant rows ARE the platform rate
+        // card (both COST and SELL planes). Every tenant's at-ingest rater and
+        // the invoice engine resolve the row effective at `occurredAt` while
+        // running under that tenant's CLS, so without widening the read the
+        // rate card is invisible and nothing can be priced. READS widen to
+        // [caller, SYSTEM]; WRITES are NOT widened (rate-card mutation is
+        // GLOBAL_ADMIN-only at the service layer, the AiTaskDefault precedent).
+        // No secrets on the model — prices are integer micros.
+        'AiPriceBook',
       ]),
     );
   });

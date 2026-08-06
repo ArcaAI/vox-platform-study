@@ -51,4 +51,29 @@ describe('ResourceType enum parity (domain ⇔ database)', () => {
         `${missingFromDomain.join(', ')}`,
     ).toEqual([]);
   });
+
+  // TASK-615 — the two generic drift checks above only prove the two enums
+  // AGREE; they would both stay green if a value were missing from BOTH. These
+  // named assertions pin the three billing-plane resource types that actually
+  // emit sys-events, so dropping one from the schema is a test failure rather
+  // than a silent 500 on the first AuditLog INSERT (the TASK-366 failure mode).
+  //
+  // Deliberately ABSENT and asserted so below: the ledger, its outbox and the
+  // rollups. They are append-only metering telemetry that emits NO sys-event
+  // (the AgentTrajectoryStep precedent), so giving them a ResourceType would
+  // advertise an audit surface that does not exist.
+  describe('TASK-615 billing-plane resource types', () => {
+    it.each(['AiPriceBook', 'BillingInvoice', 'BillingAdjustment'])('%s exists in BOTH enums (its mutations emit sys-events)', (value) => {
+      expect(databaseValues.has(value), `${value} missing from the database ResourceType enum (audit.prisma)`).toBe(true);
+      expect(domainValues.has(value), `${value} missing from the domain ResourceType enum`).toBe(true);
+    });
+
+    it.each(['AiUsageEvent', 'AiUsageOutbox', 'AiUsageRollupHourly', 'AiUsageRollupDaily', 'BillingInvoiceLine'])(
+      '%s is deliberately NOT a ResourceType (no sys-events on write)',
+      (value) => {
+        expect(databaseValues.has(value)).toBe(false);
+        expect(domainValues.has(value)).toBe(false);
+      },
+    );
+  });
 });

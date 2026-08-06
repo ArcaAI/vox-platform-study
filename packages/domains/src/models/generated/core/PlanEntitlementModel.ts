@@ -19,6 +19,11 @@ export class PlanEntitlement extends BaseDataModel {
   public monthlyConsultations: number | null;
   public monthlyTranscriptionMinutes: number | null;
   public monthlySummaries: number | null;
+  public monthlySttSessionSeconds: bigint | null;
+  public monthlyLlmTokens: bigint | null;
+  public monthlyTtsCharacters: bigint | null;
+  public monthlyNlpTextUnits: bigint | null;
+  public monthlyEmbeddingTokens: bigint | null;
   public featureDnaReports: boolean;
   public featureVoiceEnrollment: boolean;
   public featureMonitoringAccess: boolean;
@@ -41,6 +46,11 @@ export class PlanEntitlement extends BaseDataModel {
     this.monthlyConsultations = data.monthlyConsultations;
     this.monthlyTranscriptionMinutes = data.monthlyTranscriptionMinutes;
     this.monthlySummaries = data.monthlySummaries;
+    this.monthlySttSessionSeconds = data.monthlySttSessionSeconds;
+    this.monthlyLlmTokens = data.monthlyLlmTokens;
+    this.monthlyTtsCharacters = data.monthlyTtsCharacters;
+    this.monthlyNlpTextUnits = data.monthlyNlpTextUnits;
+    this.monthlyEmbeddingTokens = data.monthlyEmbeddingTokens;
     this.featureDnaReports = data.featureDnaReports;
     this.featureVoiceEnrollment = data.featureVoiceEnrollment;
     this.featureMonitoringAccess = data.featureMonitoringAccess;

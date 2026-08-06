@@ -201,5 +201,26 @@ enum ResourceType {
   // one (resourceType.enum-parity.test.ts). Never emitted again.
   TenantSttProviderCredential
 
+  // USAGE METERING + BILLING (TASK-615).
+  //
+  // Only the three ADMIN-MANAGED models of the metering/billing plane appear
+  // here — these are the mutations a compliance reviewer or a billing dispute
+  // actually needs a trail for:
+  //   - AiPriceBook: GLOBAL_ADMIN rate-card edits (both COST and SELL planes).
+  //   - BillingInvoice: draft computation, finalize (the immutability
+  //     transition), void.
+  //   - BillingAdjustment: issuing a credit memo against a finalized period.
+  //
+  // DELIBERATELY ABSENT: AiUsageEvent, AiUsageOutbox, AiUsageRollupHourly/Daily
+  // and BillingInvoiceLine. The ledger and its derivatives are append-only
+  // per-request telemetry (the AgentTrajectoryStep precedent) — emitting a
+  // sys-event per metered provider call would flood the audit trail at request
+  // volume with rows carrying no compliance meaning, and the ledger IS its own
+  // evidence. Invoice LINES are written as part of the invoice aggregate, whose
+  // own event already covers them.
+  AiPriceBook
+  BillingInvoice
+  BillingAdjustment
+
   @@schema("core")
 }
