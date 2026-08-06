@@ -13,6 +13,7 @@ import { AGENTIC_REVISIT_SETTINGS } from './descriptors/agentic-revisit.descript
 import { BOOTSTRAP_ENV_SETTINGS } from './descriptors/bootstrap-env.descriptors';
 import { ENTITLEMENT_SETTINGS } from './descriptors/entitlements.descriptors';
 import { FEATURE_FLAG_SETTINGS } from './descriptors/feature-flags.descriptors';
+import { METERING_SETTINGS } from './descriptors/metering.descriptors';
 import { MODEL_DEFAULT_SETTINGS } from './descriptors/model-defaults.descriptors';
 import { PIPELINE_SETTINGS } from './descriptors/pipeline.descriptors';
 import { PLATFORM_KNOB_SETTINGS, RATE_LIMIT_TIER_SETTINGS } from './descriptors/platform-knobs.descriptors';
@@ -33,6 +34,9 @@ export const HOPE_SETTINGS_REGISTRY: SettingsRegistry = new SettingsRegistry().r
   // Per-tenant STT fallback pipeline pointer + BYO provider credentials (TASK-567).
   ...STT_FALLBACK_SETTINGS,
   ...ENTITLEMENT_SETTINGS,
+  // TASK-615 WS-H — outbox-drain schedule (WS-B handoff) + the
+  // TenantUsageMeter reconcile-sweep kill-switch + its seed-time-only default.
+  ...METERING_SETTINGS,
   // AI task-model defaults (guardrail/NLP/SMR).
   ...MODEL_DEFAULT_SETTINGS,
   // agentic context-management strategy knobs.
