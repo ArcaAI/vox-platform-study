@@ -8,6 +8,7 @@ import { IUsageLedgerService } from './IUsageLedgerService';
 import { UsageLedgerService } from './usage-ledger.service';
 import { UsageOutboxDrainer } from './usage-outbox.drainer';
 import { UsageOutboxProcessor, UsageOutboxScheduler } from './usage-outbox.processor';
+import { UsageOutboxPrunerService } from './usage-outbox-pruner.service';
 import { USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
 
 /**
@@ -25,8 +26,13 @@ import { USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
  *     `BullModule.forRootAsync` registered by `RedisServiceModule` is global, so
  *     this binds to the same Redis connection regardless.
  *
+ * `UsageOutboxPrunerService` (TASK-615 WS-K — the WS-B handoff item) is a
+ * self-scheduling hard-delete job for already-drained (`DISPATCHED`)
+ * `AiUsageOutbox` rows, same shape as `AuditRetentionService`. It needs
+ * nothing this module doesn't already import.
+ *
  * EXPORTS only `IUsageLedgerService`: emitters record usage, and nothing outside
- * this module has any business reaching into the drainer.
+ * this module has any business reaching into the drainer or the pruner.
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, PriceBookServiceModule, BullModule.registerQueue({ name: USAGE_OUTBOX_QUEUE })],
@@ -38,6 +44,7 @@ import { USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
     UsageOutboxDrainer,
     UsageOutboxProcessor,
     UsageOutboxScheduler,
+    UsageOutboxPrunerService,
   ],
   exports: [IUsageLedgerService],
 })
