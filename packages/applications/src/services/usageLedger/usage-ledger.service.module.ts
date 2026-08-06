@@ -1,0 +1,44 @@
+import { BullModule } from '@nestjs/bullmq';
+import { Module } from '@nestjs/common';
+import { CoreDatabaseModule } from '@arcaai/domains';
+
+import { CommonServiceModule } from '../baseServices';
+import { PriceBookServiceModule } from '../priceBook/price-book.service.module';
+import { IUsageLedgerService } from './IUsageLedgerService';
+import { UsageLedgerService } from './usage-ledger.service';
+import { UsageOutboxDrainer } from './usage-outbox.drainer';
+import { UsageOutboxProcessor, UsageOutboxScheduler } from './usage-outbox.processor';
+import { USAGE_OUTBOX_QUEUE } from './usage-ledger.constants';
+
+/**
+ * The usage-metering plane: emission port + outbox drainer.
+ *
+ * IMPORTS
+ *   - `CoreDatabaseModule` — the four repositories (outbox, ledger, both
+ *     rollups) and the `CoreUnitOfWorkService` the drainer runs its atomic
+ *     append+aggregate inside.
+ *   - `PriceBookServiceModule` — COST-plane rating at ingest.
+ *   - `CommonServiceModule` — `IAppSettingsService` for the drain schedule.
+ *   - `BullModule.registerQueue` — the periodic tick. The queue NAME is a local
+ *     constant rather than a `JobQueue` member because that enum lives in
+ *     `@arcaai/domains`, which is another lane's package; the shared
+ *     `BullModule.forRootAsync` registered by `RedisServiceModule` is global, so
+ *     this binds to the same Redis connection regardless.
+ *
+ * EXPORTS only `IUsageLedgerService`: emitters record usage, and nothing outside
+ * this module has any business reaching into the drainer.
+ */
+@Module({
+  imports: [CommonServiceModule, CoreDatabaseModule, PriceBookServiceModule, BullModule.registerQueue({ name: USAGE_OUTBOX_QUEUE })],
+  providers: [
+    {
+      provide: IUsageLedgerService,
+      useClass: UsageLedgerService,
+    },
+    UsageOutboxDrainer,
+    UsageOutboxProcessor,
+    UsageOutboxScheduler,
+  ],
+  exports: [IUsageLedgerService],
+})
+export class UsageLedgerServiceModule {}

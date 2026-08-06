@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
-import { AiCostBasis, AiDeploymentKind, AiUsageOutboxFactory, AiUsageOutboxRepository, CorePrisma } from '@arcaai/domains';
+import { AiCostBasis, AiDeploymentKind, AiUsageOutboxFactory, AiUsageOutboxRepository, CorePrisma, JsonObject } from '@arcaai/domains';
 
 import { IUsageLedgerService } from './IUsageLedgerService';
 import { RecordUsageResult, USAGE_OUTBOX_PAYLOAD_VERSION, UsageEventBatchInput, UsageEventInput, UsageOutboxPayload } from './dto';
@@ -54,9 +54,12 @@ export class UsageLedgerService implements IUsageLedgerService {
 
       const entity = AiUsageOutboxFactory.CreateAiUsageOutbox({
         tenantId,
-        // The factory's own JSON typing is structural; the payload is a plain
-        // serialisable object by construction (see `usage-outbox.payload.ts`).
-        payload: payload as unknown as Record<string, unknown>,
+        // `JsonObject` demands a string index signature, which a named
+        // interface deliberately does not carry. The payload IS plain
+        // serialisable data by construction (see `usage-outbox.payload.ts`), so
+        // the cast asserts what the shape already guarantees rather than
+        // widening the DTO into an untyped bag.
+        payload: payload as unknown as JsonObject,
       });
 
       // `tx` threads the write into the CALLER's transaction — the outbox
