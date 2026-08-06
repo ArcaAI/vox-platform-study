@@ -8,6 +8,8 @@ import {
   JobQueue,
   ContextItemRepository,
   ConsultationRepository,
+  CorePrisma,
+  CoreUnitOfWorkService,
   SummaryMetaRepository,
   NamedEntityRepository,
   ContextItemFactory,
@@ -22,10 +24,12 @@ import { JobMetricsService } from '../../../baseServices/observability/job-metri
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { encryptPhiFields } from '../../../../common';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-generate';
+import { buildGuardrailUsageInput, buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from '../../summary/smr-usage';
 import { HarnessPolicyService } from '../../../harness-policy/harness-policy.service';
 import { ConfigResolver } from '../../../config-resolver';
 import { IActiveUserContext } from '../../../../interfaces';
 import { assertEqualTenants, createWorkerSession } from '../../../../common';
+import { IUsageLedgerService } from '../../../usageLedger';
 
 /**
  * BullMQ processor for async comprehensive summary generation.
@@ -66,6 +70,20 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     // comprehensive path threads it into BOTH resolution and assembly (was dropped
     // here before). Optional + trailing so existing positional fixtures keep compiling.
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // TASK-615 WS-D2 (item 1a) — records the LLM (+ guardrail, when SMR
+    // forwarded one) token consumption this generation produced. Optional +
+    // trailing so existing positional fixtures keep compiling; absent ⇒ the
+    // SummaryMeta persists unmetered (see `persistSummaryMetaWithUsage`).
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
+    // Lets the SummaryMeta write and the usage emission share ONE
+    // transaction. This is the DOMAINS `CoreUnitOfWorkService` (its
+    // `runInTransaction` is the one production callers actually use — see the
+    // outbox drainer / sttInternal.service.ts / AgentTrajectoryService
+    // precedent), NOT the identically-named, unwired class under
+    // `services/baseServices` (see summary.service.ts, which imports the
+    // wrong one — flagged separately, out of this lane's scope). Optional +
+    // trailing so existing positional fixtures keep compiling.
+    @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
   ) {
     super();
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -203,7 +221,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
           outputTokens: smrResponse.outputTokens,
         });
         await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-        await this.summaryMetaRepository.create(summaryMeta);
+        await this.persistSummaryMetaWithUsage(summaryMeta, smrResponse, {
+          tenantId,
+          consultationId,
+          doctorId: consultation.doctorId,
+          departmentId: consultation.departmentId,
+        });
 
         // Step 6: Complete (100%)
         const result: ComprehensiveSummaryJobResult = {
@@ -288,6 +311,10 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     processingTimeMs?: number;
     inputTokens?: number;
     outputTokens?: number;
+    /** SMR's billing passthrough for this call (TASK-615 WS-D2). */
+    usage: SmrUsageDetail | null;
+    /** The guardrail call this generation triggered, forwarded by SMR. */
+    guardrailUsage: SmrUsageDetail | null;
   }> {
     // Build structured text from sections
     const sectionTexts = sections.map((section, index) => {
@@ -356,7 +383,12 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
         },
       });
       this.jobMetrics.recordSmrCallDuration(JobQueue.GenerateComprehensiveSummary, 'smr', (Date.now() - smrStart) / 1000);
-      return mapSmrGenerateResponse(response.data);
+      const data = response.data as { usage_detail?: unknown; guardrail_usage?: unknown };
+      return {
+        ...mapSmrGenerateResponse(response.data),
+        usage: parseSmrUsageDetail(data?.usage_detail),
+        guardrailUsage: parseSmrUsageDetail(data?.guardrail_usage),
+      };
     } catch (error) {
       this.logger.error({
         message: 'SMR service call failed for comprehensive summary',
@@ -370,5 +402,71 @@ export class ComprehensiveSummaryProcessor extends WorkerHost {
     const candidate = options?.conversationLanguage ?? options?.language ?? options?.locale;
 
     return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : 'en';
+  }
+
+  /**
+   * Persist a `SummaryMeta` and, in the SAME transaction, record the tokens
+   * the generation consumed (TASK-615 WS-D2 — mirrors
+   * `SummaryService.persistSummaryMetaWithUsage` exactly).
+   *
+   * TWO deliberate degradations:
+   *   - No ledger / no unit-of-work wired (legacy positional test fixtures)
+   *     ⇒ plain create, unmetered. Metering is additive; it must not become a
+   *     precondition for saving a clinical note.
+   *   - A metering failure is swallowed. The model already ran and the job is
+   *     about to notify completion: "not metered" is recoverable from the
+   *     provider's own usage API, a failed job over a delivered summary is not.
+   */
+  private async persistSummaryMetaWithUsage(
+    summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
+    smrResponse: { usage: SmrUsageDetail | null; guardrailUsage: SmrUsageDetail | null },
+    attribution: { tenantId: string; consultationId: string; doctorId?: string | null; departmentId?: string | null },
+  ): Promise<void> {
+    const llmInput = smrResponse.usage
+      ? buildLlmUsageInput({
+          usage: smrResponse.usage,
+          tenantId: attribution.tenantId,
+          operation: 'generate',
+          consultationId: attribution.consultationId,
+          doctorId: attribution.doctorId,
+          departmentId: attribution.departmentId,
+        })
+      : null;
+    const guardrailInput = smrResponse.guardrailUsage
+      ? buildGuardrailUsageInput({
+          usage: smrResponse.guardrailUsage,
+          tenantId: attribution.tenantId,
+          consultationId: attribution.consultationId,
+          doctorId: attribution.doctorId,
+          departmentId: attribution.departmentId,
+          fallbackRequestId: smrResponse.usage?.taskId ?? null,
+        })
+      : null;
+
+    const inputs = [llmInput, guardrailInput].filter((input): input is NonNullable<typeof input> => input !== null);
+
+    if (!this.usageLedgerService || !this.unitOfWorkService || inputs.length === 0) {
+      await this.summaryMetaRepository.create(summaryMeta);
+      return;
+    }
+
+    try {
+      await this.unitOfWorkService.runInTransaction(async (tx: CorePrisma.TransactionClient) => {
+        await this.summaryMetaRepository.create(summaryMeta, tx);
+        for (const input of inputs) {
+          await this.usageLedgerService!.recordUsage(input, tx);
+        }
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Usage metering failed for a generated comprehensive summary; persisting the summary metadata unmetered',
+        consultationId: attribution.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // The transaction rolled back, so the SummaryMeta was never written.
+      // Re-create it on its own — losing the metadata over a metering problem
+      // would be strictly worse than losing the meter.
+      await this.summaryMetaRepository.create(summaryMeta);
+    }
   }
 }
