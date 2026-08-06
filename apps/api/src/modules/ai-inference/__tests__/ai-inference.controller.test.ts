@@ -11,9 +11,19 @@ import { AiInferenceController } from '../ai-inference.controller';
 function makeController(
   aiTaskDefaults?: { getEffective: ReturnType<typeof vi.fn> },
   aiModels?: { getByTaskTypeSharedRead: ReturnType<typeof vi.fn> },
+  aiRuntimeProfileService?: unknown,
+  cls?: { get: ReturnType<typeof vi.fn> },
+  usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> },
 ) {
   const client = { analyzeGuardrail: vi.fn(), classifyTokens: vi.fn(), suggestDiagnosis: vi.fn() };
-  const controller = new AiInferenceController(client as never, aiTaskDefaults as never, aiModels as never);
+  const controller = new AiInferenceController(
+    client as never,
+    aiTaskDefaults as never,
+    aiModels as never,
+    aiRuntimeProfileService as never,
+    cls as never,
+    usageLedgerService as never,
+  );
   return { controller, client };
 }
 
@@ -181,6 +191,90 @@ describe('AiInferenceController — NER entities', () => {
 
     await expect(controller.extractEntities({ text: 'x' })).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(client.classifyTokens).not.toHaveBeenCalled();
+  });
+});
+
+// TASK-615 WS-D2 (item 2) — playground NER usage-ledger emission.
+describe('AiInferenceController — NER usage-ledger emission (TASK-615 WS-D2)', () => {
+  const aiTaskDefaults = () => ({ getEffective: vi.fn().mockResolvedValue(effectiveWithModel('nlp.ner', 'blaze999/Medical-NER')) });
+  const clsFor = (user: { id: string; roles?: string[] } | undefined, tenantId = 't1') => ({
+    get: vi.fn((key: string) => (key === 'tenantId' ? tenantId : key === 'user' ? user : undefined)),
+  });
+
+  it('emits a TEXT_UNIT + REQUEST row with an nlp:<generated requestId> key and NO consultation attribution', async () => {
+    const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
+    const cls = clsFor({ id: 'user-1', roles: [] });
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    client.classifyTokens.mockResolvedValue({ entities: [] });
+
+    await controller.extractEntities({ text: 'aspirin 100mg' });
+
+    expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+    const [input] = usageLedgerService.recordUsage.mock.calls[0];
+    expect(input.common.consultationId).toBeNull();
+    expect(input.common.idempotencyKey).toMatch(/^nlp:.+/);
+    expect(input.common.idempotencyKey).not.toBe('nlp:'); // a real id was generated, not blank
+    expect(input.common.tenantId).toBe('t1');
+    expect(input.common.model).toBe('blaze999/Medical-NER');
+    expect(input.units).toEqual([
+      { unit: 'TEXT_UNIT', quantity: 0.13 },
+      { unit: 'REQUEST', quantity: 1 },
+    ]);
+  });
+
+  it('attributes doctorId when the CLS user is a clinician (DOCTOR/SPECIALIST/CONSULTANT)', async () => {
+    const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
+    const cls = clsFor({ id: 'doctor-9', roles: ['DOCTOR'] });
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    client.classifyTokens.mockResolvedValue({ entities: [] });
+
+    await controller.extractEntities({ text: 'x' });
+
+    const [input] = usageLedgerService.recordUsage.mock.calls[0];
+    expect(input.common.doctorId).toBe('doctor-9');
+  });
+
+  it('omits doctorId when the CLS user has no clinician role (e.g. a GLOBAL_ADMIN using the playground)', async () => {
+    const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 2 }) };
+    const cls = clsFor({ id: 'admin-1', roles: ['GLOBAL_ADMIN'] });
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    client.classifyTokens.mockResolvedValue({ entities: [] });
+
+    await controller.extractEntities({ text: 'x' });
+
+    const [input] = usageLedgerService.recordUsage.mock.calls[0];
+    expect(input.common.doctorId).toBeNull();
+  });
+
+  it('does not emit when no tenantId is available in CLS', async () => {
+    const usageLedgerService = { recordUsage: vi.fn() };
+    const cls = clsFor({ id: 'user-1' }, null as never);
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    client.classifyTokens.mockResolvedValue({ entities: [] });
+
+    await controller.extractEntities({ text: 'x' });
+
+    expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
+  });
+
+  it('does not emit when no usage-ledger service is wired (test-fixture ergonomics, unaffected proxying)', async () => {
+    const cls = clsFor({ id: 'user-1' });
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, undefined);
+    const entities = { entities: [], model_version: 'v1' };
+    client.classifyTokens.mockResolvedValue(entities);
+
+    const result = await controller.extractEntities({ text: 'x' });
+    expect(result).toBe(entities);
+  });
+
+  it('never fails extractEntities when the ledger rejects (best-effort, like every other emitter in this codebase)', async () => {
+    const usageLedgerService = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox unavailable')) };
+    const cls = clsFor({ id: 'user-1' });
+    const { controller, client } = makeController(aiTaskDefaults(), undefined, undefined, cls, usageLedgerService);
+    const entities = { entities: [], model_version: 'v1' };
+    client.classifyTokens.mockResolvedValue(entities);
+
+    await expect(controller.extractEntities({ text: 'x' })).resolves.toBe(entities);
   });
 });
 

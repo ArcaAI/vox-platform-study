@@ -22,7 +22,13 @@ import { IngestKnowledgeDocumentProcessor } from './ingest-knowledge-document.pr
  * fixtures can still construct it without one).
  */
 @Module({
-  imports: [ConfigModule, HttpModule, CoreDatabaseModule, UsageLedgerServiceModule, BullModule.registerQueue({ name: JobQueue.IngestKnowledgeDocument })],
+  imports: [
+    ConfigModule,
+    HttpModule,
+    CoreDatabaseModule,
+    UsageLedgerServiceModule,
+    BullModule.registerQueue({ name: JobQueue.IngestKnowledgeDocument }),
+  ],
   providers: [KnowledgeDocumentService, KnowledgeIngestClient, IngestKnowledgeDocumentProcessor],
   exports: [KnowledgeDocumentService],
 })
