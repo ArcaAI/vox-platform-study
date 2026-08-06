@@ -5,9 +5,17 @@ import { CoreDatabaseService, VAULT_PRISMA_FACTORY, type VaultPrismaFactory } fr
 
 import { AgentTrajectoryStepRepository } from '../../../repositories/generated/core/AgentTrajectoryStepRepository';
 import { AiModelRepository } from '../../../repositories/generated/core/AiModelRepository';
+import { AiPriceBookRepository } from '../../../repositories/generated/core/AiPriceBookRepository';
 import { AiProviderConnectionRepository } from '../../../repositories/generated/core/AiProviderConnectionRepository';
 import { AiRuntimeProfileRepository } from '../../../repositories/generated/core/AiRuntimeProfileRepository';
 import { AiTaskDefaultRepository } from '../../../repositories/generated/core/AiTaskDefaultRepository';
+import { AiUsageEventRepository } from '../../../repositories/generated/core/AiUsageEventRepository';
+import { AiUsageOutboxRepository } from '../../../repositories/generated/core/AiUsageOutboxRepository';
+import { AiUsageRollupDailyRepository } from '../../../repositories/generated/core/AiUsageRollupDailyRepository';
+import { AiUsageRollupHourlyRepository } from '../../../repositories/generated/core/AiUsageRollupHourlyRepository';
+import { BillingAdjustmentRepository } from '../../../repositories/generated/core/BillingAdjustmentRepository';
+import { BillingInvoiceLineRepository } from '../../../repositories/generated/core/BillingInvoiceLineRepository';
+import { BillingInvoiceRepository } from '../../../repositories/generated/core/BillingInvoiceRepository';
 import { GateEditExemplarRepository } from '../../../repositories/generated/core/GateEditExemplarRepository';
 import { ApiKeyRepository } from '../../../repositories/generated/core/ApiKeyRepository';
 import { AsrPipelineRepository } from '../../../repositories/generated/core/AsrPipelineRepository';
@@ -194,6 +202,24 @@ const repositories = [
   TenantIdentityProviderRepository,
   FederatedIdentityRepository,
   TenantIdentityProviderDomainRepository,
+  // AI usage metering plane (TASK-615). The ledger, its transactional outbox
+  // and the two rollups are tenant-scoped APPEND-ONLY facts — soft-delete and
+  // sys-event exempt (see the repository/entity docs). AiPriceBook is the one
+  // admin-managed model of the plane: standard lifecycle, sys-events, and a
+  // SYSTEM-shared read model so every tenant's rater can resolve the platform
+  // rate card.
+  AiUsageEventRepository,
+  AiUsageOutboxRepository,
+  AiUsageRollupHourlyRepository,
+  AiUsageRollupDailyRepository,
+  AiPriceBookRepository,
+  // Tenant billing plane (TASK-615). BillingInvoice is the ONE
+  // OCC-written model of the ticket (draft edits + the immutable FINALIZE
+  // transition); BillingAdjustment is append-only — a credit memo against a
+  // finalized period cannot be retracted by deletion.
+  BillingInvoiceRepository,
+  BillingInvoiceLineRepository,
+  BillingAdjustmentRepository,
 ];
 
 @Module({

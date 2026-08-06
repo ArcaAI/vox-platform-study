@@ -16,6 +16,15 @@ export interface ITenantEntitlementEntity extends IBaseTenantEntity {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  // Per-capability included allowances over the UTC-calendar-month window
+  // (TASK-615 D11). BigInt: enterprise token/character counts exceed Int32.
+  // null = unlimited (same convention as every meter column above).
+  monthlySttSessionSeconds?: bigint | null;
+  monthlyLlmTokens?: bigint | null;
+  monthlyTtsCharacters?: bigint | null;
+  monthlyNlpTextUnits?: bigint | null;
+  monthlyEmbeddingTokens?: bigint | null;
+  monthlySpendLimitMicros?: bigint | null;
   featureDnaReports?: boolean | null;
   featureVoiceEnrollment?: boolean | null;
   featureMonitoringAccess?: boolean | null;
@@ -35,6 +44,12 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
   private _monthlyConsultations?: ITenantEntitlementEntity['monthlyConsultations'];
   private _monthlyTranscriptionMinutes?: ITenantEntitlementEntity['monthlyTranscriptionMinutes'];
   private _monthlySummaries?: ITenantEntitlementEntity['monthlySummaries'];
+  private _monthlySttSessionSeconds?: ITenantEntitlementEntity['monthlySttSessionSeconds'];
+  private _monthlyLlmTokens?: ITenantEntitlementEntity['monthlyLlmTokens'];
+  private _monthlyTtsCharacters?: ITenantEntitlementEntity['monthlyTtsCharacters'];
+  private _monthlyNlpTextUnits?: ITenantEntitlementEntity['monthlyNlpTextUnits'];
+  private _monthlyEmbeddingTokens?: ITenantEntitlementEntity['monthlyEmbeddingTokens'];
+  private _monthlySpendLimitMicros?: ITenantEntitlementEntity['monthlySpendLimitMicros'];
   private _featureDnaReports?: ITenantEntitlementEntity['featureDnaReports'];
   private _featureVoiceEnrollment?: ITenantEntitlementEntity['featureVoiceEnrollment'];
   private _featureMonitoringAccess?: ITenantEntitlementEntity['featureMonitoringAccess'];
@@ -54,6 +69,12 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
     this._monthlyConsultations = init.monthlyConsultations;
     this._monthlyTranscriptionMinutes = init.monthlyTranscriptionMinutes;
     this._monthlySummaries = init.monthlySummaries;
+    this._monthlySttSessionSeconds = init.monthlySttSessionSeconds;
+    this._monthlyLlmTokens = init.monthlyLlmTokens;
+    this._monthlyTtsCharacters = init.monthlyTtsCharacters;
+    this._monthlyNlpTextUnits = init.monthlyNlpTextUnits;
+    this._monthlyEmbeddingTokens = init.monthlyEmbeddingTokens;
+    this._monthlySpendLimitMicros = init.monthlySpendLimitMicros;
     this._featureDnaReports = init.featureDnaReports;
     this._featureVoiceEnrollment = init.featureVoiceEnrollment;
     this._featureMonitoringAccess = init.featureMonitoringAccess;
@@ -140,6 +161,54 @@ export class TenantEntitlementEntity extends BaseTenantEntity {
 
   set monthlySummaries(value: ITenantEntitlementEntity['monthlySummaries']) {
     this.setProperty('monthlySummaries', value);
+  }
+
+  get monthlySttSessionSeconds(): ITenantEntitlementEntity['monthlySttSessionSeconds'] {
+    return this._monthlySttSessionSeconds;
+  }
+
+  set monthlySttSessionSeconds(value: ITenantEntitlementEntity['monthlySttSessionSeconds']) {
+    this.setProperty('monthlySttSessionSeconds', value);
+  }
+
+  get monthlyLlmTokens(): ITenantEntitlementEntity['monthlyLlmTokens'] {
+    return this._monthlyLlmTokens;
+  }
+
+  set monthlyLlmTokens(value: ITenantEntitlementEntity['monthlyLlmTokens']) {
+    this.setProperty('monthlyLlmTokens', value);
+  }
+
+  get monthlyTtsCharacters(): ITenantEntitlementEntity['monthlyTtsCharacters'] {
+    return this._monthlyTtsCharacters;
+  }
+
+  set monthlyTtsCharacters(value: ITenantEntitlementEntity['monthlyTtsCharacters']) {
+    this.setProperty('monthlyTtsCharacters', value);
+  }
+
+  get monthlyNlpTextUnits(): ITenantEntitlementEntity['monthlyNlpTextUnits'] {
+    return this._monthlyNlpTextUnits;
+  }
+
+  set monthlyNlpTextUnits(value: ITenantEntitlementEntity['monthlyNlpTextUnits']) {
+    this.setProperty('monthlyNlpTextUnits', value);
+  }
+
+  get monthlyEmbeddingTokens(): ITenantEntitlementEntity['monthlyEmbeddingTokens'] {
+    return this._monthlyEmbeddingTokens;
+  }
+
+  set monthlyEmbeddingTokens(value: ITenantEntitlementEntity['monthlyEmbeddingTokens']) {
+    this.setProperty('monthlyEmbeddingTokens', value);
+  }
+
+  get monthlySpendLimitMicros(): ITenantEntitlementEntity['monthlySpendLimitMicros'] {
+    return this._monthlySpendLimitMicros;
+  }
+
+  set monthlySpendLimitMicros(value: ITenantEntitlementEntity['monthlySpendLimitMicros']) {
+    this.setProperty('monthlySpendLimitMicros', value);
   }
 
   get featureDnaReports(): ITenantEntitlementEntity['featureDnaReports'] {

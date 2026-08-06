@@ -415,3 +415,134 @@ enum IdpStatus {
 
   @@schema("core")
 }
+
+// =============================================================================
+// AI usage metering + tenant billing (TASK-615)
+//
+// The vocabulary of the append-only `AiUsageEvent` ledger, the effective-dated
+// `AiPriceBook`, and the invoice plane built on top of them. See
+// `usage-ledger.prisma` / `billing.prisma` for the models and
+// docs/implementation/TASK-615-Usage-Metering-And-Billing/README.md §4 for the
+// decisions (D2, D10–D17) each value encodes.
+// =============================================================================
+
+// The five metered AI capabilities. This is the BILLING taxonomy, not the
+// service topology: guardrail and harness LLM calls are metered under `LLM`
+// (with a distinguishing `operation`) because they are the same COGS unit — D16
+// keeps them out of the tenant's invoice, not out of the ledger.
+enum AiCapability {
+  STT
+  LLM
+  NLP
+  TTS
+  EMBEDDING
+
+  @@schema("core")
+}
+
+// The unit a ledger row is denominated in. One row per unit kind, all sharing a
+// `requestId` — a single LLM call therefore lands as several rows (input,
+// output, cache-read, …) rather than one wide row, so a new unit never needs a
+// migration and provider-specific token kinds stay separable.
+//
+// Trap encoded here (research §3): cache and reasoning tokens are SEPARATE units
+// because providers disagree about whether they are already included in
+// `input_tokens` (Anthropic/Bedrock exclude, OpenAI/Gemini include). Normalizing
+// into distinct rows is what makes the two reconcilable.
+enum AiUsageUnit {
+  INPUT_TOKEN
+  OUTPUT_TOKEN
+  CACHE_READ_TOKEN
+  CACHE_WRITE_TOKEN
+  REASONING_TOKEN
+  // Decoded audio processed (batch) or streamed (realtime).
+  AUDIO_SECOND
+  // Socket open→close wall time for a streaming STT session. Both are recorded;
+  // quota/billing uses SESSION_SECOND (OQ1).
+  SESSION_SECOND
+  // TTS input, counted as Unicode CODE POINTS — no CJK/Indic double-counting.
+  CHARACTER
+  // NLP text units (chars/100), consultation-batched.
+  TEXT_UNIT
+  REQUEST
+  // Recorded alongside tokens for self-hosted inference: GPU-time is the
+  // cost-truth unit, tokens remain the sell unit (D4).
+  GPU_SECOND
+
+  @@schema("core")
+}
+
+// Where the serving provider runs, and therefore whose money paid for the call.
+// BYOK rows are metered in full but rated notionally and never invoiced (D14).
+enum AiDeploymentKind {
+  SELF_HOSTED
+  CLOUD
+  BYOK
+
+  @@schema("core")
+}
+
+// Whether `costMicros` on a ledger row is a real platform cost or an
+// informational figure for a tenant-funded (BYOK) call. Aggregations that answer
+// "what did the platform spend" MUST filter to INTERNAL.
+enum AiCostBasis {
+  INTERNAL
+  BYOK_NOTIONAL
+
+  @@schema("core")
+}
+
+// The two price planes (D10). COST rows are COGS — vendor list prices and
+// ops-configured self-hosted rates — consumed by the at-ingest rater. SELL rows
+// are the tenant-facing rate card consumed only by the invoice engine. Never
+// conflate them: COST changes when a vendor reprices, SELL when the product
+// decides to.
+enum AiPriceBookPlane {
+  COST
+  SELL
+
+  @@schema("core")
+}
+
+// A price row is either a per-unit rate or a flat recurring plan fee. Keeping
+// both in one effective-dated, supersede-only table means the invoice engine has
+// exactly one place to resolve "what was in force on this date".
+enum AiPriceRowKind {
+  USAGE_UNIT
+  PLAN_FEE
+
+  @@schema("core")
+}
+
+// Transactional-outbox work-item state (D3). PENDING rows are claimed by the
+// drainer; FAILED rows retain `lastError` and back off via `availableAt`.
+enum AiUsageOutboxStatus {
+  PENDING
+  DISPATCHED
+  FAILED
+
+  @@schema("core")
+}
+
+// Invoice lifecycle (D13). DRAFT is editable; FINALIZED is IMMUTABLE — a
+// correction to a finalized period is a `BillingAdjustment` credit memo, never a
+// mutation. VOID cancels a draft or a finalized invoice issued in error, leaving
+// the row (and its evidence trail) in place.
+enum BillingInvoiceStatus {
+  DRAFT
+  FINALIZED
+  VOID
+
+  @@schema("core")
+}
+
+// What an invoice line represents: the recurring (possibly prorated) plan fee,
+// metered usage above the plan's included allowance, or a credit/debit carried
+// onto the invoice from a `BillingAdjustment`.
+enum BillingLineKind {
+  PLAN_FEE
+  OVERAGE
+  ADJUSTMENT
+
+  @@schema("core")
+}

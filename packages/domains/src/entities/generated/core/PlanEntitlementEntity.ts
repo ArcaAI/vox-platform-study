@@ -17,6 +17,14 @@ export interface IPlanEntitlementEntity extends Omit<IBaseEntity, 'tenantId'> {
   monthlyConsultations?: number | null;
   monthlyTranscriptionMinutes?: number | null;
   monthlySummaries?: number | null;
+  // Per-capability included allowances over the UTC-calendar-month window
+  // (TASK-615 D11). BigInt: enterprise token/character counts exceed Int32.
+  // null = unlimited (same convention as every meter column above).
+  monthlySttSessionSeconds?: bigint | null;
+  monthlyLlmTokens?: bigint | null;
+  monthlyTtsCharacters?: bigint | null;
+  monthlyNlpTextUnits?: bigint | null;
+  monthlyEmbeddingTokens?: bigint | null;
   featureDnaReports: boolean;
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
@@ -36,6 +44,11 @@ export class PlanEntitlementEntity extends BaseEntity {
   private _monthlyConsultations?: IPlanEntitlementEntity['monthlyConsultations'];
   private _monthlyTranscriptionMinutes?: IPlanEntitlementEntity['monthlyTranscriptionMinutes'];
   private _monthlySummaries?: IPlanEntitlementEntity['monthlySummaries'];
+  private _monthlySttSessionSeconds?: IPlanEntitlementEntity['monthlySttSessionSeconds'];
+  private _monthlyLlmTokens?: IPlanEntitlementEntity['monthlyLlmTokens'];
+  private _monthlyTtsCharacters?: IPlanEntitlementEntity['monthlyTtsCharacters'];
+  private _monthlyNlpTextUnits?: IPlanEntitlementEntity['monthlyNlpTextUnits'];
+  private _monthlyEmbeddingTokens?: IPlanEntitlementEntity['monthlyEmbeddingTokens'];
   private _featureDnaReports: IPlanEntitlementEntity['featureDnaReports'];
   private _featureVoiceEnrollment: IPlanEntitlementEntity['featureVoiceEnrollment'];
   private _featureMonitoringAccess: IPlanEntitlementEntity['featureMonitoringAccess'];
@@ -55,6 +68,11 @@ export class PlanEntitlementEntity extends BaseEntity {
     this._monthlyConsultations = init.monthlyConsultations;
     this._monthlyTranscriptionMinutes = init.monthlyTranscriptionMinutes;
     this._monthlySummaries = init.monthlySummaries;
+    this._monthlySttSessionSeconds = init.monthlySttSessionSeconds;
+    this._monthlyLlmTokens = init.monthlyLlmTokens;
+    this._monthlyTtsCharacters = init.monthlyTtsCharacters;
+    this._monthlyNlpTextUnits = init.monthlyNlpTextUnits;
+    this._monthlyEmbeddingTokens = init.monthlyEmbeddingTokens;
     this._featureDnaReports = init.featureDnaReports;
     this._featureVoiceEnrollment = init.featureVoiceEnrollment;
     this._featureMonitoringAccess = init.featureMonitoringAccess;
@@ -148,6 +166,46 @@ export class PlanEntitlementEntity extends BaseEntity {
 
   set monthlySummaries(value: IPlanEntitlementEntity['monthlySummaries']) {
     this.setProperty('monthlySummaries', value);
+  }
+
+  get monthlySttSessionSeconds(): IPlanEntitlementEntity['monthlySttSessionSeconds'] {
+    return this._monthlySttSessionSeconds;
+  }
+
+  set monthlySttSessionSeconds(value: IPlanEntitlementEntity['monthlySttSessionSeconds']) {
+    this.setProperty('monthlySttSessionSeconds', value);
+  }
+
+  get monthlyLlmTokens(): IPlanEntitlementEntity['monthlyLlmTokens'] {
+    return this._monthlyLlmTokens;
+  }
+
+  set monthlyLlmTokens(value: IPlanEntitlementEntity['monthlyLlmTokens']) {
+    this.setProperty('monthlyLlmTokens', value);
+  }
+
+  get monthlyTtsCharacters(): IPlanEntitlementEntity['monthlyTtsCharacters'] {
+    return this._monthlyTtsCharacters;
+  }
+
+  set monthlyTtsCharacters(value: IPlanEntitlementEntity['monthlyTtsCharacters']) {
+    this.setProperty('monthlyTtsCharacters', value);
+  }
+
+  get monthlyNlpTextUnits(): IPlanEntitlementEntity['monthlyNlpTextUnits'] {
+    return this._monthlyNlpTextUnits;
+  }
+
+  set monthlyNlpTextUnits(value: IPlanEntitlementEntity['monthlyNlpTextUnits']) {
+    this.setProperty('monthlyNlpTextUnits', value);
+  }
+
+  get monthlyEmbeddingTokens(): IPlanEntitlementEntity['monthlyEmbeddingTokens'] {
+    return this._monthlyEmbeddingTokens;
+  }
+
+  set monthlyEmbeddingTokens(value: IPlanEntitlementEntity['monthlyEmbeddingTokens']) {
+    this.setProperty('monthlyEmbeddingTokens', value);
   }
 
   get featureDnaReports(): IPlanEntitlementEntity['featureDnaReports'] {
