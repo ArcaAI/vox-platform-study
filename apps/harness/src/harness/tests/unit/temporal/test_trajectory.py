@@ -192,6 +192,61 @@ class TestActivityEmission:
         assert step.stats == {**stats, "prompt_chars": 1, "prompt_tokens_est": 0}
 
     @pytest.mark.asyncio
+    async def test_generate_backfills_provider_model_when_stats_omits_them(self, env, monkeypatch):
+        """TASK-615 WS-F: the gateway's usage-ledger emission hook needs
+        `provider`/`model` on every LLM_CALL step to attribute cost. A legacy /
+        cache-hit SMR response with no `stats` block still carries `provider`/
+        `model` on `SmrGenerationResult` itself — backfill from there so the
+        step is never missing the two fields the ledger emitter requires."""
+
+        class _NoStatsSmr:
+            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
+                return SmrGenerationResult(
+                    content="DRAFT",
+                    model="claude-sonnet-5",
+                    provider="anthropic",
+                    finish_reason="stop",
+                    stats=None,
+                )
+
+        cap = _CapTraj()
+        monkeypatch.setattr(activities, "_smr_client", lambda s: _NoStatsSmr())
+        monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
+
+        await env.run(activities.generate, GenerateInput(prompt="P", trajectory=_traj_ctx(seq=10)))
+
+        step = cap.steps[0]
+        assert step.stats["provider"] == "anthropic"
+        assert step.stats["model"] == "claude-sonnet-5"
+
+    @pytest.mark.asyncio
+    async def test_generate_never_overwrites_stats_provider_and_model(self, env, monkeypatch):
+        """A `stats` block that already reports `provider`/`model` wins — the
+        backfill only fills a gap, it never second-guesses what SMR actually
+        reported (which may legitimately differ from the requested provider/
+        model, e.g. a fallback)."""
+        stats = {"stop_reason": "stop", "provider": "lm-studio", "model": "reported-model"}
+
+        class _StatsSmr:
+            async def generate(self, **kwargs: Any) -> SmrGenerationResult:
+                return SmrGenerationResult(
+                    content="DRAFT",
+                    model="top-level-model",
+                    provider="top-level-provider",
+                    stats=stats,
+                )
+
+        cap = _CapTraj()
+        monkeypatch.setattr(activities, "_smr_client", lambda s: _StatsSmr())
+        monkeypatch.setattr(activities, "_trajectory_api_client", lambda s: cap)
+
+        await env.run(activities.generate, GenerateInput(prompt="P", trajectory=_traj_ctx(seq=11)))
+
+        step = cap.steps[0]
+        assert step.stats["provider"] == "lm-studio"
+        assert step.stats["model"] == "reported-model"
+
+    @pytest.mark.asyncio
     async def test_generate_emits_thinking_step_when_reasoning_present(self, env, monkeypatch):
         stats = {
             "stop_reason": "stop",
