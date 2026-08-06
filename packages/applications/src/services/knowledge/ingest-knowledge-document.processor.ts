@@ -2,11 +2,23 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { ClsService } from 'nestjs-cls';
-import { JobQueue, KnowledgeChunkFactory, KnowledgeChunkRepository, KnowledgeDocumentRepository } from '@arcaai/domains';
-import { KnowledgeIngestClient } from './knowledge-ingest.client';
+import { AiCapability, AiDeploymentKind, AiUsageUnit, JobQueue, KnowledgeChunkFactory, KnowledgeChunkRepository, KnowledgeDocumentRepository } from '@arcaai/domains';
+import { KnowledgeIngestClient, KnowledgeIngestResponse } from './knowledge-ingest.client';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../common';
 import { IActiveUserContext } from '../../interfaces';
 import { SecretsService } from '../baseServices/_meta/secrets';
+import { IUsageLedgerService, UsageIdempotencyKey } from '../usageLedger';
+
+/**
+ * The harness knowledge-ingest path dense-embeds through the SELF-HOSTED
+ * LM Studio OpenAI-compatible endpoint (apps/harness
+ * `services/embeddings_client.py` posts to `{embeddings_base_url}/embeddings`,
+ * default `http://localhost:1234/v1` — see `core/config.py`), never a cloud
+ * embeddings provider (PHI must never egress) and never the TEI reranker
+ * (a SEPARATE component on its own port, used for reranking only). `lm-studio`
+ * is already a KNOWN_PROVIDERS self-hosted server connection id.
+ */
+const EMBEDDING_PROVIDER = 'lm-studio';
 
 /**
  * Payload for the IngestKnowledgeDocument job. `text` travels in the payload
@@ -54,6 +66,11 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
     // keep their arity; when wired, each chunk's `text` is encrypted into the
     // `encryptedText` column before persist (dual-write soak).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // TASK-615 WS-D2 (item 3) — emits ONE `embed` INPUT_TOKEN row per ingest
+    // call, summing every returned chunk's tokenCount. Optional + trailing so
+    // existing positional fixtures keep their arity; absent ⇒ no emission
+    // (fail-open — metering must never block institutional-RAG ingestion).
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
   ) {
     super();
   }
@@ -127,6 +144,10 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
       document.updatedBy = userId ?? null;
       await this.knowledgeDocumentRepository.update(document.id, document);
 
+      // TASK-615 WS-D2 (item 3) — best-effort; a metering hiccup must never
+      // fail an otherwise-successful ingestion.
+      await this.emitEmbeddingUsage(tenantId, jobId ?? String(job.id), response);
+
       await job.updateProgress(100);
 
       this.logger.log({
@@ -138,5 +159,45 @@ export class IngestKnowledgeDocumentProcessor extends WorkerHost {
 
       return { knowledgeDocumentId, chunkCount: response.chunkCount, chunkIds };
     });
+  }
+
+  /**
+   * Emit ONE `embed` `INPUT_TOKEN` row for the whole ingest call, summing
+   * every returned chunk's `tokenCount` (the harness's own embedder-reported
+   * count — never re-estimated here). Zero-token chunks (or a chunkless
+   * response) bill nothing, matching "a request that consumed nothing gets no
+   * row at all" elsewhere in this ledger.
+   */
+  private async emitEmbeddingUsage(tenantId: string, requestId: string, response: KnowledgeIngestResponse): Promise<void> {
+    if (!this.usageLedgerService) return;
+
+    const totalInputTokens = (response.chunks ?? []).reduce(
+      (sum, chunk) => sum + (typeof chunk.tokenCount === 'number' && Number.isFinite(chunk.tokenCount) ? chunk.tokenCount : 0),
+      0,
+    );
+    if (totalInputTokens <= 0) return;
+
+    try {
+      await this.usageLedgerService.recordUsage({
+        common: {
+          tenantId,
+          idempotencyKey: UsageIdempotencyKey.embedRequest(requestId),
+          occurredAt: new Date(),
+          capability: AiCapability.EMBEDDING,
+          operation: 'embed',
+          provider: EMBEDDING_PROVIDER,
+          model: response.chunks[0]?.embeddingModel ?? null,
+          deployment: AiDeploymentKind.SELF_HOSTED,
+          requestId,
+        },
+        units: [{ unit: AiUsageUnit.INPUT_TOKEN, quantity: totalInputTokens }],
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Knowledge-ingest embedding usage emission failed',
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }

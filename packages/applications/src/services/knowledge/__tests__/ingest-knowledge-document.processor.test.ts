@@ -65,21 +65,24 @@ function ingestResponse() {
   };
 }
 
-function buildHarness() {
+function buildHarness(opts: { usageLedgerService?: unknown } = {}) {
   const knowledgeDocumentRepository = { findById: vi.fn(), update: vi.fn(async (_id, e) => e) };
   const knowledgeChunkRepository = { create: vi.fn(async (e) => e) };
   const ingestClient = { ingest: vi.fn() };
   // cls.run executes the callback synchronously (the worker rebind wrapper).
   const cls = { run: vi.fn(async (fn: () => unknown) => fn()), set: vi.fn() };
+  const usageLedgerService = opts.usageLedgerService as { recordUsage: ReturnType<typeof vi.fn> } | undefined;
 
   const processor = new IngestKnowledgeDocumentProcessor(
     knowledgeDocumentRepository as never,
     knowledgeChunkRepository as never,
     ingestClient as never,
     cls as never,
+    undefined, // secretsService
+    usageLedgerService as never,
   );
 
-  return { processor, knowledgeDocumentRepository, knowledgeChunkRepository, ingestClient, cls };
+  return { processor, knowledgeDocumentRepository, knowledgeChunkRepository, ingestClient, cls, usageLedgerService };
 }
 
 function buildJob(data: Record<string, unknown>) {
@@ -168,5 +171,91 @@ describe('IngestKnowledgeDocumentProcessor', () => {
     await expect(processor.process(job as never)).rejects.toThrow(/503|unavailable/i);
     expect(knowledgeChunkRepository.create).not.toHaveBeenCalled();
     expect(knowledgeDocumentRepository.update).not.toHaveBeenCalled();
+  });
+
+  // TASK-615 WS-D2 (item 3) — the harness knowledge-ingest path embeds
+  // through the self-hosted LM Studio OpenAI-compatible endpoint (see
+  // apps/harness/src/harness/services/embeddings_client.py + core/config.py
+  // `embeddings_base_url: http://localhost:1234/v1`), NOT a TEI reranker
+  // instance — so the ledger provider slug is `lm-studio`, an id already in
+  // KNOWN_PROVIDERS.
+  describe('embedding usage emission (TASK-615 WS-D2)', () => {
+    it('emits ONE embed INPUT_TOKEN row summing every chunk tokenCount for the ingest call', async () => {
+      const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 1 }) };
+      const { processor, knowledgeDocumentRepository, ingestClient } = buildHarness({ usageLedgerService });
+      knowledgeDocumentRepository.findById.mockResolvedValue(buildDoc());
+      ingestClient.ingest.mockResolvedValue(ingestResponse());
+
+      const job = buildJob({
+        jobId: 'job-embed-1',
+        knowledgeDocumentId: 'doc-1',
+        tenantId: TENANT_A,
+        userId: 'admin-1',
+        text: 'Give antibiotics within 1 hour. Draw lactate and blood cultures.',
+      });
+
+      await processor.process(job as never);
+
+      expect(usageLedgerService.recordUsage).toHaveBeenCalledTimes(1);
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common).toMatchObject({
+        tenantId: TENANT_A,
+        idempotencyKey: 'embed:job-embed-1',
+        capability: 'EMBEDDING',
+        operation: 'embed',
+        provider: 'lm-studio',
+        model: 'BAAI/bge-m3',
+        deployment: 'SELF_HOSTED',
+        requestId: 'job-embed-1',
+      });
+      // ingestResponse() chunks carry tokenCount 6 + 5 = 11.
+      expect(input.units).toEqual([{ unit: 'INPUT_TOKEN', quantity: 11 }]);
+    });
+
+    it('falls back to the BullMQ job id when the payload carries no jobId', async () => {
+      const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: ['o-1'], events: 1 }) };
+      const { processor, knowledgeDocumentRepository, ingestClient } = buildHarness({ usageLedgerService });
+      knowledgeDocumentRepository.findById.mockResolvedValue(buildDoc());
+      ingestClient.ingest.mockResolvedValue(ingestResponse());
+
+      // buildJob() always sets id: 'job-1'; the payload omits jobId.
+      const job = buildJob({ knowledgeDocumentId: 'doc-1', tenantId: TENANT_A, text: 'x' });
+      await processor.process(job as never);
+
+      const [input] = usageLedgerService.recordUsage.mock.calls[0];
+      expect(input.common.idempotencyKey).toBe('embed:job-1');
+    });
+
+    it('emits nothing when no usage-ledger service is wired', async () => {
+      const { processor, knowledgeDocumentRepository, ingestClient } = buildHarness();
+      knowledgeDocumentRepository.findById.mockResolvedValue(buildDoc());
+      ingestClient.ingest.mockResolvedValue(ingestResponse());
+
+      const job = buildJob({ knowledgeDocumentId: 'doc-1', tenantId: TENANT_A, text: 'x' });
+      await expect(processor.process(job as never)).resolves.toBeDefined();
+    });
+
+    it('emits nothing when the harness returned zero-token chunks (no work billed)', async () => {
+      const usageLedgerService = { recordUsage: vi.fn().mockResolvedValue({ outboxIds: [], events: 0 }) };
+      const { processor, knowledgeDocumentRepository, ingestClient } = buildHarness({ usageLedgerService });
+      knowledgeDocumentRepository.findById.mockResolvedValue(buildDoc());
+      ingestClient.ingest.mockResolvedValue({ chunkCount: 0, chunks: [] });
+
+      const job = buildJob({ knowledgeDocumentId: 'doc-1', tenantId: TENANT_A, text: 'x' });
+      await processor.process(job as never);
+
+      expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('never fails the ingest job when the ledger rejects (best-effort, like the chunk persistence)', async () => {
+      const usageLedgerService = { recordUsage: vi.fn().mockRejectedValue(new Error('outbox unavailable')) };
+      const { processor, knowledgeDocumentRepository, ingestClient, knowledgeChunkRepository } = buildHarness({ usageLedgerService });
+      knowledgeDocumentRepository.findById.mockResolvedValue(buildDoc());
+      ingestClient.ingest.mockResolvedValue(ingestResponse());
+
+      const job = buildJob({ knowledgeDocumentId: 'doc-1', tenantId: TENANT_A, text: 'x' });
+      await expect(processor.process(job as never)).resolves.toBeDefined();
+      expect(knowledgeChunkRepository.create).toHaveBeenCalledTimes(2);
+    });
   });
 });
