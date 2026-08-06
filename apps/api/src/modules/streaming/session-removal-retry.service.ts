@@ -57,14 +57,20 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
   /**
    * Park a session whose upstream removal failed and start the bounded
    * backoff retries. Fire-and-forget safe: never throws.
+   *
+   * TASK-615 WS-C: `interrupted` carries through to every retry's
+   * `removeSession` call. This method is ONLY ever reached from the WS
+   * gateway's `finalizeSession` (an explicit close's removeSession failing
+   * is just as retryable as an abort's), so the caller's own `interrupted`
+   * determination is the one that matters — never recomputed here.
    */
-  enqueue(sessionId: string): void {
+  enqueue(sessionId: string, interrupted = false): void {
     if (!sessionId || this.destroyed) {
       return;
     }
 
     void this.persist(sessionId);
-    this.scheduleAttempt(sessionId, 1);
+    this.scheduleAttempt(sessionId, 1, interrupted);
 
     this.logger.warn({
       message: 'Session removal failed — parked for retry (TASK-351 P1-3)',
@@ -87,7 +93,7 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
     }
   }
 
-  private scheduleAttempt(sessionId: string, attempt: number): void {
+  private scheduleAttempt(sessionId: string, attempt: number, interrupted: boolean): void {
     if (this.destroyed) {
       return;
     }
@@ -104,18 +110,18 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
     const delayMs = SESSION_REMOVAL_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
     const timer = setTimeout(() => {
       this.timers.delete(timer);
-      void this.attempt(sessionId, attempt);
+      void this.attempt(sessionId, attempt, interrupted);
     }, delayMs);
     (timer as unknown as { unref?: () => void }).unref?.();
     this.timers.add(timer);
   }
 
-  private async attempt(sessionId: string, attempt: number): Promise<void> {
+  private async attempt(sessionId: string, attempt: number, interrupted: boolean): Promise<void> {
     if (this.destroyed) {
       return;
     }
     try {
-      await this.sessionService.removeSession(sessionId);
+      await this.sessionService.removeSession(sessionId, interrupted);
       await this.cache.srem(SESSION_REMOVAL_RETRY_SET_KEY, sessionId).catch(() => {});
       this.logger.log({
         message: 'Session removal retry succeeded',
@@ -130,7 +136,7 @@ export class SessionRemovalRetryService implements OnModuleDestroy {
         maxAttempts: SESSION_REMOVAL_RETRY_MAX_ATTEMPTS,
         error: err instanceof Error ? err.message : String(err),
       });
-      this.scheduleAttempt(sessionId, attempt + 1);
+      this.scheduleAttempt(sessionId, attempt + 1, interrupted);
     }
   }
 }
