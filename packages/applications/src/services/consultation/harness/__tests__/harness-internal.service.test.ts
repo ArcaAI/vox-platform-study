@@ -283,6 +283,9 @@ describe('HarnessInternalService', () => {
     redisCache?: ReturnType<typeof createMockRedisCache>,
     transcriptSegmentRepository?: ReturnType<typeof createMockTranscriptSegmentRepository>,
     harnessPolicyService?: { getEffectivePolicy: ReturnType<typeof vi.fn> },
+    // TASK-615 WS-D2 (item 1c) — never called by persistDraft; wired only so
+    // the double-bill-guard test can assert on it.
+    usageLedgerService?: { recordUsage: ReturnType<typeof vi.fn> },
   ) => {
     configService = createMockConfigService(warmStartEnabled);
     return new HarnessInternalService(
@@ -304,6 +307,9 @@ describe('HarnessInternalService', () => {
       redisCache as any,
       transcriptSegmentRepository as any,
       harnessPolicyService as any,
+      undefined, // mcpServerRepository
+      undefined, // effectiveSettings
+      usageLedgerService as any,
     );
   };
 
@@ -1200,6 +1206,50 @@ describe('HarnessInternalService', () => {
       expect(SummaryMetaFactory.CreateSummaryMeta).toHaveBeenCalledWith(expect.objectContaining({ preSummaryIds: [] }));
       // Airtight: the snapshot lookup is short-circuited when disabled.
       expect(contextItemRepository.findPreSummaries).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // persistDraft — double-bill guard (TASK-615 WS-D2, item 1c)
+  //
+  // Harness-originated generations are already metered PER-STEP by the
+  // agent-trajectory path (WS-F, `harness:step:<...>` idempotency keys) —
+  // the harness calls SMR via SmrClient directly, never through this
+  // gateway's own SMR proxy, so the `llm:<requestId>` and
+  // `harness:step:<...>` id-spaces are disjoint by construction (WS-F wave-1
+  // report). HarnessDraftRequest also carries no token fields (`dto` here
+  // has no inputTokens/outputTokens/usage block at all). Adding emission at
+  // persistDraft would therefore double-bill the same generation under a
+  // second, unrelated idempotency key. This is intentionally NOT metered —
+  // the test below pins that as a regression guard: if a future change adds
+  // emission here by mistake, this test catches it immediately.
+  // =========================================================================
+  describe('persistDraft — never calls the usage ledger (double-bill guard)', () => {
+    const draftBody = () => ({
+      tenantId: 'tenant-1',
+      userId: 'doctor-1',
+      jobId: 'job-1',
+      content: 'S: chest pain O: BP 120/80 A: stable P: review',
+      modelName: 'gpt-x',
+      modelVersion: 'v9',
+      sensorScores: { entityFaithfulness: 0.95, coverage: 0.9, schemaValid: 1, citationPresence: 1, numericDose: 1 },
+      citationsMap: { claims: [{ id: 'c1', status: 'verified' }] },
+      entityFaithfulnessScore: 0.95,
+      coverageScore: 0.9,
+      ragTriadScore: 0.92,
+      guardrailDecisions: { safety: { verdict: 'pass', harms: [] }, groundedness: { score: 0.88 } },
+      promptTemplateId: 'prompt-tpl-1',
+      promptVersion: '3',
+      gateDecision: 'PASS',
+    });
+
+    it('does not call IUsageLedgerService.recordUsage even when one is wired', async () => {
+      const usageLedgerService = { recordUsage: vi.fn() };
+      const withLedger = buildService(false, undefined, true, undefined, undefined, undefined, usageLedgerService);
+
+      await withLedger.persistDraft('consultation-1', draftBody());
+
+      expect(usageLedgerService.recordUsage).not.toHaveBeenCalled();
     });
   });
 

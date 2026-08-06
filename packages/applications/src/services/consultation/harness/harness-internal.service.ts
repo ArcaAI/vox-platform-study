@@ -39,6 +39,7 @@ import {
 } from '../../settings-registry/descriptors/agentic-revisit.descriptors';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../prompt/prompt-assembly.service';
 import { IConsultationJobService } from '../jobs/consultation-job.service';
+import { IUsageLedgerService } from '../../usageLedger';
 import { assertEqualTenants, createWorkerSession, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { HARNESS_DRAFT_PHASE } from './dto';
@@ -174,6 +175,18 @@ export class HarnessInternalService {
     // existing positional unit fixtures keep their arity; absent ⇒ the code
     // default (carry-forward OFF), which is also the fail-safe direction.
     @Optional() @Inject(EffectiveSettingsService) private readonly effectiveSettings?: EffectiveSettingsService,
+    // TASK-615 WS-D2 (item 1c) — injected but DELIBERATELY NEVER CALLED.
+    // `persistDraft`'s `HarnessDraftRequest` carries no token fields, and
+    // harness-originated LLM calls are already metered PER-STEP by the
+    // agent-trajectory path (WS-F: `harness:step:<sessionId>:<runId>:<seq>`
+    // idempotency keys) — the harness calls SMR via its own `SmrClient`
+    // directly, never through this gateway's SMR proxy, so the
+    // `llm:<requestId>` and `harness:step:<...>` id-spaces are disjoint by
+    // construction. Adding emission here would double-bill the same
+    // generation under a second, unrelated key. Wired only so
+    // `harness-internal.service.test.ts`'s double-bill-guard test can assert
+    // `recordUsage` is never called — see that test for the regression net.
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
   ) {
     const raw = String(this.configService?.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -721,6 +734,14 @@ export class HarnessInternalService {
           generatedAt: new Date(),
         });
         await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
+        // TASK-615 WS-D2 (item 1c) — INTENTIONALLY NOT metered here. `dto`
+        // (HarnessDraftRequest) carries no token fields, and this generation
+        // is already billed by the agent-trajectory per-step path (WS-F):
+        // the harness calls SMR via its own SmrClient, never through this
+        // gateway's SMR proxy, so `harness:step:<...>` already covers it.
+        // Emitting a second `llm:<...>` row here would double-bill the same
+        // generation. See the constructor's `usageLedgerService` doc comment
+        // and the double-bill-guard test in harness-internal.service.test.ts.
         await this.summaryMetaRepository.create(summaryMeta);
 
         // 3. Lifecycle. EARLY -> DRAFT_PENDING_SENSORS (readable, assurance pending,

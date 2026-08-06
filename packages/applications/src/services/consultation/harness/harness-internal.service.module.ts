@@ -11,6 +11,7 @@ import { ConfigResolverModule } from '../../config-resolver';
 import { RedisCacheModule } from '../../baseServices/redis';
 import { HarnessPolicyServiceModule } from '../../harness-policy/harness-policy.service.module';
 import { EffectiveSettingsModule } from '../../settings-registry/effective-settings.module';
+import { UsageLedgerServiceModule } from '../../usageLedger';
 
 /**
  * HarnessInternalService DI module. Wires the
@@ -45,6 +46,10 @@ import { EffectiveSettingsModule } from '../../settings-registry/effective-setti
     // `agentic.revisit.carryForwardEnabled` (F-18) is governed by the control
     // plane rather than a redeploy. Unwired ⇒ carry-forward stays OFF.
     EffectiveSettingsModule,
+    // Supplies the @Optional IUsageLedgerService the constructor injects but
+    // NEVER calls (TASK-615 WS-D2, item 1c — double-bill guard; see the
+    // service's constructor doc comment).
+    UsageLedgerServiceModule,
   ],
   providers: [HarnessInternalService, PromptAssemblyService],
   exports: [HarnessInternalService],
