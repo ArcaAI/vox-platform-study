@@ -86,6 +86,33 @@ STREAMING_INFERENCE_LATENCY = Histogram(
     buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
 )
 
+# TASK-615 WS-C — the streaming counterpart to the batch-only
+# stt_audio_duration_seconds (that one intentionally stays unlabeled; batch
+# gets pipeline/engine/status on the separate stt_transcription_* series
+# instead). Recorded ONCE per session at teardown (`record_streaming_teardown`,
+# called from SessionManager._finalize_session_locked). Labels bounded to
+# {pipeline, engine, status} — no tenant label; this plane stays PHI-free.
+STREAMING_AUDIO_DURATION = Histogram(
+    "stt_streaming_audio_duration_seconds",
+    "Decoded audio seconds ingested per streaming session (total_duration_seconds at teardown)",
+    ["pipeline", "engine", "status"],
+    buckets=[5, 15, 30, 60, 120, 300, 600, 1800, 3600],
+)
+
+# Real-time factor: cumulative per-utterance ASR processing time / decoded
+# audio seconds for the session. A live streaming system must sustain
+# RTF < 1 (the engine transcribes faster than audio arrives) — this is the
+# gap the current-state review flagged ("processing time and audio duration
+# are never divided" for streaming, unlike TTS). NOT the same denominator as
+# stt_transcription_latency_seconds (batch's end-to-end wall clock): this is
+# accumulated ASR-only time across every utterance in the session.
+STREAMING_RTF = Histogram(
+    "stt_streaming_rtf",
+    "Streaming real-time factor (cumulative per-utterance ASR processing seconds / audio seconds)",
+    ["pipeline", "engine", "status"],
+    buckets=[0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 5.0],
+)
+
 # F-08 — steady-state utterances dropped when the per-session inference queue
 # stays full past the bounded enqueue wait. Captions degrade (a dropped
 # utterance is missing from the live transcript); the durable Redis audio
@@ -243,6 +270,29 @@ def record_transcription_error(*, pipeline: str, error_type: str) -> None:
 def observe_streaming_inference(seconds: float) -> None:
     """Observe one per-utterance streaming ASR inference latency."""
     STREAMING_INFERENCE_LATENCY.observe(max(0.0, seconds))
+
+
+def record_streaming_teardown(
+    *,
+    pipeline: str,
+    engine: str,
+    status: str,
+    audio_seconds: float,
+    processing_seconds: float,
+) -> None:
+    """Record one streaming session's audio duration + real-time factor.
+
+    Called once per session at teardown. ``audio_seconds`` <= 0 means no
+    audio was ever ingested (e.g. the session failed before any chunk
+    arrived) — skipped entirely rather than dividing by zero or recording a
+    degenerate empty-session observation. ``processing_seconds`` is clamped
+    to >= 0 (a clock/accounting glitch must never yield a negative RTF).
+    """
+    if audio_seconds <= 0:
+        return
+    labels = {"pipeline": pipeline, "engine": engine, "status": status}
+    STREAMING_AUDIO_DURATION.labels(**labels).observe(audio_seconds)
+    STREAMING_RTF.labels(**labels).observe(max(0.0, processing_seconds) / audio_seconds)
 
 
 def streaming_session_started(active_count: int) -> None:
