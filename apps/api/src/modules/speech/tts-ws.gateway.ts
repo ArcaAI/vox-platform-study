@@ -1,6 +1,7 @@
 import {
   EffectiveTtsConfigResponse,
   IConfigService,
+  IEntitlementsService,
   IProviderConnectionService,
   ITenantTtsConfigService,
   IUsageLedgerService,
@@ -9,6 +10,7 @@ import {
   UsageIdempotencyKey,
 } from '@arcaai/applications';
 import { AiCapability, AiCostBasis, AiDeploymentKind, AiUsageUnit } from '@arcaai/domains';
+import { QuotaExceededException } from '@arcaai/exceptions';
 import { Inject, Logger, Optional } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway } from '@nestjs/websockets';
 import type { IncomingMessage } from 'http';
@@ -57,6 +59,12 @@ function isTtsUsageFrame(value: unknown): value is TtsUsageFrame {
 export const TTS_WS_CLOSE_CODES = {
   AUTH_FAILED: 4401,
   UPSTREAM_ERROR: 1011,
+  // TASK-615 WS-H — distinct from AUTH_FAILED on purpose: the ticket WAS
+  // valid and the tenant IS identified here, so there is no enumeration
+  // concern to hide behind a generic reason (unlike the handshake-failure
+  // codes above). Private-use range (RFC 6455 4000-4999), loosely mirroring
+  // HTTP 429.
+  QUOTA_EXCEEDED: 4429,
 } as const;
 
 export const TTS_WS_GENERIC_AUTH_REASON = 'Authentication failed';
@@ -119,6 +127,11 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // control frame. Optional/trailing so existing positional test fixtures
     // keep compiling; absent (or no tenantId on the ticket) ⇒ no emission.
     @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
+    // TASK-615 WS-H: PRE-FLIGHT monthlyTtsCharacters allowance check, before
+    // the upstream tts socket ever opens. Optional/trailing so existing
+    // positional test fixtures keep compiling; absent (or no tenantId on the
+    // ticket) ⇒ no check.
+    @Optional() @Inject(IEntitlementsService) private readonly entitlementsService?: IEntitlementsService,
   ) {}
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {
@@ -143,6 +156,26 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return this.reject(client, 'ticket scope mismatch', sessionId);
     }
 
+    // TASK-615 WS-H — PRE-FLIGHT monthlyTtsCharacters check, BEFORE the
+    // upstream tts socket opens (before any synthesis can start). A WS
+    // session streams text incrementally with no fixed total known upfront
+    // (unlike the REST `synthesize` endpoint), so this uses `increment: 0` —
+    // "is the tenant ALREADY over its allowance" — rather than predicting an
+    // unbounded session's eventual character count. A block gets its own
+    // close code (never the generic AUTH_FAILED): the ticket was valid and
+    // the tenant is identified, so there is no enumeration concern to hide
+    // behind a uniform reason here.
+    if (this.entitlementsService && stored.tenantId) {
+      try {
+        await this.entitlementsService.assertMeterQuota(stored.tenantId, 'monthlyTtsCharacters', 0);
+      } catch (err) {
+        if (err instanceof QuotaExceededException) {
+          return this.rejectQuota(client, sessionId);
+        }
+        throw err;
+      }
+    }
+
     await this.openBridge(client, sessionId, stored.tenantId);
   }
 
@@ -155,6 +188,20 @@ export class TtsWsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.warn({ message: 'TTS WS handshake rejected', reason, ...(sessionId ? { sessionId } : {}) });
     try {
       client.close(TTS_WS_CLOSE_CODES.AUTH_FAILED, TTS_WS_GENERIC_AUTH_REASON);
+    } catch {
+      /* socket may already be closing */
+    }
+  }
+
+  /**
+   * TASK-615 WS-H — quota-block close. Deliberately NOT `reject()`: the
+   * ticket was valid and the tenant is already identified, so this is not an
+   * auth failure and there is nothing to hide behind a generic reason.
+   */
+  private rejectQuota(client: WebSocket, sessionId: string): void {
+    this.logger.warn({ message: 'TTS WS rejected — monthly character allowance exhausted', sessionId });
+    try {
+      client.close(TTS_WS_CLOSE_CODES.QUOTA_EXCEEDED, 'Quota exceeded');
     } catch {
       /* socket may already be closing */
     }
