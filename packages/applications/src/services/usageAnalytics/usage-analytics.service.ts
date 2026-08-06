@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import Decimal from 'decimal.js';
 import { DataNotFoundException } from '@arcaai/exceptions';
@@ -80,7 +80,11 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     }
 
     const lines = [...byKey.values()].sort(
-      (a, b) => a.capability.localeCompare(b.capability) || a.provider.localeCompare(b.provider) || a.model.localeCompare(b.model) || a.unit.localeCompare(b.unit),
+      (a, b) =>
+        a.capability.localeCompare(b.capability) ||
+        a.provider.localeCompare(b.provider) ||
+        a.model.localeCompare(b.model) ||
+        a.unit.localeCompare(b.unit),
     );
     const totalCostMicros = lines.reduce((sum, line) => sum + BigInt(line.costMicros), 0n);
 
@@ -208,12 +212,18 @@ export class UsageAnalyticsService implements IUsageAnalyticsService {
     const override = await this.tenantEntitlementRepository.findByTenant(tenantId);
     const resolved = resolveBillingAllowances(plan, planRow, override);
 
-    const rollups = usageUntil.getTime() > billingPeriod.start.getTime() ? await this.rollupDailyRepository.findByPeriod(tenantId, billingPeriod.start, usageUntil) : [];
+    const rollups =
+      usageUntil.getTime() > billingPeriod.start.getTime()
+        ? await this.rollupDailyRepository.findByPeriod(tenantId, billingPeriod.start, usageUntil)
+        : [];
 
     const usedByCapability = new Map<AiCapability, Decimal>();
     for (const capability of Object.values(AiCapability)) usedByCapability.set(capability, new Decimal(0));
     for (const rollup of rollups) {
-      usedByCapability.set(rollup.capability, (usedByCapability.get(rollup.capability) ?? new Decimal(0)).plus(new Decimal(String(rollup.quantitySum))));
+      usedByCapability.set(
+        rollup.capability,
+        (usedByCapability.get(rollup.capability) ?? new Decimal(0)).plus(new Decimal(String(rollup.quantitySum))),
+      );
     }
 
     const totalPeriodMs = billingPeriod.end.getTime() - billingPeriod.start.getTime();

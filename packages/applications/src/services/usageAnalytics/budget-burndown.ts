@@ -29,7 +29,12 @@ export interface CapabilityBurndown {
  *   passed. Callers compute this from `(now - periodStart) / (periodEnd -
  *   periodStart)`, clamped to (0, 1].
  */
-export function projectCapabilityBurndown(capability: AiCapability, usedToDate: Decimal, allowance: Decimal | null, fractionElapsed: number): CapabilityBurndown {
+export function projectCapabilityBurndown(
+  capability: AiCapability,
+  usedToDate: Decimal,
+  allowance: Decimal | null,
+  fractionElapsed: number,
+): CapabilityBurndown {
   const used = usedToDate.isNegative() ? new Decimal(0) : usedToDate;
 
   if (allowance === null) {

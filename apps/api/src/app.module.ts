@@ -60,6 +60,8 @@ import { DnaWritingStyleModule } from './modules/dna-writing-style/dna-writing-s
 import { EntitlementsApiModule } from './modules/entitlements/entitlements.module';
 // billing: SELL rate card + invoice lifecycle + tenant self-service reads (TASK-615 WS-I).
 import { BillingApiModule } from './modules/billing/billing.module';
+// usage analytics: admin/global + tenant self-service reads over the ledger rollups (TASK-615 WS-J).
+import { AdminUsageApiModule } from './modules/admin-usage/admin-usage.module';
 // harness administration & observability console (/admin/harness/*).
 import { HarnessAdminModule } from './modules/harness-admin/harness-admin.module';
 // ordered agentic-session trajectory read plane (/admin/agent-trajectory/*).
@@ -302,6 +304,9 @@ const featureModules: any[] = [
   // /admin/billing/rate-card + /admin/billing/invoices + /billing/me/* —
   // SELL rate card (supersede-only) and the invoice engine (TASK-615 WS-I).
   BillingApiModule,
+  // /admin/usage/* + /usage/me/* — usage-analytics reads over the ledger
+  // rollups (TASK-615 WS-J).
+  AdminUsageApiModule,
   // Applies the pre-bootstrap platform knobs (`logLevel`,
   // `corsAllowedOrigins`) from the settings cascade — TASK-558 lane I. No
   // controllers; a binder only.
