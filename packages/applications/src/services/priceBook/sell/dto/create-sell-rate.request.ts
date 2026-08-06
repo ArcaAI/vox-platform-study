@@ -19,7 +19,10 @@ export class CreateSellRateRequest {
   @IsEnum(AiPriceRowKind)
   rowKind!: AiPriceRowKind;
 
-  @ApiPropertyOptional({ enum: TenantPlan, description: 'Required for PLAN_FEE rows; optional tier dimension on USAGE_UNIT rows (per-tier overage premium, D12).' })
+  @ApiPropertyOptional({
+    enum: TenantPlan,
+    description: 'Required for PLAN_FEE rows; optional tier dimension on USAGE_UNIT rows (per-tier overage premium, D12).',
+  })
   @IsOptional()
   @IsEnum(TenantPlan)
   planTier?: TenantPlan;
@@ -57,7 +60,10 @@ export class CreateSellRateRequest {
   @Length(3, 3)
   currency?: string;
 
-  @ApiProperty({ description: 'Integer micros (1e-6 of currency) per unit — or per period for PLAN_FEE. Non-negative decimal-integer string.', example: '6' })
+  @ApiProperty({
+    description: 'Integer micros (1e-6 of currency) per unit — or per period for PLAN_FEE. Non-negative decimal-integer string.',
+    example: '6',
+  })
   @Matches(/^\d{1,30}$/)
   unitPriceMicros!: string;
 

@@ -112,7 +112,10 @@ export class BillingInvoiceResponse {
   })
   byokNotionalCostMicros!: string;
 
-  @ApiProperty({ type: [String], description: 'Distinct price-book versions consulted — a "placeholder" label here means the card is not commercially approved.' })
+  @ApiProperty({
+    type: [String],
+    description: 'Distinct price-book versions consulted — a "placeholder" label here means the card is not commercially approved.',
+  })
   rateCardVersions!: string[];
 
   @ApiProperty({ type: [BillingInvoiceLineResponse] })
