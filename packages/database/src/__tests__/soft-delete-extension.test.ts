@@ -162,6 +162,21 @@ describe('modelHasSoftDelete', () => {
       // Gate-edit mining store: derived append-only corpus, pruned
       // wholesale rather than soft-deleted, so it has no resourceStatus column.
       'GateEditExemplar',
+      // TASK-615 — the usage ledger and everything derived from it. All four
+      // are APPEND-ONLY metering artifacts with hard retention (raw events 18
+      // months, rollups indefinitely) rather than the ENABLED/DELETED
+      // soft-delete lifecycle, so none carries a `resourceStatus` column and
+      // `softDelete()`/`restore()` must throw for them. Correcting a usage fact
+      // is a compensating event, never a delete.
+      'AiUsageEvent',
+      'AiUsageOutbox',
+      'AiUsageRollupHourly',
+      'AiUsageRollupDaily',
+      // TASK-615 — a credit memo against a FINALIZED invoice. Finalized
+      // periods are immutable, so an adjustment can never be retracted by
+      // deleting it; the correction path is another adjustment. No
+      // `resourceStatus` column.
+      'BillingAdjustment',
     ];
 
     expected.forEach((model) => {

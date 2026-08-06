@@ -19,6 +19,11 @@ export interface CreatePlanEntitlementProps extends BaseEntityFactoryCreateProps
   monthlyConsultations?: IPlanEntitlementEntity['monthlyConsultations'];
   monthlyTranscriptionMinutes?: IPlanEntitlementEntity['monthlyTranscriptionMinutes'];
   monthlySummaries?: IPlanEntitlementEntity['monthlySummaries'];
+  monthlySttSessionSeconds?: IPlanEntitlementEntity['monthlySttSessionSeconds'];
+  monthlyLlmTokens?: IPlanEntitlementEntity['monthlyLlmTokens'];
+  monthlyTtsCharacters?: IPlanEntitlementEntity['monthlyTtsCharacters'];
+  monthlyNlpTextUnits?: IPlanEntitlementEntity['monthlyNlpTextUnits'];
+  monthlyEmbeddingTokens?: IPlanEntitlementEntity['monthlyEmbeddingTokens'];
   featureDnaReports?: IPlanEntitlementEntity['featureDnaReports'];
   featureVoiceEnrollment?: IPlanEntitlementEntity['featureVoiceEnrollment'];
   featureMonitoringAccess?: IPlanEntitlementEntity['featureMonitoringAccess'];
@@ -53,6 +58,11 @@ export class PlanEntitlementFactory {
       monthlyConsultations: props.monthlyConsultations ?? null,
       monthlyTranscriptionMinutes: props.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: props.monthlySummaries ?? null,
+      monthlySttSessionSeconds: props.monthlySttSessionSeconds ?? null,
+      monthlyLlmTokens: props.monthlyLlmTokens ?? null,
+      monthlyTtsCharacters: props.monthlyTtsCharacters ?? null,
+      monthlyNlpTextUnits: props.monthlyNlpTextUnits ?? null,
+      monthlyEmbeddingTokens: props.monthlyEmbeddingTokens ?? null,
       featureDnaReports: props.featureDnaReports ?? false,
       featureVoiceEnrollment: props.featureVoiceEnrollment ?? false,
       featureMonitoringAccess: props.featureMonitoringAccess ?? false,

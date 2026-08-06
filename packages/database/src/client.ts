@@ -132,6 +132,23 @@ export const MODELS_WITHOUT_SOFT_DELETE: ReadonlySet<string> = new Set([
   // AudioRecording it has NO `resourceStatus` column — segments live and die
   // with their parent transcript rather than being independently soft-deleted.
   'TranscriptSegment',
+  // AI usage metering plane (TASK-615). The ledger and everything
+  // derived from it are APPEND-ONLY FACTS under hard retention (18 months raw,
+  // rollups indefinite) rather than the ENABLED/DELETED soft-delete lifecycle,
+  // so none carries a `resourceStatus` column. Correcting a usage fact is a
+  // compensating event, never a delete — these rows are the evidence behind a
+  // disputed invoice. `AiPriceBook` is deliberately NOT here: it is the one
+  // admin-managed model of that plane and keeps the standard lifecycle.
+  'AiUsageEvent',
+  'AiUsageOutbox',
+  'AiUsageRollupHourly',
+  'AiUsageRollupDaily',
+  // A credit memo against a FINALIZED (immutable) invoice.
+  // Retracting one by deleting it would rewrite a closed billing period; the
+  // correction path is another adjustment. No `resourceStatus` column.
+  // `BillingInvoice` / `BillingInvoiceLine` are NOT here — a DRAFT invoice is
+  // editable and a withdrawn one is soft-deleted.
+  'BillingAdjustment',
 ]);
 
 /**

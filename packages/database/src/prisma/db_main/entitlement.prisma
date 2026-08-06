@@ -8,11 +8,33 @@
 // `entitlements.enabled` GlobalSetting kill-switch.
 // ============================================================================
 
-// The three rolling-monthly consumption meters.
+// The rolling-monthly consumption meters.
+//
+// The first three are BUSINESS-OBJECT meters counted from the clinical tables
+// (consultations created, audio minutes recorded, summaries generated). The six
+// added by TASK-615 are UNIT meters derived from the `AiUsageEvent` ledger via
+// `AiUsageRollupDaily` (D5) — they measure what the platform actually consumed
+// per capability, which is what the new per-capability allowances (D11) are
+// denominated in.
 enum UsageMeterMetric {
   CONSULTATIONS
   TRANSCRIPTION_MINUTES
   SUMMARIES
+
+  // Ledger-derived unit meters (TASK-615).
+  // STT is quota'd and billed on SESSION seconds — socket open→close — not
+  // audio seconds (OQ1); audio seconds are still recorded for repricing.
+  STT_SESSION_SECONDS
+  // All billable token kinds summed (input + output + cache + reasoning).
+  LLM_TOKENS
+  // TTS input, counted as Unicode code points.
+  TTS_CHARACTERS
+  NLP_TEXT_UNITS
+  // Metered for COGS visibility only — guardrail is NEVER quota-blocked (D6/D16):
+  // it is platform-mandated safety, so blocking it would degrade clinical safety
+  // to save money.
+  GUARDRAIL_CALLS
+  EMBEDDING_TOKENS
 
   @@schema("core")
 }
@@ -51,6 +73,27 @@ model PlanEntitlement {
   monthlyConsultations        Int?
   monthlyTranscriptionMinutes Int?
   monthlySummaries            Int?
+
+  // Per-capability INCLUDED ALLOWANCES over the same UTC-calendar-month windows
+  // (TASK-615 D11). Usage above an allowance is billed as overage at the SELL
+  // rate rather than blocked — soft caps for paid tiers, hard caps only for
+  // TRIAL (D12).
+  //
+  // Per-capability rather than a fungible credit pool: healthcare buyers price
+  // PREDICTABILITY over fungibility, and the market signal is unambiguous
+  // (Windsurf reverted from credits for exactly this reason).
+  //
+  // BigInt because token and character counts reach the billions on an
+  // enterprise plan — an Int32 would overflow. `null` = unlimited, so seeding
+  // these as NULL for every existing plan is a strict no-op.
+  //
+  // No `monthlyGuardrailCalls`: guardrail is metered but never quota-blocked
+  // (D6/D16), so an allowance ceiling for it would be a control nothing reads.
+  monthlySttSessionSeconds BigInt?
+  monthlyLlmTokens         BigInt?
+  monthlyTtsCharacters     BigInt?
+  monthlyNlpTextUnits      BigInt?
+  monthlyEmbeddingTokens   BigInt?
 
   // feature toggles
   featureDnaReports       Boolean @default(false)
@@ -105,6 +148,22 @@ model TenantEntitlement {
   monthlyConsultations        Int?
   monthlyTranscriptionMinutes Int?
   monthlySummaries            Int?
+
+  // Per-capability allowance overrides (null = inherit the plan default) —
+  // the negotiated-allowance hook for an enterprise contract. Same units and
+  // semantics as `PlanEntitlement`; see the commentary there.
+  monthlySttSessionSeconds BigInt?
+  monthlyLlmTokens         BigInt?
+  monthlyTtsCharacters     BigInt?
+  monthlyNlpTextUnits      BigInt?
+  monthlyEmbeddingTokens   BigInt?
+
+  // Optional TENANT-SET monthly spend ceiling in integer micros (D12). Distinct
+  // from an allowance: allowances are what the PLAN includes, this is what the
+  // TENANT is willing to spend beyond them. Exhausting it returns 402
+  // (payment/credit) rather than 429 (throughput) or 409 (quantity quota).
+  // `null` = no self-imposed limit, which is the default for every tenant.
+  monthlySpendLimitMicros BigInt?
 
   // feature overrides (null = inherit)
   featureDnaReports       Boolean?

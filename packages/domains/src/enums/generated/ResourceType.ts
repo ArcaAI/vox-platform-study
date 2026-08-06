@@ -71,4 +71,13 @@ export enum ResourceType {
   // resourceType.enum-parity.test.ts). Do not remove without also dropping
   // it from audit.prisma via a reviewed enum-value migration.
   TenantSttProviderCredential = 'TenantSttProviderCredential',
+  // Usage metering + billing (TASK-615). Only the three ADMIN-MANAGED models
+  // of that plane emit sys-events: rate-card edits, the invoice lifecycle
+  // (draft → finalize → void), and credit memos. The append-only ledger, its
+  // outbox, the rollups and invoice LINES deliberately have no ResourceType —
+  // see the matching commentary in audit.prisma. Parity with audit.prisma; see
+  // resourceType.enum-parity.test.ts.
+  AiPriceBook = 'AiPriceBook',
+  BillingInvoice = 'BillingInvoice',
+  BillingAdjustment = 'BillingAdjustment',
 }

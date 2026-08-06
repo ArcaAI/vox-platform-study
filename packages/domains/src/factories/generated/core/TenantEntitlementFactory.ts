@@ -17,6 +17,12 @@ export interface CreateTenantEntitlementProps extends BaseEntityFactoryCreatePro
   monthlyConsultations?: ITenantEntitlementEntity['monthlyConsultations'];
   monthlyTranscriptionMinutes?: ITenantEntitlementEntity['monthlyTranscriptionMinutes'];
   monthlySummaries?: ITenantEntitlementEntity['monthlySummaries'];
+  monthlySttSessionSeconds?: ITenantEntitlementEntity['monthlySttSessionSeconds'];
+  monthlyLlmTokens?: ITenantEntitlementEntity['monthlyLlmTokens'];
+  monthlyTtsCharacters?: ITenantEntitlementEntity['monthlyTtsCharacters'];
+  monthlyNlpTextUnits?: ITenantEntitlementEntity['monthlyNlpTextUnits'];
+  monthlyEmbeddingTokens?: ITenantEntitlementEntity['monthlyEmbeddingTokens'];
+  monthlySpendLimitMicros?: ITenantEntitlementEntity['monthlySpendLimitMicros'];
   featureDnaReports?: ITenantEntitlementEntity['featureDnaReports'];
   featureVoiceEnrollment?: ITenantEntitlementEntity['featureVoiceEnrollment'];
   featureMonitoringAccess?: ITenantEntitlementEntity['featureMonitoringAccess'];
@@ -53,6 +59,12 @@ export class TenantEntitlementFactory {
       monthlyConsultations: props.monthlyConsultations ?? null,
       monthlyTranscriptionMinutes: props.monthlyTranscriptionMinutes ?? null,
       monthlySummaries: props.monthlySummaries ?? null,
+      monthlySttSessionSeconds: props.monthlySttSessionSeconds ?? null,
+      monthlyLlmTokens: props.monthlyLlmTokens ?? null,
+      monthlyTtsCharacters: props.monthlyTtsCharacters ?? null,
+      monthlyNlpTextUnits: props.monthlyNlpTextUnits ?? null,
+      monthlyEmbeddingTokens: props.monthlyEmbeddingTokens ?? null,
+      monthlySpendLimitMicros: props.monthlySpendLimitMicros ?? null,
       featureDnaReports: props.featureDnaReports ?? null,
       featureVoiceEnrollment: props.featureVoiceEnrollment ?? null,
       featureMonitoringAccess: props.featureMonitoringAccess ?? null,
