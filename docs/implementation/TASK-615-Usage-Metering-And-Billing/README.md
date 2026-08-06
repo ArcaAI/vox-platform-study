@@ -719,6 +719,95 @@ files, 133/133 tests; full suite bit-identical to pre-change baseline (zero regr
 api build 8/8. _(Listed here out of wave order — WS-B is a Wave-0 lane; kept in place to
 preserve the document's edit history.)_
 
+### Wave 3 — WS-K (shadow metering, reconciliation, E2E evidence)
+
+**WS-K — shadow metering, reconciliation, E2E evidence** (branch `task-615-ws-k`, worktree
+`hope-v2-wt-ws-k`, commit `e91b5a47`, NOT merged/pushed). Read-only shadow-metering report
+job (`packages/applications/src/services/metering/reconciliation/`): pure `computeDrift`
+math (2% threshold, research-findings.md §6) + `ShadowMeteringService`
+(self-scheduling, OFF by default, mirrors `MeteringService`/`AuditRetentionService`)
+comparing ledger rollup totals vs `SummaryMeta` token sums (LLM) and vs the persisted
+`TenantUsageMeter` snapshot, emitting `metering.shadow-drift-detected` on breach (no
+consumer wired — `sysEvent.service.ts` is outside this lane's file ownership). Provider
+usage-API reconciler INTERFACE + a stub registry (openai/anthropic/azure — always
+`unavailable`, each documenting the real credential/endpoint per research-findings.md
+§11.2; no live HTTP client, per the task brief). `UsageOutboxPrunerService` closes the
+WS-B handoff item (ws-b-contract.md §11): scheduled hard-delete of drained
+`AiUsageOutbox` rows past a configurable retention (default 7d), OFF by default, wired
+into `UsageLedgerServiceModule`. Settings descriptors registered for both jobs plus the
+prune retention window. Three E2E spec files
+(`apps/api/tests/e2e/task-615-{billing-cross-tenant,usage-ledger,invoice-lifecycle}.spec.ts`)
+authored against the real controllers/DTOs but **not executed** — no live API instance
+was up on 8868 in this session (single-instance rule; starting `nest --watch` was out of
+scope). One live-execution integration test
+(`packages/domains/src/integration/billing-usage-aggregate-repository.integration.test.ts`,
+5/5 passing) proves `BillingUsageAggregateRepository`'s raw SQL (date_trunc, the
+`AiCapability`/`AiCostBasis` casts, `Prisma.join`) against the isolated test Postgres
+(port 5433) — the unit suites elsewhere only mock `$queryRaw`. Evidence: applications
+7,614/7,614 (+41 new: 12 drift-math, 4 provider-reconciler, 11 shadow-metering, 9
+outbox-pruner + governance/existing-suite baseline), applications + domains build clean,
+lint clean on all touched files.
+
+**Live evidence run** (`packages/applications/scripts/task-615-evidence-run.ts`) — a
+standalone script with NO NestJS bootstrap and no API server: every
+repository/service (`UsageLedgerService`, the real `UsageOutboxDrainer`,
+`PriceBookService`, `MeteringService`, `BillingService`) constructed directly against
+the shared dev Postgres (`localhost:5432/hope`), the same pattern the domains
+integration tests already use. Ran against tenant ArcaAI
+(`50000000-0000-0000-0000-000000000001`), synthetic ids prefixed
+`task615-evidence-<run-id>`:
+
+- Seeded one outbox batch per capability — STT (`transcribe.stream`: SESSION_SECOND +
+  AUDIO_SECOND, 5000 each), LLM `generate` (INPUT/OUTPUT_TOKEN), LLM
+  `guardrail.validate`, LLM `harness.step`, TTS `tts.synthesize` (CHARACTER +
+  AUDIO_SECOND), NLP `ner.extract` (TEXT_UNIT + REQUEST), EMBEDDING `embed`
+  (INPUT_TOKEN) — 7 outbox rows, 13 events after per-unit expansion.
+- Drained with the real `UsageOutboxDrainer.drainBatch` (no BullMQ needed, invoked
+  directly): `{ rows: 7, inserted: 13, skipped: 0, failed: 0 }`. 12 of 13 events rated
+  (COST-plane wildcard rows resolved by capability+unit); **TTS `AUDIO_SECOND` (kokoro)
+  recorded unrated** — `unitPriceMicros`/`costMicros` both `null` — because the seeded
+  COST price book has no wildcard row for `TTS AUDIO_SECOND` (only `TTS CHARACTER`
+  exists). This is the documented fail-OPEN rating behavior (ws-b-contract.md §8), not a
+  script defect — **flagged as a real price-book seed gap**, file:
+  `packages/database/src/prisma/db_main/seed/` (COST price-book seed), no fix applied
+  (out of WS-K's lane; billing/priceBook code is off-limits per the task boundary).
+- `AiUsageRollupDaily` accumulated correctly across all 5 capabilities (11 dimension
+  rows for the day).
+- `MeteringService.getCurrentUsage` reflected the drained totals:
+  `sttSessionSeconds: 5000, llmTokens: 2570, ttsCharacters: 850, nlpTextUnits: 18,
+  guardrailCalls: 1, embeddingTokens: 640`.
+- `BillingService.computeDraft` BEFORE any override: 0 lines, `totalMicros: "0"`
+  (tenant's `plan` was `null` — D3's "null plan = ungated-legacy, no overage" behavior,
+  confirmed live). AFTER temporarily setting `tenant.plan = STARTER` +
+  `TenantEntitlement.monthlySttSessionSeconds = 10`: a real 2-line DRAFT —
+  `PLAN_FEE` (STARTER, 31/31 days, 199,000,000 micros) +
+  `OVERAGE` (STT SESSION_SECOND, 4990 units over the 10-unit allowance rated at 5000
+  total × 6 micros = 29,940 micros — the engine bills the full pooled quantity against
+  the SELL rate, allowance already netted out upstream), `totalMicros: "199029940"`.
+- **Cleanup verified independently** (fresh `psql` queries against dev, not just the
+  script's own log): 0 leftover `AiUsageOutbox` rows matching the run prefix, 0
+  leftover `AiUsageEvent` rows, `tenant.plan` restored to `null`, 0
+  `TenantEntitlement` rows for the tenant (the override row this run created was
+  deleted outright), 0 `BillingInvoice` rows for the tenant, 0 `AiUsageRollupDaily`
+  rows for today for the tenant (all 11 touched dimension rows were newly created by
+  this run — none pre-existed — so cleanup deleted them outright rather than
+  decrementing a shared baseline).
+
+**Defects/gaps found (documented, not fixed — outside WS-K's file ownership):**
+1. COST price book has no `TTS AUDIO_SECOND` wildcard row (see above) —
+   `packages/database` seed, WS-A's lane.
+2. `EntitlementCapabilitiesResponse`'s exact field-name shape for the six TASK-615 unit
+   meters was not independently verified in this pass (WS-H's lane); the
+   `task-615-usage-ledger.spec.ts` E2E only asserts the endpoint is reachable and
+   well-formed post-drain, not the specific field names.
+
+**Not executed in this pass:** `pnpm test:e2e` (no live API on 8868); streaming-abort
+E2E (out of WS-K's authored spec set — the task's Wave-3 scope note lists it but the
+three required spec files named in the task body do not include it; flagged as a
+follow-up spec, `task-615-streaming-abort.spec.ts`); Prometheus `/metrics` diff
+(requires a live API instance); `admin/usage/*` E2E coverage (explicitly deferred —
+WS-J owns that surface, built in parallel).
+
 ---
 
 ## 7. Change History
@@ -729,4 +818,5 @@ preserve the document's edit history.)_
 | 2026-08-06 | Plan approved by owner; execution started. **Wave 0 complete and merged** (WS-G `c4ef67e0`, WS-A `95718eb4`, WS-B `414204cb` — see §6); wave-1 emitter contract frozen (ws-b-contract.md). Status → In Progress. |
 | 2026-08-06 | **Wave 1 complete and merged** — all four emitter lanes (WS-D `54cbf3c7`, WS-F `9872338b`, WS-E `95aa176c`, WS-C `9c3ff673`; see §6). Gaps G5–G9 closed at the emission layer. Cross-lane verification in the merged tree: api streaming/compat/speech 351/351, applications stt+summary+ledger+trajectory 852/852. Wave 2 (WS-H meters/quotas, WS-I billing engine, WS-D2 emission completion) launched. |
 | 2026-08-06 | **Wave 2 complete and merged** — WS-I (billing engine, ff-head `399b1149`), WS-D2 (emission completion, ff-head `b177e087`), WS-H (meters/quotas/alerts, ff-head `80e31a10`); see §6. Mid-wave, the owner linearized `dev-2.1` history and landed the `f5fdacbd` DI fix; all lanes rebased + fast-forwarded. Main-tree verification: billing/priceBook/ledger 212/212, consultation sweep 1,754/1,754, entitlements/metering/billing/summary 546/546, api speech+billing+interceptors 153/153. Wave 3 launched (WS-K evidence/shadow-metering + WS-J API/Grafana; console screens remain design-gated). |
+| 2026-08-06 | **WS-K complete, branch `task-615-ws-k` (worktree `hope-v2-wt-ws-k`, commit `e91b5a47`) — NOT merged/pushed.** Shadow-metering drift report + provider-reconciler stubs + DISPATCHED-outbox pruning (see §6 Wave 3); 3 E2E specs authored (not executed — no live API on 8868); 1 live SQL integration test (5/5, isolated test DB port 5433); live evidence run against dev Postgres (synthetic per-capability batch → real drainer → rollups → `MeteringService`/`BillingService`, incl. a forced real overage line), fully cleaned up and independently verified. Found: COST price book missing a `TTS AUDIO_SECOND` wildcard row (documented, not fixed — WS-A's lane). Evidence: applications 7,614/7,614, domains + applications build clean, lint clean. |
 | 2026-08-06 | **WS-D2 defect fix — WS-D's summary metering was dead in production.** `SummaryService` and `ChainSummaryService` injected the identically-named but UNWIRED `CoreUnitOfWorkService` from `services/baseServices/unitsOfWork/` (registered in no NestJS `providers: []` and absent from the applications barrel), so under `@Optional()` it resolved to `undefined` and `persistSummaryMetaWithUsage` ALWAYS took the unmetered fallback branch — no LLM/guardrail usage rows were ever written by `generateSummary`, `generatePreSummary`, or `generateComprehensiveSummary`. Unit tests could not catch it: they construct the services positionally with mocks and never exercise NestJS DI. Fixed by importing the DOMAINS `CoreUnitOfWorkService` from `@arcaai/domains` (provided + exported by `CoreDatabaseModule`, which both service modules already import) — the pattern WS-C's `SttInternalService` had already documented. Added `summary/__tests__/usage-ledger.di-wiring.task615.test.ts`, a container-free guard asserting the resolved constructor tokens against `CoreDatabaseModule`'s real exports (8 tests; verified RED against the broken imports first). The unwired class is retained (its own test is a named entry in the `cross-tenant-coverage` manifest) but now carries an explicit ⚠️ UNWIRED — DO NOT INJECT header. Evidence: `@arcaai/applications` build clean, 383 files / 7425 tests passing (baseline 7417 + 8 new), 0 new lint warnings. |
