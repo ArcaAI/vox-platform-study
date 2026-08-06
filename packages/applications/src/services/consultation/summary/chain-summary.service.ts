@@ -16,6 +16,9 @@ import {
 } from '@arcaai/domains';
 import { ComprehensiveSummaryRequest, ComprehensiveSummaryResponse, ChainSectionDto } from './dto';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from './smr-generate';
+import { buildLlmUsageInput, parseSmrUsageDetail, type SmrUsageDetail } from './smr-usage';
+import { IUsageLedgerService } from '../../usageLedger/IUsageLedgerService';
+import { CoreUnitOfWorkService } from '../../baseServices/unitsOfWork/core/core.unitOfWork';
 import { BaseService, assertParentInScope, encryptPhiFields } from '../../../common';
 import { IActiveUserContext } from '../../../interfaces';
 import { PromptAssemblyService } from '../prompt/prompt-assembly.service';
@@ -65,6 +68,12 @@ export class ChainSummaryService extends BaseService {
     // honors Tier-0 prompt selection. Optional + trailing so existing positional
     // test fixtures keep compiling; production DI supplies it (ChainSummaryServiceModule).
     @Optional() @Inject(ConfigResolver) private readonly configResolver?: ConfigResolver,
+    // (TASK-615 WS-D) A chain summary spans several consultations and is one
+    // of the most expensive generations the platform runs — leaving it
+    // unmetered would understate cost exactly where it is highest. Optional +
+    // trailing so existing positional test fixtures keep compiling.
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedger?: IUsageLedgerService,
+    @Optional() @Inject(CoreUnitOfWorkService) private readonly unitOfWork?: CoreUnitOfWorkService,
   ) {
     super(eventEmitter, clsService, ResourceType.ContextItem);
     this.smrServiceUrl = this.configService.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -180,7 +189,12 @@ export class ChainSummaryService extends BaseService {
       outputTokens: smrResponse.outputTokens,
     });
     await this.encryptBestEffort('SummaryMeta', () => this.summaryMetaRepository.encryptFieldsIntoEntity(summaryMeta, this.secretsService!));
-    await this.summaryMetaRepository.create(summaryMeta);
+    await this.persistSummaryMetaWithUsage(summaryMeta, smrResponse.usage, {
+      tenantId,
+      consultationId,
+      doctorId: consultation.doctorId,
+      departmentId: consultation.departmentId,
+    });
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: savedContext.id,
@@ -414,6 +428,51 @@ export class ChainSummaryService extends BaseService {
   }
 
   /**
+   * Persist the `SummaryMeta` and, in the SAME transaction, record the tokens
+   * the chain generation consumed (TASK-615 WS-D).
+   *
+   * Mirrors `SummaryService.persistSummaryMetaWithUsage` exactly, including its
+   * two degradations: unwired ledger ⇒ plain create, and a metering failure is
+   * swallowed with the metadata re-persisted alone. The summary is already
+   * delivered; a meter problem must never cost the clinician their note.
+   */
+  private async persistSummaryMetaWithUsage(
+    summaryMeta: Parameters<SummaryMetaRepository['create']>[0],
+    usage: SmrUsageDetail | null,
+    attribution: { tenantId: string; consultationId: string; doctorId?: string | null; departmentId?: string | null },
+  ): Promise<void> {
+    const input = usage
+      ? buildLlmUsageInput({
+          usage,
+          tenantId: attribution.tenantId,
+          operation: 'generate',
+          consultationId: attribution.consultationId,
+          doctorId: attribution.doctorId,
+          departmentId: attribution.departmentId,
+        })
+      : null;
+
+    if (!this.usageLedger || !this.unitOfWork || !input) {
+      await this.summaryMetaRepository.create(summaryMeta);
+      return;
+    }
+
+    try {
+      await this.unitOfWork.runInTransaction(async (tx) => {
+        await this.summaryMetaRepository.create(summaryMeta, tx);
+        await this.usageLedger!.recordUsage(input, tx);
+      });
+    } catch (error) {
+      this.logger.warn({
+        message: 'Usage metering failed for a comprehensive summary; persisting the summary metadata unmetered',
+        consultationId: attribution.consultationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await this.summaryMetaRepository.create(summaryMeta);
+    }
+  }
+
+  /**
    * Compose structured input for the SMR service.
    *
    * The SMR service receives:
@@ -532,6 +591,7 @@ export class ChainSummaryService extends BaseService {
     processingTimeMs?: number;
     inputTokens?: number;
     outputTokens?: number;
+    usage: SmrUsageDetail | null;
   }> {
     try {
       // Resolve the admin-managed {provider, model} (no in-gateway
@@ -550,7 +610,8 @@ export class ChainSummaryService extends BaseService {
           'X-Service-Token': smrServiceToken,
         },
       });
-      return mapSmrGenerateResponse(response.data);
+      const data = response.data as { usage_detail?: unknown } | null;
+      return { ...mapSmrGenerateResponse(response.data), usage: parseSmrUsageDetail(data?.usage_detail) };
     } catch (error) {
       this.logger.error({
         message: 'SMR service call failed for comprehensive summary',
