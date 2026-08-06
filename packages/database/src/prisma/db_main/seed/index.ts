@@ -28,6 +28,7 @@ import { seedAiTaskDefault } from './16-ai-task-default';
 import { seedAiProviderConnection } from './17-ai-provider-connection';
 import { seedAiRuntimeProfile } from './18-ai-runtime-profile';
 import { seedTenantTtsConfig } from './19-tenant-tts-config';
+import { seedAiPriceBook } from './20-ai-price-book';
 import { seedUser } from './91-user';
 
 /**
@@ -182,6 +183,12 @@ export const seed = async () => {
     console.log('');
     // Plan entitlement matrix + enforcement kill-switch (OFF).
     await seedEntitlements(client);
+    console.log('');
+    // AI rate card, both planes (TASK-615). SYSTEM-tenant rows only, all
+    // prices PLACEHOLDER. Ordered after the entitlement matrix because the SELL
+    // PLAN_FEE rows are keyed by the same `TenantPlan` values that matrix
+    // defines, and CREATE-ONLY like it.
+    await seedAiPriceBook(client);
     console.log('');
 
     // Phase 5: Depends on Phase 4

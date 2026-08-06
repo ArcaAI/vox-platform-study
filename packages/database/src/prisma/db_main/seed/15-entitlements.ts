@@ -61,6 +61,18 @@ interface PlanEntitlementSeed {
   monthlyConsultations: number | null;
   monthlyTranscriptionMinutes: number | null;
   monthlySummaries: number | null;
+  // Per-capability included allowances (TASK-615 D11). Seeded NULL =
+  // UNLIMITED for every plan, which is a deliberate ZERO-BEHAVIOUR-CHANGE
+  // default: the ledger that would feed these meters does not exist yet on a
+  // fresh database, so any finite ceiling here would start blocking traffic
+  // against numbers nothing is populating. Real ceilings are a commercial
+  // decision, set through the admin plan matrix once shadow metering has run a
+  // full cycle and the numbers have been reconciled (README §5.4).
+  monthlySttSessionSeconds: bigint | null;
+  monthlyLlmTokens: bigint | null;
+  monthlyTtsCharacters: bigint | null;
+  monthlyNlpTextUnits: bigint | null;
+  monthlyEmbeddingTokens: bigint | null;
   featureDnaReports: boolean;
   featureVoiceEnrollment: boolean;
   featureMonitoringAccess: boolean;
@@ -80,6 +92,12 @@ const PRO_VALUES = {
   monthlyConsultations: 5_000,
   monthlyTranscriptionMinutes: 12_000,
   monthlySummaries: 5_000,
+  // Per-capability allowances: NULL = unlimited (see the interface comment).
+  monthlySttSessionSeconds: null,
+  monthlyLlmTokens: null,
+  monthlyTtsCharacters: null,
+  monthlyNlpTextUnits: null,
+  monthlyEmbeddingTokens: null,
   featureDnaReports: true,
   featureVoiceEnrollment: true,
   featureMonitoringAccess: false,
@@ -101,6 +119,12 @@ const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     monthlyConsultations: 500,
     monthlyTranscriptionMinutes: 1_000,
     monthlySummaries: 500,
+    // Per-capability allowances: NULL = unlimited (see the interface comment).
+    monthlySttSessionSeconds: null,
+    monthlyLlmTokens: null,
+    monthlyTtsCharacters: null,
+    monthlyNlpTextUnits: null,
+    monthlyEmbeddingTokens: null,
     featureDnaReports: false,
     featureVoiceEnrollment: false,
     featureMonitoringAccess: false,
@@ -122,6 +146,12 @@ const PLAN_ENTITLEMENTS: PlanEntitlementSeed[] = [
     monthlyConsultations: 50_000,
     monthlyTranscriptionMinutes: 120_000,
     monthlySummaries: 50_000,
+    // Per-capability allowances: NULL = unlimited (see the interface comment).
+    monthlySttSessionSeconds: null,
+    monthlyLlmTokens: null,
+    monthlyTtsCharacters: null,
+    monthlyNlpTextUnits: null,
+    monthlyEmbeddingTokens: null,
     featureDnaReports: true,
     featureVoiceEnrollment: true,
     featureMonitoringAccess: true,
