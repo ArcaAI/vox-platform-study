@@ -569,7 +569,42 @@ decisions: ledger metadata column named `attributesJson`; rollup `model` is
 Found pre-existing defect (filed separately): the entitlement plane has no migration at
 all — `migrate deploy` replay fails before this ticket's migration.
 
-### Wave 1 — merging as lanes land
+### Wave 1 — complete 2026-08-06 (all four lanes merged)
+
+**WS-C — STT usage emission** (branch `task-615-ws-c`, merge `9c3ff673`). Closes G9.
+Batch: typed `durationSeconds`/`engine`/`deployment` on the internal complete-job DTO
+(encrypted blob unchanged); in-transaction `AUDIO_SECOND` emission in
+`sttInternal.service.ts#completeJob`. Streaming: ONE emission point —
+`streamingSession.service.ts#removeSession` — emits `SESSION_SECOND` + `AUDIO_SECOND`
+from the STT teardown summary (`stt:session:<id>` keys); `interrupted` derived at the
+gateway and preserved across removal retries; STT teardown DELETE returns the summary
+body. Real bug fixed: `stt-compat.gateway.ts#handleDisconnect` never tore down sessions
+on abrupt WS drops — silent usage loss, now `removeSession(sessionId, true)`. New STT
+streaming duration + RTF histograms. Applied the WS-D handoff (`UsageLedgerServiceModule`
+into `streaming.module.ts`). Evidence: stt 2,752 unit tests; api streaming/compat 362;
+applications stt+ledger 558 — all green post-rebase. Open items: `channelCount`
+hardcoded 1 (no dual-mic signal reaches the backend yet); no queryable typed column for
+batch duration outside the ledger; STT's idle reaper can finalize a session with no
+gateway caller after gateway crash + retry exhaustion (~46s window) — usage summary
+built but unreceived; closing it needs an STT-side push-back path (flagged for WS-K).
+
+**WS-E — TTS + NLP usage emission** (branch `task-615-ws-e`, merge `95aa176c`). Closes
+G7 + G8. TTS: `core/usage.py` (code-point counting, PCM/WAV/MP3 audio-seconds),
+character/synthesized-seconds counters + the previously-missing cross-service
+model-metrics pair, usage surfaced on every response mode (batch headers, SSE/WS
+teardown frame, abort-safe; fixed a latent `CancelledError`-not-caught bug in
+stream_ws teardown). NLP: `record_entities()` wired at `TokenClassifier.process` +
+entities/documents counters. Gateway: speech proxy + TTS WS gateway emit
+`CHARACTER`+`AUDIO_SECOND`; NER paths (async `ner.processor` + sync `extractEntities`)
+emit per-invocation `TEXT_UNIT`+`REQUEST` (**revised in review**: original
+consultation-keyed idempotency silently dropped every NER call after the first —
+re-keyed to `nlp:<requestId>` with consultationId demoted to attribution; regression
+tests proven RED against the old implementation). Evidence: tts 216 / nlp 194 green
+(pre-existing service-token failures baseline-identical); api full suite 2,404/2,404;
+applications baseline-identical + 15 new passing. Open items: embedding tokens exist
+but unmetered in the harness knowledge-ingest path; playground NER
+(`ai-inference.controller#extractEntities`) needs a requestId-based emission variant;
+WS-duplex Azure TextStream provider attribution uses first-candidate.
 
 **WS-D — SMR + guardrail usage emission** (branch `task-615-ws-d`, merge `54cbf3c7`).
 Closes G5 + G6. SMR: `GenerationAuditEvent.tenant_id` on all four audit paths; the
@@ -633,3 +668,4 @@ api build 8/8.
 |---|---|
 | 2026-08-06 | Ticket created, superseding TASK-601. Carried forward: current-state review (re-verified same day — all 16 gaps still open), external research (§1–12), design decisions D1–D8 and the five resolved owner questions. Added: billing-plane research track (§13), decisions D10–D17 (sell/cost price planes, per-capability allowances, overage policy, invoice lifecycle, BYOK billing, proration, PHI-free in-house rating), and the parallel-agent implementation plan (11 workstreams, 4 waves, coordination rules). Status → Review. |
 | 2026-08-06 | Plan approved by owner; execution started. **Wave 0 complete and merged** (WS-G `c4ef67e0`, WS-A `95718eb4`, WS-B `414204cb` — see §6); wave-1 emitter contract frozen (ws-b-contract.md). Status → In Progress. |
+| 2026-08-06 | **Wave 1 complete and merged** — all four emitter lanes (WS-D `54cbf3c7`, WS-F `9872338b`, WS-E `95aa176c`, WS-C `9c3ff673`; see §6). Gaps G5–G9 closed at the emission layer. Cross-lane verification in the merged tree: api streaming/compat/speech 351/351, applications stt+summary+ledger+trajectory 852/852. Wave 2 (WS-H meters/quotas, WS-I billing engine, WS-D2 emission completion) launched. |
