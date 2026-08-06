@@ -132,6 +132,40 @@ class StreamingSessionResponse(BaseModel):
     )
 
 
+class StreamingSessionTeardownResponse(BaseModel):
+    """Response for a REAL ``DELETE /internal/streaming/sessions/{id}``
+    teardown (TASK-615 WS-C).
+
+    The usage-attribution summary the API Gateway needs to emit the
+    ``transcribe.stream`` ledger row (AUDIO_SECOND + SESSION_SECOND). STT has
+    no notion of "interrupted" — the gateway decides that from WHICH code
+    path called removeSession (explicit close vs. resume-grace expiry) and
+    stamps it into ``attributesJson`` itself; this summary is identical
+    either way. The idempotent "session already gone" branch of the DELETE
+    route returns 204 with NO body instead — nothing new to summarize.
+    """
+
+    session_id: str
+    tenant_id: str
+    consultation_id: str | None = None
+    user_id: str | None = None
+    pipeline_id: str
+    audio_seconds: float = Field(
+        ..., description="Decoded audio seconds ingested (total_duration_seconds)"
+    )
+    session_seconds: float = Field(..., description="Wall-clock socket open->close seconds")
+    engine: str | None = Field(
+        default=None,
+        description="Usage-ledger engine id resolved from the loaded ASR model; null if none loaded",
+    )
+    deployment: str | None = Field(
+        default=None, description="SELF_HOSTED | CLOUD | BYOK; null alongside a null engine"
+    )
+    language_mode: str | None = Field(
+        default=None, description="End-user language mode id (TASK-587), e.g. 'ml-en'"
+    )
+
+
 class StreamingAvailabilityResponse(BaseModel):
     """Response for ``GET /internal/streaming/availability``."""
 

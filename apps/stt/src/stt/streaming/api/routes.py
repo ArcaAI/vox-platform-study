@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from stt.pipeline.language_modes import (
     LanguageModeUnsupportedError,
@@ -23,6 +23,7 @@ from stt.streaming.api.schemas import (
     CreateStreamingSessionRequest,
     StreamingAvailabilityResponse,
     StreamingSessionResponse,
+    StreamingSessionTeardownResponse,
     SwitchProviderRequest,
     SwitchProviderResponse,
 )
@@ -258,23 +259,41 @@ async def get_streaming_session(session_id: str) -> StreamingSessionResponse:
 
 @router.delete(
     "/sessions/{session_id}",
-    status_code=204,
+    response_model=StreamingSessionTeardownResponse | None,
+    status_code=200,
     responses={
-        204: {"description": "Session removed (or already gone)"},
+        200: {"description": "Session removed; usage-attribution summary returned (TASK-615 WS-C)"},
+        204: {
+            "description": "Session already gone, or a summary could not be built (idempotent no-op either way)"
+        },
         503: {"description": "Streaming not initialized"},
     },
 )
-async def delete_streaming_session(session_id: str) -> None:
-    """Remove a streaming session. Idempotent: returns 204 even if already removed."""
+async def delete_streaming_session(
+    session_id: str, response: Response
+) -> StreamingSessionTeardownResponse | None:
+    """Remove a streaming session. Idempotent: returns 204 even if already removed.
+
+    TASK-615 WS-C: a REAL teardown returns 200 with the usage-attribution
+    summary (``StreamingSessionTeardownResponse``) the API Gateway needs to
+    emit the ``transcribe.stream`` ledger row — 204/no-body when the session
+    was already gone (nothing to summarize) OR when ``end_session`` could not
+    build one (best-effort; logged server-side, never blocks teardown).
+    """
     mgr = _require_session_manager()
 
     session = mgr.get_session(session_id)
     if session is None:
         logger.debug("Session already removed, returning 204", session_id=session_id)
-        return
+        response.status_code = 204
+        return None
 
     logger.info("Removing streaming session via API", session_id=session_id)
-    await mgr.end_session(session_id)
+    summary = await mgr.end_session(session_id)
+    if summary is None:
+        response.status_code = 204
+        return None
+    return StreamingSessionTeardownResponse(**summary)
 
 
 # -------------------------------------------------------------------------
