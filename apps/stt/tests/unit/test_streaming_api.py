@@ -495,16 +495,64 @@ class TestGetSession:
 
 
 class TestDeleteSession:
-    """Tests for the session removal endpoint."""
+    """Tests for the session removal endpoint.
 
-    def test_delete_session_success(self, client, mock_session_manager, mock_session):
+    TASK-615 WS-C — a real teardown now returns 200 with the usage-attribution
+    summary the API Gateway needs to emit the transcribe.stream ledger row
+    (previously a bare 204). The idempotent "already gone" branch keeps its
+    original 204-no-body contract unchanged — there is nothing new to
+    summarize on a no-op.
+    """
+
+    def _teardown_summary(self, **overrides):
+        summary = {
+            "session_id": "sess-001",
+            "tenant_id": "t-1",
+            "consultation_id": "c-1",
+            "user_id": "u-1",
+            "pipeline_id": "pipe-001",
+            "audio_seconds": 42.5,
+            "session_seconds": 90.0,
+            "engine": "whisper_cpp",
+            "deployment": "SELF_HOSTED",
+            "language_mode": "ml-en",
+        }
+        summary.update(overrides)
+        return summary
+
+    def test_delete_session_success_returns_teardown_summary(
+        self, client, mock_session_manager, mock_session
+    ):
         mock_session_manager.get_session = MagicMock(return_value=mock_session)
-        mock_session_manager.end_session = AsyncMock()
+        mock_session_manager.end_session = AsyncMock(return_value=self._teardown_summary())
 
         resp = client.delete("/internal/streaming/sessions/sess-001")
 
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["session_id"] == "sess-001"
+        assert body["tenant_id"] == "t-1"
+        assert body["audio_seconds"] == 42.5
+        assert body["session_seconds"] == 90.0
+        assert body["engine"] == "whisper_cpp"
+        assert body["deployment"] == "SELF_HOSTED"
         mock_session_manager.end_session.assert_awaited_once_with("sess-001")
+
+    def test_delete_session_success_with_no_resolved_engine(
+        self, client, mock_session_manager, mock_session
+    ):
+        """engine/deployment/language_mode are nullable — never fabricated."""
+        mock_session_manager.get_session = MagicMock(return_value=mock_session)
+        mock_session_manager.end_session = AsyncMock(
+            return_value=self._teardown_summary(engine=None, deployment=None, language_mode=None)
+        )
+
+        resp = client.delete("/internal/streaming/sessions/sess-001")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["engine"] is None
+        assert body["deployment"] is None
 
     def test_delete_session_idempotent_when_not_found(self, client, mock_session_manager):
         """DELETE should return 204 even when session doesn't exist (idempotent)."""
@@ -514,7 +562,22 @@ class TestDeleteSession:
         resp = client.delete("/internal/streaming/sessions/sess-999")
 
         assert resp.status_code == 204
+        assert resp.content == b""
         mock_session_manager.end_session.assert_not_awaited()
+
+    def test_delete_session_success_but_no_summary_returns_204(
+        self, client, mock_session_manager, mock_session
+    ):
+        """A real teardown whose summary-build failed (best-effort, logged
+        server-side) degrades to 204 rather than a body with nulls that would
+        look like a resolved-but-empty summary."""
+        mock_session_manager.get_session = MagicMock(return_value=mock_session)
+        mock_session_manager.end_session = AsyncMock(return_value=None)
+
+        resp = client.delete("/internal/streaming/sessions/sess-001")
+
+        assert resp.status_code == 204
+        assert resp.content == b""
 
     def test_delete_session_not_initialized(self, client_no_streaming):
         resp = client_no_streaming.delete("/internal/streaming/sessions/sess-001")
