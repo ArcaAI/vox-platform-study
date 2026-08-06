@@ -1,4 +1,8 @@
 import {
+  AiCapability,
+  AiCostBasis,
+  AiDeploymentKind,
+  AiUsageUnit,
   AudioRecordingFactory,
   AudioRecordingRepository,
   ContextItemEntity,
@@ -6,6 +10,8 @@ import {
   ContextItemRepository,
   ContextItemSource,
   ContextItemType,
+  CorePrisma,
+  CoreUnitOfWorkService,
   MediaFactory,
   MediaRepository,
   ResourceType,
@@ -22,6 +28,7 @@ import { IActiveUserContext } from '../../../interfaces';
 import { SecretsService } from '../../baseServices/_meta/secrets';
 import { IRedisCacheService } from '../../baseServices/redis';
 import { ConsultationPipelineEvent, TranscriptionCreatedPayload } from '../../consultation/events';
+import { IUsageLedgerService, UsageIdempotencyKey } from '../../usageLedger';
 import { TranscriptionJobResponse } from '../job/dto';
 import { TranscriptionJobDtoMapper } from '../job/transcriptionJob.dto.mapper';
 import { ISttInternalService } from './ISttInternalService';
@@ -64,6 +71,13 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     @Optional()
     @Inject(IRedisCacheService)
     private readonly redisCache?: IRedisCacheService,
+    // TASK-615 WS-C — Optional + trailing (same arity-preserving reason).
+    // Backs the `transcribe.batch` usage-ledger emission on job completion.
+    // This is the DOMAINS `CoreUnitOfWorkService` (its `runInTransaction`
+    // is the one production callers actually use — see the outbox drainer),
+    // NOT the identically-named, unwired class under `services/baseServices`.
+    @Optional() private readonly unitOfWorkService?: CoreUnitOfWorkService,
+    @Optional() @Inject(IUsageLedgerService) private readonly usageLedgerService?: IUsageLedgerService,
   ) {
     super(eventEmitter, clsService, ResourceType.TranscriptionJob);
   }
@@ -460,7 +474,21 @@ export class SttInternalService extends BaseService implements ISttInternalServi
   }
 
   /**
-   * Complete a job
+   * Complete a job.
+   *
+   * TASK-615 WS-C: when the STT worker sent typed `durationSeconds` +
+   * `engine` (both lifted OUT of the soon-to-be-encrypted `resultMetadata`
+   * blob — see `InternalCompleteJobRequest`), this also emits ONE
+   * `transcribe.batch` `AUDIO_SECOND` usage row through the ledger, in the
+   * SAME transaction as the completing write (`updateWithVersion` + `tx`
+   * passthrough — ws-b-contract.md §5). That guards both directions: usage
+   * lost after a successful call, and usage recorded for a completion that
+   * rolled back. `durationSeconds`/`engine` absent (older worker, or a job
+   * that decoded no audio) skips emission — never guessed.
+   *
+   * A metering failure must never fail the caller's request (contract
+   * "Frequently-made mistakes"), so `recordUsage` is caught, not propagated;
+   * the completing write still commits.
    */
   async completeJob(jobId: string, dto: InternalCompleteJobRequest): Promise<TranscriptionJobResponse> {
     const job = await this.jobRepository.findById(jobId);
@@ -468,13 +496,27 @@ export class SttInternalService extends BaseService implements ISttInternalServi
       throw new NotFoundException(`Job ${jobId} not found`);
     }
 
+    const expectedVersion = job.version;
     job.complete(dto.resultText, dto.resultMetadata);
 
     // Encrypt resultText/resultMetadata into the ciphertext
     // columns before the completing persist (dual-write; plaintext kept for soak).
     await this.encryptBestEffort('TranscriptionJob', () => this.jobRepository.encryptFieldsIntoEntity(job, this.secretsService!));
 
-    const updated = await this.jobRepository.update(jobId, job);
+    const canEmitUsage = Boolean(
+      this.unitOfWorkService && this.usageLedgerService && dto.durationSeconds != null && dto.durationSeconds > 0 && dto.engine,
+    );
+
+    let updated;
+    if (canEmitUsage) {
+      updated = await this.unitOfWorkService!.runInTransaction(async (tx) => {
+        const saved = await this.jobRepository.updateWithVersion(jobId, job, expectedVersion, tx);
+        await this.emitBatchUsage(jobId, job, dto, tx);
+        return saved;
+      });
+    } else {
+      updated = await this.jobRepository.update(jobId, job);
+    }
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
       resourceId: jobId,
@@ -483,6 +525,52 @@ export class SttInternalService extends BaseService implements ISttInternalServi
     });
 
     return TranscriptionJobDtoMapper.toResponse(updated);
+  }
+
+  /**
+   * Build and record the `transcribe.batch` `AUDIO_SECOND` usage row.
+   * Caller guarantees `dto.durationSeconds > 0` and `dto.engine` present.
+   * Never throws — a ledger-side failure is logged and swallowed so it can
+   * never roll back the job-completion transaction it rides inside.
+   */
+  private async emitBatchUsage(
+    jobId: string,
+    job: { tenantId?: string | null; consultationId?: string | null; pipelineId?: string; completedAt?: Date | null },
+    dto: InternalCompleteJobRequest,
+    tx: CorePrisma.TransactionClient,
+  ): Promise<void> {
+    try {
+      await this.usageLedgerService!.recordUsage(
+        {
+          common: {
+            tenantId: job.tenantId ?? '',
+            idempotencyKey: UsageIdempotencyKey.sttBatchJob(jobId),
+            occurredAt: job.completedAt ?? new Date(),
+            capability: AiCapability.STT,
+            operation: 'transcribe.batch',
+            provider: dto.engine!,
+            model: null,
+            deployment: AiDeploymentKind[dto.deployment ?? 'SELF_HOSTED'],
+            ...(dto.deployment === 'BYOK' ? { costBasis: AiCostBasis.BYOK_NOTIONAL } : {}),
+            consultationId: job.consultationId ?? null,
+            requestId: jobId,
+            attributesJson: {
+              engine: dto.engine!,
+              pipelineId: job.pipelineId ?? null,
+              channelCount: 1,
+            },
+          },
+          units: [{ unit: AiUsageUnit.AUDIO_SECOND, quantity: dto.durationSeconds! }],
+        },
+        tx,
+      );
+    } catch (error) {
+      this.logger.error({
+        message: 'stt.batch.usage_emit_failed — job completed but the transcribe.batch usage row was not recorded',
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
