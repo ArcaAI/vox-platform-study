@@ -40,7 +40,7 @@ import { generateId } from './utils';
 import { redactPHI } from './redactor';
 
 // SDK Version (should match package.json)
-const SDK_VERSION = '2.0.0';
+const SDK_VERSION = '2.0.7';
 const SDK_NAME = '@arcaai/vox';
 
 const DEFAULT_PHI_REDACT_FIELDS = [
