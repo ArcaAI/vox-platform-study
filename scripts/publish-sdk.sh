@@ -2,9 +2,11 @@
 # ============================================================================
 # TASK-633 — Vox SDK family publisher (manual releases)
 # ============================================================================
-# Version-bumps, builds, and publishes the browser SDK family in dependency
-# order. Replaces the hand-run bump/publish snippet that produced the broken
-# 2.0.6 tree (stale `^0.1.0` peers + a vox pinned to a med-ner that was never
+# Version-bumps, builds, and publishes the vox SDK family — the browser SDK
+# (room/vad/noise-filter/stt/med-ner/vox) in dependency order, plus the
+# dependency-free server SDK (vox-node) — all in lockstep at one version.
+# Replaces the hand-run bump/publish snippet that produced the broken 2.0.6
+# tree (stale `^0.1.0` peers + a vox pinned to a med-ner that was never
 # published).
 #
 # WHY THIS EXISTS rather than `pnpm changeset publish`: the CI `publish-sdk`
@@ -30,7 +32,11 @@
 #
 # ORDER MATTERS: room ships first because every other package peer-depends on
 # it; vox ships last because it depends on all of them. A consumer installing
-# vox before its deps exist gets unresolvable peers.
+# vox before its deps exist gets unresolvable peers. vox-node ships last of
+# all — it has ZERO @arcaai runtime/peer deps (see packages/vox-node/README.md),
+# so its position is arbitrary for peer resolution, but it stays in the same
+# run so its version never drifts from the rest of the family (08-vox-sdk.mdc:
+# "versioned in lockstep with the SDK family").
 #
 # FAIL-FAST: `set -e` is deliberate. The original snippet had no error trap, so
 # a failed med-ner publish let the script continue and ship vox anyway — which
@@ -57,7 +63,9 @@ NC='\033[0m'
 
 # Publish order: dependencies before dependents. `room` has no @arcaai deps;
 # vad/noise-filter/stt/med-ner peer-depend on room; vox depends on all of them.
-PUBLISH_ORDER=(room vad noise-filter stt med-ner vox)
+# vox-node is a separate, dependency-free package (no browser/audio/ML deps)
+# but ships in the same run so it never drifts out of lockstep with vox.
+PUBLISH_ORDER=(room vad noise-filter stt med-ner vox vox-node)
 
 # Directory name under packages/ for each package (vox is the odd one out).
 pkg_dir() {
@@ -183,9 +191,12 @@ if [ "$SKIP_BUILD" = true ]; then
     echo -e "${YELLOW}=== Skipping build (--skip-build) ===${NC}"
 else
     echo -e "${CYAN}=== Building ===${NC}"
-    # `--filter=@arcaai/vox...` covers the whole family: med-ner is reached as a
-    # devDependency of vox. Verified with `turbo run build --dry-run=json`.
+    # `--filter=@arcaai/vox...` covers the browser family: med-ner is reached as
+    # a devDependency of vox. Verified with `turbo run build --dry-run=json`.
+    # vox-node has no dependency edge to vox (zero @arcaai runtime deps), so it
+    # is NOT reached by that filter and needs its own build call.
     pnpm sdk:build
+    pnpm sdk-node:build
 fi
 
 # ----------------------------------------------------------------------------
