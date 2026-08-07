@@ -380,3 +380,55 @@ message: Pod was rejected: The node had condition: [DiskPressure].
 | The eviction loop is ongoing | ❌ Wrong — ended 2026-08-06 11:30 |
 | STT is possibly running on CPU | ❌ Wrong — confirmed on GPU via PID→cgroup→pod-UID |
 | `hope-tts` is healthy | ❌ Wrong — zero providers, `/health/ready` returns 503, masked by a `/health/live` probe |
+
+---
+
+## RESOLVED — dead-pod accumulation, 2026-08-07
+
+| | Before | After |
+|---|---|---|
+| Pods cluster-wide | **12,539** | **129** |
+| `cattle-system` Failed/Evicted | 12,409 | **0** |
+| vs. `terminated-pod-gc-threshold` (12,500) | **breached** | 1% of threshold |
+| Node / API | Ready / ok | Ready / ok |
+| `/mnt/data` | 89% | 89% (unchanged, as predicted) |
+
+Reaped in batches of 500 over ~50 min. No workload disruption: all 20 `hope-v2-dev`
+pods stayed Running throughout, node never left `Ready`, API server stayed responsive.
+
+**Disk was unaffected, exactly as the 200-pod pilot predicted.** Evicted pods carry no
+container filesystem — kubelet reclaims it at eviction time; the pod object is a pure
+API tombstone. The value delivered here is datastore and API-server relief, not space.
+
+### Disk — root cause finally identified
+
+Earlier passes searched `/mnt/data/containerd` (a standalone containerd, **711 MB**) while
+k3s's containerd actually lives at `/mnt/data/rancher/k3s/agent/containerd`. Two similarly
+named directories, two orders of magnitude apart. Read via the `nvidia-container-toolkit`
+DaemonSet, which already mounts `hostPath: /` — no sudo, nothing created:
+
+```
+/mnt/data  (248 GB used)
+├── rancher                    136.4 GB
+│   ├── k3s/storage             88.2 GB   local-path PVs
+│   │   └── ollama PVC          82.5 GB   ★ single largest consumer
+│   └── k3s/agent/containerd    47.6 GB
+│       ├── overlayfs           32.4 GB
+│       └── content blobs       15.2 GB
+├── models-cache               109.5 GB   🚫 OFF-LIMITS (owner directive)
+├── docker                       1.1 GB
+└── containerd (standalone)      0.7 GB
+```
+
+All nine PVs are `Bound`; none orphaned. The 82.5 GB Ollama PVC grows because
+`ollama.yaml` pulls 11 models on every pod start. Reclaiming it requires knowing which
+models the SMR/guardrail configs actually reference — **owner decision, and model weights
+are off-limits regardless**.
+
+Safe non-model reclaim: `crictl rmi --prune` + `ctr -n k8s.io content prune references`,
+worth up to ~15 GB of unreferenced blobs.
+
+### Remaining
+
+`hope-v2-dev` still holds ~6 `hope-nlp` Error/Evicted tombstones from the same DiskPressure
+episodes. Left in place — the reaper was deliberately scoped to `cattle-system`.
