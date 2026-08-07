@@ -193,6 +193,48 @@ So `strategy: Recreate` buys downtime to protect a constraint the scheduler isn'
 
 Three real caveats: time-slicing gives **no memory isolation** (measure resident VRAM first — two Whisper pods on one 16 GB card can OOM the device); the **GPU Operator doesn't watch the ConfigMap**, so a device-plugin restart is required; and **surge doubles model-load I/O against `/mnt/data`, at 89% and already the cause of a DiskPressure eviction wave.** Reclaim disk first, or the surge pod fails to start and the rollout stalls — though with `maxUnavailable: 0` that at least fails safe.
 
+### G4.1 Activation runbook
+
+Authored as part of the GPU scheduling pass (files: `deployment/k8s/base/gpu-time-slicing.yaml`, `stt-v2.yaml`, `stt-v2-worker.yaml`, `ollama.yaml`). Nothing below has been applied to the cluster — this is the sequence for whoever does.
+
+**Evidence gathered (read-only, 2026-08-07):** `ssh gpu nvidia-smi` — GPU0 3930 MiB used / 16380 MiB total, GPU1 3753 MiB used / 16380 MiB total; `--query-compute-apps` showed one ~3.9 GiB process on GPU0 (stt-v2) and a 3626 MiB + 116 MiB pair on GPU1 (stt-v2-worker + a companion process). Resident VRAM per STT pod is therefore **~4 GiB**, not measured-and-guessed. `replicas: 3` in the time-slicing ConfigMap was chosen from that number: at most 3 pods can ever land on one physical card (the device plugin only ever advertises 3 slices per card, regardless of how kubelet packs them), so the worst case is 3 x ~4 GiB = ~12 GiB against 16 GiB — a ~4 GiB margin, which matters because Ollama's larger catalog entries were not GPU-resident at measurement time and its real footprint under load is unverified. `replicas: 4` (the generic SOTA-doc default) would zero out that margin.
+
+**0. Pre-flight — disk pressure must be clear first.** Surge doubles concurrent model-load I/O against `/mnt/data`, which was at 89% and had already triggered a DiskPressure eviction wave. A surge pod that can't pull/mmap its model while disk is under pressure fails to become Ready — with `maxUnavailable: 0` that stalls the rollout rather than dropping traffic, but it still blocks the deploy. Check before touching anything else:
+```bash
+kubectl describe node dell | grep -A3 Conditions   # DiskPressure must be False
+ssh gpu df -h /mnt/data                             # reclaim headroom if still >85%
+```
+
+**1. Apply the time-slicing ConfigMap directly — NOT through the app kustomize tree.** `gpu-time-slicing.yaml` targets the `gpu-operator` namespace, a cluster-wide operator namespace, not one of `hope-v2-{dev,staging,prod}`. All three overlays set a Kustomize-global `namespace:` transformer that rewrites the namespace of every resource under `base/`, including this one, if it were added to `base/kustomization.yaml`'s `resources:` list. **Do not register it there** — apply it standalone, the same way the GPU Operator itself sits outside this repo's kustomize tree:
+```bash
+kubectl apply -f deployment/k8s/base/gpu-time-slicing.yaml
+```
+
+**2. Patch the ClusterPolicy to activate it.** The Operator only reads this config when the ClusterPolicy points at it:
+```bash
+kubectl patch clusterpolicies.nvidia.com/cluster-policy -n gpu-operator \
+  --type merge \
+  -p '{"spec":{"devicePlugin":{"config":{"name":"time-slicing-config","default":"any"}}}}'
+```
+
+**3. Restart the device-plugin DaemonSet — the Operator does not watch the ConfigMap.** Editing or applying the ConfigMap alone changes nothing; the running device-plugin pods keep advertising the old (non-time-sliced) device count until they restart and re-read it:
+```bash
+kubectl rollout restart daemonset/nvidia-device-plugin-daemonset -n gpu-operator
+kubectl rollout status daemonset/nvidia-device-plugin-daemonset -n gpu-operator
+```
+**This restart is itself a brief disruption** — the device plugin re-registers with kubelet, and `nvidia.com/gpu` allocatable briefly disappears from the node during the swap. Any GPU pod actively starting during that window can fail to schedule. Do this in a maintenance window, not mid-deploy.
+
+**4. Verify the new allocatable count before touching workloads:**
+```bash
+kubectl get node dell -o jsonpath='{.status.allocatable.nvidia\.com/gpu}'
+# expect 6 (2 physical x replicas: 3), not the original 2
+```
+If it still reads 2, the device-plugin restart in step 3 hasn't completed or the ClusterPolicy patch in step 2 didn't land — do not proceed to workload changes.
+
+**5. Only then roll out the workload changes** (`stt-v2.yaml`, `stt-v2-worker.yaml`, `ollama.yaml`): the malformed `NVIDIA_VISIBLE_DEVICES` env var removed, real `resources.requests/limits: {nvidia.com/gpu: "1"}` added, `runtimeClassName: nvidia` kept, and `stt-v2`/`stt-v2-worker` moved from `Recreate` to `RollingUpdate` (`maxUnavailable: 0, maxSurge: 1`). If step 4's allocatable count is still 2 when this lands, the surge pod for `stt-v2` or `stt-v2-worker` will sit `Pending` (no GPU to schedule onto) — harmless under `maxUnavailable: 0` (old pod keeps serving) but the rollout will stall exactly like it would pre-time-slicing.
+
+**Rollback:** revert the `strategy` to `Recreate` in the two Deployments if GPU OOMs appear under DCGM monitoring post-cutover; the time-slicing ConfigMap and ClusterPolicy patch can stay in place (extra unused slices are harmless) or be reverted with the inverse `kubectl patch` setting `default` back to unset.
+
 ---
 
 ## G5. Migrations — the convention is real, the enforcement is absent

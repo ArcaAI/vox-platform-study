@@ -7,6 +7,7 @@ from typing import Any
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 
 from guardrail.core.config import Settings
 from guardrail.core.dependencies import (
@@ -80,14 +81,18 @@ async def health_check(
     return health_status
 
 
-@router.get("/health/ready", response_model=dict[str, Any])
+@router.get("/health/ready", response_model=None)
 async def readiness_check(
     redis: aioredis.Redis = Depends(get_redis),
-) -> dict[str, Any]:
+) -> dict[str, Any] | JSONResponse:
     """Readiness check - service is ready to accept traffic.
 
     readiness no longer depends on GLiNER being loaded (it loads
     lazily on first request); only the Redis dependency is checked.
+
+    Must return a non-200 status on failure — the k8s readiness probe only
+    inspects the status code, not the body, so a 200 with `ready: false`
+    never pulls the pod from Service endpoints (TASK-616 G0.0).
     """
     try:
         await redis.ping()
@@ -98,11 +103,14 @@ async def readiness_check(
         }
 
     except Exception as e:
-        return {
-            "ready": False,
-            "reason": str(e),
-            "timestamp": datetime.now(UTC).isoformat(),
-        }
+        return JSONResponse(
+            status_code=503,
+            content={
+                "ready": False,
+                "reason": str(e),
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
 
 
 @router.get("/health/live", response_model=dict[str, Any])
