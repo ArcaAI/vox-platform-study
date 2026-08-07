@@ -15,11 +15,21 @@
 #   rules:
 #     - !reference [.build-common-rules, rules]
 #     - if: $CI_COMMIT_TAG =~ /^SMR-/ || $CI_COMMIT_TAG =~ /^ALL-/
+#
+# TASK-616 §F11 item 4 — `prod`/`production` deliberately do NOT appear in
+# the build-triggering condition below. Under digest promotion (§F3),
+# production is reached by copying the SAME sha-<sha8> manifest a dev/staging
+# pipeline already built and scanned — a rebuild on a prod-*/production-*
+# branch push would produce a structurally different image (base-layer cache
+# drift, different `created` label) and break that guarantee. prod-*/
+# production-* branches may still exist for cherry-picks; they just never
+# build or deploy (production deploys are tag-triggered — see promote-prod
+# in deploy.yml and PIPELINE_TYPE == "tag_release").
 .build-common-rules:
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "prod"
       when: never
-    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "prod" || $PIPELINE_TYPE == "cicd"
+    - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "cicd"
 
 # ── Pre-pull base images ─────────────────────────────────────────────────────
 

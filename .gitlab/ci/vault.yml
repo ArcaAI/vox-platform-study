@@ -80,15 +80,49 @@
 #       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
 #     EOF
 #
-#     # Deploy / mirror credentials — only the refs those jobs actually run on.
-#     vault policy write hope-ci-deploy infrastructure/docker/configs/vault/policies/hope-ci-deploy.hcl
-#     vault write auth/jwt-gitlab/role/hope-ci-deploy - <<'EOF'
+#     # Deploy / mirror credentials — TASK-616 §F10: one shared `hope-ci-deploy`
+#     # role let a staging pipeline mint credentials that could write the prod
+#     # overlay, AND its `ref` globs didn't match the real branch names anyway
+#     # (`"staging"`/`"dev"` are literals — `staging-2.1` never matches; `prod-*`
+#     # was absent entirely, so a production deploy could never authenticate).
+#     # Split per environment, least privilege:
+#
+#     vault policy write hope-ci-deploy-dev infrastructure/docker/configs/vault/policies/hope-ci-deploy.hcl
+#     vault write auth/jwt-gitlab/role/hope-ci-deploy-dev - <<'EOF'
 #     { "role_type": "jwt", "user_claim": "user_email",
 #       "bound_audiences": ["https://vault.hope.arcaai.com"],
 #       "bound_claims_type": "glob",
 #       "bound_claims": { "project_path": "arca/hope-v2",
-#                         "ref": ["staging", "dev", "v*"] },
-#       "token_policies": ["hope-ci-deploy"],
+#                         "ref_type": "branch", "ref_protected": "true",
+#                         "ref": "dev-*" },
+#       "token_policies": ["hope-ci-deploy-dev"],
+#       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
+#     EOF
+#
+#     vault policy write hope-ci-deploy-staging infrastructure/docker/configs/vault/policies/hope-ci-deploy.hcl
+#     vault write auth/jwt-gitlab/role/hope-ci-deploy-staging - <<'EOF'
+#     { "role_type": "jwt", "user_claim": "user_email",
+#       "bound_audiences": ["https://vault.hope.arcaai.com"],
+#       "bound_claims_type": "glob",
+#       "bound_claims": { "project_path": "arca/hope-v2",
+#                         "ref_type": "branch", "ref_protected": "true",
+#                         "ref": "staging-*" },
+#       "token_policies": ["hope-ci-deploy-staging"],
+#       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
+#     EOF
+#
+#     # prod is TAG-triggered, not branch-triggered (§F11) — prod-*
+#     # branches build/deploy nothing (build.yml, .gitlab-ci.yml), so there is
+#     # deliberately no hope-ci-deploy-prod role bound to a `prod-*` branch ref.
+#     vault policy write hope-ci-deploy-prod infrastructure/docker/configs/vault/policies/hope-ci-deploy.hcl
+#     vault write auth/jwt-gitlab/role/hope-ci-deploy-prod - <<'EOF'
+#     { "role_type": "jwt", "user_claim": "user_email",
+#       "bound_audiences": ["https://vault.hope.arcaai.com"],
+#       "bound_claims_type": "glob",
+#       "bound_claims": { "project_path": "arca/hope-v2",
+#                         "ref_type": "tag", "ref_protected": "true",
+#                         "ref": "v*" },
+#       "token_policies": ["hope-ci-deploy-prod"],
 #       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
 #     EOF
 #
@@ -99,24 +133,31 @@
 #       (the `- <<EOF` form above) is the reliable way to write it.
 #     * `"ref": "{staging,dev,v*}"` does NOT work. Vault's glob matcher supports
 #       `*` only — no brace alternation — so that value matches a ref literally
-#       named `{staging,dev,v*}` and nothing else. Use a JSON ARRAY; bound_claims
-#       matches if ANY element matches.
+#       named `{staging,dev,v*}` and nothing else. Use a JSON ARRAY (or, as
+#       above, a separate role per pattern); bound_claims matches if ANY
+#       element of an array matches.
 #
 #   ⚠ OPEN ITEM — the branch-protection model does not yet back this scoping.
 #   Queried on 2026-07-26 (GET /projects/6/protected_branches): the ONLY
-#   protected branches are `main` and `release`. `staging` and `dev` — the refs
-#   deploy-staging, smoke-pgbouncer-staging and github-backup run on — are
-#   UNPROTECTED, so anyone who can push a branch can run those pipelines.
+#   protected refs are `main` and `release`. None of `dev-*`, `staging-*`,
+#   `prod-*`, `production-*`, or the `v*` tag pattern is protected, so
+#   `ref_protected: "true"` above would deny EVERY promote-* job today — that
+#   is by design (§F10: protect the refs first, then tighten the claims, or
+#   CI breaks). Until the refs are protected, drop `ref_protected` from the
+#   three roles above, or the deploy jobs get a Vault auth denial instead of a
+#   credential.
 #
 #   Consequences, in order of preference:
-#     1. Protect `staging` and `dev`, then add `"ref_protected":"true"` to the
-#        deploy role's bound_claims. `ref_protected` is asserted by GitLab and
-#        cannot be forged by a pipeline author, which makes it the only claim
-#        here that is a real privilege boundary. THIS IS THE INTENDED END STATE.
-#     2. Until then the `ref` claim above is the boundary. It still beats a
-#        masked CI variable (10-minute token, central revocation, Vault audit
-#        log, no secret in project settings) but it is only as strong as push
-#        access to `staging`/`dev`.
+#     1. Protect `dev-*`, `staging-*`, `prod-*`, `production-*` (branches) and
+#        `v*` (tag) — TASK-629 per §F12 — then add `"ref_protected":"true"`
+#        to all three roles above (already written in). `ref_protected` is
+#        asserted by GitLab and cannot be forged by a pipeline author, which
+#        makes it the only claim here that is a real privilege boundary.
+#        THIS IS THE INTENDED END STATE.
+#     2. Until then the `ref`/`ref_type` claims are the boundary. They still
+#        beat a masked CI variable (10-minute token, central revocation,
+#        Vault audit log, no secret in project settings) but are only as
+#        strong as push access to the matching branch (or tag-create access).
 #   Setting VAULT_AUTH_ROLE by hand in a pipeline does not help an attacker:
 #   Vault re-checks the claims in the presented token, not the requested role.
 #
@@ -201,14 +242,14 @@
   ci-db: "ci/DATABASE_URL=DATABASE_URL"
   # Redis only.
   ci-redis: "ci/REDIS_URL=REDIS_URL"
-  # Deployment-repo write credential. Protected refs only — the
-  # `hope-ci-deploy` role's bound_claims enforce that, not this list.
-  #
-  # ARGOCD_AUTH_TOKEN is deliberately NOT here: `sync-argocd` treats it as
-  # OPTIONAL (absent ⇒ fall back to webhook/polling sync, exit 0). vault-login.sh
-  # fails closed on a missing path, which is right for a required secret and
-  # wrong for an optional one — listing it would turn a documented no-op into a
-  # pipeline failure. Move it here only together with making it mandatory.
+  # Deployment-repo write credential — consumed by promote-dev/-staging/-prod
+  # (deploy.yml, TASK-616 §F3). One shared secret VALUE for all three: there
+  # is only one hope-v2-deployment repo/branch (main), so the write
+  # capability is inherently repo-wide, not per-overlay. Environment
+  # isolation comes from WHICH Vault role a pipeline can authenticate as
+  # (hope-ci-deploy-dev/-staging/-prod, §F10 above) — a staging pipeline
+  # cannot obtain the prod role's token even though the KV path is the same.
+  # Protected refs only, once §F12's TASK-629 lands.
   deploy: "deploy/DEPLOY_TOKEN=DEPLOY_TOKEN"
   # PgBouncer smoke test — SSH identity + the two PostgreSQL role passwords.
   pgbouncer-smoke: >-

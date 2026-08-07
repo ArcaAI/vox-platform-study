@@ -3,6 +3,10 @@
 Tests cover app creation, middleware setup, and signal handling.
 """
 
+import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -97,17 +101,69 @@ class TestCreateApp:
             assert "/internal/cache/stats" in routes
 
 
-class TestSigtermHandler:
-    """Tests for SIGTERM signal handler."""
+class TestNoCompetingSigtermHandler:
+    """TASK-616 G0.0/G0.1 — `stt.main` must NOT install its own SIGTERM handler.
 
-    def test_sigterm_handler_raises_system_exit(self):
-        """Test that SIGTERM handler raises SystemExit."""
-        from stt.main import handle_sigterm
+    Verified defect: `uvicorn.Server.serve()` installs its own SIGTERM/SIGINT
+    handlers (via plain `signal.signal`, inside `capture_signals()`) BEFORE
+    `config.load()` imports the string app target (`"stt.main:app"`). Because
+    that import happens strictly *after* uvicorn's handler is installed, the
+    module-level `signal.signal(signal.SIGTERM, handle_sigterm)` this file
+    used to carry always ran second and clobbered uvicorn's handler — for
+    every invocation shape (`uvicorn stt.main:app` CLI, `python -m uvicorn
+    stt.main:app`, and the `stt = "stt.main:main"` console script), since all
+    of them pass the app as a string and let uvicorn's `Config.load()` do the
+    import.
 
-        with pytest.raises(SystemExit) as exc_info:
-            handle_sigterm(15, None)
+    `handle_sigterm` just did `raise SystemExit(0)` — raised inside whatever
+    coroutine the event loop was running, unwinding straight out of
+    `asyncio.run()` without ever calling `self.should_exit = True` or
+    `Server.shutdown()`. That skips the ASGI `lifespan` shutdown event
+    entirely, so `shutdown_streaming()` (`stt.main.lifespan`, post-`yield`)
+    never runs on a real k8s SIGTERM.
 
-        assert exc_info.value.code == 0
+    Fix: remove the handler and its registration — let uvicorn own SIGTERM
+    exclusively, which drives its normal graceful path
+    (`should_exit` -> `main_loop()` notices -> `Server.shutdown()` -> ASGI
+    `lifespan.shutdown` -> our `lifespan()` post-`yield` cleanup).
+    """
+
+    def test_handle_sigterm_no_longer_exists(self):
+        """The competing handler function itself is gone."""
+        import stt.main
+
+        assert not hasattr(stt.main, "handle_sigterm")
+
+    def test_importing_stt_main_does_not_touch_the_sigterm_handler(self):
+        """Regression guard for the actual bug: a completely fresh
+        interpreter must show SIGTERM still at its OS default after
+        `import stt.main` — proving the module makes no `signal.signal`
+        call for SIGTERM at import time (the exact defect: it used to
+        overwrite whatever uvicorn had already installed)."""
+        src_dir = Path(__file__).resolve().parents[2] / "src"
+        env = {**os.environ, "PYTHONPATH": f"{src_dir}{os.pathsep}{os.environ.get('PYTHONPATH', '')}"}
+
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import signal\n"
+                    "before = signal.getsignal(signal.SIGTERM)\n"
+                    "import stt.main  # noqa: F401\n"
+                    "after = signal.getsignal(signal.SIGTERM)\n"
+                    "assert before == after == signal.SIG_DFL, (before, after)\n"
+                    "print('OK')\n"
+                ),
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "OK" in result.stdout
 
 
 class TestLifespan:
