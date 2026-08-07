@@ -1193,6 +1193,27 @@ describe('ApiKeyService', () => {
       expect(service.hasScope(apiKey as any, 'tts:synthesize')).toBe(false);
     });
 
+    // TASK-632: the registry advertises category wildcards (`consultation:*`, `stt:*`, …) as
+    // assignable "full access" scopes and `isValidScope` accepts them, so the console will issue
+    // such keys. Before scope enforcement was wired up (no decorator set the metadata key) this
+    // was inert. Now that routes declare `@RequiredScopes`, a category wildcard that does not
+    // match is a live 403 on a key the UI described as granting full access.
+    it('should support category wildcard scope granting every child scope', () => {
+      const apiKey = createMockApiKeyEntity({ scopes: ['consultation:*'] });
+
+      expect(service.hasScope(apiKey as any, 'consultation:report:write')).toBe(true);
+      expect(service.hasScope(apiKey as any, 'consultation:session:read')).toBe(true);
+      expect(service.hasScope(apiKey as any, 'consultation:*')).toBe(true);
+    });
+
+    it('should not let a category wildcard leak across categories', () => {
+      const apiKey = createMockApiKeyEntity({ scopes: ['consultation:*'] });
+
+      expect(service.hasScope(apiKey as any, 'stt:transcription:read')).toBe(false);
+      // Prefix must break on the delimiter, not on the raw string.
+      expect(service.hasScope(apiKey as any, 'consultationother:read')).toBe(false);
+    });
+
     it('should not grant parent scope from child scope', () => {
       const apiKey = createMockApiKeyEntity({
         scopes: ['stt:transcribe'],

@@ -74,6 +74,10 @@ export const DEFAULT_API_KEYS = [
       'consultation:session:read',
       'consultation:session:write',
       'consultation:report:read',
+      // Generating a summary / pre-summary is a report WRITE. Required since the
+      // summarization routes began declaring @RequiredScopes — without it every
+      // seeded SDK key 403s on the primary consultation-documentation flow.
+      'consultation:report:write',
       'user:preferences:read',
       'user:preferences:write',
     ],
@@ -96,6 +100,10 @@ export const DEFAULT_API_KEYS = [
       'consultation:session:read',
       'consultation:session:write',
       'consultation:report:read',
+      // Generating a summary / pre-summary is a report WRITE. Required since the
+      // summarization routes began declaring @RequiredScopes — without it every
+      // seeded SDK key 403s on the primary consultation-documentation flow.
+      'consultation:report:write',
       'user:preferences:read',
       'user:preferences:write',
     ],
@@ -144,6 +152,10 @@ export const DEFAULT_API_KEYS = [
       'consultation:session:read',
       'consultation:session:write',
       'consultation:report:read',
+      // Generating a summary / pre-summary is a report WRITE. Required since the
+      // summarization routes began declaring @RequiredScopes — without it every
+      // seeded SDK key 403s on the primary consultation-documentation flow.
+      'consultation:report:write',
       'user:preferences:read',
       'user:preferences:write',
       'admin:user:read',
@@ -182,6 +194,10 @@ export const DEFAULT_API_KEYS = [
       'consultation:session:read',
       'consultation:session:write',
       'consultation:report:read',
+      // Generating a summary / pre-summary is a report WRITE. Required since the
+      // summarization routes began declaring @RequiredScopes — without it every
+      // seeded SDK key 403s on the primary consultation-documentation flow.
+      'consultation:report:write',
       'user:preferences:read',
       'user:preferences:write',
     ],

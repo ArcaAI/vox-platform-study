@@ -60,7 +60,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiParam, ApiProperty, ApiPropertyOptional, ApiQuery, ApiResponse, ApiOperation } from '@nestjs/swagger';
 import { Observable, interval, map, merge, type Subscription } from 'rxjs';
-import { ApiEndpoint, Authorize } from '../../decorators';
+import { ApiEndpoint, Authorize, RequiredScopes } from '../../decorators';
 import { TenantOwnedResource } from '../../common';
 import { StreamScope } from '../auth';
 import { ClsService } from 'nestjs-cls';
@@ -343,6 +343,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiResponse({ status: 404, description: 'Consultation not found' })
+  @RequiredScopes('consultation:session:read')
   async getById(@Param('id') id: string): Promise<ConsultationResponse> {
     await this.verifyConsultationAccess(id);
     const result = await this.consultationService.getByIdWithRelations(id);
@@ -842,6 +843,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredScopes('consultation:report:write')
   async generateSummary(@Param('id') id: string, @Body() request: GenerateSummaryRequest): Promise<SummaryResponse> {
     await this.verifyConsultationOwnership(id);
     return this.summaryService.generateSummary(id, request);
@@ -854,6 +856,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredScopes('consultation:report:read')
   async getSummaries(@Param('id') id: string): Promise<SummaryResponse[]> {
     await this.verifyConsultationAccess(id);
     return this.summaryService.getSummaries(id);
@@ -866,6 +869,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredScopes('consultation:report:write')
   async generatePreSummary(@Param('id') id: string, @Body() request: GeneratePreSummaryRequest): Promise<SummaryResponse> {
     await this.verifyConsultationOwnership(id);
     return this.summaryService.generatePreSummary(id, request);
@@ -877,6 +881,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredScopes('consultation:report:read')
   async getLatestSummary(@Param('id') id: string): Promise<SummaryResponse | null> {
     await this.verifyConsultationAccess(id);
     return this.summaryService.getLatestSummary(id);
@@ -888,6 +893,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredScopes('consultation:report:read')
   async getLatestPreSummary(@Param('id') id: string): Promise<SummaryResponse | null> {
     await this.verifyConsultationAccess(id);
     return this.summaryService.getLatestPreSummary(id);
@@ -901,6 +907,7 @@ export class ConsultationController {
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   @ApiParam({ name: 'summaryId', description: 'Summary Context Item ID' })
+  @RequiredScopes('consultation:report:write')
   async updateSummary(
     @Param('id') id: string,
     @Param('summaryId') summaryId: string,
@@ -1056,6 +1063,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredScopes('consultation:report:write')
   async generateSummaryAsync(@Param('id') consultationId: string, @Body() request: GenerateSummaryRequest): Promise<AsyncJobResponseDto> {
     await this.verifyConsultationOwnership(consultationId);
     const tenantId = this.cls.get('tenantId') ?? 'unknown';
@@ -1092,6 +1100,7 @@ export class ConsultationController {
     by: ['id'],
   })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
+  @RequiredScopes('consultation:report:write')
   async generatePreSummaryAsync(@Param('id') consultationId: string, @Body() request: GeneratePreSummaryRequest): Promise<AsyncJobResponseDto> {
     await this.verifyConsultationOwnership(consultationId);
     const tenantId = this.cls.get('tenantId') ?? 'unknown';

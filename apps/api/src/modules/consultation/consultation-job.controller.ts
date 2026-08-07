@@ -21,7 +21,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@ne
 import type { Observable } from 'rxjs';
 import { IConsultationJobService, JobStatusResponse } from '@arcaai/applications';
 import { TenantOwnedResource } from '../../common';
-import { Authorize } from '../../decorators';
+import { Authorize, RequiredScopes } from '../../decorators';
 import { StreamScope } from '../auth';
 
 @ApiBearerAuth()
@@ -36,6 +36,7 @@ export class ConsultationJobController {
 
   @Get(':jobId')
   @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId' })
+  @RequiredScopes('consultation:session:read')
   @ApiOperation({ summary: 'Get the current status of an async consultation job' })
   @ApiParam({ name: 'jobId', description: 'Job ID returned by an async summary/pre-summary/comprehensive/NER endpoint' })
   @ApiResponse({ status: 200, description: 'Job status payload', type: JobStatusResponse })
@@ -55,6 +56,7 @@ export class ConsultationJobController {
   // else's job. The read routes (`getJob`, `streamJob`) intentionally stay
   // tenant-only because shared-room reads from peer users are legitimate.
   @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId', scope: 'creator' })
+  @RequiredScopes('consultation:session:read')
   @ApiOperation({ summary: 'Cancel a pending or running async consultation job' })
   @ApiParam({ name: 'jobId', description: 'Job ID to cancel' })
   @ApiResponse({ status: 200, description: 'Cancellation acknowledgement' })
@@ -70,6 +72,7 @@ export class ConsultationJobController {
   @Get(':jobId/stream')
   @Sse()
   @TenantOwnedResource({ modelName: 'ConsultationJob', paramName: 'jobId' })
+  @RequiredScopes('consultation:session:read')
   @StreamScope({ namespace: 'consultation_job', param: 'jobId' })
   @ApiOperation({
     summary: 'Stream real-time status updates for an async consultation job via SSE',
