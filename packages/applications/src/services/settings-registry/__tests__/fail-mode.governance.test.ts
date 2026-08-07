@@ -221,7 +221,11 @@ describe('env/vault-kv descriptor keys resolve to the real variable names', () =
     'minio.endpoint': 'MINIO_ENDPOINT',
     port: 'PORT',
     logLevel: 'LOG_LEVEL',
-    corsAllowedOrigins: 'CORS_ALLOWED_ORIGINS',
+    // `corsAllowedOrigins` is deliberately ABSENT — TASK-610 §4A.1 removed the
+    // descriptor entirely (no env var ever controls the CORS allow-list; the
+    // `TenantAllowedOrigin` table is the sole source). It is `global-kv`-tier
+    // anyway (filtered out by the `env`/`vault-kv` guard below), so its
+    // removal changes nothing this describe block asserts.
     'shutdown.timeoutMs': 'SHUTDOWN_TIMEOUT_MS',
     'shutdown.drainDelayMs': 'SHUTDOWN_DRAIN_DELAY_MS',
     'apiKey.maxLifetimeDays': 'API_KEY_MAX_LIFETIME_DAYS',

@@ -170,7 +170,7 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
     expect(client.close).not.toHaveBeenCalled();
   });
 
-  it('does not throw when the registry lookup throws on a malformed Origin — fails open with a loud log, matching the bootstrap-fallback posture (FR-6)', async () => {
+  it('does not throw when the registry lookup throws on a malformed Origin — fails CLOSED with a loud, distinctly-reasoned log (aligned with the HTTP CORS path)', async () => {
     mockOriginRegistry.has.mockImplementationOnce(() => {
       throw new Error('malformed input');
     });
@@ -179,11 +179,11 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
 
     await expect(gateway.handleConnection(client as any, buildReq('sess-origin', 'not a valid origin!!') as any)).resolves.not.toThrow();
 
-    expect(client.close).not.toHaveBeenCalled();
-    expect(gateway.getActiveSessionCount()).toBe(1);
+    expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
+    expect(gateway.getActiveSessionCount()).toBe(0);
   });
 
-  it('does not sever the connection when the registry is unavailable (undefined — not wired / DB blip) — allows and logs loudly', async () => {
+  it('severs the connection when the registry is unavailable (undefined — not wired / DB blip) — denies and logs loudly under the "unavailable" reason', async () => {
     const gateway = buildGateway(undefined);
     const client = createMockSocket();
     const warnSpy = vi.spyOn(Logger.prototype, 'warn');
@@ -191,13 +191,13 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
 
     await gateway.handleConnection(client as any, buildReq('sess-origin', 'https://arcaai-u2204.bcmch.org') as any);
 
-    expect(client.close).not.toHaveBeenCalled();
-    expect(gateway.getActiveSessionCount()).toBe(1);
+    expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
+    expect(gateway.getActiveSessionCount()).toBe(0);
     const messages = warnSpy.mock.calls.map((args) => args[0]);
-    const fallbackLog = messages.find(
-      (m) => typeof m === 'object' && m !== null && String((m as { message?: string }).message).includes('registry unavailable'),
+    const unavailableLog = messages.find(
+      (m) => typeof m === 'object' && m !== null && (m as { reason?: string }).reason === 'origin_registry_unavailable',
     );
-    expect(fallbackLog).toBeDefined();
+    expect(unavailableLog).toBeDefined();
   });
 
   it('still enforces existing sessionId/ticket auth AFTER an origin passes (no regression to the pre-existing gate)', async () => {
@@ -212,31 +212,21 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
     expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
   });
 
-  // W4-R (adversarial review) confirmed a divergence: `platform-knobs.binder.ts`
-  // collapses an empty registry to `null` for `cors.config.ts`, which falls
-  // back to `CORS_ALLOWED_ORIGINS` — so an unseeded/emptied table keeps HTTP
-  // serving. The WS predicate called `has()` directly on a present-but-empty
-  // registry, got `false` for every origin, and rejected — severing every
-  // live transcription session on exactly the DB-blip scenario the gateway's
-  // own bootstrap-fallback comment claims to protect against.
-  describe('present-but-empty registry (size() === 0) falls back like an absent one (TASK-610 W4-R)', () => {
-    const ENV_KEY = 'CORS_ALLOWED_ORIGINS';
-    let originalEnv: string | undefined;
-
-    beforeEach(() => {
-      originalEnv = process.env[ENV_KEY];
-    });
-
-    afterEach(() => {
-      if (originalEnv === undefined) {
-        delete process.env[ENV_KEY];
-      } else {
-        process.env[ENV_KEY] = originalEnv;
-      }
-    });
-
-    it('ACCEPTS when the registry is empty but the origin is in the CORS_ALLOWED_ORIGINS bootstrap fallback', async () => {
-      process.env[ENV_KEY] = 'https://arcaai-u2204.bcmch.org,https://mi-preproduction.bcmch.org:4433';
+  // Coordinator review reversed the original W5-C call here: `size() === 0`
+  // now DENIES, matching an absent registry, and matching `cors.config.ts`.
+  // The original fail-open reasoning (don't sever a live transcription
+  // session on a DB blip) does not survive contact with how a WS connection
+  // is actually obtained — `handleConnection` requires a single-use `ticket`
+  // minted by a prior HTTP call to THIS gateway (`POST .../stream/session` or
+  // `.../refresh-ticket`), which the HTTP CORS gate already denies during the
+  // same outage. No legitimate browser client can reach this handshake
+  // during a registry outage regardless of what this check does, so
+  // fail-open bought nothing while leaving open the one surface CORS cannot
+  // cover (browsers exempt WS from CORS — D-6, the actual CSWSH vector).
+  // Established sockets are unaffected: this check runs only in
+  // `handleConnection`, never against a live session.
+  describe('present-but-empty registry (size() === 0) behaves exactly like an absent one — DENY (TASK-610 §4A.1, aligned with cors.config.ts)', () => {
+    it('REJECTS when the registry is empty, with no env var involved at all', async () => {
       const emptyRegistry = createMockOriginRegistry(new Set());
       const gateway = buildGateway(emptyRegistry);
       const client = createMockSocket();
@@ -244,37 +234,15 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
       await gateway.handleConnection(client as any, buildReq('sess-origin', 'https://arcaai-u2204.bcmch.org') as any);
 
       expect(emptyRegistry.size).toHaveBeenCalled();
-      // The empty registry's `has()` would have said no — the bootstrap
-      // fallback is what must decide here, not a direct `has()` call.
-      expect(client.close).not.toHaveBeenCalled();
-      expect(gateway.getActiveSessionCount()).toBe(1);
-    });
-
-    it('REJECTS when the registry is empty and the origin is NOT in the CORS_ALLOWED_ORIGINS bootstrap fallback', async () => {
-      process.env[ENV_KEY] = 'https://arcaai-u2204.bcmch.org';
-      const emptyRegistry = createMockOriginRegistry(new Set());
-      const gateway = buildGateway(emptyRegistry);
-      const client = createMockSocket();
-
-      await gateway.handleConnection(client as any, buildReq('sess-origin', 'https://evil.example.com') as any);
-
+      // The empty registry's `has()` would also have said no — asserting the
+      // empty-registry branch decided this (not a direct `has()` call) matters
+      // because it is what carries the distinct `origin_registry_unavailable`
+      // log reason rather than an ordinary miss.
       expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
       expect(gateway.getActiveSessionCount()).toBe(0);
     });
 
-    it('REJECTS when the registry is empty and CORS_ALLOWED_ORIGINS is unset entirely', async () => {
-      delete process.env[ENV_KEY];
-      const emptyRegistry = createMockOriginRegistry(new Set());
-      const gateway = buildGateway(emptyRegistry);
-      const client = createMockSocket();
-
-      await gateway.handleConnection(client as any, buildReq('sess-origin', 'https://arcaai-u2204.bcmch.org') as any);
-
-      expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
-    });
-
-    it('logs loudly when falling back on an empty registry (operator visibility)', async () => {
-      process.env[ENV_KEY] = 'https://arcaai-u2204.bcmch.org';
+    it('logs loudly under the "unavailable" reason when denying on an empty registry (operator visibility)', async () => {
       const emptyRegistry = createMockOriginRegistry(new Set());
       const gateway = buildGateway(emptyRegistry);
       const client = createMockSocket();
@@ -284,14 +252,13 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
       await gateway.handleConnection(client as any, buildReq('sess-origin', 'https://arcaai-u2204.bcmch.org') as any);
 
       const messages = warnSpy.mock.calls.map((args) => args[0]);
-      const fallbackLog = messages.find(
-        (m) => typeof m === 'object' && m !== null && String((m as { message?: string }).message).includes('registry empty'),
+      const unavailableLog = messages.find(
+        (m) => typeof m === 'object' && m !== null && (m as { reason?: string }).reason === 'origin_registry_unavailable',
       );
-      expect(fallbackLog).toBeDefined();
+      expect(unavailableLog).toBeDefined();
     });
 
-    it('a NON-EMPTY registry is unchanged: still accepts a registered origin regardless of CORS_ALLOWED_ORIGINS content', async () => {
-      process.env[ENV_KEY] = ''; // deliberately not covering the origin
+    it('a NON-EMPTY registry is unchanged: still accepts a registered origin', async () => {
       const gateway = buildGateway(mockOriginRegistry); // pre-seeded with the SYSTEM origin
       const client = createMockSocket();
 
@@ -302,17 +269,18 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
       expect(client.close).not.toHaveBeenCalled();
     });
 
-    it('a NON-EMPTY registry is unchanged: still rejects an unregistered origin even when it IS in CORS_ALLOWED_ORIGINS', async () => {
-      // A non-empty registry legitimately answering "no" must NOT fall
-      // through to the env allow-list — only size() === 0 triggers the
-      // bootstrap fallback.
-      process.env[ENV_KEY] = 'https://evil.example.com';
+    it('a NON-EMPTY registry is unchanged: still rejects an unregistered origin, under the ordinary "miss" reason (not "unavailable")', async () => {
       const gateway = buildGateway(mockOriginRegistry); // non-empty, does not contain evil.example.com
       const client = createMockSocket();
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn');
+      warnSpy.mockClear();
 
       await gateway.handleConnection(client as any, buildReq('sess-origin', 'https://evil.example.com') as any);
 
       expect(client.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_FAILED, WS_GENERIC_AUTH_REASON);
+      const messages = warnSpy.mock.calls.map((args) => args[0]);
+      const missLog = messages.find((m) => typeof m === 'object' && m !== null && (m as { reason?: string }).reason === 'origin_registry_miss');
+      expect(missLog).toBeDefined();
     });
   });
 });

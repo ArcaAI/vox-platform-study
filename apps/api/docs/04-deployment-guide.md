@@ -185,8 +185,9 @@ HARNESS_URL=http://harness-service:8866
 # Session Management
 SESSION_SECRET_KEY=your-secret-key-min-32-chars
 
-# CORS (comma-separated origins)
-CORS_ALLOWED_ORIGINS=https://app.hope.com,https://dashboard.hope.com
+# CORS is NOT configured via an env var (TASK-610 §4A.1). Browser origins are
+# `TenantAllowedOrigin` rows managed through `admin/allowed-origins`; a
+# registry that is empty or unreachable DENIES every browser origin.
 
 # Rate Limiting
 RATE_LIMIT_ENABLED=true

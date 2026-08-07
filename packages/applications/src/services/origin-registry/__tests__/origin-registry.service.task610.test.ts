@@ -455,6 +455,129 @@ describe('OriginRegistryService', () => {
       expect(service.ownerOf('https://x.org:443')).toBe(SYSTEM_TENANT_ID);
     });
   });
+
+  // ═════════════════════════════════════════════════════════════════════
+  // TASK-610 §4A.2 — wildcard pattern precedence (lane W5-B).
+  //
+  // These are the three rows the plan (§4A.2, "Required behavior" table)
+  // names explicitly. Against the CURRENT exact-only implementation, a
+  // pattern row is stored as a literal Map key (e.g. the key
+  // `'https://*.bcmch.org:*'` or `'*'`), so a real browser Origin like
+  // `https://anything.bcmch.org` or `https://random.example.com` never
+  // matches it — `ownerOf` returns `null` where these tests expect a
+  // tenant id. That is the RED this file must show before the precedence
+  // walk is implemented.
+  // ═════════════════════════════════════════════════════════════════════
+  describe('wildcard pattern precedence (§4A.2 / §4A.3)', () => {
+    const ARCAAI_TENANT_ID = '30000000-0000-0000-0000-000000000003';
+    const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+
+    async function seedPrecedenceRows() {
+      mockRepository.findAll.mockResolvedValueOnce([
+        makeRow({ origin: 'https://arcaai-u2204.bcmch.org', tenantId: ARCAAI_TENANT_ID }),
+        makeRow({ origin: 'https://*.bcmch.org:*', tenantId: ARCAAI_TENANT_ID }),
+        makeRow({ origin: '*', tenantId: GLOBAL_TENANT_ID }),
+      ]);
+      await service.refresh();
+    }
+
+    it('an exact row resolves to its owner — exact beats any pattern (never even consulted)', async () => {
+      await seedPrecedenceRows();
+
+      expect(service.ownerOf('https://arcaai-u2204.bcmch.org')).toBe(ARCAAI_TENANT_ID);
+      expect(service.has('https://arcaai-u2204.bcmch.org')).toBe(true);
+    });
+
+    it('a more specific pattern (`https://*.bcmch.org:*`) outranks the `*` allow-all token', async () => {
+      await seedPrecedenceRows();
+
+      // Not itself a registered exact row — must resolve via the more
+      // specific bcmch.org pattern, never the lower-ranked `*` token.
+      expect(service.ownerOf('https://anything.bcmch.org')).toBe(ARCAAI_TENANT_ID);
+      expect(service.has('https://anything.bcmch.org')).toBe(true);
+    });
+
+    it('an origin matching only `*` resolves to the Global tenant', async () => {
+      await seedPrecedenceRows();
+
+      expect(service.ownerOf('https://random.example.com')).toBe(GLOBAL_TENANT_ID);
+      expect(service.has('https://random.example.com')).toBe(true);
+    });
+
+    it('an origin matching nothing at all (no `*` row registered) stays unregistered', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([
+        makeRow({ origin: 'https://arcaai-u2204.bcmch.org', tenantId: ARCAAI_TENANT_ID }),
+        makeRow({ origin: 'https://*.bcmch.org:*', tenantId: ARCAAI_TENANT_ID }),
+      ]);
+      await service.refresh();
+
+      expect(service.ownerOf('https://random.example.com')).toBeNull();
+      expect(service.has('https://random.example.com')).toBe(false);
+    });
+
+    it('size() counts pattern rows alongside exact rows', async () => {
+      await seedPrecedenceRows();
+
+      expect(service.size()).toBe(3);
+    });
+
+    it('a subdomain-of-a-subdomain still matches (any depth, never the apex)', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'https://*.bcmch.org:*', tenantId: ARCAAI_TENANT_ID })]);
+      await service.refresh();
+
+      expect(service.ownerOf('https://deep.sub.bcmch.org')).toBe(ARCAAI_TENANT_ID);
+      // The apex itself must NOT match — that is `matchesOriginPattern`'s
+      // contract, exercised here through the registry's own lookup path.
+      expect(service.ownerOf('https://bcmch.org')).toBeNull();
+    });
+  });
+
+  // ═════════════════════════════════════════════════════════════════════
+  // TASK-610 §4A.3 — the allow-all (`*`) row must announce itself. An
+  // operator must never have to read the database to discover the platform
+  // is admitting every unmatched origin for one tenant.
+  // ═════════════════════════════════════════════════════════════════════
+  describe('allow-all (`*`) row announces itself on every successful refresh (§4A.3)', () => {
+    const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
+
+    it('logs at warn with the owning tenant id when a `*` row is present', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: '*', tenantId: GLOBAL_TENANT_ID })]);
+      await service.refresh();
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ ownerTenantId: GLOBAL_TENANT_ID }));
+      const [warnCall] = warnSpy.mock.calls;
+      const logged = warnCall[0] as Record<string, unknown>;
+      expect(String(logged.message)).toContain(GLOBAL_TENANT_ID);
+      expect(String(logged.message)).toMatch(/allow-all/i);
+
+      warnSpy.mockRestore();
+    });
+
+    it('logs again on a SECOND successful refresh — not just once at startup', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      mockRepository.findAll.mockResolvedValue([makeRow({ origin: '*', tenantId: GLOBAL_TENANT_ID })]);
+      await service.refresh();
+      await service.refresh();
+
+      expect(warnSpy).toHaveBeenCalledTimes(2);
+
+      warnSpy.mockRestore();
+    });
+
+    it('does NOT log the allow-all warning when no `*` row is registered', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'https://example.org' })]);
+      await service.refresh();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════

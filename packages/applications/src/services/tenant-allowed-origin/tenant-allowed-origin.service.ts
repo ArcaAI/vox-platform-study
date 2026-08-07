@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@arcaai/domains';
 import { ArgumentInvalidException, DataNotFoundException } from '@arcaai/exceptions';
 import { normalizeOrigin } from '../origin-registry/origin-normalizer';
+import { ALLOW_ALL_ORIGIN_PATTERN, isOriginPattern, normalizeOriginPattern } from '../origin-registry/origin-pattern';
 import { ITenantAllowedOriginService } from './ITenantAllowedOriginService';
 import { CreateTenantAllowedOriginRequest, TenantAllowedOriginResponse, UpdateTenantAllowedOriginRequest } from './dto';
 import { TenantAllowedOriginDtoMapper } from './tenant-allowed-origin.dto.mapper';
@@ -30,8 +31,25 @@ function isUniqueConstraintViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as Record<string, unknown>).code === 'P2002';
 }
 
+/**
+ * Routes an incoming raw origin string to the correct validator BY SHAPE
+ * (TASK-610 §4A.2/§4A.3, lane W5-E): `isOriginPattern` is true for anything
+ * containing `*` — a wildcard pattern OR the bare allow-all token — which goes
+ * through `normalizeOriginPattern`; everything else goes through the
+ * pre-existing `normalizeOrigin`. Both throw the SAME `ArgumentInvalidException`
+ * on a malformed value, so a caller never has to branch on error type and an
+ * invalid pattern surfaces as the same clean validation error an invalid exact
+ * origin does. The canonical result — never the raw input — is what gets
+ * checked for uniqueness and persisted.
+ */
+function normalizeIncomingOrigin(raw: string): string {
+  return isOriginPattern(raw) ? normalizeOriginPattern(raw) : normalizeOrigin(raw).origin;
+}
+
 @Injectable()
 export class TenantAllowedOriginService extends BaseService implements ITenantAllowedOriginService {
+  private readonly logger = new Logger(TenantAllowedOriginService.name);
+
   constructor(
     private readonly tenantAllowedOriginRepository: TenantAllowedOriginRepository,
     protected override readonly eventEmitter: EventEmitter2,
@@ -76,15 +94,16 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
       throw new BadRequestException('Tenant ID is required');
     }
 
-    // Origin SYNTAX is decided exclusively by `normalizeOrigin` (README §3.3)
-    // — the NORMALIZED form, never the raw input, is what gets checked and
-    // persisted. Throws `ArgumentInvalidException` on anything malformed.
-    const normalized = normalizeOrigin(dto.origin);
+    // Origin SYNTAX is decided exclusively by `normalizeOrigin` / `normalizeOriginPattern`,
+    // routed by shape (README §4A.2/§4A.3) — the NORMALIZED form, never the raw
+    // input, is what gets checked and persisted. Both throw the same
+    // `ArgumentInvalidException` on anything malformed.
+    const normalizedOrigin = normalizeIncomingOrigin(dto.origin);
 
     // A LIVE row on this origin is a genuine duplicate — reject it up front.
-    const liveExisting = await this.tenantAllowedOriginRepository.findByOrigin(normalized.origin);
+    const liveExisting = await this.tenantAllowedOriginRepository.findByOrigin(normalizedOrigin);
     if (liveExisting) {
-      throw new ConflictException(`Origin '${normalized.origin}' is already registered.`);
+      throw new ConflictException(`Origin '${normalizedOrigin}' is already registered.`);
     }
 
     // The DB's global unique index on `origin` is NOT partial (see the
@@ -94,14 +113,14 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     // row (one row per origin is what the index requires anyway), never
     // insert a second one, and never refuse with a "conflict" the admin list
     // cannot explain (the origin appears nowhere, yet create says it's taken).
-    const deletedExisting = await this.findDeletedByOrigin(normalized.origin);
+    const deletedExisting = await this.findDeletedByOrigin(normalizedOrigin);
     if (deletedExisting) {
-      return this.restoreOnCreateCollision(deletedExisting, dto);
+      return this.restoreOnCreateCollision(deletedExisting, dto, tenantId);
     }
 
     const entity = TenantAllowedOriginFactory.CreateTenantAllowedOrigin({
       tenantId,
-      origin: normalized.origin,
+      origin: normalizedOrigin,
       label: dto.label,
       description: dto.description,
       createdBy: this.requestUserId ?? undefined,
@@ -116,14 +135,16 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
         // this write. Retry the soft-deleted lookup once — a concurrent
         // delete could have landed in that exact window — before concluding
         // it's a live duplicate.
-        const raced = await this.findDeletedByOrigin(normalized.origin);
+        const raced = await this.findDeletedByOrigin(normalizedOrigin);
         if (raced) {
-          return this.restoreOnCreateCollision(raced, dto);
+          return this.restoreOnCreateCollision(raced, dto, tenantId);
         }
-        throw new ConflictException(`Origin '${normalized.origin}' is already registered.`);
+        throw new ConflictException(`Origin '${normalizedOrigin}' is already registered.`);
       }
       throw err;
     }
+
+    this.warnIfAllowAllOrigin(saved.origin, saved.tenantId, 'created');
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -148,11 +169,40 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
    *
    * Mirrors the `GlobalSettingService.create` revive-on-create precedent
    * (restore → apply fields → non-versioned `update` only if changed).
+   *
+   * DEFENSE-IN-DEPTH — cross-tenant ownership check (post-review follow-up).
+   * `deletedEntity` comes from `findDeletedByOrigin`, whose `findFirst` call
+   * runs through the tenant-scope Prisma extension: `TenantAllowedOrigin` is
+   * in `TENANT_SCOPED_MODELS`, so every read — this one included — is
+   * ALREADY narrowed to the caller's own tenant (or SYSTEM, only if this
+   * model is ever added to `SYSTEM_SHARED_READ_MODELS`). That extension is
+   * what actually makes a cross-tenant restore impossible today; the
+   * `deletedEntity.tenantId !== callerTenantId` check below is not currently
+   * reachable with `false`. It exists so that guarantee stays true even if a
+   * future, superficially reasonable change widens the read (e.g. adding
+   * this model to `SYSTEM_SHARED_READ_MODELS` so tenant admins can see
+   * platform origins) — WITHOUT this check, a tenant re-registering an
+   * origin whose SYSTEM-owned row happened to be soft-deleted could silently
+   * RESTORE the platform row and be told it succeeded: a tenant-triggered
+   * write to a platform-owned record, reported as their own creation. DO NOT
+   * remove this as "dead code" — it is deliberately redundant with the
+   * tenant-scope extension, not accidentally so.
+   *
+   * On a mismatch this is treated EXACTLY like a live duplicate: the global
+   * unique index on `origin` means the value genuinely IS taken, so the
+   * caller sees the same conflict a live row would produce — never a
+   * restore, never a different error shape that would hint at another
+   * tenant's row.
    */
   private async restoreOnCreateCollision(
     deletedEntity: TenantAllowedOriginEntity,
     dto: CreateTenantAllowedOriginRequest,
+    callerTenantId: string,
   ): Promise<TenantAllowedOriginResponse> {
+    if (deletedEntity.tenantId !== callerTenantId) {
+      throw new ConflictException(`Origin '${deletedEntity.origin}' is already registered.`);
+    }
+
     const restored = await this.tenantAllowedOriginRepository.restore(deletedEntity.id, this.requestUserId ?? undefined);
 
     await this.updateEntity(restored, {
@@ -161,6 +211,8 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     });
 
     const saved = restored.hasChanges ? await this.tenantAllowedOriginRepository.update(restored.id, restored) : restored;
+
+    this.warnIfAllowAllOrigin(saved.origin, saved.tenantId, 'restored');
 
     this.broadcastSysEvent(SysEventType.ResourceCreated, {
       resourceId: saved.id,
@@ -183,14 +235,20 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
 
     const { expectedVersion, origin, ...rest } = dto;
 
+    // Snapshot BEFORE `updateEntity` mutates `entity.origin` in place —
+    // needed below to tell "this update just MADE the row `*`" apart from
+    // "the row was already `*` and only some other field changed".
+    const originBeforeUpdate = entity.origin;
+
     // Re-normalize `origin` when the DTO changes it (README §3.3 "Re-normalize
-    // origin if the DTO changes it"). Skip the duplicate check entirely when
-    // the normalized value is identical to the row's current value — that is
-    // not a collision with ANOTHER row, just a no-op/idempotent re-submit.
+    // origin if the DTO changes it"), routed by shape same as `create()`
+    // (§4A.2/§4A.3). Skip the duplicate check entirely when the normalized
+    // value is identical to the row's current value — that is not a
+    // collision with ANOTHER row, just a no-op/idempotent re-submit.
     let normalizedOrigin: string | undefined;
     if (origin !== undefined) {
-      normalizedOrigin = normalizeOrigin(origin).origin;
-      if (normalizedOrigin !== entity.origin) {
+      normalizedOrigin = normalizeIncomingOrigin(origin);
+      if (normalizedOrigin !== originBeforeUpdate) {
         const existing = await this.tenantAllowedOriginRepository.findByOrigin(normalizedOrigin);
         if (existing && existing.id !== id) {
           throw new ConflictException(`Origin '${normalizedOrigin}' is already registered.`);
@@ -218,6 +276,13 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
         throw new ConflictException(`Origin '${normalizedOrigin}' is already registered.`);
       }
       throw err;
+    }
+
+    // Only when THIS update is what establishes the allow-all state — an
+    // update that leaves an already-`*` row `*` (e.g. a label rename) does
+    // not re-warn; it was already logged when the row was created/restored.
+    if (normalizedOrigin === ALLOW_ALL_ORIGIN_PATTERN && originBeforeUpdate !== ALLOW_ALL_ORIGIN_PATTERN) {
+      this.warnIfAllowAllOrigin(updated.origin, updated.tenantId, 'updated');
     }
 
     this.broadcastSysEvent(SysEventType.ResourceUpdated, {
@@ -291,5 +356,31 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
 
   private emitOriginRegistryInvalidate(): void {
     this.eventEmitter.emit(ORIGIN_REGISTRY_INVALIDATE_EVENT);
+  }
+
+  /**
+   * Writing the `*` row (README §4A.3) admits every origin for the OWNING
+   * TENANT — a security-relevant state change, not "one more host". Logged at
+   * `warn` (not `debug`), with a fixed, greppable `reason` so it is findable
+   * in the audit trail independent of the ordinary create/restore/update log
+   * noise. Checked against the value actually PERSISTED, never the raw
+   * input — `normalizeOriginPattern` is what decides whether near-miss text
+   * like `'* '`/`'**'` becomes this token at all (it never does).
+   *
+   * Callers decide WHEN this fires (create/restore always call it — a fresh
+   * insert or a restore-from-deleted-row can only ever be establishing the
+   * state; `update()` gates the call itself so an edit to an ALREADY-`*` row
+   * — e.g. a label rename — does not re-warn on every subsequent mutation).
+   */
+  private warnIfAllowAllOrigin(origin: string, tenantId: string, action: 'created' | 'restored' | 'updated'): void {
+    if (origin !== ALLOW_ALL_ORIGIN_PATTERN) {
+      return;
+    }
+    this.logger.warn({
+      message: `Allow-all origin ('*') ${action} — admits every origin for the owning tenant`,
+      reason: 'origin_allow_all_registered',
+      tenantId,
+      userId: this.requestUserId,
+    });
   }
 }

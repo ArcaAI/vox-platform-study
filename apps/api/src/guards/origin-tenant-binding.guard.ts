@@ -105,15 +105,16 @@ export class OriginTenantBindingGuard implements CanActivate {
     // Reaching this branch in production means either (a) the `development`
     // loopback allowance in `cors.config.ts`, which deliberately admits
     // origins that have no registry row so a fresh clone with an empty
-    // database still works, (b) the FR-6 bootstrap fallback, where the table
-    // is empty or unreadable and CORS falls back to `CORS_ALLOWED_ORIGINS`,
-    // or (c) a non-browser client that forged an `Origin` header.
+    // database still works, (b) the CORS gate DENIED this origin (registry
+    // miss, or the registry unavailable — TASK-610 §4A.1 removed the
+    // `CORS_ALLOWED_ORIGINS` bootstrap fallback that used to admit it instead)
+    // but the request reached the gateway anyway — CORS is enforced by the
+    // BROWSER refusing to hand the response to page script, not by the server
+    // refusing to route the request, so a non-preflighted "simple" request
+    // still runs even when the CORS callback answered `false` — or (c) a
+    // non-browser client that forged an `Origin` header.
     //
     // Denying here would be actively harmful and buys nothing:
-    //   - It would DEFEAT FR-6. An empty or unreadable registry would 404
-    //     every browser request platform-wide, turning a degraded-but-serving
-    //     gateway into a total outage — the exact failure the bootstrap
-    //     fallback exists to prevent.
     //   - It would break the documented dev loopback path.
     //   - It closes nothing. An unregistered origin has NO owner, so there is
     //     no tenant binding to violate. And a non-browser client that can
@@ -121,7 +122,8 @@ export class OriginTenantBindingGuard implements CanActivate {
     //     would only inconvenience an attacker who chose the noisier of two
     //     equivalent paths, while breaking real callers.
     // Registration is enforced one layer up, at the CORS gate, which is the
-    // layer that owns "which origins exist at all".
+    // layer that owns "which origins exist at all" — and which, since §4A.1,
+    // fails CLOSED rather than degrading to an env allow-list.
     //
     // It is logged at warn so a registry miss is diagnosable in one grep
     // (plan §3.8: ship the registry-miss log line in the same release that

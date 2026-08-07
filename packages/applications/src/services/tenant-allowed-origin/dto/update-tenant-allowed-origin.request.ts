@@ -2,8 +2,20 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class UpdateTenantAllowedOriginRequest {
-  /** Re-normalized via `normalizeOrigin()` when present — see `create-tenant-allowed-origin.request.ts`. */
-  @ApiPropertyOptional({ description: 'Raw origin (scheme://host[:port]); re-normalized server-side when present.' })
+  /**
+   * Re-normalized when present, routed by shape exactly like
+   * `CreateTenantAllowedOriginRequest.origin` — see that DTO for the full
+   * contract (exact origin / wildcard pattern / bare `*`).
+   */
+  @ApiPropertyOptional({
+    description:
+      'Raw origin, re-normalized server-side when present. Accepts an EXACT origin (scheme://host[:port]), a wildcard PATTERN (scheme://*.suffix:*), or the bare allow-all token `*`.',
+    examples: {
+      exact: 'https://arcaai-staging.bcmch.org',
+      pattern: 'https://*.bcmch.org:*',
+      allowAll: '*',
+    },
+  })
   @IsOptional()
   @IsString()
   @IsNotEmpty()

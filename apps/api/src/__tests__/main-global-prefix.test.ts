@@ -154,9 +154,9 @@ describe('main.ts configuration regression guards', () => {
     });
   });
 
-  // TASK-558 lane D moved the four pre-bootstrap `process.env` reads (PORT,
-  // LOG_LEVEL, SHUTDOWN_*_MS, CORS_ALLOWED_ORIGINS) behind the validated env
-  // schema (plan §4 B5), so the source no longer carries an inline `|| 8868`
+  // TASK-558 lane D moved the pre-bootstrap `process.env` reads (PORT,
+  // LOG_LEVEL, SHUTDOWN_*_MS) behind the validated env schema (plan §4 B5),
+  // so the source no longer carries an inline `|| 8868`
   // fallback. The DEFAULT itself did not change — it is now declared on the
   // `port` descriptor and asserted behaviourally in
   // `src/config/__tests__/env.schema.test.ts` ("applies the descriptor default

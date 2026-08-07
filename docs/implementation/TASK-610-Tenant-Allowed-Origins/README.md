@@ -505,6 +505,134 @@ template. Both are bounded, both have an obvious oracle, and both get diffed by 
 
 ---
 
+## 4A. Scope extension — wildcard patterns + env-var removal (owner-directed)
+
+Two owner decisions taken after Wave 4, both changing the shipped design.
+
+### 4A.1 `CORS_ALLOWED_ORIGINS` is removed entirely
+
+> "we do NOT use any ENV VARS for CORS values declaration and do NOT control CORS Allowed List using any ENV VARS"
+
+**FR-6 is hereby retired.** The bootstrap fallback is deleted from `cors.config.ts` and the WS
+gateway; the variable is removed from `turbo.json#globalEnv`, the API env schema, `.env.sample`, the
+`11a` platform-knob seed, and the `corsAllowedOrigins` descriptor.
+
+This is less of a behavior change than it looks: W4-R finding #2 established the fallback was already
+**inert** — the var ships empty in both sample files and no env file is read in production. Removing
+it formalizes what was already true. The consequence must be stated plainly, though: **an unreachable
+database is now fail-closed for every browser origin.** That is the safe direction, and it is now a
+hard dependency rather than a soft one.
+
+### 4A.2 Wildcard host patterns are supported
+
+This REVERSES the Wave-1 rule that `normalizeOrigin` rejects every `*`, which W4-R verified as a
+security property. It is a deliberate owner trade and carries a real cost, recorded here so nobody
+later mistakes it for an oversight:
+
+> A wildcard delegates trust to every subdomain that exists **now or later**, including any with a
+> dangling DNS record. A subdomain takeover anywhere under `*.bcmch.org` becomes credentialed CORS
+> access for the owning tenant. Exact rows do not have this property, and adding one is a single
+> admin API call with no restart.
+
+**Frozen canonical grammar** — every lane codes against this, no lane re-invents it:
+
+```
+exact    := <scheme>://<host>[:<port>]          (unchanged — normalizeOrigin's existing output)
+pattern  := <scheme>://<hostPattern>:<portPattern>
+  scheme      := 'http' | 'https'      http ONLY when hostPattern is loopback
+  hostPattern := '*.' <suffix> | <host>
+  portPattern := '*' | <digits>        ALWAYS explicit in canonical form
+```
+
+A stored value is a pattern **iff it contains `*`** — no schema change, no new column; patterns live
+in the same `origin` column and keep the same global-uniqueness guarantee (one row per pattern text).
+
+Canonical seed forms: `https://*.bcmch.org:*` · `https://*.taphuynh.dev:*` · `https://*.4bits.vn:*` ·
+`http://localhost:*`
+
+**Match rules** (owner decisions marked):
+
+| Rule | Value | Source |
+|---|---|---|
+| Scheme | must match exactly; `http` only for loopback | carried over from Wave 1 |
+| Port | `*` matches ANY port incl. default/absent | **owner: "https + any port"** |
+| Host depth | subdomains at ANY depth, **never the apex** | owner unsure → conservative default; widening later is additive |
+| Label boundary | origin host must end with `'.' + suffix` — so `*.bcmch.org` never matches `evilbcmch.org` | security floor |
+| Suffix length | `*.` suffix must carry **≥2 labels** — rejects `*.vn`, `*.com` | security floor, non-negotiable |
+| Public suffixes | a heuristic `isLikelyPublicSuffix` on top of the ≥2-label floor | see correction below |
+
+> **Correction — this table was wrong when frozen.** It claimed the ≥2-label floor rejects `*.co.uk`.
+> It does not: `co.uk` **is** two labels. Lane W5-A caught the error rather than coding to it, and added
+> a second check: a 2-label suffix whose TLD is a 2-letter ccTLD and whose second level is a known
+> registry label (`co`, `com`, `org`, `ac`, `ne`, `go`, `gov`, `net`, …) is rejected — one rule that
+> catches `co.uk`, `com.au`, `co.jp`, `com.vn`, `co.za` without enumerating pairs, while leaving
+> `4bits.vn` and `taphuynh.dev` valid. Plus a short deny-list of shared-hosting suffixes
+> (`github.io`, `vercel.app`, `pages.dev`, `herokuapp.com`, …).
+>
+> **Residual risk, stated rather than papered over:** this is partial and cannot be completed by hand.
+> Any public suffix outside both sets — an unlisted platform suffix, a PSL private-section entry, a new
+> ccTLD second level — is still accepted, and a wildcard over one delegates credentialed CORS to every
+> customer of that platform. The complete fix is a maintained public-suffix list (`tldts`/`psl`)
+> consulted at WRITE time. Until then, a global admin approving a wildcard must read the suffix.
+
+**Precedence** (must be deterministic — two patterns can legitimately overlap where two exact rows
+cannot): exact row beats any pattern → among patterns the LONGEST suffix wins → the `*` allow-all
+token ranks BELOW every other pattern → ties break by earliest `id` (UUIDv7), the rule the registry
+already uses for duplicates.
+
+### 4A.3 The Global tenant accepts any origin (owner-directed)
+
+> "for global tenant, it should allow any origins, for any environments (hope-v2 dev or hope-v2
+> staging or hope-v2 production)"
+
+A `*` row owned by the **Global** tenant (`SEED_TENANT_ID`, `50000000-…-0000`, name "Global" — NOT
+System, NOT ArcaAI). Grammar: the literal single character `*`, nothing else; every near-miss
+(`**`, `*.`, `https://*`, `*:*`, `"*"`) is rejected so a typo can never silently become allow-all.
+
+**What it grants, stated once and precisely.** The gateway sets `credentials: true` and mounts
+`express-session`. An allow-all row means the gateway reflects ANY origin back with credentials, so
+any website a Global-tenant user visits can issue authenticated requests to the API **and read the
+responses** — a cross-origin read primitive, not merely a write one.
+
+**What confines it — and why that is the whole argument.** `OriginTenantBindingGuard` (FR-4). The `*`
+token carries the lowest possible specificity, so it wins only lookups nothing else matches. A
+request from `evil.example` resolves owner=Global; carrying an ArcaAI token, the tenants disagree and
+the guard answers 404. Every other tenant is untouched, and the exposure is exactly the Global
+tenant's own data.
+
+That containment is load-bearing: **this row is defensible only while the binding guard is intact and
+correctly ordered.** W4-R already showed the guard silently degrades to a no-op if registered before
+`UnifiedAuthGuard` — with a `*` row present, that same misordering stops being a latent weakness and
+becomes an open door. Anyone touching guard order must re-read this section.
+
+**Demonstrated consequence — with the `*` row present, nothing is ever "unregistered".** An Integrator
+probe over the real eight-row seed set confirms every unmatched origin resolves to Global, including
+look-alikes:
+
+```
+https://arcaai-u2204.bcmch.org  → ArcaAI     https://bcmch.org      → Global   (apex, not the wildcard)
+https://a.b.c.bcmch.org         → ArcaAI     https://evilbcmch.org  → Global   (label-boundary held)
+http://localhost:5173           → SYSTEM     http://x.bcmch.org     → Global   (http, so not the wildcard)
+https://random.example.com      → Global     http://localhost.evil.com → Global
+```
+
+Two things follow, and both are load-bearing:
+
+1. **The look-alike protections still do their real job.** `evilbcmch.org` and `localhost.evil.com`
+   are correctly refused by the *.bcmch.org / loopback rules — they fall through to Global rather than
+   being mistaken for ArcaAI. Tenant binding is intact; that is what those rules exist for.
+2. **CORS is effectively open platform-wide, and `OriginTenantBindingGuard` is the ONLY remaining
+   control.** The guard's `unregistered origin → pass through` branch becomes unreachable while this
+   row exists, because nothing is unregistered any more. Every origin now carries an owner and is
+   actively bound. That is stricter per-request than the old pass-through — but it means the guard is
+   carrying the entire isolation posture alone.
+
+Open question for the owner, not blocking: **does the Global tenant hold real patient data, or is it
+demo/scratch?** If PHI ever lands there, this row should be revoked (a single soft delete — no deploy,
+no restart) or narrowed to explicit origins.
+
+---
+
 ## 5. Implementation Summary
 
 *In progress. Waves 0–3 landed and verified; Wave 4 remediation partly outstanding (see §5.3).*
@@ -516,7 +644,7 @@ The lane tiering earned its keep here. Every lane's own suite was green when W4-
 | # | Severity | Finding | State |
 |---|---|---|---|
 | 1 | **HIGH** | `refresh()` runs INSIDE a request CLS scope. `@OnEvent` dispatches synchronously, so a mutation's `origin-registry.invalidate` rebuilt the index inside the writing request's `AsyncLocalStorage` store → tenant-scope narrowed `findAll({})` to the acting tenant → all four SYSTEM day-1 origins dropped out. Production CORS refuses the admin console, and FR-4 stops being enforced for every dropped origin (`ownerOf → null` takes the guard's pass-through branch). | **FIXED** |
-| 2 | MEDIUM | FR-6's bootstrap fallback is inert as shipped — `CORS_ALLOWED_ORIGINS` is empty in both sample env files and no env file is read in production. | **DEPLOYMENT ACTION** (§5.3) |
+| 2 | MEDIUM | FR-6's bootstrap fallback is inert as shipped — `CORS_ALLOWED_ORIGINS` is empty in both sample env files and no env file is read in production. | **SUPERSEDED** — §4A.1 retired FR-6 and the env var outright (lane W5-C); the "deploy it correctly" question this finding raised no longer applies because there is nothing left to deploy |
 | 3 | MEDIUM | HTTP and WS disagreed on a present-but-empty registry: HTTP fell back, WS rejected — severing live transcription sessions in exactly the scenario the WS fail-open comment cites. | **FIXED** |
 | 4 | MEDIUM | A soft-deleted origin could never be re-registered: `findByOrigin` filters `ENABLED`, the unique index is not partial, so re-adding hits P2002 with a misleading "already registered" and no restore route. | dispatched |
 | 5 | MEDIUM | No watchdog: the registry had no timer and rode `app-settings.cache-refreshed`, which fires only on SUCCESS — a persistently failing AppSettings cache froze the index forever and a revoked origin stayed live undetectably. | dispatched |
@@ -533,7 +661,7 @@ The lane tiering earned its keep here. Every lane's own suite was green when W4-
 
 ### 5.3 Carried forward — NOT fixed in this ticket, deliberately
 
-- **#2 — populate `CORS_ALLOWED_ORIGINS` in the deploy environment.** This is a deployment action, not a code change; editing the GENERATED `.env.sample` would not accomplish it. Until it is set, a gateway that cannot reach the database refuses every browser origin. That is the safe direction, but FR-6 is not real without it.
+- ~~**#2 — populate `CORS_ALLOWED_ORIGINS` in the deploy environment.**~~ **SUPERSEDED by §4A.1** (lane W5-C): the owner decided against ANY env-var control of CORS, so FR-6 and the variable are both removed rather than deployed. A gateway that cannot reach the database (or whose `TenantAllowedOrigin` table is empty) now DENIES every browser origin — logged as `origin_registry_unavailable`, distinct from an ordinary per-origin `origin_registry_miss` — with no fallback of any kind. That is the safe direction, and it is now a hard dependency rather than a soft, mis-deployed one.
 - **#6 — `http://localhost:5173` stays in the production seed.** The owner named it explicitly as a day-1 required origin. W4-R is right that it is a production allow-list entry with no production purpose; removing it is the owner's call to make, not the reviewer's to impose.
 - **Migrations have only been applied via `psql`.** This dev database is `db push`-managed (68 prior migrations absent from `_prisma_migrations`), so `migrate dev` demanded a destructive reset. Both migration folders are hand-authored for CI/prod `migrate deploy` and must get a clean-database `migrate deploy` run before shipping.
 - **D-8's revert changes an already-applied migration.** Anyone who ran `db:migrate` since `7703e40f` will hit a checksum mismatch and need `prisma migrate resolve`.
@@ -545,6 +673,8 @@ The lane tiering earned its keep here. Every lane's own suite was green when W4-
 
 | Date | Change |
 |---|---|
+| 2026-08-07 | **Lane W5-C correction — WS handshake realigned to fail-CLOSED (reverses the "deliberate divergence" in the entry below).** Coordinator review flagged that the same-day fail-open decision left the WORSE asymmetry standing: browsers are exempt from CORS on the WS handshake (D-6) — the actual cross-site WebSocket hijacking surface — so making it the PERMISSIVE path on a registry outage was backwards. Verified before acting, not assumed: `SttWsGateway.handleConnection` requires a single-use `ticket` (`stream-ticket.service.ts`, 30s TTL, GET+DEL from Redis), and the ONLY way a browser client obtains or refreshes one is a prior HTTP round trip to THIS gateway — `POST .../stream/session` (`transcription-job.controller.ts:381`) or `POST .../stream/session/:id/refresh-ticket` (`:538`) — both ordinary `@Authorize()`-gated Nest HTTP routes behind the SAME CORS gate that now denies during a registry outage; confirmed `issueTicket` has exactly these two callers plus `auth.controller.ts`'s `/auth/stream-ticket`, and the SDK's reconnect path (`SttWebSocketClient.attemptReconnect` → `StreamingSessionManager.refreshTicket` → `apiClient.post`) always calls the HTTP endpoint fresh rather than reusing a ticket. So during a registry outage no legitimate browser client can reach the WS handshake at all — it never got past the HTTP ticket call — meaning the earlier fail-open reasoning ("don't sever a live session") bought nothing operationally while leaving the CSWSH surface open. `isOriginAllowed` in `stt-ws.gateway.ts` now DENIES on absent/empty/throwing registry, reusing the exact `origin_registry_unavailable` / `origin_registry_miss` log-reason pair from `cors.config.ts` (added a `reason` field to the WS warn logs to match). The no-`Origin` allowance (non-browser callers) is untouched. TDD: reverted-to-fail-open assertions in `stt-ws.gateway.origin.task610.test.ts` were run FIRST against the new fail-closed code and failed red (3 failures, `client.close` unexpectedly called with `[4401, "Authentication failed"]`), then the tests were rewritten to assert fail-closed + the `reason` fields and re-run green (12/12). Evidence: `npx tsc --noEmit -p apps/api/tsconfig.json` clean; `npx vitest run apps/api/src/__tests__ apps/api/src/modules/streaming apps/api/src/modules/platform-knobs` — 573/573 pass; `pnpm --filter @arcaai/api lint` — no new issues in touched files. |
+| 2026-08-07 | **Lane W5-C — `CORS_ALLOWED_ORIGINS` removed entirely (§4A.1).** `isBootstrapAllowed` deleted from `cors.config.ts`; `isOriginAllowed` now DENIES on a `null`-answering registry (unavailable/not-loaded/broken) under a new, distinct log reason `origin_registry_unavailable`, kept separate from the ordinary per-origin `origin_registry_miss` so an operator can tell "the registry is down" from "this origin isn't registered" in one grep. `PlatformKnobsBinder`'s `size() > 0 ? registry : null` collapse is KEPT (not removed) — post-§4A.1 it no longer changes the DENY outcome, only which of the two log reasons fires, and that diagnostic split is worth keeping. `SttWsGateway` — removed the `isBootstrapAllowed` import/wrapper; its `size() === 0` branch now behaves exactly like its (unchanged) absent/throwing-registry branches: ~~ALLOW with a loud log. This is a deliberate, documented DIVERGENCE from the HTTP path's new fail-closed posture — the WS check is CSWSH mitigation on an already-authenticating live audio handshake, where a false negative severs a clinician mid-consultation, versus HTTP CORS gating whether a browser page loads at all; both are advisory/pre-auth, and tenant isolation is enforced downstream by ticket-scoped auth either way, so this was not weakened.~~ **REVERSED same day — see the entry above.** The divergence was wrong: it left the WORSE asymmetry standing (the CSWSH-exempt path became the permissive one), and the clinical-safety rationale did not survive checking how a WS connection is actually obtained (a prior HTTP ticket call, gated by the same now-fail-closed CORS check). `corsAllowedOrigins` removed outright: the `PLATFORM_KNOB_SETTINGS` descriptor, the `11a-platform-knob-settings.ts` seed entry, and the `fail-mode.governance.test.ts` env-name mapping (its registry-membership test would otherwise fail on the deleted key). `turbo.json#globalEnv`, `.env.sample`, `apps/api/.env.sample`, and `env-surface.generated.md` regenerated via `pnpm env:sync`. `main.ts`'s "CORS configuration" boot log no longer prints a bootstrap origin list (there is none); it now reports `unavailableRegistryBehavior: 'deny_all'`. Stale `FR-6`/`CORS_ALLOWED_ORIGINS` comments updated (not just deleted) in `platform-knobs.binder.ts`, `platform-knobs.module.ts`, `app.module.ts`, `origin-tenant-binding.guard.ts`, `apps/api/docs/04-deployment-guide.md`, and the two other test files touching the old fallback (`cors.config.test.ts`, `stt-ws.gateway.origin.task610.test.ts`, `platform-knobs.binder.task610.test.ts`) — rewritten to assert the new fail-closed/fail-open behaviors instead of the retired env var. §5.1 finding #2 and §5.3's matching entry marked SUPERSEDED (nothing left to deploy). Not a migration: existing inert `GlobalSetting` rows for the old `corsAllowedOrigins` key are left in place, harmless — cleanup item, not a code change. |
 | 2026-08-04 | Ticket created. Reviewed commit `7703e40f`; recorded D-1…D-8. Owner decisions: global-admin-only governance; production `https://` catch-all closed in this ticket. Plan drafted, pending approval. |
 | 2026-08-04 | §4.2 wave tables gained per-lane model tier + effort; Wave 4 split into Integrator (W4-I) and an independent adversarial reviewer (W4-R). Added §4.9 tier policy: assignment by complexity × blast radius, reviewer-never-cheaper-than-author, escalate-on-second-failure, escalate-on-ambiguity-not-difficulty. |
 | 2026-08-04 | Added §4 Parallel Execution Plan — frozen cross-lane contracts, 5 waves / 12 lanes, single-owner file map for the shared-file conflict surface, per-lane DoD, worktree/merge discipline, and the seed-before-close sequencing guard. |

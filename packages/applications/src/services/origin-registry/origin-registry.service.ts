@@ -6,6 +6,23 @@
 // callback (pre-auth, browser-facing/advisory) and `OriginTenantBindingGuard`
 // (post-auth, the real isolation control, FR-4) both read — see the diagram
 // in `IOriginRegistry.ts`.
+//
+// §4A.2 EXTENSION (lane W5-B) — wildcard host patterns. A stored row is a
+// PATTERN iff its `origin` text contains `*` (`isOriginPattern`,
+// `origin-pattern.ts`, lane W5-A — frozen grammar/match rules, not
+// re-designed here). The index therefore has two tiers, consulted in order:
+//
+//   1. The exact `Map<origin, ownerTenantId>` (unchanged, O(1)).
+//   2. A `patterns` list, sorted MOST-specific first (`patternSpecificity`),
+//      walked linearly on an exact miss and returning the FIRST match.
+//
+// This ordering IS the precedence contract (§4A.2): exact beats every
+// pattern (tier 1 wins outright); among patterns, the longest/most-specific
+// suffix wins because it sorts first; the `*` allow-all token carries the
+// lowest possible specificity, so it is only ever reached once nothing more
+// specific matched. Getting this backwards — `*` outranking
+// `https://*.bcmch.org:*` — would resolve a tenant-owned origin to the
+// Global tenant and make `OriginTenantBindingGuard` 404 legitimate traffic.
 
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -14,6 +31,19 @@ import { ClsService } from 'nestjs-cls';
 import { ResourceStatusType, TenantAllowedOriginEntity, TenantAllowedOriginRepository } from '@arcaai/domains';
 import { IOriginRegistry } from './IOriginRegistry';
 import { normalizeOrigin } from './origin-normalizer';
+import { ALLOW_ALL_ORIGIN_PATTERN, isOriginPattern, matchesOriginPattern, patternSpecificity } from './origin-pattern';
+
+/** One resolved entry in the sorted pattern tier — see `patterns` below. */
+interface PatternIndexEntry {
+  readonly pattern: string;
+  readonly tenantId: string;
+}
+
+/** Rebuilt index halves handed back by `buildIndex()` — see `refresh()`. */
+interface BuiltIndex {
+  readonly exact: Map<string, string>;
+  readonly patterns: PatternIndexEntry[];
+}
 
 @Injectable()
 export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
@@ -26,6 +56,16 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    * index, and a failed refresh can simply decline to swap it in.
    */
   private index: Map<string, string> = new Map();
+
+  /**
+   * Pattern rows (§4A.2), sorted MOST-specific first by `patternSpecificity`
+   * descending, ties broken by earliest-created `id` (UUIDv7) ascending —
+   * the same tie-break `buildIndex()` already uses for a duplicate exact
+   * origin. Walked linearly, in order, on an exact-map miss; the first
+   * match wins. Always REPLACED wholesale alongside `index` — see the
+   * comment on that field above, which applies here identically.
+   */
+  private patterns: PatternIndexEntry[] = [];
 
   /**
    * Timestamp of the last SUCCESSFUL `refresh()` (set at the end of the
@@ -47,18 +87,38 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
     await this.refresh();
   }
 
+  /**
+   * Exact map first (O(1)); on a miss, walk `patterns` in its pre-sorted
+   * (most-specific-first) order and return the first match. This ordering
+   * IS the §4A.2 precedence contract — see the file-header comment.
+   */
   ownerOf(origin: string): string | null {
     const key = this.toLookupKey(origin);
-    return key === null ? null : (this.index.get(key) ?? null);
+    if (key === null) {
+      return null;
+    }
+
+    const exactOwner = this.index.get(key);
+    if (exactOwner !== undefined) {
+      return exactOwner;
+    }
+
+    for (const entry of this.patterns) {
+      if (matchesOriginPattern(entry.pattern, key)) {
+        return entry.tenantId;
+      }
+    }
+
+    return null;
   }
 
   has(origin: string): boolean {
-    const key = this.toLookupKey(origin);
-    return key === null ? false : this.index.has(key);
+    return this.ownerOf(origin) !== null;
   }
 
+  /** Exact rows plus pattern rows — the total count of registered origins. */
   size(): number {
-    return this.index.size;
+    return this.index.size + this.patterns.length;
   }
 
   /**
@@ -270,9 +330,16 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
 
     try {
       const newIndex = this.buildIndex(rows);
-      this.index = newIndex;
+      this.index = newIndex.exact;
+      this.patterns = newIndex.patterns;
       this.lastSuccessfulRefreshAt = new Date();
-      this.logger.log({ message: 'Origin registry refreshed', size: newIndex.size });
+      this.logger.log({
+        message: 'Origin registry refreshed',
+        size: newIndex.exact.size + newIndex.patterns.length,
+        exactCount: newIndex.exact.size,
+        patternCount: newIndex.patterns.length,
+      });
+      this.warnIfAllowAllPresent(newIndex.patterns);
     } catch (error) {
       this.logger.error({
         message: 'Failed to build the origin registry index from loaded rows — keeping the previous index',
@@ -310,16 +377,29 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
    *   regardless of query/array order, and every conflict is logged loudly
    *   with both tenant ids so it surfaces as an operational alert, not a
    *   silent access decision.
+   * - §4A.2: a row whose `origin` text contains `*` (`isOriginPattern`) is
+   *   split into the `patterns` tier instead of the exact `Map`, then
+   *   sorted MOST-specific first (`patternSpecificity` descending), ties
+   *   broken by the SAME earliest-id-wins rule as the exact map above. That
+   *   sort order is the precedence contract `ownerOf()` relies on — see the
+   *   file-header comment.
    */
-  private buildIndex(rows: readonly TenantAllowedOriginEntity[]): Map<string, string> {
+  private buildIndex(rows: readonly TenantAllowedOriginEntity[]): BuiltIndex {
     const live = rows.filter((row) => row.resourceStatus !== ResourceStatusType.DELETED);
     const sorted = [...live].sort((a, b) => a.id.localeCompare(b.id));
 
-    const newIndex = new Map<string, string>();
+    const exact = new Map<string, string>();
+    const patternRows: Array<PatternIndexEntry & { id: string }> = [];
+
     for (const row of sorted) {
       const key = row.origin.toLowerCase();
-      const existingOwner = newIndex.get(key);
 
+      if (isOriginPattern(key)) {
+        patternRows.push({ id: row.id, pattern: key, tenantId: row.tenantId });
+        continue;
+      }
+
+      const existingOwner = exact.get(key);
       if (existingOwner !== undefined) {
         if (existingOwner !== row.tenantId) {
           this.logger.error({
@@ -334,10 +414,39 @@ export class OriginRegistryService implements IOriginRegistry, OnModuleInit {
         continue;
       }
 
-      newIndex.set(key, row.tenantId);
+      exact.set(key, row.tenantId);
     }
 
-    return newIndex;
+    // Explicit two-key sort rather than leaning on `sorted`'s pre-existing
+    // id-ascending order + Array#sort stability: correct either way today,
+    // but this keeps the tie-break correct even if the loop above is ever
+    // reordered to build `patternRows` out of id order.
+    const patterns = patternRows
+      .sort((a, b) => patternSpecificity(b.pattern) - patternSpecificity(a.pattern) || a.id.localeCompare(b.id))
+      .map(({ pattern, tenantId }) => ({ pattern, tenantId }));
+
+    return { exact, patterns };
+  }
+
+  /**
+   * §4A.3 — an allow-all (`*`) row means every unmatched origin is admitted
+   * for its owning tenant. That is a legitimate, deliberate owner decision
+   * (frozen for the Global tenant), but an operator must never have to read
+   * the database to discover the platform is in that state — so this logs
+   * at `warn` on EVERY successful refresh, not just the first time the row
+   * appears, for exactly the same reason `refresh()`'s own success log runs
+   * unconditionally on every call rather than only on a change.
+   */
+  private warnIfAllowAllPresent(patterns: readonly PatternIndexEntry[]): void {
+    const allowAllEntry = patterns.find((entry) => entry.pattern === ALLOW_ALL_ORIGIN_PATTERN);
+    if (allowAllEntry === undefined) {
+      return;
+    }
+
+    this.logger.warn({
+      message: `Origin registry contains an allow-all ('*') row owned by tenant ${allowAllEntry.tenantId}; every unmatched origin is admitted for that tenant.`,
+      ownerTenantId: allowAllEntry.tenantId,
+    });
   }
 
   /**
