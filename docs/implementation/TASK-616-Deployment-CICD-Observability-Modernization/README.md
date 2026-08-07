@@ -234,7 +234,24 @@ The migration mechanism is correctly environment-aware. **The seed is not.** All
 | **DB-03** | **High** | 14 of 25 phases overwrite live configuration. `11-global-setting.ts:621-627` writes `value` in the `ALL_SETTINGS` loop while the `PLATFORM_SETTINGS` loop 40 lines below (`:661`) correctly omits it — the same file gets it right and wrong. `91-user.ts:1042` force-repoints the default STT pipeline on every sync | as cited |
 | **DB-04** | — | **Mitigating**: 9 phases are already correctly create-only (`11a`, `12`, `14`, `15`, `16`–`19`, `05c`). The codebase already knows the right pattern; it just isn't applied uniformly | as cited |
 
-Fix is `RUN_SEED=all\|safe\|none`, hard-throwing on `all` outside dev/test. **This is independent of everything else in this ticket and should not wait for it.**
+| **DB-05** | **Critical** | **The `SEED_DEMO_DATA` guard is unreachable.** `deployment/k8s/base/db-migrate.yaml:27-32` gives the Job only `DATABASE_URL` — **no `envFrom`** — so `NODE_ENV` is *absent* in the migrate container. `getNodeEnv()` (`src/env.ts:55-61`) falls back to `'development'`, so `shouldSeedApiKeys()` returns **true** and demo API keys carrying **raw secrets, ACTIVE and broadly scoped** are seeded. The same absence also sent **every** environment — production included — down the `db push` branch, which alters schema with no migration record | `db-migrate.yaml:27`, `src/env.ts:55`, `seed/02-apikey.ts:17` |
+
+Found 2026-08-07 while implementing the fix. DB-05 is the one that reframes the rest: the guard against demo credentials in production existed, was correct, and was defeated by the same missing variable that broke the migration mechanism.
+
+#### ✅ Fixed 2026-08-07 — commit `5b2e1b83`
+
+`RUN_SEED=all|safe|none`, **defaulting to `none`**, in `seed/seed-mode.ts`:
+
+- `seed()` resolves the mode **before** creating a client — `RUN_SEED` unset opens no connection and writes nothing.
+- `all` is **refused unless `NODE_ENV` is explicitly `development` or `test`**. An *absent* `NODE_ENV` is refused, never defaulted — that is DB-05 closed at the code layer, so the fix holds even while the Job still lacks `NODE_ENV`.
+- `safe` skips `02-apikey`, `08-dna-writing-style`, `09-consultation`, `10-audit-log` and `91-user`, leaving platform configuration only.
+- `migrate.sh` now always runs `migrate deploy`; the `db push` branch is gone.
+
+Evidence: 994/994 package tests pass, typecheck clean, both new guards mutation-tested (each fails when its branch is removed), and verified end-to-end through the real `dist` entrypoint.
+
+⚠️ **Consequence to action**: deployed environments now seed **nothing** until `RUN_SEED` is set. That is deliberate. A dev overlay wanting fixtures must set `RUN_SEED=all` **and** `NODE_ENV=development`; a production bootstrap wants `RUN_SEED=safe`. The `db-migrate` Job still needs `NODE_ENV` wired in (`envFrom` the `hope-config` ConfigMap) — tracked as the remaining half of DB-05.
+
+Note `safe` seeds **no users at all**, so a production bootstrap must provision its first admin rather than inherit a seeded credential. That is the correct posture, but it is a decision worth confirming before the first production sync.
 
 ---
 
@@ -530,6 +547,8 @@ Two capabilities I do not have, and one scope caveat.
 | **"All three environments production-ready"** | Achievable for the *manifests*; not for the *substrate*. Three namespaces on one single-node VM share a kernel, one disk (currently 89% full), one GPU pair, and one failure domain. `hope-v2-dev` and `hope-v2-staging` can be production-**grade** on this box; genuine production wants its own cluster. Phase 8 designs for both shapes so the choice stays open |
 
 ## 10. Change History
+
+- **2026-08-07 (seed gating — fixed)** — Closed §2.7's red defect: seeding is now **opt-in via `RUN_SEED`, defaulting to `none`** (`5b2e1b83`). Implementing it surfaced **DB-05**, which reframes the finding: `db-migrate.yaml` gives the Job only `DATABASE_URL` (no `envFrom`), so **`NODE_ENV` is absent in the migrate container**. `getNodeEnv()` falls back to `'development'` — which meant every environment including production took the **`db push`** branch, *and* `shouldSeedApiKeys()` returned true, seeding **demo API keys with raw secrets**. The guard against exactly that existed and was unreachable. The new gate therefore refuses `all` on an *absent* `NODE_ENV` rather than defaulting it, so it holds even before the Job is fixed. `migrate.sh` now always `migrate deploy`s. 994/994 tests, typecheck clean, both guards mutation-tested, verified end-to-end through the real `dist` entrypoint. Remaining: wire `NODE_ENV` + `RUN_SEED` into the Job; decide the production bootstrap admin (see §2.7).
 
 - **2026-08-07 (Track V phase 1 — deployed)** — Provisioned VMs 430/431/432 (`vault-1/2/3`, 1 vCPU / 2 GB / 38 GB) and 434 (`vault-seal`, 2 vCPU / 2 GB / 18 GB) from Alpine template 903, and deployed **Vault 1.21.2 as a 3-node Raft cluster with Transit auto-unseal**, TLS from a new internal CA, and file audit devices. **Auto-unseal verified against `qm reset` (a hard power cycle): the node returned unsealed and rejoined as a voter in ~20 s with no human interaction** — the exact failure mode §C1.4 rejected the runbook's manual Shamir design over. Record + caveats: [Appendix H](./vault-ha-deployment-2026-08.md). Two findings beyond the design: (a) the design would have shipped a defect — `disable_mlock = true` (correct for Raft) combined with the template's 2 GB swap partition would let Vault page decrypted secrets to disk, so **swap was disabled on all four VMs**; (b) **template 903 carries `redis-1`'s static IP `10.10.1.120`**, so all four clones booted onto the live `redis-01` address — corrected within ~2 min, `redis-01` verified unaffected, but the template is a live trap for the next person who clones it. Track V phase 2 (k8s auth, policies, injector, secret migration, snapshots) is unblocked and unstarted.
 - **2026-08-07 (later)** — Component design pass for the owner's expanded scope. Added [Appendix C](./component-designs.md) (Vault HA, harness worker, Rancher), [`component-design-qdrant.md`](./component-design-qdrant.md), and [`component-design-aws-portability.md`](./component-design-aws-portability.md). **All eight open questions resolved** (§7) plus seven new ones raised. Added Phase 7 (Vault/Qdrant/harness worker) and Phase 8 (staging, production, AWS-portable component structure); sub-ticket split extended to TASK-626. Key discoveries: k3s runs on **complete stock defaults** with no secrets encryption and a SQLite datastore; GitLab is **Community Edition** (digest-pinning becomes the sole tag-mutation defense); the live ConfigMap carries **7 untracked keys**, so enabling Argo `selfHeal` today would break harness; `infrastructure/single-deployment/vault/` is a **fully built, never-deployed** target architecture, which sharply lowers the cost of Phase 7a.
