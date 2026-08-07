@@ -11,13 +11,13 @@ disagree with those declarations.
 
 | Metric | Value |
 |---|---:|
-| Declared keys (distinct) | 142 |
+| Declared keys (distinct) | 141 |
 | … of which required (`failMode: closed`) | 31 |
 | … of which secret | 30 |
 | … tier `env` | 106 |
-| … tier `global-kv` | 10 |
+| … tier `global-kv` | 9 |
 | … tier `vault-kv` | 26 |
-| `turbo.json#globalEnv` entries | 155 |
+| `turbo.json#globalEnv` entries | 154 |
 
 ## Variables
 
@@ -37,7 +37,6 @@ disagree with those declarations.
 | `AZURE_FOUNDRY_API_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Azure AI Foundry credential used by the STT Foundry model loader. |
 | `AZURE_STORAGE_ACCOUNT_KEY` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Azure Storage shared account key — the alternative to `AZURE_STORAGE_CONNECTION_STRING` when the endpoint is composed from `accountName` + `endpointSuffix` on the storage config row. |
 | `AZURE_STORAGE_CONNECTION_STRING` | `vault-kv` | yes | `CHANGE_ME` | `apps/api` | Full Azure Storage connection string (carries the account key) for the AZURE storage provider. Read by `BlobStorageProviderFactory.buildAzureProvider` AFTER the SYSTEM row’s `credentialsRef`, i.e. it is the env/kv fallback of the same two-step order as `S3_ACCESS_KEY`. Preferred over `AZURE_STORAGE_ACCOUNT_KEY`. |
-| `CORS_ALLOWED_ORIGINS` | `global-kv` | no | — | `apps/api` | DEMOTED BY TASK-610 — this key is no longer the CORS allow-list. Browser origins now live in the `TenantAllowedOrigin` table, indexed per request by `OriginRegistryService` and owned by a tenant, because a flat platform string cannot express WHICH TENANT an origin belongs to — and that ownership is the isolation control (`OriginTenantBindingGuard`). `isOriginAllowed` no longer reads this setting at all. The `CORS_ALLOWED_ORIGINS` ENV VAR survives as the bootstrap fallback for the case the fallback exists for — the database being unreachable — which is exactly why the fallback is env-only and does NOT consult this DB row: a DB-tier value is worthless in a DB outage. Rows written here are inert; migrate them into `TenantAllowedOrigin` and manage the list through `admin/allowed-origins`. |
 | `DATABASE_URL` | `env` | yes | — | `apps/api` | Primary PostgreSQL connection string (PgBouncer transaction mode in production). Cannot come from the database or from Vault — this IS the credential that reaches them. No fallback exists: absence is a hard boot error. |
 | `DEBUG` | `env` | no | `false` | `apps/api` | Enables verbose config/service debug logging. |
 | `DIRECT_URL` | `env` | no | — | `apps/api` | Migrations-only, un-pooled PostgreSQL endpoint (`packages/database/src/migration-url.ts`). Falls back to `DATABASE_URL` when unset, which is correct in dev but wrong behind a transaction-mode pooler — production must set it explicitly. |
