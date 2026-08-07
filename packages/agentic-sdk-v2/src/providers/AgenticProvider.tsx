@@ -28,7 +28,7 @@ import { PersonalizationManager } from '../core/PersonalizationManager';
 import { ModelRegistry } from '../core/ModelRegistry';
 import { ConfigManager } from '../core/ConfigManager';
 import type { AppConfig, DeepPartial } from '../core/ConfigSchema';
-import { createSDKLogger, type SDKLogger, type ISDKLogger } from '../core/logger';
+import { createSDKLogger, installGlobalCapture, type SDKLogger, type ISDKLogger } from '../core/logger';
 import { useStore } from 'zustand';
 import { createAgenticStore, AgenticStoreContext, type AgenticStoreApi } from '../store';
 import { DEFAULT_AUDIO_CONFIG, DEFAULT_PERSONALIZATION_CONFIG } from '../types';
@@ -280,6 +280,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         prettyPrint: cfg.debug,
       },
       highlight: cfg.logging?.highlight,
+      clarity: cfg.logging?.clarity,
       loki: cfg.logging?.loki,
       otel: cfg.logging?.otel,
       redactFields: cfg.logging?.redactFields ?? ['apiKey', 'password', 'token', 'secret'],
@@ -294,7 +295,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     // consumer opts out via `config.logging.console.enabled = false`) whose
     // `initialize()` is a guaranteed no-op (see console.transport.ts), so it
     // can never fail and is functional regardless of `logger.initialize()`.
-    // Only the OPTIONAL remote transports (highlight / loki / otel) perform
+    // Only the OPTIONAL remote transports (highlight / clarity / loki / otel) perform
     // async init that can reject (network / SDK-load failures); this `.catch`
     // contains any such rejection so it can never throw past the provider
     // effect, while the console transport keeps logging. At runtime,
@@ -305,6 +306,18 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
     // serves as the base sink.
     logger.initialize().catch((err) => {
       console.error('[AgenticProvider] Logger initialization failed:', err);
+    });
+
+    // Bridge browser-wide telemetry (console.*, uncaught errors, unhandled
+    // rejections) into the transport pipeline. Installed synchronously so
+    // failures during the rest of provider setup are already captured.
+    // `console` capture is opt-in; global error capture is on by default.
+    const uninstallGlobalCapture = installGlobalCapture(logger, {
+      console: cfg.logging?.capture?.console,
+      consoleMethods: cfg.logging?.capture?.consoleMethods,
+      globalErrors: cfg.logging?.capture?.globalErrors,
+      maxArgLength: cfg.logging?.capture?.maxArgLength,
+      maxEventsPerMinute: cfg.logging?.capture?.maxEventsPerMinute,
     });
 
     const providerLogger = logger.child('AgenticProvider');
@@ -666,6 +679,7 @@ export function AgenticProvider({ config, children }: AgenticProviderProps) {
         operation: 'shutdown',
         component: 'AgenticProvider',
       });
+      uninstallGlobalCapture();
       unsubscribe();
       unsubConfig();
       personalizationManager.destroy();

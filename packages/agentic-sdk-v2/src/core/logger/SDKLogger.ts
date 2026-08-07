@@ -33,6 +33,7 @@ import type {
 import { LOG_LEVEL_VALUES } from './types';
 import { ConsoleTransport } from './transports/console.transport';
 import { HighlightTransport } from './transports/highlight.transport';
+import { ClarityTransport } from './transports/clarity.transport';
 import { LokiTransport } from './transports/loki.transport';
 import { OTelTransport } from './transports/otel.transport';
 import { generateId } from './utils';
@@ -177,6 +178,23 @@ export class SDKLogger implements ISDKLogger {
           ...this.config.highlight,
           serviceName: this.config.highlight.serviceName || this.config.serviceName,
           environment: this.config.highlight.environment || this.config.environment,
+        }),
+      );
+    }
+
+    // Microsoft Clarity transport.
+    //
+    // Same fail-closed treatment as Highlight above, and for a stronger
+    // reason: Clarity is a session-replay product recording the DOM, and
+    // Microsoft does not offer a HIPAA BAA for it. Only construct the
+    // transport when the activation gate permits (not production, explicit
+    // opt-in, project ID present) so no PHI-bearing entry can ever reach it.
+    if (this.config.clarity && ClarityTransport.isAllowedToActivate(this.config.clarity)) {
+      this.transports.push(
+        new ClarityTransport({
+          ...this.config.clarity,
+          serviceName: this.config.clarity.serviceName || this.config.serviceName,
+          environment: this.config.clarity.environment || this.config.environment,
         }),
       );
     }

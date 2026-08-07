@@ -88,12 +88,16 @@
   },
   "peerDependencies": {
     "@arcaai/med-ner": "workspace:*",
+    "@microsoft/clarity": "^1.0.0",
     "highlight.run": "^9.0.0",
     "react": "^18.3.0 || ^19.0.4",
     "react-dom": "^18.3.0 || ^19.0.4"
   },
   "peerDependenciesMeta": {
     "@arcaai/med-ner": {
+      "optional": true
+    },
+    "@microsoft/clarity": {
       "optional": true
     },
     "highlight.run": {
@@ -104,6 +108,7 @@
     "@arcaai/config-eslint": "workspace:*",
     "@arcaai/config-ts": "workspace:*",
     "@arcaai/med-ner": "workspace:*",
+    "@microsoft/clarity": "^1.0.2",
     "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

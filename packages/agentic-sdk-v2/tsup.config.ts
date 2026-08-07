@@ -31,6 +31,7 @@ import { defineConfig, type Options } from 'tsup';
  * Optional (peer deps - not bundled):
  * - @arcaai/med-ner: Medical NER (~300MB models)
  * - highlight.run: Observability integration
+ * - @microsoft/clarity: Behavioural monitoring (non-production only — see ClarityTransport)
  *
  * Security Considerations:
  * - This SDK is a CLIENT-SIDE library and does NOT use React Server Components (RSC)
@@ -66,6 +67,7 @@ const externalDependencies = [
   'react-dom',
   '@arcaai/med-ner', // Optional - heavy NER models, consumer opts-in
   'highlight.run', // Optional - observability integration
+  '@microsoft/clarity', // Optional - behavioural monitoring integration
   // Node.js-only packages that shouldn't be in browser bundles
   'onnxruntime-node',
   'sharp',
@@ -217,8 +219,9 @@ export default defineConfig([
   //     `require("onnxruntime-web")` esbuild turns into a `__require()` stub —
   //     no bare import is emitted, so the module still evaluates. The stub throws
   //     only if VAD is actually instantiated, which this suite never does.
-  //   - `@arcaai/med-ner`, `highlight.run`, `onnxruntime-node`, `sharp`: reached
-  //     only through `import()` on opt-in code paths this suite never enters.
+  //   - `@arcaai/med-ner`, `highlight.run`, `@microsoft/clarity`,
+  //     `onnxruntime-node`, `sharp`: reached only through `import()` on opt-in
+  //     code paths this suite never enters.
   //
   // `@arcaai/stt`/`@arcaai/noise-filter` ARE inlined here even though the published
   // builds keep them external for the `import.meta.url` hazard documented above:
