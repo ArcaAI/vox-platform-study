@@ -18,7 +18,7 @@
 #   release-sdk          — SDK publishing: @arcaai/vox + deps → GitLab Package Registry
 #   release-playground   — ui-playground release: build + push Docker image
 #   maintenance/*        — maintenance branches: validate + test + scan
-#   prod-* / production-* — release-line branches: validate + test only, NO
+#   prod-*               — release-line branch: validate + test only, NO
 #                          builds/deploys (TASK-616 §F11). Production is
 #                          reached by pushing a protected `vX.Y.Z` tag, which
 #                          promotes the digest a dev-*/staging-* pipeline
@@ -76,26 +76,22 @@ workflow:
     - if: $CI_COMMIT_BRANCH =~ /^staging-/
       variables:
         PIPELINE_TYPE: "staging"
-    # TASK-616 §F11/§F12 — the owner's branch model is dev-*/staging-*/prod-*/
-    # production-*, and `^prod-` does NOT match `production-2.1`: before this
-    # pair of rules, a production-* push silently fell through to the generic
-    # `PIPELINE_TYPE: "feature"` catch-all below with no test-suite guarantee
-    # (.rules-always) and no visibility. Both patterns are now recognized
-    # explicitly. Neither builds (build.yml `.build-common-rules` excludes
-    # both) or deploys — production is reached only via a protected `vX.Y.Z`
-    # tag (PIPELINE_TYPE: "tag_release", promote-prod in deploy.yml, §F11).
+    # TASK-616 §F11/§F12 — branch model is dev-* / staging-* / prod-*.
     #
-    # TODO(owner): whether `prod-*` and `production-*` are meant to be the
-    # same release line under two spellings, or two genuinely different
-    # environments (e.g. a true-prod vs. a pre-prod/canary line), is open —
-    # confirm with the owner before either branch pattern is given any
-    # behavior beyond "runs tests, builds/deploys nothing."
+    # RESOLVED 2026-08-07 (owner): `prod-*` is the production release line.
+    # `production-*` is RETIRED and deliberately NOT matched here — it falls
+    # through to the `feature` catch-all, which is now the correct outcome.
+    # Do not re-add it without an explicit decision; the two spellings are not
+    # interchangeable (`^prod-` does not match `production-2.1`), and having
+    # both recognized was the ambiguity this resolution removes.
+    #
+    # prod-* runs validate + test only. It does NOT build (build.yml's
+    # `.build-common-rules` excludes it) and does NOT deploy. Production is
+    # reached solely by pushing a protected `vX.Y.Z` tag, which promotes the
+    # digest an earlier dev-*/staging-* pipeline already built and scanned.
     - if: $CI_COMMIT_BRANCH =~ /^prod-/
       variables:
         PIPELINE_TYPE: "prod"
-    - if: $CI_COMMIT_BRANCH =~ /^production-/
-      variables:
-        PIPELINE_TYPE: "production"
     - if: $CI_COMMIT_BRANCH == "release-sdk"
       variables:
         PIPELINE_TYPE: "release_sdk"

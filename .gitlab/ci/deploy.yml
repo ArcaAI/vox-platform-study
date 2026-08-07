@@ -87,8 +87,8 @@ promote-prod:
     DEPLOY_ENV: "prod"
     OVERLAY_PATH: "deployment/k8s/overlays/prod"
     # §F10 — prod-scoped Vault role (ref_type TAG, ref "v*"). Production is
-    # triggered by a protected vX.Y.Z tag, never a branch — see §F11 and the
-    # TODO on the prod-*/production-* workflow rules in .gitlab-ci.yml.
+    # triggered by a protected vX.Y.Z tag, never a branch — see §F11.
+    # (`production-*` retired 2026-08-07; `prod-*` is the release line.)
     VAULT_AUTH_ROLE: "hope-ci-deploy-prod"
   # §F11 item 3 — tag_release pipelines build nothing (no PIPELINE_TYPE ==
   # "dev"/"staging"/"cicd" match in build.yml's .build-common-rules for a

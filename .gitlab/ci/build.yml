@@ -27,7 +27,7 @@
 # in deploy.yml and PIPELINE_TYPE == "tag_release").
 .build-common-rules:
   rules:
-    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "prod" || $PIPELINE_TYPE == "production"
+    - if: $PIPELINE_TYPE == "merge_request" || $PIPELINE_TYPE == "release_sdk" || $PIPELINE_TYPE == "release_playground" || $PIPELINE_TYPE == "main" || $PIPELINE_TYPE == "feature" || $PIPELINE_TYPE == "prod"
       when: never
     - if: $PIPELINE_TYPE == "dev" || $PIPELINE_TYPE == "staging" || $PIPELINE_TYPE == "cicd"
 

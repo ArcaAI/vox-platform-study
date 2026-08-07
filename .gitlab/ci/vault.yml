@@ -111,7 +111,7 @@
 #       "token_ttl": "10m", "token_max_ttl": "20m", "token_num_uses": 20 }
 #     EOF
 #
-#     # prod is TAG-triggered, not branch-triggered (§F11) — prod-*/production-*
+#     # prod is TAG-triggered, not branch-triggered (§F11) — prod-*
 #     # branches build/deploy nothing (build.yml, .gitlab-ci.yml), so there is
 #     # deliberately no hope-ci-deploy-prod role bound to a `prod-*` branch ref.
 #     vault policy write hope-ci-deploy-prod infrastructure/docker/configs/vault/policies/hope-ci-deploy.hcl
