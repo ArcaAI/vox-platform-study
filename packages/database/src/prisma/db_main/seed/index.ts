@@ -31,6 +31,7 @@ import { seedAiRuntimeProfile } from './18-ai-runtime-profile';
 import { seedTenantTtsConfig } from './19-tenant-tts-config';
 import { seedAiPriceBook } from './20-ai-price-book';
 import { seedUser } from './91-user';
+import { resolveSeedMode, isPhaseEnabled } from './seed-mode';
 
 /**
  * Database Seed Script
@@ -73,16 +74,31 @@ import { seedUser } from './91-user';
  *  12. Audit Log
  */
 export const seed = async () => {
+  // Seeding is OPT-IN via RUN_SEED and defaults to "none" (TASK-616). This
+  // resolves BEFORE a client is created, so `RUN_SEED` unset means the seed
+  // opens no connection and writes nothing. `resolveSeedMode` throws rather
+  // than guessing — see `seed-mode.ts` for why permission is never inferred
+  // from an absent NODE_ENV.
+  const mode = resolveSeedMode();
+
+  if (mode === 'none') {
+    console.log(
+      'Skipping database seeding: RUN_SEED is unset or "none". ' +
+        'Set RUN_SEED="safe" for platform configuration, or RUN_SEED="all" in development/test.',
+    );
+    return;
+  }
+
   const client = getPlatformAdminPrismaClient_Unscoped();
 
-  // Single gate for demo/sensitive fixtures. Demo API
-  // keys embed raw secrets + ACTIVE, broadly-scoped keys, so they must never
-  // be seeded outside local dev/test. `shouldSeedApiKeys` (02-apikey) is the
-  // single source of truth, reused here and by that step's own guard.
+  // Demo API keys embed raw secrets + ACTIVE, broadly-scoped keys. In `safe`
+  // mode the phase is skipped outright; `shouldSeedApiKeys` (02-apikey) remains
+  // the second, independent guard inside that step.
   const seedEnv = getNodeEnv();
-  const SEED_DEMO_DATA = shouldSeedApiKeys(seedEnv);
+  const SEED_DEMO_DATA = isPhaseEnabled('02-apikey', mode) && shouldSeedApiKeys(seedEnv);
 
   try {
+    console.log(`Seed mode: ${mode}\n`);
     console.log('Starting database seeding...\n');
 
     // Phase 1: Independent entities
@@ -161,8 +177,13 @@ export const seed = async () => {
     console.log('');
 
     // Phase 4: Depends on Phase 3
-    await seedUser(client);
-    console.log('');
+    // Demo accounts (*@example.com) with a documented default password. In
+    //  mode NO users are seeded — a production bootstrap must provision
+    // its own first admin rather than inherit a known credential.
+    if (isPhaseEnabled('91-user', mode)) {
+      await seedUser(client);
+      console.log('');
+    }
     // API-key fixtures embed raw demo secrets; only seed in dev/test.
     if (SEED_DEMO_DATA) {
       await seedApiKey(client);
@@ -198,15 +219,23 @@ export const seed = async () => {
     await seedAiPriceBook(client);
     console.log('');
 
-    // Phase 5: Depends on Phase 4
-    await seedDnaWritingStyle(client);
-    console.log('');
-    await seedConsultation(client);
-    console.log('');
+    // Phase 5: Depends on Phase 4 — synthetic clinician writing samples and
+    // synthetic, Vault-encrypted PHI. Never outside development/test.
+    if (isPhaseEnabled('08-dna-writing-style', mode)) {
+      await seedDnaWritingStyle(client);
+      console.log('');
+    }
+    if (isPhaseEnabled('09-consultation', mode)) {
+      await seedConsultation(client);
+      console.log('');
+    }
 
-    // Phase 6: Depends on everything
-    await seedAuditLog(client);
-    console.log('');
+    // Phase 6: Depends on everything. Fabricated rows in the HIPAA audit trail,
+    // written with a real `update:` payload — every run overwrote them.
+    if (isPhaseEnabled('10-audit-log', mode)) {
+      await seedAuditLog(client);
+      console.log('');
+    }
 
     console.log('Database seeding completed successfully!');
   } catch (error) {
