@@ -477,6 +477,48 @@ returning 429: continuing risked tripping failed-login lockouts on seeded accoun
 `fetch`, and checks 1–2 prove the shapes are self-consistent and the routing/auth wiring is real.
 They do NOT prove the summarization request/response bodies match what SMR actually returns.
 
+### Monorepo integration + release wiring
+
+**Version** — `2.0.4`, in lockstep with the rest of the SDK family (`vox`, `room`, `stt`, `vad`,
+`noise-filter`, `med-ner`, `pipeline` are all 2.0.4). `SDK_VERSION` in `core/transport.ts` was
+bumped with it and the drift test proves they agree.
+
+**Already covered with no change needed** (verified, not assumed):
+
+| Script | Mechanism |
+|---|---|
+| `pnpm test:unit` | Root vitest `workspace` project, `include: **/*.test.ts` — discovers `packages/vox-node/**` |
+| `pnpm test` / `build` / `lint` / `typecheck` | `turbo run <task>` is repo-wide; `--dry-run` confirms a vox-node task node for all four |
+| `build:packages` | `--filter=./packages/*` |
+
+**A test that passed package-scoped and FAILED repo-wide.** `sdk-version.test.ts` resolved
+`package.json` from `process.cwd()`, which is the package root under
+`pnpm --filter @arcaai/vox-node test` but the MONOREPO root under `pnpm test:unit` — so it read
+the root manifest. Its own "guard the guard" name assertion caught it rather than silently
+comparing the wrong file. Now resolves both roots. This is exactly the class of breakage the
+repo-wide check exists to find.
+
+**Added:**
+- Root scripts `sdk-node:{dev,build,test,test:watch,test:cov,lint,lint:fix,typecheck,format,format:check,check:exports,clean}`, mirroring the `sdk:*` family (`<target>:<action>` taxonomy).
+- `.gitlab/ci/test.yml` — `test-sdk` filter list (explicit; would otherwise never run these 169 tests in CI).
+- `.gitlab/ci/validate.yml` — typecheck gate (the list is scoped, not repo-wide, because `@arcaai/vox` and `@arcaai/applications` carry backlogs; vox-node is green so it belongs in it).
+- `.gitlab/ci/publish.yml` — `publish-sdk` build list.
+- `.claude/rules/08-vox-sdk.md` — a section drawing the browser-vs-server line explicitly.
+
+**Release artifact verified:** `npm pack` → `arcaai-vox-node-2.0.4.tgz`, 41 files / 151 KB;
+`attw` 🟢 on node10 / node16-CJS / node16-ESM / bundler; `publint` clean.
+
+> ### ⚠️ The `publish-sdk` job cannot run today — for ANY package
+> It calls `pnpm changeset version` and `pnpm changeset publish`, but **changesets is not
+> installed**: no `@changesets/cli` in any `package.json`, no `.changeset/` directory, no
+> `changeset` binary. The block at the top of `publish.yml` is a setup *guide* that was never
+> executed. This is pre-existing and blocks the whole SDK family, not just this package —
+> `@arcaai/vox` 2.0.4 cannot be released by that job either in its current state.
+>
+> Also note every SDK package pins `publishConfig.registry` to `npm.pkg.github.com`, which
+> **overrides** the GitLab registry the job writes into `.npmrc`. Whichever registry is intended,
+> those two disagree today. Both need an owner decision before a real release.
+
 ### Outstanding before this can be called done
 
 1. **Live smoke checks 3–5** (see above) — needs a working API key, i.e. `pnpm db:seed` against the
