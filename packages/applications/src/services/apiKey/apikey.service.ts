@@ -856,6 +856,14 @@ export class ApiKeyService extends BaseService implements IApiKeyService {
       if (requiredScope.startsWith(`${scope}:`)) {
         return true;
       }
+      // Category wildcard: "consultation:*" grants "consultation:report:write".
+      // API_KEY_SCOPE_REGISTRY advertises these as assignable "full access" scopes and
+      // isValidScope accepts them, so keys carrying them are issued through the console.
+      // Trailing "*" only — the prefix retains its delimiter so "consultation:*" cannot
+      // match "consultationother:read".
+      if (scope.endsWith(':*') && requiredScope.startsWith(scope.slice(0, -1))) {
+        return true;
+      }
       return false;
     });
   }

@@ -16,6 +16,7 @@ export {
   SetPermissionMode,
   Authorize,
   AuthorizeAny,
+  RequiredScopes,
   UserAbility,
   CanRead,
   CanList,

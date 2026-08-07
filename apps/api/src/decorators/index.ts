@@ -13,6 +13,7 @@ export {
   Authorize,
   AuthorizeAny,
   Public,
+  RequiredScopes,
   CanRead,
   CanList,
   CanCreate,

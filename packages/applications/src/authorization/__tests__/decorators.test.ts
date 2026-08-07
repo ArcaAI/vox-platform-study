@@ -11,6 +11,7 @@ import {
   SetPermissionMode,
   Authorize,
   AuthorizeAny,
+  RequiredScopes,
   CanRead,
   CanList,
   CanCreate,
@@ -21,6 +22,7 @@ import {
   CanAll,
 } from '../decorators';
 import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY } from '../authorization.guard';
+import { API_KEY_REQUIRED_SCOPES } from '../unified-auth.guard';
 
 const GUARDS_METADATA = '__guards__';
 
@@ -174,6 +176,46 @@ describe('Authorization Decorators', () => {
       // Like @Authorize(), @AuthorizeAny() is metadata-only.
       const guards = Reflect.getMetadata(GUARDS_METADATA, descriptor.value);
       expect(guards).toBeUndefined();
+    });
+  });
+
+  describe('RequiredScopes', () => {
+    it('should set API_KEY_REQUIRED_SCOPES metadata to the given scopes', () => {
+      const decorator = RequiredScopes('consultation:report:write');
+      const target = {};
+      const descriptor = { value: () => {} };
+
+      (decorator as any)(target, 'testMethod', descriptor);
+
+      const metadata = Reflect.getMetadata(API_KEY_REQUIRED_SCOPES, descriptor.value);
+      expect(metadata).toEqual(['consultation:report:write']);
+    });
+
+    it('should support multiple scopes (OR semantics enforced by the guard)', () => {
+      const decorator = RequiredScopes('consultation:report:read', 'consultation:report:write');
+      const target = {};
+      const descriptor = { value: () => {} };
+
+      (decorator as any)(target, 'testMethod', descriptor);
+
+      const metadata = Reflect.getMetadata(API_KEY_REQUIRED_SCOPES, descriptor.value);
+      expect(metadata).toEqual(['consultation:report:read', 'consultation:report:write']);
+    });
+
+    it('should accept a registry wildcard scope (e.g. "consultation:*") without throwing at decoration time', () => {
+      expect(() => RequiredScopes('consultation:*')).not.toThrow();
+    });
+
+    it('should accept the bare "*" superadmin wildcard scope without throwing', () => {
+      expect(() => RequiredScopes('*')).not.toThrow();
+    });
+
+    it('should throw at decoration time when a scope is not in API_KEY_SCOPE_REGISTRY (typo guard)', () => {
+      expect(() => RequiredScopes('consultation:report:wrote')).toThrow(/unknown API-key scope/i);
+    });
+
+    it('should name every unknown scope in the thrown error, not just the first', () => {
+      expect(() => RequiredScopes('bogus:one', 'consultation:report:write', 'bogus:two')).toThrow(/bogus:one.*bogus:two/s);
     });
   });
 
