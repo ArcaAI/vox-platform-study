@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/vad",
-  "version": "2.0.4",
+  "version": "2.0.7",
   "description": "Voice Activity Detection plugin for @arcaai/room using Silero VAD v5 with ONNX Runtime",
   "private": false,
   "main": "./dist/index.cjs",
@@ -54,7 +54,7 @@
   "author": "ARCAAI",
   "license": "MIT",
   "peerDependencies": {
-    "@arcaai/room": "^0.1.0",
+    "@arcaai/room": "workspace:^",
     "react": "^18.3.0 || ^19.0.4"
   },
   "peerDependenciesMeta": {

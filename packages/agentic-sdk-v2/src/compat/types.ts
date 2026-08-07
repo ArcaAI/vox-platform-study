@@ -12,6 +12,8 @@
  * deliberately NOT reproduced anywhere in this layer.
  */
 
+import type { LoggingConfig } from '../types';
+
 // =============================================================================
 // Config (TASK-560 §5.1)
 // =============================================================================
@@ -72,6 +74,35 @@ export interface V1SdkConfig {
    * `POST /api/stt/switch` shim rather than the native fallback-only route.
    */
   enableProviderSwitch?: boolean;
+  /**
+   * Observability configuration, forwarded verbatim to the v2 `AgenticConfig`.
+   *
+   * Compat-native — v1 had no logging/monitoring configuration at all, so this
+   * is additive with no v1 ancestor (same class of field as
+   * `enableProviderSwitch` above). Without it a compat app has NO way to reach
+   * the v2 transports: the adapter emitted no `logging` key, so Clarity,
+   * Highlight, Loki and OTel were all unreachable from `@arcaai/vox/compat`.
+   *
+   * The `environment` on the Clarity/Highlight transports defaults to
+   * {@link V1SdkConfig.environment} when not set explicitly, so a compat app
+   * that already declares `environment: 'staging'` satisfies the deployment
+   * stage gate without knowing it exists.
+   *
+   * @example
+   * ```ts
+   * const SDK_CONFIG_OPTIONS = {
+   *   apiEndpoint: 'https://staging-api.arcaai.com',
+   *   websocketUrl: 'wss://staging-api.arcaai.com',
+   *   credentials: { apiKey: KEY },
+   *   environment: 'staging',
+   *   logging: {
+   *     clarity: { projectId: process.env.CLARITY_PROJECT_ID },
+   *     capture: { console: true, consoleMethods: ['log', 'info', 'warn', 'error'] },
+   *   },
+   * };
+   * ```
+   */
+  logging?: LoggingConfig;
 }
 
 // =============================================================================

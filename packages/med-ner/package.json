@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/med-ner",
-  "version": "2.0.4",
+  "version": "2.0.7",
   "description": "Medical Named Entity Recognition plugin for @arcaai/room using Transformers.js",
   "private": false,
   "main": "./dist/index.cjs",
@@ -57,7 +57,7 @@
   "author": "ARCAAI",
   "license": "MIT",
   "peerDependencies": {
-    "@arcaai/room": "^0.1.0",
+    "@arcaai/room": "workspace:^",
     "react": "^18.3.0 || ^19.0.4"
   },
   "peerDependenciesMeta": {

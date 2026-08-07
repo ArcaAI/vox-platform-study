@@ -299,6 +299,76 @@ uniformity is wanted, applying the same three lines to Highlight is a trivial fo
 | Clarity suite | **40 passed** |
 | typecheck / lint / build | clean · 0 errors (3 pre-existing warnings) · success |
 
+## Phase 4 — Compat surface (`@arcaai/vox/compat`)
+
+Question raised: *"for SDK compat part, we don't have any user, how does Clarity capture the logs?"*
+Two separate answers.
+
+### Defect — compat could not reach ANY transport
+
+`ArcaCompatProvider` renders `AgenticProvider`, so the transport plumbing was reachable in
+principle. But `mapV1ConfigToAgenticConfig` returned only `{ api, audio, debug }` — **no `logging`
+key**. Chain:
+
+```
+V1SdkConfig (no logging field)
+  → mapV1ConfigToAgenticConfig → { api, audio, debug }
+  → AgenticProvider: createSDKLogger({ clarity: cfg.logging?.clarity })  // undefined
+  → SDKLogger.initializeTransports(): `if (this.config.clarity && …)`    // falsy, skipped
+  ⇒ ClarityTransport never constructed
+```
+
+Net effect: a compat app had **no way to enable Clarity, Highlight, Loki or OTel at all**. The only
+telemetry reaching anything was `globalErrors` capture (default on), landing in the console
+transport alone.
+
+Fix: `logging?: LoggingConfig` added to `V1SdkConfig` (compat-native, no v1 ancestor — same class of
+additive field as the existing `enableProviderSwitch`), forwarded by the adapter.
+
+### Stage propagation
+
+`V1SdkConfig` already carries `environment?: 'development' | 'staging' | 'production'`, which the
+adapter previously read only for `debug`. It now also defaults `clarity.environment` and
+`highlight.environment`, so a compat app that declares `environment: 'staging'` clears the
+deployment-stage gate without restating the stage per transport — and without tripping over a
+staging build setting `NODE_ENV=production`. An explicit transport-level `environment` wins.
+
+Omitting `logging` still produces the exact pre-logging config object (conditional spread), so the
+frozen v1 mapping stays byte-identical for apps that do not opt in.
+
+### "No user" — not a problem
+
+Clarity does not require identity. It mints its own anonymous session ID; replay, heatmaps and
+custom events work fully anonymously. Correlation is by:
+
+| Signal | Source |
+| --- | --- |
+| `vox.correlationId` | auto-generated per provider mount (`autoCorrelationId` defaults to true) |
+| `vox.tenantId` | tenant context when present |
+| Clarity session ID | minted by Clarity itself |
+
+`identifyUsers` is optional, defaults to false, and no-ops when there is no user. Worth recording:
+`logger.withUser()` has **no call sites in SDK production code**, so `entry.user.userId` is
+unpopulated on the native path too — user identification is currently a latent capability on both
+surfaces, not a compat-only gap.
+
+### Phase 4 files
+
+| File | Change |
+| --- | --- |
+| `src/compat/types.ts` | `logging?: LoggingConfig` on `V1SdkConfig` |
+| `src/compat/config-adapter.ts` | `mapLogging()` — passthrough + stage propagation |
+| `src/compat/__tests__/config-adapter.logging.test.ts` | **New** — 12 tests |
+| `README.md` | Compat configuration section + the "no user" explanation |
+
+### Phase 4 verification
+
+| Gate | Result |
+| --- | --- |
+| `pnpm --filter @arcaai/vox test` | **249 files / 4051 tests passed** |
+| Compat logging suite | **12 passed** — incl. end-to-end: a staging compat config built with `NODE_ENV=production` activates Clarity, a production one does not |
+| typecheck / lint | clean · 0 errors (3 pre-existing warnings) |
+
 ## Owner Decisions Outstanding
 
 1. **Production use requires a BAA.** As shipped, Clarity is non-production only. Enabling it in
@@ -334,3 +404,4 @@ uniformity is wanted, applying the same three lines to Highlight is a trivial fo
 | 2026-08-07 | Initial implementation: fail-closed Clarity transport, config surface, tests, docs. |
 | 2026-08-07 | Phase 2 (staging capture): deployment-stage gate (`environment.ts`) fixing silent disablement on staging for Clarity AND Highlight; browser-wide `console.*` / uncaught-error capture (`globalCapture.ts`) with re-entrancy and rate-limit protection; recommended staging configuration documented. |
 | 2026-08-07 | Phase 3 (enable/disable switch): `projectId` is now the on/off switch (`projectId?`, `enabled?`), so a single env var toggles Clarity per deployment with no code change; `enabled: false` retained as a kill switch. Phase 1's gate description marked superseded; README rewritten around the env-var pattern. |
+| 2026-08-07 | Phase 4 (compat surface): fixed `@arcaai/vox/compat` being unable to reach ANY transport — the v1 config adapter emitted no `logging` key. Added `logging` to `V1SdkConfig` + adapter passthrough, with the v1 `environment` propagating into the Clarity/Highlight stage gate. Documented that Clarity needs no user identity. |
