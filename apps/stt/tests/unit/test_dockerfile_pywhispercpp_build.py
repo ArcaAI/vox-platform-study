@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 DOCKERFILE = Path(__file__).parents[2] / "docker" / "Dockerfile"
 
 

@@ -35,16 +35,7 @@ export const SIMPLIFIED_SUMMARY_SCHEMA: Record<string, unknown> = {
     follow_up: { type: ['string', 'null'] },
     summary: { type: 'string' },
   },
-  required: [
-    'chief_complaint',
-    'symptoms',
-    'medical_history',
-    'examination',
-    'assessment',
-    'treatment_plan',
-    'follow_up',
-    'summary',
-  ],
+  required: ['chief_complaint', 'symptoms', 'medical_history', 'examination', 'assessment', 'treatment_plan', 'follow_up', 'summary'],
   additionalProperties: false,
 };
 
@@ -128,14 +119,7 @@ export const ENHANCED_SUMMARY_SCHEMA: Record<string, unknown> = {
             oxygen_saturation: { type: ['string', 'null'] },
             pain_score: { type: ['string', 'null'] },
           },
-          required: [
-            'blood_pressure',
-            'heart_rate',
-            'respiratory_rate',
-            'temperature',
-            'oxygen_saturation',
-            'pain_score',
-          ],
+          required: ['blood_pressure', 'heart_rate', 'respiratory_rate', 'temperature', 'oxygen_saturation', 'pain_score'],
           additionalProperties: false,
         },
         physical_examination: {
@@ -150,16 +134,7 @@ export const ENHANCED_SUMMARY_SCHEMA: Record<string, unknown> = {
             neurological: { type: ['string', 'null'] },
             skin: { type: ['string', 'null'] },
           },
-          required: [
-            'general',
-            'heent',
-            'cardiovascular',
-            'respiratory',
-            'abdomen',
-            'extremities',
-            'neurological',
-            'skin',
-          ],
+          required: ['general', 'heent', 'cardiovascular', 'respiratory', 'abdomen', 'extremities', 'neurological', 'skin'],
           additionalProperties: false,
         },
         diagnostic_results: {
@@ -281,14 +256,6 @@ export const ENHANCED_SUMMARY_SCHEMA: Record<string, unknown> = {
       additionalProperties: false,
     },
   },
-  required: [
-    'encounter_summary',
-    'clinical_findings',
-    'clinical_assessment',
-    'treatment_plan',
-    'follow_up',
-    'clinical_summary',
-    'quality_metrics',
-  ],
+  required: ['encounter_summary', 'clinical_findings', 'clinical_assessment', 'treatment_plan', 'follow_up', 'clinical_summary', 'quality_metrics'],
   additionalProperties: false,
 };
