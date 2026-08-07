@@ -211,6 +211,46 @@ export const PLATFORM_OPS_SETTINGS: SettingDescriptor[] = [
     description: 'Cron expression for the nightly SYSTEM agent-library resync sweep.',
     default: '0 4 * * *',
   },
+  // ── Origin (CORS) enforcement — TASK-610 §4C ─────────────────────────────
+  //
+  // The ONE switch that decides whether any of TASK-610's origin machinery
+  // enforces. Unlike its neighbours above, this key was not transcribed from an
+  // existing service fallback: it is new, and its DEFAULT IS THE PLATFORM
+  // POSTURE. No row is seeded for it — the descriptor default is the value on a
+  // fresh database, and the registry write lane creates the row when an operator
+  // first sets it.
+  //
+  // WHY IT IS NOT `killSwitch: true`, even though it defaults OFF. The
+  // `killSwitch` invariant (`SettingsRegistry.killSwitches()`) is about fail-SAFE
+  // rollout: an enforcement/engine gate ships OFF so a bad rollout degrades to
+  // the previous behaviour. Here OFF is the PERMISSIVE direction, not the safe
+  // one — turning this on ADDS a protection rather than removing one. Marking it
+  // a kill-switch would file it alongside sweeps and engines whose OFF state is
+  // the conservative choice, and mislead the operator reading the catalog. Same
+  // reasoning, opposite polarity, as `rate-limit.enabled` above.
+  {
+    key: 'origin.enforcementEnabled',
+    tier: 'global-kv',
+    dataType: 'boolean',
+    sensitivity: 'internal',
+    maxScope: 'system',
+    editableBy: 'all',
+    globalOnly: true,
+    // An unreadable control plane must NEVER fail into enforcement: that would
+    // turn a settings outage into a platform-wide browser outage, refusing every
+    // origin at once. Absent value ⇒ the default below ⇒ permissive.
+    failMode: 'open-to-default',
+    category: 'Platform Operations',
+    label: 'Origin (CORS) enforcement enabled',
+    description:
+      'Master switch for browser-origin enforcement. While FALSE — the DEFAULT, for every tenant including SYSTEM and GLOBAL — every origin is admitted for every tenant: ' +
+      '`isOriginAllowed` admits without consulting the registry, `OriginTenantBindingGuard` passes every request, and the STT WebSocket handshake accepts every origin. ' +
+      'The `TenantAllowedOrigin` allow-list and the origin↔tenant binding guard only take effect when it is TRUE. ' +
+      'Nothing is deleted while it is off — setting it TRUE restores the full TASK-610 behaviour live, with no redeploy. ' +
+      'Register the origins each tenant needs BEFORE turning it on, or browser traffic starts being refused (grep the `origin_registry_miss` log reason). ' +
+      'Authentication and tenancy remain the enforcing controls either way; CORS is advisory browser behaviour and never was an authorization boundary.',
+    default: false,
+  },
   {
     key: 'agentic.trajectory.retentionDays',
     tier: 'global-kv',

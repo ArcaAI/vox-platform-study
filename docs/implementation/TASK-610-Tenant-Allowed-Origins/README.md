@@ -759,6 +759,102 @@ place above; listed here so a reader of the history is not misled:
 
 ---
 
+## 4C. Origin enforcement is OFF BY DEFAULT (owner-directed)
+
+> "make sure by default (apply to all tenants including SYSTEM, GLOBAL) no origin checks, ALL is
+> ALLOWED for calling and using our APIs"
+
+### 4C.1 What was decided
+
+A platform switch `origin.enforcementEnabled` (`global-kv`, `globalOnly`, **default `false`**). While
+false, `isOriginAllowed` admits every origin without consulting the registry, `OriginTenantBindingGuard`
+passes every request, and the WS handshake accepts every origin. Setting it true restores everything
+§3–§4B built, unchanged.
+
+This is a **default**, not a deletion. Every mechanism — the grant table, patterns, the admin screen,
+the binding guard, the CSWSH check — stays and is one settings write away from enforcing. That
+distinction is the whole point: an unseeded deployment cannot lock itself out, and hardening is an
+operator decision rather than a redeploy.
+
+### 4C.2 `credentials: false` — the change that makes this safe rather than reckless
+
+Allow-all origins with `credentials: true` is a **cross-origin read primitive**: any site a logged-in
+user visits can issue authenticated requests to the gateway and read the responses, PHI included.
+That is not a theoretical concern; it is the standard consequence of reflecting an arbitrary origin
+while permitting credentials.
+
+Two facts checked before flipping it:
+
+- **Nothing reads `req.session`.** `express-session` is mounted in `main.ts` and has no consumers.
+- **The SDK never sends cookies.** `AgenticClient` sets no `credentials: 'include'`; it authenticates
+  with the `Authorization` header, which a hostile page cannot read or forge.
+
+So `credentials: false` costs nothing and removes the exfiltration path: browsers stop attaching
+cookies cross-origin, while Bearer-token auth is unaffected. **Open CORS without credentials is an
+ordinary public-API posture; open CORS with credentials is a data-leak path.** If a future flow ever
+needs cross-origin cookies, enforcement must be turned ON before `credentials` is turned back on.
+
+### 4C.3 What is now load-bearing
+
+With enforcement off, **authentication and tenancy are the only controls left.** Everything this
+ticket built is dormant. Specifically:
+
+- D-3's catch-all is closed in code but irrelevant while the switch is off — an unregistered origin is
+  admitted by the switch, not by a scheme rule.
+- FR-4 (origin↔tenant binding) does not apply. A request from any origin may act on any tenant it can
+  authenticate to.
+- The WS CSWSH check does not apply. This is the one that would concern me most if `credentials` were
+  ever set back to true, because WebSockets are exempt from CORS entirely.
+
+The gateway therefore says so at boot at `warn` level, and the posture appears in the `CORS
+configuration` bootstrap log. An operator must never have to read the database to discover the
+platform is permissive.
+
+### 4C.4 Turning it on
+
+One settings write — `origin.enforcementEnabled = true` — no redeploy. Before doing so, seed or
+register the origins each tenant needs (§4B.5), or browser traffic will start being refused. The
+`origin_registry_miss` log reason exists precisely to make that transition diagnosable.
+
+### 4C.5 Delivered — evidence (lane W7)
+
+| Piece | Change |
+|---|---|
+| Descriptor | `origin.enforcementEnabled` in `platform-ops.descriptors.ts` — `global-kv` · `boolean` · `maxScope: system` · `globalOnly` · `failMode: open-to-default` · **`default: false`**. No env var (§4A.1 stays closed) and **no seeded row**: the descriptor default IS the posture; the registry write lane creates the row on first set. |
+| Switch | `setOriginEnforcementResolver` / `isOriginEnforcementEnabled` in `cors.config.ts` — ONE accessor, THREE consumers. Permissive when no resolver is installed, when it resolves anything but `true`, or when it throws (latched warn, so a settings outage cannot flood the log). |
+| Binder | `PlatformKnobsBinder.installOriginEnforcementResolver` resolves it through `TenantSettingsService.resolvePlatform`, lazily per call — exactly like `logLevel`, so a settings write applies with no restart. |
+| Point 1 | `isOriginAllowed` returns `true` with reason `enforcement_disabled` **before** any registry read. |
+| Point 2 | `OriginTenantBindingGuard` rule 0 — pass through, registry never consulted, no 404 on tenant mismatch. |
+| Point 3 | `SttWsGateway.isOriginAllowed` accepts, registry never consulted. Imports the accessor rather than re-reading the setting (§4B.4's lesson). |
+| Credentials | `buildCorsOptions()` extracted from `main.ts` into `cors.config.ts` (a value inside `bootstrap()`'s closure is untestable) with `credentials: false`. |
+| Boot log | `CORS configuration` now carries `originEnforcement` / `policy: allow_all_origins` / `credentials: false` / `enforcementSetting`, and is emitted at **`warn`** while enforcement is off. |
+
+**Cookie-dependence check, before flipping `credentials`** — three greps, all clean: no `req.session`
+reader anywhere in `apps/api` (`express-session` is mounted with zero consumers); no
+`credentials: 'include'` / `withCredentials: true` in any SDK, package or app; and the SSO legs are
+cookie-free too — the OIDC/SAML `state` is a signed JWT carried in the URL
+(`federated-auth.service.ts`) and the callback is a top-level navigation, not a CORS fetch. Nothing
+browser-facing depends on cross-origin cookies.
+
+**Tests** — RED first (31 failing), then green:
+
+```
+apps/api/src                                        171 files · 2469 tests   ✓
+packages/applications/.../settings-registry          13 files ·  157 tests   ✓
+tsc --noEmit -p apps/api/tsconfig.json                                       ✓
+@arcaai/applications typecheck + build                                       ✓
+eslint apps/api                          0 errors (65 pre-existing warnings) ✓
+```
+
+New suites pin the permissive default (`*.enforcement.task610.test.ts` for cors.config, the guard,
+the WS gateway and the binder, plus a descriptor-governance test); the four pre-existing suites arm
+`setOriginEnforcementResolver(() => true)` and are otherwise **unchanged** — that pairing is the
+regression gate proving the enforced path still behaves exactly as §3–§4B built it. One e2e
+assertion was deliberately inverted: `monitoring.spec.ts` now requires
+`access-control-allow-credentials` to be ABSENT.
+
+---
+
 ## 5. Implementation Summary
 
 *In progress. Waves 0–3 landed and verified; Wave 4 remediation partly outstanding (see §5.3).*

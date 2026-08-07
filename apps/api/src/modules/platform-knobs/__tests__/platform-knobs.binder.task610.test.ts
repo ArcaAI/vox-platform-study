@@ -1,7 +1,7 @@
 import type { IOriginRegistry } from '@arcaai/applications';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { isOriginAllowed, setOriginRegistryResolver } from '../../../cors.config';
+import { isOriginAllowed, setOriginEnforcementResolver, setOriginRegistryResolver } from '../../../cors.config';
 import { PlatformKnobsBinder } from '../platform-knobs.binder';
 
 /**
@@ -44,10 +44,17 @@ const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
 describe('PlatformKnobsBinder — origin registry resolver', () => {
   beforeEach(() => {
     setOriginRegistryResolver(null);
+    // TASK-610 §4C — the registry only decides anything while enforcement is
+    // ON, and it now ships OFF. These cases are about the REGISTRY resolver, so
+    // the switch is armed to make them observable; the enforcement resolver the
+    // binder installs alongside it is pinned in
+    // `platform-knobs.binder.enforcement.task610.test.ts`.
+    setOriginEnforcementResolver(() => true);
   });
 
   afterEach(() => {
     setOriginRegistryResolver(null);
+    setOriginEnforcementResolver(null);
   });
 
   it('makes a populated registry authoritative — registered admitted, everything else refused', () => {
