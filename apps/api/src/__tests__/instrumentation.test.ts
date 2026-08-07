@@ -192,12 +192,18 @@ describe('instrumentation', () => {
       expect(mockSdkStart).toHaveBeenCalledTimes(1);
     });
 
-    it('should register SIGTERM and SIGINT shutdown handlers when the SDK starts', async () => {
+    it('should NOT register its own SIGTERM/SIGINT handlers — Nest owns the shutdown sequence via GracefulShutdownService (TASK-616 G0.1)', async () => {
       await import('../instrumentation');
 
-      const events = signalRegistrations().map(([event]) => event);
-      expect(events).toContain('SIGTERM');
-      expect(events).toContain('SIGINT');
+      expect(signalRegistrations()).toHaveLength(0);
+    });
+
+    it('should export flushOtel(), which shuts down the SDK when called', async () => {
+      const { flushOtel } = await import('../instrumentation');
+
+      expect(mockSdkShutdown).not.toHaveBeenCalled();
+      await flushOtel();
+      expect(mockSdkShutdown).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -259,6 +265,15 @@ describe('instrumentation', () => {
       await import('../instrumentation');
 
       expect(signalRegistrations()).toHaveLength(0);
+    });
+
+    it('should export a no-op flushOtel() when the SDK was never started', async () => {
+      delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+
+      const { flushOtel } = await import('../instrumentation');
+
+      await expect(flushOtel()).resolves.toBeUndefined();
+      expect(mockSdkShutdown).not.toHaveBeenCalled();
     });
   });
 });

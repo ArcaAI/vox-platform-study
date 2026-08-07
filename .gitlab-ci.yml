@@ -18,6 +18,11 @@
 #   release-sdk          — SDK publishing: @arcaai/vox + deps → GitLab Package Registry
 #   release-playground   — ui-playground release: build + push Docker image
 #   maintenance/*        — maintenance branches: validate + test + scan
+#   prod-* / production-* — release-line branches: validate + test only, NO
+#                          builds/deploys (TASK-616 §F11). Production is
+#                          reached by pushing a protected `vX.Y.Z` tag, which
+#                          promotes the digest a dev-*/staging-* pipeline
+#                          already built — see promote-prod in deploy.yml.
 #
 # Image versioning (NO `latest` tag):
 #   Tags:      <semver>, <major>.<minor>, <major>   (e.g. 1.2.3, 1.2, 1)
@@ -26,6 +31,8 @@
 #   cicd:      cicd-<sha8>
 #   feature:   <branch>-<sha8>
 #   All:       sha-<sha8>  (immutable audit trail)
+#   prod:      environment tag == the release tag itself (vX.Y.Z) — see
+#              promote.sh; never rebuilt, only re-tagged from sha-<sha8>
 #
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -69,9 +76,26 @@ workflow:
     - if: $CI_COMMIT_BRANCH =~ /^staging-/
       variables:
         PIPELINE_TYPE: "staging"
+    # TASK-616 §F11/§F12 — the owner's branch model is dev-*/staging-*/prod-*/
+    # production-*, and `^prod-` does NOT match `production-2.1`: before this
+    # pair of rules, a production-* push silently fell through to the generic
+    # `PIPELINE_TYPE: "feature"` catch-all below with no test-suite guarantee
+    # (.rules-always) and no visibility. Both patterns are now recognized
+    # explicitly. Neither builds (build.yml `.build-common-rules` excludes
+    # both) or deploys — production is reached only via a protected `vX.Y.Z`
+    # tag (PIPELINE_TYPE: "tag_release", promote-prod in deploy.yml, §F11).
+    #
+    # TODO(owner): whether `prod-*` and `production-*` are meant to be the
+    # same release line under two spellings, or two genuinely different
+    # environments (e.g. a true-prod vs. a pre-prod/canary line), is open —
+    # confirm with the owner before either branch pattern is given any
+    # behavior beyond "runs tests, builds/deploys nothing."
     - if: $CI_COMMIT_BRANCH =~ /^prod-/
       variables:
         PIPELINE_TYPE: "prod"
+    - if: $CI_COMMIT_BRANCH =~ /^production-/
+      variables:
+        PIPELINE_TYPE: "production"
     - if: $CI_COMMIT_BRANCH == "release-sdk"
       variables:
         PIPELINE_TYPE: "release_sdk"

@@ -1,138 +1,107 @@
 # ══════════════════════════════════════════════════════════════════════════════
-# Deploy stage — Argo CD staging sync
+# Deploy stage — digest promotion into hope-v2-deployment (Argo CD GitOps)
 # ══════════════════════════════════════════════════════════════════════════════
 #
-# Triggered on `staging` branch after successful builds.
-# Updates image tags in the deployment repository, which Argo CD watches.
+# TASK-616 Appendix F (component-design-cicd-promotion.md) §F1-F3, F9, F11.
 #
-# ── Setup ────────────────────────────────────────────────────────────────────
+# Nothing here rebuilds an image. Each promote-* job resolves the immutable
+# digest of the `sha-<sha8>` image already pushed earlier in the pipeline (or,
+# for prod, in an earlier pipeline on the same commit — see promote.sh),
+# copies that manifest to an environment tag with zero rebuild, pins the
+# hope-v2-deployment overlay to the resolved sha256 digest via
+# `kustomize edit set image`, and pushes to `main` — the branch every Argo CD
+# Application actually tracks (deployment/argocd/application-*.yaml).
 #
-# 1. Create a deployment repository (e.g. arcaai/hope-deployments):
+# This replaces the Argo CD Image Updater entirely (§F2): it polls the
+# registry with no idea what passed CI, its write-back branch didn't match
+# what Argo reads, its tag regex matched nothing CI publishes, and it held a
+# Git-write PAT next to registry creds in a controller with no audit trail.
+# The ImageUpdater CRD + its registry-creds Secret have been removed from
+# deployment/argocd/ — see the comment there.
 #
-#    hope-deployments/
-#    ├── apps/
-#    │   ├── api/
-#    │   │   ├── values-staging.yaml     # image.tag: "staging-<sha>"
-#    │   │   └── values-production.yaml
-#    │   ├── stt-ml-runtime/
-#    │   ├── stt-worker/
-#    │   ├── smr/
-#    │   ├── nlp/
-#    │   └── database/
-#    └── applicationsets/
-#        └── staging.yaml
+# Also replaces the old `deploy-staging` job, which edited a Helm-values tree
+# (`apps/<svc>/values-staging.yaml`) inside `arcaai/hope-deployments` — a repo
+# and a layout that never existed. The real repo is `arca/hope-v2-deployment`,
+# pure Kustomize.
 #
-# 2. CI Variables needed (Settings → CI/CD → Variables):
-#
-#    DEPLOY_REPO_URL  — http://10.10.1.110/arcaai/hope-deployments.git
-#    DEPLOY_TOKEN     — Project Access Token with write_repository scope
-#    ARGOCD_SERVER    — Argo CD server URL (optional, for direct sync)
-#    ARGOCD_AUTH_TOKEN — Argo CD API token (optional, for direct sync)
-#
-# 3. Configure Argo CD to watch the deployment repo:
-#    - Add repo in Argo CD: Settings → Repositories → Connect Repo
-#    - Create ApplicationSet (see staging.yaml template below)
-#    - Enable webhook: Settings → Webhooks → Add GitLab webhook
+# CI Variables needed (Settings → CI/CD → Variables):
+#   DEPLOY_REPO_URL   — https://git.taphuynh.dev/arca/hope-v2-deployment.git
+# Everything else (DEPLOY_TOKEN) comes from Vault via VAULT_SECRETS below —
+# see .gitlab/ci/vault.yml for the per-environment role split (§F10).
 #
 # ══════════════════════════════════════════════════════════════════════════════
 
-deploy-staging:
+.promote-base:
   stage: deploy
   tags: [deploy]
-  image: alpine:3.20
+  image: docker:27
   interruptible: false
   id_tokens: !reference [.vault-oidc-id-token, id_tokens]
   variables:
-    # TASK-558 §13.3 C1 — DEPLOY_TOKEN is the write credential for the
-    # hope-deployments repo. The Vault role binds it to `ref` ∈ {staging,dev,v*};
-    # see the ⚠ OPEN ITEM in .gitlab/ci/vault.yml — `staging` is not a protected
-    # branch yet, so that claim is not yet a hard privilege boundary.
-    VAULT_AUTH_ROLE: "hope-ci-deploy"
     VAULT_SECRETS: !reference [.vault-secret-sets, deploy]
   before_script:
-    - apk add --no-cache git curl jq
-    # After apk, so curl+jq are present for the fetch.
+    - apk add --no-cache git curl bash
     - !reference [.vault-oidc, before_script]
+    - !reference [.buildx-registry-login, before_script]
     - git config --global user.email "ci@arcaai.com"
     - git config --global user.name "GitLab CI"
-  script:
     - |
       set -eu
-      SHORT_SHA=$(echo "$CI_COMMIT_SHA" | cut -c1-8)
-      IMAGE_TAG="staging-${SHORT_SHA}"
+      KUSTOMIZE_VERSION="5.4.3"
+      curl -sSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+        | tar xz -C /usr/local/bin kustomize
+      export PATH="/usr/local/bin:$PATH"
+      kustomize version
+  script:
+    - sh .gitlab/ci/promote.sh
 
-      echo "Deploying to staging with image tag: $IMAGE_TAG"
-      echo "  Pipeline: $CI_PIPELINE_URL"
-      echo "  Commit:   $CI_COMMIT_SHA"
+promote-dev:
+  extends: .promote-base
+  variables:
+    DEPLOY_ENV: "dev"
+    OVERLAY_PATH: "deployment/k8s/overlays/dev"
+    # §F10 — dev-scoped Vault role (ref_type branch, ref "dev-*",
+    # ref_protected true once dev-* is protected, see the OPEN ITEM in vault.yml).
+    VAULT_AUTH_ROLE: "hope-ci-deploy-dev"
+  rules:
+    - if: $PIPELINE_TYPE == "dev"
+  environment:
+    name: dev
 
-      # Clone deployment repo
-      DEPLOY_AUTH_URL=$(echo "$DEPLOY_REPO_URL" | sed "s|http://|http://gitlab-ci-token:${DEPLOY_TOKEN}@|")
-      git clone --depth 1 "$DEPLOY_AUTH_URL" /tmp/deploy
-      cd /tmp/deploy
-
-      # Update image tags for services that were built in this pipeline
-      UPDATED=0
-      for service in api nlp smr guardrail stt-ml-runtime stt-worker database compat-playground; do
-        values_file="apps/${service}/values-staging.yaml"
-        if [ -f "$values_file" ]; then
-          sed -i "s|tag:.*|tag: \"${IMAGE_TAG}\"|" "$values_file"
-          echo "  Updated $values_file → $IMAGE_TAG"
-          UPDATED=1
-        fi
-      done
-
-      if [ "$UPDATED" = "1" ]; then
-        git add -A
-        if ! git diff --cached --quiet; then
-          git commit -m "deploy(staging): ${IMAGE_TAG} from pipeline #${CI_PIPELINE_IID}" \
-            -m "Source: ${CI_PROJECT_URL}/-/commit/${CI_COMMIT_SHA}" \
-            -m "Pipeline: ${CI_PIPELINE_URL}"
-          git push origin main
-          echo "Deployment repo updated. Argo CD will sync automatically."
-        else
-          echo "No changes to deploy."
-        fi
-      else
-        echo "No deployment manifests found. Skipping."
-      fi
+promote-staging:
+  extends: .promote-base
+  variables:
+    DEPLOY_ENV: "staging"
+    OVERLAY_PATH: "deployment/k8s/overlays/staging"
+    # §F10 — staging-scoped Vault role (ref_type branch, ref "staging-*").
+    VAULT_AUTH_ROLE: "hope-ci-deploy-staging"
   rules:
     - if: $PIPELINE_TYPE == "staging"
   environment:
     name: staging
     url: https://staging.hope.arcaai.com
 
-# ── Argo CD sync trigger (optional — use if webhook is not configured) ──────
-
-sync-argocd:
-  stage: deploy
-  tags: [deploy]
-  image: alpine:3.20
-  needs:
-    - job: deploy-staging
-  before_script:
-    - apk add --no-cache curl jq
-  script:
-    - |
-      set -eu
-
-      if [ -z "${ARGOCD_SERVER:-}" ] || [ -z "${ARGOCD_AUTH_TOKEN:-}" ]; then
-        echo "Argo CD credentials not configured. Relying on webhook/polling sync."
-        exit 0
-      fi
-
-      echo "Triggering Argo CD sync for staging applications..."
-
-      for app in hope-staging-api hope-staging-stt-ml-runtime hope-staging-stt-worker hope-staging-smr hope-staging-guardrail hope-staging-nlp hope-staging-database hope-staging-compat-playground; do
-        echo "  Syncing $app..."
-        curl -sSf -X POST \
-          -H "Authorization: Bearer ${ARGOCD_AUTH_TOKEN}" \
-          -H "Content-Type: application/json" \
-          "https://${ARGOCD_SERVER}/api/v1/applications/${app}/sync" \
-          -d '{"prune": true}' || echo "  Warning: failed to sync $app (may not exist yet)"
-      done
-  allow_failure: true
+promote-prod:
+  extends: .promote-base
+  variables:
+    DEPLOY_ENV: "prod"
+    OVERLAY_PATH: "deployment/k8s/overlays/prod"
+    # §F10 — prod-scoped Vault role (ref_type TAG, ref "v*"). Production is
+    # triggered by a protected vX.Y.Z tag, never a branch — see §F11 and the
+    # TODO on the prod-*/production-* workflow rules in .gitlab-ci.yml.
+    VAULT_AUTH_ROLE: "hope-ci-deploy-prod"
+  # §F11 item 3 — tag_release pipelines build nothing (no PIPELINE_TYPE ==
+  # "dev"/"staging"/"cicd" match in build.yml's .build-common-rules for a
+  # v* tag), so this only ever copies a digest that a prior dev/staging
+  # pipeline already built and scanned. `when: manual` is the second human
+  # checkpoint GitLab CE can actually enforce (§F4) — Argo's own prod sync
+  # stays manual too (§F5), so a bad promotion still doesn't roll out
+  # unattended.
   rules:
-    - if: $PIPELINE_TYPE == "staging"
+    - if: $PIPELINE_TYPE == "tag_release"
+      when: manual
+  environment:
+    name: production
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PgBouncer smoke test — TASK-302 Stream C Phase 2A (Task 2A.6.2)

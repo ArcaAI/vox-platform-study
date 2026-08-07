@@ -90,6 +90,26 @@
 #   cicd branch         → cicd-<sha8>, sha-<sha8>
 #   other branches      → <branch>-<sha8>, sha-<sha8>
 
+# ── Registry login + insecure-registry buildx builder ───────────────────────
+# Shared by .build-template (docker buildx build) AND the promote-* jobs in
+# deploy.yml (docker buildx imagetools inspect/create — TASK-616 Appendix F
+# §F3). imagetools talks to the registry through the active buildx builder
+# too, so it needs the same insecure-registry config as a real build.
+
+.buildx-registry-login:
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
+    - |
+      printf '[registry."%s"]\nhttp = true\ninsecure = true\n' "$REGISTRY" > /tmp/buildkitd.toml
+      if ! docker buildx inspect cibuilder >/dev/null 2>&1; then
+        docker buildx create --name cibuilder --driver docker-container \
+          --config /tmp/buildkitd.toml \
+          --driver-opt network=host \
+          --driver-opt "env.BUILDKIT_STEP_LOG_MAX_SIZE=52428800"
+      fi
+      docker buildx use cibuilder
+      docker buildx inspect --bootstrap
+
 .build-template:
   stage: build
   tags: [build]
@@ -103,17 +123,7 @@
     BUILD_TARGET: ""
     BUILD_ARGS: ""
   before_script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY"
-    - |
-      printf '[registry."%s"]\nhttp = true\ninsecure = true\n' "$REGISTRY" > /tmp/buildkitd.toml
-      if ! docker buildx inspect cibuilder >/dev/null 2>&1; then
-        docker buildx create --name cibuilder --driver docker-container \
-          --config /tmp/buildkitd.toml \
-          --driver-opt network=host \
-          --driver-opt "env.BUILDKIT_STEP_LOG_MAX_SIZE=52428800"
-      fi
-      docker buildx use cibuilder
-      docker buildx inspect --bootstrap
+    - !reference [.buildx-registry-login, before_script]
   script:
     - |
       set -eu

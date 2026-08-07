@@ -1,6 +1,5 @@
 """STT Service - FastAPI Application Entry Point."""
 
-import signal
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -263,14 +262,20 @@ def create_app() -> FastAPI:
 # Create application instance
 app = create_app()
 
-
-def handle_sigterm(signum: int, frame: object) -> None:
-    """Handle SIGTERM for graceful shutdown."""
-    logger.info("Received SIGTERM, initiating graceful shutdown...")
-    raise SystemExit(0)
-
-
-signal.signal(signal.SIGTERM, handle_sigterm)
+# NOTE (TASK-616 G0.0/G0.1): this module must NOT install its own SIGTERM
+# handler. `stt.main:app` is always passed to uvicorn as a STRING target
+# (`uvicorn stt.main:app`, `python -m uvicorn stt.main:app`, and the
+# `stt = "stt.main:main"` console script all do this), so `Config.load()`
+# imports this module *after* `Server.serve()` has already called
+# `signal.signal(SIGTERM, self.handle_exit)` inside `capture_signals()`. A
+# module-level `signal.signal(signal.SIGTERM, ...)` here would therefore
+# always run SECOND and silently overwrite uvicorn's handler. The previous
+# handler did `raise SystemExit(0)`, which unwinds straight out of
+# `asyncio.run()` without ever setting `Server.should_exit` — skipping
+# uvicorn's own graceful path and, with it, the ASGI `lifespan` shutdown
+# event that drives `shutdown_streaming()` below. Let uvicorn own SIGTERM
+# exclusively; its normal `should_exit -> main_loop() -> Server.shutdown()`
+# path is what reaches the `lifespan()` post-`yield` cleanup.
 
 
 def main() -> None:
