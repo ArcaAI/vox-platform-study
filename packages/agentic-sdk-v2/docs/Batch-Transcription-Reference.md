@@ -228,9 +228,10 @@ record), plus the `stream/session/*` WebSocket-session routes.
 
 #### `POST /transcribe` — step by step (server side)
 
-1. Validate the multipart `file` is present, ≤ `MAX_FILE_SIZE` (100 MB), and its MIME type is in
-   `ALLOWED_AUDIO_MIMES`.
-2. Resolve the caller's tenant; assert pipeline ownership.
+1. Validate the multipart `file` is present and its MIME type is in `ALLOWED_AUDIO_MIMES`.
+2. Resolve the caller's tenant, then apply the admin-configurable `stt.batch.*` ceilings — size, DURATION
+   (measured from the container header), and the caller's in-flight job count. Every one of these rejects
+   before any storage write or worker dispatch. Then assert pipeline ownership.
 3. Create the job row (`status: QUEUED`) via `TranscriptionJobService.createBatchJob`.
 4. Resolve the tenant's audio bucket (configured purpose → `recordings` slug → legacy `audio` slug → the
    `hope-audio` global default) and build the storage path
@@ -300,13 +301,25 @@ interface TranscriptionJobResponse {
 
 | Constant | Value | Notes |
 | --- | --- | --- |
-| `MAX_FILE_SIZE` | `100 * 1024 * 1024` (100 MB) | Enforced both by `FileInterceptor`'s `limits.fileSize` and again explicitly in the handler (the second check produces the friendlier `"File size XMB exceeds maximum of YMB"` message) |
+| `MAX_UPLOAD_HARD_CEILING` | `1024 * 1024 * 1024` (1 GB) | A STATIC multipart guard on `FileInterceptor`'s `limits.fileSize` only — a decorator cannot read a per-tenant setting. It exists to stop a multi-GB body being buffered before the real check can run; it is NOT the upload limit |
 | `ALLOWED_AUDIO_MIMES` | `audio/wav`, `audio/wave`, `audio/x-wav`, `audio/mpeg`, `audio/mp3`, `audio/mp4`, `audio/x-m4a`, `audio/ogg`, `audio/flac`, `audio/x-flac`, `audio/webm`, `audio/aac` | Checked against the multipart part's declared MIME, not sniffed from content |
 | `PIPELINE_ID_PATTERN` | slug `^[A-Za-z0-9][A-Za-z0-9-]*$` or UUID v4 | Rejects arbitrary strings, paths, SQL fragments, and a bare `-` |
 
-> A 60-minute recording at typical uncompressed WAV rates can exceed 100 MB — the size ceiling is a proxy for
-> "reasonable upload," not a duration guarantee. There is currently no server-side audio-duration check on this
-> route (see [Out of scope](#out-of-scope) for related, not-yet-merged work).
+**Configurable ceilings** — resolved per tenant through `BatchTranscriptionLimitsService` from the
+`stt.batch.*` settings descriptors, and readable by clients at `GET /audio/transcription-jobs/limits` so the
+numbers are never hardcoded a second time:
+
+| Knob | Default | Enforced as |
+| --- | --- | --- |
+| `stt.batch.maxFilesPerBatch` | 5 | Client-side queue width; the server counterpart is `maxActiveJobsPerUser` |
+| `stt.batch.maxDurationMinutes` | 60 | Read from the container header — WAV, FLAC, MP4/M4A, Ogg, WebM, MP3 (incl. Xing/VBRI), ADTS AAC |
+| `stt.batch.maxFileSizeMb` | 120 | Checked against `file.size` |
+| `stt.batch.maxActiveJobsPerUser` | — | QUEUED + PROCESSING only; finished/failed/cancelled jobs never hold a slot |
+
+> Size alone was never a duration guarantee, in either direction: the former 100 MB cap REJECTED a legitimate
+> 60-minute 16 kHz WAV (~115 MB) while ADMITTING a 3-hour 64 kbps MP3 (~86 MB). Duration is now measured and
+> enforced in the units the requirement is written in. A file whose duration cannot be read is refused
+> (fail-closed) — an unreadable length is not evidence of a recording within the limit.
 
 ### B.4 SSE event contract
 
@@ -339,7 +352,8 @@ Every payload may be delivered either bare (`{ text: "..." }`) or wrapped in an 
 
 | Status | When | Body/notes |
 | --- | --- | --- |
-| `400` | No file on `POST /transcribe`; file exceeds `MAX_FILE_SIZE`; MIME not in the allow-list; no tenant context resolves; empty `sessionId`/`id` path param | Message names the specific cause (e.g. exact size vs. ceiling) |
+| `400` | No file on `POST /transcribe`; file exceeds `stt.batch.maxFileSizeMb`; recording longer than `stt.batch.maxDurationMinutes`; duration unreadable (fail-closed); MIME not in the allow-list; no tenant context resolves; empty `sessionId`/`id` path param | Message names the specific cause (e.g. exact size or minutes vs. ceiling) |
+| `429` | The caller already holds `stt.batch.maxActiveJobsPerUser` jobs in QUEUED or PROCESSING | "Too much at once, retry later" — this is what the SDK's `BatchTranscriptionQueue` backs off on |
 | `401` | SSE ticket scope mismatch (`?ticket=` doesn't match `transcription_job:<id>`); missing/expired ticket | Enforced by the `@StreamScope` guard before the handler runs |
 | `404` | Cross-tenant job/pipeline id; unknown job/pipeline id | 404-over-403 — no existence leak, whether the true cause is "wrong tenant" or "doesn't exist" |
 | `500` | Storage upload or Dramatiq dispatch fails after the job row was created | The job is marked `FAILED` (`errorCode: 'SETUP_ERROR'`) before the error is rethrown — never a silently stuck `QUEUED` row |
@@ -350,13 +364,17 @@ consistent with the 404-over-403 posture used elsewhere).
 
 ## Out of scope
 
-- **The native (non-compat) SDK's batch engine** — `@arcaai/vox`'s core/plugins entries are gaining their own
-  `BatchTranscriptionQueue`/`useBatchTranscription` (TASK-604: admin-configurable file-count/duration/size caps,
-  gateway-enforced audio-duration probing, a `GET /limits` and `GET /fallback` read surface). That work lives on
-  an unmerged `task-604` branch as of this writing (`docs/implementation/TASK-604-Vox-SDK-Live-And-Batch/README.md`)
-  and explicitly does **not** touch `packages/agentic-sdk-v2/src/compat/**` — this document covers only what's
-  described above. Once merged, expect a similar reference for the native engine, or an update here if the compat
-  hook converges onto it.
+- **The native (non-compat) SDK's batch engine** — MERGED (TASK-604). `@arcaai/vox` now ships its own
+  `BatchTranscriptionQueue` / `useBatchTranscription`, exported from both the root entry and `@arcaai/vox/core`,
+  alongside the gateway-enforced ceilings and the `GET /limits` + `GET /fallback` read surfaces documented above.
+  See `docs/implementation/TASK-604-Vox-SDK-Live-And-Batch/README.md`.
+
+  The two engines COEXIST and neither is deprecated: `compat/useArcaBatchTranscription` (this document) preserves
+  v1's `uploadAudioFile` shape for migrating callers, while the native queue is the surface for new v2 consumers.
+  TASK-604 deliberately did not touch `packages/agentic-sdk-v2/src/compat/**`, so everything described above
+  still holds — with one change that reaches both: the server-side ceilings are now enforced for EVERY caller of
+  `POST /transcribe`, compat included. A compat consumer that relied on the old "100 MB and nothing else" bound
+  will now also see `400` on an over-long recording and `429` when it exceeds its in-flight cap.
 - **`apps/ui-playground`**'s legacy `use-file-transcription.ts` — deprecated, no development plan, and known
   broken (the 1-arg `SSEClient` bug named above). Not a reference implementation.
 - Admin-side tenant-wide job visibility (`admin-transcription-job.controller.ts`, `/admin/audio/transcription-jobs`) —
@@ -373,7 +391,10 @@ consistent with the 404-over-403 posture used elsewhere).
 | `packages/agentic-sdk-v2/src/core/constants.ts` | `STT_ENDPOINTS`, `transcriptionJobScopeFor()` |
 | `packages/agentic-sdk-v2/src/types/stt.ts` | `TranscriptionJobResponse`, `TranscriptionJobStatus`, `TranscriptionJobType` |
 | `apps/api/src/modules/streaming/transcription-job.controller.ts` | Gateway controller (§B) |
-| `apps/api/src/modules/streaming/dto/transcription-job.dto.ts` | Request/response DTOs, `MAX_FILE_SIZE`, `ALLOWED_AUDIO_MIMES` |
+| `apps/api/src/modules/streaming/dto/transcription-job.dto.ts` | Request/response DTOs, `MAX_UPLOAD_HARD_CEILING`, `ALLOWED_AUDIO_MIMES` |
+| `apps/api/src/modules/streaming/audio-duration.ts` | Dependency-free container-header duration probe (dispatches on magic bytes, never the declared MIME) |
+| `packages/applications/src/services/stt/job/batch-transcription-limits.service.ts` | Resolves the `stt.batch.*` ceilings per tenant |
+| `packages/agentic-sdk-v2/src/core/BatchTranscriptionQueue.ts` | Native SDK batch queue — adopts the gateway's resolved ceilings |
 | `apps/api/src/modules/auth/auth.controller.ts` + `stream-ticket.service.ts` | `POST /auth/stream-ticket` (30s single-use ticket) |
 | `packages/agentic-sdk-v2/src/compat/__tests__/useArcaBatchTranscription.test.ts` | Unit tests — locks the 3-arg `SSEClient` form and the per-job scope |
 
