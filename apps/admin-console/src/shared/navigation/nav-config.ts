@@ -41,6 +41,7 @@ import {
   IconUserScan,
   IconUserShield,
   IconWaveSine,
+  IconWorld,
   type TablerIcon,
 } from '@tabler/icons-react';
 import { canAny, isElevated, type PermissionRule } from '@/shared/auth/ability';
@@ -160,6 +161,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     implemented: true,
   },
   { route: '/tools-mcp', label: 'Tools & MCP', tier: '10-19', icon: IconPlugConnected, required: [['manage', 'all']], implemented: true },
+  { route: '/allowed-origins', label: 'Allowed origins', tier: '10-19', icon: IconWorld, required: [['manage', 'all']], implemented: true },
   { route: '/queues', label: 'Queues & jobs', tier: '10-19', icon: IconStack2, required: [['manage', 'all']], implemented: true },
   { route: '/schedulers', label: 'Schedulers', tier: '10-19', icon: IconCalendarTime, required: [['manage', 'all']], implemented: true },
   { route: '/audit-logs', label: 'Audit logs', tier: '10-19', icon: IconHistory, required: [['read', 'AuditLog']], implemented: true },
