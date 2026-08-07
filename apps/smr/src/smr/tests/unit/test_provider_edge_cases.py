@@ -209,7 +209,7 @@ class TestAzureEdgeCases:
         )
         call_kw = provider._client.chat.completions.create.call_args.kwargs
         assert call_kw["temperature"] == 0.2
-        assert call_kw["max_tokens"] == 100
+        assert call_kw["max_completion_tokens"] == 100
         assert call_kw["top_p"] == 0.8
 
     @pytest.mark.asyncio
