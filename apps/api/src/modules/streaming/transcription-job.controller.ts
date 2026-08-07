@@ -124,25 +124,6 @@ export class TranscriptionJobController {
   ) {}
 
   /**
-   * The caller's ACTIVE tenant, resolved in the canonical order used
-   * everywhere else in the gateway — `ClsTenantContextProvider.getTenantId()`
-   * (`src/database/tenant-context.provider.ts`) and the sibling admin
-   * controllers: the CLS `tenantId` key FIRST, then the JWT-derived identity.
-   *
-   * The `tenantId` key is where `ContextInterceptor` elevates a GLOBAL_ADMIN's
-   * selected working tenant from the `x-tenant-id` header; a global admin's own
-   * JWT carries `tenantId: ''`, so reading `user.tenantId` alone rejected every
-   * global-admin caller with a 400 (BUG-012). `??` (not `||`) matches the
-   * provider exactly, and the explicit length check keeps an empty-string claim
-   * from leaking through as a tenant — a caller with no active tenant still
-   * fails closed here.
-   *
-   * No new trust is granted: the only way the CLS `tenantId` diverges from
-   * `user.tenantId` is that audited global-admin elevation, which
-   * `resolveActiveTenant` already restricts to elevated callers with an empty
-   * JWT tenant and a well-formed UUID (a forged header from a tenant-bound
-   * caller is rejected as 400 before the handler runs).
-   */
    * The effective batch ceilings for the caller's tenant, or the code defaults
    * when the resolver is not wired. Never throws — see
    * `BatchTranscriptionLimitsService` for why these fail open.
@@ -170,6 +151,26 @@ export class TranscriptionJobController {
     }
   }
 
+  /**
+   * The caller's ACTIVE tenant, resolved in the canonical order used
+   * everywhere else in the gateway — `ClsTenantContextProvider.getTenantId()`
+   * (`src/database/tenant-context.provider.ts`) and the sibling admin
+   * controllers: the CLS `tenantId` key FIRST, then the JWT-derived identity.
+   *
+   * The `tenantId` key is where `ContextInterceptor` elevates a GLOBAL_ADMIN's
+   * selected working tenant from the `x-tenant-id` header; a global admin's own
+   * JWT carries `tenantId: ''`, so reading `user.tenantId` alone rejected every
+   * global-admin caller with a 400 (BUG-012). `??` (not `||`) matches the
+   * provider exactly, and the explicit length check keeps an empty-string claim
+   * from leaking through as a tenant — a caller with no active tenant still
+   * fails closed here.
+   *
+   * No new trust is granted: the only way the CLS `tenantId` diverges from
+   * `user.tenantId` is that audited global-admin elevation, which
+   * `resolveActiveTenant` already restricts to elevated callers with an empty
+   * JWT tenant and a well-formed UUID (a forged header from a tenant-bound
+   * caller is rejected as 400 before the handler runs).
+   */
   private getTenantId(): string {
     const active = this.cls.get('tenantId') ?? this.cls.get('user')?.tenantId;
     if (!active || active.length === 0) {
@@ -323,17 +324,11 @@ export class TranscriptionJobController {
 
     const tenantId = this.getTenantId();
 
-    // 1b. Resolve the pipeline. `pipelineId` is optional since TASK-614: omitting
-    //     it means "use the tenant's default", the same intent a live session has
-    //     always been able to express. Resolution order — the pipeline the tenant
-    //     marked default, then the configured STT fallback. If the tenant has
-    //     neither, REFUSE: transcribing a consultation on an arbitrary engine is
-    //     worse than a clear error.
-    const { fallbackPipelineId } = await this.resolveSttFallbackConfig(tenantId);
-    const pipelineId = body.pipelineId ?? (await this.resolveDefaultPipelineId(fallbackPipelineId));
     // 1b. Admin-configurable ceilings (TASK-604). Every rejection below happens
     // BEFORE object storage, the job row, and the worker dispatch — an upload
-    // that is going to be refused must not cost a 200 MB write first.
+    // that is going to be refused must not cost a 200 MB write first. These run
+    // ahead of pipeline resolution (1c) for the same reason: they are pure
+    // in-process checks, so a refused upload never costs a DB round-trip.
     const limits = await this.resolveBatchLimits(tenantId);
 
     const maxBytes = limits.maxFileSizeMb * 1024 * 1024;
@@ -364,6 +359,15 @@ export class TranscriptionJobController {
     // In-flight cap — the server-side counterpart of the client's per-batch
     // limit. Without it "5 per batch" is bypassed by sending five batches.
     await this.assertBatchConcurrency(limits.maxActiveJobsPerUser);
+
+    // 1c. Resolve the pipeline. `pipelineId` is optional since TASK-614: omitting
+    //     it means "use the tenant's default", the same intent a live session has
+    //     always been able to express. Resolution order — the pipeline the tenant
+    //     marked default, then the configured STT fallback. If the tenant has
+    //     neither, REFUSE: transcribing a consultation on an arbitrary engine is
+    //     worse than a clear error.
+    const { fallbackPipelineId } = await this.resolveSttFallbackConfig(tenantId);
+    const pipelineId = body.pipelineId ?? (await this.resolveDefaultPipelineId(fallbackPipelineId));
 
     // Block cross-tenant pipeline use before any I/O.
     await this.assertPipelineOwnership(pipelineId);
