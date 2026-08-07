@@ -692,11 +692,7 @@ export {
   type BatchTranscriptionQueueConfig,
 } from './core/BatchTranscriptionQueue';
 export { probeAudioDurationSeconds, type ProbeAudioDurationOptions } from './core/audioDuration';
-export type {
-  UseBatchTranscriptionProps,
-  UseBatchTranscriptionReturn,
-  BatchTranscriptionLimitsResponse,
-} from './hooks/useBatchTranscription';
+export type { UseBatchTranscriptionProps, UseBatchTranscriptionReturn, BatchTranscriptionLimitsResponse } from './hooks/useBatchTranscription';
 export type { SttFallbackProvider } from './hooks/useSttProviderToggle';
 export { SSEClient, type SSEConnectOptions } from './core/SSEClient';
 
