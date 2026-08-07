@@ -1,6 +1,8 @@
 import { SetMetadata, applyDecorators, createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { REQUIRED_PERMISSIONS_KEY, SKIP_AUTH_KEY, PERMISSION_MODE_KEY, RequiredPermission, PermissionMode } from './authorization.guard';
+import { API_KEY_REQUIRED_SCOPES } from './unified-auth.guard';
+import { isValidScope } from '../services/apiKey/apikey-scopes.registry';
 
 /**
  * Mark route as public (no authentication or authorization required)
@@ -86,6 +88,49 @@ export function AuthorizeAny(...permissions: [string, string][]) {
   }));
 
   return applyDecorators(SetMetadata(REQUIRED_PERMISSIONS_KEY, required), SetMetadata(PERMISSION_MODE_KEY, 'OR' as PermissionMode), ApiBearerAuth());
+}
+
+/**
+ * Require an API key to hold at least one of the given scopes.
+ *
+ * Sets `API_KEY_REQUIRED_SCOPES` metadata (`unified-auth.guard.ts`), read by
+ * `UnifiedAuthGuard.enforceApiKeyScopes` on the API-key auth path ONLY. It is
+ * independent of — and additive to — `@Authorize()`/`@CanXxx()`, which gate
+ * the JWT/CASL path: a route can (and for anything API keys may reach,
+ * should) carry both. A JWT-authenticated caller is unaffected by this
+ * decorator; an API-key-authenticated caller must satisfy it.
+ *
+ * Fails CLOSED on a typo: every scope is validated against
+ * `API_KEY_SCOPE_REGISTRY` (`isValidScope`) at DECORATION time — i.e. when
+ * the controller module is first evaluated, not when a request arrives. An
+ * unknown scope throws immediately, so a typo turns into a loud boot/build
+ * failure instead of a scope check that can never succeed (or, if the guard
+ * treated "unrecognized" as "unrestricted", a silent authorization hole).
+ * This is deliberately earlier and louder than failing inside the guard at
+ * request time, which would only surface the mistake in production traffic.
+ *
+ * @param scopes - One or more scope strings from `API_KEY_SCOPE_REGISTRY`
+ *   (e.g. `'consultation:report:write'`). ANY one held by the key is
+ *   sufficient (OR semantics — matches `enforceApiKeyScopes`).
+ *
+ * @example
+ * ```typescript
+ * @Post(':id/summary')
+ * @Authorize(['create', 'Summary'])
+ * @RequiredScopes('consultation:report:write')
+ * generateSummary() { ... }
+ * ```
+ */
+export function RequiredScopes(...scopes: string[]) {
+  const invalid = scopes.filter((scope) => !isValidScope(scope));
+  if (invalid.length > 0) {
+    throw new Error(
+      `@RequiredScopes(): unknown API-key scope(s): ${invalid.join(', ')}. ` +
+        `Scopes must be declared in API_KEY_SCOPE_REGISTRY ` +
+        `(packages/applications/src/services/apiKey/apikey-scopes.registry.ts).`,
+    );
+  }
+  return SetMetadata(API_KEY_REQUIRED_SCOPES, scopes);
 }
 
 /**

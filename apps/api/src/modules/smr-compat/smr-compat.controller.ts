@@ -5,6 +5,7 @@ import {
   IConfigService,
   IDnaWritingStyleService,
   IProviderConnectionService,
+  RequiredScopes,
   SecretsService,
 } from '@arcaai/applications';
 import { SYSTEM_TENANT_ID } from '@arcaai/domains';
@@ -283,6 +284,7 @@ export class SmrCompatController {
 
   @Post('summary/sync')
   @Authorize()
+  @RequiredScopes('consultation:report:write')
   @ApiOperation({ summary: 'v1-compatible synchronous medical summary (stateless shim over SMR /generate)' })
   async summarySync(@Body() body: SyncSummaryRequest, @Req() request: RequestWithAuth, @Res() res: Response): Promise<void> {
     // Mandatory V2 Core context: resolve-or-reject tenant BEFORE any SMR call,
@@ -513,6 +515,7 @@ export class SmrCompatController {
 
   @Post('presummary')
   @Authorize()
+  @RequiredScopes('consultation:report:write')
   @ApiOperation({ summary: 'v1-compatible department-aware pre-summary (stateless shim over SMR /generate)' })
   async presummary(@Body() body: PreSummaryRequest, @Req() request: RequestWithAuth, @Res() res: Response): Promise<void> {
     // Mandatory V2 Core context: resolve-or-reject tenant BEFORE any SMR call.
