@@ -5,6 +5,7 @@ import { WsAdapter } from '@nestjs/platform-ws';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { auditAdminRoutePermissions } from './bootstrap/admin-route-permission-audit';
+import { auditApiKeyRequiredScopes } from './bootstrap/api-key-scope-audit';
 import { assertGenaiContentCaptureDisabled } from './bootstrap/genai-content-capture-audit';
 import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholder-audit';
 // CORS helpers live in `cors.config.ts` so the dev / staging / production
@@ -256,6 +257,12 @@ async function bootstrap() {
   // before any request can be served. `UnifiedAuthGuard` (via `APP_GUARD`)
   // makes the same posture authoritative at request time.
   auditAdminRoutePermissions(app);
+
+  // Refuses to start if any route on the HOPE Node SDK's day-1 summarization
+  // surface (TASK-632 B1) lost its `@RequiredScopes(...)` metadata — closes
+  // G1 (a leaked API key reaching every RBAC-permitted route unscoped) and
+  // guards against a future refactor silently dropping the decorator.
+  auditApiKeyRequiredScopes();
 
   await app.listen(port);
 
