@@ -1,4 +1,5 @@
-// TASK-610 §3.6 T-5 — OriginTenantBindingGuard (lane W3-B).
+// TASK-610 §3.6 T-5 — OriginTenantBindingGuard (lane W3-B), revised for §4B
+// (many-to-many origins ↔ tenants — lane W6-D).
 //
 // This guard is FR-4: the ACTUAL tenant-isolation control for browser
 // origins. CORS is advisory browser behaviour and proves nothing about a
@@ -6,6 +7,12 @@
 // tenant B's data. Every rule below has a failure mode that is SILENT — the
 // wrong requests are simply allowed (or the platform quietly breaks) with
 // nothing going red — so each one is pinned here.
+//
+// §4B.4 replaced `ownerOf(origin) → string | null` with
+// `tenantsFor`/`has`/`allows`. The registry double below mirrors the real
+// `OriginRegistryService`'s semantics: a Set of tenants per origin, `has`
+// true iff that set is non-empty, and `allows` encapsulating the
+// SYSTEM-admits-every-tenant rule so this guard never has to.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ExecutionContext, NotFoundException } from '@nestjs/common';
@@ -16,6 +23,7 @@ import { OriginTenantBindingGuard } from '../origin-tenant-binding.guard';
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const TENANT_A = '11111111-1111-1111-1111-111111111111';
 const TENANT_B = '22222222-2222-2222-2222-222222222222';
+const TENANT_C = '33333333-3333-3333-3333-333333333333';
 
 /**
  * A registry double that keys its map exactly the way the real
@@ -23,14 +31,18 @@ const TENANT_B = '22222222-2222-2222-2222-222222222222';
  * lowercased, never throwing on malformed input
  * (`origin-registry.service.ts#toLookupKey`).
  *
- * Using the real normalizer rather than a hand-stubbed `ownerOf` is what
+ * Using the real normalizer rather than a hand-stubbed `allows`/`has` is what
  * makes the case/default-port cases below meaningful: they prove the GUARD
  * hands the raw `Origin` header straight through, un-mangled, so the
  * registry's normalization actually applies end-to-end. A registry stubbed
- * with `vi.fn()` returning a fixed owner would pass those tests even if the
+ * with `vi.fn()` returning a fixed answer would pass those tests even if the
  * guard pre-processed (or mis-cased) the header itself.
+ *
+ * Takes `Record<origin, tenantId[]>` — a list of tenants each origin is
+ * GRANTED to (§4B.2: one row per (origin, tenant) grant; the union of grants
+ * is what `tenantsFor`/`allows` expose).
  */
-const createRegistry = (rows: Record<string, string>): IOriginRegistry => {
+const createRegistry = (rows: Record<string, string[]>): IOriginRegistry => {
   const toKey = (raw: string): string | null => {
     if (typeof raw !== 'string' || raw.trim().length === 0) return null;
     try {
@@ -40,21 +52,24 @@ const createRegistry = (rows: Record<string, string>): IOriginRegistry => {
     }
   };
 
-  const index = new Map<string, string>();
-  for (const [origin, tenantId] of Object.entries(rows)) {
+  const index = new Map<string, Set<string>>();
+  for (const [origin, tenantIds] of Object.entries(rows)) {
     const key = toKey(origin);
     if (key === null) throw new Error(`test fixture origin is not normalizable: ${origin}`);
-    index.set(key, tenantId);
+    index.set(key, new Set(tenantIds));
   }
 
+  const tenantsFor = (origin: string): ReadonlySet<string> => {
+    const key = toKey(origin);
+    return key === null ? new Set<string>() : (index.get(key) ?? new Set<string>());
+  };
+
   return {
-    ownerOf: (origin: string) => {
-      const key = toKey(origin);
-      return key === null ? null : (index.get(key) ?? null);
-    },
-    has: (origin: string) => {
-      const key = toKey(origin);
-      return key === null ? false : index.has(key);
+    tenantsFor,
+    has: (origin: string) => tenantsFor(origin).size > 0,
+    allows: (origin: string, tenantId: string) => {
+      const grantees = tenantsFor(origin);
+      return grantees.has(tenantId) || grantees.has(SYSTEM_TENANT_ID);
     },
     refresh: vi.fn(async () => undefined),
     size: () => index.size,
@@ -78,17 +93,41 @@ const createContext = (headers: Record<string, unknown> = {}, type: 'http' | 'ws
   } as unknown as ExecutionContext;
 };
 
-describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4)', () => {
+describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4, §4B many-to-many)', () => {
   let registry: IOriginRegistry;
 
   beforeEach(() => {
     vi.clearAllMocks();
     registry = createRegistry({
-      'https://console.arcaai.example': SYSTEM_TENANT_ID,
-      'https://a.example': TENANT_A,
-      'https://b.example': TENANT_B,
-      'https://x.org': TENANT_A,
-      'https://port.example:4433': TENANT_A,
+      'https://console.arcaai.example': [SYSTEM_TENANT_ID],
+      'https://a.example': [TENANT_A],
+      'https://b.example': [TENANT_B],
+      'https://x.org': [TENANT_A],
+      'https://port.example:4433': [TENANT_A],
+      // The high-value §4B case: one origin granted to BOTH tenant A and
+      // tenant B — impossible under the old single-owner index (a global
+      // unique index on `origin` made the second tenant's grant a 409).
+      'https://shared.example': [TENANT_A, TENANT_B],
+    });
+  });
+
+  describe('the §4B many-to-many case this lane exists for', () => {
+    it('allows a shared origin for tenant A', () => {
+      const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_A }), registry);
+
+      expect(guard.canActivate(createContext({ origin: 'https://shared.example' }))).toBe(true);
+    });
+
+    it('allows the SAME shared origin for tenant B', () => {
+      const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_B }), registry);
+
+      expect(guard.canActivate(createContext({ origin: 'https://shared.example' }))).toBe(true);
+    });
+
+    it('rejects the SAME shared origin for a THIRD tenant not in the grant set — 404', () => {
+      const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_C }), registry);
+
+      expect(() => guard.canActivate(createContext({ origin: 'https://shared.example' }))).toThrow(NotFoundException);
     });
   });
 
@@ -100,12 +139,14 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4)', () => {
     });
 
     it('does not even consult the registry when no Origin header is present', () => {
-      const ownerOf = vi.spyOn(registry, 'ownerOf');
+      const hasSpy = vi.spyOn(registry, 'has');
+      const allowsSpy = vi.spyOn(registry, 'allows');
       const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_B }), registry);
 
       guard.canActivate(createContext({}));
 
-      expect(ownerOf).not.toHaveBeenCalled();
+      expect(hasSpy).not.toHaveBeenCalled();
+      expect(allowsSpy).not.toHaveBeenCalled();
     });
 
     it('treats an empty-string Origin as absent', () => {
@@ -115,7 +156,7 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4)', () => {
     });
   });
 
-  describe('rule 2 — a SYSTEM-owned origin is valid for every tenant', () => {
+  describe('SYSTEM-granted origin is valid for every tenant (via allows(), not re-derived here)', () => {
     it('allows the SYSTEM console origin for tenant A', () => {
       const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_A }), registry);
 
@@ -129,7 +170,7 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4)', () => {
     });
   });
 
-  describe('rule 3 — otherwise owner must equal the resolved tenant', () => {
+  describe('otherwise allows() must admit the resolved tenant', () => {
     it('allows tenant A on tenant A’s own origin', () => {
       const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_A }), registry);
 
@@ -161,7 +202,7 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4)', () => {
     });
   });
 
-  describe('rule 4 — no resolved tenant passes through', () => {
+  describe('no resolved tenant passes through', () => {
     it('allows an unauthenticated request (no CLS tenant at all)', () => {
       const guard = new OriginTenantBindingGuard(createCls({}), registry);
 
@@ -189,8 +230,8 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4)', () => {
     });
   });
 
-  describe('unregistered origin — documented decision: pass through', () => {
-    it('allows an origin that is not in the registry (no owner ⇒ no binding to violate)', () => {
+  describe('unregistered origin (empty tenant set) — documented decision: pass through', () => {
+    it('allows an origin that is not in the registry (empty grant set ⇒ no binding to violate)', () => {
       const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_B }), registry);
 
       expect(guard.canActivate(createContext({ origin: 'https://unregistered.example' }))).toBe(true);
@@ -202,7 +243,7 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4)', () => {
       expect(guard.canActivate(createContext({ origin: 'http://localhost:5173' }))).toBe(true);
     });
 
-    it('serves every tenant when the registry is empty (FR-6 bootstrap fallback must not be defeated)', () => {
+    it('serves every tenant when the registry is empty', () => {
       const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_A }), createRegistry({}));
 
       expect(guard.canActivate(createContext({ origin: 'https://a.example' }))).toBe(true);
@@ -233,7 +274,7 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4)', () => {
       expect(() => guard.canActivate(createContext({ origin: 'HTTPS://A.EXAMPLE' }))).toThrow(NotFoundException);
     });
 
-    it('allows HTTPS://X.ORG for its owner tenant A', () => {
+    it('allows HTTPS://X.ORG for its granted tenant A', () => {
       const guard = new OriginTenantBindingGuard(createCls({ tenantId: TENANT_A }), registry);
 
       expect(guard.canActivate(createContext({ origin: 'HTTPS://X.ORG' }))).toBe(true);

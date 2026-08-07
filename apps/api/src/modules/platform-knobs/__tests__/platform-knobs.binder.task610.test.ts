@@ -24,11 +24,16 @@ import { PlatformKnobsBinder } from '../platform-knobs.binder';
  * deserve the systemic signal, not one log line per attempted origin (plan
  * §3.8).
  */
-function fakeRegistry(origins: Record<string, string>): IOriginRegistry {
-  const index = new Map(Object.entries(origins));
+/**
+ * Map value is the set of tenants GRANTED that origin — since §4B an origin is
+ * granted to many tenants rather than owned by one.
+ */
+function fakeRegistry(origins: Record<string, string[]>): IOriginRegistry {
+  const index = new Map(Object.entries(origins).map(([origin, tenants]) => [origin, new Set(tenants)]));
   return {
+    tenantsFor: (origin: string) => index.get(origin) ?? new Set<string>(),
     has: (origin: string) => index.has(origin),
-    ownerOf: (origin: string) => index.get(origin) ?? null,
+    allows: (origin: string, tenantId: string) => index.get(origin)?.has(tenantId) ?? false,
     refresh: async () => undefined,
     size: () => index.size,
   };
@@ -46,7 +51,7 @@ describe('PlatformKnobsBinder — origin registry resolver', () => {
   });
 
   it('makes a populated registry authoritative — registered admitted, everything else refused', () => {
-    new PlatformKnobsBinder(undefined, undefined, fakeRegistry({ 'https://registered.example.com': SYSTEM_TENANT })).onModuleInit();
+    new PlatformKnobsBinder(undefined, undefined, fakeRegistry({ 'https://registered.example.com': [SYSTEM_TENANT] })).onModuleInit();
 
     expect(isOriginAllowed('https://registered.example.com', 'production')).toBe(true);
     expect(isOriginAllowed('https://evil.example.com', 'production')).toBe(false);
@@ -65,7 +70,7 @@ describe('PlatformKnobsBinder — origin registry resolver', () => {
   });
 
   it('installs the resolver even when no settings resolver is wired (the two knobs are independent)', () => {
-    const binder = new PlatformKnobsBinder(undefined, undefined, fakeRegistry({ 'https://registered.example.com': SYSTEM_TENANT }));
+    const binder = new PlatformKnobsBinder(undefined, undefined, fakeRegistry({ 'https://registered.example.com': [SYSTEM_TENANT] }));
 
     expect(() => binder.onModuleInit()).not.toThrow();
     expect(isOriginAllowed('https://registered.example.com', 'production')).toBe(true);

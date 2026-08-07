@@ -633,6 +633,132 @@ no restart) or narrowed to explicit origins.
 
 ---
 
+## 4B. Many-to-many origins ↔ tenants (owner-directed) — supersedes single ownership
+
+> "different tenant admin can have many tenants, and they also share the same origins"
+
+### 4B.1 The limitation being removed
+
+`origin` carried a GLOBAL unique index, so one origin belonged to exactly one tenant. Two tenants
+sharing `http://localhost:5173` was impossible: the second `create` returned 409. The only sharing
+mechanism was SYSTEM ownership, which means **every** tenant — there was no way to express "these two
+and no others".
+
+That constraint existed for one reason: `ownerOf(origin) → string | null` had to return a SINGLE
+answer, because a preflight carries no tenant. The fix is not to relax the index — it is to stop
+asking the wrong question. An origin does not have an owner; it has a **set of tenants it may act
+on**.
+
+### 4B.2 New model — the row IS the grant
+
+`TenantAllowedOrigin` keeps its shape. Only the uniqueness changes:
+
+```
+- @unique(map: "TenantAllowedOrigin_origin_unique")   on origin
++ @@unique([origin, tenantId], map: "TenantAllowedOrigin_origin_tenantId_unique")
+```
+
+One row per **(origin, tenant) grant**. `label`/`description` per row is a feature, not redundancy —
+each tenant annotates why it uses that origin.
+
+### 4B.3 Resolution becomes a UNION, and precedence disappears
+
+This is the part worth reading twice. With a single owner we needed a tie-break, so §4A.2 froze
+"exact beats pattern, longest suffix wins". With a SET, there is nothing to break a tie between:
+
+```
+tenantsFor(origin) = ⋃ { row.tenantId : row is exact-equal OR row is a pattern matching origin }
+```
+
+- **CORS admission**: `tenantsFor(origin)` is non-empty.
+- **Binding guard**: `requestTenant ∈ tenantsFor(origin)` **or** `SYSTEM ∈ tenantsFor(origin)`.
+
+Union is **monotone** — adding a grant can never remove access — which removes a whole class of
+surprising shadowing. `patternSpecificity` survives only as a deterministic ordering for logs; it is
+no longer on the authorization path. Delete it from the decision, not from the codebase.
+
+**Consequence for the Global `*` row, and it is the right one.** Under most-specific-wins, `*` meant
+"origins that nothing else matches may act on Global" — so `https://arcaai-u2204.bcmch.org` could NOT
+act on Global, which quietly contradicts "Global allows any origin". Under union it means exactly what
+it says: every origin may act on Global. The owner asked for the latter.
+
+### 4B.4 Frozen contract
+
+```ts
+export interface IOriginRegistry {
+  /** Tenants this origin may act on. EMPTY = unregistered. Contains SYSTEM ⇒ every tenant. */
+  tenantsFor(origin: string): ReadonlySet<string>;
+  /** CORS admission — registered at all? */
+  has(origin: string): boolean;
+  /** May `tenantId` be acted on from `origin`? Encapsulates the SYSTEM rule. */
+  allows(origin: string, tenantId: string): boolean;
+  refresh(): Promise<void>;
+  size(): number;
+}
+```
+
+`ownerOf` is REMOVED. `allows()` exists so the SYSTEM rule has exactly ONE implementation — the guard
+and the WS handshake must not each re-derive it. That lesson is already paid for in this ticket: W5-C
+first "fixed" an HTTP/WS disagreement by copying the rule into both, and the Integrator had to
+consolidate it.
+
+### 4B.5 The two-tenant example this was raised for
+
+`arcaai-dev` needs `localhost:5173` + `arcaai-u2204`; `arcaai-test` needs `localhost:5173` +
+`arcaai-staging`. Now expressible exactly — four grant rows, nothing shared with any third tenant:
+
+| origin | tenant |
+|---|---|
+| `http://localhost:5173` | arcaai-dev |
+| `http://localhost:5173` | arcaai-test |
+| `https://arcaai-u2204.bcmch.org` | arcaai-dev |
+| `https://arcaai-staging.bcmch.org` | arcaai-test |
+
+SYSTEM ownership remains available for genuinely platform-wide origins, but is no longer the ONLY way
+to share — which is what made it overused.
+
+---
+
+### 4B.6 Delivered — evidence
+
+| Lane | Change | Evidence |
+|---|---|---|
+| W6-A | `@@unique([origin, tenantId])`, index-only migration, `findByOrigin` → `findByOriginAndTenant` | domains 1418 · database 892 · 3 gen-checks no drift |
+| W6-B | union registry: `tenantsFor` / `has` / `allows`; `ownerOf` removed | 324 tests, RED 31 first |
+| W6-C | grants scoped to (origin, tenant); conflict message corrected | 63 tests, RED 30 first |
+| W6-D | guard delegates to `allows()`; no `SYSTEM_TENANT_ID` constant left in it | 310 tests, RED 22 first |
+| Integrator | seed compound key; 4 test fakes reshaped to `origin → Set<tenantId>` | apps/api 2443 · typecheck clean |
+
+**Proven against the live dev schema** (in a transaction, rolled back — the table still holds its 8
+seeded rows):
+
+```
+INSERT localhost:5173 → tenant A      ✓
+INSERT localhost:5173 → tenant B      ✓     GRANTS FOR localhost:5173 = 2
+INSERT localhost:5173 → tenant A      ✗ duplicate key … TenantAllowedOrigin_origin_tenantId_unique
+```
+
+Two tenants share an origin; one tenant cannot hold it twice. That is §4B.5's scenario, demonstrated
+rather than asserted.
+
+### 4B.7 What this wave changed about earlier decisions
+
+Three things in this document are now WRONG where they were right when written. They are corrected in
+place above; listed here so a reader of the history is not misled:
+
+1. **"Global uniqueness is required or the reverse index is ambiguous"** (§3.1, and 20 lines of the
+   `.prisma` header). True only while `ownerOf` returned a single tenant. `tenantsFor` returns a set,
+   so there is nothing to disambiguate. The schema header was rewritten; leaving a stale rationale
+   directly above the constraint it contradicts is how the next reader gets misled.
+2. **Precedence — "exact beats pattern, longest suffix wins"** (§4A.2). Off the authorization path
+   entirely. Union resolution is monotone, so adding a grant can never remove access.
+   `patternSpecificity` survives only to order logs.
+3. **The duplicate-origin `logger.error`.** Two tenants sharing an origin was a corruption signal and
+   is now ordinary data. Removed — an error that fires constantly trains operators to ignore a channel
+   that still carries real failures.
+
+---
+
 ## 5. Implementation Summary
 
 *In progress. Waves 0–3 landed and verified; Wave 4 remediation partly outstanding (see §5.3).*

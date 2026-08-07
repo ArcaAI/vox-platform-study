@@ -1,5 +1,6 @@
 /**
- * `OriginTenantBindingGuard` — TASK-610 FR-4, plan §3.0 / §3.4.
+ * `OriginTenantBindingGuard` — TASK-610 FR-4, plan §3.0 / §3.4, revised for
+ * §4B (many-to-many origins ↔ tenants).
  *
  * CORS is ADVISORY BROWSER BEHAVIOUR. It proves nothing about a caller: any
  * non-browser client ignores it outright, and a browser only ever declines to
@@ -9,8 +10,15 @@
  *
  * This guard is the boundary. It answers one question:
  *
- *     the request carries `Origin: X`, and X belongs to tenant O —
- *     is the tenant this request resolved to allowed to act from X?
+ *     the request carries `Origin: X`, and X is granted to a SET of tenants —
+ *     is the tenant this request resolved to a member of that set?
+ *
+ * §4B.4 froze `IOriginRegistry.allows(origin, tenantId)` as the ONE place the
+ * SYSTEM-admits-every-tenant rule is implemented. This guard MUST NOT
+ * re-derive that rule itself (e.g. by reading `tenantsFor()` and comparing to
+ * a locally-declared SYSTEM constant) — this ticket already paid for that
+ * mistake once (§4B.4: "W5-C first 'fixed' an HTTP/WS disagreement by copying
+ * the rule into both, and the Integrator had to consolidate it").
  *
  * Four rules, each with a SILENT failure mode (nothing goes red; the wrong
  * requests are simply allowed, or the platform quietly breaks):
@@ -20,40 +28,41 @@
  *     (`no_origin_provided`). This is the MAJORITY of gateway traffic, not an
  *     edge case — enforcing a binding here would break every internal caller
  *     on the platform.
- *  2. Origin owned by the reserved SYSTEM tenant → allow for ANY tenant. The
- *     admin console serves every tenant from ONE origin; binding SYSTEM
- *     origins strictly would break the console for all tenants on day one.
- *  3. Otherwise the owner MUST equal the resolved tenant. Mismatch →
- *     `NotFoundException` (404), never `ForbiddenException` — the house
- *     404-over-403 posture (`05-nestjs-api.md`): a cross-tenant access must
- *     not confirm that the resource, route or tenant exists.
- *  4. No resolved tenant → PASS THROUGH. Public/unauthenticated routes (login,
+ *  2. No resolved tenant → PASS THROUGH. Public/unauthenticated routes (login,
  *     health, password reset) have none, and the origin already passed the
  *     CORS gate. 404-ing an anonymous login request would take the login page
- *     down.
+ *     down. A global admin carries `tenantId: ''` — treated as "no tenant",
+ *     not compared against real owners (see `resolveTenantId`).
+ *  3. Origin not registered at all (`registry.has(origin)` is false — i.e.
+ *     `tenantsFor(origin)` is empty) → PASS THROUGH + warn. An unregistered
+ *     origin has no grant to violate, and a non-browser client that can forge
+ *     an `Origin` header can equally OMIT it and take rule 1 — denying here
+ *     would only inconvenience an attacker who chose the noisier of two
+ *     equivalent paths, while breaking real callers (dev loopback, a registry
+ *     miss that the CORS gate already denied but that still reached the
+ *     server on a non-preflighted "simple" request).
+ *  4. Otherwise `registry.allows(origin, resolvedTenantId)` decides: allowed
+ *     ⇒ pass; denied ⇒ `NotFoundException` (404), never `ForbiddenException`
+ *     — the house 404-over-403 posture (`05-nestjs-api.md`): a cross-tenant
+ *     access must not confirm that the resource, route or tenant exists.
+ *     `allows()` internally admits SYSTEM-granted origins for every tenant —
+ *     this guard does not know or care that SYSTEM is special.
  *
  * ORDERING (Integrator note): this guard MUST be registered as an `APP_GUARD`
  * AFTER `UnifiedAuthGuard` — that is what populates the CLS `tenantId` /
  * `user` this guard reads. Registered before it, `resolveTenantId()` is always
- * empty, rule 4 fires for every request, and the guard silently degrades to a
+ * empty, rule 2 fires for every request, and the guard silently degrades to a
  * no-op that still passes all of its own unit tests.
  *
  * Note that `ContextInterceptor`'s global-admin `x-tenant-id` elevation runs
  * AFTER all guards, so a global admin "acting as" a tenant is still seen here
- * with their own empty tenant and takes rule 4. That is correct: they arrive
- * on the SYSTEM-owned console origin, which rule 2 admits anyway.
+ * with their own empty tenant and takes rule 2. That is correct: they arrive
+ * on the SYSTEM-granted console origin, which rule 4's `allows()` admits
+ * anyway.
  */
 import { CanActivate, ExecutionContext, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { IOriginRegistry } from '@arcaai/applications';
-
-/**
- * Reserved platform tenant. Declared locally, matching the house pattern used
- * by every consumer of this constant (`base.service.ts`, `policy.engine.ts`,
- * `appSettings.service.ts`, …) rather than introducing a new cross-package
- * export for a single comparison.
- */
-const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Deliberately generic. A cross-tenant caller learns nothing from it — same
@@ -88,19 +97,19 @@ export class OriginTenantBindingGuard implements CanActivate {
 
     const tenantId = this.resolveTenantId();
 
-    // Rule 4 — nothing to bind against.
+    // Rule 2 — nothing to bind against.
     if (tenantId === null) {
       return true;
     }
 
-    // `ownerOf` normalizes the raw header itself (case, default port) and
-    // never throws on malformed input — a hostile `Origin` yields `null`, not
-    // an unhandled 500. The raw header is passed through UNMODIFIED so the
-    // registry's normalizer stays the single source of truth for origin
+    // `has`/`allows` normalize the raw header themselves (case, default port)
+    // and never throw on malformed input — a hostile `Origin` yields `false`,
+    // not an unhandled 500. The raw header is passed through UNMODIFIED so
+    // the registry's normalizer stays the single source of truth for origin
     // syntax; pre-processing it here would be a second, divergent parser.
-    const owner = this.registry.ownerOf(origin);
 
-    // DECISION — an origin that is present but NOT registered passes through.
+    // DECISION — an origin that is present but NOT registered at all (empty
+    // tenant set) passes through.
     //
     // Reaching this branch in production means either (a) the `development`
     // loopback allowance in `cors.config.ts`, which deliberately admits
@@ -116,8 +125,8 @@ export class OriginTenantBindingGuard implements CanActivate {
     //
     // Denying here would be actively harmful and buys nothing:
     //   - It would break the documented dev loopback path.
-    //   - It closes nothing. An unregistered origin has NO owner, so there is
-    //     no tenant binding to violate. And a non-browser client that can
+    //   - It closes nothing. An unregistered origin grants NO tenant, so
+    //     there is no binding to violate. And a non-browser client that can
     //     forge an `Origin` can equally OMIT it and take rule 1 — denying
     //     would only inconvenience an attacker who chose the noisier of two
     //     equivalent paths, while breaking real callers.
@@ -128,9 +137,9 @@ export class OriginTenantBindingGuard implements CanActivate {
     // It is logged at warn so a registry miss is diagnosable in one grep
     // (plan §3.8: ship the registry-miss log line in the same release that
     // closes the catch-all).
-    if (owner === null) {
+    if (!this.registry.has(origin)) {
       this.logger.warn({
-        message: 'Origin is not registered in the origin registry — passing through (no owner ⇒ no tenant binding to enforce)',
+        message: 'Origin is not registered in the origin registry — passing through (no grant ⇒ no tenant binding to enforce)',
         origin,
         tenantId,
         path: this.readPath(context),
@@ -138,20 +147,16 @@ export class OriginTenantBindingGuard implements CanActivate {
       return true;
     }
 
-    // Rule 2 — a SYSTEM-owned origin is valid for every tenant.
-    if (owner === SYSTEM_TENANT_ID) {
-      return true;
-    }
-
-    // Rule 3 — owner must equal the resolved tenant.
-    if (owner === tenantId) {
+    // Rule 4 — the origin is registered; `allows()` is the SINGLE place that
+    // decides membership, including the SYSTEM-admits-every-tenant rule. This
+    // guard does not re-derive it.
+    if (this.registry.allows(origin, tenantId)) {
       return true;
     }
 
     this.logger.warn({
       message: 'Cross-tenant origin binding violation — rejecting with 404',
       origin,
-      ownerTenantId: owner,
       requestTenantId: tenantId,
       path: this.readPath(context),
     });
