@@ -229,13 +229,18 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
   },
 ];
 
-// Shared pre-summary — TENANT-scoped, no department binding (every ArcaAI
-// clinical department points its `preSummaryPromptId` at this single row, v1's
-// one department-interpolated pre-summary prompt normalized to a static body).
+// Shared pre-summary — TENANT-scoped, no department binding.
+//
+// Pre-summary has NO department axis and NO visit-type axis. In v1 there is
+// exactly ONE pre-summary prompt for the whole tenant; department and visit type
+// are VARIABLES INSIDE it, never selectors for a different prompt (v1
+// `select_prompt_template` is called only from the summary path). The ArcaAI
+// departments therefore no longer set `preSummaryPromptId` — see
+// ARCAAI_FALLBACK_TEMPLATE_IDS below and 04-department.ts.
 const PRE_SUMMARY_SPEC: ClinicalTemplateSpec = {
   id: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
   name: 'Clinical Pre-Summary',
-  description: 'ArcaAI shared pre-summary instruction prompt for all clinical departments (v1 port).',
+  description: 'ArcaAI tenant-wide pre-summary instruction prompt — department-agnostic fallback for every pre-summary request (v1 port).',
   content: PRE_SUMMARY_CONTENT,
   departmentId: null,
   scope: 'TENANT_DEFAULT',
@@ -243,6 +248,34 @@ const PRE_SUMMARY_SPEC: ClinicalTemplateSpec = {
 };
 
 const ALL_SPECS: ClinicalTemplateSpec[] = [...SUMMARY_SPECS, PRE_SUMMARY_SPEC];
+
+/**
+ * ArcaAI's DEFAULT / FALLBACK templates — what to use when the request carries
+ * no department, an unknown department, or a department with no configured
+ * agent or visit-type template.
+ *
+ * `PRE_SUMMARY` is the tenant-wide pre-summary prompt for EVERY request (there
+ * is no per-department pre-summary; it is not a fallback so much as the only
+ * one). `SUMMARY` is the department-agnostic clinical note prompt, used when the
+ * department × visit-type lookup finds nothing — mirroring v1, where an
+ * unmatched department falls through to the generic conversational prompt with
+ * an empty department schema rather than to another department's prompt.
+ *
+ * NOTE — these pointers are DECLARATIVE ONLY today. `PromptResolutionService`
+ * does not yet consult `scope = TENANT_DEFAULT`; its chain is
+ * preferred -> department agent -> department visit-type column -> hardcoded
+ * SYSTEM default (`SYSTEM_DEFAULTS.promptId`, CATCHALL_SOAP). Until the resolver
+ * gains a tenant-default tier keyed on prompt type, a pre-summary request for a
+ * department with no `preSummaryPromptId` resolves to CATCHALL_SOAP — a NOTE
+ * prompt, not a pre-summary prompt. Wiring the resolver to these ids is the
+ * companion change to this seed.
+ */
+export const ARCAAI_FALLBACK_TEMPLATE_IDS = {
+  /** Tenant-wide pre-summary prompt — department- and visit-type-agnostic. */
+  PRE_SUMMARY: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+  /** Department-agnostic summary prompt (Global tenant catch-all, APPROVED). */
+  SUMMARY: '71000000-0000-0000-0000-000000000036',
+} as const;
 
 /** Full PromptTemplate rows — APPROVED + approvedVersionNumber-pinned. */
 export const ARCAAI_CLINICAL_TEMPLATES = ALL_SPECS.map((spec) => ({

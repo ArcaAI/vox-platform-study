@@ -367,7 +367,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'General Medicine',
     description: 'Internal medicine and general medical consultations',
     defaultSummaryTemplate: 'Medicine-Structured',
-    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.MEDICINE_FOLLOWUP,
     promptConfig: {
@@ -383,7 +384,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Surgery',
     description: 'General surgery and surgical specialties',
     defaultSummaryTemplate: 'Surgery-Structured',
-    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.SURGERY_FOLLOWUP,
     promptConfig: {
@@ -399,7 +401,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Rheumatology',
     description: 'Autoimmune and musculoskeletal disease specialists',
     defaultSummaryTemplate: 'Rheumatology-Structured',
-    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.RHEUMATOLOGY_FOLLOWUP,
     promptConfig: {
@@ -415,7 +418,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Neurology',
     description: 'Brain and nervous system specialists',
     defaultSummaryTemplate: 'Neurology-Structured',
-    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.NEUROLOGY_FOLLOWUP,
     promptConfig: {
@@ -431,7 +435,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Orthopedics',
     description: 'Musculoskeletal system and bone specialists',
     defaultSummaryTemplate: 'Orthopedics-Structured',
-    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.ORTHOPEDICS_REVIEW,
     promptConfig: {
@@ -447,7 +452,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Hematology',
     description: 'Blood disorders and hematology-oncology specialists',
     defaultSummaryTemplate: 'Hematology-Structured',
-    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.HEMATOLOGY_REVISIT,
     promptConfig: {
@@ -463,7 +469,8 @@ export const ARCAAI_CLINICAL_DEPARTMENTS = [
     name: 'Breast & Endocrine',
     description: 'Breast and endocrine surgery specialists',
     defaultSummaryTemplate: 'BreastEndocrine-Structured',
-    preSummaryPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
+    // Pre-summary is NOT department-scoped — see ARCAAI_FALLBACK_TEMPLATE_IDS.
+    preSummaryPromptId: null,
     newPatientPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_NEW_REFERRAL,
     revisitPromptId: ARCAAI_CLINICAL_TEMPLATE_IDS.BREAST_ENDOCRINE_FOLLOWUP,
     promptConfig: {

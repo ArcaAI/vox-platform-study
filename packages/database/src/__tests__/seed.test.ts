@@ -26,6 +26,7 @@ import {
   ARCAAI_CLINICAL_TEMPLATES,
   ARCAAI_CLINICAL_VERSIONS,
   ARCAAI_CLINICAL_TEMPLATE_IDS,
+  ARCAAI_FALLBACK_TEMPLATE_IDS,
 } from '../prisma/db_main/seed/07b-arcaai-clinical-templates';
 import {
   DEFAULT_AI_MODELS,
@@ -717,9 +718,8 @@ describe('ArcaAI Clinical Department Seed Data', () => {
     ids.forEach((id) => expect(id).toMatch(UUID_REGEX));
   });
 
-  it('should wire all three prompt-id columns on every ArcaAI clinical department', () => {
+  it('should wire both visit-type prompt-id columns on every ArcaAI clinical department', () => {
     ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
-      expect(dept.preSummaryPromptId).not.toBeNull();
       expect(dept.newPatientPromptId).not.toBeNull();
       expect(dept.revisitPromptId).not.toBeNull();
       // new-referral and revisit MUST differ — the visit-type split is the
@@ -728,12 +728,12 @@ describe('ArcaAI Clinical Department Seed Data', () => {
     });
   });
 
-  it('should point every ArcaAI clinical department prompt-id column at an APPROVED ArcaAI template', () => {
-    // Mirrors the resolver tier-1 legacy contract: Department.{preSummary,new,revisit}PromptId
+  it('should point every ArcaAI clinical department visit-type column at an APPROVED ArcaAI template', () => {
+    // Mirrors the resolver tier-1 legacy contract: Department.{new,revisit}PromptId
     // must resolve to an APPROVED PromptTemplate owned by the ArcaAI tenant.
     const approvedById = new Map(ARCAAI_CLINICAL_TEMPLATES.filter((t) => t.status === 'APPROVED').map((t) => [t.id, t]));
     ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
-      [dept.preSummaryPromptId, dept.newPatientPromptId, dept.revisitPromptId].forEach((promptId) => {
+      [dept.newPatientPromptId, dept.revisitPromptId].forEach((promptId) => {
         const tpl = approvedById.get(promptId);
         expect(tpl, `${dept.code} → ${promptId} must be an APPROVED ArcaAI template`).toBeDefined();
         expect(tpl?.tenantId).toBe(ARCAAI);
@@ -741,10 +741,25 @@ describe('ArcaAI Clinical Department Seed Data', () => {
     });
   });
 
-  it('should share the single pre-summary template across all ArcaAI clinical departments', () => {
-    const preSummaryIds = new Set(ARCAAI_CLINICAL_DEPARTMENTS.map((d) => d.preSummaryPromptId));
-    expect(preSummaryIds.size).toBe(1);
-    expect([...preSummaryIds][0]).toBe(ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+  it('should NOT department-scope the pre-summary prompt on any ArcaAI clinical department', () => {
+    // Pre-summary has no department axis and no visit-type axis: v1 has exactly
+    // ONE pre-summary prompt per tenant, with department/visit type as variables
+    // inside it. Setting `preSummaryPromptId` per department re-creates the
+    // category error that let the department-agent tier hijack pre-summary.
+    ARCAAI_CLINICAL_DEPARTMENTS.forEach((dept) => {
+      expect(dept.preSummaryPromptId, `${dept.code} must not department-scope pre-summary`).toBeNull();
+    });
+  });
+
+  it('should expose the tenant-wide pre-summary template as the declared fallback', () => {
+    expect(ARCAAI_FALLBACK_TEMPLATE_IDS.PRE_SUMMARY).toBe(ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY);
+    const preSummary = ARCAAI_CLINICAL_TEMPLATES.find((t) => t.id === ARCAAI_FALLBACK_TEMPLATE_IDS.PRE_SUMMARY);
+    expect(preSummary).toBeDefined();
+    expect(preSummary?.tenantId).toBe(ARCAAI);
+    expect(preSummary?.status).toBe('APPROVED');
+    // Tenant-wide, not bound to any department.
+    expect(preSummary?.scope).toBe('TENANT_DEFAULT');
+    expect(preSummary?.departmentId).toBeNull();
   });
 });
 
