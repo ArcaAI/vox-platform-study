@@ -80,6 +80,10 @@ device existing is a prerequisite for PHI traffic, not an optional extra.
 
 ## 5. Operational caveats — read before relying on this
 
+> **Operator runbook**: [`docs/operations/vault/vm-cluster-seal-unseal.md`](../../operations/vault/vm-cluster-seal-unseal.md)
+> — seal/unseal/auto-unseal procedures per scenario, including full Proxmox-host restart
+> recovery, with timings measured from a real restart drill.
+
 1. 🔴 **The seal-Vault does not auto-unseal.** It is Shamir-sealed by design (nothing on-prem
    can seal it without inventing a fourth Vault). **If VM 434 reboots, it comes back sealed, and
    any Raft node that restarts during that window cannot unseal.** Already-running Raft nodes are
