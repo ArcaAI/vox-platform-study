@@ -6,6 +6,7 @@ import { CreateStreamSessionRequest, TranscribeFileRequest } from '../dto';
 import { CreateJobRequest, CreateBatchJobRequest, CreateStreamingJobRequest } from '@arcaai/applications';
 import { TranscriptionJobType } from '@arcaai/domains';
 import { TranscriptionJobController } from '../transcription-job.controller';
+import { wavFixture } from './wav-fixture';
 import { TENANT_OWNED_RESOURCE_KEY, type TenantOwnedResourceOptions } from '../../../common/tenant-owned-resource.decorator';
 import { STREAM_SCOPE_METADATA } from '../../auth/decorators/stream-scope.decorator';
 
@@ -779,13 +780,9 @@ describe('TranscriptionJobController', () => {
         mockEntitlements as any,
       );
 
-    const audioFile = () =>
-      ({
-        buffer: Buffer.from('RIFFfake-wav-bytes'),
-        size: 18,
-        mimetype: 'audio/wav',
-        originalname: 'test-1.wav',
-      }) as Express.Multer.File;
+    // A 5-minute WAV — see wav-fixture.ts for why a placeholder buffer no
+    // longer survives the route's duration probe.
+    const audioFile = () => wavFixture(300, { originalname: 'test-1.wav' });
 
     // GLOBAL_ADMIN shape: empty JWT tenant + elevated working tenant in CLS.
     const globalAdminStore = { user: { id: 'admin-1', tenantId: '', roles: ['GLOBAL_ADMIN'] }, tenantId: 'tenant-1' };
