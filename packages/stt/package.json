@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/stt",
-  "version": "2.0.4",
+  "version": "2.0.7",
   "description": "Speech-to-text plugin for @arcaai/room with local Whisper and backend fallback support",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -60,7 +60,7 @@
     "onnxruntime-web": "1.27.0"
   },
   "peerDependencies": {
-    "@arcaai/room": "workspace:*",
+    "@arcaai/room": "workspace:^",
     "react": "^18.3.0 || ^19.0.4"
   },
   "peerDependenciesMeta": {

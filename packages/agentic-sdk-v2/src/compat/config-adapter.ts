@@ -7,7 +7,7 @@
  * an omitted `credentials.apiKey` THROWS.
  */
 
-import type { AgenticConfig, AudioPluginConfig } from '../types';
+import type { AgenticConfig, AudioPluginConfig, LoggingConfig } from '../types';
 import type { V1SdkConfig, V1AudioSettings } from './types';
 
 /**
@@ -65,6 +65,33 @@ function mapAudioSettings(audio: V1AudioSettings | undefined, sttPipelineId: str
   return Object.keys(config).length > 0 ? config : undefined;
 }
 
+/**
+ * Forward the v1 logging config, defaulting each deployment-stage-gated
+ * transport's `environment` to the top-level {@link V1SdkConfig.environment}.
+ *
+ * Why the default matters: the Clarity and Highlight transports are fail-closed
+ * on a production DEPLOYMENT, and when their `environment` is undeclared they
+ * fall back to `NODE_ENV`. Every browser bundler sets `NODE_ENV === 'production'`
+ * for ANY optimised build — including the one deployed to staging — so a compat
+ * app that declared `environment: 'staging'` at the top level, exactly as this
+ * adapter already reads it for `debug`, would still see the transport silently
+ * refuse to activate. Propagating the declared stage is what makes the single
+ * `environment` field mean the same thing everywhere.
+ *
+ * An explicit per-transport `environment` always wins.
+ */
+function mapLogging(logging: LoggingConfig, environment: V1SdkConfig['environment']): LoggingConfig {
+  if (!environment) return logging;
+  const withStage = <T extends { environment?: string }>(transport: T | undefined): T | undefined =>
+    transport ? { ...transport, environment: transport.environment ?? environment } : undefined;
+
+  return {
+    ...logging,
+    ...(logging.clarity ? { clarity: withStage(logging.clarity) } : {}),
+    ...(logging.highlight ? { highlight: withStage(logging.highlight) } : {}),
+  };
+}
+
 export function mapV1ConfigToAgenticConfig(v1: V1SdkConfig): AgenticConfig {
   const apiKey = v1.credentials?.apiKey?.trim();
   if (!apiKey) {
@@ -82,5 +109,9 @@ export function mapV1ConfigToAgenticConfig(v1: V1SdkConfig): AgenticConfig {
     },
     audio: mapAudioSettings(v1.audioSettings, v1.sttPipelineId),
     debug: v1.environment === 'development' ? true : undefined,
+    // Observability passthrough. The transports own their activation gates, so
+    // this enables nothing by itself. Spread only when stated, so a v1 app that
+    // omits it produces the exact pre-logging config object.
+    ...(v1.logging ? { logging: mapLogging(v1.logging, v1.environment) } : {}),
   };
 }

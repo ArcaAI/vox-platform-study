@@ -283,6 +283,29 @@ logging: {
 
 Note the `clarity.level: 'info'` — at the default `'error'` floor, `vox.op.*` operation-timing events are filtered out before they become Clarity events. For searchable log/metric **retention**, pair Clarity with Loki or OTel: those transports have a real log sink and no environment gate, whereas Clarity can only record name-only events plus tags.
 
+#### From `@arcaai/vox/compat`
+
+`ArcaCompatProvider` renders `AgenticProvider`, so compat apps use the same transports — configured through a `logging` block on the v1 options object (compat-native; v1 had no logging config):
+
+```ts
+const SDK_CONFIG_OPTIONS = {
+  apiEndpoint: 'https://staging-api.arcaai.com',
+  websocketUrl: 'wss://staging-api.arcaai.com',
+  credentials: { apiKey: KEY },
+  environment: 'staging',                       // ← also feeds the transport stage gate
+  logging: {
+    clarity: { projectId: process.env.CLARITY_PROJECT_ID, level: 'info' },
+    capture: { console: true, consoleMethods: ['log', 'info', 'warn', 'error'] },
+  },
+};
+
+<ArcaCompatProvider options={SDK_CONFIG_OPTIONS}>{children}</ArcaCompatProvider>;
+```
+
+The v1 `environment` propagates into `clarity.environment` and `highlight.environment`, so declaring `environment: 'staging'` once satisfies the deployment-stage gate — no need to restate it per transport. An explicit transport-level `environment` still wins. Omit `logging` entirely and the mapped config is byte-identical to before, with no transports configured.
+
+**Compat has no signed-in user, and Clarity does not need one.** Clarity mints its own anonymous session ID; session replay, heatmaps and custom events all work without any identity. Sessions are correlated by the `vox.correlationId` tag (auto-generated per provider mount — `autoCorrelationId` defaults to true) and `vox.tenantId`. The `identifyUsers` option is purely optional and simply never fires when there is no user; it is off by default in any case. Note this is not compat-specific: `logger.withUser()` has no call sites in the SDK today, so `entry.user.userId` is unpopulated on the native path too.
+
 ## Migrating from v1 (`@arcaai/vox/compat`)
 
 `@arcaai/vox/compat` lets a HOPE v1 app (`@arcaai/agentic-sdk`) move to this SDK by changing an import specifier and adding one provider (`ArcaCompatProvider`) — no rewrite of call sites. It ships six hooks: `useArcaSessionManager`, `useAudioCapture`, `useArcaSpeechToText`, `useSMR`, `useArcaSttProvider`, and `useArcaSttLanguageModes`. Compat hooks are thin adapters that **only consume the public v2 API** (the hooks/store/clients documented above) — they never reach into v2 internals.

@@ -1,6 +1,6 @@
 {
   "name": "@arcaai/vox",
-  "version": "2.0.4",
+  "version": "2.0.7",
   "description": "ARCAAI Vox SDK for medical consultation workflows",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -87,7 +87,7 @@
     "zustand": "^5.0.14"
   },
   "peerDependencies": {
-    "@arcaai/med-ner": "workspace:*",
+    "@arcaai/med-ner": "workspace:^",
     "@microsoft/clarity": "^1.0.0",
     "highlight.run": "^9.0.0",
     "react": "^18.3.0 || ^19.0.4",
