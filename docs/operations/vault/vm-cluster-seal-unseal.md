@@ -189,18 +189,39 @@ v operator raft remove-peer vault-3
 # then rebuild VM 432 and let retry_join re-add it
 ```
 
-### S6 — 🔴 The seal-Vault is destroyed (disk loss on VM 434)
+### S6 — The seal-Vault is destroyed (disk loss on VM 434)
 
-**This is the one that ends the cluster.** Without the Transit key, no Raft node can ever unseal
-again — the Shamir shares unseal *434*, they do not unseal the Raft nodes.
+**This is the one that would end the cluster.** Without the Transit key, no Raft node can ever
+unseal again — the Shamir shares unseal *434*, they do not unseal the Raft nodes. The recovery
+keys in `vault-raft-init.json` do **not** substitute: they authorize `generate-root` and rekey
+against an *already-unsealed* Vault, and cannot unseal a Transit-sealed node.
 
-Recovery path: rebuild 434, restore its data directory from backup, and the Transit key returns.
-**There is currently no backup of VM 434** (see [§8](#8-known-gaps)). Until there is, treat VM
-434's disk as the single point of failure for the entire secrets platform.
+The Transit key is **non-exportable** (created without `exportable=true`), so a filesystem backup
+of 434's storage is the *only* way it can survive. That backup now exists and its restore has been
+tested end to end — see [§10](#10-backup--restore). Recovery:
 
-The recovery keys in `vault-raft-init.json` do **not** substitute — recovery keys authorize
-`generate-root` and rekey operations against an *already-unsealed* Vault. They cannot unseal a
-Transit-sealed node.
+```bash
+# 1. Rebuild VM 434 (clone template 903, set hostname + IP 10.10.1.134 BEFORE leaving it running
+#    — see the template trap in the deployment record), install Docker + the vault image.
+
+# 2. Fetch the newest seal backup. Requires ADMIN MinIO credentials — the backup service
+#    account is write-only by design and cannot read its own objects.
+mc ls homelab/vault-backups/seal/                       # newest = last lexically
+mc cp homelab/vault-backups/seal/vault-seal-<TS>.tgz.age /tmp/
+
+# 3. Decrypt with the age private key held offline with the Shamir shares.
+age -d -i <age-private-key> -o /tmp/seal.tgz /tmp/vault-seal-<TS>.tgz.age
+
+# 4. Restore into the new VM's data dir and start Vault normally.
+mkdir -p /opt/vault/data && tar xzf /tmp/seal.tgz -C /opt/vault/data
+chown -R 100:1000 /opt/vault/data
+
+# 5. Unseal with the SAME 3 Shamir shares (they match the restored data — this is also the proof
+#    the restore is intact), then the Raft nodes recover on their own per S1.
+```
+
+The Raft nodes need no changes: their `vault.hcl` points at `10.10.1.134` and their auto-unseal
+token is stored *inside* the restored seal-Vault, so it keeps working.
 
 ---
 
@@ -261,11 +282,12 @@ platform unaided — which defeats the point of Shamir.
 
 | Gap | Consequence |
 |---|---|
-| **No backup of VM 434** | [S6](#s6----the-seal-vault-is-destroyed-disk-loss-on-vm-434) is unrecoverable. Highest-priority fix |
-| No Raft snapshots | `vault operator raft snapshot save` works on this cluster; nothing schedules it |
+| **MinIO is on VM 402 — the same Proxmox host** | Losing `pve-node1` loses Vault *and* its backups. Replicate `vault-backups` off-host; this is now the top DR gap |
+| Full Raft-snapshot restore drill not run | The snapshot is verified structurally (correct members, `SHA256SUMS.sealed` present, not truncated) and the seal restore is verified end to end, but a `raft snapshot restore` into a scratch cluster has not been rehearsed |
 | All 4 VMs on `pve-node1` | Raft gives VM-level HA, not hardware HA |
 | Key material on disk | [§7](#7-key-material) |
-| No alerting on seal state | A sealed seal-Vault is silent until the next Raft restart fails |
+| No alerting on seal state or backup failure | A sealed seal-Vault is silent until the next Raft restart fails; a failing cron is silent until you need a restore |
+| Two internal CAs | Vault uses a new `HOPE Internal Vault CA`; the estate already had an `ARCAAI Internal CA` (which issues MinIO's cert). Worth consolidating onto one |
 
 That last one deserves emphasis: after [S2](#s2--only-the-seal-vault-vm-434-restarted) the
 cluster looks perfectly healthy while having zero restart tolerance. A `vault_sealed` alert on
@@ -286,6 +308,65 @@ Full-stack restart drill, 2026-08-07, on the cluster with no production data:
 | **Raft nodes, no intervention** | **3/3 unsealed at t+17 s** |
 | Cluster after recovery | 3 voters, one leader (`vault-2` — leadership moved, expected) |
 | Single node hard `qm reset` (earlier) | Unsealed + rejoined as voter in ~20 s |
+
+---
+
+## 10. Backup & restore
+
+| | Raft cluster | seal-Vault |
+|---|---|---|
+| What | `vault operator raft snapshot save` | `tar` of `/opt/vault/data` (excl. `audit.log`) |
+| Why that method | — | The Transit key is **non-exportable**; a filesystem copy is the only way it survives |
+| Runs on | all 3 nodes; **standbys skip** | VM 434 |
+| Schedule | `02:30 UTC` daily | `02:45 UTC` daily |
+| Script | `/opt/vault/backup.sh` | `/opt/vault/backup.sh` |
+| Log | `/var/log/vault-backup.log` | same |
+| Destination | `homelab/vault-backups/raft/` | `homelab/vault-backups/seal/` |
+| Retention | MinIO ILM, 30 days | same |
+
+**Why standbys skip.** A Raft snapshot taken from a standby is silently truncated
+(`incomplete snapshot, unable to read SHA256SUMS.sealed`). Each node checks its own `HA Mode` and
+exits 0 unless it is `active`, so exactly one backup is produced per run wherever leadership sits.
+Leadership moves on every restart — this is why the job is installed on all three rather than pinned.
+
+**Encryption.** Every object is `age`-encrypted to a public key **before** upload. The private key
+is not on any Vault VM — it lives at `pve-node1:/root/vault-pki/backup-age.key` and belongs offline
+with the Shamir shares. A compromised Vault host can write backups but cannot read them back.
+
+**Credential scoping.** The `vault-backup-svc` MinIO account holds `PutObject` + `ListBucket` on
+`vault-backups` only — no `GetObject`, no `DeleteObject`. It cannot read other buckets and cannot
+erase its own history. **Restores therefore require admin MinIO credentials**, which is deliberate.
+
+**TLS.** MinIO presents a cert from the estate's `ARCAAI Internal CA`, which is not distributable
+here (the server sends no chain and the CA cert was not locatable). `mc` therefore pins MinIO's
+leaf certificate at `/root/.mc/certs/CAs/minio.crt` on each VM. **This must be refreshed when that
+cert renews — `notAfter = 2028-03-21`.** Backups fail closed if it isn't.
+
+### Restore drill — performed 2026-08-07, passed
+
+| Check | Result |
+|---|---|
+| MinIO round-trip integrity | sha256 identical uploaded vs. downloaded |
+| age decrypt → `tar` extract | 36 files restored |
+| Restored Vault unseals with the **same 3 Shamir shares** | `Sealed false` |
+| **Restored Transit key decrypts ciphertext produced by the LIVE key** | ✅ plaintext matched exactly |
+| Raft snapshot age round-trip | byte-identical |
+| Raft snapshot members | `meta.json state.bin SHA256SUMS SHA256SUMS.sealed` — complete |
+
+The fourth row is the one that matters: it proves the backup preserves the actual auto-unseal key,
+not merely a well-formed archive.
+
+### Restoring a Raft snapshot
+
+```bash
+mc cp homelab/vault-backups/raft/<host>-<TS>.snap.age /tmp/     # admin creds
+age -d -i <age-private-key> -o /tmp/raft.snap /tmp/<...>.snap.age
+# against a RUNNING, UNSEALED cluster, with a root/recovery-derived token:
+vault operator raft snapshot restore -force /tmp/raft.snap
+```
+
+⚠️ `-force` overwrites live cluster data. Restore into a scratch cluster first unless you are
+certain. This path has **not** been rehearsed — see [§8](#8-known-gaps).
 
 ---
 

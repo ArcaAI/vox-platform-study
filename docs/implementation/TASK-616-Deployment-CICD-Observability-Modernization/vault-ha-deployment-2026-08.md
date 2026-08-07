@@ -100,8 +100,12 @@ device existing is a prerequisite for PHI traffic, not an optional extra.
    a standing credential. They are needed for §6's work; revoke immediately after.
 4. **Single failure domain.** All four VMs are on `pve-node1`. Raft gives process/VM-level HA, not
    hardware HA — losing that host loses the quorum. Same caveat already recorded for the k3s node.
-5. **No snapshots yet.** `vault operator raft snapshot` works on this cluster (unlike the
-   `storage "file"` Vault it replaces), but nothing schedules it.
+5. ~~**No snapshots yet.**~~ ✅ **Closed 2026-08-07.** Automated age-encrypted backups now run
+   daily to MinIO (Raft snapshots 02:30 UTC from whichever node is leader; seal-Vault storage
+   02:45 UTC), 30-day ILM retention, with a write-only service account. **Restore tested end to
+   end** — a restored seal-Vault decrypted ciphertext produced by the live Transit key. Procedures
+   and evidence: [runbook §10](../../operations/vault/vm-cluster-seal-unseal.md#10-backup--restore).
+   Remaining: MinIO sits on the same Proxmox host, so backups share Vault's failure domain.
 
 ## 6. Remaining Track V work
 
@@ -111,7 +115,7 @@ device existing is a prerequisite for PHI traffic, not an optional extra.
 | V.2 | Kubernetes auth against the k3s cluster + the 7 per-service policies (`infrastructure/docker/configs/vault/policies/k8s/hope-*.hcl` — already written) | Nothing |
 | V.3 | Migrate secrets off the in-cluster Vault. It uses `storage "file"`, so `raft snapshot` cannot be used — this must be a scripted read/write of every key (`vault kv list -recurse secret/`) | V.2 |
 | V.4 | Vault Agent Injector for the 6 Python services; gateway keeps its own AppRole (it is already a full Vault client) | V.2 |
-| V.5 | Raft snapshot CronJob → MinIO, 14-day retention, **plus a tested restore** | Nothing |
+| ~~V.5~~ | ~~Raft snapshot CronJob → MinIO + tested restore~~ — ✅ **done 2026-08-07** (30-day retention, age-encrypted, seal restore verified). Follow-ups: replicate the bucket off-host; rehearse `raft snapshot restore`; refresh the pinned MinIO cert before 2028-03-21 | — |
 | V.6 | Distribute `ca.crt` to k3s workloads + the gateway | V.2 |
 | V.7 | Retire the in-cluster Vault (`hope-v2-deployment/deployment/k8s/base/vault.yaml`) and its plaintext `hope-vault-init` Secret | V.3 |
 
