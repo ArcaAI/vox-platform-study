@@ -6,6 +6,7 @@ import type { Subscription } from 'rxjs';
 import type WebSocket from 'ws';
 import type { Server } from 'ws';
 import { StreamSessionTenantBindingService } from '../../common';
+import { isOriginEnforcementEnabled } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
 
@@ -341,6 +342,22 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
    * session.)
    */
   private isOriginAllowed(origin: string): boolean {
+    // TASK-610 §4C — origin enforcement is OFF BY DEFAULT; while it is off the
+    // handshake accepts every origin and the registry is never consulted. The
+    // switch is READ from `cors.config.ts` rather than resolved here, so the WS
+    // gate can never disagree with the HTTP gate about whether enforcement is
+    // on (§4B.4: the rule lives in ONE place).
+    //
+    // §4C.3 calls this out as the surface that would concern us most if
+    // `credentials` were ever set back to `true` — browsers exempt WebSockets
+    // from CORS entirely, so nothing upstream checks `Origin` here. That is
+    // precisely why `credentials: false` ships in the same change
+    // (`buildCorsOptions`): with no ambient cookies attached cross-origin,
+    // a hostile page's socket carries no credentials to hijack.
+    if (!isOriginEnforcementEnabled()) {
+      return true;
+    }
+
     if (!this.originRegistry) {
       this.logger.warn({
         message: 'WS handshake — origin registry unavailable, denying (TASK-610 §4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',

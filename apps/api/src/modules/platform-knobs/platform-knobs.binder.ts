@@ -1,15 +1,18 @@
 import { ILoggingService, IOriginRegistry, LogLevel, TenantSettingsService } from '@arcaai/applications';
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { setOriginRegistryResolver } from '../../cors.config';
+import { setOriginEnforcementResolver, setOriginRegistryResolver } from '../../cors.config';
 
 /**
- * Applies the two PRE-BOOTSTRAP platform knobs whose readers exist before the
- * Nest module graph does: the `logLevel` GlobalSetting (TASK-558 lane I), and
- * the CORS origin registry resolver (TASK-610). They are no longer the same
- * KIND of knob — `logLevel` is still a `GlobalSetting`-backed value with an
- * env bootstrap default; CORS has no knob and no env fallback at all since
- * §4A.1, only the `TenantAllowedOrigin`-backed registry described below.
+ * Applies the PRE-BOOTSTRAP platform knobs whose readers exist before the Nest
+ * module graph does: the `logLevel` GlobalSetting (TASK-558 lane I), the CORS
+ * origin registry resolver (TASK-610), and the `origin.enforcementEnabled`
+ * switch that decides whether that registry is consulted at all (§4C). They are
+ * not the same KIND of knob — `logLevel` and `origin.enforcementEnabled` are
+ * `GlobalSetting`-backed values (the first with an env bootstrap default, the
+ * second with none — its descriptor default IS the platform posture), while the
+ * CORS ALLOW-LIST has no knob and no env fallback at all since §4A.1, only the
+ * `TenantAllowedOrigin`-backed registry described below.
  *
  * WHY A BINDER AND NOT A PLAIN READ. Both are consumed before the Nest module
  * graph exists: `LOG_LEVEL` seeds the Nest logger inside `NestFactory.create()`,
@@ -45,6 +48,7 @@ export class PlatformKnobsBinder implements OnModuleInit {
 
   onModuleInit(): void {
     this.installOriginRegistryResolver();
+    this.installOriginEnforcementResolver();
 
     if (!this.tenantSettings) {
       this.logger.debug('No settings resolver wired — platform knobs stay on their env bootstrap values');
@@ -91,6 +95,39 @@ export class PlatformKnobsBinder implements OnModuleInit {
     }
     const registry = this.originRegistry;
     setOriginRegistryResolver(() => (registry.size() > 0 ? registry : null));
+  }
+
+  /**
+   * TASK-610 §4C — hand the `origin.enforcementEnabled` switch to the
+   * pre-bootstrap CORS code.
+   *
+   * Resolved EXACTLY like `logLevel`: through `TenantSettingsService` against
+   * the platform lane, and LAZILY — the closure re-reads on every call rather
+   * than capturing a value here. Two reasons, both of which have silent failure
+   * modes:
+   *
+   *   • a value captured at init would freeze the switch at whatever the
+   *     settings cache held at boot, so an operator's write would appear to do
+   *     nothing until the next restart — the §9.2 L1 anti-pattern this whole
+   *     settings tier exists to avoid;
+   *   • unlike `logLevel`, there is nothing to "apply" on a refresh — the value
+   *     is consulted inside the per-request origin decision — so this is
+   *     installed ONCE and deliberately not re-run from
+   *     `onSettingsRefreshed()`.
+   *
+   * With no settings service wired, no resolver is installed and
+   * `isOriginEnforcementEnabled()` answers `false`: enforcement stays OFF, which
+   * is the §4C default and the direction that cannot lock a deployment out.
+   * `resolvePlatform` throwing is handled there too (it never fails INTO
+   * enforcement), so this method has nothing to catch.
+   */
+  private installOriginEnforcementResolver(): void {
+    if (!this.tenantSettings) {
+      this.logger.warn('No settings resolver wired — origin enforcement stays OFF: every origin is admitted for every tenant (TASK-610 §4C default)');
+      return;
+    }
+    const settings = this.tenantSettings;
+    setOriginEnforcementResolver(() => settings.resolvePlatform<boolean>('origin.enforcementEnabled').value === true);
   }
 
   /** Re-apply after every settings-cache refresh (local write or peer invalidation). */

@@ -20,8 +20,15 @@
  * mistake once (§4B.4: "W5-C first 'fixed' an HTTP/WS disagreement by copying
  * the rule into both, and the Integrator had to consolidate it").
  *
- * Four rules, each with a SILENT failure mode (nothing goes red; the wrong
+ * SINCE §4C, ALL OF THIS IS GATED BY `origin.enforcementEnabled`, which
+ * DEFAULTS TO FALSE. While it is off (rule 0 below) this guard passes every
+ * request. Nothing here is deleted — one settings write re-arms it.
+ *
+ * Five rules, each with a SILENT failure mode (nothing goes red; the wrong
  * requests are simply allowed, or the platform quietly breaks):
+ *
+ *  0. Origin enforcement disabled (the DEFAULT) → PASS THROUGH, without
+ *     consulting the registry. Owner directive §4C.1.
  *
  *  1. No `Origin` header  → PASS THROUGH. Server-to-server, CLI, worker and
  *     internal callers send none, and CORS already admits them
@@ -63,6 +70,7 @@
 import { CanActivate, ExecutionContext, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import { IOriginRegistry } from '@arcaai/applications';
+import { isOriginEnforcementEnabled } from '../cors.config';
 
 /**
  * Deliberately generic. A cross-tenant caller learns nothing from it — same
@@ -80,6 +88,22 @@ export class OriginTenantBindingGuard implements CanActivate {
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
+    // RULE 0 (TASK-610 §4C) — origin enforcement is OFF BY DEFAULT, and while
+    // it is off this guard is a pass-through: it never 404s a tenant mismatch
+    // and never touches the registry. §4C.3 states the consequence plainly —
+    // "a request from any origin may act on any tenant it can authenticate to";
+    // authentication and tenancy remain the enforcing controls, the ORIGIN
+    // binding simply does not apply.
+    //
+    // `isOriginEnforcementEnabled()` is imported rather than re-resolved here:
+    // it is the ONE source of truth shared with `cors.config.ts` and
+    // `SttWsGateway`, so the three points can never disagree about whether the
+    // switch is on (§4B.4 — this ticket has already paid for a rule that lived
+    // in two places).
+    if (!isOriginEnforcementEnabled()) {
+      return true;
+    }
+
     // HTTP only. The WebSocket handshake is NOT covered here — browsers exempt
     // WS from CORS entirely, and `SttWsGateway` runs its own registry check
     // against the handshake `Origin` (D-6, lane W3-C). Returning true for a WS

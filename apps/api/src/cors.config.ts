@@ -46,9 +46,30 @@
  * CORS is advisory. Everything here is browser-enforced and proves nothing
  * about a non-browser caller — it narrows the blast radius of a hostile page,
  * it is not an authorization boundary.
+ *
+ * ── §4C: NONE OF THE ABOVE APPLIES UNTIL AN OPERATOR TURNS IT ON ────────────
+ *
+ * Everything described so far is now gated behind ONE platform switch,
+ * `origin.enforcementEnabled` (`global-kv`, `globalOnly`, DEFAULT `false`), by
+ * owner directive:
+ *
+ *   "make sure by default (apply to all tenants including SYSTEM, GLOBAL) no
+ *    origin checks, ALL is ALLOWED for calling and using our APIs"
+ *
+ * While it is false, `isOriginAllowed` admits every origin WITHOUT consulting
+ * the registry, `OriginTenantBindingGuard` passes every request, and the STT WS
+ * handshake accepts every origin. This is a DEFAULT, not a deletion: none of
+ * the machinery above is removed, and flipping the switch restores all of it
+ * live. The point is that an unseeded deployment cannot lock itself out, and
+ * hardening is an operator decision rather than a redeploy.
+ *
+ * What makes the permissive default an ordinary public-API posture rather than
+ * a data-leak path is `credentials: false` (see `buildCorsOptions`). Allow-all
+ * origins WITH credentials is a cross-origin READ primitive.
  */
 import { isLoopbackHost, normalizeOrigin, type OriginIndexResolver } from '@arcaai/applications';
 import { Logger } from '@nestjs/common';
+import { CORS_ALLOWED_HEADERS, CORS_EXPOSED_HEADERS } from './cors.headers';
 
 const corsLogger = new Logger('CORS');
 
@@ -73,6 +94,63 @@ let originRegistryResolver: OriginIndexResolver | null = null;
 /** Install the DB-backed origin registry accessor. Called once from `PlatformKnobsBinder`. */
 export function setOriginRegistryResolver(resolver: OriginIndexResolver | null): void {
   originRegistryResolver = resolver;
+}
+
+/**
+ * The `origin.enforcementEnabled` accessor, installed by `PlatformKnobsBinder`
+ * for the same reason the registry one is: this module is imported by `main.ts`
+ * before the Nest module graph exists, so it cannot inject `TenantSettingsService`.
+ *
+ * `null` — no resolver installed — is the TRUE DEFAULT of the process, and it
+ * means PERMISSIVE. That direction is deliberate and is the opposite of the
+ * registry resolver's: an absent registry denies (there is no allow-list to
+ * consult), an absent enforcement switch admits (nobody has asked for
+ * enforcement).
+ */
+let originEnforcementResolver: (() => boolean) | null = null;
+
+/** Latch so a failing enforcement lookup logs once per outage, not once per request. */
+let enforcementLookupFailureReported = false;
+
+/** Install the settings-backed enforcement accessor. Called once from `PlatformKnobsBinder`. */
+export function setOriginEnforcementResolver(resolver: (() => boolean) | null): void {
+  originEnforcementResolver = resolver;
+}
+
+/**
+ * THE single source of truth for "is origin enforcement on?" — read by all
+ * THREE enforcement points (this file's `isOriginAllowed`, `OriginTenantBindingGuard`,
+ * and `SttWsGateway`'s handshake). They import this accessor rather than each
+ * resolving the setting themselves: this ticket has already been bitten twice by
+ * one rule living in two places (§4B.4), and a switch that is off for the HTTP
+ * gate but on for the WS gate is exactly the kind of split that ships silently.
+ *
+ * FALSE (permissive) whenever no resolver is installed or it throws. Resolved
+ * PER CALL, so a settings write applies with no restart — and never memoized,
+ * because a memoized `true` could not be turned back off.
+ *
+ * NEVER throws, and never fails INTO enforcement: a broken settings cache must
+ * not be able to start refusing every browser origin on the platform.
+ */
+export function isOriginEnforcementEnabled(): boolean {
+  if (!originEnforcementResolver) return false;
+  try {
+    const enabled = originEnforcementResolver() === true;
+    // Arm the diagnostic again, so the FIRST failure of each outage episode is
+    // reported rather than only the first of the process's lifetime.
+    enforcementLookupFailureReported = false;
+    return enabled;
+  } catch (error) {
+    // This runs on the per-request hot path; without the latch a settings
+    // outage would emit one warn per request.
+    if (enforcementLookupFailureReported) return false;
+    enforcementLookupFailureReported = true;
+    corsLogger.warn({
+      message: 'Origin enforcement lookup failed — treating enforcement as DISABLED (permissive), the declared open-to-default failure mode',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 /**
@@ -169,6 +247,15 @@ function isLoopbackOrigin(origin: string): boolean {
  * D-6).
  */
 export function isOriginAllowed(origin: string | undefined, nodeEnv: string): boolean {
+  // §4C — the switch, checked FIRST and short-circuiting everything below,
+  // including the registry lookup. Placing it here rather than inside
+  // `queryRegistry` is deliberate: with enforcement off there must be no
+  // registry read at all, so a registry outage, an unseeded table and a hostile
+  // origin are all indistinguishable — every one of them is simply admitted.
+  if (!isOriginEnforcementEnabled()) {
+    return logCorsDecision(origin, true, 'enforcement_disabled');
+  }
+
   if (!origin) {
     return logCorsDecision(origin, true, 'no_origin_provided');
   }
@@ -204,11 +291,67 @@ export type CorsOriginCallback = (err: Error | null, allow?: boolean) => void;
  *
  * Every environment returns the SAME callback: the registry is the single
  * decision point, so there is no per-environment allow-list to express as a
- * RegExp any more. (It must not return `true` — with `credentials: true` the
- * spec forbids a wildcard, so a browser would reject that response anyway.)
+ * RegExp any more. It stays a CALLBACK even under the §4C permissive default —
+ * a static `true` would hard-code "admit everything" into the wiring, and the
+ * switch could no longer be turned on without a redeploy, which is the whole
+ * property §4C was asked for.
  */
 export function getCorsOrigins(nodeEnv: string): (origin: string | undefined, callback: CorsOriginCallback) => void {
   return (origin: string | undefined, callback: CorsOriginCallback) => {
     callback(null, isOriginAllowed(origin, nodeEnv));
+  };
+}
+
+/** The options object handed to `app.enableCors()` — assembled here so it is testable. */
+export interface CorsOptions {
+  origin: (origin: string | undefined, callback: CorsOriginCallback) => void;
+  credentials: boolean;
+  methods: string[];
+  allowedHeaders: string[];
+  exposedHeaders: string[];
+}
+
+/**
+ * Assemble the gateway's CORS options.
+ *
+ * Extracted from `main.ts`'s `bootstrap()` closure for the same reason the
+ * origin decision was: a value inside that closure is unreachable to a test,
+ * and `credentials` is now a security-load-bearing value rather than a default
+ * nobody looks at.
+ *
+ * ── WHY `credentials: false` (§4C.2) ────────────────────────────────────────
+ *
+ * `credentials: true` PLUS a reflected arbitrary origin — which is exactly what
+ * the §4C permissive default produces — is a cross-origin READ primitive: any
+ * site a logged-in user visits can issue authenticated requests to this gateway
+ * AND READ THE RESPONSES, PHI included. That is not a hypothetical; it is the
+ * standard consequence of allowing credentials while reflecting the caller's
+ * origin.
+ *
+ * With `credentials: false`, browsers do not attach cookies cross-origin, and
+ * Bearer-token auth is unaffected — the SDK sets the `Authorization` header
+ * explicitly, and a hostile page can neither read nor forge it. Two facts were
+ * verified before making this change:
+ *
+ *   • NOTHING reads `req.session`. `express-session` is mounted in `main.ts`
+ *     and has no consumers anywhere in `apps/api`.
+ *   • NO client sends cookies. Neither `AgenticClient` nor any other SDK or app
+ *     transport sets `credentials: 'include'` / `withCredentials`, and the SSO
+ *     legs are cookie-free too: the OIDC/SAML `state` is a signed JWT carried in
+ *     the URL, and the callback is a top-level navigation, not a CORS fetch.
+ *
+ * So this costs nothing and removes the exfiltration path. **Open CORS without
+ * credentials is an ordinary public-API posture; open CORS with credentials is
+ * a data-leak path.** If a future flow ever genuinely needs cross-origin
+ * cookies, `origin.enforcementEnabled` must be turned ON *before* `credentials`
+ * is turned back on — never the other way round.
+ */
+export function buildCorsOptions(nodeEnv: string): CorsOptions {
+  return {
+    origin: getCorsOrigins(nodeEnv),
+    credentials: false,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [...CORS_ALLOWED_HEADERS],
+    exposedHeaders: [...CORS_EXPOSED_HEADERS],
   };
 }

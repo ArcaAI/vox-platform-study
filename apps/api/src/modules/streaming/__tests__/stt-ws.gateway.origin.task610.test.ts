@@ -8,6 +8,7 @@
 // lane creates its own `*.task610.test.ts`").
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setOriginEnforcementResolver } from '../../../cors.config';
 import { SttWsGateway, WS_CLOSE_CODES, WS_GENERIC_AUTH_REASON } from '../stt-ws.gateway';
 
 const createMockSocket = (overrides: Partial<WebSocket> = {}) => ({
@@ -100,6 +101,11 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // TASK-610 §4C — the CSWSH check is dormant unless `origin.enforcementEnabled`
+    // is on, and it ships OFF. Every case below describes the ENFORCING
+    // behaviour, so the switch is armed here; the dormant default is pinned in
+    // `stt-ws.gateway.enforcement.task610.test.ts`.
+    setOriginEnforcementResolver(() => true);
     mockSessionService = createMockSessionService();
     mockBridgeService = createMockBridgeService();
     mockStreamTicketService = createMockStreamTicketService();
@@ -110,6 +116,10 @@ describe('SttWsGateway — origin registry CSWSH guard (TASK-610 D-6, T-7)', () 
     vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    setOriginEnforcementResolver(null);
   });
 
   it('accepts the handshake when the Origin header is registered', async () => {

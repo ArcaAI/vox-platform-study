@@ -13,8 +13,7 @@ import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholde
 // `isOriginAllowed` is re-exported so external consumers (docs reference)
 // still have a working import.
 import { apiEnv } from './config';
-import { getCorsOrigins, isOriginAllowed } from './cors.config';
-import { CORS_ALLOWED_HEADERS, CORS_EXPOSED_HEADERS } from './cors.headers';
+import { buildCorsOptions, isOriginAllowed, isOriginEnforcementEnabled } from './cors.config';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
 // Swagger config lives in `swagger.config.ts` so the security-scheme list
@@ -189,16 +188,9 @@ async function bootstrap() {
     'Bootstrap',
   );
 
-  // Configure CORS based on environment
-  const corsOptions = {
-    origin: getCorsOrigins(nodeEnv),
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [...CORS_ALLOWED_HEADERS],
-    exposedHeaders: [...CORS_EXPOSED_HEADERS],
-  };
-
-  app.enableCors(corsOptions);
+  // CORS options — assembled in `cors.config.ts` so `credentials: false`
+  // (TASK-610 §4C.2) is unit-testable rather than buried in this closure.
+  app.enableCors(buildCorsOptions(nodeEnv));
 
   // Add security headers while maintaining SDK compatibility
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -229,19 +221,47 @@ async function bootstrap() {
   // Since TASK-610 the allow-list is the `TenantAllowedOrigin` table, indexed
   // by `OriginRegistryService` and consulted PER REQUEST — so there is no
   // static list to print here any more. Since §4A.1 there is also no env
-  // bootstrap fallback: an unreachable or not-yet-loaded registry now DENIES
+  // bootstrap fallback: an unreachable or not-yet-loaded registry DENIES
   // every browser origin (see `cors.config.ts`'s `origin_registry_unavailable`
   // reason) rather than falling back to `CORS_ALLOWED_ORIGINS`, which no
   // longer exists.
-  loggingService.info(
-    'CORS configuration',
-    {
-      environment: nodeEnv,
-      policy: nodeEnv === 'development' ? 'origin_registry_plus_dev_loopback' : 'origin_registry_only',
-      unavailableRegistryBehavior: 'deny_all',
-    },
-    'Bootstrap',
-  );
+  //
+  // …AND SINCE §4C ALL OF THAT IS GATED. `origin.enforcementEnabled` defaults
+  // to FALSE, so unless an operator has turned it on, every origin is admitted
+  // for every tenant. `PlatformKnobsBinder` has already installed the resolver
+  // by this point (`onModuleInit` runs inside `NestFactory.create`), so the
+  // value logged here is the EFFECTIVE posture, not a guess.
+  //
+  // The permissive case is logged at WARN, not info: an operator must never
+  // have to read the database to discover the platform is admitting every
+  // origin (§4C.3).
+  const originEnforcementEnabled = isOriginEnforcementEnabled();
+  const corsPosture = {
+    environment: nodeEnv,
+    originEnforcement: originEnforcementEnabled ? 'enabled' : 'DISABLED',
+    policy: originEnforcementEnabled
+      ? nodeEnv === 'development'
+        ? 'origin_registry_plus_dev_loopback'
+        : 'origin_registry_only'
+      : 'allow_all_origins',
+    unavailableRegistryBehavior: originEnforcementEnabled ? 'deny_all' : 'allow_all',
+    // Pinned `false` in `buildCorsOptions` — the reason allow-all is an
+    // ordinary public-API posture rather than a cross-origin read primitive.
+    credentials: false,
+    enforcementSetting: 'origin.enforcementEnabled',
+  };
+
+  if (originEnforcementEnabled) {
+    loggingService.info('CORS configuration', corsPosture, 'Bootstrap');
+  } else {
+    loggingService.warn(
+      'CORS configuration — ORIGIN ENFORCEMENT IS DISABLED: every origin is admitted for every tenant (including SYSTEM/GLOBAL). ' +
+        'The TenantAllowedOrigin allow-list, the origin↔tenant binding guard and the WebSocket CSWSH check are all dormant. ' +
+        'Authentication and tenancy are the only controls in force. Set the platform setting `origin.enforcementEnabled` to true to enforce (no redeploy needed).',
+      corsPosture,
+      'Bootstrap',
+    );
+  }
 
   // Refuses to start if ANY HTTP route lacks both `@Public()` and a
   // permission decorator (`@Authorize` / `@CanXxx`) — surfaces decorator

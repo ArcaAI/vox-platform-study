@@ -14,10 +14,11 @@
 // true iff that set is non-empty, and `allows` encapsulating the
 // SYSTEM-admits-every-tenant rule so this guard never has to.
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { ExecutionContext, NotFoundException } from '@nestjs/common';
 import type { ClsService } from 'nestjs-cls';
 import { normalizeOrigin, type IOriginRegistry } from '@arcaai/applications';
+import { setOriginEnforcementResolver } from '../../cors.config';
 import { OriginTenantBindingGuard } from '../origin-tenant-binding.guard';
 
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
@@ -98,6 +99,11 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4, §4B many-to-many)', () 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // TASK-610 §4C — this guard is a pass-through unless `origin.enforcementEnabled`
+    // is on, and it ships OFF. Every case below describes the ENFORCING
+    // behaviour, so the switch is armed here; the dormant default is pinned in
+    // `origin-tenant-binding.guard.enforcement.task610.test.ts`.
+    setOriginEnforcementResolver(() => true);
     registry = createRegistry({
       'https://console.arcaai.example': [SYSTEM_TENANT_ID],
       'https://a.example': [TENANT_A],
@@ -109,6 +115,10 @@ describe('OriginTenantBindingGuard (TASK-610 T-5, FR-4, §4B many-to-many)', () 
       // unique index on `origin` made the second tenant's grant a 409).
       'https://shared.example': [TENANT_A, TENANT_B],
     });
+  });
+
+  afterEach(() => {
+    setOriginEnforcementResolver(null);
   });
 
   describe('the §4B many-to-many case this lane exists for', () => {

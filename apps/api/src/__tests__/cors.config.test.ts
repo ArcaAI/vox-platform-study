@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getCorsOrigins, isOriginAllowed, setOriginRegistryResolver } from '../cors.config';
+import { getCorsOrigins, isOriginAllowed, setOriginEnforcementResolver, setOriginRegistryResolver } from '../cors.config';
 
 /**
  * TASK-610 T-4 — CORS origin admission is a REGISTRY LOOKUP.
@@ -54,10 +54,18 @@ const DAY_ONE = fakeRegistry({
 describe('cors.config', () => {
   beforeEach(() => {
     setOriginRegistryResolver(null);
+    // TASK-610 §4C — every case in THIS file describes the ENFORCING posture,
+    // which is no longer the default: `origin.enforcementEnabled` ships FALSE
+    // and short-circuits all of it (owner directive §4C.1). Turning it on here
+    // is what keeps this suite meaningful — it is the regression gate proving
+    // that flipping the switch restores §3–§4B unchanged. The permissive
+    // default is pinned separately in `cors.config.enforcement.task610.test.ts`.
+    setOriginEnforcementResolver(() => true);
   });
 
   afterEach(() => {
     setOriginRegistryResolver(null);
+    setOriginEnforcementResolver(null);
     vi.restoreAllMocks();
   });
 

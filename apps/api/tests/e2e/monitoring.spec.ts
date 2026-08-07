@@ -83,9 +83,18 @@ test.describe('Health & Monitoring', () => {
   });
 
   test.describe('API Response Headers', () => {
-    test('should include CORS headers', async ({ request }) => {
+    // TASK-610 §4C.2 — INVERTED DELIBERATELY. This used to assert
+    // `access-control-allow-credentials` was PRESENT. It must now be ABSENT:
+    // with origin enforcement off by default (§4C.1), permitting credentials
+    // alongside a reflected arbitrary origin would be a cross-origin READ
+    // primitive — any site a logged-in user visits could issue authenticated
+    // requests to this gateway and read the responses, PHI included.
+    // `credentials: false` is what keeps the permissive default an ordinary
+    // public-API posture. Bearer auth is unaffected (the SDK sets the
+    // `Authorization` header explicitly) and nothing reads `req.session`.
+    test('must NOT permit cross-origin credentials', async ({ request }) => {
       const response = await request.get('/api/v1/health');
-      expect(response.headers()['access-control-allow-credentials']).toBeDefined();
+      expect(response.headers()['access-control-allow-credentials']).toBeUndefined();
     });
 
     test('should include security headers', async ({ request }) => {
