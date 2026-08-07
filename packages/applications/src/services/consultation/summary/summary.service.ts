@@ -237,7 +237,16 @@ export class SummaryService extends BaseService implements ISummaryService {
 
     const assembledPrompt = await this.promptAssemblyService.assemble({
       departmentId: consultation.departmentId ?? undefined,
+      // The pre-summary chain has no department axis: without the tenant a
+      // consultation with NO department skips the tenant tier and lands on the
+      // SYSTEM default (or a 503).
+      tenantId,
       promptType: 'pre-summary',
+      // v1 `{visit_type}` (TASK-634 D-08). `parentConsultationId` is the
+      // consultation's own visit-type signal (NULL = initial visit); the
+      // vocabulary is the one the seeded pre-summary template declares for this
+      // variable ("new-visit or revisit").
+      visitType: consultation.parentConsultationId ? 'revisit' : 'new-visit',
       transcript: content,
       conversationLanguage: this.resolveConversationLanguage(request.options),
       dnaStyleId: request.dnaStyleId,

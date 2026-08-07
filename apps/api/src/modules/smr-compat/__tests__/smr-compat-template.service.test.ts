@@ -8,17 +8,15 @@ const createDeptRepo = () => ({
   ]),
 });
 
-type ResolvedFrom = 'preferred' | 'agent' | 'department' | 'default';
+type ResolvedFrom = 'preferred' | 'agent' | 'department' | 'tenant' | 'default';
 
 const createResolver = () => ({
-  resolve: vi.fn(
-    async (): Promise<{ template: string; promptId: string; content?: string; resolvedFrom: ResolvedFrom }> => ({
-      template: 'Cardiology-New',
-      promptId: 'p-1',
-      content: 'Cardiology department instruction: capture ejection fraction and rhythm.',
-      resolvedFrom: 'department',
-    }),
-  ),
+  resolve: vi.fn(async (): Promise<{ template: string; promptId: string; content?: string; resolvedFrom: ResolvedFrom }> => ({
+    template: 'Cardiology-New',
+    promptId: 'p-1',
+    content: 'Cardiology department instruction: capture ejection fraction and rhythm.',
+    resolvedFrom: 'department',
+  })),
 });
 
 describe('SmrCompatTemplateService (TASK-592)', () => {
@@ -85,6 +83,63 @@ describe('SmrCompatTemplateService (TASK-592)', () => {
       const content = await service.resolveGovernedInstruction('tenant-1', 'Cardiology', 'new-patient');
       expect(content).toBeUndefined();
       expect(resolver.resolve).not.toHaveBeenCalled();
+    });
+  });
+
+  // =======================================================================
+  // TASK-634 — pre-summary has no department axis
+  // =======================================================================
+  describe('resolveGovernedInstruction — pre-summary (TASK-634)', () => {
+    const tenantPreSummary = {
+      template: 'SOAP',
+      promptId: 'presummary-tpl',
+      content: 'TENANT pre-summary body',
+      resolvedFrom: 'tenant' as ResolvedFrom,
+    };
+
+    it('resolves the tenant pre-summary prompt WITHOUT matching a department', async () => {
+      resolver.resolve.mockResolvedValueOnce(tenantPreSummary);
+
+      const content = await service.resolveGovernedInstruction('tenant-1', 'Cardiology', 'pre-summary');
+
+      expect(resolver.resolve).toHaveBeenCalledWith({ tenantId: 'tenant-1', promptType: 'pre-summary' });
+      // No department lookup at all — pre-summary is department-agnostic.
+      expect(repo.findAllByTenant).not.toHaveBeenCalled();
+      expect(content).toBe('TENANT pre-summary body');
+    });
+
+    it('still resolves when the request carries NO department (v1 omits it freely)', async () => {
+      resolver.resolve.mockResolvedValue(tenantPreSummary);
+
+      expect(await service.resolveGovernedInstruction('tenant-1', undefined, 'pre-summary')).toBe('TENANT pre-summary body');
+      expect(await service.resolveGovernedInstruction('tenant-1', '   ', 'pre-summary')).toBe('TENANT pre-summary body');
+      expect(repo.findAllByTenant).not.toHaveBeenCalled();
+    });
+
+    it('does not resolve an unknown department name away from the tenant prompt', async () => {
+      resolver.resolve.mockResolvedValueOnce(tenantPreSummary);
+
+      expect(await service.resolveGovernedInstruction('tenant-1', 'Nuclear Medicine', 'pre-summary')).toBe('TENANT pre-summary body');
+    });
+
+    it('defers to the static v1 pre-summary path when the resolver serves the SYSTEM default', async () => {
+      // The SYSTEM pre-summary template still carries un-interpolated
+      // single-brace `{placeholders}`, so serving it would leak literal braces
+      // to the LLM — the static builder is the correct degradation.
+      resolver.resolve.mockResolvedValueOnce({
+        template: 'SOAP',
+        promptId: 'sys-presummary',
+        content: 'body with {current_department}',
+        resolvedFrom: 'default',
+      });
+
+      expect(await service.resolveGovernedInstruction('tenant-1', 'Cardiology', 'pre-summary')).toBeUndefined();
+    });
+
+    it('never throws when the resolver FAILS CLOSED — degrades to the static v1 pre-summary path', async () => {
+      resolver.resolve.mockRejectedValueOnce(new Error('No approved pre-summary prompt is configured.'));
+
+      expect(await service.resolveGovernedInstruction('tenant-1', 'Cardiology', 'pre-summary')).toBeUndefined();
     });
   });
 });

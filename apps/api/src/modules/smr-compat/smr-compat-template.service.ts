@@ -38,35 +38,71 @@ export class SmrCompatTemplateService {
   }
 
   /**
-   * Resolve the tenant's governed department instruction template for a
-   * free-form department name + prompt type. Returns the APPROVED PromptVersion
-   * content when a real tenant `Department` matches AND resolves to a
-   * department-specific (non-system-default) governed template; otherwise
-   * `undefined` (→ caller uses the static field-set steering). Never throws.
+   * Resolve the tenant's governed instruction template for a free-form
+   * department name + prompt type. Returns the APPROVED PromptVersion content
+   * when a tenant-specific (non-system-default) governed template resolves;
+   * otherwise `undefined` (→ caller uses the static field-set steering). Never
+   * throws.
+   *
+   * TASK-634 — the two capabilities take DIFFERENT routes:
+   *
+   * - `'new-patient' | 'revisit'` (summary): the free-form department name is
+   *   matched to a real tenant `Department` row, whose governed visit-type
+   *   template is resolved. Unchanged.
+   * - `'pre-summary'`: there is no department axis at all — v1 carries exactly
+   *   ONE pre-summary prompt per tenant, with department and visit type as
+   *   variables inside it — so NO department matching happens and the resolver
+   *   is asked for the tenant's pre-summary prompt directly. This is what makes
+   *   a request with a missing or unknown department still resolve.
+   *
+   * The `resolvedFrom === 'default'` guard (previously dead code, because the
+   * resolver mislabelled system-default resolutions as `'department'`) is now
+   * live and carries its intended meaning for BOTH routes: a bare SYSTEM
+   * default means "nothing tenant-specific is configured", and the static v1
+   * steering is the better answer — for summary because the static dept×visit
+   * field sets are richer than a generic SOAP instruction, and for pre-summary
+   * because the SYSTEM pre-summary template still carries un-interpolated
+   * single-brace `{placeholders}` that would reach the LLM literally.
    */
   async resolveGovernedInstruction(tenantId: string, department: string | undefined, promptType: SummaryPromptType): Promise<string | undefined> {
-    if (!department?.trim()) return undefined;
-
     try {
-      const departments = await this.departmentRepository.findAllByTenant(tenantId);
-      const match = matchTenantDepartment(departments, department);
-      if (!match) return undefined;
+      const resolved =
+        promptType === 'pre-summary'
+          ? await this.promptResolutionService.resolve({ tenantId, promptType })
+          : await this.resolveDepartmentScoped(tenantId, department, promptType);
 
-      const resolved = await this.promptResolutionService.resolve({ departmentId: match.id, promptType });
-
-      // A bare SYSTEM default (CATCHALL_SOAP) means this department has no
-      // department-specific governed template — defer to the static dept×visit
-      // steering, which is richer than a generic SOAP instruction here.
-      if (resolved.resolvedFrom === 'default') return undefined;
+      if (!resolved || resolved.resolvedFrom === 'default') return undefined;
 
       const content = resolved.content?.trim();
       return content ? content : undefined;
     } catch (err) {
+      // Includes the pre-summary chain's fail-closed 503: the compat shim must
+      // degrade to the static v1 pre-summary path, never fail the request.
       this.logger.warn({
-        message: 'Failed to resolve governed department instruction — falling back to static dept×visit steering',
+        message: 'Failed to resolve governed instruction — falling back to the static v1 steering',
+        promptType,
         reason: err instanceof Error ? err.message : undefined,
       });
       return undefined;
     }
+  }
+
+  /**
+   * Summary route: free-form department NAME → real tenant `Department` UUID →
+   * that department's governed visit-type template. `null` when no tenant
+   * department matches (→ static steering).
+   */
+  private async resolveDepartmentScoped(
+    tenantId: string,
+    department: string | undefined,
+    promptType: Exclude<SummaryPromptType, 'pre-summary'>,
+  ): Promise<Awaited<ReturnType<PromptResolutionService['resolve']>> | null> {
+    if (!department?.trim()) return null;
+
+    const departments = await this.departmentRepository.findAllByTenant(tenantId);
+    const match = matchTenantDepartment(departments, department);
+    if (!match) return null;
+
+    return this.promptResolutionService.resolve({ departmentId: match.id, promptType });
   }
 }

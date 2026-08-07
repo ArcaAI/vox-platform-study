@@ -99,6 +99,10 @@ export class PreSummaryProcessor extends WorkerHost {
         // DNA style is per-doctor and resolved separately — not part of prompt resolution.
         const resolved = await this.promptResolutionService.resolve({
           departmentId: consultation.departmentId ?? undefined,
+          // The pre-summary chain has no department axis: without the tenant a
+          // job on a consultation with NO department skips the tenant tier and
+          // lands on the SYSTEM default (or a 503).
+          tenantId: consultation.tenantId,
           promptType: 'pre-summary',
           preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
         });
@@ -131,7 +135,15 @@ export class PreSummaryProcessor extends WorkerHost {
 
         const assembledPrompt = await this.promptAssemblyService.assemble({
           departmentId: consultation.departmentId ?? undefined,
+          // Same reason as the resolve() above — assemble() runs its OWN
+          // resolution, and that is the one whose body reaches the LLM.
+          tenantId: consultation.tenantId,
           promptType: 'pre-summary',
+          // v1 `{visit_type}` (TASK-634 D-08). `parentConsultationId` is the
+          // consultation's own visit-type signal (NULL = initial visit); the
+          // vocabulary is the one the seeded pre-summary template declares for
+          // this variable ("new-visit or revisit").
+          visitType: consultation.parentConsultationId ? 'revisit' : 'new-visit',
           transcript: content,
           conversationLanguage: this.resolveConversationLanguage(request.options),
           dnaStyleId: request.dnaStyleId,

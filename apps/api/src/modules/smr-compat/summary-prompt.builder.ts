@@ -1,6 +1,17 @@
+import { buildPreSummaryVariables, resolveV1LanguageName, substitutePreSummaryVariables } from '@arcaai/applications';
 import { humanizeField, selectDeptTemplate } from './dept-templates';
 import type { PreSummaryRequest } from './dto/pre-summary.request';
 import type { PreviousVisitRecordDto, SessionDataDto, TestResultDto } from './dto/session-data.dto';
+
+/**
+ * v1's language map and its nine pre-summary variables now live in
+ * `@arcaai/applications` (`services/consultation/prompt/pre-summary-variables.ts`)
+ * so the NATIVE Vox SDK v2 path (`PromptAssemblyService`) interpolates the very
+ * same bodies with the very same defaults (TASK-634 Phase 2b, OD-2/OD-3) —
+ * `apps/api` depends on that package, so a copy here would be the one that
+ * drifts. Re-exported unchanged for this module's existing consumers/tests.
+ */
+export { PRE_SUMMARY_TEMPLATE_VARIABLES, resolveV1LanguageName } from '@arcaai/applications';
 
 /** Assembled `{ system, user }` prompt pair sent to SMR `/generate`. */
 export interface AssembledPrompt {
@@ -39,14 +50,8 @@ export interface SummaryPromptOptions {
   dnaStyleText?: string;
 }
 
-const LANGUAGE_INSTRUCTION: Record<string, string> = {
-  en: 'Write the summary in English.',
-  ml: 'Write the summary in English',
-};
-
 function languageDirective(language?: string): string {
-  const key = (language ?? 'en').toLowerCase();
-  return LANGUAGE_INSTRUCTION[key] ?? LANGUAGE_INSTRUCTION.en;
+  return `Language: ${resolveV1LanguageName(language)}`;
 }
 
 /** One rendered transcript line per turn — fixes v1 F2 (whole transcript collapsed into one segment). */
@@ -185,14 +190,63 @@ export function buildSummaryPrompt(sessionData: SessionDataDto, options: Summary
 }
 
 /**
+ * VERBATIM v1 pre-summary system prompt — sha256 `277d94d56d3d`, 336 bytes,
+ * extracted from the RUNNING v1 SMR pod (`previous_visit_service.py`), never
+ * retyped. In v1 this is the ENTIRE system message for `/presummary`; the
+ * template below is the ENTIRE user message.
+ */
+export const V1_PRE_SUMMARY_SYSTEM_PROMPT: string =
+  'You are a medical AI assistant producing clinically relevant, concise, department-aware pre-summaries from EMR context. Format your response with clear sections and bullet points for readability. Include main sections for: Confirmed & Provisional Diagnoses, Investigations, Diagnostics & Trends, Plan of Care and Medications Prescribed.';
+
+/**
+ * VERBATIM v1 pre-summary body — sha256 `309a9cd13792`, 3091 bytes, extracted
+ * from the same pod. Carries v1's nine single-brace placeholders, substituted at
+ * ASSEMBLY time (below).
+ *
+ * Pre-summary has NO department and NO visit-type axis in v1: there is exactly
+ * ONE body, hardcoded in the service, with department/visit type as VARIABLES
+ * inside it. A tenant may override it with a governed `PromptTemplate`
+ * (TASK-592) — the seeded ArcaAI row carries this exact content.
+ */
+export const V1_PRE_SUMMARY_TEMPLATE: string =
+  '## Medical AI Pre-Summary Prompt\n\n> **You are a medical AI assistant tasked with creating a CRISP, CLINICALLY-RELEVANT pre-summary from multiple data sources.\n\nDo not carry over information from any other patient. Treat each request independently..**\n\n---\n\n### ** Contextual data is provided by **\n\n- **Department:** {current_department}\n\n- **Visit Type:** {visit_type}\n\n- **Demographics:** Age {safe_age}, DOB {safe_dob}, Gender {safe_gender}\n\n- **Recent Vitals:** {safe_vitals} (two most recent encounters)\n\n- **Test Results:** {formatted_test_results}\n\n- **Previous Visits:** {formatted_previous_visits}\n\n---\n\n## REQUIREMENTS\n\n### PRIORITIZE:\n\n- Notes from {current_department}\n\n- Most recent encounters\n\n### CAPTURE:\n\n- All provisional and confirmed diagnoses mentioned in any past case note  \n\n- The Plan of Care from the latest note in the current department, documented in full  \n\n- All investigation results reported in the latest department note  \n\n- All medications prescribed in the latest department note, including doses and schedules  \n\n### INCLUDE ONLY clinically significant items:\n\n- Active or ongoing conditions  \n\n- Key treatments and responses  \n\n- Current medications and tolerance  \n\n- Important test results or procedures  \n\n- Allergies/contraindications  \n\n- Notable trends (e.g., weight changes, lab trajectories)  \n\n### EXCLUDE:\n\n- Routine follow-ups without new findings  \n\n- Minor resolved complaints  \n\n- Administrative text  \n\n- Repetitive details  \n\n### STYLE:\n\n- Use bullet points\n\n- Group by clinical importance, not strictly chronology  \n\n- Maintain brevity: keep each bullet to one sentence or phrase\n\n- Language: {language_name}\n\n### INSTRUCTIONS\n\n- Use the following section headers EXACTLY as written (in English) and do NOT translate them.\n- Write ALL bullet content in {language_name}, including any text inside parentheses.\n- Translate ALL English descriptors from context into {language_name}\n- Translate ALL text that appears in parentheses into {language_name}\n- Parentheses Localization Policy: For any parentheses that contain English words, translate them into {language_name}. If a direct translation is unclear, paraphrase briefly in {language_name}. Only leave English inside parentheses for standard clinical abbreviations (BP, HR, RR, Temp, SpO2) and measurement units (°C, mmHg, mg, ml).\n- Do NOT include English words in bullet items or parentheses, except for:\n- Standard clinical abbreviations (e.g., BP, HR, RR, Temp, SpO2)\n- Measurement units (e.g., °C, mmHg, mg, ml)\n- Before finalizing, perform a self-check: scan every pair of parentheses and ensure there are no English words inside (except the allowed abbreviations/units). If any are found, replace them with {language_name} equivalents.\n- Translate or localize any status or qualifier terms or any text inside parentheses into {language_name}.\n\n---\n\n## FORMAT\n\n- Confirmed & Provisional Diagnoses:\n- Investigations (Latest Dept Note):\n- Diagnostics & Trends:\n- Plan of Care (Latest Dept Note):\n- Medications Prescribed (Latest Dept Note):\n\n---\n\nNow generate the pre-summary.';
+
+/**
+ * Substitute v1's single-brace placeholders into a pre-summary body, mapping the
+ * v1-compat `PreSummaryRequest` onto the shared variable sources.
+ *
+ * The substitution itself (single-pass, own-keys-only, unknown tokens passed
+ * through unchanged) and v1's per-field defaults live in `@arcaai/applications`
+ * so the native Vox v2 path applies exactly the same rules to exactly the same
+ * template bodies.
+ */
+export function renderPreSummaryTemplate(template: string, req: PreSummaryRequest): string {
+  return substitutePreSummaryVariables(
+    template,
+    buildPreSummaryVariables({
+      currentDepartment: req.current_department,
+      visitType: req.visit_type,
+      age: req.age,
+      dob: req.dob,
+      gender: req.gender,
+      vitals: req.formatted_vitals,
+      testResults: req.formatted_test_results,
+      previousVisits: req.formatted_previous_visits,
+      language: req.language,
+    }),
+  );
+}
+
+/**
  * Options for `buildPreSummaryPrompt`.
  */
 export interface PreSummaryPromptOptions {
   /**
-   * The tenant department's governed pre-summary instruction template content
-   * (an APPROVED, version-pinned snapshot resolved via `PromptResolutionService`
-   * with `promptType: 'pre-summary'`, TASK-592). When present it steers the
-   * pre-summary in addition to the base markdown/format directives.
+   * The tenant's governed pre-summary instruction template content (an APPROVED,
+   * version-pinned snapshot resolved via `PromptResolutionService` with
+   * `promptType: 'pre-summary'`, TASK-592). It REPLACES the v1 body — it does
+   * not decorate it — and is interpolated with the same nine variables. Absent ⇒
+   * the verbatim v1 body, which is what v1 itself always uses.
    */
   governedInstruction?: string;
   /** The requesting doctor's decrypted DNA writing-style text (TASK-599). */
@@ -201,52 +255,29 @@ export interface PreSummaryPromptOptions {
 
 /**
  * Build the pre-summary `{ system, user }` prompt from a v1 `PreSummaryRequest`.
- * Department/visit-type aware; folds explicit pre-formatted context strings, and
- * (TASK-592) the tenant department's governed pre-summary instruction when one
- * resolves. (SMR_Summary_Endpoints.md §4; frozen TASK-560 §5.5.)
+ *
+ * 1:1 with v1 (TASK-634 Phase 2): the pre-summary body IS the whole user prompt,
+ * sent under v1's dedicated system prompt. v2 adds no competing formatting or
+ * language directives — every one of those instructions already lives inside the
+ * body, and duplicating them is what produced the drift this ticket corrects.
+ *
+ * Substitution happens HERE, at assembly time, and nowhere earlier: seed time is
+ * impossible (values are per-request) and resolve time would both destroy the
+ * version-pinned APPROVED snapshot identity used for audit/diff AND push PHI
+ * (DOB, vitals) into anything that logs a resolved prompt. Assembly time keeps
+ * the stored template row byte-identical to v1 and confines PHI to the last hop
+ * before the SMR call.
  */
 export function buildPreSummaryPrompt(req: PreSummaryRequest, options: PreSummaryPromptOptions = {}): AssembledPrompt {
-  const department = req.current_department?.trim() || 'General';
-  const visitType = req.visit_type?.trim() || 'Medical examination';
-
-  const systemLines = [
-    'You are a clinical documentation assistant.',
-    `Generate a concise, department-aware pre-summary of a patient's medical history for a ${department} ${visitType}.`,
-  ];
   const governed = options.governedInstruction?.trim();
-  if (governed) {
-    systemLines.push(`Follow this department's pre-summary instruction where the provided context supports it:\n${governed}`);
-  }
+  const user = renderPreSummaryTemplate(governed || V1_PRE_SUMMARY_TEMPLATE, req);
+
+  // TASK-599 — style guidance only (tone / formatting / phrasing); it never
+  // alters clinical facts and is the one v2 addition to v1's system message.
   const dnaStyle = options.dnaStyleText?.trim();
-  if (dnaStyle) {
-    systemLines.push(
-      `Match this clinician's documentation writing style (tone, formatting, and phrasing) without changing any clinical facts:\n${dnaStyle}`,
-    );
-  }
-  systemLines.push(
-    'Organize the pre-summary as markdown with clear section headings and bullet points.',
-    'Base it strictly on the provided context; do not fabricate findings.',
-    languageDirective(req.language),
-  );
+  const system = dnaStyle
+    ? `${V1_PRE_SUMMARY_SYSTEM_PROMPT}\n\nMatch this clinician's documentation writing style (tone, formatting, and phrasing) without changing any clinical facts:\n${dnaStyle}`
+    : V1_PRE_SUMMARY_SYSTEM_PROMPT;
 
-  const userSections: string[] = [];
-
-  const demographics: string[] = [];
-  if (req.age) demographics.push(`Age: ${req.age}`);
-  if (req.dob) demographics.push(`DOB: ${req.dob}`);
-  if (req.gender) demographics.push(`Gender: ${req.gender}`);
-  if (demographics.length > 0) userSections.push(`Patient:\n${demographics.join(', ')}`);
-
-  if (req.formatted_vitals?.trim()) userSections.push(`Recent vitals:\n${req.formatted_vitals.trim()}`);
-  if (req.formatted_test_results?.trim()) userSections.push(`Recent test results:\n${req.formatted_test_results.trim()}`);
-  if (req.formatted_previous_visits?.trim()) userSections.push(`Previous visits:\n${req.formatted_previous_visits.trim()}`);
-
-  if (userSections.length === 0) {
-    userSections.push('No prior clinical context was provided; produce a brief pre-summary noting the absence of available history.');
-  }
-
-  return {
-    system: systemLines.join(' '),
-    user: userSections.join('\n\n'),
-  };
+  return { system, user };
 }

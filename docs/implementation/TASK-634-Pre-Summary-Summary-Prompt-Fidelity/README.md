@@ -413,15 +413,33 @@ seed source.
 
 ---
 
-## 5. Open Decisions (owner input required)
+## 5. Decisions (RESOLVED — owner, 2026-08-07)
 
-| ID | Decision | Why it blocks |
+| ID | Decision | Ruling |
 |---|---|---|
-| **OD-1** | Strict 1:1 for the "v2 added content" group (Surgery ×2, Hematology ×2)? Applying it **deletes** Fitness-for-Surgery / anaesthesia clearance, and chemotherapy regimen + next-chemo-date tracking. | Silent removal of clinical prompting. Currently **applied** per R7; one `git checkout` reverts. |
-| **OD-2** | Adopt the verbatim pre-summary body **only together with** assembly-time interpolation? | Adopting alone sends literal `{braces}` to the LLM. |
-| **OD-3** | May the resolver change touch the **native v2 path**? `promptType: 'pre-summary'` is consumed by `pre-summary.processor.ts` and `summary.service.ts`, not just the compat shim. | Determines Phase 1 blast radius. |
-| **OD-4** | Confirm ticket id **TASK-634**. | Doc/branch naming. |
-| **OD-5** | Is the deployed v1 or the v1 checkout the intended reference for Surgery? Drift direction is not uniform. | Affects OD-1. |
+| **OD-1** | Strict 1:1 for the "v2 added content" group (Surgery ×2, Hematology ×2)? | **Strictly the same prompt instruction template / agent instruction as v1. Do NOT create or fabricate anything else — especially departments or prompt content.** The §4.2 reverts stand; the Fitness-for-Surgery, Referral Source, Investigations and chemotherapy sections are removed as a deliberate, accepted consequence. No new fallback prompt body may be authored — fallbacks must point at existing approved templates. |
+| **OD-2** | Adopt the verbatim pre-summary body only together with interpolation? | **Best practice fitting requests sent by Vox SDK compat AND Vox SDK v2.** → adopt verbatim body together with assembly-time interpolation; substitution must serve both SDK surfaces, not compat only. |
+| **OD-3** | May the resolver change touch the native v2 path? | **Best practice fitting requests sent by Vox SDK compat AND Vox SDK v2.** → **Yes.** The resolution fix applies to the native v2 path (`pre-summary.processor.ts`, `summary.service.ts`) as well as the compat shim; both surfaces must behave consistently. |
+| **OD-4** | Ticket id | **TASK-634** confirmed. |
+| **OD-5** | Deployed v1 or v1 checkout as the reference? | **Follow OD-1** → the **running v1 pod** is the sole authoritative source. Any local `HOPE/docs` checkout is disqualified. |
+
+### 5.1 Consequences of OD-1 (accepted, recorded for traceability)
+
+Restoring strict v1 parity **removes** the following from ArcaAI prompts. This is
+intentional under OD-1, not an oversight:
+
+- *Surgery – New Referral / Follow-up*: Comorbidities, Past Surgical History,
+  Fitness for Surgery (cardiology / pulmonology / anaesthesia clearance, ASA
+  class, NPO instructions)
+- *Hematology – New Referral*: Referral Source, Investigations (Bone Marrow
+  Aspiration & Biopsy, CBC, M-band)
+- *Hematology – Revisit*: Treatment History (chemotherapy regimens, cycle
+  numbers, responses, adverse effects) and the next-chemotherapy-date /
+  dose-modification Plan-of-Care bullet
+
+If any of this is wanted again it must be re-introduced deliberately as a NEW
+tenant-owned template version through the admin surface (R6) — not by editing the
+v1-parity seed, which is now checksum-pinned (Phase 7).
 
 ---
 
@@ -551,3 +569,5 @@ combinations matches the v1-rendered envelope.
 | 2026-08-07 | Restored 6 drifted department templates to v1 verbatim; recorded sha256 fingerprints in the seed header. |
 | 2026-08-07 | Removed `preSummaryPromptId` from all 7 ArcaAI clinical departments; added `ARCAAI_FALLBACK_TEMPLATE_IDS`; updated 3 seed tests. 956 tests green, typecheck clean. |
 | 2026-08-07 | Documented findings and the 7-phase remediation plan (this document). |
+| 2026-08-07 | OD-1…OD-5 resolved by the owner (§5). Ticket id confirmed as TASK-634; deployed v1 pod ruled the sole authoritative source; resolver fix authorised for the native v2 path as well as compat. |
+| 2026-08-07 | Phases 1, 2+3, 4, 5 and 7 dispatched in parallel with strict per-agent file ownership (Phase 6 held — it needs the Figma design gate per `12-design-workflow.md`). |

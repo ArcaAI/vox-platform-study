@@ -12,7 +12,8 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClsService } from 'nestjs-cls';
 import { PromptResolutionService, PromptResolutionTier } from './prompt-resolution.service';
-import { PromptTemplateRepository, DnaWritingStyleReportRepository } from '@arcaai/domains';
+import { buildPreSummaryVariables, templateReferencesPreSummaryVariables } from './pre-summary-variables';
+import { PromptTemplateRepository, DnaWritingStyleReportRepository, DepartmentRepository } from '@arcaai/domains';
 import { HarnessPolicyService } from '../../harness-policy/harness-policy.service';
 import { SecretsService } from '../../baseServices/_meta/secrets/SecretsService';
 import { IGateEditExemplarRetriever } from '../../gate-edit-mining/IGateEditExemplarRetriever';
@@ -102,7 +103,7 @@ function fingerprintExemplarSet(input: string): string {
 
 function substituteVariables(template: string, variables: Record<string, string>): string {
   return template.replace(VARIABLE_PATTERN, (match, name: string) => {
-    return name in variables ? variables[name] : match;
+    return Object.prototype.hasOwnProperty.call(variables, name) ? variables[name] : match;
   });
 }
 
@@ -209,6 +210,17 @@ export interface PromptAssemblyParams {
   tenantId?: string;
   departmentId?: string;
   promptType?: 'pre-summary' | 'new-patient' | 'revisit';
+  /**
+   * The consultation's visit type, rendered into v1's `{visit_type}` placeholder
+   * on a pre-summary body (TASK-634 D-08).
+   *
+   * Supplied by the caller because assembly cannot see the consultation: the
+   * native callers derive it from `parentConsultationId` (NULL = initial visit)
+   * using the vocabulary the seeded pre-summary template itself declares
+   * (`visit_type: 'new-visit or revisit'`). Absent ⇒ v1's own default,
+   * `'Medical examination'`.
+   */
+  visitType?: string;
   transcript: string;
   conversationLanguage: string;
   dnaStyleId?: string;
@@ -319,6 +331,11 @@ export class PromptAssemblyService {
     // @Optional + trailing so existing positional test fixtures keep their arity
     // (absent ⇒ legacy non-decrypting read, i.e. the prior latent no-op).
     @Optional() @Inject(SecretsService) private readonly secretsService?: SecretsService,
+    // v1 `{current_department}` resolution (TASK-634 D-08): a pre-summary body
+    // renders the department NAME, but callers only carry `departmentId`.
+    // @Optional + trailing for the same reason as the four above (positional
+    // test fixtures); absent ⇒ v1's `'General'` default, never a literal brace.
+    @Optional() @Inject(DepartmentRepository) private readonly departmentRepository?: DepartmentRepository,
   ) {
     const raw = String(this.configService.get('HARNESS_WARM_START_ENABLED') ?? '')
       .trim()
@@ -414,6 +431,12 @@ export class PromptAssemblyService {
   async assemble(params: PromptAssemblyParams): Promise<AssembledPrompt> {
     const resolved = await this.promptResolutionService.resolve({
       departmentId: params.departmentId,
+      // The pre-summary chain has NO department axis and cannot derive the
+      // tenant from a Department row, so it must be told explicitly — otherwise
+      // a consultation with no department skips the tenant tier and lands on the
+      // SYSTEM default, or fails closed with a 503. CLS is the fallback for
+      // callers already running inside a request/worker scope.
+      tenantId: params.tenantId ?? this.cls?.get('tenantId'),
       promptType: params.promptType,
       explicitTemplate: params.explicitTemplate,
       preferredPromptTemplateId: params.preferredPromptTemplateId,
@@ -591,6 +614,32 @@ export class PromptAssemblyService {
       doctor_highlights: serializeTextBlock(params.highlights),
     };
 
+    // v1's nine pre-summary placeholders (TASK-634 D-08). The seeded
+    // pre-summary bodies — the ArcaAI tenant row AND the SYSTEM default
+    // `71000000-…040` — are byte-exact v1 and carry `{current_department}`,
+    // `{visit_type}`, `{safe_age}`, `{safe_dob}`, `{safe_gender}`,
+    // `{safe_vitals}`, `{formatted_test_results}`, `{formatted_previous_visits}`
+    // and `{language_name}`. The compat shim substitutes them in
+    // `summary-prompt.builder.ts` via the SAME shared functions; without this the
+    // native Vox v2 path would send literal braces to the LLM (OD-2/OD-3).
+    //
+    // Gated on the resolved body actually referencing them, so a summary
+    // template never pays for the department lookup.
+    if (resolvedContent && templateReferencesPreSummaryVariables(resolvedContent)) {
+      Object.assign(
+        variables,
+        buildPreSummaryVariables({
+          currentDepartment: await this.resolveDepartmentName(params.departmentId),
+          visitType: params.visitType,
+          // The v2 data model holds no patient demographics, vitals, test
+          // results or prior-visit text (`patientId` is an external reference
+          // with no local demographic store), so these fall through to v1's own
+          // defaults — Unknown / Not available / '' — rather than an invented one.
+          language: params.conversationLanguage,
+        }),
+      );
+    }
+
     if (params.preSummaryText) {
       variables.pre_summary_text = params.preSummaryText;
     }
@@ -628,6 +677,26 @@ export class PromptAssemblyService {
     }
 
     return variables;
+  }
+
+  /**
+   * The department NAME for v1's `{current_department}` placeholder.
+   *
+   * Never throws: `{current_department}` is prompt context, not a precondition,
+   * so a missing id, a missing row, or a repository failure all degrade to v1's
+   * own `'General'` default rather than failing the generation.
+   */
+  private async resolveDepartmentName(departmentId?: string): Promise<string | null> {
+    if (!departmentId || !this.departmentRepository) return null;
+    try {
+      const department = await this.departmentRepository.findById(departmentId);
+      return department?.name ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Department lookup failed for ${departmentId}; pre-summary {current_department} falls back to the v1 default: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   /**

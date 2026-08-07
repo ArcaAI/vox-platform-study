@@ -325,6 +325,32 @@ describe('PromptAssemblyService', () => {
       expect(result.hyperparameters).toEqual({});
     });
 
+    // A `{token}` that happens to name an inherited Object.prototype member must
+    // be left alone like any other unknown placeholder — never resolved to the
+    // function itself, which String.replace would stringify as JS source into a
+    // clinical prompt. Mirrors the same guard in substitutePreSummaryVariables.
+    it('never resolves an inherited Object.prototype key as a value', async () => {
+      mockPromptTemplateRepository.findById.mockReset();
+      mockPromptTemplateRepository.findById.mockResolvedValue({
+        id: 'template-proto',
+        name: 'Proto',
+        content: 'Lang {conversation_language}. {constructor} {toString} {valueOf} {hasOwnProperty}',
+        variables: {},
+        metaData: null,
+      });
+      service = await getService();
+      const result = await service.assemble({
+        departmentId: 'dept-001',
+        promptType: 'new-patient',
+        transcript: 'test',
+        conversationLanguage: 'English',
+      });
+
+      expect(result.userPrompt).toContain('{constructor} {toString} {valueOf} {hasOwnProperty}');
+      expect(result.userPrompt).not.toContain('native code');
+      expect(result.userPrompt).not.toContain('function');
+    });
+
     it('should handle missing template gracefully with fallback', async () => {
       mockPromptTemplateRepository.findById.mockResolvedValue(null);
       service = await getService();

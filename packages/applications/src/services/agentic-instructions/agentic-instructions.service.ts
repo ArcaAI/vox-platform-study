@@ -79,6 +79,11 @@ export class AgenticInstructionsService extends BaseService {
       this.harnessPolicyService.getEffectivePolicy(tenantId),
       this.promptResolutionService.resolve({
         departmentId: options.departmentId,
+        // This surface accepts `promptType: 'pre-summary'`, whose chain has no
+        // department axis: without the tenant the inventory would report the
+        // SYSTEM default (or raise a 503) instead of the tenant's own
+        // pre-summary template.
+        tenantId,
         promptType,
       }),
     ]);

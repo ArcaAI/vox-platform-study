@@ -157,13 +157,19 @@ export function mapGenerateToV1Summary(content: string, meta: SummaryMappingMeta
  * The 5 canonical pre-summary section titles, IN ORDER, recognized verbatim by
  * v1 (`previous_visit_service.py:215-221`). Only these exact titles are treated
  * as section headers; the structured output always carries all five, in order.
+ *
+ * TASK-634 D-09: order and naming come from the RUNNING v1 pod's `display_titles`
+ * — `Latest Dept Note`, NOT `Latest Department Note`. Parsing is title-matched,
+ * so these MUST stay identical to the FORMAT block of the v1 pre-summary body
+ * (`V1_PRE_SUMMARY_TEMPLATE` in `summary-prompt.builder.ts`); any drift returns
+ * an EMPTY `structured_data.sections`.
  */
 export const PRE_SUMMARY_DISPLAY_TITLES = [
   'Confirmed & Provisional Diagnoses',
-  'Plan of Care (Latest Department Note)',
-  'Investigations (Latest Department Note)',
-  'Medications Prescribed (Latest Department Note)',
+  'Investigations (Latest Dept Note)',
   'Diagnostics & Trends',
+  'Plan of Care (Latest Dept Note)',
+  'Medications Prescribed (Latest Dept Note)',
 ] as const;
 
 const PRE_SUMMARY_NOT_AVAILABLE = 'Not available';

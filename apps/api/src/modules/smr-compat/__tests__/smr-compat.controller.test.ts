@@ -91,7 +91,9 @@ const createMockHarnessPolicy = () => ({
 // (no real tenant department matched) so every pre-existing test keeps the
 // static dept×visit steering path unchanged.
 const createMockTemplateService = () => ({
-  toSummaryPromptType: vi.fn((visitType?: string | null) => (/follow|review|revisit|\bfu\b|\brv\b/i.test(visitType ?? '') ? 'revisit' : 'new-patient')),
+  toSummaryPromptType: vi.fn((visitType?: string | null) =>
+    /follow|review|revisit|\bfu\b|\brv\b/i.test(visitType ?? '') ? 'revisit' : 'new-patient',
+  ),
   resolveGovernedInstruction: vi.fn(async (): Promise<string | undefined> => undefined),
 });
 
@@ -120,10 +122,7 @@ describe('resolveDepartmentVisit (frozen wire contract, TASK-560 item 1)', () =>
   });
 
   it('falls back to session_metadata aliases (first non-empty) when top-level is absent/blank', () => {
-    const r = resolveDepartmentVisit(
-      { department: '  ' },
-      { session_metadata: { current_department: 'Surgery', encounter: 'New Referral' } },
-    );
+    const r = resolveDepartmentVisit({ department: '  ' }, { session_metadata: { current_department: 'Surgery', encounter: 'New Referral' } });
     expect(r).toEqual({ department: 'Surgery', visitType: 'New Referral' });
   });
 
@@ -193,20 +192,20 @@ describe('PreSummaryRequest validation', () => {
   });
 
   it('accepts the compat SDK default max_tokens value', async () => {
-    const transformed = (await pipe.transform(
-      { current_department: 'General', visit_type: 'New / Referral', max_tokens: 65536 },
-      { type: 'body', metatype: PreSummaryRequest } as never,
-    )) as PreSummaryRequest;
+    const transformed = (await pipe.transform({ current_department: 'General', visit_type: 'New / Referral', max_tokens: 65536 }, {
+      type: 'body',
+      metatype: PreSummaryRequest,
+    } as never)) as PreSummaryRequest;
 
     expect(transformed.max_tokens).toBe(65536);
   });
 
   it('rejects values above the compat token ceiling', async () => {
     await expect(
-      pipe.transform(
-        { current_department: 'General', visit_type: 'New / Referral', max_tokens: 65537 },
-        { type: 'body', metatype: PreSummaryRequest } as never,
-      ),
+      pipe.transform({ current_department: 'General', visit_type: 'New / Referral', max_tokens: 65537 }, {
+        type: 'body',
+        metatype: PreSummaryRequest,
+      } as never),
     ).rejects.toMatchObject({
       response: expect.objectContaining({
         message: expect.arrayContaining(['max_tokens must not be greater than 65536']),
@@ -358,7 +357,16 @@ describe('SmrCompatController', () => {
         }
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(httpLocal as any, config as any, cls as any, policy as any, template as any, secrets as any, undefined, providerConnection as any);
+      const ctrl = new SmrCompatController(
+        httpLocal as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        undefined,
+        providerConnection as any,
+      );
 
       const res = createMockRes();
       await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, res as never);
@@ -384,7 +392,16 @@ describe('SmrCompatController', () => {
         }
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(httpLocal as any, config as any, cls as any, policy as any, template as any, secrets as any, undefined, providerConnection as any);
+      const ctrl = new SmrCompatController(
+        httpLocal as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        undefined,
+        providerConnection as any,
+      );
 
       // A Malayalam-language consultation WITH the translate flag ON: the
       // transcript is translated to English, so the output-language directive
@@ -407,7 +424,7 @@ describe('SmrCompatController', () => {
 
       const smrCall = httpLocal.axiosRef.post.mock.calls.find((c: unknown[]) => String(c[0]).includes('/api/v1/generate'));
       expect(smrCall![1].prompt).toContain('EN:ചോദ്യം'); // transcript translated
-      expect(smrCall![1].system_prompt).toContain('Write the summary in English.'); // output forced to English
+      expect(smrCall![1].system_prompt).toContain('Language: English'); // output forced to English
       expect(smrCall![1].system_prompt).not.toContain('Malayalam');
     });
 
@@ -418,7 +435,16 @@ describe('SmrCompatController', () => {
         if (String(url).includes('/api/v1/translate')) return Promise.reject(new Error('smr translate down'));
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(httpLocal as any, config as any, cls as any, policy as any, template as any, secrets as any, undefined, providerConnection as any);
+      const ctrl = new SmrCompatController(
+        httpLocal as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        undefined,
+        providerConnection as any,
+      );
 
       const res = createMockRes();
       await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, res as never);
@@ -441,7 +467,16 @@ describe('SmrCompatController', () => {
         }
         return Promise.resolve({ data: { content: JSON.stringify({ chief_complaint: 'x', summary: 'y' }) } });
       });
-      const ctrl = new SmrCompatController(httpLocal as any, config as any, cls as any, policy as any, template as any, secrets as any, undefined, providerConnection as any);
+      const ctrl = new SmrCompatController(
+        httpLocal as any,
+        config as any,
+        cls as any,
+        policy as any,
+        template as any,
+        secrets as any,
+        undefined,
+        providerConnection as any,
+      );
 
       const res = createMockRes();
       await ctrl.summarySync(syncRequest({ translate_to_english: true }), {} as never, res as never);
@@ -518,9 +553,7 @@ describe('SmrCompatController', () => {
     // (a) primary fails + resolver returns a target → ONE retry on that provider/model.
     it('retries ONCE on the tenant-configured fallback provider/model on an upstream LLM error', async () => {
       policy.resolveSmrFallbackSelection.mockResolvedValue({ provider: 'azure-openai', model: 'gpt-4o-foundry' });
-      http.axiosRef.post
-        .mockRejectedValueOnce({ response: { status: 500, data: 'llm boom' } })
-        .mockResolvedValueOnce({ data: { content: good } });
+      http.axiosRef.post.mockRejectedValueOnce({ response: { status: 500, data: 'llm boom' } }).mockResolvedValueOnce({ data: { content: good } });
 
       const res = await invokeSummary(syncRequest());
 
@@ -615,8 +648,10 @@ describe('SmrCompatController', () => {
       const res = await invokePresummary(preRequest());
 
       const [, body] = http.axiosRef.post.mock.calls[0];
-      expect(body.temperature).toBe(0);
-      expect(body.max_tokens).toBe(32_768);
+      // TASK-634 D-10 — v1 `routes.py`: temperature 0.2, max_tokens 800 (the
+      // 800-token ceiling is what enforces the prompt's "CRISP" instruction).
+      expect(body.temperature).toBe(0.2);
+      expect(body.max_tokens).toBe(800);
       expect(res.pre_summary).toContain('Hypertension');
       // v1 guarantees the 5 canonical sections in order.
       expect(res.structured_data.sections).toHaveLength(5);
@@ -664,7 +699,10 @@ describe('SmrCompatController', () => {
 
       expect(template.resolveGovernedInstruction).toHaveBeenCalledWith('tenant-1', 'Cardiology', 'pre-summary');
       const [, body] = http.axiosRef.post.mock.calls[0];
-      expect(body.system_prompt).toContain('Cardiology pre-summary instruction');
+      // TASK-634: the governed template IS the user prompt (v1 shape); the
+      // system prompt stays v1's dedicated pre-summary system message.
+      expect(body.prompt).toContain('Cardiology pre-summary instruction');
+      expect(body.system_prompt).toContain('department-aware pre-summaries from EMR context');
     });
 
     it('pre-summary retries the tenant fallback provider on a provider-side failure (parity with summary)', async () => {
@@ -736,7 +774,11 @@ describe('SmrCompatController', () => {
     };
 
     it('sets text/event-stream headers, forwards each chunk as a delta, and emits a terminal result', async () => {
-      const res = await runSummaryStream([smrFrame('chunk', { content: '{"chief_complaint":"x",' }), smrFrame('chunk', { content: '"summary":"y"}' }), smrFrame('done')]);
+      const res = await runSummaryStream([
+        smrFrame('chunk', { content: '{"chief_complaint":"x",' }),
+        smrFrame('chunk', { content: '"summary":"y"}' }),
+        smrFrame('done'),
+      ]);
 
       expect(res.headers['Content-Type']).toBe('text/event-stream');
       expect(res.headers['X-Accel-Buffering']).toBe('no');
@@ -818,7 +860,10 @@ describe('SmrCompatController', () => {
     });
 
     it('surfaces a mid-stream SMR error frame as a PHI-redacted error event (no upstream content on the wire)', async () => {
-      const res = await runSummaryStream([smrFrame('chunk', { content: '{"partial":' }), smrFrame('error', { content: 'SECRET_PHI_LEAK', data: { note: 'SECRET_PHI_LEAK' } })]);
+      const res = await runSummaryStream([
+        smrFrame('chunk', { content: '{"partial":' }),
+        smrFrame('error', { content: 'SECRET_PHI_LEAK', data: { note: 'SECRET_PHI_LEAK' } }),
+      ]);
 
       const out = written(res);
       expect(out).toContain('event: error');

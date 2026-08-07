@@ -1,7 +1,12 @@
 /**
  * PromptResolutionService Unit Tests
  *
- * Tests the Department → System Default fallback chain (DNA resolution removed).
+ * Tests BOTH capability chains (DNA resolution removed):
+ *  - summary  (`new-patient` / `revisit`): preferred → agent → department
+ *    column → SYSTEM default;
+ *  - pre-summary: tenant TENANT_DEFAULT → SYSTEM pre-summary default → fail
+ *    closed. It consults neither the preferred tier, nor the department default
+ *    agent, nor the department visit-type columns (TASK-634 D-01).
  *
  * Coverage areas:
  * - System defaults when no department
@@ -9,10 +14,12 @@
  * - promptType: pre-summary, new-patient, revisit
  * - explicitTemplate override
  * - contextVariables from promptConfig
+ * - `resolvedFrom` names the tier that produced the promptId (TASK-634 D-02)
  * - No dnaStyleId in resolved config
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { PromptResolutionService, SYSTEM_DEFAULTS } from '../prompt-resolution.service';
 import type { DepartmentEntity } from '@arcaai/domains';
 
@@ -26,6 +33,9 @@ const mockDepartmentRepository = {
 
 const mockPromptTemplateRepository = {
   findById: vi.fn(),
+  // TASK-634: the tenant pre-summary tier queries by (tenant, scope, status,
+  // departmentId, tag). Default: the tenant has no pre-summary template.
+  findAll: vi.fn(),
 };
 
 // TASK-546 tier-1a. Default: no department default agent → the agent tier is
@@ -84,6 +94,8 @@ describe('PromptResolutionService', () => {
     // the pre-existing preferred/department resolution behaviour is preserved.
     // Tests that exercise the gate override this with a DRAFT/PUBLISHED status.
     mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
+    // Default: the tenant has no TENANT_DEFAULT pre-summary template.
+    mockPromptTemplateRepository.findAll.mockResolvedValue([]);
     // Default: no default agent for any department (regression lock).
     mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue(null);
 
@@ -142,23 +154,6 @@ describe('PromptResolutionService', () => {
       expect(result.resolvedFrom).toBe('department');
       expect(result.resolutionTrace.departmentTemplate).toBe('SOAP');
       expect(result.resolutionTrace.departmentPromptId).toBe('prompt_card_new');
-    });
-
-    it('should resolve preSummaryPromptId when promptType is pre-summary', async () => {
-      mockDepartmentRepository.findById.mockResolvedValue(
-        createMockDepartment({
-          preSummaryPromptId: 'prompt_pre_summary',
-          newPatientPromptId: 'prompt_new',
-          revisitPromptId: 'prompt_revisit',
-        }),
-      );
-
-      const result = await service.resolve({
-        departmentId: 'dept-001',
-        promptType: 'pre-summary',
-      });
-
-      expect(result.promptId).toBe('prompt_pre_summary');
     });
 
     it('should resolve newPatientPromptId when promptType is new-patient', async () => {
@@ -633,6 +628,234 @@ describe('PromptResolutionService', () => {
       expect(result.content).toBe('preferred APPROVED v9');
       expect(result.resolvedVersionNumber).toBe(9);
       expect(mockPromptVersionRepository.findByVersionNumber).toHaveBeenCalledWith('preferred-tpl', 9);
+    });
+  });
+
+  // =========================================================================
+  // TASK-634 — the pre-summary capability chain (D-01 / D-03 / D-13)
+  //
+  // Pre-summary has NO department axis and NO visit-type axis: there is exactly
+  // ONE pre-summary prompt per tenant, and department/visit type are VARIABLES
+  // INSIDE it. So the pre-summary chain skips the preferred tier, the department
+  // default-agent tier (tier-1a) and the department visit-type columns, and it
+  // FAILS CLOSED rather than serving a clinical NOTE prompt (CATCHALL_SOAP).
+  // =========================================================================
+  describe('resolve — pre-summary capability chain', () => {
+    /** The tenant's TENANT_DEFAULT pre-summary template row (governed snapshot at v2). */
+    const wireTenantPreSummary = (rows: Array<{ id: string }> = [{ id: 'tenant-presummary-tpl' }]) => {
+      mockPromptTemplateRepository.findAll.mockResolvedValue(rows);
+      mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED', approvedVersionNumber: 2 }));
+      mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 2, content: 'TENANT pre-summary body' });
+    };
+
+    it('D-01: resolves the TENANT pre-summary template for a department that HAS a default agent (agent tier skipped)', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(
+        createMockDepartment({ preSummaryPromptId: 'dept-presummary-col', newPatientPromptId: 'dept-note' }),
+      );
+      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({
+        id: 'agent-1',
+        promptTemplateId: 'agent-note-tpl',
+        pinnedVersionNumber: 1,
+      });
+      wireTenantPreSummary();
+
+      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'pre-summary' });
+
+      expect(result.promptId).toBe('tenant-presummary-tpl');
+      expect(result.resolvedFrom).toBe('tenant');
+      expect(result.content).toBe('TENANT pre-summary body');
+      expect(result.resolvedAgentId).toBeUndefined();
+      // The agent tier is never even consulted for pre-summary.
+      expect(mockDepartmentAgentRepository.findDefaultForDepartment).not.toHaveBeenCalled();
+      // …and the department visit-type columns are not read.
+      expect(result.promptId).not.toBe('dept-presummary-col');
+      expect(result.resolutionTrace.departmentPromptId).toBeNull();
+    });
+
+    it('never resolves the doctor preferred (note) template for pre-summary', async () => {
+      wireTenantPreSummary();
+
+      const result = await service.resolve({
+        tenantId: 'tenant-001',
+        promptType: 'pre-summary',
+        preferredPromptTemplateId: 'preferred-note-tpl',
+      });
+
+      expect(result.promptId).toBe('tenant-presummary-tpl');
+      expect(result.resolvedFrom).toBe('tenant');
+      expect(mockPromptTemplateRepository.findById).not.toHaveBeenCalledWith('preferred-note-tpl');
+    });
+
+    it('queries the tenant pre-summary pointer deterministically and tenant-scoped', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ tenantId: 'tenant-from-dept' }));
+      wireTenantPreSummary();
+
+      await service.resolve({ departmentId: 'dept-001', promptType: 'pre-summary' });
+
+      const [props] = mockPromptTemplateRepository.findAll.mock.calls[0] as [Record<string, any>];
+      expect(props.filters).toMatchObject({
+        tenantId: 'tenant-from-dept',
+        scope: 'TENANT_DEFAULT',
+        status: 'APPROVED',
+        departmentId: null,
+      });
+      // Stable total order — never left to Postgres to tie-break (the D-05 trap).
+      expect(props.sort).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
+    });
+
+    it('prefers the explicit tenantId param over the department when both are present', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ tenantId: 'tenant-from-dept' }));
+      wireTenantPreSummary();
+
+      await service.resolve({ departmentId: 'dept-001', tenantId: 'tenant-explicit', promptType: 'pre-summary' });
+
+      const [props] = mockPromptTemplateRepository.findAll.mock.calls[0] as [Record<string, any>];
+      expect(props.filters.tenantId).toBe('tenant-explicit');
+    });
+
+    it('picks the first candidate deterministically and warns when a tenant has more than one', async () => {
+      wireTenantPreSummary([{ id: 'presummary-a' }, { id: 'presummary-b' }]);
+      const warn = vi.spyOn((service as unknown as { logger: { warn: (v: unknown) => void } }).logger, 'warn');
+
+      const result = await service.resolve({ tenantId: 'tenant-001', promptType: 'pre-summary' });
+
+      expect(result.promptId).toBe('presummary-a');
+      expect(warn).toHaveBeenCalled();
+    });
+
+    it('falls back to the SYSTEM pre-summary default when the tenant has no pre-summary template', async () => {
+      mockPromptTemplateRepository.findAll.mockResolvedValue([]);
+      mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({
+        id,
+        status: 'APPROVED',
+        content: 'SYSTEM pre-summary body',
+      }));
+
+      const result = await service.resolve({ tenantId: 'tenant-001', promptType: 'pre-summary' });
+
+      expect(result.promptId).toBe(SYSTEM_DEFAULTS.preSummaryPromptId);
+      expect(result.promptId).not.toBe(SYSTEM_DEFAULTS.promptId);
+      expect(result.resolvedFrom).toBe('default');
+      expect(result.resolutionTrace.usedDefaults).toContain('promptId');
+    });
+
+    it('FAILS CLOSED when neither a tenant nor a SYSTEM pre-summary template resolves — never CATCHALL_SOAP', async () => {
+      mockPromptTemplateRepository.findAll.mockResolvedValue([]);
+      mockPromptTemplateRepository.findById.mockResolvedValue(null);
+
+      await expect(service.resolve({ tenantId: 'tenant-001', promptType: 'pre-summary' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    });
+
+    it('FAILS CLOSED when the SYSTEM pre-summary default is not APPROVED', async () => {
+      mockPromptTemplateRepository.findAll.mockResolvedValue([]);
+      mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'DRAFT' }));
+
+      await expect(service.resolve({ tenantId: 'tenant-001', promptType: 'pre-summary' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+    });
+
+    it('FAILS CLOSED when the tenant lookup itself errors — a backend error is never disguised as the SYSTEM default', async () => {
+      mockPromptTemplateRepository.findAll.mockRejectedValue(new Error('db down'));
+      mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
+
+      await expect(service.resolve({ tenantId: 'tenant-001', promptType: 'pre-summary' })).rejects.toThrow('db down');
+    });
+
+    it('FAILS CLOSED when no tenant can be determined at all (no tenantId, no department)', async () => {
+      mockPromptTemplateRepository.findById.mockResolvedValue(null);
+
+      await expect(service.resolve({ promptType: 'pre-summary' })).rejects.toBeInstanceOf(ServiceUnavailableException);
+      // No tenant ⇒ the tenant tier is not even queried.
+      expect(mockPromptTemplateRepository.findAll).not.toHaveBeenCalled();
+    });
+
+    it('still carries the department template + contextVariables for pre-summary', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(
+        createMockDepartment({ defaultSummaryTemplate: 'SOAP', promptConfig: { contextVariables: { ecg: true } } }),
+      );
+      wireTenantPreSummary();
+
+      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'pre-summary' });
+
+      expect(result.template).toBe('SOAP');
+      expect(result.contextVariables).toEqual({ ecg: true });
+    });
+  });
+
+  // =========================================================================
+  // TASK-634 — the summary chain is UNCHANGED (regression lock) + D-02
+  // =========================================================================
+  describe('resolve — summary chain regression lock (new-patient / revisit)', () => {
+    it('new-patient with a department default agent resolves exactly as before the pre-summary split', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ newPatientPromptId: 'dept-prompt' }));
+      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({
+        id: 'agent-1',
+        promptTemplateId: 'agent-tpl',
+        pinnedVersionNumber: 3,
+      });
+      mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'APPROVED' }));
+      mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 3, content: 'PINNED v3 body' });
+
+      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+      expect(result).toEqual({
+        template: SYSTEM_DEFAULTS.template,
+        promptId: 'agent-tpl',
+        contextVariables: {},
+        resolvedFrom: 'agent',
+        resolutionTrace: {
+          preferredPromptId: null,
+          agentId: 'agent-1',
+          agentVersionNumber: 3,
+          departmentTemplate: null,
+          departmentPromptId: 'dept-prompt',
+          usedDefaults: ['template', 'contextVariables'],
+        },
+        content: 'PINNED v3 body',
+        resolvedVersionNumber: 3,
+        resolvedAgentId: 'agent-1',
+      });
+      // The tenant pre-summary tier never runs for a summary prompt type.
+      expect(mockPromptTemplateRepository.findAll).not.toHaveBeenCalled();
+    });
+
+    it('revisit with a department default agent still resolves the agent', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ revisitPromptId: 'dept-revisit' }));
+      mockDepartmentAgentRepository.findDefaultForDepartment.mockResolvedValue({
+        id: 'agent-1',
+        promptTemplateId: 'agent-tpl',
+        pinnedVersionNumber: 3,
+      });
+      mockPromptVersionRepository.findByVersionNumber.mockResolvedValue({ versionNumber: 3, content: 'PINNED v3 body' });
+
+      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'revisit' });
+
+      expect(result.resolvedFrom).toBe('agent');
+      expect(result.promptId).toBe('agent-tpl');
+      expect(result.resolutionTrace.departmentPromptId).toBe('dept-revisit');
+    });
+
+    it('D-02: reports "default" when the department supplied only a template and promptId fell to the SYSTEM default', async () => {
+      // Department has a defaultSummaryTemplate but NO visit-type prompt id —
+      // the pre-fix formula (usedDefaults.length < 3) mislabelled this
+      // 'department' while actually serving CATCHALL_SOAP, which made the
+      // compat guard dead code.
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ defaultSummaryTemplate: 'SOAP' }));
+
+      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+      expect(result.template).toBe('SOAP');
+      expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
+      expect(result.resolvedFrom).toBe('default');
+    });
+
+    it('D-02: reports "default" when the department template is UNAPPROVED and promptId fell to the SYSTEM default', async () => {
+      mockDepartmentRepository.findById.mockResolvedValue(createMockDepartment({ defaultSummaryTemplate: 'SOAP', newPatientPromptId: 'draft-tpl' }));
+      mockPromptTemplateRepository.findById.mockImplementation(async (id: string) => ({ id, status: 'DRAFT' }));
+
+      const result = await service.resolve({ departmentId: 'dept-001', promptType: 'new-patient' });
+
+      expect(result.promptId).toBe(SYSTEM_DEFAULTS.promptId);
+      expect(result.resolvedFrom).toBe('default');
     });
   });
 });
