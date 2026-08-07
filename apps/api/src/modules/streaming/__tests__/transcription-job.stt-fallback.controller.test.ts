@@ -14,8 +14,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { TranscriptionJobController } from '../transcription-job.controller';
+import { wavFixture } from './wav-fixture';
 
-const createMockJobService = () => ({ createBatchJob: vi.fn(), failJob: vi.fn() });
+// `getStatusCountsForOwner` backs the TASK-604 in-flight cap. Zero in flight so
+// these tests exercise pipeline resolution, not the concurrency guard.
+const createMockJobService = () => ({
+  createBatchJob: vi.fn(),
+  failJob: vi.fn(),
+  getStatusCountsForOwner: vi.fn().mockResolvedValue({ queued: 0, processing: 0, completed: 0, failed: 0, cancelled: 0, dead: 0 }),
+});
 const createMockRealtimeService = () => ({ dispatchDramatiqJob: vi.fn() });
 const createMockSessionService = () => ({
   createSession: vi.fn().mockResolvedValue({ sessionId: 'sess-1', status: 'active', maxConcurrent: 10, currentActive: 1 }),
@@ -250,7 +257,9 @@ describe('TranscriptionJobController.switchStreamSessionToPrimary (TASK-586 Lane
 describe('TranscriptionJobController.transcribeFile — batch fallback dispatch (TASK-614 D-6)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  const audioFile = () => ({ buffer: Buffer.from('audio'), size: 12, mimetype: 'audio/wav', originalname: 'visit.wav' }) as Express.Multer.File;
+  // A 5-minute WAV: comfortably inside the TASK-604 ceilings, so these tests
+  // still assert pipeline resolution rather than the new duration guard.
+  const audioFile = () => wavFixture(300);
 
   it("passes the tenant's fallback pipeline into the batch job", async () => {
     const { controller, mocks } = build();
@@ -380,7 +389,9 @@ describe('TranscriptionJobController.createStreamSession — resolved pipeline e
 describe('TranscriptionJobController.transcribeFile — tenant-default pipeline (TASK-614 D11)', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  const audioFile = () => ({ buffer: Buffer.from('audio'), size: 12, mimetype: 'audio/wav', originalname: 'visit.wav' }) as Express.Multer.File;
+  // A 5-minute WAV: comfortably inside the TASK-604 ceilings, so these tests
+  // still assert pipeline resolution rather than the new duration guard.
+  const audioFile = () => wavFixture(300);
 
   it("resolves the tenant's default pipeline when the request omits one", async () => {
     const { controller, mocks } = build();

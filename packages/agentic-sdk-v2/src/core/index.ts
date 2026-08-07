@@ -89,6 +89,19 @@ export { TranscriptionJobStatus, TranscriptionJobType } from '../types/stt';
 export { SttWebSocketClient, type WsConnectOptions, type WsReconnectOptions, type WsDrainOptions } from './SttWebSocketClient';
 export { StreamingSessionManager, type SessionManagerStatus } from './StreamingSessionManager';
 export { FileTranscriptionService, type FileTranscribeOptions } from './FileTranscriptionService';
+// Batch transcription engine + the browser duration probe it validates with.
+export {
+  BatchTranscriptionQueue,
+  DEFAULT_BATCH_LIMITS,
+  type BatchQueueItem,
+  type BatchItemStatus,
+  type BatchRejectionReason,
+  type BatchTranscriptSegment,
+  type BatchTranscriptionLimits,
+  type BatchTranscriptionOptions,
+  type BatchTranscriptionQueueConfig,
+} from './BatchTranscriptionQueue';
+export { probeAudioDurationSeconds, type ProbeAudioDurationOptions } from './audioDuration';
 export { SSEClient, type SSEConnectOptions } from './SSEClient';
 
 // STT endpoint constants

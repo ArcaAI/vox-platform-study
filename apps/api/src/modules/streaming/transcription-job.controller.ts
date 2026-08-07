@@ -6,6 +6,8 @@ import type {
 } from '@arcaai/applications';
 import {
   Authorize,
+  BATCH_TRANSCRIPTION_DEFAULTS,
+  BatchTranscriptionLimitsService,
   CreateBatchJobRequest,
   CreateJobRequest,
   CreateStreamingJobRequest,
@@ -20,6 +22,7 @@ import {
 } from '@arcaai/applications';
 import type { SttProviderOverrides } from '@arcaai/applications';
 import { TenantBucketPurpose } from '@arcaai/domains';
+import { probeAudioDurationSeconds } from './audio-duration';
 import { StreamScope } from '../auth/decorators/stream-scope.decorator';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import type { MessageEvent } from '@nestjs/common';
@@ -36,6 +39,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  HttpStatus,
   Optional,
   Param,
   Post,
@@ -55,8 +59,10 @@ import {
   ALLOWED_AUDIO_MIMES,
   AUDIO_BUCKET,
   BatchTranscribeResponse,
+  BatchTranscriptionLimitsResponse,
   CreateStreamSessionRequest,
-  MAX_FILE_SIZE,
+  MAX_UPLOAD_HARD_CEILING,
+  SttFallbackProviderResponse,
   StreamSessionResponse,
   TranscribeFileRequest,
 } from './dto';
@@ -110,7 +116,40 @@ export class TranscriptionJobController {
     // (TASK-567). Optional so positional test construction still works and a
     // stack without the module degrades gracefully; injection is fail-open.
     @Optional() @Inject(ITenantSttConfigService) private readonly sttConfig?: ITenantSttConfigService,
+    // Resolves the admin-configurable `stt.batch.*` ceilings (TASK-604).
+    // Optional so positional test construction and a stack without the settings
+    // module still work — the ceilings then apply at their CODE DEFAULTS. The
+    // limit is never SKIPPED when this is absent, only made non-configurable.
+    @Optional() private readonly batchLimits?: BatchTranscriptionLimitsService,
   ) {}
+
+  /**
+   * The effective batch ceilings for the caller's tenant, or the code defaults
+   * when the resolver is not wired. Never throws — see
+   * `BatchTranscriptionLimitsService` for why these fail open.
+   */
+  private async resolveBatchLimits(tenantId: string) {
+    return (await this.batchLimits?.resolve(tenantId)) ?? { ...BATCH_TRANSCRIPTION_DEFAULTS };
+  }
+
+  /**
+   * Refuse a new batch job when the caller already holds `maxActive` in flight.
+   * QUEUED + PROCESSING are the only in-flight states — finished, failed and
+   * cancelled jobs never consume a slot, however many of them there are.
+   *
+   * 429 (not 409): this is "too much at once, retry later", and it is what the
+   * SDK's queue backs off on.
+   */
+  private async assertBatchConcurrency(maxActive: number): Promise<void> {
+    const counts = await this.jobService.getStatusCountsForOwner(this.getUserId());
+    const inFlight = (counts?.queued ?? 0) + (counts?.processing ?? 0);
+    if (inFlight >= maxActive) {
+      throw new HttpException(
+        `You already have ${inFlight} transcription job(s) in progress (maximum ${maxActive}). Wait for one to finish before uploading another.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
 
   /**
    * The caller's ACTIVE tenant, resolved in the canonical order used
@@ -267,14 +306,17 @@ export class TranscriptionJobController {
   @ApiOperation({ summary: 'Upload audio file for batch transcription via worker' })
   @ApiConsumes('multipart/form-data')
   @ApiResponse({ status: 201, description: 'Batch job created and queued', type: BatchTranscribeResponse })
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
+  @ApiResponse({ status: 400, description: 'Missing/unsupported file, file too large, or a recording over the duration ceiling.' })
+  @ApiResponse({ status: 429, description: 'The caller already holds the maximum number of in-flight batch jobs.' })
+  // The interceptor limit is a STATIC hard ceiling — a decorator cannot read a
+  // per-tenant setting. The admin-configurable `stt.batch.maxFileSizeMb` is
+  // enforced in the handler below; this only stops a multi-GB body from being
+  // buffered before that check can run.
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_HARD_CEILING } }))
   async transcribeFile(@UploadedFile() file: Express.Multer.File, @Body() body: TranscribeFileRequest): Promise<BatchTranscribeResponse> {
     // 1. Validate file
     if (!file?.buffer) {
       throw new BadRequestException('Audio file is required');
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      throw new BadRequestException(`File size ${(file.size / (1024 * 1024)).toFixed(1)}MB exceeds maximum of ${MAX_FILE_SIZE / (1024 * 1024)}MB`);
     }
     if (!ALLOWED_AUDIO_MIMES.has(file.mimetype)) {
       throw new BadRequestException(`Unsupported audio type: ${file.mimetype}`);
@@ -282,7 +324,43 @@ export class TranscriptionJobController {
 
     const tenantId = this.getTenantId();
 
-    // 1b. Resolve the pipeline. `pipelineId` is optional since TASK-614: omitting
+    // 1b. Admin-configurable ceilings (TASK-604). Every rejection below happens
+    // BEFORE object storage, the job row, and the worker dispatch — an upload
+    // that is going to be refused must not cost a 200 MB write first. These run
+    // ahead of pipeline resolution (1c) for the same reason: they are pure
+    // in-process checks, so a refused upload never costs a DB round-trip.
+    const limits = await this.resolveBatchLimits(tenantId);
+
+    const maxBytes = limits.maxFileSizeMb * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new BadRequestException(`File size ${(file.size / (1024 * 1024)).toFixed(1)} MB exceeds the maximum of ${limits.maxFileSizeMb} MB`);
+    }
+
+    // DURATION is the requirement ("each recording at most 60 minutes"); size is
+    // only a proxy for it. Read from the container header, never from the
+    // client-declared MIME type.
+    const durationSeconds = probeAudioDurationSeconds(file.buffer, file.mimetype);
+    if (durationSeconds === null) {
+      // FAIL-CLOSED (TASK-604 owner decision): a duration that cannot be
+      // established is not evidence of a recording within the limit. Typically a
+      // live/streamed capture whose container never recorded its own length.
+      throw new BadRequestException(
+        `Could not determine the duration of ${file.originalname || 'the uploaded file'}. ` +
+          `Re-export it with duration metadata (for example as WAV, FLAC, MP3 or M4A) and upload again.`,
+      );
+    }
+    const durationMinutes = durationSeconds / 60;
+    if (durationMinutes > limits.maxDurationMinutes) {
+      throw new BadRequestException(
+        `Recording is ${durationMinutes.toFixed(1)} min long, which exceeds the maximum of ${limits.maxDurationMinutes} min`,
+      );
+    }
+
+    // In-flight cap — the server-side counterpart of the client's per-batch
+    // limit. Without it "5 per batch" is bypassed by sending five batches.
+    await this.assertBatchConcurrency(limits.maxActiveJobsPerUser);
+
+    // 1c. Resolve the pipeline. `pipelineId` is optional since TASK-614: omitting
     //     it means "use the tenant's default", the same intent a live session has
     //     always been able to express. Resolution order — the pipeline the tenant
     //     marked default, then the configured STT fallback. If the tenant has
@@ -415,6 +493,66 @@ export class TranscriptionJobController {
     // EU-02 — owner-scoped: only the caller's OWN jobs for this consultation.
     // The tenant-wide view lives on the admin surface.
     return this.jobService.getByConsultationForOwner(this.getUserId(), consultationId);
+  }
+
+  /**
+   * The batch ceilings a client must respect (TASK-604). Read-only, non-admin,
+   * and declared BEFORE `@Get(':id')` so the literal path is not parsed as a job
+   * id. Exists so the SDK enforces the SAME numbers the gateway does instead of
+   * hardcoding "5" and "60" a second time — an operator who lowers a knob moves
+   * both sides at once.
+   */
+  @Get('limits')
+  @ApiOperation({ summary: 'Batch upload ceilings (recordings per batch, minutes per recording, size, in-flight jobs)' })
+  @ApiResponse({ status: 200, description: 'Effective batch limits for the caller’s tenant' })
+  async getBatchLimits(): Promise<BatchTranscriptionLimitsResponse> {
+    const limits = await this.resolveBatchLimits(this.getTenantId());
+    return {
+      maxFilesPerBatch: limits.maxFilesPerBatch,
+      maxDurationMinutes: limits.maxDurationMinutes,
+      maxFileSizeBytes: limits.maxFileSizeMb * 1024 * 1024,
+      maxActiveJobsPerUser: limits.maxActiveJobsPerUser,
+      allowedMimeTypes: [...ALLOWED_AUDIO_MIMES],
+    };
+  }
+
+  /**
+   * The tenant's configured STT fallback provider (TASK-604).
+   *
+   * The live pipeline↔default toggle previously had no way to NAME the target
+   * or to know whether one exists — a user only found out by switching
+   * mid-consultation and taking the 409 from `switch-to-fallback`. This is the
+   * read that lets the SDK label the control and disable it up front.
+   *
+   * Degrades to `configured: false` on ANY resolve failure: this is a labelling
+   * aid, and a settings outage must not turn it into a 500 on a live session.
+   * It exposes only the pipeline's id and name — never credential material.
+   */
+  @Get('fallback')
+  @ApiOperation({ summary: 'The tenant’s configured STT fallback pipeline, for the live provider toggle' })
+  @ApiResponse({ status: 200, description: 'Fallback pipeline pointer (configured flag + id + display name)' })
+  async getFallbackProvider(): Promise<SttFallbackProviderResponse> {
+    const notConfigured: SttFallbackProviderResponse = { configured: false, pipelineId: null, pipelineName: null };
+    if (!this.sttConfig) return notConfigured;
+
+    try {
+      const effective = await this.sttConfig.getEffective(this.getTenantId());
+      const pipelineId = effective?.fallbackPipelineId ?? null;
+      if (!pipelineId) return notConfigured;
+
+      // A pointer to a deleted/cross-tenant pipeline is NOT a usable fallback,
+      // so it reports unconfigured while still naming the stale id for support.
+      const pipeline = await this.pipelineService.getById(pipelineId).catch(() => null);
+      if (!pipeline) return { configured: false, pipelineId, pipelineName: null };
+
+      return { configured: true, pipelineId, pipelineName: pipeline.name ?? null };
+    } catch (err) {
+      this.logger.warn({
+        message: 'Fallback pipeline lookup failed; reporting not-configured',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return notConfigured;
+    }
   }
 
   @Get('language-modes')
