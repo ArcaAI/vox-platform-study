@@ -11,7 +11,7 @@ wheel; tests inject a fake SDK.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 from xml.sax.saxutils import escape
 
@@ -97,7 +97,7 @@ class AzureSpeechProvider:
             f'<prosody rate="{rate}">{escape(req.text)}</prosody></voice></speak>'
         )
 
-    async def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]:
+    async def synthesize(self, req: SynthesisRequest) -> AsyncGenerator[AudioChunk, None]:
         sdk = self._sdk()
         cfg = self._build_config(sdk, req)
         synth = sdk.SpeechSynthesizer(speech_config=cfg, audio_config=None)
@@ -176,7 +176,7 @@ class AzureTextStream:
         self._req = req
         self._sdk = sdk
         self._loop = asyncio.get_event_loop()
-        self._queue: asyncio.Queue[Any] = asyncio.Queue()
+        self._queue: asyncio.Queue[AudioChunk | _StreamDone | _StreamErr] = asyncio.Queue()
         self._synth: Any = None
         self._request: Any = None
         self._speak_task: asyncio.Task[Any] | None = None

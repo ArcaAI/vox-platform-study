@@ -13,7 +13,7 @@ import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholde
 // `isOriginAllowed` is re-exported so external consumers (docs reference)
 // still have a working import.
 import { apiEnv } from './config';
-import { buildCorsOptions, isOriginAllowed, isOriginEnforcementEnabled } from './cors.config';
+import { buildCorsOptions, isOriginAllowed } from './cors.config';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
 // Swagger config lives in `swagger.config.ts` so the security-scheme list
@@ -226,42 +226,37 @@ async function bootstrap() {
   // reason) rather than falling back to `CORS_ALLOWED_ORIGINS`, which no
   // longer exists.
   //
-  // …AND SINCE §4C ALL OF THAT IS GATED. `origin.enforcementEnabled` defaults
-  // to FALSE, so unless an operator has turned it on, every origin is admitted
-  // for every tenant. `PlatformKnobsBinder` has already installed the resolver
-  // by this point (`onModuleInit` runs inside `NestFactory.create`), so the
-  // value logged here is the EFFECTIVE posture, not a guess.
+  // …AND SINCE §4C ALL OF THAT IS GATED by `origin.enforcementEnabled`, which
+  // THIS LINE DELIBERATELY DOES NOT REPORT.
   //
-  // The permissive case is logged at WARN, not info: an operator must never
-  // have to read the database to discover the platform is admitting every
-  // origin (§4C.3).
-  const originEnforcementEnabled = isOriginEnforcementEnabled();
-  const corsPosture = {
-    environment: nodeEnv,
-    originEnforcement: originEnforcementEnabled ? 'enabled' : 'DISABLED',
-    policy: originEnforcementEnabled
-      ? nodeEnv === 'development'
-        ? 'origin_registry_plus_dev_loopback'
-        : 'origin_registry_only'
-      : 'allow_all_origins',
-    unavailableRegistryBehavior: originEnforcementEnabled ? 'deny_all' : 'allow_all',
-    // Pinned `false` in `buildCorsOptions` — the reason allow-all is an
-    // ordinary public-API posture rather than a cross-origin read primitive.
-    credentials: false,
-    enforcementSetting: 'origin.enforcementEnabled',
-  };
-
-  if (originEnforcementEnabled) {
-    loggingService.info('CORS configuration', corsPosture, 'Bootstrap');
-  } else {
-    loggingService.warn(
-      'CORS configuration — ORIGIN ENFORCEMENT IS DISABLED: every origin is admitted for every tenant (including SYSTEM/GLOBAL). ' +
-        'The TenantAllowedOrigin allow-list, the origin↔tenant binding guard and the WebSocket CSWSH check are all dormant. ' +
-        'Authentication and tenancy are the only controls in force. Set the platform setting `origin.enforcementEnabled` to true to enforce (no redeploy needed).',
-      corsPosture,
-      'Bootstrap',
-    );
-  }
+  // It tried to, and it was wrong: read here — right after NestFactory.create()
+  // — the AppSettings cache is not yet warm, so the switch resolves to its
+  // descriptor default. A gateway with enforcement ENABLED in the database
+  // announced "ENFORCEMENT IS DISABLED" at boot and then correctly refused an
+  // unregistered origin seconds later. A signal that lies about a security
+  // posture is worse than no signal, and two places claiming the posture is how
+  // they drift apart in the first place.
+  //
+  // The posture is therefore announced by `PlatformKnobsBinder`, from
+  // `app-settings.cache-refreshed` — the first moment the value is trustworthy —
+  // and re-announced on every CHANGE. Grep `ORIGIN ENFORCEMENT IS` for the
+  // authoritative line. Everything below is STATIC: true at boot regardless of
+  // which way the switch is set.
+  loggingService.info(
+    'CORS configuration',
+    {
+      environment: nodeEnv,
+      // Pinned in `buildCorsOptions` — the reason an allow-all posture is an
+      // ordinary public-API stance rather than a cross-origin read primitive.
+      credentials: false,
+      // What enforcement DOES when it is on; not a claim that it is.
+      policyWhenEnforced: nodeEnv === 'development' ? 'origin_registry_plus_dev_loopback' : 'origin_registry_only',
+      unavailableRegistryBehaviorWhenEnforced: 'deny_all',
+      enforcementSetting: 'origin.enforcementEnabled',
+      enforcementPostureLoggedBy: 'PlatformKnobsBinder (log marker: ORIGIN ENFORCEMENT)',
+    },
+    'Bootstrap',
+  );
 
   // Refuses to start if ANY HTTP route lacks both `@Public()` and a
   // permission decorator (`@Authorize` / `@CanXxx`) — surfaces decorator

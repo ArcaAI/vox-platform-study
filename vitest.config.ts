@@ -1,5 +1,3 @@
-import { existsSync, statSync } from 'node:fs';
-import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import path from 'path';
 
@@ -25,71 +23,49 @@ const SHARED_EXCLUDE = [
   '**/*.postgres.test.ts',
 ];
 
-const ADMIN_CONSOLE_SRC = path.resolve(__dirname, './apps/admin-console/src');
-const UI_SRC = path.resolve(__dirname, './packages/ui/src');
-
-/**
- * Importer-aware `@/` resolution for the admin-console project — mirrors the
- * plugin in `apps/admin-console/vitest.config.ts` (files inside packages/ui/src
- * resolve `@/` against the UI package root; app files against the app src).
- * Scoped here to admin-console/ui importers only so it cannot affect any other
- * workspace suite. (Typed structurally — the root workspace has no direct
- * `vite` dependency to import the `Plugin` type from.)
- */
-function adminConsoleAtAlias() {
-  const extensions = ['.tsx', '.ts'];
-  return {
-    name: 'arcaai-admin-console-at-alias',
-    enforce: 'pre' as const,
-    resolveId(source: string, importer: string | undefined) {
-      if (!source.startsWith('@/') || !importer) return undefined;
-      if (!importer.startsWith(ADMIN_CONSOLE_SRC) && !importer.startsWith(UI_SRC)) return undefined;
-      const base = importer.startsWith(UI_SRC) ? UI_SRC : ADMIN_CONSOLE_SRC;
-      const stem = join(base, source.slice(2));
-      if (existsSync(stem) && statSync(stem).isFile()) return stem;
-      for (const ext of extensions) {
-        const candidate = `${stem}${ext}`;
-        if (existsSync(candidate)) return candidate;
-      }
-      for (const ext of extensions) {
-        const candidate = join(stem, `index${ext}`);
-        if (existsSync(candidate)) return candidate;
-      }
-      return undefined;
-    },
-  };
-}
+// Component/browser packages own their vitest config (jsdom/happy-dom env, the
+// React transform, their own setup files and `@/` aliases) AND their suites
+// assume `cwd = the package root` (e.g. packages/ui reads `src/styles/globals.css`
+// off process.cwd()). Vitest projects run with cwd = the repo root, which breaks
+// that assumption, so these packages are NOT hosted as root projects — the node
+// `workspace` project excludes their dirs, and `pnpm test:unit` runs each via its
+// own `pnpm --filter … test` (correct cwd + config). Notes:
+//   - packages/ui runs `*.vitest.{ts,tsx}` (its `*.test.tsx` are Playwright CT,
+//     run by `ui:test:ct` — not vitest).
+//   - packages/agentic-sdk-v2 (vox) runs `*.test.{ts,tsx}` under jsdom (its real
+//     environment); they used to run here in node as an accident of the glob.
+//   - apps/compat-playground names its suites `*.test.tsx` (happy-dom).
+//   - apps/admin-console uses a NESTED-projects config (server node + client
+//     happy-dom) + `@vitejs/plugin-react` that isn't resolvable from the repo root.
+const BROWSER_PACKAGE_DIRS = ['packages/ui/**', 'packages/agentic-sdk-v2/**', 'apps/compat-playground/**', 'apps/admin-console/**'];
 
 export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['**/*.test.ts', '**/*.spec.ts'],
+    // `.test.js` catches the eslint-plugin RuleTester suites (node); the `.tsx`
+    // component suites are covered by the referenced browser projects below.
+    include: ['**/*.test.ts', '**/*.spec.ts', '**/*.test.js'],
     exclude: SHARED_EXCLUDE,
     setupFiles: ['./tests/setup/vitest.setup.ts'],
-    // Two projects: the monorepo-wide node suite, and the admin-console app's
-    // node-side (.test.ts) suites. The admin-console files need the app's `@/`
-    // alias, its `server-only` stub and its test env (see the app's own
-    // vitest.config.ts, used by `pnpm --filter @arcaai/admin-console test`,
-    // which additionally runs the browser-side .test.tsx suites) — none of
-    // which may leak into the rest of the workspace.
     projects: [
       {
         extends: true,
         test: {
           name: 'workspace',
-          exclude: [...SHARED_EXCLUDE, 'apps/admin-console/**'],
-          // The unit suites run with MOCKED repositories/SecretsService and assert
-          // the PHI encrypt-on-write SOFT no-op path (see phi-field-encryption.ts:
-          // `SECRETS_PROVIDER != 'vault'` → skip; `== 'vault'` → fail-closed throw).
-          // `.env.test` deliberately carries SECRETS_PROVIDER=vault for the seed /
-          // test-API / e2e / integration flows (they use real Vault Transit — see
-          // scripts/test-setup.sh). Pin the unit workers to soft mode here so the
-          // unit run is correct regardless of what `.env.test` holds and never
-          // depends on a hand-maintained value. Scoped to this project only, so
+          // Node/`.ts` suites across the whole repo (incl. the top-level
+          // tests/contracts + tests/cross-tenant, which no package owns), MINUS
+          // the browser packages that run under their own config below.
+          exclude: [...SHARED_EXCLUDE, ...BROWSER_PACKAGE_DIRS],
+          // Unit suites run with MOCKED repositories/SecretsService and assert the PHI
+          // encrypt-on-write SOFT no-op path (phi-field-encryption.ts: SECRETS_PROVIDER
+          // != 'vault' → skip; == 'vault' → fail-closed throw). `.env.test` deliberately
+          // carries SECRETS_PROVIDER=vault for the seed / test-API / e2e / integration
+          // flows (real Vault Transit — see scripts/test-setup.sh). Pin the unit workers
+          // to soft mode here so `pnpm test:unit` is correct regardless of `.env.test`
+          // and never depends on a hand-maintained value. Scoped to this project only, so
           // integration (its own config) keeps vault. Project `env` overrides the
-          // dotenv-cli-injected value — same mechanism the admin-console project
-          // below relies on for API_URL/ADMIN_SESSION_SECRET.
+          // dotenv-cli-injected value.
           env: {
             SECRETS_PROVIDER: 'env',
           },
@@ -103,42 +79,6 @@ export default defineConfig({
           // its own OS process instead of a shared V8 isolate, which native addons
           // require. Same fix already applied in vitest.integration.config.ts.
           pool: 'forks',
-        },
-      },
-      {
-        // Deliberately NOT `extends: true`: inherited array options (include/
-        // exclude) CONCATENATE with the project's own, which would make this
-        // project match the whole workspace again (double-running every
-        // suite). Everything this project needs is declared explicitly.
-        plugins: [adminConsoleAtAlias()],
-        resolve: {
-          alias: {
-            // `server-only` throws outside a React Server environment; the
-            // server modules are exercised directly, so stub it out (same
-            // stub the app's own config uses).
-            'server-only': path.resolve(__dirname, './apps/admin-console/src/test/stubs/server-only.ts'),
-          },
-        },
-        test: {
-          name: 'admin-console',
-          globals: true,
-          environment: 'node',
-          include: ['apps/admin-console/src/**/*.test.ts'],
-          exclude: SHARED_EXCLUDE,
-          setupFiles: ['./apps/admin-console/src/test/setup.ts'],
-          testTimeout: 30000,
-          hookTimeout: 30000,
-          pool: 'threads',
-          // The app-local run (no .env.test) gets these from its setup file's
-          // `??=` defaults; the root run loads .env.test first (API_URL is the
-          // real test gateway, http://localhost:8968), so force the values the
-          // suites are written against — scoped to this project's workers only.
-          // `gateway.test` is a deliberately unroutable host asserted literally
-          // by the auth route tests; its :8868 is a fixture, not a real port.
-          env: {
-            API_URL: 'http://gateway.test:8868',
-            ADMIN_SESSION_SECRET: 'vitest-admin-session-secret-0123456789abcdef',
-          },
         },
       },
     ],

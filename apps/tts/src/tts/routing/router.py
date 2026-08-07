@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import aclosing
 from dataclasses import replace
 
@@ -395,7 +395,7 @@ class TTSRouter:
 
     async def _sentence_adapter(
         self, engine: TTSEngine, req: SynthesisRequest
-    ) -> AsyncIterator[AudioChunk]:
+    ) -> AsyncGenerator[AudioChunk, None]:
         """Feed a non-streaming engine one sentence at a time for early first-audio."""
         for sentence in chunk_text(req.text, req.locale, self._settings.max_input_chars):
             sub = replace(req, text=sentence)
@@ -458,7 +458,7 @@ class _ChainSynthesizer:
             request_id=self._request_id,
         )
 
-    async def __call__(self, sentence: str) -> AsyncIterator[AudioChunk]:
+    async def __call__(self, sentence: str) -> AsyncGenerator[AudioChunk, None]:
         r = self._router
         locale = self._voice.locale
 

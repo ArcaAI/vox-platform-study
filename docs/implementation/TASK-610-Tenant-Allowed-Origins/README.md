@@ -827,7 +827,8 @@ register the origins each tenant needs (§4B.5), or browser traffic will start b
 | Point 2 | `OriginTenantBindingGuard` rule 0 — pass through, registry never consulted, no 404 on tenant mismatch. |
 | Point 3 | `SttWsGateway.isOriginAllowed` accepts, registry never consulted. Imports the accessor rather than re-reading the setting (§4B.4's lesson). |
 | Credentials | `buildCorsOptions()` extracted from `main.ts` into `cors.config.ts` (a value inside `bootstrap()`'s closure is untestable) with `credentials: false`. |
-| Boot log | `CORS configuration` now carries `originEnforcement` / `policy: allow_all_origins` / `credentials: false` / `enforcementSetting`, and is emitted at **`warn`** while enforcement is off. |
+| Posture log | Announced by `PlatformKnobsBinder` from `app-settings.cache-refreshed`, at **`warn`**, on **change** — marker `ORIGIN ENFORCEMENT IS …`. See §4C.6 for why it is not in `bootstrap()`. |
+| Boot log | `CORS configuration` keeps only what is STATIC at boot: `credentials: false`, `policyWhenEnforced`, `unavailableRegistryBehaviorWhenEnforced`, `enforcementSetting`. It claims no posture. |
 
 **Cookie-dependence check, before flipping `credentials`** — three greps, all clean: no `req.session`
 reader anywhere in `apps/api` (`express-session` is mounted with zero consumers); no
@@ -852,6 +853,43 @@ the WS gateway and the binder, plus a descriptor-governance test); the four pre-
 regression gate proving the enforced path still behaves exactly as §3–§4B built it. One e2e
 assertion was deliberately inverted: `monitoring.spec.ts` now requires
 `access-control-allow-credentials` to be ABSENT.
+
+### 4C.6 The posture log lied — caught in integration review, fixed
+
+The first cut of Deliverable 4 took a ONE-SHOT reading in `bootstrap()`, immediately after
+`NestFactory.create()`. Verified against a booted gateway with `origin.enforcementEnabled = true` in
+`GlobalSetting`, it printed:
+
+```
+WARN [Bootstrap] CORS configuration — ORIGIN ENFORCEMENT IS DISABLED: every origin is admitted …
+```
+
+…and then correctly refused `https://evil.example.com` seconds later. **The behaviour was never
+wrong** — the resolver is lazy, so every request saw the true value. Only the announcement was: at
+that instant the AppSettings cache is not warm, so `resolvePlatform` returns the descriptor default.
+
+This is the ticket's own §5.2 lesson recurring — a signal that lies about a security posture — and it
+is worse than silence in BOTH directions: an operator who has enabled enforcement is told the platform
+is wide open, and a deployment whose default ever flipped would be told the opposite. Reading the
+database was the only reliable way to learn the posture, which is exactly what Deliverable 4 existed
+to prevent.
+
+Fixed by moving the claim to the one place that can observe a trustworthy value:
+
+- `PlatformKnobsBinder` announces from `app-settings.cache-refreshed` — emitted by
+  `AppSettingsService.cacheAppSettings()` including the INITIAL warm, so it is the earliest truthful
+  moment — and re-announces **on change**, via the same no-op suppression `appliedLogLevel` already
+  uses for `logLevel`. Truthful at startup AND the instant an operator flips it; no polling, no
+  restart. Both directions are `warn`: a security-posture transition deserves attention either way,
+  and change-gating means it fires at most twice in a normal process lifetime.
+- The one case with no event to wait for — no settings service wired — announces at init instead,
+  because there `isOriginEnforcementEnabled()` is definitively and permanently `false`.
+- `bootstrap()` no longer resolves the switch at all. A source-reading test
+  (`main.ts bootstrap log — does NOT claim a posture it cannot know`) fails if the claim grows back;
+  two claimants is how they drifted apart in the first place.
+
+Chosen deliberately over marking the bootstrap line "pre-cache": a reading that is *usually* wrong,
+however hedged, still trains operators to trust it.
 
 ---
 

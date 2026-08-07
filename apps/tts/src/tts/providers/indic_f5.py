@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 
 import numpy as np
 from hope_runtime_models import ModelCache
@@ -122,7 +122,7 @@ class IndicF5Provider:
     async def health(self) -> bool:
         return True
 
-    async def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]:
+    async def synthesize(self, req: SynthesisRequest) -> AsyncGenerator[AudioChunk, None]:
         generate = await self._get_generate()
         sentences = chunk_text(req.text, req.locale, _MAX_SENTENCE_CHARS)
 

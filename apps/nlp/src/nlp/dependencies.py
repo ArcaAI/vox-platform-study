@@ -173,7 +173,7 @@ _CACHE_GLOBALS = (
 _current_retention: dict[str, int] = {}
 
 
-def _retention_kwargs() -> dict[str, int]:
+def _retention_kwargs() -> dict[str, Any]:
     """Resolved retention: control-plane value when known, else settings."""
     from nlp.core.config import settings
     from nlp.core.metrics import build_model_cache_metrics_sink

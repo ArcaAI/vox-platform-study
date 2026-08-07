@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
 import numpy as np
@@ -100,7 +100,7 @@ class KokoroProvider:
     async def health(self) -> bool:
         return True
 
-    async def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]:
+    async def synthesize(self, req: SynthesisRequest) -> AsyncGenerator[AudioChunk, None]:
         pipeline = await self._get_pipeline_async()
         voice = req.provider_voice or self._config.voice
         segments = await asyncio.to_thread(

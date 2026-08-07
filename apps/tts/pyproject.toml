@@ -122,6 +122,21 @@ warn_unused_ignores = true
 warn_return_any = true
 exclude = "/tests/"
 
+[[tool.mypy.overrides]]
+# No type stubs published (pysbd, soxr) or GPU-only optional [local] deps not
+# installed in the mypy-scanning env (lameenc, kokoro, azure speech SDK, parler_tts).
+module = [
+    "pysbd",
+    "soxr",
+    "lameenc",
+    "kokoro",
+    "azure",
+    "azure.cognitiveservices",
+    "azure.cognitiveservices.speech",
+    "parler_tts",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "9.0"
 addopts = [
