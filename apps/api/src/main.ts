@@ -272,6 +272,28 @@ async function bootstrap() {
   // guards against a future refactor silently dropping the decorator.
   auditApiKeyRequiredScopes();
 
+  // KEEP-ALIVE MUST OUTLIVE THE UPSTREAM PROXY'S IDLE TIMEOUT.
+  //
+  // Node defaults `keepAliveTimeout` to 5s. Any client that pools connections —
+  // nginx / an ALB (idle timeout typically ~60s), or a test runner's HTTP agent
+  // — will happily hold a socket well past that. When the server closes an idle
+  // socket the client still believes is usable, a request written into it at
+  // that instant is answered with an RST, not a response: the peer sees
+  // ECONNRESET and the server logs NOTHING, because the request never reached
+  // the application layer. Behind a proxy that surfaces as an intermittent 502
+  // on a healthy gateway; against the e2e suite it surfaced as a login that
+  // reset roughly once a run, always on the first request of a spec file (the
+  // moment a pooled socket is most likely to have gone idle).
+  //
+  // Making the server outlast the proxy moves the close to the CLIENT side,
+  // where a half-closed socket is detected before a request is written rather
+  // than after. `headersTimeout` must stay strictly greater than
+  // `keepAliveTimeout` — it bounds the same wait, so an equal-or-lower value
+  // reintroduces the race it is meant to close.
+  const httpServer = app.getHttpServer();
+  httpServer.keepAliveTimeout = 65_000;
+  httpServer.headersTimeout = 66_000;
+
   await app.listen(port);
 
   // Use the custom logger for startup messages
