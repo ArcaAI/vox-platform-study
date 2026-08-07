@@ -13,6 +13,9 @@ export * from './descriptors/agentic-context.descriptors';
 export * from './descriptors/agentic-eval.descriptors';
 export * from './descriptors/agentic-revisit.descriptors';
 export * from './descriptors/agentic-fewshot.descriptors';
+// Batch upload ceilings — the gateway reads `BATCH_TRANSCRIPTION_DEFAULTS` as
+// its fallback when the settings module is not wired (TASK-604).
+export * from './descriptors/batch-transcription.descriptors';
 export * from './descriptors/platform-ops.descriptors';
 // `service-runtime.descriptors` is exported from the package root via a
 // dedicated path (its `SERVICE_RUNTIME_DEFAULTS` is shared with the

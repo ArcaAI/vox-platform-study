@@ -681,12 +681,14 @@ describe('SDK v2 route standardization', () => {
       expect(Object.keys(PERSONALIZATION_ENDPOINTS)).toHaveLength(2);
     });
 
-    it('STT_ENDPOINTS should have exactly 19 keys', () => {
+    it('STT_ENDPOINTS should have exactly 21 keys', () => {
       // REFRESH_TICKET supports stream-ticket refresh on reconnect;
       // SWITCH_TO_FALLBACK (TASK-567) drives the in-place fallback switch;
       // LANGUAGE_MODES (TASK-587) lists the selectable language modes;
-      // SWITCH_TO_PRIMARY (TASK-586 Lane H) is the native primary-direction switch.
-      expect(Object.keys(STT_ENDPOINTS)).toHaveLength(19);
+      // SWITCH_TO_PRIMARY (TASK-586 Lane H) is the native primary-direction switch;
+      // BATCH_LIMITS + FALLBACK_PROVIDER (TASK-604) are the batch ceilings and
+      // the fallback-pipeline pointer the native hooks read.
+      expect(Object.keys(STT_ENDPOINTS)).toHaveLength(21);
       expect(Object.keys(STT_ENDPOINTS)).toEqual(
         expect.arrayContaining([
           'CREATE_SESSION',

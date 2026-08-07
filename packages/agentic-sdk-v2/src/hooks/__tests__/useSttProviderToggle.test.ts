@@ -16,11 +16,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 
 let mockAudio: Record<string, any>;
 vi.mock('../useArcaAudio', () => ({
   useArcaAudio: vi.fn(() => mockAudio),
+}));
+
+// The toggle now also READS the tenant's configured fallback (TASK-604) so a UI
+// can name the target and disable the control when none is set. That goes
+// through the provider store, which is mocked here for the same reason
+// `useArcaAudio` is: this hook is an adapter, and its dependencies are contracts.
+const mockApiClient = { get: vi.fn() };
+vi.mock('../../store', () => ({
+  useAgenticStore: () => ({ apiClient: mockApiClient, logger: undefined }),
 }));
 
 import { useSttProviderToggle } from '../useSttProviderToggle';
@@ -39,6 +48,7 @@ function setupAudio(overrides: Record<string, any> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   setupAudio();
+  mockApiClient.get.mockResolvedValue({ configured: true, pipelineId: 'sarvam-fallback', pipelineName: 'Sarvam (fallback)' });
 });
 
 describe('useSttProviderToggle — derived reads', () => {
@@ -169,5 +179,102 @@ describe('useSttProviderToggle — switching (both directions)', () => {
 
     expect(caught).toBe(boom);
     expect(result.current.switchStatus).toBe('failed');
+  });
+});
+
+// ── TASK-604 additions ──────────────────────────────────────────────────────
+
+describe('useSttProviderToggle — fallback discovery', () => {
+  it('names the tenant’s configured fallback so the control is not labelled blindly', async () => {
+    const { result } = renderHook(() => useSttProviderToggle());
+
+    await waitFor(() => expect(result.current.fallback).not.toBeNull());
+    expect(mockApiClient.get).toHaveBeenCalledWith('/audio/transcription-jobs/fallback');
+    expect(result.current.fallback).toEqual({ configured: true, pipelineId: 'sarvam-fallback', pipelineName: 'Sarvam (fallback)' });
+  });
+
+  it('allows switching to default only when a fallback is actually configured', async () => {
+    const { result } = renderHook(() => useSttProviderToggle());
+    await waitFor(() => expect(result.current.canSwitchToDefault).toBe(true));
+  });
+
+  it('blocks the switch up front when no fallback is configured', async () => {
+    // The point of the read: without it the user finds out through a 409 in the
+    // middle of a consultation.
+    mockApiClient.get.mockResolvedValue({ configured: false, pipelineId: null, pipelineName: null });
+    const { result } = renderHook(() => useSttProviderToggle());
+
+    await waitFor(() => expect(result.current.fallback?.configured).toBe(false));
+    expect(result.current.canSwitchToDefault).toBe(false);
+  });
+
+  it('blocks the switch while there is no live session to switch', async () => {
+    setupAudio({ activePipeline: null });
+    const { result } = renderHook(() => useSttProviderToggle());
+    await waitFor(() => expect(result.current.fallback?.configured).toBe(true));
+    expect(result.current.canSwitchToDefault).toBe(false);
+  });
+
+  it('blocks a redundant switch while already on the fallback', async () => {
+    setupAudio({ activePipeline: { id: 'sarvam-fallback', name: 'Sarvam', isFallback: true } });
+    const { result } = renderHook(() => useSttProviderToggle());
+    await waitFor(() => expect(result.current.fallback?.configured).toBe(true));
+    expect(result.current.canSwitchToDefault).toBe(false);
+  });
+
+  it('degrades to unknown (never throws) when the lookup fails', async () => {
+    mockApiClient.get.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useSttProviderToggle());
+
+    await waitFor(() => expect(mockApiClient.get).toHaveBeenCalled());
+    expect(result.current.fallback).toBeNull();
+    // Unknown must not disable the control — the switch itself remains the
+    // authority, and a lookup blip should not remove the user's fallback.
+    expect(result.current.canSwitchToDefault).toBe(true);
+  });
+});
+
+describe('useSttProviderToggle — error surface', () => {
+  it('exposes the failure instead of forcing every caller to try/catch', async () => {
+    const boom = new Error('no fallback configured for this tenant');
+    setupAudio({ activePipeline: { id: 'primary', name: 'Primary', isFallback: false }, switchProvider: vi.fn().mockRejectedValue(boom) });
+    const { result } = renderHook(() => useSttProviderToggle());
+
+    await act(async () => {
+      await result.current.switchToDefault().catch(() => {});
+    });
+
+    expect(result.current.switchStatus).toBe('failed');
+    expect(result.current.switchError).toBe(boom);
+  });
+
+  it('clears the previous error when a new switch starts', async () => {
+    const failing = vi.fn().mockRejectedValueOnce(new Error('first failed')).mockResolvedValueOnce(undefined);
+    setupAudio({ activePipeline: { id: 'primary', name: 'Primary', isFallback: false }, switchProvider: failing });
+    const { result } = renderHook(() => useSttProviderToggle());
+
+    await act(async () => {
+      await result.current.switchToDefault().catch(() => {});
+    });
+    expect(result.current.switchError).not.toBeNull();
+
+    await act(async () => {
+      await result.current.switchToDefault();
+    });
+    expect(result.current.switchError).toBeNull();
+    expect(result.current.switchStatus).toBe('switching');
+  });
+
+  it('resetSwitchStatus() returns the control to idle so a banner can be dismissed', async () => {
+    setupAudio({ activePipeline: { id: 'primary', name: 'Primary', isFallback: false }, switchProvider: vi.fn().mockRejectedValue(new Error('x')) });
+    const { result } = renderHook(() => useSttProviderToggle());
+
+    await act(async () => {
+      await result.current.switchToDefault().catch(() => {});
+    });
+    act(() => result.current.resetSwitchStatus());
+
+    expect(result.current.switchStatus).toBe('idle');
+    expect(result.current.switchError).toBeNull();
   });
 });
