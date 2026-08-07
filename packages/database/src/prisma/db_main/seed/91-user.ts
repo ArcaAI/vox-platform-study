@@ -994,9 +994,10 @@ export const seedUser = async (client: CorePrismaClient) => {
     await client.userSettings.upsert({
       where: { id: setting.id },
       update: {
+        // `value` omitted deliberately (TASK-616 DB-03) — a UserSettings value
+        // is that user's own preference; a re-seed must not reset it.
         name: setting.name,
         key: setting.key,
-        value: setting.value,
         dataType: setting.dataType,
         namespace: setting.namespace,
       },
@@ -1040,7 +1041,11 @@ export const seedUser = async (client: CorePrismaClient) => {
       },
     },
     update: {
-      value: '81000000-0000-0000-0001-000000000417',
+      // `value` omitted deliberately (TASK-616 DB-03). This setting selects the
+      // live default ASR pipeline; writing it here force-repointed every
+      // tenant's choice on each seed run. `defaultValue` still tracks the repo,
+      // so the platform's recommendation moves without overriding a human's.
+      defaultValue: '81000000-0000-0000-0001-000000000417',
       description: 'Default ASR pipeline for all doctors when using remote workflow mode',
     },
     create: {
@@ -1632,9 +1637,10 @@ export const seedUser = async (client: CorePrismaClient) => {
     await client.userSettings.upsert({
       where: { id: pref.id },
       update: {
+        // `value` omitted deliberately (TASK-616 DB-03) — a UserSettings value
+        // is that user's own preference; a re-seed must not reset it.
         name: pref.name,
         key: pref.key,
-        value: pref.value,
         dataType: pref.dataType,
         namespace: pref.namespace,
       },
@@ -1680,9 +1686,10 @@ export const seedUser = async (client: CorePrismaClient) => {
     await client.userSettings.upsert({
       where: { id: assignment.id },
       update: {
+        // `value` omitted deliberately (TASK-616 DB-03) — a UserSettings value
+        // is that user's own preference; a re-seed must not reset it.
         name: assignment.name,
         key: assignment.key,
-        value: assignment.value,
         dataType: assignment.dataType,
         namespace: assignment.namespace,
       },
