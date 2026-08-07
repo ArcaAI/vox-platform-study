@@ -122,6 +122,7 @@ publish-sdk:
     - pnpm turbo build --filter=@arcaai/noise-filter
     - pnpm turbo build --filter=@arcaai/med-ner
     - pnpm turbo build --filter=@arcaai/vox
+    - pnpm turbo build --filter=@arcaai/vox-node
 
     - echo "Publishing to GitLab Package Registry..."
     - pnpm changeset publish

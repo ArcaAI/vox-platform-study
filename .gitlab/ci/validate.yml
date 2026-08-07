@@ -52,7 +52,7 @@ typecheck:
     # rather than a repo-wide `pnpm turbo run typecheck` because @arcaai/vox
     # and @arcaai/applications still have large pre-existing backlogs; add them
     # here once those are cleared.
-    - pnpm turbo run typecheck --filter=@arcaai/ui --filter=@arcaai/domains --filter=@arcaai/stt
+    - pnpm turbo run typecheck --filter=@arcaai/ui --filter=@arcaai/domains --filter=@arcaai/stt --filter=@arcaai/vox-node
   rules:
     - !reference [.skip-on-dev-2-1, rules]
     - !reference [.rules-any-ts, rules]

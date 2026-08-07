@@ -23,7 +23,7 @@ import { buildUrl } from './url';
  * the two output formats. See the TASK-632 report.
  */
 const SDK_USER_AGENT_NAME = 'arcaai/vox-node';
-const SDK_VERSION = '0.1.0';
+const SDK_VERSION = '2.0.4';
 
 /**
  * The default `User-Agent` value. Exported so a test can assert it stays in sync

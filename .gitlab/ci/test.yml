@@ -164,7 +164,7 @@ test-sdk:
   script:
     - echo "── Test infra → PostgreSQL=${CI_DATABASE_URL:+set} Redis=${CI_REDIS_URL:+set} ──"
     - pnpm turbo build --filter=@arcaai/utils
-    - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
+    - pnpm turbo test --filter=@arcaai/vox --filter=@arcaai/vox-node --filter=@arcaai/room --filter=@arcaai/vad --filter=@arcaai/stt --filter=@arcaai/noise-filter --filter=@arcaai/med-ner --filter=@arcaai/ui
   rules:
     - if: $SKIP_TESTS == "true"
       when: never
