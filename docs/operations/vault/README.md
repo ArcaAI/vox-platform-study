@@ -1,4 +1,20 @@
-# HOPE Vault — Operator Runbook
+# HOPE Vault — Operator Runbook (k3s deployment)
+
+> ## ⚠️ Check which Vault you are looking at before running anything here
+>
+> This page targets the **k3s/Helm** Vault — `kubectl exec`, pods `vault-0..2`, namespace
+> `vault-system`. That deployment was designed and `kind`-tested but **never deployed**.
+>
+> The Vault **actually running as of 2026-08-07** is a 3-node Raft cluster on **Proxmox VMs
+> 430-432**, with a Transit seal-Vault on **VM 434**, in Docker on Alpine. Its commands are
+> completely different and root SSH is disabled on those hosts.
+>
+> **For seal / unseal / auto-unseal — and especially for recovering after a Proxmox host
+> restart — use [`vm-cluster-seal-unseal.md`](./vm-cluster-seal-unseal.md).**
+>
+> The sections below on rotation, GitLab OIDC, Kubernetes auth and audit retention remain
+> valid as *design* references, but every `kubectl`/`vex` invocation must be translated to
+> `qm guest exec` + `docker exec` for the VM cluster.
 
 > On-call reference for the HOPE HA Vault cluster (TASK-312). Goal: respond to any
 > Vault incident in **< 30 min** using this page alone. Deployment artifacts and
