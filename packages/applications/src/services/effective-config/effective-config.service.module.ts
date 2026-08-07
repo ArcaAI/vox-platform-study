@@ -12,7 +12,17 @@ import { IEffectiveConfigService } from './IEffectiveConfigService';
  */
 @Module({
   imports: [EffectiveSettingsModule, AiRuntimeProfileServiceModule],
-  providers: [{ provide: IEffectiveConfigService, useClass: EffectiveConfigService }, EffectiveConfigService],
+  providers: [
+    EffectiveConfigService,
+    {
+      provide: IEffectiveConfigService,
+      // useExisting, not useClass — useClass would construct a second
+      // EffectiveConfigService instance instead of aliasing the one above.
+      // It's a read-only composition service with no state of its own, so
+      // the duplicate was harmless, but aliasing is free.
+      useExisting: EffectiveConfigService,
+    },
+  ],
   exports: [IEffectiveConfigService, EffectiveConfigService],
 })
 export class EffectiveConfigServiceModule {}

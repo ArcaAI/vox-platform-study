@@ -22,7 +22,18 @@ import { IAgentTrajectoryService } from './IAgentTrajectoryService';
  */
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, UsageLedgerServiceModule],
-  providers: [AgentTrajectoryService, { provide: IAgentTrajectoryService, useClass: AgentTrajectoryService }],
+  providers: [
+    AgentTrajectoryService,
+    {
+      provide: IAgentTrajectoryService,
+      // useExisting, not useClass — useClass would construct a second
+      // AgentTrajectoryService instance instead of aliasing the one above.
+      // `TRAJECTORY_CHANNEL_PREFIX` is a readonly constant, not mutable
+      // state, and it publishes to Redis per-call rather than holding a
+      // subscription, so the duplicate was harmless, but aliasing is free.
+      useExisting: AgentTrajectoryService,
+    },
+  ],
   exports: [IAgentTrajectoryService, AgentTrajectoryService],
 })
 export class AgentTrajectoryServiceModule {}

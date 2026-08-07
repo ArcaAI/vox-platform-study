@@ -12,11 +12,15 @@ import { ITenantStorageConfigService } from './ITenantStorageConfigService';
 @Module({
   imports: [CoreDatabaseModule],
   providers: [
+    TenantStorageConfigService,
     {
       provide: ITenantStorageConfigService,
-      useClass: TenantStorageConfigService,
+      // useExisting, not useClass — useClass would construct a second
+      // TenantStorageConfigService instance instead of aliasing the one
+      // above. No cache/listener/timer state here, so the duplicate was
+      // harmless, but aliasing is free.
+      useExisting: TenantStorageConfigService,
     },
-    TenantStorageConfigService,
   ],
   exports: [ITenantStorageConfigService, TenantStorageConfigService],
 })

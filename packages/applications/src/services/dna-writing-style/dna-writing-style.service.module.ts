@@ -30,11 +30,16 @@ import { ConfigResolverModule } from '../config-resolver';
     BullModule.registerQueue({ name: JobQueue.GenerateDnaReport }),
   ],
   providers: [
+    DnaWritingStyleService,
     {
       provide: IDnaWritingStyleService,
-      useClass: DnaWritingStyleService,
+      // useExisting, not useClass — useClass would construct a second
+      // DnaWritingStyleService instance instead of aliasing the one above.
+      // The self-scheduling piece here is DnaRegenerationScheduler, provided
+      // once below (not duplicated); DnaWritingStyleService itself holds no
+      // state, so this duplicate was harmless, but aliasing is free.
+      useExisting: DnaWritingStyleService,
     },
-    DnaWritingStyleService,
     DnaWritingStyleProcessor,
     DnaRegenerationScheduler,
   ],

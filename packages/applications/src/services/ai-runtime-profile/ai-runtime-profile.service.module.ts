@@ -6,7 +6,17 @@ import { AiRuntimeProfileService } from './ai-runtime-profile.service';
 
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
-  providers: [{ provide: IAiRuntimeProfileService, useClass: AiRuntimeProfileService }, AiRuntimeProfileService],
+  providers: [
+    AiRuntimeProfileService,
+    {
+      provide: IAiRuntimeProfileService,
+      // useExisting, not useClass — useClass would construct a second
+      // AiRuntimeProfileService instance instead of aliasing the one above.
+      // No cache/listener/timer state here, so the duplicate was harmless,
+      // but aliasing is free.
+      useExisting: AiRuntimeProfileService,
+    },
+  ],
   exports: [IAiRuntimeProfileService, AiRuntimeProfileService],
 })
 export class AiRuntimeProfileServiceModule {}

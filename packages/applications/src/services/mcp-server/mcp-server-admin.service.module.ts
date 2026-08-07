@@ -12,11 +12,15 @@ import { McpServerAdminService } from './mcp-server-admin.service';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
   providers: [
+    McpServerAdminService,
     {
       provide: IMcpServerAdminService,
-      useClass: McpServerAdminService,
+      // useExisting, not useClass — useClass would construct a second
+      // McpServerAdminService instance instead of aliasing the one above. No
+      // cache/listener/timer state here, so the duplicate was harmless, but
+      // aliasing is free.
+      useExisting: McpServerAdminService,
     },
-    McpServerAdminService,
   ],
   exports: [IMcpServerAdminService, McpServerAdminService],
 })

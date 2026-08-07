@@ -12,11 +12,16 @@ import { TenantSttConfigService } from './tenant-stt-config.service';
   // credential storage/resolution to (TASK-571).
   imports: [CommonServiceModule, CoreDatabaseModule, PipelineServiceModule, AiProviderConnectionServiceModule],
   providers: [
+    TenantSttConfigService,
     {
       provide: ITenantSttConfigService,
-      useClass: TenantSttConfigService,
+      // useExisting, not useClass — useClass would construct a second
+      // TenantSttConfigService instance instead of aliasing the one above.
+      // Its `new Map(...)` usages are local variables inside method bodies,
+      // not instance state, so the duplicate was harmless, but aliasing is
+      // free.
+      useExisting: TenantSttConfigService,
     },
-    TenantSttConfigService,
   ],
   exports: [ITenantSttConfigService, TenantSttConfigService],
 })

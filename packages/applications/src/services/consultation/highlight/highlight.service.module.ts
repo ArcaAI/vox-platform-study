@@ -7,11 +7,15 @@ import { CommonServiceModule } from '../../baseServices';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
   providers: [
+    HighlightService,
     {
       provide: IHighlightService,
-      useClass: HighlightService,
+      // useExisting, not useClass — useClass would construct a second
+      // HighlightService instance instead of aliasing the one above. No
+      // cache/listener/timer state here, so the duplicate was harmless, but
+      // aliasing is free.
+      useExisting: HighlightService,
     },
-    HighlightService,
   ],
   exports: [IHighlightService, HighlightService],
 })
