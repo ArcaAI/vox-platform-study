@@ -10,19 +10,23 @@ import { TenantAllowedOriginEntityMapper } from '../../../mappers';
 import { TenantAllowedOrigin } from '../../../models';
 
 /**
- * TASK-610 CORS control plane — one row per registered origin.
+ * TASK-610 CORS control plane — one row per (origin, tenant) GRANT.
  *
  * HAND-AUTHORED — `gen:repository` is broken (fails on a bad argument); this
  * follows the `AiProviderConnectionRepository` / `TenantSttConfigRepository`
  * precedent in this folder.
  *
- * `origin` is GLOBALLY unique (`TenantAllowedOrigin_origin_unique`), not
- * scoped per tenant — two tenants cannot claim the same origin, because the
- * runtime reverse index (`Map<origin, ownerTenantId>` built by
- * `OriginRegistryService`) would otherwise be ambiguous about which tenant a
- * request from that origin belongs to. `findByOrigin` therefore takes no
- * `tenantId` — it is the lookup the uniqueness check and the registry rebuild
- * both need.
+ * §4B superseded single ownership: an origin does not belong to exactly one
+ * tenant, it grants a SET of tenants permission to act on it. Uniqueness is
+ * therefore scoped to the (origin, tenantId) PAIR (`TenantAllowedOrigin_origin_tenantId_unique`)
+ * — the same tenant cannot register the same origin twice, but two different
+ * tenants sharing an origin is expected and must succeed. There is no longer
+ * a single-row-per-origin lookup; `findByOrigin` (global, no tenantId) is
+ * GONE — it would be wrong by construction now that multiple rows can share
+ * an origin. Callers that need every grant for an origin, or the full
+ * registry rebuild, use `findAll({})` (inherited from `Repository`, sees
+ * every tenant's rows because it runs outside a request CLS scope — see
+ * `OriginRegistryService`).
  */
 @Injectable()
 export class TenantAllowedOriginRepository extends Repository<TenantAllowedOriginEntity, TenantAllowedOrigin> {
@@ -31,14 +35,18 @@ export class TenantAllowedOriginRepository extends Repository<TenantAllowedOrigi
   }
 
   /**
-   * Exact-match lookup by the normalized origin string, ENABLED rows only.
-   * Used both for the pre-create uniqueness check (a duplicate origin must be
-   * rejected with a clear error rather than surfacing as a bare Prisma unique
-   * constraint violation) and by callers that need a single row rather than
-   * the full registry rebuild.
+   * Exact-match lookup by the (origin, tenantId) grant, ENABLED rows only.
+   * This is the duplicate/restore check: does THIS tenant already hold a
+   * (live or soft-deleted, per `resourceStatus`) grant on THIS origin. It
+   * says nothing about whether some OTHER tenant also holds a grant on the
+   * same origin — that is expected and is not this method's concern.
    */
-  async findByOrigin(origin: string, tx?: Prisma.TransactionClient | any): Promise<TenantAllowedOriginEntity | null> {
-    const where = { origin, resourceStatus: ResourceStatusType.ENABLED };
+  async findByOriginAndTenant(
+    origin: string,
+    tenantId: string,
+    tx?: Prisma.TransactionClient | any,
+  ): Promise<TenantAllowedOriginEntity | null> {
+    const where = { origin, tenantId, resourceStatus: ResourceStatusType.ENABLED };
 
     if (tx) {
       const model = await (tx as Record<string, any>).tenantAllowedOrigin.findFirst({ where });

@@ -20,12 +20,24 @@ import { getCorsOrigins, isOriginAllowed, setOriginRegistryResolver } from '../c
  * its job.
  */
 
-/** A stand-in for `OriginRegistryService` — only `has`/`ownerOf` are consumed. */
-function fakeRegistry(entries: Record<string, string>) {
-  const index = new Map(Object.entries(entries));
+/**
+ * A stand-in for `OriginRegistryService`.
+ *
+ * `cors.config` consumes only `has` — ADMISSION is "is this origin registered
+ * at all", independent of which tenants hold a grant on it. Which tenant may
+ * act from it is `OriginTenantBindingGuard`'s question, answered post-auth via
+ * `allows()`. `allows` is stubbed here purely to satisfy `OriginIndexResolver`'s
+ * `Pick<IOriginRegistry, 'has' | 'allows'>` shape; nothing in this file asserts
+ * on it.
+ *
+ * The map value is the set of tenants granted that origin — since §4B an
+ * origin is granted to MANY tenants rather than owned by one.
+ */
+function fakeRegistry(entries: Record<string, string[]>) {
+  const index = new Map(Object.entries(entries).map(([origin, tenants]) => [origin, new Set(tenants)]));
   return {
     has: (origin: string) => index.has(origin),
-    ownerOf: (origin: string) => index.get(origin) ?? null,
+    allows: (origin: string, tenantId: string) => index.get(origin)?.has(tenantId) ?? false,
   };
 }
 
@@ -33,10 +45,10 @@ const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
 
 /** The four day-1 origins from plan §1, as a loaded registry. */
 const DAY_ONE = fakeRegistry({
-  'http://localhost:5173': SYSTEM_TENANT,
-  'https://arcaai-u2204.bcmch.org': SYSTEM_TENANT,
-  'https://arcaai-staging.bcmch.org': SYSTEM_TENANT,
-  'https://mi-preproduction.bcmch.org:4433': SYSTEM_TENANT,
+  'http://localhost:5173': [SYSTEM_TENANT],
+  'https://arcaai-u2204.bcmch.org': [SYSTEM_TENANT],
+  'https://arcaai-staging.bcmch.org': [SYSTEM_TENANT],
+  'https://mi-preproduction.bcmch.org:4433': [SYSTEM_TENANT],
 });
 
 describe('cors.config', () => {
@@ -137,7 +149,7 @@ describe('cors.config', () => {
      * outcome (both deny).
      */
     it('a populated registry answering "no" is still a refusal — same outcome as an unavailable one, distinct log reason', () => {
-      setOriginRegistryResolver(() => fakeRegistry({ 'https://registered.example.com': SYSTEM_TENANT }));
+      setOriginRegistryResolver(() => fakeRegistry({ 'https://registered.example.com': [SYSTEM_TENANT] }));
 
       expect(isOriginAllowed('https://not-registered.example.com', 'production')).toBe(false);
       expect(isOriginAllowed('https://registered.example.com', 'production')).toBe(true);
@@ -157,7 +169,7 @@ describe('cors.config', () => {
       setOriginRegistryResolver(() => null);
       isOriginAllowed('https://unavailable-case.example.com', 'production');
 
-      setOriginRegistryResolver(() => fakeRegistry({ 'https://registered.example.com': SYSTEM_TENANT }));
+      setOriginRegistryResolver(() => fakeRegistry({ 'https://registered.example.com': [SYSTEM_TENANT] }));
       isOriginAllowed('https://miss-case.example.com', 'production');
 
       const messages = warnSpy.mock.calls.map(([payload]) => payload as { origin?: string; reason?: string });
@@ -219,7 +231,7 @@ describe('cors.config', () => {
         has: () => {
           throw new Error('lookup exploded');
         },
-        ownerOf: () => null,
+        allows: () => false,
       }));
 
       expect(() => isOriginAllowed('https://evil.example.com', 'production')).not.toThrow();

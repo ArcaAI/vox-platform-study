@@ -58,9 +58,15 @@ const createMockRemovalRetry = () => ({
   enqueue: vi.fn(),
 });
 
+// TASK-610 §4B.4 — `IOriginRegistry` dropped `ownerOf` for `tenantsFor`/
+// `allows`. The gateway (`stt-ws.gateway.ts`) only ever calls `has()` and
+// `size()` for its CORS-equivalent admission check (D-6) — it does not do
+// tenant binding, so `tenantsFor`/`allows` are stubbed here only to satisfy
+// the shape of the real interface, never asserted on.
 const createMockOriginRegistry = (registered: Set<string> = new Set(['https://arcaai-u2204.bcmch.org'])) => ({
-  ownerOf: vi.fn((origin: string) => (registered.has(origin) ? 'SYSTEM' : null)),
+  tenantsFor: vi.fn((origin: string) => (registered.has(origin) ? new Set(['SYSTEM']) : new Set())),
   has: vi.fn((origin: string) => registered.has(origin)),
+  allows: vi.fn((origin: string) => registered.has(origin)),
   refresh: vi.fn().mockResolvedValue(undefined),
   size: vi.fn(() => registered.size),
 });

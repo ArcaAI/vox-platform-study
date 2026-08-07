@@ -156,13 +156,18 @@ export const seedTenantAllowedOrigins = async (client: CorePrismaClient): Promis
 
   for (const originRow of ORIGINS) {
     await client.tenantAllowedOrigin.upsert({
-      // Addressable because `origin` carries a FIELD-level `@unique(map:)`.
-      // It briefly did not: a named single-field `@@unique` made Prisma demand
-      // a discriminator key it never generated, so the constraint could not be
-      // addressed at all and this upsert failed at RUNTIME while `tsc` and the
-      // entire unit suite stayed green. See tenant-allowed-origin.prisma.
+      // The GRANT key: (origin, tenantId). Since README §4B the same origin may
+      // be granted to several tenants, so an origin alone no longer identifies
+      // a row — upserting by `origin` would collide across tenants.
+      //
+      // A named MULTI-field `@@unique` generates this clean compound key. A
+      // named SINGLE-field one does not: it emits an `AtLeast<>` discriminator
+      // Prisma never generates into the shape, leaving the constraint
+      // unaddressable — `tsc` and the whole unit suite stay green and the
+      // upsert fails at RUNTIME. This seed hit exactly that. See
+      // tenant-allowed-origin.prisma.
       where: {
-        origin: originRow.origin,
+        origin_tenantId: { origin: originRow.origin, tenantId: originRow.tenantId },
       },
       // Idempotent: refresh metadata but NEVER clobber an operator-modified row
       // on re-seed. `tenantId` is deliberately absent from `update` — ownership

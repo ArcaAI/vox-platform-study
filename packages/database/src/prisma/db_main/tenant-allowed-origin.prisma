@@ -7,12 +7,23 @@
 // built in packages/applications / apps/api (TASK-610, layers 3-4); this
 // model is the leaf schema layer only.
 //
-//   TenantAllowedOrigin — one row per registered origin. `tenantId` is the
-//   OWNING tenant; the reserved SYSTEM tenant
-//   (00000000-0000-0000-0000-000000000000) owns platform-operated origins
-//   (e.g. the admin console, which serves every tenant from one origin) and
-//   is valid for every tenant at the application layer. Customer-owned
-//   origins are tenant-scoped.
+//   TenantAllowedOrigin — one row per (origin, tenant) GRANT, not one row per
+//   origin. Several tenants legitimately share an origin (README §4B — "many
+//   tenants ... share the same origins"), so a row does not have a single
+//   owner; it grants ONE tenant permission to act from that origin. The
+//   reserved SYSTEM tenant (00000000-0000-0000-0000-000000000000) still owns
+//   platform-operated origins (e.g. the admin console, which serves every
+//   tenant from one origin) and is valid for every tenant at the application
+//   layer — SYSTEM rows are just grants like any other, not a special case at
+//   the schema level.
+//
+//   Resolution at the application layer (`IOriginRegistry.tenantsFor`) is a
+//   UNION over every matching row: `tenantsFor(origin) = ⋃ { row.tenantId :
+//   row matches origin }`. There is nothing to disambiguate — the index maps
+//   `origin -> Set<tenantId>`, not `origin -> tenantId` — so uniqueness is
+//   scoped to the (origin, tenantId) PAIR: the same tenant cannot register
+//   the same origin twice, but two different tenants registering the same
+//   origin is the whole point of this model and must succeed.
 //
 // This model is OCC-written (carries `_version`) via the admin PATCH route;
 // its (hand-authored) mapper strips `version` per 03-domain-layer.md.
@@ -32,22 +43,10 @@ model TenantAllowedOrigin {
   // slash. Normalization (default-port stripping, scheme/host lowercasing,
   // wildcard/path rejection) is owned by OriginNormalizer
   // (packages/applications) — this column stores its output, not raw input.
-  // GLOBAL uniqueness — deliberately NOT scoped to (tenantId, origin). Two
-  // tenants registering the same origin would make the runtime reverse index
-  // (Map<origin, ownerTenantId> built by OriginRegistryService) ambiguous —
-  // which tenant does a request from that origin belong to? The database is
-  // the layer that must forbid this, not application-level validation alone.
-  //
-  // Declared as a FIELD-level `@unique(map:)` rather than a named
-  // `@@unique([origin], name: ...)`. Naming a SINGLE-FIELD @@unique makes
-  // Prisma emit `AtLeast<{ id?, origin?, … }, "id" | "TenantAllowedOrigin_origin_unique">`
-  // — a discriminator key it never generates into the object — so the
-  // constraint becomes unaddressable: `where: { origin }` is refused at
-  // runtime ("needs at least one of `id` or `TenantAllowedOrigin_origin_unique`")
-  // and the named key is refused too ("Unknown argument"). `@unique(map:)`
-  // keeps the identical DB index name (no migration change) while making
-  // `where: { origin }` valid in both the type and the engine.
-  origin String @unique(map: "TenantAllowedOrigin_origin_unique")
+  // Uniqueness lives on the (origin, tenantId) PAIR — see `@@unique` below,
+  // not here. A bare field-level `@unique` would forbid two tenants from
+  // sharing an origin, which README §4B requires.
+  origin String
 
   // Human-readable name shown in the admin list (e.g. "BCMCH pre-production").
   label String
@@ -67,8 +66,21 @@ model TenantAllowedOrigin {
   updatedAt DateTime @updatedAt
 
   // indexing
-  // Global uniqueness on `origin` is declared FIELD-LEVEL above — see the
-  // comment there for why a named `@@unique` cannot be used on a single field.
+  // Composite uniqueness on the (origin, tenantId) GRANT — a named
+  // MULTI-field `@@unique` is fine (unlike a named single-field one, see
+  // 03-domain-layer.md's Prisma pitfall list: a named single-field
+  // `@@unique` emits an `AtLeast<>` discriminator key Prisma never actually
+  // generates, making the constraint unaddressable via `where`). This one
+  // generates the expected compound `origin_tenantId` key on
+  // `TenantAllowedOriginWhereUniqueInput`.
+  @@unique([origin, tenantId], map: "TenantAllowedOrigin_origin_tenantId_unique")
   @@index([tenantId], name: "TenantAllowedOrigin_tenantId_idx")
+  // No separate index on `origin` alone. The only origin-keyed lookup is the
+  // exact-match (origin, tenantId) grant check, already covered by the
+  // composite unique index above (Postgres can use its leading column for an
+  // `origin`-only equality lookup). The registry's `findAll({})` reads EVERY
+  // row unfiltered to rebuild `Map<origin, Set<tenantId>>` in memory — a scan
+  // no origin index would narrow. A standalone `origin` index would only
+  // duplicate the composite index's leading column for no additional query.
   @@schema("core")
 }

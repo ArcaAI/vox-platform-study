@@ -1,16 +1,21 @@
 // TASK-610 lane W2-A — OriginRegistryService tests (T-3).
+// UPDATED §4B.4 (lane W6-B) — many-to-many origins ↔ tenants; resolution is
+// now a UNION (§4B.3), `ownerOf` is REMOVED in favor of `tenantsFor`/`allows`.
 //
 // Written FIRST per `01-development-workflow.md` TDD gate: this file must be
-// run and observed RED (the implementation module does not exist yet) before
-// `../origin-registry.service.ts` is written.
+// run and observed RED against the OLD single-owner implementation (which
+// has no `tenantsFor`/`allows` and still exposes `ownerOf`) before
+// `../origin-registry.service.ts` is rewritten to the union contract.
 //
-// Covers, per the W2-A brief:
+// Covers, per the W6-B brief:
 //  - initial load (onModuleInit)
 //  - rebuild wired to BOTH invalidation events (§4.1 frozen contract)
 //  - stale index preserved on a failed refresh (never emptied by an error)
-//  - duplicate-origin-across-tenants determinism (T-3)
+//  - many-to-many union resolution (§4B.3) — REPLACES the old T-3
+//    duplicate-origin-is-an-error test; two tenants sharing one origin is now
+//    normal, expected data, not a conflict to log and pick a winner for
 //  - soft-deleted rows excluded from the index
-//  - a malformed lookup returns null/false rather than throwing
+//  - a malformed lookup returns an empty set / false rather than throwing
 //  - the cross-tenant visibility property (the §3.3 HAZARD this lane exists to prove)
 //
 // REOPENED — adversarial review (W4-R) confirmed a HIGH defect: `refresh()`
@@ -26,7 +31,8 @@
 // block below is the regression test for this — it uses a REAL `ClsModule`
 // + REAL `EventEmitterModule` + the REAL service, because a mocked
 // repository cannot observe CLS narrowing (that is exactly why the original
-// 19 tests below passed against the broken code).
+// tests below passed against the broken code). This machinery is preserved
+// UNCHANGED by the §4B.4 rewrite — only origin↔tenant resolution changed.
 
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -40,6 +46,7 @@ import { OriginRegistryService } from '../origin-registry.service';
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const TENANT_A = '10000000-0000-0000-0000-000000000001';
 const TENANT_B = '20000000-0000-0000-0000-000000000002';
+const TENANT_C = '30000000-0000-0000-0000-000000000003';
 
 /** A minimal `ClsService` stand-in for the unit tests below that construct
  * `OriginRegistryService` directly with a mocked repository. None of those
@@ -59,13 +66,15 @@ function makeClsStub() {
 let idCounter = 0;
 
 /** Builds a real `TenantAllowedOriginEntity` — no `@arcaai/domains` mocking needed, this is a plain aggregate. */
-function makeRow(overrides: {
-  id?: string;
-  tenantId?: string;
-  origin?: string;
-  label?: string;
-  resourceStatus?: ResourceStatusType;
-} = {}): TenantAllowedOriginEntity {
+function makeRow(
+  overrides: {
+    id?: string;
+    tenantId?: string;
+    origin?: string;
+    label?: string;
+    resourceStatus?: ResourceStatusType;
+  } = {},
+): TenantAllowedOriginEntity {
   idCounter += 1;
   // Zero-padded so default ids sort exactly in call order — lets tests that
   // don't care about ordering still get deterministic behavior for free.
@@ -89,6 +98,12 @@ function makeRow(overrides: {
   });
 }
 
+/** Sorted array helper — set membership order is not meaningful, but a
+ * stable array makes assertions readable and deterministic. */
+function sorted(set: ReadonlySet<string>): string[] {
+  return [...set].sort();
+}
+
 describe('OriginRegistryService', () => {
   let mockRepository: { findAll: ReturnType<typeof vi.fn> };
   let service: OriginRegistryService;
@@ -96,7 +111,7 @@ describe('OriginRegistryService', () => {
   beforeEach(() => {
     idCounter = 0;
     mockRepository = { findAll: vi.fn() };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test-only mock/stub shapes, not the real constructor types
     service = new OriginRegistryService(mockRepository as any, makeClsStub() as any);
   });
 
@@ -111,7 +126,7 @@ describe('OriginRegistryService', () => {
       expect(mockRepository.findAll).toHaveBeenCalledWith({});
       expect(service.size()).toBe(1);
       expect(service.has('https://x.org')).toBe(true);
-      expect(service.ownerOf('https://x.org')).toBe(SYSTEM_TENANT_ID);
+      expect(sorted(service.tenantsFor('https://x.org'))).toEqual([SYSTEM_TENANT_ID]);
     });
   });
 
@@ -122,10 +137,8 @@ describe('OriginRegistryService', () => {
       // DEFECT this reopened lane closes: both events are emitted
       // synchronously from inside a write request, so a listener wired
       // straight to `refresh()` would run inside that request's CLS store.
-      const metadata = Reflect.getMetadata(
-        'EVENT_LISTENER_METADATA',
-        OriginRegistryService.prototype.onInvalidationEvent,
-      ) as Array<{ event: string }> | undefined;
+      const metadata = Reflect.getMetadata('EVENT_LISTENER_METADATA', OriginRegistryService.prototype.onInvalidationEvent) as
+        Array<{ event: string }> | undefined;
 
       expect(metadata).toBeDefined();
       const events = (metadata ?? []).map((m) => m.event);
@@ -170,8 +183,7 @@ describe('OriginRegistryService', () => {
       // `@Cron` wiring, the same style as the `@OnEvent` metadata check
       // above.
       const cronOptions = Reflect.getMetadata('SCHEDULE_CRON_OPTIONS', OriginRegistryService.prototype.scheduledRefresh) as
-        | { cronTime?: string; name?: string }
-        | undefined;
+        { cronTime?: string; name?: string } | undefined;
 
       expect(cronOptions).toBeDefined();
       expect(cronOptions?.cronTime).toBe(CronExpression.EVERY_30_SECONDS);
@@ -188,7 +200,7 @@ describe('OriginRegistryService', () => {
 
       expect(mockRepository.findAll).toHaveBeenCalledWith({});
       expect(service.has('https://backstop.org')).toBe(true);
-      expect(service.ownerOf('https://backstop.org')).toBe(TENANT_A);
+      expect(sorted(service.tenantsFor('https://backstop.org'))).toEqual([TENANT_A]);
     });
 
     it('scheduledRefresh() routes through onInvalidationEvent() — exactly one guarded path into refresh()', async () => {
@@ -308,7 +320,7 @@ describe('OriginRegistryService', () => {
       mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'https://good.org', tenantId: TENANT_A })]);
       await service.refresh();
       expect(service.size()).toBe(1);
-      expect(service.ownerOf('https://good.org')).toBe(TENANT_A);
+      expect(sorted(service.tenantsFor('https://good.org'))).toEqual([TENANT_A]);
 
       mockRepository.findAll.mockRejectedValueOnce(new Error('database unreachable'));
 
@@ -316,7 +328,7 @@ describe('OriginRegistryService', () => {
 
       // Stale-but-good index preserved, not wiped.
       expect(service.size()).toBe(1);
-      expect(service.ownerOf('https://good.org')).toBe(TENANT_A);
+      expect(sorted(service.tenantsFor('https://good.org'))).toEqual([TENANT_A]);
     });
 
     it('logs the failure rather than throwing out of refresh()', async () => {
@@ -330,50 +342,98 @@ describe('OriginRegistryService', () => {
     });
   });
 
-  describe('duplicate origin across tenants (T-3)', () => {
-    it('keeps a deterministic winner (earliest-created row) and logs the conflict loudly with both tenant ids', async () => {
-      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  // ═════════════════════════════════════════════════════════════════════
+  // §4B.3/§4B.4 — many-to-many union resolution. REPLACES the old T-3
+  // "duplicate origin across tenants is an error, keep a deterministic
+  // winner" test outright: under the many-to-many model two tenants sharing
+  // one origin is NORMAL, EXPECTED data (the DB constraint moved from a
+  // global unique on `origin` to a unique on `(origin, tenantId)`), not a
+  // conflict to log at `error` and pick a winner for. There is no more
+  // `logger.error` call anywhere in this file for this case — asserted
+  // explicitly below.
+  // ═════════════════════════════════════════════════════════════════════
+  describe('many-to-many union resolution (§4B.3 — supersedes single-owner precedence)', () => {
+    it('one origin granted to TWO tenants → tenantsFor returns both; allows() is true for each; false for a third', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([
+        makeRow({ origin: 'http://localhost:5173', tenantId: TENANT_A }),
+        makeRow({ origin: 'http://localhost:5173', tenantId: TENANT_B }),
+      ]);
 
-      const earlier = makeRow({ id: '00000000-0000-7000-8000-000000000001', origin: 'https://contested.org', tenantId: TENANT_A });
-      const later = makeRow({ id: '00000000-0000-7000-8000-000000000002', origin: 'https://contested.org', tenantId: TENANT_B });
-
-      // Feed them in the "wrong" order (later row first) to prove the winner
-      // is decided by sorting, not by array/DB return order.
-      mockRepository.findAll.mockResolvedValueOnce([later, earlier]);
       await service.refresh();
 
-      expect(service.ownerOf('https://contested.org')).toBe(TENANT_A);
+      expect(sorted(service.tenantsFor('http://localhost:5173'))).toEqual([TENANT_A, TENANT_B].sort());
+      expect(service.allows('http://localhost:5173', TENANT_A)).toBe(true);
+      expect(service.allows('http://localhost:5173', TENANT_B)).toBe(true);
+      expect(service.allows('http://localhost:5173', TENANT_C)).toBe(false);
+      // Two grant rows for one origin collapse to ONE distinct registered
+      // origin string — size() counts origins, not grants (see IOriginRegistry doc).
       expect(service.size()).toBe(1);
+    });
 
-      expect(errorSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          origin: 'https://contested.org',
-          keptOwnerTenantId: TENANT_A,
-          discardedOwnerTenantId: TENANT_B,
-        }),
-      );
+    it('does NOT log an error for a shared origin — this is expected data, not a conflict', async () => {
+      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
 
+      mockRepository.findAll.mockResolvedValueOnce([
+        makeRow({ origin: 'https://shared.example', tenantId: TENANT_A }),
+        makeRow({ origin: 'https://shared.example', tenantId: TENANT_B }),
+      ]);
+
+      await service.refresh();
+
+      expect(errorSpy).not.toHaveBeenCalled();
       errorSpy.mockRestore();
     });
 
-    it('is deterministic regardless of which order the rows are returned in', async () => {
-      const earlier = makeRow({ id: '00000000-0000-7000-8000-000000000001', origin: 'https://contested.org', tenantId: TENANT_A });
-      const later = makeRow({ id: '00000000-0000-7000-8000-000000000002', origin: 'https://contested.org', tenantId: TENANT_B });
+    it('a SYSTEM grant on an origin → allows() is true for ANY tenant', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'https://platform.example', tenantId: SYSTEM_TENANT_ID })]);
 
-      vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-
-      mockRepository.findAll.mockResolvedValueOnce([earlier, later]);
       await service.refresh();
-      const winnerOrderA = service.ownerOf('https://contested.org');
 
-      mockRepository.findAll.mockResolvedValueOnce([later, earlier]);
+      expect(service.allows('https://platform.example', TENANT_A)).toBe(true);
+      expect(service.allows('https://platform.example', TENANT_B)).toBe(true);
+      expect(service.allows('https://platform.example', 'any-other-tenant-id')).toBe(true);
+    });
+
+    it(
+      'a pattern granted to tenant A and an exact row for the SAME origin granted to tenant B → tenantsFor returns BOTH ' +
+        '(the union rule; under the OLD single-owner precedence — "exact beats pattern" — this returned ONLY tenant B)',
+      async () => {
+        mockRepository.findAll.mockResolvedValueOnce([
+          makeRow({ origin: 'https://arcaai-u2204.bcmch.org', tenantId: TENANT_B }),
+          makeRow({ origin: 'https://*.bcmch.org:*', tenantId: TENANT_A }),
+        ]);
+
+        await service.refresh();
+
+        expect(sorted(service.tenantsFor('https://arcaai-u2204.bcmch.org'))).toEqual([TENANT_A, TENANT_B].sort());
+        expect(service.allows('https://arcaai-u2204.bcmch.org', TENANT_A)).toBe(true);
+        expect(service.allows('https://arcaai-u2204.bcmch.org', TENANT_B)).toBe(true);
+        expect(service.allows('https://arcaai-u2204.bcmch.org', TENANT_C)).toBe(false);
+      },
+    );
+
+    it('an unregistered origin → empty set, has() false, allows() false for every tenant', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'https://registered.example', tenantId: TENANT_A })]);
       await service.refresh();
-      const winnerOrderB = service.ownerOf('https://contested.org');
 
-      expect(winnerOrderA).toBe(TENANT_A);
-      expect(winnerOrderB).toBe(TENANT_A);
+      expect(service.tenantsFor('https://nowhere.example').size).toBe(0);
+      expect(service.has('https://nowhere.example')).toBe(false);
+      expect(service.allows('https://nowhere.example', TENANT_A)).toBe(false);
+      expect(service.allows('https://nowhere.example', SYSTEM_TENANT_ID)).toBe(false);
+    });
 
-      vi.restoreAllMocks();
+    it('a malformed origin → empty set, has()/allows() false, NEVER throws', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'https://registered.example', tenantId: TENANT_A })]);
+      await service.refresh();
+
+      for (const raw of ['not a url', '', '   ', 'ftp://x.org', 'https://*', 'https://x.org/path', 'null', 'undefined']) {
+        expect(() => service.tenantsFor(raw)).not.toThrow();
+        expect(() => service.has(raw)).not.toThrow();
+        expect(() => service.allows(raw, TENANT_A)).not.toThrow();
+        expect(service.tenantsFor(raw).size).toBe(0);
+        expect(service.has(raw)).toBe(false);
+        expect(service.allows(raw, TENANT_A)).toBe(false);
+      }
     });
   });
 
@@ -388,7 +448,7 @@ describe('OriginRegistryService', () => {
 
       expect(service.has('https://live.org')).toBe(true);
       expect(service.has('https://removed.org')).toBe(false);
-      expect(service.ownerOf('https://removed.org')).toBeNull();
+      expect(service.tenantsFor('https://removed.org').size).toBe(0);
       expect(service.size()).toBe(1);
     });
   });
@@ -400,19 +460,22 @@ describe('OriginRegistryService', () => {
     });
 
     it.each([['not a url'], [''], ['   '], ['ftp://x.org'], ['https://*'], ['https://x.org/path'], ['null'], ['undefined']])(
-      'has(%j) returns false, ownerOf(%j) returns null — no throw',
+      'has(%j) returns false, tenantsFor(%j) returns an empty set — no throw',
       (raw) => {
         expect(() => service.has(raw)).not.toThrow();
-        expect(() => service.ownerOf(raw)).not.toThrow();
+        expect(() => service.tenantsFor(raw)).not.toThrow();
         expect(service.has(raw)).toBe(false);
-        expect(service.ownerOf(raw)).toBeNull();
+        expect(service.tenantsFor(raw).size).toBe(0);
       },
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately hostile non-string input
     it('tolerates a non-string origin argument without throwing', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately hostile non-string input
       expect(() => service.has(null as any)).not.toThrow();
-      expect(() => service.ownerOf(undefined as any)).not.toThrow();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately hostile non-string input
+      expect(() => service.tenantsFor(undefined as any)).not.toThrow();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately hostile non-string input
+      expect(() => service.allows(null as any, TENANT_A)).not.toThrow();
     });
   });
 
@@ -436,13 +499,13 @@ describe('OriginRegistryService', () => {
       // this is a genuine cross-tenant reverse index, not one scoped to a
       // single caller.
       expect(service.size()).toBe(3);
-      expect(service.ownerOf('https://platform.example')).toBe(SYSTEM_TENANT_ID);
-      expect(service.ownerOf('https://tenant-a.example')).toBe(TENANT_A);
-      expect(service.ownerOf('https://tenant-b.example')).toBe(TENANT_B);
+      expect(sorted(service.tenantsFor('https://platform.example'))).toEqual([SYSTEM_TENANT_ID]);
+      expect(sorted(service.tenantsFor('https://tenant-a.example'))).toEqual([TENANT_A]);
+      expect(sorted(service.tenantsFor('https://tenant-b.example'))).toEqual([TENANT_B]);
     });
   });
 
-  describe('has()/ownerOf() normalize the lookup key', () => {
+  describe('tenantsFor()/has() normalize the lookup key', () => {
     it('matches case-insensitively and via the same canonical form origins are stored in', async () => {
       mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'https://x.org:443'.replace(':443', '') })]);
       // Stored canonical form has the default port stripped already (per
@@ -452,27 +515,27 @@ describe('OriginRegistryService', () => {
 
       expect(service.has('HTTPS://X.ORG')).toBe(true);
       expect(service.has('https://x.org:443')).toBe(true);
-      expect(service.ownerOf('https://x.org:443')).toBe(SYSTEM_TENANT_ID);
+      expect(sorted(service.tenantsFor('https://x.org:443'))).toEqual([SYSTEM_TENANT_ID]);
     });
   });
 
   // ═════════════════════════════════════════════════════════════════════
-  // TASK-610 §4A.2 — wildcard pattern precedence (lane W5-B).
+  // TASK-610 §4A.2 / §4B.3 — wildcard pattern UNION (not precedence).
   //
-  // These are the three rows the plan (§4A.2, "Required behavior" table)
-  // names explicitly. Against the CURRENT exact-only implementation, a
-  // pattern row is stored as a literal Map key (e.g. the key
-  // `'https://*.bcmch.org:*'` or `'*'`), so a real browser Origin like
-  // `https://anything.bcmch.org` or `https://random.example.com` never
-  // matches it — `ownerOf` returns `null` where these tests expect a
-  // tenant id. That is the RED this file must show before the precedence
-  // walk is implemented.
+  // Under the single-owner model this precedence walk (exact beats pattern,
+  // longest suffix beats a shorter one, `*` beats nothing) decided a single
+  // winner. Under the many-to-many union model there is no winner to
+  // decide: EVERY matching grant — exact or pattern, including a matching
+  // `*` allow-all row — contributes its tenant(s) to the result. This is a
+  // deliberate, owner-directed consequence (§4B.3): a Global `*` row now
+  // means "every origin may act on Global", literally, for every origin,
+  // not just ones nothing more specific matches.
   // ═════════════════════════════════════════════════════════════════════
-  describe('wildcard pattern precedence (§4A.2 / §4A.3)', () => {
+  describe('wildcard pattern union (§4A.2 / §4B.3)', () => {
     const ARCAAI_TENANT_ID = '30000000-0000-0000-0000-000000000003';
     const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
-    async function seedPrecedenceRows() {
+    async function seedUnionRows() {
       mockRepository.findAll.mockResolvedValueOnce([
         makeRow({ origin: 'https://arcaai-u2204.bcmch.org', tenantId: ARCAAI_TENANT_ID }),
         makeRow({ origin: 'https://*.bcmch.org:*', tenantId: ARCAAI_TENANT_ID }),
@@ -481,26 +544,37 @@ describe('OriginRegistryService', () => {
       await service.refresh();
     }
 
-    it('an exact row resolves to its owner — exact beats any pattern (never even consulted)', async () => {
-      await seedPrecedenceRows();
+    it('an exact row + a matching pattern for the SAME tenant still resolves to just that one tenant (union, not duplication)', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([
+        makeRow({ origin: 'https://arcaai-u2204.bcmch.org', tenantId: ARCAAI_TENANT_ID }),
+        makeRow({ origin: 'https://*.bcmch.org:*', tenantId: ARCAAI_TENANT_ID }),
+      ]);
+      await service.refresh();
 
-      expect(service.ownerOf('https://arcaai-u2204.bcmch.org')).toBe(ARCAAI_TENANT_ID);
+      expect(sorted(service.tenantsFor('https://arcaai-u2204.bcmch.org'))).toEqual([ARCAAI_TENANT_ID]);
       expect(service.has('https://arcaai-u2204.bcmch.org')).toBe(true);
     });
 
-    it('a more specific pattern (`https://*.bcmch.org:*`) outranks the `*` allow-all token', async () => {
-      await seedPrecedenceRows();
+    it('with a Global `*` row also present, the exact origin resolves to BOTH the exact owner AND Global — no precedence suppresses `*`', async () => {
+      await seedUnionRows();
 
-      // Not itself a registered exact row — must resolve via the more
-      // specific bcmch.org pattern, never the lower-ranked `*` token.
-      expect(service.ownerOf('https://anything.bcmch.org')).toBe(ARCAAI_TENANT_ID);
+      expect(sorted(service.tenantsFor('https://arcaai-u2204.bcmch.org'))).toEqual([ARCAAI_TENANT_ID, GLOBAL_TENANT_ID].sort());
+      expect(service.allows('https://arcaai-u2204.bcmch.org', ARCAAI_TENANT_ID)).toBe(true);
+      expect(service.allows('https://arcaai-u2204.bcmch.org', GLOBAL_TENANT_ID)).toBe(true);
+    });
+
+    it('an origin matching only the bcmch.org pattern and `*` resolves to both tenants', async () => {
+      await seedUnionRows();
+
+      // Not itself a registered exact row.
+      expect(sorted(service.tenantsFor('https://anything.bcmch.org'))).toEqual([ARCAAI_TENANT_ID, GLOBAL_TENANT_ID].sort());
       expect(service.has('https://anything.bcmch.org')).toBe(true);
     });
 
     it('an origin matching only `*` resolves to the Global tenant', async () => {
-      await seedPrecedenceRows();
+      await seedUnionRows();
 
-      expect(service.ownerOf('https://random.example.com')).toBe(GLOBAL_TENANT_ID);
+      expect(sorted(service.tenantsFor('https://random.example.com'))).toEqual([GLOBAL_TENANT_ID]);
       expect(service.has('https://random.example.com')).toBe(true);
     });
 
@@ -511,12 +585,12 @@ describe('OriginRegistryService', () => {
       ]);
       await service.refresh();
 
-      expect(service.ownerOf('https://random.example.com')).toBeNull();
+      expect(service.tenantsFor('https://random.example.com').size).toBe(0);
       expect(service.has('https://random.example.com')).toBe(false);
     });
 
-    it('size() counts pattern rows alongside exact rows', async () => {
-      await seedPrecedenceRows();
+    it('size() counts DISTINCT pattern/exact rows, not grants', async () => {
+      await seedUnionRows();
 
       expect(service.size()).toBe(3);
     });
@@ -525,19 +599,36 @@ describe('OriginRegistryService', () => {
       mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: 'https://*.bcmch.org:*', tenantId: ARCAAI_TENANT_ID })]);
       await service.refresh();
 
-      expect(service.ownerOf('https://deep.sub.bcmch.org')).toBe(ARCAAI_TENANT_ID);
+      expect(sorted(service.tenantsFor('https://deep.sub.bcmch.org'))).toEqual([ARCAAI_TENANT_ID]);
       // The apex itself must NOT match — that is `matchesOriginPattern`'s
       // contract, exercised here through the registry's own lookup path.
-      expect(service.ownerOf('https://bcmch.org')).toBeNull();
+      expect(service.tenantsFor('https://bcmch.org').size).toBe(0);
+    });
+
+    it('the same pattern granted to two different tenants unions both into every matching origin', async () => {
+      mockRepository.findAll.mockResolvedValueOnce([
+        makeRow({ origin: 'https://*.bcmch.org:*', tenantId: TENANT_A }),
+        makeRow({ origin: 'https://*.bcmch.org:*', tenantId: TENANT_B }),
+      ]);
+      await service.refresh();
+
+      expect(sorted(service.tenantsFor('https://sub.bcmch.org'))).toEqual([TENANT_A, TENANT_B].sort());
+      // One distinct pattern string, two grants — still one registered entry.
+      expect(service.size()).toBe(1);
     });
   });
 
   // ═════════════════════════════════════════════════════════════════════
   // TASK-610 §4A.3 — the allow-all (`*`) row must announce itself. An
   // operator must never have to read the database to discover the platform
-  // is admitting every unmatched origin for one tenant.
+  // is admitting every unmatched — now: every, full stop, under union —
+  // origin for one or more tenants.
+  //
+  // §4B.4 UPDATE: since a `*` row can now be granted to MULTIPLE tenants
+  // (same many-to-many model as any other origin), the warning must report
+  // ALL of them, not a single `ownerTenantId`.
   // ═════════════════════════════════════════════════════════════════════
-  describe('allow-all (`*`) row announces itself on every successful refresh (§4A.3)', () => {
+  describe('allow-all (`*`) row announces itself on every successful refresh (§4A.3 / §4B.4)', () => {
     const GLOBAL_TENANT_ID = '50000000-0000-0000-0000-000000000000';
 
     it('logs at warn with the owning tenant id when a `*` row is present', async () => {
@@ -546,11 +637,29 @@ describe('OriginRegistryService', () => {
       mockRepository.findAll.mockResolvedValueOnce([makeRow({ origin: '*', tenantId: GLOBAL_TENANT_ID })]);
       await service.refresh();
 
-      expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ ownerTenantId: GLOBAL_TENANT_ID }));
+      expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ ownerTenantIds: [GLOBAL_TENANT_ID] }));
       const [warnCall] = warnSpy.mock.calls;
       const logged = warnCall[0] as Record<string, unknown>;
       expect(String(logged.message)).toContain(GLOBAL_TENANT_ID);
       expect(String(logged.message)).toMatch(/allow-all/i);
+
+      warnSpy.mockRestore();
+    });
+
+    it('reports ALL tenants holding a `*` grant, not just one, when the row is shared', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      mockRepository.findAll.mockResolvedValueOnce([
+        makeRow({ origin: '*', tenantId: GLOBAL_TENANT_ID }),
+        makeRow({ origin: '*', tenantId: TENANT_A }),
+      ]);
+      await service.refresh();
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ ownerTenantIds: [GLOBAL_TENANT_ID, TENANT_A].sort() }));
+      const [warnCall] = warnSpy.mock.calls;
+      const logged = warnCall[0] as Record<string, unknown>;
+      expect(String(logged.message)).toContain(GLOBAL_TENANT_ID);
+      expect(String(logged.message)).toContain(TENANT_A);
 
       warnSpy.mockRestore();
     });
@@ -586,11 +695,12 @@ describe('OriginRegistryService', () => {
 // A mocked repository (the `describe('OriginRegistryService', ...)` block
 // above) CANNOT observe CLS narrowing: `mockRepository.findAll` never looks
 // at the CLS store, so it returns the same rows whether or not a store is
-// active. That is exactly why the 19 tests above passed while `refresh()`
+// active. That is exactly why the tests above passed while `refresh()`
 // was wired directly to `@OnEvent` and running inside the emitting
 // request's CLS store. This block uses a REAL `ClsModule`, a REAL
 // `EventEmitterModule`, and the REAL `OriginRegistryService` wired through
-// Nest DI, so the actual dispatch path production uses is exercised.
+// Nest DI, so the actual dispatch path production uses is exercised. This
+// machinery is UNCHANGED by the §4B.4 union-resolution rewrite.
 // ═══════════════════════════════════════════════════════════════════════
 describe('invalidation event handler runs outside the request CLS scope (adversarial regression)', () => {
   async function buildRealModule(repositoryStub: { findAll: ReturnType<typeof vi.fn> }) {
@@ -687,7 +797,7 @@ describe('invalidation event handler runs outside the request CLS scope (adversa
     expect(observedIsActive).toBe(false);
   });
 
-  it('a mutation-triggered invalidation rebuilds a FULL multi-tenant index, not just the acting tenant\'s rows', async () => {
+  it("a mutation-triggered invalidation rebuilds a FULL multi-tenant index, not just the acting tenant's rows", async () => {
     const allRows = [
       makeRow({ origin: 'https://platform.example', tenantId: SYSTEM_TENANT_ID }),
       makeRow({ origin: 'https://tenant-a.example', tenantId: TENANT_A }),
@@ -727,12 +837,12 @@ describe('invalidation event handler runs outside the request CLS scope (adversa
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(service.size()).toBe(3);
-    expect(service.ownerOf('https://platform.example')).toBe(SYSTEM_TENANT_ID);
+    expect(sorted(service.tenantsFor('https://platform.example'))).toEqual([SYSTEM_TENANT_ID]);
     // The defect, if present, would make ONLY TENANT_A's origin visible here
     // — asserting all three tenants' rows landed in the index is what
     // distinguishes "fixed" from "narrowed to the acting tenant".
-    expect(service.ownerOf('https://tenant-a.example')).toBe(TENANT_A);
-    expect(service.ownerOf('https://tenant-b.example')).toBe(TENANT_B);
+    expect(sorted(service.tenantsFor('https://tenant-a.example'))).toEqual([TENANT_A]);
+    expect(sorted(service.tenantsFor('https://tenant-b.example'))).toEqual([TENANT_B]);
   });
 
   // Follow-up (adversarial review, MEDIUM finding): the `@Cron` backstop

@@ -100,20 +100,30 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     // `ArgumentInvalidException` on anything malformed.
     const normalizedOrigin = normalizeIncomingOrigin(dto.origin);
 
-    // A LIVE row on this origin is a genuine duplicate — reject it up front.
-    const liveExisting = await this.tenantAllowedOriginRepository.findByOrigin(normalizedOrigin);
+    // §4B — a row IS a (origin, tenant) GRANT, not an owned origin. A LIVE
+    // grant for THIS tenant on this origin is a genuine duplicate — reject
+    // it up front. A grant some OTHER tenant already holds on the same
+    // origin is NOT a conflict: two tenants sharing an origin is the point
+    // of the many-to-many model, so `findByOriginAndTenant` only ever looks
+    // at rows scoped to `tenantId` and simply cannot see (let alone block
+    // on) another tenant's grant.
+    const liveExisting = await this.tenantAllowedOriginRepository.findByOriginAndTenant(normalizedOrigin, tenantId);
     if (liveExisting) {
-      throw new ConflictException(`Origin '${normalizedOrigin}' is already registered.`);
+      throw new ConflictException(`Origin '${normalizedOrigin}' is already registered for this tenant.`);
     }
 
-    // The DB's global unique index on `origin` is NOT partial (see the
-    // schema comment on `TenantAllowedOrigin_origin_unique`), so a
-    // soft-deleted row still occupies the value — `findByOrigin` only sees
-    // ENABLED rows and cannot see it. A delete -> re-add must RESTORE that
-    // row (one row per origin is what the index requires anyway), never
+    // The unique index is now on (origin, tenantId) and is NOT partial (see
+    // the schema comment on `TenantAllowedOrigin_origin_tenantId_unique`), so
+    // a soft-deleted grant for THIS tenant still occupies that pair —
+    // `findByOriginAndTenant` only sees ENABLED rows and cannot see it. A
+    // delete -> re-add BY THE SAME TENANT must RESTORE that row, never
     // insert a second one, and never refuse with a "conflict" the admin list
-    // cannot explain (the origin appears nowhere, yet create says it's taken).
-    const deletedExisting = await this.findDeletedByOrigin(normalizedOrigin);
+    // cannot explain (the origin appears nowhere in THIS tenant's list, yet
+    // create says it's taken). A soft-deleted grant belonging to a
+    // DIFFERENT tenant must NOT surface here at all — tenant B creating the
+    // same origin is a brand-new, different grant and must succeed as an
+    // ordinary create, not a restore of tenant A's row.
+    const deletedExisting = await this.findDeletedByOriginAndTenant(normalizedOrigin, tenantId);
     if (deletedExisting) {
       return this.restoreOnCreateCollision(deletedExisting, dto, tenantId);
     }
@@ -131,15 +141,18 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
       saved = await this.tenantAllowedOriginRepository.create(entity);
     } catch (err) {
       if (isUniqueConstraintViolation(err)) {
-        // Check-then-write race: the row transitioned between our checks and
-        // this write. Retry the soft-deleted lookup once — a concurrent
-        // delete could have landed in that exact window — before concluding
-        // it's a live duplicate.
-        const raced = await this.findDeletedByOrigin(normalizedOrigin);
+        // Check-then-write race: the (origin, tenantId) row transitioned
+        // between our checks and this write. Retry the soft-deleted lookup
+        // once — a concurrent delete BY THIS TENANT could have landed in
+        // that exact window — before concluding THIS TENANT already has a
+        // live grant on this origin. The violated constraint is scoped to
+        // (origin, tenantId), so a P2002 here can only mean "this tenant
+        // already has this origin" — never "someone has this origin".
+        const raced = await this.findDeletedByOriginAndTenant(normalizedOrigin, tenantId);
         if (raced) {
           return this.restoreOnCreateCollision(raced, dto, tenantId);
         }
-        throw new ConflictException(`Origin '${normalizedOrigin}' is already registered.`);
+        throw new ConflictException(`Origin '${normalizedOrigin}' is already registered for this tenant.`);
       }
       throw err;
     }
@@ -158,41 +171,43 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
   }
 
   /**
-   * Reinstate a soft-deleted row that occupies the requested origin, rather
-   * than inserting a second row the global unique index would reject. Treated
-   * as a successful CREATE from the caller's perspective: the reinstated row
-   * carries the NEW `label`/`description` from this request, not whatever was
-   * there before the delete (a delete -> re-add is a fresh registration, not
-   * a resurrection of stale metadata — `description` uses `?? null`, not
-   * `undefined`, so an omitted note actually clears the old one instead of
-   * being skipped by `applyChangesToEntity`'s undefined-is-noop rule).
+   * Reinstate a soft-deleted GRANT that occupies the requested (origin,
+   * tenantId) pair, rather than inserting a second row the compound unique
+   * index would reject. Treated as a successful CREATE from the caller's
+   * perspective: the reinstated row carries the NEW `label`/`description`
+   * from this request, not whatever was there before the delete (a delete ->
+   * re-add is a fresh registration, not a resurrection of stale metadata —
+   * `description` uses `?? null`, not `undefined`, so an omitted note
+   * actually clears the old one instead of being skipped by
+   * `applyChangesToEntity`'s undefined-is-noop rule).
    *
    * Mirrors the `GlobalSettingService.create` revive-on-create precedent
    * (restore → apply fields → non-versioned `update` only if changed).
    *
-   * DEFENSE-IN-DEPTH — cross-tenant ownership check (post-review follow-up).
-   * `deletedEntity` comes from `findDeletedByOrigin`, whose `findFirst` call
-   * runs through the tenant-scope Prisma extension: `TenantAllowedOrigin` is
-   * in `TENANT_SCOPED_MODELS`, so every read — this one included — is
-   * ALREADY narrowed to the caller's own tenant (or SYSTEM, only if this
-   * model is ever added to `SYSTEM_SHARED_READ_MODELS`). That extension is
-   * what actually makes a cross-tenant restore impossible today; the
-   * `deletedEntity.tenantId !== callerTenantId` check below is not currently
-   * reachable with `false`. It exists so that guarantee stays true even if a
-   * future, superficially reasonable change widens the read (e.g. adding
-   * this model to `SYSTEM_SHARED_READ_MODELS` so tenant admins can see
-   * platform origins) — WITHOUT this check, a tenant re-registering an
-   * origin whose SYSTEM-owned row happened to be soft-deleted could silently
-   * RESTORE the platform row and be told it succeeded: a tenant-triggered
-   * write to a platform-owned record, reported as their own creation. DO NOT
-   * remove this as "dead code" — it is deliberately redundant with the
-   * tenant-scope extension, not accidentally so.
+   * DEFENSE-IN-DEPTH — cross-tenant ownership check (post-review follow-up,
+   * carried forward into the many-to-many model, §4B). Under the OLD
+   * single-owner model this guarded against reviving THE ONE row an origin
+   * could ever have — reachable only if a read widened past the caller's own
+   * tenant. Under §4B there is no longer a single row to steal; the risk is
+   * narrower but not eliminated: `deletedEntity` comes from
+   * `findDeletedByOriginAndTenant(origin, tenantId)`, which now filters on
+   * `tenantId` EXPLICITLY as a query parameter (not merely inferred), and is
+   * additionally narrowed by the tenant-scope Prisma extension
+   * (`TenantAllowedOrigin` is in `TENANT_SCOPED_MODELS`). Two independent
+   * layers already make `deletedEntity.tenantId !== callerTenantId`
+   * unreachable with `true` today. It stays here so that guarantee survives
+   * either layer breaking on its own — e.g. a future repository refactor
+   * that drops the explicit `tenantId` from the `where` clause because "the
+   * CLS extension already scopes it", or this model being added to
+   * `SYSTEM_SHARED_READ_MODELS` so tenant admins can see platform grants —
+   * either of which would otherwise let a tenant be silently credited with
+   * reviving (and inheriting the version lineage of) a grant row it does not
+   * own. DO NOT remove this as "dead code" — it is deliberately redundant
+   * with two other layers, not accidentally so.
    *
-   * On a mismatch this is treated EXACTLY like a live duplicate: the global
-   * unique index on `origin` means the value genuinely IS taken, so the
-   * caller sees the same conflict a live row would produce — never a
-   * restore, never a different error shape that would hint at another
-   * tenant's row.
+   * On a mismatch this is treated EXACTLY like a live duplicate for THIS
+   * tenant: same conflict, same message — never a restore, never a
+   * different error shape that would hint at another tenant's row.
    */
   private async restoreOnCreateCollision(
     deletedEntity: TenantAllowedOriginEntity,
@@ -200,7 +215,7 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     callerTenantId: string,
   ): Promise<TenantAllowedOriginResponse> {
     if (deletedEntity.tenantId !== callerTenantId) {
-      throw new ConflictException(`Origin '${deletedEntity.origin}' is already registered.`);
+      throw new ConflictException(`Origin '${deletedEntity.origin}' is already registered for this tenant.`);
     }
 
     const restored = await this.tenantAllowedOriginRepository.restore(deletedEntity.id, this.requestUserId ?? undefined);
@@ -245,13 +260,15 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
     // (§4A.2/§4A.3). Skip the duplicate check entirely when the normalized
     // value is identical to the row's current value — that is not a
     // collision with ANOTHER row, just a no-op/idempotent re-submit.
+    // §4B: the collision check is scoped to THIS tenant only — another
+    // tenant already holding a grant on the same origin is not a conflict.
     let normalizedOrigin: string | undefined;
     if (origin !== undefined) {
       normalizedOrigin = normalizeIncomingOrigin(origin);
       if (normalizedOrigin !== originBeforeUpdate) {
-        const existing = await this.tenantAllowedOriginRepository.findByOrigin(normalizedOrigin);
+        const existing = await this.tenantAllowedOriginRepository.findByOriginAndTenant(normalizedOrigin, tenantId);
         if (existing && existing.id !== id) {
-          throw new ConflictException(`Origin '${normalizedOrigin}' is already registered.`);
+          throw new ConflictException(`Origin '${normalizedOrigin}' is already registered for this tenant.`);
         }
       }
     }
@@ -273,7 +290,9 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
       updated = await this.tenantAllowedOriginRepository.updateWithVersion(id, entity, expectedVersion);
     } catch (err) {
       if (isUniqueConstraintViolation(err)) {
-        throw new ConflictException(`Origin '${normalizedOrigin}' is already registered.`);
+        // The violated constraint is (origin, tenantId) — this can only mean
+        // THIS tenant already has this origin on another row.
+        throw new ConflictException(`Origin '${normalizedOrigin}' is already registered for this tenant.`);
       }
       throw err;
     }
@@ -333,19 +352,22 @@ export class TenantAllowedOriginService extends BaseService implements ITenantAl
   }
 
   /**
-   * `findByOrigin` filters to ENABLED rows only (see its repository-level
-   * doc comment), so it cannot see a soft-deleted row occupying the same
-   * origin. `findFirst` throws `DataNotFoundException` on a miss in
-   * production but is commonly mocked as resolving `null` in tests — both
-   * are tolerated here (mirrors `findOwnedOrThrow` / `tenant-guards.ts`'s
-   * `findFirstTolerant`, kept local since the repository is W1-C's file, not
+   * `findByOriginAndTenant` filters to ENABLED rows only (see its
+   * repository-level doc comment), so it cannot see a soft-deleted grant
+   * occupying the same (origin, tenantId) pair. Scoped to `tenantId`
+   * explicitly (§4B) — a soft-deleted grant belonging to a DIFFERENT tenant
+   * must never surface here; that tenant's create is a distinct, new grant,
+   * not a restore of this one. `findFirst` throws `DataNotFoundException` on
+   * a miss in production but is commonly mocked as resolving `null` in tests
+   * — both are tolerated here (mirrors `findOwnedOrThrow` / `tenant-guards.ts`'s
+   * `findFirstTolerant`, kept local since the repository is W6-A's file, not
    * ours to extend).
    */
-  private async findDeletedByOrigin(origin: string): Promise<TenantAllowedOriginEntity | null> {
+  private async findDeletedByOriginAndTenant(origin: string, tenantId: string): Promise<TenantAllowedOriginEntity | null> {
     try {
       const result = await this.tenantAllowedOriginRepository.findFirst({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- DbFilters<TenantAllowedOrigin> would require importing the Prisma-generated model type here.
-        where: { origin, resourceStatus: ResourceStatusType.DELETED } as any,
+        where: { origin, tenantId, resourceStatus: ResourceStatusType.DELETED } as any,
       });
       return result ?? null;
     } catch (err) {
