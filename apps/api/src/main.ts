@@ -14,6 +14,7 @@ import { assertJwtSecretNotPlaceholder } from './bootstrap/jwt-secret-placeholde
 // still have a working import.
 import { apiEnv } from './config';
 import { buildCorsOptions, isOriginAllowed } from './cors.config';
+import { flushOtel } from './instrumentation';
 import { ETagInterceptor } from './interceptors';
 import { GracefulShutdownService } from './services';
 // Swagger config lives in `swagger.config.ts` so the security-scheme list
@@ -178,7 +179,14 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   // Get the graceful shutdown service to log configuration
-  app.get(GracefulShutdownService);
+  const gracefulShutdownService = app.get(GracefulShutdownService);
+
+  // Route the OTel flush through Nest's own shutdown sequence instead of the
+  // competing SIGTERM handler `instrumentation.ts` used to install itself
+  // (TASK-616 G0.1). `beforeApplicationShutdown` runs this alongside every
+  // other cleanup callback, under its own timeout, after the readiness gate
+  // has already closed and connections have started draining.
+  gracefulShutdownService.registerCleanupCallback('otel-flush', flushOtel);
   loggingService.info(
     'Graceful shutdown enabled',
     {

@@ -31,8 +31,9 @@
 .rules-always:
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+/
-    # Release tags (<SVC>-<ver> / ALL-<ver>) and prod-* branches run the full
-    # test suite so a build/release is only cut from a green commit.
+    # Release tags (<SVC>-<ver> / ALL-<ver>) and prod-* branches
+    # run the full test suite so a build/release is only cut from a green
+    # commit — even though (TASK-616 §F11) those branches no longer build.
     - if: $CI_COMMIT_TAG =~ /^(SDK|SMR|STT|GUARD|TTS|HARNESS|API|ADMIN|NLP|COMPAT|ALL)-/
     - if: $PIPELINE_TYPE == "prod"
 
