@@ -619,7 +619,11 @@ export const seedGlobalSetting = async (client: CorePrismaClient) => {
         },
       },
       update: {
-        value: s.value,
+        // `value` is deliberately ABSENT (TASK-616 DB-03). It is the operator's
+        // choice; a re-seed runs on every Argo sync and would revert it. Only
+        // code-owned metadata is refreshed here — the same contract the
+        // PLATFORM_SETTINGS loop below already follows. `create` still supplies
+        // the initial value.
         defaultValue: s.defaultValue,
         dataType: s.dataType,
         description: s.description,
