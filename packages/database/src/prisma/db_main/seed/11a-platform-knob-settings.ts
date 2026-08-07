@@ -1,10 +1,13 @@
 /**
  * Platform-Knob Settings Seed (TASK-558 lane I)
  *
- * Creates the platform-scope `GlobalSetting` rows for the ten operational knobs
- * that moved out of `process.env` into the `global-kv` tier: log level, CORS
- * origins, shutdown timings, API-key policy, refresh-token TTL and the
- * rate-limit baselines.
+ * Creates the platform-scope `GlobalSetting` rows for the operational knobs
+ * that moved out of `process.env` into the `global-kv` tier: log level,
+ * shutdown timings, API-key policy, refresh-token TTL and the rate-limit
+ * baselines. (CORS origins were one of these ten at lane I, then removed
+ * outright by TASK-610 §4A.1 — the allow-list is the `TenantAllowedOrigin`
+ * table now, not a `global-kv` knob; there is no row and no env var for it
+ * any more.)
  *
  * BEHAVIOUR ON UPGRADE IS UNCHANGED. Each row is seeded from the SAME env
  * variable the reader used before this lane, falling back to the same code
@@ -60,14 +63,6 @@ const KNOBS: KnobSeed[] = [
     dataType: ValueType.String,
     fallback: 'info',
     description: 'Gateway log level, applied live without a redeploy. LOG_LEVEL remains the pre-bootstrap value.',
-  },
-  {
-    key: 'corsAllowedOrigins',
-    name: 'CORS allowed origins',
-    envVar: 'CORS_ALLOWED_ORIGINS',
-    dataType: ValueType.String,
-    fallback: '',
-    description: 'Comma-separated allowed origins for the production CORS policy, consulted per request.',
   },
   {
     key: 'shutdown.timeoutMs',

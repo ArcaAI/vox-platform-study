@@ -6,9 +6,6 @@ import type { Subscription } from 'rxjs';
 import type WebSocket from 'ws';
 import type { Server } from 'ws';
 import { StreamSessionTenantBindingService } from '../../common';
-// The bootstrap fallback is shared with the HTTP CORS callback ON PURPOSE — see
-// `isBootstrapAllowed` below. One rule, one implementation.
-import { isBootstrapAllowed } from '../../cors.config';
 import { StreamTicketService } from '../auth/stream-ticket.service';
 import { SessionRemovalRetryService } from './session-removal-retry.service';
 
@@ -305,65 +302,80 @@ export class SttWsGateway implements OnGatewayConnection, OnGatewayDisconnect, O
   }
 
   /**
-   * Registry lookup backing the CSWSH guard (TASK-610 D-6, FR-5). Never
-   * hard-fails the handshake on a registry outage: matching the HTTP CORS
-   * bootstrap-fallback posture (FR-6), an absent or failing registry logs
-   * loudly and ALLOWS — a DB blip must not sever every live transcription
-   * session mid-consultation. `IOriginRegistry.has()` is documented to never
-   * throw on malformed input; the try/catch is defense-in-depth against an
-   * unexpected registry failure rather than the expected path.
+   * Registry lookup backing the CSWSH guard (TASK-610 D-6, FR-5). Fails
+   * CLOSED on an unavailable registry (absent / empty / throwing) — DENY,
+   * with the same distinct, greppable `origin_registry_unavailable` reason
+   * `cors.config.ts` uses, kept separate from the ordinary
+   * `origin_registry_miss` a populated registry's "no" produces.
+   * `IOriginRegistry.has()` is documented to never throw on malformed input;
+   * the try/catch is defense-in-depth against an unexpected registry failure
+   * rather than the expected path.
    *
-   * A registry that is PRESENT but EMPTY (`size() === 0` — unseeded table,
-   * or every row deleted) is treated the SAME as an absent one: it "has
-   * nothing to say", so the bootstrap fallback applies rather than `has()`
-   * legitimately answering `false` for every origin. This closes a
-   * confirmed divergence from the HTTP path (W4-R adversarial review):
-   * `platform-knobs.binder.ts` collapses an empty registry to `null` for
-   * `cors.config.ts`, which falls back to `CORS_ALLOWED_ORIGINS` — this
-   * predicate previously called `has()` directly and rejected every origin
-   * instead, severing live transcription sessions on an unseeded/emptied
-   * table.
+   * A registry that is PRESENT but EMPTY (`size() === 0` — unseeded table, or
+   * every row deleted) is treated the SAME as an absent one: it "has nothing
+   * to say", so this DENIES exactly like `has()` would for every origin —
+   * the two paths just log under the systemic reason rather than an ordinary
+   * per-origin miss (see `PlatformKnobsBinder.installOriginRegistryResolver`
+   * for why that distinction is kept on the HTTP side).
+   *
+   * THIS IS DELIBERATELY ALIGNED WITH THE HTTP CORS PATH (`cors.config.ts`),
+   * not merely mirrored. An earlier revision of this method kept fail-OPEN
+   * here on the theory that severing a live transcription session
+   * mid-consultation is worse than a page failing to load. That reasoning
+   * does not survive contact with how a WS connection is actually obtained:
+   * `handleConnection` requires a single-use `ticket` (below), and the ONLY
+   * way a browser client ever gets one is a prior HTTP round trip to THIS
+   * gateway — `POST .../stream/session` or `POST .../stream/session/:id/
+   * refresh-ticket` (`transcription-job.controller.ts`), both ordinary Nest
+   * HTTP routes sitting behind the SAME CORS gate that now denies during a
+   * registry outage. So during exactly the outage this method used to stay
+   * open for, no legitimate browser client can reach this handshake at all —
+   * it never obtained a ticket. Fail-open bought nothing operationally while
+   * leaving open the one surface CORS cannot cover at all (browsers exempt
+   * WS from CORS entirely, D-6) — the actual cross-site WebSocket hijacking
+   * vector. Aligning the two paths closes that gap and gives an operator ONE
+   * consistent pair of log reasons across both.
+   *
+   * (Established sockets are unaffected either way — this check runs only in
+   * `handleConnection`, on the initial handshake, never against a live
+   * session.)
    */
   private isOriginAllowed(origin: string): boolean {
     if (!this.originRegistry) {
       this.logger.warn({
-        message: 'WS handshake — origin registry unavailable, allowing by bootstrap fallback (TASK-610 FR-6)',
+        message: 'WS handshake — origin registry unavailable, denying (TASK-610 §4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
         origin,
+        reason: 'origin_registry_unavailable',
       });
-      return true;
+      return false;
     }
     try {
       if (this.originRegistry.size() === 0) {
         this.logger.warn({
-          message: 'WS handshake — origin registry empty, allowing by bootstrap fallback (TASK-610 FR-6)',
+          message: 'WS handshake — origin registry empty, denying (TASK-610 §4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
           origin,
+          reason: 'origin_registry_unavailable',
         });
-        return this.isBootstrapAllowed(origin);
+        return false;
       }
-      return this.originRegistry.has(origin);
+      const registered = this.originRegistry.has(origin);
+      if (!registered) {
+        this.logger.warn({
+          message: 'WS handshake — origin not registered',
+          origin,
+          reason: 'origin_registry_miss',
+        });
+      }
+      return registered;
     } catch (err) {
       this.logger.warn({
-        message: 'WS handshake — origin registry lookup failed, allowing by bootstrap fallback (TASK-610 FR-6)',
+        message: 'WS handshake — origin registry lookup failed, denying (TASK-610 §4A.1: no bootstrap fallback, aligned with the HTTP CORS path)',
         origin,
+        reason: 'origin_registry_unavailable',
         error: err instanceof Error ? err.message : String(err),
       });
-      return true;
+      return false;
     }
-  }
-
-  /**
-   * The env allow-list consulted only when the origin registry has nothing to
-   * say (absent, empty, or broken — see `isOriginAllowed`).
-   *
-   * IMPORTED from `cors.config.ts`, not reimplemented. This method exists only
-   * to keep the call site readable. The defect that produced this whole branch
-   * (TASK-610, W4-R finding #3) was HTTP and WS disagreeing about one rule, and
-   * a local copy of that rule is precisely how they would come to disagree
-   * again — the next edit would land on one side only. Two lines is not too
-   * small to share when both copies are a security decision.
-   */
-  private isBootstrapAllowed(origin: string): boolean {
-    return isBootstrapAllowed(origin);
   }
 
   async handleConnection(client: WebSocket, req: IncomingMessage): Promise<void> {

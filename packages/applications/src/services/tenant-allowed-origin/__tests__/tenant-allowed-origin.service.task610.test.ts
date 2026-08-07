@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger, NotFoundException } from '@nestjs/common';
 import { ArgumentInvalidException } from '@arcaai/exceptions';
 import { SysEventType } from '@arcaai/domains';
 import { TenantAllowedOriginService } from '../tenant-allowed-origin.service';
@@ -368,6 +368,68 @@ describe('TenantAllowedOriginService', () => {
       expect(mockRepository.restore).toHaveBeenCalledWith('origin-1', 'user-id-1');
       expect(result.id).toBe('origin-1');
     });
+
+    // Coordinator-directed follow-up (post-review, W5-E). Today the
+    // tenant-scope Prisma extension already narrows `findFirst` (and every
+    // other read on `TenantAllowedOrigin`, since the model is in
+    // `TENANT_SCOPED_MODELS`) to the caller's own tenant, so this cannot
+    // actually happen while `TenantAllowedOrigin` stays OUT of
+    // `SYSTEM_SHARED_READ_MODELS`. These tests simulate a WIDENED read (e.g.
+    // a future `SYSTEM_SHARED_READ_MODELS` addition) by mocking the
+    // repository to return a row owned by a different tenant — the shape a
+    // real widened read would produce — and assert the service-level
+    // defense-in-depth check catches it independently of the extension.
+    it('does NOT restore a soft-deleted row owned by ANOTHER tenant — treats it as a conflict, same as a live duplicate', async () => {
+      mockRepository.findByOrigin.mockResolvedValue(null);
+      mockRepository.findFirst.mockResolvedValue(
+        createMockEntity({ id: 'origin-1', tenantId: 'tenant-OTHER', origin: 'https://x.bcmch.org', resourceStatus: 'DELETED' }),
+      );
+
+      await expect(service.create({ origin: 'https://x.bcmch.org', label: 'New label' } as any)).rejects.toThrow(ConflictException);
+      expect(mockRepository.restore).not.toHaveBeenCalled();
+      expect(mockRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('the conflict message for a cross-tenant soft-deleted collision is the same "already registered" message', async () => {
+      mockRepository.findByOrigin.mockResolvedValue(null);
+      mockRepository.findFirst.mockResolvedValue(
+        createMockEntity({ id: 'origin-1', tenantId: 'tenant-OTHER', origin: 'https://x.bcmch.org', resourceStatus: 'DELETED' }),
+      );
+
+      await expect(service.create({ origin: 'https://x.bcmch.org', label: 'New label' } as any)).rejects.toThrow(
+        "Origin 'https://x.bcmch.org' is already registered.",
+      );
+    });
+
+    it('the race backstop also refuses to restore a soft-deleted row owned by ANOTHER tenant', async () => {
+      mockRepository.findByOrigin.mockResolvedValue(null);
+      mockRepository.findFirst.mockResolvedValue(
+        createMockEntity({ id: 'origin-1', tenantId: 'tenant-OTHER', origin: 'https://x.bcmch.org', resourceStatus: 'DELETED' }),
+      );
+      mockRepository.create.mockRejectedValue(uniqueConstraintError());
+
+      await expect(service.create({ origin: 'https://x.bcmch.org', label: 'Recovered' } as any)).rejects.toThrow(ConflictException);
+      expect(mockRepository.restore).not.toHaveBeenCalled();
+    });
+
+    it('still restores normally when the soft-deleted row IS owned by the caller tenant (no regression)', async () => {
+      mockRepository.findByOrigin.mockResolvedValue(null);
+      mockRepository.findFirst.mockResolvedValue(
+        createMockEntity({ id: 'origin-1', tenantId: 'tenant-1', origin: 'https://x.bcmch.org', resourceStatus: 'DELETED' }),
+      );
+      const restoredEntity: any = {
+        ...createMockEntity({ id: 'origin-1', tenantId: 'tenant-1', origin: 'https://x.bcmch.org' }),
+        hasChanges: true,
+        changes: {},
+      };
+      mockRepository.restore.mockResolvedValue(restoredEntity);
+      mockRepository.update.mockImplementation(async (_id: string, entity: any) => entity);
+
+      const result = await service.create({ origin: 'https://x.bcmch.org', label: 'Same tenant' } as any);
+
+      expect(mockRepository.restore).toHaveBeenCalledWith('origin-1', 'user-id-1');
+      expect(result.id).toBe('origin-1');
+    });
   });
 
   describe('update', () => {
@@ -506,6 +568,187 @@ describe('TenantAllowedOriginService', () => {
       expect(mockRepository.softDelete).toHaveBeenCalledWith('origin-1', 'user-id-1');
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(SysEventType.ResourceDeleted, expect.objectContaining({ resourceId: 'origin-1' }));
       expect(mockEventEmitter.emit).toHaveBeenCalledWith('origin-registry.invalidate');
+    });
+  });
+
+  // TASK-610 §4A.2/§4A.3, lane W5-E. Before this lane's change, `create()` and
+  // `update()` ran every raw origin through `normalizeOrigin`, which rejects
+  // any `*` outright — so a wildcard pattern or the allow-all token could
+  // never be created through the admin API at all, only seeded. This suite
+  // was watched RED against the pre-change service (a create with
+  // `https://*.bcmch.org:*` threw `ArgumentInvalidException` from
+  // `normalizeOrigin`, not because the pattern was invalid).
+  describe('wildcard pattern + allow-all support (TASK-610 §4A.2/§4A.3, lane W5-E)', () => {
+    describe('create — routes by shape', () => {
+      it('accepts a wildcard pattern, normalizing via normalizeOriginPattern (not normalizeOrigin)', async () => {
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.findFirst.mockResolvedValue(null);
+        mockRepository.create.mockResolvedValue(createMockEntity({ id: 'pattern-id', origin: 'https://*.bcmch.org:*' }));
+
+        await service.create({ origin: 'HTTPS://*.BCMCH.ORG:*', label: 'BCMCH wildcard' } as any);
+
+        // Case-folded to the canonical pattern form — proves normalizeOriginPattern
+        // ran (normalizeOrigin would have thrown on the `*` before ever reaching here).
+        expect(mockRepository.findByOrigin).toHaveBeenCalledWith('https://*.bcmch.org:*');
+        const { TenantAllowedOriginFactory } = await import('@arcaai/domains');
+        expect(TenantAllowedOriginFactory.CreateTenantAllowedOrigin).toHaveBeenCalledWith(
+          expect.objectContaining({ origin: 'https://*.bcmch.org:*' }),
+        );
+      });
+
+      it('accepts the bare allow-all token `*`', async () => {
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.findFirst.mockResolvedValue(null);
+        mockRepository.create.mockResolvedValue(createMockEntity({ id: 'allow-all-id', origin: '*' }));
+
+        const result = await service.create({ origin: '*', label: 'Global — any origin' } as any);
+
+        expect(result.origin).toBe('*');
+        expect(mockRepository.findByOrigin).toHaveBeenCalledWith('*');
+      });
+
+      it('rejects a malformed pattern with the same clean ArgumentInvalidException an invalid origin gets — never a raw/internal error', async () => {
+        await expect(service.create({ origin: 'https://**.evil.com:*', label: 'Bad' } as any)).rejects.toThrow(ArgumentInvalidException);
+        expect(mockRepository.findByOrigin).not.toHaveBeenCalled();
+        expect(mockRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('still routes a `*`-free origin through normalizeOrigin, unaffected by the pattern routing', async () => {
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.create.mockResolvedValue(createMockEntity({ id: 'exact-id', origin: 'https://arcaai-staging.bcmch.org' }));
+
+        await service.create({ origin: 'HTTPS://ArcaAI-Staging.bcmch.org:443/', label: 'Exact' } as any);
+
+        expect(mockRepository.findByOrigin).toHaveBeenCalledWith('https://arcaai-staging.bcmch.org');
+      });
+    });
+
+    describe('update — routes by shape', () => {
+      it('re-normalizes a pattern origin via normalizeOriginPattern', async () => {
+        const entity = createMockEntityWithChanges({
+          id: 'origin-1',
+          tenantId: 'tenant-1',
+          origin: 'https://old.example.com',
+          hasChanges: true,
+          changes: { origin: 'https://*.bcmch.org:*' },
+        });
+        mockRepository.findById.mockResolvedValue(entity);
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.updateWithVersion.mockResolvedValue(createMockEntity({ id: 'origin-1', origin: 'https://*.bcmch.org:*', version: 2 }));
+
+        await service.update('origin-1', { origin: 'HTTPS://*.BCMCH.ORG:*', expectedVersion: 1 } as any);
+
+        expect(mockRepository.findByOrigin).toHaveBeenCalledWith('https://*.bcmch.org:*');
+      });
+
+      it('rejects a malformed pattern on update with ArgumentInvalidException', async () => {
+        const entity = createMockEntityWithChanges({ id: 'origin-1', tenantId: 'tenant-1' });
+        mockRepository.findById.mockResolvedValue(entity);
+
+        await expect(service.update('origin-1', { origin: 'https://**.evil.com:*', expectedVersion: 1 } as any)).rejects.toThrow(
+          ArgumentInvalidException,
+        );
+        expect(mockRepository.updateWithVersion).not.toHaveBeenCalled();
+      });
+    });
+
+    // README W5-E brief: "Log allow-all creation loudly ... when a mutation
+    // creates or restores it." — greppable, not silently equivalent to
+    // registering one more host.
+    describe('allow-all creation is logged loudly', () => {
+      it('warns naming the acting user and owning tenant when create() establishes the `*` row', async () => {
+        const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.findFirst.mockResolvedValue(null);
+        mockRepository.create.mockResolvedValue(createMockEntity({ id: 'allow-all-id', tenantId: 'tenant-1', origin: '*' }));
+
+        await service.create({ origin: '*', label: 'Global' } as any);
+
+        expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1', userId: 'user-id-1' }));
+        warnSpy.mockRestore();
+      });
+
+      it('does NOT warn when creating an ordinary exact origin', async () => {
+        const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.create.mockResolvedValue(createMockEntity({ id: 'x', origin: 'https://arcaai-staging.bcmch.org' }));
+
+        await service.create({ origin: 'https://arcaai-staging.bcmch.org', label: 'X' } as any);
+
+        expect(warnSpy).not.toHaveBeenCalled();
+        warnSpy.mockRestore();
+      });
+
+      it('does NOT warn when creating a non-allow-all wildcard pattern', async () => {
+        const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.findFirst.mockResolvedValue(null);
+        mockRepository.create.mockResolvedValue(createMockEntity({ id: 'pattern-id', origin: 'https://*.bcmch.org:*' }));
+
+        await service.create({ origin: 'https://*.bcmch.org:*', label: 'BCMCH wildcard' } as any);
+
+        expect(warnSpy).not.toHaveBeenCalled();
+        warnSpy.mockRestore();
+      });
+
+      it('warns when a soft-deleted `*` row is RESTORED via create()', async () => {
+        const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.findFirst.mockResolvedValue(
+          createMockEntity({ id: 'allow-all-id', tenantId: 'tenant-1', origin: '*', resourceStatus: 'DELETED' }),
+        );
+        const restoredEntity: any = {
+          ...createMockEntity({ id: 'allow-all-id', tenantId: 'tenant-1', origin: '*' }),
+          hasChanges: true,
+          changes: {},
+        };
+        mockRepository.restore.mockResolvedValue(restoredEntity);
+        mockRepository.update.mockImplementation(async (_id: string, entity: any) => entity);
+
+        await service.create({ origin: '*', label: 'Global again' } as any);
+
+        expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
+        warnSpy.mockRestore();
+      });
+
+      it('warns when update() changes an origin so the row BECOMES `*`', async () => {
+        const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        const entity = createMockEntityWithChanges({
+          id: 'origin-1',
+          tenantId: 'tenant-1',
+          origin: 'https://old.example.com',
+          hasChanges: true,
+          changes: { origin: '*' },
+        });
+        mockRepository.findById.mockResolvedValue(entity);
+        mockRepository.findByOrigin.mockResolvedValue(null);
+        mockRepository.updateWithVersion.mockResolvedValue(createMockEntity({ id: 'origin-1', tenantId: 'tenant-1', origin: '*', version: 2 }));
+
+        await service.update('origin-1', { origin: '*', expectedVersion: 1 } as any);
+
+        expect(warnSpy).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
+        warnSpy.mockRestore();
+      });
+
+      it('does NOT re-warn on an update that only changes the label of an ALREADY-allow-all row', async () => {
+        const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        const entity = createMockEntityWithChanges({
+          id: 'origin-1',
+          tenantId: 'tenant-1',
+          origin: '*',
+          hasChanges: true,
+          changes: { label: 'Renamed' },
+        });
+        mockRepository.findById.mockResolvedValue(entity);
+        mockRepository.updateWithVersion.mockResolvedValue(
+          createMockEntity({ id: 'origin-1', tenantId: 'tenant-1', origin: '*', label: 'Renamed', version: 2 }),
+        );
+
+        await service.update('origin-1', { label: 'Renamed', expectedVersion: 1 } as any);
+
+        expect(warnSpy).not.toHaveBeenCalled();
+        warnSpy.mockRestore();
+      });
     });
   });
 });

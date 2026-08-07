@@ -4,14 +4,17 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { setOriginRegistryResolver } from '../../cors.config';
 
 /**
- * Applies the two PRE-BOOTSTRAP platform knobs TASK-558 lane I moved into the
- * database — `logLevel` and `corsAllowedOrigins`.
+ * Applies the two PRE-BOOTSTRAP platform knobs whose readers exist before the
+ * Nest module graph does: the `logLevel` GlobalSetting (TASK-558 lane I), and
+ * the CORS origin registry resolver (TASK-610). They are no longer the same
+ * KIND of knob — `logLevel` is still a `GlobalSetting`-backed value with an
+ * env bootstrap default; CORS has no knob and no env fallback at all since
+ * §4A.1, only the `TenantAllowedOrigin`-backed registry described below.
  *
- * WHY A BINDER AND NOT A PLAIN READ. Both values are consumed before the Nest
- * module graph exists: `LOG_LEVEL` seeds the Nest logger inside
- * `NestFactory.create()`, and `getCorsOrigins()` is chosen in `main.ts`. Neither
- * reader can inject a provider, so the env value stays the BOOTSTRAP value and
- * this binder takes over the moment the graph is up:
+ * WHY A BINDER AND NOT A PLAIN READ. Both are consumed before the Nest module
+ * graph exists: `LOG_LEVEL` seeds the Nest logger inside `NestFactory.create()`,
+ * and `getCorsOrigins()` is chosen in `main.ts`. Neither reader can inject a
+ * provider, so this binder takes over the moment the graph is up:
  *
  *   • log level  — pushed into `ILoggingService.setLevel`, so raising verbosity
  *     during an incident is a settings write, not a redeploy;
@@ -23,8 +26,9 @@ import { setOriginRegistryResolver } from '../../cors.config';
  * `app-settings:invalidate` fan-out lane G proved end to end. Propagation is
  * therefore push, not poll (§9.2 L4).
  *
- * Both dependencies are `@Optional()` so a graph that wires neither still boots
- * with the exact env-driven behaviour.
+ * Both dependencies are `@Optional()` so a graph that wires neither still
+ * boots — `logLevel` on its env-seeded default, CORS denying every browser
+ * origin until a registry is wired (see `installOriginRegistryResolver`).
  */
 @Injectable()
 export class PlatformKnobsBinder implements OnModuleInit {
@@ -55,18 +59,26 @@ export class PlatformKnobsBinder implements OnModuleInit {
    * This replaces the `corsAllowedOrigins` string resolver TASK-558 lane I
    * installed here. Allowed origins are `TenantAllowedOrigin` rows now, so the
    * lazily-resolved thing is the reverse index rather than a comma-separated
-   * setting; `CORS_ALLOWED_ORIGINS` survives only as the bootstrap fallback
-   * inside `cors.config.ts` (FR-6).
+   * setting. There is no env-var fallback of any kind any more — TASK-610
+   * §4A.1 retired `CORS_ALLOWED_ORIGINS` outright (owner directive: no env var
+   * ever controls the CORS allow-list). `cors.config.ts` now DENIES whenever
+   * this resolver reports `null`.
    *
-   * WHY THE EMPTY INDEX IS REPORTED AS `null`. `OriginIndexResolver` returning
-   * `null` means "the registry has not loaded" and sends `isOriginAllowed` to
-   * that bootstrap fallback. `OriginRegistryService.refresh()` deliberately
+   * WHY THE EMPTY INDEX IS STILL REPORTED AS `null` RATHER THAN THE (EMPTY)
+   * REGISTRY ITSELF. Functionally the two are equivalent post-§4A.1 — an
+   * empty registry's `has()` would answer `false` for every origin anyway, so
+   * either encoding DENIES. The collapse is kept purely for DIAGNOSTICS: it
+   * gives `cors.config.ts` a way to log a DISTINCT, greppable reason
+   * (`origin_registry_unavailable`) when NOTHING is loaded platform-wide —
+   * the systemic "check the database" signal — instead of the same
+   * `origin_registry_miss` an ordinary single-origin refusal produces. That
+   * distinction matters because `OriginRegistryService.refresh()` deliberately
    * does NOT throw when the database is unreachable — it keeps its previous
-   * index, which at boot is empty. Reporting that empty index as a loaded
-   * registry would refuse every browser origin on the platform for as long as
-   * the database stayed down. An unseeded table behaves the same way and wants
-   * the same answer (plan §3.8). Once even one row exists, the registry is
-   * authoritative and a miss is a refusal.
+   * index, which at boot is empty — so a real outage and a merely-unseeded
+   * table both present as `size() === 0` and both want the loud, systemic log
+   * line rather than being logged as though each origin were individually and
+   * legitimately refused. Once even one row exists, the registry is handed
+   * over directly and a miss is an ordinary `origin_registry_miss`.
    *
    * Resolution is lazy (per request), so installing the accessor once is
    * enough — a row added later is picked up on the registry's next refresh
@@ -74,7 +86,7 @@ export class PlatformKnobsBinder implements OnModuleInit {
    */
   private installOriginRegistryResolver(): void {
     if (!this.originRegistry) {
-      this.logger.warn('No origin registry wired — CORS stays on the CORS_ALLOWED_ORIGINS bootstrap allow-list');
+      this.logger.warn('No origin registry wired — CORS denies every browser origin (TASK-610 §4A.1: no env-var fallback)');
       return;
     }
     const registry = this.originRegistry;

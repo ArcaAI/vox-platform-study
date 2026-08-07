@@ -1,9 +1,11 @@
 /**
- * CORS origin admission for the API gateway (TASK-610 lane W3-A).
+ * CORS origin admission for the API gateway (TASK-610 lane W3-A; env-var
+ * removal — TASK-610 §4A.1, W5-C).
  *
  * ONE RULE: an origin is admitted iff it is REGISTERED — a `TenantAllowedOrigin`
  * row, reachable here through `IOriginRegistry` (plan §3.0, FR-3). There is no
- * wildcard, no scheme-based catch-all, and no hostname compiled into this file.
+ * wildcard, no scheme-based catch-all, no hostname compiled into this file, and
+ * — since §4A.1 — no environment variable anywhere in the decision.
  *
  * WHAT THIS FILE DELETED, and why each deletion matters:
  *
@@ -19,6 +21,14 @@
  *     `.loca.lt`, `.surge.sh`, `.repl.co`, `.gitpod.io`, `.codesandbox.io`,
  *     `.cloudflare.com`) — a suffix match on a shared multi-tenant hosting
  *     domain admits every OTHER tenant of that host too.
+ *   • the `CORS_ALLOWED_ORIGINS` bootstrap fallback (formerly FR-6) — retired
+ *     by owner directive §4A.1: "we do NOT use any ENV VARS for CORS values
+ *     declaration and do NOT control CORS Allowed List using any ENV VARS."
+ *     The `TenantAllowedOrigin` table is now the ONLY source of truth. The
+ *     consequence is stated plainly there and repeated here because it is the
+ *     load-bearing behavior change: an unreachable or not-yet-loaded registry
+ *     now DENIES every browser origin instead of falling back to env. That is
+ *     the safe direction, and it is a hard dependency rather than a soft one.
  *
  * WHAT SURVIVED, and why each survival matters:
  *
@@ -27,10 +37,7 @@
  *      wholesale, and it buys nothing: CORS is a browser mechanism, and a
  *      client that can omit the header can equally forge it. The real tenant
  *      isolation control is `OriginTenantBindingGuard` (FR-4), post-auth.
- *   2. The bootstrap fallback (FR-6) — `CORS_ALLOWED_ORIGINS`, consulted only
- *      while the registry reports itself unloaded. A gateway whose database is
- *      unreachable must still serve.
- *   3. A `development`-only LOOPBACK allowance — the one remaining `NODE_ENV`
+ *   2. A `development`-only LOOPBACK allowance — the one remaining `NODE_ENV`
  *      branch, kept so a fresh clone with an empty database can still run the
  *      SDK playground on `http://localhost:5173`. It is scoped to loopback
  *      hosts only (`localhost` / `127.0.0.0/8` / `::1`), which browsers treat
@@ -51,10 +58,15 @@ const corsLogger = new Logger('CORS');
  * it before the graph exists — so the indirection is unavoidable.
  *
  * `null` (no resolver, or a resolver returning `null`) means "the registry is
- * not loaded", NOT "the registry is empty". The binder collapses an empty
- * index to `null` precisely so an unreadable or unseeded table lands on the
- * documented bootstrap fallback below instead of refusing every browser origin
- * on the platform (plan §3.8).
+ * not loaded", NOT "the registry is empty" — though since §4A.1 the two are
+ * treated identically at the DECISION (both DENY): there is no fallback tier
+ * left for them to diverge into. The binder still collapses an empty index to
+ * `null` rather than handing over a technically-loaded-but-empty index,
+ * because the DISTINCTION is preserved one layer up, in the log reason: a
+ * `null` registry produces `origin_registry_unavailable` (nothing loaded
+ * platform-wide — a systemic signal), while a loaded registry answering "no"
+ * for one origin produces `origin_registry_miss` (an ordinary, expected,
+ * per-origin refusal). See `PlatformKnobsBinder.installOriginRegistryResolver`.
  */
 let originRegistryResolver: OriginIndexResolver | null = null;
 
@@ -74,15 +86,25 @@ const REPORTED_REFUSAL_CAP = 100;
 /**
  * Structured CORS decision log — the operator's only diagnostic.
  *
- * Allowances stay behind the debug gate. A REGISTRY MISS does not: closing the
+ * Allowances stay behind the debug gate. A refusal does not: closing the
  * catch-all (D-3) means a previously-working origin now 4xx's, and §4.8's
- * rollout depends on that being findable with one grep for
- * `origin_registry_miss`. It is deduped per distinct origin rather than
- * gated, so the first occurrence is always visible without the volume being
+ * rollout depends on that being findable with one grep. Two DISTINCT reasons
+ * are surfaced at `warn` (never collapsed into one message — TASK-610 §4A.1):
+ *
+ *   • `origin_registry_miss`        — the registry is loaded and answered
+ *     "no" for THIS origin. Ordinary, expected, actionable by registering it.
+ *   • `origin_registry_unavailable` — the registry has nothing loaded at all
+ *     (not installed, not yet refreshed, or the lookup threw). Every browser
+ *     origin is being refused, not just this one — the signal an operator
+ *     needs to distinguish "register this origin" from "the registry itself
+ *     is down; check the database".
+ *
+ * Each is deduped per distinct origin rather than gated, so the first
+ * occurrence of either is always visible without the volume being
  * attacker-controlled.
  */
 function logCorsDecision(origin: string | undefined, allowed: boolean, reason: string): boolean {
-  const isRefusalWorthReporting = !allowed && (reason === 'origin_registry_miss' || reason === 'bootstrap_env_allowlist_miss');
+  const isRefusalWorthReporting = !allowed && (reason === 'origin_registry_miss' || reason === 'origin_registry_unavailable');
 
   if (isRefusalWorthReporting && origin && !reportedRefusals.has(origin) && reportedRefusals.size < REPORTED_REFUSAL_CAP) {
     reportedRefusals.add(origin);
@@ -107,7 +129,7 @@ function logCorsDecision(origin: string | undefined, allowed: boolean, reason: s
 
 /**
  * `true`/`false` when the registry answered, `null` when it is unavailable
- * (not installed, not loaded, or broken) and the bootstrap fallback applies.
+ * (not installed, not loaded, or broken) — `isOriginAllowed` denies on `null`.
  *
  * NEVER throws. The argument is an attacker-controlled request header; a
  * malformed value must be "not registered", never an unhandled 500 inside the
@@ -121,7 +143,7 @@ function queryRegistry(origin: string): boolean | null {
     return registry.has(origin) === true;
   } catch (error) {
     corsLogger.warn({
-      message: 'Origin registry lookup failed — falling back to the CORS_ALLOWED_ORIGINS bootstrap allow-list',
+      message: 'Origin registry lookup failed — denying (no bootstrap fallback since TASK-610 §4A.1)',
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
@@ -139,16 +161,6 @@ function isLoopbackOrigin(origin: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** The bootstrap allow-list (FR-6): env only — a DB-backed value is worthless when the DB is why we are here. */
-export function isBootstrapAllowed(origin: string): boolean {
-  const configured = process.env.CORS_ALLOWED_ORIGINS;
-  if (!configured) return false;
-  return configured
-    .split(',')
-    .map((entry) => entry.trim())
-    .includes(origin);
 }
 
 /**
@@ -175,9 +187,14 @@ export function isOriginAllowed(origin: string | undefined, nodeEnv: string): bo
     return logCorsDecision(origin, false, 'origin_registry_miss');
   }
 
-  return isBootstrapAllowed(origin)
-    ? logCorsDecision(origin, true, 'bootstrap_env_allowlist_match')
-    : logCorsDecision(origin, false, 'bootstrap_env_allowlist_miss');
+  // `registered === null`: the registry is unavailable — not installed, not
+  // yet loaded (including "loaded but empty", per the binder's collapse), or
+  // the lookup threw. FAIL CLOSED. There is no bootstrap allow-list to fall
+  // back to any more (TASK-610 §4A.1, owner directive: no env var ever
+  // controls the CORS allow-list) — an unreachable database now means every
+  // browser origin is refused until the registry recovers. That is the safe
+  // direction, deliberately, not an accident of a deleted branch.
+  return logCorsDecision(origin, false, 'origin_registry_unavailable');
 }
 
 export type CorsOriginCallback = (err: Error | null, allow?: boolean) => void;

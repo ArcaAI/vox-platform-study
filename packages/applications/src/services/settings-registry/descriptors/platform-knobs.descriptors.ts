@@ -9,26 +9,35 @@
 // where the value lives TODAY, so a key whose reader has not moved does not get
 // flipped (see `feature-flags.descriptors.ts` for the keys that stayed).
 //
+// `corsAllowedOrigins` WAS ONE OF THE TEN, briefly demoted to an inert row by
+// an earlier TASK-610 wave, and is now REMOVED OUTRIGHT (§4A.1, owner
+// directive: no env var ever controls the CORS allow-list). Nine keys remain
+// below. CORS origin admission is not a `global-kv` knob at all any more — it
+// is the `TenantAllowedOrigin` table, resolved per request by
+// `OriginRegistryService` and installed into `cors.config.ts` by
+// `PlatformKnobsBinder`, with no descriptor, no env fallback, and no
+// `GlobalSetting` row.
+//
 // WHY THEY QUALIFIED — plan §9.2 L1: "environment variables are immutable for
 // the lifetime of the process. Anything that must change without a restart is
 // NOT an env var." Every knob here fails that test: an operator tightening a
-// rate limit, widening CORS, or shortening an API-key lifetime should not need
-// a redeploy.
+// rate limit or shortening an API-key lifetime should not need a redeploy.
 //
 // ── THE ENV VAR IS NOT GONE — IT IS THE BOOTSTRAP FALLBACK ──────────────────
 // Each key keeps its `<KEY>` env variable as a DOCUMENTED first-boot fallback,
 // exactly as lane E kept `MINIO_ENDPOINT` behind the SYSTEM storage row: a
 // process must be able to come up before the `GlobalSetting` rows exist (fresh
-// database, pre-seed, disaster recovery), and two of these knobs are consumed
-// before the Nest module graph exists at all. The env value is therefore the
-// SEED for the platform row (`seed/11a-platform-knob-settings.ts`) and the last
-// resort when no row is readable — and whenever it is the tier that answered,
-// that fact is logged (§9.2 L8). `apps/api/src/config/env.schema.ts` keeps
-// validating the variables for exactly that reason.
+// database, pre-seed, disaster recovery), and `logLevel` is consumed before the
+// Nest module graph exists at all. The env value is therefore the SEED for the
+// platform row (`seed/11a-platform-knob-settings.ts`) and the last resort when
+// no row is readable — and whenever it is the tier that answered, that fact is
+// logged (§9.2 L8). `apps/api/src/config/env.schema.ts` keeps validating the
+// variables for exactly that reason. This pattern does NOT apply to CORS: it
+// has no env tier to fall back to (see above).
 //
 // ── SCOPE ASSIGNMENT (plan §13.4) ───────────────────────────────────────────
 // Platform-only (`maxScope: 'system'`, `globalOnly: true`) — operational,
-// never per-tenant:  logLevel · corsAllowedOrigins · shutdown.*
+// never per-tenant:  logLevel · shutdown.*
 // Tenant-overridable (`maxScope: 'tenant'`) — the knobs a plan tier
 // differentiates:    rateLimit.* · apiKey.maxLifetimeDays · refreshToken.ttlSeconds
 //
@@ -115,14 +124,6 @@ export const PLATFORM_KNOB_SETTINGS: SettingDescriptor[] = [
     'Log level',
     'Gateway log level, applied live by `PlatformKnobsBinder` through `ILoggingService.setLevel` whenever the settings cache refreshes — so an operator can raise verbosity during an incident with no redeploy. `LOG_LEVEL` remains the BOOTSTRAP value: it is read pre-bootstrap in `apps/api/src/main.ts` (before the Nest module graph, therefore before any DB) to seed the Nest logger.',
     'info',
-  ),
-  migratedGlobalKv(
-    'corsAllowedOrigins',
-    'string[]',
-    'system',
-    'Platform Operations',
-    'CORS allowed origins',
-    'DEMOTED BY TASK-610 — this key is no longer the CORS allow-list. Browser origins now live in the `TenantAllowedOrigin` table, indexed per request by `OriginRegistryService` and owned by a tenant, because a flat platform string cannot express WHICH TENANT an origin belongs to — and that ownership is the isolation control (`OriginTenantBindingGuard`). `isOriginAllowed` no longer reads this setting at all. The `CORS_ALLOWED_ORIGINS` ENV VAR survives as the bootstrap fallback for the case the fallback exists for — the database being unreachable — which is exactly why the fallback is env-only and does NOT consult this DB row: a DB-tier value is worthless in a DB outage. Rows written here are inert; migrate them into `TenantAllowedOrigin` and manage the list through `admin/allowed-origins`.',
   ),
   migratedGlobalKv(
     'shutdown.timeoutMs',

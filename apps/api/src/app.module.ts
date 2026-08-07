@@ -330,9 +330,9 @@ const featureModules: any[] = [
   // /admin/usage/* + /usage/me/* — usage-analytics reads over the ledger
   // rollups (TASK-615 WS-J).
   AdminUsageApiModule,
-  // Applies the pre-bootstrap platform knobs (`logLevel`,
-  // `corsAllowedOrigins`) from the settings cascade — TASK-558 lane I. No
-  // controllers; a binder only.
+  // Applies the pre-bootstrap platform knob (`logLevel`, from the settings
+  // cascade — TASK-558 lane I) and installs the CORS origin registry resolver
+  // (TASK-610). No controllers; a binder only.
   PlatformKnobsModule,
   // /admin/settings/catalog. MUST precede GlobalSettingModule
   // so the static `catalog` route registers before `admin/settings/:id`.

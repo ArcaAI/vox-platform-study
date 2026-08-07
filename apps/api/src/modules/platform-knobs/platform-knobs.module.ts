@@ -12,10 +12,11 @@ import { PlatformKnobsBinder } from './platform-knobs.binder';
  * `OriginRegistryServiceModule` (TASK-610) supplies `IOriginRegistry`, which the
  * binder installs into `cors.config.ts` as the per-request origin resolver.
  * This import is LOAD-BEARING and its absence is SILENT: the binder injects the
- * registry `@Optional()`, so without it the gateway boots, serves, and simply
- * stays on the `CORS_ALLOWED_ORIGINS` env fallback forever — i.e. the entire
- * allow-list feature does nothing while looking installed. The binder logs
- * `No origin registry wired` in that state; that warning is the tripwire.
+ * registry `@Optional()`, so without it the gateway boots, serves, and denies
+ * EVERY browser origin forever (TASK-610 §4A.1 removed the `CORS_ALLOWED_ORIGINS`
+ * env fallback this used to degrade to) — i.e. the entire allow-list feature
+ * does nothing while looking installed. The binder logs `No origin registry
+ * wired` in that state; that warning is the tripwire.
  */
 @Module({
   imports: [CommonServiceModule, OriginRegistryServiceModule],

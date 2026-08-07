@@ -27,10 +27,10 @@ export { isOriginAllowed };
 
 async function bootstrap() {
   // Read the env file for this NODE_ENV BEFORE anything in bootstrap() touches
-  // `process.env`. `LOG_LEVEL`, `PORT`, `SHUTDOWN_*_MS` and
-  // `CORS_ALLOWED_ORIGINS` below are all consumed before the Nest module graph
-  // (and therefore ConfigService, the only previous caller of loadEnv) exists,
-  // so without this line they silently saw host environment only.
+  // `process.env`. `LOG_LEVEL`, `PORT` and `SHUTDOWN_*_MS` below are all
+  // consumed before the Nest module graph (and therefore ConfigService, the
+  // only previous caller of loadEnv) exists, so without this line they
+  // silently saw host environment only.
   //
   // Safe to call here and again in ConfigService: the loader never overrides a
   // variable already present in `process.env`, and reads nothing when CI=true
@@ -51,11 +51,12 @@ async function bootstrap() {
 
   // Validate the declared env surface (built from the settings-registry
   // descriptors) and read the pre-bootstrap values from the TYPED result rather
-  // than from `process.env` — the four reads below (`LOG_LEVEL`, `PORT`,
-  // `SHUTDOWN_*_MS`, `CORS_ALLOWED_ORIGINS`) all happen before the Nest module
-  // graph exists, so they are exactly the ones plan §4 B5 requires to move
-  // behind the schema. Throws ONE error listing every problem; the process
-  // exits before any port is bound.
+  // than from `process.env` — the three reads below (`LOG_LEVEL`, `PORT`,
+  // `SHUTDOWN_*_MS`) all happen before the Nest module graph exists, so they
+  // are exactly the ones plan §4 B5 requires to move behind the schema. CORS
+  // has no env entry at all any more (TASK-610 §4A.1) — `TenantAllowedOrigin`
+  // rows are the only source. Throws ONE error listing every problem; the
+  // process exits before any port is bound.
   const env = apiEnv();
 
   // Disable colors in NestJS built-in logger
@@ -226,18 +227,18 @@ async function bootstrap() {
   // the header fixes and TASK-610 deleting the catch-all it named.
   //
   // Since TASK-610 the allow-list is the `TenantAllowedOrigin` table, indexed
-  // by `OriginRegistryService` and consulted PER REQUEST — so the origins this
-  // line reports are NOT the effective list. `CORS_ALLOWED_ORIGINS` is only the
-  // bootstrap fallback used while the registry is unreachable.
-  const bootstrapOrigins = env.CORS_ALLOWED_ORIGINS as string | undefined;
+  // by `OriginRegistryService` and consulted PER REQUEST — so there is no
+  // static list to print here any more. Since §4A.1 there is also no env
+  // bootstrap fallback: an unreachable or not-yet-loaded registry now DENIES
+  // every browser origin (see `cors.config.ts`'s `origin_registry_unavailable`
+  // reason) rather than falling back to `CORS_ALLOWED_ORIGINS`, which no
+  // longer exists.
   loggingService.info(
     'CORS configuration',
     {
       environment: nodeEnv,
-      // Named `bootstrapOrigins`, not `customOrigins`: it is what answers when
-      // the DB does not, never the live allow-list.
-      bootstrapOrigins: bootstrapOrigins ? bootstrapOrigins.split(',').map((o) => o.trim()) : null,
       policy: nodeEnv === 'development' ? 'origin_registry_plus_dev_loopback' : 'origin_registry_only',
+      unavailableRegistryBehavior: 'deny_all',
     },
     'Bootstrap',
   );

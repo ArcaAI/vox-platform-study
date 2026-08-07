@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getCorsOrigins, isOriginAllowed, setOriginRegistryResolver } from '../cors.config';
@@ -39,17 +40,12 @@ const DAY_ONE = fakeRegistry({
 });
 
 describe('cors.config', () => {
-  const envBackup = process.env.CORS_ALLOWED_ORIGINS;
-
   beforeEach(() => {
     setOriginRegistryResolver(null);
-    delete process.env.CORS_ALLOWED_ORIGINS;
   });
 
   afterEach(() => {
     setOriginRegistryResolver(null);
-    if (envBackup === undefined) delete process.env.CORS_ALLOWED_ORIGINS;
-    else process.env.CORS_ALLOWED_ORIGINS = envBackup;
     vi.restoreAllMocks();
   });
 
@@ -120,42 +116,57 @@ describe('cors.config', () => {
     });
   });
 
-  describe('bootstrap fallback (FR-6)', () => {
-    it('falls back to CORS_ALLOWED_ORIGINS when no resolver is installed', () => {
-      process.env.CORS_ALLOWED_ORIGINS = 'https://boot.example.com, https://other.example.com';
-
-      expect(isOriginAllowed('https://boot.example.com', 'production')).toBe(true);
-      expect(isOriginAllowed('https://other.example.com', 'production')).toBe(true);
-      expect(isOriginAllowed('https://not-listed.example.com', 'production')).toBe(false);
+  describe('registry unavailable — fail CLOSED (TASK-610 §4A.1: no env-var fallback of any kind)', () => {
+    it('denies when no resolver is installed at all', () => {
+      expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);
     });
 
-    it('falls back when the resolver is installed but the registry has not loaded (null)', () => {
+    it('denies when the resolver is installed but the registry has not loaded (null)', () => {
       setOriginRegistryResolver(() => null);
-      process.env.CORS_ALLOWED_ORIGINS = 'https://boot.example.com';
 
-      expect(isOriginAllowed('https://boot.example.com', 'production')).toBe(true);
-      expect(isOriginAllowed('https://not-listed.example.com', 'production')).toBe(false);
+      expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);
     });
 
     /**
-     * A non-null registry is AUTHORITATIVE here — a miss is a refusal and the
-     * env list is not consulted. "The registry is empty/unreadable" is not
-     * expressed as an empty index at this layer: `PlatformKnobsBinder`
-     * collapses an empty index to `null` (asserted in
-     * `platform-knobs.binder.task610.test.ts`) so that case lands on the
-     * fallback above instead. Without that split, one stale resolver would
-     * silently re-open the env list on every registry miss.
+     * A non-null registry is AUTHORITATIVE here — a miss is a refusal, and
+     * there is nothing else to fall through to. "The registry is
+     * empty/unreadable" is not expressed as an empty index at this layer:
+     * `PlatformKnobsBinder` collapses an empty index to `null` (asserted in
+     * `platform-knobs.binder.task610.test.ts`) purely so the two DENY paths
+     * log under distinct, greppable reasons — not to reach a different
+     * outcome (both deny).
      */
-    it('does NOT fall back once the registry has answered — a miss is a refusal', () => {
+    it('a populated registry answering "no" is still a refusal — same outcome as an unavailable one, distinct log reason', () => {
       setOriginRegistryResolver(() => fakeRegistry({ 'https://registered.example.com': SYSTEM_TENANT }));
-      process.env.CORS_ALLOWED_ORIGINS = 'https://boot.example.com';
 
-      expect(isOriginAllowed('https://boot.example.com', 'production')).toBe(false);
+      expect(isOriginAllowed('https://not-registered.example.com', 'production')).toBe(false);
       expect(isOriginAllowed('https://registered.example.com', 'production')).toBe(true);
     });
 
-    it('refuses everything when neither a registry nor CORS_ALLOWED_ORIGINS is available', () => {
-      expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);
+    /**
+     * The operator diagnostic this whole behavior exists for: a total CORS
+     * outage (registry unavailable) must be greppable as `origin_registry_
+     * unavailable`, distinct from an ordinary per-origin `origin_registry_
+     * miss`. Collapsing the two into one message is exactly what an operator
+     * staring at a wall of refusals cannot afford (see `logCorsDecision` in
+     * `cors.config.ts`).
+     */
+    it('logs a DISTINCT reason for "registry unavailable" vs an ordinary registry miss', () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      setOriginRegistryResolver(() => null);
+      isOriginAllowed('https://unavailable-case.example.com', 'production');
+
+      setOriginRegistryResolver(() => fakeRegistry({ 'https://registered.example.com': SYSTEM_TENANT }));
+      isOriginAllowed('https://miss-case.example.com', 'production');
+
+      const messages = warnSpy.mock.calls.map(([payload]) => payload as { origin?: string; reason?: string });
+      const unavailable = messages.find((m) => m.origin === 'https://unavailable-case.example.com');
+      const miss = messages.find((m) => m.origin === 'https://miss-case.example.com');
+
+      expect(unavailable?.reason).toBe('origin_registry_unavailable');
+      expect(miss?.reason).toBe('origin_registry_miss');
+      expect(unavailable?.reason).not.toBe(miss?.reason);
     });
   });
 
@@ -194,15 +205,13 @@ describe('cors.config', () => {
   });
 
   describe('a broken registry never takes the gateway down', () => {
-    it('does not throw when the resolver itself throws, and falls back to the env allow-list', () => {
+    it('does not throw when the resolver itself throws, and DENIES (no bootstrap fallback since §4A.1)', () => {
       setOriginRegistryResolver(() => {
         throw new Error('registry exploded');
       });
-      process.env.CORS_ALLOWED_ORIGINS = 'https://boot.example.com';
 
-      expect(() => isOriginAllowed('https://boot.example.com', 'production')).not.toThrow();
-      expect(isOriginAllowed('https://boot.example.com', 'production')).toBe(true);
-      expect(isOriginAllowed('https://evil.example.com', 'production')).toBe(false);
+      expect(() => isOriginAllowed('https://anything.example.com', 'production')).not.toThrow();
+      expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);
     });
 
     it('does not throw when has() throws', () => {

@@ -9,11 +9,20 @@ import { PlatformKnobsBinder } from '../platform-knobs.binder';
  * `cors.config.ts` cannot express on its own: an EMPTY index is reported as
  * `null` ("not loaded"), not as a loaded-but-empty registry.
  *
- * That split is FR-6. `OriginRegistryService.refresh()` never throws on an
- * unreachable database — it keeps its previous (at boot: empty) index. If the
- * binder handed that empty index over as authoritative, a database outage or
- * an unseeded table would refuse every browser origin on the platform instead
- * of falling back to `CORS_ALLOWED_ORIGINS` (plan §3.8).
+ * Since §4A.1 removed the `CORS_ALLOWED_ORIGINS` bootstrap fallback entirely,
+ * that split no longer changes the OUTCOME — both a `null` resolver and a
+ * loaded-but-empty registry deny every origin (`cors.config.ts` denies
+ * whenever `queryRegistry` returns `null`, and an empty registry's `has()`
+ * would answer `false` for everything anyway). What the split still buys is
+ * DIAGNOSTICS: a `null` registry logs the distinct, greppable
+ * `origin_registry_unavailable` reason — "nothing is loaded platform-wide,
+ * check the database" — instead of the ordinary per-origin
+ * `origin_registry_miss` a populated registry's "no" produces. That matters
+ * because `OriginRegistryService.refresh()` never throws on an unreachable
+ * database — it keeps its previous (at boot: empty) index — so a real DB
+ * outage and a merely-unseeded table both present as `size() === 0` and both
+ * deserve the systemic signal, not one log line per attempted origin (plan
+ * §3.8).
  */
 function fakeRegistry(origins: Record<string, string>): IOriginRegistry {
   const index = new Map(Object.entries(origins));
@@ -28,17 +37,12 @@ function fakeRegistry(origins: Record<string, string>): IOriginRegistry {
 const SYSTEM_TENANT = '00000000-0000-0000-0000-000000000000';
 
 describe('PlatformKnobsBinder — origin registry resolver', () => {
-  const envBackup = process.env.CORS_ALLOWED_ORIGINS;
-
   beforeEach(() => {
     setOriginRegistryResolver(null);
-    process.env.CORS_ALLOWED_ORIGINS = 'https://boot.example.com';
   });
 
   afterEach(() => {
     setOriginRegistryResolver(null);
-    if (envBackup === undefined) delete process.env.CORS_ALLOWED_ORIGINS;
-    else process.env.CORS_ALLOWED_ORIGINS = envBackup;
   });
 
   it('makes a populated registry authoritative — registered admitted, everything else refused', () => {
@@ -46,22 +50,18 @@ describe('PlatformKnobsBinder — origin registry resolver', () => {
 
     expect(isOriginAllowed('https://registered.example.com', 'production')).toBe(true);
     expect(isOriginAllowed('https://evil.example.com', 'production')).toBe(false);
-    // The registry answered, so the bootstrap allow-list is no longer consulted.
-    expect(isOriginAllowed('https://boot.example.com', 'production')).toBe(false);
   });
 
-  it('reports an EMPTY registry as unloaded, so CORS keeps using the bootstrap allow-list (FR-6)', () => {
+  it('reports an EMPTY registry as unloaded, so CORS denies every origin (TASK-610 §4A.1: no bootstrap fallback)', () => {
     new PlatformKnobsBinder(undefined, undefined, fakeRegistry({})).onModuleInit();
 
-    expect(isOriginAllowed('https://boot.example.com', 'production')).toBe(true);
-    expect(isOriginAllowed('https://evil.example.com', 'production')).toBe(false);
+    expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);
   });
 
-  it('leaves the bootstrap allow-list in charge when no registry is wired at all', () => {
+  it('denies every origin when no registry is wired at all', () => {
     new PlatformKnobsBinder().onModuleInit();
 
-    expect(isOriginAllowed('https://boot.example.com', 'production')).toBe(true);
-    expect(isOriginAllowed('https://evil.example.com', 'production')).toBe(false);
+    expect(isOriginAllowed('https://anything.example.com', 'production')).toBe(false);
   });
 
   it('installs the resolver even when no settings resolver is wired (the two knobs are independent)', () => {
