@@ -6,5 +6,6 @@
 
 export { ConsoleTransport } from './console.transport';
 export { HighlightTransport } from './highlight.transport';
+export { ClarityTransport } from './clarity.transport';
 export { LokiTransport } from './loki.transport';
 export { OTelTransport } from './otel.transport';

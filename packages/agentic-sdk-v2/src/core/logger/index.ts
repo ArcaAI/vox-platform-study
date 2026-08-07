@@ -52,6 +52,13 @@
 // Core logger
 export { SDKLogger, createSDKLogger, getGlobalLogger, setGlobalLogger } from './SDKLogger';
 
+// Browser-wide capture (console.*, uncaught errors, unhandled rejections)
+export { installGlobalCapture } from './globalCapture';
+export type { GlobalCaptureOptions, UninstallGlobalCapture } from './globalCapture';
+
+// Deployment environment resolution (shared by the fail-closed transports)
+export { isProductionEnvironment } from './environment';
+
 // Types
 export type {
   // Log levels and entries
@@ -71,6 +78,7 @@ export type {
   LoggerConfig,
   ConsoleTransportConfig,
   HighlightTransportConfig,
+  ClarityTransportConfig,
   LokiTransportConfig,
   OTelTransportConfig,
   ILogTransport,
@@ -108,5 +116,6 @@ export {
 // Transports
 export { ConsoleTransport } from './transports/console.transport';
 export { HighlightTransport } from './transports/highlight.transport';
+export { ClarityTransport } from './transports/clarity.transport';
 export { LokiTransport } from './transports/loki.transport';
 export { OTelTransport } from './transports/otel.transport';

@@ -40,6 +40,47 @@ export interface LoggingHighlightConfig {
 }
 
 /**
+ * Microsoft Clarity configuration
+ *
+ * Clarity records session replays of the DOM. In a HOPE surface that DOM
+ * contains PHI (transcripts, patient context), and Microsoft does not offer a
+ * HIPAA BAA for Clarity — so the transport is fail-closed and refuses to
+ * activate when `NODE_ENV === 'production'`. Set the Clarity project to
+ * "Mask All" and mark PHI-bearing elements `data-clarity-mask="true"` before
+ * enabling anywhere.
+ */
+export interface LoggingClarityConfig {
+  /**
+   * Microsoft Clarity project ID. **This is the on/off switch**: supply one and
+   * Clarity is enabled, omit it (or leave it empty) and the transport is never
+   * constructed — so it can be bound straight to an env var, where an unset
+   * variable means "off":
+   *
+   * ```ts
+   * clarity: { projectId: process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID, environment: 'staging' }
+   * ```
+   */
+  projectId?: string;
+  /**
+   * Optional explicit override. Leave undefined to let `projectId` decide.
+   * Set to `false` to force Clarity off while keeping the ID configured.
+   */
+  enabled?: boolean;
+  /** Minimum log level. Defaults to `error` — Clarity is not a log sink. */
+  level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
+  /** Service name (sent as the `vox.service` tag) */
+  serviceName?: string;
+  /** Environment name (sent as the `vox.environment` tag) */
+  environment?: string;
+  /** Send the user id to Clarity's Identify API. Defaults to false. */
+  identifyUsers?: boolean;
+  /** Start with cookie consent denied until the host grants it. Defaults to false. */
+  requireConsent?: boolean;
+  /** Ask Clarity to prioritise recording sessions containing an error. Defaults to false. */
+  upgradeOnError?: boolean;
+}
+
+/**
  * Grafana Loki configuration
  */
 export interface LoggingLokiConfig {
@@ -74,6 +115,24 @@ export interface LoggingOTelConfig {
 }
 
 /**
+ * Browser-wide capture configuration
+ *
+ * Mirrors `GlobalCaptureOptions` in `core/logger/globalCapture.ts`.
+ */
+export interface LoggingCaptureConfig {
+  /** Capture `console.*` calls. Defaults to false (free-text PHI risk). */
+  console?: boolean;
+  /** Which console methods to capture. Defaults to `['warn', 'error']`. */
+  consoleMethods?: Array<'log' | 'info' | 'debug' | 'warn' | 'error'>;
+  /** Capture uncaught errors and unhandled promise rejections. Defaults to true. */
+  globalErrors?: boolean;
+  /** Truncate each stringified argument to this length. Defaults to 2000. */
+  maxArgLength?: number;
+  /** Rolling per-minute cap on captured events. Defaults to 200. */
+  maxEventsPerMinute?: number;
+}
+
+/**
  * Logging configuration for the SDK
  */
 export interface LoggingConfig {
@@ -83,10 +142,24 @@ export interface LoggingConfig {
   console?: LoggingConsoleConfig;
   /** Highlight.io transport configuration */
   highlight?: LoggingHighlightConfig;
+  /** Microsoft Clarity transport configuration */
+  clarity?: LoggingClarityConfig;
   /** Grafana Loki transport configuration */
   loki?: LoggingLokiConfig;
   /** OpenTelemetry transport configuration */
   otel?: LoggingOTelConfig;
+  /**
+   * Capture browser-wide telemetry (`console.*`, uncaught errors, unhandled
+   * promise rejections) into the transport pipeline.
+   *
+   * Without this, only messages SDK code routed through `SDKLogger` reach a
+   * transport — application console output is invisible to Clarity/Loki/OTel.
+   *
+   * `console` capture defaults to **off** because it forwards arbitrary
+   * free-text strings that the PHI redactor cannot scrub. Enable it only where
+   * the data is synthetic (development, staging). `globalErrors` defaults to on.
+   */
+  capture?: LoggingCaptureConfig;
   /** Fields to redact from logs */
   redactFields?: string[];
   /** Maximum message length */

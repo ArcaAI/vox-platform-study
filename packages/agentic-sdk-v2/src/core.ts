@@ -227,6 +227,8 @@ export type {
   LoggingConfig,
   LoggingConsoleConfig,
   LoggingHighlightConfig,
+  LoggingClarityConfig,
+  LoggingCaptureConfig,
   LoggingLokiConfig,
   LoggingOTelConfig,
   ModelDefinition,

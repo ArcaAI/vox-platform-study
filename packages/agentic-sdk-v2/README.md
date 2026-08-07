@@ -12,6 +12,7 @@ Last updated: 2026-07-04
 | Depends on    | `@arcaai/noise-filter`, `@arcaai/vad`, `@arcaai/stt` | Stages of the transcription pipeline                                        |
 | Optional peer | `@arcaai/med-ner`                                    | Browser NER stage; hook at `@arcaai/vox/plugins/med-ner`                    |
 | Optional peer | `highlight.run`                                      | Optional logging transport                                                  |
+| Optional peer | `@microsoft/clarity`                                 | Optional behavioural monitoring transport (non-production only)             |
 | Talks to      | `apps/api` (NestJS gateway, port 8868)               | REST + WebSocket/SSE (streaming ASR via the STT service behind the gateway) |
 | Consumed by   | `apps/ui-playground` (deprecated)                    | Only current in-repo consumer                                               |
 
@@ -172,7 +173,115 @@ Per-capture runtime options flow through `useArcaAudio.start(options)` (`AudioSt
 
 ### Logging
 
-`SDKLogger` with pluggable transports (`ConsoleTransport`, `HighlightTransport`, `LokiTransport`, `OTelTransport`), PII redaction, and W3C trace-context helpers. Configure via `config.logging`; access with `useSDKLogger()`.
+`SDKLogger` with pluggable transports (`ConsoleTransport`, `HighlightTransport`, `ClarityTransport`, `LokiTransport`, `OTelTransport`), PII redaction, and W3C trace-context helpers. Configure via `config.logging`; access with `useSDKLogger()`.
+
+#### Microsoft Clarity (behavioural monitoring)
+
+> [!WARNING]
+> **Clarity is non-production only, by design.** Clarity is a session-replay product: it reconstructs the page DOM, which on a HOPE surface contains consultation transcripts and patient context — PHI. Microsoft does **not** offer a HIPAA Business Associate Agreement for Clarity. `ClarityTransport` refuses to activate on a production deployment, exactly like `HighlightTransport`. Do not lift that gate without a signed BAA and a privacy review.
+
+> [!IMPORTANT]
+> **You must declare `environment` — on staging especially.** The activation gate tests the *deployment stage*, not the build mode. Every browser bundler bakes `process.env.NODE_ENV='production'` into any optimised build, **including the one you deploy to staging**. If `environment` is left undeclared, a staging deploy therefore looks like production and the transport silently disables itself. Set `environment: 'staging'` and it activates; `'production' | 'prod' | 'live'` always blocks. Same rule now applies to `HighlightTransport`.
+
+Install the optional peer dependency:
+
+```bash
+pnpm add @microsoft/clarity
+```
+
+**The project ID is the on/off switch.** Supply one and Clarity is enabled; omit it and the transport is never constructed. Bind it to an env var and each deployment enables or disables Clarity purely by whether that variable is set — no code change, no flag to keep in sync:
+
+```ts
+<AgenticProvider
+  config={{
+    api: { baseUrl },
+    logging: {
+      clarity: {
+        // Set CLARITY_PROJECT_ID=xynejqavet to enable; unset it to disable.
+        projectId: process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID,
+        environment: 'staging', // REQUIRED on staging — see the note above
+        // level defaults to 'error' — Clarity is not a log sink
+        upgradeOnError: true, // prioritise recording sessions that errored
+      },
+    },
+  }}
+/>
+```
+
+Empty and whitespace-only IDs count as "not configured", so an env var that resolves to `''` disables Clarity rather than crashing. To confirm what actually activated, check the SDK's startup log — `AgenticProvider` logs `transports: [...]`, which lists `clarity` only when it is live.
+
+| To… | Do this |
+| --- | --- |
+| Enable Clarity | Set `projectId` |
+| Disable Clarity | Omit `projectId` (or leave the env var unset) |
+| Disable temporarily, keeping the ID | Add `enabled: false` |
+
+Before enabling it anywhere, set the Clarity project's masking mode to **Mask All** in the Clarity dashboard and mark PHI-bearing elements `data-clarity-mask="true"`. Masking is a project-level setting — the npm SDK exposes no masking option, so the transport cannot enforce it from code.
+
+| Config | Default | Notes |
+| --- | --- | --- |
+| `projectId` | — | **The on/off switch.** Set = enabled, unset/empty = disabled. |
+| `enabled` | derived from `projectId` | Optional override. `false` forces Clarity off while keeping the ID configured; `true` is redundant and still requires a `projectId`. |
+| `environment` | `NODE_ENV` | Deployment stage. **Must be `'staging'` on staging** — see the note above. |
+| `level` | `'error'` | Only errors and completed operations become Clarity events. Use `'info'` to capture `vox.op.*` metrics. |
+| `identifyUsers` | `false` | Sends the user id to Clarity's Identify API. Off by default — a user id is still a personal identifier handed to a third party. |
+| `requireConsent` | `false` | Start with consent denied; grant later via `setConsent(true)`. |
+| `upgradeOnError` | `false` | Ask Clarity to prioritise recording sessions containing an error. |
+
+What the transport emits: `vox.error.<code>` and `vox.op.<name>` custom events, plus low-cardinality tags (`vox.service`, `vox.environment`, `vox.context`, `vox.component`, `vox.correlationId`, `vox.tenantId`, `vox.errorName`, `vox.errorCode`, `vox.httpStatus`, `vox.sdkVersion`). `vox.correlationId` is what links a Clarity session replay back to the gateway/Loki logs for the same request.
+
+Two Clarity API constraints worth knowing: `event()` accepts a **name only** (no metadata — that is why detail travels as tags), and Clarity exposes **no stop/teardown API**, so `shutdown()` revokes consent rather than truly stopping recording.
+
+#### Browser-wide capture (`console.*`, uncaught errors)
+
+`SDKLogger` only sees what SDK code routes through it — application `console.*` calls, uncaught errors and unhandled promise rejections never reach a transport. That is why a staging bug report can arrive with an empty log trail while the browser console was full. `logging.capture` bridges them into the normal pipeline, so they flow to **every** transport (Clarity, Highlight, Loki, OTel) with `redactPHI()` applied.
+
+```ts
+logging: {
+  capture: {
+    console: true,                                          // default: false
+    consoleMethods: ['log', 'info', 'debug', 'warn', 'error'], // default: ['warn','error']
+    globalErrors: true,                                     // default: true
+    maxEventsPerMinute: 500,                                // default: 200
+  },
+}
+```
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `console` | `false` | Off by default: console capture forwards arbitrary free-text, which `redactPHI()` cannot scrub (it scrubs known keys and `data:`/`blob:`/`file:` URLs). Enable only where data is synthetic. |
+| `consoleMethods` | `['warn','error']` | `log`/`info`/`debug` are high-volume; opt in for a full staging trail. |
+| `globalErrors` | `true` | `window.onerror` + `unhandledrejection`. Pure signal. |
+| `maxArgLength` | `2000` | Per-argument truncation. |
+| `maxEventsPerMinute` | `200` | Rolling cap so a render-loop cannot flood transports or the Clarity event quota. A suppressed-count warning is emitted when the window rolls. |
+
+Original console output is always preserved — capture wraps, never replaces. A re-entrancy guard stops the obvious infinite loop (patched console → logger → `ConsoleTransport` → patched console), and the provider restores the original methods on unmount.
+
+#### Recommended staging configuration
+
+Everything captured, on the environment where the data is synthetic:
+
+```ts
+logging: {
+  level: 'debug',
+  clarity: {
+    projectId: process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID, // unset ⇒ Clarity off
+    environment: 'staging',
+    level: 'info',        // lets vox.op.* operation metrics through; 'error' would drop them
+    upgradeOnError: true,
+  },
+  capture: {
+    console: true,
+    consoleMethods: ['log', 'info', 'debug', 'warn', 'error'],
+    globalErrors: true,
+    maxEventsPerMinute: 500,
+  },
+  // Full log/metric retention — Clarity is a behavioural tool, not a log backend.
+  loki: { enabled: true, url: process.env.LOKI_URL! },
+}
+```
+
+Note the `clarity.level: 'info'` — at the default `'error'` floor, `vox.op.*` operation-timing events are filtered out before they become Clarity events. For searchable log/metric **retention**, pair Clarity with Loki or OTel: those transports have a real log sink and no environment gate, whereas Clarity can only record name-only events plus tags.
 
 ## Migrating from v1 (`@arcaai/vox/compat`)
 

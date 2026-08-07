@@ -11,6 +11,7 @@
 
 import type { ILogTransport, LogEntry, HighlightTransportConfig, LogLevel } from '../types';
 import { LOG_LEVEL_VALUES } from '../types';
+import { isProductionEnvironment } from '../environment';
 
 /**
  * Highlight.io SDK interface (loaded dynamically)
@@ -56,7 +57,9 @@ interface HighlightOptions {
  * exposure. This transport is therefore default-disabled and refuses to
  * initialise unless ALL of the following are true:
  *
- *   1. `process.env.NODE_ENV !== 'production'` (or `process` is undefined).
+ *   1. The deployment is not production — `config.environment` is a
+ *      non-production stage name (e.g. `'staging'`), or, when `environment` is
+ *      undeclared, `NODE_ENV !== 'production'`.
  *   2. The caller explicitly opted in via `config.enabled === true`.
  *   3. A non-empty `projectId` (Highlight DSN equivalent) is supplied.
  *
@@ -103,9 +106,13 @@ export class HighlightTransport implements ILogTransport {
   static isAllowedToActivate(config: HighlightTransportConfig): boolean {
     if (!config.enabled) return false;
     if (!config.projectId || config.projectId.trim().length === 0) return false;
-    // `process` may be undefined in some browser bundles — treat as non-prod.
-    const env = typeof process !== 'undefined' ? process.env?.NODE_ENV : undefined;
-    if (env === 'production') return false;
+    // Deployment STAGE, not build mode. A staging deploy is built with
+    // NODE_ENV=production by every browser bundler, so the previous
+    // NODE_ENV-only test silently disabled this transport on staging — where
+    // the telemetry is most wanted. Production remains blocked either way:
+    // an explicit `environment: 'production'`, or an undeclared environment
+    // with NODE_ENV=production, both fail closed. See `environment.ts`.
+    if (isProductionEnvironment(config.environment)) return false;
     return true;
   }
 

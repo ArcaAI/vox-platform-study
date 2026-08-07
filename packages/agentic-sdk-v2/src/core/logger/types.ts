@@ -271,6 +271,52 @@ export interface HighlightTransportConfig {
 }
 
 /**
+ * Microsoft Clarity transport configuration
+ *
+ * Clarity is a session-replay/heatmap product and Microsoft does not offer a
+ * HIPAA BAA for it. The transport is fail-closed and refuses to activate in
+ * production — see `ClarityTransport` for the full activation contract.
+ */
+export interface ClarityTransportConfig {
+  /**
+   * Microsoft Clarity project ID. **This is the on/off switch**: supply one and
+   * Clarity is enabled, omit it (or leave it empty) and the transport is never
+   * constructed. Lets a developer wire it straight to an env var —
+   * `projectId: process.env.CLARITY_PROJECT_ID` — where an unset variable
+   * simply means "off".
+   */
+  projectId?: string;
+  /**
+   * Optional explicit override. Leave undefined to let `projectId` decide.
+   * Set to `false` to force the transport off while keeping the ID configured
+   * (a kill switch); `true` is redundant but accepted, and still requires a
+   * `projectId` because Clarity cannot initialise without one.
+   */
+  enabled?: boolean;
+  /** Minimum log level. Defaults to `error` — Clarity is not a log sink. */
+  level?: LogLevel;
+  /** Service name (sent as the `vox.service` tag) */
+  serviceName?: string;
+  /** Environment name (sent as the `vox.environment` tag) */
+  environment?: string;
+  /**
+   * Send the user id to Clarity's Identify API. Defaults to false — even a
+   * non-PHI user id is a personal identifier handed to a third party.
+   */
+  identifyUsers?: boolean;
+  /**
+   * Start with cookie consent denied and wait for the host app to grant it
+   * via `setConsent(true)`. Defaults to false (Clarity's own default).
+   */
+  requireConsent?: boolean;
+  /**
+   * Ask Clarity to prioritise recording sessions in which an error occurred.
+   * Defaults to false.
+   */
+  upgradeOnError?: boolean;
+}
+
+/**
  * Grafana/Loki transport configuration
  */
 export interface LokiTransportConfig {
@@ -344,6 +390,8 @@ export interface LoggerConfig {
   console?: ConsoleTransportConfig;
   /** Highlight.io transport */
   highlight?: HighlightTransportConfig;
+  /** Microsoft Clarity transport */
+  clarity?: ClarityTransportConfig;
   /** Grafana Loki transport */
   loki?: LokiTransportConfig;
   /** OpenTelemetry transport */
