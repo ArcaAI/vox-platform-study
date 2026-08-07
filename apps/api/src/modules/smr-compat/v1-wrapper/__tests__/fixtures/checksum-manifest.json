@@ -1,0 +1,30 @@
+{
+  "system_prompt_base": {
+    "sha256": "ac7cbff697bf91d6d2d7d00cf7d2c8cd266948dd5cacb37478bcd31034e82364",
+    "bytes": 1464
+  },
+  "user_prompt_template": {
+    "sha256": "e322b23fba40846904bc11c33025cb948c5e2dc65768a5f062ad534fcb3d4ddd",
+    "bytes": 1840
+  },
+  "prior_context_prefix": {
+    "sha256": "3e27c925249b312edaedd577c66d969908c4c769f17f0b7d893cec4cc45631ca",
+    "bytes": 70
+  },
+  "json_rules_with_schema_template": {
+    "sha256": "89cea88b9f95d658d8bee6cb2181f2a84ce87a357d7dd74ba44829818c9b8b57",
+    "bytes": 1118
+  },
+  "json_rules_without_schema_template": {
+    "sha256": "0beafca7cc6767da840396e7a9036182329e05633d5614ae032fabdcdbe0f583",
+    "bytes": 1152
+  },
+  "json_response_spec_fallback": {
+    "sha256": "fd5c50d7aa259dc655263f7741c6e3c919384faff6130b7c3b659080b947e457",
+    "bytes": 143
+  },
+  "dept_visit_schemas_all_22": {
+    "sha256": "5233b803a2848464fa839ac4656aedb6dd9823a17d1f493b8c9c4bf010ef363d",
+    "bytes": 12294
+  }
+}

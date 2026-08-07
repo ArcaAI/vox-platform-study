@@ -16,6 +16,34 @@
  * "capture these department-relevant clinical areas" guidance — while the client
  * still receives the generic summary object. General/Medicine keeps the standard
  * conversational prompt (v1 special-case, `summary_service.py:253-265`).
+ *
+ * **Re-verified against the LIVE v1 pod 2026-08-07** (TASK-634 D-06; Rancher
+ * `c-9lwv8`/`apps`/`apps-smr-84c9774997-zhp2l` — never a local checkout, which
+ * has diverged — see `docs/implementation/TASK-634-.../README.md` §2.2).
+ * `resolveDepartmentKey` below is the UNION of v1's two alias tables, which
+ * are themselves NOT identical to each other in production:
+ *   - `rheum`/`neuro`/`heme` and the bare `breast&endocrine` (no spaces)
+ *     spelling exist ONLY in `prompts_json.py:get_department_schema`'s table,
+ *     not in `prompt_selector.py:select_prompt_template`'s.
+ *   - `breast`/`endocrine`/`breast endocrine`/`breast/endocrine` exist ONLY
+ *     in `prompt_selector.py`'s table, not in `prompts_json.py`'s.
+ *   - `orthopedics`/`orthopaedics`/`ortho`, `surgery`/`general surgery`, and
+ *     `medicine`/`general medicine`/`internal medicine` are identical in both.
+ * v2 has no equivalent of v1's per-string python branching (v1 doesn't match
+ * against a DB row at all — it dispatches straight to a python module), so
+ * there is no single v1 table to port byte-for-byte; taking the union is the
+ * closest analogue and only ever WIDENS recognition versus either v1 path.
+ *
+ * ⚠ One entry does NOT come from either v1 table: bare `general` → `medicine`.
+ * Neither `select_prompt_template`'s `("medicine", "general medicine",
+ * "internal medicine")` nor `get_department_schema`'s `("general medicine",
+ * "internal medicine")` matches unqualified `"general"` — in the pod, that
+ * value falls through to `None` (CATCHALL_SOAP), the SAME outcome as a
+ * missing department. This entry was already present before this
+ * verification pass and is preserved deliberately: v2 wants free-text
+ * `"General"` to resolve to the tenant's Medicine department rather than the
+ * generic fallback (see `matchTenantDepartment`'s asymmetry tests). Flagged
+ * here for the owner — this is a v2 design choice, not a v1 port.
  */
 
 /** The 7 canonical v1 departments that carry dept×visit templates. */
@@ -29,9 +57,12 @@ function norm(text?: string | null): string {
 }
 
 /**
- * Port of v1 `_normalize_visit_type` (`prompt_selector.py:47-66`).
- * Any referral/new/initial/consult synonym (and the empty/unknown default) →
- * `new_referral`; any follow-up/review/revisit synonym → `followup`.
+ * Port of v1 `_normalize_visit_type` (`prompt_selector.py:47-66`, byte-identical
+ * to `prompts_json.py:249-261`). Any referral/new/initial/consult synonym
+ * (and the empty/unknown default) → `new_referral`; any follow-up/review/revisit
+ * synonym → `followup`. Re-verified against the live v1 pod 2026-08-07
+ * (TASK-634 D-06) — term list and precedence order match exactly, including
+ * the misspellings (`referal`, `refferal`, `refer`, `referr`, `refd`).
  */
 export function normalizeVisitType(visitType?: string | null): VisitTypeKey {
   let vt = norm(visitType);
@@ -67,11 +98,20 @@ export function normalizeVisitType(visitType?: string | null): VisitTypeKey {
  * spellings (`prompt_selector.py:113-152`). Returns the canonical
  * `DepartmentKey`, or `null` when the department is not one of the 7 v1
  * departments (→ the generic conversational path).
+ *
+ * Re-verified against the live v1 pod 2026-08-07 (TASK-634 D-06) — see the
+ * module header for exactly which alias came from which of the two
+ * (non-identical) v1 tables, and the one entry (`general` bare) that comes
+ * from neither and is a deliberate v2 addition.
  */
 export function resolveDepartmentKey(department?: string | null): DepartmentKey | null {
   const dept = norm(department);
   if (!dept) return null;
 
+  // NOTE: bare "general" is NOT a v1 alias (verified — see module header);
+  // "general medicine"/"internal medicine"/"medicine" are. Preserved
+  // deliberately as a v2 design choice so free-text "General" resolves to
+  // the tenant's Medicine department instead of the generic fallback.
   if (['general', 'general medicine', 'internal medicine', 'medicine'].includes(dept)) return 'medicine';
   if (
     ['breast & endocrine', 'breast and endocrine', 'breast&endocrine', 'breast endocrine', 'breast/endocrine', 'breast', 'endocrine'].includes(dept)

@@ -63,6 +63,14 @@ export class DepartmentRepository extends Repository<DepartmentEntity, Departmen
 
   /**
    * Find all departments for a tenant
+   *
+   * Sorted `name asc, id asc` (TASK-634 D-05): a name-only sort leaves rows
+   * with the same name ordered non-deterministically by Postgres. ArcaAI
+   * carries two rows named "General Medicine" — without the `id` tiebreak,
+   * `matchTenantDepartment`'s "first hit wins" could resolve either row on
+   * any given query, and the two rows carry completely different prompt
+   * configuration. `id` (UUIDv7) is unique, so the secondary key always
+   * yields a total order.
    */
   async findAllByTenant(tenantId: string, options?: { includeDisabled?: boolean }): Promise<DepartmentEntity[]> {
     const filters: Record<string, unknown> = { tenantId };
@@ -71,7 +79,7 @@ export class DepartmentRepository extends Repository<DepartmentEntity, Departmen
     }
     return this.findAll({
       filters,
-      sort: [{ name: 'asc' }],
+      sort: [{ name: 'asc' }, { id: 'asc' }],
     });
   }
 }

@@ -43,6 +43,38 @@ describe('resolveDepartmentKey (v1 get_department_schema + select_prompt_templat
     expect(resolveDepartmentKey('')).toBeNull();
     expect(resolveDepartmentKey(undefined)).toBeNull();
   });
+
+  // TASK-634 D-06 — verified against the live v1 pod (Rancher c-9lwv8/apps/
+  // apps-smr-84c9774997-zhp2l): "rheum"/"neuro"/"heme" only exist in
+  // prompts_json.py's get_department_schema table, NOT in prompt_selector.py's
+  // select_prompt_template table. v2 unions both, so all three still resolve.
+  it('resolves synonyms that exist in only one of v1s two (non-identical) alias tables', () => {
+    expect(resolveDepartmentKey('rheum')).toBe('rheumatology');
+    expect(resolveDepartmentKey('neuro')).toBe('neurology');
+    expect(resolveDepartmentKey('heme')).toBe('hematology');
+    // "breast&endocrine" (no spaces) is prompts_json.py-only; "breast"/"endocrine"/
+    // "breast endocrine"/"breast/endocrine" are prompt_selector.py-only.
+    expect(resolveDepartmentKey('breast&endocrine')).toBe('breast_endocrine');
+    expect(resolveDepartmentKey('breast')).toBe('breast_endocrine');
+    expect(resolveDepartmentKey('endocrine')).toBe('breast_endocrine');
+  });
+
+  // CRITICAL ASYMMETRY (D-06): verified the pod does NOT alias bare "general"
+  // to medicine in either table (only "general medicine"/"internal medicine"
+  // do) — an unqualified "general" falls through to None/CATCHALL there, same
+  // as a missing department. v2 deliberately preserves treating "General" as
+  // Medicine anyway (a v2 design choice, not a v1 port) — this test locks that
+  // choice in so it isn't "corrected" into matching v1 byte-for-byte by accident.
+  it('resolves the literal string "General" to medicine (v2 design choice, not a v1 alias)', () => {
+    expect(resolveDepartmentKey('General')).toBe('medicine');
+  });
+
+  it('returns null (not medicine) for a missing/empty department — the asymmetry', () => {
+    expect(resolveDepartmentKey(undefined)).toBeNull();
+    expect(resolveDepartmentKey(null)).toBeNull();
+    expect(resolveDepartmentKey('')).toBeNull();
+    expect(resolveDepartmentKey('   ')).toBeNull();
+  });
 });
 
 describe('selectDeptTemplate', () => {

@@ -1,7 +1,28 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { PreSummaryRequest } from '../dto/pre-summary.request';
 import type { SessionDataDto } from '../dto/session-data.dto';
-import { buildPreSummaryPrompt, buildSummaryPrompt } from '../summary-prompt.builder';
+import {
+  buildPreSummaryPrompt,
+  buildSummaryPrompt,
+  PRE_SUMMARY_TEMPLATE_VARIABLES,
+  renderPreSummaryTemplate,
+  resolveV1LanguageName,
+  V1_PRE_SUMMARY_SYSTEM_PROMPT,
+  V1_PRE_SUMMARY_TEMPLATE,
+} from '../summary-prompt.builder';
+
+/**
+ * v1 corpus extracted from the RUNNING v1 SMR pod (TASK-634 §2.10) — never
+ * retyped. `rendered-*.txt` were produced by Python's own `str.format()` over
+ * `template.txt`, i.e. v1's interpolation engine, so they are goldens for what
+ * v2 must assemble.
+ */
+const V1_FIXTURES = join(__dirname, 'fixtures', 'v1-pre-summary');
+const readFixture = (name: string): string => readFileSync(join(V1_FIXTURES, name), 'utf8');
+const sha256 = (value: string): string => createHash('sha256').update(value, 'utf8').digest('hex');
 
 const baseSession = (): SessionDataDto =>
   ({
@@ -68,9 +89,13 @@ describe('buildSummaryPrompt', () => {
     expect(user).toContain('2026-05 Cardiology: BP review.');
   });
 
-  it('uses the English summary directive for ml (Malayalam handled by upstream translation)', () => {
-    const { system } = buildSummaryPrompt(baseSession(), { language: 'ml' });
-    expect(system).toContain('Write the summary in English');
+  // TASK-634 D-11 — `ml` used to be told to answer in English. v1 states the
+  // language by NAME (`LANGUAGE_MAP`), it does not carry an English-only directive.
+  it('states the output language by v1 name (en → English, ml → Malayalam)', () => {
+    expect(buildSummaryPrompt(baseSession(), { language: 'en' }).system).toContain('Language: English');
+    const ml = buildSummaryPrompt(baseSession(), { language: 'ml' }).system;
+    expect(ml).toContain('Language: Malayalam');
+    expect(ml).not.toContain('in English');
   });
 
   it('emits a JSON-only instruction so structured output round-trips', () => {
@@ -118,43 +143,128 @@ describe('buildSummaryPrompt', () => {
   });
 });
 
-describe('buildPreSummaryPrompt', () => {
+describe('buildPreSummaryPrompt (v1 1:1 — TASK-634 D-08)', () => {
+  /** Mirrors the kwargs used to render `rendered-full.txt` with Python `str.format`. */
   const req = (): PreSummaryRequest =>
     ({
       current_department: 'Cardiology',
       visit_type: 'Follow-up',
       age: '58',
+      dob: '1968-03-14',
       gender: 'male',
-      formatted_vitals: 'BP 142/88, HR 78',
+      formatted_vitals: 'BP 142/88 mmHg, HR 78 bpm',
       formatted_test_results: 'Troponin normal; LDL 150',
       formatted_previous_visits: '2026-05-10 Cardiology: HTN review.',
       language: 'en',
     }) as PreSummaryRequest;
 
-  it('routes department + visit type and folds all pre-formatted context', () => {
+  it('carries the v1 pre-summary body byte-exact (sha256 309a9cd1…, 3091 B)', () => {
+    expect(sha256(V1_PRE_SUMMARY_TEMPLATE)).toBe('309a9cd137925d3469df5b52ed3cc4ff5647f4d21b67b8736ba2cf21496a4e32');
+    expect(Buffer.byteLength(V1_PRE_SUMMARY_TEMPLATE, 'utf8')).toBe(3091);
+    expect(V1_PRE_SUMMARY_TEMPLATE).toBe(readFixture('template.txt'));
+  });
+
+  it('carries the v1 pre-summary system prompt byte-exact (sha256 277d94d5…, 336 B)', () => {
+    expect(sha256(V1_PRE_SUMMARY_SYSTEM_PROMPT)).toBe('277d94d56d3dc687d8fd1b52fef9a87aa3101846ac748cbe3672946ebb56d19d');
+    expect(Buffer.byteLength(V1_PRE_SUMMARY_SYSTEM_PROMPT, 'utf8')).toBe(336);
+    expect(V1_PRE_SUMMARY_SYSTEM_PROMPT).toBe(readFixture('system.txt'));
+  });
+
+  it('stays byte-identical to the seeded ArcaAI pre-summary template', () => {
+    // The seeded tenant row (PRE_SUMMARY_CONTENT) and this in-code default are
+    // two copies of the same v1 body — a request may render either. Read the
+    // seed SOURCE (not @arcaai/database runtime code) so drift fails here.
+    const seedSource = readFileSync(
+      join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        '..',
+        '..',
+        '..',
+        'packages',
+        'database',
+        'src',
+        'prisma',
+        'db_main',
+        'seed',
+        '07b-arcaai-clinical-content.ts',
+      ),
+      'utf8',
+    );
+    const escaped = JSON.stringify(V1_PRE_SUMMARY_TEMPLATE).slice(1, -1);
+    // The body carries no quote/backslash characters, so the double-quoted and
+    // prettier's single-quoted literal differ only in the delimiter.
+    expect(seedSource.includes(`"${escaped}"`) || seedSource.includes(`'${escaped}'`)).toBe(true);
+  });
+
+  it('declares exactly the nine v1 template variables', () => {
+    expect([...PRE_SUMMARY_TEMPLATE_VARIABLES]).toEqual([
+      'current_department',
+      'visit_type',
+      'safe_age',
+      'safe_dob',
+      'safe_gender',
+      'safe_vitals',
+      'formatted_test_results',
+      'formatted_previous_visits',
+      'language_name',
+    ]);
+    // Every placeholder present in the verbatim body must be declared.
+    const found = new Set([...V1_PRE_SUMMARY_TEMPLATE.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => m[1]));
+    expect([...found].sort()).toEqual([...PRE_SUMMARY_TEMPLATE_VARIABLES].sort());
+  });
+
+  it('GOLDEN — renders byte-identically to v1 for a fully populated request', () => {
     const { system, user } = buildPreSummaryPrompt(req());
-    expect(system).toContain('Cardiology');
-    expect(system).toContain('Follow-up');
-    expect(user).toContain('BP 142/88, HR 78');
-    expect(user).toContain('Troponin normal; LDL 150');
-    expect(user).toContain('2026-05-10 Cardiology: HTN review.');
-    expect(user).toContain('Age: 58');
+    expect(system).toBe(readFixture('system.txt'));
+    expect(user).toBe(readFixture('rendered-full.txt'));
+    expect(user).not.toMatch(/\{[A-Za-z_]/);
   });
 
-  it('defaults department to General and visit type to Medical examination', () => {
-    const { system } = buildPreSummaryPrompt({} as PreSummaryRequest);
-    expect(system).toContain('General');
-    expect(system).toContain('Medical examination');
+  it("GOLDEN — an empty request renders v1's defaults byte-identically", () => {
+    const { user } = buildPreSummaryPrompt({} as PreSummaryRequest);
+    expect(user).toBe(readFixture('rendered-defaults.txt'));
   });
 
-  it('folds the governed pre-summary instruction when provided (TASK-592)', () => {
-    const { system } = buildPreSummaryPrompt(req(), { governedInstruction: 'Highlight cardiac risk stratification.' });
-    expect(system).toContain('Highlight cardiac risk stratification');
+  it('GOLDEN — a Malayalam request renders "Language: Malayalam" (D-11)', () => {
+    const { user } = buildPreSummaryPrompt({ ...req(), language: 'ml-IN' } as PreSummaryRequest);
+    expect(user).toBe(readFixture('rendered-ml.txt'));
+    expect(user).toContain('- Language: Malayalam');
+    expect(user).not.toContain('Language: English');
+  });
+
+  it('maps language codes through v1 LANGUAGE_MAP (base subtag; unknown → English)', () => {
+    expect(resolveV1LanguageName('en')).toBe('English');
+    expect(resolveV1LanguageName('ml')).toBe('Malayalam');
+    expect(resolveV1LanguageName('ml-IN')).toBe('Malayalam');
+    expect(resolveV1LanguageName('fr')).toBe('English');
+    expect(resolveV1LanguageName(undefined)).toBe('English');
+  });
+
+  it('substitutes in ONE pass — a brace inside a value is never re-interpreted', () => {
+    const rendered = renderPreSummaryTemplate('Dept={current_department} Vitals={safe_vitals}', {
+      current_department: '{safe_vitals}',
+      formatted_vitals: 'BP 120/80',
+    } as PreSummaryRequest);
+    expect(rendered).toBe('Dept={safe_vitals} Vitals=BP 120/80');
+  });
+
+  it('leaves unknown placeholders untouched rather than blanking them', () => {
+    expect(renderPreSummaryTemplate('{not_a_v1_variable}', {} as PreSummaryRequest)).toBe('{not_a_v1_variable}');
+  });
+
+  it('uses the governed tenant template as the body when one resolves (TASK-592)', () => {
+    const { user } = buildPreSummaryPrompt(req(), { governedInstruction: 'Highlight {current_department} risk stratification.' });
+    expect(user).toBe('Highlight Cardiology risk stratification.');
   });
 
   // TASK-599 — DNA writing style folded into the pre-summary system prompt.
-  it('folds the DNA writing style when dnaStyleText is provided', () => {
-    const { system } = buildPreSummaryPrompt(req(), { dnaStyleText: 'Bullet points, minimal prose.' });
+  it('appends the DNA writing style to the system prompt, leaving the body untouched', () => {
+    const { system, user } = buildPreSummaryPrompt(req(), { dnaStyleText: 'Bullet points, minimal prose.' });
+    expect(system.startsWith(readFixture('system.txt'))).toBe(true);
     expect(system).toContain('Bullet points, minimal prose.');
+    expect(user).toBe(readFixture('rendered-full.txt'));
   });
 });

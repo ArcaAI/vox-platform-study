@@ -98,7 +98,30 @@ interface ClinicalTemplateSpec {
   departmentId: string | null;
   scope: PromptTemplateScope;
   tags: string[];
+  /** Declared placeholder names, when the body carries v1 `{single-brace}` variables. */
+  variables?: Prisma.InputJsonValue;
 }
+
+/**
+ * The nine v1 pre-summary placeholders, in the order they first appear in the
+ * body. Declared here (not imported) because `packages/database` must not depend
+ * on `apps/api`; the runtime substituter that consumes them is
+ * `renderPreSummaryTemplate` / `PRE_SUMMARY_TEMPLATE_VARIABLES` in
+ * apps/api/src/modules/smr-compat/summary-prompt.builder.ts. A test there asserts
+ * the declared set equals the placeholders actually present in the body, so the
+ * two lists cannot silently diverge.
+ */
+const PRE_SUMMARY_VARIABLES = [
+  'current_department',
+  'visit_type',
+  'safe_age',
+  'safe_dob',
+  'safe_gender',
+  'safe_vitals',
+  'formatted_test_results',
+  'formatted_previous_visits',
+  'language_name',
+] as const;
 
 const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
   {
@@ -245,6 +268,7 @@ const PRE_SUMMARY_SPEC: ClinicalTemplateSpec = {
   departmentId: null,
   scope: 'TENANT_DEFAULT',
   tags: ['arcaai', 'clinical', 'pre-summary', 'smr-v1'],
+  variables: [...PRE_SUMMARY_VARIABLES],
 };
 
 const ALL_SPECS: ClinicalTemplateSpec[] = [...SUMMARY_SPECS, PRE_SUMMARY_SPEC];
@@ -287,7 +311,7 @@ export const ARCAAI_CLINICAL_TEMPLATES = ALL_SPECS.map((spec) => ({
   category: 'SUMMARY' as PromptTemplateCategory,
   status: 'APPROVED' as PromptTemplateStatus,
   scope: spec.scope,
-  variables: null as Prisma.InputJsonValue | null,
+  variables: (spec.variables ?? null) as Prisma.InputJsonValue | null,
   currentVersionNumber: 1,
   // Pin the approval to v1 so the resolver serves the PromptVersion snapshot
   // (never the mutable content row) — avoids the F-02 unpinned-latest caveat.

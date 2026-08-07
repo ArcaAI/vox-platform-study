@@ -66,7 +66,8 @@ describe('mapGenerateToV1Summary', () => {
   });
 
   it('recovers the JSON object from surrounding prose (unterminated think / preamble / trailing notes)', () => {
-    const withProse = '<think>reasoning with no closing tag and a stray { brace\nHere is the summary:\n{"chief_complaint":"x","summary":"y"}\nHope that helps.';
+    const withProse =
+      '<think>reasoning with no closing tag and a stray { brace\nHere is the summary:\n{"chief_complaint":"x","summary":"y"}\nHope that helps.';
     const res = mapGenerateToV1Summary(withProse, { sessionId: 's', useEnhanced: false, createdAt: CREATED });
     expect(res.summary.chief_complaint).toBe('x');
     expect(res.summary.summary).toBe('y');
@@ -126,33 +127,35 @@ describe('mapGenerateToV1Summary', () => {
 });
 
 describe('parseSections / mapGenerateToV1PreSummary (v1 5-section guarantee)', () => {
+  // TASK-634 D-09 — v1's LIVE order + naming (`Latest Dept Note`), verified
+  // against the running v1 pod's `display_titles`.
   const EXPECTED_TITLES = [
     'Confirmed & Provisional Diagnoses',
-    'Plan of Care (Latest Department Note)',
-    'Investigations (Latest Department Note)',
-    'Medications Prescribed (Latest Department Note)',
+    'Investigations (Latest Dept Note)',
     'Diagnostics & Trends',
+    'Plan of Care (Latest Dept Note)',
+    'Medications Prescribed (Latest Dept Note)',
   ];
 
   const allPresent = [
     '**Confirmed & Provisional Diagnoses**',
     '- Essential hypertension, on amlodipine 5mg',
     '- Hyperlipidemia',
-    '**Plan of Care (Latest Department Note):**',
-    '- Continue current medications',
-    '**Investigations (Latest Department Note)**',
+    '**Investigations (Latest Dept Note)**',
     '- ECG normal',
-    '**Medications Prescribed (Latest Department Note)**',
-    '- Amlodipine 5mg OD',
     '**Diagnostics & Trends**',
     '- Weight stable',
+    '**Plan of Care (Latest Dept Note):**',
+    '- Continue current medications',
+    '**Medications Prescribed (Latest Dept Note)**',
+    '- Amlodipine 5mg OD',
   ].join('\n');
 
   it('emits all 5 canonical sections IN ORDER when all are present', () => {
     const structured = parseSections(allPresent);
     expect(structured.sections.map((s) => s.title)).toEqual(EXPECTED_TITLES);
     expect(structured.sections[0].items).toEqual([{ text: 'Essential hypertension, on amlodipine 5mg' }, { text: 'Hyperlipidemia' }]);
-    expect(structured.sections[3].items).toEqual([{ text: 'Amlodipine 5mg OD' }]);
+    expect(structured.sections[4].items).toEqual([{ text: 'Amlodipine 5mg OD' }]);
   });
 
   it('fills missing sections with a single "Not available" item, preserving order', () => {
@@ -160,11 +163,11 @@ describe('parseSections / mapGenerateToV1PreSummary (v1 5-section guarantee)', (
     const structured = parseSections(someMissing);
     expect(structured.sections.map((s) => s.title)).toEqual(EXPECTED_TITLES);
     expect(structured.sections[0].items).toEqual([{ text: 'Hypertension' }]);
+    expect(structured.sections[2].items).toEqual([{ text: 'Weight stable' }]);
     // The 3 unparsed sections are filled.
     expect(structured.sections[1].items).toEqual([{ text: 'Not available' }]);
-    expect(structured.sections[2].items).toEqual([{ text: 'Not available' }]);
     expect(structured.sections[3].items).toEqual([{ text: 'Not available' }]);
-    expect(structured.sections[4].items).toEqual([{ text: 'Weight stable' }]);
+    expect(structured.sections[4].items).toEqual([{ text: 'Not available' }]);
   });
 
   it('returns all 5 sections as "Not available" when nothing parses', () => {
