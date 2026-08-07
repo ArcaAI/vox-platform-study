@@ -7,11 +7,15 @@ import { AiTaskDefaultService } from './ai-task-default.service';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
   providers: [
+    AiTaskDefaultService,
     {
       provide: IAiTaskDefaultService,
-      useClass: AiTaskDefaultService,
+      // useExisting, not useClass — useClass would construct a second
+      // AiTaskDefaultService instance instead of aliasing the one above. No
+      // cache/listener/timer state here, so the duplicate was harmless, but
+      // aliasing is free.
+      useExisting: AiTaskDefaultService,
     },
-    AiTaskDefaultService,
   ],
   exports: [IAiTaskDefaultService, AiTaskDefaultService],
 })

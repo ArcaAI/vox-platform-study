@@ -8,11 +8,15 @@ import { TenantIdpConfigService } from './tenant-idp-config.service';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, IdpResolverServiceModule],
   providers: [
+    TenantIdpConfigService,
     {
       provide: ITenantIdpConfigService,
-      useClass: TenantIdpConfigService,
+      // useExisting, not useClass — useClass would construct a second
+      // TenantIdpConfigService instance instead of aliasing the one above.
+      // No cache/listener/timer state here, so the duplicate was harmless,
+      // but aliasing is free.
+      useExisting: TenantIdpConfigService,
     },
-    TenantIdpConfigService,
   ],
   exports: [ITenantIdpConfigService, TenantIdpConfigService],
 })

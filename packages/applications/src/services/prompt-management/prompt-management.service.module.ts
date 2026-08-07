@@ -29,11 +29,16 @@ import { EvalServiceModule } from '../eval/eval.service.module';
     EvalServiceModule,
   ],
   providers: [
+    PromptManagementService,
     {
       provide: IPromptManagementService,
-      useClass: PromptManagementService,
+      // useExisting, not useClass — useClass would construct a second
+      // PromptManagementService instance instead of aliasing the one above.
+      // Its `smrServiceUrl` field is readonly config resolved once in the
+      // constructor, not mutable state, so the duplicate was harmless, but
+      // aliasing is free.
+      useExisting: PromptManagementService,
     },
-    PromptManagementService,
   ],
   exports: [IPromptManagementService, PromptManagementService],
 })

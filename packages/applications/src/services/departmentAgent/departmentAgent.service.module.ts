@@ -20,11 +20,17 @@ import { EvalServiceModule } from '../eval/eval.service.module';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, EventEmitterModule, ClsModule, EvalServiceModule],
   providers: [
+    DepartmentAgentService,
     {
       provide: IDepartmentAgentService,
-      useClass: DepartmentAgentService,
+      // useExisting, not useClass — useClass would construct a second
+      // DepartmentAgentService instance instead of aliasing the one above.
+      // DepartmentAgentService itself holds no state and isn't the
+      // self-scheduling piece here (that's AgentTemplateResyncCronService,
+      // provided once, below), so the duplicate was harmless — aliasing is
+      // still free.
+      useExisting: DepartmentAgentService,
     },
-    DepartmentAgentService,
     AgentTemplateResyncService,
     AgentTemplateResyncCronService,
   ],

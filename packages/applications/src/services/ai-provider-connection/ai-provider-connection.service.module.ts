@@ -10,7 +10,18 @@ import { AiProviderConnectionService } from './ai-provider-connection.service';
 // (smr-proxy) until TASK-572 repoints.
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule],
-  providers: [{ provide: IProviderConnectionService, useClass: AiProviderConnectionService }, AiProviderConnectionService],
+  providers: [
+    AiProviderConnectionService,
+    {
+      provide: IProviderConnectionService,
+      // useExisting, not useClass — useClass would construct a second
+      // AiProviderConnectionService instance instead of aliasing the one
+      // above. It holds no credential cache of its own (resolution goes
+      // through Vault/repositories per call), so the duplicate was
+      // harmless, but aliasing is free.
+      useExisting: AiProviderConnectionService,
+    },
+  ],
   exports: [IProviderConnectionService, AiProviderConnectionService],
 })
 export class AiProviderConnectionServiceModule {}

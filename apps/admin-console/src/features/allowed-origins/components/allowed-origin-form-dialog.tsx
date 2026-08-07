@@ -131,16 +131,36 @@ function AllowedOriginForm({
         <Label htmlFor={`${uid}-origin`}>
           Origin <span className="text-destructive">*</span>
         </Label>
+        {/*
+          type="text", NOT type="url". Browser-native URL validation rejects
+          every non-exact form this field must accept — `new URL()` throws on
+          `*`, on `https://*.bcmch.org:*` and on `http://localhost:*` (a `*`
+          port is not a valid URL). With type="url" the form silently refuses
+          to submit them, so wildcard patterns and the allow-all token were
+          reachable only through the API or a seed.
+
+          Origin SYNTAX is decided server-side by `normalizeOrigin` /
+          `normalizeOriginPattern`, which is authoritative and returns a clear
+          error — the input must not second-guess it with a weaker rule.
+        */}
         <Input
           id={`${uid}-origin`}
-          type="url"
+          type="text"
+          inputMode="url"
           value={values.origin}
           onChange={(event) => setField('origin', event.target.value)}
           required
           placeholder="https://app.example.org"
           autoComplete="off"
+          spellCheck={false}
+          aria-describedby={`${uid}-origin-hint`}
           className="font-mono text-sm"
         />
+        <p id={`${uid}-origin-hint`} className="text-muted-foreground text-xs">
+          Exact origin (<code className="font-mono">https://app.example.org</code>), a wildcard pattern (
+          <code className="font-mono">https://*.example.org:*</code> — subdomains at any depth, never the apex), or{' '}
+          <code className="font-mono">*</code> to admit every origin for this tenant.
+        </p>
       </div>
 
       <div className="flex flex-col gap-2">

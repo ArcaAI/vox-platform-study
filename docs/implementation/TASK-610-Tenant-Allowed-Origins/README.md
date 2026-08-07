@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | `Pending` — plan awaiting approval |
+| **Status** | `Review` — implemented, gates green, runtime-verified against a booted gateway |
 | **Type** | `feature` + `bugfix` (closes a live CORS hole and a red test) |
 | **Branch** | `dev-2.1` |
 | **Owner decisions taken** | Governance = **global-admin only**; production `https://` catch-all = **closed in this ticket** |
@@ -791,7 +791,31 @@ The lane tiering earned its keep here. Every lane's own suite was green when W4-
 - **#6 — `http://localhost:5173` stays in the production seed.** The owner named it explicitly as a day-1 required origin. W4-R is right that it is a production allow-list entry with no production purpose; removing it is the owner's call to make, not the reviewer's to impose.
 - **Migrations have only been applied via `psql`.** This dev database is `db push`-managed (68 prior migrations absent from `_prisma_migrations`), so `migrate dev` demanded a destructive reset. Both migration folders are hand-authored for CI/prod `migrate deploy` and must get a clean-database `migrate deploy` run before shipping.
 - **D-8's revert changes an already-applied migration.** Anyone who ran `db:migrate` since `7703e40f` will hit a checksum mismatch and need `prisma migrate resolve`.
-- **Cross-node propagation** remains event + timer, not sub-second. A dedicated Redis channel is a follow-up.
+- **Cross-node propagation** remains event + timer, not sub-second. A dedicated Redis channel is
+  specified in **TASK-631 — Unified cache-invalidation bus**, deliberately deferred there rather than
+  rushed here: it touches `SecretsService` (Vault rotation) and `AppSettingsService`, and a silent
+  miss in either is a security event.
+
+### 5.4 The `useClass` aliasing defect (found during the config fetch/cache/refresh review)
+
+`OriginRegistryServiceModule` aliased its symbol token with `useClass` rather than `useExisting`.
+**`useClass` CONSTRUCTS A SECOND INSTANCE.** Two live registries resulted: both ran `onModuleInit`,
+both answered `@OnEvent('app-settings.cache-refreshed')` — two full table scans per settings refresh —
+and since every consumer injects the SYMBOL, the second index was read by nobody.
+
+The dangerous part was the `@Cron` backstop. It registers under the fixed name
+`origin-registry-backstop-refresh`, and two instances cannot both hold it; whichever registered first
+won. **If that was the phantom, the watchdog whose entire purpose is bounding how long a REVOKED
+origin stays live was refreshing an index no request path reads** — a staleness guarantee that
+silently did nothing.
+
+Fixed with `useExisting`, verified empirically rather than by inspection: the steady-state refresh
+cadence at second `:45` went **2 → 1**.
+
+**The generalisable rule:** `useClass` on a token whose class is ALSO provided directly yields a
+duplicate instance, not an alias. Harmless for a stateless helper; a live defect for anything holding
+state, scheduling a timer, listening for events, or registering under a fixed name. A repo-wide audit
+for the same shape is part of this change.
 
 ---
 

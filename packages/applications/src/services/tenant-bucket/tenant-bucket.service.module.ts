@@ -8,11 +8,16 @@ import { S3ServiceModule } from '../baseServices/storage/s3/s3.service.module';
 @Module({
   imports: [CommonServiceModule, CoreDatabaseModule, S3ServiceModule],
   providers: [
+    TenantBucketService,
     {
       provide: ITenantBucketService,
-      useClass: TenantBucketService,
+      // useExisting, not useClass — useClass would construct a second
+      // TenantBucketService instance instead of aliasing the one above. Its
+      // `new Map()` usages are local variables inside method bodies (e.g.
+      // building a tree), not instance state, so the duplicate was
+      // harmless, but aliasing is free.
+      useExisting: TenantBucketService,
     },
-    TenantBucketService,
   ],
   exports: [ITenantBucketService, TenantBucketService],
 })

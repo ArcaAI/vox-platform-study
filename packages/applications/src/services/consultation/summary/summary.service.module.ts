@@ -44,12 +44,17 @@ import { UsageLedgerServiceModule } from '../../usageLedger/usage-ledger.service
     UsageLedgerServiceModule,
   ],
   providers: [
-    {
-      provide: ISummaryService,
-      useClass: SummaryService,
-    },
     PromptAssemblyService,
     SummaryService,
+    {
+      provide: ISummaryService,
+      // useExisting, not useClass — useClass would construct a second
+      // SummaryService instance instead of aliasing the one above. Its
+      // fields (smrServiceUrl/nlpServiceUrl) are readonly config resolved
+      // once in the constructor, not mutable state, so the duplicate was
+      // harmless, but aliasing is free.
+      useExisting: SummaryService,
+    },
   ],
   exports: [ISummaryService, SummaryService],
 })
