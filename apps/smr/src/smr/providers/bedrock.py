@@ -95,7 +95,8 @@ class BedrockProvider:
         # bearer token to one client instance, so this registers a scoped
         # token-provider component directly (see _StaticBearerTokenProvider).
         session = botocore.session.Session()
-        session._components.register_component(
+        # botocore-stubs doesn't type this private attribute.
+        session._components.register_component(  # type: ignore[attr-defined]
             "token_provider", _StaticBearerTokenProvider(override.api_key.get_secret_value())
         )
         return boto3.Session(botocore_session=session).client(

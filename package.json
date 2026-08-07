@@ -267,7 +267,7 @@
         "build:core": "turbo run build --filter=@arcaai/logger --filter=@arcaai/exceptions --filter=@arcaai/database --filter=@arcaai/domains --filter=@arcaai/applications",
         "── TEST — aggregate suites ───────────────────────": "",
         "test": "turbo run test",
-        "test:unit": "dotenv -e .env.test -- vitest run --exclude '**/integration/**' --exclude '**/e2e/**'",
+        "test:unit": "dotenv -e .env.test -- vitest run --exclude '**/integration/**' --exclude '**/e2e/**' && pnpm --filter @arcaai/ui --filter @arcaai/vox --filter @arcaai/compat-playground --filter @arcaai/admin-console test",
         "test:unit:watch": "dotenv -e .env.test -- vitest --exclude '**/integration/**' --exclude '**/e2e/**'",
         "test:unit:ui": "dotenv -e .env.test -- vitest --ui --exclude '**/integration/**' --exclude '**/e2e/**'",
         "test:unit:cov": "dotenv -e .env.test -- vitest run --coverage --exclude '**/integration/**' --exclude '**/e2e/**'",

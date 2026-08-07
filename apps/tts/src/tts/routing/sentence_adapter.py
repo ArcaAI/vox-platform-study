@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 
 from tts.core.logging import get_logger
 from tts.providers.base import AudioChunk
@@ -18,7 +18,7 @@ from tts.routing.chunking import chunk_text, split_confirmed
 
 logger = get_logger(__name__)
 
-SynthSentence = Callable[[str], AsyncIterator[AudioChunk]]
+SynthSentence = Callable[[str], AsyncGenerator[AudioChunk, None]]
 
 
 class _Done:

@@ -18,7 +18,7 @@ wav/mp3 for multi-sentence text is a follow-up — cloud fallback (Azure) serves
 from __future__ import annotations
 
 import base64
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 import httpx
 
@@ -56,7 +56,7 @@ class SarvamProvider:
     async def health(self) -> bool:
         return bool(self._config.api_key.get_secret_value())
 
-    async def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]:
+    async def synthesize(self, req: SynthesisRequest) -> AsyncGenerator[AudioChunk, None]:
         payload = {
             "text": req.text,
             "target_language_code": self._target_language(req.locale),

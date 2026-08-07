@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Ensure valid Vault AppRole credentials in .env.test (automatic, idempotent)
+# Ensure the test Vault is fully provisioned for .env.test (automatic, idempotent)
+#   1. a valid AppRole role_id/secret_id (so VaultSecretsProvider.boot() succeeds)
+#   2. the platform kv secrets synced FROM .env.test (so the DB seed's pepper /
+#      tokens match what the API reads at runtime — otherwise seeded API keys 401)
 # ============================================================================
 # The test API/services run SECRETS_PROVIDER=vault (real Vault Transit — see
 # scripts/test-setup.sh). VaultSecretsProvider.boot() FAILS CLOSED if the
@@ -93,4 +96,21 @@ set_env VAULT_WRAPPED_SECRET_ID ""   # raw path (blank the prod-only wrapped id)
 AUDIT_PATH="$(grep -E '^VAULT_AUDIT_LOG_PATH=' "${ENV_FILE}" | tail -n1 | cut -d= -f2- | tr -d '"')"
 : > "${AUDIT_PATH:-/tmp/hope-vault-audit-test.log}" 2>/dev/null || true
 
-green "→ .env.test Vault creds refreshed (role_id ${ROLE_ID:0:8}…, fresh raw secret_id)."
+# Sync the platform kv secrets (API_KEY_PEPPER, JWT_SECRET_KEY, service tokens,
+# storage credentials, …) FROM .env.test INTO Vault kv-v2. This is NOT optional
+# housekeeping: the dev Vault bootstrap seeds GENERATED values (e.g. a random
+# 64-hex API_KEY_PEPPER), but the test DB seed hashes every API key with the
+# .env.test pepper. If the two disagree, the API validates seeded keys against
+# the wrong pepper and rejects them all with 401 (the whole `auth-guard-behavior`
+# / service-account e2e class), and any other seed↔runtime secret drifts too.
+# vault-seed-secrets.sh is idempotent and exits 0 even when some fail-closed
+# secrets are deliberately absent from the env file.
+if [ -x "${SCRIPT_DIR}/vault-seed-secrets.sh" ]; then
+  yellow "→ syncing platform kv secrets from ${ENV_FILE##*/} into Vault…"
+  if ! "${SCRIPT_DIR}/vault-seed-secrets.sh" --env-file "${ENV_FILE}"; then
+    red "ERROR: failed to sync kv secrets into Vault — seeded API keys would be rejected (401)."
+    exit 1
+  fi
+fi
+
+green "→ .env.test Vault provisioned (role_id ${ROLE_ID:0:8}…, fresh raw secret_id, kv secrets synced)."

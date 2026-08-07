@@ -221,7 +221,12 @@ test.describe('AiTaskDefault admin surface (cross-tenant + guardrail governance)
     const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
     const resp = await request.put(`${BASE}/row?taskKey=guardrail.validate&tenantId=${SYSTEM_TENANT_ID}`, {
       headers: { Authorization: `Bearer ${globalAdminToken}`, 'If-Match': '"999"' },
-      data: { modelSlug: 'granite-guardian-4.1-8b' },
+      // A unique configJson stamp guarantees a real change regardless of
+      // execution order against the sibling test above (same row, same
+      // modelSlug) — without it the no-op guard can win the race and return
+      // 400 before the OCC compare ever runs (fullyParallel has no serial
+      // ordering across tests in this describe block).
+      data: { modelSlug: 'granite-guardian-4.1-8b', configJson: { e2eStamp: `stale-if-match-${Date.now()}` } },
     });
     expect(resp.status()).toBe(412);
   });

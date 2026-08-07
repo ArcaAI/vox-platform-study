@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 
 import numpy as np
 from hope_runtime_models import ModelCache
@@ -153,7 +153,7 @@ class IndicParlerProvider:
                     prompt_input_ids=prompt_ids.input_ids,
                     prompt_attention_mask=prompt_ids.attention_mask,
                 )
-            return audio.cpu().to(torch.float32).numpy().squeeze()
+            return np.asarray(audio.cpu().to(torch.float32).numpy().squeeze())
 
         return _generate
 
@@ -164,7 +164,7 @@ class IndicParlerProvider:
     async def health(self) -> bool:
         return True
 
-    async def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]:
+    async def synthesize(self, req: SynthesisRequest) -> AsyncGenerator[AudioChunk, None]:
         generate = await self._get_generate()
         description = self._describe(req.locale)
         sentences = chunk_text(req.text, req.locale, _MAX_SENTENCE_CHARS)

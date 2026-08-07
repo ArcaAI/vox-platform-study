@@ -7,7 +7,7 @@ SMR provider pattern (Protocol + registry) adapted for audio synthesis.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
@@ -80,7 +80,7 @@ class TTSEngine(Protocol):
 
     async def health(self) -> bool: ...
 
-    def synthesize(self, req: SynthesisRequest) -> AsyncIterator[AudioChunk]: ...
+    def synthesize(self, req: SynthesisRequest) -> AsyncGenerator[AudioChunk, None]: ...
 
 
 @runtime_checkable

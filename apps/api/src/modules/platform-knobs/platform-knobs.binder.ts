@@ -1,7 +1,7 @@
 import { ILoggingService, IOriginRegistry, LogLevel, TenantSettingsService } from '@arcaai/applications';
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { setOriginEnforcementResolver, setOriginRegistryResolver } from '../../cors.config';
+import { isOriginEnforcementEnabled, setOriginEnforcementResolver, setOriginRegistryResolver } from '../../cors.config';
 
 /**
  * Applies the PRE-BOOTSTRAP platform knobs whose readers exist before the Nest
@@ -39,6 +39,14 @@ export class PlatformKnobsBinder implements OnModuleInit {
 
   /** The level last pushed, so a no-op refresh does not log. */
   private appliedLogLevel: string | null = null;
+
+  /**
+   * The origin-enforcement posture last ANNOUNCED, so a refresh that changed
+   * nothing does not re-log. Same no-op suppression as `appliedLogLevel` above,
+   * and `null` ("never announced") is deliberately distinct from `false`
+   * ("announced as disabled") — the first resolution must always produce a line.
+   */
+  private loggedOriginEnforcement: boolean | null = null;
 
   constructor(
     @Optional() private readonly tenantSettings?: TenantSettingsService,
@@ -123,17 +131,75 @@ export class PlatformKnobsBinder implements OnModuleInit {
    */
   private installOriginEnforcementResolver(): void {
     if (!this.tenantSettings) {
-      this.logger.warn('No settings resolver wired — origin enforcement stays OFF: every origin is admitted for every tenant (TASK-610 §4C default)');
+      // Definitive, and knowable right now: with no settings service there is
+      // no resolver to install, no `app-settings.cache-refreshed` will ever
+      // fire, and `isOriginEnforcementEnabled()` answers false forever. So this
+      // is the one path that announces the posture at init — announcing it here
+      // is not a guess, it is the final answer.
+      this.reportOriginEnforcementPosture();
       return;
     }
     const settings = this.tenantSettings;
     setOriginEnforcementResolver(() => settings.resolvePlatform<boolean>('origin.enforcementEnabled').value === true);
   }
 
+  /**
+   * ANNOUNCE the effective origin-enforcement posture — Deliverable 4: an
+   * operator must never have to read the database to discover the platform is
+   * permissive.
+   *
+   * WHY THIS LIVES HERE AND NOT IN `bootstrap()`. It used to be a one-shot
+   * reading taken in `main.ts` right after `NestFactory.create()`. At that
+   * instant the AppSettings cache is not warm, so `resolvePlatform` answers with
+   * the descriptor default — and a gateway with `origin.enforcementEnabled =
+   * true` in the database announced "ENFORCEMENT IS DISABLED" at boot, then
+   * correctly refused an unregistered origin seconds later. The behaviour was
+   * never wrong (the resolver is lazy, so every REQUEST saw the true value);
+   * only the announcement was, which is worse than silence — it is a signal that
+   * lies about a security posture, in a ticket whose §5.2 lesson is exactly that.
+   *
+   * Driven by `app-settings.cache-refreshed` because that event is emitted by
+   * `AppSettingsService.cacheAppSettings()` — including the INITIAL warm — so it
+   * is the earliest moment the value is trustworthy. Announcing on CHANGE rather
+   * than once means the line stays true for the life of the process: an operator
+   * flipping the switch gets a fresh line with no restart and no polling.
+   *
+   * Both directions are `warn`. A security-posture TRANSITION is worth an
+   * operator's attention either way, and change-gating means this fires at most
+   * twice in a normal process lifetime — it cannot become background noise.
+   * `isOriginEnforcementEnabled()` is the same accessor the three enforcement
+   * points read, so the announcement cannot disagree with the behaviour.
+   */
+  private reportOriginEnforcementPosture(): void {
+    const enabled = isOriginEnforcementEnabled();
+    if (enabled === this.loggedOriginEnforcement) return;
+    this.loggedOriginEnforcement = enabled;
+
+    if (enabled) {
+      this.logger.warn({
+        message:
+          'ORIGIN ENFORCEMENT IS ENABLED — browser origins must be registered as TenantAllowedOrigin rows; unregistered origins are refused (grep `origin_registry_miss`), and a cross-tenant origin binding returns 404.',
+        setting: 'origin.enforcementEnabled',
+        originEnforcement: 'enabled',
+      });
+      return;
+    }
+
+    this.logger.warn({
+      message:
+        'ORIGIN ENFORCEMENT IS DISABLED — every origin is admitted for every tenant (including SYSTEM/GLOBAL). ' +
+        'The TenantAllowedOrigin allow-list, the origin↔tenant binding guard and the WebSocket CSWSH check are all dormant. ' +
+        'Authentication and tenancy are the only controls in force. Set `origin.enforcementEnabled` to true to enforce (no redeploy needed).',
+      setting: 'origin.enforcementEnabled',
+      originEnforcement: 'DISABLED',
+    });
+  }
+
   /** Re-apply after every settings-cache refresh (local write or peer invalidation). */
   @OnEvent('app-settings.cache-refreshed')
   onSettingsRefreshed(): void {
     this.applyLogLevel();
+    this.reportOriginEnforcementPosture();
   }
 
   private applyLogLevel(): void {

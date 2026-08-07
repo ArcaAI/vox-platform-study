@@ -259,8 +259,8 @@ describe('PlaygroundLlmScreen', () => {
       system_prompt: 'You are a clinical summarizer.',
       provider: 'azure-openai',
       model: 'gpt-5',
-      temperature: 0.2,
-      max_tokens: 1024,
+      temperature: 0.1,
+      max_tokens: 32768,
       stream: false,
     });
     expect(screen.getByText('42 prompt \u00b7 128 completion \u00b7 170 total')).toBeDefined();
@@ -448,7 +448,7 @@ describe('PlaygroundLlmScreen', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Streaming mode' }));
     await generateWithPrompt('Summarize');
     await waitFor(() => expect(generateBody).toBeDefined());
-    expect(generateBody).toEqual({ prompt: 'Summarize', temperature: 0.2, max_tokens: 1024, stream: false });
+    expect(generateBody).toEqual({ prompt: 'Summarize', temperature: 0.1, max_tokens: 32768, stream: false });
   });
 
   it('offers a model omit option that drops the model from the body (HarnessPolicy cascade)', async () => {
@@ -470,7 +470,7 @@ describe('PlaygroundLlmScreen', () => {
     await generateWithPrompt('Summarize');
     await waitFor(() => expect(generateBody).toBeDefined());
     // model is absent; the gateway cascade resolves the {provider, model} pair.
-    expect(generateBody).toEqual({ prompt: 'Summarize', provider: 'azure-openai', temperature: 0.2, max_tokens: 1024, stream: false });
+    expect(generateBody).toEqual({ prompt: 'Summarize', provider: 'azure-openai', temperature: 0.1, max_tokens: 32768, stream: false });
   });
 
   it('shows the request-summary strip with the effective settings and the live task id', async () => {
@@ -486,8 +486,8 @@ describe('PlaygroundLlmScreen', () => {
     const strip = (text: string) => screen.getByText((_, element) => element?.textContent === text);
     expect(strip('Provider azure-openai')).toBeDefined();
     expect(strip('model gpt-5')).toBeDefined();
-    expect(strip('temp 0.2')).toBeDefined();
-    expect(strip('max-tokens 1024')).toBeDefined();
+    expect(strip('temp 0.1')).toBeDefined();
+    expect(strip('max-tokens 32768')).toBeDefined();
     expect(screen.getByText('streaming')).toBeDefined();
 
     await generateWithPrompt('Summarize');

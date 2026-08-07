@@ -18,7 +18,7 @@ def resample(samples: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
     """Resample float samples; no-op when rates match."""
     if src_rate == dst_rate:
         return samples
-    return soxr.resample(samples, src_rate, dst_rate)
+    return np.asarray(soxr.resample(samples, src_rate, dst_rate))
 
 
 def float_to_pcm16(samples: np.ndarray) -> bytes:

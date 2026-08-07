@@ -14,7 +14,7 @@ import re
 try:  # pysbd is a base dependency, but stay resilient if absent.
     import pysbd
 except ImportError:  # pragma: no cover
-    pysbd = None  # type: ignore[assignment]
+    pysbd = None
 
 # Split after . ! ? ; or the Malayalam danda ।, only when followed by whitespace.
 _BOUNDARY_RE = re.compile(r"(?<=[.!?;।])\s+")
