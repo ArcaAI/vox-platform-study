@@ -97,6 +97,25 @@ export interface SellRate {
   version: number;
 }
 
+/**
+ * Supersede one SELL rate row (TASK-638 §7). Dimensions are INHERITED — a
+ * supersede reprices a row, it never re-shapes it, so only the price, the
+ * effective instant and the book label are settable.
+ */
+export interface SupersedeSellRateRequest {
+  /** Successor price, integer micros as a non-negative decimal string. */
+  unitPriceMicros: string;
+  /** ISO 8601 instant the successor takes effect = the instant the old row closes. */
+  effectiveFrom: string;
+  /** Book label of the successor row, e.g. "2026-09-01-commercial-v3". */
+  bookVersion: string;
+}
+
+export interface SellRateSupersede {
+  closed: SellRate;
+  successor: SellRate;
+}
+
 export interface ComputeDraftRequest {
   tenantId: string;
   /** UTC month, YYYY-MM. */

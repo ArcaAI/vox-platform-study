@@ -7,7 +7,9 @@ import type {
   ComputeDraftRequest,
   InvoiceListParams,
   SellRate,
+  SellRateSupersede,
   SpendStatus,
+  SupersedeSellRateRequest,
 } from './types';
 
 /**
@@ -60,4 +62,23 @@ export async function voidInvoice(id: string, etag: string): Promise<BillingInvo
 
 export function addAdjustment(id: string, body: AddAdjustmentRequest): Promise<BillingInvoice> {
   return postJson(`${INVOICES}/${id}/adjustments`, body);
+}
+
+/**
+ * Supersede a rate row: close it at the successor's `effectiveFrom` and insert
+ * the successor, atomically (TASK-638 §7). If-Match carries the row version the
+ * list read returned — missing → 428, drift → 412.
+ *
+ * A supersede REPRICES; it never re-shapes. Dimensions are inherited server-side,
+ * so there is deliberately no way to edit capability/unit/provider here — that
+ * would be a new row plus a supersede, two auditable intents rather than one
+ * ambiguous edit.
+ */
+export async function supersedeSellRate(id: string, version: number, body: SupersedeSellRateRequest): Promise<SellRateSupersede> {
+  const result = await request<SellRateSupersede>(`${RATE_CARD}/${id}/supersede`, {
+    method: 'POST',
+    body,
+    etag: `"${version}"`,
+  });
+  return result.data;
 }

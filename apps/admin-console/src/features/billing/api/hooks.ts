@@ -4,9 +4,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { WithEtag } from '@/shared/api';
 
-import { addAdjustment, computeDraft, finalizeInvoice, getInvoice, getInvoices, getRateCard, getSpendStatus, voidInvoice } from './client';
+import { addAdjustment, computeDraft, finalizeInvoice, getInvoice, getInvoices, getRateCard, getSpendStatus, supersedeSellRate, voidInvoice } from './client';
 import { billingKeys } from './keys';
-import type { AddAdjustmentRequest, BillingInvoice, BillingInvoiceSummary, ComputeDraftRequest, InvoiceListParams, SellRate, SpendStatus } from './types';
+import type {
+  AddAdjustmentRequest,
+  BillingInvoice,
+  BillingInvoiceSummary,
+  ComputeDraftRequest,
+  InvoiceListParams,
+  SellRate,
+  SpendStatus,
+  SupersedeSellRateRequest,
+} from './types';
 
 /**
  * TanStack Query hooks for Billing (TASK-615 #15b). Mutations invalidate the
@@ -53,4 +62,12 @@ export function useVoidInvoice() {
 export function useAddAdjustment() {
   const invalidate = useInvalidateBilling();
   return useMutation({ mutationFn: ({ id, body }: { id: string; body: AddAdjustmentRequest }) => addAdjustment(id, body), onSuccess: invalidate });
+}
+
+export function useSupersedeSellRate() {
+  const invalidate = useInvalidateBilling();
+  return useMutation({
+    mutationFn: ({ id, version, body }: { id: string; version: number; body: SupersedeSellRateRequest }) => supersedeSellRate(id, version, body),
+    onSuccess: invalidate,
+  });
 }
