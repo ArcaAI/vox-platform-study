@@ -9,7 +9,7 @@ import { Input } from '@arcaai/ui/components/shadcn/input';
 import { Label } from '@arcaai/ui/components/shadcn/label';
 
 import { GatewayError } from '@/shared/api';
-import { formatMicros } from '@/shared/format';
+import { formatMicros, formatUnitRate } from '@/shared/format';
 import { OccConflictAlert } from '@/shared/occ/occ-alert';
 
 import { useSupersedeSellRate } from '../api/hooks';
@@ -40,6 +40,11 @@ function SupersedeRateForm({ rate, onClose }: { rate: SellRate; onClose: () => v
   const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
   const [bookVersion, setBookVersion] = useState('');
 
+  // A PLAN_FEE is a whole-period amount; a USAGE_UNIT row is a sub-cent
+  // per-unit rate that needs the 6-decimal formatter to be legible at all.
+  const priceOf = (value: string) =>
+    rate.rowKind === 'PLAN_FEE' ? formatMicros(value, rate.currency) : formatUnitRate(value, rate.currency);
+
   const parsedMicros = /^\d{1,30}$/.test(micros.trim()) ? micros.trim() : null;
   const canSubmit = parsedMicros !== null && effectiveFrom !== '' && bookVersion.trim() !== '' && !supersede.isPending;
 
@@ -59,7 +64,7 @@ function SupersedeRateForm({ rate, onClose }: { rate: SellRate; onClose: () => v
       },
       {
         onSuccess: () => {
-          toast.success(`Rate superseded — ${formatMicros(parsedMicros, rate.currency)} from ${effectiveFrom}`);
+          toast.success(`Rate superseded — ${priceOf(parsedMicros)} from ${effectiveFrom}`);
           onClose();
         },
         onError: (err) => {
@@ -88,7 +93,7 @@ function SupersedeRateForm({ rate, onClose }: { rate: SellRate; onClose: () => v
                 ['Unit', rate.unit ?? '—'],
                 ['Provider', rate.provider ?? 'any'],
                 ['Plan tier', rate.planTier ?? 'any'],
-                ['Current rate', `${rate.unitPriceMicros}µ · ${formatMicros(rate.unitPriceMicros, rate.currency)}`],
+                ['Current rate', `${rate.unitPriceMicros}µ · ${priceOf(rate.unitPriceMicros)}`],
               ] as Array<[string, string]>
             ).map(([label, value]) => (
               <div key={label} className="contents">
@@ -112,7 +117,7 @@ function SupersedeRateForm({ rate, onClose }: { rate: SellRate; onClose: () => v
               aria-describedby="supersede-micros-help"
             />
             <p id="supersede-micros-help" className="text-muted-foreground text-xs">
-              {parsedMicros ? `= ${formatMicros(parsedMicros, rate.currency)} per ${rate.unit ?? 'period'}` : 'Whole micros only (1e-6 USD), no decimal point.'}
+              {parsedMicros ? `= ${priceOf(parsedMicros)} per ${rate.unit ?? 'period'}` : 'Whole micros only (1e-6 USD), no decimal point.'}
             </p>
           </div>
 
