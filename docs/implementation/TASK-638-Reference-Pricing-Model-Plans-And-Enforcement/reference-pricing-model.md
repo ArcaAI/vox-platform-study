@@ -6,7 +6,7 @@ LLM prices move monthly; re-confirm against the live pages before any figure rea
 customer-facing rate card. Currency USD. `unitPriceMicros` = integer micros (1e-6 USD) per
 ONE unit (token, audio-second, character), matching `AiPriceBook`.
 
-> **Everything past §3 is a PROPOSAL for owner ratification** — it sets real customer prices.
+> **§4–§6 are RATIFIED and SEEDED** (book `2026-08-08-commercial-v1`, 2026-08-08). The two caveats that still travel with them: provider list prices are ~Jan-2026 knowledge, and self-hosted COST assumes ~90% GPU utilization (see §4).
 
 ---
 
@@ -59,9 +59,11 @@ For meters where the platform self-hosts (STT/TTS/embeddings, and LLM on the bui
 
 ---
 
-## 4. PROPOSED COST rows (supersede the `2026-08-06-placeholder-v1` card)
+## 4. COST rows — RATIFIED + SEEDED (book `2026-08-08-commercial-v1`)
 
-Integer micros per unit. `provider: null` = self-hosted catch-all. **RATIFY before seeding.**
+Integer micros per unit. `provider: null` = self-hosted catch-all. Seeded 2026-08-08 — 26 COST rows.
+
+> **Utilization caveat that travels with these numbers:** the self-hosted rows assume **~90% GPU utilization**. A clinical duty cycle is bursty (0.3–0.6) and cost/unit scales INVERSELY with utilization, so these rows **understate** self-hosted COGS at a realistic duty cycle — the margin-flattering direction. STT self-hosted is ~30µ at 60% and ~60µ at 30%. Changing the assumption is one number per affected row.
 
 | plane | capability | provider | model | unit | µ/unit | basis |
 |---|---|---|---|---|---|---|
@@ -81,18 +83,19 @@ Integer micros per unit. `provider: null` = self-hosted catch-all. **RATIFY befo
 | COST | EMBEDDING | null (lm-studio) | — | INPUT_TOKEN | 0 | self-hosted ~free |
 | COST | EMBEDDING | openai | text-embedding-3-small | INPUT_TOKEN | 1 | $0.02/1M (round up) |
 
-## 5. PROPOSED SELL rows (5× markup — ratified — off the stated managed reference)
+## 5. SELL rows — RATIFIED + SEEDED (book `2026-08-08-commercial-v1`)
 
 Tier-agnostic overage defaults (`planTier: null`); add per-tier premium later if wanted (≤15%, D12). Each row is `5 × managed-reference COST`; the reference is named so you can adjust the basis without changing the 5×.
 
 | plane | capability | unit | µ/unit | 5× of (managed reference) |
 |---|---|---|---|---|
 | SELL | STT | SESSION_SECOND | **500** | ~$0.0001/s Whisper-API-class (100µ) × 5 → ~$0.03/min. Covers the Azure-fallback COST (278µ) at ~1.8× and self-hosted (20µ) at 25×. |
-| SELL | STT | AUDIO_SECOND | 0 | recorded for COGS/repricing; billing is on SESSION_SECOND (OQ1) |
+| SELL | STT | AUDIO_SECOND | **500** | **CORRECTED at seeding time.** This row originally said 0 — wrong: `BILLABLE_UNITS[STT]` includes AUDIO_SECOND and OQ1 bills BATCH transcription on it (only *streaming* audio-seconds are excluded upstream). A 0 would have made batch transcription free. Seeded at parity with streaming. |
 | SELL | LLM | INPUT_TOKEN | **5** | default SYSTEM model gpt-4.1-mini input ($0.40–1.0/1M ≈ 1µ) × 5 = ~$5/1M |
 | SELL | LLM | OUTPUT_TOKEN | **10** | gpt-4.1-mini output ($1.60/1M ≈ 2µ) × 5 = ~$10/1M |
 | SELL | LLM | CACHE_READ_TOKEN | 1 | 0.1× SELL input (≈0.5µ, rounded up) |
 | SELL | LLM | CACHE_WRITE_TOKEN | 8 | ~1.5× SELL input |
+| SELL | LLM | REASONING_TOKEN | **10** | **ADDED at seeding time** — this table omitted it. All billable token kinds pool into `monthlyLlmTokens` and the invoice engine FAILS CLOSED on a missing SELL rate, so a reasoning token in overage would have aborted the entire draft. Priced as output (market norm). |
 | SELL | TTS | CHARACTER | **80** | Azure neural 16µ × 5 = ~$80/1M char |
 | SELL | NLP | TEXT_UNIT | **50** | per 100-char NER unit (self-hosted GLiNER; no managed market — nominal) |
 | SELL | EMBEDDING | INPUT_TOKEN | 1 | openai 3-small $0.02/1M ×5 ≈ 0.1µ → 1µ integer floor |
@@ -170,9 +173,9 @@ Mutation-verified: reversing the tier order makes managed overage bill at the 50
 ## 7. Decisions — status
 1. ✅ **`target_gross_margin` = 80% → 5× markup** — RATIFIED 2026-08-08.
 2. ✅ **Plan fees + consultation ceilings** — RATIFIED 2026-08-08 ($50/50, $100/250, ENTERPRISE negotiated). Seeded.
-3. ⏳ **The §5 SELL per-unit rates** — computed at 5× off named managed references; confirm the references (esp. the STT SESSION_SECOND cost-basis caveat and premium-model rows). **Not yet seeded** — the placeholder overage rows still stand.
+3. ✅ **The §5 SELL per-unit rates** — RATIFIED + SEEDED 2026-08-08 as book `2026-08-08-commercial-v1` (16 SELL rows). Two defects were caught and fixed while seeding: STT AUDIO_SECOND was 0 (would have made batch free) and REASONING_TOKEN was missing (would have aborted drafts).
 4. ✅ **Intensity constants** — §6, applied with ×2 headroom; revisit after a shadow-metering cycle.
-5. ⏳ **Self-hosted COST utilization assumption** (30/60/90%) → the self-hosted COST rows. **Not yet seeded.**
+5. ⚠️ **Self-hosted COST utilization** — seeded at **~90%**, the value the §4 table encoded. This is the OPTIMISTIC end: at the 0.3–0.6 clinical duty cycle the doc itself predicts, self-hosted COGS is 1.5–3× higher, so reported margin is flattered. Revisit once real utilization is measured; each row carries the scaling in its note.
 6. ✅ ENTERPRISE stays unlimited (negotiated per contract).
 7. ✅ **Managed-fallback posture** — RESOLVED 2026-08-08: SYSTEM default stays self-hosted, managed ASR is an add-on. Locked by a seed-invariant guard (§6.2).
 8. ✅ **Provider-aware rating** — RESOLVED 2026-08-08: allowance allocation is **self-hosted-first** (`SELF_HOSTED → BYOK → CLOUD`). Implemented and mutation-verified (§6.3); managed ASR now bills at 1,390µ/session-second while BYOK stays on the baseline.
