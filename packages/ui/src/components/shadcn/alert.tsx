@@ -9,7 +9,11 @@ const alertVariants = cva(
     variants: {
       variant: {
         default: 'bg-card text-card-foreground',
-        destructive: 'text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive/90',
+        // The description tint MUST stay on `--destructive-strong` at full opacity:
+        // `text-destructive/90` computes to 4.08:1 on the card surface and fails WCAG 1.4.3.
+        // It is applied here (not on AlertDescription) because the `*:` variant
+        // (:is(.alert > *), specificity 0-2-0) outranks any class on the child.
+        destructive: 'text-destructive bg-card [&>svg]:text-current *:data-[slot=alert-description]:text-destructive-strong',
       },
     },
     defaultVariants: {
