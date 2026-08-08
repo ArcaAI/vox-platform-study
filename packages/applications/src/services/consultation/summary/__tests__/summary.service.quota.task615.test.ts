@@ -24,6 +24,7 @@ function makeService(overrides: { entitlements?: unknown } = {}) {
     findCaseNotes: vi.fn().mockResolvedValue([{ id: 'note-1', content: 'case note text' }]),
     findTranscripts: vi.fn().mockResolvedValue([{ id: 't-1', content: 'transcript text' }]),
     findLatestPreSummary: vi.fn().mockResolvedValue(null),
+  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
     create: vi.fn().mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() }),
     encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
   };
@@ -181,6 +182,7 @@ describe('SummaryService — TASK-615 WS-H LLM-token quota pre-flight', () => {
         findCaseNotes: vi.fn().mockResolvedValue([{ id: 'note-1', content: 'x' }]),
         findTranscripts: vi.fn().mockResolvedValue([{ id: 't-1', content: 'x' }]),
         findLatestPreSummary: vi.fn().mockResolvedValue(null),
+  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
         create: vi.fn().mockResolvedValue({ id: 'ctx-new', content: 'S', createdAt: new Date(), updatedAt: new Date() }),
         encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
       };

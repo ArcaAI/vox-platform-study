@@ -27,6 +27,9 @@ export interface CreateSummaryMetaProps extends BaseEntityFactoryCreateProps {
   qualityScore?: ISummaryMetaEntity['qualityScore'];
   promptResolvedFrom?: ISummaryMetaEntity['promptResolvedFrom'];
   resolvedPromptId?: ISummaryMetaEntity['resolvedPromptId'];
+  // TASK-635 RF-6 — session-agent lineage (populated by C5's finalize path).
+  sessionAgentId?: ISummaryMetaEntity['sessionAgentId'];
+  sessionAgentPromptVersion?: ISummaryMetaEntity['sessionAgentPromptVersion'];
   // Clinical-harness sensor scores + citation provenance
   entityFaithfulnessScore?: ISummaryMetaEntity['entityFaithfulnessScore'];
   coverageScore?: ISummaryMetaEntity['coverageScore'];
@@ -82,6 +85,8 @@ export class SummaryMetaFactory {
       qualityScore: props.qualityScore ?? null,
       promptResolvedFrom: props.promptResolvedFrom ?? null,
       resolvedPromptId: props.resolvedPromptId ?? null,
+      sessionAgentId: props.sessionAgentId ?? null,
+      sessionAgentPromptVersion: props.sessionAgentPromptVersion ?? null,
       entityFaithfulnessScore: props.entityFaithfulnessScore ?? null,
       coverageScore: props.coverageScore ?? null,
       ragTriadScore: props.ragTriadScore ?? null,

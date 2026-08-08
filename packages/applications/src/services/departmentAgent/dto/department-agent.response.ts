@@ -33,6 +33,26 @@ export class DepartmentAgentResponse {
   @ApiPropertyOptional({ description: 'Golden set id' })
   goldenSetId?: string;
 
+  // TASK-635 RF-4 capability-keyed bindings + live-loop config. Null on every
+  // agent that has not opted in, which is the entire seeded catalogue.
+  @ApiPropertyOptional({ description: 'Summary template for NEW-PATIENT visits (null ⇒ promptTemplateId)', nullable: true })
+  newPatientTemplateId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Summary template for REVISIT visits (null ⇒ promptTemplateId)', nullable: true })
+  revisitTemplateId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Pre-summary template for native department-scoped requests', nullable: true })
+  preSummaryTemplateId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Live-summarization prompt template (null ⇒ SYSTEM live default)', nullable: true })
+  livePromptTemplateId?: string | null;
+
+  @ApiPropertyOptional({ description: 'Live-loop tool plan (null ⇒ platform default)', nullable: true })
+  toolConfig?: Record<string, unknown> | null;
+
+  @ApiPropertyOptional({ description: 'Per-task LLM override, keyed live/finalize (null ⇒ tenant AiTaskDefault)', nullable: true })
+  llmOverrides?: Record<string, unknown> | null;
+
   @ApiProperty({ description: 'Whether this is the department default agent' })
   isDefault: boolean;
 

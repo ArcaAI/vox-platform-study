@@ -12,7 +12,11 @@ import { EvalPromotionGateService } from '../eval-promotion-gate.service';
 const TENANT = 'tenant-1';
 const TPL = 'tpl-1';
 
-const mockAgentRepository = { findAll: vi.fn() };
+// TASK-635 R5 — the gate now looks agents up through `findByBoundTemplate`,
+// which ORs across the base binding AND the four capability-keyed columns, so a
+// template bound only via (say) `revisitTemplateId` can no longer escape the
+// gate at approve time.
+const mockAgentRepository = { findByBoundTemplate: vi.fn() };
 const mockEvalRunService = { runGoldenSet: vi.fn() };
 const mockEffectiveSettings = { resolveEffective: vi.fn() };
 
@@ -26,7 +30,7 @@ describe('EvalPromotionGateService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEffectiveSettings.resolveEffective.mockResolvedValue({ value: 'block' });
-    mockAgentRepository.findAll.mockResolvedValue([agent()]);
+    mockAgentRepository.findByBoundTemplate.mockResolvedValue([agent()]);
     mockEvalRunService.runGoldenSet.mockResolvedValue({
       run: { id: 'run-1' },
       passed: true,
@@ -81,7 +85,7 @@ describe('EvalPromotionGateService', () => {
   });
 
   it('proceeds with a warning when no bound agent references a golden set', async () => {
-    mockAgentRepository.findAll.mockResolvedValue([agent({ goldenSetId: null })]);
+    mockAgentRepository.findByBoundTemplate.mockResolvedValue([agent({ goldenSetId: null })]);
     const verdict = await service.evaluatePromotion({ tenantId: TENANT, promptTemplateId: TPL, trigger: 'approve' });
     expect(verdict.evaluated).toBe(false);
     expect(verdict.blocked).toBe(false);
@@ -90,7 +94,7 @@ describe('EvalPromotionGateService', () => {
   });
 
   it('scopes to a single agent for a pin re-point', async () => {
-    mockAgentRepository.findAll.mockResolvedValue([agent({ id: 'agent-1', goldenSetId: 'set-1' }), agent({ id: 'agent-2', goldenSetId: 'set-2' })]);
+    mockAgentRepository.findByBoundTemplate.mockResolvedValue([agent({ id: 'agent-1', goldenSetId: 'set-1' }), agent({ id: 'agent-2', goldenSetId: 'set-2' })]);
     await service.evaluatePromotion({ tenantId: TENANT, promptTemplateId: TPL, agentId: 'agent-2', trigger: 'pin' });
     expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledTimes(1);
     expect(mockEvalRunService.runGoldenSet).toHaveBeenCalledWith(expect.objectContaining({ goldenSetId: 'set-2' }));

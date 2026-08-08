@@ -87,7 +87,8 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // AiUsageRollupDaily, BillingInvoice, BillingInvoiceLine,
     // BillingAdjustment).
     // 65 → 66: TASK-610 adds TenantAllowedOrigin (CORS control plane).
-    expect(TENANT_SCOPED_MODELS.size).toBe(66);
+    // 66 → 67: TASK-615 #6 adds TenantPlanHistory (append-only plan-fee proration).
+    expect(TENANT_SCOPED_MODELS.size).toBe(67);
   });
 
   // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing
@@ -348,8 +349,60 @@ describe('SYSTEM_SHARED_READ_MODELS allow-list', () => {
         // GLOBAL_ADMIN-only at the service layer, the AiTaskDefault precedent).
         // No secrets on the model — prices are integer micros.
         'AiPriceBook',
+        // TASK-635 B-12 — the platform-default PROMPT catalog is SYSTEM-owned
+        // and must be readable from every tenant's own CLS: the pre-summary
+        // tier-2 fallback (…040, re-owned to SYSTEM by migration
+        // 20260808000100), the SYSTEM live-summarization default, and the 13
+        // golden library templates. Without the widening a non-Global tenant's
+        // pre-summary chain fell through to its 503 fail-closed. READS widen to
+        // [caller, SYSTEM]; WRITES are NOT widened, so a tenant can never
+        // mutate a SYSTEM-owned template. Tenant LIST surfaces are unaffected
+        // because PromptManagementService pins an explicit caller `tenantId`,
+        // which mergeSharedReadTenantIntoWhere preserves verbatim.
+        'PromptTemplate',
+        'PromptVersion',
       ]),
     );
+  });
+
+  // TASK-635 B-12 — the widening is READ-ONLY, and its exact shape matters:
+  // an explicit caller-supplied tenantId must survive untouched (that is what
+  // keeps SYSTEM rows out of tenant list surfaces), while a read that supplies
+  // no tenantId gets `IN [caller, SYSTEM]`.
+  describe('PromptTemplate read widening (B-12)', () => {
+    const CALLER = '50000000-0000-0000-0001-000000000000';
+
+    it('widens an unscoped findFirst to [caller, SYSTEM] so the SYSTEM default resolves', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
+      const args: Record<string, unknown> = { where: { id: '71000000-0000-0000-0000-000000000040' } };
+      await cfg.query.$allModels.findFirst({ model: 'PromptTemplate', args, query: async (a) => a });
+      expect(args.where).toEqual({
+        id: '71000000-0000-0000-0000-000000000040',
+        tenantId: { in: [CALLER, SYSTEM_TENANT_ID] },
+      });
+    });
+
+    it('leaves an EXPLICIT caller tenantId alone (admin list surfaces do not grow SYSTEM rows)', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
+      const args: Record<string, unknown> = { where: { tenantId: CALLER, status: 'APPROVED' } };
+      await cfg.query.$allModels.findMany({ model: 'PromptTemplate', args, query: async (a) => a });
+      expect(args.where).toEqual({ tenantId: CALLER, status: 'APPROVED' });
+    });
+
+    it('does NOT widen writes — an update still injects the exact caller tenant', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
+      const args: Record<string, unknown> = { where: { id: '71000000-0000-0000-0000-000000000040' }, data: { name: 'hijack' } };
+      await cfg.query.$allModels.update({ model: 'PromptTemplate', args, query: async (a) => a });
+      // Exact-tenant injection ⇒ the SYSTEM-owned row is not matched ⇒ P2025 ⇒ 404.
+      expect(args.where).toEqual({ id: '71000000-0000-0000-0000-000000000040', tenantId: CALLER });
+    });
+
+    it('applies the same widening to PromptVersion (the snapshot the resolver actually serves)', async () => {
+      const cfg = captureExtensionConfig({ getTenantId: () => CALLER });
+      const args: Record<string, unknown> = { where: { promptTemplateId: '71000000-0000-0000-0000-000000000040', versionNumber: 1 } };
+      await cfg.query.$allModels.findFirst({ model: 'PromptVersion', args, query: async (a) => a });
+      expect((args.where as Record<string, unknown>).tenantId).toEqual({ in: [CALLER, SYSTEM_TENANT_ID] });
+    });
   });
 
   it('every shared-read model is also a tenant-scoped model', () => {

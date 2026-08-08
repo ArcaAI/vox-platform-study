@@ -17,10 +17,12 @@ import type {
   CreateTemplateRequest,
   Department,
   DepartmentAgent,
+  EvalGoldenCaseList,
   EvalGoldenSetList,
   EvalRunTrigger,
   ListAgentEvalRunsParams,
   ListDepartmentAgentsParams,
+  ListEvalGoldenCasesParams,
   ListEvalGoldenSetsParams,
   ListTemplatesParams,
   ListUsageRecordsParams,
@@ -207,6 +209,14 @@ export function listEvalGoldenSets(params?: ListEvalGoldenSetsParams): Promise<E
 /** NOTE: `page` is ONE-based on this endpoint (unlike the platform's 0-based lists). */
 export function listAgentEvalRuns(params?: ListAgentEvalRunsParams): Promise<AgentEvalRunList> {
   return getJson(`${HARNESS_BASE}/eval-runs`, params);
+}
+
+/**
+ * A golden set's cases, PHI-safe metadata only — feeds the Test Bench's
+ * "Golden case" example-data picker (POST :id/test `goldenCaseId`).
+ */
+export function listEvalGoldenCases(goldenSetId: string, params?: ListEvalGoldenCasesParams): Promise<EvalGoldenCaseList> {
+  return getJson(`${HARNESS_BASE}/golden-sets/${encodeURIComponent(goldenSetId)}/cases`, params);
 }
 
 /** Synchronous run-now — tenant admins run their own sets; a SYSTEM set is global-admin-only. */

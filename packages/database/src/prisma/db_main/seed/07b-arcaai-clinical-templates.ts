@@ -5,14 +5,18 @@
  * the v2 seed for the **ArcaAI customer tenant** (50000000-…0001), wired so
  * `PromptResolutionService` resolves them PER VISIT TYPE.
  *
- * Wiring model — the LEGACY Department prompt-id columns, NOT DepartmentAgent:
- * each ArcaAI clinical department (see 04-department.ts) sets its
- * `newPatientPromptId` / `revisitPromptId` / `preSummaryPromptId` to APPROVED
- * template ids defined here, and carries NO default `DepartmentAgent`. The
- * resolver therefore skips tier-1a (agent) and uses the visit-type-faithful
- * tier-1 legacy columns. This is mandatory: a default agent resolves ONE
- * template per department and ignores visit type, collapsing v1's new-referral
- * vs follow-up split.
+ * Wiring model — TWO paths that resolve the SAME template, by construction:
+ *   - tier-1a (preferred, since TASK-635 RF-3): each ArcaAI clinical department
+ *     has ONE default `DepartmentAgent` whose per-visit-type bindings
+ *     (`newPatientTemplateId` / `revisitTemplateId`) name the ids below —
+ *     ARCAAI_TENANT_AGENTS in 07a-agent-golden-library.ts;
+ *   - tier-1b (deprecated fallback): the LEGACY Department prompt-id columns
+ *     (`newPatientPromptId` / `revisitPromptId` in 04-department.ts), retained
+ *     and pointing at the very same ids.
+ * Before TASK-635 the agent tier could not be used at all here, because a
+ * DepartmentAgent was a single prompt pointer that ignored visit type and would
+ * have collapsed v1's new-referral vs follow-up split. C2 added the visit-type
+ * axis, which is what makes the agent tier safe for this tenant.
  *
  * 15 rows: 14 department × visit-type SUMMARY templates + 1 shared TENANT-scoped
  * pre-summary template. Each has a matching v1-content PromptVersion, and each
@@ -258,8 +262,8 @@ const SUMMARY_SPECS: ClinicalTemplateSpec[] = [
 // exactly ONE pre-summary prompt for the whole tenant; department and visit type
 // are VARIABLES INSIDE it, never selectors for a different prompt (v1
 // `select_prompt_template` is called only from the summary path). The ArcaAI
-// departments therefore no longer set `preSummaryPromptId` — see
-// ARCAAI_FALLBACK_TEMPLATE_IDS below and 04-department.ts.
+// departments therefore no longer set `preSummaryPromptId` (see
+// 04-department.ts) — this tenant-wide spec is the single pre-summary row.
 const PRE_SUMMARY_SPEC: ClinicalTemplateSpec = {
   id: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
   name: 'Clinical Pre-Summary',
@@ -285,22 +289,13 @@ const ALL_SPECS: ClinicalTemplateSpec[] = [...SUMMARY_SPECS, PRE_SUMMARY_SPEC];
  * unmatched department falls through to the generic conversational prompt with
  * an empty department schema rather than to another department's prompt.
  *
- * NOTE — these pointers are DECLARATIVE ONLY today. `PromptResolutionService`
- * does not yet consult `scope = TENANT_DEFAULT`; its chain is
- * preferred -> department agent -> department visit-type column -> hardcoded
- * SYSTEM default (`SYSTEM_DEFAULTS.promptId`, CATCHALL_SOAP). Until the resolver
- * gains a tenant-default tier keyed on prompt type, a pre-summary request for a
- * department with no `preSummaryPromptId` resolves to CATCHALL_SOAP — a NOTE
- * prompt, not a pre-summary prompt. Wiring the resolver to these ids is the
- * companion change to this seed.
+ * NOTE — the pre-summary chain (PromptResolutionService.resolvePreSummaryPromptId,
+ * TASK-634) deliberately skips the preferred/agent/department tiers and resolves
+ * tenant TENANT_DEFAULT row (tag-convention lookup: scope=TENANT_DEFAULT,
+ * departmentId null, tag 'pre-summary', APPROVED, via findTenantPreSummaryTemplateId)
+ * → SYSTEM_DEFAULTS.preSummaryPromptId → 503 fail-closed. This seed's PRE_SUMMARY_SPEC
+ * is exactly the tenant-tier row that convention matches.
  */
-export const ARCAAI_FALLBACK_TEMPLATE_IDS = {
-  /** Tenant-wide pre-summary prompt — department- and visit-type-agnostic. */
-  PRE_SUMMARY: ARCAAI_CLINICAL_TEMPLATE_IDS.PRE_SUMMARY,
-  /** Department-agnostic summary prompt (Global tenant catch-all, APPROVED). */
-  SUMMARY: '71000000-0000-0000-0000-000000000036',
-} as const;
-
 /** Full PromptTemplate rows — APPROVED + approvedVersionNumber-pinned. */
 export const ARCAAI_CLINICAL_TEMPLATES = ALL_SPECS.map((spec) => ({
   id: spec.id,

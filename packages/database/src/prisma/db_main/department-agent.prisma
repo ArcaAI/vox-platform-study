@@ -43,6 +43,36 @@ model DepartmentAgent {
   harnessOverrides    Json?  @db.JsonB // tenant-tier HarnessPolicy keys ONLY (validated in service)
   goldenSetId         String? // consumed by TASK-549
 
+  // ── Capability-keyed bindings (TASK-635 RF-4 / DR-1). ALL NULLABLE; null ⇒
+  // the LEGACY behavior for that capability (base `promptTemplateId` for
+  // summary, the tenant/SYSTEM tiers for pre-summary and live). Every existing
+  // row is null on all six, so resolution is byte-identical to before.
+  //
+  // Loose `String` refs with NO FK relation — the legacy `Department` prompt-id
+  // column precedent (department.prisma:21-23), NOT `promptTemplateId`'s FK.
+  // Four named relations would put four back-relation arrays on PromptTemplate
+  // for zero query benefit (bindings are read off the agent row, never joined).
+  // Integrity is service-enforced (`DepartmentAgentService.assertTemplateBindable`
+  // per binding) and resolver-enforced (unapproved / missing snapshot ⇒ the
+  // agent tier falls through to the legacy chain).
+  newPatientTemplateId String?
+  revisitTemplateId    String?
+  preSummaryTemplateId String?
+  livePromptTemplateId String?
+  // Which live-loop tools run for sessions under this agent:
+  //   { version: 1, tools: { ner: {enabled}, vitals: {enabled}, groundedness: {enabled|null} } }
+  // Null ⇒ the platform default (today's NER + vitals, groundedness per env).
+  // Validated against LIVE_TOOL_KEYS in the application service; consumed by
+  // the LiveToolRegistry (TASK-635 C4).
+  toolConfig Json? @db.JsonB
+  // Optional per-task LLM override, keyed by the SmrRoutingTask subset:
+  //   { live?: { aiModelSlug }, finalize?: { aiModelSlug } }   (OD-3b)
+  // Validated against ENABLED TEXT_GENERATION AiModel rows at write time;
+  // read-time precedence is agent override → tenant AiTaskDefault
+  // (smr.live / smr.finalize) → fail-closed. NEVER one global field — a
+  // low-latency live model must not silently drive finalize (RF-4).
+  llmOverrides Json? @db.JsonB
+
   // one default agent per department
   isDefault Boolean @default(false)
 

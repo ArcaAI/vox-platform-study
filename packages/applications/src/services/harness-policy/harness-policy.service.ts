@@ -26,17 +26,20 @@ import type { McpServerResponse } from '../mcp-server/dto';
 import { HarnessOverridesSource, HarnessPolicyResponse, HarnessPolicySource, UpdateHarnessPolicyRequest } from './dto';
 
 /**
- * the two SMR routing tasks the loop discriminates on:
+ * the SMR routing tasks the loop discriminates on:
  *  - `live`     → the live-documentation delta summariser (`smr.live`).
  *  - `finalize` → the final/comprehensive summary generator (`smr.finalize`).
+ *  - `test`     → the tenant-admin prompt-template test bench (`smr.test`,
+ *    TASK-635 Lane B) — falls back to `finalize` at the CALLER when unresolved.
  * `resolveSmrSelection` consults the matching `AiTaskDefault` key FIRST, then
  * falls back to the legacy `HarnessPolicy.smrProvider/smrModel` cascade.
  */
-export type SmrRoutingTask = 'live' | 'finalize';
+export type SmrRoutingTask = 'live' | 'finalize' | 'test';
 
 const SMR_TASK_KEY: Record<SmrRoutingTask, string> = {
   live: 'smr.live',
   finalize: 'smr.finalize',
+  test: 'smr.test',
 };
 
 /**
@@ -49,6 +52,10 @@ const SMR_TASK_KEY: Record<SmrRoutingTask, string> = {
 const SMR_FALLBACK_TASK_KEY: Record<SmrRoutingTask, string> = {
   live: 'smr.live.fallback',
   finalize: 'smr.finalize.fallback',
+  // Present only for the Record<SmrRoutingTask, string> exhaustiveness check —
+  // no AiTaskDefault key is registered for it and no caller resolves fallback
+  // for the 'test' task (TASK-635 Lane B has no fallback tier).
+  test: 'smr.test.fallback',
 };
 
 /**

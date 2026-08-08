@@ -11,6 +11,8 @@ import { GenerateSummaryJobPayload, SummaryJobResult } from '../dto';
 import { ConsultationPipelineEvent, SummaryGeneratedPayload } from '../../events';
 import { PromptResolutionService, type PromptResolutionTier } from '../../prompt/prompt-resolution.service';
 import { PromptAssemblyService, type NerEntityForPrompt } from '../../prompt/prompt-assembly.service';
+import { readLiveAgentLineage } from '../../prompt/live-agent-lineage';
+import type { PersistedLiveAgentLineage } from '../../live-documentation/live-agent.port';
 import { JobMetricsService } from '../../../baseServices/observability/job-metrics.service';
 import { SecretsService } from '../../../baseServices/_meta/secrets';
 import { buildSmrGeneratePayload, mapSmrGenerateResponse } from '../../summary/smr-generate';
@@ -143,7 +145,13 @@ export class SummaryProcessor extends WorkerHost {
           throw new Error('No content available for summary generation');
         }
 
-        const latestPreSummary = await this.contextItemRepository.findLatestPreSummary(consultationId);
+        // TASK-635 C6 — this BullMQ processor is the SECOND finalize path.
+        // It used to read the pre-summary through the plain, NON-decrypting,
+        // NON-subType-aware `findLatestPreSummary` (B-02/B-06), so its warm
+        // start was empty in Vault-backed environments and could be shadowed by
+        // a case-notes pre-summary. It now uses the exact accessor + lineage
+        // contract `SummaryService.resolveWarmStartPreSummary` uses.
+        const warmStart = await this.resolveWarmStartPreSummary(consultationId);
 
         // Inject NER entities into the prompt so the model
         // sees the coded clinical concepts (closes the gap where NER output was
@@ -156,7 +164,13 @@ export class SummaryProcessor extends WorkerHost {
           transcript: content,
           conversationLanguage: this.resolveConversationLanguage(request.options),
           dnaStyleId: request.dnaStyleId,
-          preSummaryText: latestPreSummary?.content ?? undefined,
+          preSummaryText: warmStart.text ?? undefined,
+          // TASK-635 C6 / RF-6 — the SAME agent that ran live reviews and
+          // finalizes on this path too: lineage makes the prior-draft injection
+          // unconditional (DR-4) and pins the resolver's agent tier to that exact
+          // agent. Both `undefined` for every non-live consultation ⇒ unchanged.
+          preSummaryLineage: warmStart.lineage ?? undefined,
+          pinnedAgentId: warmStart.lineage?.agentId ?? undefined,
           explicitTemplate: request.template,
           preferredPromptTemplateId: preferredPromptTemplateId ?? undefined,
           nerEntities,
@@ -175,6 +189,7 @@ export class SummaryProcessor extends WorkerHost {
               promptHyperparameters: assembledPrompt.hyperparameters,
             },
           },
+          tenantId,
           jobId,
         );
 
@@ -267,6 +282,11 @@ export class SummaryProcessor extends WorkerHost {
       resolvedFrom: PromptResolutionTier;
     },
     request: GenerateSummaryJobPayload['request'],
+    // TASK-635 A5 (B-04) — the tenant id `process()` already fail-closed
+    // validated (job.data.tenantId) is threaded through EXPLICITLY here
+    // rather than trusting `resolveSmrSelection()`'s own CLS fallback, so
+    // this call can never silently serve the SYSTEM default model.
+    tenantId: string,
     jobId?: string,
   ): Promise<{
     summary: string;
@@ -279,11 +299,11 @@ export class SummaryProcessor extends WorkerHost {
     try {
       const smrStart = Date.now();
       // SMR is a stateless gateway with no model default; resolve
-      // the tenant's effective {provider, model} (CLS tenant set by process()) and
-      // merge as the base so a caller-supplied model still wins.
+      // the tenant's effective {provider, model} and merge as the base so a
+      // caller-supplied model still wins.
       let options = request.options;
       if (this.harnessPolicyService) {
-        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection();
+        const { provider, model } = await this.harnessPolicyService.resolveSmrSelection(tenantId, 'finalize');
         options = { smrProvider: provider, smrModel: model, ...request.options };
       }
       const smrPayload = buildSmrGeneratePayload(assembledPrompt, options, {
@@ -310,6 +330,29 @@ export class SummaryProcessor extends WorkerHost {
       });
       throw new Error('Failed to generate summary from AI service');
     }
+  }
+
+  /**
+   * TASK-635 C6 — the warm-start read, identical in contract to
+   * `SummaryService.resolveWarmStartPreSummary`: prefer the newest
+   * `LIVE_SOAP_SNAPSHOT` (the note the live agent actually produced), else fall
+   * back to the newest pre-summary of ANY subType (legacy case-notes flow).
+   * Both branches decrypt via `findLatestPreSummaryWithDecryptedContent`, whose
+   * `secrets` parameter is optional — with no SecretsService wired it degrades
+   * to the entity's transient `content`, exactly as `SummaryService` does.
+   */
+  private async resolveWarmStartPreSummary(
+    consultationId: string,
+  ): Promise<{ text: string | null; lineage: PersistedLiveAgentLineage | null; snapshotId: string | null }> {
+    const snapshot = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, this.secretsService, {
+      subType: 'LIVE_SOAP_SNAPSHOT',
+    });
+    if (snapshot.entity) {
+      return { text: snapshot.plaintext, lineage: readLiveAgentLineage(snapshot.entity), snapshotId: snapshot.entity.id };
+    }
+
+    const legacy = await this.contextItemRepository.findLatestPreSummaryWithDecryptedContent(consultationId, this.secretsService);
+    return { text: legacy.plaintext, lineage: readLiveAgentLineage(legacy.entity), snapshotId: legacy.entity?.id ?? null };
   }
 
   private resolveConversationLanguage(options?: Record<string, unknown>): string {

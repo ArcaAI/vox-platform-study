@@ -27,6 +27,8 @@ export class SummaryMeta extends BaseTenantDataModel {
   public generatedAt: Date | null;
   public promptResolvedFrom: string | null;
   public resolvedPromptId: string | null;
+  public sessionAgentId: string | null;
+  public sessionAgentPromptVersion: string | null;
   // Clinical-harness sensor scores + citation provenance
   public entityFaithfulnessScore: number | null;
   public coverageScore: number | null;
@@ -68,6 +70,8 @@ export class SummaryMeta extends BaseTenantDataModel {
     this.generatedAt = data.generatedAt;
     this.promptResolvedFrom = data.promptResolvedFrom;
     this.resolvedPromptId = data.resolvedPromptId;
+    this.sessionAgentId = data.sessionAgentId;
+    this.sessionAgentPromptVersion = data.sessionAgentPromptVersion;
     this.entityFaithfulnessScore = data.entityFaithfulnessScore;
     this.coverageScore = data.coverageScore;
     this.ragTriadScore = data.ragTriadScore;

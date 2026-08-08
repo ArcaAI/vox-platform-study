@@ -7,7 +7,11 @@
  * (TASK-560 §5.4 / §5.6):
  *   - `summarize`/`summarizeSync` → `POST /api/smr/api/v1/summary/sync`
  *   - `preSummarize`             → `POST /api/smr/api/v1/presummary`
- *   - `summarizeAsync`           → `POST /api/smr/api/v1/summary/async`
+ *
+ * `summarizeAsync` is DEPRECATED (TASK-635 B-07): the compat gateway
+ * (`smr-compat.controller.ts`) has no `summary/async` route — that path
+ * exists only on the native consultation controller. It always rejects
+ * before any network call; see its JSDoc + `SUMMARIZE_ASYNC_DEPRECATED_MESSAGE`.
  *
  * These shim paths live OUTSIDE the gateway's `/api/v1` prefix (TASK-560 §5.6),
  * so the request origin is derived from the provider's `AgenticClient.getBaseUrl()`
@@ -40,11 +44,30 @@ export interface UseSMROptions {
 export interface UseSMRReturn {
   summarize: (request: SMRRequest) => Promise<SummaryResponse>;
   summarizeSync: (request: SMRRequest) => Promise<SummaryResponse>;
+  /**
+   * @deprecated The v1-compat gateway has no `summary/async` route — that
+   * path exists ONLY on the native consultation controller
+   * (`consultation.controller.ts` `POST .../summary/async`), not on the
+   * compat controller (`smr-compat.controller.ts`). Calling this always
+   * rejects before any network request is made (TASK-635 B-07). Use
+   * `summarizeSync`/`summarize` for the compat surface, or the native SDK's
+   * `generateSummaryAsync` if you need out-of-band job polling.
+   */
   summarizeAsync: (request: SMRRequest) => Promise<SMRJobStatus>;
   preSummarize: (request: PreSummaryRequest) => Promise<PreSummaryResponse>;
   loading: boolean;
   error: string | null;
 }
+
+/**
+ * The v1-compat gateway (`smr-compat.controller.ts`) has no `summary/async`
+ * route — only the native consultation controller does. `summarizeAsync` is
+ * deprecated and always rejects with this message before touching the
+ * network (TASK-635 B-07).
+ */
+const SUMMARIZE_ASYNC_DEPRECATED_MESSAGE =
+  '[@arcaai/vox/compat] useSMR.summarizeAsync is deprecated: the v1-compat gateway has no `summary/async` route. ' +
+  "Use summarizeSync/summarize instead, or the native SDK's generateSummaryAsync if you need async job polling.";
 
 /** Strip the trailing `/api/v1` from the REST base to reach the origin. */
 function smrOrigin(client: AgenticClient): string {
@@ -303,22 +326,20 @@ export function useSMR(props: UseSMROptions = {}): UseSMRReturn {
     [request, requestStream, sessionId, onComplete, onError],
   );
 
+  /**
+   * @deprecated Always rejects — see the `UseSMRReturn.summarizeAsync` JSDoc
+   * and `SUMMARIZE_ASYNC_DEPRECATED_MESSAGE` (TASK-635 B-07). Rejects
+   * synchronously-before-network: no fetch is ever issued, and `loading`
+   * never flips to `true`.
+   */
   const summarizeAsync = useCallback(
-    async (smrRequest: SMRRequest): Promise<SMRJobStatus> => {
-      setLoading(true);
-      setError(null);
-      try {
-        return await request<SMRJobStatus>('summary/async', buildSyncPayload(smrRequest, sessionId));
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Async summarization failed';
-        setError(message);
-        onError?.({ code: 'ASYNC_SUMMARIZATION_ERROR', message, severity: 'high', category: 'processing' });
-        throw err;
-      } finally {
-        setLoading(false);
-      }
+    async (_smrRequest: SMRRequest): Promise<SMRJobStatus> => {
+      const message = SUMMARIZE_ASYNC_DEPRECATED_MESSAGE;
+      setError(message);
+      onError?.({ code: 'ASYNC_SUMMARIZATION_ERROR', message, severity: 'high', category: 'processing' });
+      throw new Error(message);
     },
-    [request, sessionId, onError],
+    [onError],
   );
 
   const preSummarize = useCallback(

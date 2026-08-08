@@ -23,7 +23,8 @@ export * from './BillingInvoiceRepository';
 export * from './ConsultationRepository';
 export * from './ContextItemRepository';
 // Sibling that patches ContextItemRepository.prototype with
-// encryptContentIntoEntity / decryptContentFromEntity / findByIdWithDecryptedContent.
+// encryptContentIntoEntity / decryptContentFromEntity / findByIdWithDecryptedContent /
+// findLatestPreSummaryWithDecryptedContent.
 // Importing here runs the augmentation at module load (no separate import needed).
 export * from './ContextItemRepository.encryption';
 export * from './ContextItemVersionRepository';

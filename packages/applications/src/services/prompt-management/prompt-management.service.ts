@@ -21,6 +21,9 @@ import {
   ResourceStatusType,
   SysEventType,
   CoreDatabaseService,
+  AiModelRepository,
+  GoldenCaseRepository,
+  ModelTaskType,
 } from '@arcaai/domains';
 import { IPromptManagementService, ListPromptTemplatesFilters, PaginatedPromptTemplates } from './IPromptManagementService';
 import {
@@ -54,6 +57,11 @@ import { DepartmentResponse } from '../department/dto';
 import { BaseService } from '../../common';
 import { isSuperAdmin } from '../../common/tenant-guards';
 import { IActiveUserContext } from '../../interfaces';
+import {
+  PRE_SUMMARY_TEMPLATE_VARIABLES,
+  buildPreSummaryVariables,
+  substitutePreSummaryVariables,
+} from '../consultation/prompt/pre-summary-variables';
 
 const SCOPE_TENANT_DEFAULT = 'TENANT_DEFAULT';
 const SCOPE_USER_PERSONAL = 'USER_PERSONAL';
@@ -171,6 +179,16 @@ export class PromptManagementService extends BaseService implements IPromptManag
     // When present, approving a template whose bound agent references a golden
     // set runs the eval and blocks (409) on a gate failure in block-mode.
     @Optional() @Inject(EvalPromotionGateService) private readonly promotionGate?: EvalPromotionGateService,
+    // TASK-635 Lane B — validates a caller-supplied test-run provider/model
+    // pair against the ENABLED AiModel registry (same source `GET
+    // /text/providers` reads). Optional + trailing so existing fixtures keep
+    // their arity; absent ⇒ validation is skipped (best-effort, never blocks
+    // policy-resolved selections).
+    @Optional() @Inject(AiModelRepository) private readonly aiModelRepository?: AiModelRepository,
+    // TASK-635 Lane B — loads a golden case's decrypted transcript as
+    // predefined test-run sample input. Optional + trailing; absent ⇒
+    // `goldenCaseId` requests fail closed with a clear configuration error.
+    @Optional() @Inject(GoldenCaseRepository) private readonly goldenCaseRepository?: GoldenCaseRepository,
   ) {
     super(eventEmitter, clsService, ResourceType.PromptTemplate);
     this.smrServiceUrl = this.configService?.get<string>('SMR_URL') ?? 'http://localhost:8862';
@@ -539,11 +557,30 @@ export class PromptManagementService extends BaseService implements IPromptManag
     return PromptManagementDtoMapper.toTemplateResponse(template);
   }
 
+  /**
+   * TASK-635 B-12 — THE EXPLICIT `tenantId` PIN ON EVERY LIST/COUNT READ IN THIS
+   * SERVICE IS LOAD-BEARING, NOT REDUNDANT.
+   *
+   * `PromptTemplate` / `PromptVersion` joined `SYSTEM_SHARED_READ_MODELS`
+   * (packages/database/src/extensions/tenant-scope.ts) so the SYSTEM-owned
+   * platform defaults — the pre-summary tier-2 fallback and the live default —
+   * are resolvable from a tenant's own CLS. That widening injects
+   * `tenantId IN [caller, SYSTEM]` into a read that supplies NO tenantId, which
+   * would make the 13 SYSTEM golden templates and the platform defaults appear
+   * inside tenant template pickers.
+   *
+   * `mergeSharedReadTenantIntoWhere` leaves an explicitly-supplied caller
+   * `tenantId` untouched, so pinning it keeps these list surfaces byte-identical
+   * to their pre-widening contents. Any NEW list/count read added here must pin
+   * it too; only BY-ID reads (resolution, assertTemplateBindable, version
+   * fetches) are meant to see SYSTEM rows.
+   */
   async listPromptTemplates(filters?: ListPromptTemplatesFilters): Promise<PromptTemplateResponse[]> {
     const tenantId = this.tenantId;
     if (!tenantId) throw new BadRequestException('Tenant ID is required');
 
     const qb = this.promptTemplateRepository.$();
+    // B-12: explicit caller-tenant pin — see the note above. Do not remove.
     qb.Where({ tenantId });
     if (!filters?.includeDisabled) {
       qb.Where({ resourceStatus: ResourceStatusType.ENABLED });
@@ -575,6 +612,7 @@ export class PromptManagementService extends BaseService implements IPromptManag
     const page = filters?.page && filters.page > 0 ? filters.page : 1;
     const limit = filters?.limit && filters.limit > 0 ? filters.limit : 50;
 
+    // B-12: explicit caller-tenant pin — see the note on `listPromptTemplates`.
     const where: Record<string, unknown> = { tenantId };
     if (!filters?.includeDisabled) where.resourceStatus = ResourceStatusType.ENABLED;
     if (filters?.category) where.category = filters.category;
@@ -793,30 +831,80 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
-   * Run a prompt template against the SMR/text-generation
-   * service, score the output, and persist `lastTestScore/lastTestOutput/
+   * Run a prompt template against the SMR/text-generation service, score the
+   * output, and — unless `dto.dryRun` — persist `lastTestScore/lastTestOutput/
    * lastTestAt` via a Compare-And-Set write (OCC parity with the PATCH route).
+   *
+   * TASK-635 Lane B:
+   *  - `dto.provider`/`dto.model` — forwarded to SMR verbatim; absent ⇒
+   *    `smr.test` → `smr.finalize` AiTaskDefault cascade (see
+   *    {@link resolveTestSmrTarget}).
+   *  - `dto.dryRun` — score/generate WITHOUT touching the repository at all
+   *    (no `lastTest*` write, no `_version` bump, no sys-event).
+   *  - `dto.versionNumber` — test the immutable pinned `PromptVersion`
+   *    snapshot instead of the mutable draft.
+   *  - `dto.goldenCaseId` — decrypted golden-case transcript as sample input
+   *    (mutually exclusive with `dto.sampleInput`).
    *
    * The SMR call is an injected `HttpService` dependency so the path is
    * unit-testable with a mock; the live SMR call is exercised in CI.
    *
-   * @throws OptimisticConcurrencyException — version drift; HTTP 412.
+   * @throws ArgumentInvalidException — both `sampleInput` and `goldenCaseId`
+   *   supplied, or a caller-supplied provider/model pair is unknown/disabled.
+   * @throws NotFoundException — unknown/cross-tenant template, missing
+   *   `versionNumber`, or unknown/cross-tenant `goldenCaseId` (404-over-403).
+   * @throws OptimisticConcurrencyException — version drift; HTTP 412 (non-dry-run only).
    */
   async testPromptTemplate(id: string, dto: TestPromptTemplateRequest): Promise<PromptTestResultResponse> {
+    if (dto.sampleInput !== undefined && dto.goldenCaseId !== undefined) {
+      throw new ArgumentInvalidException('Provide either sampleInput or goldenCaseId, not both.');
+    }
+
     const template = await this.promptTemplateRepository.findById(id);
     if (!template) throw new NotFoundException(`Prompt template ${id} not found`);
 
     this.assertOwnedByTenant(template, id);
     this.assertCanMutate(template);
 
-    const prompt = this.interpolateTemplate(template.content ?? '', dto.variables, dto.sampleInput);
-    const output = await this.callSmrGenerate(prompt);
+    // B2 — an immutable PromptVersion snapshot instead of the mutable draft
+    // when `versionNumber` is supplied. Variable declarations follow the
+    // version's own `variables` when present, else the template's.
+    let content = template.content ?? '';
+    let declaredVariables = template.variables as Record<string, unknown> | null;
+    if (dto.versionNumber !== undefined) {
+      const version = await this.promptVersionRepository.findByVersionNumber(id, dto.versionNumber);
+      if (!version) {
+        throw new NotFoundException(`Prompt version ${dto.versionNumber} not found for template ${id}`);
+      }
+      content = version.content ?? '';
+      declaredVariables = (version.variables as Record<string, unknown> | null) ?? declaredVariables;
+    }
+
+    // B3 — a golden case's decrypted transcript stands in for free-text
+    // sampleInput. Decrypted plaintext lives only for this request's
+    // lifetime — never persisted or logged.
+    const sampleInput = dto.goldenCaseId ? await this.loadGoldenCaseSampleInput(dto.goldenCaseId) : dto.sampleInput;
+
+    const prompt = this.interpolateTemplate(content, dto.variables, sampleInput, declaredVariables);
+    const output = await this.callSmrGenerate(prompt, { provider: dto.provider, model: dto.model });
     const { score, metrics } = this.scoreOutput(output, {
       category: template.category,
-      content: template.content,
-      variables: template.variables,
+      content,
+      variables: declaredVariables,
     });
     const testedAt = new Date();
+
+    // B2 — dry-run: score/generate only, the resource is never touched.
+    if (dto.dryRun) {
+      return {
+        id: template.id,
+        score,
+        output,
+        testedAt: testedAt.toISOString(),
+        version: template.version,
+        metrics,
+      };
+    }
 
     template.lastTestScore = score;
     template.lastTestOutput = output;
@@ -981,14 +1069,41 @@ export class PromptManagementService extends BaseService implements IPromptManag
    * Substitute `{{var}}` placeholders in the template content with the
    * supplied sample values, then append any free-text `sampleInput`. Unmatched
    * placeholders are left intact so the operator can see what was missing.
+   *
+   * B2 brace-trap: this pass is `{{var}}`-only. When `declaredVariables`
+   * intersects the 9 v1 pre-summary placeholder names, ALSO run the shared
+   * single-brace substituter (`substitutePreSummaryVariables`) so a v1-style
+   * body (`{current_department}`) interpolates instead of leaking literal
+   * `{braces}` into the SMR call. Caller-supplied `variables` (matched by the
+   * exact placeholder name) win; any of the 9 not supplied fall back to the
+   * shared v1 defaults (`buildPreSummaryVariables`) so no recognized
+   * single-brace token is ever left unresolved.
    */
-  private interpolateTemplate(content: string, variables?: Record<string, unknown>, sampleInput?: string): string {
+  private interpolateTemplate(
+    content: string,
+    variables?: Record<string, unknown>,
+    sampleInput?: string,
+    declaredVariables?: Record<string, unknown> | null,
+  ): string {
     let prompt = content;
     if (variables) {
       for (const [key, value] of Object.entries(variables)) {
         prompt = prompt.replace(new RegExp(`\\{\\{\\s*${escapeRegExp(key)}\\s*\\}\\}`, 'g'), String(value));
       }
     }
+
+    const declaredNames = extractDeclaredVariableNames(declaredVariables);
+    const singleBraceNames = PRE_SUMMARY_TEMPLATE_VARIABLES.filter((name) => declaredNames.includes(name));
+    if (singleBraceNames.length > 0) {
+      const defaults = buildPreSummaryVariables({});
+      const values: Record<string, string> = {};
+      for (const name of singleBraceNames) {
+        const callerValue = variables?.[name];
+        values[name] = callerValue !== undefined ? String(callerValue) : defaults[name];
+      }
+      prompt = substitutePreSummaryVariables(prompt, values);
+    }
+
     if (sampleInput) {
       prompt = `${prompt}\n\n${sampleInput}`;
     }
@@ -996,24 +1111,93 @@ export class PromptManagementService extends BaseService implements IPromptManag
   }
 
   /**
+   * TASK-635 Lane B — resolve the `{provider, model}` a test run sends to
+   * SMR. Precedence:
+   *  1. Caller-supplied pair (`override.provider` + `override.model`, both
+   *     required together) — forwarded VERBATIM (mirrors
+   *     `applySmrModelSelection`'s "caller-pinned model wins" semantics),
+   *     after validating it against the ENABLED AiModel registry.
+   *  2. `resolveSmrSelection(tenantId, 'test')` — the tenant `smr.test`
+   *     AiTaskDefault.
+   *  3. `resolveSmrSelection(tenantId, 'finalize')` — the pre-existing
+   *     behavior, preserved when `smr.test` is unconfigured for the tenant.
+   *
+   * @throws ArgumentInvalidException — only one of provider/model supplied,
+   *   or the supplied pair does not match an ENABLED registry row.
+   */
+  private async resolveTestSmrTarget(override: { provider?: string; model?: string }): Promise<{ provider?: string; model?: string }> {
+    if (override.provider !== undefined || override.model !== undefined) {
+      if (!override.provider || !override.model) {
+        throw new ArgumentInvalidException('provider and model must be supplied together.');
+      }
+      await this.assertKnownSmrModel(override.provider, override.model);
+      return { provider: override.provider, model: override.model };
+    }
+
+    if (!this.harnessPolicyService) return {};
+
+    try {
+      return await this.harnessPolicyService.resolveSmrSelection(this.tenantId, 'test');
+    } catch {
+      return await this.harnessPolicyService.resolveSmrSelection(this.tenantId, 'finalize');
+    }
+  }
+
+  /**
+   * Validate a caller-supplied `{provider, model}` pair against the ENABLED
+   * `AiModel` registry (TEXT_GENERATION/SUMMARIZATION rows — the same source
+   * `GET /text/providers` reads). Best-effort: without a wired
+   * `AiModelRepository` the pair passes through unchecked rather than
+   * blocking the test run.
+   */
+  private async assertKnownSmrModel(provider: string, model: string): Promise<void> {
+    if (!this.aiModelRepository) return;
+    const [textGeneration, summarization] = await Promise.all([
+      this.aiModelRepository.findByTaskTypeSharedRead(ModelTaskType.TEXT_GENERATION),
+      this.aiModelRepository.findByTaskTypeSharedRead(ModelTaskType.SUMMARIZATION),
+    ]);
+    const known = [...textGeneration, ...summarization].some((row) => row.provider === provider && row.sourceUri === model);
+    if (!known) {
+      throw new ArgumentInvalidException(`Unknown or disabled provider/model pair: ${provider}/${model}`);
+    }
+  }
+
+  /**
+   * TASK-635 Lane B — load a golden case's decrypted transcript as
+   * predefined test-run sample input. Tenant-scoped: a missing OR
+   * cross-tenant id is 404 (404-over-403 — "not yours" is indistinguishable
+   * from "missing"). The decrypted plaintext is returned to the caller for
+   * this request only; it is never persisted or logged.
+   */
+  private async loadGoldenCaseSampleInput(goldenCaseId: string): Promise<string> {
+    if (!this.goldenCaseRepository) {
+      throw new BadRequestException('Golden-case lookup is not configured');
+    }
+    const goldenCase = await this.goldenCaseRepository.findById(goldenCaseId);
+    if (!goldenCase || (this.tenantId && goldenCase.tenantId !== this.tenantId)) {
+      throw new NotFoundException(`Golden case ${goldenCaseId} not found`);
+    }
+    const plaintext = this.secretsService
+      ? await this.goldenCaseRepository.decryptFieldsFromEntity(goldenCase, this.secretsService)
+      : { transcript: null, referenceNote: null };
+    return plaintext.transcript ?? '';
+  }
+
+  /**
    * Call the SMR/text-generation service `/api/v1/generate` endpoint and
    * return the generated text. Reuses `mapSmrGenerateResponse` (the same
    * response normalizer the summary path uses).
    */
-  private async callSmrGenerate(prompt: string): Promise<string> {
+  private async callSmrGenerate(prompt: string, override: { provider?: string; model?: string } = {}): Promise<string> {
     if (!this.httpService) {
       throw new BadRequestException('SMR/text-generation client is not configured');
     }
+    // Resolved BEFORE the try/post below so a validation failure
+    // (ArgumentInvalidException) or an exhausted fail-closed cascade
+    // propagates as itself, not wrapped into the generic SMR-call error.
+    const { provider, model } = await this.resolveTestSmrTarget(override);
     try {
       const token = (await this.secretsService?.getSecretOptional('SMR_SERVICE_TOKEN')) ?? '';
-      // Admin prompt-test resolves the tenant's effective
-      // {provider, model} via the policy cascade (parity with prod), since the SMR
-      // gateway requires an explicit caller-supplied model (no in-gateway default).
-      let provider: string | undefined;
-      let model: string | undefined;
-      if (this.harnessPolicyService) {
-        ({ provider, model } = await this.harnessPolicyService.resolveSmrSelection(this.tenantId));
-      }
       const response = await this.httpService.axiosRef.post(
         `${this.smrServiceUrl}/api/v1/generate`,
         { prompt, stream: false, provider, model },

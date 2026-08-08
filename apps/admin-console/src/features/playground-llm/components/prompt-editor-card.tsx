@@ -8,6 +8,7 @@ import { Skeleton } from '@arcaai/ui/components/shadcn/skeleton';
 import { Switch } from '@arcaai/ui/components/shadcn/switch';
 import { Textarea } from '@arcaai/ui/components/shadcn/textarea';
 import type { AssembledGenerationType, AssembledVisitType, SmrProvider } from '../api/types';
+import { TemplatePicker } from './template-picker';
 
 /** All request knobs except the provider/model pair (which cascades separately). */
 export interface LlmFormState {
@@ -248,13 +249,8 @@ export function PromptEditorCard({
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="llm-template-id">Template ID</Label>
-                <Input
-                  id="llm-template-id"
-                  value={form.templateId}
-                  onChange={(event) => onPatch({ templateId: event.target.value })}
-                  placeholder="prompt template id (optional)"
-                />
+                <Label htmlFor="llm-template-id">Template</Label>
+                <TemplatePicker id="llm-template-id" value={form.templateId} onChange={(templateId) => onPatch({ templateId })} />
               </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="llm-dna-style-id">DNA style ID</Label>

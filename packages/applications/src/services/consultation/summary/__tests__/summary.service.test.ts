@@ -95,6 +95,7 @@ const createMockContextItemRepository = () => ({
   findLatestModifiedSummary: vi.fn(),
   findLatestRawSummary: vi.fn(),
   findLatestPreSummary: vi.fn(),
+  findLatestPreSummaryWithDecryptedContent: vi.fn().mockResolvedValue({ entity: null, plaintext: null }),
   create: vi.fn(),
   update: vi.fn(),
   encryptContentIntoEntity: vi.fn().mockResolvedValue(undefined),
@@ -275,12 +276,16 @@ describe('SummaryService', () => {
     // TASK-552 Lane B — generateSummary is a one-shot/finalize path: it must
     // keep resolving the DEFAULT ('finalize') tier, never the live tier, so a
     // global admin's `smr.live` re-point never leaks into final summaries.
-    it('resolves the default (finalize) tier — no task argument — unlike the live plane', async () => {
+    // TASK-635 A5 (B-04) — the tenant id is now resolved EXPLICITLY (never a
+    // bare no-arg call trusting the callee's own CLS fallback), so a worker
+    // path with unpopulated CLS fails loudly instead of silently serving the
+    // SYSTEM default model.
+    it('resolves the default (finalize) tier with the CLS tenant passed explicitly', async () => {
       primeGenerateMocks();
 
       await service.generateSummary('c-1', { dnaStyleId: 'style-1' } as any);
 
-      expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith();
+      expect(mockHarnessPolicyService.resolveSmrSelection).toHaveBeenCalledWith('tenant-1', 'finalize');
     });
 
     it('lets a caller-supplied model win over the resolved default', async () => {

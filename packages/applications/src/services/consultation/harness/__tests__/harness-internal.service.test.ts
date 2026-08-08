@@ -86,6 +86,11 @@ const createMockContextItemRepository = () => ({
   // The live SOAP snapshot lookup; default empty
   // (cold path) so pre-existing assemble/persistDraft tests stay green.
   findPreSummaries: vi.fn().mockResolvedValue([]),
+  // B-02: loadLiveSoapSnapshot decrypts the selected snapshot's content.
+  // Default echoes the mock entity's own `content` field (fixtures set it
+  // directly, no real ciphertext involved) so every pre-existing snapshot
+  // fixture's `preSummaryText` assertion is unaffected.
+  decryptContentFromEntity: vi.fn().mockImplementation(async (entity: { content?: string | null }) => entity?.content ?? null),
   create: vi.fn().mockResolvedValue({ id: 'ctx-draft-1', content: 'S: ...', tenantId: 'tenant-1' }),
   // Encrypt-on-write helper (declaration-merged sibling): plaintext `content`
   // has no column, so a create that skips this drops the note at rest.
@@ -639,11 +644,68 @@ describe('HarnessInternalService', () => {
         contextItemRepository.findPreSummaries.mockResolvedValue([SNAPSHOT]);
       });
 
-      it('policy=false beats env=true → no snapshot lookup, no prior draft', async () => {
+      // TASK-635 C5 §7.5: the snapshot LOAD is now unconditional — the load is
+      // what tells finalize whether a live agent ran at all (`metaData.agent`).
+      // The observable contract is unchanged and is what is asserted here: with
+      // no lineage on the row, flag=false still injects NOTHING.
+      it('policy=false beats env=true → no prior draft (snapshot carries no agent lineage)', async () => {
         const { service: svc } = withPolicy(false, true);
         await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
-        expect(contextItemRepository.findPreSummaries).not.toHaveBeenCalled();
         expect(assembledPreSummary()).toBeUndefined();
+      });
+
+      // ── TASK-635 C5-T4 — agent lineage supersedes the flag (DR-4 / §7.5) ──
+      const LINEAGE_SNAPSHOT = {
+        id: 'ps-live-agent',
+        content: 'S: chest pain O: BP 120/80',
+        metaData: {
+          subType: 'LIVE_SOAP_SNAPSHOT',
+          agent: {
+            agentId: 'agent-session',
+            agentName: 'Cardiology Default',
+            promptTemplateId: 'tpl-live',
+            promptVersionNumber: 2,
+            resolvedFrom: 'agent',
+            frozenAt: '2026-08-08T00:00:00.000Z',
+          },
+        },
+        createdAt: new Date(),
+      };
+
+      it('lineage present + policy=false ⇒ prior draft injected and the agent pinned (R-N2)', async () => {
+        contextItemRepository.findPreSummaries.mockResolvedValue([LINEAGE_SNAPSHOT]);
+        const { service: svc } = withPolicy(false, false);
+
+        await svc.assemble('consultation-1', { tenantId: 'tenant-1' } as any);
+
+        const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+        expect(call.preSummaryText).toBe(LINEAGE_SNAPSHOT.content);
+        expect(call.pinnedAgentId).toBe('agent-session');
+        expect(call.preSummaryLineage).toMatchObject({ agentId: 'agent-session', promptTemplateId: 'tpl-live', promptVersionNumber: 2 });
+      });
+
+      it('persistDraft stamps the SAME lineage on SummaryMeta with the flag OFF', async () => {
+        contextItemRepository.findPreSummaries.mockResolvedValue([LINEAGE_SNAPSHOT]);
+        const { service: svc } = withPolicy(false, false);
+
+        await svc.persistDraft('consultation-1', {
+          tenantId: 'tenant-1',
+          userId: 'doctor-1',
+          jobId: 'job-1',
+          content: 'S: chest pain O: BP 120/80 A: stable P: review',
+          modelName: 'gpt-x',
+          promptTemplateId: 'prompt-tpl-1',
+          promptVersion: '3',
+          gateDecision: 'PASS',
+        } as any);
+
+        expect(SummaryMetaFactory.CreateSummaryMeta).toHaveBeenCalledWith(
+          expect.objectContaining({
+            preSummaryIds: ['ps-live-agent'],
+            sessionAgentId: 'agent-session',
+            sessionAgentPromptVersion: 'tpl-live@2',
+          }),
+        );
       });
 
       it('policy=true beats env unset → warm start ON', async () => {
@@ -689,6 +751,41 @@ describe('HarnessInternalService', () => {
 
       expect(contextItemRepository.findPreSummaries).toHaveBeenCalledWith('consultation-1');
       expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'S: chest pain O: BP 120/80' }));
+    });
+
+    // B-02: the plaintext `content` column was dropped — only `encryptedContent`
+    // is persisted — so `preSummaryText` must come from `decryptContentFromEntity`,
+    // not the entity's raw (possibly-stale/empty) `.content`.
+    it('decrypts the snapshot via decryptContentFromEntity (B-02) — preSummaryText reflects the decrypted value, not the raw field', async () => {
+      service = buildService(true); // warm-start ON
+      contextItemRepository.findPreSummaries.mockResolvedValue([
+        {
+          id: 'ps-live-1',
+          content: null, // plaintext column dropped — only ciphertext persists
+          metaData: { subType: 'LIVE_SOAP_SNAPSHOT' },
+          createdAt: new Date(),
+        },
+      ]);
+      contextItemRepository.decryptContentFromEntity.mockResolvedValueOnce('S: decrypted from Vault Transit');
+
+      await service.assemble('consultation-1', { tenantId: 'tenant-1' });
+
+      expect(contextItemRepository.decryptContentFromEntity).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ps-live-1' }),
+        expect.anything(),
+      );
+      expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'S: decrypted from Vault Transit' }));
+    });
+
+    it('degrades to the raw entity content (no throw, no decrypt call) when no SecretsService is wired', async () => {
+      const svc = buildService(true, undefined, false); // withSecrets=false
+      contextItemRepository.findPreSummaries.mockResolvedValue([
+        { id: 'ps-live-1', content: 'already-plaintext', metaData: { subType: 'LIVE_SOAP_SNAPSHOT' }, createdAt: new Date() },
+      ]);
+
+      await expect(svc.assemble('consultation-1', { tenantId: 'tenant-1' })).resolves.toBeDefined();
+      expect(contextItemRepository.decryptContentFromEntity).not.toHaveBeenCalled();
+      expect(promptAssemblyService.assemble).toHaveBeenCalledWith(expect.objectContaining({ preSummaryText: 'already-plaintext' }));
     });
 
     it('omits preSummaryText when no LIVE_SOAP_SNAPSHOT exists (cold path still works)', async () => {
@@ -741,8 +838,11 @@ describe('HarnessInternalService', () => {
 
       const call = (promptAssemblyService.assemble as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
       expect(call.preSummaryText).toBeUndefined();
-      // Airtight: the snapshot lookup is short-circuited when disabled.
-      expect(contextItemRepository.findPreSummaries).not.toHaveBeenCalled();
+      // TASK-635 C5 §7.5: the load is unconditional now (it is how lineage is
+      // detected); with no `metaData.agent` on the row the flag still decides,
+      // so nothing is injected and nothing is pinned.
+      expect(call.preSummaryLineage).toBeUndefined();
+      expect(call.pinnedAgentId).toBeUndefined();
     });
 
     // ── Doctor preferred-prompt threading ──
@@ -1203,9 +1303,11 @@ describe('HarnessInternalService', () => {
 
       await service.persistDraft('consultation-1', draftBody());
 
-      expect(SummaryMetaFactory.CreateSummaryMeta).toHaveBeenCalledWith(expect.objectContaining({ preSummaryIds: [] }));
-      // Airtight: the snapshot lookup is short-circuited when disabled.
-      expect(contextItemRepository.findPreSummaries).not.toHaveBeenCalled();
+      // TASK-635 C5 §7.5: unconditional load, flag-gated provenance when the
+      // row carries no agent lineage — empty `preSummaryIds`, null lineage.
+      expect(SummaryMetaFactory.CreateSummaryMeta).toHaveBeenCalledWith(
+        expect.objectContaining({ preSummaryIds: [], sessionAgentId: null, sessionAgentPromptVersion: null }),
+      );
     });
   });
 

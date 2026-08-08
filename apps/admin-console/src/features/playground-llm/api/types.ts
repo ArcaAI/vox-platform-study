@@ -76,6 +76,29 @@ export function isStreamingAck(outcome: GenerateOutcome): outcome is StreamingGe
   return 'stream_url' in outcome;
 }
 
+/**
+ * Slim GET admin/prompt-templates row (PromptTemplateResponse) for the
+ * "Template" picker in assembled mode. Duplicated from the agents feature's
+ * fuller `PromptTemplate` type rather than imported (rule 13: features never
+ * import each other) — only the picker's display fields are needed here.
+ */
+export interface PromptTemplateOption {
+  id: string;
+  name: string;
+  category?: string;
+  scope?: 'TENANT_DEFAULT' | 'DEPARTMENT_DEFAULT' | 'USER_PERSONAL';
+  departmentId?: string;
+  status?: string;
+}
+
+/** GET admin/prompt-templates query — camelCase gateway params, unlike the SMR proxy above. */
+export interface ListPromptTemplatesParams {
+  search?: string;
+  limit?: number;
+  page?: number;
+  [key: string]: string | number | boolean | undefined | null;
+}
+
 export type AssembledGenerationType = 'pre-summary' | 'summary';
 export type AssembledVisitType = 'new_visit' | 'referral';
 

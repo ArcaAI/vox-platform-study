@@ -20,8 +20,14 @@ export class ResolvedPromptTierResponse {
 
   // `tenant` is the TASK-634 pre-summary tenant-default tier; keep this union
   // in step with `PromptResolutionTier`.
-  @ApiProperty({ description: 'Which fallback tier provided the values.', enum: ['preferred', 'agent', 'department', 'tenant', 'default'] })
-  resolvedFrom!: 'preferred' | 'agent' | 'department' | 'tenant' | 'default';
+  // `code-default` is the TASK-635 live chain's fail-open tail; it can only be
+  // reported for `promptType: 'live'`, never for the summary/pre-summary tiers
+  // this endpoint currently reports — but the union must stay in step.
+  @ApiProperty({
+    description: 'Which fallback tier provided the values.',
+    enum: ['preferred', 'agent', 'department', 'tenant', 'default', 'code-default'],
+  })
+  resolvedFrom!: 'preferred' | 'agent' | 'department' | 'tenant' | 'default' | 'code-default';
 
   @ApiPropertyOptional({ description: 'Department the tier was resolved against (null = tenant baseline).', nullable: true })
   departmentId!: string | null;

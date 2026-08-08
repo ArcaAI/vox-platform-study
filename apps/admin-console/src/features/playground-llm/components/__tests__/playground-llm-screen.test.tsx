@@ -553,6 +553,9 @@ describe('PlaygroundLlmScreen', () => {
   it('sends debug: true for admins and renders the admin-only chip + assembly meta panel', async () => {
     let assembledBody: unknown;
     stubLlm((call, parsed) => {
+      if (parsed.pathname === '/api/hope/admin/prompt-templates' && call.method === 'GET') {
+        return Response.json({ data: [{ id: 'tpl-1', name: 'Cardio Pre-Summary', scope: 'TENANT_DEFAULT' }], count: 1, limit: 20, page: 1 });
+      }
       if (parsed.pathname === '/api/hope/text/generate/assembled' && call.method === 'POST') {
         assembledBody = call.body;
         return Response.json({
@@ -573,7 +576,8 @@ describe('PlaygroundLlmScreen', () => {
 
     fireEvent.click(await screen.findByRole('switch', { name: 'Assembled mode' }));
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Patient reports chest pressure.' } });
-    fireEvent.change(screen.getByLabelText('Template ID'), { target: { value: 'tpl-1' } });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Template' }));
+    fireEvent.click(await screen.findByText('Cardio Pre-Summary — TENANT_DEFAULT'));
     fireEvent.click(screen.getByRole('switch', { name: /debug/i }));
     fireEvent.click(screen.getByRole('switch', { name: 'Streaming mode' }));
     fireEvent.click(screen.getByRole('button', { name: 'Run' }));

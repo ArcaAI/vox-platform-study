@@ -194,6 +194,26 @@ export class AgentTemplateResyncService extends BaseService {
       description: golden.description ?? undefined,
       promptTemplateId: savedTemplate.id,
       pinnedVersionNumber: null,
+      // TASK-635 RF-4 — carry the golden row's capability bindings onto the
+      // clone. Every SYSTEM golden agent has these NULL today, so this is
+      // future-proofing with zero present-day effect (and the seeded ArcaAI
+      // agents make the sweep a no-op for that tenant anyway).
+      //
+      // ASYMMETRY WORTH KNOWING (C3/C4 readers): only the BASE binding is
+      // snapshotted into a fresh per-tenant template above. Capability bindings
+      // are copied BY REFERENCE, so a golden row that ever sets one would leave
+      // the clone pointing at the SYSTEM-owned template — readable since
+      // PromptTemplate joined SYSTEM_SHARED_READ_MODELS, but NOT covered by the
+      // pristine-detection anchor (`metaData.sourceTemplateVersionNumber`),
+      // which only tracks the base template. If golden agents ever gain
+      // capability bindings, extend the snapshot step rather than relying on
+      // this copy.
+      newPatientTemplateId: golden.newPatientTemplateId ?? null,
+      revisitTemplateId: golden.revisitTemplateId ?? null,
+      preSummaryTemplateId: golden.preSummaryTemplateId ?? null,
+      livePromptTemplateId: golden.livePromptTemplateId ?? null,
+      toolConfig: golden.toolConfig ?? null,
+      llmOverrides: golden.llmOverrides ?? null,
       templateLocked: true,
       sourceAgentTemplateSlug: golden.slug,
       metaData: { sourceTemplateVersionNumber: goldenVersion },

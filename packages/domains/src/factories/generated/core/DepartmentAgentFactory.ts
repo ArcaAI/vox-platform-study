@@ -17,6 +17,14 @@ export interface CreateDepartmentAgentProps extends BaseEntityFactoryCreateProps
   dnaStylePolicy?: IDepartmentAgentEntity['dnaStylePolicy'];
   harnessOverrides?: IDepartmentAgentEntity['harnessOverrides'];
   goldenSetId?: IDepartmentAgentEntity['goldenSetId'];
+  // TASK-635 RF-4 — capability-keyed bindings + live-loop config. All optional;
+  // omitted ⇒ null ⇒ the legacy behavior for that capability.
+  newPatientTemplateId?: IDepartmentAgentEntity['newPatientTemplateId'];
+  revisitTemplateId?: IDepartmentAgentEntity['revisitTemplateId'];
+  preSummaryTemplateId?: IDepartmentAgentEntity['preSummaryTemplateId'];
+  livePromptTemplateId?: IDepartmentAgentEntity['livePromptTemplateId'];
+  toolConfig?: IDepartmentAgentEntity['toolConfig'];
+  llmOverrides?: IDepartmentAgentEntity['llmOverrides'];
   tags?: IDepartmentAgentEntity['tags'];
   // Template lineage — set only by the paths that produce template copies
   // (TASK-548). Omitted everywhere else, so a hand-created agent is unlocked
@@ -58,6 +66,12 @@ export class DepartmentAgentFactory {
       dnaStylePolicy: props.dnaStylePolicy ?? DepartmentAgentDnaPolicy.INHERIT,
       harnessOverrides: props.harnessOverrides ?? null,
       goldenSetId: props.goldenSetId ?? null,
+      newPatientTemplateId: props.newPatientTemplateId ?? null,
+      revisitTemplateId: props.revisitTemplateId ?? null,
+      preSummaryTemplateId: props.preSummaryTemplateId ?? null,
+      livePromptTemplateId: props.livePromptTemplateId ?? null,
+      toolConfig: props.toolConfig ?? null,
+      llmOverrides: props.llmOverrides ?? null,
       tags: props.tags ?? [],
       sourceAgentTemplateSlug: props.sourceAgentTemplateSlug ?? null,
       templateLocked: props.templateLocked ?? false,

@@ -278,6 +278,17 @@ model SummaryMeta {
   promptResolvedFrom String? // 'preferred' | 'department' | 'default'
   resolvedPromptId   String? // the promptId actually used
 
+  // TASK-635 RF-6 — session-agent lineage: the DepartmentAgent identity frozen
+  // at recording start and carried live-flushes → LIVE_SOAP_SNAPSHOT metaData →
+  // finalize. Null for every non-live-session summary (and for every summary
+  // produced before the live agent loop shipped). `sessionAgentPromptVersion`
+  // is "<templateId>@<versionNumber>" — the immutable PromptVersion the LIVE
+  // loop actually served, which is distinct from `promptVersion` above (that
+  // one names finalize's own template version). Columns land here in C2; C5
+  // populates them.
+  sessionAgentId            String?
+  sessionAgentPromptVersion String?
+
   // Clinical-harness sensor scores + citation provenance. All nullable/additive;
   // populated by the eval/guardrail pipeline.
   entityFaithfulnessScore Float? // NER entity faithfulness (0.0 - 1.0)

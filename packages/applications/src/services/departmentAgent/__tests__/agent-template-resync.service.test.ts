@@ -235,6 +235,49 @@ describe('AgentTemplateResyncService', () => {
     expect(mockAgentRepo.updateWithVersion).not.toHaveBeenCalled();
   });
 
+  // TASK-635 R4 — the ArcaAI hazard, closed STRUCTURALLY.
+  //
+  // RF-3 gave the ArcaAI tenant 7 tenant-owned per-visit-type agents seeded with
+  // the GOLDEN SLUGS. That is deliberate and load-bearing: rule (i) clones a
+  // golden agent only when its slug is ABSENT for the tenant, so matching slugs
+  // make the nightly sweep add nothing, and rule (iii) ("never touch an unlocked
+  // row") then protects them forever. Without matching slugs the sweep would
+  // clone in a SECOND default agent bound to the catch-all SOAP template, which
+  // resolves ONE prompt for both visit types — silently re-collapsing v1's
+  // new-referral vs follow-up split (F-01) on a tenant that had it right.
+  it('R4: an unlocked tenant agent occupying the golden slug makes the sweep a complete no-op', async () => {
+    mockAgentRepo.findAll.mockImplementation(async (props: any) =>
+      props.filters.tenantId === SYSTEM_TENANT_ID
+        ? [goldenAgent()]
+        : [
+            // Shaped like a seeded ArcaAI row: golden slug, unlocked, no lineage,
+            // per-visit-type bindings of its own.
+            tenantAgent({
+              id: 'arcaai-agent-gen',
+              slug: 'gen-default',
+              templateLocked: false,
+              sourceAgentTemplateSlug: null,
+              metaData: null,
+              promptTemplateId: 'arcaai-new-referral',
+              newPatientTemplateId: 'arcaai-new-referral',
+              revisitTemplateId: 'arcaai-followup',
+            }),
+          ],
+    );
+    mockTemplateRepo.findById.mockResolvedValue(template({ id: 'sys-tpl-gen', content: GOLDEN_CONTENT_V2, currentVersionNumber: 2 }));
+
+    const summary = await service.resyncTenant(TARGET_TENANT);
+
+    expect(summary.added).toBe(0);
+    expect(summary.fastForwarded).toBe(0);
+    // Nothing is created and nothing is re-pointed — in particular no second
+    // default agent appears to fight the seeded one over `isDefault`.
+    expect(mockAgentRepo.create).not.toHaveBeenCalled();
+    expect(mockAgentRepo.setDefaultForDepartment).not.toHaveBeenCalled();
+    expect(mockAgentRepo.updateWithVersion).not.toHaveBeenCalled();
+    expect(mockTemplateRepo.updateWithVersion).not.toHaveBeenCalled();
+  });
+
   // (iv) — a locked clone whose bound template drifted (out-of-band edit).
   it('skips a drifted locked clone and never overwrites it', async () => {
     mockAgentRepo.findAll.mockImplementation(async (props: any) => (props.filters.tenantId === SYSTEM_TENANT_ID ? [goldenAgent()] : [tenantAgent()]));

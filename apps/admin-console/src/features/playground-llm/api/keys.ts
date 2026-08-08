@@ -5,4 +5,6 @@ export const playgroundLlmKeys = {
   guardrailProviders: (tenantKey?: string) => [...playgroundLlmKeys.root, 'guardrail-providers', tenantKey ?? 'tenant'] as const,
   /** Post-mortem task read after a dropped/failed stream. */
   task: (taskId: string) => [...playgroundLlmKeys.root, 'task', taskId] as const,
+  /** Template picker search (assembled mode). */
+  templates: (params?: { search?: string; limit?: number; page?: number }) => [...playgroundLlmKeys.root, 'templates', params ?? {}] as const,
 };

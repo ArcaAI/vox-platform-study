@@ -70,6 +70,41 @@ export class DepartmentAgentRepository extends Repository<DepartmentAgentEntity,
   }
 
   /**
+   * Every ENABLED agent in the tenant that binds `promptTemplateId` through ANY
+   * of its five binding columns (TASK-635 RF-4).
+   *
+   * The eval promotion gate used to look agents up with
+   * `findAll({ filters: { tenantId, promptTemplateId } })`, which only sees the
+   * BASE binding. With capability-keyed bindings a template can be bound solely
+   * via `newPatientTemplateId` / `revisitTemplateId` / `preSummaryTemplateId` /
+   * `livePromptTemplateId`, and such an agent would have escaped the gate at
+   * approve time. The OR-filter closes that (C1 §DR-1, R5).
+   *
+   * An admin-time query over a table of dozens of rows per tenant — deliberately
+   * NOT indexed (C1 §3.1: the resolution hot path is unchanged and still covered
+   * by `DepartmentAgent_tenantId_departmentId_isDefault_idx`).
+   */
+  async findByBoundTemplate(tenantId: string, promptTemplateId: string): Promise<DepartmentAgentEntity[]> {
+    return this.findAll({
+      filters: {
+        tenantId,
+        resourceStatus: ResourceStatusType.ENABLED,
+        OR: [
+          { promptTemplateId },
+          { newPatientTemplateId: promptTemplateId },
+          { revisitTemplateId: promptTemplateId },
+          { preSummaryTemplateId: promptTemplateId },
+          { livePromptTemplateId: promptTemplateId },
+        ],
+        // `OR` is a Prisma logical operator; `DbFilters` models scalar operators
+        // only, but `formatFindAllProps` passes `filters` through to `findMany`
+        // verbatim — the same escape hatch `findTenantPreSummaryTemplateId` uses
+        // for `tags: { has }`.
+      } as never,
+    });
+  }
+
+  /**
    * Atomically mark `agentId` as the department default and unset any previous
    * default, scoped to `(tenantId, departmentId)`. Runs inside a single Prisma
    * transaction so the "exactly one default per department" invariant can never

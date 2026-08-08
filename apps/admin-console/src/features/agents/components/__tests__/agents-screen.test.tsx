@@ -332,7 +332,7 @@ describe('AgentsScreen', () => {
     expect(await screen.findByText(/A: Angina/)).toBeDefined();
     const post = calls.find((call) => call.method === 'POST' && pathOf(call) === '/api/hope/admin/prompt-templates/pt-1/test');
     expect(post?.headers['if-match']).toBe('"7"');
-    expect(post?.body).toEqual({ sampleInput: 'Patient reports chest pain.', expectedVersion: 7 });
+    expect(post?.body).toEqual({ sampleInput: 'Patient reports chest pain.', dryRun: true, expectedVersion: 7 });
   });
 
   it('creates a template from the drawer create mode (no modal)', async () => {

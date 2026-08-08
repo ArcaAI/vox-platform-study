@@ -22,6 +22,20 @@ export interface IDepartmentAgentEntity extends IBaseTaggedEntity {
   dnaStylePolicy?: DepartmentAgentDnaPolicy;
   harnessOverrides?: Record<string, unknown> | null;
   goldenSetId?: string | null;
+  // TASK-635 RF-4 — capability-keyed bindings. All optional/nullable; null ⇒
+  // the legacy behavior for that capability (summary falls back to
+  // `promptTemplateId`; pre-summary and live fall through to the tenant/SYSTEM
+  // tiers). Loose template-id refs — visibility/approval are cross-aggregate
+  // rules enforced in `DepartmentAgentService` and `PromptResolutionService`,
+  // never here (only STRUCTURAL invariants live in the entity).
+  newPatientTemplateId?: string | null;
+  revisitTemplateId?: string | null;
+  preSummaryTemplateId?: string | null;
+  livePromptTemplateId?: string | null;
+  /** Live-loop tool plan; null ⇒ platform default. Shape validated in the service. */
+  toolConfig?: Record<string, unknown> | null;
+  /** Per-task LLM override `{ live?, finalize? }`; null ⇒ tenant AiTaskDefault. */
+  llmOverrides?: Record<string, unknown> | null;
   // Optional on the interface so the factory (create path) can omit it
   // (DB default = false); the tenant default is flipped only via the
   // repository transaction (`setDefaultForDepartment`).
@@ -47,6 +61,12 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
   private _dnaStylePolicy: DepartmentAgentDnaPolicy;
   private _harnessOverrides?: IDepartmentAgentEntity['harnessOverrides'];
   private _goldenSetId?: IDepartmentAgentEntity['goldenSetId'];
+  private _newPatientTemplateId?: IDepartmentAgentEntity['newPatientTemplateId'];
+  private _revisitTemplateId?: IDepartmentAgentEntity['revisitTemplateId'];
+  private _preSummaryTemplateId?: IDepartmentAgentEntity['preSummaryTemplateId'];
+  private _livePromptTemplateId?: IDepartmentAgentEntity['livePromptTemplateId'];
+  private _toolConfig?: IDepartmentAgentEntity['toolConfig'];
+  private _llmOverrides?: IDepartmentAgentEntity['llmOverrides'];
   private _isDefault: boolean;
   private _sourceAgentTemplateSlug?: IDepartmentAgentEntity['sourceAgentTemplateSlug'];
   private _templateLocked: boolean;
@@ -63,6 +83,12 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
     this._dnaStylePolicy = init.dnaStylePolicy ?? DepartmentAgentDnaPolicy.INHERIT;
     this._harnessOverrides = init.harnessOverrides ?? null;
     this._goldenSetId = init.goldenSetId ?? null;
+    this._newPatientTemplateId = init.newPatientTemplateId ?? null;
+    this._revisitTemplateId = init.revisitTemplateId ?? null;
+    this._preSummaryTemplateId = init.preSummaryTemplateId ?? null;
+    this._livePromptTemplateId = init.livePromptTemplateId ?? null;
+    this._toolConfig = init.toolConfig ?? null;
+    this._llmOverrides = init.llmOverrides ?? null;
     this._isDefault = init.isDefault ?? false;
     this._sourceAgentTemplateSlug = init.sourceAgentTemplateSlug ?? null;
     this._templateLocked = init.templateLocked ?? false;
@@ -139,6 +165,54 @@ export class DepartmentAgentEntity extends BaseTaggedEntity {
 
   set goldenSetId(value: IDepartmentAgentEntity['goldenSetId']) {
     this.setProperty('goldenSetId', value);
+  }
+
+  get newPatientTemplateId(): IDepartmentAgentEntity['newPatientTemplateId'] {
+    return this._newPatientTemplateId;
+  }
+
+  set newPatientTemplateId(value: IDepartmentAgentEntity['newPatientTemplateId']) {
+    this.setProperty('newPatientTemplateId', value);
+  }
+
+  get revisitTemplateId(): IDepartmentAgentEntity['revisitTemplateId'] {
+    return this._revisitTemplateId;
+  }
+
+  set revisitTemplateId(value: IDepartmentAgentEntity['revisitTemplateId']) {
+    this.setProperty('revisitTemplateId', value);
+  }
+
+  get preSummaryTemplateId(): IDepartmentAgentEntity['preSummaryTemplateId'] {
+    return this._preSummaryTemplateId;
+  }
+
+  set preSummaryTemplateId(value: IDepartmentAgentEntity['preSummaryTemplateId']) {
+    this.setProperty('preSummaryTemplateId', value);
+  }
+
+  get livePromptTemplateId(): IDepartmentAgentEntity['livePromptTemplateId'] {
+    return this._livePromptTemplateId;
+  }
+
+  set livePromptTemplateId(value: IDepartmentAgentEntity['livePromptTemplateId']) {
+    this.setProperty('livePromptTemplateId', value);
+  }
+
+  get toolConfig(): IDepartmentAgentEntity['toolConfig'] {
+    return this._toolConfig;
+  }
+
+  set toolConfig(value: IDepartmentAgentEntity['toolConfig']) {
+    this.setProperty('toolConfig', value);
+  }
+
+  get llmOverrides(): IDepartmentAgentEntity['llmOverrides'] {
+    return this._llmOverrides;
+  }
+
+  set llmOverrides(value: IDepartmentAgentEntity['llmOverrides']) {
+    this.setProperty('llmOverrides', value);
   }
 
   get isDefault(): boolean {
