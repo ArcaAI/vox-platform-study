@@ -26,7 +26,6 @@ import fakeredis.aioredis
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from pydantic import SecretStr
 
 from guardrail.core.config import GroundednessConfig
 from guardrail.main import create_app
@@ -294,7 +293,6 @@ async def test_analyze_fails_closed_503_when_resolver_not_wired() -> None:
 
 async def test_ground_resolves_minicheck_model_id_from_db() -> None:
     app = create_app()
-    app.state.settings.service_token = SecretStr("")
     app.state.settings.groundedness = GroundednessConfig(enabled=True)
     app.state.settings.db.db_config_enabled = True
     resolver = StubResolver(MINICHECK_MODEL_ID)
@@ -319,7 +317,6 @@ async def test_ground_resolves_minicheck_model_id_from_db() -> None:
 
 async def test_ground_fails_closed_503_when_db_selection_missing() -> None:
     app = create_app()
-    app.state.settings.service_token = SecretStr("")
     app.state.settings.groundedness = GroundednessConfig(enabled=True)
     app.state.settings.db.db_config_enabled = True
     app.state.tenant_config_resolver = StubResolver(None)  # no guardrail.groundedness row
