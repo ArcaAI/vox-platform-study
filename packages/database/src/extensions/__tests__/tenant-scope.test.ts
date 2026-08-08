@@ -88,7 +88,9 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
     // BillingAdjustment).
     // 65 → 66: TASK-610 adds TenantAllowedOrigin (CORS control plane).
     // 66 → 67: TASK-615 #6 adds TenantPlanHistory (append-only plan-fee proration).
-    expect(TENANT_SCOPED_MODELS.size).toBe(67);
+    // 67 → 68: TASK-638 §6 adds ProviderReconciliationRun (SYSTEM-owned audit trail;
+    // scoped so a tenant can never read aggregate platform vendor spend).
+    expect(TENANT_SCOPED_MODELS.size).toBe(68);
   });
 
   // TASK-615 — the usage ledger, its outbox, the rollups and the whole billing
@@ -103,6 +105,7 @@ describe('TENANT_SCOPED_MODELS allow-list', () => {
       'AiPriceBook',
       'AiUsageRollupHourly',
       'AiUsageRollupDaily',
+      'ProviderReconciliationRun',
       'BillingInvoice',
       'BillingInvoiceLine',
       'BillingAdjustment',

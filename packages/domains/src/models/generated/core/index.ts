@@ -54,6 +54,7 @@ export * from './PolicyModel';
 export * from './PromptTemplateModel';
 export * from './PromptUsageRecordModel';
 export * from './PromptVersionModel';
+export * from './ProviderReconciliationRunModel';
 export * from './ResourceSubscriptionModel';
 export * from './RoleModel';
 export * from './RolePermissionModel';

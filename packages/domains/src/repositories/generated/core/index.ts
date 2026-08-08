@@ -126,3 +126,4 @@ export * from './UserSettingsRepository';
 export * from './UserVoiceProfileRepository';
 export * from './WebhookRepository';
 export * from './WebhookRunHistoryRepository';
+export * from './ProviderReconciliationRunRepository';

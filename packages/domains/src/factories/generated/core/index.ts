@@ -78,3 +78,4 @@ export * from './BillingAdjustmentFactory';
 export * from './BillingInvoiceFactory';
 export * from './BillingInvoiceLineFactory';
 export * from './TenantAllowedOriginFactory';
+export * from './ProviderReconciliationRunFactory';
