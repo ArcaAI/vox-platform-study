@@ -259,7 +259,22 @@ test.describe('TASK-635 C6 — live agent lineage survives into finalize (R-N1 �
     sseAgent = await ssePromise;
 
     if (!sseAgent) {
-      console.warn('[TASK-635 C6] No live-summary SSE event with metadata.agent arrived — live engine/SMR/NLP unavailable. R-N1 assertions skipped.');
+      // PRECONDITION, not a service outage. `LiveSession.transcriptParts` is fed
+      // ONLY by ingestSegment() off the STT stream `stt:result:{sessionId}`
+      // attached at recording/start (live-documentation.service.ts:832-853).
+      // The ContextItem above reaches handleContextAdded → scheduleFlush but
+      // carries no transcript, so the flush has nothing to summarize, never
+      // calls SMR, and never publishes an event — no matter how healthy SMR and
+      // NLP are (verified 2026-08-08 with LM Studio serving the seeded default
+      // model and SMR reporting lm-studio/openai_compat/ollama healthy).
+      //
+      // To actually exercise R-N1, feed the stream: either start recording with
+      // a sessionId and XADD a final segment onto stt:result:{sessionId} in the
+      // test Redis (6380), or run STT (8961) and stream an audio fixture.
+      console.warn(
+        '[TASK-635 C6] No live-summary SSE event with metadata.agent arrived — no STT session is feeding transcript into the live loop ' +
+          '(a TRANSCRIPT ContextItem schedules a flush but supplies no transcript). R-N1 assertions skipped. See the note at this line.',
+      );
       test.skip();
       return;
     }

@@ -415,7 +415,28 @@ Ran against the **isolated test stack** (Postgres 5433 / Redis 6380 / MinIO 9002
 2. The context POST used `contextType`/`TRANSCRIPTION`; the DTO field is **`type`** and the enum member is **`TRANSCRIPT`** — and because the global pipe runs `forbidNonWhitelisted`, the stray key was a hard 400, not an ignored field.
 3. The SSE wait budget (45s) exceeded Playwright's per-test timeout (30s), so the graceful-skip path was unreachable and the test died on a timeout instead. Lowered to 20s — a wait must always sit strictly inside the test budget.
 
-**Still owed**: the generation-dependent assertions (live SSE `agent` block, `SummaryMeta` lineage stamping, tier-0-preferred-wins-while-lineage-stamped) need SMR + NLP up. Run `pnpm smr:dev` and `pnpm nlp:dev` alongside, then re-run `pnpm test:e2e -- task-635` with the same two env gates.
+#### Second pass — with a real LLM backend (2026-08-08)
+
+SMR (8962) and NLP (8964) were started against `.env.test`, plus **LM Studio on 1234 with the seeded default model `gemma-4-e2b-it-qat` loaded** (`lms server start` + `lms load`) and Ollama on 11434. SMR then reported `lm-studio`, `openai_compat` and `ollama` **healthy** (overall `degraded` only because the unconfigured cloud providers count against the aggregate).
+
+**R-T1/R-T2 are now fully proven at runtime.** The generation-dependent test-bench assertions stopped self-skipping and actually executed real LLM calls (22.5s / 16.8s / 6.1s / 3.2s):
+
+| Assertion | Status |
+|---|---|
+| dry-run → 200 with output + score, and a follow-up GET proves **ETag/`_version` UNCHANGED** | ✅ fully asserted |
+| non-dry-run → persists `lastTest*` and bumps `_version` by **exactly 1** | ✅ fully asserted |
+| explicit provider/model (known ENABLED pair) accepted and forwarded | ✅ fully asserted |
+| `versionNumber: 1` resolves the seeded immutable snapshot | ✅ fully asserted |
+
+**R-N1 still cannot be asserted in this harness — and the reason is a defect in the SPEC, not the implementation.**
+
+`LiveSession.transcriptParts` is populated **only** by `ingestSegment()` (`live-documentation.service.ts:832-853`), which is fed from the STT Redis stream `stt:result:{sessionId}` attached at `start()`. The spec nudges the loop by POSTing a `TRANSCRIPT` **ContextItem**, which reaches `handleContextAdded` → `scheduleFlush` but contributes **no transcript text**. With `transcriptParts` empty the flush has nothing to summarize, never calls SMR, and therefore never publishes a `LiveSummaryEventDto` — so `metadata.agent` never appears regardless of how healthy SMR/NLP are. The spec's graceful skip then fires, correctly but for a misdiagnosed reason (its message blames "SMR/NLP unavailable").
+
+Two ways to close it, neither attempted here:
+1. **Synthetic stream** — call `recording/start` with a `sessionId`, then XADD a final segment onto `stt:result:{sessionId}` in the test Redis (6380). Cheapest, hermetic, no audio or STT service; requires pinning the segment payload shape.
+2. **Full path** — run STT (8961, currently `ECONNREFUSED` in the log) and stream an audio fixture. Highest fidelity, heaviest setup.
+
+Until one lands, R-N1/R-N2 remain proven by unit/integration evidence (C3's 89 tests, C5's warm-start gating table and lineage tests, C6's processor tests) but **not** by an end-to-end run. The spec's skip message should also be corrected to name the real precondition (an attached STT session), since as written it will mislead the next person into starting SMR — exactly what happened here.
 
 ### E2E status — original blocker (resolved above)
 
