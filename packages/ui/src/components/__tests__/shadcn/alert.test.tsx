@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/experimental-ct-react';
 import { Alert, AlertTitle, AlertDescription } from '../../shadcn/alert';
+import { runAxe, formatViolations, setTheme } from '../helpers/axe';
 
 test.describe('Alert', () => {
   test.describe('Alert (root)', () => {
@@ -167,6 +168,52 @@ test.describe('Alert', () => {
 
       await expect(component).toHaveAttribute('aria-labelledby', 'alert-heading');
     });
+
+    /**
+     * Contrast gate for the destructive variant.
+     *
+     * The description tint is applied by the PARENT via a `*:` variant
+     * (`:is(.alert > *)`, specificity 0-2-0), so it cannot be overridden from
+     * `AlertDescription` — a regression has to be caught on the primitive
+     * itself. `text-destructive/90` previously computed to 4.08:1 on the card
+     * surface and failed WCAG 1.4.3 for every destructive alert in the console
+     * (notably `OccConflictAlert`, the 412/428 banner).
+     *
+     * Screen-level axe suites do not cover this: they scan a default state
+     * where no destructive alert happens to be rendered.
+     */
+    for (const theme of ['light', 'dark'] as const) {
+      test(`destructive variant meets WCAG 1.4.3 contrast (${theme})`, async ({ mount, page }) => {
+        await mount(
+          <Alert variant="destructive">
+            <svg width="16" height="16" aria-hidden="true" />
+            <AlertTitle>Update conflict</AlertTitle>
+            <AlertDescription>
+              <p>This record changed since you opened it. Reload to see the current values, then reapply your edit.</p>
+            </AlertDescription>
+          </Alert>,
+        );
+        await setTheme(page, theme);
+
+        const violations = await runAxe(page, { runOnly: ['color-contrast'] });
+        expect(violations, formatViolations(violations)).toEqual([]);
+      });
+
+      test(`destructive variant has no WCAG 2.2 AA violations (${theme})`, async ({ mount, page }) => {
+        await mount(
+          <Alert variant="destructive">
+            <AlertTitle>Save failed</AlertTitle>
+            <AlertDescription>
+              <p>The server rejected the change.</p>
+            </AlertDescription>
+          </Alert>,
+        );
+        await setTheme(page, theme);
+
+        const violations = await runAxe(page);
+        expect(violations, formatViolations(violations)).toEqual([]);
+      });
+    }
 
     test('supports aria-describedby', async ({ mount }) => {
       const component = await mount(
