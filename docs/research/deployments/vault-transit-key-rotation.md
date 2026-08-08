@@ -1,5 +1,7 @@
 # Vault Transit Key Rotation & Rewrap — `hope-phi`
 
+**Status**: BUILT (PARTIAL) — Transit is live and in use for Vault auto-unseal (vault-ha-deployment 2026-08-07 confirms the Transit seal-Vault is operational with auto-unseal proven under hard power cycle). This runbook describes the operational procedures for key rotation; the infrastructure component is confirmed built, though routine key rotations are an operator responsibility not yet evidenced.
+
 **Ticket**: TASK-369 (Data Encryption Initiative — Phase 5, key management / OPS)
 **Audience**: SRE / Vault operators
 **Keys in scope**: `hope-phi` (PHI field-level encryption — primary), `hope-globalsetting` (envelope-encrypted settings — sibling, same procedure).

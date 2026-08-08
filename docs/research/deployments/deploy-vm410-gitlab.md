@@ -1,5 +1,7 @@
 # Deploy GitLab CE — VM 410 (10.10.1.110)
 
+**Status**: BUILT — GitLab exists and is live on VM 410 per ground-truth VM inventory; the homelab infrastructure includes working GitLab with runner integration.
+
 **Date**: 2026-03-16
 **VM**: 410 | **IP**: 10.10.1.110 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
 **Config files**: [`configs/gitlab/`](../configs/gitlab/) — `gitlab.rb` + `docker-compose.yml`

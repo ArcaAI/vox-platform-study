@@ -1,5 +1,7 @@
 # Deploy HashiCorp Vault — VM 430 / 431 / 432 (3-node HA Cluster)
 
+**Status**: SUPERSEDED — this file (dated 2026-05-24) describes a Shamir 5-of-3 unseal design, but the actual deployment (vault-ha-deployment 2026-08-07) uses a Raft-based cluster with Transit auto-unseal on dedicated VM 434 (vault-seal). The real infrastructure is live but implements a different architecture than documented here.
+
 **Date**: 2026-05-24
 **VMs**: 430 (`10.10.1.130`), 431 (`10.10.1.131`), 432 (`10.10.1.132`)
 **Bridge**: vmbr1 | **Specs**: 2 vCPU / 4 GB RAM / 32 GB disk per node

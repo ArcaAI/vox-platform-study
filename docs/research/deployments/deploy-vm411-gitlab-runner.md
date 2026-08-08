@@ -1,5 +1,7 @@
 # Deploy GitLab Runner — VM 411 (10.10.1.111)
 
+**Status**: BUILT — GitLab Runner is live on VM 411 per ground-truth VM inventory and provides CI/CD execution for the GitLab instance on VM 410.
+
 **Date**: 2026-03-17
 **VM**: 411 | **IP**: 10.10.1.111 | **Bridge**: vmbr1 | **Specs**: 8c / 16 GB / 64 GB disk
 **Architecture**: 4 specialized runners (fast / build / test / deploy) — 9 concurrent job slots

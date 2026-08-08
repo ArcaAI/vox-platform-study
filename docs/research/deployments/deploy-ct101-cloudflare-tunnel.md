@@ -1,5 +1,7 @@
 # Deploy Cloudflare Tunnel — CT 101 (Multi-Homed)
 
+**Status**: BUILT — this infrastructure is live and currently in use for external access to the homelab (confirmed via Cloudflare tunnel access in TASK-616 live-state discovery).
+
 **Date**: 2026-03-18
 **Container**: CT 101 (LXC) | **Bridges**: vmbr0, vmbr1, vmbr2, vmbr3, vmbr4 | **Multi-homed**
 **Related**: [Infrastructure Overview](../infrastructure/proxmox-infrastructure-gitlab-rancher-plan.md) | [Network Topology](../infrastructure/proxmox-network-topology-design.md) | [GitLab (VM 410)](./deploy-vm410-gitlab.md) | [MinIO (VM 402)](./deploy-vm402-minio.md) | [Rancher (VM 400)](./deploy-vm400-master.md)
